@@ -24,6 +24,65 @@ const present = (...kids) => kids.flat().filter(k => k != null);
 /* each kind of record's name: the Timeline's and the drawer's (core.js), and the command palette's on every page, an
    event's words as the Timeline searches them (store.js, palette.js: #463) */
 const KIND_LABEL = {lab:"Lab draw",imaging:"Imaging",procedure:"Procedure",study:"Report / study",message:"Conversation",appt_msg:"Appointment message",auto_msg:"Automated message",letter:"Letter",document:"Document",stay:"Hospital stay",visit:"Visit",contact:"Chart activity",labitem:"Lab result",exercise:"Workout (watch)",med:"Medication",rx:"Pharmacy fill",claim:"Insurance claim",journal:"Journal",mood:"Mood and energy",immunization:"Immunization",ecg:"ECG (watch)",rhythm:"Irregular rhythm notification (watch)",cycle:"Cycle tracking"};
+/* the Timeline's kinds (core.js, the records page) and each kind's icon, here for the command palette on every page
+   too (#470): its events off the records page, counted as the Timeline lists them and shown with their kinds' icons */
+const CATS = [
+  {k:"stay",      label:"Hospital stays",   color:"var(--stay-line)", kinds:["stay"]},
+  {k:"visit",     label:"Visits",           color:"var(--c-visit)",   kinds:["visit"]},
+  {k:"contact",   label:"Chart activity",   color:"var(--c-contact)", kinds:["contact"]},   // chart reviews, calls, faxes (#236)
+  {k:"lab",       label:"Labs",             color:"var(--c-lab)",     kinds:["lab"]},
+  {k:"imaging",   label:"Imaging",          color:"var(--c-imaging)", kinds:["imaging"]},
+  {k:"procedure", label:"Procedures",       color:"var(--c-procedure)",kinds:["procedure"]},
+  {k:"immunization", label:"Immunizations", color:"var(--c-immunization)", kinds:["immunization"]},   // #179: vaccines given
+  {k:"study",     label:"Reports & studies",color:"var(--c-study)",   kinds:["study"]},
+  {k:"message",   label:"Messages",         color:"var(--c-message)", kinds:["message","appt_msg","auto_msg"]},
+  {k:"letter",    label:"Letters & docs",   color:"var(--c-letter)",  kinds:["letter","document"]},
+  {k:"med",       label:"Medications",      color:"var(--muted)",     kinds:["med","rx"]},
+  {k:"claim",     label:"Insurance claims", color:"var(--axis)",      kinds:["claim"]},
+  {k:"watch",     label:"Watch",            color:"var(--ink2)",      kinds:["exercise"]},
+  {k:"ecg",       label:"ECG & rhythm",     color:"var(--c-ecg)",     kinds:["ecg","rhythm"]},   // #182: a watch's ECGs and irregular rhythm notifications (ecg.js)
+  {k:"journal",   label:"Journal",          color:"var(--c-journal)", kinds:["journal"]},   // the person's own entries (journal.js)
+  {k:"mood",      label:"Mood & energy",    color:"var(--c-journal)", kinds:["mood"]},      // #161: a day's mood and energy, written in the journal
+  {k:"cycle",     label:"Cycle tracking",   color:"var(--c-cycle)",   kinds:["cycle"]},     // #183: only when its owner turned it on (cycle.js)
+];
+const CAT_OF = {}; CATS.forEach(c => c.kinds.forEach(k => CAT_OF[k] = c));
+/* each kind's icon (#354, Lucide's, in icons/sprite.svg): one map, for the Timeline's chips and rows and for what
+   shows a kind next (the drawer, the charts). A category's chip takes its key's (CATS[].k): its first kind's, or the
+   watch's own. */
+const KIND_ICON = {stay: "bed", visit: "stethoscope", contact: "clipboard", lab: "test-tube-diagonal", labitem: "test-tube-diagonal",
+  imaging: "scan-line", procedure: "bandage", immunization: "syringe", study: "microscope", message: "message-square",
+  appt_msg: "message-square", auto_msg: "message-square", letter: "mail", document: "file-text", med: "pill", rx: "pill",
+  claim: "banknote", watch: "watch", exercise: "watch", ecg: "activity", rhythm: "activity", journal: "notebook", mood: "smile",
+  cycle: "droplet"};
+/* a kind's icon, hidden from assistive technology beside the kind's name (util.js icon()); cls: a class of its own */
+const kindIcon = (k, cls) => {
+  const i = icon(KIND_ICON[k] || KIND_ICON[CAT_OF[k]?.k] || "file-text");
+  if (cls) i.classList.add(cls);
+  return i;
+};
+/* the kinds the Timeline shows, by its saved state s (core.js save(), restore()), or as it starts without one: all
+   but Insurance claims (they're on Costs); a kind that came after s was saved is shown, but claims */
+function savedCats(s) {
+  const known = s?.cats ? new Set(s.known || CATS.filter(c => c.k !== "watch").map(c => c.k)) : new Set();
+  return new Set([...(s?.cats || []), ...CATS.filter(c => !known.has(c.k) && c.k !== "claim").map(c => c.k)]);
+}
+/* each lab draw's own results (#470), by its import: a result typed in from an outside lab on a clinic draw's day is
+   its own draw's, not the clinic's too (its search words, and its badge and ▲ under a search: store.js labDayWords,
+   timeline.js tlAbn, palette.js). Of one import's draws on a day, a result is the one's with a report nearest it in
+   time; one whose import has no draw that day, every draw's that day, as before. draws: [{id, imp, ts, at: its
+   reports' times}]; series: lab series, a point's import p.imp where several are joined (same.js), else the series';
+   ts(p) a point's time, day(t) its day. -> Map(draw id -> [[series, point]]) */
+function labDraws(draws, series, ts, day) {
+  const out = new Map(), by = new Map(), add = (m, k, x) => (m.get(k) || m.set(k, []).get(k)).push(x);
+  for (const e of draws) { out.set(e.id, []); add(by, day(e.ts) + "\u001f" + e.imp, e); add(by, day(e.ts), e); }
+  const near = (e, t) => Math.min(...(e.at?.length ? e.at : [e.ts]).map(a => Math.abs(a - t)));
+  for (const s of series) for (const p of s.pts) {
+    const t = ts(p), d = day(t), mine = by.get(d + "\u001f" + (p.imp ?? s.imp));
+    if (mine) out.get((mine.length > 1 ? mine.reduce((a, b) => near(b, t) < near(a, t) ? b : a) : mine[0]).id).push([s, p]);
+    else for (const e of by.get(d) || []) out.get(e.id).push([s, p]);
+  }
+  return out;
+}
 /* a row that opens something when clicked, a button to the keyboard and screen readers too (#202): el("div", {class:
    "ov-row", ...pressable(() => openEvent(e))}, …). Its words are its name. A table's row gets a .cell-btn in a cell. */
 const pressable = fn => ({role: "button", tabindex: 0, onclick: fn,

@@ -1,41 +1,7 @@
 /* Sanguity · settings, helpers, formatting, shared state, persistence, the records bar's period, tooltip, milestones.
    Plain script, loaded in order by index.html; all files share one global scope. */
 "use strict";
-const CATS = [
-  {k:"stay",      label:"Hospital stays",   color:"var(--stay-line)", kinds:["stay"]},
-  {k:"visit",     label:"Visits",           color:"var(--c-visit)",   kinds:["visit"]},
-  {k:"contact",   label:"Chart activity",   color:"var(--c-contact)", kinds:["contact"]},   // chart reviews, calls, faxes (#236)
-  {k:"lab",       label:"Labs",             color:"var(--c-lab)",     kinds:["lab"]},
-  {k:"imaging",   label:"Imaging",          color:"var(--c-imaging)", kinds:["imaging"]},
-  {k:"procedure", label:"Procedures",       color:"var(--c-procedure)",kinds:["procedure"]},
-  {k:"immunization", label:"Immunizations", color:"var(--c-immunization)", kinds:["immunization"]},   // #179: vaccines given
-  {k:"study",     label:"Reports & studies",color:"var(--c-study)",   kinds:["study"]},
-  {k:"message",   label:"Messages",         color:"var(--c-message)", kinds:["message","appt_msg","auto_msg"]},
-  {k:"letter",    label:"Letters & docs",   color:"var(--c-letter)",  kinds:["letter","document"]},
-  {k:"med",       label:"Medications",      color:"var(--muted)",     kinds:["med","rx"]},
-  {k:"claim",     label:"Insurance claims", color:"var(--axis)",      kinds:["claim"]},
-  {k:"watch",     label:"Watch",            color:"var(--ink2)",      kinds:["exercise"]},
-  {k:"ecg",       label:"ECG & rhythm",     color:"var(--c-ecg)",     kinds:["ecg","rhythm"]},   // #182: a watch's ECGs and irregular rhythm notifications (ecg.js)
-  {k:"journal",   label:"Journal",          color:"var(--c-journal)", kinds:["journal"]},   // the person's own entries (journal.js)
-  {k:"mood",      label:"Mood & energy",    color:"var(--c-journal)", kinds:["mood"]},      // #161: a day's mood and energy, written in the journal
-  {k:"cycle",     label:"Cycle tracking",   color:"var(--c-cycle)",   kinds:["cycle"]},     // #183: only when its owner turned it on (cycle.js)
-];
-const CAT_OF = {}; CATS.forEach(c => c.kinds.forEach(k => CAT_OF[k] = c));
-// KIND_LABEL, each kind's name: util.js (#463: the command palette's, on every page)
-/* each kind's icon (#354, Lucide's, in icons/sprite.svg): one map, for the Timeline's chips and rows and for what
-   shows a kind next (the drawer, the charts). A category's chip takes its key's (CATS[].k): its first kind's, or the
-   watch's own. */
-const KIND_ICON = {stay: "bed", visit: "stethoscope", contact: "clipboard", lab: "test-tube-diagonal", labitem: "test-tube-diagonal",
-  imaging: "scan-line", procedure: "bandage", immunization: "syringe", study: "microscope", message: "message-square",
-  appt_msg: "message-square", auto_msg: "message-square", letter: "mail", document: "file-text", med: "pill", rx: "pill",
-  claim: "banknote", watch: "watch", exercise: "watch", ecg: "activity", rhythm: "activity", journal: "notebook", mood: "smile",
-  cycle: "droplet"};
-/* a kind's icon, hidden from assistive technology beside the kind's name (util.js icon()); cls: a class of its own */
-const kindIcon = (k, cls) => {
-  const i = icon(KIND_ICON[k] || KIND_ICON[CAT_OF[k]?.k] || "file-text");
-  if (cls) i.classList.add(cls);
-  return i;
-};
+// CATS, CAT_OF, KIND_LABEL, KIND_ICON and kindIcon(): util.js (#470: the command palette's, on every page)
 const usd = v => (v || 0).toLocaleString(undefined, {style: "currency", currency: "USD", maximumFractionDigits: 0});
 /* The profile's settings (server/settings.py), changed on the Settings page. The server sends every one, with its
    defaults filled in; these are only what the page uses if that fails, and should match the server's defaults. */
@@ -71,7 +37,7 @@ const hasLane = c => EV.some(e => CAT_OF[e.k] === c) || (c.k === "watch" && STEP
 /* preset: the records bar's period (#171), shared by every tab with time ("period" below); labsView: the Labs tab's
    "chart" or "heatmap" (#172); tlView: the Timeline tab's "timeline" or "journal", and tlWork: its list has the
    workouts too (#277, timeline.js) */
-const state = { from: 0, to: 0, min: 0, max: 0, preset: "2y", cats: new Set(CATS.map(c => c.k).filter(k => k !== "claim")), q: "", tab: "overview", labsView: "chart", tlView: "timeline", tlWork: false, marks: true, smooth: false, sel: new Set(), selEv: null, tables: new Set(), asc: false };
+const state = { from: 0, to: 0, min: 0, max: 0, preset: "2y", cats: savedCats(null), q: "", tab: "overview", labsView: "chart", tlView: "timeline", tlWork: false, marks: true, smooth: false, sel: new Set(), selEv: null, tables: new Set(), asc: false };
 
 /* ---------------------------------------------------------------- persistence */
 function save() { try { localStorage.setItem(stateKey(), JSON.stringify({preset: state.preset, from: state.from, to: state.to, cats: [...state.cats], known: CATS.map(c => c.k), tab: state.tab, labsView: state.labsView, tlView: state.tlView, costView: typeof costState === "object" ? costState.view : undefined, tlWork: state.tlWork, sel: [...state.sel], marks: state.marks, smooth: state.smooth, asc: state.asc, v: 2})); } catch (e) {} }
@@ -81,7 +47,7 @@ function restore() {
     // the one view saved before profiles existed goes to the first profile opened after the upgrade
     if (raw == null && (raw = localStorage.getItem("ht-state")) != null) localStorage.removeItem("ht-state");
     const s = JSON.parse(raw || "null"); if (!s) return;
-    if (s.cats) { const known = new Set(s.known || CATS.filter(c => c.k !== "watch").map(c => c.k)); state.cats = new Set([...s.cats, ...CATS.filter(c => !known.has(c.k) && c.k !== "claim").map(c => c.k)]); }
+    if (s.cats) state.cats = savedCats(s);   // (util.js: the command palette counts by them too, #470)
     if (s.sel) state.sel = new Set(s.sel);
     if (s.tab && s.v === 2) [state.tab, state.labsView] = tabAlias(s.tab, s.labsView);   // Trends and Lab heatmap are Labs now (#172)
     if (s.preset) state.preset = s.preset;

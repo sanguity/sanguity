@@ -180,16 +180,16 @@ function tlLabValues(labs, tests = null) {
    as a lab day's search words do (store.js labDayWords); none with no search */
 const tlTestsHit = () => !state.q ? [] : SERIES.filter(s => !s.watch && s.panel !== "Vitals"
   && [s.name, nice(s.name), s.panel || "", panelName(s.panel || "")].some(t => t.toLowerCase().includes(state.q)));
-/* a lab draw's out-of-range count: under a search that names tests, those tests' on its day, as the line over the list
-   counts them (#464: "psa" showed "2 out of range" and a ▲ on draws whose PSA was in range, from their other tests);
-   else all its values'. tlAbnDays works out the days' counts for a redraw (null: no search names tests) */
+/* a lab draw's out-of-range count: under a search that names tests, those tests' among its own results (#464: "psa"
+   showed "2 out of range" and a ▲ on draws whose PSA was in range, from their other tests; #470: "creatinine" on a
+   clinic draw for an outside lab's result typed in that day, store.js labDayWords' e.res); else all its values'.
+   tlAbnDays works out the tests for a redraw (null: no search names tests) */
 let tlAbnDay = null;
 function tlAbnDays() {
   const tests = tlTestsHit();
-  tlAbnDay = tests.length ? new Map() : null;
-  for (const s of tests) for (const p of s.pts) if (p[4]) { const d = isoDay(p.ts); tlAbnDay.set(d, (tlAbnDay.get(d) || 0) + 1); }
+  tlAbnDay = tests.length ? new Set(tests) : null;
 }
-const tlAbn = e => e.k === "lab" && tlAbnDay ? tlAbnDay.get(isoDay(e.ts)) || 0 : e.abn;
+const tlAbn = e => e.k === "lab" && tlAbnDay ? (e.res || []).filter(([s, p]) => p[4] && tlAbnDay.has(s)).length : e.abn;
 /* the line over the list: "The last year: 9 lab draws, 31 results, 3 out of range · 97 workouts, not listed". Under a
    search that names tests, the draws' results are those tests' only ("23 lab draws, 23 PSA results": not the 598 values
    of the draws that have a PSA, 8 of them out of range, read as PSA's), and it says which */
