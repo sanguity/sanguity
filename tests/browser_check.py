@@ -14448,7 +14448,7 @@ def main():
             page.wait_for_function("[...document.querySelectorAll('#sourceList .prof')].some(p => p.textContent.includes('Fake Epic sandbox') && "
                                    "(p.textContent.includes('Discovery works') || p.textContent.includes('tested ') && !p.textContent.includes('not tested')))", timeout=10000)   # its test done, not "not tested yet"
             page.goto(base + "/connect.html")   # its old address: Sources → Portals and health plans (#166)
-            page.wait_for_url("**/sources.html#portals", timeout=10000)
+            page.wait_for_url(re.compile(r"/sources\.html(\?[^#]*)?#portals$"), timeout=10000)   # with or without the ?profile= nav.js adds
             page.wait_for_selector("#adminNote:not([hidden])", timeout=10000)
             check("connected sources: no setup on the everyday page, and an admin is pointed to Admin (#167)",
                   js("!document.getElementById('srcForm') && document.querySelector('#adminNote a').getAttribute('href')") == "admin.html#apps")
