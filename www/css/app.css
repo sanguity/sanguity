@@ -1293,7 +1293,7 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
 .grp-n{font-weight:var(--fw-regular);color:var(--muted)}
 .tiles>.lab-panel{grid-column:1/-1;margin:var(--sp-1) 0 var(--sp-2)}
 :is(.ov-panel,.ov-out)+.tiles .tile>.delta{min-height:2lh}   /* a panel's row of key labs as tall in either font: a change that just fits wraps in one, not the other (#338, #441) */
-.labs-aids .pop>.menu-list{margin-left:var(--sp-3)}   /* the Legend 12 px from a phone's edge (#441) */
+.chart-aids .pop>.menu-list{margin-left:var(--sp-3)}   /* a Legend 12 px from a phone's edge (#441), on Labs and Body (#442) */
 .sets .set-grp{margin:var(--sp-3) 0 0}
 @media (max-width:700px){#labsHeatmap .lab-find{flex:1 1 100%;margin-left:0}}
 .sets .set-view{border:1px solid var(--grid);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3);margin:var(--sp-2) 0;max-width:560px}
