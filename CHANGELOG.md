@@ -1573,6 +1573,11 @@ Everything on `main` so far; it becomes the first tagged release.
   focus to the first control of the same name in the page, and the Overview, hidden but still there, had one first.
   It goes to the one shown now, on any tab. A Body and activity tile scrolled to its card but left focus on the tile,
   far above on a phone, so the next Tab went back up; focus goes to the card's heading, as the section bar's does.
+- **A setting picked just before leaving Settings stays picked** (#457): as the page went, the save still on its way
+  failed in the page though its request reached the server, and the page took it as refused. A theme picked just
+  before leaving went back in this browser (Light picked, the next page showed dark), the page said offline for a
+  moment, and a second unit picked was sent twice. Once the page is being left, a save that fails does nothing more
+  there, and nothing queued behind it is sent again.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

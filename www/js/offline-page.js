@@ -19,6 +19,10 @@ const OFFLINE = {on: false, copy: null};   // the same flag as offline.js's: on,
   const NEEDS_SERVER = "You're offline. This needs the server.", WHY = "Needs the server: you're offline";
   const name = document.title.split(" · ")[0];   // "Settings", before the sidebar adds its group
   let reached = false;   // the server answered since the page opened
+  // being left: a request torn down with the page fails, which says nothing of the server (#457)
+  let leaving = false;
+  addEventListener("pagehide", () => { leaving = true; });
+  addEventListener("pageshow", e => { if (e.persisted) leaving = false; });
   const apiPath = input => {
     const u = new URL(input instanceof Request ? input.url : String(input), location.href);
     return u.origin === location.origin && u.pathname.startsWith(API) ? u.pathname.slice(API.length) : null;
@@ -30,6 +34,9 @@ const OFFLINE = {on: false, copy: null};   // the same flag as offline.js's: on,
     try { r = await realFetch(input, opts); }
     catch (err) {
       if (err.name === "AbortError") throw err;
+      // the page left, not the server (#457); a task later, as the request torn down fails before pagehide is heard
+      await new Promise(r => setTimeout(r));
+      if (leaving) throw err;
       away();
       throw new Error(NEEDS_SERVER);
     }
