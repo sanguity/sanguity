@@ -1545,6 +1545,16 @@ Everything on `main` so far; it becomes the first tagged release.
   counted every value of the draws found, so "psa" said "23 lab draws, 598 results, 8 out of range" when PSA's 23 were
   all in range; it counts those tests' results only, and says which ("23 lab draws, 23 PSA results"; "104 results of
   the 4 tests matching “iron”").
+- **Costs' figures fit, its lists scroll with the page, their headings stay in sight, and a picked row shows in forced
+  colours** (#456): in a French browser at 1280 px the Overview's "1 002 666 $US" ran past its tile; on the Overview
+  and Costs the three figures go one under another wherever one doesn't fit its third. Prescriptions, HSA and FSA by
+  year and the charts' tables scrolled inside boxes of their own (taller than a sideways phone's screen); they're in
+  the page's scroll now, and a table's column headings stick under the top bar as it scrolls by. In forced colours a
+  picked type of care or "What it was for" row looked like the rest and the rows' bars vanished; the picked row is
+  ringed and the bars drawn. Switching to What you paid is kept for the next visit at once, not only once something
+  else saved. An address naming a drug's claims (`#costs?drug=…`), opened in a new tab or typed, shows them as the
+  link's click does: scrolled to, focus in their search. What you paid's ⓘ stays beside its heading at 320 px, and
+  offline the medication drawer and Costs' editor say in a line why they can't save.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
