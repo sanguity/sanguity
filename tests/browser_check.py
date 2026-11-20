@@ -2872,6 +2872,27 @@ def main():
                   all(t and f != "BODY" and f[1] == w and (n in ("a provider", "a drug", "Close") or f[2] == "true") for n, (t, f, w) in focus448.items()), focus448)
             check("…What you paid's rows are reached by Tab, buttons saying whether they're picked, and Enter lists only theirs",
                   row448[:4] == [True, "button", 0, "false"] and row448[4][0] and row448[4][1:] == ["true", True], row448)
+            # #455: the editor's Close after a What it was for row has filtered its row out (the editor under the list then)
+            # leaves focus on a control in sight, the row picked, not <body>
+            js("Object.assign(costState, {view: 'paid'}); paidState.q = ''; paidState.open = null; renderCosts()")
+            settle(200)
+            page.focus("#paidTable tbody tr[data-oop] .cell-btn")
+            page.keyboard.press("Enter")
+            settle(300)
+            other455 = js("""(r => [...document.querySelectorAll('#paidCard .ov-cols .ov-row')].findIndex(x => ![r.group, r.who || '(no payee)'].includes(x.querySelector('.n').textContent)))
+                (paidRows().find(r => oopKey(r) === paidState.open))""")
+            page.locator("#paidCard .ov-cols .ov-row").nth(other455).focus()
+            page.keyboard.press("Enter")
+            settle(300)
+            close455 = [js("[!!document.getElementById('oopEdit'), !document.querySelector(`#paidTable tr[data-oop=\"${paidState.open}\"]`)]")]
+            page.locator("#oopEdit button", has_text=re.compile(r"^Close$")).focus()
+            page.keyboard.press("Enter")
+            settle(300)
+            close455.append(js("""(a => a === document.body ? 'BODY' : [a.tagName, a.getAttribute('aria-pressed'), a.matches('#paidCard .ov-row'),
+                (r => r.width > 0 && r.top >= 0 && r.bottom <= innerHeight)(a.getBoundingClientRect())])(document.activeElement)"""))
+            js("paidState.q = ''; costState.view = 'claims'; renderCosts()")
+            check("…the editor's Close, its row filtered out since by a What it was for row, leaves focus on that row, in sight, not <body> (#455)",
+                  other455 >= 0 and close455 == [[True, True], ["DIV", "true", True, True]], [other455, close455])
             # #448: the out-of-pocket amounts in the page's own scroll at 390 px, no box scrolling inside it; a row's editor
             # opens in the row under it; and the headings in order, in both views with More figures open
             page.set_viewport_size({"width": 390, "height": 844})

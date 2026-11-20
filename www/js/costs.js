@@ -223,9 +223,10 @@ function oopEditor(r) {
   const btns = el("div", {class: "btns my-2"});
   if (r.receipt != null && byId.get(r.receipt)) btns.append(el("button", {class: "btn", type: "button", text: "Open receipt", onclick: () => openEvent(byId.get(r.receipt))}));
   if (r.claim && byId.get(r.claim.id)) btns.append(el("button", {class: "btn", type: "button", text: "Open claim", onclick: () => openEvent(byId.get(r.claim.id))}));
-  // closed, focus goes back to the row's date, the button that opened it (#448)
+  // closed, focus goes back to the row's date, the button that opened it (#448); its row filtered out since (a row
+  // above or HSA only picked, the editor under the list then), to what's picked, else the list (#455), never <body>
   btns.append(el("button", {class: "btn", type: "button", text: "Close", onclick: () => { paidState.open = null; renderCosts();
-    $(`#paidTable tr[data-oop="${oopKey(r)}"] .cell-btn`)?.focus(); }}));
+    ($(`#paidTable tr[data-oop="${oopKey(r)}"] .cell-btn`) || $("#paidCard [aria-pressed=true]") || $("#paidTable")).focus(); }}));
   box.append(btns);
   if (canEdit()) {
     const target = r.type === "claim" ? {event: r.id} : {payment: r.key};
