@@ -1510,6 +1510,13 @@ Everything on `main` so far; it becomes the first tagged release.
   correction M, versions 1 to 10, the mask chosen by ISO/IEC 18004's penalty), no library, dark on white in both themes
   and in forced colours; `tests/test_qr.py` holds it to published vectors and an independent encoder's symbols and
   reads every length back.
+- **The visit summary and share links: the options beside a live preview** (#288): the visit summary's preview came
+  only with its Preview button, below the cards of choices, and a new share link's "Anyone who has
+  this link can read…" sat under its whole form. At 1200 px and wider the summary's choices are on the left and its
+  preview on the right, drawn again as each choice changes (a section ticked, the visit, a lab added, a question
+  typed), with its length ("1 page") beside its heading; the Preview button is gone. A share link's choices sit beside
+  what a holder will see, which stays in sight under the top bar as they scroll, with Make the link under it. On
+  narrower screens each is one under the other, as before.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
