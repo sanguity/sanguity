@@ -38,8 +38,10 @@ document.fonts?.ready.then(() => document.querySelectorAll(".stats.three").forEa
 function threeFigures(tiles) { const g = el("div", {class: "stats three"}, ...tiles); threeSeen.observe(g); return g; }
 /* the claims' table, a claim per stacked row (.fold, app.css) where it's wider than its box (#465): measured, as the
    figures are, not at a fixed width (in French figures it needs 700–723 px, in English 660). A table wider than its
-   box is at its narrowest, so that's the width it needs, kept as the box changes. Once the fonts are in, one not
-   stacked is measured again (a stacked one isn't drawn as a table to measure it: that moved the page, #329) */
+   box is at its narrowest, so that's the width it needs, kept as the box changes. Measured as soon as it's in the page
+   (renderCosts), so it's stacked in the frame it's drawn, before anything scrolls to or focuses a claim in it (#467),
+   and again as its box changes. Once the fonts are in, one not stacked is measured again (a stacked one isn't drawn
+   as a table to measure it: that moved the page, #329) */
 const claimsFit = w => {
   const t = w.firstElementChild, bw = w.getBoundingClientRect().width;
   if (!bw) return;   // not shown (another tab): measured when it is
@@ -178,6 +180,7 @@ function renderCosts() {
   if (list.length > costState.limit) tc.append(el("button", {class: "btn", type: "button", style: {marginTop: "8px"}, text: `Show ${Math.min(200, list.length - costState.limit)} more`,
     onclick: () => { const n = costState.limit; costState.limit += 200; renderCosts(); $(`#costTable tbody tr:nth-child(${n + 1}) .cell-btn`)?.focus(); }}));   // the first one added (#443)
   box.append(tc);
+  claimsFit(tc.querySelector(".tablewrap"));   // stacked now, not a frame late (#467)
 }
 /* ---- out of pocket (#55): payments typed in or from a finance app's export, and claims' shares with no payment.
    Where each amount came from, the HSA/FSA tags and the payment-to-claim matches are worked out by the server
@@ -288,9 +291,10 @@ function renderPaid(box, claimRows, periodLabel) {
   const sum = xs => xs.reduce((a, r) => a + r.counted, 0);
   const pays = counted.filter(r => r.type === "pay"), shares = counted.filter(r => r.type === "claim");
   const has = s => all.some(r => r.src === s);
-  const ways = [has("typed") && ["payments typed in"], has("export") && ["a finance export", meta.exported ? ` (exported ${fmtD(dayTs(meta.exported))})` : ""],
-    has("claim") && ["claims' shares", " with no payment matched"]].filter(Boolean);
-  const from = whole => "From " + (xs => xs.length < 2 ? xs.join("") : xs.slice(0, -1).join(", ") + " and " + xs.at(-1))(ways.map(w => whole ? w.join("") : w[0])) + ".";
+  // each source: its name, what the ⓘ adds, and its shorter name where all three are named (one line at 390 px, #467)
+  const ways = [has("typed") && ["payments typed in", ""], has("export") && ["a finance export", meta.exported ? ` (exported ${fmtD(dayTs(meta.exported))})` : "", "an export"],
+    has("claim") && ["claims' shares", " with no payment matched", "claims"]].filter(Boolean);
+  const from = whole => "From " + (xs => xs.length < 2 ? xs.join("") : xs.slice(0, -1).join(", ") + " and " + xs.at(-1))(ways.map(w => whole ? w[0] + w[1] : ways.length > 2 && w[2] || w[0])) + ".";
   // the view's heading, its figures under it in their card (#448); its hint one line, where the amounts came from, and
   // the rest behind its ⓘ: when the export was, how each amount is counted and what isn't (#280, #465)
   h2.append(aboutWords({title: "what you paid"}, from(true), "A payment that arrived two ways is counted once, and a claim's share only until a payment is matched to it. Click a row below to see where its number came from.",

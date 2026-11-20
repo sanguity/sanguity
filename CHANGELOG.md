@@ -1609,6 +1609,13 @@ Everything on `main` so far; it becomes the first tagged release.
   past its card and the page scrolled sideways. The table's width is measured, and it stacks wherever it doesn't fit.
   What you paid's three-sentence hint says where the amounts came from ("From a finance export and claims' shares");
   the export's date and what isn't counted are behind its ⓘ.
+- **Costs' claims stack as they're drawn, a claim's row stays in sight as the drawer closes, and What you paid's hint
+  is one line with all its sources** (#467): since #465 the claims stacked a frame after they were drawn, so Show more
+  on a phone left the claim it focused 300 to 4,500 px below the screen, and a claim opened as the drawer docked in a
+  French browser ended under it; they stack in the frame they're drawn. Closing the docked drawer at 1300 or 1400 px
+  gave focus to the claim's row, then laid the page out wider with that row above the screen; it's brought into
+  sight. With a payment typed in, the hint was two lines at 390 px; it names the three shortly ("From payments typed
+  in, an export and claims"), in full behind its ⓘ.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
