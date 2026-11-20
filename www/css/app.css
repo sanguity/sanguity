@@ -492,13 +492,18 @@ main{padding:var(--sp-4) var(--sp-5) var(--sp-7);max-width:1500px;margin:0 auto}
 footer.notice{max-width:1500px;margin:0 auto;padding:var(--sp-3) var(--sp-5) var(--sp-5);border-top:1px solid var(--grid);color:var(--ink2);font-size:var(--fs-2);box-sizing:border-box}
 .range-note{color:var(--ink2);font-size:var(--fs-2);margin:var(--sp-2) 0 var(--sp-2)}
 .tiles + .range-note{margin:-8px 0 var(--sp-4)}
-.card h2,.card>h1,:is(.ov-cols,.ov-today) :is(.card,.card>.set-hd)>h3{font-size:var(--fs-4);margin:0 0 2px;font-weight:var(--fw-semibold)}
+.card h2,.card>h1{font-size:var(--fs-4);margin:0 0 2px;font-weight:var(--fw-semibold)}
+/* the records tabs' headings (#442), one scheme on all six: a section's h2 above its cards, whose titles are h3s a step
+   smaller; a tab of one card per question (Medications, the Timeline, Costs, Labs' heatmap) has each card's title as
+   the h2, in the same style. Both in the display serif (below) */
+main>[id^=view-] h2{font-size:var(--fs-5);font-weight:var(--fw-semibold);line-height:1.3}
+main>[id^=view-] :is(.card,.card>.set-hd,.card>.list-hd)>h3:not(.sub){font-size:var(--fs-4);font-weight:var(--fw-semibold);line-height:1.3;margin:0 0 2px}
 .card .hint{color:var(--muted);font-size:var(--fs-3);margin:0 0 var(--sp-2)}
 .howto{color:var(--ink2);font-size:var(--fs-3);margin:0 0 var(--sp-2)}   /* what someone needs in order to act, in full (#280): what to upload, what a field expects, a warning */
 /* the type scale (#255, tokens.css): Source Serif 4 for page and section titles and the headline values, Inter for the
    rest (a value's unit too); tabular figures wherever numbers are read against each other: values, tables, chart axes,
    the drawer's facts */
-.card h2,.card>h1,:is(.ov-cols,.ov-today) :is(.card,.card>.set-hd)>h3,.ov-h h2,.sets .set-top h1,.guide-hd h1,.guide-step h2,.sg-ask h2,#drawer .dh h3,.dir .dir-hd h2,.src .dir-hd h3,
+.card h2,.card>h1,main>[id^=view-] :is(h2,:is(.card,.card>.set-hd,.card>.list-hd)>h3:not(.sub)),.sets .set-top h1,.guide-hd h1,.guide-step h2,.sg-ask h2,#drawer .dh h3,.dir .dir-hd h2,.src .dir-hd h3,
   .tile .val{font-family:var(--font-display,Georgia,serif)}
 .tile .val small{font-family:var(--font-ui,system-ui,sans-serif)}
 .tile .val,svg text,.tip,.kv dd,.acct .tbl,.zones-tbl,.ecg-sum,.bk .kv{font-variant-numeric:tabular-nums}
@@ -570,7 +575,7 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .pz{touch-action:pan-y;user-select:none;-webkit-user-select:none;cursor:grab}
 .dragging .pz,.dragging .pz *{cursor:grabbing!important}
 .list-hd{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;margin-bottom:2px}
-.list-hd h2{margin:0!important}
+.list-hd :is(h2,h3){margin:0!important}
 /* a heading wraps beside its one control: no font swap pushes that under it (#426) */
 .list-hd>:has(+.spacer+:last-child){flex:999 1 6em;min-width:0;line-height:1.3}
 .chart .hd .lg{display:inline-flex;gap:var(--sp-2);font-size:var(--fs-1);color:var(--ink2)}
@@ -588,7 +593,7 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 /* overview: its groups (#274), each under its heading, a step apart */
 .ov-h{display:flex;align-items:baseline;gap:var(--sp-2);margin:var(--sp-5) 0 var(--sp-3)}
 .ov-h:first-child{margin-top:var(--sp-1)}
-.ov-h h2{font-size:var(--fs-5);margin:0;flex-shrink:0;max-width:100%}   /* its name kept whole beside a long hint */
+.ov-h h2{margin:0;flex-shrink:0;max-width:100%}   /* its name kept whole beside a long hint */
 .ov-h .hint{margin:0}
 .ov-today{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:0 var(--sp-5);align-items:start}
 .ov-out-say{margin:0 0 var(--sp-1);font-weight:var(--fw-semibold)}
@@ -733,6 +738,7 @@ details.res > div{padding:0 var(--sp-3) var(--sp-2)}
 .legend{display:flex;gap:var(--sp-3);flex-wrap:wrap;font-size:var(--fs-2);color:var(--ink2);margin:var(--sp-1) 0 0}
 .legend span{display:inline-flex;align-items:center;gap:var(--sp-2)}
 .legend i{display:inline-block;width:14px;height:8px;border-radius:2px}
+.legend .stay-key{background:var(--stay)}   /* a hospital stay's shading (Body and activity's Legend, #442) */
 @media (max-width:900px){
   .layout{grid-template-columns:1fr}
   .series-list{max-height:300px}
@@ -1269,14 +1275,15 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
 #labsHeatmap .lab-find{flex:0 1 300px;margin-left:var(--sp-2)}
 .lab-none{padding:var(--sp-2) var(--sp-4);margin:0!important}
 .lab-none .btn{margin:var(--sp-1) 0 0}
-/* Labs' one header (#279): the view, Show on charts, then its Legend and ⓘ at the end (menus' popovers, nav.js, of
-   words), the caption under them */
-.labs-bar{gap:var(--sp-2) var(--sp-4);margin:0 0 var(--sp-1)}
-.labs-head>.range-note{margin:0 0 var(--sp-3)}
+/* the charts' one header (#279: Labs'; #442: Body and activity's too): the view (Labs'), Show on charts, then its
+   Legend and ⓘ at the end (menus' popovers, nav.js, of words), the caption under them (Labs' range note, Body's sync
+   status, kept out of the chart options' group, #444) */
+.chart-bar{gap:var(--sp-2) var(--sp-4);margin:0 0 var(--sp-1)}
+:is(.labs-head>.range-note,.h-sync){margin:0 0 var(--sp-3)}
 .overlays{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2)}
 .overlays .lbl{font-size:var(--fs-3);font-weight:var(--fw-semibold);color:var(--ink2);margin-right:2px}
-.labs-aids{display:flex;gap:var(--sp-2);margin-left:auto}
-.labs-aids .btn{margin:0}
+.chart-aids{display:flex;gap:var(--sp-2);margin-left:auto}
+.chart-aids .btn{margin:0}
 .legend.menu-list:not(:popover-open,.sg-measure){display:none}
 /* a list's labs grouped by panel (#279): Other, collapsed; a group's name over the Overview's tiles and Settings' list */
 .series-list summary.grp{cursor:pointer;border-radius:var(--r-sm)}
@@ -1416,6 +1423,7 @@ table.data.oop tr[aria-expanded=true] td{background:var(--hover)}
 table.data .num{text-align:right}
 table.claims th,table.claims td:first-child{white-space:nowrap}   /* a date on one line, not "Nov / 14, / 2026" */
 details.more.cost-more>:not(summary){max-width:none;color:var(--ink);font-size:var(--fs-3)}
+.cost-figs>details.cost-more.more{margin-bottom:0}   /* in the figures' card (#442): its padding is the space under it */
 #view-costs .tablewrap{container-type:inline-size}
 @container (width < 560px){
   table.stack,.stack tbody{display:block}
@@ -1794,9 +1802,7 @@ th>.cell-btn{font-weight:inherit;white-space:nowrap}
 
 /* ---- Body and activity's sections (#276, health.js): a bar, then each an h2, tiles and cards (their h3s as a card's h2) */
 .h-secbar{margin:0 0 var(--sp-2)}
-.h-sec>h2{margin:var(--sp-5) 0 var(--sp-3);font:var(--fw-semibold) var(--fs-5)/1.3 var(--font-display,Georgia,serif)}
-.h-sec .list-hd h3{margin:0;font:var(--fw-semibold) var(--fs-4)/1.3 var(--font-display,Georgia,serif)}
-.h-sync{margin:0 0 0 auto}
+.h-sec>h2{margin:var(--sp-5) 0 var(--sp-3)}
 .h-sec .tile .delta{min-height:2lh}   /* a delta that wraps in one font only moves nothing (#329), as in one row of all */
 
 /* ---- menstrual cycle tracking, opt-in (#183, cycle.js and sources-cycle.js): its own colour (--c-cycle in

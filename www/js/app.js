@@ -11,15 +11,24 @@ const TABS = SgNav.TABS;   // the top bar's links to them (nav.js, #264)
 let TAB_ORDER = [...TABS], TAB_HIDDEN = new Set();
 const shownTabs = () => TAB_ORDER.filter(t => !TAB_HIDDEN.has(t));
 function applyTabs(cfg) { ({order: TAB_ORDER, hidden: TAB_HIDDEN} = SgNav.layout(cfg)); }
-/* the tab in the address (#208): index.html#overview, #health, #medications (#275), #timeline, #timeline-journal (the
-   Timeline as the journal, #277), #labs (Labs as charts), #labs-heatmap (Labs as the heatmap) or #costs; the old #trends
-   and #heatmap still open Labs as charts or the heatmap. An address with no # opens the tab last used (save(), core.js).
-   tabOfHash: the address's [tab, its view], or null */
-const HASH_TABS = {...TAB_ALIAS, labs: ["labs", "chart"], "labs-heatmap": ["labs", "heatmap"], timeline: ["timeline", "timeline"], "timeline-journal": ["timeline", "journal"]};
+/* the tab in the address (#208), with its view (#442): index.html#overview, #health, #medications (#275), #timeline,
+   #timeline-journal (the Timeline as the journal, #277), #labs (Labs as charts), #labs-heatmap (Labs as the heatmap),
+   #costs (Costs' claims) or #costs-paid (what you paid, #278); the old #trends and #heatmap still open Labs as charts or
+   the heatmap. An address with no # opens the tab last used (save(), core.js). tabOfHash: the address's [tab, its
+   view], or null; setView: a view, by its name, on the tab it belongs to */
+const HASH_TABS = {...TAB_ALIAS, labs: ["labs", "chart"], "labs-heatmap": ["labs", "heatmap"], timeline: ["timeline", "timeline"], "timeline-journal": ["timeline", "journal"],
+  costs: ["costs", "claims"], "costs-paid": ["costs", "paid"]};
 const tabOfHash = () => { const h = decodeURIComponent(location.hash.slice(1)).toLowerCase(); return HASH_TABS[h] || (TABS.includes(h) ? [h] : null); };
-const tabHash = () => "#" + state.tab + (state.tab === "labs" && state.labsView === "heatmap" ? "-heatmap" : state.tab === "timeline" && state.tlView === "journal" ? "-journal" : "");
-/* the address follows the tab shown: a new history entry when someone picks another tab (push), so Back and Forward
-   move between tabs; the boot, an old alias and the app's own switches replace the entry instead. history's own
+const tabHash = () => "#" + state.tab + (state.tab === "labs" && state.labsView === "heatmap" ? "-heatmap" : state.tab === "timeline" && state.tlView === "journal" ? "-journal"
+  : state.tab === "costs" && costState.view === "paid" ? "-paid" : "");
+function setView(v) {
+  if (v === "chart" || v === "heatmap") state.labsView = v;
+  else if (v === "timeline" || v === "journal") state.tlView = v;
+  else if (v === "claims" || v === "paid") costState.view = v;
+}
+/* the address follows the tab shown: a new history entry when someone picks another tab or another view of one (push:
+   each tab's view switch too, #442), so Back and Forward move between them; the boot, an old alias and the app's own
+   switches replace the entry instead. history's own
    calls fire no hashchange, so the listener below doesn't run again. At the boot, another # in the address (Add →
    Journal entry's #new-journal-entry) is left for its page to read */
 function tabAddress(push) {
@@ -28,15 +37,14 @@ function tabAddress(push) {
   try { if (push) history.pushState(null, "", h); else history.replaceState(history.state, "", h); } catch (e) {}
 }
 const pickTab = (t, view) => switchTab(t, view, true);   // someone chose it: a tab, a tile, a button that opens a tab
-/* t: a tab, or an old id ("trends", "heatmap": the Labs tab in that view); view: Labs' "chart" or "heatmap", or the
-   Timeline's "timeline" or "journal" (#277), if given; push: someone picked it (pickTab), so Back returns to the tab
-   before. The Timeline picked from elsewhere (an event, a medication's dates) is the timeline itself; its own tab
+/* t: a tab, or an old id ("trends", "heatmap": the Labs tab in that view); view: Labs' "chart" or "heatmap", the
+   Timeline's "timeline" or "journal" (#277), or Costs' "claims" or "paid" (#442), if given; push: someone picked it
+   (pickTab), so Back returns to the tab, or the view, before. The Timeline picked from elsewhere (an event, a medication's dates) is the timeline itself; its own tab
    link opens it as it was last shown, as Labs' does */
 function switchTab(t, view, push) {
   if (TAB_ALIAS[t]) [t, state.labsView] = TAB_ALIAS[t];
-  if (view === "chart" || view === "heatmap") state.labsView = view;
   if (t === "timeline" && push && !view) view = "timeline";
-  if (view === "timeline" || view === "journal") state.tlView = view;
+  setView(view);
   if (!shownTabs().includes(t)) t = shownTabs()[0];
   const changed = t !== state.tab;
   if (changed && drawer.classList.contains("open")) closeDrawer();   // details belong to the tab they were opened from
@@ -51,7 +59,7 @@ function switchTab(t, view, push) {
   $(".filters").style.display = t === "overview" ? "none" : "";
   renderAll();
   if (changed) window.scrollTo({top: 0, left: 0, behavior: "instant"});   // each tab starts at the top
-  tabAddress(push && changed);   // #208
+  tabAddress(push);   // #208: a new entry when the tab or its view changed (#442)
 }
 /* the tabs are links (#264): Tab reaches each, Enter or a click opens it here, Labs as it was last shown; one opened in
    a new window (Ctrl, ⌘ or Shift) is the browser's. One picked under More (#265) comes into the bar, with focus. Where
@@ -216,7 +224,7 @@ async function settingsLoad() {
   $("#meta").textContent = [DATA.source, DATA.built && "built " + fmtD(DATA.built), WATCH && WATCH.last_payload && "watch synced " + fmtDT(WATCH.last_payload)]
     .filter(Boolean).join(" · ");   // a profile of imports alone has no build to name (#199: it said "undefined · built")
   restore();   // a saved period naming a milestone that's since gone is All (setPeriod)
-  { const t = tabOfHash(); if (t) { state.tab = t[0]; if (t[1]) state[t[0] === "timeline" ? "tlView" : "labsView"] = t[1]; } }
+  { const t = tabOfHash(); if (t) { state.tab = t[0]; setView(t[1]); } }
   if (!state.sel.size) state.sel = startLabs();   // the default saved view, else trends.defaultLabs (trends.js)
   if (state.preset !== "custom" || !(state.to > state.from)) setPeriod(state.preset);
   await testPagesLoad();   // before the first draw, so the links are there (#163)

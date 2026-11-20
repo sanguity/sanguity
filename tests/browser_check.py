@@ -2497,16 +2497,19 @@ def main():
             check("Body and activity (#60): every card with charts has Chart | Table",
                   js("[...document.querySelectorAll('#view-health .view-seg')].map(s => s.dataset.key)") == ["#h-body", "#h-heart", "#h-bp", "#h-glucose", "#h-temp", "#h-oxygen", "#h-resp", "#h-sleep", "#h-activity", "#h-vo2"])
             # four sections (#276), each an h2 with its own tiles, which jump to their cards (h3s), and its cards; a bar
-            # above jumps to each, its heading taking focus. Hospital stays under "Show on charts", the sync apart on the right
+            # above jumps to each, its heading taking focus. Labs' header (#442): Hospital stays under "Show on charts", then a
+            # Legend and an ⓘ; the sync under it, outside the chart options' group (#444)
             sx = js("""(() => { const secs = [...document.querySelectorAll('#view-health .h-sec')];
-                const t = document.querySelector('#view-health .overlays'), sync = document.querySelector('#view-health .h-sync');
+                const t = document.querySelector('#view-health .chart-bar > .overlays'), sync = document.querySelector('#view-health .h-sync');
+                const aids = v => [...document.querySelectorAll(v + ' .chart-bar > .chart-aids > .menu > button')].map(b => b.getAttribute('aria-label') || b.textContent.trim());
                 return {secs: secs.map(s => [s.querySelector(':scope > h2').textContent, s.getAttribute('aria-labelledby') === s.querySelector(':scope > h2').id,
                     [...s.querySelectorAll('.card')].map(c => c.id), [...s.querySelectorAll('.tile .lbl')].map(l => l.textContent)]),
                   tilesHome: [...document.querySelectorAll('#view-health .tile')].every(x => document.querySelector(x.dataset.card)?.closest('.h-sec') === x.closest('.h-sec')),
                   titles: [...document.querySelectorAll('#view-health .card .list-hd')].every(h => h.querySelector('h3') && !h.querySelector('h2')),
                   bar: [...document.querySelectorAll('#view-health .h-secbar button')].map(b => b.textContent),
-                  shows: t && [t.getAttribute('role'), t.innerText.replace(/\\s+/g, ' ').trim()],
-                  right: t && sync && Math.abs(t.getBoundingClientRect().right - sync.getBoundingClientRect().right) < 2 && sync.getBoundingClientRect().left > t.querySelector('.toggle').getBoundingClientRect().right + 100}; })()""")
+                  shows: t && [t.getAttribute('role'), t.innerText.replace(/\\s+/g, ' ').trim(), [...t.children].every(c => c.matches('.lbl, label.toggle'))],
+                  aids: [aids('#view-health'), aids('#view-labs')],
+                  sync: sync && [!sync.closest('[role=group]'), sync.previousElementSibling === t.parentElement, sync.textContent.startsWith('Watch and smart scale')]}; })()""")
             want = [["Body", True, ["h-body"]], ["Vitals", True, ["h-heart", "h-bp", "h-glucose", "h-temp", "h-oxygen", "h-resp"]],
                     ["Sleep", True, ["h-sleep"]], ["Activity and fitness", True, ["h-activity", "h-zones", "h-vo2"]]]
             check("Body and activity in four sections (#276): Body, Vitals, Sleep, Activity and fitness, each its cards' heading over them",
@@ -2514,8 +2517,15 @@ def main():
             check("…each opening with its own tiles, which jump to cards in the same section",
                   sx["tilesHome"] and [x[3][:1] for x in sx["secs"]] == [["Weight"], ["Resting heart rate"], ["Sleep"], ["Steps"]]
                   and {"Blood pressure", "Glucose"} <= set(sx["secs"][1][3]) and "Workouts" in sx["secs"][3][3], sx["secs"])
-            check("…Hospital stays under Show on charts, as on Labs, and the sync status apart on the right",
-                  sx["shows"] and sx["shows"][0] == "group" and sx["shows"][1].startswith("Show on charts: Hospital stays Watch and smart scale") and sx["right"], sx["shows"])
+            check("…Labs' header (#442): Hospital stays under Show on charts, a group of chart options alone, then a Legend and an ⓘ, as Labs has",
+                  sx["shows"] == ["group", "Show on charts: Hospital stays", True] and sx["aids"] == [["Legend", "About the charts"]] * 2, [sx["shows"], sx["aids"]])
+            check("…the sync status under it, outside the chart options' group (#444)", sx["sync"] == [True, True, True], sx["sync"])
+            page.click("#hLegendBtn")
+            settle(200)
+            hleg = js("(l => [l.matches(':popover-open'), l.textContent, document.getElementById('hLegendBtn').getAttribute('aria-expanded')])(document.getElementById('hLegendList'))")
+            page.keyboard.press("Escape")
+            check("…its Legend opens the marks every chart shares: hospital stays and the milestones",
+                  hleg[0] and "Hospital stay" in hleg[1] and "milestone" in hleg[1] and hleg[2] == "true", hleg)
             page.click("#view-health .h-secbar button:text-is('Sleep')")
             settle(800)
             jump = js("[document.activeElement.id, (r => r.top >= 0 && r.top < innerHeight / 2)(document.getElementById('hs-sleep').getBoundingClientRect())]")
@@ -2576,8 +2586,8 @@ def main():
             js("state.tables.clear(); costState.more = false; renderCosts()")
             page.click("#costView button:text-is('Claims')")
             settle(300)
-            figs = "[...document.querySelectorAll('#view-costs > .stats .tile .lbl')].map(l => l.textContent)"
-            more = "(d => d && [d.open, d.querySelectorAll('.tile').length, d.querySelector('summary').textContent])(document.querySelector('#view-costs > details.cost-more'))"
+            figs = "[...document.querySelectorAll('#view-costs > .cost-figs > .stats .tile .lbl')].map(l => l.textContent)"
+            more = "(d => d && [d.open, d.querySelectorAll('.tile').length, d.querySelector('summary').textContent])(document.querySelector('#view-costs > .cost-figs > details.cost-more'))"
             seg278 = js("(s => s && [s.getAttribute('role'), [...s.children].map(b => [b.textContent, b.getAttribute('aria-pressed')])])(document.getElementById('costView'))")
             claims278 = [seg278, js(figs), js(more), js("document.activeElement.textContent")]
             js("window.scrollTo(0, 0)")
@@ -2600,7 +2610,7 @@ def main():
             page.click("#costView button:text-is('What you paid')")
             settle(300)
             paid278 = [js(figs), js(more), js("document.activeElement.textContent"), js("[!!document.getElementById('paidCard'), !!document.getElementById('costTable')]")]
-            page.click("#view-costs > details.cost-more summary")
+            page.click("#view-costs > .cost-figs > details.cost-more summary")
             page.click("#costView button:text-is('Claims')")
             settle(200)
             page.click("#costView button:text-is('What you paid')")
@@ -2611,6 +2621,20 @@ def main():
                   and paid278[2] == "What you paid" and paid278[3] == [True, False], paid278)
             check("…More figures opened stays open, the HSA and FSA by year in it", kept278[0][0] is True and kept278[1] is True, kept278)
             js("costState.more = false; costState.view = 'claims'; renderCosts()")
+            # #442: the Overview's insurance costs and Costs' figures in one order and one look: figures to read (not
+            # buttons), tinted in a card, where the tiles that open something are bordered
+            fig_look = """sel => [...document.querySelectorAll(sel)].map(t => { const c = getComputedStyle(t);
+                return [t.querySelector('.lbl').textContent, t.tagName, !!t.closest('.card'), c.backgroundColor, c.borderTopColor]; })"""
+            costs442 = js(fig_look, "#view-costs > .cost-figs > .stats .tile")
+            js("switchTab('overview')")
+            settle(300)
+            ov442 = js(fig_look, "#view-overview .ov-minis .tile")
+            js("switchTab('costs')")
+            settle(300)
+            check("the Overview's cost figures and Costs' are in one order, your share first, and one look: tinted figures in a card, not buttons (#442)",
+                  [x[0] for x in ov442] == [x[0] for x in costs442] == ["Your share", "Paid by insurance", "Billed by providers"]
+                  and all(x[1:] == costs442[0][1:] for x in ov442 + costs442) and costs442[0][1:3] == ["DIV", True] and costs442[0][4] == "rgba(0, 0, 0, 0)",
+                  [ov442, costs442])
             theme_before = js("document.documentElement.dataset.theme || null")
             page.set_viewport_size({"width": 375, "height": 800})
             phone278, axe278 = [], []
@@ -2671,7 +2695,7 @@ def main():
             # was shown last there (What you paid's is followed from Sources, below)
             js("costState.view = 'paid'; switchTab('overview')")
             settle(300)
-            page.locator("#view-overview button", has_text="Open Costs").first.click()
+            page.locator("#view-overview a.btn", has_text="Open Costs").first.click()
             settle(300)
             ov443 = js("[state.tab, costState.view, !!document.getElementById('costTable'), document.querySelector('#costView [aria-pressed=true]')?.textContent]")
             check("…the Overview's Open Costs opens Claims, though What you paid was shown last (#443)", ov443 == ["costs", "claims", True, "Claims"], ov443)
@@ -5811,7 +5835,7 @@ def main():
             in_bar = [page.title(), js("document.getElementById('sgStatus').textContent")]
             tab_click(page, "#tab-overview")
             settle(300)
-            page.locator("#view-overview button", has_text="Open Costs").first.click()
+            page.locator("#view-overview a.btn", has_text="Open Costs").first.click()
             elsewhere_said = [page.title(), said(page)]
             check("the tab's title is the tab and the profile; picked in the tab bar, nothing more is said",
                   in_bar == ["Labs · My records · Sanguity", ""], in_bar)
@@ -5830,6 +5854,30 @@ def main():
                                    ".then(r => r.violations.map(v => v.id + ': ' + v.nodes.map(n => n.target.join(' ')).join(', ')))") if AXE_JS else ["no axe-core"]])
             check("every records tab has one h1 in its <main>, the tab's name, and its headings skip no level (#255)",
                   all(len(h1) == 1 and h1[0] == name and not bad for _, h1, name, bad in outline), outline)
+            # #442: one heading scheme on the records tabs, each view of them too: every h2 in one style (a section's
+            # above its cards, or a card's own title on a tab of one card per question), and a card's title one level
+            # under the heading it sits under (the tab's h1, or its section's h2), the h3s a step smaller
+            scheme = []
+            for t, view in (("overview", None), ("health", None), ("medications", None), ("timeline", "timeline"), ("timeline", "journal"),
+                            ("labs", "chart"), ("labs", "heatmap"), ("costs", "claims"), ("costs", "paid")):
+                js("([t, v]) => switchTab(t, v)", [t, view])
+                settle(300)
+                scheme.append([t, view, js("""(() => { const v = document.getElementById('view-' + state.tab), seen = x => x.checkVisibility();
+                    const st = h => { const c = getComputedStyle(h); return [c.fontFamily.split(',')[0], c.fontSize, c.fontWeight, c.lineHeight].join(' | '); };
+                    const hs = [...v.querySelectorAll('h1, h2, h3, h4, h5, h6')].filter(seen);
+                    const cards = [...v.querySelectorAll('.card')].filter(c => seen(c) && !c.parentElement.closest('.card'));
+                    return {h2: [...new Set(hs.filter(h => h.tagName === 'H2').map(st))], cards: cards.map(c => {
+                      const h = c.querySelector(':scope > :is(h2, h3), :scope > :is(.set-hd, .list-hd, summary) > :is(h2, h3)');
+                      if (!h) return null;
+                      const over = hs.filter(x => !x.closest('.card') && x.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING).at(-1);
+                      return [h.textContent.trim().slice(0, 32), over ? +over.tagName[1] : 1, +h.tagName[1], st(h)]; }).filter(Boolean)}; })()""")])
+            h2_styles = {s for _, _, o in scheme for s in o["h2"]}
+            h3_styles = {c[3] for _, _, o in scheme for c in o["cards"] if c[2] == 3}
+            check("the records tabs' headings are one scheme (#442): every h2 in one style on all six tabs and their views, a card's title one level under its section's heading, the h3s smaller",
+                  len(h2_styles) == 1 and len(h3_styles) == 1 and all(c[2] == c[1] + 1 for _, _, o in scheme for c in o["cards"])
+                  and {c[2] for _, _, o in scheme for c in o["cards"]} == {2, 3} and float(next(iter(h3_styles)).split(" | ")[1][:-2]) < float(next(iter(h2_styles)).split(" | ")[1][:-2]),
+                  [h2_styles, h3_styles, scheme])
+            js("costState.view = 'claims'; state.tlView = 'timeline'; switchTab('labs', 'chart')")   # the views as the checks after expect them
             js("switchTab('labs')")
             settle(300)
             js(f"state.sel = new Set({json.dumps(labs3[:1])}); renderLabs()")
@@ -8277,7 +8325,7 @@ def main():
             js("paidState.q = ''; applyPreset('all')")
             settle(300)
             page.click("#costView button:text-is('What you paid')")   # payments are under What you paid, the HSA's and FSA's
-            page.click("#view-costs > details.cost-more summary")      # totals under its More figures (#278)
+            page.click("#view-costs > .cost-figs > details.cost-more summary")      # totals under its More figures (#278)
             settle(300)
             pay = js("oopRows().filter(r => r.type === 'pay' && r.who === 'Lakeside Clinic (fictional)' && r.amount === 50)"
                      ".map(r => [r.src, r.hsa, r.claim && r.claim.title, r.receipt != null, r.match])")
@@ -10074,8 +10122,8 @@ def main():
             js("switchTab('overview')")
 
             # ---- the tab in the address (#208), in a browser of its own (its own history and saved view): picking a
-            # tab adds a history entry, so Back and Forward move between tabs; the app's own switches and the Labs view
-            # replace it; a reload, an old alias and a copied address in a new browser open the tab named; ?profile=
+            # tab adds a history entry, so Back and Forward move between tabs, and so does picking a view (#442); the
+            # app's own switches replace it; a reload, an old alias and a copied address in a new browser open the tab named; ?profile=
             # stays beside the #, and an address with no # opens the tab last used
             ready = "typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted"
             session = [{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"]
@@ -10102,17 +10150,54 @@ def main():
             check("…and Forward on Labs", addr()[1:3] == ["#labs", "labs"], addr())
             tp.evaluate("switchTab('overview'); switchTab('costs'); switchTab('heatmap')")
             check("…the app's own switches replace the entry (Labs as the heatmap: #labs-heatmap)", addr()[1:] == ["#labs-heatmap", "labs", "heatmap", n0 + 3], addr())
+            # a view switch is picked, as a tab is (#442): an entry each, and Back returns to the view before, on the tab
+            # (Costs, still ahead of Labs under Forward, is dropped by the new entry, as a tab picked would drop it)
             tp.click("#labsView button[data-view=chart]")
-            check("…so does the Labs view", addr()[1:] == ["#labs", "labs", "chart", n0 + 3], addr())
+            pushed = addr()
+            tp.go_back()
+            tp.wait_for_function("state.labsView === 'heatmap'", timeout=5000)
+            back_to = addr()
+            tp.go_forward()
+            tp.wait_for_function("state.labsView === 'chart'", timeout=5000)
+            check("…a view switch adds an entry, as a tab does (#442): Labs as charts, Back to the heatmap",
+                  pushed[1:] == ["#labs", "labs", "chart", n0 + 3] and back_to[1:] == ["#labs-heatmap", "labs", "heatmap", n0 + 3], [pushed, back_to])
             tp.click("#labsView button[data-view=heatmap]")
+            tp.go_back()
+            tp.wait_for_function("state.labsView === 'chart'", timeout=5000)
+            check("…Back from the heatmap returns to the charts, on Labs (#442)",
+                  addr()[1:] == ["#labs", "labs", "chart", n0 + 4] and tp.evaluate("!document.getElementById('labsChart').hidden && document.getElementById('labsHeatmap').hidden"), addr())
+            tp.go_forward()
+            tp.wait_for_function("state.labsView === 'heatmap'", timeout=5000)
             tp.reload()
             tp.wait_for_function(ready, timeout=20000)
             check("…a reload keeps the tab and its view", addr()[1:4] == ["#labs-heatmap", "labs", "heatmap"], addr())
             tp.evaluate("location.hash = '#trends'")
             tp.wait_for_function("state.labsView === 'chart'", timeout=5000)
             check("…an old alias opens its tab, the address then naming it", addr()[1:4] == ["#labs", "labs", "chart"], addr())
-            tp.goto(base + "/?profile=1#costs")
+            tab_click(tp, "#tab-timeline")
+            tp.click("#tlView button[data-view=journal]")
+            j442 = tp.evaluate("[location.hash, state.tlView]")
+            tp.go_back()
+            tp.wait_for_function("state.tlView === 'timeline'", timeout=5000)
+            check("…Back from the Journal returns to the timeline, on the Timeline (#442)",
+                  j442 == ["#timeline-journal", "journal"] and tp.evaluate("[location.hash, state.tab, !document.getElementById('tlMain').hidden, document.getElementById('tlJournal').hidden]")
+                  == ["#timeline", "timeline", True, True], [j442, tp.evaluate("[location.hash, state.tab, state.tlView]")])
+            # Costs' view in the address (#442): #costs-paid opens What you paid, kept on a reload; Back returns to Claims
+            tp.goto(base + "/?profile=1#costs-paid")
             tp.wait_for_function(ready + " && state.tab === 'costs'", timeout=20000)
+            paid442 = [tp.evaluate("[costState.view, !!document.getElementById('paidCard'), document.querySelector('#costView [aria-pressed=true]').textContent, document.getElementById('costView').getAttribute('aria-label')]")]
+            tp.click("#costView button:text-is('Claims')")
+            claims442 = tp.evaluate("[location.hash, costState.view, history.length]")
+            tp.click("#costView button:text-is('What you paid')")
+            tp.reload()
+            tp.wait_for_function(ready + " && state.tab === 'costs'", timeout=20000)
+            paid442.append(tp.evaluate("[location.hash, costState.view, !!document.getElementById('paidCard')]"))
+            tp.go_back()
+            tp.wait_for_function("costState.view === 'claims'", timeout=5000)
+            back442 = tp.evaluate("[location.hash, state.tab, !!document.getElementById('costTable'), !document.getElementById('paidCard')]")
+            check("…#costs-paid opens Costs' What you paid, its switch named for what it shows, and a reload keeps it (#442)",
+                  paid442 == [["paid", True, "What you paid", "Show the costs as"], ["#costs-paid", "paid", True]] and claims442[:2] == ["#costs", "claims"], [paid442, claims442])
+            check("…and Back from What you paid returns to the claims, on Costs (#442)", back442 == ["#costs", "costs", True, True], back442)
             tab_click(tp, "#tab-health")
             tab_click(tp, "#tab-labs")
             tp.click("#labsView button[data-view=heatmap]")
@@ -10128,6 +10213,8 @@ def main():
                   op.evaluate("[location.search, location.hash, state.tab, state.labsView, !document.getElementById('labsHeatmap').hidden]")
                   == ["?profile=1", "#labs-heatmap", "labs", "heatmap", True], op.evaluate("[location.href, state.tab, state.labsView]"))
             other.close()
+            tp.go_back()   # the heatmap's switch was an entry of its own (#442)
+            tp.wait_for_function("state.labsView === 'chart'", timeout=5000)
             tp.go_back()
             tp.wait_for_function("state.tab === 'health'", timeout=5000)
             check("…and Back from there returns to Body and activity, the profile kept", addr()[:3] == ["?profile=1", "#health", "health"], addr())
