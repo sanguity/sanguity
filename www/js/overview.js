@@ -210,7 +210,7 @@ function ovKeyLabs(lastDraw) {
   const parts = [ovHead("Key labs", el("p", {class: "hint", text: [lastDraw ? `latest draw ${fmtD(lastDraw)}` : "", since ? `changes since ${fmtD(dayTs(since))}` : "",
     "sparklines show the last 6 months", "click a tile for its full trend"].filter(Boolean).join(" · ")})), flags];
   for (const g of groups) {
-    if (groups.length > 1) parts.push(el("h3", {class: "ov-panel", text: g.panel}));
+    if (groups.length > 1) parts.push(el("h3", {class: "ov-panel lab-panel", text: g.panel}));
     parts.push(el("div", {class: "tiles"}, ...g.labs.map(s => labTile(s, since, lastDraw))));
   }
   parts.push(el("p", {class: "range-note", text: RANGE_NOTE + (RANGES_USED ? RANGE_NOTE_SETTINGS : "")}));

@@ -50,9 +50,9 @@ function renderSeriesList() {
     let box = wrap;
     if (panel === LAB_OTHER && groups.length > 1) {
       box = el("details", {class: "grp-other", open: labOtherOpen || !!state.labQ || null, ontoggle: ev => { if (!state.labQ) labOtherOpen = ev.target.open; }},
-        el("summary", {class: "grp"}, panel, el("span", {class: "grp-n"})));
+        el("summary", {class: "grp lab-panel"}, el("h3", {text: panel}), el("span", {class: "grp-n"})));
       wrap.append(box);
-    } else wrap.append(el("div", {class: "grp", text: panel}));
+    } else wrap.append(el("h3", {class: "grp lab-panel", text: panel}));   // the panels as headings, under the list's h2 (#441)
     for (const s of labs) {
       const L = latest(s), tq = testLink(s.name, true);   // #163
       const base = "s_" + s.name.replace(/\W/g, "_");   // a lab's second unit: s_Hemoglobin_2 (#438)
@@ -86,9 +86,14 @@ const CHART_LAYERS = [];
 function renderCharts() {
   const box = $("#charts"); box.replaceChildren();
   document.querySelectorAll(".marks-key").forEach(k => k.hidden = !state.marks);   // their legend, while they're shown (#250)
-  const sel =SERIES.filter(s => !s.watch && state.sel.has(s.name));
+  const sel = SERIES.filter(s => !s.watch && state.sel.has(s.name));
   if (!sel.length) { box.append(el("div", {class: "card empty", text: "Pick lab values on the left to chart them."})); return; }
-  for (const s of sel) box.append(chartCard(s));
+  // in the list's order, under its panels' names (#441)
+  const groups = labGroups(byFrequency(sel));
+  for (const {panel, labs} of groups) {
+    if (groups.length > 1) box.append(el("h3", {class: "lab-panel", text: panel}));
+    for (const s of labs) box.append(chartCard(s));
+  }
 }
 const MARK_KINDS = new Set(["procedure", "imaging"]);
 /* a procedure's or an imaging's mark at the top of a lab chart, in its kind's colour: a circle and a square, never ▲ or
@@ -146,7 +151,7 @@ function rangeNote(s, pts, table) {
     table ? "Each row gives its own." : "The shaded band steps with each result's own range.") : null;
 }
 function chartCard(s) {
-  const card = el("div", {class: "chart card"});   // the card (#353)
+  const card = el("div", {class: "chart card", "data-lab": s.name});   // the card (#353)
   const pts = s.pts.filter(p => p.ts >= state.from && p.ts <= state.to);
   const nAbn = pts.filter(p => p[4]).length;
   const read = el("span", {class: "read"});

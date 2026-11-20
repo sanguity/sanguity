@@ -7166,7 +7166,7 @@ def main():
             check("Labs (#279): the list groups each lab under its panel, as labGroups does, Other last",
                   list279 and all(want279.get(n) == g for n, g, _ in list279)
                   and list279[-1][1] == "Other" and "Magnesium" in [n for n, g, _ in list279 if g == "Other"]
-                  and {g for _, g, _ in list279} >= {"CBC WITH DIFFERENTIAL", "COMPREHENSIVE METABOLIC PANEL", "Other"}, list279)
+                  and {g for _, g, _ in list279} >= {"CBC with differential", "Comprehensive metabolic panel", "Other"}, list279)
             check("…the most measured first within each panel", all(a[2] >= b[2] for a, b in zip(list279, list279[1:]) if a[1] == b[1]), list279)
             other = lambda: js("(d => d && [d.open, d.querySelector('summary').textContent, d.querySelector('.srow input').checkVisibility()])(document.querySelector('#seriesRows details.grp-other'))")
             check("…Other collapsed at first, saying how many labs it holds", other() == [False, "Other · 1 lab", False], other())
@@ -7184,10 +7184,13 @@ def main():
                   other() == [True, "Other · 1 lab, 1 charted", True], other())
             page.uncheck("#s_Magnesium")
             page.click("#seriesRows details.grp-other summary")
+            # the list back at its top for the axe runs below: scrolled, a row passing under its sticky header has its ?
+            # "partly obscured" (#441's taller panel names moved where the scroll left the rows)
+            js("document.getElementById('series').scrollTop = 0")
             settle(200)
             page.click("#labsView button[data-view=heatmap]")
             settle(400)
-            hm279 = js("""(() => { const g = [...document.querySelectorAll('#hm text.grp')].map(t => [+t.getAttribute('y'), t.textContent]);
+            hm279 = js("""(() => { const g = [...document.querySelectorAll('#hm text.grp')].map(t => [+t.getAttribute('y'), t.firstChild.textContent]);
               return [...document.querySelectorAll('#hm text.row')].map(t => [t.dataset.key, g.filter(x => x[0] < +t.getAttribute('y')).pop()?.[1]]); })()""")
             same279 = lambda n, g: want279.get(n) == g or (g or "").endswith("…") and want279.get(n, "").startswith(g[:-1])   # a long name cut short
             check("…the heatmap's rows under the same panels", hm279 and all(same279(n, g) for n, g in hm279), hm279)
@@ -7211,7 +7214,7 @@ def main():
                 const table = [...document.querySelectorAll('#hmTable tbody tr:not(.grp) th')].filter(t => t.firstChild.textContent.startsWith('Hemoglobin'))
                   .map(t => [t.firstChild.textContent, t.closest('tbody').querySelector('tr.grp th').textContent]);
                 state.tables.delete('#hm'); renderHeatmap();
-                const gs = [...document.querySelectorAll('#hm text.grp')].map(t => [+t.getAttribute('y'), t.textContent]);
+                const gs = [...document.querySelectorAll('#hm text.grp')].map(t => [+t.getAttribute('y'), t.firstChild.textContent]);
                 const grid = [...document.querySelectorAll('#hm text.row')].filter(t => t.firstChild.textContent.startsWith('Hemoglobin'))
                   .map(t => [t.firstChild.textContent, gs.filter(x => x[0] < +t.getAttribute('y')).pop()?.[1]]);
                 const cellRows = new Set([...document.querySelectorAll('#hm rect.cell[data-s=Hemoglobin]')].map(r => r.getAttribute('y'))).size;
@@ -7261,14 +7264,14 @@ def main():
             check("…the ⓘ opens and closes by Enter, with the drag hint and how to zoom, focus kept on it",
                   info[0] is True and "Drag any chart sideways" in info[1] and "pinch to zoom" in info[1] and info[2] == "chartsInfoBtn"
                   and not js("document.getElementById('chartsInfo').matches(':popover-open')"), info)
-            for w in (375, 320):
+            for w in (390, 375, 320):   # inside a 12 px gutter (#441): at 390 and 375 px it touched the screen's left edge
                 page.set_viewport_size({"width": w, "height": 800})
                 settle(200)
                 page.click("#legendBtn")
                 settle(200)
                 bad = phone_fits(page, f"Labs header, legend open ({w} px)")
                 box = js("(r => [r.left, r.right])(document.getElementById('legendList').getBoundingClientRect())")
-                check(f"…at {w} px the header fits, the legend open inside the screen", not bad and box[0] >= 0 and box[1] <= w, [bad, box])
+                check(f"…at {w} px the header fits, the legend open inside the screen, 12 px from its edges", not bad and box[0] >= 12 and box[1] <= w - 12, [bad, box])
                 page.keyboard.press("Escape")
             page.set_viewport_size({"width": 1400, "height": 900})
             open_tab("overview")
@@ -7282,6 +7285,53 @@ def main():
             check("…the Overview's key-lab tiles under the same panels, in the order chosen within each",
                   ov279 and all(want279.get(n) == g for n, g in ov279)
                   and [n for n, _ in ov279] == js("labGroups(keyLabTiles(CFG.overview.keyLabs, SERIES, JSON.stringify(CFG.overview.keyLabs) === JSON.stringify(DEFAULT_SETTINGS.overview.keyLabs))).flatMap(g => g.labs)"), ov279)
+            # ---- one way to name a panel (#441): in readable case, as a heading, the same words on the Overview, Labs (its
+            # list and charts) and the heatmap (its grid and table; Settings: with #36's checks); a key lab's change line
+            # keeps two lines' height under its panel's name (#338); Labs' chart view has headings (the list's and the
+            # charts' h2, their panels h3s), its charts in the list's order; the heatmap's names stay out of its grid
+            want441 = ["CBC with differential", "Comprehensive metabolic panel", "Other"]   # the demo's, from capitals
+            ov441 = js("""[[...document.querySelectorAll('#view-overview .ov-panel')].map(h => [h.tagName, h.innerText]),
+              (s => [s.fontSize, s.fontWeight, s.color])(getComputedStyle(document.querySelector('#view-overview .ov-panel'))),
+              [...document.querySelectorAll('#view-overview :is(.ov-panel, .ov-out) + .tiles .tile > .delta')].map(d => parseFloat(getComputedStyle(d).minHeight) / parseFloat(getComputedStyle(d).lineHeight)),
+              document.querySelectorAll('#view-overview .tiles:not(.ov-read) .tile > .delta').length]""")
+            check("Panels (#441): the Overview names the key labs' panels in readable case, as h3s",
+                  ov441[0] == [["H3", n] for n in want441], ov441[0])
+            check("…each key lab's change line keeps two lines' height under its panel's name (#338)",
+                  ov441[3] and len(ov441[2]) == ov441[3] and all(abs(r - 2) < .01 for r in ov441[2]), ov441[2:])
+            open_tab("labs")
+            settle(300)
+            labs441 = js("""(() => { const out = {heads: [...document.querySelectorAll('#labsChart :is(h1, h2, h3, h4, h5, h6)')].map(h => h.tagName + ' ' + (h.matches('.vh') ? h.textContent : h.innerText)),
+                list: [...document.querySelectorAll('#seriesRows .srow input:checked')].map(i => i.dataset.lab), charts: []};
+              let g = null;
+              for (const x of document.getElementById('charts').children) if (x.matches('h3')) g = x.innerText; else if (x.dataset.lab) out.charts.push([x.dataset.lab, g]);
+              return out; })()""")
+            chart_panels = list(dict.fromkeys(g for _, g in labs441["charts"]))
+            check("…Labs' chart view has headings: the list's h2, its panels as h3s in the same words, then the charts' h2 and their panels'",
+                  labs441["heads"] == ["H2 Lab list", *("H3 " + g for g in dict.fromkeys(g for _, g, _ in list279)), "H2 Charts", *("H3 " + g for g in chart_panels)]
+                  and set(want441) <= {g for _, g, _ in list279} and len(chart_panels) > 1 and set(chart_panels) <= set(want441), labs441["heads"])
+            check("…its charts follow the list's order, each under its panel's name",
+                  [n for n, _ in labs441["charts"]] == labs441["list"] and all(want279.get(n) == g for n, g in labs441["charts"]), labs441)
+            page.click("#labsView button[data-view=heatmap]")
+            for w in (1400, 375):
+                page.set_viewport_size({"width": w, "height": 900})
+                settle(400)
+                hm441 = js("""(() => { const svg = document.getElementById('hm'), L = svg._geom.L;
+                  return {names: [...svg.querySelectorAll('text.grp')].map(t => [t.firstChild.textContent, t.querySelector('title')?.textContent || null]),
+                    over: [...svg.querySelectorAll('text.grp, text.row')].map(t => { const b = t.getBBox(); return [t.firstChild.textContent, Math.round(b.x), Math.round(b.x + b.width), L]; })
+                      .filter(([, a, b, L]) => a < 0 || b > L)}; })()""")
+                whole = [t or n for n, t in hm441["names"]]
+                check(f"…the heatmap's panels named the same at {w} px, none of its names running into the grid: one too long cut short, whole in its tip",
+                      len(whole) > 1 and whole == [p for p in want441 if p in whole] and not hm441["over"]
+                      and all(t is None or n.endswith("…") and t.startswith(n[:-1]) for n, t in hm441["names"]), hm441)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(300)
+            page.click("#hmHd .view-seg button:text-is('Table')")
+            settle(300)
+            check("…and its table's", js("[...document.querySelectorAll('#hmTable tr.grp th')].map(th => th.innerText)") == whole,
+                  js("[...document.querySelectorAll('#hmTable tr.grp th')].map(th => th.innerText)"))
+            page.click("#hmHd .view-seg button:text-is('Grid')")
+            page.click("#labsView button[data-view=chart]")
+            settle(300)
 
             # ---- "What is this test?" (#163): beside a lab on Labs (its chart's header and the list), the heatmap (a ? in
             # the grid, clicked; a link in its table), the Overview's tiles and the drawer's results, a link to the lab's
@@ -7466,6 +7516,8 @@ def main():
                         if view == "heatmap":
                             js("state.tables.add('#hm'); renderHeatmap()")
                             settle(300)
+                        if view == "labs":   # the list at its top: a row under its sticky header is "partly obscured" (#441)
+                            js("document.getElementById('series').scrollTop = 0")
                         tp_seen += axe_check(page, f"What is this test? on {view}, {width} px, {mode}")[0]
                         if width < 400:
                             tp_seen += phone_fits(page, f"What is this test? on {view} ({mode})")
@@ -9163,13 +9215,17 @@ def main():
                 else { const n = x.querySelector('.set-name'), sm = n.querySelector('small'); out.push([sm ? sm.textContent.slice(2, -1) : n.firstChild.textContent, g]); }
               return out; })()""")
             prev279 = js("""(() => { const out = []; let g = null;
-              for (const x of document.querySelectorAll('#sec-overview .set-preview > .sect, #sec-overview .set-preview > .tile')) if (x.matches('.sect')) g = x.textContent; else out.push([x.dataset.lab, g]);
+              for (const x of document.querySelectorAll('#sec-overview .set-preview > .lab-panel, #sec-overview .set-preview > .tile')) if (x.matches('.lab-panel')) g = x.textContent; else out.push([x.dataset.lab, g]);
               return out; })()""")
             edges = js("""[...document.querySelectorAll('#sec-overview .set-groups > ol')].map(o => [o.querySelector('li:first-child [data-act=up]').disabled,
               o.querySelector('li:last-child [data-act=down]').disabled, o.querySelector('li:first-child [data-act=grip]').getAttribute('aria-label').endsWith(`1 of ${o.children.length}: drag, or press up or down`)])""")
             check("key labs (#279): Settings lists them by panel, as the Labs tab and the Overview do, and previews them so",
                   set279 and all(want279.get(n) == g for n, g in set279) and prev279 == set279 and [n for n, _ in set279] == p0
                   and len(edges) == 3 and all(e == [True, True, True] for e in edges), [set279, prev279, edges])
+            set441 = js("""['h4', 'h5'].map(h => [...document.querySelectorAll(`#sec-overview [data-key="overview.keyLabs"] ${h}.lab-panel`)]).map(hs => hs.map(h => h.innerText))
+              .concat([(s => [s.fontSize, s.fontWeight, s.color])(getComputedStyle(document.querySelector('#sec-overview .set-preview > h5.lab-panel')))])""")
+            check("Panels (#441): Settings names them as the Overview and Labs do, in readable case, its preview's in the Overview's style",
+                  set441[0] == want441 and set441[1] == want441 and set441[2] == ov441[1], [set441, ov441[1]])
             page.click("#sec-overview button[aria-label='Remove Magnesium']")   # the demo has just the 12 default labs
             check("…a lab taken out leaves the preview", "Magnesium" not in js(preview))
             sugg_ = js("[...document.querySelectorAll('#sec-overview .set-sugg .chip')].map(b => b.getAttribute('aria-label'))")
@@ -9241,9 +9297,16 @@ def main():
             check("…Add to my tiles first: these labs are among the tiles already, so the tiles stay as they are",
                   js(pre_tiles) == p2 and not js("document.querySelector('#preOut .pre-new')"), js(pre_tiles))
             page.click("#prePanel input[value='replace']")
-            check("…Replace my tiles: both conditions' labs with results here, interleaved, most important first, at most 12",
-                  js(pre_tiles) == ["WBC", "Automated Abs Neutrophil Cnt", "Creatinine", "Hemoglobin", "Platelet Count", "Potassium, Blood",
-                                    "Lymphocytes Absolute", "Sodium, Blood", "ALT", "AST", "Total Bilirubin", "Magnesium"], js(pre_tiles))
+            # (interleaved, most important first: WBC, Neutrophils, Creatinine, Hemoglobin, Platelets, Potassium, Lymphocytes,
+            # Sodium, ALT, AST, Bilirubin, Magnesium; previewed by panel as the Overview shows them, in that order within each, #441)
+            check("…Replace my tiles: both conditions' labs with results here, interleaved, most important first, at most 12, by panel",
+                  js(pre_tiles) == ["WBC", "Automated Abs Neutrophil Cnt", "Hemoglobin", "Platelet Count", "Lymphocytes Absolute",
+                                    "Creatinine", "Potassium, Blood", "Sodium, Blood", "ALT", "AST", "Total Bilirubin", "Magnesium"], js(pre_tiles))
+            pre441 = js("""(() => { const out = []; let g = null;
+              for (const x of document.querySelectorAll('#preOut .pre-tiles > :is(h5, .tile)')) if (x.matches('h5')) g = x.innerText; else out.push([x.dataset.lab, g]);
+              return out; })()""")
+            check("Panels (#441): the preset's preview groups its tiles under their panels' names, as the Overview does",
+                  pre441 and all(want279.get(n) == g for n, g in pre441) and list(dict.fromkeys(g for _, g in pre441)) == want441, pre441)
             # ---- A fuller list of conditions (#187): the long list is searched by synonym, accents and apostrophes aside,
             # and by a group's name; with two conditions chosen, each previewed tile and each lab with no results says
             # which it's from, and each condition's own list is behind "Its list" (kept open as the preview redraws).
@@ -9553,6 +9616,11 @@ def main():
             dl_of = lambda pid=1: js(api_get, f"profiles/{pid}/settings")["trends"]["defaultLabs"]
             tr_msg = "document.querySelector('#sec-trends .set-msg').textContent"
             drop = lambda: page.locator("[data-key='trends.defaultLabs'] .set-labs button:text-is('Remove')").first.click()
+            dl441 = js("""(() => { const out = []; let g = null;
+              for (const x of document.querySelectorAll("[data-key='trends.defaultLabs'] :is(h4.lab-panel, li)")) if (x.matches('h4')) g = x.innerText; else out.push([x.querySelector('.set-name').textContent, g]);
+              return out; })()""")
+            check("Labs selected at first (#441): listed by panel under their names, as the Labs tab lists them",
+                  len(dl441) > 1 and all(want279.get(n) == g for n, g in dl441) and len({g for _, g in dl441}) > 1, dl441)
             labs0 = dl_of()
             drop()
             bar = js("[document.getElementById('setBar').hidden, document.querySelector('#setBar .sg-bar-n').textContent, document.getElementById('sec-trends').dataset.dirty]")

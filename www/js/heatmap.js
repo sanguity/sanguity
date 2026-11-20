@@ -62,7 +62,7 @@ function renderHeatmap() {
   }
   g.push(el("svg:text", {x: LW - 8, y: 14, "text-anchor": "end", text: "Hospital"}));
   g.push(el("svg:text", {x: LW - 8, y: 28, "text-anchor": "end", text: "Procedure"}));
-  for (const [p, py] of groups) g.push(el("svg:text", {class: "grp", x: 0, y: py + 11, text: p.length > 30 ? p.slice(0, 29) + "…" : p}));
+  for (const [p, py] of groups) g.push(el("svg:text", {class: "grp", x: 0, y: py + 11, text: p}));
   rows.forEach((s, i) => {
     // a lab kept in two units says which row is which, its unit kept whole (#438)
     const ry = yOf.get(s), unit = s.unit && rows.some(o => o !== s && o.name === s.name) ? ` (${s.unit})` : "";
@@ -97,6 +97,12 @@ function renderHeatmap() {
   }
   ax.push(el("svg:text", {x: LW - 8, y: AH - 6, "text-anchor": "end", text: "Draw date"}));
   svg.replaceChildren(...g); axis.replaceChildren(...ax);
+  // a panel's name kept inside the label column (#441): cut short where it would run into the grid, whole in its tip
+  for (const t of svg.querySelectorAll("text.grp")) {
+    const full = t.textContent;
+    for (let n = full.length; n > 4 && t.getComputedTextLength() > LW - 8; n--) t.textContent = full.slice(0, n - 1).trimEnd() + "…";
+    if (t.textContent !== full) t.append(el("svg:title", {text: full}));
+  }
   svg.onpointermove = ev => {
     const d = ev.target.dataset || {};
     if (d.proc) { showTip([el("div", {class: "v", text: d.proc}), el("div", {class: "s", text: fmtD(+d.day)})], ev); return; }

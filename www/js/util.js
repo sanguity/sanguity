@@ -104,13 +104,19 @@ function labGroups(labs, series = typeof SERIES !== "undefined" ? SERIES : typeo
   for (const s of series) if (s && !s.watch && !panelOf.has(s.name)) panelOf.set(s.name, s.panel || "");
   for (const p of panelOf.values()) size.set(p, (size.get(p) || 0) + 1);
   for (const x of labs) {
-    const p = panelOf.get(typeof x === "string" ? x : x.name), g = p && size.get(p) > 1 ? p : LAB_OTHER;
+    const p = panelOf.get(typeof x === "string" ? x : x.name), g = p && size.get(p) > 1 ? panelName(p) : LAB_OTHER;
     if (!by.has(g)) by.set(g, []);
     by.get(g).push(x);
   }
   const other = by.get(LAB_OTHER); by.delete(LAB_OTHER);
   return [...by].map(([panel, labs]) => ({panel, labs})).concat(other ? [{panel: LAB_OTHER, labs: other}] : []);
 }
+/* a panel's name as it's read wherever it's shown (#441), the panel given by labGroups: one that came in capitals in
+   sentence case, its abbreviations kept ("CBC WITH DIFFERENTIAL" -> "CBC with differential": a word with a digit or
+   no vowel, or one of LAB_ABBR); one that came in mixed case as it came */
+const LAB_ABBR = new Set(["ALT", "AST", "ANA", "BUN", "HIV", "INR", "PSA", "AFP", "CEA", "EGFR", "AB", "AG", "IGA", "IGG", "IGM", "IGE"]);
+const panelName = p => /[a-z]/.test(p) ? p : p.replace(/[A-Z0-9]+/g, w => /\d|^[^AEIOUY]+$/.test(w) || LAB_ABBR.has(w) ? w : w.toLowerCase())
+  .replace(/^([^A-Za-z0-9]*)([a-z])/, (m, a, c) => a + c.toUpperCase());
 
 /* A warning when this page came over plain HTTP from somewhere other than this machine, the home network or a
    tailnet (where WireGuard already encrypts): passwords and records would cross the internet readable (ASVS 9.1.1). */

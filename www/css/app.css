@@ -546,7 +546,7 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .badge.abn::before{content:"▲";font-size:.8em}
 .layout{display:grid;grid-template-columns:320px 1fr;gap:0 var(--sp-5);align-items:start}
 .series-list{max-height:calc(100vh - 210px);overflow:auto;padding:0}
-.series-list .grp{font-size:var(--fs-1);text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:var(--sp-3) var(--card-pad) var(--sp-1);font-weight:var(--fw-semibold)}
+.series-list .grp{padding:var(--sp-3) var(--card-pad) var(--sp-1);margin:0}
 .srow{display:grid;grid-template-columns:18px 1fr auto;gap:var(--sp-2);align-items:center;padding:var(--sp-1) var(--card-pad,var(--sp-4));   /* the card's inset, as a chart's (#353) */
   cursor:pointer;border-top:1px solid var(--grid)}
 .srow:hover{background:var(--hover)}
@@ -556,6 +556,7 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .srow input{margin:0}
 .charts{display:flex;flex-direction:column;gap:var(--sp-4)}
 .charts>.chart{margin:0}   /* a .card (#353); the list's gap is the space between charts */
+.charts>.lab-panel{margin:0 0 calc(var(--sp-2) * -1)}
 .chart .hd{display:flex;align-items:baseline;gap:var(--sp-2);flex-wrap:wrap}
 .chart .hd .name{font-weight:var(--fw-semibold)}
 .chart .hd .unit{color:var(--muted);font-size:var(--fs-2)}
@@ -593,7 +594,7 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .ov-out-say{margin:0 0 var(--sp-1);font-weight:var(--fw-semibold)}
 .ov-out{margin-bottom:var(--sp-4)}
 .ov-out .ov-row{display:flex;flex-wrap:wrap}   /* a flag on one line, wrapping on a phone */
-.ov-panel{font-size:var(--fs-2);font-weight:var(--fw-semibold);color:var(--ink2);margin:0 0 var(--sp-2)}   /* a panel of key labs (labGroups, #279) */
+.lab-panel{font-size:var(--fs-2);font-weight:var(--fw-semibold);color:var(--ink2);margin:0 0 var(--sp-2)}   /* a panel's name over its labs, as everywhere they're grouped (labGroups, #279, #441) */
 .tiles.ov-read{grid-template-columns:repeat(auto-fill,minmax(min(150px,calc(50% - var(--sp-3))),1fr))}   /* one row at 1400 px */
 .st{display:inline-flex;align-items:center;gap:3px;font-size:var(--fs-1);font-weight:var(--fw-semibold);white-space:nowrap}
 .st.hi,.st.lo{color:var(--crit)}
@@ -618,7 +619,7 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 #hm{display:block}
 #hmAxis{display:block;position:sticky;bottom:var(--tabbar,0px);background:var(--surface);border-top:1px solid var(--axis);z-index:1}
 #hm text.row{fill:var(--ink2);font-size:var(--fs-1)}
-#hm text.grp{fill:var(--muted);font-size:var(--fs-1);font-weight:var(--fw-semibold);letter-spacing:.05em;text-transform:uppercase}
+#hm text.grp{fill:var(--ink2);font-size:var(--fs-1);font-weight:var(--fw-semibold)}
 #hm text.hm-proc{fill:var(--c-procedure);font-size:var(--fs-1)}   /* ◆ over a column with a procedure */
 #hm rect.cell:hover{stroke:var(--ink);stroke-width:1.5}
 .hm-legend{display:flex;gap:2px;align-items:center;font-size:var(--fs-2);color:var(--ink2);flex-wrap:wrap}
@@ -1279,11 +1280,13 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
 .legend.menu-list:not(:popover-open,.sg-measure){display:none}
 /* a list's labs grouped by panel (#279): Other, collapsed; a group's name over the Overview's tiles and Settings' list */
 .series-list summary.grp{cursor:pointer;border-radius:var(--r-sm)}
-.series-list summary.grp:hover{color:var(--ink2)}
+.series-list summary.grp:hover{color:var(--ink)}
+.grp>h3{display:inline;font:inherit;margin:0}
 .series-list summary.grp:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-.grp-n{text-transform:none;letter-spacing:0;font-weight:var(--fw-regular)}
-.tiles>.sect{grid-column:1/-1;margin:var(--sp-1) 0 var(--sp-2)}
-.ov-h+.tiles .tile>.delta{min-height:2lh}   /* a panel's row of key labs as tall in either font: a change that just fits wraps in one, not the other (#338) */
+.grp-n{font-weight:var(--fw-regular);color:var(--muted)}
+.tiles>.lab-panel{grid-column:1/-1;margin:var(--sp-1) 0 var(--sp-2)}
+:is(.ov-panel,.ov-out)+.tiles .tile>.delta{min-height:2lh}   /* a panel's row of key labs as tall in either font: a change that just fits wraps in one, not the other (#338, #441) */
+.labs-aids .pop>.menu-list{margin-left:var(--sp-3)}   /* the Legend 12 px from a phone's edge (#441) */
 .sets .set-grp{margin:var(--sp-3) 0 0}
 @media (max-width:700px){#labsHeatmap .lab-find{flex:1 1 100%;margin-left:0}}
 .sets .set-view{border:1px solid var(--grid);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3);margin:var(--sp-2) 0;max-width:560px}
@@ -1654,7 +1657,7 @@ path.pt.abn{stroke-width:1.5}
 .hm-table tbody th{position:sticky;top:auto;left:0;z-index:1;background:var(--surface)}
 .hm-table tbody th[scope=row]{color:var(--ink);font-weight:var(--fw-medium);border-bottom:1px solid var(--grid)}
 .hm-table thead th:first-child{left:0;z-index:2}
-.hm-table tr.grp th{position:static;color:var(--muted);font-size:var(--fs-1);font-weight:var(--fw-semibold);letter-spacing:.05em;text-transform:uppercase;padding-top:var(--sp-2)}
+.hm-table tr.grp th{position:static;color:var(--ink2);font-size:var(--fs-2);font-weight:var(--fw-semibold);padding-top:var(--sp-2)}
 /* ---- each result against its own range (#58): under a chart's name, when its results' ranges differ, which ones;
    the band itself steps with each result's range (trends.js) */
 .chart .hd .rdiff{flex-basis:100%;margin:0;font-size:var(--fs-2);color:var(--ink2)}

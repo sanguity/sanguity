@@ -1463,6 +1463,15 @@ Everything on `main` so far; it becomes the first tagged release.
   in mmol/L, kept apart as two series, showed the mmol/L one twice and the g/dL one not at all in the Labs list, the
   heatmap and its table. The grouping keeps each series in its panel now, so each shows once with its own unit, the
   heatmap's grid naming the unit beside a name it shows twice.
+- **A panel named one way everywhere, and Labs' charts in the list's order** (#441): a panel's name was in capitals on
+  the Overview and the heatmap ("COMPREHENSIVE METABOLIC PANEL"), small capitals on Labs and in Settings, and Settings'
+  preview of the key labs looked unlike the Overview. Now a name that came in capitals reads in sentence case, its
+  abbreviations kept ("CBC with differential"), as a heading in the same style on the Overview and Settings' preview,
+  and in the same words on Labs, the heatmap and its table. Settings' "Start from a condition" preview and Labs selected
+  at first are grouped by panel too. Labs' chart view has headings (the list's, and its panels'), and its charts follow
+  the list, under their panels' names, rather than the records' order. The heatmap cuts a long panel name short, whole
+  in its tip, rather than run it into the grid; the Legend keeps 12 px from a phone's edge; and the key labs' change
+  line keeps two lines' height under each panel again, so no row moves as the font arrives.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

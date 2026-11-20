@@ -151,13 +151,14 @@ function presetsBlock(sec) {
     const {missing, from} = presetLabs(conds), before = SET_ITEMS["overview.keyLabs"].value();
     const several = conds.length > 1;   // which conditions a lab is from, said once there's more than one (#187)
     const fromText = names => "From " + presetText(names.map(presetShort));
-    const tiles = keyLabTiles(plan.keyLabs, LABS, false).map(n => {
+    const gs = labGroups(keyLabTiles(plan.keyLabs, LABS, false), LABS);   // by panel, as the Overview shows them (#441)
+    const tiles = gs.flatMap(g => [gs.length > 1 ? el("h5", {class: "lab-panel", text: g.panel}) : null, ...g.labs.map(n => {
       const s = LABS.find(x => x.name === n), last = s.pts[s.pts.length - 1];
       return el("div", {class: "tile", "data-lab": n},
         el("span", {class: "lbl"}, el("span", {text: nick(n), "data-tip": nick(n) !== n ? n : null}), nick(n) !== n ? el("span", {class: "vh", text: ` (${n})`}) : null, before.includes(n) ? null : el("span", {class: "tag pre-new", text: "new"})),
         el("span", {class: "val"}, last[5] || String(last[1]), el("small", {text: s.unit || ""})),
         several && from.has(n) ? el("span", {class: "pre-from", text: fromText(from.get(n))}) : null);
-    });
+    })]).filter(Boolean);
     /* each condition's own list, most important first, for reading where a tile came from (#187) */
     const own = c => el("details", {class: "pre-def", "data-id": c.id, open: openDefs.has(c.id) ? "" : null,
       ontoggle: ev => ev.target.open ? openDefs.add(c.id) : openDefs.delete(c.id)}, el("summary", {text: `Its list: ${c.labs.length} lab${c.labs.length === 1 ? "" : "s"}` +
