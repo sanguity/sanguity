@@ -20,7 +20,8 @@ the owner's page leaves it unticked. So are the phone's and watch's measures and
 server/measures.py: home blood pressure, glucose, temperature, blood oxygen, respiratory rate, VO2 max, immunizations,
 ECGs and irregular rhythm notifications as the device stated them, never their samples, BMI and growth): each a
 section of its own, offered only when the profile has some, shown only when ticked, in the units of the owner who made
-the link. Cycle tracking (#183) is never offered here, whatever the profile's setting.
+the link. Cycle tracking (#183) is never offered here, whatever the profile's setting. Labs go by the names the profile
+gives them (Settings → Names, labNicknames; #289), each with its report's name and the panel it came in.
 
   sections   chosen from SECTIONS; each says plainly what it shows (the owner's page repeats it)
   labs       for "results": the lab series to show, by name; empty = every lab
@@ -262,17 +263,30 @@ def build(db, link, today=None):
                          "instructions": _text(d.get("instructions")), "since": start, "until": stop,
                          "status": _text(d.get("status"), 40)})
         out["medications"] = sorted(meds, key=lambda m: (m["name"].lower(), m["since"]))
-    if "results" in want:
-        pick = set(scope["labs"])
+    cfg = None
+
+    def owners():   # the settings of the owner who made the link: their units (#225) and the profile's names for labs (#289)
+        nonlocal cfg
+        cfg = cfg or settings.merged(db, pid, link["created_by"])
+        return cfg
+
+    if "results" in want:   # (#289) each lab by the profile's name for it (Settings → Names), with its panel; v: the number, for a sparkline
+        pick, nick = set(scope["labs"]), owners().get("labNicknames") or {}
+        panel = {}
+        for s in data.get("labs") or []:
+            if isinstance(s, dict) and s.get("name") and s.get("panel") and not s.get("watch"):
+                panel.setdefault(s["name"], _text(s["panel"], 120))
         labs = []
-        for name, s in sorted(summary._series(data).items(), key=lambda kv: kv[0].lower()):
+        for name, s in summary._series(data).items():
             if pick and name not in pick:
                 continue
-            pts = [{"t": _text(p["t"], 25), "value": summary.value_text(p), "range": summary.range_text(p),
+            pts = [{"t": _text(p["t"], 25), "value": summary.value_text(p), "v": p["v"], "range": summary.range_text(p),
                     "flag": summary.out_of_range(p)} for p in s["pts"] if _in(p["d"], scope)]
             if pts:
-                labs.append({"name": name, "unit": s["unit"], "results": pts[::-1]})
-        out["results"] = labs
+                label = nick.get(name) if isinstance(nick.get(name), str) and nick[name].strip() else name
+                labs.append({"name": name, "label": _text(label, 200), "panel": panel.get(name, ""), "unit": s["unit"],
+                             "results": pts[::-1]})
+        out["results"] = sorted(labs, key=lambda x: x["label"].lower())
     if "appointments" in want:
         ups = [u for u in data.get("upcoming") or [] if isinstance(u, dict)]
         out["appointments"] = sorted(({"t": _text(u.get("t"), 25), "title": _text(u.get("title"), 300) or "Appointment",
@@ -298,7 +312,7 @@ def build(db, link, today=None):
                               key=lambda c: c["t"], reverse=True)
     mw = [s for s in scope["sections"] if s in measures.IDS]
     if mw:   # (#225) in the units of the owner who made the link
-        c = measures.context(db, pid, data, settings.merged(db, pid, link["created_by"]))
+        c = measures.context(db, pid, data, owners())
         out.update(measures.blocks(c, mw, lambda d: _in(d, scope), most=measures.LINK_MOST))
     if "about" in want:   # About this person (#194), only when the owner ticked it
         p = person.of(settings.nest(settings.stored(db, "profile", pid)))

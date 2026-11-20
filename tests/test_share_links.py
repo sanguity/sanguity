@@ -173,6 +173,22 @@ class ShareLinks(unittest.TestCase):
         self.assertNotIn("REPORTTEXT", json.dumps(j))
         self.assertNotIn("DETAILNOTE", json.dumps(j))
 
+    def test_labs_by_the_profiles_names_with_their_panels(self):   # #289: the clinician's page
+        r = self.c["robin"].put(f"/api/profiles/{self.pid}/settings/labNicknames/name", json={"name": "SodiumSECRET", "to": "Sodium"}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        try:
+            token, link = self.make(sections=["results"])
+            j = self.view(token).json()
+            self.assertEqual([(s["label"], s["name"], s["panel"]) for s in j["results"]],
+                             [("Hemoglobin", "Hemoglobin", "CBC"), ("Sodium", "SodiumSECRET", "BMP")], "by the owner's name, sorted by it")
+            self.assertEqual([(p["value"], p["v"], p["flag"]) for p in j["results"][0]["results"]],
+                             [("11.1", 11.1, "Low"), ("13.5", 13.5, None)], "newest first, each with its number for the sparkline")
+            log = self.c["robin"].get(f"/api/profiles/{self.pid}/activity?action=link").json()
+            self.assertEqual(len([e for e in log if e["detail"].get("change") == "view" and e["detail"].get("link") == link["id"]]), 1,
+                             "the view is still logged")
+        finally:
+            self.c["robin"].put(f"/api/profiles/{self.pid}/settings/labNicknames/name", json={"name": "SodiumSECRET"}, headers=H)
+
     def test_no_end_date_and_no_start(self):
         token, _ = self.make(sections=["visits"])
         self.assertEqual(sorted(v["title"] for v in self.view(token).json()["visits"]), ["Annual physical", "Long-ago visit OLDVISIT"])
