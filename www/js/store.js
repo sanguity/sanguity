@@ -120,7 +120,10 @@ function labDayWords() {
    written after the latest import is in the period that ends at the latest record, as the palette finds it */
 function storeSpan() {
   let min = Infinity, max = -Infinity;
-  for (const e of EV) if (isFinite(e.ts)) { if (e.ts < min) min = e.ts; if (e.ts > max) max = e.ts; }
+  // the person's own entries (journal, mood, cycle) count up to today, not past it: one dated ahead mustn't move the
+  // end of every period there (#472)
+  const own = new Set(["journal", "mood", "cycle"]), today = dayTs(zToday()) + DAY - 1;
+  for (const e of EV) if (isFinite(e.ts)) { const t = own.has(e.k) ? Math.min(e.ts, today) : e.ts; if (t < min) min = t; if (t > max) max = t; }
   state.min = min; state.max = max;
   for (const s of SERIES) if (s.watch && s.pts.length) state.max = Math.max(state.max, s.pts[s.pts.length - 1].ts);
 }

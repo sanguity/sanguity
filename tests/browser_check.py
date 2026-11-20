@@ -5511,22 +5511,25 @@ def main():
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && booted", timeout=20000)
             check("…all removed again", js("JOURNAL.length === 0 && (CFG.journal?.groups || []).length === 0 && !document.querySelector('#tl .jmood')"))
             # #472: an entry written after the latest record is in the period that ends at the latest record (the default
-            # 2 years said "Events (0)" for one), and under All, past its padding too; deleted, the span is the records' again
+            # 2 years said "Events (0)" for one), and under All, past its padding too; one dated ahead doesn't move the
+            # end of every period past today; deleted, the span is the records' again
             last472 = js("[state.max, state.preset]")
+            when472 = js("[isoDay(Math.min(Date.now(), state.max + 14 * DAY)), isoDay(Date.now() + 150 * DAY)]")
             ids472 = [js("""([t, note]) => api(`profiles/${PROFILE.id}/journal`, {method: 'POST', body: JSON.stringify({kind: 'note', t, note})})
-                .then(r => r.json()).then(j => { storePut('journal', j); return j.id; })""", [js(f"isoDay(state.max + {d} * DAY)"), f"Fictional, {d} days after the records"])
-                for d in (4, 150)]
+                .then(r => r.json()).then(j => { storePut('journal', j); return j.id; })""", [t, note])
+                for t, note in ((when472[0], "Fictional, written after the records"), (when472[1], "Fictional, dated ahead"))]
             span472 = {}
             for per in ("2y", "all"):
                 js(f"applyPreset('{per}'); pickTab('timeline', 'timeline')")
                 settle(200)
                 span472[per] = js("""[tlListed().filter(e => e.k === 'journal').map(e => e.j.note), [...document.querySelectorAll('#list .tl-row')]
-                    .some(r => r.textContent.includes('150 days after')), document.getElementById('listTitle').textContent]""")
+                    .some(r => r.textContent.includes('written after the records')), state.max <= dayTs(zToday()) + DAY]""")
             js("ids => Promise.all(ids.map(i => api(`profiles/${PROFILE.id}/journal/${i}`, {method: 'DELETE'}).then(r => r.json()).then(j => storePut('journal', j))))", ids472)
             js(f"applyPreset('{last472[1]}')")
-            check("a journal entry dated after the latest record is listed under the default period (2 years) and under All, past its padding too, and the span is the records' again once it's gone (#472)",
-                  all(v[0] == ["Fictional, 150 days after the records", "Fictional, 4 days after the records"] and v[1] for v in span472.values())
-                  and js("state.max") == last472[0], [span472, last472, js("state.max")])
+            check("a journal entry dated after the latest record is listed under the default period (2 years) and under All, past its padding too; "
+                  "one dated ahead doesn't stretch the period past today; the span is the records' again once they're gone (#472)",
+                  all(v[0] == ["Fictional, written after the records"] and v[1] and v[2] for v in span472.values())
+                  and js("state.max") == last472[0], [when472, span472, last472, js("state.max")])
             js("pickTab('timeline', 'timeline')")   # the timeline again, not the journal (#277)
             tab_click(page, "#tab-timeline")
             settle()
