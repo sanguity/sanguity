@@ -36,6 +36,23 @@ const threeSeen = new ResizeObserver(es => { for (const e of es) {
 } });
 document.fonts?.ready.then(() => document.querySelectorAll(".stats.three").forEach(threeFit));
 function threeFigures(tiles) { const g = el("div", {class: "stats three"}, ...tiles); threeSeen.observe(g); return g; }
+/* the claims' table, a claim per stacked row (.fold, app.css) where it's wider than its box (#465): measured, as the
+   figures are, not at a fixed width (in French figures it needs 700–723 px, in English 660). A table wider than its
+   box is at its narrowest, so that's the width it needs, kept as the box changes. Once the fonts are in, one not
+   stacked is measured again (a stacked one isn't drawn as a table to measure it: that moved the page, #329) */
+const claimsFit = w => {
+  const t = w.firstElementChild, bw = w.getBoundingClientRect().width;
+  if (!bw) return;   // not shown (another tab): measured when it is
+  if (!t.sgNeed) { t.classList.remove("fold"); const tw = t.getBoundingClientRect().width; if (tw > bw) t.sgNeed = tw; }
+  t.classList.toggle("fold", bw < t.sgNeed);
+};
+const claimsSeen = new ResizeObserver(es => { for (const e of es) {
+  const w = e.target, bw = Math.round(e.contentRect.width);
+  if (!w.isConnected) claimsSeen.unobserve(w);
+  else if (w.sgW !== bw) { w.sgW = bw; claimsFit(w); }   // not again for its own height, which the fold changes
+} });
+document.fonts?.ready.then(() => document.querySelectorAll("table.claims:not(.fold)").forEach(t => { t.sgNeed = 0; claimsFit(t.parentElement); }));
+function claimsFold(w) { claimsSeen.observe(w); return w; }
 /* the claims' three figures, in this order wherever they're shown (#278, #442: Costs and the Overview): your share,
    what insurance paid and what was billed; the Overview's without the line under each (sub: false) */
 function claimFigures(rows, sub = true) {
@@ -142,9 +159,9 @@ function renderCosts() {
     el("p", {class: "hint", text: totals}));
   const cols = [["d", "Date"], ["title", "Service / drug"], ["prov", "Provider"], ["cat", "Type"], ["billed", "Billed"], ["paid", "Ins. paid"], ["owe", "Your share"], ["status", "Status"]];
   const money = ["billed", "paid", "owe"];   // right-aligned, in tabular figures (#278)
-  // where the table doesn't fit (under 680 px of box) each claim is a stacked row, its headers a row of sort buttons
-  // (.claims, app.css; #278, #443)
-  tc.append(scrollBox({class: "tablewrap", "aria-label": "Claims"}, el("table", {class: "data claims"},
+  // where the table doesn't fit its box (measured, claimsFold) each claim is a stacked row, its headers a row of sort
+  // buttons (.claims, app.css; #278, #443, #465)
+  tc.append(claimsFold(scrollBox({class: "tablewrap", "aria-label": "Claims"}, el("table", {class: "data claims"},
     // a column's sort is a button in its header, its order said by aria-sort; a claim opens from its name, a button, or
     // anywhere on its row by pointer (#202: by keyboard too, and said as what they are)
     el("thead", {}, el("tr", {}, cols.map(([key, h], i) => el("th", {scope: "col", class: money.includes(key) ? "num" : null, "aria-sort": costState.sort === key ? (costState.dir > 0 ? "ascending" : "descending") : null},
@@ -157,7 +174,7 @@ function renderCosts() {
       el("td", {text: r.prov}), el("td", {text: r.cat}),
       ...money.map(k => el("td", {class: "num", text: usd(r[k])})),
       // its status only when it isn't the usual one (#278): "processed", or "paid" from a FHIR plan
-      el("td", {class: isDenied(r) ? "abn" : null, text: (s => /^(processed|paid)?$/.test(s) ? "" : s)((r.status || "").replace(/_/g, " ").toLowerCase())})))))));
+      el("td", {class: isDenied(r) ? "abn" : null, text: (s => /^(processed|paid)?$/.test(s) ? "" : s)((r.status || "").replace(/_/g, " ").toLowerCase())}))))))));
   if (list.length > costState.limit) tc.append(el("button", {class: "btn", type: "button", style: {marginTop: "8px"}, text: `Show ${Math.min(200, list.length - costState.limit)} more`,
     onclick: () => { const n = costState.limit; costState.limit += 200; renderCosts(); $(`#costTable tbody tr:nth-child(${n + 1}) .cell-btn`)?.focus(); }}));   // the first one added (#443)
   box.append(tc);
@@ -271,11 +288,14 @@ function renderPaid(box, claimRows, periodLabel) {
   const sum = xs => xs.reduce((a, r) => a + r.counted, 0);
   const pays = counted.filter(r => r.type === "pay"), shares = counted.filter(r => r.type === "claim");
   const has = s => all.some(r => r.src === s);
-  const ways = [has("typed") && "payments typed in", has("export") && `a finance export${meta.exported ? " (exported " + fmtD(dayTs(meta.exported)) + ")" : ""}`,
-    has("claim") && "claims' shares with no payment matched"].filter(Boolean);
-  // the view's heading, its figures under it in their card (#448)
-  h2.append(aboutWords({title: "what you paid"}, "A payment that arrived two ways is counted once, and a claim's share only until a payment is matched to it. Click a row below to see where its number came from."));
-  const top = [h2, el("p", {class: "hint", text: `From ${ways.join(", ")}. Each amount is counted once.${meta.excluded ? " Not counted: " + meta.excluded + "." : ""}`})];
+  const ways = [has("typed") && ["payments typed in"], has("export") && ["a finance export", meta.exported ? ` (exported ${fmtD(dayTs(meta.exported))})` : ""],
+    has("claim") && ["claims' shares", " with no payment matched"]].filter(Boolean);
+  const from = whole => "From " + (xs => xs.length < 2 ? xs.join("") : xs.slice(0, -1).join(", ") + " and " + xs.at(-1))(ways.map(w => whole ? w.join("") : w[0])) + ".";
+  // the view's heading, its figures under it in their card (#448); its hint one line, where the amounts came from, and
+  // the rest behind its ⓘ: when the export was, how each amount is counted and what isn't (#280, #465)
+  h2.append(aboutWords({title: "what you paid"}, from(true), "A payment that arrived two ways is counted once, and a claim's share only until a payment is matched to it. Click a row below to see where its number came from.",
+    meta.excluded ? `Not counted: ${meta.excluded}.` : null));
+  const top = [h2, el("p", {class: "hint", text: from(false)})];
   const tile = statTile;
   const typed = sum(pays.filter(r => r.src === "typed")), exp = sum(pays.filter(r => r.src === "export"));
   const prem = sum(counted.filter(r => /premium/i.test(r.group)));

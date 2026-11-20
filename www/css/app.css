@@ -1420,8 +1420,8 @@ table.data.oop .oop-open>td{padding:0 0 var(--sp-2);min-width:0}
 .oop-form{display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-3);align-items:flex-end}
 .oop-form label{display:flex;flex-direction:column;gap:3px;font-size:var(--fs-2);color:var(--ink2);min-width:0;max-width:100%}
 .oop-form select{max-width:100%}
-/* Costs (#278): money right-aligned; More figures page-wide. Its tables' boxes are what's measured (#443): under
-   680 px of box (the claims need 660, a sideways phone or a docked drawer included) a claim per stacked row (name and
+/* Costs (#278): money right-aligned; More figures page-wide. Its tables' boxes are what's measured (#443): where
+   the claims don't fit theirs (#465: 660 px in English, 723 in French; a sideways phone or a docked drawer included) a claim per stacked row (name and
    your share; when, who, what; billed and insurance paid; laid out exactly, #338, not rewrapped as the fonts come),
    the headers a row of sort buttons; under 560 px the others' rows stack too, each cell named by its column */
 table.data .num{text-align:right}
@@ -1445,23 +1445,22 @@ details.more.cost-more>:not(summary){max-width:none;color:var(--ink);font-size:v
   .stack td:empty{display:none}
   .stack td[data-label]:not(:first-child)::before{content:attr(data-label) " ";color:var(--muted)}
 }
-@container (width < 680px){
-  table.claims,.claims>*{display:block}
-  .claims tr{display:flex;flex-wrap:wrap;gap:0 var(--sp-2)}
-  table.claims :is(th,td){position:static;border:0;padding:0;text-align:left;color:var(--ink2)}
-  .claims thead tr::before{content:"Sort by";color:var(--muted);padding-block:var(--sp-1)}
-  table.claims th{padding-block:var(--sp-1)}
-  .claims tbody tr{padding:var(--sp-2) 0;border-top:1px solid var(--grid);text-rendering:geometricPrecision}
-  .claims td:empty{display:none}
-  table.claims td:nth-child(2){order:-3;flex:1 1 0;color:var(--ink)}
-  table.claims td:nth-child(7){order:-2;color:var(--ink);font-weight:var(--fw-semibold)}
-  .claims td:nth-child(7)::before{content:"Your share ";color:var(--ink2);font-weight:var(--fw-regular)}
-  .claims tbody tr::before{content:"";order:-1;flex-basis:100%}
-  .claims td:is(:nth-child(5),:nth-child(6)){order:1}
-  .claims td:nth-child(5)::before{content:"Billed "}
-  .claims td:nth-child(6)::before{content:"· Insurance paid "}
-  .claims tbody tr::after{content:"";flex-basis:100%}
-}
+/* the claims where they don't fit their box (.fold, measured by claimsFit, costs.js, #465) */
+table.fold,.fold>*{display:block}
+.fold tr{display:flex;flex-wrap:wrap;gap:0 var(--sp-2)}
+table.fold :is(th,td){position:static;border:0;padding:0;text-align:left;color:var(--ink2)}
+.fold thead tr::before{content:"Sort by";color:var(--muted);padding-block:var(--sp-1)}
+table.fold th{padding-block:var(--sp-1)}
+.fold tbody tr{padding:var(--sp-2) 0;border-top:1px solid var(--grid);text-rendering:geometricPrecision}
+.fold td:empty{display:none}
+table.fold td:nth-child(2){order:-3;flex:1 1 0;color:var(--ink)}
+table.fold td:nth-child(7){order:-2;color:var(--ink);font-weight:var(--fw-semibold)}
+.fold td:nth-child(7)::before{content:"Your share ";color:var(--ink2);font-weight:var(--fw-regular)}
+.fold tbody tr::before{content:"";order:-1;flex-basis:100%}
+.fold td:is(:nth-child(5),:nth-child(6)){order:1}
+.fold td:nth-child(5)::before{content:"Billed "}
+.fold td:nth-child(6)::before{content:"· Insurance paid "}
+.fold tbody tr::after{content:"";flex-basis:100%}
 /* the records bar's one period (#171, its controls #191 below) */
 /* opaque: an open select's list can't show a see-through background, and drew white under light text in dark mode */
 select option,select optgroup{background:var(--raised);color:var(--ink)}
