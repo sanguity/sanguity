@@ -1672,6 +1672,15 @@ Everything on `main` so far; it becomes the first tagged release.
   first entry on an empty profile reloaded the page with focus nowhere and nothing said; it opens the entry in the
   drawer, as a save with records does, and says "Entry saved." The palette's line for a search says "with these
   filters", as the line over the list then does.
+- **On phones the heatmap fits its box, chart tips stay on the screen, and What you paid's dates stay clear of its
+  headings** (#476): at 320 px the heatmap's grid was laid out 320 px wide in a 270 px box, so its right 50 px (the
+  latest columns, and a month's label) couldn't be seen, scrolled to or tapped; it's laid out in its box's width. A
+  chart's tip that didn't fit right of the pointer went left of it with no limit, 128 px off the screen's left edge
+  from a heatmap cell at 320 px; tips stay 8 px inside the screen, above or below the pointer where they fit on
+  neither side. On a phone held sideways What you paid's headings wrap to 63 px, past the 40 px its dates were kept
+  clear of, so Shift+Tab up the dates, or the editor's Close, left a date under them; the dates are kept clear of the
+  headings' measured height. On the ten-year All at 1400 px, a day with two draws split its cell into parts too narrow
+  for a ▲, with no word of it; the legend's "zoom in" hint shows then too.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

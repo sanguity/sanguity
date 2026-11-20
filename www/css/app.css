@@ -519,7 +519,7 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 #tl.dragging{cursor:grabbing}
 .ev{cursor:pointer}
 .ev:hover,.ev.sel{stroke:var(--ink);stroke-width:2}
-.tip{position:fixed;pointer-events:none;background:var(--raised);border:1px solid var(--ring);box-shadow:var(--shadow-2);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3);font-size:var(--fs-2);max-width:340px;z-index:50;display:none}
+.tip{position:fixed;pointer-events:none;background:var(--raised);border:1px solid var(--ring);box-shadow:var(--shadow-2);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3);font-size:var(--fs-2);width:max-content;max-width:340px;z-index:50;display:none}   /* as wide wherever it is, as showTip measured it (#476) */
 .tip .v{font-weight:var(--fw-bold);font-size:var(--fs-3);color:var(--ink)}
 .tip .s{color:var(--ink2)}
 .tip .k{display:inline-block;width:12px;height:2px;border-radius:2px;vertical-align:middle;margin-right:var(--sp-2)}
@@ -1430,7 +1430,7 @@ details.more.cost-more>:not(summary){max-width:none;color:var(--ink);font-size:v
 .cost-figs>details.cost-more.more{margin-bottom:0}   /* in the figures' card (#442): its padding is the space under it */
 #view-costs .tablewrap{container-type:inline-size;max-height:none;overflow:visible}   /* no box scrolling inside the page (#456) */
 #view-costs table.data th{top:var(--bar-h,0px);z-index:1;box-shadow:inset 0 -1px var(--axis)}   /* the headers stick under the top bar, as the page scrolls, their rule with them */
-#view-costs td *{scroll-margin-top:40px}   /* focus not under them (2.4.11) */
+#view-costs td *{scroll-margin-top:var(--th-h,40px)}   /* focus not under them (2.4.11), however many lines they wrap to (--th-h, costs.js, #476) */
 @media (max-height:500px){ #view-costs table.data th{top:0} }   /* the top bar scrolls away there */
 .ov-row[aria-pressed=true]{background:var(--hover)}   /* a row picked to filter (costs.js) */
 .cost-bar{display:inline-block;height:8px;border-radius:2px}

@@ -42,19 +42,25 @@ function renderHeatmap() {
   const cols = [...days.entries()].sort((a, b) => a[1] - b[1]);
   if (asTable) { hmTable(rows, cols, grp); return; }
   const svg = $("#hm"), axis = $("#hmAxis");
-  const avail = Math.max(320, svg.parentElement.clientWidth);
+  // laid out in its box's own width (#476: not a floor of 320 px, which a phone's 270 px box cut the right of), 320 while
+  // it isn't shown
+  const avail = svg.parentElement.clientWidth || 320;
   const LW = avail < 600 ? 120 : 190, top = 34, rowH = 14, gap = 2;
   if (!rows.length || !cols.length) {   // keep it draggable so you can pan back to where the draws are
     svg.replaceChildren(el("svg:text", {x: LW, y: 20, text: !rows.length && state.labQ ? "No lab names match the filter." : "No lab draws in this date range."})); svg.setAttribute("viewBox", `0 0 ${avail} 30`); svg.setAttribute("width", avail); svg.setAttribute("height", 30);
     svg._geom = {L: LW, R: avail - 8, w: avail}; axis.replaceChildren(); axis.setAttribute("height", 0); return;
   }
-  // columns always fit the width (fractional widths are fine); zoom in to get wider cells
-  const cw = Math.max(1, Math.min(22, (avail - LW - 8) / cols.length));
+  // columns always fit the width (fractional widths are fine, under 1 px too: #476, ten years on a phone); zoom in to
+  // get wider cells
+  const cw = Math.min(22, (avail - LW - 8) / cols.length);
+  const cellPts = rows.map(hmDays);   // each row's results by day (#471)
   // the colours, and the marks that say the same without them (#60): ▲ above the range, ▼ below, on cells wide enough
+  // (3 px), and where some aren't, a word on it: a cell under 3 px, or a part of one split between a day's draws (#476)
+  const thin = cw < 3 || cellPts.some(m => [...m.values()].some(ps => ps.length > 1 && cw / ps.length < 3 && ps.some(p => hmLevel(p[1], p[2], p[3]))));
   $("#hmLegend").replaceChildren(...[-4, -3, -2, -1, 0, 1, 2, 3, 4].map(lv => el("i", {style: {background: hmFill(lv)}})),
     el("span", {text: "← far below · below · in range · above · far above →"}), el("span", {style: {color: "var(--muted)"}, text: "(distance outside the range, as a share of the range's width)"}),
     el("span", {class: "hm-key"}, el("b", {"aria-hidden": "true", text: "▲"}), " above the range, ", el("b", {"aria-hidden": "true", text: "▼"}), " below",
-      cw < 3 ? el("span", {style: {color: "var(--muted)"}, text: " (zoom in to see them on each cell, or show the table)"}) : null));
+      thin ? el("span", {style: {color: "var(--muted)"}, text: " (zoom in to see them on each cell, or show the table)"}) : null));
   const groups = []; let gy = top;
   const yOf = new Map();
   let lastPanel = null;
@@ -64,7 +70,7 @@ function renderHeatmap() {
   svg._geom = {L: LW, R: LW + cols.length * cw, w: W};
   axis.setAttribute("viewBox", `0 0 ${W} ${AH}`); axis.setAttribute("width", W); axis.setAttribute("height", AH);
   const ax = [];
-  const g = [], cellPts = rows.map(hmDays);   // each row's results by day (#471)
+  const g = [];
   const colX = new Map(cols.map(([k], i) => [k, LW + i * cw]));
   // hospital stay strip + procedure markers
   for (const [k, ts] of cols) {
@@ -106,7 +112,8 @@ function renderHeatmap() {
     const cx = colX.get(k);
     g.push(el("svg:line", {x1: cx, x2: cx, y1: top - 2, y2: H, stroke: "var(--grid)"}));
     ax.push(el("svg:line", {x1: cx, x2: cx, y1: 0, y2: 5, stroke: "var(--axis)"}));
-    if (cx - lastLabelX >= 44) { ax.push(el("svg:text", {x: cx + 2, y: AH - 6, text: zdate(ts).toLocaleDateString(undefined, {month: "short", year: "2-digit"})})); lastLabelX = cx; }
+    const t = zdate(ts).toLocaleDateString(undefined, {month: "short", year: "2-digit"});
+    if (cx - lastLabelX >= 44 && cx + 2 + labelW(t, "") <= W) { ax.push(el("svg:text", {x: cx + 2, y: AH - 6, text: t})); lastLabelX = cx; }   // one that would run past the grid's end, not cut there (#476)
   }
   ax.push(el("svg:text", {x: LW - 8, y: AH - 6, "text-anchor": "end", text: "Draw date"}));
   svg.replaceChildren(...g); axis.replaceChildren(...ax);

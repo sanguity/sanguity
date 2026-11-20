@@ -69,7 +69,17 @@ function costRows() { return inPeriod(DATA.costs || []); }
 const stacked = n => { const t = n.matches("table") ? n : n.querySelector("table"); t.classList.add("stack"); labelCells(t); return n; };
 const isDenied = r => /DENIED/i.test(r.status || "");
 const sumOf = (rows, k) => rows.reduce((a, r) => a + (r[k] || 0), 0);
+/* Costs drawn, its tables' headings measured as they stick over the rows (#476): a table's --th-h, the cells' scroll
+   margin (app.css), so focus moved up a column isn't left under headings wrapped to two or three lines (63 px at
+   667 x 375). Measured as soon as they're in the page, as the claims' fold is, before the Close or a row's date takes
+   focus, and again as their size changes (the window turned, the fonts in) */
+const thSeen = new ResizeObserver(es => { for (const e of es) costTh(e.target); });
+const costTh = h => { if (h.isConnected) h.parentElement.style.setProperty("--th-h", h.offsetHeight + "px"); else thSeen.unobserve(h); };
 function renderCosts() {
+  drawCosts();
+  for (const h of $("#view-costs").querySelectorAll("table.data thead")) { costTh(h); thSeen.observe(h); }
+}
+function drawCosts() {
   const box = $("#view-costs"); box.replaceChildren();
   const claims = !!(DATA.costs || []).length;
   if (!claims && !((DATA.outOfPocket || {}).payments || []).length) {
@@ -382,7 +392,7 @@ function renderPaid(box, claimRows, periodLabel) {
   const fil = paidState.q;
   const list = rows.filter(r => !fil || r.group === fil || (r.who || "(no payee)") === fil || r.hsa === fil)
     .sort((a, b) => b.d.localeCompare(a.d) || a.type.localeCompare(b.type));
-  const tw = el("div", {id: "paidTable", tabindex: -1, style: {marginTop: "12px"}});
+  const tw = el("div", {id: "paidTable", class: "mt-3", tabindex: -1});
   // filtered (HSA only, or a row above picked): what it keeps, with Reset filters, the total for those shown (#190)
   const kept = fil === "HSA" || fil === "FSA" ? `paid with an ${fil}` : rows.some(r => r.group === fil) ? `for ${fil}` : `paid to ${fil}`;
   tw.append(el("div", {class: "toolbar mb-2"},
@@ -393,7 +403,7 @@ function renderPaid(box, claimRows, periodLabel) {
       () => { paidState.q = ""; renderCosts(); }, () => $("#paidTable .toggle") || $("#paidTable")));
   // opened, its row in sight first, then as much of the editor under it as fits: an editor taller than the window (a
   // sideways phone) lined up with its top would put the date that has focus above it (#473, 2.4.11), and clear of the
-  // headings stuck over it, however many lines they wrap to (63 px at 667 px; the cells' scroll-margin is 40)
+  // headings stuck over it, however many lines they wrap to (63 px at 667 px)
   const toggle = r => { paidState.open = paidState.open === oopKey(r) ? null : oopKey(r); renderCosts(); const e = $("#oopEdit");
     const b = e && $(`#paidTable tr[data-oop="${oopKey(r)}"] .cell-btn`), th = b?.closest("table").tHead.rows[0].cells[0];
     if (e) e.scrollIntoView({block: "nearest"});
