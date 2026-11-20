@@ -354,11 +354,10 @@ async function loadDirectory() {
     el("p", {}, el("a", {href: "sources.html#portals", text: "Open Find your provider"})));
   $("#dirAdd").replaceChildren(
     el("h3", {class: "sub", text: missing.length ? `Adding ${missing.map(s => s.label.split(":")[0].replace(/ Millennium.*/, "")).join(" and ")}'s lists` : "Keeping the lists up to date"}),
-    el("p", {}, "From the Sanguity folder on the server (Python 3.9 or later, nothing to install), run:"),
+    el("p", {}, "From the Sanguity folder on the server (Python 3.9 or later, nothing to install), run this, and again now and then (Epic suggests weekly) to pick up new hospitals:"),   // (in sight, #447)
     el("div", {class: "dir-src"}, el("pre", {}, el("code", {text: "python3 tools/build_directory.py"}))),
     el("p", {class: "hint", text: "It downloads Epic's and Oracle Health's lists (about 100 MB from Epic, 4 MB from Oracle), and the next " +
       "search uses them, with no restart."}),
-    aboutWords("It writes this server's own copy, data/directory/providers.json.gz. Run it again now and then (Epic suggests weekly) to " +
-      "pick up new hospitals. It's the only part of Sanguity that downloads a list, and only when you run it. More in docs/provider-directory.md."));
+    aboutWords("It writes this server's own copy, data/directory/providers.json.gz. It's the only part of Sanguity that downloads a list, and only when you run it. More in docs/provider-directory.md."));
   $("#directory").hidden = false;
 }

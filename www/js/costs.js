@@ -244,7 +244,9 @@ function oopEditor(r) {
 }
 function renderPaid(box, claimRows, periodLabel) {
   const meta = DATA.outOfPocket || {}, all = oopRows(), claims = !!(DATA.costs || []).length;
-  const card = el("div", {class: "card", id: "paidCard"}), h2 = el("h2", {text: `Out of pocket · ${periodLabel}`});
+  const card = el("div", {class: "card", id: "paidCard"});
+  // the view's heading and its ⓘ, named for what it's about, not the period (#447)
+  const h2 = el("div", {class: "set-hd"}, el("h2", {text: `Out of pocket · ${periodLabel}`}));
   if (!all.length) {
     card.append(h2, el("p", {class: "hint"}, "No out-of-pocket payments yet, and no claim lists a share for you to pay. ",
       canEdit() ? el("a", {href: `sources.html?profile=${PROFILE.id}#payment`, text: "Type in a payment"}) : null));
@@ -257,8 +259,8 @@ function renderPaid(box, claimRows, periodLabel) {
   const ways = [has("typed") && "payments typed in", has("export") && `a finance export${meta.exported ? " (exported " + fmtD(dayTs(meta.exported)) + ")" : ""}`,
     has("claim") && "claims' shares with no payment matched"].filter(Boolean);
   // the view's heading, its figures under it in their card (#448)
-  const top = [h2, el("p", {class: "hint", text: `From ${ways.join(", ")}. Each amount is counted once.${meta.excluded ? " Not counted: " + meta.excluded + "." : ""}`}),
-    aboutWords("A payment that arrived two ways is counted once, and a claim's share only until a payment is matched to it. Click a row below to see where its number came from.")];
+  h2.append(aboutWords({title: "what you paid"}, "A payment that arrived two ways is counted once, and a claim's share only until a payment is matched to it. Click a row below to see where its number came from."));
+  const top = [h2, el("p", {class: "hint", text: `From ${ways.join(", ")}. Each amount is counted once.${meta.excluded ? " Not counted: " + meta.excluded + "." : ""}`})];
   const tile = statTile;
   const typed = sum(pays.filter(r => r.src === "typed")), exp = sum(pays.filter(r => r.src === "export"));
   const prem = sum(counted.filter(r => /premium/i.test(r.group)));

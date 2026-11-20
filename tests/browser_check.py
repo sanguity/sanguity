@@ -1807,6 +1807,92 @@ def main():
             after_ = strict.evaluate("[!!document.querySelector('dialog.sheet[open]'), document.activeElement.getAttribute('aria-label'), document.querySelector('#groupTitle + .info .about-words').textContent.includes('Files go to')]")
             check(f"…at {w} px it opens as a sheet, named as the ⓘ is, fitting the screen; Escape closes it, focus back on the ⓘ, its words back under it",
                   sheet == ["About Upload files", True, True, True] and after_ == [False, "About Upload files", True], (sheet, after_))
+        # (#447) an ⓘ's id is from what it's about, so a tab drawn again (a window going from 1400 to 1200 px) gives focus
+        # back to it and, left open, it opens again, on Medications, the Overview and Costs' What you paid; on a phone its
+        # sheet stays open as the phone turns, focus in it, and Escape puts focus back on the ⓘ drawn since, its words back
+        # under it, once
+        def strict_records(hash_):
+            strict.goto(base + "/?profile=1#" + hash_)
+            for _ in range(100):
+                if strict.evaluate("typeof booted !== 'undefined' && booted"):
+                    break
+                strict.wait_for_timeout(200)
+            strict.wait_for_timeout(500)
+        FIRST447 = "[...document.querySelectorAll('main .info > button')].find(b => b.checkVisibility())"
+        OPEN447 = """(() => { const a = document.activeElement;
+          return [a.closest('main .info') ? a.getAttribute('aria-label') : a.tagName, [...document.querySelectorAll('main .pop-text')].filter(x => x.matches(':popover-open')).map(x => x.getAttribute('aria-label')),
+                  a !== window.sg447]; })()"""
+        kept447, turned447 = {}, {}
+        for hash_ in ("medications", "overview", "costs-paid"):
+            strict.set_viewport_size({"width": 1400, "height": 900})
+            strict_records(hash_)
+            strict.evaluate(f"(window.sg447 = {FIRST447}).focus()")
+            strict.keyboard.press("Enter")
+            strict.wait_for_timeout(200)
+            before = strict.evaluate(OPEN447)
+            strict.set_viewport_size({"width": 1200, "height": 900})
+            strict.wait_for_timeout(600)   # (drawn again once the window's settled, 120 ms: timeline.js)
+            kept447[hash_] = [before, strict.evaluate(OPEN447)]
+            strict.keyboard.press("Escape")
+            strict.set_viewport_size({"width": 390, "height": 844})
+            strict_records(hash_)
+            words = strict.evaluate(f"(b => {{ window.sg447 = b; b.focus(); return [b.getAttribute('aria-label'), document.getElementById(b.getAttribute('aria-controls')).textContent]; }})({FIRST447})")
+            strict.keyboard.press("Enter")
+            strict.wait_for_timeout(400)
+            SHEET447 = "(d => [!!d && d.querySelector('h2').textContent, !!d && d.contains(document.activeElement), !window.sg447.isConnected])(document.querySelector('dialog.sheet[open]'))"
+            sheet = [strict.evaluate(SHEET447)]
+            strict.set_viewport_size({"width": 844, "height": 390})
+            strict.wait_for_timeout(600)
+            sheet.append(strict.evaluate(SHEET447))
+            strict.keyboard.press("Escape")
+            strict.wait_for_timeout(400)
+            sheet.append(strict.evaluate("""n => { const a = document.activeElement, w = a.closest('.info') && document.getElementById(a.getAttribute('aria-controls'));
+              return [!!document.querySelector('dialog.sheet[open]'), a.getAttribute('aria-label'), a.getAttribute('aria-expanded'), !!w && w.textContent]; }"""))
+            turned447[hash_] = [words, sheet]
+        check("…an ⓘ open on Medications, the Overview and What you paid stays open across a redraw (1400 to 1200 px), focus kept on it (#447)",
+              all(b[0].startswith("About ") and b[1] == [b[0]] and not b[2] and a == [b[0], b[1], True] for b, a in kept447.values()), kept447)
+        check("…on a phone its sheet stays open as the phone turns, focus in it; Escape puts focus back on the ⓘ, its words back under it once (#447)",
+              all(s[0] == [w[0], True, False] and s[1] == [w[0], True, True] and s[2] == [False, w[0], "false", w[1]] for w, s in turned447.values()), turned447)
+        # (#447) no ⓘ is named after the period: on every records tab and view, the same names whatever the period, none with its words
+        strict.set_viewport_size({"width": 1400, "height": 900})
+        strict_records("overview")
+        names447 = {}
+        for tab, how in (("Overview", "switchTab('overview')"), ("Body and activity", "switchTab('health')"), ("Medications", "switchTab('medications')"), ("Timeline", "switchTab('timeline', 'timeline')"),
+                         ("Journal", "switchTab('timeline', 'journal')"), ("Labs", "switchTab('labs', 'chart')"), ("Labs heatmap", "switchTab('labs', 'heatmap')"),
+                         ("Costs", "switchTab('costs', 'claims')"), ("Costs paid", "switchTab('costs', 'paid')")):
+            strict.evaluate(how)
+            names447[tab] = []
+            for p_ in ("2y", "1y", "all", "m0"):
+                strict.evaluate(f"applyPreset('{p_}')")
+                strict.wait_for_timeout(200)
+                names447[tab].append(strict.evaluate("[periodLabel('all the records'), [...document.querySelectorAll('main .info > button')].filter(b => b.checkVisibility()).map(b => b.getAttribute('aria-label'))]"))
+        strict.evaluate("applyPreset('2y'); costState.view = 'claims'; switchTab('overview')")
+        named447 = {t: v for t, v in names447.items() if any(n != v[0][1] for _, n in v) or any(p_.lower() in x.lower() for p_, n in v for x in n)}
+        check("…no ⓘ is named after the period, on any records tab or view, in any period: the lane's “About the medications lane”, What you paid's “About what you paid” (#447)",
+              not named447 and "About the medications lane" in names447["Medications"][0][1] and "About what you paid" in names447["Costs paid"][0][1], named447 or names447)
+        # (#447) the words behind them say where things are from where they're read: Today's on Medications says below, the
+        # Overview's says the Medications tab; the calendar feed's names that tab
+        WORDS447 = "s => [...document.querySelectorAll(s)].map(w => w.textContent).join(' ')"
+        strict.evaluate("switchTab('medications')")
+        on_meds = strict.evaluate(WORDS447, "#medToday .about-words")
+        strict.evaluate("switchTab('overview')")
+        on_ov = strict.evaluate(WORDS447, "#ovDoses .about-words")
+        strict.goto(base + "/sharing.html?profile=1#calendar")
+        strict.wait_for_selector("#calendar:not([hidden])", timeout=10000)
+        strict.wait_for_timeout(300)
+        feed = strict.evaluate("(b => b ? document.getElementById(b.getAttribute('aria-controls')).textContent : '')(document.querySelector('.info > button[aria-label=\"About Calendar feed\"]'))")   # (alone in its group: beside the h1)
+        check("…worded for where they're read: Today's ⓘ on Medications (“its details, below”) and on the Overview (“on the Medications tab”); the calendar feed's (“the Medications tab”) (#447)",
+              "(its details, below)" in on_meds and "(its details, on the Medications tab)" in on_ov and "(the Medications tab)" in " ".join(feed.split()) and "Timeline →" not in feed,
+              [on_meds[:120], on_ov[:120], feed])
+        # (#447) a section's help moved behind its ⓘ is still found by the sidebar's search: Units', from another group
+        strict.goto(base + "/settings.html?profile=1#dashboard")
+        strict.wait_for_selector("main > nav.set-nav a[aria-current=page]", timeout=10000)
+        strict.wait_for_timeout(600)
+        strict.fill("#setFind", "Only exact conversions")
+        strict.wait_for_timeout(300)
+        units447 = strict.evaluate("[[...document.querySelectorAll('main section[id]')].filter(s => s.checkVisibility() && !s.parentElement.closest('section')).map(s => s.id), document.getElementById('setNone').hidden]")
+        strict.fill("#setFind", "")
+        check("…and Settings' search finds what's behind a section's ⓘ: “Only exact conversions” shows Units (#447)", units447 == [["sec-units"], True], units447)
         strict.set_viewport_size({"width": 1400, "height": 900})
         strict.evaluate("document.documentElement.dataset.theme = 'dark'")
         # what a person needs to decide stays in the leads (#176): a share link's reach, an export's privacy
@@ -9189,8 +9275,8 @@ def main():
             dir_text = page.inner_text("#directory")
             check("Admin: a group picked in the sidebar is the one shown, and the address says so",
                   js(display, "directory") != "none" and js(display, "sec-sync") == "none" and js("location.hash") == "#directory")
-            check("…the provider directory says what's loaded, and how to add Epic's and Oracle Health's lists",
-                  "Medicare" in dir_text and "not loaded" in dir_text and "python3 tools/build_directory.py" in dir_text, dir_text[:400])
+            check("…the provider directory says what's loaded, and how to add Epic's and Oracle Health's lists, and to run it again now and then, in sight (#447)",
+                  "Medicare" in dir_text and "not loaded" in dir_text and "python3 tools/build_directory.py" in dir_text and "again now and then (Epic suggests weekly)" in dir_text, dir_text[:400])
             for gid in ("accounts", "backups", "apps", "directory", "labs", "outside", "activity"):
                 page.click(f"#admNav a[data-group={gid}]")
                 page.set_viewport_size({"width": 375, "height": 800})
