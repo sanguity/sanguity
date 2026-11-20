@@ -161,9 +161,23 @@ const tlListed = (all = EV.filter(visible), listed = tlWorkListed()) => all.filt
 $("#sortSeg").onclick = ev => { const b = ev.target.closest("button[data-sort]"); if (!b) return; state.asc = b.dataset.sort === "asc"; renderList(); save(); };
 $("#tlWork").onclick = ev => { if (ev.target.getAttribute("aria-disabled") === "true") ev.preventDefault(); };   // (focusable still, its tip saying why)
 $("#tlWork").onchange = ev => { state.tlWork = ev.target.checked; renderList(); save(); };
-/* the line over the list: "The last year: 9 lab draws, 22 results, 3 out of range · 97 workouts, not listed" */
+/* the results of these lab draws, as Labs counts them (#451): the values on their days, and those out of range (e.n
+   counts reports, so "100 results, 67 out of range" read as 67 of 100 when it was 67 of 442 values); Labs' Vitals,
+   readings taken at visits, aren't a draw's. -> [n, abn] */
+function tlLabValues(labs) {
+  const from = [...new Set(labs.map(e => isoDay(e.ts)))].map(d => zParse(d + "T00:00:00")).sort((a, b) => a - b);
+  const to = from.map(t => zParse(isoDay(t + 1.5 * DAY) + "T00:00:00"));   // the next day's start
+  let n = 0, abn = 0;
+  if (from.length) for (const s of SERIES) if (!s.watch && s.panel !== "Vitals") for (const p of s.pts) {   // (a visit's vitals aren't a draw's)
+    let lo = 0, hi = from.length - 1;   // the last day that starts at or before it
+    while (lo < hi) { const m = (lo + hi + 1) >> 1; if (from[m] <= p.ts) lo = m; else hi = m - 1; }
+    if (from[lo] <= p.ts && p.ts < to[lo]) { n++; if (p[4]) abn++; }
+  }
+  return [n, abn];
+}
+/* the line over the list: "The last year: 9 lab draws, 31 results, 3 out of range · 97 workouts, not listed" */
 function tlSum(v, listed) {
-  const labs = v.filter(e => e.k === "lab"), res = labs.reduce((a, e) => a + (e.n || 0), 0), abn = labs.reduce((a, e) => a + (e.abn || 0), 0);
+  const labs = v.filter(e => e.k === "lab"), [res, abn] = tlLabValues(labs);
   const work = v.filter(isWork).length, parts = [], when = periodLabel();
   if (labs.length) parts.push(`${tlN(labs.length, "lab draw")}, ${tlN(res, "result")}${abn ? `, ${abn.toLocaleString()} out of range` : ""}`);
   if (work) parts.push(tlN(work, "workout") + (listed ? "" : ", not listed"));

@@ -24,29 +24,26 @@ $("#logout").onclick = logOut;   // util.js: asks first about what isn't saved (
 const small = (text, label, onclick) => el("button", {class: "btn small", type: "button", "aria-label": label, onclick}, text);   // text: words or an icon
 const beside = (text, label, onclick) => el("button", {class: "btn", type: "button", "aria-label": label, onclick}, text);   // a button in a row of fields: their height (#352)
 
-/* an ordered list of lab names: move up, down, remove, add (suggesting the profile's own labs). By panel, as the Labs
-   tab lists them (#441, labGroups in util.js): a list under each panel's name when there's more than one, a lab moving
-   within its own. A saved order whose panels are mixed is the same order grouped, not a change to save. */
+/* a set of lab names: remove, add (suggesting the profile's own labs). By panel, as the Labs tab lists them (#441,
+   labGroups in util.js): a list under each panel's name when there's more than one, each lab by the name it's shown by
+   (a nickname, with its name in the records beside it, as Key labs shows it). Its order does nothing (Labs' charts
+   follow the list, #441), so there's none to set (#451); a saved order whose panels are mixed is the same list. */
 function labsEditor(value, changed, ro) {
   const tidy = l => labGroups(l, LABS).flatMap(g => g.labs);
   let list = tidy(value);
   const box = el("div", {class: "set-list"}), lists = el("div", {class: "set-groups"});
   const input = el("input", {list: "labNames", placeholder: "Lab name", "aria-label": "Lab to add", maxlength: 120});
-  const li = i => lists.querySelectorAll("li")[i];
-  const row = (n, i, a, b) => el("li", {},   // a, b: the first and last place in its panel
-    el("span", {class: "set-name", text: n}),
-    ro ? null : el("span", {class: "set-acts"},
-      small(icon("arrow-up"), `Move ${n} up`, () => { if (i > a) { [list[i - 1], list[i]] = [list[i], list[i - 1]]; draw(); changed(); li(i - 1)?.querySelector("button")?.focus(); } }),
-      small(icon("arrow-down"), `Move ${n} down`, () => { if (i < b) { [list[i + 1], list[i]] = [list[i], list[i + 1]]; draw(); changed(); li(i + 1)?.querySelectorAll("button")[1]?.focus(); } }),
-      small("Remove", `Remove ${n}`, () => { list.splice(i, 1); draw(); changed(); })));
+  const row = n => el("li", {"data-lab": n},
+    el("span", {class: "set-name"}, nick(n), nick(n) !== n ? el("small", {class: "muted", text: ` (${n})`}) : null),
+    ro ? null : el("span", {class: "set-acts"}, small("Remove", `Remove ${nick(n)}`, () => {
+      const at = [...lists.querySelectorAll("li")].findIndex(li => li.dataset.lab === n);
+      list = list.filter(x => x !== n); draw(); changed();
+      (lists.querySelectorAll("li button")[at] || lists.querySelectorAll("li button")[at - 1] || input).focus();   // the next one's Remove, else the last's
+    })));
   function draw() {
     const gs = labGroups(list, LABS);
-    let at = 0;
-    lists.replaceChildren(...(list.length ? gs.flatMap(g => {
-      const a = at; at += g.labs.length;
-      return present(gs.length > 1 ? el("h4", {class: "lab-panel set-grp", text: g.panel}) : null,
-        el("ol", {class: "set-labs"}, ...g.labs.map((n, k) => row(n, a + k, a, at - 1))));
-    }) : [el("ol", {class: "set-labs"}, el("li", {class: "muted", text: "None"}))]));
+    lists.replaceChildren(...(list.length ? gs.flatMap(g => present(gs.length > 1 ? el("h4", {class: "lab-panel set-grp", text: g.panel}) : null,
+      el("ul", {class: "set-labs"}, ...g.labs.map(row)))) : [el("ul", {class: "set-labs"}, el("li", {class: "muted", text: "None"}))]));
   }
   const add = () => { const n = input.value.trim().replace(/\s+/g, " "); if (n && !list.includes(n)) { list = tidy([...list, n]); draw(); changed(); } input.value = ""; input.focus(); };
   input.addEventListener("keydown", ev => { if (ev.key === "Enter") { ev.preventDefault(); add(); } });

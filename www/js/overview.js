@@ -183,7 +183,9 @@ function labTile(s, since, lastDraw) {
    last two weeks of draws. Then the tiles, in the person's order, grouped by panel (labGroups, trends.js: #279) */
 function ovKeyLabs(lastDraw) {
   const keyLabs = keyLabTiles(CFG.overview.keyLabs, SERIES, JSON.stringify(CFG.overview.keyLabs) === JSON.stringify(DEFAULT_SETTINGS.overview.keyLabs));
-  const shown = keyLabs.map(seriesBy).filter(s => s && s.pts.length);
+  // a lab kept in two units is two series of one name (#438): its tile is the one with the latest result (#451)
+  const latestOf = n => SERIES.filter(s => s.name === n && !s.watch && s.pts.length).reduce((a, s) => !a || s.pts.at(-1).ts > a.pts.at(-1).ts ? s : a, null);
+  const shown = keyLabs.map(latestOf).filter(Boolean);
   const tally = new Map();
   for (const s of shown) if (s.pts.length > 1) { const d = isoDay(s.pts.at(-2).ts); tally.set(d, (tally.get(d) || 0) + 1); }
   const since = [...tally].sort((a, b) => b[1] - a[1] || b[0].localeCompare(a[0]))[0]?.[0] || null;   // the date most tiles compare with
