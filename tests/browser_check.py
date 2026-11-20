@@ -3415,6 +3415,13 @@ def main():
                 const cr2 = c.getBoundingClientRect(), hit = document.elementFromPoint(l.getBoundingClientRect().left + .5, cr2.top + cr2.height / 2);
                 return [hit && hit.tagName, getComputedStyle(l).pointerEvents]; })()""")
             check("the heatmap's month lines don't take a tap or a hover: the cell under one's pixel does (#479)", line479 == ["rect", "none"], line479)
+            under479 = js("""(() => { const c = document.querySelector('#hm rect.cell'), ls = [...document.querySelectorAll('#hm line')].filter(l => l.getAttribute('stroke') === 'var(--grid)');
+                const last = [...document.querySelectorAll('#hm rect.cell')].map(c => c.dataset.k).sort().at(-1), ms = [0, 1].map(b => { const d = new Date(dayTs(last.slice(0, 7) + '-15')); d.setMonth(d.getMonth() - b);
+                  return zdate(d.getTime()).toLocaleDateString(undefined, {month: 'short', year: '2-digit'}); });
+                const labels = [...document.querySelectorAll('#hmAxis text')].map(t => t.textContent);
+                return [ls.length > 0 && ls.every(l => l.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING), ms.some(m => labels.includes(m)), ms, labels.slice(-3)]; })()""")
+            check("…drawn under the cells, so a month's first draw keeps its colour; and the latest month (or the one before) is named on the axis (#479)",
+                  under479[0] and under479[1], under479)
             for w476 in (320, 375):
                 page.set_viewport_size({"width": w476, "height": 800})
                 settle(400)
@@ -5096,6 +5103,28 @@ def main():
             check("…hidden from its Timeline row, gone from the list, then Escape: focus on the row now where it was; merged into from its row: on that row (#417)",
                   hide417 is not None and hide417[2] == next417 and merged417 is not None and merged417[2] == str(merge417),
                   [hide417, next417, merged417, merge417])
+            # #479: opened from a tab's link at 1400 px (the palette leaves focus there), the docked drawer pushes that tab
+            # under More; Escape undocks it, More goes as all the tabs fit again, and focus is the tab's, not the page's
+            vw479 = page.viewport_size
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(300)
+            tab479 = js("""(() => { const t = document.getElementById('tab-labs'); if (!t || !t.checkVisibility()) return null; t.focus(); openEvent(EV.find(e => e.k === 'visit' && !e.hidden)); return t.id; })()""")
+            settle(600)
+            under479 = js("!document.getElementById('tab-labs').checkVisibility()")
+            page.keyboard.press("Escape")
+            settle(600)
+            back479 = js(IN_SIGHT)
+            check("…(#479) opened with focus on a tab's link, the drawer docked (the tab under More), then Escape: focus back on that tab",
+                  tab479 == "tab-labs" and back479 is not None and back479[1] == "tab-labs", [tab479, under479, back479])
+            # #479: Costs' By type of care: the largest group's bar no longer squeezes its note onto two lines
+            js("costState.view = 'claims'; switchTab('costs')")
+            settle(400)
+            notes479 = js("""[...document.querySelectorAll('#view-costs .cost-bar-note')].map(n => [n.textContent, Math.round(n.getBoundingClientRect().height / parseFloat(getComputedStyle(n).lineHeight))])""")
+            check("…Costs' groups (By type of care, Top providers) each keep their note on one line at 1400 px (#479)",
+                  notes479 and all(h <= 1 for _, h in notes479), notes479)
+            js("switchTab('timeline', 'timeline')")
+            page.set_viewport_size(vw479)
+            settle(300)
             # #421: a mark on the Timeline's chart clicked with the page at the top (a mark can't take focus, so nothing
             # opened the drawer), then closed by Escape and by ✕, docked (1400 px) and not (1100 px): the page stays where
             # it was, though the record's row is far down the list, and focus is on something in sight
@@ -5686,6 +5715,19 @@ def main():
             typo479 = js("""(() => { const e = {id: -9e8, k: 'journal', t: '2207-11-20T12:00:00', ts: dayTs('2207-11-20'), title: 'Fictional typo'}; EV.push(e); storeSpan();
                 const last = state.last; EV.splice(EV.indexOf(e), 1); storeSpan(); return [last <= Date.now() + 367 * DAY, last > Date.now()]; })()""")
             check("…(#479) one dated 2207 (a year typed wrong) moves All's end no more than a year ahead", typo479 == [True, True], typo479)
+            # …and the form refuses it, typed past its date's max (the picker's max alone didn't stop it): said, nothing saved
+            js("journalNew()")
+            settle(200)
+            n479 = js("JOURNAL.length")
+            page.fill("#dbody .jform input[type=date]", "2207-11-20")
+            page.fill("#dbody .jform input[type=text]", "Fictional typo (browser check)")
+            page.click("#dbody .jform button[type=submit]")
+            settle(400)
+            form479 = js("[JOURNAL.length, document.querySelector('#dbody .jform .edit-msg')?.textContent || '', document.activeElement.type]")
+            check("…(#479) the entry form refuses a date more than a year ahead, typed: it says to check the year, focus on the date, nothing saved",
+                  form479[0] == n479 and "more than a year ahead" in form479[1] and form479[2] == "date", [n479, form479])
+            page.keyboard.press("Escape")
+            settle(300)
             check("…(#475) and one dated a year ahead is listed under All, which runs to it, and not under 2 years",
                   span472["all"][0] == ["Fictional, dated ahead", "Fictional, written after the records"] and span472["all"][3]
                   and span472["2y"][0] == ["Fictional, written after the records"] and not span472["2y"][3], span472)

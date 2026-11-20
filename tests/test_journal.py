@@ -273,6 +273,7 @@ class Journal(unittest.TestCase):
             {"kind": "symptom", "t": "2026-02-30", "title": "Cough", "severity": 2},
             {"kind": "side_effect", "t": "2026-04-03", "title": "Rash", "severity": 2, "med": "Not in the records"},
             {"kind": "note", "t": "2026-04-03", "note": "x" * 5001},
+            {"kind": "note", "t": "2207-11-20", "note": "a year typed wrong"},                         # more than a year ahead (#479)
         ]
         for b in bad:
             r = self.robin.post(self.url(), json=b, headers=H)

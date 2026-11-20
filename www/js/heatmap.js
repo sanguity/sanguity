@@ -106,17 +106,25 @@ function renderHeatmap() {
     });
   });
   // month labels go in a separate axis strip that sticks to the bottom of the window until the heatmap's end scrolls into view
-  let lastM = "", lastLabelX = -1e9;
+  // the month lines go under the cells (#479): over them they took the taps, and on a phone's narrow columns they
+  // covered a month's first draw, its out-of-range colour with it; they show in the gaps between the rows
+  let lastM = "", lastLabelX = -1e9, lastT = null;
+  const lines = [];
   for (const [k, ts] of cols) {
     const m = k.slice(0, 7); if (m === lastM) continue; lastM = m;
     const cx = colX.get(k);
-    g.push(el("svg:line", {x1: cx, x2: cx, y1: top - 2, y2: H, stroke: "var(--grid)", "pointer-events": "none"}));   // over the cells, but a tap goes to the cell (#479)
+    lines.push(el("svg:line", {x1: cx, x2: cx, y1: top - 2, y2: H, stroke: "var(--grid)", "pointer-events": "none"}));
     ax.push(el("svg:line", {x1: cx, x2: cx, y1: 0, y2: 5, stroke: "var(--axis)"}));
     const t = zdate(ts).toLocaleDateString(undefined, {month: "short", year: "2-digit"});
+    lastT = null;
     if (cx - lastLabelX >= 44 && cx + 2 + labelW(t, "") <= W) { ax.push(el("svg:text", {x: cx + 2, y: AH - 6, text: t})); lastLabelX = cx; }   // one that would run past the grid's end, not cut there (#476)
+    else lastT = [cx, t];
   }
+  // the latest month named too, held inside the grid's end where it doesn't fit after its line (#479: the last year
+  // had no date at 1400 px), if it clears the label before it
+  if (lastT) { const x = Math.min(lastT[0] + 2, W - 2 - labelW(lastT[1], "")); if (x - lastLabelX >= 44) ax.push(el("svg:text", {x, y: AH - 6, text: lastT[1]})); }
   ax.push(el("svg:text", {x: LW - 8, y: AH - 6, "text-anchor": "end", text: "Draw date"}));
-  svg.replaceChildren(...g); axis.replaceChildren(...ax);
+  svg.replaceChildren(...lines, ...g); axis.replaceChildren(...ax);
   // a panel's name kept inside the label column (#441): cut short where it would run into the grid, whole in its tip
   for (const t of svg.querySelectorAll("text.grp")) {
     const full = t.textContent;

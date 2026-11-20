@@ -1434,6 +1434,10 @@ details.more.cost-more>:not(summary){max-width:none;color:var(--ink);font-size:v
 @media (max-height:500px){ #view-costs table.data th{top:0} }   /* the top bar scrolls away there */
 .ov-row[aria-pressed=true]{background:var(--hover)}   /* a row picked to filter (costs.js) */
 .cost-bar{display:inline-block;height:8px;border-radius:2px}
+/* a group's bars in what its note leaves, the note whole beside them, or under them where there's no room (#479) */
+.cost-bars{display:flex;flex-wrap:wrap;align-items:center;gap:2px var(--sp-2)}
+.cost-bar-run{display:flex;gap:2px;flex:1 1 7rem;min-width:0}
+.cost-bar-note{color:var(--muted)}
 @media (forced-colors:active){ .ov-row[aria-pressed=true]{outline:2px solid Highlight;outline-offset:-2px} .cost-bar{forced-color-adjust:none;background:CanvasText!important} }
 .cost-figs>.set-hd{flex-wrap:nowrap}   /* What you paid's ⓘ beside its heading at 320 px, the heading wrapping */
 @container (width < 560px){

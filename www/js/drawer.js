@@ -26,6 +26,18 @@ function closeDrawer() {
   const x = want && !mine ? drawerTo(sel) : null, at = drawerSpot(x);
   x?.focus({preventScroll: true});
   if (at) requestAnimationFrame(() => requestAnimationFrame(() => { if (!x.isConnected && document.activeElement === document.body) drawerFind(at)?.focus({preventScroll: true}); }));
+  // what opened it, shown again once the page is laid out without the drawer (#479: a tab under More while docked, More
+  // hidden as they all fit again, focus was left on the page)
+  if (want && r) {   // the tabs are laid out again a few frames on: tried each frame, for half a second at most
+    let n = 0;
+    const back = () => {
+      const a = document.activeElement;
+      if (a !== document.body && a !== r && a.checkVisibility() && !(a.id === "tabMoreBtn")) return;   // somewhere else on purpose
+      if (r.isConnected && r.checkVisibility()) { if (a !== r) r.focus({preventScroll: true}); return; }
+      if (++n < 30) requestAnimationFrame(back);
+    };
+    requestAnimationFrame(back);
+  }
   drawerReturn = drawerFrom = null;
 }
 $("#dclose").onclick = closeDrawer;

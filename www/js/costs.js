@@ -501,10 +501,13 @@ function barList(card, groups, onPick, active) {
       "data-tip": `${g.key}: ${g.n} claims · billed ${usd(g.billed)} · insurance paid ${usd(g.paid)} · your share ${usd(g.owe)}`},
       el("span", {class: "n", style: {fontWeight: 500}, text: g.key}),
       el("span", {class: "v", text: usd(g.paid + g.owe)}),
-      el("span", {class: "s", style: {display: "flex", gap: "2px", alignItems: "center"}},
-        el("span", {class: "cost-bar", style: {width: w1 + "%", background: "var(--c-lab)", borderRadius: w2 > 0.3 ? "2px 0 0 2px" : null}}),
-        w2 > 0.3 ? el("span", {class: "cost-bar", style: {width: w2 + "%", background: "var(--c-imaging)", borderRadius: "0 2px 2px 0"}}) : null,
-        el("span", {style: {marginLeft: "8px", color: "var(--muted)"}, text: `${g.n} claim${g.n === 1 ? "" : "s"}${g.owe >= 1 ? ` · your share ${usd(g.owe)}` : ""}`}))));
+      // the bars in what the note leaves, the note whole beside them, or under them where there's no room (#479: the
+      // largest's bar took the row and squeezed its note to two lines)
+      el("span", {class: "s cost-bars"},
+        el("span", {class: "cost-bar-run"},
+          el("span", {class: "cost-bar", style: {width: w1 + "%", background: "var(--c-lab)", borderRadius: w2 > 0.3 ? "2px 0 0 2px" : null}}),
+          w2 > 0.3 ? el("span", {class: "cost-bar", style: {width: w2 + "%", background: "var(--c-imaging)", borderRadius: "0 2px 2px 0"}}) : null),
+        el("span", {class: "cost-bar-note", text: `${g.n} claim${g.n === 1 ? "" : "s"}${g.owe >= 1 ? ` · your share ${usd(g.owe)}` : ""}`}))));
   }
 }
 /* the claims' costs as bars, one per month or per year (by), every one from the first shown to the last */
