@@ -472,8 +472,9 @@ from the internet; a phone on your home network or tailnet works without that.
 account, such as a clinician or a relative. You choose the sections (visits and stays, lab results, medications,
 procedures and imaging, upcoming appointments, the journal and, ticked on its own, its photos, costs), which labs, and a date range, and the form says
 plainly what anyone holding the link will see: the profile's name and those records, nothing else (no documents,
-report text, settings or other profiles, and nothing can be changed). A link stops working when it expires (an hour
-to 90 days), when any owner revokes it, or when the owner who made it stops being one. Every time it's opened is
+report text, settings or other profiles, and nothing can be changed). Its page lists each lab's latest result,
+by the names you give labs, with its history a click away, has a bar to go to each section, and prints cleanly.
+A link stops working when it expires (an hour to 90 days), when any owner revokes it, or when the owner who made it stops being one. Every time it's opened is
 logged in the profile's activity, with the address it came from. The link is shown once; Sanguity keeps only a hash
 of its token, which sits after the `#` so it never reaches a server log. The person you send it to needs to reach
 your Sanguity, so outside your home network or tailnet that means HTTPS from the internet.

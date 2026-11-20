@@ -34,7 +34,7 @@ same result from a file and the sync at the first pull's preview and sees it onc
 and linked again there)
 and follows its link to the import history, makes a share link on the account page and opens it with no session
 under the real CSP (only the chosen sections and lab, no cookie, at 375 px too), finds the view in the activity and
-revokes it (#47), checks the "not medical advice" notice on every tab and beside
+revokes it (#47), and a clinician's link's Latest results table, histories, sections' bar and print (#289), checks the "not medical advice" notice on every tab and beside
 out-of-range highlighting, sees a medication's start, dose change, stop and pharmacy fills as spans on the
 timeline, in its history in the drawer and, when ticked, under the Trends charts (#50, at 375 px too), opens every tab
 and every page's groups at 375 px in light and dark with nothing scrolling sideways and no control cut off or
@@ -2140,8 +2140,9 @@ def main():
         hp.wait_for_selector("#share-visits", timeout=10000)
         shown = hp.evaluate("[...document.querySelectorAll('#shareBody > section')].map(s => s.id)")
         check("share links: only the chosen sections", shown == ["share-visits", "share-results"], shown)
-        labs_shown = hp.evaluate("[...document.querySelectorAll('#share-results h3')].map(h => h.textContent)")
-        check("share links: only the chosen lab", len(labs_shown) == 1 and labs_shown[0].startswith(lab), labs_shown)
+        labs_shown = hp.evaluate("""[...document.querySelectorAll('#share-results .share-latest>tbody>tr')].filter(r => !r.classList.contains('share-panel'))
+          .map(r => r.textContent)""")   # #289: its row, and its history (under the profile's name for it, the report's in the history)
+        check("share links: only the chosen lab", len(labs_shown) == 2 and lab in "".join(labs_shown), labs_shown)
         check("share links: the page says whose records, until when, and not medical advice",
               "My records" in hp.inner_text("#shareHead") and "stops working on" in hp.inner_text("#shareHead") and "Not medical advice" in hp.inner_text("main"))
         check("share links: the token never appears in an API address, and only the view is asked for", api_paths == ["share/view"], api_paths)
@@ -2168,6 +2169,109 @@ def main():
               (shared_axe[0] + shared_axe[1])[:8] or "")
         shared_outline, shared_hbad = heading_outline(hp, "share.html")
         check("share links: …one h1, whose records they are, and no heading level skipped (#331)", not shared_hbad, shared_hbad or shared_outline)
+        # ---- the clinician's page (#289): a link to visits, every lab and medications, of any date. Lab results is one
+        # Latest results table, a row per test by the profile's name for it (Settings → Names: the demo's "Neutrophils
+        # (absolute)"), under its panel, flagged in words, whose name opens its history under it (a row per result, the
+        # report's name above them); Open every history opens them all. The sections' bar sticks under the header, its
+        # chips scrolling to a section, focus on its heading, and marking it (underlined, which forced colours keep), the
+        # token untouched. Printed, it's light whatever the theme, without the bar or the buttons. With every history
+        # open: axe at 1400, 375 and 320 px in light and dark, fitting 375 and 320 px and WCAG's text spacing, and the
+        # keyboard's stops each shown and clear of the two sticky bars, at 1400 and 375 px
+        made289 = strict.evaluate("""() => fetch('api/profiles/1/links', {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'},
+          body: JSON.stringify({sections: ['visits', 'results', 'medications'], label: 'Clinician (browser check)', hours: 1})}).then(r => r.json())""")
+        hp.set_viewport_size({"width": 1400, "height": 900})
+        hp.goto("about:blank")   # a new page, not the first link's with only its address after the # changed
+        hp.goto(base + "/" + made289["path"])
+        hp.wait_for_selector("#share-results .share-latest", timeout=10000)
+        l289 = hp.evaluate("""() => { const t = document.querySelectorAll('#share-results table.share-latest'), rows = [...t[0].tBodies].flatMap(b => [...b.rows]);
+          const tests = rows.filter(r => r.querySelector(':scope>th>.share-open'));
+          return {tables: t.length, h3: document.querySelectorAll('#share-results h3').length, tests: tests.map(r => r.querySelector('.share-open').textContent),
+            panels: rows.filter(r => r.classList.contains('share-panel')).map(r => r.textContent), cols: [...t[0].tHead.rows[0].cells].map(c => c.textContent),
+            hists: rows.filter(r => r.classList.contains('share-hist')).length, open: rows.filter(r => r.classList.contains('share-hist') && !r.hidden).length,
+            flags: tests.map(r => r.cells[3].textContent).filter(Boolean), sparks: t[0].querySelectorAll('svg.share-spark').length}; }""")
+        check("share links (#289): Lab results is one Latest results table (test, latest, range, flag, trend, results), a row per test by the "
+              "profile's name for it, not the report's, under its panel, flagged in words, its history closed",
+              l289["tables"] == 1 and l289["h3"] == 0 and l289["cols"] == ["Test", "Latest", "Range", "Flag", "Trend", "Results"]
+              and "Neutrophils (absolute)" in l289["tests"] and "Automated Abs Neutrophil Cnt" not in l289["tests"] and len(l289["panels"]) >= 2
+              and l289["hists"] == len(l289["tests"]) and l289["open"] == 0 and l289["sparks"] > 0
+              and all(f[0] in "▲▼◆" and f[2:] for f in l289["flags"]), l289)
+        HIST289 = """name => { const b = [...document.querySelectorAll('#share-results .share-open')].find(b => b.textContent === name),
+          h = document.getElementById(b.getAttribute('aria-controls')), row = b.closest('tr');
+          return {expanded: b.getAttribute('aria-expanded'), shown: h.checkVisibility(), next: row.nextElementSibling === h,
+            rows: h.querySelector('table').tBodies[0].rows.length, count: row.cells[row.cells.length - 1].textContent, named: h.querySelector('.hint')?.textContent || ''}; }"""
+        nbtn = hp.locator("#share-results .share-open", has_text="Neutrophils (absolute)")
+        nbtn.click()
+        opened = hp.evaluate(HIST289, "Neutrophils (absolute)")
+        nbtn.click()
+        closed = hp.evaluate(HIST289, "Neutrophils (absolute)")
+        every = hp.locator("#share-results .share-tools button", has_text="Open every history")
+        every.click()
+        all_open = hp.evaluate("[...document.querySelectorAll('#share-results .share-hist')].every(h => !h.hidden) && [...document.querySelectorAll('#share-results .share-open')].every(b => b.getAttribute('aria-expanded') === 'true')")
+        check("…a test's name opens its history under it, a row per result as many as its count, the report's name above them; again "
+              "closes it; Open every history opens every one",
+              opened["expanded"] == "true" and opened["shown"] and opened["next"] and opened["rows"] == int(opened["count"]) > 1
+              and "“Automated Abs Neutrophil Cnt”" in opened["named"] and closed["expanded"] == "false" and not closed["shown"]
+              and all_open and every.get_attribute("aria-pressed") == "true", [opened, closed, all_open])
+        hp.evaluate("scrollTo(0, 0)")
+        hp.wait_for_timeout(200)
+        BAR289 = """() => { const b = document.getElementById('shareBar'), h = document.activeElement;
+          return {chips: [...b.querySelectorAll('.chip')].map(c => c.textContent), sticky: getComputedStyle(b).position, top: parseFloat(getComputedStyle(b).top),
+            head: document.querySelector('body>header').offsetHeight, current: b.querySelector('[aria-current=true]')?.textContent || '',
+            focus: h.tagName + ' ' + h.textContent, in: h.closest('section')?.id || '', bottom: b.getBoundingClientRect().bottom,
+            h2: document.querySelector('#share-results h2').getBoundingClientRect().top, hash: location.hash.length, line: getComputedStyle(b.querySelector('[aria-current]')).textDecorationLine}; }"""
+        bar_at = hp.evaluate(BAR289)
+        hp.locator("#shareBar .chip", has_text="Lab results").click()
+        hp.wait_for_timeout(1200)
+        bar_went = hp.evaluate(BAR289)
+        hp.emulate_media(forced_colors="active")
+        bar_forced = hp.evaluate(BAR289)["line"]
+        hp.emulate_media(forced_colors="none")
+        check("…the sections' bar: a chip each, sticky under the header, the first marked; Lab results scrolls there, its heading "
+              "just under the bar with focus, marked (underlined, in forced colours too), the token kept",
+              bar_at["chips"] == ["Visits and hospital stays", "Lab results", "Medications"] and bar_at["sticky"] == "sticky"
+              and abs(bar_at["top"] - bar_at["head"]) < 1 and bar_at["current"] == "Visits and hospital stays"
+              and bar_went["focus"] == "H2 Lab results" and bar_went["in"] == "share-results" and bar_went["bottom"] <= bar_went["h2"] < bar_went["bottom"] + 60
+              and bar_went["current"] == "Lab results" and bar_went["hash"] == bar_at["hash"] == 44 and bar_forced == "underline", [bar_at, bar_went, bar_forced])
+        hp.set_viewport_size({"width": 760, "height": 1000})   # about a letter page's width
+        hp.emulate_media(media="print", color_scheme="dark")
+        printed = hp.evaluate("""() => ({gone: ['#shareBar', '#theme', '#shareHead .btn', '#share-results .share-tools .btn', '#share-results .share-open .icon']
+            .map(s => getComputedStyle(document.querySelector(s)).display), header: getComputedStyle(document.querySelector('body>header')).position,
+          ink: getComputedStyle(document.querySelector('#share-results h2')).color, fits: document.documentElement.scrollWidth <= innerWidth,
+          hist: document.querySelector('#share-results .share-hist').checkVisibility()})""")
+        hp.emulate_media(media="screen", color_scheme=None)
+        check("…printed (in a dark theme too): light ink, the header not sticky, no bar or buttons, the open histories printed, nothing wider than the page",
+              printed["gone"] == ["none"] * 5 and printed["header"] == "static" and printed["ink"] == "rgb(26, 25, 21)" and printed["fits"] and printed["hist"], printed)
+        a289, f289 = [], []
+        for width in (1400, 375, 320):
+            hp.set_viewport_size({"width": width, "height": 900 if width > 400 else 740})
+            for theme in ("light", "dark"):
+                hp.emulate_media(color_scheme=theme)
+                hp.wait_for_timeout(150)
+                a289 += axe_check(hp, f"share page (#289), every history open, {width} px, {theme}")[0]
+                if width < 400:
+                    f289 += phone_fits(hp, f"share page (#289), {width} px, {theme}")
+            if width < 1400 and os.environ.get("SANGUITY_SHOTS"):
+                hp.screenshot(path=os.path.join(os.environ["SANGUITY_SHOTS"], f"289-share-{width}-dark.png"), full_page=True)
+        hp.emulate_media(color_scheme=None)
+        hp.set_viewport_size({"width": 375, "height": 800})
+        hp.evaluate("""() => { const s = new CSSStyleSheet(); s.replaceSync('* { line-height: 1.5 !important; letter-spacing: .12em !important; word-spacing: .16em !important } '
+          + 'p { margin-bottom: 2em !important }'); document.adoptedStyleSheets = [s]; }""")   # WCAG's text spacing (1.4.12), under the CSP
+        hp.wait_for_timeout(200)
+        f289 += phone_fits(hp, "share page (#289), 375 px, text spacing")
+        hp.evaluate("document.adoptedStyleSheets = []")
+        k289 = []
+        for width in (1400, 375):
+            hp.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+            hp.wait_for_timeout(150)
+            k289 += focus_walk(hp, f"share page (#289), {width} px", stops=45)
+        hp.set_viewport_size({"width": 1400, "height": 900})
+        check("…with every history open: no serious axe-core finding at 1400, 375 and 320 px, light and dark; fitting 375 and 320 px and "
+              "with WCAG's text spacing; each Tab stop shown and clear of the header and the bar, at 1400 and 375 px",
+              not a289 and not f289 and not k289, (a289 + f289 + k289)[:8])
+        strict.evaluate("id => fetch('api/profiles/1/links/' + id, {method: 'DELETE', headers: {'X-Sanguity': '1'}})", made289["link"]["id"])
+        hp.goto("about:blank")
+        hp.goto(share_url)   # back to the first link, which is revoked below
+        hp.wait_for_selector("#share-visits", timeout=10000)
         strict.set_viewport_size({"width": 375, "height": 800})
         strict.wait_for_timeout(200)
         check("share links: the owner's panel fits 375 px", strict.evaluate("document.documentElement.scrollWidth") <= 375, strict.evaluate("document.documentElement.scrollWidth"))

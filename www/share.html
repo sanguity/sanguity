@@ -27,6 +27,8 @@
   <!-- a share link (#47): what an owner chose to show, read-only, for someone without an account. js/share.js reads
        the token from this address's fragment (never sent to the server) and posts it to the API. -->
   <section class="card" id="shareHead"><h1>Shared records</h1><p class="hint" id="shareStatus" role="status">Loading…</p></section>
+  <!-- the sections, a chip each, sticky under the header (#289; share.js shBar) -->
+  <nav class="share-bar" id="shareBar" aria-label="Sections" hidden></nav>
   <div id="shareBody"></div>
   <p class="notice share-notice"><strong>Not medical advice.</strong> This shows what the records say. Out-of-range results are
     flagged against the reference range printed on each result's own report. It doesn't diagnose, interpret results or

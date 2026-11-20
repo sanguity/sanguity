@@ -1517,6 +1517,15 @@ Everything on `main` so far; it becomes the first tagged release.
   typed), with its length ("1 page") beside its heading; the Preview button is gone. A share link's choices sit beside
   what a holder will see, which stays in sight under the top bar as they scroll, with Make the link under it. On
   narrower screens each is one under the other, as before.
+- **The clinician's share page: latest results first, history on demand, and print** (#289): a link with three
+  sections over a year drew a table per lab, 5,025 px tall at 1400 px and over 12,000 on a phone, with labs by the
+  report's raw names ("Automated Abs Neutrophil Cnt") and nothing to find a section by. Lab results is now one
+  **Latest results** table: a row per test, under its panel, by the name the profile gives it, with its latest result
+  and date, the range and flag printed on that report (▲ High, ▼ Low, in words), a sparkline and how many results
+  there are; a test's name opens its history under it, and **Open every history** opens them all. A bar of the
+  sections stays in view under the header and goes to each, and **Print** prints the records in light, without the
+  bar or buttons, whatever the theme. The same link is 1,978 px at 1400 px and about 4,600 on a phone. Every view is
+  still logged in the profile's activity.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
