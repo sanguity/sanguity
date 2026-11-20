@@ -19,6 +19,9 @@ function costFigures(box, head, rest, more) {
     el("summary", {text: "More figures"}), rest.length ? el("div", {class: "stats"}, ...rest) : null, more));
 }
 function costRows() { return inPeriod(DATA.costs || []); }
+/* a table that stacks where its box is narrow (#443): each row its first cell, then the others, each named by its
+   column (labelCells, util.js; table.stack, app.css), so no Costs table scrolls sideways. n: the table or its box */
+const stacked = n => { const t = n.matches("table") ? n : n.querySelector("table"); t.classList.add("stack"); labelCells(t); return n; };
 const isDenied = r => /DENIED/i.test(r.status || "");
 const sumOf = (rows, k) => rows.reduce((a, r) => a + (r[k] || 0), 0);
 function renderCosts() {
@@ -59,9 +62,9 @@ function renderCosts() {
         el("button", {type: "button", "aria-pressed": by === k, text: l, onclick: () => { costState.by = k; renderCosts(); }}))),
       viewSeg("#costBars", "the claims by " + by, renderCosts)));   // Chart | Table (#60)
   box.append(mc);
-  if (state.tables.has("#costBars")) mc.append(chartTable([by === "year" ? "Year" : "Month", "Insurance paid", "Your share", "Billed", "Claims"],
+  if (state.tables.has("#costBars")) mc.append(stacked(chartTable([by === "year" ? "Year" : "Month", "Insurance paid", "Your share", "Billed", "Claims"],
     [...costBuckets(rows, by)].reverse().map(([k, m]) => [by === "year" ? k : zdate(dayTs(k + "-15")).toLocaleDateString(undefined, {month: "long", year: "numeric"}),
-      usd(m.paid), usd(m.owe), usd(m.billed), m.n.toLocaleString()])));
+      usd(m.paid), usd(m.owe), usd(m.billed), m.n.toLocaleString()]))));
   else {
     mc.append(el("div", {class: "legend mb-2"},
       el("span", {}, el("i", {style: {background: "var(--c-lab)"}}), "Paid by insurance"),
@@ -82,11 +85,11 @@ function renderCosts() {
   if (rx.length) {
     const g = groupCosts(rx, r => r.title.replace(/\s+\d.*$/, ""));
     const pc = el("div", {class: "card"}, el("h2", {text: `Prescriptions (${rx.length} fills)`}));
-    pc.append(scrollBox({class: "tablewrap", "aria-label": "Prescriptions, by drug", style: {maxHeight: "360px"}}, el("table", {class: "data"},
+    pc.append(scrollBox({class: "tablewrap", "aria-label": "Prescriptions, by drug", style: {maxHeight: "360px"}}, stacked(el("table", {class: "data"},
       el("thead", {}, el("tr", {}, ["Drug", "Fills", "First", "Last", "Insurance paid", "Your share"].map((h, i) => el("th", {class: i === 1 || i > 3 ? "num" : null, text: h})))),
       el("tbody", {}, g.map(x => el("tr", {class: "link", onclick: () => { costState.q = x.key; costState.cat = "Pharmacy"; renderCosts(); $("#costTable").scrollIntoView({behavior: smoothly()}); }},
         el("td", {}, el("button", {class: "cell-btn", type: "button", text: x.key})), el("td", {class: "num", text: x.n}), el("td", {text: fmtD(dayTs(x.first))}), el("td", {text: fmtD(dayTs(x.last))}),
-        el("td", {class: "num", text: usd(x.paid)}), el("td", {class: "num", text: usd(x.owe)})))))));
+        el("td", {class: "num", text: usd(x.paid)}), el("td", {class: "num", text: usd(x.owe)}))))))));
     box.append(pc);
   }
   // claims table
@@ -111,11 +114,12 @@ function renderCosts() {
     el("p", {class: "hint", text: totals}));
   const cols = [["d", "Date"], ["title", "Service / drug"], ["prov", "Provider"], ["cat", "Type"], ["billed", "Billed"], ["paid", "Ins. paid"], ["owe", "Your share"], ["status", "Status"]];
   const money = ["billed", "paid", "owe"];   // right-aligned, in tabular figures (#278)
-  // under 600 px each claim is a stacked row, its headers a row of sort buttons (.claims, app.css; #278)
+  // where the table doesn't fit (under 680 px of box) each claim is a stacked row, its headers a row of sort buttons
+  // (.claims, app.css; #278, #443)
   tc.append(scrollBox({class: "tablewrap", "aria-label": "Claims", style: {maxHeight: "none"}}, el("table", {class: "data claims"},
     // a column's sort is a button in its header, its order said by aria-sort; a claim opens from its name, a button, or
     // anywhere on its row by pointer (#202: by keyboard too, and said as what they are)
-    el("thead", {}, el("tr", {}, cols.map(([key, h], i) => el("th", {scope: "col", class: money.includes(key) ? "num" : null, style: {whiteSpace: "nowrap"}, "aria-sort": costState.sort === key ? (costState.dir > 0 ? "ascending" : "descending") : null},
+    el("thead", {}, el("tr", {}, cols.map(([key, h], i) => el("th", {scope: "col", class: money.includes(key) ? "num" : null, "aria-sort": costState.sort === key ? (costState.dir > 0 ? "ascending" : "descending") : null},
       el("button", {class: "cell-btn", type: "button", onclick: () => {
         costState.dir = costState.sort === key ? -costState.dir : (["d", "billed", "paid", "owe"].includes(key) ? -1 : 1); costState.sort = key; renderCosts();
         $(`#costTable th:nth-child(${i + 1}) button`)?.focus(); }},   // the order an arrow (#257): ▲ and ▼ say out of range
@@ -126,7 +130,8 @@ function renderCosts() {
       ...money.map(k => el("td", {class: "num", text: usd(r[k])})),
       // its status only when it isn't the usual one (#278): "processed", or "paid" from a FHIR plan
       el("td", {class: isDenied(r) ? "abn" : null, text: (s => /^(processed|paid)?$/.test(s) ? "" : s)((r.status || "").replace(/_/g, " ").toLowerCase())})))))));
-  if (list.length > costState.limit) tc.append(el("button", {class: "btn", style: {marginTop: "8px"}, text: `Show ${Math.min(200, list.length - costState.limit)} more`, onclick: () => { costState.limit += 200; renderCosts(); }}));
+  if (list.length > costState.limit) tc.append(el("button", {class: "btn", type: "button", style: {marginTop: "8px"}, text: `Show ${Math.min(200, list.length - costState.limit)} more`,
+    onclick: () => { const n = costState.limit; costState.limit += 200; renderCosts(); $(`#costTable tbody tr:nth-child(${n + 1}) .cell-btn`)?.focus(); }}));   // the first one added (#443)
   box.append(tc);
 }
 /* ---- out of pocket (#55): payments typed in or from a finance app's export, and claims' shares with no payment.
@@ -267,10 +272,10 @@ function renderPaid(box, claimRows, periodLabel) {
     years.set(r.d.slice(0, 4), y);
   }
   costFigures(box, head, tiles, years.size ? el("div", {id: "oopTax", class: "card"}, el("h2", {text: "HSA and FSA, by year"}),
-    scrollBox({class: "tablewrap", "aria-label": "HSA and FSA, by year"}, el("table", {class: "data"},   // its columns scroll on a phone: a tab stop while they do (#335, #340)
+    scrollBox({class: "tablewrap", "aria-label": "HSA and FSA, by year"}, stacked(el("table", {class: "data"},   // stacked where narrow (#443)
       el("thead", {}, el("tr", {}, ["Year", "HSA", "FSA", "Amounts", "With a receipt"].map((h, i) => el("th", {class: i ? "num" : null, text: h})))),
       el("tbody", {}, [...years.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([y, v]) => el("tr", {},
-        el("td", {text: y}), ...[usd2(v.HSA), usd2(v.FSA), v.n, v.rc].map(t => el("td", {class: "num", text: t})))))))) : null);
+        el("td", {text: y}), ...[usd2(v.HSA), usd2(v.FSA), v.n, v.rc].map(t => el("td", {class: "num", text: t}))))))))) : null);
   // cumulative: share listed vs bills paid
   if (claims) {   // Chart | Table (#60): the table by month
     const bills = pays.filter(r => r.group === "Medical bills");
@@ -285,7 +290,7 @@ function renderPaid(box, claimRows, periodLabel) {
         acc[0] += s; acc[1] += p;
         return [zdate(dayTs(k + "-15")).toLocaleDateString(undefined, {month: "long", year: "numeric"}), usd(s), usd(p), usd(acc[0]), usd(acc[1]), usd(acc[0] - acc[1])];
       });
-      card.append(chartTable(["Month", "Your share listed", "Bills paid", "Share so far", "Paid so far", settled ? "Reduced so far" : "Difference"], out.reverse()));
+      card.append(stacked(chartTable(["Month", "Your share listed", "Bills paid", "Share so far", "Paid so far", settled ? "Reduced so far" : "Difference"], out.reverse())));
     } else {
       const svg = el("svg:svg", {role: "img", "aria-label": "Your share and the bills you paid, running totals. Table lists them by month."});
       card.append(el("div", {class: "legend mb-2"},
@@ -324,7 +329,7 @@ function renderPaid(box, claimRows, periodLabel) {
       () => { paidState.q = ""; renderCosts(); }, () => $("#paidTable .toggle") || $("#paidTable")));
   const toggle = r => { paidState.open = paidState.open === oopKey(r) ? null : oopKey(r); renderCosts(); const e = $("#oopEdit"); if (e) e.scrollIntoView({block: "nearest"}); };
   const shown = Math.max(paidState.limit, list.findIndex(r => oopKey(r) === paidState.open) + 1);   // the open one too
-  tw.append(scrollBox({class: "tablewrap", "aria-label": "Every amount out of pocket", style: {maxHeight: "420px"}}, el("table", {class: "data oop"},
+  tw.append(scrollBox({class: "tablewrap", "aria-label": "Every amount out of pocket", style: {maxHeight: "420px"}}, stacked(el("table", {class: "data oop"},
     el("thead", {}, el("tr", {}, ["Date", "Paid to", "For", "Where the number came from", "HSA/FSA", "Amount"].map((h, i) => el("th", {class: i === 5 ? "num" : null, text: h})))),
     // a row opens its editor under the table, from anywhere on it by pointer; its date is the button that says whether
     // it's open (#202: a table's row can't be expanded itself)
@@ -336,7 +341,7 @@ function renderPaid(box, claimRows, periodLabel) {
       el("td", {text: srcText(r) + (r.receipt != null ? " · receipt" : "")}),
       el("td", {text: r.hsa || ""}),
       el("td", {class: "num", style: {whiteSpace: "nowrap", color: r.amount < 0 ? "var(--good-text)" : null},
-        text: (r.amount < 0 ? `${usd2(-r.amount)} refund` : usd2(r.amount)) + (r.dup != null ? " · counted once" : "")})))))));
+        text: (r.amount < 0 ? `${usd2(-r.amount)} refund` : usd2(r.amount)) + (r.dup != null ? " · counted once" : "")}))))))));
   if (list.length > shown) tw.append(el("button", {class: "btn", type: "button", style: {marginTop: "8px"}, text: `Show ${Math.min(200, list.length - shown)} more`,
     onclick: () => { paidState.limit = shown + 200; renderCosts(); $(`#paidTable tbody tr:nth-child(${shown + 1}) .cell-btn`)?.focus(); }}));   // the first one added
   const open = paidState.open && rows.find(r => oopKey(r) === paidState.open);

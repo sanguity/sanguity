@@ -1452,6 +1452,13 @@ Everything on `main` so far; it becomes the first tagged release.
   events too adds the workouts not listed ("1 event matches" in the singular). With Watch the only kind shown, every
   workout is listed, yet List workouts read off and did nothing; it now reads on and can't be put off, its tip saying
   why. Body and activity's sync line moved out of the chart options with #442.
+- **No Costs table scrolls sideways, and Show 200 more keeps focus** (#443): from 601 to 680 px the claims' eight
+  columns didn't fit (Your share cut, dates on three lines), and at 375 px Prescriptions and every amount out of pocket
+  still scrolled. Each table now follows the room its box has, so a phone held sideways or a docked drawer counts too:
+  the claims are stacked rows under 680 px, and Prescriptions, the amounts out of pocket, HSA and FSA by year and the
+  charts' tables under 560 px, each value named by its column. Show 200 more on the claims leaves focus on the first
+  claim it adds. The Overview's Open Costs opens Claims, and Sources' "See them on Costs" after a payment opens What
+  you paid, rather than the view last used.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -322,7 +322,7 @@ function ovRecord() {
     const mini = (l, v) => el("div", {class: "tile"}, el("span", {class: "lbl", text: l}), el("span", {class: "val", text: v}));   // the tile (#260)
     cc.append(el("div", {class: "ov-minis"},
       mini("Billed", usd(sumOf(dx, "billed"))), mini("Paid by insurance", usd(sumOf(dx, "paid"))), mini("Your share", usd(sumOf(dx, "owe")))),
-      el("button", {class: "btn", onclick: () => { if (pm) setPeriod(msKey(pm)); pickTab("costs"); }}, "Open Costs ", icon("arrow-right")));   // the same period
+      el("button", {class: "btn", type: "button", onclick: () => { if (pm) setPeriod(msKey(pm)); costState.view = "claims"; pickTab("costs"); }}, "Open Costs ", icon("arrow-right")));   // the same period, on Claims (#443)
     right.push(ovHead(pm ? `Insurance costs since ${lcLabel(pm.label)}` : "Insurance costs"), cc);
   }
   return el("div", {class: "ov-cols"}, el("div", {}, ovHead("Health record"),

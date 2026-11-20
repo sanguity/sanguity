@@ -229,7 +229,7 @@
       clearTimeout(timer); seq++;
       const links = [names.length ? el("a", {href: recordsLink(p, "labs"), text: "See them on Labs", onclick: () => openTrends(p, names)}) : null,
         onTimeline ? el("a", {href: recordsLink(p, "timeline"), text: "See them on the timeline"}) : null,
-        onCosts ? el("a", {href: recordsLink(p, "costs"), text: "See them on Costs"}) : null,
+        onCosts ? el("a", {href: recordsLink(p, typed.payment ? "costs-paid" : "costs"), text: "See them on Costs"}) : null,   // a payment's on What you paid (#443)
         onOverview ? el("a", {href: recordsLink(p, "overview"), text: "See them on the Overview"}) : null,
         onHealth ? el("a", {href: recordsLink(p, "health"), text: "See them on Body and activity"}) : null,
         typed.height ? el("a", {href: `settings.html?profile=${p}#about`, text: "See the height history"}) : null].filter(Boolean);
