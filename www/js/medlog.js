@@ -77,7 +77,7 @@ function medLogSection(m) {
         el("span", {class: "dose-says"}, el("b", {text: DOSE_LABEL[d.status]}), " · " + doseWhen(d) + (d.dose ? ` · ${d.dose}` : "")),
         el("span", {class: "dose-src", text: d.phone ? `From ${d.app}` : `Logged by ${d.by || "someone"}` + (d.slot ? ` · reminder at ${mrTime(d.slot)}` : "")}),
         d.note ? el("span", {class: "dose-note", text: d.note}) : null,
-        write && !d.phone ? el("span", {class: "mr-acts"},
+        write && !d.phone ? el("span", {class: "mr-acts needs-server"},
           el("button", {class: "btn small", type: "button", text: "Edit", "aria-label": "Edit the dose " + doseSay(d), onclick: () => doseForm(m, d)}),
           el("button", {class: "btn small", type: "button", text: "Remove", "aria-label": "Remove the dose " + doseSay(d), onclick: async () => {
             if (!await ask({title: "Remove this dose from the log?", message: doseSay(d) + ".", action: "Remove", danger: true})) return;
@@ -91,7 +91,7 @@ function medLogSection(m) {
     out.push(list, more);
   }
   const msg = el("p", {class: "hint edit-msg", role: "status"});
-  if (write && cur) out.push(el("div", {class: "btns"}, el("button", {class: "btn", type: "button", text: "Log a dose", onclick: () => doseForm(m, null)})));
+  if (write && cur) out.push(el("div", {class: "btns"}, el("button", {class: "btn needs-server", type: "button", text: "Log a dose", onclick: () => doseForm(m, null)})));
   out.push(el("p", {class: "hint", text: "What was logged, as it was said: taken, taken late or skipped. A record kept for the person, not medical advice."}), msg);
   return out;
 }
@@ -116,7 +116,7 @@ function doseForm(m, d, preset = {}) {
   const form = el("form", {class: "jform", novalidate: true},
     el("div", {class: "jfield"}, el("span", {class: "jlabel", text: "What happened"}), seg),
     el("div", {class: "jwhen"}, row("Date", date), row("Time", time)), row("Note (optional)", note),
-    el("div", {class: "btns"}, el("button", {class: "btn primary", type: "submit", text: d ? "Save" : "Log dose"}),
+    el("div", {class: "btns"}, el("button", {class: "btn primary needs-server", type: "submit", text: d ? "Save" : "Log dose"}),
       el("button", {class: "btn", type: "button", text: "Cancel", onclick: () => openMedication(m)})), msg);
   form.onsubmit = ev => {
     ev.preventDefault();

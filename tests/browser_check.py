@@ -14730,6 +14730,42 @@ def main():
                       says: !!box && box.textContent.includes("needs the server: you're offline"), sent: (DATA.doses || []).length !== n || !!document.querySelector(c + ' .edit-msg:not(:empty)')}; }""", card)
             check("offline (#439): today's doses on the Medications tab and the Overview: the buttons disabled, saying why, and a press sends nothing",
                   all(v["buttons"] > 0 and v["off"] and v["says"] and not v["sent"] for v in off439.values()), off439)
+            # (#449) nor anywhere else that saves: in a current medication's drawer Log a dose, Add a reminder and a
+            # reminder's or a dose's Edit, Turn off and Remove; its reminder form's and dose form's Save; and Costs'
+            # out-of-pocket editor (Paid with, Paid the claim, Save): each button off, its tip the reason, each field
+            # disabled, its title the reason; a press or a submit sends nothing
+            WHY449 = "Needs the server: you're offline"
+            CTRL449 = """sel => [...document.querySelectorAll(sel)].map(c => [(c.getAttribute('aria-label') || c.textContent).trim().slice(0, 40),
+                c.matches('button') ? c.getAttribute('aria-disabled') === 'true' && c.dataset.tip === "Needs the server: you're offline"
+                  : c.disabled && c.title === "Needs the server: you're offline"])"""
+            ph.evaluate("openMedication(MEDS.find(mrCurrent))")
+            ph.wait_for_selector("#dbody .sect", timeout=5000)
+            off449 = {"drawer": [c for c in ph.evaluate(CTRL449, "#dbody button") if re.match(r"(Log a dose|Add (a|another) reminder|(Edit|Turn o(n|ff)|Remove) the (reminder|dose))", c[0])]}
+            sent449 = ph.evaluate("[(DATA.reminders || []).length, (DATA.doses || []).length]")
+            for form, call in (("reminder form", "medReminderForm(MEDS.find(mrCurrent), null)"), ("dose form", "doseForm(MEDS.find(mrCurrent), null)")):
+                ph.evaluate(call)
+                ph.wait_for_selector("#dbody form", timeout=5000)
+                off449[form] = ph.evaluate(CTRL449, "#dbody form button[type=submit]")
+                ph.evaluate("document.querySelector('#dbody form button[type=submit]').click(); document.querySelector('#dbody form').requestSubmit()")
+                ph.wait_for_timeout(300)
+                off449[form + " says"] = ph.evaluate("document.querySelector('#dbody form .edit-msg').textContent")
+            off449["sent"] = ph.evaluate("[(DATA.reminders || []).length, (DATA.doses || []).length]") != sent449
+            ph.evaluate("closeDrawer()")
+            ph.evaluate("switchTab('costs', 'paid')")
+            ph.wait_for_selector("#paidTable tbody tr .cell-btn", timeout=5000)
+            ph.evaluate("document.querySelector('#paidTable tbody tr .cell-btn').click()")
+            ph.wait_for_selector("#oopEdit", timeout=5000)
+            off449["costs"] = ph.evaluate(CTRL449, "#oopEdit .oop-form :is(button, select)")
+            ph.evaluate("[...document.querySelectorAll('#oopEdit button')].find(b => b.textContent === 'Save').click()")
+            ph.wait_for_timeout(300)
+            off449["costs says"] = ph.evaluate("document.querySelector('#oopEdit .oop-msg').textContent")
+            ph.evaluate("paidState.open = null; costState.view = 'claims'; renderCosts()")
+            names449 = {c[0] for c in off449["drawer"]}
+            check("offline (#449): the medication drawer's Log a dose, Add a reminder, Edit and Remove, its forms' Save and Costs' editor are off, each saying why, and a press or a submit sends nothing",
+                  {"Log a dose"} <= names449 and any(n.startswith("Add") for n in names449)
+                  and all(ok for k in ("drawer", "reminder form", "dose form", "costs") for _, ok in off449[k])
+                  and "Save" in [c[0] for c in off449["costs"]] and len(off449["costs"]) >= 2
+                  and off449["reminder form says"] == off449["dose form says"] == off449["costs says"] == "" and not off449["sent"], off449)
             tab_click(ph, "#tab-labs")
             ph.wait_for_selector("#charts svg", timeout=10000)
             check("offline: Trends draws from the kept copy", ph.evaluate("document.querySelectorAll('#charts svg').length") > 0)

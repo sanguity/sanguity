@@ -1515,6 +1515,11 @@ Everything on `main` so far; it becomes the first tagged release.
   HSA and FSA by year came as an h2 before the view's own; the view's heading leads its figures now, with it an h3
   under it. The three claims figures sat two and one on Costs and unevenly on the Overview; on both they're three in a
   row where each has room, one under another where not.
+- **Offline, nothing offers to save** (#449): #439 turned off today's dose buttons offline, but a medication's drawer
+  still offered Log a dose, Add a reminder (a whole form) and a reminder's Edit, Turn off and Remove, and Costs'
+  out-of-pocket editor its Paid with, Paid the claim and Save, each failing with "You're offline. This needs the
+  server." Offline they're off now, a button saying "Needs the server: you're offline" as its tip and a field as its
+  title, and a press or a form's submit does nothing.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

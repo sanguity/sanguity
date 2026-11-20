@@ -219,7 +219,7 @@ function oopEditor(r) {
     const opts = r.type === "claim" ? [["auto", "Not tagged"], ["HSA", "HSA"], ["FSA", "FSA"]]
       : [["auto", r.hsaFrom === "account" || r.hsaFrom === "typed" ? `As ${r.hsaFrom === "typed" ? "typed in" : "the account says"} (${r.hsa})` : "Not tagged"], ["HSA", "HSA"], ["FSA", "FSA"], ["none", "Neither"]];
     const hsa = el("select", {id: "oopHsaSel"}, ...opts.map(([v, t]) => el("option", {value: v, text: t, selected: v === now || null})));
-    const form = el("div", {class: "oop-form"}, el("label", {for: "oopHsaSel"}, el("span", {text: "Paid with"}), hsa));
+    const form = el("div", {class: "oop-form needs-server"}, el("label", {for: "oopHsaSel"}, el("span", {text: "Paid with"}), hsa));   // Save and its fields: off offline (offline.js, #449)
     let claim = null;
     if (r.type === "pay") {
       const near = ((DATA.oop || {}).claims || []).map(s => (DATA.costs || []).find(c => c.id === s.id)).filter(Boolean)
