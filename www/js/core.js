@@ -261,7 +261,16 @@ const visible = e => !e.hidden && state.cats.has(CAT_OF[e.k]?.k) && inRange(e) &
 
 /* tooltip */
 const tip = $("#tip");
-function showTip(nodes, ev) { tip.replaceChildren(...nodes.filter(Boolean)); tip.style.display = "block"; const pad = 14, r = tip.getBoundingClientRect(); let x = ev.clientX + pad, y = ev.clientY + pad; if (x + r.width > innerWidth - 8) x = ev.clientX - r.width - pad; if (y + r.height > innerHeight - 8) y = ev.clientY - r.height - pad; tip.style.left = x + "px"; tip.style.top = y + "px"; }
+/* beside the pointer, right and below, else left or above; kept 8 px inside the screen (#476: a phone's 270 px tip ran
+   off its left), and where it fits on neither side, over the pointer's column, above or below it */
+function showTip(nodes, ev) {
+  tip.replaceChildren(...nodes.filter(Boolean)); tip.style.display = "block";
+  const pad = 14, m = 8, r = tip.getBoundingClientRect(), W = document.documentElement.clientWidth, H = innerHeight, {clientX: cx, clientY: cy} = ev;
+  const side = cx + pad + r.width <= W - m ? cx + pad : cx - pad - r.width >= m ? cx - pad - r.width : null;
+  const y = cy + pad + r.height <= H - m ? cy + pad : cy - pad - r.height;
+  const clamp = (v, size, max) => Math.max(m, Math.min(v, max - m - size));
+  tip.style.left = clamp(side ?? cx - r.width / 2, r.width, W) + "px"; tip.style.top = clamp(y, r.height, H) + "px";
+}
 function hideTip() { tip.style.display = "none"; }
 addEventListener("keydown", e => { if (e.key === "Escape") hideTip(); });   // a hover's readout goes with Escape, the pointer left where it is (1.4.13, #202)
 function showEvTip(e, ev) {

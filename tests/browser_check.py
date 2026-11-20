@@ -3040,6 +3040,33 @@ def main():
                     open473[f"{w473}×{h473} row {i}"] = js(OPEN473)
                     page.keyboard.press("Enter")   # and closed again
                     settle(200)
+            # #476: at 667×375 the headings stuck over the amounts wrap to 63 px, past the cells' 40 px scroll margin: Shift+Tab
+            # up the dates left 2 of 8 under them, and in a French browser (below) the editor's Close gave focus back to a
+            # date half under them. The margin is the headings' measured height: every date Shift+Tab reaches, and the one
+            # Close returns to, is uncovered
+            SEEN476 = """() => { const a = document.activeElement, r = a.getBoundingClientRect(), hit = document.elementFromPoint(Math.min(innerWidth - 2, r.left + 4), r.top + Math.min(r.height / 2, 8));
+                return [a.matches('#paidTable tbody .cell-btn'), a.textContent.trim(), Math.round(r.top), !!hit && (hit === a || a.contains(hit))]; }"""
+            def walk476(pg):
+                """What you paid at 667×375: Shift+Tab up eight dates from the 13th, then three rows' editors closed by Close"""
+                pg.set_viewport_size({"width": 667, "height": 375})
+                pg.evaluate("paidState.open = null; switchTab('costs', 'paid')")
+                pg.wait_for_timeout(400)
+                pg.evaluate("(b => { b.scrollIntoView({block: 'end'}); b.focus({preventScroll: true}); })(document.querySelectorAll('#paidTable tbody tr[data-oop] .cell-btn')[12])")
+                up, shut = [], []
+                for _ in range(8):
+                    pg.keyboard.press("Shift+Tab")
+                    pg.wait_for_timeout(120)
+                    up.append(pg.evaluate(SEEN476))
+                for i in (0, 3, 7):
+                    pg.evaluate("i => (b => { b.scrollIntoView({block: 'center'}); b.focus(); })(document.querySelectorAll('#paidTable tbody tr[data-oop] .cell-btn')[i])", i)
+                    pg.keyboard.press("Enter")
+                    pg.wait_for_timeout(400)
+                    pg.locator("#oopEdit button", has_text="Close").focus()
+                    pg.keyboard.press("Enter")
+                    pg.wait_for_timeout(400)
+                    shut.append(pg.evaluate(SEEN476))
+                return up, shut
+            walk476en = walk476(page)
             # #473: a claim opened at 1300 and 1400 px, its name's button at the window's bottom: once the drawer has docked,
             # its whole row is in sight (the button was, ending at the window's edge, its row's second line cut)
             ROW473 = """b => { const r = b.closest('tr').getBoundingClientRect(), th = b.closest('table').tHead?.rows[0].cells[0],
@@ -3078,6 +3105,9 @@ def main():
             check("…Enter on a payment's date at 568×320 and 667×375 leaves the date in sight, the editor's top under it, as much of the editor as fits (#473)",
                   len(open473) == 4 and all(v[0] and v[1] >= 0 and v[2] <= v[3] < v[5] and v[6] for v in open473.values())
                   and open473["568×320 row 0"][4] > 320, open473)
+            walk476_ok = lambda up, shut: len(up) == 8 and len(shut) == 3 and all(v[0] and v[3] for v in up + shut)
+            check("…at 667×375, its headings wrapped to 63 px, Shift+Tab up eight of its dates and the editor's Close leave the date uncovered (#476, 2.4.11)",
+                  walk476_ok(*walk476en), walk476en)
             check("…and a claim opened at 1300 and 1400 px from the window's bottom has its whole row in sight once the drawer has docked (#473)",
                   len(dock473) == 4 and all(v[0] >= 0 and v[1] >= 0 and v[3] for v in dock473.values()), dock473)
             check("…the headings in order in both views, More figures open: What you paid's HSA and FSA by year an h3 under its h2",
@@ -3354,6 +3384,44 @@ def main():
                 const e = byId.get(state.selEv);
                 return {vals, fills: new Set(cells.map(c => c.style.fill)).size, tips, opened: e ? [e.imp === imp, isoDay(e.ts) === d] : null}; }""", [day470, imp470])
             page.keyboard.press("Escape")
+            # #476: a split cell's ▲ needs 3 px of its part, as a whole cell's does, and the legend's "zoom in" hint went by
+            # the whole cell: on the ten-year All at 1400 px a part was 2.48 px of a 4.96 px cell, the 1.6 H by colour
+            # alone. The same here, the box narrowed to give 4.5 px columns (parts of 2.25), and 8 px (parts of 4): the
+            # 1.6's mark or the hint shows, the hint not where every part is wide enough
+            SPLIT476 = r"""([d, cw]) => { const w = document.getElementById('hmWrap'), n = new Set([...document.querySelectorAll('#hm rect.cell')].map(c => c.dataset.k)).size;
+                const x = 128 + cw * n; w.style.width = (x < 600 ? x : 198 + cw * n) + 'px'; renderHeatmap();
+                const cells = [...document.querySelectorAll(`#hm rect.cell[data-s='Creatinine'][data-k='${d}']`)], hi = cells.find(c => /--div-hi/.test(c.style.fill))?.getBoundingClientRect();
+                const marked = !!hi && [...document.querySelectorAll('#hm .hm-mark')].some(m => (r => r.x >= hi.x - .5 && r.right <= hi.right + .5 && r.y >= hi.y - 1 && r.bottom <= hi.bottom + 1)(m.getBoundingClientRect()));
+                const out = {cell: Math.round(+document.querySelector('#hm rect.cell').getAttribute('width') * 100) / 100, parts: cells.map(c => Math.round(c.width.baseVal.value * 100) / 100),
+                  marked, hint: document.getElementById('hmLegend').innerText.includes('zoom in')};
+                w.style.width = ''; renderHeatmap(); return out; }"""
+            split476 = {cw: js(SPLIT476, [day470, cw]) for cw in (4.5, 8)}
+            # #476: at 320 px the grid was laid out 320 px wide in its 270 px box (the right 50 px cut, the columns there out
+            # of reach, a month's label cut); in its box's own width every column is in it, at 320 and 375 px, in the past
+            # year and All, its labels too. And a tip, 270 px wide there, from a left, middle and right cell is inside the
+            # screen, 8 px clear (it was 128 px past its left edge from a left cell, and 40 to 64 from a middle one)
+            FIT476 = """() => { const w = document.getElementById('hmWrap').getBoundingClientRect(), out = [...document.querySelectorAll('#hm rect.cell, #hmAxis text')]
+                .map(c => [c.dataset.k || c.textContent, c.getBoundingClientRect()]).filter(([, r]) => r.left < w.left - .5 || r.right > w.right + .5);
+              return [new Set([...document.querySelectorAll('#hm rect.cell')].map(c => c.dataset.k)).size, out.length, out.slice(0, 3).map(([k, r]) => k + ' ' + Math.round(r.right) + '>' + Math.round(w.right))]; }"""
+            TIP476 = """k => { const c = document.querySelector(`#hm rect.cell[data-k='${k}']`); c.scrollIntoView({block: 'center'}); const r = c.getBoundingClientRect();
+                c.dispatchEvent(new PointerEvent('pointermove', {bubbles: true, clientX: r.x + r.width / 2, clientY: r.y + r.height / 2}));
+                const t = document.getElementById('tip').getBoundingClientRect(); hideTip();
+                return [Math.round(t.left), Math.round(t.right), Math.round(t.top), Math.round(t.bottom), innerWidth, innerHeight]; }"""
+            fit476, tip476 = {}, {}
+            for w476 in (320, 375):
+                page.set_viewport_size({"width": w476, "height": 800})
+                settle(400)
+                for per in ("1y", "all"):
+                    js("p => { setPeriod(p); renderAll(); }", per)
+                    settle(200)
+                    fit476[f"{w476} {per}"] = js(FIT476)
+                    if per == "1y":
+                        ks = js("[...new Set([...document.querySelectorAll('#hm rect.cell')].map(c => c.dataset.k))].sort()")
+                        for name, k in (("left", ks[0]), ("middle", ks[len(ks) // 2]), ("right", ks[-1])):
+                            tip476[f"{w476} {name}"] = js(TIP476, k)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(400)
+            js("setPeriod('all'); renderAll()")
             js("state.tables.add('#hm'); renderHeatmap()")
             hmt471 = js(r"""d => { const t = document.querySelector('#hmTable table'), i = [...t.querySelectorAll('thead th')].findIndex(h => h.textContent === fmtD(dayTs(d)));
                 const td = [...t.querySelectorAll('tbody tr')].find(r => /^Creatinine \(/.test(r.querySelector('th')?.firstChild.textContent || ''))?.children[i];
@@ -3383,6 +3451,15 @@ def main():
             check("…and its table's cell gives both, each on its line with its time, the 1.6 said high (#471)",
                   hmt471 and [x.split(" ")[0].rstrip(",") for x in hmt471["lines"]] == v471 and all(x.endswith(")") for x in hmt471["lines"])
                   and len(hmt471["abn"]) == 1 and hmt471["abn"][0].startswith("1.6 ▲ high"), hmt471)
+            s45, s8 = split476[4.5], split476[8]
+            check("…a split cell's parts under the 3 px a ▲ needs, its cell wider (4.5 px, as the ten-year All's 4.96), the legend says to zoom in; "
+                  "with parts of 4 px the 1.6 is marked and the legend doesn't (#476)",
+                  s45["cell"] >= 3 and len(s45["parts"]) == 2 and max(s45["parts"]) < 3 and (s45["marked"] or s45["hint"]) and s45["hint"]
+                  and min(s8["parts"]) >= 3 and s8["marked"] and not s8["hint"], split476)
+            check("heatmap at 320 and 375 px, the past year and All: every column, and every month's label, inside its box (#476, 1.4.10)",
+                  len(fit476) == 4 and all(n > 0 and not out for n, out, _ in fit476.values()), fit476)
+            check("…and a cell's tip from a left, middle and right cell, at 320 and 375 px, is inside the screen, 8 px clear of each side (#476)",
+                  len(tip476) == 6 and all(l >= 8 and r <= iw - 8 and t >= 0 and b <= ih and r > l for l, r, t, b, iw, ih in tip476.values()), tip476)
             # #458: the importers cut a long one at a whole name, with "…"; one cut mid-name at 160 characters before that
             # has the name it cut left out for the "…", not recased half ("…, Hepatic PA")
             cut458 = js("""(() => { const names = ['COMPREHENSIVE METABOLIC PANEL', 'CBC WITH DIFFERENTIAL', 'HEPATIC FUNCTION PANEL', 'LIPID PANEL',
@@ -14819,6 +14896,7 @@ def main():
                     dock473fr[f"{w} row {i}"] = frp.evaluate(f"i => ({ROW473})(document.querySelectorAll('#costTable tbody .cell-btn')[i])", i)
                     frp.keyboard.press("Escape")
                     frp.wait_for_timeout(500)
+            walk476fr = walk476(frp)   # #476: What you paid's dates at 667×375, in French too
             fr_ctx.close()
             check("the Overview's insurance figures in a French browser fit 375 and 320 px (#342)",
                   not fr_bad and any("$US" in t for t in fr_seen), fr_bad[:6] or fr_seen)
@@ -14830,6 +14908,8 @@ def main():
                   "the row given focus is in sight once the page is wider again (#467)", not dock467 and (1300, True) in fold467, dock467 or sorted(fold467))
             check("…and a claim opened from the window's bottom at 1300 (stacked) and 1400 px has its whole row in sight once the drawer has docked (#473)",
                   len(dock473fr) == 4 and all(v[0] >= 0 and v[1] >= 0 and v[3] for v in dock473fr.values()) and dock473fr["1300 row 20"][2], dock473fr)
+            check("…and at 667×375 Shift+Tab up eight of What you paid's dates and the editor's Close leave the date uncovered (#476, 2.4.11)",
+                  walk476_ok(*walk476fr), walk476fr)
             page.set_viewport_size({"width": 1400, "height": 900})
             # forced colours (Windows' high contrast): a filled button (Save, Sign in, a dialog's action) keeps an edge
             ctx = browser.new_context(viewport={"width": 1400, "height": 900}, forced_colors="active")
