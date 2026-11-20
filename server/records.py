@@ -449,6 +449,17 @@ def page(db, pid):
     return None if not e or e["page"] is None else (e["page"], e["rev"])
 
 
+def journal_page(db, pid):
+    """(the records page's data for a profile with journal entries but nothing imported: no records but the journal,
+    the records' revision), or None when it has no entries either (#472: the records page shows the Timeline's
+    Journal view for it, and the command palette finds its entries, rather than "no records yet")."""
+    e = _entry(db, pid)
+    entries = e and journal.listing(db, pid)
+    if not entries:
+        return None
+    return _dumps(units.annotate({"imports": {}, "events": [], "details": {}, "labs": [], "costs": [], "journal": entries})), e["rev"]
+
+
 def page_reply(db, pid, reply):
     """(reply, a change's answer, with the records page's data as "records" (null when there are none) as JSON bytes,
     the records' revision). For a change any record may show, an edit or a link between results: the page puts these

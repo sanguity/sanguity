@@ -1643,6 +1643,15 @@ Everything on `main` so far; it becomes the first tagged release.
   saying the other; each opens its own draw; the table gives both, each with its time. Under "metabolic", listing the
   clinic's draw only, the line said "7 results …, 1 out of range" from the 1.6 on its day; it counts the listed draws'
   own results, as their badges do.
+- **Journal entries after the latest record are in the Timeline's period, the palette leaves your period as it was,
+  and a profile with only a journal shows it** (#472): the periods end at the latest record, which was the latest
+  import's or the watch's, so a symptom logged after the last import was outside "Last 2 years" ("Events (0)") and,
+  two weeks later, outside All too; the journal's and cycle tracking's entries count, as soon as they're saved.
+  Following the palette's "Search the Timeline" from another page saved All as your period for every tab; it shows
+  everything for that visit and keeps yours. Its count said "0 events" for "walk" with the walking workouts listed
+  above it; it says "· 65 workouts, not listed", as the line over the list does. A profile with journal entries and
+  nothing imported said "no records yet", and the palette found nothing there; it opens on the Timeline's Journal view,
+  a first entry saved there shows at once, and the palette finds its entries.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -216,6 +216,25 @@ class Journal(unittest.TestCase):
             self.assertIn(r.status_code, (200, 201), r.text)
             self.assertEqual(r.headers["X-Records-Rev"], rev())
 
+    def test_a_journal_with_nothing_imported(self):
+        """#472: a profile with journal entries but no records has its journal as its records' data (no records but
+        the journal), so the records page shows it and the palette finds it; with none, it has no records yet (204)"""
+        r = self.robin.post("/api/profiles", json={"name": "Journal only, fictional"}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        pid = r.json()["id"]
+        data = lambda: self.robin.get(f"/api/profiles/{pid}/data")
+        self.assertEqual(data().status_code, 204)
+        r = self.robin.post(f"/api/profiles/{pid}/journal", json={"kind": "note", "t": "2026-04-03", "note": "Fictional"}, headers=H)
+        self.assertEqual(r.status_code, 201, r.text)
+        got = data()
+        self.assertEqual(got.status_code, 200, got.text)
+        self.assertEqual(got.headers["X-Records-Rev"], r.headers["X-Records-Rev"])
+        d = got.json()
+        self.assertEqual((d["events"], d["labs"], d["imports"], [e["note"] for e in d["journal"]]), ([], [], {}, ["Fictional"]))
+        self.assertEqual(self.kim.get(f"/api/profiles/{pid}/data").status_code, 404)   # still only for its members
+        self.robin.delete(f"/api/profiles/{pid}/journal/{r.json()['id']}", headers=H)
+        self.assertEqual(data().status_code, 204)
+
     def test_what_cant_be_saved(self):
         bad = [
             {"kind": "mood", "t": "2026-04-03", "note": "x"},

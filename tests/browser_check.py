@@ -5510,6 +5510,23 @@ def main():
             page.reload()
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && booted", timeout=20000)
             check("…all removed again", js("JOURNAL.length === 0 && (CFG.journal?.groups || []).length === 0 && !document.querySelector('#tl .jmood')"))
+            # #472: an entry written after the latest record is in the period that ends at the latest record (the default
+            # 2 years said "Events (0)" for one), and under All, past its padding too; deleted, the span is the records' again
+            last472 = js("[state.max, state.preset]")
+            ids472 = [js("""([t, note]) => api(`profiles/${PROFILE.id}/journal`, {method: 'POST', body: JSON.stringify({kind: 'note', t, note})})
+                .then(r => r.json()).then(j => { storePut('journal', j); return j.id; })""", [js(f"isoDay(state.max + {d} * DAY)"), f"Fictional, {d} days after the records"])
+                for d in (4, 150)]
+            span472 = {}
+            for per in ("2y", "all"):
+                js(f"applyPreset('{per}'); pickTab('timeline', 'timeline')")
+                settle(200)
+                span472[per] = js("""[tlListed().filter(e => e.k === 'journal').map(e => e.j.note), [...document.querySelectorAll('#list .tl-row')]
+                    .some(r => r.textContent.includes('150 days after')), document.getElementById('listTitle').textContent]""")
+            js("ids => Promise.all(ids.map(i => api(`profiles/${PROFILE.id}/journal/${i}`, {method: 'DELETE'}).then(r => r.json()).then(j => storePut('journal', j))))", ids472)
+            js(f"applyPreset('{last472[1]}')")
+            check("a journal entry dated after the latest record is listed under the default period (2 years) and under All, past its padding too, and the span is the records' again once it's gone (#472)",
+                  all(v[0] == ["Fictional, 150 days after the records", "Fictional, 4 days after the records"] and v[1] for v in span472.values())
+                  and js("state.max") == last472[0], [span472, last472, js("state.max")])
             js("pickTab('timeline', 'timeline')")   # the timeline again, not the journal (#277)
             tab_click(page, "#tab-timeline")
             settle()
@@ -8383,6 +8400,36 @@ def main():
                   js("[...document.querySelectorAll('main .empty-next')].map(a => a.getAttribute('href'))") == ["guide.html?profile=2"]
                   and js("location.pathname") == "/", js("[...document.querySelectorAll('main .empty-next')].map(a => a.getAttribute('href'))"))
             check("the header links to the import page", js("!document.getElementById('importLink').hidden"))
+            # #472: a journal entry saved there (Add offers it) is shown at once, on the Timeline's Journal view, as on
+            # every load while the profile has nothing imported, and the palette finds it (it said "no records yet", and
+            # the records' data was "none" with it); deleted, the profile has no records again
+            state472 = js("localStorage.getItem('ht-state:2')")
+            js("void jSend('', {method: 'POST', body: JSON.stringify({kind: 'symptom', t: '2026-03-02', title: 'Fictional earache', severity: 3})}, el('p'), {created: true})")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 2", timeout=20000)
+            settle(300)
+            only472 = js("""[location.hash, state.tab, state.tlView, !!document.querySelector('main .empty'), !document.querySelector('.tabs').hidden,
+                document.getElementById('journalHome')?.checkVisibility() && document.getElementById('journalHome').innerText.includes('Fictional earache')]""")
+            page.keyboard.press("Control+k")
+            page.wait_for_selector("dialog.palette[open]", timeout=5000)
+            page.fill("#palQ", "earache")
+            page.wait_for_function("() => [...document.querySelectorAll('#palList .pal-t')].some(t => t.textContent === 'Fictional earache')", timeout=10000)
+            page.keyboard.press("Escape")
+            page.goto(base + "/?profile=2")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 2", timeout=20000)
+            only472.append(js("[location.hash, state.tab, state.tlView]"))
+            bad472 = axe_check(page, "a profile with only a journal")[0]
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            bad472 += phone_fits(page, "a profile with only a journal")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("Promise.all(JOURNAL.map(e => api(`profiles/${PROFILE.id}/journal/${e.j.id}`, {method: 'DELETE'})))")
+            js("s => s === null ? localStorage.removeItem('ht-state:2') : localStorage.setItem('ht-state:2', s)", state472)
+            page.goto(base + "/?profile=2")
+            page.wait_for_function("document.querySelector('main .empty') && PROFILE && PROFILE.name === 'Second person'", timeout=10000)
+            check("an empty profile with a journal entry shows it on the records page, on the Timeline's Journal view, saved there and on a load, axe-clean; "
+                  "the palette finds it; deleted, the profile has no records yet again (#472)",
+                  only472 == ["#timeline-journal", "timeline", "journal", False, True, True, ["#timeline-journal", "timeline", "journal"]] and not bad472
+                  and "no records yet" in page.inner_text("main"), [only472, bad472])
 
             # ---- import page: upload a fictional C-CDA in a zip into the empty profile; it's imported in the background
             # (#20) and its records reach the timeline. Then single files, with #20's hook stood in for. Reached through
@@ -12047,6 +12094,15 @@ def main():
             check("…and its line to the Timeline says how many the Timeline then shows, in its period: “Everything on file: 45 events”, “The last year: 9 events”",
                   all(said.endswith(f"{'Everything on file' if k.startswith('all') else 'The last year'}: {shows[8:-1]} events") and shows.startswith("Events (")
                       for k, (said, shows) in line463.items()) and line463["all hemoglobin"] != line463["1y hemoglobin"], line463)
+            # #472: and the workouts it leaves out, as the line over the list says them ("walk" said "0 events", six
+            # walking workouts listed above it)
+            js("window._was472 = [state.tlWork, state.cats]; state.tlWork = false; state.cats = new Set(CATS.map(c => c.k)); setPeriod('all'); switchTab('overview')")
+            pal("walk")
+            walk472 = [js(pal_ev)[-1], js("EV.filter(e => e.k === 'exercise' && e._q.includes('walk')).length")]
+            page.keyboard.press("Escape")
+            js("[state.tlWork, state.cats] = window._was472")
+            check("…(#472) “walk” says its workouts aren't listed: “Everything on file: 0 events · N workouts, not listed”",
+                  walk472[0] == f"Search the Timeline for “walk”, Everything on file: 0 events · {walk472[1]:,} workouts, not listed", walk472)
             # (a lab result the Timeline doesn't hide, as a report of no lab day is: its title as Labs names its panel)
             js("window._lr463 = EV.find(e => e.k === 'labitem' && e.title === 'MAGNESIUM'); _lr463.hidden = false")
             pal("magnesium")
@@ -12139,6 +12195,17 @@ def main():
                   len([t for t, i in walk470 if ", Workout (watch) · " in t and i == "i-watch"]) > 1
                   and ["i-stethoscope"] == list({i for t, i in visit470 if ", Visit · " in t}) and ["i-banknote"] == list({i for t, i in visit470 if ", Insurance claim · " in t})
                   and not any(i == "i-file-text" and ", Document · " not in t for t, i in walk470 + visit470), [walk470, visit470])   # (a document's is a file's)
+            # (#472: with the workouts not listed, its line to the Timeline names them, as the line over the list does; it
+            # said "0 events on file")
+            was472 = js("localStorage.getItem('ht-state:1')")
+            js("s => localStorage.setItem('ht-state:1', JSON.stringify({...JSON.parse(s || '{}'), cats: undefined, tlWork: false, v: 2}))", was472)
+            pal("walk")
+            page.wait_for_function("() => [...document.querySelectorAll('#palList .pal-t')].some(t => t.textContent.startsWith('Search the Timeline'))", timeout=15000)
+            walk472 = js(pal_ev)[-1]
+            page.keyboard.press("Escape")
+            js("s => s === null ? localStorage.removeItem('ht-state:1') : localStorage.setItem('ht-state:1', s)", was472)
+            check("…(#472) and “walk”'s line to the Timeline says its workouts aren't listed: “0 events on file · N workouts, not listed”",
+                  re.fullmatch(r"Search the Timeline for “walk”, 0 events on file · ([\d,]+) workouts, not listed", walk472) is not None, walk472)
             was470 = js("localStorage.getItem('ht-state:1')")
             js("s => localStorage.setItem('ht-state:1', JSON.stringify({...JSON.parse(s || '{}'), preset: '2y', v: 2}))", was470)
             pal("hemoglobin")
@@ -12148,10 +12215,21 @@ def main():
             page.wait_for_function("() => typeof booted !== 'undefined' && booted && state.tab === 'timeline' && state.q === 'hemoglobin'", timeout=20000)
             settle(400)
             shows470 = js("[document.getElementById('listTitle').textContent, state.preset]")
+            # (#472: everything on file for this visit; the period saved is still the person's, kept on another tab and a
+            # reload, until they pick one)
+            js("switchTab('overview')")
+            saved472 = [js("JSON.parse(localStorage.getItem('ht-state:1')).preset")]
+            page.reload()
+            page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+            saved472.append(js("state.preset"))
+            js("applyPreset('1y'); save()")
+            saved472.append(js("JSON.parse(localStorage.getItem('ht-state:1')).preset"))
             js("s => s === null ? localStorage.removeItem('ht-state:1') : localStorage.setItem('ht-state:1', s)", was470)
             check("…(#470) and on a profile whose saved period is 2 years, its count off the records page is the Timeline's once followed, on everything on file",
                   re.fullmatch(r"Search the Timeline for “hemoglobin”, ([\d,]+) events on file", said470) is not None
                   and shows470 == [f"Events ({re.search(r', ([\d,]+) events', said470)[1]})", "all"], [said470, shows470])
+            check("…(#472) following it from Settings leaves the saved period as it was, 2 years, on another tab and after a reload, until another is picked",
+                  saved472 == ["2y", "2y", "1y"], saved472)
             page.goto(base + "/settings.html?profile=1")
             page.wait_for_selector("#sections > section", state="attached", timeout=10000)
             pal("platelets")
@@ -13061,11 +13139,12 @@ def main():
             zb.click("#drawer [role=radio]:text-is('Note')")
             zb.fill("#drawer textarea", "A first note")
             zb.click("#drawer button[type=submit]")
-            zb.wait_for_function("!document.getElementById('drawer').open", timeout=10000)
-            saved = zb.inner_text("#sgToasts .sg-toast:last-child .sg-toast-text")
-            check("…on an empty profile, Add → Log a dose from another page says there's no medication to log, and Journal entry opens its form and saves",
+            # (#472: and shows it at once, on the Timeline's Journal view: the page again, as it has records now)
+            zb.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {pid3} && state.tlView === 'journal'", timeout=20000)
+            saved = zb.evaluate("[location.hash, document.getElementById('journalHome').checkVisibility() && document.getElementById('journalHome').innerText.includes('A first note')]")
+            check("…on an empty profile, Add → Log a dose from another page says there's no medication to log, and Journal entry opens its form, saves, and shows the entry on the Timeline's Journal view (#472)",
                   dose_said == "Shared empty profile has no current medication to log a dose for." and form == "New journal entry"
-                  and saved.startswith("Saved.") and len(zb.evaluate(f"fetch('api/profiles/{pid3}/journal').then(r => r.json()).then(j => j.entries)")) == 1,
+                  and saved == ["#timeline-journal", True] and len(zb.evaluate(f"fetch('api/profiles/{pid3}/journal').then(r => r.json()).then(j => j.entries)")) == 1,
                   [dose_said, form, saved])
             sdb.execute("UPDATE memberships SET role='editor' WHERE user_id=? AND profile_id=1", (uid2,))
             zb.goto(base + "/?profile=1#medications")

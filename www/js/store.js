@@ -116,9 +116,12 @@ function labDayWords() {
     e._q = e._q0 + " " + [...(d ? d.ids.map(i => byId.get(i)?.title || "") : []), ...names, ...names.map(nice)].join(" ").toLowerCase();
   }
 }
-/* the records' span, the watch's last day included */
+/* the records' span, the watch's last day included, and the journal's and cycle tracking's entries (EV, #472): one
+   written after the latest import is in the period that ends at the latest record, as the palette finds it */
 function storeSpan() {
-  const ts = DATA.events.map(e => e.ts).filter(isFinite); state.min = Math.min(...ts); state.max = Math.max(...ts);
+  let min = Infinity, max = -Infinity;
+  for (const e of EV) if (isFinite(e.ts)) { if (e.ts < min) min = e.ts; if (e.ts > max) max = e.ts; }
+  state.min = min; state.max = max;
   for (const s of SERIES) if (s.watch && s.pts.length) state.max = Math.max(state.max, s.pts[s.pts.length - 1].ts);
 }
 /* the watch data from the Health Connect receiver, joined to the records: its charts in SERIES, its workouts, ECGs and
@@ -168,7 +171,10 @@ function storeWatch() {
 function storePut(list, reply) {
   if (list === "oop") { DATA.oop = reply.oop || undefined; storeChanged("costs"); return; }
   DATA[list] = putRows(DATA[list], list, reply);
-  if (list === "journal") { journalLoad(); YEARS = null; } else if (list === "doses") medLogLoad();
+  if (list === "journal") {   // the span with it, and a period ending at the latest record with that (#472)
+    journalLoad(); YEARS = null; storeSpan();
+    if (booted && state.preset !== "custom") setPeriod(state.preset);
+  } else if (list === "doses") medLogLoad();
   storeChanged(list === "journal" ? "journal" : "medications");
 }
 /* a list's rows with a change's reply put in, as the server lists them: reminders as they were set, the rest by date

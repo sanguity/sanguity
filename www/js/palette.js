@@ -235,16 +235,18 @@ const SgPalette = (() => {
       let s = null;
       try { s = JSON.parse(localStorage.getItem("ht-state:" + pid()) || "null"); } catch (e) {}   // (core.js save)
       const cats = savedCats(s), cat = e => CAT_OF[e.k]?.k, lanes = new Set(REC.events.map(cat).concat(REC.steps ? ["watch"] : []));
-      const work = s?.tlWork === true || (cats.has("watch") && [...lanes].every(k => !k || k === "watch" || !cats.has(k)));
-      return many(hit.filter(e => cats.has(cat(e)) && (work || e.k !== "exercise")).length) + " on file";
+      const work = s?.tlWork === true || (cats.has("watch") && [...lanes].every(k => !k || k === "watch" || !cats.has(k))), shown = hit.filter(e => cats.has(cat(e)));
+      return many(shown.filter(e => work || e.k !== "exercise").length) + " on file" + unlisted(work ? 0 : shown.filter(e => e.k === "exercise").length);
     }
     const was = state.q;
     state.q = lq;
     try {
-      const n = tlListed().length, when = periodLabel();
-      return `${when[0].toUpperCase() + when.slice(1)}${timelineFilters().narrowed ? ", with these filters" : ""}: ${many(n)}`;
+      const all = EV.filter(visible), n = tlListed(all).length, when = periodLabel();
+      return `${when[0].toUpperCase() + when.slice(1)}${timelineFilters().narrowed ? ", with these filters" : ""}: ${many(n)}${unlisted(tlWorkListed() ? 0 : all.filter(isWork).length)}`;
     } finally { state.q = was; }
   }
+  /* the workouts found that the list leaves out, as the line over it says them (timeline.js tlSum, #472) */
+  const unlisted = w => w ? ` · ${w.toLocaleString()} workout${w === 1 ? "" : "s"}, not listed` : "";
 
   /* how well something matches what's typed (#403), the same in every group, lower better: 0 its title is what's typed
      (#452: the Journal view before Add's Journal entry), .5 its title starts with it all, 1 each word typed starts a word of the title, 2 the first does, 3 only what else it's known by has them;
@@ -439,7 +441,7 @@ const SgPalette = (() => {
      page (all), on everything on file, as the line said (tlCount, #470) */
   function timeline(q, all) {
     if (!onRecords) return arrive("timeline", q, "#timeline");
-    if (all) setPeriod("all");
+    if (all) periodVisit("all");   // for this visit: the person's own period stays saved (core.js, #472)
     $("#q").value = q;
     state.q = q.toLowerCase();
     pickTab("timeline");
