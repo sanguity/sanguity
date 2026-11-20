@@ -1652,6 +1652,12 @@ Everything on `main` so far; it becomes the first tagged release.
   above it; it says "· 65 workouts, not listed", as the line over the list does. A profile with journal entries and
   nothing imported said "no records yet", and the palette found nothing there; it opens on the Timeline's Journal view,
   a first entry saved there shows at once, and the palette finds its entries.
+- **Costs: a payment's editor opened on a sideways phone keeps its date in sight, and a claim opened as the drawer
+  docks is in sight whole** (#473): Enter on a payment's date opened an editor taller than the window and lined its top
+  up with the window's, so the date that had focus went 10 to 34 px above the screen at 568×320; the date's row comes
+  into sight first, then as much of the editor under it as fits. A claim opened as the drawer docked at 1300 or 1400 px
+  brought only its name into sight, at the window's bottom edge, its date, provider and amounts cut off (42 px of a
+  stacked row in a French browser); its whole row is brought into sight.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

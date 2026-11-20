@@ -3023,6 +3023,42 @@ def main():
                 [...p.parentElement.querySelectorAll('.about-words p')].map(x => x.textContent).join(' ')])(document.querySelector('#view-costs .cost-figs > p.hint'))""")
             js("DATA.outOfPocket.payments = DATA.outOfPocket.payments.filter(p => p.key !== 'manual:check467')")
             js("paidState.open = null; renderCosts()")
+            # #473: Enter on a payment's date on a sideways phone, its editor taller than the window: the date stays in sight
+            # (it was 10 to 34 px above the window at 568×320), the editor's top under it
+            OPEN473 = """() => { const a = document.activeElement, r = a.getBoundingClientRect(), e = document.getElementById('oopEdit')?.getBoundingClientRect(),
+                hit = document.elementFromPoint(r.left + 4, r.top + r.height / 2);
+                return [a.matches('#paidTable .cell-btn[aria-expanded=true]'), Math.round(r.top), Math.round(r.bottom), e && Math.round(e.top), e && Math.round(e.height), innerHeight,
+                  !!hit && (hit === a || a.contains(hit))]; }"""
+            open473 = {}
+            for w473, h473 in ((568, 320), (667, 375)):
+                page.set_viewport_size({"width": w473, "height": h473})
+                settle(400)   # the redraw the resize starts (timeline.js, 120 ms later) done first, not after the Enter
+                for i in (0, 5):
+                    js("i => (b => { b.scrollIntoView({block: 'center'}); b.focus(); })(document.querySelectorAll('#paidTable tbody tr[data-oop] .cell-btn')[i])", i)
+                    page.keyboard.press("Enter")
+                    settle(300)
+                    open473[f"{w473}×{h473} row {i}"] = js(OPEN473)
+                    page.keyboard.press("Enter")   # and closed again
+                    settle(200)
+            # #473: a claim opened at 1300 and 1400 px, its name's button at the window's bottom: once the drawer has docked,
+            # its whole row is in sight (the button was, ending at the window's edge, its row's second line cut)
+            ROW473 = """b => { const r = b.closest('tr').getBoundingClientRect(), th = b.closest('table').tHead?.rows[0].cells[0],
+                top = Math.max(0, document.querySelector('header.topbar').getBoundingClientRect().bottom, th?.checkVisibility() ? th.getBoundingClientRect().bottom : 0);
+                return [Math.round(r.top - top), Math.round(innerHeight - r.bottom), !!b.closest('table.fold'), document.documentElement.classList.contains('sg-docked')]; }"""
+            js("costState.view = 'claims'; renderCosts()")
+            dock473 = {}
+            for w473 in (1300, 1400):
+                page.set_viewport_size({"width": w473, "height": 900})
+                settle(250)
+                for i in (5, 20):
+                    js("i => (b => { b.scrollIntoView({block: 'end'}); b.focus(); })(document.querySelectorAll('#costTable tbody .cell-btn')[i])", i)
+                    page.keyboard.press("Enter")
+                    page.wait_for_function("document.documentElement.classList.contains('sg-docked')", timeout=5000)
+                    settle(500)
+                    dock473[f"{w473} row {i}"] = js(f"i => ({ROW473})(document.querySelectorAll('#costTable tbody .cell-btn')[i])", i)
+                    page.keyboard.press("Escape")
+                    settle(500)
+            js("costState.view = 'paid'; renderCosts(); scrollTo(0, 0)")
             page.set_viewport_size({"width": 1400, "height": 900})
             HEADS448 = "[...document.querySelectorAll('main h1, #view-costs :is(h2, h3, h4)')].filter(h => h.checkVisibility() || h.closest('details')).map(h => h.tagName + ' ' + h.textContent.trim().slice(0, 30))"
             heads448 = {}
@@ -3039,6 +3075,11 @@ def main():
             check("…and one line at 390 px with all three sources, a payment typed in too, each named in it and in full behind its ⓘ (#467)",
                   hint467[1] == 1 and all(w in hint467[0] for w in ("typed in", "export", "claims")) and "payments typed in" in hint467[2]
                   and "a finance export" in hint467[2] and "claims' shares with no payment matched" in hint467[2], hint467)
+            check("…Enter on a payment's date at 568×320 and 667×375 leaves the date in sight, the editor's top under it, as much of the editor as fits (#473)",
+                  len(open473) == 4 and all(v[0] and v[1] >= 0 and v[2] <= v[3] < v[5] and v[6] for v in open473.values())
+                  and open473["568×320 row 0"][4] > 320, open473)
+            check("…and a claim opened at 1300 and 1400 px from the window's bottom has its whole row in sight once the drawer has docked (#473)",
+                  len(dock473) == 4 and all(v[0] >= 0 and v[1] >= 0 and v[3] for v in dock473.values()), dock473)
             check("…the headings in order in both views, More figures open: What you paid's HSA and FSA by year an h3 under its h2",
                   all(in_order(h) for h in heads448.values()) and any(h.startswith("H3 HSA and FSA, by year") for h in heads448["paid"]), heads448)
             # #448: the three claims figures laid out alike on the Overview and Costs at 320, 375, 390 and 1400 px: three in
@@ -14651,6 +14692,20 @@ def main():
                         shut = frp.evaluate(f"i => (a => [a === document.querySelectorAll('#costTable tbody .cell-btn')[i], ...({SEEN467})(a)])(document.activeElement)", i)
                         if not (opened[2] and opened[4] and shut[0] and shut[3] and not shut[5]):
                             dock467[f"{w} row {i} {how}"] = [opened, shut]
+            # #473: …and opened with its name's button at the window's bottom, at 1300×900 (stacked) and 1400, its whole row
+            # is in sight once docked (stacked, 42 px of it was cut: its date, provider, type and amounts)
+            dock473fr = {}
+            for w in (1300, 1400):
+                frp.set_viewport_size({"width": w, "height": 900})
+                frp.wait_for_timeout(250)
+                for i in (20, 60):
+                    frp.evaluate("i => (b => { b.scrollIntoView({block: 'end'}); b.focus(); })(document.querySelectorAll('#costTable tbody .cell-btn')[i])", i)
+                    frp.keyboard.press("Enter")
+                    frp.wait_for_function("document.documentElement.classList.contains('sg-docked')", timeout=5000)
+                    frp.wait_for_timeout(500)
+                    dock473fr[f"{w} row {i}"] = frp.evaluate(f"i => ({ROW473})(document.querySelectorAll('#costTable tbody .cell-btn')[i])", i)
+                    frp.keyboard.press("Escape")
+                    frp.wait_for_timeout(500)
             fr_ctx.close()
             check("the Overview's insurance figures in a French browser fit 375 and 320 px (#342)",
                   not fr_bad and any("$US" in t for t in fr_seen), fr_bad[:6] or fr_seen)
@@ -14660,6 +14715,8 @@ def main():
                   not fr465 and fold465 == {True, False}, fr465[:6] or fold465)
             check("…and at 1300 and 1400 px a claim opened is in sight once the drawer has docked (at 1300 the claims stacked), and closed by Escape or ✕ "
                   "the row given focus is in sight once the page is wider again (#467)", not dock467 and (1300, True) in fold467, dock467 or sorted(fold467))
+            check("…and a claim opened from the window's bottom at 1300 (stacked) and 1400 px has its whole row in sight once the drawer has docked (#473)",
+                  len(dock473fr) == 4 and all(v[0] >= 0 and v[1] >= 0 and v[3] for v in dock473fr.values()) and dock473fr["1300 row 20"][2], dock473fr)
             page.set_viewport_size({"width": 1400, "height": 900})
             # forced colours (Windows' high contrast): a filled button (Save, Sign in, a dialog's action) keeps an edge
             ctx = browser.new_context(viewport={"width": 1400, "height": 900}, forced_colors="active")
