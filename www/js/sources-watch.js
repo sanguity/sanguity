@@ -1,8 +1,11 @@
-/* Sanguity · Sources → Phone and watch (#46, #166; until #166 Settings → Watch and scale): the watch receiver's
-   upload address and this profile's secret, for its owners and editors, with when the phone last sent something.
-   The secret is shown once, when it's made; after that only its last characters. The Sources page signs in and
-   chooses the profile (sources-page.js). */
-"use strict";   // $, el and api come from util.js
+/* Sanguity · Sources → Phone and watch (#46, #166, #284; until #166 Settings → Watch and scale): setting up the phone
+   app that uploads to the watch receiver, for the profile's owners and editors. An iPhone | Android switch, then one
+   card per step, each value (the upload address, the secret, the header) with Copy and its QR code (qr.js: scanned
+   with the phone's camera, the text reaches the phone the app is on). The secret is shown once, when it's made; after
+   that only its last characters. Above the steps, a live check: "Waiting for the first upload…", asking the server
+   every few seconds while this section is in sight, turns to "Received just now" when the phone's upload arrives.
+   The Sources page signs in and chooses the profile (sources-page.js). */
+"use strict";   // $, el, api, ask, sayIn, announce, icon, aboutWords come from util.js; qrSvg from qr.js; fmtWhen, fmtD from dates.js
 (() => {
   async function call(path, method = "GET", body) {
     const r = await api(path, {method, body: body === undefined ? undefined : JSON.stringify(body)});
@@ -11,70 +14,161 @@
     if (!r.ok) throw new Error((typeof j.detail === "string" && j.detail) || r.status + " " + r.statusText);
     return j;
   }
-  let ME = null, PID = null;
+  let ME = null, PID = null, ST = null, SECRET = null, gen = 0, timer = 0;
+  const OS = {iphone: "iPhone", android: "Android"}, OS_KEY = "sg-phone-os";
+  let os = (() => { try { const v = localStorage.getItem(OS_KEY); if (OS[v]) return v; } catch (e) { /* no storage: guessed */ }
+    return /Android/i.test(navigator.userAgent) ? "android" : "iphone"; })();
 
-  const copyBtn = (text, label) => el("button", {class: "btn small", type: "button", text: "Copy", "aria-label": label,
-    onclick: async ev => { try { await navigator.clipboard.writeText(text); ev.target.textContent = "Copied"; } catch (e) { ev.target.textContent = "Select and copy it"; } }});
   async function loadWatch() {
-    const box = $("#watch"), p = ME.profiles.find(x => x.id === PID);
-    box.hidden = true;
+    const box = $("#watch"), p = ME.profiles.find(x => x.id === PID), mine = ++gen;
+    clearTimeout(timer);
+    box.hidden = true; SECRET = null;
     if (!p || (p.role !== "owner" && p.role !== "editor")) { box.replaceChildren(); return; }
-    try { drawWatch(await call(`profiles/${PID}/watch/receiver`)); }
+    try { const st = await call(`profiles/${PID}/watch/receiver`); if (mine === gen) drawWatch(st); }
     catch (e) { box.replaceChildren(el("h2", {text: "Phone and watch"}), el("p", {class: "msg bad", role: "alert", text: e.message})); box.hidden = false; }
   }
+
+  /* ---- the live check: what the server last heard from the phone, kept up to date while it can be seen */
+  const ago = s => { const d = Date.now() / 1000 - s;
+    return d < 60 ? "just now" : d < 3600 ? `${Math.floor(d / 60)} min ago` : d < 86400 ? `${Math.floor(d / 3600)} h ago`
+      : d < 7 * 86400 ? `${Math.floor(d / 86400)} day${d < 2 * 86400 ? "" : "s"} ago` : "on " + fmtD(s * 1000); };
+  // waiting: a secret and nothing received with it yet (the receiver takes nothing signed with an old one)
+  const waiting = () => (ST.has_secret || ST.legacy) && (!ST.last || (ST.created && ST.last < ST.created));
+  function liveLine() {
+    const line = $("#watchLive");
+    if (!line) return;
+    const wait = waiting(), got = !wait && ST.last;
+    line.className = "w-live" + (wait ? " wait" : got ? " got" : "");
+    line.replaceChildren(...present(got ? icon("check") : null, el("span", {id: "watchLast", title: got ? fmtWhen(ST.last) : null,
+      text: wait ? (ST.last ? "Waiting for the first upload with the new secret…" : "Waiting for the first upload…")
+        : got ? `Received ${ago(ST.last)}` : "Nothing received yet: make a secret below, then set up the phone app."})));
+  }
+  const inSight = () => document.visibilityState === "visible" && ($("#watch").checkVisibility?.() ?? !!$("#watch").offsetParent);
+  function poll(now = false) {
+    clearTimeout(timer);
+    if (!ST || !(ST.has_secret || ST.legacy)) return;
+    const mine = gen;
+    timer = setTimeout(async () => {
+      if (mine !== gen) return;
+      if (inSight() && navigator.onLine !== false) {
+        try {
+          const st = await call(`profiles/${PID}/watch/receiver`);
+          if (mine !== gen) return;
+          const before = ST.last;
+          ST = {...ST, last: st.last, ready: st.ready};
+          if (st.last && st.last !== before) announce("The phone's upload arrived: received just now.");
+        } catch (e) { /* tried again next time */ }
+        liveLine();
+      }
+      poll();
+    }, now ? 0 : waiting() ? 5000 : 30000);
+  }
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") poll(true); });
+  document.addEventListener("sources:group", e => { if (e.detail === "phone") poll(true); });
+
+  /* ---- a value to give the phone app: its name, the value, and for what (the upload address...) Copy and its QR code
+     behind a button, each named for it */
+  let qrN = 0;
+  function value(name, text, {what, copy = !!what, qr = false, cls = "w-addr", id} = {}) {
+    const code = el("code", {class: cls, id, text});
+    const copied = el("button", {class: "btn small", type: "button", text: "Copy", "aria-label": `Copy ${what}`, onclick: async () => {
+      try { await navigator.clipboard.writeText(text); copied.textContent = "Copied"; announce("Copied."); setTimeout(() => { copied.textContent = "Copy"; }, 2000); }
+      catch (e) { getSelection().selectAllChildren(code); announce("Select it and copy it: it's selected."); }
+    }});
+    const fig = qr ? el("figure", {class: "qr-fig", id: `watchQr${++qrN}`, hidden: true}, qrSvg(text, {label: `${what[0].toUpperCase() + what.slice(1)}, as a QR code`}),
+      el("figcaption", {text: "Scan it with the phone's camera to copy it there."})) : null;
+    const show = fig ? el("button", {class: "btn small", type: "button", text: "QR code", "aria-expanded": false, "aria-controls": fig.id,
+      "aria-label": `QR code of ${what}`, onclick: () => { fig.hidden = !fig.hidden; show.setAttribute("aria-expanded", !fig.hidden); }}) : null;
+    return el("div", {class: "w-val"}, el("span", {class: "w-val-name", text: name}),
+      el("div", {class: "w-val-row"}, code, copy ? copied : null, show), fig);
+  }
+  const b = t => el("b", {text: t});
+  const para = (...c) => el("p", {}, ...c);
+
   /* what isn't set up on the server, in words (#167): admins are pointed to the setup guide, everyone else to them */
   const GUIDE = "the setup guide's “Connecting a phone” section says how";
-  function drawWatch(st, secret) {
-    const box = $("#watch"), msg = el("span", {class: "msg", role: "status"}), admin = ME.user.is_admin;
-    const addrs = st.addresses.length ? st.addresses : [admin ? `(not known yet: ${GUIDE} to set this server's address)` : "(not known yet: ask your admin)"];
-    const secretNode = secret
-      ? el("div", {}, el("code", {class: "w-secret", id: "watchSecret", text: secret}), " ", copyBtn(secret, "Copy the secret"),
-          el("p", {class: "hint", text: "Shown only now: put it in the phone app. Afterwards it's kept hidden; make a new one if it's lost."}))
-      : st.has_secret ? el("code", {class: "w-secret", text: st.masked})
-      : st.legacy ? el("span", {text: "The server's original receiver secret, from before each profile had its own. Make one for this profile to replace it."})
-      : el("span", {class: "muted", text: "None yet"});
-    const has = st.has_secret || st.legacy;
-    const go = el("button", {class: "btn small" + (has ? "" : " primary"), type: "button", id: "watchRotate", text: has ? "Make a new secret…" : "Make a secret",
+  const address = () => ST.addresses.length ? ST.addresses.map(a => value("Upload address", a, {what: "the upload address", qr: true}))
+    : el("p", {class: "msg bad", text: ME.user.is_admin ? `The upload address isn't known yet: ${GUIDE} to set this server's address.` : "The upload address isn't known yet: ask your admin."});
+  /* the secret's step: made here, shown once */
+  function secret() {
+    const msg = el("span", {class: "msg", role: "status"}), has = ST.has_secret || ST.legacy;
+    const go = el("button", {class: "btn" + (has ? "" : " primary"), type: "button", id: "watchRotate", text: has ? "Make a new secret…" : "Make a secret",
       onclick: async () => {
         if (has && !await ask({title: "Make a new secret?", message: "The phone using the current one stops uploading until you give it the new one.",
                                action: "Make new secret", danger: true})) return;
         go.disabled = true;
-        try { const r = await call(`profiles/${PID}/watch/receiver/rotate`, "POST", {}); drawWatch(r, r.secret); }
+        try { const r = await call(`profiles/${PID}/watch/receiver/rotate`, "POST", {}); SECRET = r.secret; drawWatch(r); $("#watch button[aria-label=\"Copy the secret\"]")?.focus(); }
         catch (e) { sayIn(msg, e.message, true); go.disabled = false; }
       }});
-    box.replaceChildren(...[   // without the parts left out: replaceChildren would write a null out as text (#175)
+    return present(
+      SECRET ? value("Secret", SECRET, {what: "the secret", qr: true, cls: "w-secret", id: "watchSecret"})
+        : ST.has_secret ? value("Secret", ST.masked, {cls: "w-secret"})
+        : ST.legacy ? para("This profile uses the server's original receiver secret, from before each profile had its own. Make one for this profile to replace it.")
+        : para("Each profile has its own, so each person's phone uploads to their own profile."),
+      SECRET ? el("p", {class: "hint", text: "Shown only now: give it to the phone app. Afterwards it's kept hidden; make a new one if it's lost."})
+        : ST.has_secret ? el("p", {class: "hint", text: "Shown only when it's made. Lost it, or setting up another phone? Make a new one, and give it to the phone app."}) : null,
+      el("div", {class: "row"}, go, msg));
+  }
+  const step = (title, ...body) => el("li", {class: "w-step"}, el("h3", {class: "w-step-hd", text: title}), ...body);
+  const secretStep = () => step(ST.has_secret || ST.legacy ? "The secret" : "Make a secret", ...secret());
+  const testStep = how => step("Send a test upload", para(how, " The check at the top of this card turns to ", b("Received"), " when it arrives."));
+
+  const STEPS = {
+    // Health Auto Export (#148): a REST API automation per data type, the secret in a header
+    iphone: () => [
+      step("Get Health Auto Export", para("On the iPhone, from the App Store. Sending to a server takes its Premium subscription or its trial.")),
+      secretStep(),
+      step("Add a REST API automation", para("In Health Auto Export, open ", b("Automations"), ", add one and choose ", b("REST API"), ". Its ", b("URL"), " is this upload address:"), address()),
+      step("Put the secret in a header", para("Under ", b("Headers"), ", add one with this key and value: ", b("Bearer"), ", a space, then the secret."),
+        value("Key", "Authorization", {what: "the header key"}),
+        SECRET ? value("Value", "Bearer " + SECRET, {what: "the header value", qr: true, cls: "w-secret"}) : value("Value", "Bearer <the secret>", {cls: "w-secret"})),
+      step("Choose what it sends, and when", para(b("Data type"), ": Health Metrics. ", b("Export format"), ": JSON. Choose step count, walking + running distance, active energy, heart rate, resting heart rate, heart rate variability, blood oxygen saturation, respiratory rate, VO2 max, weight, body fat percentage, lean body mass, sleep analysis, blood pressure and body temperature."),
+        para(b("Time grouping"), ": hours, and keep it: changing it later sends the same steps again in other intervals. ",
+          b("Sync"), ": hourly or daily, with the date range ", b("Since last sync"), " or ", b("Today"), ". Repeated or overlapping uploads count once.")),
+      testStep("Start the automation by hand in the app, or wait for its first sync."),
+      step("Add the others you need", para("Each the same way, with the same address and header:"),
+        el("ul", {class: "w-more"},
+          el("li", {}, b("Workouts"), ", with the workouts' heart rate data included (for heart rate zones)."),
+          el("li", {}, "For a glucose meter or a continuous glucose monitor, one with only ", b("blood glucose"), " and no time grouping, so each reading comes on its own."),   // blood glucose (#181)
+          el("li", {}, "For a watch's ECG recordings and irregular rhythm notifications, one with the data type ", b("ECG"), " and one with ", b("Heart Rate Notifications"), ", synced daily since the last sync (a recording is about 1 MB as the app sends it)."))),   // #182
+    ],
+    // Life Dashboard Companion: Health Connect's data, each upload signed with the secret
+    android: () => [
+      step("Get Life Dashboard Companion", para("On the Android phone. It reads Health Connect: let it read what you'd like sent, such as steps, heart rate, sleep, weight, blood pressure and glucose.")),
+      secretStep(),
+      step("Give it the address and the secret", para("In the app, set the upload address below and the secret from step 2. It signs each upload with the secret, so only this profile takes it."),
+        address()),
+      testStep("Start a sync in the app, or wait for its next one."),
+    ],
+  };
+  function steps() {
+    return el("ol", {class: "w-steps", id: "watchSteps", role: "list", "aria-label": `Setting up an ${OS[os]}`}, ...STEPS[os]());
+  }
+
+  function drawWatch(st) {
+    const box = $("#watch"), admin = ME.user.is_admin;
+    ST = st;
+    const pick = el("div", {class: "seg w-os", role: "group", "aria-labelledby": "watchOsLbl"}, ...Object.entries(OS).map(([k, t]) =>
+      el("button", {type: "button", "data-os": k, "aria-pressed": k === os, text: t, onclick: ev => {
+        os = k;
+        try { localStorage.setItem(OS_KEY, k); } catch (e) { /* remembered for this visit only */ }
+        for (const x of pick.children) x.setAttribute("aria-pressed", x === ev.currentTarget);
+        $("#watchSteps").replaceWith(steps());
+      }})));
+    box.replaceChildren(...present(
       el("h2", {text: "Upload from the phone"}),   // (the group, Phone and watch, holds Cycle tracking too: its title is the h1, #409)
-      el("p", {class: "hint", text: "Life Dashboard Companion (Android) or Health Auto Export (iPhone) sends watch, sleep and scale readings here."}),
-      aboutWords("Life Dashboard Companion reads Health Connect, and Health Auto Export reads Apple Health. Garmin, Fitbit, Withings and other apps come through them, by writing to Health Connect or Apple Health.",
+      el("p", {class: "hint", text: "Health Auto Export (iPhone) or Life Dashboard Companion (Android) sends watch, sleep and scale readings here."}),
+      aboutWords("Health Auto Export reads Apple Health, and Life Dashboard Companion reads Health Connect. Garmin, Fitbit, Withings and other apps come through them, by writing to Apple Health or Health Connect.",
         "Each profile has its own secret, so each person's phone uploads to their own profile. Readings are split into days in the phone's own time zone."),
-      el("dl", {class: "kv w-kv"},
-        el("dt", {text: "Last upload"}), el("dd", {id: "watchLast", text: st.last ? fmtWhen(st.last) : "Nothing received yet"}),
-        el("dt", {text: "Upload address"}), el("dd", {}, ...addrs.flatMap(a => [el("div", {}, el("code", {class: "w-addr", text: a}), " ", st.addresses.length ? copyBtn(a, "Copy the upload address") : null)])),
-        el("dt", {text: "Secret"}), el("dd", {}, secretNode)),
-      hae(addrs[0], secret),
+      el("p", {class: "w-live", id: "watchLive"}),
       st.ready ? null : el("p", {class: "msg bad", text: "The watch receiver isn't ready for this profile's own secret yet: " +
         (admin ? `it needs a folder for the receiver's secrets on the server (${GUIDE}).` : "ask your admin to finish setting it up.") +
         " Uploads with a secret made here won't be taken until then."}),
-      el("div", {class: "row"}, go, msg)].filter(Boolean));
+      el("div", {class: "w-pick"}, el("span", {id: "watchOsLbl", text: "Set up on"}), pick),
+      steps()));
+    liveLine();
     box.hidden = false;
-  }
-  /* Health Auto Export's setup (#148): a REST API automation per data type, with the secret in a header. */
-  function hae(addr, secret) {
-    const header = "Bearer " + (secret || "<the secret>"), li = (...c) => el("li", {}, ...c), b = t => el("b", {text: t});
-    // the steps, read while setting the app up: a disclosure named for them (#280)
-    return el("div", {class: "w-hae"}, el("p", {class: "howto", text: "Android: in Life Dashboard Companion, set the upload address and the secret above; it signs each upload with the secret."}),
-      el("details", {class: "more", id: "watchHae"}, el("summary", {text: "How to set up Health Auto Export on an iPhone"}),
-      el("ol", {class: "w-steps"},
-        li("In Health Auto Export (its Premium subscription or trial), open ", b("Automations"), " and add a ", b("REST API"), " automation."),
-        li(b("URL"), ": the upload address above (", el("code", {class: "w-addr", text: addr}), ")."),
-        li(b("Headers"), ": add one with the key ", el("code", {class: "w-addr", text: "Authorization"}), " and the value ",
-          el("code", {class: "w-secret", text: header}), secret ? [" ", copyBtn(header, "Copy the header value")] : "", ": ", b("Bearer"), ", a space, then the secret."),
-        li(b("Data type"), ": Health Metrics, ", b("Export format"), ": JSON. Choose step count, walking + running distance, active energy, heart rate, resting heart rate, heart rate variability, blood oxygen saturation, respiratory rate, VO2 max, weight, body fat percentage, lean body mass, sleep analysis, blood pressure and body temperature."),
-        li(b("Time grouping"), ": hours (and keep it: changing it later sends the same steps again in other intervals)."),
-        li(b("Sync"), ": hourly or daily, with the date range ", b("Since last sync"), " or ", b("Today"), ". Repeated or overlapping uploads count once."),
-        li("Add a second automation the same way with the data type ", b("Workouts"), ", with the workouts' heart rate data included (for heart rate zones)."),
-        li("For a glucose meter or a continuous glucose monitor, a third with only ", b("blood glucose"), " and no time grouping, so each reading comes on its own."),   // blood glucose (#181)
-        li("For a watch's ECG recordings and irregular rhythm notifications, one with the data type ", b("ECG"), " and one with ", b("Heart Rate Notifications"), ", synced daily since the last sync (a recording is about 1 MB as the app sends it)."))));   // #182
+    poll();
   }
 
   (async () => {

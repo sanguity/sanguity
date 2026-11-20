@@ -33,6 +33,12 @@ svg.icon{display:inline-block;width:1em;height:1em;flex:none;vertical-align:-.12
 .icon{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}   /* a <use class="icon"> in a chart too */
 /* an icon before its words (#354): a sidebar's links, the Add menu's and your menu's items */
 :is(.set-nav-list a,.menu-item[role=menuitem])>.icon:first-child{margin-right:var(--sp-2)}
+/* ---- a QR code (#284): qr.js qrSvg(), dark on white in both themes (a camera reads it best so; the ink's light-theme
+   value, as color-scheme is light here) and kept so in forced colours, in a <figure class="qr-fig"> with a line under
+   it saying what scanning it does: beside a new share link, and a value for the phone app on Sources */
+svg.qr{display:block;width:min(100%,200px);height:auto;color-scheme:light;color:var(--ink);background:var(--paper);forced-color-adjust:none}
+.qr-fig{margin:var(--sp-2) 0 0}
+.qr-fig>figcaption{margin:var(--sp-1) 0 0;color:var(--muted);font-size:var(--fs-2)}
 
 /* ---- the button (#258): one component, everywhere. <button class="btn"> (or an <a>, or a <label> around a file
    input), in three sizes and four variants:
@@ -1100,15 +1106,27 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .sets .set-preview .set-wide,.sets .set-preview>p{grid-column:1 / -1;margin:0 0 var(--sp-3)}
 .sets .set-radios{border:0;padding:0;margin:var(--sp-1) 0;display:flex;gap:var(--sp-4);flex-wrap:wrap}
 .sets .set-radios>label{display:flex;align-items:center;gap:var(--sp-1)}
-/* Settings: dates and times (#42), watch and scale (#46) */
+/* Settings: dates and times (#42) */
 .sets .set-select{max-width:100%}
-.sets .w-kv{grid-template-columns:120px minmax(0,1fr)}
-.sets .w-kv dd>div{margin-bottom:var(--sp-1)}
-.sets code.w-addr,.sets code.w-secret{background:var(--hover);padding:1px var(--sp-1);border-radius:var(--r-sm);user-select:all;overflow-wrap:anywhere}
-@media (max-width:600px){ .sets .w-kv{grid-template-columns:1fr} }
-.sets .w-hae{margin:var(--sp-3) 0}
-.sets .w-steps{margin:var(--sp-1) 0 var(--sp-2);padding-left:var(--sp-5);overflow-wrap:anywhere}
-.sets .w-steps li{margin:var(--sp-1) 0}
+/* Sources → Phone and watch (#284, sources-watch.js): the live check (a pulsing dot while it waits, a ✓ once received),
+   the iPhone | Android switch, a card per step numbered in its heading, and each value with Copy and its QR code */
+.w-live{display:flex;align-items:center;gap:var(--sp-2);margin:var(--sp-3) 0;font-weight:var(--fw-semibold)}
+.w-live.got{color:var(--good-text)}
+.w-live.wait::before{content:"";flex:none;width:.6em;height:.6em;border-radius:var(--r-pill);background:var(--accent);animation:sg-pulse calc(var(--dur-2) * 4) var(--ease-out) infinite alternate}
+.w-pick{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2) var(--sp-3);margin:0 0 var(--sp-3)}
+.w-steps{list-style:none;counter-reset:w-step;display:grid;gap:var(--sp-3);margin:0;padding:0}
+.w-step{counter-increment:w-step;padding:var(--sp-3);border:1px solid var(--ring);border-radius:var(--r-md);overflow-wrap:anywhere}
+.w-step-hd{display:flex;align-items:center;gap:var(--sp-2);margin:0 0 var(--sp-2);font-size:var(--fs-3);font-weight:var(--fw-semibold)}
+.w-step-hd::before{content:counter(w-step);flex:none;display:grid;place-items:center;width:24px;height:24px;border-radius:var(--r-pill);background:var(--hover);color:var(--ink2);font-size:var(--fs-2)}
+.w-step p,.w-more{margin:0 0 var(--sp-2)}
+.w-step>:last-child{margin-bottom:0}
+.w-more{padding-left:var(--sp-4)}
+.w-val{margin:var(--sp-2) 0}
+.w-val-name{display:block;font-size:var(--fs-2);color:var(--muted)}
+.w-val-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-1) var(--sp-2)}
+.w-val-row>.btn{margin:0}
+@media (max-width:600px){ .w-steps{gap:var(--sp-2)} .w-step{padding:var(--sp-2) var(--sp-3)} }
+.w-val code{min-width:0;background:var(--hover);padding:1px var(--sp-1);border-radius:var(--r-sm);user-select:all;overflow-wrap:anywhere}
 /* find your provider (providers.js, #93) */
 .dir .dir-src{border-left:3px solid var(--c-study);padding:var(--sp-1) 0 var(--sp-1) var(--sp-3);margin:var(--sp-2) 0 var(--sp-3);font-size:var(--fs-3)}
 .dir .dir-src p{margin:0 0 var(--sp-2)}

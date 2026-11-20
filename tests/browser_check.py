@@ -2088,6 +2088,18 @@ def main():
         strict.wait_for_selector(".share-made .share-url", timeout=10000)
         share_url = strict.input_value(".share-made .share-url")
         check("share links: the link is shown once, with its token after the #", re.fullmatch(re.escape(base) + r"/share\.html#[\w-]{43}", share_url), share_url)
+        # #284: the new link as a QR code under it (qr.js), read back to the address by tests/test_qr.py's reader, named
+        # for a screen reader, dark on white in both themes
+        from tests.test_qr import path_modules, read_qr
+        qr284 = strict.evaluate("""() => { const s = document.querySelector('.share-made figure.qr-fig > svg.qr'); if (!s) return null;
+            const ink = t => { document.documentElement.dataset.theme = t; return [getComputedStyle(s).backgroundColor, getComputedStyle(s.querySelector('path')).fill]; };
+            const was = document.documentElement.dataset.theme, inks = [ink('light'), ink('dark')];
+            if (was) document.documentElement.dataset.theme = was; else delete document.documentElement.dataset.theme;
+            return [s.getAttribute('role'), s.getAttribute('aria-label'), s.viewBox.baseVal.width - 8, s.querySelector('path').getAttribute('d'), inks,
+              s.closest('figure').querySelector('figcaption').textContent]; }""")
+        check("share links: the new link has a QR code under it that reads back to the link, named, dark on white in light and dark (#284)",
+              qr284 and qr284[:2] == ["img", "The share link, as a QR code"] and read_qr(path_modules(qr284[3], qr284[2])).decode() == share_url
+              and qr284[4] == [["rgb(255, 255, 255)", "rgb(26, 25, 21)"]] * 2 and "scan it" in qr284[5], qr284 and qr284[:3] + qr284[4:])
         rows352 = {}   # #352: Copy beside the link, the field's height, at 1400 and 320 px
         for w in (1400, 320):
             strict.set_viewport_size({"width": w, "height": 900 if w > 400 else 640})
@@ -13683,47 +13695,92 @@ def main():
             sdb.execute("DELETE FROM users WHERE id=?", (uid2,))
             sdb.close()
 
-            # ---- a watch receiver secret per profile (#46): made on Sources → Phone and watch (#166), shown once, then masked
+            # ---- Phone and watch as steps (#284), with a secret per profile (#46) made on Sources → Phone and watch (#166),
+            # shown once, then masked: an iPhone | Android switch, a card per step, each value with Copy and its QR code,
+            # and a live check that waits for the first upload and turns to Received when it comes
             page.goto(base + "/sources.html?profile=1#phone")
             page.wait_for_selector("#watch #watchRotate", timeout=10000)
             check("watch card: the server's original secret is still this profile's", "original receiver secret" in page.inner_text("#watch"),
                   page.inner_text("#watch")[:300])
-            check("…saying when the phone last sent something", page.inner_text("#watchLast") != "", page.inner_text("#watchLast"))
+            check("…saying when the phone last sent something (#284: Received, with a ✓)", page.inner_text("#watchLast").startswith("Received ")
+                  and js("document.getElementById('watchLive').matches('.got') && !!document.querySelector('#watchLive svg.i-check')"), page.inner_text("#watchLast"))
+            steps284 = "[...document.querySelectorAll('#watchSteps > li.w-step > h3.w-step-hd')].map(h => h.textContent)"
+            page.click("#watch .w-os [data-os=iphone]")
+            iphone284 = js(steps284)
+            page.focus("#watch .w-os [data-os=android]")
+            page.keyboard.press("Enter")
+            android284 = [js(steps284), js("[...document.querySelectorAll('#watch .w-os button')].map(b => b.getAttribute('aria-pressed'))"),
+                          js("document.activeElement.dataset.os"), js("document.getElementById('watchSteps').getAttribute('aria-label')")]
+            check("…an iPhone | Android switch, each phone's steps a card each, numbered in order (#284)",
+                  iphone284 == ["Get Health Auto Export", "The secret", "Add a REST API automation", "Put the secret in a header",
+                                "Choose what it sends, and when", "Send a test upload", "Add the others you need"]
+                  and android284 == [["Get Life Dashboard Companion", "The secret", "Give it the address and the secret", "Send a test upload"],
+                                     ["false", "true"], "android", "Setting up an Android"]
+                  and js("getComputedStyle(document.querySelector('#watchSteps h3'), '::before').content") == "counter(w-step)", [iphone284, android284])
+            page.reload()
+            page.wait_for_selector("#watch #watchRotate", timeout=10000)
+            check("…the phone chosen is remembered (#284)", js("document.querySelector('#watch .w-os [aria-pressed=true]').dataset.os") == "android")
             page.click("#watchRotate")
             answer_ask(page)
             page.wait_for_selector("#watchSecret", timeout=10000)
             made = js("document.getElementById('watchSecret').textContent")
-            check("…makes a secret and shows it once, with a copy button", len(made) >= 40 and js("!!document.querySelector('#watch button[aria-label=\"Copy the secret\"]')"), made)
+            check("…makes a secret and shows it once, with a copy button, focus on it", len(made) >= 40
+                  and js("document.activeElement === document.querySelector('#watch button[aria-label=\"Copy the secret\"]')"), made)
             check("…with no stray “null” in the card (#175)", not re.search(r"\bnull\b", page.inner_text("#watch")), page.inner_text("#watch")[:300])
-            page.set_viewport_size({"width": 375, "height": 800})
-            settle(200)
-            check("…and the card fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
-            # iPhone (#148): Health Auto Export's setup steps beside Life Dashboard's: address, header, data, how often,
-            # in a disclosure named for them (#280)
-            check("…Health Auto Export's steps in a disclosure named for them, closed at first (#280)",
-                  js("(d => d.matches('details') && !d.open && d.querySelector('summary').textContent)(document.getElementById('watchHae'))") == "How to set up Health Auto Export on an iPhone")
-            page.click("#watchHae > summary")
-            hae_txt = page.inner_text("#watchHae")
-            check("watch card: Health Auto Export's steps (address, header, data, how often, workouts)",
+            # the live check (#284): a new secret, nothing received with it yet; then an upload arrives (the receiver
+            # rewrites the profile's summary, which is what the server's "last" reads), and within a few seconds it says so
+            wait284 = [js("document.getElementById('watchLast').textContent"), js("document.getElementById('watchLive').matches('.wait')")]
+            os.utime(os.path.join(TMP, "watch", "daily.json"))
+            got284 = None
+            try:
+                page.wait_for_function("document.getElementById('watchLast').textContent === 'Received just now' && document.getElementById('sgStatus').textContent !== ''",
+                                       timeout=15000)
+                got284 = [js("document.getElementById('watchLive').matches('.got')"), js("document.getElementById('sgStatus').textContent")]
+            except Exception as e:
+                got284 = str(e)[:200]
+            check("…the live check waits for the first upload with the new secret, then turns to “Received just now” when it arrives, "
+                  "said to a screen reader too (#284)", wait284 == ["Waiting for the first upload with the new secret…", True]
+                  and isinstance(got284, list) and got284[0] and "The phone's upload arrived" in got284[1], [wait284, got284])
+            # each value's QR code, behind its button, is the value: read back by tests/test_qr.py's reader
+            from tests.test_qr import path_modules, read_qr
+            qrs284 = {}
+            for btn284 in page.locator("#watch button[aria-controls^=watchQr]").all():
+                btn284.click()
+                qrs284[btn284.get_attribute("aria-label")] = js("""id => { const f = document.getElementById(id), s = f.querySelector('svg.qr');
+                    return [f.hidden, f.closest('.w-val').querySelector('code').textContent, s.viewBox.baseVal.width - 8, s.querySelector('path').getAttribute('d'),
+                      s.getAttribute('aria-label')]; }""", btn284.get_attribute("aria-controls"))
+            read284 = {k: [h, read_qr(path_modules(d, n)).decode() == v, lbl] for k, (h, v, n, d, lbl) in qrs284.items()}
+            check("…each value shows its QR code from a button beside Copy, which reads back to the value: the secret and the address on Android (#284)",
+                  read284 == {"QR code of the secret": [False, True, "The secret, as a QR code"],
+                              "QR code of the upload address": [False, True, "The upload address, as a QR code"]}
+                  and js("document.querySelectorAll('#watch button[aria-label=\"Copy the upload address\"]').length") == 1, read284)
+            page.click("#watch .w-os [data-os=iphone]")
+            for btn284 in page.locator("#watch button[aria-controls^=watchQr]").all():
+                btn284.click()
+            hae_txt = page.inner_text("#watchSteps")
+            check("watch card: Health Auto Export's steps (address, header, data, how often, workouts), the header's value with Copy and its QR code",
                   all(w in hae_txt for w in ("Health Auto Export", "REST API", ":8731/ingest", "Authorization", "Bearer " + made,
                                              "heart rate variability", "sleep analysis", "Since last sync", "Workouts"))
-                  and "Life Dashboard Companion" in page.inner_text("#watch") and len(js("[...document.querySelectorAll('#watchHae li')]")) >= 6,
-                  hae_txt[:400])
+                  and js("!!document.querySelector('#watch button[aria-label=\"Copy the header value\"]')")
+                  and read_qr(path_modules(*js("""(() => { const s = document.querySelector('#watch button[aria-label="QR code of the header value"]');
+                      const v = document.getElementById(s.getAttribute('aria-controls')).querySelector('svg.qr');
+                      return [v.querySelector('path').getAttribute('d'), v.viewBox.baseVal.width - 8]; })()"""))).decode() == "Bearer " + made, hae_txt[:400])
             check("…and one for blood glucose, each reading on its own (#181)", "only blood glucose and no time grouping" in hae_txt, hae_txt[-300:])
-            check("…with the header value to copy while the secret is shown",
-                  js("!!document.querySelector('#watchHae button[aria-label=\"Copy the header value\"]')"))
-            check("…and the steps fit 375 px", js("(() => { const b = document.getElementById('watchHae').getBoundingClientRect(); "
-                                                  "return b.width > 0 && b.right <= 375 && [...document.querySelectorAll('#watchHae code, #watchHae li')]"
-                                                  ".every(e => e.getBoundingClientRect().right <= 375.5); })()"),
-                  js("document.getElementById('watchHae').getBoundingClientRect().right"))
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            check("…and the card, its steps and QR codes fit 375 px", js("document.documentElement.scrollWidth") <= 375
+                  and js("[...document.querySelectorAll('#watch .w-step, #watch code, #watch svg.qr, #watch .btn')].every(e => e.getBoundingClientRect().right <= 375.5)"),
+                  js("document.documentElement.scrollWidth"))
             page.set_viewport_size({"width": 1400, "height": 900})
             page.reload()
             page.wait_for_selector("#watch .w-secret", timeout=10000)
-            js("document.getElementById('watchHae').open = true")
+            page.click("#watch .w-os [data-os=iphone]")
             masked = js("document.querySelector('#watch .w-secret').textContent")
             check("…then only its last characters", masked.endswith(made[-4:]) and made not in page.content(), masked)
-            check("…and the iPhone steps name the secret without showing it",
-                  "Bearer <the secret>" in page.inner_text("#watchHae") and not js("!!document.querySelector('#watchHae button')"))
+            check("…and the iPhone steps name the secret without showing it, with nothing to copy but the address and the header's key",
+                  "Bearer <the secret>" in page.inner_text("#watchSteps")
+                  and sorted(js("[...document.querySelectorAll('#watchSteps button[aria-label^=Copy]')].map(b => b.getAttribute('aria-label'))"))
+                  == ["Copy the header key", "Copy the upload address"])
             # ---- reference ranges from settings (#44): a profile whose results come without a range; its own ranges,
             # set on the Settings page, colour those results on Trends, the heatmap, the Overview and the visit
             # summary, labelled "range from settings", while a report's own range and flag stay; the page's rules
