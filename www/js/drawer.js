@@ -104,8 +104,10 @@ function drawerDock(on) {
     if (a && !was.isConnected && [was, document.body].includes(document.activeElement)) drawerFind(a)?.focus({preventScroll: true});
   };
   back(); requestAnimationFrame(() => requestAnimationFrame(back));
-  const r = drawerBack();
-  if (on && r?.closest?.("main")) r.scrollIntoView({block: "nearest"});   // what it was opened from, still in view
+  // docked, what it was opened from still in view; undocked, what has focus on the page, which the wider page moved
+  // (a claim's row, focused as the drawer closed, #467), as the Timeline keeps its row
+  const r = on ? drawerBack() : document.activeElement;
+  if (r?.closest?.("main")) r.scrollIntoView({block: "nearest"});
   return true;
 }
 // the page moving over puts something else under a pointer that hasn't moved: no tooltip for it (util.js, by hover,

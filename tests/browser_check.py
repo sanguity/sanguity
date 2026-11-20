@@ -2868,6 +2868,24 @@ def main():
             js("costState.limit = 200; renderCosts()")
             check("…Show more on the claims, a button of type button, leaves focus on the first claim added (#443)",
                   more443 and more443[1] == "button" and after443[:3] == ["BUTTON", True, 20] and after443[3] > 20, [more443, after443])
+            # #467: …and where the claims are stacked (measured as they're drawn, not a frame late), that claim is in sight:
+            # at 390×844, 568×320 and 320×640, Show more by Enter from 50 claims shown
+            SIGHT467 = """(a => { const r = a.getBoundingClientRect(), hit = document.elementFromPoint(Math.min(innerWidth - 2, r.left + 4), r.top + Math.min(r.height / 2, 8));
+                return [a.tagName, a.closest('tr') ? [...a.closest('tbody').rows].indexOf(a.closest('tr')) : null, !!a.closest('table.fold'),
+                  Math.round(r.top), Math.round(r.bottom), innerHeight, !!hit && (hit === a || a.contains(hit))]; })(document.activeElement)"""
+            more467 = {}
+            for w467, h467 in ((390, 844), (568, 320), (320, 640)):
+                page.set_viewport_size({"width": w467, "height": h467})
+                js("costState.limit = 50; renderCosts()")
+                settle(250)
+                js("(b => { b.scrollIntoView({block: 'center'}); b.focus(); })([...document.querySelectorAll('#costTable > button')].find(b => /^Show \\d+ more$/.test(b.textContent)))")
+                page.keyboard.press("Enter")
+                settle(400)
+                more467[f"{w467}×{h467}"] = js(SIGHT467)
+            js("costState.limit = 200; renderCosts()")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…and with the claims stacked, at 390×844, 568×320 and 320×640, that claim is in sight, not pushed off by the rows stacking a frame late (#467)",
+                  all(v[:3] == ["BUTTON", 50, True] and v[3] >= 0 and v[4] <= v[5] and v[6] for v in more467.values()), more467)
             # #448: each Costs control used by keyboard keeps focus on itself as the tab is drawn again (or, the editor's
             # Close, gives it back to the row's date that opened it), never <body>; What you paid's "What it was for" and
             # "Who was paid" rows are buttons, reached by Tab, saying whether they're picked
@@ -2969,6 +2987,13 @@ def main():
             # isn't counted) behind its ⓘ
             hint465 = js("""(p => [p.textContent, Math.round(p.getBoundingClientRect().height / parseFloat(getComputedStyle(p).lineHeight)),
                 [...p.parentElement.querySelectorAll('.about-words p')].map(x => x.textContent).join(' ')])(document.querySelector('#view-costs .cost-figs > p.hint'))""")
+            # #467: …and one line with all three sources, a payment typed in too (the demo has only the other two)
+            js("""(() => { const o = DATA.outOfPocket = DATA.outOfPocket || {}; (o.payments = o.payments || []).push({d: DATA.costs.map(c => c.d).sort().at(-1), amount: 12.5,
+                payee: 'Corner pharmacy', group: 'Pharmacy', key: 'manual:check467'}); paidState.open = null; renderCosts(); })()""")
+            settle(200)
+            hint467 = js("""(p => [p.textContent, Math.round(p.getBoundingClientRect().height / parseFloat(getComputedStyle(p).lineHeight)),
+                [...p.parentElement.querySelectorAll('.about-words p')].map(x => x.textContent).join(' ')])(document.querySelector('#view-costs .cost-figs > p.hint'))""")
+            js("DATA.outOfPocket.payments = DATA.outOfPocket.payments.filter(p => p.key !== 'manual:check467')")
             js("paidState.open = null; renderCosts()")
             page.set_viewport_size({"width": 1400, "height": 900})
             HEADS448 = "[...document.querySelectorAll('main h1, #view-costs :is(h2, h3, h4)')].filter(h => h.checkVisibility() || h.closest('details')).map(h => h.tagName + ' ' + h.textContent.trim().slice(0, 30))"
@@ -2983,6 +3008,9 @@ def main():
                   box448[0] <= 1 and box448[1] == "none" and box448[2] > 0 and box448[3] is True and box448[4] <= 390, box448)
             check("…What you paid's hint is one line at 390 px, where its amounts came from, the rest behind its ⓘ (#465)",
                   hint465[0].startswith("From ") and hint465[1] == 1 and "counted once" not in hint465[0] and "counted once" in hint465[2] and hint465[2].startswith("From "), hint465)
+            check("…and one line at 390 px with all three sources, a payment typed in too, each named in it and in full behind its ⓘ (#467)",
+                  hint467[1] == 1 and all(w in hint467[0] for w in ("typed in", "export", "claims")) and "payments typed in" in hint467[2]
+                  and "a finance export" in hint467[2] and "claims' shares with no payment matched" in hint467[2], hint467)
             check("…the headings in order in both views, More figures open: What you paid's HSA and FSA by year an h3 under its h2",
                   all(in_order(h) for h in heads448.values()) and any(h.startswith("H3 HSA and FSA, by year") for h in heads448["paid"]), heads448)
             # #448: the three claims figures laid out alike on the Overview and Costs at 320, 375, 390 and 1400 px: three in
@@ -14299,6 +14327,32 @@ def main():
                 fold465.add(got[2])
                 if got[0] > 1 or got[1] > 1 or got[3] > 0:
                     fr465.append([w] + got)
+            # #467: a claim opened at 1300 and 1400 px, where the drawer docks (in French at 1300 the claims stack as it
+            # does), is in sight once it has docked; and closed by Escape or ✕, the row given focus is in sight once the
+            # page is laid out wider again (it ended 280 to 822 px above the window)
+            SEEN467 = """b => { const r = b.getBoundingClientRect(), hit = document.elementFromPoint(Math.min(innerWidth - 2, r.left + 4), r.top + Math.min(r.height / 2, 8));
+                return [Math.round(r.top), Math.round(r.bottom), !!hit && (hit === b || b.contains(hit)), !!b.closest('table.fold'), document.documentElement.classList.contains('sg-docked')]; }"""
+            dock467, fold467 = {}, set()
+            for w in (1300, 1400):
+                frp.set_viewport_size({"width": w, "height": 900})
+                frp.evaluate("switchTab('costs', 'claims')")
+                frp.wait_for_timeout(250)
+                for i in (20, 60):
+                    for how in ("Escape", "✕"):
+                        frp.evaluate("i => (b => { b.scrollIntoView({block: 'center'}); b.focus(); })(document.querySelectorAll('#costTable tbody .cell-btn')[i])", i)
+                        frp.keyboard.press("Enter")
+                        frp.wait_for_function("document.documentElement.classList.contains('sg-docked')", timeout=5000)
+                        frp.wait_for_timeout(500)
+                        opened = frp.evaluate(f"i => ({SEEN467})(document.querySelectorAll('#costTable tbody .cell-btn')[i])", i)
+                        fold467.add((w, opened[3]))
+                        if how == "Escape":
+                            frp.keyboard.press("Escape")
+                        else:
+                            frp.click("#dclose")
+                        frp.wait_for_timeout(500)
+                        shut = frp.evaluate(f"i => (a => [a === document.querySelectorAll('#costTable tbody .cell-btn')[i], ...({SEEN467})(a)])(document.activeElement)", i)
+                        if not (opened[2] and opened[4] and shut[0] and shut[3] and not shut[5]):
+                            dock467[f"{w} row {i} {how}"] = [opened, shut]
             fr_ctx.close()
             check("the Overview's insurance figures in a French browser fit 375 and 320 px (#342)",
                   not fr_bad and any("$US" in t for t in fr_seen), fr_bad[:6] or fr_seen)
@@ -14306,6 +14360,8 @@ def main():
                   not fr456 and len(seen456) == 18 and all("$US" in v for v in seen456) and any(len(re.sub(r"\D", "", v)) >= 7 for v in seen456), fr456[:6] or seen456)
             check("…and from 700 to 800 px, every 4, the claims' table runs past neither its box nor its card, stacked where it doesn't fit, the page not scrolling sideways (#465)",
                   not fr465 and fold465 == {True, False}, fr465[:6] or fold465)
+            check("…and at 1300 and 1400 px a claim opened is in sight once the drawer has docked (at 1300 the claims stacked), and closed by Escape or ✕ "
+                  "the row given focus is in sight once the page is wider again (#467)", not dock467 and (1300, True) in fold467, dock467 or sorted(fold467))
             page.set_viewport_size({"width": 1400, "height": 900})
             # forced colours (Windows' high contrast): a filled button (Save, Sign in, a dialog's action) keeps an edge
             ctx = browser.new_context(viewport={"width": 1400, "height": 900}, forced_colors="active")
