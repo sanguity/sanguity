@@ -225,6 +225,18 @@ class Common(unittest.TestCase):
         self.assertTrue(cut[:-3].startswith(", ".join(orders[:5])), cut)
         self.assertEqual(common.lab_day_sub(["WORD " * 40]), "WORD " * 31 + "WORD…")
         self.assertEqual(common.lab_day_sub(["", "CBC"]), "CBC")
+        # a first name of every length around the limit, alone or with others, in words or one long word (#464: one of
+        # 158 or 159 characters followed by others raised IndexError, failing the import)
+        for n in range(150, 171):
+            for name in (("WORD " * 40)[:n - 1] + "X", "X" * n):
+                for rest in ([], ["CBC"]):
+                    with self.subTest(n=n, words=" " in name, rest=rest):
+                        got = common.lab_day_sub([name] + rest)
+                        self.assertLessEqual(len(got), 160, got)
+                        if n + len(", ".join([""] + rest)) <= 160:
+                            self.assertEqual(got, ", ".join([name] + rest))
+                        else:
+                            self.assertTrue(got.endswith("…") and name.startswith(got[:-1].rstrip(", ")), got)
 
 
 class BuildUnchanged(unittest.TestCase):

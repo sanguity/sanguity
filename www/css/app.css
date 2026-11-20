@@ -1677,6 +1677,7 @@ path.pt.abn{stroke-width:1.5}
 .hm-table tbody th[scope=row]{color:var(--ink);font-weight:var(--fw-medium);border-bottom:1px solid var(--grid)}
 .hm-table thead th:first-child{left:0;z-index:2}
 .hm-table tr.grp th{position:static;color:var(--ink2);font-size:var(--fs-2);font-weight:var(--fw-semibold);padding-top:var(--sp-2)}
+.hm-table tr.grp span{position:sticky;left:var(--sp-2)}   /* its name stays in view scrolled sideways (#464), the cell being the row's width */
 /* ---- each result against its own range (#58): under a chart's name, when its results' ranges differ, which ones;
    the band itself steps with each result's range (trends.js) */
 .chart .hd .rdiff{flex-basis:100%;margin:0;font-size:var(--fs-2);color:var(--ink2)}

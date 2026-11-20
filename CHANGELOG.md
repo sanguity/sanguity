@@ -1592,6 +1592,13 @@ Everything on `main` so far; it becomes the first tagged release.
   page it found a lab draw only by its panels and not its kind, so on Settings "hemoglobin" found the lab but no draws;
   it finds them by their tests' names, as the Timeline does. A lab renamed on Labs wasn't found by its new name until
   the page loaded again, and its old name still found the draws; the search words change with the name.
+- **A Timeline search's draws count its tests out of range, the heatmap table keeps its panels' names, and a long
+  test name can't fail an import** (#464): under a search that names tests, a lab draw's "out of range" badge, its ▲
+  and its tip counted every test of the draw, so "psa" on ten years, its line saying no PSA was out of range, showed
+  "2 out of range" and a ▲ on 7 draws; they count those tests' only, as the line does. The heatmap's Table, scrolled
+  sideways, showed each panel's heading row as an empty band while the labs' names stayed; the panel's name stays at
+  the left of its row too. The importers failed on a lab day whose first test name was 158 or 159 characters long with
+  others after it; it's kept whole with "…".
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -288,11 +288,11 @@ function showTip(nodes, ev) { tip.replaceChildren(...nodes.filter(Boolean)); tip
 function hideTip() { tip.style.display = "none"; }
 addEventListener("keydown", e => { if (e.key === "Escape") hideTip(); });   // a hover's readout goes with Escape, the pointer left where it is (1.4.13, #202)
 function showEvTip(e, ev) {
-  if (!e) return; const c = CAT_OF[e.k];
+  if (!e) return; const c = CAT_OF[e.k], abn = tlAbn(e);   // a lab draw's, under a search its tests' (timeline.js, #464)
   showTip([el("div", {class: "v", text: e.title}),
     el("div", {class: "s"}, el("span", {class: "k", style: {background: c.color}}), `${KIND_LABEL[e.k]} · ${e.end && e.te - e.ts > DAY ? fmtD(e.ts) + " – " + fmtD(e.te) : fmtDT(e.ts)}`),
     e.sub ? el("div", {class: "s", text: e.sub}) : null,
-    e.abn ? el("div", {class: "s", style: {color: "var(--crit)"}, text: `▲ ${e.abn} value${e.abn > 1 ? "s" : ""} out of range`}) : null], ev);
+    abn ? el("div", {class: "s", style: {color: "var(--crit)"}, text: `▲ ${abn} value${abn > 1 ? "s" : ""} out of range`}) : null], ev);
 }
 
 /* milestones: named dates (diagnosis, surgery, treatment start...) from the settings (CFG.milestones), oldest first.

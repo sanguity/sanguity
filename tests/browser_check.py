@@ -3153,6 +3153,28 @@ def main():
             check("…a search naming several tests (“cbc”, a panel) counts theirs and says how many tests: “225 results of the 5 tests matching “cbc””",
                   len(cbc["names"]) > 1 and cbc["same"]
                   and f"{cbc['got']:,} lab draws, {cbc['n']:,} results of the {len(cbc['names'])} tests matching “cbc”, {cbc['abn']:,} out of range" in cbc["sum"], cbc)
+            # #464: under that search a draw's badge and its ▲ count those tests' out-of-range values on its day, as the line
+            # does ("psa" on ten years showed "2 out of range" and a ▲ on 7 draws whose PSA was in range, from their other
+            # tests); "creatinine", out of range on one draw here (the outside lab's result, above), shows them on that one
+            # only, none on the 16 draws that have other tests out of range
+            tl464_q = r"""(q => { const ss = SERIES.filter(s => !s.watch && s.panel !== 'Vitals' && [s.name, nice(s.name), s.panel || ''].some(t => t.toLowerCase().includes(q)));
+                const want = new Map(); for (const s of ss) for (const p of s.pts) if (p[4]) want.set(isoDay(p.ts), (want.get(isoDay(p.ts)) || 0) + 1);
+                const rows = [...document.querySelectorAll('#list .tl-row[data-id]')].map(r => [byId.get(+r.dataset.id), r.querySelector('.badge.abn')?.textContent || null]).filter(([e]) => e.k === 'lab');
+                const draws = EV.filter(visible).filter(e => e.k === 'lab'), n = e => want.get(isoDay(e.ts)) || 0;
+                return {rows: rows.length, badges: rows.filter(([, b]) => b).length, bad: rows.filter(([e, b]) => b !== (n(e) ? `${n(e)} out of range` : null)).map(([e, b]) => [e.id, b, n(e)]),
+                  marks: document.querySelectorAll('#tl path.tl-abn').length, want: draws.filter(n).length, others: draws.filter(e => e.abn && !n(e)).length}; })(document.getElementById('q').value.trim().toLowerCase())"""
+            tl464 = {}
+            for q in ("hemoglobin", "creatinine"):
+                page.fill("#q", q)
+                settle(400)
+                tl464[q] = js(tl464_q)
+            page.fill("#q", "")
+            settle(400)
+            hb4, cr4 = tl464["hemoglobin"], tl464["creatinine"]
+            check("…and each draw's out-of-range badge and ▲ count that test's (“hemoglobin”: a draw's out-of-range Hemoglobin), not the draw's other tests' (#464)",
+                  hb4["rows"] > 0 and hb4["badges"] > 0 and not hb4["bad"] and hb4["marks"] == hb4["want"] > 0 and hb4["others"] > 0, hb4)
+            check("…“creatinine”, out of range on few draws, shows a badge and a ▲ on those only, none on its draws with other tests out of range (#464)",
+                  cr4["rows"] > 0 and not cr4["bad"] and cr4["badges"] == cr4["marks"] == cr4["want"] < cr4["others"], cr4)
             # #458: the importers cut a long one at a whole name, with "…"; one cut mid-name at 160 characters before that
             # has the name it cut left out for the "…", not recased half ("…, Hepatic PA")
             cut458 = js("""(() => { const names = ['COMPREHENSIVE METABOLIC PANEL', 'CBC WITH DIFFERENTIAL', 'HEPATIC FUNCTION PANEL', 'LIPID PANEL',
@@ -7689,6 +7711,15 @@ def main():
             hmt279 = js("""[...document.querySelectorAll('#hmTable tbody')].map(b => [b.querySelector('tr.grp th').textContent, b.querySelectorAll('tr:not(.grp)').length])""")
             check("…and its table's row groups too", [g for g, _ in hmt279] == list(dict.fromkeys(want279.get(n) for n, _ in hm279))
                   and sum(k for _, k in hmt279) == len(hm279), [hmt279, hm279])
+            # #464: scrolled right, each panel's name still shows at the left of its row, as the labs' names do (its cell is
+            # the row's width, so it scrolled away, leaving an empty band; on ten years the latest draws are 21,000 px right)
+            hmt464 = js("""(() => { const w = document.querySelector('#hmTable .tablewrap'), r = w.getBoundingClientRect(), at = () => [...w.querySelectorAll('tr.grp th')]
+                .map(th => { const b = (th.firstElementChild || th).getBoundingClientRect(); return [th.textContent, Math.round(b.left - r.left), Math.round(r.right - b.right)]; });
+              const before = at(); w.scrollLeft = w.scrollWidth; const after = at(), lab = Math.round(w.querySelector('tbody th[scope=row]').getBoundingClientRect().left - r.left);
+              const out = {wide: w.scrollWidth > w.clientWidth * 2, left: w.scrollLeft, lab, before, after}; w.scrollLeft = 0; return out; })()""")
+            check("…and scrolled right, the table still shows each panel's name at the left of its row, where the labs' names stay (#464)",
+                  hmt464["wide"] and hmt464["left"] > 0 and len(hmt464["after"]) > 1 and hmt464["after"] == hmt464["before"]
+                  and all(hmt464["lab"] <= a <= hmt464["lab"] + 16 and b > 0 for _, a, b in hmt464["after"]), hmt464)
             # a lab kept in two units (#438): joinSeries keeps Hemoglobin in g/dL and in mmol/L apart, and the list, the
             # heatmap's grid and its table show each once, with its own unit, under the same panel (labGroups groups series)
             two438 = js("""(() => {

@@ -18,6 +18,7 @@ function ticks(a, b, w) {
    meds.js adds the Medications lane (#50): one row of spans per medication */
 const TL_LANES = {};
 function renderTimeline() {
+  tlAbnDays();
   const w = Math.max(320, tlSvg.parentElement.clientWidth - 32);
   const lanes = CATS.filter(c => c.k !== "stay" && state.cats.has(c.k) && hasLane(c));
   const laneH = 34, top = msInRange(state.from, state.to) ? 22 : 8, axisH = 26;
@@ -64,7 +65,7 @@ function renderTimeline() {
       const hollow = e.k === "appt_msg" || e.k === "auto_msg" || e.k === "rhythm";   // #182: a notification, beside the recordings' dots
       const fill = hollow ? "var(--surface)" : c.color;
       g.push(el("svg:circle", {class: "ev" + (state.selEv === e.id ? " sel" : ""), cx: x, cy: y, r, fill, stroke: hollow ? c.color : "var(--surface)", "stroke-width": e.k === "rhythm" ? 2 : 1.5, "data-id": e.id}));
-      if (e.abn && e.k === "lab") {   // a ▲ above the day, known by its shape and not only its red (#250)
+      if (e.k === "lab" && tlAbn(e)) {   // a ▲ above the day, known by its shape and not only its red (#250); a search's tests' (#464)
         const m = abnMark(x, y - r - 4.4, "H", 3.4, "tl-abn"); m.setAttribute("fill", "var(--crit)"); m.setAttribute("pointer-events", "none"); g.push(m);
       }
     }
@@ -179,6 +180,16 @@ function tlLabValues(labs, tests = null) {
    as a lab day's search words do (store.js labDayWords); none with no search */
 const tlTestsHit = () => !state.q ? [] : SERIES.filter(s => !s.watch && s.panel !== "Vitals"
   && [s.name, nice(s.name), s.panel || "", panelName(s.panel || "")].some(t => t.toLowerCase().includes(state.q)));
+/* a lab draw's out-of-range count: under a search that names tests, those tests' on its day, as the line over the list
+   counts them (#464: "psa" showed "2 out of range" and a ▲ on draws whose PSA was in range, from their other tests);
+   else all its values'. tlAbnDays works out the days' counts for a redraw (null: no search names tests) */
+let tlAbnDay = null;
+function tlAbnDays() {
+  const tests = tlTestsHit();
+  tlAbnDay = tests.length ? new Map() : null;
+  for (const s of tests) for (const p of s.pts) if (p[4]) { const d = isoDay(p.ts); tlAbnDay.set(d, (tlAbnDay.get(d) || 0) + 1); }
+}
+const tlAbn = e => e.k === "lab" && tlAbnDay ? tlAbnDay.get(isoDay(e.ts)) || 0 : e.abn;
 /* the line over the list: "The last year: 9 lab draws, 31 results, 3 out of range · 97 workouts, not listed". Under a
    search that names tests, the draws' results are those tests' only ("23 lab draws, 23 PSA results": not the 598 values
    of the draws that have a PSA, 8 of them out of range, read as PSA's), and it says which */
@@ -196,7 +207,7 @@ function tlSum(v, listed) {
 let tlOpen = new Set(), tlList = null;   // the days whose workouts are open ("YYYY-MM-DD"); the list as drawn so far
 function renderList() {
   const listed = tlWorkListed(), all = EV.filter(visible), v = tlListed(all, listed);
-  tlSum(all, listed);
+  tlSum(all, listed); tlAbnDays();
   $("#listTitle").textContent = `Events (${v.length.toLocaleString()})`;
   for (const b of $("#sortSeg").children) b.setAttribute("aria-pressed", (b.dataset.sort === "asc") === state.asc);
   const wb = $("#tlWork"), only = tlWatchOnly();
@@ -259,7 +270,7 @@ function tlRow(e, cls) {
   key.style.color = CAT_OF[e.k].color;
   return el("div", {class: "tl-row" + (cls ? " " + cls : "") + (state.selEv === e.id ? " sel" : ""), "data-id": e.id, ...pressable(ev => openFrom(ev.currentTarget, () => openEvent(e)))},
     el("span", {class: "d vh", text: fmtD(e.ts)}), key, el("span", {class: "t", text: e.title}),
-    el("span", {class: "k"}, KIND_LABEL[e.k], e.abn ? el("span", {class: "badge abn", text: `${e.abn} out of range`}) : null),
+    el("span", {class: "k"}, KIND_LABEL[e.k], tlAbn(e) ? el("span", {class: "badge abn", text: `${tlAbn(e)} out of range`}) : null),
     e.sub ? el("span", {class: "s", text: e.sub}) : null);
 }
 /* a day's workouts: one row, or several folded into one that opens to each (kept open across redraws, tlOpen) */
