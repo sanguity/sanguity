@@ -12,6 +12,13 @@ function slRange(from, to) {
     : to ? `dated up to ${fmtD(dayTs(to))}` : "of any date";
 }
 
+/* the new link as a QR code (#284, qr.js), under it while it's shown: a phone's camera opens it, so the person it's for
+   can take it there and then, without it being sent. Nothing if it's too long for one. */
+function slQr(url) {
+  const svg = qrSvg(url, {label: "The share link, as a QR code"});
+  return svg ? el("figure", {class: "qr-fig share-qr"}, svg, el("figcaption", {text: "Or let them scan it: a phone's camera opens the link."})) : null;
+}
+
 function shareLinksPanel(p, {open = false} = {}) {
   const box = el("div", {class: "share-links", hidden: true});
   const msg = el("span", {class: "msg", role: "status"});
@@ -92,7 +99,7 @@ function shareLinksPanel(p, {open = false} = {}) {
           try { await navigator.clipboard.writeText(url); copy.textContent = "Copied"; } catch (e) { field.select(); } }});
         made.replaceChildren(el("div", {class: "share-made"}, el("p", {}, el("b", {text: "Copy the link now."}),
           " It's shown only this once: Sanguity keeps a fingerprint of it, not the link itself, so it can't show it again."),
-          el("div", {class: "row"}, field, copy)));
+          el("div", {class: "row"}, field, copy), slQr(url)));
         f.remove(); await load();
       } catch (e) { fail(e); }
     }},

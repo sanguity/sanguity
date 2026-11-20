@@ -1498,6 +1498,18 @@ Everything on `main` so far; it becomes the first tagged release.
   else in their card: the account or the profile, what goes and what stays, Export everything first for a profile, and
   its name typed exactly before the red button works. The server now checks an account's username too, as it checks
   a profile's name (`confirm_name` on `DELETE /api/users/{id}`).
+- **Phone and watch setup as steps, with a live check for the first upload** (#284): the section was nine steps in a
+  disclosure, 2,081 px tall on a phone, Android had one line, and only the secret could be copied, only right after
+  it was made. Now an **iPhone | Android** switch (remembered) shows that phone's steps, a card each, numbered: get the
+  app, the secret, the address, Health Auto Export's header, what it sends and when, a test upload. Every value has
+  **Copy**, and the upload address, the secret and the header's value a **QR code** too, so a phone's camera takes the
+  text to the phone the app is on. Above the steps a live check says **Waiting for the first upload…** (or "with the
+  new secret") and, asking the server every few seconds while the section is in sight, turns to **Received just now ✓**
+  when the upload arrives, said to a screen reader too. A new share link shows its QR code under it, so the person it's
+  for can scan it there and then. The QR codes come from our own small encoder (`www/js/qr.js`: byte mode, error
+  correction M, versions 1 to 10, the mask chosen by ISO/IEC 18004's penalty), no library, dark on white in both themes
+  and in forced colours; `tests/test_qr.py` holds it to published vectors and an independent encoder's symbols and
+  reads every length back.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
