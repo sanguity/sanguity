@@ -98,7 +98,7 @@ class History(unittest.TestCase):
             j = self.ines.get(f"/api/profiles/{pid}/jobs/{jid}").json()
             if j["state"] == "preview":   # since #22 an import waits at its preview: save it, as the page's Save does,
                 # keeping any duplicates (these tests import the same files more than once on purpose)
-                keep = [i["ref"] for i in ((j.get("duplicates") or {}).get("items") or [])]
+                keep = [i["ref"] for i in ((j.get("duplicates") or {}).get("items") or []) if i["ref"]]   # (a list's entry has none, #497)
                 r = self.ines.post(f"/api/profiles/{pid}/jobs/{jid}/confirm", json={"keep": keep}, headers=H)
                 self.assertEqual(r.status_code, 202, r.text)
             elif j["state"] in ("done", "failed"):

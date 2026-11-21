@@ -153,7 +153,7 @@ class Preview(unittest.TestCase):
                 self.assertEqual(again["duplicates"]["results"], first["counts"]["results"])
                 self.assertEqual(again["range"], first["range"])
                 self.assertTrue(again["duplicates"]["items"])
-                self.assertTrue(all(i["ref"][:2] in ("e:", "s:") for i in again["duplicates"]["items"]))
+                self.assertTrue(all(i["ref"] is None or i["ref"][:2] in ("e:", "s:") for i in again["duplicates"]["items"]))   # (None: a list's entry, #497)
                 done = self.save(pid, again)
                 self.assertEqual(done["state"], "done", done)
                 self.assertIsNone(done["import_id"])
@@ -228,6 +228,64 @@ class Preview(unittest.TestCase):
         self.assertEqual([listed[i] for i in older], [True] + [False] * jobs.FRESH)
         self.assertNotIn("stale", self.robin.get(f"/api/profiles/{pid}/jobs/{older[0]}").json())
         self.assertFalse(self.robin.get(f"/api/profiles/{pid}/jobs", params={"state": "preview"}).json()[-1]["stale"])
+
+    def test_a_reopened_review_plans_its_lab_names_again(self):   # #497: a series the profile has by now isn't asked about
+        pid = self.profile("Lab names again")
+        files = {"labs.csv": CSV_HEAD + "03/14/2025,Zeta marker XQ,4.2,U/L,1 - 9,,\n"}
+        left, _ = self.previewed(pid, files)
+        self.assertEqual([e["name"] for e in left["labs"]], ["Zeta marker XQ"])
+        self.save(pid, self.previewed(pid, files)[0])   # saved meanwhile, as a series of its own
+        again = self.robin.get(f"/api/profiles/{pid}/jobs/{left['id']}").json()
+        self.assertEqual((again["new"], again["labs"], again["lab_targets"]), (False, [], []), again)
+        # what confirm reads the choices against is planned again too, what was asked still asked, naming the series
+        listed = json.loads(crypto.read_file(jobs.preview_path(pid, left["id"])))["labs"]["listed"]
+        self.assertEqual([(e["ref"], e.get("same")) for e in listed], [("s:0", "Zeta marker XQ")])
+        done = self.save(pid, again)
+        self.assertEqual((done["state"], done["import_id"]), ("done", None), done)
+        # one with a result still new: still asked about, saying a series of its name is there now
+        left, _ = self.previewed(pid, {"labs.csv": CSV_HEAD + "03/14/2025,Zeta marker XR,4.2,U/L,1 - 9,,\n03/15/2025,Zeta marker XR,4.4,U/L,1 - 9,,\n"})
+        self.save(pid, self.previewed(pid, {"labs.csv": CSV_HEAD + "03/14/2025,Zeta marker XR,4.2,U/L,1 - 9,,\n"})[0])
+        again = self.robin.get(f"/api/profiles/{pid}/jobs/{left['id']}").json()
+        self.assertEqual([(e["name"], e.get("same")) for e in again["labs"]], [("Zeta marker XR", "Zeta marker XR")], again["labs"])
+        self.assertTrue(again["lab_targets"])
+
+    def test_apple_health_again_is_all_duplicates(self):   # #497: its activity and workouts, and its lists' entries, too
+        pid = self.profile("Apple Health again")
+        files = {"apple_health_export/" + k: v for k, v in
+                 folder_files(os.path.join(FIX, "apple-health", "health-records", "apple_health_export")).items()}
+        first, _ = self.previewed(pid, files)
+        self.assertTrue(first["new"])
+        self.assertGreater(first["counts"]["watch_days"], 0)
+        self.assertGreater(first["counts"]["workouts"], 0)
+        self.assertNotIn("watch", first["duplicates"])
+        self.assertEqual(self.save(pid, first)["state"], "done")
+        again, _ = self.previewed(pid, files)
+        self.assertFalse(again["new"], again)
+        self.assertEqual((again["counts"]["watch_days"], again["counts"]["workouts"]), (0, 0), again["counts"])
+        self.assertEqual(again["duplicates"]["watch"], {"watch_days": first["counts"]["watch_days"], "workouts": first["counts"]["workouts"]})
+        # every duplicate counted is listed: the lists' entries (an allergy, a problem) with no box to keep them
+        d = again["duplicates"]
+        listed = {(i["kind"], i["ref"] is None) for i in d["items"]}
+        self.assertTrue({("allergy", True), ("problem", True)} <= listed, d["items"])
+        self.assertEqual(sum(1 for i in d["items"] if i["ref"] is None), d["other"])
+        done = self.save(pid, again)
+        self.assertEqual((done["state"], done["import_id"]), ("done", None), done)   # nothing new: no import at all
+        self.assertNotIn("workouts", {k for k, n in done["counts"].items() if n})
+        self.assertEqual(done["skipped"]["watch"], again["duplicates"]["watch"])
+        # a watch summary against the one the profile has: only what it lacks, or has with another value
+        have = {"metrics": [{"key": "steps", "pts": [["2025-05-30", 3200], ["2025-05-31", 10]]}],
+                "exercise": [{"start": "2025-05-30T07:00:00Z", "key": "w1"}], "bp_readings": [["2025-05-30T08:00:00Z", 120, 80, "Phone", "App"]]}
+        new = {"metrics": [{"key": "steps", "pts": [["2025-05-30", 3200], ["2025-05-31", 11], ["2025-06-01", 5]]},
+                           {"key": "sleep", "pts": [["2025-05-30", 7]]}],
+               "exercise": [{"start": "2025-05-30T07:00:00+00:00"}, {"start": "2025-05-31T07:00:00Z", "key": "w1"},
+                            {"start": "2025-06-01T07:00:00Z", "key": "w2"}],
+               "bp_readings": [["2025-05-30T08:00:30Z", 120, 80, "Watch", "Health"], ["2025-05-30T09:00:00Z", 121, 80, "Watch", "Health"]]}
+        from server import watch_store
+        left = watch_store.unseen(have, new)
+        self.assertEqual([(m["key"], m["pts"]) for m in left["metrics"]], [("steps", [["2025-05-31", 11], ["2025-06-01", 5]]), ("sleep", [["2025-05-30", 7]])])
+        self.assertEqual([x.get("key") for x in left["exercise"]], ["w2"])   # the same start, or the same key: there
+        self.assertEqual([r[0] for r in left["bp_readings"]], ["2025-05-30T09:00:00Z"])   # the same minute and values: there
+        self.assertIs(watch_store.unseen(None, new), new)
 
     def test_review_samples_what_is_new(self):   # #282: a few of each kind, latest first, the duplicates left out
         pid = self.profile("Samples")

@@ -13,7 +13,7 @@
    wasn't uploaded here starts at Recognising), one progress bar, a line saying what's happening now (said as each
    stage starts), then the job's own part (.import-job), which the review, the result or what went wrong fills. Focus
    moves to the review once it's ready, unless it has gone somewhere else on the page meanwhile; after its Add or
-   Cancel, to the line saying how it went (#489). fresh(card) draws a review again, as the server reads it now (#490).
+   Cancel, to the line saying how it went (#489). fresh(card) draws a review again, as the server reads it now (#490), keeping the choices made (#497).
    Plain script: no inline code (the pages' CSP allows scripts from js/ only); from other files it needs util.js (el,
    icon, kindIcon, CAT_OF, keepDates, aboutWords for the ⓘ, #280, sayIn, announce, smoothly) and dates.js. */
 "use strict";
@@ -60,8 +60,8 @@
     return h;
   }
 
-  /* the card (#281). opts {container, title, size, steps, pid}: steps, the STEPS it goes through (an upload all of
-     them; one file, not a zip, has nothing to unpack, #489); pid, the profile it imports into (data-pid: Sources puts
+  /* the card (#281). opts {container, title, size, steps, pid}: steps, the STEPS it goes through (a zip's upload all
+     of them; a file, several or a folder has nothing to unpack, #489, #497); pid, the profile it imports into (data-pid: Sources puts
      away a review for another profile once another is chosen, #490).
      -> {card, body, title, step(id, text), text(t), note(t), progress(v), end(how), focus(), hold()}. card is the whole card,
      body its job's own part (.import-job), which the rest of this file fills and calls the card (FRAMES finds its
@@ -96,7 +96,7 @@
         card.dataset.step = id;
         mark(at);
         now.hidden = false;
-        if (text) sayIn(now, text);
+        if (text) sayIn(now, text, false, {say: !card.hidden});   // (said unless put away for another profile, #497)
       },
       text(t) { now.textContent = t; },
       note(t) { about.textContent = [about.textContent, t].filter(Boolean).join(" · "); },
@@ -153,10 +153,10 @@
   const unitText = u => u ? ` (${u})` : "";
 
   // the lab names to match (#23), one row each: the series typed or picked from a list (the match made before or the
-  // suggestion first), or left empty to keep it a series of its own. -> {part, picked, wrong}
+  // suggestion first), or left empty to keep it a series of its own. -> {part, picked, wrong, kept, put}
   function labTable(j) {
     const listed = j.labs || [];
-    if (!listed.length) return {part: null, picked: () => ({}), wrong: () => null};
+    if (!listed.length) return {part: null, picked: () => ({}), wrong: () => null, kept: () => ({}), put: () => {}};
     const named = new Map((j.lab_targets || []).map(t => [t.name.toLowerCase(), t.name]));
     const rows = listed.map((l, i) => {
       const id = `imp${j.id}-lab${i}`, before = l.before;
@@ -169,6 +169,7 @@
       const initial = before ? before.target || KEEP : sure.length ? sure[0].name : KEEP;
       const top = before ? null : sure[0] || unsure[0];
       const said = before ? (before.target == null ? "Kept separate as before." : "Matched as before.")
+                 : l.same ? `This profile has a series of this name now (${l.same}): left empty, its results go there.`   // (saved meanwhile, #497)
                  : top ? `${top.sure ? "Suggested" : "Possibly"}: ${top.name}, ${top.reason}.` : "Nothing in this profile looks like it.";
       const why = node("span", {class: before ? "before" : "why", id: id + "-why", text: said});
       const box = node("input", {type: "text", list: id + "-list", value: initial, placeholder: "A series of its own", autocomplete: "off",
@@ -206,7 +207,10 @@
       .map(([r, v]) => [r.l.ref, v === KEEP ? null : v]));
     // the first box naming no series, marked as such
     const wrong = () => { const r = rows.find(r => r.read() === null); if (r) r.box.dispatchEvent(new Event("change")); return r ? r.box : null; };
-    return {part, picked, wrong};
+    // what's been typed, by ref, and typed again in a review drawn again (#497): a name still listed gets it back
+    const kept = () => Object.fromEntries(rows.filter(r => r.box.value !== r.initial).map(r => [r.l.ref, r.box.value]));
+    const put = typed => { for (const r of rows) if (r.l.ref in typed) { r.box.value = typed[r.l.ref]; r.box.dispatchEvent(new Event("change")); } };
+    return {part, picked, wrong, kept, put};
   }
 
   // results that look like ones already in the profile from another source (#96): flagged, never merged unless ticked
@@ -215,7 +219,7 @@
   const valueText = x => `${x.value} ${x.unit || ""}`.trim();
   function sameChoices(j) {
     const listed = j.possible || [];
-    if (!listed.length) return {part: null, picked: () => []};
+    if (!listed.length) return {part: null, picked: () => [], tick: () => {}};
     const boxes = [];
     const part = node("details", {class: "imp-same", open: ""},
       node("summary", {text: `${plural(listed.length, ["result", "results"])} possibly in the profile already, from another source`}),
@@ -230,7 +234,8 @@
           node("span", {}, node("b", {text: x.name}), ` ${valueText(x)} · ${when(x.t)} · from ${j.label || j.importer}`),
           node("span", {class: "why", text: `Possibly the same result as ${x.other.name} ${valueText(x.other)} · ${when(x.other.t)} · from ${x.other.label || "another import"}`}));
       })));
-    return {part, picked: () => boxes.filter(b => b.checked).map(b => b.value)};
+    return {part, picked: () => boxes.filter(b => b.checked).map(b => b.value),
+            tick: refs => { for (const b of boxes) if (refs.includes(b.value)) b.checked = true; }};   // drawn again (#497)
   }
 
   /* how many records are already here: one count for the bar and the list (#490), a lab draw left out where there
@@ -241,24 +246,41 @@
   // the duplicates of what the profile has (#22): skipped, each with a box to add it again anyway; a series' results
   // dated from the first to the last (#490), a lab draw not offered beside its own results
   function dupChoices(j) {
-    const d = j.duplicates || {items: []}, n = hereCount(j), boxes = [];
+    const d = j.duplicates || {items: []}, n = hereCount(j), boxes = new Map();
     const items = (d.items || []).filter(it => !(it.kind === "lab" && draws(j)));   // a draw goes with its results
+    const watch = watchHere(d.watch);   // a wearable's days and workouts there already (#497), named after the list
     const part = items.length ? node("details", {class: "imp-dups"},
       node("summary", {text: `Already here: ${plural(n, ["duplicate", "duplicates"])}, skipped unless ticked`}),
-      node("p", {class: "hint", text: "These are in the profile already. Tick any you want added again anyway."}),
+      node("p", {class: "hint", text: "These are in the profile already. Tick any you want added again anyway; an allergy, problem or " +
+        "appointment already in its lists isn't added twice."}),
       node("ul", {}, items.map(it => {
-        const b = node("input", {type: "checkbox", value: it.ref});
-        boxes.push(b);
+        // an entry of the profile's lists has no ref (#497): named, with no box
+        const b = it.ref ? node("input", {type: "checkbox", value: it.ref}) : node("span", {class: "imp-dup-none"});
+        if (it.ref) boxes.set(it, b);
+        const kind = (KIND[it.kind] || LISTED[it.kind] || [it.kind])[0];
         const what = it.kind === "results" ? plural(it.n || 0, ["lab result", "lab results"]) + ": " + it.title
-                                           : (KIND[it.kind] || [it.kind])[0] + ": " + it.title;
+                   : it.title.toLowerCase().startsWith(kind + ":") ? it.title : kind + ": " + it.title;   // ("Allergy: Peanuts" says so)
         const when = it.t ? keepDates(it.to ? `${day(it.t)} – ${day(it.to)}` : day(it.t)) : "Undated";
-        return node("li", {}, node("label", {}, b, " ", node("span", {class: "d"}, when), " ", what));
+        return node("li", {}, node(it.ref ? "label" : "span", {}, b, " ", node("span", {class: "d"}, when), " ", what));
       })),
-      d.more ? node("p", {class: "hint", text: `…and ${d.more.toLocaleString()} more.`}) : null)
-      : n ? node("p", {class: "hint", text: `Already here: ${plural(n, ["duplicate", "duplicates"])}, skipped.`}) : null;
+      d.more ? node("p", {class: "hint", text: `…and ${d.more.toLocaleString()} more.`}) : null,
+      watch ? node("p", {class: "hint", text: `Already here as well: ${watch}, skipped.`}) : null)
+      : n || watch ? node("p", {class: "hint", text: "Already here: " + [n ? plural(n, ["duplicate", "duplicates"]) : null, watch].filter(Boolean).join("; ") + ", skipped."})
+      : null;
     // what the ticked ones add, by count key: a result's n results, an event one of its kind
-    const ticked = () => items.filter((it, i) => boxes[i] && boxes[i].checked);
-    return {part, picked: () => ticked().map(it => it.ref), ticked};
+    const ticked = () => items.filter(it => boxes.get(it)?.checked);
+    // the boxes ticked, by ref, and ticked again in a review drawn again (#497)
+    const kept = () => ticked().map(it => it.ref);
+    const tick = refs => { for (const [it, b] of boxes) if (refs.includes(it.ref)) b.checked = true; };
+    return {part, picked: kept, ticked, kept, tick};
+  }
+  // the profile-wide lists' entries a duplicate can be (#497)
+  const LISTED = {allergy: ["allergy", "allergies"], problem: ["problem or diagnosis", "problems or diagnoses"],
+                  upcoming: ["upcoming appointment", "upcoming appointments"]};
+  // what of a wearable's data is there already, in words ("2 days of activity data and 1 workout"), or ""
+  function watchHere(w) {
+    const said = EXTRA.filter(([k]) => (w || {})[k] > 0).map(([k, words]) => plural(w[k], words));
+    return said.length > 1 ? said.slice(0, -1).join(", ") + " and " + said.at(-1) : said[0] || "";
   }
 
   // what an import brings besides events, in the order the counts are listed: [count key, words, icon, colour]
@@ -333,15 +355,19 @@
     return records.length === list.length ? "Add " + plural(records.reduce((a, x) => a + x.n, 0), ["record", "records"]) : "Add all of this";
   }
 
-  /* the review. Drawn again, the same choices offered afresh, when the profile's records may have changed under it
-     (f.fresh: opened again from Waiting for you, or another import of the profile saved on the page, #490): the
-     server reads the preview again, so the same file saved meanwhile shows as already here */
+  /* the review. Drawn again when the profile's records may have changed under it (f.fresh: opened again from
+     Waiting for you, or another import of the profile saved on the page, #490): the server reads the preview again,
+     so the same file saved meanwhile shows as already here; the choices made keep (#497): a series typed, a
+     duplicate or a possible match ticked, where it's still offered */
   function jobReview(job, card) {
     const pid = job.profile_id, base = `profiles/${encodeURIComponent(pid)}/jobs/${job.id}`, f = FRAMES.get(card);
     return new Promise(done => {
+      let shown = null;   // the choices drawn: kept when it's drawn again (#497)
       function draw(j, again) {
         const range = j.range ? (j.range.from === j.range.to ? day(j.range.from) : `${day(j.range.from)} – ${day(j.range.to)}`) : "";
         const labs = labTable(j), same = sameChoices(j), dups = dupChoices(j);
+        if (shown) { labs.put(shown.labs.kept()); dups.tick(shown.dups.kept()); same.tick(shown.same.picked()); }
+        shown = {labs, same, dups};
         const msg = node("span", {class: "msg", role: "status"});
         const add = node("button", {class: "btn primary", type: "button"});
         const cancel = node("button", {class: "btn", type: "button", text: "Cancel"});
@@ -402,11 +428,12 @@
             node("span", {class: "sg-bar-acts"}, cancel, add)));
         barRoom(card.querySelector(".imp-actions"));
         if (again) return;
-        // the stage line says Review (#281); its "Ready to import" is said by focus on it, or else here
+        // the stage line says Review (#281); its "Ready to import" is said by focus on it, or else here, unless the
+        // card is put away for another profile (Sources, #497): nothing is said of a card no one sees
         f.step("review");
         f.text("");
         f.progress(false);
-        if (!f.focus()) announce(`${j.new ? "Ready to import" : "All duplicates"}: ${f.title}. Nothing is saved until you add it.`);
+        if (!f.focus() && !f.card.hidden) announce(`${j.new ? "Ready to import" : "All duplicates"}: ${f.title}. Nothing is saved until you add it.`);
       }
       f.fresh = async () => {
         let j = null;
@@ -457,11 +484,15 @@
     freshOthers(card, pid);
     FRAMES.get(card).end("done");
     const c = j.counts || {}, items = countItems(c), sk = j.skipped || {};
-    const skipped = (sk.events || 0) + (sk.results || 0), ln = j.lab_names || {};
+    // the duplicates skipped, counted as the review counted them (hereCount: a lab draw with its results), and a
+    // wearable's data there already (#497)
+    const skipped = hereCount({duplicates: sk, counts: {results: (c.results || 0) + (sk.results || 0)}}), watch = watchHere(sk.watch);
+    const ln = j.lab_names || {};
     const said = node("p", {}, node("b", {text: "Imported."}), ` Read as ${j.label || j.importer}${rangeText(j.range)}.`);
+    const dup = [skipped ? `${plural(skipped, ["duplicate", "duplicates"])} skipped.` : null, watch ? `${cap(watch)} already here, not added again.` : null].filter(Boolean);
     fill(card, said,
-      items.length ? node("ul", {}, items) : node("p", {text: skipped ? "Nothing new: it was all in the profile already." : "The files held no records to show."}),
-      skipped ? node("p", {class: "hint", text: `${plural(skipped, ["duplicate", "duplicates"])} skipped.`}) : null,
+      items.length ? node("ul", {}, items) : node("p", {text: dup.length ? "Nothing new: it was all in the profile already." : "The files held no records to show."}),
+      dup.length ? node("p", {class: "hint", text: dup.join(" ")}) : null,
       ln.matched ? node("p", {class: "hint", text: `${plural(ln.matched, ["lab name", "lab names"])} put in an existing series.`}) : null,
       j.linked ? node("p", {class: "hint", text: `${plural(j.linked, ["result", "results"])} shown once, as the same result from another source.`}) : null,
       notes(j),
@@ -470,8 +501,9 @@
     // said by a toast (#263), with the way to what came in and an Undo, which asks first in Import history's words
     // (#360: it can't be reversed): the card stays as it is
     const what = items.map(li => li.textContent);
+    const most = counted(c).map((x, i) => [x.n, what[i]]).sort((a, b) => b[0] - a[0]).map(x => x[1]);   // the largest first (#497)
     const labs = c.results > 0, where = labs ? "labs" : "timeline";
-    toast(what.length ? `Imported ${what.slice(0, 2).join(", ")}${what.length > 2 ? " and more" : ""}.` : "Imported: nothing new.", {
+    toast(what.length ? `Imported ${most.slice(0, 2).join(", ")}${what.length > 2 ? " and more" : ""}.` : "Imported: nothing new.", {
       actions: [{text: labs ? "Open Labs" : "Open the timeline", href: `index.html?profile=${pid}#${where}`},
         ...(j.import_id != null && what.length ? [{text: "Undo…", onClick: () => undoImport(card, pid, j, what)}] : [])]});
   }
@@ -497,7 +529,7 @@
     settled(card);
     const f = FRAMES.get(card);
     f.end("failed");
-    announce("Not imported: " + f.title, {error: true});
+    if (!f.card.hidden) announce("Not imported: " + f.title, {error: true});   // (one put away says nothing, #497)
   }
 
   async function uploaded(opts) {

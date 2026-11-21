@@ -9422,7 +9422,8 @@ def main():
             check("a CareSpace export uploads and is imported in the background, as CareSpace",
                   card.startswith("Imported.") and "CareSpace" in card and "lab result" in card, card)
             done_toast = js("(t => t && [t.querySelector('.sg-toast-text').textContent, ...[...t.querySelectorAll('a, button')].map(b => b.getAttribute('aria-label') || b.textContent), t.querySelector('a')?.getAttribute('href')])(document.querySelector('#sgToasts .sg-toast:last-child'))")
-            came263 = js(f"[...{last_card}.querySelectorAll('ul > li')].slice(0, 2).map(li => li.textContent).join(', ')")   # (as the card counts, #490)
+            came263 = js(f"""[...{last_card}.querySelectorAll('ul > li')].map((li, i) => [parseInt(li.textContent.replace(/,/g, '')), i, li.textContent])
+                .sort((a, b) => b[0] - a[0] || a[1] - b[1]).slice(0, 2).map(x => x[2]).join(', ')""")   # (as the card counts, #490; the largest first, #497)
             check("…and a toast says what came in (#263), with Open Labs and Undo, the card no longer a live region of its own",
                   done_toast and done_toast[0].startswith("Imported " + came263) and done_toast[1:4] == ["Open Labs", "Undo…", "Dismiss"]
                   and done_toast[4] == "index.html?profile=2#labs" and not js(f"{last_card}.hasAttribute('aria-live')"), done_toast)
@@ -9454,6 +9455,10 @@ def main():
             card = js(f"{last_card}.textContent")
             check("an Epic MyChart export uploads and is imported in the background, as Epic MyChart",
                   card.startswith("Imported.") and "Epic MyChart" in card and "lab result" in card, card)
+            toast497 = js("document.querySelector('#sgToasts .sg-toast:last-child .sg-toast-text')?.textContent || ''")
+            check("…its toast names the largest kinds first: its 12 lab results, not its 4 hospital stays (#497)",
+                  toast497.startswith("Imported 12 lab results in ") and "4 hospital stays" in toast497, toast497)
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             up = db.execute("SELECT id FROM uploads WHERE profile_id=2 ORDER BY id DESC").fetchone()
             job = db.execute("SELECT state, importer FROM jobs WHERE upload_id=?", (up["id"],)).fetchone()
             check("the job is done, read by the Epic MyChart importer", job is not None and tuple(job) == ("done", "epic-mychart"),
@@ -9482,7 +9487,9 @@ def main():
             last = db.execute("SELECT id FROM uploads WHERE profile_id=2 ORDER BY id DESC").fetchone()["id"]
             check("after the upload, #20's hook is called with the profile and upload, and the card it goes on in", hook == {"profileId": 2, "uploadId": last, "card": True}, hook)
             sent281 = js("(c => [c.querySelector('.job-hd').textContent, c.dataset.step, c.querySelector('.job-steps li').textContent])([...document.querySelectorAll('.job')].pop())")
-            check("…and the card names what was sent, and says it's sent", sent281[0].startswith("2 files2 files · ") and sent281[1:] == ["unpack", "Sending (done)"], sent281)
+            check("…and the card names what was sent, two files with nothing to unpack (#497: only a zip is)",
+                  sent281[0].startswith("2 files2 files · ") and sent281[1:] == ["send", "Sending"]
+                  and js("[...[...document.querySelectorAll('.job')].pop().querySelectorAll('.job-steps li')].map(li => li.textContent).join()") == "Sending,Recognising,Review,Saved", sent281)
             js("sanguityImport.uploaded = window.__real281; 0")   # (0: not the function, which js() would call)
             db.close()
             page.set_viewport_size({"width": 375, "height": 800})
@@ -9553,6 +9560,61 @@ def main():
             check("…a C-CDA's review in the dialog, tabbed through at 1400 and 375 px: nothing focused under its bar, which sits at the dialog's foot; "
                   "after Cancel, focus on the card's result (#489)",
                   all(n > 3 and not under and foot < 40 and res for _, n, under, foot, res in dlg489), dlg489)
+            # (#497) in a profile of its own with a visit, on index.html?profile=N (the address the page's own links give),
+            # at 844 x 390: a CSV with a lab name to match dropped into the dialog (kept a series of its own: nothing
+            # remembered); tabbed back from its Add, the table's header covers no focused box; added, its "See them on the
+            # timeline" closes the dialog, the Timeline shown; a drop while ask() is open is kept from the browser, nothing
+            # uploaded
+            from server import profiles as prof497, records as rec497
+            db = dbm.connect()
+            dpid497 = prof497.create_profile(db, "Dialog (fictional)", owner_id=db.execute("SELECT id FROM users WHERE username=?", (USER,)).fetchone()["id"])
+            with dbm.transaction(db):
+                rec497.store(db, dpid497, {"events": [{"id": 1, "t": "2026-10-01T09:30:00", "k": "visit", "title": "Fictional visit"}],
+                                           "details": {}, "labs": [], "costs": []}, "upload", fmt="ccda")
+            db.close()
+            page.set_viewport_size({"width": 844, "height": 390})
+            page.goto(base + f"/index.html?profile={dpid497}")
+            page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE && PROFILE.id === {dpid497}", timeout=20000)
+            drop497 = """([name, text]) => { const dt = new DataTransfer(); dt.items.add(new File([text], name, {type: 'text/csv'}));
+                document.body.dispatchEvent(new DragEvent('dragenter', {dataTransfer: dt, bubbles: true}));
+                const v = document.querySelector('.drop-veil'), e = new DragEvent('drop', {dataTransfer: dt, bubbles: true, cancelable: true});
+                (v && v.matches(':popover-open') ? v : document.body).dispatchEvent(e); return e.defaultPrevented; }"""
+            js(drop497, ["other-lab-497.csv", "Date,Test,Result,Units,Reference Range\n2026-11-14,Zeta marker XQ,4.2,U/L,1 - 9\n"])
+            page.wait_for_function("(l => l.length && /^Ready to import/.test(l[l.length - 1].textContent))(document.querySelectorAll('dialog.up-dlg[open] .import-job'))", timeout=30000)
+            settle(600)
+            dcard497 = "document.querySelector('dialog.up-dlg .job:last-child .import-job')"
+            js(f"{dcard497}.querySelector('.imp-actions .primary').focus()")
+            over497 = []
+            for _ in range(12):
+                page.keyboard.press("Shift+Tab")
+                if js("document.activeElement.matches('.imp-labs input[list]')"):
+                    over497 = js(f"""(b => {{ const th = {dcard497}.querySelector('.imp-labs th'), r = b.getBoundingClientRect(), h = th.getBoundingClientRect();
+                        return [getComputedStyle(th).position, h.bottom > r.top + 1 && h.top < r.bottom - 1, Math.round(h.bottom), Math.round(r.top)]; }})(document.activeElement)""")
+                    break
+            check("a dialog's review at 844 x 390, tabbed back from Add: the lab-name table's header covers no focused box (#497)",
+                  over497[:2] == ["static", False], over497)
+            js(f"{dcard497}.querySelector('.imp-actions .primary').click()")
+            page.wait_for_function(f"/^Imported/.test({dcard497}.textContent)", timeout=30000)
+            js(f"{dcard497}.querySelector('a[href$=\"#timeline\"]').click()")
+            page.wait_for_function("!document.querySelector('dialog.up-dlg').open", timeout=5000)
+            closed497 = js("[location.pathname + location.search + location.hash, state.tab]")
+            check("…added, its “See them on the timeline” closes the dialog, the Timeline shown (#497)",
+                  closed497 == [f"/index.html?profile={dpid497}#timeline", "timeline"], closed497)
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            js("window._ask497 = ask({title: 'A question', message: 'Kept open while files are dropped.'}); 0")   # (0: not the promise, which js() would wait for)
+            page.wait_for_selector("dialog.sg-ask[open]", timeout=5000)
+            cards = js("document.querySelectorAll('.import-job').length")
+            kept497 = js(drop497, ["over-ask.csv", "Date,Test,Result\n2026-11-14,WBC,6.1\n"])
+            settle(500)
+            ask497 = [kept497, js("document.querySelector('dialog.sg-ask').open"), js(f"document.querySelectorAll('.import-job').length === {cards}"),
+                      js("!document.querySelector('dialog.up-dlg').open"), js("!document.querySelector('.drop-veil')?.matches(':popover-open')")]
+            answer_ask(page, yes=False)
+            check("…a drop while ask() is open is kept from the browser (the page stays), and nothing is uploaded (#497)", ask497 == [True] * 5, ask497)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.goto("about:blank")
+            db = dbm.connect()
+            prof497.delete_profile(db, dpid497)
+            db.close()
             page.goto(base + "/?profile=2")
             page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE && PROFILE.id === 2 && EV.length > 0", timeout=20000)
             # the imported claims are on the Costs tab: rows from each insurer, with their care categories and denials
@@ -10386,6 +10448,102 @@ def main():
             db.close()
             check("…with many left open, Waiting for you shows the latest 5 and “Show N more”, which shows the rest, focus on the first of them (#490)",
                   few490 == [5, f"Show {n490 - 5} more"] and all490 == [n490, False, True], [n490, few490, all490])
+            # (#497) in a profile of its own: two reviews in Upload files, a series typed in the first surviving the
+            # second's Add, which draws it again; Review in Waiting for you brings that card, drawn again, the series still
+            # typed, and draws no second one
+            from server import profiles as prof497
+            db = dbm.connect()
+            pid497 = prof497.create_profile(db, "Records in (fictional)", owner_id=db.execute("SELECT id FROM users WHERE username=?", (USER,)).fetchone()["id"])
+            db.close()
+            page.goto(base + f"/sources.html?profile={pid497}#upload")
+            page.wait_for_selector("#importer", state="visible", timeout=10000)
+            csv497 = "Date,Test,Result,Units,Reference Range\n{},Zeta marker XR,{},U/L,1 - 9\n"
+            for n, (d, v) in enumerate((("2026-11-09", "12.9"), ("2026-11-10", "13.1"))):
+                page.set_input_files("#pickFiles", files=[{"name": f"lab-{n}.csv", "mimeType": "text/csv", "buffer": csv497.format(d, v).encode()}])
+                page.wait_for_function(f"document.querySelectorAll('#importer .import-job').length === {n + 1} && /^Ready to import/.test({last_card}.textContent)", timeout=30000)
+            first497 = "document.querySelector('#importer .import-job')"
+            page.locator("#importer .import-job").first.locator(".imp-labs input[list]").fill("Hemoglobin")
+            js(f"{first497}.querySelector('.imp-labs input[list]').dispatchEvent(new Event('change'))")
+            js(f"{last_card}.querySelector('.imp-actions .primary').click()")
+            page.wait_for_function(f"/^Imported/.test({last_card}.textContent) && /series of this name now/.test({first497}.querySelector('.imp-labs .why')?.textContent)", timeout=30000)
+            kept497 = js(f"(c => [c.querySelector('.imp-labs input[list]').value, c.querySelector('.imp-labs .why').textContent])({first497})")
+            jid497 = js(f"{first497}.dataset.job")
+            job497 = f"document.querySelector('.import-job[data-job=\"{jid497}\"]')"
+            js("SgSources.show('overview')")
+            page.wait_for_selector(f"#srcWait li[data-job='{jid497}'] button", timeout=10000)
+            page.click(f"#srcWait li[data-job='{jid497}'] button:text-is('Review')")
+            page.wait_for_function(f"!!document.querySelector('#srcReview .import-job[data-job=\"{jid497}\"] .imp-labs input[list]')", timeout=10000)
+            settle(500)   # (drawn again as the server reads it)
+            wait497 = js(f"""[document.querySelectorAll('.import-job[data-job="{jid497}"]').length, {job497}.querySelector('.imp-labs input[list]').value,
+                !!document.querySelector('#srcWait li[data-job="{jid497}"]')]""")
+            check("a series typed in one review survives another's Add, which draws it again; Review in Waiting for you brings that card, "
+                  "the series still typed, and draws no second one (#497)",
+                  kept497[0] == "Hemoglobin" and kept497[1].startswith("This profile has a series of this name now")
+                  and wait497 == [1, "Hemoglobin", False], [kept497, wait497])
+            js(f"[...{job497}.querySelectorAll('.imp-actions button')].find(b => b.textContent === 'Cancel').click()")
+            page.wait_for_function(f"{job497}.textContent.startsWith('Cancelled.')", timeout=10000)
+            js("SgSources.show('upload')")
+            # (#497) an Apple Health export with Health Records as a folder (no Unpacking: only a zip is unpacked), left at
+            # its review, then the same as a zip (Unpacking) and added: the folder's review, drawn again, is all
+            # duplicates and asks about no lab names; the zip again says nothing new, its activity and workout already
+            # here too, every duplicate it counts listed
+            ah497 = os.path.join(ROOT, "tests", "fixtures", "importers", "apple-health", "health-records", "apple_health_export")
+            buf497 = io.BytesIO()
+            with zipfile.ZipFile(buf497, "w", zipfile.ZIP_DEFLATED) as z:
+                for d, _, names in os.walk(ah497):
+                    for n in names:
+                        z.write(os.path.join(d, n), "apple_health_export/" + os.path.relpath(os.path.join(d, n), ah497).replace(os.sep, "/"))
+            steps497 = "(c => [...c.closest('.job').querySelectorAll('.job-steps li')].map(li => li.textContent))"
+            cards = js("document.querySelectorAll('#importer .import-job').length")
+            page.set_input_files("#pickFolder", ah497)
+            page.wait_for_function(f"document.querySelectorAll('#importer .import-job').length > {cards} && /^Ready to import/.test({last_card}.textContent)", timeout=30000)
+            folder497 = js(f"{last_card}.dataset.job")
+            fcard497 = f"document.querySelector('.import-job[data-job=\"{folder497}\"]')"
+            fold497 = [js(f"{steps497}({fcard497})"), js(f"!!{fcard497}.querySelector('.imp-labs')")]
+            page.set_input_files("#pickFiles", files=[{"name": "export.zip", "mimeType": "application/zip", "buffer": buf497.getvalue()}])
+            page.wait_for_function(f"{last_card}.dataset.job !== '{folder497}' && /^Ready to import/.test({last_card}.textContent)", timeout=30000)
+            zip497 = js(f"{steps497}({last_card})")
+            js(f"{last_card}.querySelector('.imp-actions .primary').click()")
+            page.wait_for_function(f"/^Imported/.test({last_card}.textContent) && /^All duplicates/.test({fcard497}.textContent)", timeout=30000)
+            again497 = js(f"(c => [!!c.querySelector('.imp-labs'), !!c.querySelector('.imp-tiles'), c.querySelector('.imp-actions .primary').textContent])({fcard497})")
+            check("a folder has no Unpacking in its stage line, a zip has (#497)",
+                  fold497[0] == ["Sending (done)", "Recognising (done)", "Review", "Saved"]
+                  and zip497 == ["Sending (done)", "Unpacking (done)", "Recognising (done)", "Review", "Saved"], [fold497, zip497])
+            check("…the folder's review, drawn again once the zip is added, is all duplicates and lists no lab names to match (#497)",
+                  fold497[1] and again497 == [False, False, "Nothing to add"], [fold497, again497])
+            page.set_input_files("#pickFiles", files=[{"name": "export-again.zip", "mimeType": "application/zip", "buffer": buf497.getvalue()}])
+            page.wait_for_function(f"/^(All duplicates|Ready to import)/.test({last_card}.textContent) && {last_card}.closest('.job').querySelector('h3').textContent === 'export-again.zip'", timeout=30000)
+            js(f"{last_card}.querySelector('.imp-dups').open = true")
+            dup497 = js(f"""(c => [c.querySelector('.imp-state').textContent, !!c.querySelector('.imp-tiles'), [...c.querySelectorAll('.imp-split li')].map(li => li.textContent),
+                c.querySelector('.imp-dups summary').textContent, c.querySelectorAll('.imp-dups li').length, c.querySelectorAll('.imp-dups li input').length,
+                [...c.querySelectorAll('.imp-dups li')].map(li => li.textContent.replace(/^.*?\\d{{4}} /, '')),
+                c.querySelector('.imp-dups ul + p.hint')?.textContent, [c.querySelector('.imp-actions .primary').textContent, c.querySelector('.imp-actions .primary').disabled]])({last_card})""")
+            check("…and the zip again says nothing new: all duplicates, no tiles, its activity and workout already here, every duplicate it counts listed (#497)",
+                  dup497[:4] == ["All duplicates", False, ["0 new", "7 already here", "0 possibly the same"], "Already here: 7 duplicates, skipped unless ticked"]
+                  and dup497[4] == 7 and dup497[5] == 5 and any(t.startswith("Allergy: ") for t in dup497[6]) and any(t.startswith("problem or diagnosis: ") for t in dup497[6])
+                  and dup497[7] == "Already here as well: 2 days of activity data and 1 workout, skipped." and dup497[8] == ["Nothing to add", True], dup497)
+            for card497 in (fcard497, last_card):
+                js(f"[...{card497}.querySelectorAll('.imp-actions button')].find(b => b.textContent === 'Cancel').click()")
+                page.wait_for_function(f"{card497}.textContent.startsWith('Cancelled.')", timeout=10000)
+            # (#497) a card put away for another profile says nothing as it reaches its review
+            js("window._said497 = []; for (const id of ['sgStatus', 'sgAlert']) new MutationObserver(() => { const t = document.getElementById(id).textContent; "
+               "if (t) window._said497.push(t); }).observe(document.getElementById(id), {childList: true, characterData: true, subtree: true})")
+            page.set_input_files("#pickFiles", files=[{"name": "quiet-497.csv", "mimeType": "text/csv", "buffer": csv497.format("2026-11-11", "13.0").encode()}])
+            page.wait_for_function(f"{last_card}.closest('.job').querySelector('h3').textContent === 'quiet-497.csv'", timeout=10000)
+            js("v => { const s = document.getElementById('profile'); s.value = v; s.dispatchEvent(new Event('change')); }", "2")
+            js("window._said497 = []")
+            page.wait_for_function(f"(c => c.hidden && c.dataset.step === 'review')({last_card}.closest('.job'))", timeout=30000)
+            settle(400)
+            quiet497 = js("window._said497")
+            check("…a card put away for another profile says nothing as it reaches its review (#497)",
+                  not any("quiet-497" in t or "Ready to import" in t for t in quiet497), quiet497)
+            js(f"(j => fetch(`api/profiles/{pid497}/jobs/${{j}}/discard`, {{method: 'POST', headers: {{'X-Sanguity': '1'}}}}).then(r => r.status))({last_card}.dataset.job)")
+            page.goto("about:blank")   # (a fresh page: the address names profile 2 now, so a goto there would only change its hash)
+            db = dbm.connect()
+            prof497.delete_profile(db, pid497)
+            db.close()
+            page.goto(base + "/sources.html?profile=2#overview")
+            page.wait_for_selector("#srcNav a[data-group=history]", state="visible", timeout=10000)
             page.click("#srcNav a[data-group=history]")
             page.wait_for_selector("#historyList li[data-import]", timeout=10000)
             page.set_viewport_size({"width": 375, "height": 800})

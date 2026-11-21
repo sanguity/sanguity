@@ -203,12 +203,33 @@ def _report(db, pid, name, data, watch, labs):
     dups = preview.find(db, pid, name, named)
     report = preview.report(named, dups, summarise)
     report["possible"] = crossmatch.public(crossmatch.for_preview(db, pid, named, dups))   # from other sources (#96)
-    report["labs"], report["lab_targets"] = labs["listed"], labs["targets"]
-    if watch:
-        report["counts"].update(_watch_counts(watch))
-        report["new"] = True
+    # a lab name is asked about only while its series brings something new (#497: not one whose results are all here)
+    listed = [e for e in labs["listed"] if not _all_here(named, dups, int(e["ref"][2:]))]
+    report["labs"], report["lab_targets"] = listed, labs["targets"] if listed else []
+    if watch:   # what the profile has already counts as already here (#497), not as new
+        fresh, here = _watch_split(db, pid, watch)
+        report["counts"].update(fresh)
+        if here:
+            report["duplicates"]["watch"] = here
+        report["new"] = report["new"] or any(fresh.values())
     report["stamp"] = stamp
     return report
+
+
+def _all_here(data, dups, i):
+    """Whether every result of data's lab series i is a duplicate (preview.find's dups)."""
+    s = (data.get("labs") or [])[i] if i < len(data.get("labs") or []) else None
+    if not isinstance(s, dict):
+        return False
+    pts, txt = s.get("pts") or [], s.get("txt") or []
+    return i in dups["series"] or bool(pts or txt) and len(dups["points"].get(i, ())) >= len(pts) and len(dups["txt"].get(i, ())) >= len(txt)
+
+
+def _watch_split(db, pid, watch):
+    """An import's watch data counted as what's new to the profile and what it has already (watch_store.unseen):
+    (the new counts, as _watch_counts gives them, {count key: how many already here})."""
+    whole, fresh = _watch_counts(watch), _watch_counts(watch_store.unseen(watch_store.load(db, pid), watch))
+    return fresh, {k: n - fresh.get(k, 0) for k, n in whole.items() if n > fresh.get(k, 0)}
 
 
 def _stamp(db, pid):
@@ -221,16 +242,22 @@ def _stamp(db, pid):
 def freshen(db, pid, jid):
     """A preview read again against the profile as it is now (#490), when its records have changed since it was read:
     the same file saved meanwhile shows as already here, not as new. Only what the page shows changes: what's saved is
-    found again on confirm anyway (_save). A preview that can't be read again keeps what it said."""
+    found again on confirm anyway (_save), but for the lab names to match, planned again and kept for confirm (#497).
+    A preview that can't be read again keeps what it said."""
     r = db.execute("SELECT summary FROM jobs WHERE id=? AND profile_id=? AND state='preview'", (jid, pid)).fetchone()
     if not r or not r["summary"]:
         return
     old = json.loads(crypto.dec(r["summary"]))
     if old.get("stamp") == _stamp(db, pid):
         return
+    path = preview_path(pid, jid)
     try:
-        held = json.loads(crypto.read_file(preview_path(pid, jid)))
-        report = _report(db, pid, held["importer"], held["data"], held.get("watch"), held["labs"])
+        held = json.loads(crypto.read_file(path))
+        # the lab names to match planned again too (#497), what was asked still asked (a choice may be typed in it)
+        labs = labmap.plan(db, pid, held["importer"], held["data"], keep={e["ref"] for e in (held.get("labs") or {}).get("listed") or []})
+        report = _report(db, pid, held["importer"], held["data"], held.get("watch"), labs)
+        if labs != held.get("labs") and os.path.isfile(path):   # what confirm (_save) reads the choices against
+            crypto.write_file(path, json.dumps({**held, "labs": labs}, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
     except Exception:   # gone (saved or cancelled meanwhile), or an importer since removed
         log.warning("the preview of job %s couldn't be read again", jid, exc_info=True)
         return
@@ -279,9 +306,14 @@ def _save(db, j):
 
     summary = summarise(new)
     summary["counts"]["documents"] = 0
-    summary["skipped"] = {k: skipped[k] for k in ("events", "results", "other")}
+    summary["skipped"] = {k: skipped[k] for k in ("events", "kinds", "results", "other")}
     if same:
         summary["linked"] = len(same)
+    # watch data: what the profile has already is counted as skipped (#497); all of it there, it isn't saved again
+    fresh, here = _watch_split(db, pid, watch) if watch else ({}, {})
+    if here:
+        summary["skipped"]["watch"] = here
+    watch = watch if any(fresh.values()) else None
     who_id = j["confirmed_by"] or j["created_by"]
     who = db.execute("SELECT id, username FROM users WHERE id=?", (who_id,)).fetchone() if who_id else None
     with dbm.transaction(db):
@@ -293,10 +325,10 @@ def _save(db, j):
             iid = records.store(db, pid, new, "upload", fmt=name)
             prof.link_documents(db, iid, keepdocs)
         if watch:   # last, so a failure before it leaves no file behind
-            saved = watch_store.save_import(db, pid, watch, import_id=iid)
-            summary["counts"].update(watch_days=saved["days"], workouts=saved["workouts"],
-                                     **{k: saved[k] for k in ("ecgs", "rhythm", "bp_readings", "temp_readings", "glucose_readings",
-                                                              "cgm_days", "heights") if saved.get(k)})   # ECGs (#182), #223
+            watch_store.save_import(db, pid, watch, import_id=iid)   # all of it, as it came: undone with its import
+            summary["counts"].update(watch_days=fresh["watch_days"], workouts=fresh["workouts"],   # what's new of it (#497)
+                                     **{k: fresh[k] for k in ("ecgs", "rhythm", "bp_readings", "temp_readings", "glucose_readings",
+                                                              "cgm_days", "heights") if fresh.get(k)})   # ECGs (#182), #223
         for x in same if iid else ():
             crossmatch.decide(db, pid, who["id"] if who else None, x["other_key"], x["key"], True,
                               [x["other"], {k: x[k] for k in ("name", "t", "value", "unit")}])

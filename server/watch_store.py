@@ -261,6 +261,48 @@ def save_import(db, pid, summary, import_id=None):
             **measure_counts(summary), **({"readings": readings} if readings else {})}   # (#223, #224)
 
 
+def unseen(have, summary):
+    """What of an import's summary the profile hasn't got (#497; have: what load reads, or None), for the preview's
+    and the import's counts: the daily points not there with the same value, and the workouts, ECGs, readings and
+    heights not there (a workout by its key or start, as merge lays them; a home reading by its minute and values, as
+    the receiver counts them; the rest as they are)."""
+    if not have or not summary:
+        return summary
+    out = dict(summary)
+    old = {(m.get("key"), str(p[0])): p[1] for m in have.get("metrics") or [] if isinstance(m, dict)
+           for p in m.get("pts") or [] if isinstance(p, list) and len(p) > 1}
+    known = lambda key, p: isinstance(p, list) and len(p) > 1 and (key, str(p[0])) in old and old[(key, str(p[0]))] == p[1]
+    out["metrics"] = []
+    for m in summary.get("metrics") or []:
+        pts = [p for p in m.get("pts") or [] if not known(m.get("key"), p)] if isinstance(m, dict) else []
+        if pts:
+            out["metrics"].append({**m, "pts": pts})
+    keys = {x["key"] for x in have.get("exercise") or [] if isinstance(x, dict) and x.get("key")}
+    starts = {_instant(x.get("start")) for x in have.get("exercise") or [] if isinstance(x, dict)}
+    out["exercise"] = [x for x in summary.get("exercise") or [] if isinstance(x, dict)
+                       and not (x.get("key") and x["key"] in keys) and _instant(x.get("start")) not in starts]
+    if summary.get("ecg"):
+        there = {e.get("key") for e in have.get("ecg") or [] if isinstance(e, dict)}
+        out["ecg"] = [e for e in summary["ecg"] if isinstance(e, dict) and e.get("key") not in there]
+    ident = lambda r: json.dumps(r, sort_keys=True)
+    for k in (*READINGS, "heights"):
+        if summary.get(k):
+            n = {"bp_readings": 3, "temp_readings": 2}.get(k)
+            if n:
+                there = {key for key in (_reading_key(r, n) for r in have.get(k) or []) if key}
+                out[k] = [r for r in summary[k] if _reading_key(r, n) not in there]
+            else:
+                there = {ident(r) for r in have.get(k) or []}
+                out[k] = [r for r in summary[k] if ident(r) not in there]
+    return out
+
+
+def _reading_key(r, n):
+    """A home reading's minute and values (_readings' identity), or None."""
+    t = _instant(r[0]) if isinstance(r, list) and r else None
+    return (int(t) // 60, *(round(v, 1) if isinstance(v, (int, float)) else None for v in r[1:n])) if isinstance(t, float) else None
+
+
 def measure_counts(summary):
     """The home readings, glucose and heights in a summary, those it has (#223, for the import's counts): blood
     pressure and temperature readings, meter readings, days with a CGM's, and heights."""

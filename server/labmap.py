@@ -151,7 +151,7 @@ def suggest(s, have):
 
 # ---------------------------------------------------------------- an import's plan
 
-def plan(db, pid, importer, data):
+def plan(db, pid, importer, data, keep=()):
     """What the preview asks about data's lab series, and what's settled already:
 
       {"listed": [{"ref", "name", "unit", "loinc", "n", "suggestions", "before": {"target"} | None}],
@@ -159,9 +159,11 @@ def plan(db, pid, importer, data):
        "targets": [{"name", "unit"}]   every series one can be put in (only when something is listed)}
 
     A series is listed when lab-aliases.json doesn't know its name and the profile has no series of that name (or
-    when a choice for it was remembered)."""
+    when a choice for it was remembered). keep: refs listed even so, a preview read again asking about what it asked
+    before (jobs.freshen, #497), so a choice typed in its review isn't lost; such an entry names the series of its
+    name ("same") the profile has by now."""
     have = profile_series(db, pid)
-    lower = {n.lower() for n in have}
+    lower = {n.lower(): n for n in have}
     candidates = {}
     for i, s in enumerate(data.get("labs") or []):
         if isinstance(s, dict) and isinstance(s.get("name"), str) and s["name"].strip() and not _known(s["name"]):
@@ -169,11 +171,13 @@ def plan(db, pid, importer, data):
     found = remembered(db, [importer], {ref: _ident(s) for ref, s in candidates.items()})
     listed, auto = [], {}
     for ref, s in candidates.items():
-        before = found.get(ref)
-        if before is None and s["name"].strip().lower() in lower:
+        before, same = found.get(ref), lower.get(s["name"].strip().lower())
+        if before is None and same and ref not in keep:
             continue
         entry = {"ref": ref, "name": s["name"], "unit": str(s.get("unit") or ""), "loinc": series_loinc(s),
                  "n": len(s.get("pts") or []) + len(s.get("txt") or []), "suggestions": suggest(s, have), "before": None}
+        if before is None and same:
+            entry["same"] = same   # (kept: left as a series of its own, it joins that one)
         if before is not None:
             entry["before"] = {"target": before["target"]}
             auto[ref] = before["target"]

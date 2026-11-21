@@ -5,7 +5,8 @@
    2), else into one in a dialog over the page, its scripts (import-jobs.js, import.js) loaded then. The dialog's
    import goes through to its review there; on the records page, what it saved is drawn at once.
    Nothing dropped is kept anywhere but on its way to the server. A drag that isn't files (text, a link, a tab being
-   moved in Settings) is left alone, and so is one while another modal dialog is open. Files dropped on a form's own
+   moved in Settings) is left alone; files dropped while another modal dialog is open are kept from the browser, which
+   would open them in place of the page, and go nowhere but a file field under them (#497). Files dropped on a form's own
    file field (or its label: a letter typed in, a journal entry's photos) go into that field, as its picker would put
    them, not into an upload (#489); the veil makes way while they're over it.
    SgDrop.here(target, show): the page's own target (dropTarget, import.js) and how to bring it into view. */
@@ -44,15 +45,19 @@ const SgDrop = (() => {
   }
   const hide = () => { depth = 0; if (veil.matches(":popover-open")) veil.hidePopover(); };
 
+  // a file let go anywhere comes here, never opened by the browser in place of the page, while another modal is
+  // open too (#497): then it goes only into a file field under it, and nothing else is done
   addEventListener("dragenter", e => {
-    if (!files(e) || other()) return;
+    if (!files(e)) return;
     e.preventDefault();
+    if (other()) return;
     if (depth++ === 0 && !field(e)) show();
   });
   addEventListener("dragover", e => {
-    if (!files(e) || other()) return;
-    e.preventDefault();   // a file let go anywhere comes here, never opened by the browser in place of the page
+    if (!files(e)) return;
+    e.preventDefault();
     const f = field(e);
+    if (other()) { e.dataTransfer.dropEffect = f ? "copy" : "none"; return; }
     if (f) { if (veil.matches(":popover-open")) veil.hidePopover(); }   // (out of the way of the field)
     else if (depth && !veil.matches(":popover-open")) show();
     e.dataTransfer.dropEffect = f || can()[0] ? "copy" : "none";
@@ -61,11 +66,12 @@ const SgDrop = (() => {
   addEventListener("dragend", hide);
   addEventListener("mousemove", () => { if (depth) hide(); });   // (no mouse moves during a drag: one that ended unseen)
   addEventListener("drop", e => {
-    if (!files(e) || other()) return;
+    if (!files(e)) return;
     e.preventDefault();
     hide();
     const f = field(e);
     if (f) { fill(f, [...e.dataTransfer.files]); return; }
+    if (other()) return;
     const [yes, words] = can();
     if (!yes) { toast(words); return; }
     // the entries now, while the drop's data can be read; their files after
@@ -120,6 +126,14 @@ const SgDrop = (() => {
     openDialog(dlg, {as: matchMedia("(max-width:700px)").matches ? "sheet" : "center"});
     return {take: dlg.sgTake};
   }
+  /* a link to a tab of this page (the card's "See them on the timeline", its toast's Open Labs) only changes the
+     address's hash: the dialog closes, so the tab isn't left under it (#497) */
+  addEventListener("click", e => {
+    const a = e.target instanceof Element ? e.target.closest("a[href]") : null;
+    if (!dlg?.open || !a) return;
+    const to = new URL(a.href, location.href);
+    if (to.hash && to.origin + to.pathname + to.search === location.origin + location.pathname + location.search) dlg.close();
+  });
   /* an import saved from the dialog on the records page: its records drawn again in place (store.js), or, for a
      profile that had none, the page loaded again once the dialog closes */
   async function saved(pid) {

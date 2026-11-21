@@ -943,7 +943,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 @media (forced-colors:active){ .imp-split li::before{forced-color-adjust:none} }   /* (a background is dropped, #409) */
 .imp-labs{container-type:inline-size}
 .imp-labs table{font-size:var(--fs-3)}
-.imp-labs th{position:static}   /* not under the top bar */
+.imp-labs table.data th{position:static}   /* not under the top bar, nor over the rows in a dialog (#497: over table.data's sticky) */
 .imp-labs th:last-child{width:45%}
 .imp-labs td{overflow-wrap:anywhere}
 .imp-labs input{width:100%}
@@ -955,6 +955,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .import-job :is(.imp-dups,.imp-same) li{border-top:1px solid var(--grid);padding:var(--sp-1) 0;overflow-wrap:anywhere}
 .import-job .imp-dups ul{max-height:300px;overflow-y:auto}
 .import-job :is(.imp-dups,.imp-same) label{display:block;cursor:pointer}
+.import-job .imp-dup-none{display:inline-block;inline-size:20px}   /* a list's entry, with no box: lined up as if it had one (#497) */
 .import-job .imp-same li{display:grid;gap:var(--sp-1)}
 .imp .off{display:none !important}
 /* a SMART Health Link pasted or scanned (import-shl.js) */
