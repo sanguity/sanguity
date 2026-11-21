@@ -1956,6 +1956,15 @@ Everything on `main` so far; it becomes the first tagged release.
   dates a word a line at 768 px, beside the sidebar; each date is kept whole, and the list is a cell a line wherever it's
   too narrow for that, by its own width. Show all loaded after you've moved on says so, and Latest results' count is
   written as the page's others are ("5,432 results").
+- **Sharing and first run: print without three-quarters-empty pages or two heads on a history's pages, the links list
+  as a table at 600–640 px, times kept with their AM or PM, focus kept after a failed passkey sign-in, and the share
+  page's tables on phones** (#509): printed with every history open, a year of visits, lab results and medications on
+  ten years of records left a page 608 pt short, and a page holding only a history had Latest results' column names
+  above the history's own. Each open history now prints between tables of Latest results' rows, each with its column
+  names, and goes back after. Share links' list stacks by its own width alone: at 600–640 px it's a table again. A
+  time keeps its AM or PM on its line ("7:15 / AM") in the list and on a share link's page. A failed passkey sign-in
+  leaves focus on its button, the reason under it in view (focus fell to the page). On a phone the share page's
+  Visits, Costs and Appointments are a cell a line, as the links list is (Details ran a word a line at 320 px).
 - **Settings and Admin: the palette sends account searches to Admin, Set up a source keeps a new source half typed in
   and a row's Waiting for review, the palette's missing words, and Make owner's last message in sight** (#506): "remove
   account", "add account" and "new account" opened Account's Passkeys or Two-factor sign-in, found by the page's name;

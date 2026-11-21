@@ -212,6 +212,10 @@ there are, and Show all asks for that section in full (logged as a view of it): 
 877 KB to 460 KB, nearly all of it now Lab results' 5,432 results (each history is shown whole, and printed). The test
 checks that the view holds no more than the latest 20 of each long section.
 
+Printed with every history open (#509), a year's link to visits, lab results and medications is 8 Letter pages and ten
+years of lab results 170; `test_share_printed` checks that no page before the last is more than a quarter empty and
+that Latest results' column names head each page with its rows, never a page holding only a history.
+
 ## A record's details when it's opened (#217)
 
 Of the 3.5 MB the records page read, 1.4 MB was each record's details (a result's rows, a claim's lines, a message,

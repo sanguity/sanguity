@@ -2324,10 +2324,33 @@ def main():
                   const tops = [...rg.getClientRects()].filter(q => q.width > 0).map(q => q.top).sort((a, b) => a - b);
                   out.push([m[0], tops.filter((y, i) => !i || y - tops[i - 1] > 4).length]); } }
               return [out, t.offsetWidth <= t.parentElement.clientWidth]; }""")
+        # #509: at 600 and 640 px the list is a table, as it fits (the phones' grid of every table stacked it: one rule, its
+        # own width); and from 900 to 1200 px, no time in it with its AM or PM on a line of its own ("7:15 / AM")
+        AMPM509 = """sel => { const out = [];   // each time whose AM or PM is on another line than its minutes, in what sel picks
+          for (const root of document.querySelectorAll(sel)) {
+            const tw = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+            for (let n; (n = tw.nextNode());) for (const m of n.data.matchAll(/\\d:\\d\\d\\s?[AP]M/g)) {
+              const a = document.createRange(), z = document.createRange();
+              a.setStart(n, m.index + 3); a.setEnd(n, m.index + 4); z.setStart(n, m.index + m[0].length - 2); z.setEnd(n, m.index + m[0].length);
+              const ra = a.getBoundingClientRect(), rz = z.getBoundingClientRect();
+              if (ra.height && Math.abs(ra.top - rz.top) > 2) out.push(n.data.slice(Math.max(0, m.index - 14), m.index + m[0].length)); } }
+          return out; }"""
+        list509, ampm509 = {}, {}
+        for w in (600, 640, 900, 1000, 1100, 1200):
+            strict.set_viewport_size({"width": w, "height": 900})
+            strict.wait_for_timeout(150)
+            if w <= 640:
+                list509[w] = strict.evaluate("""() => { const t = document.querySelector('#links .share-list table');
+                  return [getComputedStyle(t.tHead).display, getComputedStyle(t.tBodies[0].rows[0]).display, t.offsetWidth <= t.parentElement.clientWidth]; }""")
+            ampm509[w] = strict.evaluate(AMPM509, "#links .share-list tbody")
         strict.set_viewport_size({"width": 1400, "height": 900})
         check("share links: …at 768 and 900 px no date in the list, with its time, on more than two lines, the list not scrolled sideways "
               "(#505: a word a line at 768 px, beside the sidebar)",
               all(len(v[0]) >= 2 and all(n <= 2 for _, n in v[0]) and v[1] for v in dates505.values()), dates505)
+        check("share links: …at 600 and 640 px the list is a table, as it fits; from 900 to 1200 px no time in it has its AM or PM on a line of "
+              "its own (#509: a phone's grid stacked it; “7:15 / AM”)",
+              list509 == {600: ["table-header-group", "table-row", True], 640: ["table-header-group", "table-row", True]}
+              and not any(ampm509.values()), [list509, ampm509])
         check("share links: at 375×667 the new link's QR code, opened from its button at the screen's foot, comes into sight, its button too (#501)",
               qr501[:3] == [True, True, True] and qr501[3] > qr501[6] - 120, qr501)
         check("share links: …at 320 px the list has no word broken mid-word and Revoke on one line (#501: Revoke a letter a line)",
@@ -2528,6 +2551,27 @@ def main():
             hp.set_viewport_size({"width": w, "height": h})
             hp.wait_for_timeout(200)
             stick501[f"{w}x{h}"] = hp.evaluate("[getComputedStyle(shareBar).position, new Set([...shareBar.querySelectorAll('.chip')].map(c => Math.round(c.getBoundingClientRect().top))).size]")
+        # #509: no time on the page with its AM or PM on a line of its own ("Mar 24, 2025, 10:30 / AM" in Visits), at 1400,
+        # 900 and 375 px; and at 320 px its tables (but a measure's, which scrolls sideways) a cell a line, as share links'
+        # list: no word broken, no cell beyond its row (each row sized its own two columns: Details a word a line)
+        ampm509s, cells509 = {}, None
+        for w in (1400, 900, 375, 320):
+            hp.set_viewport_size({"width": w, "height": 900 if w > 400 else 740})
+            hp.wait_for_timeout(200)
+            if w > 320:
+                ampm509s[w] = hp.evaluate(AMPM509, "main")
+                continue
+            cells509 = hp.evaluate("""() => { const bad = [], tables = [...document.querySelectorAll('#shareBody table.tbl:not(.measures)')];
+              for (const t of tables) for (const tr of t.tBodies[0]?.rows || []) {
+                const row = tr.getBoundingClientRect();
+                for (const td of tr.cells) {
+                  const c = td.getBoundingClientRect();
+                  if (c.width && (c.left < row.left - 0.5 || c.right > row.right + 0.5)) bad.push(['beyond its row', td.textContent.slice(0, 30)]);
+                  const tw = document.createTreeWalker(td, NodeFilter.SHOW_TEXT);
+                  for (let n; (n = tw.nextNode());) for (const m of n.data.matchAll(/\\S+/g)) {
+                    const rg = document.createRange(); rg.setStart(n, m.index); rg.setEnd(n, m.index + m[0].length);
+                    if (new Set([...rg.getClientRects()].map(x => Math.round(x.top))).size > 1) bad.push(['broken', m[0]]); } } }
+              return [tables.map(t => t.closest('section').id), bad.slice(0, 8)]; }""")
         # #501: each chip Tab reaches is wholly in the bar's view, at 1400×900 and 768 (it reached ones partly shown, cut)
         CHIP501 = """() => { const a = document.activeElement, bar = document.getElementById('shareBar'), r = a.getBoundingClientRect(), b = bar.getBoundingClientRect();
           return a.matches('#shareBar .chip') ? [a.textContent, r.left >= b.left - 0.5 && r.right <= b.left + bar.clientWidth + 0.5] : null; }"""
@@ -2648,6 +2692,10 @@ def main():
               [v[1] for v in bar498.values()] == ["sticky", "sticky", "static"] and all(v[0] <= 2 and v[2] for v in bar498.values()), bar498)
         check("…on a phone upright, 375×667 and 320×568, the bar's one row sticks (#501: the rule for two rows under 700 px tall caught it)",
               stick501 == {"375x667": ["sticky", 1], "320x568": ["sticky", 1]}, stick501)
+        check("…no time on it with its AM or PM on a line of its own at 1400, 900 and 375 px; at 320 px its tables a cell a line, no word "
+              "broken and no cell beyond its row (#509: “10:30 / AM”; Details a word a line)",
+              len(ampm509s) == 3 and not any(ampm509s.values()) and cells509 and {"share-visits", "share-costs"} <= set(cells509[0]) and not cells509[1],
+              [ampm509s, cells509])
         check("…each chip Tab reaches, and Shift+Tab back, is wholly in the bar's view at 1400×900 and 768 (#501: “Journal” was cut to “Jou”)",
               all(len(v) >= 16 and all(c[1] for c in v) for v in tab501.values()), tab501)
         check("…at 1400 px a mouse reaches each of the bar's chips (eight or more; #498: the bar scrolled sideways to it); at 568×320 the "
@@ -2683,7 +2731,9 @@ def main():
               "quarter empty (#501: a history and its test's row moved to the next page whole, page 1 left 420 pt short)",
               len(low501) > 2 and max(low501[:-1]) <= 792 / 4, low501)
         # #505: a ten-year link to lab results, printed with every history open: Latest results' column names head each
-        # page it spans (#501's block of one-row tables printed them on page 1 only), its breaks kept
+        # page it spans (#501's block of one-row tables printed them on page 1 only), its breaks kept. #509: above the
+        # first of its rows on each page with them, and not on a page holding only a history (it was over the history's
+        # own head); the histories back in its table after (share.js). On the ten-year fixture too: test_performance.py
         made505 = strict.evaluate("""() => fetch('api/profiles/1/links', {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'},
           body: JSON.stringify({sections: ['results'], from: '2016-11-15', label: 'Ten years of results (browser check)', hours: 1})}).then(r => r.json())""")
         hp.goto("about:blank")
@@ -2691,18 +2741,23 @@ def main():
         hp.wait_for_selector("#share-results .share-latest", timeout=10000)
         hp.locator("#share-results .share-tools button", has_text="Open every history").click()
         head505 = " ".join(hp.evaluate("[...document.querySelectorAll('#share-results .share-latest>thead th')].map(c => c.textContent)"))
+        tests509 = hp.evaluate("[...document.querySelectorAll('#share-results .share-open')].map(b => b.textContent)")
         hp.emulate_media(media="print")
-        pages505 = []
+        pages505 = []   # each page: the line of Latest results' first head and of its first row (a test's name, not its history's), its lowest text
         for p_ in PdfReader(io.BytesIO(hp.pdf(format="Letter"))).pages:
             ys = []
             lines = [ln.strip() for ln in p_.extract_text(visitor_text=lambda t, cm, tm, fd, fs: ys.append(tm[5] * cm[3] + cm[5]) if t.strip() else None).splitlines()]
-            pages505.append([lines.count(head505), round(min(ys)) if ys else 792])
+            pages505.append([[i for i, ln in enumerate(lines) if ln == head505][:1], round(min(ys)) if ys else 792,
+                             [i for i, ln in enumerate(lines) if any(ln.startswith(t) for t in tests509) and not ln.endswith(": every result")][:1]])
         hp.emulate_media(media="screen")
+        back509 = hp.evaluate("[!document.querySelector('.share-split'), document.querySelectorAll('#share-results .share-latest').length]")
         strict.evaluate("id => fetch('api/profiles/1/links/' + id, {method: 'DELETE', headers: {'X-Sanguity': '1'}})", made505["link"]["id"])
-        check("…a ten-year link to lab results, printed with every history open: Latest results' column names on each of its pages, no page before "
-              "the last more than a quarter empty (#505: on page 1 only)",
-              head505 == "Test Latest Range Flag Trend Results" and len(pages505) > 3 and all(p[0] == 1 for p in pages505)
-              and max(p[1] for p in pages505[:-1]) <= 792 / 4, [head505, pages505])
+        check("…a ten-year link to lab results, printed with every history open: Latest results' column names above its first row on each page "
+              "with its rows, on none holding only a history, no page before the last more than a quarter empty, its histories back after "
+              "(#505: on page 1 only; #509: over a history alone)",
+              head505 == "Test Latest Range Flag Trend Results" and len(pages505) > 3 and back509 == [True, 1]
+              and all(bool(h) == bool(rs) and (not rs or h[0] < rs[0]) for h, _, rs in pages505)
+              and max(p[1] for p in pages505[:-1]) <= 792 / 4, [head505, back509, pages505])
         strict.evaluate("id => fetch('api/profiles/1/links/' + id, {method: 'DELETE', headers: {'X-Sanguity': '1'}})", made289["link"]["id"])
         hp.goto("about:blank")
         hp.goto(share_url)   # back to the first link, which is revoked below
@@ -17785,8 +17840,8 @@ def main():
             pk.on("response", lambda r: r.status >= 400 and problems.append(f"HTTP {r.status}: {r.url}"))
             cdp = ctx.new_cdp_session(pk)
             cdp.send("WebAuthn.enable")
-            cdp.send("WebAuthn.addVirtualAuthenticator", {"options": {"protocol": "ctap2", "transport": "internal",
-                     "hasResidentKey": True, "hasUserVerification": True, "isUserVerified": True}})
+            auth509 = cdp.send("WebAuthn.addVirtualAuthenticator", {"options": {"protocol": "ctap2", "transport": "internal",
+                               "hasResidentKey": True, "hasUserVerification": True, "isUserVerified": True}})["authenticatorId"]
             pk.goto(local + "/account.html")
             pk.wait_for_selector("#pkBody form")
             pk.locator("#pkBody input[type=password]").fill(PW)
@@ -17845,6 +17900,20 @@ def main():
             pk.click("#pk")
             pk.wait_for_function(SIGNED_IN_OR_ERROR, timeout=20000)
             check("a passkey finishes the sign-in after the password", pk.evaluate("fetch('api/me').then(r => r.status)") == 200)
+            # #509: a failed passkey sign-in (none on this device: the authenticator's cleared), at 568x320, leaves focus on
+            # its button (disabled while it asked, it dropped focus to the page), its reason under it, both in sight
+            menu_click(pk, "#logout")
+            pk.wait_for_url("**/login.html", timeout=10000)
+            cdp.send("WebAuthn.clearCredentials", {"authenticatorId": auth509})
+            pk.set_viewport_size({"width": 568, "height": 320})
+            pk.click("#pk")
+            pk.wait_for_function("document.getElementById('e').textContent", timeout=20000)
+            pk.wait_for_timeout(150)
+            pk509 = pk.evaluate("""() => { const a = document.activeElement, e = document.getElementById('e'), seen = x => { const r = x.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; };
+              return [a.id, e.previousElementSibling.id, seen(a), seen(e), e.textContent]; }""")
+            pk.set_viewport_size({"width": 1400, "height": 900})
+            check("a failed passkey sign-in leaves focus on its button, its reason under it, both in sight at 568×320 (#509: focus fell to the page)",
+                  pk509[:4] == ["pk", "pkBox", True, True] and pk509[4], pk509)
             problems[before:] = [x for x in problems[before:] if "401" not in x]   # signed out on the way, on purpose
             ctx.close()
         except Exception as e:   # report what was caught so far instead of a bare traceback

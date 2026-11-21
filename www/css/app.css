@@ -869,11 +869,12 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .acct #users label.check{margin:var(--sp-1) 0 var(--sp-2)}
 @media (max-width:640px){
   main.acct{padding:var(--sp-3) var(--sp-4)}
-  .acct .tbl thead{display:none}
-  .acct .tbl tr{display:grid;grid-template-columns:1fr auto;gap:2px var(--sp-2);border-top:1px solid var(--grid);padding:var(--sp-1) 0}
-  .acct .tbl td{border:0;padding:0;overflow-wrap:anywhere}   /* a long word wraps, not the page (#342) */
+  /* (not share links' list, which is a cell a line by its own width, #509) */
+  .acct .tbl:not(:where(.share-list *)) thead{display:none}
+  .acct .tbl:not(:where(.share-list *)) tr{display:grid;grid-template-columns:1fr auto;gap:2px var(--sp-2);border-top:1px solid var(--grid);padding:var(--sp-1) 0}
+  .acct .tbl:not(:where(.share-list *)) td{border:0;padding:0;overflow-wrap:anywhere}   /* a long word wraps, not the page (#342) */
   /* the hidden headings' names, on the cells (labelCells, util.js, #320): read once, as the headings are gone too */
-  .acct .tbl td[data-label]::before{content:attr(data-label);display:block;color:var(--muted);font-size:var(--fs-2);font-weight:var(--fw-medium);overflow-wrap:normal}
+  .acct .tbl:not(:where(.share-list *)) td[data-label]::before{content:attr(data-label);display:block;color:var(--muted);font-size:var(--fs-2);font-weight:var(--fw-medium);overflow-wrap:normal}
   .acct .activity .tbl td:nth-child(n+3){grid-column:1/-1}   /* …and an activity log's what and address take the row's width */
   .acct .tbl.users td.acts{grid-area:1/2/span 2}   /* an account's ⋯ on the right, beside its name and devices (#287) */
 }
@@ -1436,9 +1437,9 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
 .acct .share-links-wrap{margin-top:var(--sp-2)}
 .acct .share-links{margin-top:var(--sp-2)}   /* no left border (#492: on a phone the form started at x 44) */
 .acct .share-links tr.ended td{color:var(--muted)}
-@media (max-width:640px){ .acct .share-list .tbl tr{grid-template-columns:minmax(0,1fr)} }   /* a phone: one cell a line, Revoke last (#501: in two columns the first was 31 px) */
-/* #505: and wherever the list is too narrow for its dates (each kept whole, share-links.js) on two lines, by its own
-   width: at 768 px, beside the sidebar, they ran a word a line, rows 140 px tall */
+/* a cell a line, Revoke last (#501: in two columns the first was 31 px), wherever the list is too narrow for its dates
+   (each kept whole, share-links.js) on two lines, by its own width alone (#505: at 768 px, beside the sidebar, they
+   ran a word a line, rows 140 px tall; #509: at 600-640 px it fits as a table) */
 .acct .share-list{container-type:inline-size}
 @container (width < 540px){
   .acct .share-list .tbl thead{display:none}
@@ -1500,6 +1501,7 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
 @media (max-width:640px){
   .acct .share-latest>tbody>tr{grid-template-columns:repeat(3,minmax(0,1fr))}
   .acct .share-latest>tbody>tr>th,.acct .share-latest>tbody>.share-hist>td{grid-column:1/-1;border:0;padding:0}
+  .share .tbl:not(.share-latest) tr{grid-template-columns:minmax(0,1fr)}   /* the others a cell a line, as share links' list (#509: Details a word a line) */
 }
 @media print{
   :root{color-scheme:light}
@@ -1511,19 +1513,22 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
   .share :is(h2,h2+.hint,.share-tools:not(.share-more)),.share .tbl>thead{break-after:avoid}   /* #498: a head kept with the first row */
   .share .tbl>thead+tbody>tr:first-child{break-before:avoid}
   .share tr:not(.share-hist){break-inside:avoid}
-  .share tbody>tr:is(:first-child,:nth-last-child(2)),.share-latest tr:has(+.share-hist:not([hidden])){break-after:avoid}   /* no row alone (#491) */
+  .share tbody>tr:is(:first-child:not(:last-child),:nth-last-child(2)),.share-latest tr:has(+.share-hist:not([hidden])){break-after:avoid}   /* no row alone (#491) */
   .acct .tbl>thead>tr.share-printed{display:table-row}
   .share-printed>th{white-space:normal;color:var(--ink);font-size:var(--fs-3);font-weight:var(--fw-semibold)}
   .share .share-scroll{overflow:visible}
-  /* #501: Latest results as a block of one-row tables, each history a block: Chrome breaks a table row only when it's
-     longer than a page, so a history moved whole to the next, with its test's row, leaving half a page empty. #505: the
-     table itself stays one, its head a header group, so each page it spans repeats it (the head's row a table too) */
-  .share-latest>tbody,.share-hist,.share-hist>td{display:block}
-  .share-latest>*>tr:not(.share-hist){display:table;width:100%;table-layout:fixed}
-  .share-latest>*>tr:not(.share-hist)>*{width:10%}
-  .share-latest>*>tr:not(.share-hist)>:first-child{width:36%}
-  .share-latest>*>tr:not(.share-hist)>:is(:nth-child(2),:nth-child(5)){width:15%}
-  .share-latest>*>tr:not(.share-hist)>:nth-child(3){width:14%}
+  /* #509: Latest results' open histories printed between tables of its rows, each a block (share.js, as printing starts): a
+     table's head repeats on each page it spans, so over a history alone too (#505), and Chrome breaks a table's row only
+     when it's longer than a page, so a history went whole to the next, a page left three-quarters empty (#501). The
+     tables' columns as one (fixed widths) */
+  .share-latest{table-layout:fixed}
+  .share-latest>thead th{width:10%}
+  .share-latest>thead th:first-child{width:36%}
+  .share-latest>thead th:is(:nth-child(2),:nth-child(5)){width:15%}
+  .share-latest>thead th:nth-child(3){width:14%}
+  .share-histp{padding:0 0 var(--sp-3) var(--sp-5)}
+  .share-latest>tbody:empty{display:none}
+  .share-scroll:has(+.share-split),.share-split>table:not(:last-child){break-after:avoid}   /* a test's row kept with its history */
 }
 .share .share-entry{border-top:1px solid var(--grid);padding:var(--sp-2) 0}
 .share .share-note{white-space:pre-wrap;margin:var(--sp-1) 0 0;color:var(--ink2)}
