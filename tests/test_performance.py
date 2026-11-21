@@ -538,7 +538,8 @@ class PageBudgets(unittest.TestCase):
     def test_share_page(self):
         """a share link with every section the big profile offers, of any date (#491): at 1400 px its page is within
         share_page_px, each long table (2,000 claims, 1,000 readings a home measure) showing its latest 20 and saying
-        so; Costs' Show all lists every claim, the first one added focused"""
+        so, and the view sending only those (#498); Costs' Show all asks for every claim and lists them, the first
+        one added focused"""
         from playwright.sync_api import sync_playwright
         offered = [s["id"] for s in CLIENT.get("/api/profiles/1/links", headers=H).json()["sections"]]
         r = CLIENT.post("/api/profiles/1/links", headers=H, json={"label": "Every section (performance)", "sections": offered, "hours": 1})
@@ -548,13 +549,16 @@ class PageBudgets(unittest.TestCase):
             browser = p.chromium.launch()
             page = browser.new_page(viewport={"width": 1400, "height": 900})
             page.on("pageerror", lambda e: errors.append(str(e)))
-            page.goto(f"{BASE}/{r.json()['path']}")
+            with page.expect_response(lambda x: x.url.endswith("/api/share/view")) as first:
+                page.goto(f"{BASE}/{r.json()['path']}")
+            sent = first.value.json()   # #498: the view sends a long section's latest rows, with how many it has
             page.wait_for_selector("#share-costs .share-more", timeout=60000)
             page.wait_for_timeout(300)
             height = measure("share_page_px", page.evaluate("document.documentElement.scrollHeight"))
             long = page.evaluate("""() => [...document.querySelectorAll('#shareBody .share-more')].map(m => [m.closest('section').id,
               m.closest('section').querySelectorAll('tbody tr').length, m.querySelector('.hint').textContent, m.querySelector('button').textContent])""")
-            page.locator("#share-costs .share-more button").click()
+            page.locator("#share-costs .share-more button").click()   # asks the server for the rest (#498)
+            page.wait_for_function("() => document.querySelectorAll('#share-costs tbody tr').length > 20", timeout=60000)
             costs = page.evaluate("""() => { const rows = [...document.querySelectorAll('#share-costs tbody tr')];
               return [rows.length, rows.indexOf(document.activeElement), !!document.querySelector('#share-costs .share-more')]; }""")
             browser.close()
@@ -565,6 +569,10 @@ class PageBudgets(unittest.TestCase):
                         and all(n == 20 and t.startswith("The latest 20 of ") for _, n, t, _ in long)
                         and {"share-costs", "share-home_bp", "share-glucose", "share-oxygen"} <= {s for s, *_ in long}, long)
         self.assertEqual(costs, [2000, 20, False])
+        rows = {k: len(v["rows"] if isinstance(v, dict) else v) for k, v in sent.items()
+                if k in ("visits", "procedures", "costs", "home_bp", "glucose", "oxygen", "temperature")}
+        self.assertTrue(sent["cut"].get("costs") == 2000 and {"home_bp", "glucose", "oxygen"} <= set(sent["cut"])
+                        and all(n <= 40 and (n == 20) == (k in sent["cut"]) for k, n in rows.items()), [sent["cut"], rows])
         self.assertLessEqual(height, BUDGETS["share_page_px"], "over budget (docs/performance.md)")
 
 

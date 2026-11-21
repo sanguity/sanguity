@@ -1892,6 +1892,18 @@ Everything on `main` so far; it becomes the first tagged release.
   tab of the page under it. A card put away for another profile says nothing as it goes. A folder or several files no
   longer show an Unpacking stage: only a zip has one. Files dropped while another dialog is open no longer open in the
   browser in place of the page.
+- **Sharing and setup keep focus, the clinician's page prints its heads with their rows, its section bar is two rows
+  at most, and a link sends a long section's latest rows** (#498): Share links' Cancel, Sharing's Leave and a wrong
+  setup code left focus on the page. Cancel puts it on New share link, Leave on the page's heading (the next profile's),
+  and a refused setup on the field it's about, marked invalid and selected (the setup code for a wrong one). Printed,
+  Lab results' head is no longer left at a page's foot with no row under it: a table's head goes with its first row,
+  and a section's heading and hint with its table. The section bar wrapped to three or four rows, stuck under the
+  header (128 px at 1400×900, 193 px at 1400×501); it's two rows at most now, scrolling sideways beyond them with a
+  scrollbar, and under 700 px tall it scrolls with the page. A share link sent every claim and up to 1,000 readings of
+  each home measure, cut only on screen; the view sends a long section's latest 20 and how many there are, and Show
+  all asks the server for the rest, logged in the profile's activity as a view of that section (a ten-year link's view
+  went from 877 KB to 460 KB). Setup's two Shows are named apart ("Show repeated password"), and its note says the
+  first account owns the records already on the server only where there are some.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

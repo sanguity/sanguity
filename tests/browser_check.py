@@ -2185,6 +2185,13 @@ def main():
         strict.wait_for_selector("#links .share-form input[aria-label='Name for this link']", timeout=10000)
         check("share links: New share link clicked before the panel has loaded opens the form once it has (#306)",
               early == [1, 0] and strict.locator("#links .share-form").count() == 1, early)
+        # #498: Cancel closes the form with focus back on New share link, in sight (it fell to the page)
+        strict.locator("#links .share-form button", has_text="Cancel").focus()
+        strict.keyboard.press("Enter")
+        strict.wait_for_timeout(150)
+        cancel498 = [strict.evaluate(IN_SIGHT), strict.locator("#links .share-form").count()]
+        check("share links: Cancel closes the form, focus back on New share link, in sight (#498)",
+              (cancel498[0] or [0])[0] == "BUTTON" and cancel498[0][3] == "New share link" and cancel498[1] == 0, cancel498)
         strict.goto(base + "/sharing.html?profile=1#links")
         strict.wait_for_selector("#links .share-links button:has-text('New share link')", timeout=10000)
         mine = strict.locator("#links")
@@ -2434,20 +2441,41 @@ def main():
         # ---- the clinician's page with every section the demo offers, of any date (#491). Printed to PDF with every history
         # open (pypdf reads each page back): no page short of rows (a test's row isn't left at a page's foot, its history
         # carried to the next: each history breaks across pages, and no table's first or last row is alone), and each
-        # history's pages name its test above its column names. At 1400 px the bar's chips (eight or more) wrap, a mouse
-        # reaching each; at 568×320, a phone on its side, the header scrolls away and the bar sticks at the top, a chip's
-        # section coming in under it. The title in the pages' title style, as on Sharing. Scrolled down the page, the bar
-        # never marks a section all out of sight. Costs' claims show their latest 20, saying so, and Show all lists the
-        # rest, the first of them focused (the ten-year fixture's 2,000 and the page's height: tests/test_performance.py)
+        # history's pages name its test above its column names; no page ends with a table's head (#498). At 1400 and 641 px
+        # the bar's chips wrap to two rows at most, scrolling sideways beyond them, a mouse reaching each (eight or more);
+        # under 700 px tall it isn't sticky (#498), and at 568×320, a phone on its side, a chip's section comes in at the
+        # top. The title in the pages' title style, as on Sharing. Scrolled down the page, the bar never marks a section
+        # all out of sight. The view sends a long section's latest 20 rows (#498); Costs' claims show them, saying so, and
+        # Show all asks for the rest and lists them, the first of them focused (the ten-year fixture's 2,000 and the
+        # page's height: tests/test_performance.py)
         made491 = strict.evaluate("""async () => { const h = {'X-Sanguity': '1', 'Content-Type': 'application/json'};
           const secs = (await (await fetch('api/profiles/1/links', {headers: h})).json()).sections.map(s => s.id);
           return (await fetch('api/profiles/1/links', {method: 'POST', headers: h, body: JSON.stringify({sections: secs, label: 'Every section (browser check)', hours: 1})})).json(); }""")
         hp.set_viewport_size({"width": 1400, "height": 900})
         hp.goto("about:blank")
-        hp.goto(base + "/" + made491["path"])
+        with hp.expect_response(lambda x: x.url.endswith("/api/share/view")) as first498:
+            hp.goto(base + "/" + made491["path"])
         hp.wait_for_selector("#share-results .share-latest", timeout=10000)
-        reach491 = hp.evaluate("""() => [...document.querySelectorAll('#shareBar .chip')].map(c => { const r = c.getBoundingClientRect(),
-          hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return [c.textContent, c.contains(hit) && r.left >= 0 && r.right <= innerWidth]; })""")
+        # #498: the view sends a long section's latest 20 rows and how many it has, the rest only on Show all
+        sent498 = first498.value.json()
+        long498 = {k: len(v["rows"] if isinstance(v, dict) else v) for k, v in sent498.items()
+                   if k in ("visits", "procedures", "costs") or isinstance(v, dict) and "rows" in v}
+        # a mouse reaches each chip, the bar scrolled sideways to it where its two rows are wider than the page (#498)
+        reach491 = hp.evaluate("""() => { const bar = document.getElementById('shareBar');
+          const out = [...bar.querySelectorAll('.chip')].map(c => { const b = bar.getBoundingClientRect(); let r = c.getBoundingClientRect();
+            if (r.right > b.right || r.left < b.left) { bar.scrollLeft += r.left - b.left - 8; r = c.getBoundingClientRect(); }
+            const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return [c.textContent, c.contains(hit) && r.left >= 0 && r.right <= innerWidth]; });
+          bar.scrollLeft = 0; return out; }""")
+        BAR498 = """() => { const b = document.getElementById('shareBar'), s = getComputedStyle(b);
+          return [new Set([...b.querySelectorAll('.chip')].map(c => Math.round(c.getBoundingClientRect().top))).size, s.position,
+            b.scrollWidth <= b.clientWidth || s.scrollbarWidth !== 'none' && s.overflowX === 'auto']; }"""
+        bar498 = {}
+        for w, h in ((1400, 900), (641, 900), (1400, 600)):
+            hp.set_viewport_size({"width": w, "height": h})
+            hp.wait_for_timeout(200)
+            bar498[f"{w}x{h}"] = hp.evaluate(BAR498)
+        hp.set_viewport_size({"width": 1400, "height": 900})
+        hp.wait_for_timeout(200)
         H1_491 = "() => { const c = getComputedStyle(document.querySelector('main h1')); return [c.fontFamily, c.fontSize, c.fontWeight, c.letterSpacing]; }"
         strict.set_viewport_size({"width": 1400, "height": 900})
         h1_491 = [hp.evaluate(H1_491), strict.evaluate(H1_491), strict.url]
@@ -2460,10 +2488,13 @@ def main():
         hp.evaluate("scrollTo(0, 0)")
         costs491 = hp.evaluate("""() => { const s = document.getElementById('share-costs'), m = s.querySelector('.share-more');
           return [s.querySelectorAll('tbody tr').length, m?.querySelector('.hint').textContent, m?.querySelector('button').textContent]; }""")
-        hp.locator("#share-costs .share-more button").click()
+        hp.locator("#share-costs .share-more button").click()   # (#498: asks the server for the rest)
+        sl_until(hp, "document.querySelectorAll('#share-costs tbody tr').length > 20")
         costs491 += hp.evaluate("""() => { const rows = [...document.querySelectorAll('#share-costs tbody tr')];
           return [rows.length, rows.indexOf(document.activeElement), !document.querySelector('#share-costs .share-more')]; }""")
         hp.locator("#share-results .share-tools button", has_text="Open every history").click()
+        # #498: each table's column names, as a printed page's text has them, to find a page ending with one and no row
+        heads498 = set(hp.evaluate("[...document.querySelectorAll('#shareBody thead tr:last-child')].map(r => [...r.cells].map(c => c.textContent).join(' '))"))
         from pypdf import PdfReader
         import io
         hp.emulate_media(media="print")   # (the page is on "screen" since #289's print check, which a PDF would take)
@@ -2473,6 +2504,7 @@ def main():
         dated = [sum(1 for ln in pg if re.search(r"\b[A-Z][a-z]{2} \d{1,2}, \d{4}\b", ln)) for pg in pages491]
         unnamed = [i + 1 for i, pg in enumerate(pages491) for j, ln in enumerate(pg) if ln.strip() == "Date Result Reference range Flag"
                    and not (j and pg[j - 1].rstrip().endswith(": every result"))]
+        headed498 = [(i + 1, pg[-2:]) for i, pg in enumerate(pages491) if pg and pg[-1].strip() in heads498]
         hp.set_viewport_size({"width": 568, "height": 320})
         hp.evaluate("scrollTo(0, 1500)")
         hp.wait_for_timeout(200)
@@ -2492,15 +2524,23 @@ def main():
         check("…every section, printed with every history open: no page short of rows, and each history's pages name its test (#491)",
               len(pages491) > 3 and min(dated[:-1]) >= 8 and dated[-1] >= 2 and not unnamed
               and sum(1 for pg in pages491 for ln in pg if ln.rstrip().endswith(": every result")) > len(l289["tests"]), [dated, unnamed])
-        check("…at 1400 px the bar's chips wrap, a mouse reaching each (eight or more); at 568×320 the header scrolls away and the bar "
-              "sticks at the top, a chip's section coming in under it (#491)", len(reach491) >= 8 and all(r[1] for r in reach491)
-              and side491["sticky"] == "sticky" and side491["head"] != "sticky" and side491["top"] == 0
-              and side491["bottom"] <= side491["h2"] < side491["bottom"] + 60 and not f491, [reach491, side491, f491[:4]])
+        check("…no printed page ends with a table's column names and no row under them (#498: Latest results' head was left at page 1's foot)",
+              heads498 and not headed498, [headed498, sorted(heads498)])
+        check("…the view sends a long section's latest 20 rows and how many it has, no section more than 40 (#498: every claim was sent)",
+              sent498.get("cut", {}).get("costs", 0) > 40 and all(n <= 40 and (n == 20) == (k in sent498["cut"]) for k, n in long498.items())
+              and "costs" in long498, [sent498.get("cut"), long498])
+        check("…the bar's chips in two rows at most at 1400 and 641 px, scrolling sideways beyond them with a scrollbar; not sticky at "
+              "1400×600 (#498: 3 to 4 rows, stuck, were a third of the window)",
+              [v[1] for v in bar498.values()] == ["sticky", "sticky", "static"] and all(v[0] <= 2 and v[2] for v in bar498.values()), bar498)
+        check("…at 1400 px a mouse reaches each of the bar's chips (eight or more; #498: the bar scrolled sideways to it); at 568×320 the "
+              "header and the bar scroll away, a chip's section coming in at the top (#491, #498: not sticky under 700 px tall)",
+              len(reach491) >= 8 and all(r[1] for r in reach491) and side491["sticky"] == "static" and side491["head"] != "sticky"
+              and 0 <= side491["h2"] < 60 and not f491, [reach491, side491, f491[:4]])
         check("…its title in the pages' title style, as Sharing's: the serif at 22 px, semibold (#491)",
               h1_491[0] == h1_491[1] and "Serif" in h1_491[0][0] and h1_491[0][1:3] == ["22px", "600"], h1_491)
         check("…scrolled down the page, the bar never marks a section all out of sight (#491)", not spy491, spy491[:6])
         n491 = int(re.sub(r"\D", "", costs491[2] or "") or 0)
-        check("…Costs' claims (more than 40): the latest 20, saying so, and Show all lists the rest, the first of them focused (#491)",
+        check("…Costs' claims (more than 40): the latest 20, saying so, and Show all asks for the rest and lists them, the first of them focused (#491, #498)",
               n491 > 40 and costs491 == [20, f"The latest 20 of {n491:,} claims.", f"Show all {n491:,}", n491, 20, True], costs491)
         strict.evaluate("id => fetch('api/profiles/1/links/' + id, {method: 'DELETE', headers: {'X-Sanguity': '1'}})", made289["link"]["id"])
         hp.goto("about:blank")
@@ -14278,6 +14318,28 @@ def main():
                   USER in people and "owner" in people and USER2 in people and zb.evaluate("!document.querySelector('#people select, #people form')")
                   and zb.evaluate("[...document.querySelectorAll('#people button')].map(b => b.textContent).join()") == "Leave"
                   and f"ask {USER}" in people, people[:300])
+            # #498: Leave (on a profile of its own, given to this viewer for it) puts focus on the page's heading, the next
+            # profile's now, in sight (it fell to the page)
+            from server import profiles as lprof
+            lpid = lprof.create_profile(sdb, "To leave (fictional)", owner_id=sdb.execute("SELECT id FROM users WHERE username=?", (USER,)).fetchone()[0])
+            sdb.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'viewer')", (uid2, lpid))
+            zb.goto(base + f"/sharing.html?profile={lpid}#people")
+            zb.wait_for_selector(f"#people[data-profile='{lpid}'] #memberList button", timeout=10000)
+            zb.locator("#memberList button", has_text="Leave").click()
+            answer_ask(zb)
+            for _ in range(50):
+                if zb.evaluate(f"document.getElementById('people').dataset.profile !== '{lpid}' && document.activeElement !== document.body"):
+                    break
+                zb.wait_for_timeout(100)
+            leave498 = [zb.evaluate(IN_SIGHT), zb.evaluate("document.getElementById('pageMsg').textContent"),
+                        zb.evaluate("fetch('api/me').then(r => r.json()).then(j => j.profiles.some(p => p.name === 'To leave (fictional)'))")]
+            check("…Leave puts focus on the page's heading, the next profile's now, in sight, saying so (#498: it fell to the page)",
+                  (leave498[0] or [0])[0] == "H1" and leave498[0][1] == "groupTitle" and "no longer have access to To leave (fictional)" in leave498[1]
+                  and leave498[2] is False, leave498)
+            za.evaluate("""pid => fetch('api/profiles/' + pid, {method: 'DELETE', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'},
+              body: JSON.stringify({confirm_name: 'To leave (fictional)'})})""", lpid)   # gone again, for the checks after
+            zb.goto(base + "/sharing.html?profile=1#people")
+            zb.wait_for_selector("#people[data-profile='1'] #memberList tbody tr", state="attached", timeout=10000)
             zb.click("#shrNav a[data-group=calendar]")
             zb.wait_for_selector("#calendar:not([hidden]) #calNew:not([hidden])", timeout=10000)
             check("…their own calendar feed can be made, with no list of everyone's", zb.evaluate("document.getElementById('calOthers').hidden"))
@@ -17841,7 +17903,8 @@ def main():
             fp = fctx.new_page()
             fp.on("request", elsewhere)
             fp.on("pageerror", lambda e: problems.append(f"script error (first run): {e}"))
-            fp.on("console", lambda m: m.type == "error" and "401" not in m.text and problems.append(f"console error (first run): {m.text}"))
+            f_expect = {"401"}   # statuses the browser logs as errors that are expected here (403: a wrong setup code, #498)
+            fp.on("console", lambda m: m.type == "error" and not any(s in m.text for s in f_expect) and problems.append(f"console error (first run): {m.text}"))
 
             def f_until(expr, ms=20000):
                 for _ in range(ms // 100):
@@ -17888,6 +17951,29 @@ def main():
                   look290 == [True, True, True, "pn", "Show password", "password"]
                   and count290 == [["0 of 15", False], ["11 of 15", False], ["Long enough", True], "Long enough: 15 characters."]
                   and shown290 == ["text", "Hide password", "Hide", "password"], [look290, count290, shown290])
+            # #498: on this empty install the note doesn't say the account owns records already here (there are none), and
+            # the two Shows are named apart; a wrong setup code puts focus back on the code, marked invalid and selected,
+            # in sight (it fell to the page, Create account turned off while it was sent), and typing clears the mark
+            note498 = fp.evaluate("""[document.querySelector('.note.first').innerText.trim(), document.getElementById('owns').checkVisibility(),
+                document.getElementById('pShow').getAttribute('aria-label'), document.getElementById('p2Show').getAttribute('aria-label')]""")
+            check("first run: on an empty install setup's note doesn't say it owns records already here, and its two Shows are named apart (#498)",
+                  note498 == ["Create the first account. It becomes the admin.", False, "Show password", "Show repeated password"], note498)
+            f_expect.add("403")
+            fp.fill("#c", "NOPE-NOPE-NOPE")
+            fp.fill("#u", "robin")
+            fp.fill("#p", "a fictional first-run passphrase")
+            fp.fill("#p2", "a fictional first-run passphrase")
+            fp.click("#b")
+            f_until("document.getElementById('e').textContent !== ''")
+            fp.wait_for_timeout(100)
+            code498 = fp.evaluate("""() => { const a = document.activeElement, r = a.getBoundingClientRect();
+                return [a.id, a.getAttribute('aria-invalid'), a.selectionStart === 0 && a.selectionEnd === a.value.length, r.top >= 0 && r.bottom <= innerHeight,
+                  document.getElementById('e').textContent.startsWith('That setup code is wrong.'), document.getElementById('b').disabled]; }""")
+            fp.keyboard.type("X")
+            code498.append(fp.evaluate("document.getElementById('c').hasAttribute('aria-invalid')"))
+            f_expect.discard("403")
+            check("first run: a wrong setup code puts focus back on the code, marked invalid and selected, in sight; typing clears the mark (#498)",
+                  code498 == ["c", "true", True, True, True, False, False], code498)
             with open(code_file, encoding="utf-8") as f:
                 fp.fill("#c", f.read().strip())
             fp.fill("#u", "robin")

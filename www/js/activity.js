@@ -52,7 +52,7 @@ const WHAT = {
   calendar: d => ({create: `made a calendar feed (${d.details === "full" ? "full" : "minimal"} details)`, rotate: "gave their calendar feed a new address",
     change: `changed their calendar feed to ${d.details === "full" ? "full" : "minimal"} details${d.labs ? ", with expected labs" : ", without expected labs"}`,
     revoke: d.username ? `turned off ${d.username}’s calendar feed` : "turned off their calendar feed"}[d.change] || "changed a calendar feed"),
-  link: d => d.change === "view" ? `opened the share link${d.label ? ` “${d.label}”` : ""}`   // #47, js/share-links.js
+  link: d => d.change === "view" ? (d.all ? `showed all of ${d.all} on the share link` : "opened the share link") + (d.label ? ` “${d.label}”` : "")   // #47, js/share-links.js; #498: Show all
     : `${d.change === "revoke" ? "revoked" : "made"} the share link${d.label ? ` “${d.label}”` : ""}`,
   setup: () => "set up Sanguity with the first account",
   password: () => "changed their password",
