@@ -1956,6 +1956,15 @@ Everything on `main` so far; it becomes the first tagged release.
   dates a word a line at 768 px, beside the sidebar; each date is kept whole, and the list is a cell a line wherever it's
   too narrow for that, by its own width. Show all loaded after you've moved on says so, and Latest results' count is
   written as the page's others are ("5,432 results").
+- **Settings and Admin: the palette sends account searches to Admin, Set up a source keeps a new source half typed in
+  and a row's Waiting for review, the palette's missing words, and Make owner's last message in sight** (#506): "remove
+  account", "add account" and "new account" opened Account's Passkeys or Two-factor sign-in, found by the page's name;
+  where something is counts for less than its own words now, so Admin's Accounts comes first. Another source's Test,
+  Waiting for review, Review done or Remove emptied a new source half typed in; they draw the list only. A source open
+  in Change takes its row's new Waiting for review, which Save undid. The palette finds "-ies" as "-y" ("activities",
+  "histories", "directories", "entries"), Accounts for "make owner" and "profiles without an owner", and Connected-source
+  apps for "test connection" and "remove source". Giving the last profile without an owner its owner says so where the
+  list was, with focus on it (focus went to the card's heading, the message 2,000 px under it on a phone).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

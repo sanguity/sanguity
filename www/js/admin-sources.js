@@ -62,10 +62,10 @@ function testStep() {
     disabled: !s, onclick: async () => {
       out.replaceChildren(el("p", {class: "muted", text: "Reading its discovery…"}));
       try {
-        const t = await call(`connect/sources/${s.id}/test`, "POST");
-        out.replaceChildren(...present(testResult(t), t.ok && s.waiting ? el("p", {class: "msg", text: "It's still marked as waiting for the " +
+        const t = await call(`connect/sources/${s.id}/test`, "POST"), now = SETUP.sources.find(x => x.id === s.id) || s;   // (#506: its waiting since changed on its row)
+        out.replaceChildren(...present(testResult(t), t.ok && now.waiting ? el("p", {class: "msg", text: "It's still marked as waiting for the " +
           "vendor's review, so nobody can connect it yet. Once the review is done, untick that above and save."}) : null,
-          t.ok && !s.waiting ? el("p", {class: "msg", text: "Done: people can now connect it under Sources → Portals and health plans."}) : null));
+          t.ok && !now.waiting ? el("p", {class: "msg", text: "Done: people can now connect it under Sources → Portals and health plans."}) : null));
         if (t.ok) loadSetup({walk: false});   // the list's "tested" now; this step, its result and focus kept (#502)
       } catch (e) { out.replaceChildren(el("p", {class: "msg bad", role: "alert", text: e.message})); }
     }});
@@ -132,10 +132,17 @@ function sourceRow(s) {
 }
 /* the list drawn again after a row's action (#502: focus fell to the page, and a test's result went with its row):
    focus on the same button (act) of the source's new row, what it said (kept: a test's result) back under it, in view;
-   the source gone, on the next row's Test, else the one before's, else on the card's heading */
+   the source gone, on the next row's Test, else the one before's, else on the card's heading. Only the list (#506:
+   the walk-through drawn again emptied a new source half typed in); the source open in Change takes its new waiting,
+   which Save would otherwise undo, and the form goes back to Add a source once it's removed */
 async function rowsAgain(id, act, kept) {
   const rows = () => [...$("#sourceList").querySelectorAll(".prof[data-src]")], at = rows().findIndex(r => r.dataset.src === String(id));
-  await loadSetup();
+  await loadSetup({walk: false});
+  if (editing === id) {
+    const s = SETUP.sources.find(x => x.id === id);
+    if (!s) { saved = null; fill(null); }
+    else $("#fWaiting").checked = !!s.waiting;
+  }
   const r = act && rows().find(r => r.dataset.src === String(id));
   if (!r) return focusNear(rows(), Math.max(at, 0), "[data-act=test]", $("#admin h2"));
   const msg = r.querySelector(".src-msg");

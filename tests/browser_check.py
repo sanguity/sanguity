@@ -13860,6 +13860,23 @@ def main():
             check("…(#502) it finds Two-factor sign-in for recovery codes, new ones, and turning it on or off; Admin's Accounts for “one-time "
                   "password” and “make admin”; Passkeys for adding and removing one; Where you're signed in for “sign out everywhere”",
                   all(found502[q][:1] == [t] for q, t in want502.items()), found502)
+            # #506: Admin's Accounts first for adding or removing an account (Passkeys, Two-factor sign-in came first: their
+            # "add remove", "make new", with "account" only their page's name); "-ies" finds "-y"; Make owner's, and a
+            # source's Test's and Remove's, words. The first found of all, which Enter opens
+            want506 = {"remove account": "Accounts", "add account": "Accounts", "new account": "Accounts", "activities": "Activity",
+                       "histories": "Import history", "directories": "Provider directory", "entries": "Journal entry",
+                       "make owner": "Accounts", "ownerless": "Accounts", "profiles without an owner": "Accounts",
+                       "test connection": "Connected-source apps", "remove source": "Connected-source apps"}
+            found506 = {}
+            for q in want506:
+                pal(q, "Control+k" if not found506 else None)
+                found506[q] = [t for g, t in js(pal_found)][:3]
+            page.keyboard.press("Escape")
+            check("…(#506) Admin's Accounts first for “remove account”, “add account” and “new account”; a word in “-ies” finds it in “-y” "
+                  "(activities, histories, directories, entries); Accounts for making an owner of a profile without one; Connected-source "
+                  "apps for testing and removing a source",
+                  all(found506[q][:1] == [t] for q, t in want506.items() if q not in ("activities", "entries"))
+                  and all(t in found506[q] for q, t in want506.items()), found506)
             page.goto(base + "/settings.html?profile=1#dashboard")
             page.wait_for_selector("#sections > section", state="attached", timeout=10000)
             settle(300)
@@ -15564,6 +15581,48 @@ def main():
             check("a source's test, failing and OK, leaves its result and focus on its button, in sight: the walk-through's and a row's (#502)",
                   all(v == (["walkTest", None] if k.startswith("walk") else ["test", "Fake Epic sandbox"]) + [("Discovery works" if "OK" in k else "Test failed: its")[:15], True]
                       for k, v in src502.items()), src502)
+            # #506: another row's Test, Waiting for review and Remove draw the list again, not the walk-through (which,
+            # with no source being changed, emptied a new one half typed in); and the source open in Change takes its
+            # row's new waiting, which Save undid. A spare source to remove, made for it
+            js("api('connect/sources', {method: 'POST', body: JSON.stringify({vendor: 'other', name: 'Spare 506', issuer: 'https://fhir.example.org/spare506', "
+               "client_id: 'spare', auth: 'public', scopes: 'launch/patient openid fhirUser patient/Observation.read'})}).then(r => r.status).then(() => loadSetup({walk: false}))")
+            page.wait_for_function("document.getElementById('sourceList').textContent.includes('Spare 506')", timeout=10000)
+            page.click("#fCancel")   # ("Add another source": the form back to a new one)
+            page.select_option("#fVendor", "oracle")
+            page.fill("#fName", "Half typed 506")
+            page.fill("#fIssuer", "https://fhir.example.org/half506")
+            form506 = "['fVendor', 'fName', 'fIssuer'].map(i => document.getElementById(i).value).concat(document.getElementById('formTitle').textContent)"
+            typed506 = ["oracle", "Half typed 506", "https://fhir.example.org/half506", "Add a source"]
+            epic506 = page.locator("#sourceList .prof", has_text="Fake Epic sandbox")
+            kept506 = {}
+            epic506.get_by_role("button", name="Test this connection").click()
+            page.wait_for_function("[...document.querySelectorAll('#sourceList .prof')].some(p => p.textContent.includes('Fake Epic sandbox') && "
+                                   "p.querySelector('.src-msg').textContent.startsWith('Discovery works'))", timeout=10000)
+            settle(300)
+            kept506["Test"] = js(form506)
+            for b506, now506 in (("Waiting for review", "Review done"), ("Review done", "Waiting for review")):
+                epic506.get_by_role("button", name=b506).click()
+                page.wait_for_function(f"[...document.querySelectorAll('#sourceList .prof')].some(p => p.textContent.includes('Fake Epic sandbox') && "
+                                       f"p.querySelector('[data-act=wait]').textContent === '{now506}')", timeout=10000)
+                settle(300)
+                kept506[b506] = js(form506)
+            page.locator("#sourceList .prof", has_text="Spare 506").get_by_role("button", name="Remove").click()
+            answer_ask(page)
+            page.wait_for_function("!document.getElementById('sourceList').textContent.includes('Spare 506')", timeout=10000)
+            settle(300)
+            kept506["Remove"] = js(form506)
+            check("a new source half typed in survives another row's Test, Waiting for review, Review done and Remove (#506: they emptied it)",
+                  all(v == typed506 for v in kept506.values()), kept506)
+            epic506.get_by_role("button", name="Change").click()
+            epic506.get_by_role("button", name="Waiting for review").click()
+            page.wait_for_function("document.getElementById('fWaiting').checked", timeout=10000)
+            page.click("#fSave")
+            page.wait_for_function("document.activeElement.id === 'walkTest'", timeout=10000)
+            wait506 = [js("SETUP.sources.find(s => s.name === 'Fake Epic sandbox').waiting") is not None, epic506.locator("[data-act=wait]").text_content()]
+            check("…and Change, then the row's Waiting for review, then Save keeps it waiting (#506: Save undid it, saying nothing)",
+                  wait506 == [True, "Review done"], wait506)
+            epic506.get_by_role("button", name="Review done").click()   # (as it was, for connecting it below)
+            page.wait_for_function("SETUP.sources.find(s => s.name === 'Fake Epic sandbox').waiting === null && !document.getElementById('fWaiting').checked", timeout=10000)
             page.goto(base + "/connect.html")   # its old address: Sources → Portals and health plans (#166)
             page.wait_for_url(re.compile(r"/sources\.html(\?[^#]*)?#portals$"), timeout=10000)   # with or without the ?profile= nav.js adds
             page.wait_for_selector("#adminNote:not([hidden])", timeout=10000)
@@ -17508,6 +17567,30 @@ def main():
                            for n, pid in zip(("one", "two"), orph502)])
             check("Make owner leaves focus on the next profile's Make owner, else the one before's, in sight (#502: it fell to the page)",
                   own502 == [["Make owner", "Orphan 502 two", True], ["Make owner", "Alex's records", True], [200, 200]], own502)
+            # #506: the last one given an owner, what it said is where the list was, focus on it, in sight at 375×667 (focus
+            # went to the card's heading, the message out of sight under the accounts). The server's list answered here,
+            # one profile and then none, so Alex's records stays as it is
+            lone506 = '[{"id": 99506, "name": "Lone 506", "members": [{"username": "nobody506", "role": "viewer", "disabled": false}]}]'
+            calls506 = []
+            def ownerless506(route):
+                calls506.append(route.request.method)
+                route.fulfill(status=200, content_type="application/json", body=lone506 if len(calls506) == 1 else ("{}" if route.request.method == "POST" else "[]"))
+            page.route(re.compile(r"/api/ownerless(/99506/owner)?$"), ownerless506)
+            page.set_viewport_size({"width": 375, "height": 667})
+            js("loadOwnerless()")
+            page.wait_for_function("document.querySelector('#ownerless').textContent.includes('Lone 506')", timeout=10000)
+            page.locator("#ownerless .ownerless > .row", has_text="Lone 506").get_by_role("button", name="Make owner").click()
+            page.wait_for_function("!document.querySelector('#ownerless .row')", timeout=10000)
+            settle(300)
+            last506 = js("""(a => { const r = a.getBoundingClientRect(), at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+                return [a.textContent, !!a.closest('#ownerless'), r.top >= 0 && r.bottom <= innerHeight && (at === a || a.contains(at)),
+                  document.getElementById('userMsg').textContent]; })(document.activeElement)""")
+            page.unroute(re.compile(r"/api/ownerless(/99506/owner)?$"), ownerless506)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("loadOwnerless()")
+            page.wait_for_function("document.querySelector('#ownerless').textContent.includes(\"Alex's records\")", timeout=10000)
+            check("…and the last one given an owner says so where the list was, with focus on it, in sight at 375×667 (#506: on the card's heading, "
+                  "the message far under it)", last506 == ["nobody506 now owns Lone 506. Every profile has an owner now.", True, True, ""], last506)
             # removing that account (#287): its row's "Remove account…" opens the danger zone for it, focus on the box for
             # its username, which has to be typed exactly before Remove works; then asked who owns Alex's records instead
             # (this admin)
