@@ -2029,6 +2029,16 @@ Everything on `main` so far; it becomes the first tagged release.
   account", and Sources → Portals and health plans for "mychart", "connect mychart" and "connect epic", for anyone who
   can connect a profile (only an admin's Connected-source apps had them). At 320 px Where you're signed in broke "Nov 21,
   / 2026, 8:37 / AM"; a time keeps its AM or PM and a date the comma after it, so it's the date, then the time.
+- **Account and Admin: Passkeys at tablet widths, focus and messages after adding or renaming a passkey, and the
+  palette's common words** (#519): above 640 px Passkeys sat beside their name in a narrow column, so at 660-740 px the
+  table ran past the card (the page scrolled sideways at 660 and 680 px) and a date took four or five lines. The list is
+  under its name now, the card's width, its buttons on a line of their own where it's narrow; a date takes two lines at
+  most, and Where you're signed in's Sign out one ("Sign / out" at 660 and 960 px). Adding a passkey dropped focus to
+  the page and said "Added …" under the form, below a phone's screen; focus is on the new passkey's Rename, its
+  message under its name, both in sight, and Rename's reply is under its row's name too. The command palette finds
+  Password for "new password", "reset password" and "forgot password", Passkeys for "rename passkey", Where you're
+  signed in for "logout", and Connected-source apps for "redirect", "redirect uri", "return address" and "new source".
+  Outside connections no longer keeps a failed load's message beside the list once it loads.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

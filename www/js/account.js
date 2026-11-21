@@ -178,12 +178,13 @@ async function loadPasskeys() {
     el("thead", {}, el("tr", {}, ...["Name", "Added", "Last used", ""].map(h => el("th", {text: h})))),
     el("tbody", {}, ...st.passkeys.map(k => {
       const name = el("input", {value: k.name, maxlength: 60, "aria-label": "Passkey name"});
-      return el("tr", {},
+      return el("tr", {"data-pk": k.id},
         el("td", {}, name, k.here ? null : el("div", {class: "muted", text: `works at ${k.rp_id} only`})),
         el("td", {text: when(k.created)}), el("td", {text: k.last_used ? when(k.last_used) : "never"}),
         el("td", {class: "acts"},
           el("button", {class: "btn small", type: "button", text: "Rename", onclick: async () => {
-            try { await call("me/passkeys/" + k.id, "PATCH", {name: name.value}); say("#pkMsg", "Renamed."); } catch (e) { say("#pkMsg", e.message, true); } }}),
+            pkSay(null);
+            try { await call("me/passkeys/" + k.id, "PATCH", {name: name.value}); pkSay(k.id, "Renamed."); } catch (e) { pkSay(k.id, e.message, true); } }}),
           el("button", {class: "btn small", type: "button", text: "Remove", disabled: last || null,
             title: last ? "This server requires two-factor sign-in, and this is your only second step" : null, onclick: async () => {
               if (!await ask({title: `Remove the passkey “${k.name}”?`, message: "Remove it from the device too, in its passwords or passkeys settings.",
@@ -208,9 +209,23 @@ async function loadPasskeys() {
       try { credential = await passkeyCreate(o.options); } catch (e) { throw new Error(passkeyProblem(e)); }
       const r = await call("me/passkeys", "POST", {state: o.state, credential, name: nm.value});
       if (ME.user.needs_two_factor) { location.replace("./"); return; }
-      await loadPasskeys(); say("#pkMsg", `Added “${r.name}”.`); loadTwoFactor(); adminAgain("#pkMsg");
+      await loadPasskeys(); pkSay(r.id, `Added “${r.name}”.`, false, true); loadTwoFactor(); adminAgain("#pkRowMsg");
     } catch (e) { say("#pkMsg", e.message, true); } }},
     nm, pwField(pw).box, el("button", {class: "btn primary small", type: "submit", text: "Add a passkey"})));   // with Show (#492)
+}
+/* a passkey's reply (#519: Added and Renamed were under the Add form, out of sight), as Admin's rows' (rowSay): under its
+   name until the next one (id null: just that), the row in view; focus: on its Rename, as it's added (the form that had
+   focus was drawn again) */
+function pkSay(id, text, bad = false, focus = false) {
+  for (const m of document.querySelectorAll("#pkList .row-msg")) m.remove();
+  say("#pkMsg", "");
+  const tr = id != null && $(`#pkList tr[data-pk="${id}"]`);
+  if (!tr) return text && say("#pkMsg", text, bad);
+  const m = el("p", {class: "msg row-msg", id: "pkRowMsg"});
+  tr.cells[0].append(m);
+  sayIn(m, text, bad);
+  if (focus) tr.querySelector("td.acts button").focus({preventScroll: true});
+  tr.scrollIntoView({block: "nearest"});
 }
 /* its button gone with the passkey removed (#502), as Sign out's (sessFocus): focus on the next passkey's Remove, else
    the one before's, else (none left, or the last can't be removed) on the card's heading */

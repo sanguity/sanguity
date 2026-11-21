@@ -53,6 +53,7 @@ const SgOutside = (() => {
       sayIn(msg, "Couldn't load the outside connections: " + e.message, true);
       return;
     }
+    sayIn(msg, "");   // (#519: a failed load's message stayed beside the list once it loaded)
     // its first sentence the lead; the rest, and whose this lists, behind the heading's ⓘ (#280)
     const [lead, ...rest] = v.nothing_else.split(/(?<=\.) /);
     $("#outsideLead").textContent = lead;
