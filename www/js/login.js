@@ -87,7 +87,7 @@ pkBtn.addEventListener("click", async () => {
 f.addEventListener("submit", async ev => {
   ev.preventDefault();
   const username = document.getElementById("u").value.trim(), password = document.getElementById("p").value;
-  btn.disabled = true; err.textContent = "";
+  btn.disabled = true; err.textContent = ""; pwSent(f);   // hidden as it's sent, so a browser saves it as a password
   try {
     if (!await settled()) throw new Error("not reached");   // said as the server not reached, below
     const r = ticket

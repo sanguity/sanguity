@@ -181,8 +181,10 @@ $("#fScopes").addEventListener("input", () => {
 });
 $("#fAuth").onchange = () => { $("#fSecretWrap").hidden = $("#fAuth").value !== "confidential"; };
 $("#fCancel").onclick = () => { saved = null; fill(null); sayIn($("#fMsg"), ""); };
+pwField($("#fSecret"), {name: "client secret"});   // Show and Hide, as every password field has (util.js, #492)
 $("#srcForm").onsubmit = async ev => {
   ev.preventDefault();
+  pwSent(ev.target);
   const body = {vendor: $("#fVendor").value, name: $("#fName").value, issuer: $("#fIssuer").value, client_id: $("#fClient").value,
     auth: $("#fAuth").value, scopes: $("#fScopes").value, waiting: $("#fWaiting").checked};
   if ($("#fSecret").value) body.secret = $("#fSecret").value;

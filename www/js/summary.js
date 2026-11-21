@@ -70,9 +70,10 @@ function summaryDiscard() {
 
 async function load() {
   $("#build").hidden = true; $("#preview").hidden = true; pvSeq++; sayIn($("#loadMsg"), "Loading…");
+  $("#prevBody").replaceChildren(); $("#preview").removeAttribute("data-stale"); sayIn($("#prevMsg"), "", false, {say: false});   // not another profile's
   try { OPTS = await call(`profiles/${PID}/summary`); } catch (e) { sayIn($("#loadMsg"), e.message, true); return; }
   sayIn($("#loadMsg"), OPTS.has_records ? "" : `${OPTS.profile.name} has no records yet, so the summary will be mostly empty.`);
-  $("#appt").replaceChildren(...OPTS.upcoming.map((u, i) => el("option", {value: i, text: `${u.title}, ${fmtDay(u.date)}${u.who ? " · " + u.who : ""}`})),
+  $("#appt").replaceChildren(...OPTS.upcoming.map((u, i) => el("option", {value: i, text: `${u.title}, ${fmtDay(u.date)}`})),   // with whom: in the preview's For line (#492: cut in the pane)
     el("option", {value: "", text: "No particular appointment"}));
   $("#appt").value = OPTS.upcoming.length ? "0" : "";
   const visits = OPTS.visits;
@@ -98,6 +99,12 @@ async function load() {
 
 /* ---------------------------------------------------------------- preview */
 const cell = (text, cls) => el("td", {class: cls}, ...keepDates(text ?? ""));   // each date kept whole as the cells wrap in the pane (#288)
+/* a trend's value and its day, "14.3 · Aug 18, 2026"; in the narrow pane the day goes under the value, without the dot
+   (#492: "14.3 ·" was left over its date) */
+const atCell = (value, day, cls) => el("td", {class: cls}, value,
+  el("span", {class: "sum-at"}, el("span", {class: "sum-dot", text: " · "}), el("span", {class: "nw", text: fmtDay(day)})));
+/* a range, which may break after its dash and nowhere else (#492: "Now's range" was cut in the pane) */
+const rangeCell = t => el("td", {}, ...String(t || "").split(/(?<=–)/).flatMap((p, i) => i ? [el("wbr"), p] : [p]));
 function table(heads, rows, cls = "") {   // a region that can be scrolled from the keyboard on a narrow screen (#225's wider tables)
   return scrollBox({class: "scroll", "aria-label": heads.filter(Boolean).join(", ")}, el("table", {class: ("tbl " + cls).trim()},
     el("thead", {}, el("tr", {}, ...heads.map(h => el("th", {text: h})))), el("tbody", {}, ...rows)));
@@ -137,9 +144,10 @@ function renderPreview(s) {
     } else if (id === "trends") {
       parts.push(el("h3", {text: `Trends since ${since} (${s.trends.length})`}));
       parts.push(s.trends.length ? table(["Test", "Then", "Now", "Change", "Since", "", "Now's range"], s.trends.map(r => el("tr", {},
-        cell(r.label + (r.unit ? ` (${r.unit})` : "")), cell(r.then ? `${r.then.value} · ${fmtDay(r.then.date)}` : "none before"),
-        cell(r.now ? `${r.now.value}${r.now.flag ? ` ${{High: "▲", Low: "▼"}[r.now.flag] || "◆"} ${r.now.flag}` : ""} · ${fmtDay(r.now.date)}` : "no new result", r.now && r.now.flag ? "flag" : null),   // in words, not red alone (#60)
-        cell(r.change || ""), cell(String(r.since)), el("td", {}, spark(r.spark)), cell(r.now ? r.now.range : "")))) : none("None of the key labs has results."));
+        cell(r.label + (r.unit ? ` (${r.unit})` : "")), r.then ? atCell(r.then.value, r.then.date) : cell("none before"),
+        r.now ? atCell(`${r.now.value}${r.now.flag ? ` ${{High: "▲", Low: "▼"}[r.now.flag] || "◆"} ${r.now.flag}` : ""}`, r.now.date, r.now.flag ? "flag" : null)   // in words, not red alone (#60)
+          : cell("no new result"),
+        cell(r.change || ""), cell(String(r.since)), el("td", {}, spark(r.spark)), rangeCell(r.now && r.now.range)))) : none("None of the key labs has results."));
     } else if (id === "medications") {
       parts.push(el("h3", {text: `Current medications (${s.medications.length})`}));
       parts.push(s.medications.length ? table(["Medication", "Instructions", "Since", "Source"], s.medications.map(r => el("tr", {},
@@ -165,7 +173,15 @@ function renderPreview(s) {
   }
   if (s.settings_note) parts.push(el("p", {class: "hint", id: "sumSettingsNote", text: s.settings_note}));   // #44
   parts.push(el("p", {class: "hint sum-notice", text: s.notice}));
-  $("#prevBody").replaceChildren(...parts); box.hidden = false;
+  $("#prevBody").replaceChildren(...parts); box.removeAttribute("data-stale"); box.hidden = false;
+}
+/* a preview that couldn't be drawn (#492): the pane is shown with what went wrong, the first time too (its message is
+   inside it, and was hidden with it); one drawn before stays, dimmed and marked as not up to date */
+function previewFailed(e) {
+  const box = $("#preview"), had = $("#prevBody").childElementCount > 0;
+  box.toggleAttribute("data-stale", had);
+  sayIn($("#prevMsg"), had ? `Not up to date: ${e.message}` : `No preview: ${e.message}`, true);
+  box.hidden = false;
 }
 /* the live preview (#288): any choice changed asks for it again, a moment later (a while longer as questions are
    typed), only the last asked for drawn; meanwhile it's marked busy (aria-busy, dimmed). A lab being typed in isn't
@@ -179,7 +195,7 @@ function previewSoon(wait = 300) {
   pvTimer = setTimeout(async () => {
     const pid = PID;
     try { const s = await call(`profiles/${pid}/summary/preview`, "POST", chosen()); if (n === pvSeq && pid === PID) renderPreview(s); }
-    catch (e) { if (n === pvSeq) sayIn($("#prevMsg"), e.message, true); }
+    catch (e) { if (n === pvSeq && pid === PID) previewFailed(e); }
     finally { if (n === pvSeq) $("#preview").removeAttribute("aria-busy"); }
   }, wait);
 }

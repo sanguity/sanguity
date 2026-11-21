@@ -2074,6 +2074,8 @@ def main():
               strict.evaluate("document.querySelector('#links .share-links-wrap > button').hidden && !document.querySelector('#links .share-links').hidden"))
         mine.locator("button", has_text="New share link").click()
         form = mine.locator(".share-form")
+        strict.wait_for_timeout(150)   # (announce() says it a moment later)
+        said492 = strict.evaluate("document.getElementById('sgStatus').textContent")
         form.locator("input[aria-label='Name for this link']").fill("Dr. Fictional")
         form.locator("input[value=medications]").uncheck()
         form.locator("input[aria-label=From]").fill("")
@@ -2104,6 +2106,18 @@ def main():
               "and follows a section ticked (#288)", side288 == {1400: [True, False, True, True], 1200: [True, False, True, True],
                                                                  375: [False, True, True, True], 320: [False, True, True, True]}
               and "Journal" in sees288 and "Journal" not in form.locator(".share-sees").inner_text(), [side288, sees288[:200]])
+        # #492: what a holder will see isn't a live region (drawn again at each key typed in Name, it was all read out
+        # again); it's said once as the form opens. And the panel has no left border of its own: at 375 px the form starts
+        # at the card's edge, as the rest of the card does
+        strict.set_viewport_size({"width": 375, "height": 800})
+        strict.wait_for_timeout(150)
+        live492 = strict.evaluate("""(() => { const s = document.querySelector('#links .share-sees'), b = getComputedStyle(document.querySelector('#links .share-links'));
+            return [s.getAttribute('role'), s.getAttribute('aria-live'), !!s.closest('[aria-live], [role=status], [role=alert]'), b.borderLeftStyle, b.paddingLeft,
+                    Math.round(document.querySelector('#links .share-form').getBoundingClientRect().left - document.getElementById('linksBody').getBoundingClientRect().left)]; })()""")
+        strict.set_viewport_size({"width": 1400, "height": 900})
+        check("share links: what a holder will see isn't live, said once as the form opens; the panel has no border of its own, the form at "
+              "the card's edge on a phone (#492)", live492 == [None, None, False, "none", "0px", 0]
+              and "New share link: choose what it shows. What anyone with the link will see" in said492, [live492, said492])
         form.locator("button[type=submit]").click()
         strict.wait_for_selector(".share-made .share-url", timeout=10000)
         share_url = strict.input_value(".share-made .share-url")
@@ -12160,6 +12174,59 @@ def main():
             page.fill("#questions", "")   # leave no draft behind
             page.click("#shrBar button:text-is('Save')")
             page.wait_for_function("document.getElementById('qMsg').textContent === 'Saved.'", timeout=10000)
+            # #492: on profile 1's records, the preview pane at 1400 and 1200 px cuts nothing: no table wider than its box
+            # (the trends were 9 and 57 px wider, "Now's range" cut), a trend's day under its value with no dot left over it,
+            # the For select's choice as wide as it shows; and the notice is said once while the panes are side by side
+            page.goto(base + "/sharing.html?profile=1#summary")
+            page.wait_for_selector("#preview:not([hidden]):not([aria-busy]) h3", timeout=10000)
+            fit492 = {}
+            for w in (1400, 1200):
+                page.set_viewport_size({"width": w, "height": 900})
+                settle(200)
+                fit492[w] = js("""(() => { const pv = document.getElementById('preview'), right = pv.getBoundingClientRect().right;
+                    const a = document.getElementById('appt'), probe = document.body.appendChild(el('span', {style: {font: getComputedStyle(a).font, whiteSpace: 'pre'}}, a.selectedOptions[0].textContent));
+                    const wide = probe.getBoundingClientRect().width; probe.remove();
+                    return [[...pv.querySelectorAll('.scroll')].filter(s => s.scrollWidth > s.clientWidth + 1).length,
+                      [...pv.querySelectorAll('td, th')].filter(c => c.getBoundingClientRect().right > right + 0.5).length,
+                      pv.querySelectorAll('.sum-at').length > 0 && [...pv.querySelectorAll('.sum-at')].every(d => getComputedStyle(d).display === 'block'
+                        && getComputedStyle(d.querySelector('.sum-dot')).display === 'none'),
+                      wide <= a.clientWidth - 24,
+                      [...document.querySelectorAll('.sum-notice')].filter(n => n.checkVisibility()).length]; })()""")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("visit summary: at 1400 and 1200 px nothing in the preview is cut, a table wider than its box or a cell past its edge, a trend's "
+                  "day under its value, the visit chosen shown whole; and the notice once, at the preview's foot (#492)",
+                  fit492 == {1400: [0, 0, True, True, 1], 1200: [0, 0, True, True, 1]}, fit492)
+            # #492: a first preview that fails shows its pane with what went wrong (its message was in the hidden pane); a later
+            # one leaves the preview there, dimmed and marked as not up to date, until one is drawn again
+            pv_api = re.compile(r".*/api/profiles/\d+/summary/preview$")
+            failed = lambda route: route.fulfill(status=500, content_type="application/json", body='{"detail": "The preview failed (a fictional error)."}')
+            before = len(problems)
+            page.route(pv_api, failed)
+            page.reload()
+            page.wait_for_function("!document.getElementById('preview').hidden && !document.getElementById('preview').hasAttribute('aria-busy')", timeout=10000)
+            first492 = js("""[document.getElementById('prevMsg').textContent, document.getElementById('prevMsg').classList.contains('bad'),
+                document.getElementById('prevMsg').checkVisibility(), document.getElementById('prevBody').childElementCount, document.getElementById('preview').hasAttribute('data-stale')]""")
+            page.unroute(pv_api, failed)
+            page.uncheck("#sections input[value=appointments]")
+            page.wait_for_selector("#preview:not([aria-busy]) h3", timeout=10000)
+            page.route(pv_api, failed)
+            page.check("#sections input[value=appointments]")
+            page.wait_for_function("document.getElementById('preview').hasAttribute('data-stale')", timeout=10000)
+            settle(400)   # (dimmed over a moment)
+            stale492 = js("""[document.getElementById('prevMsg').textContent, getComputedStyle(document.getElementById('prevBody')).opacity,
+                document.querySelectorAll('#prevBody h3').length > 0]""")
+            page.unroute(pv_api, failed)
+            page.uncheck("#sections input[value=medications]")
+            page.wait_for_function("!document.getElementById('preview').hasAttribute('data-stale') && !document.getElementById('preview').hasAttribute('aria-busy')", timeout=10000)
+            check("…a first preview answered 500 shows the pane with its error; a later one leaves the last preview dimmed and marked not up "
+                  "to date, until one is drawn (#492)",
+                  first492 == ["No preview: The preview failed (a fictional error).", True, True, 0, False]
+                  and stale492 == ["Not up to date: The preview failed (a fictional error).", "0.55", True]
+                  and re.match(r"\d pages?", js("document.getElementById('prevMsg').textContent")), [first492, stale492, js("document.getElementById('prevMsg').textContent")])
+            page.check("#sections input[value=medications]")   # (the page isn't loaded again below: the same address)
+            page.wait_for_selector("#preview:not([aria-busy]) h3:has-text('Current medications')", timeout=10000)
+            # the 500s answered on purpose, and the browser's report of each
+            problems[before:] = [x for x in problems[before:] if "/summary/preview" not in x and "status of 500" not in x]
             js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
             # ---- the phone's and watch's measures in the visit summary, share links and Overview tiles (#225): on profile 1
             # (the readings browser_check folds in: home blood pressure, glucose, temperature, oxygen, respiratory rate,
@@ -15593,6 +15660,43 @@ def main():
             check("account page lists devices, and nothing of the server's (#167) or of profiles (#168)",
                   js("!document.getElementById('tab-admin') && !document.getElementById('users') && !document.getElementById('labmaps') && !document.getElementById('secNotice')")
                   and js("!document.getElementById('acctTabs') && !document.getElementById('profiles') && !document.getElementById('profList')"))
+            # #492: every password field has Show (pwField, util.js), named for what it holds: Account's password change,
+            # turning off two-factor sign-in and adding a passkey (their forms drawn as if two-factor were on and passkeys
+            # could be made here), Admin's check of who you are and a source's client secret, a Health Link's passcode
+            pw_fields = """[...document.querySelectorAll('input[type=password], .pw > input')].filter(i => i.checkVisibility())
+                .map(i => [i.id || i.getAttribute('aria-label'), i.parentElement.matches('.pw') && i.parentElement.querySelector('.pw-show')?.getAttribute('aria-label')])"""
+            json_ok = lambda body: lambda route: route.fulfill(status=200, content_type="application/json", body=body)
+            tf_on, pk_ok = json_ok('{"on": true, "recovery_codes_left": 8, "required": false}'), json_ok(
+                '{"passkeys": [], "problem": null, "required": false, "authenticator_app": true, "site": "127.0.0.1", "user_handle": null}')
+            page.route("**/api/me/2fa", tf_on)
+            page.route(re.compile(r".*/api/me/passkeys\?.*"), pk_ok)
+            page.goto(base + "/account.html#password")
+            page.wait_for_selector("#tfBody form input[type=password], #tfBody .pw input", timeout=10000)
+            page.wait_for_selector("#pkBody form input[type=password], #pkBody .pw input, #pkWhy:not([hidden])", timeout=10000)
+            pw492 ={"account": js(pw_fields) if js("passkeysWork()") else "passkeys don't work here"}
+            page.unroute("**/api/me/2fa", tf_on)
+            page.unroute(re.compile(r".*/api/me/passkeys\?.*"), pk_ok)
+            page.goto(base + "/admin.html#accounts")
+            page.wait_for_selector("#userList tbody tr", timeout=10000)
+            js("() => { confirmIdentity().catch(() => {}); }")   # (as the server asks for it)
+            page.wait_for_selector("#reauth .pw input", timeout=5000)
+            pw492["admin"] = js(pw_fields)
+            page.click("#reauth button:text-is('Cancel')")
+            page.goto(base + "/admin.html#apps")
+            page.wait_for_function("!document.getElementById('admin').hidden && document.getElementById('returnAddr').textContent.length > 5",
+                                   timeout=10000)   # (its form filled first, which sets the sign-in kind)
+            page.select_option("#fAuth", "confidential")
+            page.wait_for_selector("#fSecret", timeout=5000)
+            pw492["admin"] += js(pw_fields)
+            page.goto(base + "/sources.html?profile=1#link")
+            page.wait_for_selector("#shlPass", state="attached", timeout=10000)
+            js("for (const id of ['shlAbout', 'shlPassRow']) document.getElementById(id).hidden = false")   # (as a link that needs one shows it)
+            pw492["sources"] = js(pw_fields)
+            check("every password field has Show, named for what it holds: Account's, Admin's and a Health Link's passcode (#492)",
+                  pw492 == {"account": [["pwCur", "Show current password"], ["pwNew", "Show new password"], ["pwNew2", "Show repeated password"],
+                                        ["Your password", "Show password"], ["Your password", "Show password"]],
+                            "admin": [["Your password, or a code from your authenticator app", "Show password or code"], ["fSecret", "Show client secret"]],
+                            "sources": [["shlPass", "Show passcode"]]}, pw492)
             # #320: on a phone the account pages' tables hid their headings and left the values on their own (Admin's "off" and
             # "10", two dates per device): each cell is labelled with its column's name now, the one name a screen reader
             # hears as the hidden headings are hidden from it too; axe-core clean, light and dark
@@ -17068,10 +17172,22 @@ def main():
             with open(code_file, encoding="utf-8") as f:
                 fp.fill("#c", f.read().strip())
             fp.fill("#u", "robin")
+            # #492: passwords that don't match are said with both left as they were, shown, focus on the repeat, to see
+            # what differs (they were hidden on any submit, before setup.js found the mismatch)
             fp.fill("#p", "a fictional first-run passphrase")
+            fp.fill("#p2", "a fictional first-run passphrase, mistyped")
+            fp.click("#pShow")
+            fp.click("#p2Show")
+            fp.click("#b")
+            fp.wait_for_timeout(150)
+            mis492 = fp.evaluate("""[document.getElementById('e').textContent, document.getElementById('p').type, document.getElementById('p2').type,
+                document.activeElement.id, document.getElementById('p2').getAttribute('aria-invalid'), location.pathname]""")
+            check("first run: passwords that don't match are said with both still shown and focus on the repeat (#492)",
+                  mis492 == ["The passwords don't match.", "text", "text", "p2", "true", "/setup.html"], mis492)
+            fp.click("#p2Show")
             fp.fill("#p2", "a fictional first-run passphrase")
             fp.fill("#n", "Robin")
-            fp.click("#pShow")   # shown as it's sent: hidden again first, so a browser saves it as a password
+            # (the password still shown as it's sent: hidden again first, so a browser saves it as a password)
             fp.click("#b")
             fp.wait_for_url("**/guide.html?profile=1#records", timeout=15000)
             fp.wait_for_selector("#step-records:not([hidden])", timeout=10000)
@@ -17231,6 +17347,33 @@ def main():
             fp.set_viewport_size({"width": 1400, "height": 900})
             check("…and each fits 375 px, in light and dark", not bad, bad[:8] or "")
             check("…with no serious or critical axe-core finding (WCAG 2.2 AA, #202)", not empty_axe[0], (empty_axe[0] + empty_axe[1])[:8] or "")
+            fctx.close()
+            # #492: setup on a server whose records are there already (the setup build's profile, "My records"), the name
+            # left empty: the profile is named after the username, as setup's hint says; another, named, keeps its name.
+            # This install, back to having no account, with a setup code of the test's own
+            import hashlib, sqlite3
+            db = sqlite3.connect(os.path.join(fdir, "sanguity.db"))
+            db.execute("PRAGMA foreign_keys=ON")
+            db.execute("DELETE FROM users")
+            db.execute("UPDATE profiles SET name='My records' WHERE id=1")
+            db.execute("INSERT INTO meta(k, v) VALUES('setup_code', ?) ON CONFLICT(k) DO UPDATE SET v=excluded.v", (hashlib.sha256(b"FICT-CODE-4920").hexdigest(),))
+            db.commit()
+            db.close()
+            fctx = browser.new_context(viewport={"width": 1400, "height": 900})
+            fp = fctx.new_page()
+            fp.on("pageerror", lambda e: problems.append(f"script error (first run, #492): {e}"))
+            fp.goto(fbase + "/setup.html")
+            fp.wait_for_selector("#c", timeout=10000)
+            fp.fill("#c", "fict-code-4920")
+            fp.fill("#u", "casey")
+            fp.fill("#p", "a fictional second first-run passphrase")
+            fp.fill("#p2", "a fictional second first-run passphrase")
+            fp.click("#b")
+            fp.wait_for_url(lambda u: "setup.html" not in u, timeout=15000)
+            named492 = fp.evaluate("fetch('api/me').then(r => r.json()).then(j => j.profiles.map(p => [p.id, p.name, p.role]))")
+            check("first run: setup with the name left empty, on a server that has records, names their profile after the username; "
+                  "another profile keeps its own name (#492)",
+                  sorted(named492) == [[1, "casey", "owner"], [pid2, "Sam Example", "owner"]], named492)
             fctx.close()
         except Exception as e:   # report what was caught so far instead of a bare traceback
             problems.append(f"first-run check stopped: {stopped(e)}")

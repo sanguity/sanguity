@@ -257,12 +257,15 @@ def create_profile(db, name, owner_id=None, linked_build=False, watch_file=None)
     return pid
 
 
+DEFAULT_NAME = "My records"   # the setup build's profile, until first-run setup names it (main.setup, #492)
+
+
 def bootstrap(db):
     """First start: the existing single-person data (the setup build) becomes the first profile. Not again after
     its profile was deleted (server.manage link-build loads it into a profile on purpose)."""
     if db.execute("SELECT 1 FROM profiles LIMIT 1").fetchone() or build_version() is None or dbm.meta_get(db, "build_unlinked"):
         return None
-    pid = create_profile(db, "My records", linked_build=True, watch_file=config.WATCH_FILE)
+    pid = create_profile(db, DEFAULT_NAME, linked_build=True, watch_file=config.WATCH_FILE)
     sync_build(db, pid)
     return pid
 

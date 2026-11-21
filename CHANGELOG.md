@@ -1815,6 +1815,16 @@ Everything on `main` so far; it becomes the first tagged release.
   is open; and the bar no longer marks a section that's out of sight. Visits, procedures, costs and the home readings
   show their latest 20 when there are more than 40, saying how many there are, with **Show all**: a link to ten years
   with every section was 162,286 px at 1400 px, and is 9,812.
+- **The visit summary's preview says when it fails and cuts nothing, setup names the records after you, and every
+  password field has Show** (#492): a first preview that failed said nothing (its message was in the hidden pane); the
+  pane is shown with it, and a later failure leaves the last preview dimmed and marked "Not up to date". Beside the
+  options the notice was there twice; it's at the preview's foot alone, and the trends no longer run past the pane (a
+  trend's day under its value, its range breaking after the dash) or cut the visit chosen ("Dr. Avery Lir"; with whom
+  is in the preview's For line). What a share link's holder will see is said once as the form opens, not read out again
+  at each key typed in Name, and the panel lost its old left border. Setup with the name left empty names the records
+  already on the server after your username, as its hint says, instead of leaving "My records"; passwords that don't
+  match stay as they were, shown if they were. Account's password change, turning off two-factor sign-in, adding a
+  passkey, Admin's check of who you are, a source's client secret and a Health Link's passcode have Show too.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

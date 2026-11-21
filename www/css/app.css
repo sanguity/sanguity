@@ -1439,7 +1439,7 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
 /* share links (#47): the owner's panel on the Account page (js/share-links.js) and the shared page (share.html) */
 .acct .share-scroll{overflow-x:auto;max-width:100%}
 .acct .share-links-wrap{margin-top:var(--sp-2)}
-.acct .share-links{margin-top:var(--sp-2);border-left:3px solid var(--ring);padding-left:var(--sp-3)}
+.acct .share-links{margin-top:var(--sp-2)}   /* no left border (#492: on a phone the form started at x 44) */
 .acct .share-links tr.ended td{color:var(--muted)}
 .acct .share-form{max-width:640px;margin-top:var(--sp-3)}
 .acct :is(.share-opts,.share-side){display:grid;gap:var(--sp-2);align-content:start;min-width:0}
@@ -1919,7 +1919,8 @@ body.auth{display:grid;place-items:center;min-height:100vh;padding:var(--sp-4);f
 .auth .btn.large{width:100%;margin:var(--sp-5) 0 0}
 .auth #pk{margin-top:var(--sp-3)}
 .pw{position:relative}
-.auth .pw input{padding-right:calc(var(--sp-7) + var(--sp-3))}   /* clear of Show */
+span.pw{display:block}   /* in a label, the field a block of its own (#492) */
+.pw>input{width:100%;padding-right:calc(var(--sp-7) + var(--sp-3))}   /* as wide as its box, clear of Show */
 .pw>.pw-show{position:absolute;z-index:1;top:50%;right:var(--sp-2);translate:0 -50%;margin:0}   /* over the field, on purpose: a layer of its own */
 .auth .note{margin:var(--sp-4) 0 0;font-size:var(--fs-3);color:var(--muted)}   /* what to do next, at the size of the labels (#255) */
 .auth .note.first{margin-top:0}

@@ -64,7 +64,8 @@ function shareLinksPanel(p, {open = false} = {}) {
     const from = el("input", {type: "date", value: yearAgo, "aria-label": "From"}), to = el("input", {type: "date", "aria-label": "To"});
     const hours = el("select", {"aria-label": "Stops working after"}, ...SL_HOURS.map(([h, t]) => el("option", {value: h, text: t})));
     hours.value = "168";
-    const sees = el("div", {class: "share-sees", role: "status", "aria-live": "polite"});
+    // not live (#492): drawn again at each key typed in Name, it was all read out again each time; said once as the form opens
+    const sees = el("div", {class: "share-sees"});
     const go = el("button", {class: "btn primary", type: "submit", text: "Make the link"});
 
     function chosen() {
@@ -128,6 +129,7 @@ function shareLinksPanel(p, {open = false} = {}) {
     if (box.querySelector(".share-form")) return;
     made.replaceChildren(); sayIn(msg, "");
     add.after(form());
+    announce("New share link: choose what it shows. What anyone with the link will see is written after the choices, and changes with them.");
   }});
   box.append(el("p", {class: "hint", text: "Let someone without an account read the part of this profile you choose. " +
     "Whoever has the link can open it, so treat it like the records themselves."}),
