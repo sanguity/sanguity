@@ -49,7 +49,7 @@ SECTIONS = [
     ("procedures", "Procedures, imaging and reports", "titles and dates only: not the reports' text, and no documents"),
     ("appointments", "Upcoming appointments", "the date and time, the title, with whom and where"),
     ("journal", "Journal", "the notes, symptoms, side effects and moods written here, with what they say, the medication "
-                "a side effect is about and where on the body (not who wrote them)"),
+                "an entry is linked to and where on the body (not who wrote them)"),   # #523: any entry's, as sent
     ("journal_photos", "Photos in the journal", "the photos attached to the journal entries shown, with what each "
                        "shows (only with Journal; offered when there are some)"),   # #161: never unless ticked
     ("costs", "Costs and claims", "each claim's date, provider, what was billed, what insurance paid and your share"),
@@ -327,7 +327,7 @@ def _build(db, link, today, section):
                                        "who": _text(u.get("who"), 200), "where": _text(u.get("where"), 200)}
                                       for u in ups if _in(summary._day(u.get("t")), scope) and summary._day(u.get("t")) >= today),
                                      key=lambda u: u["t"])
-    if "journal" in want:   # with where on the body, the group and the day's mood (#161), a side effect's medication
+    if "journal" in want:   # with where on the body, the group and the day's mood (#161), an entry's medication
         pics = "journal_photos" in want   # (#518); photos only when ticked
         out["journal"] = sorted(({"t": _text(j.get("t"), 25), "kind": j.get("kind"), "title": _text(j.get("title"), 300),
                                   "severity": j.get("severity"), "note": str(j.get("note") or "")[:4000],

@@ -21,7 +21,7 @@
    a search finds; o.alias {old: group or part id}; o.later [[pattern, group id]], for parts drawn later; o.watch,
    elements whose children arriving redraw it, as hidden, data-dirty or data-role changing anywhere in main does; a
    group with rest: true holds their children no other group names.
-   Gives {nav, start(), show(group or id, {push, scrollTo}), follow(), refresh(), again(), hide(), current(),
+   Gives {nav, start(), show(group or id, {push, scrollTo}), follow(), refresh(), again(), hide(none), current(),
    partsOf(g)}.
 
    The group bar (#272), with o.bar = {save(parts, msg, had), discard(parts), profile()}: while a part shown has
@@ -261,5 +261,7 @@ function sideNav(o) {
   }
   return {nav, start, show, follow, refresh, partsOf, current: () => current,
     again: () => { const r = fromHash(); if (r.el) { pending = false; show(r.g, {scrollTo: r.el}); } else apply(); },   // once the parts have their content
-    hide() { nav.hidden = true; main.classList.remove("with-nav"); }};
+    // none: no group is shown any more (Sharing's last profile left, #523), so the title is the page's alone; it kept
+    // the last group's, put back by each change that redraws the list
+    hide(none = false) { nav.hidden = true; main.classList.remove("with-nav"); if (none) { current = null; apply(); } }};
 }

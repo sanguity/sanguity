@@ -99,7 +99,8 @@ const SH_DRAW = {
   appointments: list => shTable(["When", "What", "With", "Where"], list.map(a => [shWhen(a.t), a.title, a.who, a.where]), "No upcoming appointments."),
   journal: list => list.length ? el("div", {}, ...list.map(j => el("div", {class: "share-entry"},
     el("div", {}, el("b", {text: (SH_KIND[j.kind] || "Note") + (j.title ? `: ${j.title}` : "")}),
-      j.med ? ` · ${j.med}` : null,   // the medication a side effect is about (#518)
+      // the medication an entry is linked to (#518), whole on the next line if it doesn't fit (#523: "Allopurinol 300 / mg tablet")
+      j.med ? " · " : null, j.med ? el("span", {class: "share-med", text: j.med}) : null,
       j.severity ? el("span", {class: "tag", text: `severity ${j.severity}`}) : null,
       j.kind === "mood" ? el("span", {class: "tag", text: [j.mood != null && `mood ${j.mood}/10`, j.energy != null && `energy ${j.energy}/10`].filter(Boolean).join(", ")}) : null,
       el("span", {class: "muted"}, " ", keepDates(shWhen(j.t)))),
@@ -142,8 +143,11 @@ function shLatest(list) {
       onclick: () => { shOpen(open, hist, open.getAttribute("aria-expanded") !== "true"); follow(); }}, icon("chevron-down"), s.label);
     const hist = el("tr", {class: "share-hist", id, hidden: ""}, el("td", {colspan: heads.length},
       s.label !== s.name ? el("p", {class: "hint", text: `Named “${s.name}” on its reports.`}) : null,
-      shTable(["Date", "Result", "Reference range", "Flag"], s.results.map(p => [days.size < s.results.length ? shWhen(p.t) : shDay(p.t),
-        p.value, p.range, shFlag(p.flag)]), "", "measures", `${s.label}: every result`, `${s.label}${s.unit ? ` (${s.unit})` : ""}: every result`)));
+      // a result's flag beside its value, under it where there's no room (#523: at 320 px "◆ Abnormal" in a column of
+      // its own put the history 23 px past its box)
+      shTable(["Date", "Result", "Reference range"], s.results.map(p => [days.size < s.results.length ? shWhen(p.t) : shDay(p.t),
+        p.flag ? el("span", {}, p.value + " ", shFlag(p.flag)) : p.value, p.range]), "", "measures", `${s.label}: every result`,
+        `${s.label}${s.unit ? ` (${s.unit})` : ""}: every result`)));
     hists.push([open, hist]);
     return [el("tr", {class: last.flag ? "out" : null},
       el("th", {scope: "row"}, open, s.unit ? el("span", {class: "share-unit", text: s.unit}) : null),
@@ -295,6 +299,7 @@ async function shLoad() {
   const status = $("#shareStatus");
   const token = location.hash.slice(1);
   const broken = () => {
+    document.title = "This link doesn't work · Sanguity";   // not the profile's a # changed from (#523)
     $("#shareHead").replaceChildren(el("div", {class: "share-hd"}, el("h1", {text: "This link doesn't work"})),
       el("p", {class: "hint", text: "It may have expired or been revoked, or the address may be incomplete. Ask the person who sent it for a new link."}));
     $("#shareBody").replaceChildren();

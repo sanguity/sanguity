@@ -2049,6 +2049,19 @@ Everything on `main` so far; it becomes the first tagged release.
   tablet"), and the Journal section says so. At 320 px a history's "▲ High" kept its ▲ on a line of its own; a flag
   stays whole, at the size of the history's column names, its columns a little closer so Flag stays in view. An empty profile's records page, and the page with no profile, are titled for what they say ("Ben: no
   records yet · Sanguity"), not "Sanguity" alone.
+- **Sharing and first run: sign-in's passkey step where passkeys can't work, Enter on it, the journal's medication
+  wording, the widest flag at 320 px, titles that follow the page, and the visit summary's preview beside the sidebar**
+  (#523): an account whose passkey is the only way on, at a plain-HTTP address or in a browser without passkeys, was
+  left after its password with nothing to press and focus on the page; the step says passkeys don't work there and how
+  to sign in instead (its https:// address, another browser, or another account), with focus on it. Enter in that
+  step's username sent an empty code, answered "That took too long", and emptied the password; it does nothing now.
+  The Journal section says "the medication an entry is linked to", as a symptom's is sent too, not only a side
+  effect's, and a medication's name moves to the next line whole ("Allopurinol 300 / mg tablet" at 320 px). A
+  history's flag is beside its result, under it where there's no room: "◆ Abnormal" in a Flag column of its own put
+  every history at 320 px past its box. After leaving your last profile, Sharing's title and address name none (they
+  kept "Sharing: People" and ?profile=), and a share link's # changed to one that doesn't work says so in the title,
+  not the profile shown before. The visit summary's preview ran its tables past its pane at 768–1100 px; its cells wrap
+  there, and a row is a card where even that doesn't fit.
 - **Records in: typed problems, appointments and payments counted, the drawer closed on an undone appointment, Type
   records in's line after an Undo, and times kept with their AM or PM everywhere** (#517): a problem, an upcoming
   appointment or a payment typed in was "No records" in Import history and its Undo question, a vitals entry "3 lab

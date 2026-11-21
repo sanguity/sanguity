@@ -65,7 +65,13 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
       P = null;
       SgNav.profiles([]);
       for (const id of ["calendar", "summaryIntro", "build", "preview", "sumTicked"]) $("#" + id).hidden = true;
-      if (started) nav.hide();   // no group to show (#402: New profile was one)
+      if (started) nav.hide(true);   // no group to show (#402: New profile was one), nor in the title (#523)
+      // #523: and the address names no profile (the last one left, it kept ?profile=1)
+      const q = new URLSearchParams(location.search);
+      if (q.has("profile")) {
+        q.delete("profile");
+        try { history.replaceState(history.state, "", location.pathname + (q.size ? "?" + q : "") + location.hash); } catch (e) {}
+      }
       return;
     }
     SgNav.profiles(ME.profiles, want);   // the top bar's picker (nav.js, #170): want, else the address's or this browser's
