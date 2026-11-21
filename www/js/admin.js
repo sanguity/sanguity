@@ -13,7 +13,7 @@ async function call(path, method = "GET", body) {
   const j = await r.json().catch(() => ({}));
   if (!r.ok) {
     const d = j.detail, e = new Error(Array.isArray(d) ? "Please check the fields." : (d && d.message) || d || r.status + " " + r.statusText);
-    e.detail = d; throw e;
+    e.detail = d; e.status = r.status; throw e;
   }
   return j;
 }
@@ -132,8 +132,10 @@ function showTemp(username, pw, days) {
    of those can be done to your own account here. Removing one is the danger zone's, under the list. On a phone each row
    is a little card, each value under its column's name (util.js labelCells, #320). */
 const devices = n => n ? plural(n, "device") : "no device";
-async function loadUsers() {
-  const list = await call("users"), mine = document.activeElement?.closest?.("#userList tr[data-user]")?.dataset.user;
+/* mine: the account whose ⋯ focus goes back to once drawn again (a change from its row, #493: remembered before it's
+   asked or checked, by which time focus has moved on); by default the row focus is in now */
+async function loadUsers(mine = document.activeElement?.closest?.("#userList tr[data-user]")?.dataset.user) {
+  const list = await call("users");
   loadOwnerless();
   $("#userList").replaceChildren(el("table", {class: "tbl users"},
     el("thead", {}, el("tr", {}, ...["Account", "Signed in on", ""].map(h => el("th", {text: h})))),
@@ -150,9 +152,10 @@ async function loadUsers() {
     }))));
   accountsZone(list.filter(u => u.id !== ME.user.id));
   // a change from a row's menu redraws the list: focus back on that row's ⋯
-  if (mine && document.activeElement === document.body)
-    $(`#userList tr[data-user="${mine}"] .set-more-btn`)?.focus({preventScroll: true});
+  if (mine) rowBack(mine);
 }
+/* focus back on an account's ⋯ (#287), unless it's somewhere else that's still there (the zone's box, the reauth form) */
+const rowBack = id => { const a = document.activeElement; if (!a || a === document.body || !a.isConnected) $(`#userList tr[data-user="${id}"] .set-more-btn`)?.focus({preventScroll: true}); };
 /* a row's ⋯: each change but Enable is asked first (#249), before any fresh check, so Cancel sends nothing */
 function userMenu(u) {
   const n = u.username;
@@ -190,8 +193,8 @@ async function changeUser(u, body, sure, done) {
       if (!await ask({title: `Disable ${u.username} anyway?`, message: e.message, action: "Disable anyway", danger: true})) throw new Error("Not disabled.");
       r = await call("users/" + u.id, "PATCH", {...body, force: true});
     }
-    done && done(r); await loadUsers();
-  } catch (e) { say("#userMsg", e.message, true); }
+    done && done(r); await loadUsers(u.id);
+  } catch (e) { say("#userMsg", e.message, true); rowBack(u.id); }   // (the check's Cancel: its form went with it)
 }
 /* profiles nobody can manage (every owner disabled or removed): an admin names a new owner; never shows records */
 async function loadOwnerless() {
@@ -243,6 +246,12 @@ function accountsZone(others) {
   if (!pick.value) USERZONE.hide();
   USERZONE.node.hidden = !others.length;   // yours alone: nothing to remove here
 }
+/* an account gone from the zone: said on its line, focus on its picker (the box it was typed in went with it); with no
+   other account left, the zone hidden, on Accounts' line and the page's heading (#493) */
+function zoneSay(text, bad = false) {
+  if (USERZONE.node.hidden) { say("#userMsg", text, bad); focusNear([], 0, null, $("#users h2")); }
+  else { sayIn(USERZONE.msg, text, bad); $("#rmUser").focus(); }
+}
 async function removeAccount(u, typed) {
   let body = {confirm_name: typed};
   for (;;) {
@@ -250,10 +259,12 @@ async function removeAccount(u, typed) {
       const r = await call("users/" + u.id, "DELETE", body);
       $("#rmUser").value = "";
       await loadUsers();
-      sayIn(USERZONE.msg, `Removed ${u.username}.` + (r.handed_over.length ? ` ${body.hand_to} now owns ${r.handed_over.join(", ")}.` : ""));
-      $("#rmUser").focus();   // the box it was typed in went with it
+      zoneSay(`Removed ${u.username}.` + (r.handed_over.length ? ` ${body.hand_to} now owns ${r.handed_over.join(", ")}.` : ""));
       return;
     } catch (e) {
+      // removed meanwhile (by another admin, or in another tab): the list and the zone's picker drawn again without it,
+      // the zone closed, saying why (#493: it stayed listed)
+      if (e.status === 404) { await loadUsers(); zoneSay(e.message, true); return; }
       if (!(e.detail && e.detail.sole_owner_of)) throw e;
       // who takes their profiles over: asked in the app's dialog, with a box for the name (#210: was the browser's prompt)
       const field = el("input", {autocapitalize: "none", spellcheck: "false", autocomplete: "off"});

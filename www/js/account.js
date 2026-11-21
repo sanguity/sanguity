@@ -53,11 +53,18 @@ async function loadSessions() {
       el("td", {}, device(s.agent), s.current ? el("span", {class: "tag", text: "this device"}) : null),
       el("td", {text: s.ip || "–"}), el("td", {text: when(s.created)}), el("td", {text: when(s.last_seen)}),
       el("td", {}, s.current ? null : el("button", {class: "btn small", type: "button", text: "Sign out",
-        onclick: async () => { try { await call("sessions/" + s.id, "DELETE"); loadSessions(); } catch (e) { say("#sessMsg", e.message, true); } }})))))));
+        onclick: async () => {
+          const at = list.indexOf(s);
+          try { await call("sessions/" + s.id, "DELETE"); await loadSessions(); } catch (e) { say("#sessMsg", e.message, true); return; }
+          sessFocus(at);
+        }})))))));
   $("#sessOthers").disabled = list.length < 2;
 }
+/* its button gone with the device signed out (#493): focus on the next device's Sign out, else the one before's, else
+   (none left but this one) on the card's heading (util.js) */
+const sessFocus = (at = 0) => focusNear([...$("#sessList tbody").rows], at, "button", $("#sessions h2"));
 $("#sessOthers").onclick = async () => {
-  try { const r = await call("sessions/revoke-others", "POST"); say("#sessMsg", `Signed out ${r.revoked} device${r.revoked === 1 ? "" : "s"}.`); loadSessions(); }
+  try { const r = await call("sessions/revoke-others", "POST"); say("#sessMsg", `Signed out ${r.revoked} device${r.revoked === 1 ? "" : "s"}.`); await loadSessions(); sessFocus(); }
   catch (e) { say("#sessMsg", e.message, true); }
 };
 

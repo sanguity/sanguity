@@ -32,7 +32,7 @@ function shareLinksPanel(p, {open = false} = {}) {
     const names = Object.fromEntries(info.sections.map(s => [s.id, s.label]));
     list.replaceChildren(scrollBox({class: "share-scroll", "aria-label": "Share links"}, el("table", {class: "tbl"},
       el("thead", {}, el("tr", {}, ...["Link", "Shows", "Ends", "Opened", ""].map(h => el("th", {text: h})))),
-      el("tbody", {}, ...rows.map(l => el("tr", {class: l.state === "active" ? "" : "ended"},
+      el("tbody", {}, ...rows.map(l => el("tr", {class: l.state === "active" ? "" : "ended", "data-link": l.id},
         el("td", {}, el("b", {text: l.label || "Unnamed link"}), el("div", {class: "muted", text: `made by ${l.created_by}, ${when(l.created)}`})),
         el("td", {}, l.sections.map(s => names[s] || s).join(", ") + (l.labs.length ? ` (${l.labs.length} lab${l.labs.length === 1 ? "" : "s"})` : ""),
           el("div", {class: "muted", text: slRange(l.from, l.to)})),
@@ -43,7 +43,10 @@ function shareLinksPanel(p, {open = false} = {}) {
           onclick: async () => {
             if (!await ask({title: `Revoke ${l.label ? `“${l.label}”` : "this link"}?`, message: "It stops working at once, for anyone who has it.",
                             action: "Revoke link", danger: true})) return;
-            try { await call(`profiles/${p.id}/links/${l.id}`, "DELETE"); sayIn(msg, "Revoked."); await load(); } catch (e) { fail(e); }
+            try { await call(`profiles/${p.id}/links/${l.id}`, "DELETE"); sayIn(msg, "Revoked."); await load(); } catch (e) { fail(e); return; }
+            // its Revoke went with it (#493): focus on the next link's, else the one before's, else New share link (util.js)
+            const at = [...list.querySelectorAll("tbody tr")];
+            focusNear(at, at.findIndex(r => r.dataset.link === String(l.id)), "button", add);
           }}))))))));
   }
 
@@ -97,7 +100,10 @@ function shareLinksPanel(p, {open = false} = {}) {
         made.replaceChildren(el("div", {class: "share-made"}, el("p", {}, el("b", {text: "Copy the link now."}),
           " It's shown only this once: Sanguity keeps a fingerprint of it, not the link itself, so it can't show it again."),
           el("div", {class: "row"}, field, copy, qr?.btn), qr?.fig));
+        // focus on its Copy, as it says (#493): Make the link goes with the form
+        copy.focus({preventScroll: true});
         f.remove(); await load();
+        made.scrollIntoView({block: "nearest"});
       } catch (e) { fail(e); }
     }},
       // the choices, and beside them (#288; under them on a narrower screen) what a holder of the link will see, then Make
@@ -127,11 +133,13 @@ function shareLinksPanel(p, {open = false} = {}) {
     add.after(form());
     announce("New share link: choose what it shows. What anyone with the link will see is written after the choices, and changes with them.");
   }});
-  box.append(el("p", {class: "hint", text: "Let someone without an account read the part of this profile you choose. " +
+  box.append(...present(el("p", {class: "hint", text: "Let someone without an account read the part of this profile you choose. " +
     "Whoever has the link can open it, so treat it like the records themselves."}),
-    aboutWords("A share link suits a clinician or a relative. It works until it expires or you revoke it, and each time it's opened " +
+    // its ⓘ (#280) goes beside the card's heading, outside this panel: drawn again (sharing.js, at each refresh), the
+    // one put there already is kept, not another added beside it (#493)
+    document.getElementById("slAbout")?.closest(".info") ? null : aboutWords({id: "slAbout"}, "A share link suits a clinician or a relative. It works until it expires or you revoke it, and each time it's opened " +
       "is logged in this profile's activity, with the address it came from. Sanguity keeps a fingerprint of each link, not the link itself."),
-    list, add, made, msg);
+    list, add, made, msg));
   const toggle = el("button", {class: "btn small", type: "button", text: "Share links", "aria-expanded": "false",
     onclick: async () => { box.hidden = !box.hidden; toggle.setAttribute("aria-expanded", !box.hidden); if (!box.hidden) { try { await load(); } catch (e) { fail(e); } } }});
   if (open) { toggle.hidden = true; box.hidden = false; load().catch(fail); }
