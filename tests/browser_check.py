@@ -2572,6 +2572,30 @@ def main():
                     const rg = document.createRange(); rg.setStart(n, m.index); rg.setEnd(n, m.index + m[0].length);
                     if (new Set([...rg.getClientRects()].map(x => Math.round(x.top))).size > 1) bad.push(['broken', m[0]]); } } }
               return [tables.map(t => t.closest('section').id), bad.slice(0, 8)]; }""")
+            # #514: …where each opened history's Flag column is in view, not past its box (its no-wrap head made it 288-313
+            # px in 262)
+            hp.locator("#share-results .share-tools button", has_text="Open every history").click()
+            flag514 = hp.evaluate("""() => [...document.querySelectorAll('#share-results .share-hist:not([hidden]) table')].map(t => {
+              const box = t.closest('.share-scroll').getBoundingClientRect(), r = t.tHead.rows[t.tHead.rows.length - 1].cells[3].getBoundingClientRect();
+              return r.left >= box.left - 0.5 && r.right <= box.right + 0.5; })""")
+            hp.locator("#share-results .share-tools button", has_text="Open every history").click()   # closed again
+        # #514: at 600 and 640 px the page's tables are tables, as they fit there (#509's phone rule stacked them, a claim
+        # 250 px tall), by their own width (a container rule, as share links' list): the head shown, no word broken
+        tables514 = {}
+        for w in (600, 640):
+            hp.set_viewport_size({"width": w, "height": 900})
+            hp.wait_for_timeout(200)
+            tables514[w] = hp.evaluate("""() => [...document.querySelectorAll('#shareBody table.tbl:not(.measures):not(.share-latest)')].filter(t => {
+              const shown = getComputedStyle(t.tHead).display === 'table-header-group' && getComputedStyle(t.tBodies[0].rows[0]).display === 'table-row';
+              const tw = document.createTreeWalker(t, NodeFilter.SHOW_TEXT);
+              for (let n; (n = tw.nextNode());) for (const m of n.data.matchAll(/\\S+/g)) {
+                const rg = document.createRange(); rg.setStart(n, m.index); rg.setEnd(n, m.index + m[0].length);
+                if (new Set([...rg.getClientRects()].map(x => Math.round(x.top))).size > 1) return true; }
+              return !shown || t.closest('.share-scroll').scrollWidth > t.closest('.share-scroll').clientWidth + 1; }).map(t => t.closest('section').id)""")
+        # #514: no visit's title repeats its kind ("Hospital stay: Hospital stay · Northfield General Hospital")
+        kinds514 = hp.evaluate("""() => [...document.querySelectorAll('#share-visits tbody tr')].map(r => r.cells[1].textContent)
+          .filter(t => /^([^:]+): \\1/i.test(t))""")
+        stays514 = hp.evaluate("[...document.querySelectorAll('#share-visits tbody tr')].filter(r => r.cells[1].textContent.startsWith('Hospital stay')).length")
         # #501: each chip Tab reaches is wholly in the bar's view, at 1400×900 and 768 (it reached ones partly shown, cut)
         CHIP501 = """() => { const a = document.activeElement, bar = document.getElementById('shareBar'), r = a.getBoundingClientRect(), b = bar.getBoundingClientRect();
           return a.matches('#shareBar .chip') ? [a.textContent, r.left >= b.left - 0.5 && r.right <= b.left + bar.clientWidth + 0.5] : null; }"""
@@ -2696,6 +2720,11 @@ def main():
               "broken and no cell beyond its row (#509: “10:30 / AM”; Details a word a line)",
               len(ampm509s) == 3 and not any(ampm509s.values()) and cells509 and {"share-visits", "share-costs"} <= set(cells509[0]) and not cells509[1],
               [ampm509s, cells509])
+        check("…at 320 px each opened history's Flag column in view, without scrolling it sideways (#514: past its 262 px box)",
+              len(flag514) >= 8 and all(flag514), flag514)
+        check("…at 600 and 640 px its tables (but a measure's) tables, as they fit: their heads shown, no word broken, none scrolling (#514: a cell a line)",
+              tables514 == {600: [], 640: []}, tables514)
+        check("…no visit's title repeats its kind (#514: “Hospital stay: Hospital stay · …”)", not kinds514 and stays514 >= 1, [kinds514, stays514])
         check("…each chip Tab reaches, and Shift+Tab back, is wholly in the bar's view at 1400×900 and 768 (#501: “Journal” was cut to “Jou”)",
               all(len(v) >= 16 and all(c[1] for c in v) for v in tab501.values()), tab501)
         check("…at 1400 px a mouse reaches each of the bar's chips (eight or more; #498: the bar scrolled sideways to it); at 568×320 the "
@@ -2719,17 +2748,45 @@ def main():
         hp.goto(base + "/" + made501["path"])
         hp.wait_for_selector("#share-results .share-latest", timeout=10000)
         hp.locator("#share-results .share-tools button", has_text="Open every history").click()
+        # #514: a test its lab names otherwise (its history starts "Named “…” on its reports.") printed with its row and
+        # that line on one page and its history from the next (Total Bilirubin, Platelet Count, every time): the page of
+        # each such test's row, and of its history's head (“Platelets (K/uL): every result”)
+        RENAMED514 = "() => [...document.querySelectorAll('#share-results .share-hist')].filter(h => h.querySelector('.hint')).map(h => document.querySelector(`[aria-controls=${h.id}]`).textContent)"
+        apart514 = lambda pages, names: [(t, r, h) for t in names for r, h in [[next((i for i, pg in enumerate(pages) for ln in pg if ln.startswith(t) and ": every result" not in ln), None),
+                                                                                 next((i for i, pg in enumerate(pages) for ln in pg if re.match(re.escape(t) + r"( \(.*\))?: every result$", ln)), None)]] if r is None or r != h]
+        renamed514 = {"year": hp.evaluate(RENAMED514)}
         hp.emulate_media(media="print")
-        low501 = []
+        low501, apart514s = [], {}
+        lines514 = []
         for p_ in PdfReader(io.BytesIO(hp.pdf(format="Letter"))).pages:
             ys = []
-            p_.extract_text(visitor_text=lambda t, cm, tm, fd, fs: ys.append(tm[5] * cm[3] + cm[5]) if t.strip() else None)
+            lines514.append([ln.strip() for ln in p_.extract_text(visitor_text=lambda t, cm, tm, fd, fs: ys.append(tm[5] * cm[3] + cm[5]) if t.strip() else None).splitlines()])
             low501.append(round(min(ys)) if ys else 792)
         hp.emulate_media(media="screen")
+        apart514s["year"] = apart514(lines514, renamed514["year"])
         strict.evaluate("id => fetch('api/profiles/1/links/' + id, {method: 'DELETE', headers: {'X-Sanguity': '1'}})", made501["link"]["id"])
         check("…a year's link to visits, lab results and medications, printed with every history open: no page before the last more than a "
               "quarter empty (#501: a history and its test's row moved to the next page whole, page 1 left 420 pt short)",
               len(low501) > 2 and max(low501[:-1]) <= 792 / 4, low501)
+        # #514: a six-month link to lab results (short histories), printed with every history open: Latest results' column
+        # names at most once a page (they were above each test's row after a history, 12 times over 4 pages): a short
+        # history stays in its row (share.js SH_ROWS), whole on its test's page
+        made514 = strict.evaluate("""() => fetch('api/profiles/1/links', {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'},
+          body: JSON.stringify({sections: ['results'], from: '2026-05-15', label: 'Six months of results (browser check)', hours: 1})}).then(r => r.json())""")
+        hp.goto("about:blank")
+        hp.goto(base + "/" + made514["path"])
+        hp.wait_for_selector("#share-results .share-latest", timeout=10000)
+        hp.locator("#share-results .share-tools button", has_text="Open every history").click()
+        renamed514["six months"] = hp.evaluate(RENAMED514)
+        hp.emulate_media(media="print")
+        six514 = [[ln.strip() for ln in p_.extract_text().splitlines()] for p_ in PdfReader(io.BytesIO(hp.pdf(format="Letter"))).pages]
+        hp.emulate_media(media="screen")
+        apart514s["six months"] = apart514(six514, renamed514["six months"])
+        heads514 = [pg.count("Test Latest Range Flag Trend Results") for pg in six514]
+        strict.evaluate("id => fetch('api/profiles/1/links/' + id, {method: 'DELETE', headers: {'X-Sanguity': '1'}})", made514["link"]["id"])
+        check("…a six-month link to lab results, printed with every history open: Latest results' column names at most once a page, on "
+              "page 1 (#514: above each test's row after a history, 3 or 4 a page)",
+              len(six514) >= 2 and heads514[0] == 1 and max(heads514) == 1, heads514)
         # #505: a ten-year link to lab results, printed with every history open: Latest results' column names head each
         # page it spans (#501's block of one-row tables printed them on page 1 only), its breaks kept. #509: above the
         # first of its rows on each page with them, and not on a page holding only a history (it was over the history's
@@ -2742,14 +2799,20 @@ def main():
         hp.locator("#share-results .share-tools button", has_text="Open every history").click()
         head505 = " ".join(hp.evaluate("[...document.querySelectorAll('#share-results .share-latest>thead th')].map(c => c.textContent)"))
         tests509 = hp.evaluate("[...document.querySelectorAll('#share-results .share-open')].map(b => b.textContent)")
+        renamed514["ten years"] = hp.evaluate(RENAMED514)
         hp.emulate_media(media="print")
-        pages505 = []   # each page: the line of Latest results' first head and of its first row (a test's name, not its history's), its lowest text
+        pages505, lines514 = [], []   # each page: the line of Latest results' first head and of its first row (a test's name, not its history's), its lowest text
         for p_ in PdfReader(io.BytesIO(hp.pdf(format="Letter"))).pages:
             ys = []
             lines = [ln.strip() for ln in p_.extract_text(visitor_text=lambda t, cm, tm, fd, fs: ys.append(tm[5] * cm[3] + cm[5]) if t.strip() else None).splitlines()]
+            lines514.append(lines)
             pages505.append([[i for i, ln in enumerate(lines) if ln == head505][:1], round(min(ys)) if ys else 792,
                              [i for i, ln in enumerate(lines) if any(ln.startswith(t) for t in tests509) and not ln.endswith(": every result")][:1]])
         hp.emulate_media(media="screen")
+        apart514s["ten years"] = apart514(lines514, renamed514["ten years"])
+        check("…printed with every history open, a year's, six months' and ten years' link: no test its lab names otherwise has its row on "
+              "one page and its history from the next (#514: Total Bilirubin, Lymphocytes Absolute, Platelet Count)",
+              all(len(v) >= 2 for v in renamed514.values()) and not any(apart514s.values()), [renamed514, apart514s])
         back509 = hp.evaluate("[!document.querySelector('.share-split'), document.querySelectorAll('#share-results .share-latest').length]")
         strict.evaluate("id => fetch('api/profiles/1/links/' + id, {method: 'DELETE', headers: {'X-Sanguity': '1'}})", made505["link"]["id"])
         check("…a ten-year link to lab results, printed with every history open: Latest results' column names above its first row on each page "
@@ -9924,6 +9987,7 @@ def main():
             page.goto(base + f"/?profile={epid504}")
             page.wait_for_function(f"PROFILE && PROFILE.id === {epid504} && !!document.querySelector('main > .empty')", timeout=20000)
             js("window._page504 = 1")
+            h1_514 = [heading_outline(page, "an empty profile")]   # #514: one h1 (emptyCard dropped it with <main>'s tabs)
             dcards504 = "document.querySelectorAll('dialog.up-dlg .import-job')"
             for n, row in enumerate(("Sodium,141,mmol/L,135 - 145", "Chloride,101,mmol/L,98 - 107")):
                 js(drop497, [f"empty-{n}.csv", f"Date,Test,Result,Units,Reference Range\n2026-11-15,{row}\n"])
@@ -9949,6 +10013,9 @@ def main():
             check("after the toast's Undo on the records page, the dialog closed, the records are gone and the empty card back without a reload, "
                   "focus in sight and not on a toast (#508)", undo508 == [1, True, True, "Get started", False, True],
                   [undo508, js("document.activeElement.outerHTML.slice(0, 120)")])
+            h1_514.append(heading_outline(page, "an empty profile, its records undone"))
+            check("an empty profile's records page has one h1, as it loads and with its empty card back after an Undo, no heading level skipped (#514: none)",
+                  not any(b for _, b in h1_514) and all(": h1 " in o for o, _ in h1_514), h1_514)
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             # (#508) on the guide, a CSV added in its step 2, then undone from its toast: the step isn't done any more,
             # and focus is on the card's "Undone." line
@@ -13276,10 +13343,16 @@ def main():
                         && getComputedStyle(d.querySelector('.sum-dot')).display === 'none'),
                       wide <= a.clientWidth - 24,
                       [...document.querySelectorAll('.sum-notice')].filter(n => n.checkVisibility()).length]; })()""")
+                # #514: no range in it split at its dash ("13.5– / 17.5" at 1200 px)
+                fit492[w].append(js("""[...document.querySelectorAll('#preview td')].filter(td => /\\d–\\d/.test(td.textContent)).map(td => {
+                    const rg = document.createRange(); rg.selectNodeContents(td);
+                    return new Set([...rg.getClientRects()].map(r => Math.round(r.top))).size > 1 ? td.textContent : ''; })"""))
             page.set_viewport_size({"width": 1400, "height": 900})
             check("visit summary: at 1400 and 1200 px nothing in the preview is cut, a table wider than its box or a cell past its edge, a trend's "
                   "day under its value, the visit chosen shown whole; and the notice once, at the preview's foot (#492)",
-                  fit492 == {1400: [0, 0, True, True, 1], 1200: [0, 0, True, True, 1]}, fit492)
+                  {w: v[:5] for w, v in fit492.items()} == {1400: [0, 0, True, True, 1], 1200: [0, 0, True, True, 1]}, fit492)
+            check("visit summary: …no range in its preview split at its dash at 1400 and 1200 px (#514: “13.5– / 17.5”)",
+                  all(len(v[5]) >= 5 and not any(v[5]) for v in fit492.values()), fit492)
             # #492: a first preview that fails shows its pane with what went wrong (its message was in the hidden pane); a later
             # one leaves the preview there, dimmed and marked as not up to date, until one is drawn again
             pv_api = re.compile(r".*/api/profiles/\d+/summary/preview$")
@@ -15006,8 +15079,13 @@ def main():
                     np_.wait_for_function(ready_, timeout=10000)
                     np_.wait_for_timeout(500)
                     tabs501[f"{pg_} {w}"] = np_.evaluate("[...document.querySelectorAll('header [id^=tab-], header .tab-more')].filter(t => t.checkVisibility()).map(t => t.textContent)")
+            np_.goto(base + "/")   # #514: and the records page, its empty card under one h1
+            np_.wait_for_function("!!document.querySelector('main > .empty')", timeout=20000)
+            h1_514n = heading_outline(np_, "no profile")
             nctx.close()
             sdb.execute("DELETE FROM users WHERE id=?", (uid501,))
+            check("with no profile, the records page has one h1, no heading level skipped (#514: its only headings were the menus' hidden h2s)",
+                  not h1_514n[1] and ": h1 " in h1_514n[0], h1_514n)
             check("with no profile, the top bar has no records tabs on Sharing, Sources, import.html and the guide's New profile, at 1400 and 375 px "
                   "(#501: Overview, Body, … Costs were still there after Leave; #505: on Sources and New profile too)",
                   len(tabs501) == 8 and not any(tabs501.values()), tabs501)
@@ -18182,6 +18260,21 @@ def main():
             pk.set_viewport_size({"width": 1400, "height": 900})
             check("a failed passkey sign-in leaves focus on its button, its reason under it, both in sight at 568×320 (#509: focus fell to the page)",
                   pk509[:4] == ["pk", "pkBox", True, True] and pk509[4], pk509)
+            # #514: the second step timed out (the server's answer to a passkey after the password, stood in for here): back
+            # to the password, which has focus and the reason, as Sign in's path gives it (focus was on the passkey button)
+            pk.fill("#u", USER)
+            pk.fill("#p", PW)
+            pk.click("#b")
+            pk.wait_for_selector("#c", state="visible")
+            late514 = "**/api/login/passkey/options"
+            pk.route(late514, lambda route: route.fulfill(status=401, content_type="application/json", body=json.dumps({"detail": "That took too long. Enter your password again."})))
+            pk.click("#pk")
+            pk.wait_for_function("document.getElementById('e').textContent", timeout=20000)
+            pk.unroute(late514)
+            pk514 = pk.evaluate("""() => { const a = document.activeElement, e = document.getElementById('e');
+              return [a.id, a.value, document.getElementById('step1').hidden, a.getAttribute('aria-errormessage'), e.textContent]; }""")
+            check("a passkey at the second step that took too long puts focus on the password, emptied, the reason with it (#514: on the passkey button)",
+                  pk514 == ["p", "", False, "e", "That took too long. Enter your password again."], pk514)
             problems[before:] = [x for x in problems[before:] if "401" not in x]   # signed out on the way, on purpose
             ctx.close()
         except Exception as e:   # report what was caught so far instead of a bare traceback

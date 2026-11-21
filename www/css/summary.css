@@ -15,10 +15,11 @@
   .sum-panes{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);column-gap:var(--sp-5);align-items:start}
   .sum-panes .sum-preview .tbl :is(td,th){white-space:normal}
   /* #492: nothing cut in the pane: a trend's day under its value (no dot), the spark narrower; and the notice said once,
-     at the preview's foot, while the preview shows it */
-  .sum-panes .sum-at{display:block}
+     at the preview's foot, while the preview shows it. #514: room for a range kept whole (summary.js rangeCell): the day
+     smaller, the spark narrower */
+  .sum-panes .sum-at{display:block;font-size:var(--fs-2)}
   .sum-panes .sum-dot{display:none}
-  .sum-panes .sum-preview .spark{width:48px}
+  .sum-panes .sum-preview .spark{width:40px}
   .sum-panes:has(#prevBody .sum-notice) #notice{display:none}
 }
 .sum-pv-hd{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 var(--sp-3)}

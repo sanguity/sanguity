@@ -127,15 +127,19 @@ storeOn(STORE_PARTS, parts => {
 });
 /* no records to show (an empty profile, none shared, or an error): a message instead of the tabs, and none of the
    controls that would render them, since those need DATA and the tab sections this replaces. One empty state
-   (emptyState, util.js: #199), or the words of an error */
+   (emptyState, util.js: #199), or the words of an error. The page's h1 kept over it, named by head (#514: with no
+   profile, or on an empty one, the page had none; it's the tab's name again once records come) */
 let mainKids = null;   // the tabs' sections, kept for an empty profile's first records (recordsFirst)
-function emptyCard(...kids) {
+function emptyCard(head, ...kids) {
   $(".tabs").hidden = true; $(".filters").hidden = true;
   const one = kids.length === 1 && kids[0].nodeType ? kids[0] : el("div", {class: "card"}, ...kids);
   one.classList.add("empty");
   const main = document.querySelector("main");
   mainKids ??= [...main.childNodes];
-  main.replaceChildren(one);
+  const h1 = mainKids.find(n => n.id === "tabTitle");
+  h1.textContent = head;
+  // (offline with no records kept, the banner has the page's h1: offline.js notAvailable, #424)
+  main.replaceChildren(...present(document.querySelector("#offlineBanner > h1") ? null : h1, one));
 }
 /* an empty profile's first records, saved from the upload dialog (drop.js, #504): its tabs in place of the empty
    card, drawn as the page draws them when it loads, without loading it again (the toast's Undo, the dialog's other
@@ -150,7 +154,7 @@ function recordsFirst(data) {
 const canImport = p => p.role === "owner" || p.role === "editor";
 /* the profile shown has no records: its empty card (#199), for someone who can bring them in, or not */
 function emptyProfile() {
-  emptyCard(canImport(PROFILE)
+  emptyCard(`${PROFILE.name}: no records yet`, canImport(PROFILE)
     ? emptyState(`${PROFILE.name} has no records yet: lab results, visits, medications and the rest appear here once they're brought in.`,
         {href: `guide.html?profile=${PROFILE.id}`, text: "Get started"})
     : emptyState(`${PROFILE.name} has no records yet: its owners and editors bring them in, and they appear here for you too.`,
@@ -225,7 +229,7 @@ async function settingsLoad() {
     if (!ME.profiles.length) {   // (with the account's own theme, as Settings shows it, #433)
       const u = await api("settings/user").then(x => x.ok ? x.json() : null).catch(() => null);
       if (u) applyTheme(u.theme);
-      emptyCard(emptyState(`No health profile is shared with you yet: make one of your own, or ask a profile's owner to share theirs with ${ME.user.username}.`, {href: "guide.html?new", text: "Make a profile"}));
+      emptyCard("No health profile yet", emptyState(`No health profile is shared with you yet: make one of your own, or ask a profile's owner to share theirs with ${ME.user.username}.`, {href: "guide.html?new", text: "Make a profile"}));
       return;
     }
     // the top bar's picker (nav.js, #170): the profile the address names, else this browser's last, else the first
@@ -254,7 +258,7 @@ async function settingsLoad() {
     if (!r.ok) throw new Error(r.status + " " + r.statusText);
     data = await r.json();
     await settingsLoad();
-  } catch (e) { emptyCard("Couldn't load the records: " + e.message); return; }
+  } catch (e) { emptyCard("Records", "Couldn't load the records: " + e.message); return; }
   await recordsDraw(data);
   try { performance.mark("sanguity:ready"); } catch (e) {}   // the records page is ready: what docs/performance.md times (#201)
   journalSaved();   // the first entry on a profile with no records, saved: the page again, with it open (journal.js, #477)
