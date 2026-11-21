@@ -13,6 +13,7 @@
    cells wrap in its pane above a phone's width too (#523: at 768-1100 px, beside the sidebar, its tables ran past it) */
 @media (min-width:641px){
   .sum-panes .sum-preview .tbl :is(td,th){white-space:normal}
+  .sum-panes .sum-preview .tbl td:first-child:not(.wrap){overflow-wrap:anywhere;min-width:7em}   /* a name's long word broken, not the pane overrun; a usual one whole (#527) */
   /* #492: nothing cut in the pane: a trend's day under its value (no dot), the spark narrower. #514: room for a range
      kept whole (summary.js rangeCell): the day smaller, the spark narrower */
   .sum-panes .sum-at{display:block;font-size:var(--fs-2)}

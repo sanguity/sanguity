@@ -26,7 +26,7 @@ async function call(path, method = "GET", body) {
 const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and date format
 
 (() => {
-  let ME = null, P = null, MEMBERS = [], MEMBERS_OF = null;   // MEMBERS_OF: the profile MEMBERS are of
+  let ME = null, P = null, MEMBERS = [], MEMBERS_OF = null, LINKS_OF = null;   // MEMBERS_OF: the profile MEMBERS are of; LINKS_OF: the profile and role the share links are drawn for
   const sel = $("#profile");
   $("#logout").onclick = logOut;   // util.js: asks first about what isn't saved (#391)
 
@@ -62,7 +62,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     $("#intro").hidden = !has;
     for (const id of ["people", "export", "links", "activity"]) $("#" + id).hidden = !has;
     if (!has) {
-      P = null;
+      P = LINKS_OF = null;
       SgNav.profiles([]);
       for (const id of ["calendar", "summaryIntro", "build", "preview", "sumTicked"]) $("#" + id).hidden = true;
       if (started) nav.hide(true);   // no group to show (#402: New profile was one), nor in the title (#523)
@@ -85,8 +85,12 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     showAllowed();
     $("#exportLink").href = `api/profiles/${p.id}/export`;
     exportCycle(p);   // #183
-    if (p.role === "owner") $("#linksBody").replaceChildren(shareLinksPanel(p, {open: true}));   // share-links.js
-    else $("#linksBody").replaceChildren();
+    // the share links panel drawn again only for another profile or role (#527: a People change's redraw lost a made
+    // link's only copy, and a half-filled New share link)
+    if (LINKS_OF !== p.id + p.role) {
+      LINKS_OF = p.id + p.role;
+      $("#linksBody").replaceChildren(...p.role === "owner" ? [shareLinksPanel(p, {open: true})] : []);   // share-links.js
+    } else $("#linksBody").firstChild?.reload();   // its list: a link stops when its maker is no longer an owner
     sayIn($("#peopleMsg"), "");
     MEMBERS_OF = null;
     $("#actBody").replaceChildren();

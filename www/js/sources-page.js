@@ -17,7 +17,7 @@
 const SgSources = (() => {
   const main = $("main.src"), sel = $("#profile");
   const GROUPS = SG_PAGES.sources.groups;   // groups.js: one list, which the command palette searches too (#273)
-  let ME = null;
+  let ME = null, none = false;   // none: no profile, so no group (#527)
   const profile = () => ME && ME.profiles.find(p => p.id === +sel.value) || null;
   const canEdit = () => { const p = profile(); return !!p && (p.role === "owner" || p.role === "editor"); };
 
@@ -26,7 +26,7 @@ const SgSources = (() => {
      who can only view it, the Overview and the import history; an address naming another shows the Overview. Until
      /api/me has said whose this is, every group is (a part's script may show its group as the page loads) */
   const nav = sideNav({id: "srcNav", page: "Sources", groups: GROUPS, find: "Find in Sources", none: q => `Nothing in Sources matches “${q}”.`,
-    allowed: g => !g.needs || !ME || canEdit(), refuse: () => !!profile(),
+    allowed: g => !none && (!g.needs || !ME || canEdit()), refuse: () => !!profile(),
     alias: {zip: "upload", folder: "upload", files: "upload", payment: "manual", "home-reading": "manual", watch: "phone"},   // Add → Home reading (#264);   // the old pages' addresses (import.html#manual, #link, #zip, #payment; settings.html#watch: moved.js)
     later: [[/^import-\d+$/, "history"], [/^conn-\d+$/, "portals"]],   // drawn after the page loads: an import in the history (a record's Source link, #100), a connection
     intro: hint, shown: g => document.dispatchEvent(new CustomEvent("sources:group", {detail: g.id}))});
@@ -75,7 +75,7 @@ const SgSources = (() => {
     if (me.user.needs_two_factor) { location.replace("account.html#twofa"); return null; }
     $("#who").textContent = me.user.username;
     { const w = plainHttpWarning(); if (w) { $("#insecure").textContent = w; $("#insecure").hidden = false; } }
-    if (!me.profiles.length) { nav.hide(); $("#noProfiles").hidden = false; return null; }
+    if (!me.profiles.length) { none = true; nav.hide(true); $("#noProfiles").hidden = false; return null; }   // nor in the title (#527)
     ME = me;
     SgNav.profiles(me.profiles);   // the top bar's picker (nav.js, #170)
     backTo();   // #199
