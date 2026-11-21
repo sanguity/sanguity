@@ -2678,9 +2678,11 @@ def main():
                                         ["From", "text", None]], "rows": [["2026-11-14T08:00", "Vitamin D3 (fictional)", "Taken", "", "Typed in"]],
                                "lead": ["Vitamin D3 (fictional): 1 taken"], "note": "", "empty": "No doses logged in this period.", "total": 1, "of": "doses"}
             j["medlog"]["rows"][0][3] = typed540
+            for c_ in (j.get("costs") or [])[:1]:   # (#543: amounts the reviewer saw written "22,06 $" and "-3,79 $")
+                c_.update(billed=22.06, paid=-3.79)
             route.fulfill(response=got, json=j)
-        notes535 = {}
-        for loc in ("de-DE", "en-IN"):
+        notes535, money543 = {}, {}
+        for loc in ("de-DE", "en-IN", "fr-FR"):
             de535 = browser.new_context(viewport={"width": 1400, "height": 900}, locale=loc)
             dep = de535.new_page()
             dep.route("**/api/share/view", big535)
@@ -2690,6 +2692,8 @@ def main():
               .map(s => [s.id, [[...s.querySelectorAll('p:not(.hint):not(.muted)')].map(p => p.textContent),
                 [...s.querySelectorAll('p.hint')].map(p => p.textContent).find(t => t.startsWith('The latest ')) || '',
                 [...s.querySelectorAll('table.measures td')].map(td => td.textContent).filter(t => /^(CGM|Meter): |\\d+ of \\d|^BP /.test(t))]]))""")
+            # #543: …and money as the app writes it, "$22.06", in any browser (it was "22,06 $" in de-DE, "22,06 $US" in fr-FR)
+            money543[loc] = dep.evaluate("[...document.querySelectorAll('#share-costs tbody td')].map(td => td.textContent).filter(t => /\\d/.test(t) && /\\$|€/.test(t))")
             de535.close()
         # #501: Show all keeps focus while it loads (aria-disabled, not disabled: focus fell to the page), saying
         # "Loading…" in the line it's described by, a live region; a failure said there, focus still on it; and the rows
@@ -2810,7 +2814,12 @@ def main():
               len(cut531) >= 2 and all(m and m[2] != "rows" for m in cut531.values())
               and any(v[1] for v in same531.values()) and all(ln.startswith(n + " ") for n, lns in same531.values() for ln in lns)
               and not any(re.search(r"(?<![\d.,:–-])\d{4,}(?![\d.,:–-])", t) for v in notes531.values() for t in v[0] + [v[1]]), notes531)
+        check("…(#543) in de-DE, en-IN and fr-FR Costs' amounts read as the app writes money, “$22.06” and “-$3.79” (it was “22,06 $”, “22,06 $US”)",
+              len(money543) == 3 and all({"$22.06", "-$3.79"} <= set(v) and all(re.fullmatch(r"-?\$\d{1,3}(,\d{3})*\.\d\d", t) for t in v) for v in money543.values()),
+              {k: v[:8] for k, v in money543.items()})
         for loc, n535 in notes535.items():
+            if loc == "fr-FR":
+                continue   # (#543's amounts only)
             cut535 = {k: re.fullmatch(r"The latest \d+ of ([\d,]+) (.+)\.", v[1]) for k, v in n535.items() if v[1]}
             same535 = {k: [m[1], [ln for ln in n535[k][0] if re.match(r"[\d.,]+ ", ln) and re.sub(r"\D", "", ln.split()[0]) == re.sub(r"\D", "", m[1])]]
                        for k, m in cut535.items() if m}
@@ -2916,6 +2925,24 @@ def main():
         check("share links: …the list's cells labelled with their columns' names: Link, Shows, Ends, Opened (#320)",
               not cl_bad and any(t[1] and t[3] >= 4 for t in cl_tables), cl_bad[:6] or cl_tables)
         strict.set_viewport_size({"width": 1400, "height": 900})
+        # #543: a link opened 1,381 times says so with its separator, as every count does (“1381 times”; the list's first
+        # link given the count in the database, and its own back after: a route on this page, which a service worker controls,
+        # didn't see the list's request)
+        from server import db as dbm543
+        strict.goto(base + "/sharing.html?profile=1#links")
+        strict.wait_for_selector("#links .share-links tbody tr[data-link]", timeout=10000)
+        id543 = int(strict.evaluate("document.querySelector('#links .share-links tbody tr[data-link]').dataset.link"))
+        db = dbm543.connect()
+        was543 = db.execute("SELECT views, last_viewed FROM share_links WHERE id=?", (id543,)).fetchone()
+        with dbm543.transaction(db):
+            db.execute("UPDATE share_links SET views=1381, last_viewed=COALESCE(last_viewed, created) WHERE id=?", (id543,))
+        strict.reload()
+        strict.wait_for_selector(f"#links .share-links tbody tr[data-link='{id543}']", timeout=10000)
+        opened543 = strict.evaluate("id => document.querySelector(`#links .share-links tbody tr[data-link='${id}'] td:nth-child(4)`).textContent", id543)
+        with dbm543.transaction(db):
+            db.execute("UPDATE share_links SET views=?, last_viewed=? WHERE id=?", (was543["views"], was543["last_viewed"], id543))
+        db.close()
+        check("share links: a link opened 1,381 times says “1,381 times” (#543: “1381 times”)", opened543.startswith("1,381 times, last "), opened543)
         strict.goto(base + "/sharing.html?profile=1#activity")   # the same page: Activity is read afresh when it's opened
         sl_until(strict, "[...document.querySelectorAll('#actBody .activity tbody tr')].some(r => r.textContent.includes('opened the share link “Dr. Fictional”'))")
         row = strict.evaluate("[...document.querySelectorAll('#actBody .activity tbody tr')].find(r => r.textContent.includes('opened the share link')).textContent")
@@ -14130,8 +14157,8 @@ def main():
                 if "medlog" not in j["sections"]:
                     j["sections"].append("medlog")
                 route.fulfill(response=got, json=j)
-            seen540 = {}
-            for loc in ("de-DE", "en-IN"):
+            seen540, sep543 = {}, {}
+            for loc in ("de-DE", "en-IN", "en-DE", "en-GB"):   # (#543: the last two too, where Chromium writes September "Sept")
                 ctx540 = browser.new_context(viewport={"width": 1400, "height": 900}, locale=loc, bypass_csp=True)
                 ctx540.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
                 p540 = ctx540.new_page()
@@ -14144,17 +14171,38 @@ def main():
                   for (let e = h.nextElementSibling; e && e.tagName !== 'H3'; e = e.nextElementSibling) if (e.tagName === 'P') ps.push(e.textContent);
                   await datesReady();
                   const t = Date.UTC(2026, 9, 6, 12), was = [DATES.zone, DATES.format], in_ = f => (useDates(was[0], f), [fmtD(t), fmtMonth(t)]);
-                  const dates = {mdy: in_('mdy'), dmy: in_('dmy'), '': in_('')}; useDates(...was);
+                  const dates = {mdy: in_('mdy'), dmy: in_('dmy'), '': in_('')};
+                  const u = Date.UTC(2026, 8, 6, 14, 5), at = f => (useDates('UTC', f), [fmtD(u), fmtDT(u)]);   // (#543)
+                  const sep = {mdy: at('mdy'), dmy: at('dmy'), ymd: at('ymd')}; useDates(...was);
                   return [pv.querySelector('.sum-head p:nth-child(2)').textContent, ps,
-                          [...pv.querySelectorAll('td')].map(t => t.textContent).filter(t => t.startsWith('BP ')), dates]; }""")
+                          [...pv.querySelectorAll('td')].map(t => t.textContent).filter(t => t.startsWith('BP ')), dates, sep]; }""")
+                # #543: …and since a day in September (any past day is one), the preview's Since line is the PDF's, "Sep" in
+                # both (it read "Sept 6, 2026" in en-DE, en-GB and en-IN beside the PDF's "Sep 6, 2026")
+                p540.evaluate("""() => { const s = document.getElementById('since'); s.append(el('option', {value: '2026-09-06', text: 'A day in September (browser check)'}));
+                  s.value = '2026-09-06'; s.dispatchEvent(new Event('change', {bubbles: true})); }""")
+                p540.wait_for_function("""(p => !!p && /2026/.test(p.textContent) && /\\bSept?\\b/.test(p.textContent))([...document.querySelectorAll('#preview:not([aria-busy]) .sum-head p')]
+                  .find(p => p.textContent.startsWith('Since: ')))""", timeout=10000)
+                got543 = p540.evaluate("""async () => { const r = await fetch('api/profiles/1/summary/pdf', {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'},
+                  body: JSON.stringify(chosen())}), a = new Uint8Array(await r.arrayBuffer()); let b = ''; for (const x of a) b += String.fromCharCode(x);
+                  return [[...document.querySelectorAll('#preview .sum-head p')].find(p => p.textContent.startsWith('Since: ')).textContent, btoa(b)]; }""")
+                from pypdf import PdfReader
+                import base64, io
+                pdf543 = "\n".join(pg_.extract_text() for pg_ in PdfReader(io.BytesIO(base64.b64decode(got543[1]))).pages)
+                sep543[loc] = [got543[0], next((ln.strip() for ln in pdf543.splitlines() if ln.startswith("Since: ")), None), seen540[loc][4]]
                 ctx540.close()
             check("visit summary (#540): in de-DE and en-IN the preview shows a dose's note “120,135,140 · took 2,500 IU” as typed, a lead's count and "
                   "decimal one way, “1,096 days · average 96.4%”, the For line with its place; and dates with English months, “Oct 6, 2026” in the "
                   "person's format, “6 Oct 2026” in the region's (it read “120.135.140 · took 2.500 IU”, “12,01,35,140”, “1.096 days”, “Okt 6, 2026”)",
-                  len(seen540) == 2 and all(v[0].endswith(" · Dr. Rowan Vale (fictional) · Maple Street Clinic (fictional)") and "1,096 days · average 96.4%" in v[1]
+                  len(seen540) == 4 and all(v[0].endswith(" · Dr. Rowan Vale (fictional) · Maple Street Clinic (fictional)") and "1,096 days · average 96.4%" in v[1]
                                             and v[2] == [typed540] and v[3] == {"mdy": ["Oct 6, 2026", "October 2026"], "dmy": ["6 Oct 2026", "October 2026"],
                                                                                  "": ["6 Oct 2026", "October 2026"]} for v in seen540.values()),
-                  seen540)
+                  {k: v[:4] for k, v in seen540.items()})
+            check("visit summary (#543): in en-DE, en-GB, en-IN and de-DE, since a day in September, the preview's Since line is its PDF's, “Sep”; "
+                  "and a date and time reads as in en-US in each format, “Sep 6, 2026, 2:05 PM”, “6 Sep 2026, 2:05 PM”, “2026-09-06 2:05 PM” "
+                  "(it read “Sept 6, 2026” beside the PDF's “Sep 6, 2026”, and “14:05” in en-DE)",
+                  len(sep543) == 4 and all(v[0] == v[1] and re.search(r"\bSep\b", v[0]) and v[2] == {"mdy": ["Sep 6, 2026", "Sep 6, 2026, 2:05 PM"],
+                                                                                                "dmy": ["6 Sep 2026", "6 Sep 2026, 2:05 PM"],
+                                                                                                "ymd": ["2026-09-06", "2026-09-06 2:05 PM"]} for v in sep543.values()), sep543)
             check("…glucose by day, CGM time in ranges labelled as the standard published ranges (not anyone's targets)",
                   "Blood glucose at home since" in pv and "time in the standard ranges" in pv and "standard published ranges" in pv
                   and "not anyone's own targets" in pv and not re.search(r"(?i)\b(normal|good|bad|target range)\b", pv), heads)
@@ -17927,13 +17975,18 @@ def main():
                 check(f"at {width} px{' with WCAG text spacing' if spaced else ' (400% zoom)'}: every records tab and every page's groups fit, "
                       "nothing scrolling sideways, no control cut off or overlapping (1.4.10, 1.4.12, #202)", not rbad, rbad[:8] or "")
             check("at 320 px every button on every records tab and every page's groups is a 44 px target (#258)", not sizes320, sizes320[:12])
-            # a French browser writes the Overview's insurance figures wider ("4 772 $US", unbreakable): at 375 and 320 px
-            # they fit, wrapping to a second line if need be (#342)
+            # a French browser wrote the Overview's insurance figures wider ("4 772 $US", unbreakable): at 375 and 320 px
+            # they fit, wrapping to a second line if need be (#342). Money is written one way now, "$4,772" (#543), so these
+            # layout checks get their wide figures from the amounts, a hundred times #456's below (the Overview's billed
+            # "$120,000,000" as wide as French's "1 200 000 $US", a claim's "$288,425" as its "2 884 $US"), in a French
+            # browser still
             fr_ctx = browser.new_context(viewport={"width": 375, "height": 800}, bypass_csp=True, locale="fr-FR")
             fr_ctx.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
             frp = fr_ctx.new_page()
             frp.goto(base + "/?profile=1#overview")
             frp.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted && document.querySelector('#view-overview .stats.three')", timeout=20000)
+            frp.evaluate("""(() => { const pm = primaryMs(), ov = (pm ? DATA.costs.filter(r => r.d >= pm.date) : DATA.costs).reduce((a, r) => a + (r.billed || 0), 0), k = 1.2e8 / ov;
+                for (const c of DATA.costs) for (const f of ['billed', 'paid', 'owe']) c[f] = (c[f] || 0) * k; setPeriod('all'); renderAll(); })()""")
             fr_bad, fr_seen = [], []
             for w in (375, 320):
                 frp.set_viewport_size({"width": w, "height": 800})
@@ -17941,11 +17994,9 @@ def main():
                 fr_seen += frp.evaluate("[...document.querySelectorAll('#view-overview .stats.three .val')].map(v => v.textContent)")
                 fr_bad += phone_fits(frp, f"Overview, fr-FR, {w} px") + [f"{w} px: “{t}” ends at {r} px, past its card's {c}" for t, r, c in frp.evaluate(
                     "[...document.querySelectorAll('#view-overview .stats.three .val')].map(v => [v.textContent, Math.round(v.getBoundingClientRect().right), Math.round(v.closest('.card').getBoundingClientRect().right)])") if r > c]
-            # …and wider (#456): the amounts five times the ten-year fixture's (the Overview's billed past a million, "1 002 666
-            # $US", 17 px past its 164 px tile at 1280 px), at 1280, 1024 and 568 px no figure overflows its tile on the
-            # Overview or Costs: the three go one under another where one doesn't fit its third
-            frp.evaluate("""(() => { const pm = primaryMs(), ov = (pm ? DATA.costs.filter(r => r.d >= pm.date) : DATA.costs).reduce((a, r) => a + (r.billed || 0), 0), k = 1.2e6 / ov;
-                for (const c of DATA.costs) for (const f of ['billed', 'paid', 'owe']) c[f] = (c[f] || 0) * k; setPeriod('all'); renderAll(); })()""")
+            # …and (#456) with amounts five times the ten-year fixture's (in French the Overview's billed past a million, "1 002
+            # 666 $US", was 17 px past its 164 px tile at 1280 px; the amounts above, as wide), at 1280, 1024 and 568 px no
+            # figure overflows its tile on the Overview or Costs: the three go one under another where one doesn't fit its third
             fr456, seen456 = [], []
             for w in (1280, 1024, 568):
                 frp.set_viewport_size({"width": w, "height": 900})
@@ -18012,9 +18063,9 @@ def main():
             walk476fr = walk476(frp)   # #476: What you paid's dates at 667×375, in French too
             fr_ctx.close()
             check("the Overview's insurance figures in a French browser fit 375 and 320 px (#342)",
-                  not fr_bad and any("$US" in t for t in fr_seen), fr_bad[:6] or fr_seen)
+                  not fr_bad and fr_seen and all(t.startswith("$") for t in fr_seen) and any(len(re.sub(r"\D", "", t)) >= 9 for t in fr_seen), fr_bad[:6] or fr_seen)
             check("…and with five times the ten-year fixture's amounts no figure overflows its tile at 1280, 1024 and 568 px, on the Overview or Costs (#456)",
-                  not fr456 and len(seen456) == 18 and all("$US" in v for v in seen456) and any(len(re.sub(r"\D", "", v)) >= 7 for v in seen456), fr456[:6] or seen456)
+                  not fr456 and len(seen456) == 18 and all(v.startswith("$") for v in seen456) and any(len(re.sub(r"\D", "", v)) >= 9 for v in seen456), fr456[:6] or seen456)
             check("…and from 700 to 800 px, every 4, the claims' table runs past neither its box nor its card, stacked where it doesn't fit, the page not scrolling sideways (#465)",
                   not fr465 and fold465 == {True, False}, fr465[:6] or fold465)
             check("…and at 1300 and 1400 px a claim opened is in sight once the drawer has docked (at 1300 the claims stacked), and closed by Escape or ✕ "
@@ -19925,6 +19976,25 @@ def main():
                   pk540 == ["pkSays", "Password accepted, but this account finishes signing in with a passkey, and none of its passkeys was made at this "
                             "address. Open Sanguity at https://sanguity.example or https://records.example and sign in there, or use another account.",
                             [["https://sanguity.example", "https://sanguity.example/login.html"], ["https://records.example", "https://records.example/login.html"]], False], pk540)
+            # #543: …and for an account with a code too: no passkey button (its "Use a passkey" was refused, "None of your
+            # passkeys was made at this address", in plain text), where they work said beside the code's box as a link,
+            # the code's field described by it, with focus
+            pk.fill("#u", USER)
+            pk.fill("#p", PW)
+            pk.route("**/api/login", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(
+                {"two_factor": True, "ticket": "t543", "methods": {"code": True, "passkey": True, "sites": ["sanguity.example"]}})))
+            pk.click("#b")
+            pk.wait_for_selector("#pkSays a", timeout=10000)
+            pk.unroute("**/api/login")
+            pk.wait_for_timeout(200)
+            pk543 = pk.evaluate("""() => [document.activeElement.id, document.activeElement.getAttribute('aria-describedby'), document.getElementById('pkSays').textContent,
+              [...document.querySelectorAll('#pkSays a')].map(a => [a.textContent, a.href]), document.getElementById('pk').checkVisibility(),
+              document.getElementById('codeBox').nextElementSibling.id, document.getElementById('b').checkVisibility()]""")
+            pk.click("#other")
+            check("…and for an account with a code too, at a name none of its passkeys was made at: no passkey button, where they work said "
+                  "beside the code's box, linked, the focused code field described by it (#543: “Use a passkey”, refused in plain text)",
+                  pk543 == ["c", "cn pkSays", "None of this account's passkeys was made at this address. To use one, open Sanguity at https://sanguity.example and sign in there.",
+                            [["https://sanguity.example", "https://sanguity.example/login.html"]], False, "pkSays", True], pk543)
             # #523: …and where passkeys can't work (a browser without them stood in for here) that step says why and
             # how to sign in instead, with focus on it (it had nothing to press, focus on the page); Enter in the
             # username sends nothing and keeps the step (it sent the hidden Continue's empty code, answered "That took

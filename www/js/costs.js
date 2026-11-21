@@ -198,7 +198,7 @@ function drawCosts() {
    payment is matched to it. */
 const paidState = {q: "", open: null, limit: 200};   // limit: the amounts listed, 200 more at a time like the claims (#201)
 const OOP_SRC = {typed: "Typed in", export: "Finance export"};
-const usd2 = v => (v || 0).toLocaleString(undefined, {style: "currency", currency: "USD"});
+const usd2 = v => (v || 0).toLocaleString("en-US", {style: "currency", currency: "USD"});   // with its cents, as usd (#543)
 function oopRows() {
   const pays = (DATA.outOfPocket || {}).payments || [], o = DATA.oop || {};
   const info = new Map((o.payments || []).map(x => [x.i, x]));

@@ -2236,6 +2236,15 @@ Everything on `main` so far; it becomes the first tagged release.
   with an Undo. A review cancelled in another tab answered Add and Cancel with "This import was cancelled." while
   still offering both; it says "Cancelled." as Cancel would. An Undo while the profile was being deleted answered 500;
   it's refused as gone. A toast's Undo, once tracking was turned off, named the cycle records it no longer had.
+- **Sharing and first run: months, money and times written one way, and no passkey button where it can't work**
+  (#543): outside the US, Chromium writes September "Sept" in English, so the summary's preview read "Since: Sept 6,
+  2024" beside its PDF's "Sep 6, 2024", and times took the region's clock ("14:05"). Dates and times are written as
+  the server writes them, "Sep" and "2:05 PM", in the person's format. Money was in the browser's format ("22,06 $"
+  in German, "22,06 $US" in French, beside "1,381 readings"); it's "$22.06" everywhere. An account with an
+  authenticator code, at a name none of its passkeys was made at, was offered "Use a passkey", which only said so in
+  plain text; there's no passkey button, and where they work is said beside the code's box, as a link. A share link's
+  "Opened" count has its separator ("1,381 times"), and sign-in offers a localhost link only on a page at this
+  computer's own address (elsewhere, behind a proxy or on another device, it pointed at the wrong place).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
