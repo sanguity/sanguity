@@ -103,8 +103,8 @@ const cell = (text, cls) => el("td", {class: cls}, ...keepDates(text ?? ""));   
    (#492: "14.3 ·" was left over its date) */
 const atCell = (value, day, cls) => el("td", {class: cls}, value,
   el("span", {class: "sum-at"}, el("span", {class: "sum-dot", text: " · "}), el("span", {class: "nw", text: fmtDay(day)})));
-/* a range, which may break after its dash and nowhere else (#492: "Now's range" was cut in the pane) */
-const rangeCell = t => el("td", {}, ...String(t || "").split(/(?<=–)/).flatMap((p, i) => i ? [el("wbr"), p] : [p]));
+/* a range kept whole, never broken at its dash (#514: "13.5– / 17.5" in the pane; summary.css makes room for it) */
+const rangeCell = t => el("td", {}, el("span", {class: "nw", text: t || ""}));
 function table(heads, rows, cls = "") {   // a region that can be scrolled from the keyboard on a narrow screen (#225's wider tables)
   return scrollBox({class: "scroll", "aria-label": heads.filter(Boolean).join(", ")}, el("table", {class: ("tbl " + cls).trim()},
     el("thead", {}, el("tr", {}, ...heads.map(h => el("th", {text: h})))), el("tbody", {}, ...rows)));
@@ -140,7 +140,7 @@ function renderPreview(s) {
       parts.push(el("h3", {text: `Out of range since ${since} (${s.out_of_range.length})`}));
       parts.push(s.out_of_range.length ? table(["Test", "Result", "Flag", "Range", "Date", "Source"], s.out_of_range.map(r => el("tr", {},
         cell(r.label + (r.of > 1 ? ` (${r.out} of ${r.of})` : "")), cell(`${r.value} ${r.unit}`.trim()), cell(r.flag, "flag"),
-        cell(r.range || "not given"), cell(fmtDay(r.date)), cell(r.source)))) : none("No results since then are outside the reference range on their own report."));
+        rangeCell(r.range || "not given"), cell(fmtDay(r.date)), cell(r.source)))) : none("No results since then are outside the reference range on their own report."));
     } else if (id === "trends") {
       parts.push(el("h3", {text: `Trends since ${since} (${s.trends.length})`}));
       parts.push(s.trends.length ? table(["Test", "Then", "Now", "Change", "Since", "", "Now's range"], s.trends.map(r => el("tr", {},

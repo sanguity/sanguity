@@ -1965,6 +1965,16 @@ Everything on `main` so far; it becomes the first tagged release.
   time keeps its AM or PM on its line ("7:15 / AM") in the list and on a share link's page. A failed passkey sign-in
   leaves focus on its button, the reason under it in view (focus fell to the page). On a phone the share page's
   Visits, Costs and Appointments are a cell a line, as the links list is (Details ran a word a line at 320 px).
+- **Sharing and first run: print keeps a renamed test with its history, histories' Flag at 320 px, the share page's
+  tables where they fit, one h1 with no profile, and smaller things** (#514): printed, a test its lab names otherwise
+  ended a page with its row and "Named “…” on its reports.", its history starting the next; they stay together. A short
+  history (six results or fewer) prints in its test's row, so Latest results' column names come once a page on a
+  six-month link, not above each test's row after a history. At 320 px an opened history's column names wrap, its
+  dates and ranges kept whole, and its Flag column is in view (it was past the box). The share page's other tables stack
+  a cell a line by their own width, as the links list does: at 600–640 px they're tables again (a claim was 250 px
+  tall). The records page keeps its one h1 with no profile and on an empty one. A passkey at the second step that took
+  too long puts focus on the password, as Sign in does. A hospital stay's kind isn't said twice in Visits, and the
+  visit summary's preview keeps each range whole ("13.5– / 17.5" at 1200 px).
 - **Settings and Admin: the palette sends account searches to Admin, Set up a source keeps a new source half typed in
   and a row's Waiting for review, the palette's missing words, and Make owner's last message in sight** (#506): "remove
   account", "add account" and "new account" opened Account's Passkeys or Two-factor sign-in, found by the page's name;

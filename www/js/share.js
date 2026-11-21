@@ -24,15 +24,15 @@ $("#theme").onclick = () => {
 /* a table that scrolls sideways inside its card on a narrow screen, never the page. printed: a head row naming it, over
    its column names, shown only in print, where each page the table spans repeats its head (#491: a history's pages
    each name its test) */
-function shTable(heads, rows, empty, cls = "", name = "", printed = "") {   // cls "measures": stays a table on a phone (#225)
+function shTable(heads, rows, empty, cls = "", name = "", printed = "") {   // cls "measures": stays a table on a phone (#225); else a cell a line where it doesn't fit (.share-cq, #514)
   if (!rows.length) return el("p", {class: "muted", text: empty});
-  return scrollBox({class: "share-scroll", "aria-label": name || heads.filter(Boolean).join(", ")}, el("table", {class: ("tbl " + cls).trim()},
+  return scrollBox({class: cls === "measures" ? "share-scroll" : "share-scroll share-cq", "aria-label": name || heads.filter(Boolean).join(", ")}, el("table", {class: ("tbl " + cls).trim()},
     el("thead", {}, printed ? el("tr", {class: "share-printed"}, el("th", {colspan: heads.length, text: printed})) : null,
       el("tr", {}, ...heads.map(h => el("th", {text: h})))),
     el("tbody", {}, ...rows.map(shRow))));
 }
-// a date and time's time kept with its AM or PM (keepDates, #509: "10:30 / AM" in Visits)
-const shRow = r => el("tr", {}, ...r.map(c => c && c.nodeType ? el("td", {}, c) : /\d:\d\d/.test(c) ? el("td", {}, keepDates(c)) : el("td", {text: c == null ? "" : String(c)})));
+// a date kept whole and a time with its AM or PM (keepDates, #509: "10:30 / AM" in Visits; #514: a history's dates wrap)
+const shRow = r => el("tr", {}, ...r.map(c => el("td", {}, c && c.nodeType ? c : keepDates(c == null ? "" : String(c)))));
 /* a long table, newest first (#491: ten years are 2,000 claims, and 1,000 readings of a home measure). The server sends
    a long section's latest rows and how many it has (#498, SH_CUT: share_links.py FIRST and MANY), said here, with Show
    all, which asks it for the rest (a view logged like the page's), puts them in and gives the first of them focus.
@@ -87,9 +87,11 @@ async function shWhole(id) {
 /* a long section's table (#498): its rows as cells, now and once Show all has the rest */
 const shList = (id, heads, cells, empty, noun) => list => shLong(heads, list.map(cells), empty, "", noun, id,
   async () => (await shWhole(id)).map(cells));
+// a stay's kind before its title, unless the title starts with it (#514: "Hospital stay: Hospital stay · Northfield…")
+const shKindOf = v => { const k = v.kind !== "visit" && SH_KIND[v.kind]; return k && !String(v.title || "").toLowerCase().startsWith(k.toLowerCase()) ? k + ": " : ""; };
 const SH_DRAW = {
   visits: shList("visits", ["Date", "What", "Details"], v => [v.end ? `${shDay(v.t)} – ${shDay(v.end)}` : shWhen(v.t),
-    (SH_KIND[v.kind] && v.kind !== "visit" ? SH_KIND[v.kind] + ": " : "") + v.title, v.sub], "No visits or stays in this range.", "visits and stays"),
+    shKindOf(v) + v.title, v.sub], "No visits or stays in this range.", "visits and stays"),
   procedures: shList("procedures", ["Date", "Kind", "Title"], v => [shDay(v.t), SH_KIND[v.kind] || "", v.title], "None in this range.", "records"),
   medications: list => shTable(["Medication", "Instructions", "From", "Until"], list.map(m => [m.name + (m.status ? ` (${m.status})` : ""),
     m.instructions, shDay(m.since), m.until ? shDay(m.until) : "—"]), "No medications in this range."),
@@ -167,10 +169,14 @@ function shLatest(list) {
 function shOpen(btn, hist, on) { btn.setAttribute("aria-expanded", String(on)); hist.hidden = !on; }
 /* printed (#509): each open history taken out of Latest results' table, a block between tables of its rows (each with
    its head), and put back after. A table's head repeats on each page it spans, so it was over a history alone (most of
-   a ten-year print's pages), and a history in a table's row went to the next page whole (app.css) */
+   a ten-year print's pages), and a history in a table's row went to the next page whole (app.css). #514: only a long
+   one, of more than SH_ROWS results: a short one stays in its row, whole on its page with its test, so the head isn't
+   above each test's row after one (three or four times a page) */
 let shSplit = null;
+const SH_ROWS = 6;
 addEventListener("beforeprint", () => {
-  const t = document.querySelector("#share-results .share-latest"), open = t ? [...t.querySelectorAll(".share-hist:not([hidden])")] : [];
+  const t = document.querySelector("#share-results .share-latest");
+  const open = t ? [...t.querySelectorAll(".share-hist:not([hidden])")].filter(r => r.querySelector("tbody")?.rows.length > SH_ROWS) : [];
   if (shSplit || !open.length) return;
   const at = document.activeElement, rows = [...t.tBodies].map(b => [b, [...b.rows]]), out = el("div", {class: "share-split"});
   let seg = null;

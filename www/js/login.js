@@ -67,7 +67,7 @@ function signedIn(j) {
 }
 pkBtn.addEventListener("click", async () => {
   pkBtn.disabled = btn.disabled = true; fieldSaid(err, "", null, pkBox);
-  let said = "";
+  let said = "", again = null;
   try {
     if (!await settled()) throw new Error("Couldn't reach the server.");
     let r = await api("login/passkey/options", {method: "POST", body: JSON.stringify({ticket})});
@@ -82,9 +82,11 @@ pkBtn.addEventListener("click", async () => {
       if (/isn't registered here/.test(j.detail || "")) passkeySignalUnknown(rpId, credential.id);   // the device may delete it
     }
     said = j.detail || "Sign-in failed (" + r.status + ").";
-    if (ticket && /too long. Enter your password/.test(j.detail || "")) { codeStep(null); document.getElementById("p").value = ""; }
+    if (ticket && /too long. Enter your password/.test(j.detail || "")) { codeStep(null); again = document.getElementById("p"); again.value = ""; }
   } catch (e) { said = e.message === "Failed to fetch" ? "Couldn't reach the server." : e.message; }
   pkBtn.disabled = btn.disabled = false;
+  // the second step timed out: back to the password, which takes focus with the reason under it, as Sign in's (#514)
+  if (again) { fieldSaid(err, said, again, pkBox); return; }
   // focus back on the button (#509: disabled while it asked, it dropped focus to the page), its reason in sight under it
   pkBtn.focus({preventScroll: true});
   fieldSaid(err, said, null, pkBox);
