@@ -26,7 +26,7 @@
 <main class="acct share">
   <!-- a share link (#47): what an owner chose to show, read-only, for someone without an account. js/share.js reads
        the token from this address's fragment (never sent to the server) and posts it to the API. -->
-  <section class="card" id="shareHead"><h1>Shared records</h1><p class="hint" id="shareStatus" role="status">Loading…</p></section>
+  <section class="card" id="shareHead"><div class="share-hd"><h1>Shared records</h1></div><p class="hint" id="shareStatus" role="status">Loading…</p></section>
   <!-- the sections, a chip each, sticky under the header (#289; share.js shBar) -->
   <nav class="share-bar" id="shareBar" aria-label="Sections" hidden></nav>
   <div id="shareBody"></div>

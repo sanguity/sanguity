@@ -535,7 +535,7 @@ main>[id^=view-] :is(.card,.card>.set-hd,.card>.list-hd)>h3:not(.sub){font-size:
    rest (a value's unit too); tabular figures wherever numbers are read against each other: values, tables, chart axes,
    the drawer's facts */
 .card h2,.card>h1,main>[id^=view-] :is(h2,:is(.card,.card>.set-hd,.card>.list-hd)>h3:not(.sub)),.sets .set-top h1,.guide-hd h1,.guide-step h2,.sg-ask h2,#drawer .dh h3,.dir .dir-hd h2,.src .dir-hd h3,
-  .tile .val{font-family:var(--font-display,Georgia,serif)}
+  .share-hd>h1,.tile .val{font-family:var(--font-display,Georgia,serif)}
 .tile .val small{font-family:var(--font-ui,system-ui,sans-serif)}
 .tile .val,svg text,.tip,.kv dd,.acct .tbl,.zones-tbl,.ecg-sum,.bk .kv{font-variant-numeric:tabular-nums}
 svg text{fill:var(--muted);font-size:var(--fs-1)}
@@ -1462,8 +1462,16 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
 .share-page main.share{max-width:960px}
 /* the clinician's page (#289, share.js): the sections' bar, sticky under the header (--head-h); the head's Print; Lab
    results' one Latest results table, a row per test under its panel, its history in the row under it; and the page
-   printed: the records in light, without the controls */
+   printed: the records in light, without the controls. #491: the bar's chips wrap on a wide screen and scroll sideways
+   on a narrow or short one (with a thin scrollbar for a mouse); under 500 px tall the header scrolls away and the bar
+   sticks at the top. The title in the pages' title style. Printed, a history breaks across pages, each naming its test */
 .share-bar{position:sticky;top:var(--head-h,0px);z-index:10;display:flex;gap:var(--sp-2);overflow-x:auto;scrollbar-width:none;margin:0 0 var(--sp-3);padding:var(--sp-2) 0;background:var(--page)}
+@media (pointer:fine){ .share-bar{scrollbar-width:thin} }
+@media (min-width:641px) and (min-height:501px){ .share-bar{flex-wrap:wrap;overflow-x:visible} }
+@media (max-height:500px){ .share-bar{top:0} html:has(>body.share-page){scroll-padding-top:calc(var(--bar-h,0px) + 8px)} }
+.share .share-hd>h1{font-size:var(--fs-6);font-weight:var(--fw-semibold);letter-spacing:-.01em}
+.acct .tbl>thead>tr.share-printed{display:none}
+.share .share-more{margin-top:var(--sp-2)}
 .share-bar .chip{flex:none}
 .share-bar .chip[aria-current]{border-color:var(--accent);color:var(--accent);text-decoration:underline;text-underline-offset:.3em}   /* underlined: forced colours keep it */
 .share .share-hd,.share .share-tools{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--sp-2)}
@@ -1494,13 +1502,16 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
   .share-page main.share{max-width:none;padding:0}
   .share .card{border:0;padding:0}
   .share h2{break-after:avoid}
-  .share tr{break-inside:avoid}
+  .share tr:not(.share-hist){break-inside:avoid}
+  .share tbody>tr:is(:first-child,:nth-last-child(2)),.share-latest tr:has(+.share-hist:not([hidden])){break-after:avoid}   /* no row alone (#491) */
+  .acct .tbl>thead>tr.share-printed{display:table-row}
+  .share-printed>th{white-space:normal;color:var(--ink);font-size:var(--fs-3);font-weight:var(--fw-semibold)}
   .share .share-scroll{overflow:visible}
 }
 .share .share-entry{border-top:1px solid var(--grid);padding:var(--sp-2) 0}
 .share .share-note{white-space:pre-wrap;margin:var(--sp-1) 0 0;color:var(--ink2)}
 .share .share-notice{font-size:var(--fs-2);color:var(--muted);margin:var(--sp-2) 0 var(--sp-5)}
-@media (max-width:600px){main.acct.share{padding:var(--sp-3) var(--sp-4)}.acct .share-form .row label{flex:1 1 140px}}
+@media (max-width:600px){main.acct.share{padding:var(--sp-3) var(--sp-4)}.acct .share-form .row label{flex:1 1 140px}.share .share-hd>h1{font-size:var(--fs-5)}}
 /* the medication timeline (#50, meds.js): spans, dose changes, stops and pharmacy fills */
 svg text.medname{fill:var(--ink2);font-size:var(--fs-1)}
 .medbar.ev:hover,.medbar.ev.sel{stroke:var(--ink);stroke-width:1.5}
