@@ -143,7 +143,8 @@ function ovUpcoming() {
 function openUpcoming(u) {
   state.selEv = null;
   const procs = (Array.isArray(u.procs) ? u.procs : []).map(p => typeof p === "string" ? p : p && (p.name || p.title)).filter(Boolean);
-  const body = drawerHead("visit", u.title || "Appointment", `Upcoming · ${upWhen(u)} · ${inDays(u.t.slice(0, 10))}`);
+  const body = drawerHead("visit", u.title || "Appointment", `Upcoming · ${upWhen(u)} · ${inDays(u.t.slice(0, 10))}`), same = JSON.stringify(u);
+  drawerStill = () => (DATA.upcoming || []).some(x => JSON.stringify(x) === same);   // its import undone: closed (app.js, #517)
   body.append(...present(drawerFacts([["With", u.who], ["Where", u.where], ["For", u.dx], ["Planned", procs.join(", ")]], "facts")),
     el("div", {class: "btns"}, el("a", {class: "btn", href: summaryHref()}, "Prepare a visit summary ", icon("arrow-right"))),
     el("p", {class: "hint", text: "An appointment the records list as scheduled. The visit summary gathers what changed since the last visit, for this one."}));

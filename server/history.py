@@ -73,6 +73,15 @@ def _counts(db, iid, typed=False):
         kinds = collections.Counter(json.loads(crypto.dec(r[0])).get("k") for r in db.execute("SELECT body FROM events WHERE import_id=?", (iid,)))
         kinds = {str(k): n for k, n in sorted(kinds.items(), key=lambda x: str(x[0])) if k not in ("lab", "labitem")}
         out.update(events=sum(kinds.values()), kinds=kinds)
+        # one saved before the save's counts were kept (#517): its problems, upcoming appointments and payments, which
+        # are in the profile's lists (imports.meta), not rows
+        r = db.execute("SELECT meta FROM imports WHERE id=?", (iid,)).fetchone()
+        meta = records._dec(r["meta"]) if r and r["meta"] else {}
+        pays = (meta.get("outOfPocket") or {}).get("payments") if isinstance(meta.get("outOfPocket"), dict) else None
+        probs = [p for p in meta.get("problems") or [] if isinstance(p, dict)]
+        lists = {"allergies": sum(1 for p in probs if p.get("type") == "Allergy"), "problems": sum(1 for p in probs if p.get("type") != "Allergy"),
+                 "upcoming": len(meta.get("upcoming") or []), "payments": len(pays or [])}
+        out.update({k: n for k, n in lists.items() if n})
     return out
 
 
@@ -100,7 +109,7 @@ def _entry(db, pid, imp):
         by = BY.get(origin, activity.COMMAND_LINE)
     names = _names(db, pid, job["upload_id"]) if job else []
     note = None
-    if origin == "sync":
+    if origin in ("sync", "manual"):   # typed in: the save's own counts, of what was typed (routes_manual.py, #517)
         r = db.execute("SELECT note FROM imports WHERE id=?", (iid,)).fetchone()
         note = json.loads(crypto.dec(r["note"])) if r and r["note"] else None
     if note:

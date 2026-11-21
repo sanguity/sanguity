@@ -246,6 +246,7 @@ function medReminderSection(m) {
 /* the add / edit form, in the drawer. r: the reminder (null: a new one) */
 function medReminderForm(m, r) {
   const body = drawerHead("med", r ? "Edit reminder" : "New reminder", m.name);
+  drawerStill = () => MEDS.some(x => x.key === m.key);   // (app.js, #517)
   const uid = Math.random().toString(36).slice(2, 8), id = n => `mr-${n}-${uid}`;
   const msg = el("p", {class: "hint edit-msg", role: "status"});
   const times = el("div", {class: "mr-times"});

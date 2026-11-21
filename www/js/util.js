@@ -288,10 +288,10 @@ function fieldSaid(err, text, field, home) {
    tile). Each date is anchored: no digit or point before its day, nothing more of a date after its year, and a
    month's short name a word of its own, two letters or more ("ag.", "Aug", "marras", "szept.", #345), a point after a
    day allowed ("18. Aug. 2026"), so "0.03 since 2026-08-18" keeps
-   only the date together, never "03 since 2026". A time keeps its AM or PM, by a no-break space (#509: "7:15 / AM" in
-   share links' list and on a share link's page), and a comma right after a date stays with it (#515: Chrome broke the
-   line before it, ", 8:37 AM", where a date and its time are one) */
-const keepDates = s => String(s).replace(/(\d:\d\d) (?=[AaPp]\.?[Mm]\.?(?!\p{L}))/gu, "$1\u00a0").split(/((?<!\p{L})as of(?!\p{L})|(?:(?<![\d.])\d{4}-\d{2}-\d{2}(?![-\d])|(?<![\d.])\d{1,2}\.? \p{L}{2,}\.? \d{4}(?![-\d])|(?<!\p{L})\p{L}{2,}\.? \d{1,2}, \d{4}(?![-\d])),?)/u)
+   only the date together, never "03 since 2026". A comma right after a date stays with it (#515: Chrome broke the
+   line before it, ", 8:37 AM", where a date and its time are one). A time keeps its AM or PM as dates.js writes it
+   (#517: a no-break space, on every page, keepDates or not) */
+const keepDates = s => String(s).split(/((?<!\p{L})as of(?!\p{L})|(?:(?<![\d.])\d{4}-\d{2}-\d{2}(?![-\d])|(?<![\d.])\d{1,2}\.? \p{L}{2,}\.? \d{4}(?![-\d])|(?<!\p{L})\p{L}{2,}\.? \d{1,2}, \d{4}(?![-\d])),?)/u)
   .map((t, i) => i % 2 ? el("span", {class: "nw", text: t}) : t).filter(t => t !== "");
 /* every backend call: same-origin cookie, never cached, and the X-Sanguity header the API requires on changes */
 const api = (path, opts = {}) => fetch("api/" + path, {cache: "no-store", credentials: "same-origin", ...opts,

@@ -2049,6 +2049,15 @@ Everything on `main` so far; it becomes the first tagged release.
   tablet"), and the Journal section says so. At 320 px a history's "▲ High" kept its ▲ on a line of its own; a flag
   stays whole, at the size of the history's column names, its columns a little closer so Flag stays in view. An empty profile's records page, and the page with no profile, are titled for what they say ("Ben: no
   records yet · Sanguity"), not "Sanguity" alone.
+- **Records in: typed problems, appointments and payments counted, the drawer closed on an undone appointment, Type
+  records in's line after an Undo, and times kept with their AM or PM everywhere** (#517): a problem, an upcoming
+  appointment or a payment typed in was "No records" in Import history and its Undo question, a vitals entry "3 lab
+  results in 3 tests"; each typed import now says what was typed ("1 problem or diagnosis", "1 upcoming appointment", "1
+  payment", "1 vitals entry"), as its save counted it. An upcoming appointment open in the drawer stayed there once its
+  import was undone; the drawer closes, as for a record. After Import history's Undo, Type records in still said "Saved
+  1 result. See them on Labs" and the toast still offered "Open Labs"; the line says it's undone and the toast's link
+  goes with its Undo. Times on the Sources hub, in Import history and in Passkeys broke before their AM or PM at some
+  widths ("10:06 / AM"); every time the app writes keeps it, on every page.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

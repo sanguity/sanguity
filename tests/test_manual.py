@@ -131,9 +131,19 @@ class Manual(unittest.TestCase):
             self.assertEqual((log["actor"], log["detail"]["importer"], log["detail"]["counts"]["results"]), ("robin", "manual", 3))
         finally:
             db.close()
-        # the history counts what was typed (#513): three results in three tests, not the lab day and its items as events
+        # the history counts what was typed (#513, #517: the save's own counts): three results in three tests
         e = self.robin.get(f"/api/profiles/{self.pid}/imports").json()["imports"][0]
-        self.assertEqual((e["origin"], e["counts"]), ("manual", {"events": 0, "kinds": {}, "series": 3, "results": 3, "documents": 0}))
+        self.assertEqual((e["origin"], e["counts"]["typed"], e["counts"]["series"], e["counts"]["results"]), ("manual", {"labs": 3}, 3, 3))
+        # one saved before the save's counts were kept (no note): counted from its rows, the lab day and its items not
+        # as events
+        db = dbm.connect()
+        try:
+            with dbm.transaction(db):
+                db.execute("UPDATE imports SET note=NULL WHERE id=?", (e["id"],))
+        finally:
+            db.close()
+        e = self.robin.get(f"/api/profiles/{self.pid}/imports").json()["imports"][0]
+        self.assertEqual(e["counts"], {"events": 0, "kinds": {}, "series": 3, "results": 3, "documents": 0})
 
     def test_same_rows_as_a_csv_import_same_keys(self):
         db = dbm.connect()
@@ -396,6 +406,38 @@ class Manual(unittest.TestCase):
         self.assertFalse(os.path.exists(path))   # and the document's file, its upload discarded
         self.assertFalse(os.path.isdir(uploads.folder(pid, up)))
         self.assertEqual(self.robin.get("/" + d["url"]).status_code, 404)
+
+    def test_the_history_counts_what_was_typed(self):
+        """#517: a typed problem, appointment and payment were no records in Import history (they're in the profile's
+        lists, not rows), a vitals entry 3 results in 3 tests: each is counted as the save counted it, by kind; one saved
+        before the save's counts were kept counts the lists' entries."""
+        db = dbm.connect()
+        try:
+            pid = prof.create_profile(db, "Robin history (fictional)", owner_id=db.execute("SELECT id FROM users WHERE username='robin'").fetchone()[0])
+        finally:
+            db.close()
+        typed = [{"kind": "problem", "name": "Iron deficiency anemia", "status": "Active", "since": "2026-05-04"},
+                 {"kind": "upcoming", "date": "2026-12-03", "time": "10:00", "title": "Follow-up visit"},
+                 {"kind": "payment", "date": "2026-06-01", "payee": "Lakeside Clinic (fictional)", "amount": "60"},
+                 {"kind": "vitals", "date": "2026-05-04", "time": "09:35", "bp": "118/76", "hr": "72"}]
+        ids = []
+        for it in typed:
+            r = self.items([it], pid=pid)
+            self.assertEqual(r.status_code, 200, r.text)
+            ids.append(r.json()["import_id"])
+        hist = {e["id"]: e for e in self.robin.get(f"/api/profiles/{pid}/imports").json()["imports"]}
+        self.assertEqual([hist[i]["counts"]["typed"] for i in ids], [{"problem": 1}, {"upcoming": 1}, {"payment": 1}, {"vitals": 1}])
+        db = dbm.connect()
+        try:
+            with dbm.transaction(db):
+                db.execute("UPDATE imports SET note=NULL WHERE profile_id=?", (pid,))
+        finally:
+            db.close()
+        hist = {e["id"]: e for e in self.robin.get(f"/api/profiles/{pid}/imports").json()["imports"]}
+        self.assertEqual([hist[i]["counts"].get(k) for i, k in zip(ids, ("problems", "upcoming", "payments"))], [1, 1, 1])
+        r = self.robin.post(f"/api/profiles/{pid}/imports/{ids[1]}/undo", headers=H)   # undone, it's still counted
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["counts"].get("upcoming"), 1)
 
     def test_typed_records_already_there_are_flagged_and_left_out(self):
         pid = self.dup_pid
