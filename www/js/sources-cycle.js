@@ -12,8 +12,9 @@
     if (!r.ok) throw new Error((typeof j.detail === "string" && j.detail) || r.status + " " + r.statusText);
     return j;
   }
-  let ME = null, PID = null;
+  let ME = null, PID = null, SHOWN = null;   // SHOWN: the status drawn
   const day = t => fmtD(t * 1000);
+  const toState = () => { const now = $("#cycleState"); now.tabIndex = -1; now.focus(); };   // the line saying what it is now
   const KEPT = "Periods, flow, ovulation tests, cervical mucus and spotting";
   const WHO = "Only this profile's owners and editors see them, on the Timeline (a lane of their own) and, when you tick it, on the Labs charts. Viewers don't, and aren't told cycle tracking is on.";
   const NEVER = "They're never in a share link. An export or a visit summary has them only if you tick them in, each time.";
@@ -48,7 +49,7 @@
       run: async typed => {
         if (typed.trim() !== name) throw new Error(`Type ${name} exactly.`);
         changed(await call(off ? `profiles/${PID}/cycle` : `profiles/${PID}/cycle/delete`, off ? "PUT" : "POST", off ? {on: false} : {}));
-        const now = $("#cycleState"); now.tabIndex = -1; now.focus();   // (the card drawn again: focus on what it says now)
+        toState();   // (the card drawn again: focus on what it says now)
         sayIn($("#cycleMsg"), off ? "Cycle tracking is off. What was kept is being deleted." : "Deleting what was kept.");
       },
       pick: el("div", {class: "row"})});
@@ -76,7 +77,11 @@
     const parts = [el("h2", {text: "Cycle tracking"})];
     const send = async (path, method, body, btn) => {
       btn.disabled = true;
-      try { changed(await call(path, method, body)); sayIn($("#cycleMsg"), method === "PUT" ? (body.on ? "Cycle tracking is on." : "Cycle tracking is off. What was kept is being deleted.") : "Deleting what was kept."); }
+      try {
+        changed(await call(path, method, body));
+        if (!box.contains(document.activeElement)) toState();   // (#534: its button gone)
+        sayIn($("#cycleMsg"), method === "PUT" ? (body.on ? "Cycle tracking is on." : "Cycle tracking is off. What was kept is being deleted.") : "Deleting what was kept.");
+      }
       catch (e) { sayIn(msg, e.message, true); btn.disabled = false; }
     };
     if (!st.on) {
@@ -94,9 +99,7 @@
           (ME.user.is_admin ? "The setup guide's “Connecting a phone” section says how." : "Ask your admin to finish setting it up.")}));
       } else parts.push(el("p", {class: "hint", text: "Only the profile's owners can turn it on."}));
     } else {
-      const d = st.deletion, waiting = d && !d.done;
-      parts.push(el("p", {class: "hint", id: "cycleState", text: `On since ${day(st.since)}. ` + (waiting ? "Deleting what was kept: nothing is shown until the receiver has done it."
-        : st.count ? `Kept: ${st.count} record${st.count === 1 ? "" : "s"}, shown on the Timeline.` : "Nothing received yet.")}),
+      parts.push(el("p", {class: "hint", id: "cycleState", text: onWords(st)}),
         aboutWords(WHO, NEVER, SEX, WORDS),
         el("h3", {class: "sub", text: "Sending them from the phone"}),
         el("ul", {class: "cy-list"},
@@ -113,13 +116,32 @@
     if (zone) parts.push(zone);   // last, apart from the rest (#495)
     box.replaceChildren(...parts);
     box.hidden = false;
+    SHOWN = st;
+  }
+  const onWords = st => `On since ${day(st.since)}. ` + (st.deletion && !st.deletion.done ? "Deleting what was kept: nothing is shown until the receiver has done it."
+    : st.count ? `Kept: ${st.count.toLocaleString()} record${st.count === 1 ? "" : "s"}, shown on the Timeline.` : "Nothing received yet.");
+  /* an import of the profile saved or undone (import-jobs.js told): what's kept counted again (#534: "Kept: 2 records"
+     stayed), the card drawn again only where more than that changed */
+  async function again() {
+    const p = PID;
+    let st;
+    try { st = await call(`profiles/${p}/cycle`); } catch (e) { return; }
+    if (p !== PID || !SHOWN) return;
+    if (st.on && SHOWN.on && st.can_change === SHOWN.can_change && JSON.stringify(st.deletion) === JSON.stringify(SHOWN.deletion)) {
+      $("#cycleState").textContent = onWords(st); SHOWN = st;
+    } else if (JSON.stringify(st) !== JSON.stringify(SHOWN)) {
+      const had = $("#cycle").contains(document.activeElement);
+      draw(st);
+      if (had) toState();
+    }
   }
 
   (async () => {
     ME = await SgSources.ready;
     if (!ME) return;
     PID = SgSources.pid();
-    $("#profile").addEventListener("change", () => { PID = SgSources.pid(); load(); });
+    $("#profile").addEventListener("change", () => { PID = SgSources.pid(); SHOWN = null; load(); });
+    document.addEventListener("sg:imports", ev => { if (ev.detail.pid === PID && SHOWN) ev.detail.wait(again()); });
     load();
   })();
 })();

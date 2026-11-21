@@ -88,12 +88,17 @@ function menuPlace(m) {
 /* what's waiting for you on a profile (#283), from its jobs in state "preview" (GET .../jobs?state=preview) and its
    connections (GET .../connections): each import left at its preview to save or cancel, {job, conn} (conn: the portal
    whose first pull it is, or null), newest first, then each portal that needs you, {conn}: its access ended, or it
-   stopped syncing. Add's count (below) and Sources' Overview (sources-overview.js) both read it */
+   stopped syncing. Add's count (below) and Sources' Overview (sources-overview.js) both read it; not an import with
+   nothing in it (sgNothing) */
 function sgWaiting(jobs, conns) {
   const cs = (conns && conns.connections || []).filter(c => c.state !== "disconnected");
-  return [...(jobs || []).filter(j => j.state === "preview").map(job => ({job, conn: cs.find(c => c.first_job === job.id) || null})),
+  return [...(jobs || []).filter(j => j.state === "preview" && !sgNothing(j)).map(job => ({job, conn: cs.find(c => c.first_job === job.id) || null})),
     ...cs.filter(c => c.state === "needs reconnect" || c.warning).map(conn => ({conn}))];
 }
+/* a preview with nothing in it, new or already here (#534: an upload of cycle records only, once tracking is turned
+   off): its review says so (import-jobs.js), and it isn't waiting for anyone */
+const sgNothing = j => j.new === false && !j.stale && !(j.possible || []).length
+  && !["events", "results", "other"].some(k => (j.duplicates || {})[k]) && !Object.values((j.duplicates || {}).watch || {}).some(n => n > 0);
 /* the top bar's Search (#273): opens the command palette (palette.js wires it, and puts the keys that open it too in
    its tip). An icon, its name said. Hidden with the rest of the bar by lock() */
 function barSearch() {

@@ -175,6 +175,16 @@ class Jobs(unittest.TestCase):
         self.assertNotIn("watch", self.robin.get(f"/api/profiles/{self.pid}/data").json())   # not copied into the records
         self.assertEqual(self.kim.post(f"/api/profiles/{self.pid}/uploads/{up}/import", headers=H).status_code, 403)
 
+    def test_readings_are_not_days_of_activity(self):   # #534
+        """A wearable's days of activity data are its activity metrics' days: home readings' daily summaries (blood
+        pressure, body temperature, glucose) are counted as readings, once."""
+        w = {"metrics": [{"key": k, "pts": [["2026-11-09", 1]]} for k in ("bp_sys", "bp_n", "body_temp", "glucose_meter")]
+             + [{"key": "steps", "pts": [["2026-11-10", 5000], ["2026-11-11", 6000]]}],
+             "bp_readings": [["2026-11-09T14:00:00+00:00", 118, 76, None, "Cuff", "Apple Health"]],
+             "temp_readings": [["2026-11-09T12:05:00+00:00", 36.8, None, "Apple Health"]]}
+        self.assertEqual(jobs._watch_counts(w), {"watch_days": 2, "workouts": 0, "bp_readings": 1, "temp_readings": 1, "glucose_readings": 1})
+        self.assertEqual(jobs._watch_counts({**w, "metrics": w["metrics"][:3]})["watch_days"], 0)
+
     def test_imports_through_the_registry(self):
         before = count(self.pid)
         jid = self.start(self.fixture_upload())

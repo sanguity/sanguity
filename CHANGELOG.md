@@ -2166,6 +2166,17 @@ Everything on `main` so far; it becomes the first tagged release.
   or deleting its records, under Phone and watch left a review open in Upload files offering the cycle records ("Cycle
   tracking records 5", counted in its "new"), which Add then saved without; the profile's open reviews are read again,
   as after a save.
+- **Records in: workouts' and ECGs' ids from when they started, a review left empty by turning tracking off, cycle-only
+  imports counted, wearable readings counted once, and the cycle card's count and focus** (#534): workouts and ECGs
+  were numbered in order, so after an import's Undo another workout took the undone one's number and the drawer on it
+  stayed open; each now has an id from its start and kind. A review of cycle records only, left open when cycle
+  tracking was turned off, said "Ready to import" with nothing in it and was listed under Waiting for you; it says
+  nothing is left, and isn't listed. An import of cycle records only said "The files held no records to show." and
+  "Imported: nothing new." with no Undo; the card and toast of the person who saved it count them, with an Undo, and
+  Import history names its source in place of "No records" (it still doesn't name cycle records to others). A blood
+  pressure and a temperature reading counted as 2 days of activity data too ("4 new"); days of activity data are the
+  activity metrics' only, said one way everywhere. Phone and watch's "Kept: 2 records" now follows a save or an Undo,
+  with separators in the count, and turning cycle tracking on from the keyboard leaves focus in its card.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
