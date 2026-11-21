@@ -27,21 +27,23 @@ let ME;
 $("#logout").onclick = logOut;   // util.js: asks first about what isn't saved (#391)
 
 /* ---------------------------------------------------------------- password */
-/* each with Show (util.js pwField, #492), hidden again only as it's sent: not over a mismatch */
+/* each with Show (util.js pwField, #492), hidden again only as it's sent: not over a mismatch. Its reply brought into
+   view with Change password, clear of a phone's tabs, focus where it was (#544: under the tabs, or below the screen) */
 pwField($("#pwCur"), {name: "current password"});
 pwField($("#pwNew"), {name: "new password"});
 pwField($("#pwNew2"), {name: "repeated password"});
+const pwSay = (text, bad) => { say("#pwMsg", text, bad); $("#pwMsg").parentElement.scrollIntoView({block: "nearest"}); };
 $("#pwForm").onsubmit = async ev => {
   ev.preventDefault();
-  if ($("#pwNew").value !== $("#pwNew2").value) return say("#pwMsg", "The new passwords don't match.", true);
+  if ($("#pwNew").value !== $("#pwNew2").value) return pwSay("The new passwords don't match.", true);
   pwSent(ev.target);
   try {
     const r = await call("me/password", "POST", {current: $("#pwCur").value, new: $("#pwNew").value});
     $("#pwForm").reset();
     if (ME.user.must_change_pw) { location.replace("./"); return; }
-    say("#pwMsg", "Password changed." + (r.signed_out_elsewhere ? ` Signed out ${r.signed_out_elsewhere} other device${r.signed_out_elsewhere > 1 ? "s" : ""}.` : ""));
+    pwSay("Password changed." + (r.signed_out_elsewhere ? ` Signed out ${r.signed_out_elsewhere} other device${r.signed_out_elsewhere > 1 ? "s" : ""}.` : ""));
     loadSessions();
-  } catch (e) { say("#pwMsg", e.message, true); }
+  } catch (e) { pwSay(e.message, true); }
 };
 
 /* ---------------------------------------------------------------- sessions */

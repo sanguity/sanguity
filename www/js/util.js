@@ -643,9 +643,10 @@ function liveFollow() {
   if (!t || t.parentElement === to || modal?.matches(".sg-ask")) return;
   const had = t.contains(document.activeElement) ? document.activeElement : null;
   to.append(t);
-  if (to !== document.body) { t.removeAttribute("popover"); t.style.removeProperty("--toasts-lift"); }   // (not lifted there: toast())
+  if (to !== document.body) t.removeAttribute("popover");
   else if (!t.matches(":popover-open")) { t.setAttribute("popover", "manual"); t.showPopover(); }
   if (had) had.focus({preventScroll: true});   // (a move takes focus away)
+  sgFoot();   // (over the page, or not, they're in the foot's layer or not)
 }
 function wireDialog(d) {
   d.sgWired = true;
@@ -924,10 +925,68 @@ aboutWire();
    control if it came from the dialog itself, #368), and stays on a button while its action runs. Up to three show at once, the newest at the foot; a fourth sends the oldest away.
    They're one region named Notifications (a landmark a screen reader can go to), its list a polite live region, so
    each toast is said once as it appears: its words are said only there, not through announce() as well (a page's own
-   line beside it shows them with sayIn's say: false). The region is a popover over the page, which scrolls what takes
-   focus clear of it (--toasts-h, app.css); while a modal dialog (not a question) or the drawer is open it's in that dialog's flow, at
+   line beside it shows them with sayIn's say: false). The region is a popover over the page, in the foot's layer with
+   the page's bar (sgFoot, above), clear of which the page scrolls what takes focus; while a modal dialog (not a question) or the drawer is open it's in that dialog's flow, at
    its foot, over nothing in it (liveFollow, above), and its buttons work there. An action that fails says so in the toast,
    which stays. What can't be undone, or touches security, still asks first (ask()). */
+/* the screen's foot as one layer (#544): a phone's tabs, the page's bar (sidebar.js's, .sg-bar-foot: fixed there, in
+   its column) and above it the toasts over the page, measured as one. What the page takes from it (app.css):
+   --sg-foot-bar, the bar's top from the screen's foot, under the toasts; --sg-foot, the layer's top, which the page's
+   end scrolls above (the body's padding) and a review's bar (import-jobs.js), sticky in its card, keeps above;
+   --sg-room, the scroll padding, the most of those with a gap, so what takes focus is clear of all of them. A review's
+   bar in a phone's sheet (drop.js) makes room in that sheet's body (--sg-bar-room). Measured again as any of them,
+   or the page, changes size (what's gone from the page let go) and as the window does; sgFoot() asks for it */
+const sgFoot = (() => {
+  let raf = 0, was = 0;
+  const seen = new Set(), ro = new ResizeObserver(() => fit());
+  const px = (n, at, v) => v ? placeAt(n, {[at]: Math.ceil(v)}) : n.style.removeProperty(at);
+  const fit = () => raf || (raf = requestAnimationFrame(() => {
+    raf = 0;
+    const html = document.documentElement, bars = [...document.querySelectorAll(".sg-bar")], t = document.getElementById("sgToasts");
+    for (const e of seen) if (!e.isConnected) { ro.unobserve(e); seen.delete(e); }
+    for (const e of [document.body, t?.firstElementChild, ...bars]) if (e && !seen.has(e)) { seen.add(e); ro.observe(e); }
+    // the page's bar, in its column (its box's content, after a sidebar's: main.sets.with-nav's first column), and
+    // the toasts over it there
+    const bar = bars.find(b => b.matches(".sg-bar-foot") && !b.hidden && !b.closest("dialog"));
+    let l = 0, w = 0;
+    if (bar) {
+      const p = bar.parentElement, s = getComputedStyle(p), cols = s.display === "grid" ? s.gridTemplateColumns.split(" ") : [];
+      const pl = parseFloat(s.paddingLeft) + (cols.length > 1 ? parseFloat(cols[0]) + parseFloat(s.columnGap) : 0);
+      l = p.getBoundingClientRect().left + p.clientLeft + pl; w = p.clientWidth - pl - parseFloat(s.paddingRight);
+    }
+    px(html, "--sg-bar-l", l); px(html, "--sg-bar-w", w);
+    const under = bar ? innerHeight - bar.getBoundingClientRect().top : 0;
+    px(html, "--sg-foot-bar", under);
+    const top = Math.max(under, t?.parentElement === document.body && t.querySelector(".sg-toast") ? innerHeight - t.getBoundingClientRect().top : 0);
+    px(html, "--sg-foot", top);
+    // a review's bars: the room each takes from the foot of what scrolls, its own height and what's under it
+    let room = top && top + 8;
+    const sheets = new Map();
+    for (const b of bars) if (b !== bar && !b.hidden && b.offsetHeight) {
+      const r = b.offsetHeight + (parseFloat(getComputedStyle(b).bottom) || 0) + 8, s = b.closest(".sheet-body");
+      if (s) sheets.set(s, Math.max(sheets.get(s) || 0, r + (parseFloat(getComputedStyle(s).paddingBottom) || 0)));
+      else if (!b.closest("dialog")) room = Math.max(room, r);
+    }
+    px(html, "--sg-room", room);
+    for (const s of document.querySelectorAll(".sheet-body")) px(s, "--sg-bar-room", sheets.get(s));
+    // grown over what has focus (a toast come as focus moved, #387's saved line), that's brought clear of it again, if
+    // it fits (not a review's whole card, #281)
+    const a = document.activeElement, r = room > was && a?.closest && !a.closest("#sgToasts, .sg-bar, dialog") ? a.getBoundingClientRect() : null;
+    if (r && r.height && r.top < innerHeight && r.bottom > innerHeight - room && r.height < innerHeight - room - parseFloat(getComputedStyle(html).scrollPaddingTop))
+      a.scrollIntoView({block: "nearest"});
+    was = room;
+  }));
+  addEventListener("resize", fit);
+  // a box for text, given focus, is brought into view whole (as far as it fits), clear of all that: the browser
+  // brings only its caret's line (#544: My questions, under the toasts but its first line)
+  document.addEventListener("focusin", e => {
+    const a = e.target;
+    if (a.localName === "textarea" && !a.closest("dialog")) requestAnimationFrame(() => {
+      if (document.activeElement === a && a.getBoundingClientRect().bottom > innerHeight - parseFloat(getComputedStyle(document.documentElement).scrollPaddingBottom)) a.scrollIntoView({block: "nearest"});
+    });
+  });
+  return fit;
+})();
 const toast = (() => {
   let region = null, list = null, back = null;
   const make = () => {
@@ -937,30 +996,8 @@ const toast = (() => {
     region = el("section", {class: "sg-toasts sg-follow", id: "sgToasts", "aria-label": "Notifications", popover: "manual"}, list);
     document.body.append(region);
     region.showPopover();
-    liveFollow();   // into a dialog, if one is open
-    // while toasts show over the page, what takes focus is scrolled clear of them (scroll-padding, app.css, #362)
-    new ResizeObserver(() => { placeAt(document.documentElement, {"--toasts-h": list.offsetHeight}); lift(); }).observe(list);
-    addEventListener("scroll", lift, {passive: true});
-    addEventListener("resize", lift);
-    seen.observe(document.body);   // (what's above a bar grown or shrunk moves it)
+    liveFollow();   // into a dialog, if one is open (and measured, sgFoot)
   };
-  /* over the page, lifted clear of a group bar under them (#541), wherever the bar sits: at the foot, wrapped to two
-     lines or ridden up at the page's end; in a dialog, in its flow (liveFollow) */
-  let raf = 0;
-  const seen = new ResizeObserver(() => lift());
-  const lift = () => raf || (raf = requestAnimationFrame(() => {
-    raf = 0;
-    const was = parseFloat(region.style.getPropertyValue("--toasts-lift")) || 0;   // (as lifted now: app.css)
-    if (region.parentElement !== document.body || !list.firstElementChild) { region.style.removeProperty("--toasts-lift"); return; }
-    const r = list.getBoundingClientRect(), foot = r.bottom + was;   // the stack's foot unlifted
-    let up = 0;
-    for (const b of document.querySelectorAll("body .sg-bar")) {
-      seen.observe(b);
-      const s = b.getBoundingClientRect();
-      if (!b.closest("dialog") && s.height && s.top < foot && s.bottom > foot - r.height) up = Math.max(up, Math.ceil(foot - s.top) + 8);
-    }
-    if (up !== was) placeAt(region, {"--toasts-lift": up});
-  }));
   make();   // there from the start, as announce()'s lines are: a live region is followed only if it was there first
   if (!region) document.addEventListener("DOMContentLoaded", make);
   // where focus came from into the toasts (Alt+N, Tab or a click), to go back to: not a question asked from a toast

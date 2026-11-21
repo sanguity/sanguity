@@ -776,6 +776,59 @@ def under_bar(page, root, limit=150):
     return n, bad
 
 
+# #544: the foot of the screen as one layer: what has focus, after the browser and the page have brought it into view,
+# against the page's bar and the toasts over the page: 'layer' once focus is in either; else what's more than 10%
+# under either, unless it's taller than the room left between them and fills that room
+FOOT_FOCUS_JS = """async () => { await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const a = document.activeElement; if (!a || a === document.body) return null;
+  if (a.closest('#sgToasts, .sg-bar-foot')) return 'layer';
+  const t = a.closest('header.topbar .tabs'); if (t && getComputedStyle(t).position === 'fixed') return null;   // (a phone's tabs: the layer's foot)
+  const r = a.getBoundingClientRect(); if (!r.height || !r.width) return null;
+  let under = 0;
+  for (const c of [document.querySelector('body > #sgToasts'), document.querySelector('.sg-bar-foot:not([hidden])')].filter(Boolean)) {
+    const q = c.getBoundingClientRect();
+    under = Math.max(under, Math.max(0, Math.min(r.right, q.right) - Math.max(r.left, q.left)) * Math.max(0, Math.min(r.bottom, q.bottom) - Math.max(r.top, q.top)) / (r.width * r.height)); }
+  const p = getComputedStyle(document.documentElement), top = parseFloat(p.scrollPaddingTop), foot = innerHeight - parseFloat(p.scrollPaddingBottom);
+  if (r.height > foot - top && r.top <= top + 1 && r.bottom >= foot - 1) return null;
+  return under > 0.1 ? `${a.id || a.tagName} ${(a.getAttribute('aria-label') || a.textContent || '').trim().slice(0, 30)}: ${Math.round(under * 100)}% under, ${Math.round(r.top)}–${Math.round(r.bottom)}` : null; }"""
+# …and the layer itself: nothing of the bar (its count, its error, Discard, Save) under the toasts, the toasts' stack
+# on the screen with the newest wholly in it (it scrolls within itself)
+FOOT_LAYER_JS = """() => { const g = document.querySelector('body > #sgToasts'), s = g.getBoundingClientRect(), ts = [...g.querySelectorAll('.sg-toast')];
+  const bar = document.querySelector('.sg-bar-foot:not([hidden])'), n = ts.at(-1)?.getBoundingClientRect();
+  if (!bar || !n) return 'no bar or no toasts';
+  const under = [...bar.querySelectorAll('.sg-bar-n, .msg, button')].filter(p => p.textContent && (r => r.left < s.right && r.right > s.left && r.top < s.bottom && r.bottom > s.top)(p.getBoundingClientRect()));
+  return under.length ? 'under the toasts: ' + under.map(p => p.textContent.slice(0, 12)).join(', ')
+    : s.top < 0 || s.bottom > innerHeight ? `the toasts off the screen: ${Math.round(s.top)}–${Math.round(s.bottom)}`
+    : n.top < s.top - 1 || n.bottom > s.bottom + 1 ? 'the newest toast not in view' : ts.length; }"""
+FOOT_SIZES = ((1400, 900), (768, 1000), (375, 667), (320, 640), (844, 390), (568, 320))
+
+
+def foot_walk(page, limit=200):
+    """#544: Tab through the page from its top, as a keyboard user would, at each of FOOT_SIZES, until focus reaches the
+    page's bar or the toasts (the bar shown, the toasts made by the caller): {size: [how many took focus, what was
+    under the bar or a toast as it had focus, the layer]} for each size with a problem, empty when there's none. The
+    caller puts the window's size back."""
+    out = {}
+    for w, h in FOOT_SIZES:
+        page.set_viewport_size({"width": w, "height": h})
+        page.wait_for_timeout(150)
+        page.evaluate("scrollTo(0, 0); document.querySelector('a[href], button').focus()")
+        n, bad = 0, []
+        for _ in range(limit):
+            page.keyboard.press("Tab")
+            got = page.evaluate(FOOT_FOCUS_JS)
+            if got == "layer":
+                break
+            n += 1
+            if got:
+                bad.append(got)
+        page.evaluate("document.activeElement.blur()")
+        lay = page.evaluate(FOOT_LAYER_JS)
+        if bad or lay != 3 or n < 8:
+            out[f"{w}x{h}"] = [n, bad[:3], lay]
+    return out
+
+
 def open_group(page, g, nav=".set-nav"):
     """Show a group of a page with a sidebar as a person would: its link in the sidebar; or on Sources at phone width,
     where the sidebar gives way to the Overview's cards (#283), its card there, back on the Overview first."""
@@ -4950,6 +5003,21 @@ def main():
             # a measured maximum, typed in About this person
             page.goto(base + "/settings.html?profile=1#about")
             page.wait_for_selector("#about[data-profile='1'] #aboutMaxHr", timeout=10000)
+            # #544: the bar wrapped by its error (a maximum out of range) and three toasts over the page: tabbed through
+            # at 1400, 768, 375, 320, 844×390 and 568×320, nothing that takes focus more than 10% under the bar or a toast
+            # (a fixed 72 px of scroll padding left 85 fields under a bar of 150 at 375 px, Set by and On among them)
+            vp544, before544 = page.viewport_size, len(problems)
+            page.fill("#aboutMaxHr", "7")
+            page.click("#setBar button.primary")
+            page.wait_for_function("document.querySelector('#setBar .msg').textContent.includes('from 100 to 230')", timeout=10000)
+            for i in range(3):
+                js(f"toast('Saved a change, number {i + 1} of three, with an Undo.', {{action: 'Undo', onAction() {{}}}})")
+            foot544 = foot_walk(page)
+            page.set_viewport_size(vp544)
+            js("for (const t of document.querySelectorAll('#sgToasts .sg-toast')) t.sgGone()")
+            problems[before544:] = [x for x in problems[before544:] if "400" not in x]   # (the maximum refused, on purpose)
+            check("Settings → About this person with the bar's error and three toasts, at six sizes: nothing that takes focus more than 10% under "
+                  "the bar or a toast, nothing of the bar under a toast, and the newest toast in sight (#544)", foot544 == {}, foot544)
             page.fill("#aboutMaxHr", "190")
             page.click("#setBar button.primary")   # the group's bar (#272)
             page.wait_for_function("document.getElementById('aboutMsg').textContent.startsWith('Saved “')", timeout=10000)
@@ -11963,7 +12031,7 @@ def main():
             bar_at = js("(b => [b.hidden, b.querySelector('.sg-bar-n').textContent, getComputedStyle(b).position, Math.round(innerHeight - b.getBoundingClientRect().bottom - (" + TABBAR_JS + "))])(document.getElementById('setBar'))")
             check("…and it shows it isn't saved: on the setting, in the group's bar kept in view at the foot of the screen (#272), and its group in the sidebar",
                   js("document.querySelector(\"[data-key='overview.keyLabs']\").classList.contains('set-changed')")
-                  and bar_at[:3] == [False, "1 change", "sticky"] and 0 <= bar_at[3] <= 24
+                  and bar_at[:3] == [False, "1 change", "fixed"] and 0 <= bar_at[3] <= 24   # (fixed there, #544)
                   and js("document.querySelector('.set-nav-list a[data-group=dashboard]').textContent") == "Dashboard, changes not saved", bar_at)
             # #409: the sidebar's dot and the bar's are drawn in forced colours too (a background alone is dropped there)
             dot_js = """[['.set-nav-list a[data-group=dashboard] .set-nav-dirty', '::after'], ['#setBar .sg-bar-n', '::before']].map(([s, w]) => {
@@ -12426,7 +12494,7 @@ def main():
             # you didn't confirm it's you.” Then, with its toasts showing and the bar's error, at 375, 768 and 1400 px, at
             # the page's top, near its end and at its end, nothing of the bar under a toast (they were lifted a fixed 76 px,
             # while the bar wrapped to two lines, or rode up by the toasts' height at the end, under them)
-            db541, vp541, bk541 = dbm536.connect(), page.viewport_size, []
+            db541, vp541, bk541, foot544 = dbm536.connect(), page.viewport_size, [], None
             seen541 = f"""(() => {{ const s = {IN_SIGHT}; return s && [s[1] || s[3], !!document.activeElement.closest('#sgToasts')]; }})()"""
             toast541 = "[...document.querySelectorAll('#sgToasts .sg-toast-text')].pop().textContent"
             bar_msg541 = "document.querySelector('#admBar .msg').textContent"
@@ -12488,6 +12556,12 @@ def main():
                         n, out = js(UNDER541)
                         if not n or out:
                             under541[f"{w} {at[:4]}"] = [n, out]
+                # #544: with three toasts, tabbed through at 1400, 768, 375, 320, 844×390 and 568×320 (its ⓘ was wholly
+                # under the bar at 375 px, and Off 77% at 768: a fixed 72 px of scroll padding, the bar wrapped to 150)
+                for i in range(3):
+                    js(f"toast('Saved a change, number {i + 1} of three, with an Undo.', {{action: 'Undo', onAction() {{}}}})")
+                foot544 = foot_walk(page)
+                js("for (const t of document.querySelectorAll('#sgToasts .sg-toast')) t.sgGone()")
                 page.click("#admBar button:text-is('Discard')")
             finally:
                 db541.close()
@@ -12502,6 +12576,8 @@ def main():
                             ["Undo", True, "Backups are scheduled daily, keeping the newest 1. Undo didn't work: you didn't confirm it's you."], ["bkSched-off", False]], bk541)
             check("…(#541) with toasts and the bar's error, at 375, 768 and 1400 px, at the page's top, near its end and at its end: "
                   "nothing of the bar (its count, its error, Discard, Save) under a toast", under541 == {}, under541)
+            check("Admin → Backups with the bar's error and three toasts, at six sizes: nothing that takes focus more than 10% under the bar "
+                  "or a toast (its ⓘ, Off), nothing of the bar under a toast, and the newest toast in sight (#544)", foot544 == {}, foot544)
             # stale: the backup made 10 days ago, as far as the app can tell (its name says when it was made)
             stale_name = time.strftime("sanguity-backup-%Y%m%d-%H%M%S.tar.gz", time.localtime(time.time() - 10 * 86400))
             os.replace(os.path.join(bk_dir, made[0]), os.path.join(bk_dir, stale_name))
@@ -13942,6 +14018,18 @@ def main():
             q_bar = js("[document.getElementById('shrBar').hidden, document.querySelector('#shrBar .sg-bar-n').textContent, "
                        "document.querySelector('#build .set-changed .set-unsaved')?.checkVisibility() || false, "
                        "(() => { const e = new Event('beforeunload', {cancelable: true}); dispatchEvent(e); return e.defaultPrevented; })()]")
+            # #544: the bar wrapped by an error (as a save that didn't reach the server says) and three toasts over the
+            # page: tabbed through at 1400, 768, 375, 320, 844×390 and 568×320, My questions and all else that takes focus
+            # clear of both (the toasts covered My questions at 568×320, and the bar's error lines what it was over)
+            vp544 = page.viewport_size
+            js("sayIn(document.querySelector('#shrBar .msg'), \"Couldn't reach the server. Check the connection and try again.\", true, {say: false})")
+            for i in range(3):
+                js(f"toast('Saved a change, number {i + 1} of three, with an Undo.', {{action: 'Undo', onAction() {{}}}})")
+            foot544 = foot_walk(page)
+            page.set_viewport_size(vp544)
+            js("sayIn(document.querySelector('#shrBar .msg'), ''); for (const t of document.querySelectorAll('#sgToasts .sg-toast')) t.sgGone()")
+            check("Sharing → Visit summary with the bar's error and three toasts, at six sizes: nothing that takes focus more than 10% under "
+                  "the bar or a toast (My questions was), nothing of the bar under a toast, and the newest toast in sight (#544)", foot544 == {}, foot544)
             page.click("#shrBar button:text-is('Save')")
             page.wait_for_function("document.getElementById('qMsg').textContent === 'Saved.'", timeout=10000)
             check("…the questions draft, typed, is marked not saved, one change in the group's bar, and leaving asks; its Save keeps it, said by a toast with an Undo (#272)",
@@ -18260,6 +18348,44 @@ def main():
                                         ["Your password", "Show password"]],
                             "admin": [["Your password, or a code from your authenticator app", "Show password or code"], ["fSecret", "Show client secret"]],
                             "sources": [["shlPass", "Show passcode"]]}, pw492)
+            # #544: Password's replies (the current one wrong, the new ones not matching, too short, changed) in sight with
+            # Change password, clear of a phone's tabs, at 375×667 and 844×390, focus kept on Repeat new password where
+            # Enter was pressed (they were under the tabs, or below the screen). "Wrong" and "changed" are answered here:
+            # a wrong one counts against the account, and a change signs its other sessions out
+            vp544, pw544, as544, before544 = page.viewport_size, {}, {"now": None}, len(problems)
+            def pw_answer544(route):
+                if as544["now"] == "wrong":
+                    route.fulfill(status=403, json={"detail": "Your current password is wrong."})
+                elif as544["now"] == "changed":
+                    route.fulfill(json={"ok": True, "signed_out_elsewhere": 0})
+                else:
+                    route.continue_()
+            page.route("**/api/me/password", pw_answer544)
+            try:
+                page.goto(base + "/account.html#password")
+                page.wait_for_selector("#pwCur", state="visible", timeout=10000)
+                for w, h in ((375, 667), (844, 390)):
+                    page.set_viewport_size({"width": w, "height": h})
+                    for now, new2 in (("wrong", "a brand new long passphrase"), ("mismatch", "a brand new long passphrasX"),
+                                      ("short", "short"), ("changed", "a brand new long passphrase")):
+                        as544["now"] = now
+                        page.fill("#pwCur", PW if now != "wrong" else "not the password at all")
+                        page.fill("#pwNew", "short" if now == "short" else "a brand new long passphrase")
+                        page.fill("#pwNew2", new2)
+                        js("scrollTo(0, 0); document.getElementById('pwMsg').textContent = ''")
+                        page.press("#pwNew2", "Enter")
+                        page.wait_for_function("document.getElementById('pwMsg').textContent.length > 0", timeout=10000)
+                        settle(150)
+                        pw544[f"{w} {now}"] = js("""(() => { const p = getComputedStyle(document.documentElement), foot = innerHeight - parseFloat(p.scrollPaddingBottom),
+                          m = document.getElementById('pwMsg').getBoundingClientRect(), a = document.activeElement, r = a.getBoundingClientRect();
+                          return [a.id, document.getElementById('pwMsg').textContent.split('.')[0], m.top >= 0 && m.bottom <= foot + 1 && r.top >= 0 && r.bottom <= foot + 1]; })()""")
+            finally:
+                page.unroute("**/api/me/password", pw_answer544)
+                page.set_viewport_size(vp544)
+            problems[before544:] = [x for x in problems[before544:] if "me/password" not in x and "Failed to load resource" not in x]   # (refused on purpose)
+            said544 = ["Your current password is wrong", "The new passwords don't match", "Use at least", "Password changed"] * 2
+            check("Account → Password's replies in sight at 375×667 and 844×390, above a phone's tabs, focus kept on Repeat new password (#544)",
+                  len(pw544) == 8 and all(v[0] == "pwNew2" and v[1].startswith(s) and v[2] for v, s in zip(pw544.values(), said544)), pw544)
             # #320: on a phone the account pages' tables hid their headings and left the values on their own (Admin's "off" and
             # "10", two dates per device): each cell is labelled with its column's name now, the one name a screen reader
             # hears as the hidden headings are hidden from it too; axe-core clean, light and dark

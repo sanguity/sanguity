@@ -374,12 +374,14 @@ dialog.sg-dlg.sg-dragging{transition:none;translate:0 var(--drag,0px)}   /* only
 dialog.sg-dlg:not(.sg-dlg-sheet)>.sg-grab{display:none}
 dialog.sg-dlg-sheet [data-grab]{touch-action:none}
 
-/* ---- toasts (#263, toast() in util.js): at the foot of the screen, on the left (the screen's width on a phone), and
-   above a group bar under them (--toasts-lift, util.js: #541); over the page (a popover) but only a toast itself takes the
-   pointer. With the drawer open, in its flow instead (below, #362); a question (ask()) leaves them behind it (#369). A menu's look: the raised surface, a ring and the higher elevation, its
+/* ---- toasts (#263, toast() in util.js): at the foot of the screen, on the left (the screen's width on a phone), over
+   the page's bar in one layer (#544, util.js sgFoot), at most 40% of what's above it, scrolling with the newest in view;
+   over the page (a popover) but only a toast itself takes the pointer. With the drawer open, in its flow instead (below, #362); a question (ask()) leaves them behind it (#369). A menu's look: the raised surface, a ring and the higher elevation, its
    words in the ink; rising into place as it appears. */
-.sg-toasts{position:fixed;inset:auto auto var(--sp-4) var(--sp-4);margin:0 0 var(--toasts-lift,0);padding:0;border:0;background:none;overflow:visible;
-  width:min(420px,calc(100vw - 32px));pointer-events:none;color:var(--ink)}
+.sg-toasts{position:fixed;inset:auto auto max(var(--sp-2),var(--sg-foot-bar,0px)) calc(var(--sg-bar-l,var(--sp-4)) - var(--sp-2));margin:0;padding:var(--sp-2);border:0;background:none;
+  display:flex;flex-direction:column-reverse;max-height:calc((100dvh - var(--sg-foot-bar,0px)) * .4);overflow:auto;overscroll-behavior:contain;
+  width:min(436px,calc(100vw - 16px));pointer-events:none;color:var(--ink)}
+.sg-toasts[popover]:not(:popover-open){display:none}
 .sg-toast-list{display:flex;flex-direction:column;gap:var(--sp-2)}
 /* its words and actions in one box (.sg-toast-body), wrapping within it, the actions under the words; its ✕ beside the
    box at the top, on the first line, never on a line of its own (#389); a box shorter than the ✕ centred against it */
@@ -392,17 +394,16 @@ dialog.sg-dlg-sheet [data-grab]{touch-action:none}
 .sg-toast-acts{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
 .sg-toast-acts .btn{margin:0}
 .sg-toast-x{flex:none;margin:0;min-width:32px;padding:0}   /* the quiet button (#258), square */
-@media (max-width:700px){ .sg-toasts{inset:auto var(--sp-2) calc(var(--sp-2) + var(--tabbar,0px)) var(--sp-2);width:auto} }   /* over a phone's tabs (#268) */
+@media (max-width:700px){ .sg-toasts{inset:auto 0 max(var(--tabbar,0px),var(--sg-foot-bar,0px));width:auto} }   /* over a phone's tabs (#268) */
 /* in a modal dialog, or the drawer beside the page (liveFollow, #362): no popover, in the dialog's flow at its foot,
    under its buttons and over nothing in it; the drawer's body scrolls above */
-dialog>.sg-toasts{position:static;width:auto;pointer-events:auto;flex:none}
+dialog>.sg-toasts{position:static;width:auto;padding:0;max-height:none;overflow:visible;pointer-events:auto;flex:none}
 dialog>.sg-toasts:has(.sg-toast){margin-top:var(--sp-3)}
 dialog>.sg-toasts .sg-toast-text{flex-basis:8em}   /* a narrow dialog's: its ✕ still beside its words or its buttons */
 dialog:is(.sg-dlg-side,.sg-dlg-sheet)>.sg-toasts:has(.sg-toast){margin:0;padding:var(--sp-2) var(--sp-3) var(--sp-3);border-top:1px solid var(--grid)}
 /* in the drawer the stack takes at most a third of its height, and less where its body would have under half (a
    phone on its side: #drawer .db), scrolling within itself with the newest, at the foot, in view (#369) */
-dialog:is(.sg-dlg-side,.sg-dlg-sheet)>.sg-toasts{display:flex;flex-direction:column-reverse;flex:0 1 auto;min-height:0;max-height:calc(100% / 3);
-  overflow:auto;overscroll-behavior:contain}
+dialog:is(.sg-dlg-side,.sg-dlg-sheet)>.sg-toasts{flex:0 1 auto;min-height:0;max-height:calc(100% / 3);overflow:auto}
 }
 
 @layer pages {
@@ -488,7 +489,6 @@ header.topbar .tabs::-webkit-scrollbar{display:none}
 @media (max-width:480px){ header .brand-name{gap:0} }
 @media (max-width:700px) and (min-height:501px){
   html:has(header.topbar>.tabs:not([hidden])){--tabbar:calc(57px + env(safe-area-inset-bottom,0px))}
-  body{padding-bottom:var(--tabbar,0px)}
   header.topbar .tabs{position:fixed;inset:auto 0 0;z-index:20;width:auto;gap:0;padding:0 0 env(safe-area-inset-bottom,0px);border-radius:0;border-top:1px solid var(--grid);
     background:var(--surface);overflow:visible}
   header.topbar .tabs>:is(a,.menu){flex:1 1 0;min-width:0}
@@ -1078,9 +1078,11 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .sets .set-solo:not(.set-changed)>.set-row-lbl:not(:has(.tag:not([hidden],.set-unsaved))){display:none}   /* alone in its card, nothing to mark (#494) */
 .sets .set-msg{display:block;margin:var(--sp-3) 0 0}
 .sets .set-msg:empty{display:none}
-/* the group bar (#272, sidebar.js): "3 changes · Discard · Save", at the foot of the screen while there are any */
-.sg-bar{position:sticky;bottom:calc(var(--sp-3) + var(--tabbar,0px));z-index:5;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--sp-2) var(--sp-4);
+/* the group bar (#272, sidebar.js): "3 changes · Discard · Save", at the foot of the screen while there are any,
+   fixed in its column under the toasts (#544, util.js sgFoot); a review's (import-jobs.js) sticky in its card, above */
+.sg-bar{position:sticky;bottom:calc(var(--sg-foot,var(--tabbar,0px)) + var(--sp-3));z-index:5;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--sp-2) var(--sp-4);
   margin-top:var(--sp-4);padding:var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-4);background:var(--raised);border:1px solid var(--ring);border-radius:var(--r-md);box-shadow:var(--shadow-2)}
+.sg-bar-foot{position:fixed;bottom:calc(var(--sp-3) + var(--tabbar,0px));left:var(--sg-bar-l);width:var(--sg-bar-w);margin:0}
 .sg-bar-what{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--sp-1) var(--sp-3);min-width:0}
 .sg-bar-n{font-weight:var(--fw-semibold)}
 .sg-bar-acts{display:flex;gap:var(--sp-2);margin-left:auto}
@@ -2048,18 +2050,12 @@ main.acct.guide{max-width:640px}
    buttons, which it keeps in sight, so focus on them doesn't scroll the page) (2.4.11);
    a button in a table's cell that reads as the cell's text (.cell-btn) and the ✎, 24 px targets (2.5.8) */
 .menu-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-html{scroll-padding-top:calc(var(--bar-h,0px) + 8px);scroll-padding-bottom:var(--tabbar,0px)}   /* and clear of a phone's tabs (#268) */
-/* --sg-bar-room: the room a bar takes at the foot, measured where it's known (import-jobs.js: its height, its gap and a
-   phone's tabs under it, #489); in a dialog, no tabs, and its body, what scrolls there, keeps focus clear of the bar */
-html:has(.sg-bar:not([hidden])){scroll-padding-bottom:var(--sg-bar-room,calc(72px + var(--tabbar,0px)))}
-dialog{--tabbar:0px}
-.sheet-body:has(.sg-bar:not([hidden])){scroll-padding-bottom:var(--sg-bar-room,72px)}
+/* and clear of the foot's layer (#544, util.js sgFoot), the page's end above it; in a sheet, of a review's bar */
+html{scroll-padding-top:calc(var(--bar-h,0px) + 8px);scroll-padding-bottom:var(--sg-room,var(--tabbar,0px))}
+body{padding-bottom:var(--sg-foot,var(--tabbar,0px))}
+dialog{--tabbar:0px;--sg-foot:0px}
+.sheet-body{scroll-padding-bottom:var(--sg-bar-room,0px)}
 .sg-bar .btn{scroll-margin-bottom:-100vh}
-/* toasts over the page (#362): what takes focus is scrolled clear of them (--toasts-h, their height, util.js), above
-   the group bar while it shows, and the page's foot can scroll up above them */
-html:has(body>.sg-toasts .sg-toast){scroll-padding-bottom:calc(var(--toasts-h,0px) + var(--sp-5) + var(--tabbar,0px))}
-html:has(body>.sg-toasts .sg-toast) body{padding-bottom:calc(var(--toasts-h,0px) + var(--sp-5) + var(--tabbar,0px))}
-html:has(.sg-bar:not([hidden])):has(body>.sg-toasts .sg-toast){scroll-padding-bottom:calc(var(--toasts-h,0px) + var(--sg-bar-room,calc(72px + var(--tabbar,0px))) + var(--sp-2))}
 .tablewrap{scroll-padding-top:34px}
 .cell-btn{border:0;background:none;padding:3px 0;margin:-3px 0;min-width:var(--sp-5);font:inherit;color:inherit;text-align:inherit;cursor:pointer;border-radius:var(--r-sm)}   /* 24 px tall, the row as before (2.5.8) */
 .cell-btn:hover{text-decoration:underline}

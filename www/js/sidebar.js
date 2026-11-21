@@ -199,7 +199,8 @@ function sideNav(o) {
     const n = el("span", {class: "sg-bar-n"}), msg = el("span", {class: "msg"});
     const drop = el("button", {class: "btn", type: "button", text: "Discard"});
     const save = el("button", {class: "btn primary", type: "button", text: "Save"});
-    const box = el("div", {class: "sg-bar", id: pre + "Bar", role: "region", "aria-label": "Changes not saved", hidden: ""},
+    // at the screen's foot, in one layer with the toasts (util.js sgFoot, #544): measured again as it shows or goes
+    const box = el("div", {class: "sg-bar sg-bar-foot", id: pre + "Bar", role: "region", "aria-label": "Changes not saved", hidden: ""},
       el("span", {class: "sg-bar-what"}, n, msg), el("span", {class: "sg-bar-acts"}, drop, save));
     let busy = false;
     const draw = () => {
@@ -207,6 +208,7 @@ function sideNav(o) {
       n.textContent = `${c} change${c === 1 ? "" : "s"}`;
       if (!c && !busy) sayIn(msg, "");
       box.hidden = !c && !busy;
+      sgFoot();
       save.disabled = drop.disabled = busy || !c;
     };
     save.onclick = async () => {
