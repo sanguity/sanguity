@@ -752,6 +752,30 @@ def phone_fits(page, label="", ignore=()):
     return [f"{label}: {p}" if label else p for p in found]
 
 
+UNDER_BAR_JS = """root => { root = document.querySelector(root);
+  const a = document.activeElement, bar = root && root.querySelector('.sg-bar');
+  if (!bar || !root.contains(a)) return 'out';
+  if (bar.contains(a)) return 'bar';
+  const r = a.getBoundingClientRect(), b = bar.getBoundingClientRect();
+  return r.bottom > b.top + 1 && r.top < b.bottom ? `${a.tagName.toLowerCase()} ${(a.getAttribute('aria-label') || a.textContent).trim().slice(0, 40)}: ${Math.round(r.top)}–${Math.round(r.bottom)}, the bar from ${Math.round(b.top)}` : ''; }"""
+
+
+def under_bar(page, root, limit=150):
+    """Tab on from where focus is, in root (a selector: a card with a sticky bar, .sg-bar, at its foot), until focus reaches
+    the bar or leaves root, as a keyboard user would (#489): (how many took focus on the way, [what was wholly or partly
+    under the bar as it had focus]). Focus scrolled clear of the bar is the page's or dialog's scroll padding (2.4.11)."""
+    n, bad = 0, []
+    for _ in range(limit):
+        page.keyboard.press("Tab")
+        got = page.evaluate(UNDER_BAR_JS, root)
+        if got in ("bar", "out"):
+            break
+        n += 1
+        if got:
+            bad.append(got)
+    return n, bad
+
+
 def open_group(page, g, nav=".set-nav"):
     """Show a group of a page with a sidebar as a person would: its link in the sidebar; or on Sources at phone width,
     where the sidebar gives way to the Overview's cards (#283), its card there, back on the Overview first."""
@@ -9121,8 +9145,32 @@ def main():
                   "Upload files is shown and it goes to its review there with no other click, focus on it, fitting 375 px (#281)",
                   not text281[0] and veil281 == [True, "Drop to upload to Second person"]
                   and at281 == ["#upload", True, "dropped.csv", True, True] and not bad281, [text281, veil281, at281, bad281])
+            one489 = js(f"[...{last_card}.closest('.job').querySelectorAll('.job-steps li')].map(li => li.textContent)")
+            check("…one CSV, not a zip, has no Unpacking in its stage line (#489)",
+                  one489 == ["Sending (done)", "Recognising (done)", "Review", "Saved"], one489)
             js(f"[...{last_card}.querySelectorAll('.imp-actions button')].find(b => b.textContent === 'Cancel').click()")
             page.wait_for_function(f"{last_card}.textContent.startsWith('Cancelled.')", timeout=10000)
+            check("…and after Cancel, focus is on the card's result, not lost with the button (#489)",
+                  js(f"document.activeElement.parentElement === {last_card} && document.activeElement.textContent.startsWith('Cancelled.')"),
+                  js("document.activeElement.outerHTML.slice(0, 120)"))
+            # (#489) a C-CDA's review in Upload files at 375 px, its bar two rows: tabbed through, nothing that takes focus is
+            # under the bar (2.4.11): the page's scroll padding is measured from the bar. Into My records, whose series don't
+            # know its lab names, so the review has them to match
+            with open(os.path.join(ROOT, "tests", "fixtures", "importers", "ccda", "maple-grove-ccd", "maple-grove-ccd.xml"), "rb") as f:
+                ccda489 = f.read()
+            pick489 = "v => { const s = document.getElementById('profile'); s.value = v; s.dispatchEvent(new Event('change')); }"
+            js(pick489, "1")
+            page.wait_for_function("SgSources.pid() === 1 && SgSources.canEdit()", timeout=10000)
+            cards = js("document.querySelectorAll('.import-job').length")
+            page.set_input_files("#pickFiles", files=[{"name": "maple-grove.xml", "mimeType": "text/xml", "buffer": ccda489}])
+            page.wait_for_function(f"document.querySelectorAll('.import-job').length > {cards} && /^(Ready to import|All duplicates)/.test({last_card}.textContent)", timeout=30000)
+            settle(600)
+            n489, under489 = under_bar(page, "#importer .job:last-child")
+            check("a C-CDA's review in Upload files at 375 px, tabbed through: nothing focused is under its bar (#489)",
+                  n489 > 3 and not under489, [n489, under489, js("document.querySelector('#importer .job:last-child .imp-actions').offsetHeight")])
+            js(f"fetch('api/profiles/1/jobs/{js(f'{last_card}.dataset.job')}/discard', {{method: 'POST', headers: {{'X-Sanguity': '1'}}}}).then(r => r.status)")
+            js(pick489, "2")
+            page.wait_for_function("SgSources.pid() === 2 && SgSources.canEdit()", timeout=10000)
             page.set_viewport_size({"width": 1400, "height": 900})
             # the same export again: everything is a duplicate; cancelling it leaves nothing behind
             imports_before = db.execute("SELECT COUNT(*) FROM imports WHERE profile_id=2").fetchone()[0]
@@ -9311,8 +9359,8 @@ def main():
                 bad281 += axe_check(page, f"the records page's upload dialog, a dropped file in review, {theme}")[0]
             js("delete document.documentElement.dataset.theme")
             check("…on the records page a drop opens a dialog uploading to the profile shown, its card at its review, focus on it, axe-clean in light and dark",
-                  veil281 == [True, "Drop to upload to Second person"] and dlg281 == ["Upload to Second person", True, True, "dropped-here.csv", ["done", "done", "done", "now", ""]]
-                  and not bad281, [veil281, dlg281, bad281])
+                  veil281 == [True, "Drop to upload to Second person"] and dlg281 == ["Upload to Second person", True, True, "dropped-here.csv", ["done", "done", "now", ""]]
+                  and not bad281, [veil281, dlg281, bad281])   # (one CSV: no Unpacking, #489)
             js("[...document.querySelectorAll('dialog.up-dlg .imp-actions button')].find(b => b.textContent === 'Cancel').click()")
             page.wait_for_function("document.querySelector('dialog.up-dlg .import-job').textContent.startsWith('Cancelled.')", timeout=10000)
             page.keyboard.press("Escape")
@@ -9327,6 +9375,38 @@ def main():
                 if (!d || !d.url) return null; const r = await fetch(d.url);
                 return {status: r.status, type: r.headers.get('content-type'), pdf: (await r.text()).startsWith('%PDF')}; })()""")
             check("…whose attached PDF, stored with the upload, opens", doc == {"status": 200, "type": "application/pdf", "pdf": True}, doc)
+            # (#489) a C-CDA's review in the dialog, at 1400 x 900 (a dialog in the middle) and 375 x 800 (a sheet), on My
+            # records' page (its lab names to match): tabbed through, nothing focused is under its bar, which sits at the
+            # dialog's foot (no phone tabs under a dialog), and the dialog's own scroll padding keeps focus clear of it;
+            # Cancel each time, focus then on the card's result
+            page.goto(base + "/?profile=1")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE && PROFILE.id === 1", timeout=20000)
+            drop489 = """([name, text]) => { const dt = new DataTransfer(); dt.items.add(new File([text], name, {type: 'text/xml'}));
+                document.body.dispatchEvent(new DragEvent('dragenter', {dataTransfer: dt, bubbles: true}));
+                document.querySelector('.drop-veil').dispatchEvent(new DragEvent('drop', {dataTransfer: dt, bubbles: true})); }"""
+            dlg489 = []
+            for w, h in ((1400, 900), (375, 800)):
+                page.set_viewport_size({"width": w, "height": h})
+                settle(200)
+                cards = js("document.querySelectorAll('dialog.up-dlg .import-job').length")
+                js(drop489, ["maple-grove.xml", ccda489.decode()])
+                page.wait_for_function(f"(l => l.length > {cards} && /^(Ready to import|All duplicates)/.test(l[l.length - 1].textContent))"
+                                       "(document.querySelectorAll('dialog.up-dlg[open] .import-job'))", timeout=30000)
+                settle(600)
+                n489, under489 = under_bar(page, "dialog.up-dlg .job:last-child")
+                foot489 = js("Math.round(document.querySelector('dialog.up-dlg').getBoundingClientRect().bottom - document.querySelector('dialog.up-dlg .job:last-child .imp-actions').getBoundingClientRect().bottom)")
+                js("[...document.querySelectorAll('dialog.up-dlg .job:last-child .imp-actions button')].find(b => b.textContent === 'Cancel').focus()")
+                page.keyboard.press("Enter")
+                page.wait_for_function("document.querySelector('dialog.up-dlg .job:last-child .import-job').textContent.startsWith('Cancelled.')", timeout=10000)
+                res489 = js("document.activeElement.parentElement === document.querySelector('dialog.up-dlg .job:last-child .import-job') && document.activeElement.textContent.startsWith('Cancelled.')")
+                dlg489.append([w, n489, under489, foot489, res489])
+                page.keyboard.press("Escape")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…a C-CDA's review in the dialog, tabbed through at 1400 and 375 px: nothing focused under its bar, which sits at the dialog's foot; "
+                  "after Cancel, focus on the card's result (#489)",
+                  all(n > 3 and not under and foot < 40 and res for _, n, under, foot, res in dlg489), dlg489)
+            page.goto(base + "/?profile=2")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE && PROFILE.id === 2 && EV.length > 0", timeout=20000)
             # the imported claims are on the Costs tab: rows from each insurer, with their care categories and denials
             tab_click(page, "#tab-costs")
             settle()
@@ -10100,9 +10180,11 @@ def main():
                   and not js(f"!!document.querySelector('#srcWait li[data-job=\"{left}\"]')"))
             js(f"document.querySelector('#srcReview .import-job[data-job=\"{left}\"] .imp-actions .primary').click()")   # Save
             page.wait_for_function(f"/^Imported/.test(document.querySelector('#srcReview .import-job[data-job=\"{left}\"]').textContent)", timeout=30000)
+            added489 = js(f"document.activeElement.parentElement === document.querySelector('#srcReview .import-job[data-job=\"{left}\"]') && document.activeElement.textContent.startsWith('Imported.')")
             page.wait_for_function(f"!document.querySelector('#srcWait li[data-job=\"{left}\"]') && document.getElementById('waitingLink').textContent.trim() === 'Waiting for you {len(rows) - 1}'", timeout=10000)
-            check("…and saved from there, Add's count going down with it",
-                  js(f"fetch('api/profiles/2/jobs/{left}', {{cache: 'no-store'}}).then(r => r.json()).then(j => j.state)") == "done")
+            check("…and saved from there, Add's count going down with it, focus then on the card's result (#489)",
+                  js(f"fetch('api/profiles/2/jobs/{left}', {{cache: 'no-store'}}).then(r => r.json()).then(j => j.state)") == "done" and added489,
+                  js("document.activeElement.outerHTML.slice(0, 120)"))
             page.click(f"#srcWait li[data-job='{left2}'] button:text-is('Cancel import…')")
             asked = answer_ask(page)
             page.wait_for_function(f"!document.querySelector('#srcWait li[data-job=\"{left2}\"]')", timeout=10000)
@@ -12008,6 +12090,17 @@ def main():
             js("() => document.getElementById('manKind-document').click()")
             settle(200)
             c353["typed-in file"] = js(CONTROLS353_JS)
+            # (#489) a PDF dropped on the document's file field goes into it, as its picker would put it: no veil, no import
+            doc489 = js("""async () => { const sel = '.man-item[data-kind=document] [data-f=file]', f = document.querySelector(sel), jobs = document.querySelectorAll('.job').length;
+                const dt = new DataTransfer(); dt.items.add(new File(['%PDF-1.4 fictional'], 'letter.pdf', {type: 'application/pdf'}));
+                const veil = [];
+                for (const kind of ['dragenter', 'dragover', 'drop']) {
+                    f.dispatchEvent(new DragEvent(kind, {bubbles: true, cancelable: true, dataTransfer: dt}));
+                    veil.push(!!document.querySelector('.drop-veil')?.matches(':popover-open')); }
+                await new Promise(r => setTimeout(r, 1500));
+                return [[...f.files].map(x => x.name), veil, location.hash, document.querySelectorAll('.job').length - jobs]; }""")
+            check("a PDF dropped on Type records in's document field fills it, with no veil and no import (#489)",
+                  doc489 == [["letter.pdf"], [False, False, False], "#manual", 0], doc489)
             page.click("#manItems .man-item .del")
             page.click("#srcNav a[data-group=upload]")
             settle(200)

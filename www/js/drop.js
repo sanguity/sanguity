@@ -5,7 +5,9 @@
    2), else into one in a dialog over the page, its scripts (import-jobs.js, import.js) loaded then. The dialog's
    import goes through to its review there; on the records page, what it saved is drawn at once.
    Nothing dropped is kept anywhere but on its way to the server. A drag that isn't files (text, a link, a tab being
-   moved in Settings) is left alone, and so is one while another modal dialog is open.
+   moved in Settings) is left alone, and so is one while another modal dialog is open. Files dropped on a form's own
+   file field (or its label: a letter typed in, a journal entry's photos) go into that field, as its picker would put
+   them, not into an upload (#489); the veil makes way while they're over it.
    SgDrop.here(target, show): the page's own target (dropTarget, import.js) and how to bring it into view. */
 "use strict";
 const SgDrop = (() => {
@@ -14,6 +16,18 @@ const SgDrop = (() => {
   const files = e => [...(e.dataTransfer?.types || [])].includes("Files");
   const away = () => typeof OFFLINE !== "undefined" && OFFLINE.on;
   const other = () => [...document.querySelectorAll("dialog:modal")].some(d => d !== dlg);
+  // a form's own file field under the pointer, or the one its label is for: not a drop target's pickers (import.js)
+  const field = e => {
+    const t = e.target instanceof Element ? e.target : null, f = t?.closest("input[type=file]") || t?.closest("label")?.control;
+    return f && f.type === "file" && !f.disabled && !f.closest(".up") ? f : null;
+  };
+  function fill(f, dropped) {
+    const dt = new DataTransfer();
+    for (const file of f.multiple ? dropped : dropped.slice(0, 1)) dt.items.add(file);
+    f.files = dt.files;
+    f.dispatchEvent(new Event("input", {bubbles: true}));
+    f.dispatchEvent(new Event("change", {bubbles: true}));
+  }
   function can() {
     const p = SgNav.profile();
     return !p ? [false, "Open a profile to upload files to it."]
@@ -33,12 +47,15 @@ const SgDrop = (() => {
   addEventListener("dragenter", e => {
     if (!files(e) || other()) return;
     e.preventDefault();
-    if (depth++ === 0) show();
+    if (depth++ === 0 && !field(e)) show();
   });
   addEventListener("dragover", e => {
     if (!files(e) || other()) return;
     e.preventDefault();   // a file let go anywhere comes here, never opened by the browser in place of the page
-    e.dataTransfer.dropEffect = can()[0] ? "copy" : "none";
+    const f = field(e);
+    if (f) { if (veil.matches(":popover-open")) veil.hidePopover(); }   // (out of the way of the field)
+    else if (depth && !veil.matches(":popover-open")) show();
+    e.dataTransfer.dropEffect = f || can()[0] ? "copy" : "none";
   });
   addEventListener("dragleave", e => { if (files(e) && depth > 0 && --depth === 0) hide(); });
   addEventListener("dragend", hide);
@@ -47,6 +64,8 @@ const SgDrop = (() => {
     if (!files(e) || other()) return;
     e.preventDefault();
     hide();
+    const f = field(e);
+    if (f) { fill(f, [...e.dataTransfer.files]); return; }
     const [yes, words] = can();
     if (!yes) { toast(words); return; }
     // the entries now, while the drop's data can be read; their files after

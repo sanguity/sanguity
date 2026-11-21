@@ -12,7 +12,8 @@
    The card (#281): what's imported, the stage line (Sending → Unpacking → Recognising → Review → Saved; an import that
    wasn't uploaded here starts at Recognising), one progress bar, a line saying what's happening now (said as each
    stage starts), then the job's own part (.import-job), which the review, the result or what went wrong fills. Focus
-   moves to the review once it's ready, unless it has gone somewhere else on the page meanwhile.
+   moves to the review once it's ready, unless it has gone somewhere else on the page meanwhile; after its Add or
+   Cancel, to the line saying how it went (#489).
    Plain script: no inline code (the pages' CSP allows scripts from js/ only); from other files it needs util.js (el,
    icon, kindIcon, CAT_OF, keepDates, aboutWords for the ⓘ, #280, sayIn, announce, smoothly) and dates.js. */
 "use strict";
@@ -59,8 +60,9 @@
     return h;
   }
 
-  /* the card (#281). opts {container, title, size, steps}: steps, the STEPS it goes through (an upload all of them).
-     -> {card, body, title, step(id, text), text(t), note(t), progress(v), end(how), focus()}. card is the whole card,
+  /* the card (#281). opts {container, title, size, steps}: steps, the STEPS it goes through (an upload all of them;
+     one file, not a zip, has nothing to unpack, #489).
+     -> {card, body, title, step(id, text), text(t), note(t), progress(v), end(how), focus(), hold()}. card is the whole card,
      body its job's own part (.import-job), which the rest of this file fills and calls the card (FRAMES finds its
      frame). step marks the stages before it done and shows and says text; text(t) changes the line without saying it
      (a count as it goes); note(t) adds to what's said beside the title ("2 files once unpacked"); progress(v): a
@@ -106,6 +108,13 @@
         card.dataset.step = how;
         mark(how === "done" ? ids.length - 1 : at, how === "done" ? "done" : "bad");
         now.hidden = true;
+      },
+      // focus on the line saying what's happening, where it was on the card's button just gone (f.held, #489)
+      hold() {
+        const a = document.activeElement;
+        if (!f.held || a && a !== document.body && !card.contains(a)) return;
+        now.tabIndex = -1;
+        now.focus({preventScroll: true});
       },
       // focus to the review: from where the files were chosen or dropped (the card's own section or dialog), or from
       // nowhere in particular, not from wherever someone has gone since
@@ -355,19 +364,25 @@
         if (!r.ok) { say(await detail(r)); return false; }
         return true;
       };
+      // focus on the button pressed stays in the card while it changes under it (#489): while it's saved, on the
+      // line saying so; then on the line saying how it ended (result, below). A button pressed in vain keeps it
+      const back = b => { if (f.held && !card.contains(document.activeElement)) b.focus({preventScroll: true}); };
       add.addEventListener("click", async () => {
         const bad = labs.wrong();
         if (bad) { say("A lab name has a series that isn't there: pick one from its list, or leave it empty."); bad.focus(); return; }
+        f.held = card.contains(document.activeElement);
         busy(true); say("Adding…");
-        if (!(await act("confirm", {keep: dups.picked(), labs: labs.picked(), same: same.picked()}))) { busy(false); return; }
+        if (!(await act("confirm", {keep: dups.picked(), labs: labs.picked(), same: same.picked()}))) { busy(false); back(add); return; }
         card.replaceChildren();
         f.step("saved", STAGES.saving);
         f.progress(null);
+        f.hold();
         done(poll(card, pid, j.id, STAGES.saving));
       });
       cancel.addEventListener("click", async () => {
+        f.held = card.contains(document.activeElement);
         busy(true); say("Cancelling…");
-        if (!(await act("discard"))) { busy(false); return; }
+        if (!(await act("discard"))) { busy(false); back(cancel); return; }
         showCancelled(card);
         done(j);
       });
@@ -380,6 +395,7 @@
         node("div", {class: "sg-bar imp-actions", role: "region", "aria-label": "Add or cancel this import"},
           node("span", {class: "sg-bar-what"}, node("span", {class: "sg-bar-n", text: "Not saved yet"}), msg),
           node("span", {class: "sg-bar-acts"}, cancel, add)));
+      barRoom(card.querySelector(".imp-actions"));
       // the stage line says Review (#281); its "Ready to import" is said by focus on it, or else here
       f.step("review");
       f.text("");
@@ -390,6 +406,29 @@
 
   // replaceChildren turns a null into the text "null"; parts that aren't there are left out instead
   function fill(card, ...parts) { card.replaceChildren(...parts.filter(p => p != null)); }
+  /* the room the review's bar takes at the foot of what scrolls (the page, or a dialog's body), measured (#489), so
+     what takes focus is scrolled clear of it (--sg-bar-room, app.css): the tallest bar there, with its gap below */
+  const ROOM = new ResizeObserver(es => { for (const e of es) {
+    if (!e.target.isConnected) ROOM.unobserve(e.target);
+    const at = e.target.sgRoom, bars = [...at.querySelectorAll(".sg-bar:not([hidden])")].filter(b => b.offsetHeight);
+    if (!bars.length) { at.style.removeProperty("--sg-bar-room"); continue; }
+    const pad = at === document.documentElement ? 0 : parseFloat(getComputedStyle(at).paddingBottom) || 0;   // (a sticky bar keeps clear of it)
+    // its height and what's under it: the gap, and a phone's tabs (its bottom, app.css)
+    placeAt(at, {"--sg-bar-room": Math.ceil(pad + Math.max(...bars.map(b => b.offsetHeight + (parseFloat(getComputedStyle(b).bottom) || 0)))) + 8});
+  } });
+  function barRoom(bar) {
+    bar.sgRoom = bar.closest(".sheet-body") || document.documentElement;
+    ROOM.observe(bar);
+  }
+  /* the line saying how it ended takes focus where focus was in the card, or was on its Add or Cancel and went
+     nowhere else meanwhile (#489: the button pressed is gone) */
+  function result(card, line) {
+    const f = FRAMES.get(card), a = document.activeElement;
+    if (!f.card.contains(a) && !(f.held && (!a || a === document.body))) return;
+    f.held = false;
+    line.tabIndex = -1;
+    line.focus();
+  }
   /* a card whose import is over (saved, failed or cancelled): Sources clears it once another section is shown (#283) */
   const settled = card => tag(card, "settled", "");
 
@@ -398,14 +437,15 @@
     FRAMES.get(card).end("done");
     const c = j.counts || {}, items = countItems(c), sk = j.skipped || {};
     const skipped = (sk.events || 0) + (sk.results || 0), ln = j.lab_names || {};
-    fill(card,
-      node("p", {}, node("b", {text: "Imported."}), ` Read as ${j.label || j.importer}${rangeText(j.range)}.`),
+    const said = node("p", {}, node("b", {text: "Imported."}), ` Read as ${j.label || j.importer}${rangeText(j.range)}.`);
+    fill(card, said,
       items.length ? node("ul", {}, items) : node("p", {text: skipped ? "Nothing new: it was all in the profile already." : "The files held no records to show."}),
       skipped ? node("p", {class: "hint", text: `${plural(skipped, ["duplicate", "duplicates"])} skipped.`}) : null,
       ln.matched ? node("p", {class: "hint", text: `${plural(ln.matched, ["lab name", "lab names"])} put in an existing series.`}) : null,
       j.linked ? node("p", {class: "hint", text: `${plural(j.linked, ["result", "results"])} shown once, as the same result from another source.`}) : null,
       notes(j),
       node("p", {}, node("a", {href: `index.html?profile=${pid}#timeline`, text: "See them on the timeline"})));   // its profile and tab (#208)
+    result(card, said);
     // said by a toast (#263), with the way to what came in and an Undo, which asks first in Import history's words
     // (#360: it can't be reversed): the card stays as it is
     const what = items.map(li => li.textContent);
@@ -428,8 +468,10 @@
   function showFailed(card, text) {
     // the message is plain text; any address in it (the issues page) becomes a link, nothing else is markup
     const parts = String(text || "The import failed; nothing was saved.").split(/(https:\/\/[^\s)]+[^\s).,])/);
-    card.replaceChildren(node("p", {}, node("b", {text: "Not imported. "}),
-      parts.map((p, i) => i % 2 ? node("a", {href: p, target: "_blank", rel: "noopener noreferrer", text: p}) : p)));
+    const said = node("p", {}, node("b", {text: "Not imported. "}),
+      parts.map((p, i) => i % 2 ? node("a", {href: p, target: "_blank", rel: "noopener noreferrer", text: p}) : p));
+    card.replaceChildren(said);
+    result(card, said);
     card.classList.add("error");
     settled(card);
     const f = FRAMES.get(card);
@@ -487,7 +529,9 @@
   function showCancelled(card) {
     settled(card);
     FRAMES.get(card).end("cancelled");
-    card.replaceChildren(node("p", {}, node("b", {text: "Cancelled."}), " Nothing was saved, and the upload was removed."));
+    const said = node("p", {}, node("b", {text: "Cancelled."}), " Nothing was saved, and the upload was removed.");
+    card.replaceChildren(said);
+    result(card, said);
   }
 
   // an import someone else started (a connected source's first pull, connect.js), or one left at its preview (Sources'

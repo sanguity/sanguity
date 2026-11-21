@@ -93,7 +93,8 @@ const dropTarget = (() => {
       try { await Promise.all(Array.from({length: Math.min(PARALLEL, items.length)}, worker)); }
       catch (e) { for (const x of xhrs) x.abort(); throw e; }
       const zip = items.some(it => /\.zip$/i.test(it.path));
-      f.step("unpack", zip ? "Unpacking on the server…" : "Checking the files on the server…");
+      if (zip || items.length > 1) f.step("unpack", zip ? "Unpacking on the server…" : "Checking the files on the server…");
+      else f.text("Checking the file on the server…");   // one file, not a zip: nothing to unpack (#489), no stage of its own
       f.progress(null);
       const r = await call(`profiles/${pid}/uploads/${uploadId}/finish`, "POST");
       if (r.files !== items.length) f.note(`${plural(r.files, "file")} once unpacked`);
@@ -136,10 +137,11 @@ const dropTarget = (() => {
       const why = problem(items, await getLimits());
       if (why) return say(why);
       say("");
-      const total = items.reduce((s, it) => s + it.file.size, 0);
+      const total = items.reduce((s, it) => s + it.file.size, 0), pid = opts.pid();
+      const one = items.length === 1 && !/\.zip$/i.test(items[0].path);   // nothing to unpack (#489)
       const f = window.sanguityImport.frame({container: jobs, title: named(items),
-        size: (items.length > 1 ? plural(items.length, "file") + " · " : "") + size(total)});
-      const j = await send(opts.pid(), items, f);
+        steps: one ? ["send", "find", "review", "saved"] : null, size: (items.length > 1 ? plural(items.length, "file") + " · " : "") + size(total)});
+      const j = await send(pid, items, f);
       if (j && j.state === "done" && opts.onDone) opts.onDone(j);
       return j;
     }

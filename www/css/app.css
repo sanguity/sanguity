@@ -899,7 +899,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .job .imp-state{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}   /* the stage line shows Review: "Ready to import" is said, not shown twice (#281, #282) */
 .up-dlg[open]{display:flex;flex-direction:column}
 .up-dlg.sg-dlg-center{width:min(40rem,calc(100vw - 32px));padding-top:var(--sp-3)}
-.drop-veil{inset:0;width:auto;height:auto;margin:0;padding:var(--sp-4);border:0;background:var(--scrim);place-items:center}
+.drop-veil{inset:0;width:auto;height:auto;margin:0;padding:var(--sp-4);border:0;background:var(--scrim);place-items:center;pointer-events:none}   /* (a drag reaches what's under it: a form's file field takes its own, #489) */
 .drop-veil:popover-open{display:grid}
 .drop-veil>div{display:grid;justify-items:center;gap:var(--sp-2);max-width:28rem;padding:var(--sp-6) var(--sp-5);border:2px dashed var(--accent);border-radius:var(--r-lg);background:var(--surface);color:var(--ink);font-size:var(--fs-5);font-weight:var(--fw-semibold);text-align:center;box-shadow:var(--shadow-2)}
 .drop-veil>div p{margin:0}
@@ -1989,13 +1989,17 @@ main.acct.guide{max-width:640px}
    a button in a table's cell that reads as the cell's text (.cell-btn) and the ✎, 24 px targets (2.5.8) */
 .menu-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 html{scroll-padding-top:calc(var(--bar-h,0px) + 8px);scroll-padding-bottom:var(--tabbar,0px)}   /* and clear of a phone's tabs (#268) */
-html:has(.sg-bar:not([hidden])){scroll-padding-bottom:calc(72px + var(--tabbar,0px))}
+/* --sg-bar-room: the room a bar takes at the foot, measured where it's known (import-jobs.js: its height, its gap and a
+   phone's tabs under it, #489); in a dialog, no tabs, and its body, what scrolls there, keeps focus clear of the bar */
+html:has(.sg-bar:not([hidden])){scroll-padding-bottom:var(--sg-bar-room,calc(72px + var(--tabbar,0px)))}
+dialog{--tabbar:0px}
+.sheet-body:has(.sg-bar:not([hidden])){scroll-padding-bottom:var(--sg-bar-room,72px)}
 .sg-bar .btn{scroll-margin-bottom:-100vh}
 /* toasts over the page (#362): what takes focus is scrolled clear of them (--toasts-h, their height, util.js), above
    the group bar while it shows, and the page's foot can scroll up above them */
 html:has(body>.sg-toasts .sg-toast){scroll-padding-bottom:calc(var(--toasts-h,0px) + var(--sp-5) + var(--tabbar,0px))}
 html:has(body>.sg-toasts .sg-toast) body{padding-bottom:calc(var(--toasts-h,0px) + var(--sp-5) + var(--tabbar,0px))}
-html:has(.sg-bar:not([hidden])):has(body>.sg-toasts .sg-toast){scroll-padding-bottom:calc(var(--toasts-h,0px) + 72px + var(--sp-2) + var(--tabbar,0px))}
+html:has(.sg-bar:not([hidden])):has(body>.sg-toasts .sg-toast){scroll-padding-bottom:calc(var(--toasts-h,0px) + var(--sg-bar-room,calc(72px + var(--tabbar,0px))) + var(--sp-2))}
 .tablewrap{scroll-padding-top:34px}
 .cell-btn{border:0;background:none;padding:3px 0;margin:-3px 0;min-width:var(--sp-5);font:inherit;color:inherit;text-align:inherit;cursor:pointer;border-radius:var(--r-sm)}   /* 24 px tall, the row as before (2.5.8) */
 .cell-btn:hover{text-decoration:underline}

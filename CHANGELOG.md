@@ -1825,6 +1825,14 @@ Everything on `main` so far; it becomes the first tagged release.
   already on the server after your username, as its hint says, instead of leaving "My records"; passwords that don't
   match stay as they were, shown if they were. Account's password change, turning off two-factor sign-in, adding a
   passkey, Admin's check of who you are, a source's client secret and a Health Link's passcode have Show too.
+- **Dropping files: focus clear of the review's bar, a form's file field keeps its own drop, and focus kept after Add
+  or Cancel** (#489): in the drop dialog the review's Add bar hid what had focus (the dialog's body, what scrolls
+  there, had no room kept for it), and on a phone it floated 85 px above the sheet's foot, clearing tabs a dialog
+  doesn't show. The room kept for the bar is now measured from the bar itself, in the dialog and on the page (a
+  two-row bar on a phone hid a focused box by 6 px), and the bar sits at the dialog's foot. A file dropped on a form's
+  own file field (a document typed in, a journal entry's photos) goes into that field instead of becoming an import.
+  After Add or Cancel, focus is on the line saying how it went, not lost with the button. One file that isn't a zip
+  no longer shows an Unpacking stage.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
