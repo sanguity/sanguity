@@ -5993,7 +5993,7 @@ def main():
                   all(v[0][-1] == "Fictional, written after the records" and v[1] and v[2] for v in span472.values())
                   and js("[state.max, state.last]") == [last472[0], last472[2]], [when472, span472, last472, js("[state.max, state.last]")])
             typo479 = js("""(() => { const e = {id: -9e8, k: 'journal', t: '2207-11-20T12:00:00', ts: dayTs('2207-11-20'), title: 'Fictional typo'}; EV.push(e); storeSpan();
-                const last = state.last; EV.splice(EV.indexOf(e), 1); storeSpan(); return [last <= Date.now() + 367 * DAY, last > Date.now()]; })()""")
+                const last = state.last; EV.splice(EV.indexOf(e), 1); storeSpan(); return [last <= dayTs(zToday()) + 368 * DAY, last > Date.now()]; })()   // a year from the profile's today, as storeSpan counts it, not the browser's now""")
             check("…(#479) one dated 2207 (a year typed wrong) moves All's end no more than a year ahead", typo479 == [True, True], typo479)
             # …and the form refuses it, typed past its date's max (the picker's max alone didn't stop it): said, nothing saved
             js("journalNew()")
