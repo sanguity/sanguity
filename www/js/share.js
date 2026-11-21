@@ -288,12 +288,13 @@ function shPhoto(p, fallback) {
    table and the note under it. Times are the local times the phone took them at, written in this browser's format.
    What its rows are comes with it, for "The latest 20 of 1,381 readings." (#527, #531: "days and readings" where they mix) */
 function shBlock(b, id) {
-  const cellOf = (kind, v) => !v ? v : kind === "day" ? shDay(v) : kind === "time" ? fmtDT(zParse(v)) : v, rows = b.rows || [];
+  // its counts written as the page's own, "The latest 20 of 1.381 readings." in German (#535, util.js localCounts)
+  const cellOf = (kind, v) => !v ? v : kind === "day" ? shDay(v) : kind === "time" ? fmtDT(zParse(v)) : localCounts(v), rows = b.rows || [];
   const cells = rs => rs.map(r => r.map((v, i) => cellOf(b.cols[i][1], v)));
-  return el("div", {}, ...(b.lead || []).map(t => el("p", {text: t})),
+  return el("div", {}, ...(b.lead || []).map(t => el("p", {text: localCounts(t)})),
     shLong((b.cols || []).map(c => c[0]), cells(rows), b.empty || "None in this range.", "measures", b.of, id,
       async () => cells((await shWhole(id)).rows || []), Math.max(b.total || 0, rows.length)),
-    b.note ? el("p", {class: "hint", text: b.note}) : null);
+    b.note ? el("p", {class: "hint", text: localCounts(b.note)}) : null);
 }
 
 async function shLoad() {

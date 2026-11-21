@@ -38,8 +38,17 @@ class PasskeyError(Exception):
         self.status = status
 
 
-def site(origin):
-    """(rp_id, origin) for a browser Origin, or PasskeyError when passkeys can't work at that address."""
+def where(rp_id, scheme="http", port=None):
+    """The address to open for passkeys made at rp_id: this computer's own name with the page's scheme and port, another
+    name at https:// (its port isn't kept)."""
+    if rp_id == "localhost" or rp_id.endswith(".localhost"):
+        return f"{scheme}://{rp_id}{f':{port}' if port else ''}"
+    return f"https://{rp_id}"
+
+
+def site(origin, made=()):
+    """(rp_id, origin) for a browser Origin, or PasskeyError when passkeys can't work at that address. made: the names
+    the account's passkeys were made at, which this computer's own address points to (#535)."""
     parts = urllib.parse.urlsplit((origin or "").strip())
     host = (parts.hostname or "").lower()
     if not host:
@@ -48,10 +57,11 @@ def site(origin):
         ip = ipaddress.ip_address(host)
     except ValueError:
         ip = None
-    if ip:   # this computer's own address (127.x, ::1): its name, localhost, works without HTTPS (#531)
+    if ip:   # this computer's own address (127.x, ::1): its name, localhost, works without HTTPS (#531), or where the
+        # account's passkeys were made (#535)
         raise PasskeyError("Passkeys don't work at an IP address. Open Sanguity " + (
-            f"at {parts.scheme}://localhost{f':{parts.port}' if parts.port else ''}" if ip.is_loopback else "by its name (with HTTPS)") +
-            " to use one.")
+            "at " + " or ".join(where(h, parts.scheme, parts.port) for h in made or ["localhost"]) if ip.is_loopback
+            else "by its name (with HTTPS)") + " to use one.")
     if parts.scheme != "https" and host != "localhost" and not host.endswith(".localhost"):
         raise PasskeyError("Passkeys need HTTPS. Open Sanguity at its https:// address to use one.")
     return host, f"{parts.scheme}://{parts.netloc}".lower()
@@ -103,6 +113,11 @@ def _descriptors(db, uid, rp_id):
 
 def count(db, uid):
     return db.execute("SELECT COUNT(*) FROM passkeys WHERE user_id=?", (uid,)).fetchone()[0]
+
+
+def sites(db, uid):
+    """The names the account's passkeys were made at, the first made first."""
+    return list(dict.fromkeys(r[0] for r in db.execute("SELECT rp_id FROM passkeys WHERE user_id=? ORDER BY created", (uid,))))
 
 
 def listing(db, uid, rp_id=None):

@@ -82,9 +82,12 @@ def fit(text, size, room, bold=False):
 
 
 def wrap(text, size, room, bold=False):
-    """text broken into lines that fit room points (a word longer than a line is cut)."""
+    """text broken into lines that fit room points (a word longer than a line is broken across lines, never cut)."""
     lines = []
     for para in str(text).split("\n"):
+        if width(para, size, bold) <= room:   # kept as it is, spaces and all ("11.8 Low  Nov 3")
+            lines.append(plain(para))
+            continue
         line = ""
         for word in plain(para).split(" "):
             if not word:
@@ -95,7 +98,13 @@ def wrap(text, size, room, bold=False):
                 continue
             if line:
                 lines.append(line)
-            line = word if width(word, size, bold) <= room else fit(word, size, room, bold)
+            while width(word, size, bold) > room and len(word) > 1:
+                n = len(word) - 1
+                while n > 1 and width(word[:n], size, bold) > room:
+                    n -= 1
+                lines.append(word[:n])
+                word = word[n:]
+            line = word
         lines.append(line)
     return lines
 

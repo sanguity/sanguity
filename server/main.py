@@ -427,7 +427,8 @@ def login(body: Login, request: Request, response: Response, db=Depends(get_db))
     keys_n = passkeys.count(db, u["id"])
     if u["totp_secret"] or keys_n:   # the password was right; now the code or a passkey
         return {"two_factor": True, "ticket": _tickets.issue(u["id"]),
-                "methods": {"code": bool(u["totp_secret"]), "passkey": keys_n > 0}}
+                "methods": {"code": bool(u["totp_secret"]), "passkey": keys_n > 0,
+                            "sites": passkeys.sites(db, u["id"])}}   # where they were made, for a page at 127.0.0.1 (#535)
     _remember_device(request, response, db, u["id"])
     _start_session(request, response, db, u["id"], "password")
     return {"must_change_pw": bool(u["must_change_pw"])}
@@ -845,7 +846,7 @@ class PasskeyRename(BaseModel):
 def my_passkeys(origin: str = "", s=Depends(settled), db=Depends(get_db)):
     """origin: the page's own (location.origin), to say which passkeys work there; only shown, never trusted."""
     try:
-        here = passkeys.site(origin[:300])[0]
+        here = passkeys.site(origin[:300], passkeys.sites(db, s["id"]))[0]
         problem = None
     except passkeys.PasskeyError as e:
         here, problem = None, str(e)

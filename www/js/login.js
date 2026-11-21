@@ -57,14 +57,19 @@ function codeStep(on, methods = {code: true}) {
   // press: the step says why and how to sign in instead, and takes focus itself
   const stuck = pkOnly && !passkeysWork();
   if (stuck) says.tabIndex = -1; else says.removeAttribute("tabindex");
+  // this computer's own address (#531): where the account's passkeys were made, as links (#535: localhost, though they
+  // were made at another name), else localhost, which works without HTTPS; a name's port isn't kept (passkeys.py where)
+  const own = /^(127\.|\[::1\]$)/.test(location.hostname), port = location.port ? ":" + location.port : "";
+  const go = (methods.sites?.length ? methods.sites : ["localhost"]).flatMap((h, i) => {
+    const at = /(^|\.)localhost$/.test(h) ? `${location.protocol}//${h}${port}` : `https://${h}`;
+    return [i ? " or " : "", el("a", {href: at + location.pathname, text: at})];
+  });
   sayIn(says, !pkOnly ? "" : !stuck ? "Password accepted. Use your passkey to finish signing in." :
-    "Password accepted, but this account finishes signing in with a passkey, and passkeys don't work here: " +
-    (!window.isSecureContext ? "this page isn't using HTTPS. Open Sanguity at its " +
-      `https:// address${ipHost() ? ", by its name rather than an IP address," : ""} and sign in there`
-      : ipHost() ? "this is an IP address. Open Sanguity at " +   // (#527) this computer's own (#531): localhost works without HTTPS
-        (/^(127\.|\[::1\]$)/.test(location.hostname) ? location.origin.replace(location.hostname, "localhost") : "its https:// name") +
-        " and sign in there"
-      : "this browser doesn't have them. Sign in with one that does") + ", or use another account.",
+    ["Password accepted, but this account finishes signing in with a passkey, and passkeys don't work here: ",
+      ...(!window.isSecureContext ? ["this page isn't using HTTPS. Open Sanguity at its " +
+        `https:// address${ipHost() ? ", by its name rather than an IP address," : ""} and sign in there`]
+        : ipHost() ? ["this is an IP address. Open Sanguity at ", ...(own ? go : ["its https:// name"]), " and sign in there"]   // (#527)
+        : ["this browser doesn't have them. Sign in with one that does"]), ", or use another account."],
     false, {say: !stuck});   // (read as it takes focus)
   if (on) (code ? document.getElementById("c") : stuck ? says : pkBtn).focus();
 }

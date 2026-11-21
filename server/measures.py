@@ -315,12 +315,12 @@ def glucose_block(c, keep, most):
     for d in sorted(set(cgm) | set(meter) | {t[:10] for t, _, _ in ones}, reverse=True):
         if d in col["avg"] and keep(d):
             n, h = int(col["n"].get(d) or 0), _num(col["hours"].get(d))
-            rows.append([d, f"CGM: {n}" + (f" in {_n(h, 1)} h" if h is not None else ""),
+            rows.append([d, f"CGM: {n:,}" +(f" in {_n(h, 1)} h" if h is not None else ""),
                          f"{cv(col['min'].get(d))}–{cv(col['max'].get(d))}", cv(col["avg"][d]), _pct(col["in"].get(d)),
                          _pct(col["lt70"].get(d)), _pct(col["lt54"].get(d)), _pct(col["gt180"].get(d))])
         if d in meter:
             vs = meter[d]
-            rows.append([d, f"Meter: {len(vs)}", f"{cv(min(vs))}–{cv(max(vs))}" if len(vs) > 1 else cv(vs[0]),
+            rows.append([d, f"Meter: {len(vs):,}",f"{cv(min(vs))}–{cv(max(vs))}" if len(vs) > 1 else cv(vs[0]),
                          cv(sum(vs) / len(vs)), "", "", "", ""])
         for t, v, meal in (x for x in ones if x[0][:10] == d):   # each typed in, newest first, with its meal note
             rows.append([d, f"Typed in, {t[11:16]}" + (f", {meal}" if meal else ""), cv(v), cv(v), "", "", "", ""])
@@ -442,11 +442,11 @@ def _outside(sides, what="readings"):
         return f"No {what}"
     hi, lo, n = sides.count("high"), sides.count("low"), len(sides)
     if not hi and not lo:
-        return f"None of {n} outside it"
-    w = what if n != 1 else what[:-1]   # "1 of 1 reading above it"
+        return f"None of {n:,} outside it"
+    w = what if n != 1 else what[:-1]   # "1 of 1 reading above it"; counts as the leads write them (#535)
     if hi and lo:
-        return f"{hi} of {n} {w} above, {lo} below"
-    return f"{hi or lo} of {n} {w} {'above' if hi else 'below'} it"
+        return f"{hi:,} of {n:,} {w} above, {lo:,} below"
+    return f"{hi or lo:,} of {n:,} {w} {'above' if hi else 'below'} it"
 
 
 T_NAMES = {"bp": "Blood pressure", "glucose": "Glucose (meter)", "cgm": "CGM time in range", "temp": "Temperature",
