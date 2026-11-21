@@ -12,8 +12,9 @@ $("#f").addEventListener("submit", async ev => {
     err.textContent = "The passwords don't match.";
     $("#p2").setAttribute("aria-invalid", "true");
     $("#p2").focus();
-    return;
+    return;   // the passwords left as they were, shown if they were, to see what differs (#492)
   }
+  pwSent($("#f"));   // hidden as it's sent, so a browser saves it as a password
   btn.disabled = true;
   try {
     const r = await api("setup", {method: "POST",

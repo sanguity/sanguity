@@ -7,6 +7,7 @@
 (function () {
   const text = $("#shlText"), msg = $("#shlMsg"), about = $("#shlAbout"), go = $("#shlGo"), goMsg = $("#shlGoMsg");
   const pass = $("#shlPass"), result = $("#shlResult");
+  pwField(pass, {name: "passcode"});   // Show and Hide, as every password field has (util.js, #492)
   let seen = null, timer = 0, asked = 0, busy = false;
 
   const tell = (node, t, bad = false) => { node.textContent = t; node.classList.toggle("bad", bad); };
@@ -59,7 +60,7 @@
   go.addEventListener("click", async () => {
     if (!seen || busy) return;
     if (seen.passcode && !pass.value) { tell(goMsg, "Enter the link's passcode first.", true); pass.focus(); return; }
-    busy = true; go.disabled = text.disabled = true;
+    busy = true; go.disabled = text.disabled = true; pwSent(about);
     tell(goMsg, seen.kind === "card" ? "Checking the card…" : `Fetching from ${seen.host}…`);
     try {
       const r = await post("shl/import", {link: seen.link, passcode: seen.passcode ? pass.value : null, confirm: true});

@@ -373,8 +373,10 @@ def setup(body: Setup, request: Request, response: Response, db=Depends(get_db))
         first = {"id": uid, "username": body.username.strip()}
         activity.log(db, "setup", first, ip=_client_ip(request))
         label = (body.profile_name or "").strip()[:80]
-        if label and owned:
-            db.execute("UPDATE profiles SET name=? WHERE id=?", (label, owned[0]))
+        if owned and (label or prof.DEFAULT_NAME == db.execute("SELECT name FROM profiles WHERE id=?", (owned[0],)).fetchone()["name"]):
+            # the records already here are named as asked; left empty, after the username, as setup says (#492), unless
+            # they had a name of their own (only the setup build's are "My records")
+            db.execute("UPDATE profiles SET name=? WHERE id=?", (label or body.username.strip(), owned[0]))
         elif not owned:
             pid = prof.create_profile(db, label or body.username.strip(), owner_id=uid)
             activity.log(db, "create", first, pid, ip=_client_ip(request))

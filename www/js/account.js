@@ -27,9 +27,14 @@ let ME;
 $("#logout").onclick = logOut;   // util.js: asks first about what isn't saved (#391)
 
 /* ---------------------------------------------------------------- password */
+/* each with Show (util.js pwField, #492), hidden again only as it's sent: not over a mismatch */
+pwField($("#pwCur"), {name: "current password"});
+pwField($("#pwNew"), {name: "new password"});
+pwField($("#pwNew2"), {name: "repeated password"});
 $("#pwForm").onsubmit = async ev => {
   ev.preventDefault();
   if ($("#pwNew").value !== $("#pwNew2").value) return say("#pwMsg", "The new passwords don't match.", true);
+  pwSent(ev.target);
   try {
     const r = await call("me/password", "POST", {current: $("#pwCur").value, new: $("#pwNew").value});
     $("#pwForm").reset();
@@ -81,12 +86,13 @@ async function loadTwoFactor() {
     el("form", {class: "row", onsubmit: async ev => { ev.preventDefault();
       if (!await ask({title: "Turn off two-factor sign-in?", message: "Every other device will be signed out. You can turn it on again later.",
                       action: "Turn off", danger: true})) return;
+      pwSent(ev.target);
       try {
         const r = await call("me/2fa/off", "POST", {password: pw.value});
         if (r.must_change_pw) { location.replace("account.html#password"); location.reload(); return; }
         loadTwoFactor(); loadPasskeys(); loadSessions();
       } catch (e) { say("#tfMsg", e.message, true); } }},
-      pw, el("button", {class: "btn small", type: "submit", text: "Turn off"})));
+      pwField(pw).box, el("button", {class: "btn small", type: "submit", text: "Turn off"})));   // with Show (#492)
 }
 async function startTwoFactor() {
   let s;
@@ -165,7 +171,7 @@ async function loadPasskeys() {
   const pw = el("input", {type: "password", autocomplete: "current-password", placeholder: "Your password", "aria-label": "Your password", required: true});
   const nm = el("input", {value: guessName(), maxlength: 60, placeholder: "Name, e.g. My phone", "aria-label": "Passkey name"});
   $("#pkBody").replaceChildren(el("form", {class: "row", onsubmit: async ev => { ev.preventDefault();
-    say("#pkMsg", "");
+    say("#pkMsg", ""); pwSent(ev.target);
     try {
       const o = await call("me/passkeys/options", "POST", {password: pw.value});
       let credential;
@@ -174,7 +180,7 @@ async function loadPasskeys() {
       if (ME.user.needs_two_factor) { location.replace("./"); return; }
       await loadPasskeys(); say("#pkMsg", `Added “${r.name}”.`); loadTwoFactor(); adminAgain("#pkMsg");
     } catch (e) { say("#pkMsg", e.message, true); } }},
-    nm, pw, el("button", {class: "btn primary small", type: "submit", text: "Add a passkey"})));
+    nm, pwField(pw).box, el("button", {class: "btn primary small", type: "submit", text: "Add a passkey"})));   // with Show (#492)
 }
 
 /* ---------------------------------------------------------------- the sidebar and the address */

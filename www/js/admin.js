@@ -112,8 +112,9 @@ function confirmIdentity(box = $("#reauth")) {
       el("p", {}, el("b", {text: "Confirm it's you. "}), `This needs your password, a code from your authenticator app or a passkey ` +
         `(it then isn't asked again for ${ME.reauth_minutes} minutes).`),
       el("form", {class: "row", onsubmit: async ev => { ev.preventDefault();
+        pwSent(ev.target);
         try { await call("me/reauth", "POST", {secret: secret.value}); done(true); } catch (e) { failed(e); } }},
-        secret, el("button", {class: "btn primary small", type: "submit", text: "Confirm"}),
+        pwField(secret, {name: "password or code"}).box, el("button", {class: "btn primary small", type: "submit", text: "Confirm"}),
         passkeysWork() ? el("button", {class: "btn small", type: "button", text: "Use a passkey", onclick: viaPasskey}) : null,
         el("button", {class: "btn small", type: "button", text: "Cancel", onclick: () => done(false)})),
       msg);

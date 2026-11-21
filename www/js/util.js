@@ -172,24 +172,30 @@ function dangerZone(o) {
    inside a list. The records tabs, the Sources and Sharing lists and the journal use it. */
 const emptyState = (what, next, {tag = "div", cls = "card"} = {}) => el(tag, {class: `${cls} empty-state`.trim()}, el("p", {text: what}),
   next ? el(next.href ? "a" : "button", {class: `btn primary empty-next ${/\bcard\b/.test(cls) ? "large" : "small"}`, href: next.href, type: next.href ? null : "button", text: next.text, onclick: next.onclick}) : null);
-/* a password field (#290): sign-in's and setup's. A Show button in the field's end shows what's typed, and Hide hides
-   it again (named "Show password" or "Hide password"); it's hidden again as the form is sent, so a browser saves it as
-   a password. With min (a new password), the hint given (the field's aria-describedby) counts toward it as it's typed,
-   "9 of 15", and says once that it's long enough. -> {count(min)}: a new minimum, as the server gives it */
-function pwField(input, {min = 0, hint = null} = {}) {
-  const show = el("button", {type: "button", class: "btn quiet small pw-show", id: input.id + "Show", "aria-controls": input.id});
+/* a password field (#290), every one in the app (#492: sign-in, setup, Account's, Admin's, a Health Link's passcode).
+   A Show button in the field's end shows what's typed, and Hide hides it again (named "Show password", or "Show" and
+   the name given: "Show passcode"); pwSent(form) hides it again as the form is really sent, after its own checks
+   (#492: hidden on any submit, a mismatch was said over two hidden fields), so a browser saves it as a password.
+   With min (a new password), the hint given (the field's aria-describedby) counts toward it as it's typed, "9 of 15",
+   and says once that it's long enough. -> {box: the field and its Show, to place where a field made here goes; count(min):
+   a new minimum, as the server gives it} */
+function pwField(input, {min = 0, hint = null, name = "password"} = {}) {
+  const show = el("button", {type: "button", class: "btn quiet small pw-show", id: input.id ? input.id + "Show" : null, "aria-controls": input.id || null});
   const shown = on => {
     input.type = on ? "text" : "password";
     show.textContent = on ? "Hide" : "Show";
-    show.setAttribute("aria-label", `${on ? "Hide" : "Show"} password`);
+    show.setAttribute("aria-label", `${on ? "Hide" : "Show"} ${name}`);
   };
   shown(false);
   show.onclick = () => shown(input.type === "password");
-  const box = el("div", {class: "pw"});
+  input.addEventListener("pw-sent", () => shown(false));
+  const label = input.closest("label");
+  // in its label, the field named by the label's own words, not with Show's after them ("Current password Show …")
+  if (label && !input.hasAttribute("aria-label")) input.setAttribute("aria-label", label.textContent.trim());
+  const box = el(label ? "span" : "div", {class: "pw"});   // (a label holds phrasing content only)
   input.replaceWith(box);
   box.append(input, show);
-  if (input.form) input.form.addEventListener("submit", () => shown(false), true);
-  if (!hint) return {count() {}};
+  if (!hint) return {box, count() {}};
   const n = el("span", {class: "pw-count"});
   let enough = false;
   const count = () => {
@@ -202,8 +208,10 @@ function pwField(input, {min = 0, hint = null} = {}) {
   hint.replaceChildren(el("span", {text: hint.textContent.replace(/\d+/, () => min)}), n);
   input.addEventListener("input", count);
   count();
-  return {count(m) { if (m) { min = m; hint.firstChild.textContent = hint.firstChild.textContent.replace(/\d+/, m); count(); } }};
+  return {box, count(m) { if (m) { min = m; hint.firstChild.textContent = hint.firstChild.textContent.replace(/\d+/, m); count(); } }};
 }
+/* the passwords in a form (or any box) hidden again as it's sent (pwField) */
+const pwSent = box => box.querySelectorAll(".pw > input").forEach(i => i.dispatchEvent(new Event("pw-sent")));
 /* a line of text with each date in it kept on one line (#330), so a tile's "▼ −0.03 since Aug 18, 2026" never leaves
    its year alone below: the text as parts for el(), a date in a <span class="nw">, its textContent unchanged. The
    app's three date formats (dates.js): "Aug 18, 2026", "18 Aug 2026" and "2026-08-18", and "as of" kept as one too
