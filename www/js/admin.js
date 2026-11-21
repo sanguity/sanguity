@@ -123,9 +123,20 @@ function confirmIdentity(box = $("#reauth")) {
     secret.focus();
   });
 }
+/* a one-time password (#499): shown once, so where it's seen, with focus on its Copy, in view: under Create an account,
+   over the list (for a reset from a row's ⋯ too: #userMsg, where it was, is under the list); under the note asking for
+   a second factor, once Admin waits for one. It stays until the next one */
+const TEMP = el("div", {id: "userTemp", class: "temp-pw", role: "group", "aria-labelledby": "userTempName"});
 function showTemp(username, pw, days) {
-  say("#userMsg", [`One-time password for ${username}: `, el("code", {text: pw}),
-    ` — give it to them privately; it isn't shown again, and stops working if not used within ${days || 7} days.`]);
+  const code = el("code", {text: pw}), copy = copyBtn(pw, {what: "the one-time password", sel: code});
+  const how = `Give it to them privately: it isn't shown again, and stops working if it isn't used within ${days || 7} days.`;
+  TEMP.replaceChildren(el("div", {class: "copy-val"}, el("span", {class: "copy-val-name", id: "userTempName", text: `One-time password for ${username}`}),
+    el("div", {class: "copy-val-row"}, code, copy)), el("p", {class: "hint", text: how}));
+  ($("#adminTools").hidden ? $("#adminTf") : $("#userNewRow")).after(TEMP);
+  sayIn($("#userMsg"), ""); sayIn($("#userNewMsg"), "");   // (an earlier "Not done" there no longer so)
+  announce(`One-time password for ${username}: ${pw}. ${how}`);
+  copy.focus({preventScroll: true});
+  TEMP.scrollIntoView({block: "nearest"});
 }
 /* the accounts (#287): a row each, its name with badges (admin, two-factor, disabled; "(you)" on your own), where it's
    signed in, and a ⋯ menu of what can be done to it (util.js rowMenu, as Settings' rows). Your own row has none: none
@@ -154,8 +165,12 @@ async function loadUsers(mine = document.activeElement?.closest?.("#userList tr[
   // a change from a row's menu redraws the list: focus back on that row's ⋯
   if (mine) rowBack(mine);
 }
-/* focus back on an account's ⋯ (#287), unless it's somewhere else that's still there (the zone's box, the reauth form) */
-const rowBack = id => { const a = document.activeElement; if (!a || a === document.body || !a.isConnected) $(`#userList tr[data-user="${id}"] .set-more-btn`)?.focus({preventScroll: true}); };
+/* focus back on an account's ⋯ (#287), unless it's somewhere else that's still there (the zone's box, the reauth form),
+   and the row in view (#499: the check, over the list, had scrolled it away) */
+const rowBack = id => {
+  const a = document.activeElement, b = $(`#userList tr[data-user="${id}"] .set-more-btn`);
+  if (b && (!a || a === document.body || !a.isConnected)) { b.focus({preventScroll: true}); b.scrollIntoView({block: "nearest"}); }
+};
 /* a row's ⋯: each change but Enable is asked first (#249), before any fresh check, so Cancel sends nothing */
 function userMenu(u) {
   const n = u.username;
@@ -172,7 +187,7 @@ function userMenu(u) {
       "Their password stops working at once, and they're signed out everywhere.",
       "You'll get a one-time password to give them; they choose a new one when they first sign in with it." +
       (u.two_factor ? " Their two-factor sign-in stays on." : "")], action: "Reset password", danger: true},
-      r => setTimeout(() => showTemp(n, r.temporary_password, r.temporary_days)))},
+      r => showTemp(n, r.temporary_password, r.temporary_days))},
     u.two_factor ? {text: "Turn off two-factor sign-in…", run: () => changeUser(u, {disable_2fa: true}, {title: `Turn off two-factor sign-in for ${n}?`,
       message: ["Do this only if they lost both their phone and their recovery codes.", "They'll be signed out everywhere."], action: "Turn off", danger: true})} : false,
     u.disabled
@@ -193,7 +208,7 @@ async function changeUser(u, body, sure, done) {
       if (!await ask({title: `Disable ${u.username} anyway?`, message: e.message, action: "Disable anyway", danger: true})) throw new Error("Not disabled.");
       r = await call("users/" + u.id, "PATCH", {...body, force: true});
     }
-    done && done(r); await loadUsers(u.id);
+    await loadUsers(u.id); done && done(r);   // (a reset's password then shown, focus on it: #499)
   } catch (e) { say("#userMsg", e.message, true); rowBack(u.id); }   // (the check's Cancel: its form went with it)
 }
 /* profiles nobody can manage (every owner disabled or removed): an admin names a new owner; never shows records */
@@ -278,14 +293,22 @@ async function removeAccount(u, typed) {
 }
 $("#userNew").onsubmit = async ev => {
   ev.preventDefault();
+  const form = ev.target;
+  sayIn($("#userNewMsg"), "");
   try {
     const body = {username: $("#userName").value.trim(), is_admin: $("#userAdmin").checked};
     const r = await fresh(() => call("users", "POST", body));
-    $("#userNew").reset();
+    form.reset();
     if (r.admin_needs_two_factor) { ME.user.admin_needs_two_factor = true; adminGate(); }   // not the only account any more
     else await loadUsers();
     showTemp(r.username, r.temporary_password, r.temporary_days);
-  } catch (e) { say("#userMsg", e.message, true); }
+  } catch (e) {
+    // said beside the form (#499: it was under the list, out of sight); after the check's Cancel (its form went with
+    // it: an admin's is the one Create that asks), focus back on Create, in view
+    say("#userNewMsg", e.message, true);
+    if (!form.contains(document.activeElement)) form.querySelector("[type=submit]").focus({preventScroll: true});
+    form.closest(".set-row-ctl").scrollIntoView({block: "nearest"});
+  }
 };
 
 /* ---------------------------------------------------------------- lab name matches */
@@ -331,7 +354,7 @@ async function loadLabmaps() {
 
 /* ---------------------------------------------------------------- requiring two-factor sign-in, install activity */
 async function loadRequireTf() {
-  const req = $("#reqTf");   // its replies in #reqTfMsg, right under it (#323): #userMsg is below the account form
+  const req = $("#reqTf");   // its replies in #reqTfMsg, right under it (#323): #userMsg is below the list
   req.checked = (await call("settings")).require_2fa;
   req.onchange = async () => {
     // turning it on is asked first while some accounts have no second factor (#314): each is then refused on every

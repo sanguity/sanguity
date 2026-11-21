@@ -9,6 +9,7 @@ const SgOutside = (() => {
   const sub = text => el("h3", {class: "sub", text});
   const dl = rows => el("dl", {}, ...rows.filter(r => r).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {}, v)]));
   const times = n => n === 1 ? "once" : `${n} times`;
+  const none = what => emptyState(what, null, {cls: ""});   // a list with nothing in it says so (util.js, #499: "None yet.")
   const profileOf = e => e.profile_name || (e.profile == null ? "no profile (an admin's test)" : "profile " + e.profile);
 
   function source(s) {
@@ -34,7 +35,7 @@ const SgOutside = (() => {
   }
 
   function contacts(list, empty) {
-    if (!list.length) return el("p", {class: "muted", text: empty});
+    if (!list.length) return none(empty);
     return el("ul", {class: "out-list"}, ...list.map(e => el("li", {}, code(e.host), ` · ${profileOf(e)} · `,
       e.purpose.replace(/^Connected source: /, "connected source, ") + ` · last ${when(e.last)}, ${times(e.count)}`)));
   }
@@ -62,15 +63,15 @@ const SgOutside = (() => {
     body.replaceChildren(
       sub("May contact now"),
       v.may_contact.length ? el("ul", {class: "out-hosts"}, ...v.may_contact.map(h => el("li", {}, code(h))))
-        : el("p", {class: "muted", text: "No host: no source is set up or connected, so Sanguity contacts nobody on its own."}),
+        : none("No host: no source is set up or connected, so Sanguity contacts nobody on its own."),
       el("p", {class: "muted"}, "A Health Link's host is contacted only when someone pastes the link and confirms it. ",
         el("a", {href: "sources.html#portals", text: "Connect or disconnect sources"}), "."),
       sub("Connected sources"),
-      ...(v.sources.length ? v.sources.map(source) : [el("p", {class: "muted", text: "None."})]),
+      ...(v.sources.length ? v.sources.map(source) : [none("No source set up or connected yet: each is listed here with the hosts it may contact.")]),
       sub("SMART Health Link fetches"),
-      contacts(v.health_links, "None yet."),
+      contacts(v.health_links, "No Health Link fetched yet: each host is listed once someone pastes a link and confirms it."),
       sub("Health Card issuers' keys"),
-      contacts(v.card_keys, "None yet."),
+      contacts(v.card_keys, "No issuer's key fetched yet: each is listed once a health card's signature is checked with it."),
       ...(v.earlier.length ? [sub("Earlier contacts, no longer allowed"), contacts(v.earlier, "")] : []));
   }
   return {load};

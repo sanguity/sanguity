@@ -1784,6 +1784,23 @@ def main():
               and [r[:2] for r in empty494["milestones, result sources"]] == [["No milestones yet: each one is marked on every chart.", False],
                                                                             ["No result sources named yet: each shows as its tag in the records.", False]]
               and all(r[2:] == [False, True, True, True] for r in empty494["milestones, result sources"]), empty494)
+        # #499: and Admin's Outside connections (it said “None yet.” and “None.”) and Set up a source's list (it showed
+        # nothing): each list the server has empty says so through emptyState(), one sentence, and none says “None”
+        strict.goto(base + "/admin.html#outside")
+        strict.wait_for_selector("#outsideBody h3", timeout=10000)
+        strict.wait_for_selector("#sourceList > *", state="attached", timeout=10000)
+        empty499 = strict.evaluate("""async () => { const [v, s] = await Promise.all([fetch('api/outside').then(r => r.json()), fetch('api/connect/sources').then(r => r.json())]);
+            const said = box => box && box.matches('.empty-state') && !/^None/.test(box.textContent) ? box.textContent : null;
+            const part = h => { const kids = []; for (let n = h.nextElementSibling; n && n.tagName !== 'H3'; n = n.nextElementSibling) kids.push(n); return kids; };
+            const out = {}, lists = {"May contact now": v.may_contact, "Connected sources": v.sources, "SMART Health Link fetches": v.health_links, "Health Card issuers' keys": v.card_keys};
+            for (const h of document.querySelectorAll('#outsideBody h3')) if (h.textContent in lists)
+              out[h.textContent] = [lists[h.textContent].length, said(part(h).find(k => k.matches('.empty-state')) || null) || part(h).filter(k => k.matches('p.muted') && /^None/.test(k.textContent)).length];
+            const src = document.getElementById('sourceList');
+            out["Set up a source"] = [s.sources.length, said(src.querySelector(':scope > .empty-state')) || src.querySelectorAll(':scope > .empty-state').length];
+            return out; }""")
+        check("…(#499) and Admin's Outside connections and Set up a source: each list empty says so through emptyState(), never “None”",
+              len(empty499) == 5 and all(isinstance(v[1], str) if v[0] == 0 else v[1] == 0 for v in empty499.values())
+              and any(v[0] == 0 for v in empty499.values()), empty499)
         strict.goto(base + "/admin.html#accounts")
         strict.wait_for_selector("main > nav.set-nav a[aria-current=page]", timeout=10000)
         strict.wait_for_timeout(600)
@@ -13262,6 +13279,15 @@ def main():
                   "deleting or disabling an account and for requiring two-factor sign-in",
                   all("Phone and watch" in found495[q] for q in ("iphone", "apple health", "health auto export"))
                   and all("Accounts" in found495[q] for q in ("remove account", "delete account", "disable account", "require two-factor")), found495)
+            # #499: and Accounts for creating one (its words had "new account" only), and Cycle tracking for its danger
+            # zone's two ways out (#495 added them with no words)
+            found499 = {}
+            for q in ("create account", "delete cycle data", "turn off cycle"):
+                pal(q, "Control+k" if not found499 else None)
+                found499[q] = [t for g, t in js(pal_found) if g == "Pages and settings"][:3]
+            page.keyboard.press("Escape")
+            check("…(#499) it finds Admin's Accounts for “create account”, and Cycle tracking for “delete cycle data” and “turn off cycle”",
+                  "Accounts" in found499["create account"] and all("Cycle tracking" in found499[q] for q in ("delete cycle data", "turn off cycle")), found499)
             page.goto(base + "/settings.html?profile=1#dashboard")
             page.wait_for_selector("#sections > section", state="attached", timeout=10000)
             settle(300)
@@ -16126,8 +16152,15 @@ def main():
                   all(0 <= gap <= 12 and seen and shown for gap, seen, shown in near.values()), near)
             page.fill("#userName", "alex")
             page.click("#userNew button[type=submit]")
-            page.wait_for_function("document.querySelector('#userMsg code')", timeout=10000)
-            check("admin creates an account with a one-time password", len(js("document.querySelector('#userMsg code').textContent")) >= 20)
+            page.wait_for_function("document.querySelector('#userTemp code')", timeout=10000)
+            check("admin creates an account with a one-time password", len(js("document.querySelector('#userTemp code').textContent")) >= 20)
+            # #499: shown where it's seen, focus on its Copy (it was in #userMsg, under the list); here, the server's
+            # second account, under the note asking for a second factor, as the rest of Accounts waits for one
+            temp499 = js("""(() => { const t = document.getElementById('userTemp'), r = t.getBoundingClientRect();
+                return [document.activeElement.getAttribute('aria-label'), t.contains(document.activeElement), r.top >= 0 && r.bottom <= innerHeight,
+                  t.previousElementSibling?.id, t.querySelector('.copy-val-name').textContent]; })()""")
+            check("…shown in sight, with focus on its Copy, under the note asking for a second factor (#499)",
+                  temp499 == ["Copy the one-time password", True, True, "adminTf", "One-time password for alex"], temp499)
             # no longer the only account: admin actions now wait for the admin's own second factor (issue #75)
             check("with a second account, the admin is asked for a second factor",
                   js("!document.getElementById('adminTf').hidden && document.getElementById('adminTools').hidden"))
@@ -16141,6 +16174,21 @@ def main():
             page.wait_for_url("**/account.html#security", timeout=10000)
             page.wait_for_function("document.getElementById('tfHint').textContent.length > 0", timeout=10000)
             check("which opens it", js(display, "twofa") != "none")
+            # #499: each of its buttons that draws it again (Cancel, Confirm, I've saved them) took itself away, focus
+            # falling to the page: focus then on what's there in its place, in sight, clear of the bar and a phone's tabs.
+            # At 375×667, on a phone (Cancel), and back at 1400×900 for the setup's own checks (Confirm, I've saved them)
+            seen499 = """(() => { const a = document.activeElement, r = a.getBoundingClientRect(), p = getComputedStyle(document.documentElement);
+                return [a.tagName, (a.getAttribute('aria-label') || a.textContent).trim().slice(0, 30),
+                  a !== document.body && r.height > 0 && r.top >= parseFloat(p.scrollPaddingTop) - 1 && r.bottom <= innerHeight - parseFloat(p.scrollPaddingBottom) + 1]; })()"""
+            tf499 = {}
+            page.set_viewport_size({"width": 375, "height": 667})
+            page.locator("#twofa").get_by_role("button", name="Turn on").click()
+            page.wait_for_selector("#twofa .tf-key")
+            page.locator("#twofa").get_by_role("button", name="Cancel").click()
+            page.wait_for_function("document.querySelector('#tfBody > button')?.textContent === 'Turn on'", timeout=10000)
+            settle(200)
+            tf499["Cancel"] = js(seen499)
+            page.set_viewport_size({"width": 1400, "height": 900})
             page.locator("#twofa").get_by_role("button", name="Turn on").click()
             page.wait_for_selector("#twofa .tf-key")
             key = js("document.querySelector('#twofa .tf-key').textContent").replace(" ", "")
@@ -16157,12 +16205,22 @@ def main():
                   "the row's name level with the code (#495, #494)",
                   tf495 and tf495[0] == "The key for your authenticator app, as a QR code" and not tf495[3] and tf495[4] == "Copy the key"
                   and abs(tf495[5]) <= 8 and tf_read.startswith("otpauth://totp/Sanguity:") and f"secret={key}" in tf_read, [tf495 and tf495[:2] + tf495[3:], tf_read])
+            page.set_viewport_size({"width": 375, "height": 667})
             page.locator("#twofa input").fill(totp(key))
             page.locator("#twofa").get_by_role("button", name="Confirm").click()
             page.wait_for_selector("#twofa .tf-codes")
+            settle(200)
+            tf499["Confirm"] = js(seen499)
             check("2FA confirmed, 10 recovery codes shown", len(js("document.querySelector('#twofa .tf-codes').textContent").split()) == 10)
             page.locator("#twofa").get_by_role("button", name="I've saved them").click()
             page.wait_for_function("document.getElementById('tfHint').textContent.startsWith('On.') && document.querySelector('#tfMsg a[href=\"admin.html\"]')", timeout=10000)
+            settle(200)
+            tf499["I've saved them"] = js(seen499)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…focus in sight at 375×667 after each of its buttons that draws it again (#499: it fell to the page): Cancel's on Turn on, "
+                  "Confirm's on the recovery codes, I've saved them's on the card's heading",
+                  {k: [v[0], v[2]] for k, v in tf499.items()} == {"Cancel": ["BUTTON", True], "Confirm": ["PRE", True], "I've saved them": ["H2", True]}
+                  and tf499["Cancel"][1] == "Turn on" and tf499["I've saved them"][1] == "Two-factor sign-in", tf499)
             check("with 2FA on, Account says Admin is open again", True)
             page.click("#tfMsg a")
             page.wait_for_function("!document.getElementById('adminTools').hidden && document.querySelector('#userList').textContent.includes('alex')", timeout=10000)
@@ -16215,6 +16273,19 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 900})
             check("…on a phone (375×667, 320×568), opened from a row, all of it in view: its red button clear of the bar and the tabs, "
                   "focus in the box for the name (#493)", dz493 == {375: [True, "Type alex to confirm"], 320: [True, "Type alex to confirm"]}, dz493)
+            # #499: opened from its own picker (focus stays there), picked at the foot of a phone's screen, the zone is
+            # brought into view too, the picker with it: its red button was left under the tabs
+            page.set_viewport_size({"width": 375, "height": 667})
+            js("document.getElementById('rmUser').scrollIntoView({block: 'end'})")
+            settle(200)
+            page.select_option("#rmUser", label="alex")
+            settle(900)   # (a smooth scroll, where motion isn't reduced)
+            pick499 = js("""(() => { const p = getComputedStyle(document.documentElement), top = parseFloat(p.scrollPaddingTop), foot = innerHeight - parseFloat(p.scrollPaddingBottom);
+                return ['#rmUser', '#userDanger .dz-body input', '#userDanger .btn.danger'].map(s => (r => r.top >= top - 1 && r.bottom <= foot + 1)(document.querySelector(s).getBoundingClientRect())); })()""")
+            page.select_option("#rmUser", "")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…opened from its picker at 375×667, the zone in view, its picker, box and red button clear of the bar and the tabs (#499)",
+                  pick499 == [True, True, True], pick499)
             me287 = [r for r in rows287[1400] if r[2]]
             alex287 = [r for r in rows287[1400] if r[0] == "alex"]
             check("Admin → Accounts: badges for admin and two-factor, and a ⋯ menu on each account but your own (#287)",
@@ -16575,7 +16646,7 @@ def main():
             check("Reset password asks first, naming the account, in red with focus on Cancel (#249)", asked[0] == "Reset alex's password?"
                   and "one-time password" in asked[1] and reset_focus == ["alertdialog", "Cancel"], [asked, reset_focus])
             check("…Cancel resets nothing, and asks for no fresh check", js("document.getElementById('reauth').hidden")
-                  and db.execute("SELECT pw_hash FROM users WHERE username='alex'").fetchone()[0] == pw_was and not js("document.querySelector('#userMsg code')"))
+                  and db.execute("SELECT pw_hash FROM users WHERE username='alex'").fetchone()[0] == pw_was and not js("document.querySelector('#userTemp code')"))
             alex_do("Reset password…")
             answer_ask(page)
             page.wait_for_selector("#reauth input", state="visible", timeout=10000)
@@ -16592,13 +16663,74 @@ def main():
             page.wait_for_selector("#reauth input", state="visible", timeout=10000)
             page.fill("#reauth input", PW)
             page.locator("#reauth").get_by_role("button", name="Confirm").click()
-            page.wait_for_function("document.getElementById('reauth').hidden && document.querySelector('#userMsg code') && "
-                                   "document.getElementById('userMsg').textContent.includes('alex')", timeout=10000)
+            page.wait_for_function("document.getElementById('reauth').hidden && document.querySelector('#userTemp code') && "
+                                   "document.getElementById('userTemp').textContent.includes('alex')", timeout=10000)
             check("after the password, the reset goes ahead", True)
             settle(200)
             back493.append(js(row493) + [js(IN_SIGHT) is not None])
-            check("…focus back on alex's ⋯, in sight, after the check's Cancel and after the check and the reset (#493: it fell to the page)",
-                  back493 == [["Manage alex", True, True]] * 2, back493)
+            # (after the reset itself, focus is on its one-time password's Copy now: #499, below)
+            check("…focus back on alex's ⋯, in sight, after the check's Cancel; after the check and the reset, on the one-time password's Copy, "
+                  "in sight (#493: it fell to the page; #499)", back493 == [["Manage alex", True, True], ["Copy the one-time password", False, True]], back493)
+            # #499: with many accounts, at 1400×900 and 375×667. After a reset and after Create, the one-time password,
+            # shown once, is in sight with focus on its Copy (it was written under the list, far out of sight); after the
+            # check's Cancel, focus is on a control in sight: the row's ⋯ (it was off screen, the check above the list
+            # having scrolled it away), Create (it was on the page). Create as an admin is the one Create that's checked
+            db.execute("DELETE FROM users WHERE username LIKE 'fill499-%'")
+            for i in range(14):
+                db.execute("INSERT INTO users(username, pw_hash, is_admin, created) VALUES(?, 'x', 0, 0)", (f"fill499-{i:02d}",))
+            js("loadUsers()")
+            page.wait_for_function("document.querySelectorAll('#userList tr[data-user]').length > 15", timeout=10000)
+            temp499 = """(() => { const t = document.getElementById('userTemp'), r = t?.isConnected && t.getBoundingClientRect();
+                return r ? [t.querySelector('.copy-val-name').textContent, r.top >= 0 && r.bottom <= innerHeight] : null; })()"""
+            out499, last499 = {}, "fill499-13"
+            row499 = page.locator("#userList tr", has_text=last499)
+            for w, h in ((1400, 900), (375, 667)):
+                page.set_viewport_size({"width": w, "height": h})
+                js("scrollTo(0, 0)")
+                settle(200)
+                for confirm in (False, True):   # a reset, the check's Cancel, then the check
+                    db.execute("UPDATE sessions SET verified_at=0")
+                    row499.get_by_role("button", name="Manage " + last499).click()
+                    row499.get_by_role("menuitem", name="Reset password…").click()
+                    answer_ask(page)
+                    page.wait_for_selector("#reauth input", state="visible", timeout=10000)
+                    if confirm:
+                        page.fill("#reauth input", PW)
+                        page.locator("#reauth").get_by_role("button", name="Confirm").click()
+                        page.wait_for_function(f"document.getElementById('reauth').hidden && document.querySelector('#userTemp .copy-val-name')?.textContent === 'One-time password for {last499}'", timeout=10000)
+                    else:
+                        page.locator("#reauth").get_by_role("button", name="Cancel").click()
+                        page.wait_for_function("document.getElementById('reauth').hidden", timeout=10000)
+                    settle(300)
+                    out499[f"{w} reset" + ("" if confirm else ", Cancel")] = js(seen499)[1:] + [js(temp499) if confirm else None]
+                for n, admin, confirm in ((f"new499-{w}", False, True), (f"adm499-{w}", True, False), (f"adm499-{w}", True, True)):
+                    db.execute("UPDATE sessions SET verified_at=0")
+                    page.fill("#userName", n)
+                    page.set_checked("#userAdmin", admin)
+                    page.click("#userNew button[type=submit]")
+                    if admin:
+                        page.wait_for_selector("#reauth input", state="visible", timeout=10000)
+                        if confirm:
+                            page.fill("#reauth input", PW)
+                        page.locator("#reauth").get_by_role("button", name="Confirm" if confirm else "Cancel").click()
+                    page.wait_for_function(f"document.querySelector('#userTemp .copy-val-name')?.textContent === 'One-time password for {n}'" if confirm
+                                           else "document.getElementById('userNewMsg').textContent.startsWith('Not done')", timeout=10000)
+                    settle(300)
+                    out499[f"{w} create" + (" an admin" if admin else "") + ("" if confirm else ", Cancel")] = js(seen499)[1:] + [
+                        js(temp499) if confirm else js("document.getElementById('userNewMsg').textContent")]
+            page.set_viewport_size({"width": 1400, "height": 900})
+            db.execute("DELETE FROM users WHERE username LIKE 'fill499-%' OR username LIKE 'new499-%' OR username LIKE 'adm499-%'")
+            js("loadUsers()")
+            page.wait_for_function("!document.querySelector('#userList').textContent.includes('499-')", timeout=10000)
+            want499 = {}
+            for w in (1400, 375):
+                copy499 = lambda n: ["Copy the one-time password", True, [f"One-time password for {n}", True]]  # noqa: E731
+                want499.update({f"{w} reset, Cancel": [f"Manage {last499}", True, None], f"{w} reset": copy499(last499),
+                                f"{w} create": copy499(f"new499-{w}"), f"{w} create an admin, Cancel": ["Create account", True, "Not done: you didn't confirm it's you."],
+                                f"{w} create an admin": copy499(f"adm499-{w}")})
+            check("…with 16 accounts and more, at 1400×900 and 375×667: after a reset and after Create (as an admin too, after the check), the one-time password "
+                  "in sight with focus on its Copy; after the check's Cancel, focus in sight on the row's ⋯, or on Create with why beside it (#499)",
+                  out499 == want499, {k: v for k, v in out499.items() if want499.get(k) != v} or out499)
             problems[before:] = [x for x in problems[before:] if "403" not in x]   # the refusal that asks
             # Make admin and Remove admin ask first, naming the account (#249); Cancel leaves the flag as it was
             alex_do("Make admin…")

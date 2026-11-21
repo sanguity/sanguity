@@ -828,7 +828,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .acct .install-steps{padding-left:var(--sp-5);margin:var(--sp-2) 0;font-size:var(--fs-3);color:var(--ink2)}
 .acct .install-steps li{margin:var(--sp-1) 0}
 .acct .warn{border-color:var(--c-study);font-weight:var(--fw-medium)}
-.acct .reauth{border-left:3px solid var(--c-study);padding:var(--sp-1) 0 var(--sp-1) var(--sp-3);margin:var(--sp-3) 0}
+.acct :is(.reauth,.temp-pw){border-left:3px solid var(--c-study);padding:var(--sp-1) 0 var(--sp-1) var(--sp-3);margin:var(--sp-3) 0}
 .acct .form{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--sp-2);max-width:420px}
 .acct .form select{max-width:100%}   /* one column, as wide as the form: a long option shrinks, not the page wider at 320 px (#256) */
 .acct .form.inline{display:flex;flex-wrap:wrap;align-items:flex-end;max-width:none;margin-top:var(--sp-3)}

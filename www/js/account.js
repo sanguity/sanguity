@@ -72,13 +72,24 @@ $("#sessOthers").onclick = async () => {
 const APPS = "an authenticator app such as Google Authenticator, Microsoft Authenticator, 1Password or Bitwarden";
 /* the line under the heading: a hint at rest, the steps to take while turning it on (#280: those stay in full) */
 const tfHint = (text, steps) => { const p = $("#tfHint"); p.textContent = text; p.className = steps ? "howto" : "hint"; };
-async function loadTwoFactor() {
+/* focus moved to what a button of its own drew in its place (#499: it fell to the page with the button): to, in view
+   with its card, its heading and the line under it saying what now, where the card fits the window */
+function tfFocus(to) {
+  const card = $("#twofa"), pad = getComputedStyle(document.documentElement);
+  if (to.matches("h2")) to.tabIndex = -1;
+  to.focus({preventScroll: true});
+  (card.offsetHeight <= innerHeight - parseFloat(pad.scrollPaddingTop) - parseFloat(pad.scrollPaddingBottom) ? card : to).scrollIntoView({block: "nearest"});
+}
+/* focus: true once one of its own buttons drew it again (Cancel, Turn off, I've saved them): then on Turn on, else (on
+   now) on the card's heading */
+async function loadTwoFactor(focus = false) {
   const st = await call("me/2fa"), body = $("#tfBody");
   say("#tfMsg", "");
   if (!st.on) {
     tfHint(`Ask for a code from an authenticator app as well as your password, so a stolen password alone can't open your records.` +
       (st.required ? " This server requires it." : ""));
     body.replaceChildren(el("button", {class: "btn primary", type: "button", text: "Turn on", onclick: startTwoFactor}));
+    if (focus) tfFocus(body.firstChild);
     return;
   }
   tfHint(`On. You have ${st.recovery_codes_left} recovery code${st.recovery_codes_left === 1 ? "" : "s"} left` +
@@ -97,9 +108,10 @@ async function loadTwoFactor() {
       try {
         const r = await call("me/2fa/off", "POST", {password: pw.value});
         if (r.must_change_pw) { location.replace("account.html#password"); location.reload(); return; }
-        loadTwoFactor(); loadPasskeys(); loadSessions();
+        loadTwoFactor(true); loadPasskeys(); loadSessions();
       } catch (e) { say("#tfMsg", e.message, true); } }},
       pwField(pw).box, el("button", {class: "btn small", type: "submit", text: "Turn off"})));   // with Show (#492)
+  if (focus) tfFocus($("#twofa h2"));
 }
 async function startTwoFactor() {
   let s;
@@ -117,7 +129,7 @@ async function startTwoFactor() {
     el("form", {class: "row", onsubmit: async ev => { ev.preventDefault();
       try { showRecoveryCodes((await call("me/2fa/confirm", "POST", {code: code.value})).recovery_codes, true); } catch (e) { say("#tfMsg", e.message, true); } }},
       code, el("button", {class: "btn primary small", type: "submit", text: "Confirm"}),
-      el("button", {class: "btn small", type: "button", text: "Cancel", onclick: loadTwoFactor})));
+      el("button", {class: "btn small", type: "button", text: "Cancel", onclick: () => loadTwoFactor(true)})));
   code.focus();
 }
 function showRecoveryCodes(codes, justTurnedOn) {
@@ -127,13 +139,16 @@ function showRecoveryCodes(codes, justTurnedOn) {
     "They won't be shown again.", true);
   const done = el("button", {class: "btn primary small", type: "button", text: "I've saved them", onclick: async () => {
     if (ME.user.needs_two_factor) { location.replace("./"); return; }
-    await Promise.all([loadTwoFactor(), loadPasskeys(), loadSessions()]);
+    await Promise.all([loadTwoFactor(true), loadPasskeys(), loadSessions()]);
     adminAgain("#tfMsg"); }});
+  // the codes focused as they're shown (#499), in view
+  const shown = el("pre", {class: "tf-codes", tabindex: "-1", text: codes.join("\n")});
   $("#tfBody").replaceChildren(
-    el("pre", {class: "tf-codes", text: codes.join("\n")}),
+    shown,
     el("div", {class: "row"},
       el("a", {class: "btn small", download: "sanguity-recovery-codes.txt", href: "data:text/plain;charset=utf-8," + encodeURIComponent(text), text: "Download"}),
       done));
+  tfFocus(shown);
 }
 
 /* after a second factor is added: who's signed in, again; an admin who needed one for the Admin page (once the

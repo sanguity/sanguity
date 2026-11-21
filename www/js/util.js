@@ -166,13 +166,13 @@ function dangerZone(o) {
     first.replaceChildren(...[].concat(o.first ? o.first(n) : []));
     first.hidden = !first.childElementCount;
     body.hidden = false; open?.setAttribute("aria-expanded", "true"); sayIn(msg, ""); ready();
-    if (!focus) return;
-    typed.focus({preventScroll: true});
+    if (focus) typed.focus({preventScroll: true});
     // all of it in view, clear of the top bar and a phone's tabs (html's scroll-padding); taller than the room there
-    // is, its foot (the red button) at the room's foot
-    const pad = getComputedStyle(document.documentElement);
-    const fits = body.getBoundingClientRect().height <= innerHeight - parseFloat(pad.scrollPaddingTop) - parseFloat(pad.scrollPaddingBottom);
-    (fits ? body : go).scrollIntoView({block: fits ? "nearest" : "end", behavior: smoothly()});
+    // is, its foot (the red button) at the room's foot. Focus left where it was (its picker, #499: it opened out of
+    // sight on a phone), the picker in view too: the whole zone, else from the picker down
+    const pad = getComputedStyle(document.documentElement), room = innerHeight - parseFloat(pad.scrollPaddingTop) - parseFloat(pad.scrollPaddingBottom);
+    const whole = focus ? body : node, fits = whole.getBoundingClientRect().height <= room;
+    (fits ? whole : focus ? go : node.firstElementChild).scrollIntoView({block: fits ? "nearest" : focus ? "end" : "start", behavior: smoothly()});
   }
   function hide() { body.hidden = true; open?.setAttribute("aria-expanded", "false"); name = o.open ? o.name : null; typed.value = ""; ready(); }
   const node = el("section", {class: "danger-zone", "aria-labelledby": id + "Title"},
