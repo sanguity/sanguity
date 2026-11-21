@@ -152,12 +152,15 @@ def _document_uploads(db, pid, iid):
     return out
 
 
-def undo(db, pid, iid, who, ip=None):
-    """Undo import iid of profile pid (who: the signed-in account's row). Returns the history entry, now undone.
-    Raises Refused when there's no such import or it can't be undone."""
+def undo(db, pid, iid, who, ip=None, at=None):
+    """Undo import iid of profile pid (who: the signed-in account's row). at: when the import asked about was saved
+    (its history entry's "at"), so an id that came again before schema version 37 (#512) never undoes another import
+    than the one asked. Returns the history entry, now undone. Raises Refused when there's no such import, it isn't
+    the one asked, or it can't be undone."""
     imp = db.execute("SELECT id, at, origin, format, connection_id FROM imports WHERE id=? AND profile_id=?", (iid, pid)).fetchone()
-    if not imp:
-        raise Refused("No such import. It may have been undone already.", 404)
+    if not imp or (at is not None and imp["at"] != at):
+        gone = db.execute("SELECT 1 FROM import_undos WHERE profile_id=? AND import_id=?", (pid, iid)).fetchone()
+        raise Refused("This import was undone already." if gone else "No such import. It may have been undone already.", 404)
     if imp["origin"] == "build":
         raise Refused("This import is the setup build's and can't be undone here: " + NOTES["build"])
     entry = _entry(db, pid, imp)

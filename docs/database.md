@@ -3,7 +3,7 @@
 Sanguity keeps everything in one SQLite database, `DATA_DIR/sanguity.db`, plus files in the data folder that it
 points at (documents, uploads, previews, watch summaries). The schema is built step by step from `SCHEMA` in
 [`server/db.py`](../server/db.py): each step is a numbered version (`PRAGMA user_version`), applied once at start-up,
-so an older install upgrades itself. This page describes **schema version 36**. When you add a step, update the
+so an older install upgrades itself. This page describes **schema version 37**. When you add a step, update the
 diagrams here too.
 
 Two things hold everywhere:
@@ -130,7 +130,11 @@ it. **Edits** (corrections) belong to the profile instead, keyed by a hash of ea
 survive re-imports and undo. So do **same_results**: the person's decision that a lab result from one source is the
 same as one from another (shown once, with both sources) or not (no longer flagged), found by both results' point
 keys (`server/crossmatch.py`, #96). Records typed in have no job, so the import itself names the account that typed
-them in (`created_by`, schema version 35, #325), for the import history; it's NULL for every other origin.
+them in (`created_by`, schema version 35, #325), for the import history; it's NULL for every other origin. An
+import's id is never used again (`AUTOINCREMENT`, schema version 37, #512): undone, it keeps its id in **import_undos**,
+and the page still finds it by that id (Import history, a toast's Undo), so the next import gets a new one. The steps
+run with foreign keys off, as SQLite says to make a table again that others point at, and each is checked before it
+commits (`db.upgrade`).
 survive re-imports and undo. So do **journal** entries (#49, `server/journal.py`): notes, symptoms and side effects
 the people using the profile write themselves. They aren't records from anywhere, so no import owns them; the
 records the page loads list them as `journal`, and an export carries them in its `data.json`. Since #161 an entry
@@ -182,7 +186,7 @@ erDiagram
         int records_rev
     }
     imports {
-        int id PK
+        int id PK "never used again (#512)"
         int profile_id FK
         int at
         text origin "build | dataset | upload | manual"
@@ -263,7 +267,7 @@ erDiagram
     import_undos {
         int id PK
         int profile_id FK
-        int import_id "gone, so not a reference"
+        int import_id "gone, so not a reference; no other import has it"
         int at
         int by_id FK
         text by_name

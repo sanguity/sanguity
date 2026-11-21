@@ -603,9 +603,11 @@
   async function undoAsk(pid, id, fallback) {
     const path = `profiles/${encodeURIComponent(pid)}/imports`;
     const now = await api(path).then(r => r.ok ? r.json() : null).catch(() => null);
-    const e = ((now || {}).imports || []).find(x => x.id === id) || fallback;
+    const list = (now || {}).imports || [], e = list.find(x => x.id === id && x.state === "active") || list.find(x => x.id === id) || fallback;
     if (!await ask({title: "Undo this import?", danger: true, action: "Undo import", cancel: "Keep it", message: undoAsks(e)})) return false;
-    const r = await api(`${path}/${id}/undo`, {method: "POST"});
+    // the import asked about, by when it was saved too: never another that has its id (#512, from before ids stayed
+    // their own); one undone already is refused
+    const r = await api(`${path}/${id}/undo${e.state === "active" ? "?at=" + e.at : ""}`, {method: "POST"});
     if (!r.ok) { const x = await r.json().catch(() => ({})); throw new Error(typeof x.detail === "string" ? x.detail : `the server answered ${r.status}`); }
     return told(pid, id, true);
   }

@@ -301,6 +301,24 @@ class History(unittest.TestCase):
         raw = self.db.execute("SELECT entry FROM import_undos WHERE profile_id=?", (pid,)).fetchone()[0]
         self.assertNotIn("my-export", raw)
 
+    def test_an_undone_imports_id_never_comes_again(self):   # #512
+        pid = self.profile()
+        a = self.imported(pid, apple_files())
+        self.undo(pid, a["import_id"])
+        b = self.imported(pid, apple_files())
+        self.assertGreater(b["import_id"], a["import_id"], "the next import has an id of its own, not the undone one's")
+        r = self.ines.post(f"/api/profiles/{pid}/imports/{a['import_id']}/undo", headers=H)   # a stale Undo of A
+        self.assertEqual((r.status_code, r.json()["detail"]), (404, "This import was undone already."))
+        self.assertEqual(records.imports(self.db, pid), [b["import_id"]], "B is left as it was")
+        at = next(e["at"] for e in self.history(pid)["imports"] if e["id"] == b["import_id"])
+        r = self.ines.post(f"/api/profiles/{pid}/imports/{b['import_id']}/undo?at={at - 1}", headers=H)   # not the one asked
+        self.assertEqual(r.status_code, 404, r.text)
+        self.assertEqual(records.imports(self.db, pid), [b["import_id"]])
+        r = self.ines.post(f"/api/profiles/{pid}/imports/{b['import_id']}/undo?at={at}", headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual([(e["id"], e["state"]) for e in self.history(pid)["imports"]],
+                         [(b["import_id"], "undone"), (a["import_id"], "undone")])
+
     # ---------------------------------------------------------------- documents and raw files
 
     def test_raw_files_go_with_the_import(self):
@@ -393,6 +411,53 @@ class History(unittest.TestCase):
         self.assertEqual(records.imports(self.db, pid), [a["import_id"]])
         self.undo(pid, a["import_id"])   # and it can still be undone
         self.assertEqual(self.state(pid)["watch"][0], 204)
+
+
+
+class Schema(unittest.TestCase):
+    def test_version_37_keeps_every_import_and_what_points_at_it(self):   # #512
+        import sqlite3
+        d = tempfile.mkdtemp(prefix="sanguity-schema37-")
+        self.addCleanup(shutil.rmtree, d, True)
+        db = sqlite3.connect(os.path.join(d, "schema-36.db"), isolation_level=None)
+        db.execute("PRAGMA foreign_keys=ON")   # as the app's connections have it
+        for v, sql in enumerate(dbm.SCHEMA[:36], start=1):
+            db.executescript("BEGIN;" + sql + f"PRAGMA user_version={v};COMMIT;")
+        db.execute("INSERT INTO users(id, username, pw_hash, created) VALUES(1, 'ines', 'x', 1)")
+        db.execute("INSERT INTO profiles(id, name, created) VALUES(1, 'Fictional', 1)")
+        for iid in (1, 2, 4):
+            db.execute("INSERT INTO imports(id, profile_id, at, origin, format, meta, name, created_by) VALUES(?, 1, ?, 'upload', 'csv', 'm', 'n', 1)", (iid, 10 * iid))
+        db.execute("INSERT INTO events(id, profile_id, import_id, body) VALUES(7, 1, 2, 'e')")
+        db.execute("INSERT INTO series(id, profile_id, import_id, body) VALUES(8, 1, 2, 's')")
+        db.execute("INSERT INTO results(id, profile_id, import_id, series_id, body) VALUES(9, 1, 2, 8, 'r')")
+        db.execute("INSERT INTO documents(id, profile_id, path, ext, import_id) VALUES('doc', 1, 'p', 'pdf', 4)")
+        db.execute("INSERT INTO uploads(id, profile_id, created, state) VALUES(1, 1, 1, 'ready')")
+        db.execute("INSERT INTO jobs(id, profile_id, upload_id, state, import_id, created) VALUES(1, 1, 1, 'done', 2, 1)")
+        db.execute("INSERT INTO labmaps(lookup, importer, source, created_name, created, import_id) VALUES('l', 'csv', 's', 'ines', 1, 4)")
+        db.execute("INSERT INTO import_undos(profile_id, import_id, at, by_name, entry) VALUES(1, 6, 60, 'ines', 'gone')")   # the newest, undone
+        db.execute("INSERT INTO activity(at, profile_id, actor, action, detail) VALUES(60, 1, 'ines', 'undo', '{}')")
+        tables = ("imports", "events", "series", "results", "documents", "jobs", "labmaps", "import_undos", "activity")
+        before = {t: db.execute(f"SELECT * FROM {t} ORDER BY 1").fetchall() for t in tables}
+
+        dbm.upgrade(db)
+        self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], len(dbm.SCHEMA))
+        self.assertEqual(db.execute("PRAGMA foreign_keys").fetchone()[0], 1, "foreign keys on again")
+        self.assertEqual({t: db.execute(f"SELECT * FROM {t} ORDER BY 1").fetchall() for t in tables}, before)
+        self.assertEqual(db.execute("PRAGMA foreign_key_check").fetchall(), [])
+        self.assertEqual({r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE tbl_name='imports' AND type='index'")},
+                         {"imports_profile", "imports_connection"})
+        self.assertNotIn("imports_37", "".join(r[0] or "" for r in db.execute("SELECT sql FROM sqlite_master")))
+        new = db.execute("INSERT INTO imports(profile_id, at, origin, format) VALUES(1, 70, 'upload', 'csv')").lastrowid
+        self.assertEqual(new, 7, "after the highest id there has been, the undone one's included")
+        db.execute("DELETE FROM imports WHERE id=?", (new,))
+        self.assertEqual(db.execute("INSERT INTO imports(profile_id, at, origin, format) VALUES(1, 80, 'upload', 'csv')").lastrowid, 8)
+        db.execute("DELETE FROM imports WHERE id=2")   # the references still cascade (and set null) from the new table
+        self.assertEqual([db.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("events", "series", "results")], [0, 0, 0])
+        self.assertIsNone(db.execute("SELECT import_id FROM jobs WHERE id=1").fetchone()[0])
+        db.execute("DELETE FROM imports WHERE id=4")
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM documents").fetchone()[0], 0)
+        self.assertIsNone(db.execute("SELECT import_id FROM labmaps").fetchone()[0])
+        db.close()
 
 
 if __name__ == "__main__":

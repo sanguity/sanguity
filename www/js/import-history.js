@@ -71,7 +71,7 @@
     opener.disabled = true;
     say("Undoing…");
     try {
-      await call(`profiles/${PID}/imports/${e.id}/undo`, "POST");
+      await call(`profiles/${PID}/imports/${e.id}/undo?at=${e.at}`, "POST");   // this one, never another with its id (#512)
       say(e.removal ? "Undone: the records it took out are back." : `Undone: the ${e.label} import's records are gone from the profile.`);
       await sanguityImport.told(PID, e.id, true);   // the page told, as a toast's Undo tells it (#508): this list read again (below)
       const li = document.getElementById("import-" + e.id);   // drawn again, marked undone: focus on it, not lost with the button
