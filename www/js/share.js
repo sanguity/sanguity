@@ -13,7 +13,7 @@ const SH_KIND = {visit: "Visit", stay: "Hospital stay", procedure: "Procedure", 
   note: "Note", symptom: "Symptom", side_effect: "Side effect", mood: "Mood"};
 const shDay = t => t ? fmtD(zParse(String(t).slice(0, 10))) : "";
 const shWhen = t => !t ? "" : /T\d\d:\d\d/.test(t) ? fmtDT(zParse(String(t).slice(0, 19))) : shDay(t);
-const shUsd = v => v == null ? "" : v.toLocaleString(undefined, {style: "currency", currency: "USD"});
+const shUsd = v => v == null ? "" : v.toLocaleString("en-US", {style: "currency", currency: "USD"});   // "$22.06", as the app writes it (#543)
 
 $("#theme").onclick = () => {
   const dark = document.documentElement.dataset.theme ? document.documentElement.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;

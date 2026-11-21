@@ -41,8 +41,9 @@ pkBox.hidden = !passkeysWork();   // only over HTTPS (or localhost), in a browse
 function codeStep(on, methods = {code: true}) {
   ticket = on || null;
   const code = !on || methods.code !== false, sites = methods.sites || [];
-  // #540: a passkey the only way on, and none of the account's made at this name: said first, with where they were
-  const away = !!on && !code && passkeysWork() && sites.length > 0 && !sites.includes(location.hostname);
+  // #540: none of the account's passkeys made at this name: said, with where they were, and no passkey button (#543:
+  // for an account with a code too, whose "Use a passkey" was refused)
+  const away = !!on && passkeysWork() && sites.length > 0 && !sites.includes(location.hostname);
   document.getElementById("step1").hidden = !!on; document.getElementById("step2").hidden = !on;
   document.getElementById("codeBox").hidden = !on || !code; btn.hidden = !code;
   document.getElementById("u").readOnly = !!on; document.getElementById("p").required = !on;
@@ -53,20 +54,26 @@ function codeStep(on, methods = {code: true}) {
   pkBtn.textContent = on ? "Use a passkey" : "Sign in with a passkey";
   // a passkey the only way on: what's needed said, and the button described by it (#518: it said "Use a passkey" alone)
   const says = document.getElementById("pkSays"), pkOnly = !!on && !code;
-  says.hidden = !pkOnly;
+  says.hidden = !pkOnly && !away;
   if (pkOnly) pkBtn.setAttribute("aria-describedby", says.id); else pkBtn.removeAttribute("aria-describedby");
   // #523: where passkeys can't work (plain HTTP away from localhost, or a browser without them) there's no button to
   // press: the step says why and how to sign in instead, and takes focus itself
   const stuck = pkOnly && (!passkeysWork() || away);
   if (stuck) says.tabIndex = -1; else says.removeAttribute("tabindex");
   // this computer's own address (#531): where the account's passkeys were made, as links (#535: localhost, though they
-  // were made at another name), else localhost, which works without HTTPS; a name's port isn't kept (passkeys.py where)
+  // were made at another name), else localhost, which works without HTTPS; a name's port isn't kept (passkeys.py where).
+  // localhost a link only from a page on this computer (#543): elsewhere (another device, a proxy on 443) the page's
+  // scheme and port aren't the server's, and localhost is the device itself
   const own = /^(127\.|\[::1\]$)/.test(location.hostname), port = location.port ? ":" + location.port : "";
+  const loop = own || /(^|\.)localhost$/.test(location.hostname);
   const go = (sites.length ? sites : ["localhost"]).flatMap((h, i) => {
-    const at = /(^|\.)localhost$/.test(h) ? `${location.protocol}//${h}${port}` : `https://${h}`;
-    return [i ? " or " : "", el("a", {href: at + location.pathname, text: at})];
+    const lh = /(^|\.)localhost$/.test(h), at = lh ? `${location.protocol}//${h}${port}` : `https://${h}`;
+    return [i ? " or " : "", lh && !loop ? `${h} (on the computer it runs on)` : el("a", {href: at + location.pathname, text: at})];
   });
-  sayIn(says, !pkOnly ? "" : !stuck ? "Password accepted. Use your passkey to finish signing in." :
+  // with a code (#543): beside its box, which the code's field is described by
+  document.getElementById("c").setAttribute("aria-describedby", away && code ? "cn pkSays" : "cn");
+  sayIn(says, away && code ? ["None of this account's passkeys was made at this address. To use one, open Sanguity at ", ...go, " and sign in there."] :
+    !pkOnly ? "" : !stuck ? "Password accepted. Use your passkey to finish signing in." :
     away ? ["Password accepted, but this account finishes signing in with a passkey, and none of its passkeys was made at this address. Open Sanguity at ",
       ...go, " and sign in there, or use another account."] :
     ["Password accepted, but this account finishes signing in with a passkey, and passkeys don't work here: ",
@@ -74,7 +81,7 @@ function codeStep(on, methods = {code: true}) {
         `https:// address${ipHost() ? ", by its name rather than an IP address," : ""} and sign in there`]
         : ipHost() ? ["this is an IP address. Open Sanguity at ", ...(own ? go : ["its https:// name"]), " and sign in there"]   // (#527)
         : ["this browser doesn't have them. Sign in with one that does"]), ", or use another account."],
-    false, {say: !stuck});   // (read as it takes focus)
+    false, {say: pkOnly && !stuck});   // (read as it, or the code's field, takes focus)
   if (on) (code ? document.getElementById("c") : stuck ? says : pkBtn).focus();
 }
 /* Use another account (#518): back to the first step, its username and password empty, from the second step */

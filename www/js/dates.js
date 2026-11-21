@@ -35,21 +35,28 @@ function useDates(zone, format) {
   _zfmt = z ? new Intl.DateTimeFormat("en-US", {timeZone: z, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric"}) : null;
 }
 const _withZone = (o = {}) => DATES.zone && !o.timeZone ? {...o, timeZone: DATES.zone} : o;
-/* t in English, the interface's language, as the browser's region writes it ("en-DE": "6 Oct 2026, 14:05"; #540: the
-   format setting's order with a German month, "Okt 6, 2026"), with these options (which name the parts to show: year,
+/* t in English as the app writes it everywhere, the server's PDFs too (summary.py fmt_date): en-US month names and
+   clock ("Sep 6", "2:05 PM"; #543: the browser's region gave "Sept" and "14:05" outside the US), a day and a month
+   in the order of this person's format ("6 Sep" for dmy), with these options (which name the parts to show: year,
    month, hour...), in their zone: what Date's toLocaleDateString, toLocaleTimeString and toLocaleString give, with
    each formatter made once and kept, since making one is most of the time those take (a ten-year record shows
    thousands of dates, #201). A time keeps its AM or PM here, at the source (#517): the space between them is a
    no-break one, so no line on any page ends "10:06" with "AM" on the next */
-const DATE_LOC = (() => { try { const r = new Intl.Locale(navigator.language).maximize().region; return r ? "en-" + r : "en"; } catch (e) { return "en"; } })();
+let _bf = "";
+const _order = () => DATES.format || (_bf ||= browserFormat());   // the format chosen, else the browser language's order
 const _fmts = new Map();
 function _fmt(t, o) {
   const key = JSON.stringify(o) + DATES.zone;
   let f = _fmts.get(key);
-  if (!f) _fmts.set(key, f = new Intl.DateTimeFormat(DATE_LOC, _withZone(o)));
+  if (!f) _fmts.set(key, f = new Intl.DateTimeFormat("en-US", _withZone(o)));
   const d = new Date(t);
   if (isNaN(d)) return "Invalid Date";   // as Date's own say it, where format() would throw
-  if (!o.hour) return f.format(d);
+  if (!o.hour) {
+    if (!o.day || !/^(short|long)$/.test(o.month) || _order() !== "dmy") return f.format(d);
+    const p = {};
+    for (const x of f.formatToParts(d)) p[x.type] = x.value;
+    return [p.weekday, p.day, p.month, p.year].filter(Boolean).join(" ");
+  }
   const p = f.formatToParts(d), am = i => p[i]?.type === "dayPeriod";
   return p.map((x, i) => x.type === "literal" && (am(i - 1) || am(i + 1)) ? x.value.replace(/\s/g, "\u00a0") : x.value).join("");
 }
@@ -109,9 +116,7 @@ function _ymdParts(t) {
 function fmtD(t) {
   t = _ms(t);
   if (!isFinite(t)) return "";
-  const f = DATES.format;
-  if (!f) return _fmt(t, {year: "numeric", month: "short", day: "numeric"});
-  const p = _ymdParts(t);
+  const f = _order(), p = _ymdParts(t);
   if (f === "ymd") return `${p.y}-${String(p.m + 1).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`;
   return f === "dmy" ? `${p.d} ${p.mon} ${p.y}` : `${p.mon} ${p.d}, ${p.y}`;
 }
@@ -119,8 +124,7 @@ const fmtTime = t => _fmt(_ms(t), {hour: "numeric", minute: "2-digit"});
 function fmtDT(t) {
   t = _ms(t);
   if (!isFinite(t)) return "";
-  if (!DATES.format) return _fmt(t, {year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit"});
-  return `${fmtD(t)}${DATES.format === "ymd" ? " " : ", "}${fmtTime(t)}`;
+  return `${fmtD(t)}${_order() === "ymd" ? " " : ", "}${fmtTime(t)}`;
 }
 const fmtMonth = t => _fmt(_ms(t), {year: "numeric", month: "long"});
 /* seconds since 1970 (what the API sends for when things happened), as a date and time */

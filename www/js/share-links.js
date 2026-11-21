@@ -53,7 +53,7 @@ function shareLinksPanel(p, {open = false} = {}) {
           el("div", {class: "muted"}, keepDates(slRange(l.from, l.to)))),
         el("td", {}, l.state === "active" ? keepDates(when(l.expires)) : SL_STATE[l.state],
           l.state === "revoked" ? el("div", {class: "muted"}, keepDates(`by ${l.revoked_by}, ${when(l.revoked)}`)) : null),
-        el("td", {}, l.views ? keepDates(`${l.views} time${l.views === 1 ? "" : "s"}, last ${when(l.last_viewed)}`) : "never"),
+        el("td", {}, l.views ? keepDates(`${l.views.toLocaleString("en-US")} time${l.views === 1 ? "" : "s"}, last ${when(l.last_viewed)}`) : "never"),
         el("td", {}, l.state === "revoked" || l.state === "expired" ? null : el("button", {class: "btn small", type: "button", text: "Revoke",
           onclick: async () => {
             if (!await ask({title: `Revoke ${l.label ? `“${l.label}”` : "this link"}?`, message: "It stops working at once, for anyone who has it.",

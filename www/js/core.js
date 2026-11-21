@@ -2,7 +2,8 @@
    Plain script, loaded in order by index.html; all files share one global scope. */
 "use strict";
 // CATS, CAT_OF, KIND_LABEL, KIND_ICON and kindIcon(): util.js (#470: the command palette's, on every page)
-const usd = v => (v || 0).toLocaleString(undefined, {style: "currency", currency: "USD", maximumFractionDigits: 0});
+// money as the app writes it everywhere, "$4,772" (#543: the browser's own, "4 772 $US" in France, beside counts written "1,381")
+const usd = v => (v || 0).toLocaleString("en-US", {style: "currency", currency: "USD", maximumFractionDigits: 0});
 /* The profile's settings (server/settings.py), changed on the Settings page. The server sends every one, with its
    defaults filled in; these are only what the page uses if that fails, and should match the server's defaults. */
 const DEFAULT_SETTINGS = {
