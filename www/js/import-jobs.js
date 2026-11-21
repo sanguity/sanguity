@@ -207,9 +207,14 @@
       .map(([r, v]) => [r.l.ref, v === KEEP ? null : v]));
     // the first box naming no series, marked as such
     const wrong = () => { const r = rows.find(r => r.read() === null); if (r) r.box.dispatchEvent(new Event("change")); return r ? r.box : null; };
-    // what's been typed, by ref, and typed again in a review drawn again (#497): a name still listed gets it back
-    const kept = () => Object.fromEntries(rows.filter(r => r.box.value !== r.initial).map(r => [r.l.ref, r.box.value]));
-    const put = typed => { for (const r of rows) if (r.l.ref in typed) { r.box.value = typed[r.l.ref]; r.box.dispatchEvent(new Event("change")); } };
+    // what's been typed, by ref, and typed again in a review drawn again (#497): a name still listed gets it back,
+    // marked as naming no series only where the person's own change had marked it (#504: not one half typed)
+    const kept = () => Object.fromEntries(rows.filter(r => r.box.value !== r.initial).map(r => [r.l.ref, [r.box.value, r.box.hasAttribute("aria-invalid")]]));
+    const put = typed => { for (const r of rows) if (r.l.ref in typed) {
+      const [v, bad] = typed[r.l.ref];
+      r.box.value = v;
+      if (bad) r.box.dispatchEvent(new Event("change"));
+    } };
     return {part, picked, wrong, kept, put};
   }
 
@@ -243,14 +248,17 @@
   const draws = j => (j.total || j.counts || {}).results > 0;
   const hereCount = j => { const d = j.duplicates || {};
     return Math.max(0, (d.events || 0) - (draws(j) ? (d.kinds || {}).lab || 0 : 0) + (d.results || 0) + (d.other || 0)); };
+  // ...and with a wearable's data there already (#500): the bar's count, and the list's (#504)
+  const allHere = j => { const w = (j.duplicates || {}).watch || {}; return hereCount(j) + [...WATCH].reduce((a, k) => a + (w[k] || 0), 0); };
   // the duplicates of what the profile has (#22): skipped, each with a box to add it again anyway; a series' results
   // dated from the first to the last (#490), a lab draw not offered beside its own results
   function dupChoices(j) {
-    const d = j.duplicates || {items: []}, n = hereCount(j), boxes = new Map();
+    const d = j.duplicates || {items: []}, n = hereCount(j), all = allHere(j), boxes = new Map();
     const items = (d.items || []).filter(it => !(it.kind === "lab" && draws(j)));   // a draw goes with its results
     const watch = watchHere(d.watch);   // a wearable's days and workouts there already (#497), named after the list
+    const dups = plural(all, ["duplicate", "duplicates"]);
     const part = items.length ? node("details", {class: "imp-dups"},
-      node("summary", {text: `Already here: ${plural(n, ["duplicate", "duplicates"])}, skipped unless ticked`}),
+      node("summary", {text: `Already here: ${dups}, skipped unless ticked`}),
       node("p", {class: "hint", text: "These are in the profile already. Tick any you want added again anyway; an allergy, problem or " +
         "appointment already in its lists isn't added twice."}),
       node("ul", {}, items.map(it => {
@@ -264,8 +272,8 @@
         return node("li", {}, node(it.ref ? "label" : "span", {}, b, " ", node("span", {class: "d"}, when), " ", what));
       })),
       d.more ? node("p", {class: "hint", text: `…and ${d.more.toLocaleString()} more.`}) : null,
-      watch ? node("p", {class: "hint", text: `Already here as well: ${watch}, skipped.`}) : null)
-      : n || watch ? node("p", {class: "hint", text: "Already here: " + [n ? plural(n, ["duplicate", "duplicates"]) : null, watch].filter(Boolean).join("; ") + ", skipped."})
+      watch ? node("p", {class: "hint", text: `Of these, not listed and always skipped: ${watch}.`}) : null)
+      : all ? node("p", {class: "hint", text: !n ? `Already here, skipped: ${watch}.` : `Already here: ${dups}, skipped` + (watch ? `, ${watch} among them.` : ".")})
       : null;
     // what the ticked ones add, by count key: a result's n results, an event one of its kind
     const ticked = () => items.filter(it => boxes.get(it)?.checked);
@@ -337,9 +345,9 @@
   // how many records are new, already here or possibly the same as another source's: a bar in three parts and its key.
   // A wearable's data counts beside them (#500: a later export's new day and workout, and those it has already)
   function split(j) {
-    const c = j.counts || {}, same = (j.possible || []).length, w = (j.duplicates || {}).watch || {};
+    const c = j.counts || {}, same = (j.possible || []).length;
     const records = counted(c).filter(x => x.record || WATCH.has(x.k)).reduce((a, x) => a + x.n, 0);
-    const here = hereCount(j) + [...WATCH].reduce((a, k) => a + (w[k] || 0), 0);
+    const here = allHere(j);
     const parts = [["new", Math.max(0, records - same), "new"], ["here", here, "already here"], ["same", same, "possibly the same"]];
     const total = parts.reduce((a, p) => a + p[1], 0);
     if (!total) return null;
@@ -449,7 +457,7 @@
         const open = [...card.querySelectorAll("details")].map(d => [listSel(d), d.open]);
         draw({profile_id: pid, ...j}, true);
         for (const [sel, o] of open) { const d = card.querySelector(sel); if (d) d.open = o; }
-        if (had) { const to = back && back(); (to && to.checkVisibility() ? to : card).focus({preventScroll: true}); }
+        if (had) { const to = back && back(); (to && !to.disabled && to.checkVisibility() ? to : card).focus({preventScroll: true}); }
       };
       draw(job);
     });
@@ -459,15 +467,18 @@
   const fresh = card => FRAMES.get(card)?.fresh?.();
   // a review's list (the lab names, possible matches, duplicates, the notes), as a selector that finds it drawn again
   const listSel = d => d.classList.length ? "details." + d.classList[0] : "details:not([class])";
-  // the control a, found again in the card drawn again (#500): a box by its ref, a list's summary, else the same
-  // kind of control at the same place in its list or in the card -> () => the element or undefined
+  // the control a, found again in the card drawn again (#500): a box by its ref, a list's summary, the bar's Add or
+  // Cancel by which it is (#504: a list gone, its ⓘ with it, moves the places of the rest), else the same kind of
+  // control at the same place in its list, or among the card's outside the lists -> () => the element or undefined
+  // (f.fresh puts focus on the card when it's gone or disabled)
   function spot(card, a) {
     const d = a.closest("details"), at = d ? listSel(d) + " " : "";
     const sel = a.matches("summary") ? at + "summary"
       : a.matches("input[data-ref]") ? at + `input[data-ref="${CSS.escape(a.dataset.ref)}"]`
-      : a.matches("input[type=checkbox]") ? at + `input[type=checkbox][value="${CSS.escape(a.value)}"]` : null;
+      : a.matches("input[type=checkbox]") ? at + `input[type=checkbox][value="${CSS.escape(a.value)}"]`
+      : a.matches(".imp-actions button") ? ".imp-actions " + (a.matches(".primary") ? ".primary" : "button:not(.primary)") : null;
     if (sel) return () => card.querySelector(sel);
-    const all = () => [...card.querySelectorAll(at + a.localName)], i = all().indexOf(a);
+    const all = () => [...card.querySelectorAll(at + a.localName)].filter(x => d || !x.closest("details")), i = all().indexOf(a);
     return () => all()[i];
   }
   const freshOthers = (card, pid) => { for (const c of document.querySelectorAll(`.job[data-step=review][data-pid="${pid}"] .import-job`)) if (c !== card) fresh(c); };
@@ -528,19 +539,30 @@
       actions: [{text: labs ? "Open Labs" : "Open the timeline", href: `index.html?profile=${pid}#${where}`},
         ...(j.import_id != null && what.length ? [{text: "Undo…", onClick: () => undoImport(card, pid, j, what)}] : [])]});
   }
-  // what else an Undo takes away (#500, the server's labmap.forget): the lab-name matches the import's review made,
-  // as Import history says it (import-history.js)
-  const forgets = n => !n ? "" : n === 1 ? " The lab-name match made for it is forgotten too: the next import of that name asks about it again."
-    : ` The ${n.toLocaleString()} lab-name matches made for it are forgotten too: the next import of those names asks about them again.`;
-  /* the Undo of a toast: Import history's, asked first as it asks (false: kept), the card then saying it's undone */
+  /* what an Undo asks (#504: one wording, Import history's too, import-history.js): what goes ("6 lab results in 2
+     tests"), with the files uploaded for it, and the lab-name matches its review made, as many as undoing it would
+     forget now (#500, the server's labmap.forgettable: not those another import has used since) */
+  function undoAsks(label, what, files, matches) {
+    const n = matches || 0;
+    return `Everything this ${label} import brought is removed: ${what.toLowerCase()}` + (files ? ", and the files uploaded for it" : "") + "." +
+      (!n ? "" : n === 1 ? " The lab-name match made for it is forgotten too: the next import of that name asks about it again."
+       : ` The ${n.toLocaleString()} lab-name matches made for it are forgotten too: the next import of those names asks about them again.`) +
+      " This can't be reversed; you can import the files again.";
+  }
+  /* the Undo of a toast: Import history's, asked first as it asks (false: kept), with its matches counted as it's
+     asked; the card then saying it's undone, and focus on that line, from the toast (#504: not the next toast's ✕) */
   async function undoImport(card, pid, j, what) {
+    const id = j.import_id, path = `profiles/${encodeURIComponent(pid)}/imports`;
+    const now = await api(path).then(r => r.ok ? r.json() : null).catch(() => null);
+    const matches = ((now || {}).imports || []).find(e => e.id === id)?.lab_matches;
     if (!await ask({title: "Undo this import?", danger: true, action: "Undo import", cancel: "Keep it",
-                    message: `Remove everything this ${j.label || j.importer} import brought: ${what.join(", ").toLowerCase()}, and the files uploaded for it.` +
-                      forgets((j.lab_names || {}).remembered) + " This can't be reversed; you can import the files again."})) return false;
-    const id = j.import_id;
-    const r = await api(`profiles/${encodeURIComponent(pid)}/imports/${id}/undo`, {method: "POST"});
+                    message: undoAsks(j.label || j.importer, what.join(", "), true, matches)})) return false;
+    const r = await api(`${path}/${id}/undo`, {method: "POST"});
     if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(typeof e.detail === "string" ? e.detail : `the server answered ${r.status}`); }
-    card.replaceChildren(node("p", {}, node("b", {text: "Undone."}), " The import's records are gone from the profile; Import history lists it as undone."));
+    const line = node("p", {tabindex: "-1"}, node("b", {text: "Undone."}), " The import's records are gone from the profile; Import history lists it as undone.");
+    card.replaceChildren(line);
+    const a = document.activeElement;
+    if ((!a || a === document.body || a.closest("#sgToasts")) && line.checkVisibility()) line.focus();
     toast("Undone: the import's records are gone from the profile.");
   }
 
@@ -621,5 +643,5 @@
     return poll(f.body, opts.profileId, opts.jobId, text);
   }
 
-  window.sanguityImport = {uploaded, follow, frame, fresh};
+  window.sanguityImport = {uploaded, follow, frame, fresh, undoAsks};
 })();

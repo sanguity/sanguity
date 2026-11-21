@@ -6,7 +6,7 @@
    choice of its own. After an import finishes through window.sanguityImport (import-jobs.js), the list is read again.
    Each import is #import-<id>: a record's Source link on the main page (sources.js, #100) opens
    sources.html?profile=<pid>#import-<id>, and that import is scrolled to and highlighted.
-   Plain script in its own scope; $, el and api come from util.js. */
+   Plain script in its own scope; $, el and api come from util.js, the Undo's question from import-jobs.js (undoAsks). */
 "use strict";
 (function () {
   const KIND = {visit: ["visit", "visits"], lab: ["lab draw", "lab draws"], imaging: ["imaging study", "imaging studies"],
@@ -88,16 +88,14 @@
     return li;
   }
 
-  // what else an Undo takes away (#500, the server's labmap.forget): the lab-name matches the import's review made,
-  // unless another import has used them since (as the toast's Undo says it, import-jobs.js)
-  const forgets = n => !n ? "" : n === 1 ? " The lab-name match made for it is forgotten too: the next import of that name asks about it again."
-    : ` The ${n.toLocaleString()} lab-name matches made for it are forgotten too: the next import of those names asks about them again.`;
-  // asked first, in the app's dialog (ask(), util.js; #363), the red button its action and focus on Keep it
+  // asked first, in the app's dialog (ask(), util.js; #363), the red button its action and focus on Keep it; in the
+  // words the toast's Undo asks in (import-jobs.js undoAsks, #504), the lab-name matches it forgets read as it's asked
   async function confirmUndo(e, opener) {
+    const now = e.removal ? null : await call(`profiles/${PID}/imports`).catch(() => null);
+    const matches = ((now || {}).imports || []).find(x => x.id === e.id)?.lab_matches ?? e.lab_matches;
     if (!await ask({title: e.removal ? "Put back what this took out?" : "Undo this import?",
       message: e.removal ? `What comes back: ${counts(e).toLowerCase()}.` :
-        `Everything this ${e.label} import brought is removed: ${counts(e).toLowerCase()}` + (e.upload != null ? ", and the files uploaded for it" : "") +
-        "." + forgets(e.lab_matches) + " This can't be reversed; you can import the files again." + (e.origin === "dataset" ? " What it replaced when it was loaded won't come back." : ""),
+        sanguityImport.undoAsks(e.label, counts(e), e.upload != null, matches) + (e.origin === "dataset" ? " What it replaced when it was loaded won't come back." : ""),
       action: e.removal ? "Put them back" : "Undo import", cancel: "Keep it", danger: true})) return;
     opener.disabled = true;
     say("Undoing…");

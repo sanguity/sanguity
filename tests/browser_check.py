@@ -9591,7 +9591,7 @@ def main():
             asked = answer_ask(page, yes=False)
             kept_imp = js("fetch('api/profiles/2/imports', {cache: 'no-store'}).then(r => r.json()).then(j => j.imports[0])")
             check("…its Undo… asks first, in Import history's words (#360), and Keep it leaves the import, and the toast, there",
-                  asked[0] == "Undo this import?" and asked[1].startswith("Remove everything this CareSpace / OncoEMR portal export import brought: ") and "can't be reversed" in asked[1]
+                  asked[0] == "Undo this import?" and asked[1].startswith("Everything this CareSpace / OncoEMR portal export import brought is removed: ") and "can't be reversed" in asked[1]   # (one wording, #504)
                   and not kept_imp.get("undone_at") and js("document.querySelector('#sgToasts .sg-toast:last-child .sg-toast-text').textContent") == done_toast[0],
                   [asked, kept_imp.get("undone_at")])
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
@@ -9787,10 +9787,35 @@ def main():
             tl500 = js("[window._page500, location.pathname + location.search + location.hash]")
             check("from “/?profile=N”, the dialog's Open Labs and “See them on the timeline” change the tab without a reload (#500)",
                   labs500 == [1, f"/?profile={dpid497}#labs"] and tl500 == [1, f"/?profile={dpid497}#timeline"], [labs500, tl500])
+            # (#504) a profile with no records: two CSVs dropped into the dialog, the first added, the dialog closed: its
+            # records are drawn without loading the page again, the toast's Undo and the other review kept
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            db = dbm.connect()
+            epid504 = prof497.create_profile(db, "Empty (fictional)", owner_id=db.execute("SELECT id FROM users WHERE username=?", (USER,)).fetchone()["id"])
+            db.close()
+            page.goto(base + f"/?profile={epid504}")
+            page.wait_for_function(f"PROFILE && PROFILE.id === {epid504} && !!document.querySelector('main > .empty')", timeout=20000)
+            js("window._page504 = 1")
+            dcards504 = "document.querySelectorAll('dialog.up-dlg .import-job')"
+            for n, row in enumerate(("Sodium,141,mmol/L,135 - 145", "Chloride,101,mmol/L,98 - 107")):
+                js(drop497, [f"empty-{n}.csv", f"Date,Test,Result,Units,Reference Range\n2026-11-15,{row}\n"])
+                page.wait_for_function(f"(l => l.length === {n + 1} && /^Ready to import/.test(l[{n}].textContent))({dcards504})", timeout=30000)
+            js(f"{dcards504}[0].querySelector('.imp-actions .primary').click()")
+            page.wait_for_function(f"/^Imported/.test({dcards504}[0].textContent)", timeout=30000)
+            page.click("dialog.up-dlg .sheet-x")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && DATA && !document.querySelector('main > .empty')", timeout=20000)
+            empty504 = js(f"""[window._page504, document.querySelector('.tabs').hidden, !!document.querySelector('#sgToasts .sg-toast button')
+                && [...document.querySelectorAll('#sgToasts .sg-toast button')].some(b => b.textContent === 'Undo…'),
+                {dcards504}.length, /^Ready to import/.test({dcards504}[1].textContent), document.querySelector('dialog.up-dlg').open]""")
+            check("an empty profile's dialog closed after Add draws its records without a reload, keeping the toast's Undo and the other review (#504)",
+                  empty504 == [1, False, True, 2, True, False], empty504)
+            js(f"(j => fetch(`api/profiles/{epid504}/jobs/${{j}}/discard`, {{method: 'POST', headers: {{'X-Sanguity': '1'}}}}))({dcards504}[1].dataset.job)")
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             page.set_viewport_size({"width": 1400, "height": 900})
             page.goto("about:blank")
             db = dbm.connect()
             prof497.delete_profile(db, dpid497)
+            prof497.delete_profile(db, epid504)
             db.close()
             page.goto(base + "/?profile=2")
             page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE && PROFILE.id === 2 && EV.length > 0", timeout=20000)
@@ -10696,9 +10721,9 @@ def main():
                 [...c.querySelectorAll('.imp-dups li')].map(li => li.textContent.replace(/^.*?\\d{{4}} /, '')),
                 c.querySelector('.imp-dups ul + p.hint')?.textContent, [c.querySelector('.imp-actions .primary').textContent, c.querySelector('.imp-actions .primary').disabled]])({last_card})""")
             check("…and the zip again says nothing new: all duplicates, no tiles, its activity and workout already here, every duplicate it counts listed (#497)",
-                  dup497[:4] == ["All duplicates", False, ["0 new", "10 already here", "0 possibly the same"], "Already here: 7 duplicates, skipped unless ticked"]   # (its 2 days and workout too, #500)
+                  dup497[:4] == ["All duplicates", False, ["0 new", "10 already here", "0 possibly the same"], "Already here: 10 duplicates, skipped unless ticked"]   # (its 2 days and workout too, #500, in both counts, #504)
                   and dup497[4] == 7 and dup497[5] == 5 and any(t.startswith("Allergy: ") for t in dup497[6]) and any(t.startswith("problem or diagnosis: ") for t in dup497[6])
-                  and dup497[7] == "Already here as well: 2 days of activity data and 1 workout, skipped." and dup497[8] == ["Nothing to add", True], dup497)
+                  and dup497[7] == "Of these, not listed and always skipped: 2 days of activity data and 1 workout." and dup497[8] == ["Nothing to add", True], dup497)
             # (#500) a duplicate ticked, focus on its box, the review drawn again (as another import's Add or Review in
             # Waiting for you draws it): the list stays open, focus on the same box, still ticked; then on its summary
             box500 = page.locator("#importer .import-job").last.locator(".imp-dups input[type=checkbox]").first
@@ -10735,13 +10760,15 @@ def main():
                         z.writestr("apple_health_export/" + os.path.relpath(os.path.join(d, n), ah497).replace(os.sep, "/"), data500)
             page.set_input_files("#pickFiles", files=[{"name": "export-later.zip", "mimeType": "application/zip", "buffer": buf500.getvalue()}])
             page.wait_for_function(f"/^Ready to import/.test({last_card}.textContent) && {last_card}.closest('.job').querySelector('h3').textContent === 'export-later.zip'", timeout=30000)
-            new500 = js(f"(c => [[...c.querySelectorAll('.imp-split li')].map(li => li.textContent), c.querySelector('.imp-title').textContent])({last_card})")
+            new500 = js(f"(c => [[...c.querySelectorAll('.imp-split li')].map(li => li.textContent), c.querySelector('.imp-title').textContent, c.querySelector('.imp-dups summary')?.textContent])({last_card})")
             js(f"{last_card}.querySelector('.imp-actions .primary').click()")
             page.wait_for_function(f"/^Imported/.test({last_card}.textContent)", timeout=30000)
             new500.append(js(f"{last_card}.querySelector('p').textContent"))
             check("a later Apple Health export's review counts its new day and workout as new, its range and the saved card's taking them in (#500)",
                   new500[0] == ["2 new", "10 already here", "0 possibly the same"] and new500[1].endswith(" – Jun 3, 2025")
-                  and new500[2].endswith(" from Jun 3, 2025."), new500)
+                  and new500[3].endswith(" from Jun 3, 2025."), new500)
+            check("…its bar and its list of duplicates give one count of what's already here (#504)",
+                  new500[2] == "Already here: 10 duplicates, skipped unless ticked", new500[:3])
             # (#500) a lab name matched to a series by hand, added, then undone from its toast: the question says the
             # match goes too, and the same file again asks about the name again
             undo500 = csv497.replace("XR", "XV").format("2026-11-12", "12.7").encode()
@@ -10755,6 +10782,9 @@ def main():
             page.click("#sgToasts .sg-toast:last-child button:text-is('Undo…')")
             asked500 = answer_ask(page)
             page.wait_for_function(f"/^Undone/.test({last_card}.textContent)", timeout=10000)
+            settle(200)
+            undone504 = js(f"[document.activeElement === {last_card}.firstElementChild, document.activeElement.textContent.slice(0, 7)]")
+            check("after the toast's Undo, focus is on the card's “Undone.” line, not on the next toast (#504)", undone504[0], undone504)
             page.set_input_files("#pickFiles", files=[{"name": "undo-500-again.csv", "mimeType": "text/csv", "buffer": undo500}])
             page.wait_for_function(f"/^Ready to import/.test({last_card}.textContent) && {last_card}.closest('.job').querySelector('h3').textContent === 'undo-500-again.csv'", timeout=30000)
             ask500 = js(f"(c => [!!c.querySelector('.imp-labs input[list]'), !!c.querySelector('.imp-labs .before'), c.querySelector('.imp-labs .why')?.textContent])({last_card})")
@@ -10780,6 +10810,77 @@ def main():
             page.goto("about:blank")   # (a fresh page: the address names profile 2 now, so a goto there would only change its hash)
             db = dbm.connect()
             prof497.delete_profile(db, pid497)
+            db.close()
+            # (#504) in a profile of its own, two reviews in Upload files, focus on the second's Cancel: the first's Add
+            # draws the second again, which loses its lab-name list (its ⓘ with it) or, the same file, has nothing to
+            # add; focus stays on that Cancel either way
+            db = dbm.connect()
+            pid504 = prof497.create_profile(db, "Redraws (fictional)", owner_id=db.execute("SELECT id FROM users WHERE username=?", (USER,)).fetchone()["id"])
+            db.close()
+            page.goto(base + f"/sources.html?profile={pid504}#upload")
+            page.wait_for_selector("#importer", state="visible", timeout=10000)
+            def up504(name, text):
+                n = js("document.querySelectorAll('#importer .import-job').length")
+                page.set_input_files("#pickFiles", files=[{"name": name, "mimeType": "text/csv", "buffer": text.encode()}])
+                page.wait_for_function(f"document.querySelectorAll('#importer .import-job').length > {n} && /^(Ready to import|All duplicates)/.test({last_card}.textContent)", timeout=30000)
+                return f"document.querySelector('.import-job[data-job=\"{js(last_card + '.dataset.job')}\"]')"
+            cancel504 = "(c => [...c.querySelectorAll('.imp-actions button')].find(b => b.textContent === 'Cancel'))"
+            def add504(card, then="Imported"):
+                js(f"{card}.querySelector('.imp-actions .primary').click()")
+                page.wait_for_function(f"/^{then}/.test({card}.textContent)", timeout=30000)
+            csv504 = "Date,Test,Result,Units,Reference Range\n2026-11-15,Sodium,141,mmol/L,135 - 145\n2026-11-15,Zeta marker {},4.2,U/L,1 - 9\n"
+            redraw504 = []
+            for name504, b504 in (("XW", csv504.format("XW") + "2026-11-17,Sodium,139,mmol/L,135 - 145\n"), ("XX", csv504.format("XX"))):
+                a504, bc504 = up504(f"a-{name504}.csv", csv504.format(name504)), up504(f"b-{name504}.csv", b504)
+                had504 = js(f"!!{bc504}.querySelector('.imp-labs')")
+                js(f"{cancel504}({bc504}).focus()")
+                js("window._old504 = document.activeElement")
+                add504(a504)
+                page.wait_for_function("!window._old504.isConnected", timeout=30000)
+                redraw504.append([had504, js(f"document.activeElement === {cancel504}({bc504})"), js(f"!!{bc504}.querySelector('.imp-labs')"),
+                                  js(f"{bc504}.querySelector('.imp-actions .primary').textContent")])
+                js(f"{cancel504}({bc504}).click()")
+                page.wait_for_function(f"{bc504}.textContent.startsWith('Cancelled.')", timeout=10000)
+            check("with focus on a review's Cancel, another's Add draws it again with focus on that Cancel: its lab names gone, "
+                  "or all duplicates, nothing to add (#504)",
+                  redraw504 == [[True, True, False, "Add 1 lab result"], [True, True, False, "Nothing to add"]], redraw504)
+            # (#504) a series half typed in one review, the review drawn again by another's Add: the text and focus kept,
+            # not marked as naming no series
+            half504 = "Date,Test,Result,Units,Reference Range\n{},Half typed marker,4.2,ng/mL,1 - 9\n"
+            a504, bc504 = up504("half-a.csv", half504.format("2026-11-15")), up504("half-b.csv", half504.format("2026-11-16"))
+            page.locator(".import-job").last.locator(".imp-labs input[list]").click()
+            page.keyboard.type("Sodi")
+            js("window._old504 = document.activeElement")
+            add504(a504)
+            page.wait_for_function("!window._old504.isConnected", timeout=30000)
+            typed504 = js(f"""(b => [b.matches('.imp-labs input[list]'), b.value, b.hasAttribute('aria-invalid'),
+                {bc504}.querySelector('.imp-labs [id$=-why]').classList.contains('err')])(document.activeElement)""")
+            check("a series half typed, its review drawn again, keeps its text and focus and isn't marked as naming no series (#504)",
+                  typed504 == [True, "Sodi", False, False], typed504)
+            js(f"{cancel504}({bc504}).click()")
+            page.wait_for_function(f"{bc504}.textContent.startsWith('Cancelled.')", timeout=10000)
+            # (#504) a lab name matched by hand and added, then the same name in a later import (the match applied by
+            # itself) added: the first's toast's Undo asks without saying the match goes (undone now, it's kept)
+            names504 = "Date,Test,Result,Units,Reference Range\n{},Omega ratio {},3.{},pg/mL,1 - 9\n"
+            add504(up504("own-504.csv", names504.format("2026-11-10", "QA", 1)))
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            m504 = up504("match-504.csv", names504.format("2026-11-11", "QB", 2))
+            page.locator(".import-job").last.locator(".imp-labs input[list]").fill("Omega ratio QA")
+            js(f"{m504}.querySelector('.imp-labs input[list]').dispatchEvent(new Event('change'))")
+            add504(m504)
+            made504 = js(f"fetch('api/profiles/{pid504}/imports', {{cache: 'no-store'}}).then(r => r.json()).then(j => j.imports[0].lab_matches)")
+            add504(up504("again-504.csv", names504.format("2026-11-12", "QB", 3)))
+            used504 = [made504] + js(f"fetch('api/profiles/{pid504}/imports', {{cache: 'no-store'}}).then(r => r.json()).then(j => j.imports.slice(0, 2).map(e => e.lab_matches))")
+            page.click("#sgToasts .sg-toast:first-child button:text-is('Undo…')")
+            asked504 = answer_ask(page, yes=False)
+            check("the toast's Undo, its lab-name match used by a later import since, doesn't say the match goes (#504)",
+                  used504 == [1, 0, 0] and asked504[1].startswith("Everything this Lab results spreadsheet (CSV) import brought is removed: ")
+                  and "forgotten" not in asked504[1], [used504, asked504])
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            page.goto("about:blank")
+            db = dbm.connect()
+            db.execute("DELETE FROM labmaps WHERE import_id IN (SELECT id FROM imports WHERE profile_id=?)", (pid504,))
+            prof497.delete_profile(db, pid504)
             db.close()
             page.goto(base + "/sources.html?profile=2#overview")
             page.wait_for_selector("#srcNav a[data-group=history]", state="visible", timeout=10000)
