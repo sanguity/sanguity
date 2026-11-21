@@ -2139,6 +2139,16 @@ Everything on `main` so far; it becomes the first tagged release.
   between its date and its time instead. Outside connections names a source's vendor as Set up a source does ("Epic
   (MyChart)", not "epic"), and a host that didn't answer is said in plain words ("its name wasn't found"), not as
   "gaierror". With forced colours the admin and two-factor badges keep their outline, and three unused rules are gone.
+- **Sharing and first run: a made share link kept through New share link, measures' notes naming their rows, counts
+  written one way, the passkey wording at 127.0.0.1, and the new profile's title** (#531): pressing New share link
+  again emptied the box of the link just made, its only copy, before anything was made, and Cancel didn't bring it
+  back; it stays until the next link is made. A share page's note under Blood glucose, Blood oxygen, ECGs, BMI and
+  targets said "The latest 20 of 1,064 rows."; each names its rows ("days", "readings", "days and readings" where they
+  mix), said by the server with the block. A measure's lead wrote "1381 readings" over "The latest 20 of 1,381
+  readings."; leads write thousands with a separator, as do the visit summary's measure headings, notes and PDF. At
+  127.0.0.1 (or ::1) sign-in's passkey-only step and Account's passkeys card said to open Sanguity at its https://
+  name; passkeys work at http://localhost, which they name, with the port. guide.html?new with profiles already there
+  was titled "Getting started: Whose records"; it's "A new profile", as its heading.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

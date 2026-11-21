@@ -30,7 +30,8 @@ owners and editors while it's on and ticked each time, and share links never off
 
 Each section is a block, the same for the summary's page and PDF and for a share link's page:
   {"lead": [lines], "cols": [[heading, kind, PDF width]], "rows": [[cell]], "total": rows before any were cut,
-   "note": a line under the table, "empty": what to say with no rows, "history": a list of everything, not a period}
+   "note": a line under the table, "empty": what to say with no rows, "history": a list of everything, not a period,
+   "of": what the rows are, for "The latest 20 of 1,381 readings." (#531: "days and readings" where they mix)}
 A cell of kind "day" is YYYY-MM-DD, "time" a local wall time YYYY-MM-DDTHH:MM (in the watch summary's own zone, as
 the phone took it; a reading typed in is a wall time already), "text" as it is; each page writes dates in its own
 way. Only the fields named here leave the server. Values are in the units of the person making it (Settings → Units,
@@ -90,8 +91,8 @@ def _day(t):
     return t[:10] if len(t) >= 10 and t[4:5] == "-" and t[7:8] == "-" else None
 
 
-def _s(n, word):
-    return f"{n} {word}{'' if n == 1 else 's'}"
+def _s(n, word):   # "1,381 readings", as a share link's note writes the count (#531)
+    return f"{n:,} {word}{'' if n == 1 else 's'}"
 
 
 class Ctx:
@@ -130,10 +131,10 @@ def context(db, pid, data, cfg):
     return Ctx(watch, data, cfg)
 
 
-def _block(cols, rows, lead=(), note="", empty="", most=None, history=False):
+def _block(cols, rows, lead=(), note="", empty="", most=None, history=False, of="readings"):
     total = len(rows)
     return {"lead": [x for x in lead if x], "cols": [list(c) for c in cols], "rows": rows[:most] if most else rows,
-            "total": total, "note": note, "empty": empty, "history": history}
+            "total": total, "note": note, "empty": empty, "history": history, "of": of}
 
 
 def _src(name, app):
@@ -243,7 +244,7 @@ def oxygen(c, keep, most):
     if not ones:   # the watch's days only: as before
         return _block([("Date", "day", 90), ("Average (%)", "text", 90), ("Lowest (%)", "text", None)],
                       [[d, _n(v, 1), _n(lo, 1)] for d, v, lo in days], lead, "The watch's readings through each day (SpO2), as it "
-                      "measured them, sent by a phone app.", "No blood oxygen in this period.", most)
+                      "measured them, sent by a phone app.", "No blood oxygen in this period.", most, of="days")
     vs, typed = [v for _, v, _ in ones], all(r[3] == TYPED for _, _, r in ones)
     lead.append(f"{_s(len(ones), 'reading')} {'typed in' if typed else 'one at a time'} · average {_n(sum(vs) / len(vs), 1)}%" +
                 (f" · lowest {_n(min(vs), 1)}%" if len(vs) > 1 else ""))
@@ -252,7 +253,8 @@ def oxygen(c, keep, most):
     rows.sort(key=lambda x: x[4], reverse=True)   # newest first; a day's average above that day's readings
     return _block([("Date", "day", 90), ("Readings", "text", 150), ("SpO2 (%)", "text", 80), ("Lowest (%)", "text", None)],
                   [x[:4] for x in rows], lead, "Sent by a phone app (the watch's readings through each day, as it measured them) "
-                  "or typed in at home, one reading at a time.", "No blood oxygen in this period.", most)
+                  "or typed in at home, one reading at a time.", "No blood oxygen in this period.", most,
+                  of="days and readings" if days else "readings")
 
 
 def _daily(c, key, keep, most, what, note):
@@ -265,7 +267,7 @@ def _daily(c, key, keep, most, what, note):
         lead.append(f"{_s(len(days), 'day')} · average {_n(sum(vs) / len(vs), 1)} {unit}" +
                     (f" · lowest {_n(min(vs), 1)}, highest {_n(max(vs), 1)}" if len(vs) > 1 else ""))
     return _block([("Date", "day", 90), (f"{what} ({unit})" if unit else what, "text", None)],
-                  [[d, _n(v, 1)] for d, v in days], lead, note, "None from the watch in this period.", most)
+                  [[d, _n(v, 1)] for d, v in days], lead, note, "None from the watch in this period.", most, of="days")
 
 
 def respiratory(c, keep, most):
@@ -334,13 +336,15 @@ def glucose_block(c, keep, most):
         lead.append(f"{_s(len(vs), 'meter reading')}" + (" typed in" if k == len(vs) else f" ({k} typed in)" if k else "") +
                     f" · average {cv(sum(vs) / len(vs))} {unit} · lowest {cv(min(vs))}, highest {cv(max(vs))}")
     note = "Sent by a phone app or typed in at home, as the meter or monitor measured them."
+    # a CGM's or a meter's day a row, a typed reading a row of its own; mixed, "336 CGM days · 728 meter readings"
+    of = "readings" if not cgm and not meter else "days and readings" if ones or cgm and meter else "days"
     if not cgm:   # a meter's readings only (#232): no CGM columns, room for each typed reading's time and meal note
         return _block([("Date", "day", 60), ("Readings", "text", 180), (f"Low–high ({unit})", "text", 100), (f"Average ({unit})", "text", None)],
                       [r[:4] for r in rows], lead, note.replace("meter or monitor", "meter (finger-stick)"),
-                      "No glucose in this period.", most)
+                      "No glucose in this period.", most, of=of)
     return _block([("Date", "day", 60), ("Readings", "text", 86), (f"Low–high ({unit})", "text", 86), ("Average", "text", 46),
                    (f"{s1}–{s2}", "text", 56), (f"Below {s1}", "text", 56), (f"Below {s0}", "text", 56), (f"Above {s2}", "text", None)],
-                  rows, lead, STD_NOTE.format(f"{s1}–{s2}", unit, s1, s0) + " " + note, "No glucose in this period.", most)
+                  rows, lead, STD_NOTE.format(f"{s1}–{s2}", unit, s1, s0) + " " + note, "No glucose in this period.", most, of=of)
 
 
 def immunizations(c, keep, most):
@@ -356,14 +360,14 @@ def immunizations(c, keep, most):
                      str(x.get("where") or x.get("performer") or "")[:200]])
     rows.sort(key=lambda r: r[0], reverse=True)
     return _block([("Date", "day", 80), ("Vaccine", "text", 220), ("Dose", "text", 60), ("Where or by whom", "text", None)],
-                  rows, (), "As the records say them.", "No immunizations in the records.", most, history=True)
+                  rows, (), "As the records say them.", "No immunizations in the records.", most, history=True, of="vaccines")
 
 
 def ecg_block(c, keep, most):
     rows = [[r["when"], r["title"], r["text"]] for r in ecg.shared_rows(c.watch) if keep(r["when"])]
     return _block([("Date", "day", 80), ("What the watch said", "text", 220), ("Details", "text", None)], rows, (),
                   "As the watch classified each one; the traces themselves aren't included.",
-                  "No ECGs or irregular rhythm notifications in this period.", most)
+                  "No ECGs or irregular rhythm notifications in this period.", most, of="ECGs and notifications")
 
 
 def _weights(c):
@@ -427,7 +431,7 @@ def bmi(c, keep, most):
             "(2 to 20); not what that means." if child else
             "BMI: each weight with the height in effect on its day (About this person); the number only, with no category.")
     return _block([("Date", "day", 70), ("Measure", "text", 50), ("Value", "text", 70), ("Percentile", "text", 70), ("From", "text", None)],
-                  rows, lead, note, "No weights with a height in this period.", most)
+                  rows, lead, note, "No weights with a height in this period.", most, of="measurements")
 
 
 # ---------------------------------------------------------------- #234 targets of your own (server/targets.py)
@@ -508,7 +512,7 @@ def targets_block(c, keep, most):
                   "A blood pressure reading is above its target when its systolic or diastolic is; blood oxygen is each day's average "
                   "from the watch and each reading typed in; weight, the smart scale's. Readings taken at visits aren't compared. "
                   "Standard published ranges stay labelled as their publisher's. Not medical advice.",
-                  "No targets entered.", most)
+                  "No targets entered.", most, of="targets")
 
 
 def _doses(c):
@@ -533,7 +537,7 @@ def medlog(c, keep, most):
                    ("From", "text", None)],
                   [[t, name[:200], med_log.LABEL.get(st, st), note, src] for t, name, st, note, src in rows], lead,
                   "As logged, typed in or in Apple Health's Medications: what the person said happened, nothing more.",
-                  "No doses logged in this period.", most)
+                  "No doses logged in this period.", most, of="doses")
 
 
 BUILD = {"home_bp": home_bp, "glucose": glucose_block, "temperature": temperature, "oxygen": oxygen, "respiratory": respiratory,

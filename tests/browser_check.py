@@ -2648,6 +2648,11 @@ def main():
         hp.evaluate("scrollTo(0, 0)")
         costs491 = hp.evaluate("""() => { const s = document.getElementById('share-costs'), m = s.querySelector('.share-more');
           return [s.querySelectorAll('tbody tr').length, m?.querySelector('.hint').textContent, m?.querySelector('button').textContent]; }""")
+        # #531: each measure's lead lines and its "The latest 20 of …" note ("of 1,064 rows" for glucose; "1381 readings"
+        # in a lead over "of 1,381 readings")
+        notes531 = hp.evaluate("""() => Object.fromEntries([...document.querySelectorAll('#shareBody section')].filter(s => s.querySelector('table.measures'))
+          .map(s => [s.id, [[...s.querySelectorAll('p:not(.hint):not(.muted)')].map(p => p.textContent),
+            [...s.querySelectorAll('p.hint')].map(p => p.textContent).find(t => t.startsWith('The latest ')) || '']]))""")
         # #501: Show all keeps focus while it loads (aria-disabled, not disabled: focus fell to the page), saying
         # "Loading…" in the line it's described by, a live region; a failure said there, focus still on it; and the rows
         # come without pulling focus to them once it has moved on (another long section's: costs' are below)
@@ -2759,6 +2764,14 @@ def main():
         n491 = int(re.sub(r"\D", "", costs491[2] or "") or 0)
         check("…Costs' claims (more than 40): the latest 20, saying so, and Show all asks for the rest and lists them, the first of them focused (#491, #498)",
               n491 > 40 and costs491 == [20, f"The latest 20 of {n491:,} claims.", f"Show all {n491:,}", n491, 20, True], costs491)
+        cut531 = {k: re.fullmatch(r"The latest \d+ of ([\d,]+) (.+)\.", v[1]) for k, v in notes531.items() if v[1]}
+        same531 = {k: [m[1], [ln for ln in notes531[k][0] if re.match(r"[\d,]+ ", ln) and re.sub(r"\D", "", ln.split()[0]) == re.sub(r"\D", "", m[1])]]
+                   for k, m in cut531.items() if m}
+        check("…no measure's note on it says “rows”, each naming them (#531: “The latest 20 of 1,064 rows.” for glucose), and a count its lead "
+              "has too written the same way in both, with a thousands separator (#531: “1381 readings” over “of 1,381 readings”)",
+              len(cut531) >= 2 and all(m and m[2] != "rows" for m in cut531.values())
+              and any(v[1] for v in same531.values()) and all(ln.startswith(n + " ") for n, lns in same531.values() for ln in lns)
+              and not any(re.search(r"(?<![\d.,:–-])\d{4,}(?![\d.,:–-])", t) for v in notes531.values() for t in v[0] + [v[1]]), notes531)
         # #501: a year's link to visits, lab results and medications (the form's default sections and dates, the year to
         # the demo's last day), printed with every history open: no page before the last is more than a quarter empty
         # (Chrome breaks a table row only when it's longer than a page, so a history went to the next whole, its test's
@@ -13701,9 +13714,17 @@ def main():
             page.wait_for_selector("#preview:not([hidden]):not([aria-busy]) h3", timeout=10000)   # drawn as the choices change (#288)
             heads = js("[...document.querySelectorAll('#preview h3')].map(h => h.textContent)")
             pv = js("document.getElementById('preview').textContent")
+            # #531: blood pressure's count in its heading, its lead and its "The latest 12 of …" note ("(1381)", "1381 readings")
+            bp531 = js("""(() => { const h = [...document.querySelectorAll('#preview h3')].find(x => x.textContent.startsWith('Blood pressure at home')), out = [h.textContent.match(/\\(([\\d,.]+)\\)$/)?.[1]];
+                for (let e = h.nextElementSibling; e && e.tagName !== 'H3'; e = e.nextElementSibling) if (e.tagName === 'P') out.push(e.textContent);
+                return out; })()""")
+            bp531.append(next((t for t in bp531[2:] if t.startswith("The latest ")), ""))
             check("…ticked, the preview shows each: blood pressure at home with the count, average and highest, and its readings",
                   len(heads) == 5 and heads[0].startswith("Blood pressure at home since") and re.search(r"\d+ readings? · average \d+/\d+ mmHg · highest systolic \d+", pv)
                   and js("document.querySelectorAll('#preview table').length") == 5, heads)
+            check("…and its count written one way in its heading, its lead and the note under it (#531: “1381 readings”, “of 1,381”)",
+                  bp531[0] and bp531[1].startswith(bp531[0] + " readings") and (not bp531[-1] or f" of {bp531[0]} are listed." in bp531[-1])
+                  and bp531[0] == f"{int(re.sub(r'[,.]', '', bp531[0])):,}", bp531)
             check("…glucose by day, CGM time in ranges labelled as the standard published ranges (not anyone's targets)",
                   "Blood glucose at home since" in pv and "time in the standard ranges" in pv and "standard published ranges" in pv
                   and "not anyone's own targets" in pv and not re.search(r"(?i)\b(normal|good|bad|target range)\b", pv), heads)
@@ -18199,10 +18220,21 @@ def main():
             info493 = js("[...document.querySelectorAll('.info > button')].filter(b => b.getAttribute('aria-label') === 'About Share links').map(b => !!document.getElementById(b.getAttribute('aria-controls')))")
             check("…Share links has one ⓘ still, after those role changes (#493)", info493 == [True], info493)
             kept527 = js("[...document.querySelectorAll('#links .share-made .share-url')].map(i => i.value)")
+            # #531: and through New share link and its Cancel (pressing New share link emptied it, before anything was made)
+            page.click("#shrNav a[data-group=links]")
+            page.locator("#links button", has_text="New share link").click()
+            page.wait_for_selector("#links .share-form", timeout=10000)
+            kept531 = [js("[...document.querySelectorAll('#links .share-made .share-url')].map(i => i.value)")]
+            page.locator("#links .share-form button", has_text="Cancel").click()
+            kept531.append(js("[...document.querySelectorAll('#links .share-made .share-url')].map(i => i.value)"))
+            page.click("#shrNav a[data-group=people]")
+            page.wait_for_selector("#shareWith form input", timeout=10000)
             js("""() => fetch('api/profiles/2/links').then(r => r.json()).then(j => Promise.all(j.links.filter(l => l.label === 'Kept 527' && l.state === 'active')
               .map(l => fetch('api/profiles/2/links/' + l.id, {method: 'DELETE', headers: {'X-Sanguity': '1'}}))))""")   # revoked again, for the checks after
             check("…and a share link made before them keeps its box, the link's only copy, through Share with and those role changes (#527: it was lost)",
                   made527.startswith(base + "/share.html#") and kept527 == [made527], [made527, kept527])
+            check("…and after New share link and its Cancel, the made link's box is still there (#531: New share link emptied it, the link's only copy)",
+                  kept531 == [[made527], [made527]], kept531)
             # ---- role changes that are hard to take back ask first (#249): Cancel puts the select back and sends nothing
             alex_sel, my_sel = "#memberList select[aria-label=\"alex's role\"]", f"#memberList select[aria-label=\"{USER}'s role\"]"
             focus_js = "(() => { const d = document.querySelector('dialog.sg-ask[open]'); return [d.getAttribute('role'), document.activeElement.textContent]; })()"
@@ -18323,6 +18355,8 @@ def main():
             page.click(new_opt)
             page.wait_for_url(re.compile(r"/guide\.html\?new"), timeout=10000)
             new_at = [js("location.pathname + location.search"), js("document.getElementById('newProfileLink').getAttribute('href')")]
+            page.wait_for_function("document.getElementById('guideTitle').textContent === 'A new profile' && !document.getElementById('guideHd').hidden", timeout=10000)
+            title531 = js("document.title")
             third = js("api('profiles', {method: 'POST', body: JSON.stringify({name: 'Third person (fictional)'})}).then(r => r.json()).then(j => j.id)")
             page.goto(base + f"/sharing.html?profile={third}#profile")
             page.wait_for_url(f"**/settings.html?profile={third}#profile", timeout=10000)
@@ -18331,6 +18365,8 @@ def main():
                   new_at == ["/guide.html?new", "guide.html?new"] and js("document.querySelector('#setNav a[aria-current=page]').dataset.group") == "profile"
                   and js("document.getElementById('groupTitle').textContent") == "Rename or delete"
                   and js("document.querySelector('#profileBody input').value") == "Third person (fictional)", [new_at, third])
+            check("…and guide.html?new, with profiles already there, is titled as its h1, “A new profile · Sanguity” (#531: “Getting started: Whose records”)",
+                  title531 == "A new profile · Sanguity", title531)
             # #419: the card alone in its group, its h2 "Name" is said only: the field's own label is shown
             name_label = js("""(() => { const i = document.getElementById('profileName'), l = i.labels[0], r = l && l.getBoundingClientRect();
                 return [l ? l.firstChild.textContent : null, !!r && r.height > 0 && r.width > 1 && !l.closest('.vh'), i.computedName ?? null, i.hasAttribute('aria-label')]; })()""")
@@ -19103,10 +19139,11 @@ def main():
             signin527.append(ipp.evaluate("[document.activeElement.id, document.getElementById('pkSays').textContent, document.getElementById('pk').checkVisibility()]"))
             ip527.close()
             check("passkeysWork() is false at an IP address, IPv4 or IPv6, true at a name; sign-in at 127.0.0.1 shows no passkey button, and the "
-                  "passkey-only step says why (#527: offered, then “Passkeys don't work at this address” once pressed)",
+                  "passkey-only step says why, naming http://localhost, where they work (#527: offered, then “Passkeys don't work at this address” "
+                  "once pressed; #531: it said to open its https:// name)",
                   pw527 == [True, True, False, False, False, False, False] and signin527 == [[True, False, True, False], ["pkSays",
                   "Password accepted, but this account finishes signing in with a passkey, and passkeys don't work here: this is an IP address. "
-                  "Open Sanguity at its https:// name and sign in there, or use another account.", False]], [pw527, signin527])
+                  f"Open Sanguity at {base.replace('127.0.0.1', 'localhost')} and sign in there, or use another account.", False]], [pw527, signin527])
             looks ={f: pk.evaluate(FIELD_LOOK_JS, f) for f in ("#u", "#p")}
             check("sign-in's fields look like the app's (#332): the same background, edge and corner as a field on Account, in light and dark",
                   acct_field and acct_field["light"] != acct_field["dark"] and all(v == acct_field for v in looks.values()), [acct_field, looks])

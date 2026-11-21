@@ -45,10 +45,13 @@ def site(origin):
     if not host:
         raise PasskeyError("Passkeys need the browser to say which site this is; reload the page and try again.")
     try:
-        ipaddress.ip_address(host)
-        raise PasskeyError("Passkeys don't work at an IP address. Open Sanguity by its name (with HTTPS) to use one.")
+        ip = ipaddress.ip_address(host)
     except ValueError:
-        pass
+        ip = None
+    if ip:   # this computer's own address (127.x, ::1): its name, localhost, works without HTTPS (#531)
+        raise PasskeyError("Passkeys don't work at an IP address. Open Sanguity " + (
+            f"at {parts.scheme}://localhost{f':{parts.port}' if parts.port else ''}" if ip.is_loopback else "by its name (with HTTPS)") +
+            " to use one.")
     if parts.scheme != "https" and host != "localhost" and not host.endswith(".localhost"):
         raise PasskeyError("Passkeys need HTTPS. Open Sanguity at its https:// address to use one.")
     return host, f"{parts.scheme}://{parts.netloc}".lower()

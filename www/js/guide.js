@@ -57,7 +57,8 @@
     for (const sec of document.querySelectorAll(".guide-step")) sec.hidden = sec.id !== "step-" + s.id;
     $("#guideSkip").hidden = !P || P.role === "viewer" || s.id === "done";   // nothing left to skip at the end
     drawList();
-    viewTitle("Getting started: " + s.title, moved && "Getting started: " + s.title);
+    const h1 = $("#guideTitle").textContent, t = h1 === "Getting started" ? `${h1}: ${s.title}` : h1;   // "A new profile" as its h1 (#531)
+    viewTitle(t, moved && t);
     if (location.hash.slice(1) !== s.id) try { history.replaceState(history.state, "", "#" + s.id); } catch (e) {}
     if (moved) {
       const h = $("#step-" + s.id + " h2");
