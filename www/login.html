@@ -31,11 +31,13 @@
     <input id="p" name="password" type="password" autocomplete="current-password" required>
   </div>
   <div id="step2" hidden>
+    <p class="note tight"><a href="login.html" id="other">Use another account</a></p>
     <div id="codeBox">
       <label for="c">Code from your authenticator app</label>
       <input id="c" name="code" inputmode="numeric" autocomplete="one-time-code" spellcheck="false" placeholder="123 456" aria-describedby="cn">
       <div class="note tight" id="cn">Lost your phone? Enter one of your recovery codes instead.</div>
     </div>
+    <p class="note" id="pkSays" hidden></p>
   </div>
   <button class="btn primary large" id="b" type="submit">Sign in</button>
   <div id="pkBox" hidden>

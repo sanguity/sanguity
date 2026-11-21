@@ -2578,6 +2578,10 @@ def main():
             flag514 = hp.evaluate("""() => [...document.querySelectorAll('#share-results .share-hist:not([hidden]) table')].map(t => {
               const box = t.closest('.share-scroll').getBoundingClientRect(), r = t.tHead.rows[t.tHead.rows.length - 1].cells[3].getBoundingClientRect();
               return r.left >= box.left - 0.5 && r.right <= box.right + 0.5; })""")
+            # #518: …and no flag, in a history or a test's row, on two lines ("▲" above "High")
+            flag518 = hp.evaluate("""() => { const fl = [...document.querySelectorAll('#share-results .share-flag')].filter(f => f.getClientRects().length);
+              return [fl.length, fl.filter(f => { const rg = document.createRange(); rg.selectNodeContents(f);
+                return new Set([...rg.getClientRects()].map(x => Math.round(x.top))).size > 1; }).map(f => f.textContent).slice(0, 6)]; }""")
             hp.locator("#share-results .share-tools button", has_text="Open every history").click()   # closed again
         # #514: at 600 and 640 px the page's tables are tables, as they fit there (#509's phone rule stacked them, a claim
         # 250 px tall), by their own width (a container rule, as share links' list): the head shown, no word broken
@@ -2618,7 +2622,8 @@ def main():
             hp.evaluate("document.getElementById('shareBar').scrollLeft = 0")
         hp.set_viewport_size({"width": 1400, "height": 900})
         hp.wait_for_timeout(200)
-        H1_491 ="() => { const c = getComputedStyle(document.querySelector('main h1')); return [c.fontFamily, c.fontSize, c.fontWeight, c.letterSpacing]; }"
+        # (the h1 shown: Sharing's no-profile card has the other, hidden, #518)
+        H1_491 ="() => { const c = getComputedStyle([...document.querySelectorAll('main h1')].find(h => h.checkVisibility())); return [c.fontFamily, c.fontSize, c.fontWeight, c.letterSpacing]; }"
         strict.set_viewport_size({"width": 1400, "height": 900})
         h1_491 = [hp.evaluate(H1_491), strict.evaluate(H1_491), strict.url]
         spy491 = hp.evaluate("""async () => { const bar = document.getElementById('shareBar'), off = [];
@@ -2722,6 +2727,8 @@ def main():
               [ampm509s, cells509])
         check("…at 320 px each opened history's Flag column in view, without scrolling it sideways (#514: past its 262 px box)",
               len(flag514) >= 8 and all(flag514), flag514)
+        check("…and no flag in Lab results on two lines at 320 px, every history open (#518: “▲” above “High”)",
+              flag518[0] >= 1 and not flag518[1], flag518)
         check("…at 600 and 640 px its tables (but a measure's) tables, as they fit: their heads shown, no word broken, none scrolling (#514: a cell a line)",
               tables514 == {600: [], 640: []}, tables514)
         check("…no visit's title repeats its kind (#514: “Hospital stay: Hospital stay · …”)", not kinds514 and stays514 >= 1, [kinds514, stays514])
@@ -6441,6 +6448,11 @@ def main():
             page.keyboard.press("Tab")
             check("…its places with entries are stops of the keyboard's own", js("document.activeElement.classList.contains('jreg')"))
             page.set_viewport_size({"width": 1400, "height": 900})
+            # #518: a side effect linked to a medication (made here, deleted below), whose medication the link shows
+            se518 = js("""(async () => { const med = [...new Set(EV.filter(e => e.k === 'med' || e.k === 'rx').map(e => e.title))].sort()[0];
+                const r = await api(`profiles/${PROFILE.id}/journal`, {method: 'POST', body: JSON.stringify({kind: 'side_effect', t: isoDay(Date.now() - 2 * DAY),
+                  title: 'Nausea (browser check)', severity: 4, med})});
+                return {status: r.status, id: (await r.json()).id, med}; })()""")
             # a share link shows the photo only when "Photos in the journal" is ticked, under the real CSP, with no session
             made = js("""(async () => { const r = await api(`profiles/${PROFILE.id}/links`); const offered = (await r.json()).sections.map(s => s.id);
                 const mk = async secs => (await (await api(`profiles/${PROFILE.id}/links`, {method: 'POST', body: JSON.stringify({sections: secs, hours: 1, label: 'Journal (browser check)'})})).json());
@@ -6450,7 +6462,11 @@ def main():
             hp.on("console", lambda m: m.type == "error" and problems.append(f"share page console error: {m.text}"))
             hp.goto(base + "/" + made["without"]["path"])
             hp.wait_for_selector("#share-journal .share-entry", timeout=10000)
-            plain = hp.evaluate("""({pics: document.querySelectorAll('.share-pic').length, where: [...document.querySelectorAll('#share-journal .share-entry p.muted')].map(p => p.textContent)})""")
+            plain = hp.evaluate("""({pics: document.querySelectorAll('.share-pic').length, where: [...document.querySelectorAll('#share-journal .share-entry p.muted')].map(p => p.textContent),
+                side: [...document.querySelectorAll('#share-journal .share-entry > div:first-child')].map(d => d.textContent).filter(t => t.includes('Nausea (browser check)'))})""")
+            check("a share link with the journal shows the medication a side effect is about beside it (#518: not sent)",
+                  se518["status"] == 201 and se518["med"] and len(plain["side"]) == 1
+                  and plain["side"][0].startswith(f"Side effect: Nausea (browser check) · {se518['med']}severity 4"), [se518, plain["side"]])
             hp.goto(base + "/" + made["with"]["path"])
             hp.reload()
             for _ in range(100):   # under the CSP: evaluate, not wait_for_function (a string the CSP won't run)
@@ -6470,6 +6486,8 @@ def main():
                   and any("Where: Head, Back of the neck" in w for w in plain["where"]) and shared["alt"] == "Red patch, fictional"
                   and shared["src"] == "data:image/jpeg" and "share-journal_photos" not in shared["cards"] and not sbad, [made["offered"], plain, shared, sbad])
             js("ids => Promise.all(ids.map(i => api(`profiles/${PROFILE.id}/links/${i}`, {method: 'DELETE'})))", [made["without"]["link"]["id"], made["with"]["link"]["id"]])
+            if se518.get("id"):
+                js("i => api(`profiles/${PROFILE.id}/journal/${i}`, {method: 'DELETE'})", se518["id"])
             # removed again: the entries (and the photo with its entry) and the group
             js("""Promise.all(JOURNAL.map(e => api(`profiles/${PROFILE.id}/journal/${e.j.id}`, {method: 'DELETE'})))
                 .then(() => api(`profiles/${PROFILE.id}/settings/journal.groups`, {method: 'PUT', body: JSON.stringify({value: []})}))""")
@@ -9988,6 +10006,7 @@ def main():
             page.wait_for_function(f"PROFILE && PROFILE.id === {epid504} && !!document.querySelector('main > .empty')", timeout=20000)
             js("window._page504 = 1")
             h1_514 = [heading_outline(page, "an empty profile")]   # #514: one h1 (emptyCard dropped it with <main>'s tabs)
+            title518 = [page.title()]   # #518: and the document's title names the profile ("Sanguity" alone)
             dcards504 = "document.querySelectorAll('dialog.up-dlg .import-job')"
             for n, row in enumerate(("Sodium,141,mmol/L,135 - 145", "Chloride,101,mmol/L,98 - 107")):
                 js(drop497, [f"empty-{n}.csv", f"Date,Test,Result,Units,Reference Range\n2026-11-15,{row}\n"])
@@ -9999,6 +10018,7 @@ def main():
             empty504 = js(f"""[window._page504, document.querySelector('.tabs').hidden, !!document.querySelector('#sgToasts .sg-toast button')
                 && [...document.querySelectorAll('#sgToasts .sg-toast button')].some(b => b.textContent === 'Undo…'),
                 {dcards504}.length, /^Ready to import/.test({dcards504}[1].textContent), document.querySelector('dialog.up-dlg').open]""")
+            title518.append(page.title())
             check("an empty profile's dialog closed after Add draws its records without a reload, keeping the toast's Undo and the other review (#504)",
                   empty504 == [1, False, True, 2, True, False], empty504)
             js(f"(j => fetch(`api/profiles/{epid504}/jobs/${{j}}/discard`, {{method: 'POST', headers: {{'X-Sanguity': '1'}}}}))({dcards504}[1].dataset.job)")
@@ -10014,8 +10034,11 @@ def main():
                   "focus in sight and not on a toast (#508)", undo508 == [1, True, True, "Get started", False, True],
                   [undo508, js("document.activeElement.outerHTML.slice(0, 120)")])
             h1_514.append(heading_outline(page, "an empty profile, its records undone"))
+            title518.append(page.title())
             check("an empty profile's records page has one h1, as it loads and with its empty card back after an Undo, no heading level skipped (#514: none)",
                   not any(b for _, b in h1_514) and all(": h1 " in o for o, _ in h1_514), h1_514)
+            check("…and its document title names the profile, the tab's name once records come, and again after the Undo (#518: “Sanguity” alone)",
+                  title518[0] == title518[2] == "Empty (fictional): no records yet · Sanguity" and title518[1].endswith(" · Empty (fictional) · Sanguity"), title518)
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             # (#508) on the guide, a CSV added in its step 2, then undone from its toast: the step isn't done any more,
             # and focus is on the card's "Undone." line
@@ -15082,7 +15105,7 @@ def main():
             np_.click("#b")
             np_.wait_for_url(lambda u: "login.html" not in u, timeout=10000)
             # #505: nor on Sources, import.html (which goes there) and the guide's New profile, which stop before the menu
-            tabs501 = {}
+            tabs501, make518, h1_518 = {}, {}, None
             for w, h in ((1400, 900), (375, 667)):
                 np_.set_viewport_size({"width": w, "height": h})
                 for pg_, ready_ in (("sharing.html#people", "!document.getElementById('noProfiles').hidden"),
@@ -15093,13 +15116,23 @@ def main():
                     np_.wait_for_function(ready_, timeout=10000)
                     np_.wait_for_timeout(500)
                     tabs501[f"{pg_} {w}"] = np_.evaluate("[...document.querySelectorAll('header [id^=tab-], header .tab-more')].filter(t => t.checkVisibility()).map(t => t.textContent)")
+                    if w == 1400:   # #518: Sharing's h1 (its only one was in the hidden #intro), and making a profile worded one way
+                        if pg_.startswith("sharing"):
+                            h1_518 = heading_outline(np_, "Sharing with no profile")
+                        make518[pg_] = np_.evaluate("(document.querySelector('#noProfiles a[href=\"guide.html?new\"]') || document.getElementById('nameGo')).textContent")
             np_.goto(base + "/")   # #514: and the records page, its empty card under one h1
             np_.wait_for_function("!!document.querySelector('main > .empty')", timeout=20000)
             h1_514n = heading_outline(np_, "no profile")
+            make518["records"] = np_.evaluate("document.querySelector('main > .empty a[href=\"guide.html?new\"]').textContent")
+            ntitle518 = np_.title()
             nctx.close()
             sdb.execute("DELETE FROM users WHERE id=?", (uid501,))
             check("with no profile, the records page has one h1, no heading level skipped (#514: its only headings were the menus' hidden h2s)",
                   not h1_514n[1] and ": h1 " in h1_514n[0], h1_514n)
+            check("…Sharing with no profile has one h1, no heading level skipped; Sharing, Sources, import.html, the guide and the records page "
+                  "say “Create a profile”, and the records page's title says there's none (#518: no h1; three wordings; “Sanguity” alone)",
+                  h1_518 and not h1_518[1] and ": h1 Sharing" in h1_518[0] and len(make518) == 5 and set(make518.values()) == {"Create a profile"}
+                  and ntitle518 == "No health profile yet · Sanguity", [h1_518, make518, ntitle518])
             check("with no profile, the top bar has no records tabs on Sharing, Sources, import.html and the guide's New profile, at 1400 and 375 px "
                   "(#501: Overview, Body, … Costs were still there after Leave; #505: on Sources and New profile too)",
                   len(tabs501) == 8 and not any(tabs501.values()), tabs501)
@@ -18363,6 +18396,38 @@ def main():
               return [a.id, a.value, document.getElementById('step1').hidden, a.getAttribute('aria-errormessage'), e.textContent]; }""")
             check("a passkey at the second step that took too long puts focus on the password, emptied, the reason with it (#514: on the passkey button)",
                   pk514 == ["p", "", False, "e", "That took too long. Enter your password again."], pk514)
+            # #518: a passkey the only way on after the password (an account with passkeys and no code, its answer stood
+            # in for here) says so, live and as the button's description, and Use another account goes back to the
+            # username, emptied, with focus (it said "Use a passkey" alone; back was a reload)
+            pk.fill("#u", USER)
+            pk.fill("#p", PW)
+            pk.route("**/api/login", lambda route: route.fulfill(status=200, content_type="application/json",
+                                                                 body=json.dumps({"two_factor": True, "ticket": "t518", "methods": {"code": False, "passkey": True}})))
+            pk.click("#b")
+            pk.wait_for_selector("#pkSays", state="visible", timeout=10000)
+            pk.unroute("**/api/login")
+            pk.wait_for_timeout(200)
+            pk518 = pk.evaluate("""() => { const a = document.activeElement, d = a.getAttribute('aria-describedby');
+              return [a.id, d && document.getElementById(d).textContent, document.getElementById('sgStatus').textContent, document.getElementById('codeBox').hidden]; }""")
+            pk518bad = []
+            for w in (1400, 320):
+                pk.set_viewport_size({"width": w, "height": 800 if w > 400 else 640})
+                for theme in ("light", "dark"):
+                    pk.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
+                    pk.wait_for_timeout(100)
+                    pk518bad += axe_check(pk, f"sign-in's passkey step, {w} px, {theme}")[0] + (phone_fits(pk, f"sign-in's passkey step, {theme}") if w < 400 else [])
+            pk.evaluate("delete document.documentElement.dataset.theme")
+            pk.set_viewport_size({"width": 1400, "height": 900})
+            said518 = "Password accepted. Use your passkey to finish signing in."
+            check("sign-in's passkey step, a passkey the only way on, says the password was accepted and a passkey finishes it, live and as the "
+                  "focused button's description, axe-clean and fitting at 1400 and 320 px, light and dark (#518: “Use a passkey” alone)",
+                  pk518 == ["pk", said518, said518, True] and not pk518bad, [pk518, pk518bad])
+            pk.click("#other")
+            pk518b = pk.evaluate("""() => { const a = document.activeElement;
+              return [a.id, a.value, a.readOnly, document.getElementById('p').value, document.getElementById('step1').hidden, document.getElementById('step2').hidden,
+                      document.getElementById('pk').textContent, document.getElementById('pk').hasAttribute('aria-describedby'), location.pathname.endsWith('login.html')]; }""")
+            check("…its Use another account goes back to the username, emptied, with focus, the password step again (#518: back was a reload)",
+                  pk518b == ["u", "", False, "", False, True, "Sign in with a passkey", False, True], pk518b)
             problems[before:] = [x for x in problems[before:] if "401" not in x]   # signed out on the way, on purpose
             ctx.close()
         except Exception as e:   # report what was caught so far instead of a bare traceback

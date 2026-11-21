@@ -174,7 +174,7 @@
     steps = !P || P.role === "owner" ? STEPS : STEPS.filter(s => !s.owner);
     if (!P) {   // no profile yet (or making another): its name first, and nothing to skip to
       $("#nameTitle").textContent = "Whose records will your profile hold?";
-      $("#nameGo").textContent = "Create the profile";
+      $("#nameGo").textContent = "Create a profile";
       $("#guideTitle").textContent = making && ME.profiles.length ? "A new profile" : "Getting started";
     } else {
       $("#profName").value = P.name;

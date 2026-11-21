@@ -1514,9 +1514,12 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
 .share-latest tr.out>td>.share-v,.share .share-flag{font-weight:var(--fw-semibold);color:var(--crit)}
 .share-latest .share-when{display:block;color:var(--muted);font-size:var(--fs-2)}
 .acct .share-latest>tbody>.share-hist>td{border-top:0;padding:0 0 var(--sp-3) var(--sp-5)}
-/* a history's head and cells wrap, its dates (share.js keepDates) and ranges kept whole (#514: at 320 px its Flag was out of sight) */
-.acct .share-latest .tbl.measures :is(th,td){white-space:normal;overflow-wrap:normal}
-.acct .share-latest .tbl.measures td:nth-child(3){white-space:nowrap}
+/* a history's head and cells wrap, its dates (share.js keepDates), ranges and flags kept whole (#514: at 320 px its Flag
+   was out of sight; #518: "▲ High" broke after its ▲, so its flag is at the heads' size and its columns closer, to fit) */
+.acct .share-latest .tbl.measures :is(th,td){white-space:normal;overflow-wrap:normal;padding-right:var(--sp-1)}
+.acct .share-latest .tbl.measures :is(th,td):last-child{padding-right:0}
+.acct .share-latest .tbl.measures td:nth-child(3),.share-flag{white-space:nowrap}
+.share-hist .share-flag{font-size:var(--fs-2)}
 .share-spark{display:block;width:80px;height:20px}
 .share-spark path{fill:none;stroke:var(--muted);stroke-width:1.2}
 .share-spark circle{fill:var(--ink)}

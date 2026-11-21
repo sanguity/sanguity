@@ -107,6 +107,9 @@ class ShareLinks(unittest.TestCase):
         r = cls.c["robin"].post(f"/api/profiles/{cls.pid}/journal", json={"kind": "symptom", "t": D(-15), "title": "Headache",
                                                                           "severity": 4, "note": "JOURNALNOTE after lunch"}, headers=H)
         assert r.status_code == 201, r.text
+        r = cls.c["robin"].post(f"/api/profiles/{cls.pid}/journal", json={"kind": "side_effect", "t": D(-16), "title": "Nausea",
+                                                                          "severity": 3, "med": "Examplecillin 250 mg"}, headers=H)
+        assert r.status_code == 201, r.text
 
     @classmethod
     def tearDownClass(cls):
@@ -168,6 +171,9 @@ class ShareLinks(unittest.TestCase):
         self.assertEqual([a["title"] for a in j["appointments"]], ["Follow-up visit"], "only appointments from today on")
         self.assertEqual(j["journal"][0]["note"], "JOURNALNOTE after lunch")
         self.assertNotIn("by", j["journal"][0], "not who wrote it")
+        self.assertNotIn("med", j["journal"][0], "a symptom with no medication: none sent")
+        self.assertEqual((j["journal"][1]["kind"], j["journal"][1]["med"]), ("side_effect", "Examplecillin 250 mg"),
+                         "a side effect's medication, which it's about (#518)")
         self.assertEqual(j["costs"][0]["owe"], 50.0)
         self.assertEqual(sorted(s["name"] for s in j["results"]), ["Hemoglobin", "SodiumSECRET"], "no labs picked: every lab")
         self.assertNotIn("REPORTTEXT", json.dumps(j))

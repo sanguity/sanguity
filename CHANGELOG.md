@@ -2039,6 +2039,16 @@ Everything on `main` so far; it becomes the first tagged release.
   Password for "new password", "reset password" and "forgot password", Passkeys for "rename passkey", Where you're
   signed in for "logout", and Connected-source apps for "redirect", "redirect uri", "return address" and "new source".
   Outside connections no longer keeps a failed load's message beside the list once it loads.
+- **Sharing and first run: one h1 on Sharing with no profile, sign-in's passkey step says what's needed, a side
+  effect's medication on the share page, and smaller things** (#518): with no profile, Sharing's only h1 was in a
+  hidden block; its card's heading is the page's h1 now. Making a profile is "Create a profile" on Sharing, Sources,
+  the records page and the guide ("Make a profile", "Create the profile"). After a correct password, an account whose
+  passkey is the only way on heard "Use a passkey" alone; the step says "Password accepted. Use your passkey to finish
+  signing in.", as the button's description too, and "Use another account" goes back to the username (only a reload
+  did). A share link's journal shows the medication a side effect is about ("Side effect: Nausea · Ondansetron 8 mg
+  tablet"), and the Journal section says so. At 320 px a history's "▲ High" kept its ▲ on a line of its own; a flag
+  stays whole, at the size of the history's column names, its columns a little closer so Flag stays in view. An empty profile's records page, and the page with no profile, are titled for what they say ("Ben: no
+  records yet · Sanguity"), not "Sanguity" alone.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
