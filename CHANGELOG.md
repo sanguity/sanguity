@@ -1915,6 +1915,17 @@ Everything on `main` so far; it becomes the first tagged release.
   links' list on a phone puts a cell on each line (dates broke word by word and Revoke a letter a line); a new link's
   QR code (and two-factor's) is brought into view as it opens; and with no profile left the top bar has no records
   tabs.
+- **Settings, Account and Admin: two-factor's message cleared, a source's test kept, focus kept after Remove and Make
+  owner, the palette's missing words, and Admin's messages beside their rows** (#502): recovery codes shown after a
+  wrong code kept "That code doesn't match" red under them; they clear it. Set up a source's Test this connection, in
+  the walk-through and in a row, erased its own result when it worked and left focus on the page; both stay. A row's
+  Waiting for review, Review done and Remove keep focus on that row's button, or the next source's Test once it's gone,
+  and Remove asks first. Passkeys' Remove and Make owner put focus on the next row's button, else the one before's.
+  The command palette finds a word typed in the plural ("codes" finds "code"), and Two-factor sign-in for recovery
+  codes and turning it on or off, Passkeys for adding and removing one, Where you're signed in for "sign out
+  everywhere", and Accounts for "one-time password" and "make admin". An account's "Not done" or refusal is said in its
+  row, in sight, and goes when the next change starts (it was under the list, 1,285 px down on a phone). A one-time
+  password shown goes once its account is removed, disabled or renamed.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -66,7 +66,7 @@ function testStep() {
         out.replaceChildren(...present(testResult(t), t.ok && s.waiting ? el("p", {class: "msg", text: "It's still marked as waiting for the " +
           "vendor's review, so nobody can connect it yet. Once the review is done, untick that above and save."}) : null,
           t.ok && !s.waiting ? el("p", {class: "msg", text: "Done: people can now connect it under Sources → Portals and health plans."}) : null));
-        if (t.ok) loadSetup();
+        if (t.ok) loadSetup({walk: false});   // the list's "tested" now; this step, its result and focus kept (#502)
       } catch (e) { out.replaceChildren(el("p", {class: "msg bad", role: "alert", text: e.message})); }
     }});
   return stepItem("Test this connection",
@@ -102,8 +102,8 @@ function testResult(t) {
 }
 
 function sourceRow(s) {
-  const n = s.connections, out = el("div", {class: "prof"});
-  const msg = el("div", {role: "status"});
+  const n = s.connections, out = el("div", {class: "prof", "data-src": s.id});
+  const msg = el("div", {class: "src-msg", role: "status"});
   const state = s.waiting ? `waiting for the vendor's review since ${when(s.waiting)}: people are told to upload their portal's export meanwhile`
     : s.tested ? "tested " + when(s.tested) : "not tested yet: people can't connect until it is";
   out.append(...present(el("b", {text: s.name}), el("span", {class: "tag", text: SETUP.guides[s.vendor].label}),
@@ -113,23 +113,38 @@ function sourceRow(s) {
     (s.leaves_out || []).length ? el("p", {class: "muted src-leaves", text: `Its scopes leave out ${s.leaves_out.join(", ").toLowerCase()}, ` +   // #228
       "so people can't choose them. To offer them, add their scopes under Change and in the app's registration at the vendor."}) : null,
     el("div", {class: "row"},
-      el("button", {class: "btn small primary", type: "button", text: "Test this connection", onclick: async () => {
+      el("button", {class: "btn small primary", type: "button", text: "Test this connection", "data-act": "test", onclick: async () => {
         msg.replaceChildren(el("p", {class: "muted", text: "Reading its discovery…"}));
-        try { const t = await call(`connect/sources/${s.id}/test`, "POST"); msg.replaceChildren(testResult(t)); if (t.ok) loadSetup(); }
+        try { const t = await call(`connect/sources/${s.id}/test`, "POST"); msg.replaceChildren(testResult(t)); if (t.ok) rowsAgain(s.id, "test", [...msg.childNodes]); }
         catch (e) { msg.replaceChildren(el("p", {class: "msg bad", role: "alert", text: e.message})); } }}),
       el("button", {class: "btn small", type: "button", text: "Change", onclick: () => { saved = null; fill(s); $("#fName").focus(); }}),
-      el("button", {class: "btn small", type: "button", text: s.waiting ? "Review done" : "Waiting for review",
+      el("button", {class: "btn small", type: "button", text: s.waiting ? "Review done" : "Waiting for review", "data-act": "wait",
         "data-tip": s.waiting ? "The vendor has approved the app: people can connect it once it's tested" : "Say the vendor is still reviewing the app",
         onclick: async () => {
-          try { await call(`connect/sources/${s.id}`, "PATCH", {waiting: !s.waiting}); loadSetup(); }
+          try { await call(`connect/sources/${s.id}`, "PATCH", {waiting: !s.waiting}); rowsAgain(s.id, "wait"); }
           catch (e) { msg.replaceChildren(el("p", {class: "msg bad", role: "alert", text: e.message})); } }}),
-      el("button", {class: "btn small", type: "button", text: "Remove", onclick: async () => {
-        try { await call(`connect/sources/${s.id}`, "DELETE"); loadSetup(); } catch (e) { msg.replaceChildren(el("p", {class: "msg bad", role: "alert", text: e.message})); } }})),
+      el("button", {class: "btn small", type: "button", text: "Remove", "data-act": "remove", onclick: async () => {   // asked first (#502)
+        if (!await ask({title: `Remove ${s.name}?`, message: "Nobody can connect it any more. Its app at the vendor stays as it is.",
+                        action: "Remove source", danger: true})) return;
+        try { await call(`connect/sources/${s.id}`, "DELETE"); rowsAgain(s.id); } catch (e) { msg.replaceChildren(el("p", {class: "msg bad", role: "alert", text: e.message})); } }})),
     msg));
   return out;
 }
+/* the list drawn again after a row's action (#502: focus fell to the page, and a test's result went with its row):
+   focus on the same button (act) of the source's new row, what it said (kept: a test's result) back under it, in view;
+   the source gone, on the next row's Test, else the one before's, else on the card's heading */
+async function rowsAgain(id, act, kept) {
+  const rows = () => [...$("#sourceList").querySelectorAll(".prof[data-src]")], at = rows().findIndex(r => r.dataset.src === String(id));
+  await loadSetup();
+  const r = act && rows().find(r => r.dataset.src === String(id));
+  if (!r) return focusNear(rows(), Math.max(at, 0), "[data-act=test]", $("#admin h2"));
+  const msg = r.querySelector(".src-msg");
+  if (kept) { msg.replaceChildren(...kept); msg.scrollIntoView({block: "nearest"}); }
+  focusNear([r], 0, `[data-act=${act}]`);
+}
 
-async function loadSetup() {
+/* walk: false keeps the walk-through's last step as it is (its own test, which said how it went) */
+async function loadSetup({walk = true} = {}) {
   try { SETUP = await call("connect/sources"); }
   catch (e) {
     $("#admin").hidden = false;
@@ -143,8 +158,8 @@ async function loadSetup() {
   $("#addrWarn").replaceChildren(...SETUP.warnings.map(w => el("li", {text: w})));
   $("#sourceList").replaceChildren(...SETUP.sources.length ? SETUP.sources.map(sourceRow)   // none: said so (util.js, #499: it showed nothing)
     : [emptyState("No source set up yet: each one added below is listed here, for people to connect.", null, {cls: ""})]);
-  if (editing === null) fill(null);
-  else {   // the source being changed, as saved now; the form keeps what's typed in it
+  if (walk && editing === null) fill(null);
+  else if (walk) {   // the source being changed, as saved now; the form keeps what's typed in it
     const s = SETUP.sources.find(x => x.id === editing);
     if (s) $("#walk").lastElementChild.replaceWith(testStep());
     else fill(null);
