@@ -2217,6 +2217,15 @@ Everything on `main` so far; it becomes the first tagged release.
   server's refusal offers a code only to an account with one. The summary PDF's For, Since and extra sections' lines
   were cut to one ("… · Dr. Alexandra Rivera…"); they wrap, and the preview's For line names the place too.
   Account's passkeys card links the address where they work, to the account page there.
+- **Settings, Account and Admin: toasts clear of the changes bar, Backups' check keeping focus from Keep the newest
+  and Undo, and the accounts' ⋯ changes said** (#541): toasts were lifted a fixed 76 px above a group bar, so a bar
+  wrapped to two lines, or ridden up by their height at the page's end, was under them: at 375 px a tap on Save hit a
+  toast's ✕. They're lifted by where the bar really is, and drop below it once there's room. Keep the newest saved by
+  Enter, and a toast's Undo, left focus on the page after the check's Confirm or Cancel; it's back on Keep the newest,
+  on the Undo or on what the Undo put back, and the Undo's Cancel says "Undo didn't work: you didn't confirm it's you."
+  with no "Not done:". Make admin, Remove admin, Turn off two-factor sign-in, Disable and Enable said nothing when they
+  worked; each says what it did in the account's row and to a screen reader ("Turned off two-factor sign-in for ben:
+  2 passkeys removed.").
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

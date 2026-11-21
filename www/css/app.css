@@ -375,10 +375,10 @@ dialog.sg-dlg:not(.sg-dlg-sheet)>.sg-grab{display:none}
 dialog.sg-dlg-sheet [data-grab]{touch-action:none}
 
 /* ---- toasts (#263, toast() in util.js): at the foot of the screen, on the left (the screen's width on a phone), and
-   above Settings' sticky Save bar while it's there; over the page (a popover) but only a toast itself takes the
+   above a group bar under them (--toasts-lift, util.js: #541); over the page (a popover) but only a toast itself takes the
    pointer. With the drawer open, in its flow instead (below, #362); a question (ask()) leaves them behind it (#369). A menu's look: the raised surface, a ring and the higher elevation, its
    words in the ink; rising into place as it appears. */
-.sg-toasts{position:fixed;inset:auto auto var(--sp-4) var(--sp-4);margin:0;padding:0;border:0;background:none;overflow:visible;
+.sg-toasts{position:fixed;inset:auto auto var(--sp-4) var(--sp-4);margin:0 0 var(--toasts-lift,0);padding:0;border:0;background:none;overflow:visible;
   width:min(420px,calc(100vw - 32px));pointer-events:none;color:var(--ink)}
 .sg-toast-list{display:flex;flex-direction:column;gap:var(--sp-2)}
 /* its words and actions in one box (.sg-toast-body), wrapping within it, the actions under the words; its ✕ beside the
@@ -393,7 +393,6 @@ dialog.sg-dlg-sheet [data-grab]{touch-action:none}
 .sg-toast-acts .btn{margin:0}
 .sg-toast-x{flex:none;margin:0;min-width:32px;padding:0}   /* the quiet button (#258), square */
 @media (max-width:700px){ .sg-toasts{inset:auto var(--sp-2) calc(var(--sp-2) + var(--tabbar,0px)) var(--sp-2);width:auto} }   /* over a phone's tabs (#268) */
-html:has(.sg-bar:not([hidden])) .sg-toasts{bottom:calc(76px + var(--tabbar,0px))}   /* above the group bar (#272) */
 /* in a modal dialog, or the drawer beside the page (liveFollow, #362): no popover, in the dialog's flow at its foot,
    under its buttons and over nothing in it; the drawer's body scrolls above */
 dialog>.sg-toasts{position:static;width:auto;pointer-events:auto;flex:none}

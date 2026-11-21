@@ -189,24 +189,25 @@ function userMenu(u) {
   return rowMenu(`Manage ${n}`, [
     u.is_admin
       ? {text: "Remove admin…", run: () => changeUser(u, {is_admin: false}, {title: `Remove ${n}'s admin role?`,
-          message: "They keep their account and the profiles shared with them, but can't use the Admin page any more.", action: "Remove admin"})}
+          message: "They keep their account and the profiles shared with them, but can't use the Admin page any more.", action: "Remove admin"},
+          `${n} isn't an admin any more.`)}
       : {text: "Make admin…", run: () => changeUser(u, {is_admin: true}, {title: `Make ${n} an admin?`, message: [
           "Admins look after every account on this server: they can add, disable and remove accounts, reset passwords and " +
           "turn off two-factor sign-in, and look after backups and sources.",
           "They don't see a profile's records unless it's shared with them. They'll need two-factor sign-in of their own to use the Admin page."],
-          action: "Make admin", danger: true})},
+          action: "Make admin", danger: true}, `${n} is an admin now.`)},
     {text: "Reset password…", run: () => changeUser(u, {reset_password: true}, {title: `Reset ${n}'s password?`, message: [
       "Their password stops working at once, and they're signed out everywhere.",
       "You'll get a one-time password to give them; they choose a new one when they first sign in with it." +
       (u.two_factor ? " Their two-factor sign-in stays on." : "")], action: "Reset password", danger: true},
       r => showTemp(n, r.temporary_password, r.temporary_days, u.id))},
     u.two_factor ? {text: "Turn off two-factor sign-in…", run: () => changeUser(u, {disable_2fa: true}, {title: `Turn off two-factor sign-in for ${n}?`,
-      message: [tfOffSays(u), "They'll be signed out everywhere."], action: "Turn off", danger: true})} : false,
+      message: [tfOffSays(u), "They'll be signed out everywhere."], action: "Turn off", danger: true}, `Turned off two-factor sign-in for ${n}: ${tfOffGone(u)} removed.`)} : false,
     u.disabled
-      ? {text: "Enable", run: () => changeUser(u, {disabled: false})}
+      ? {text: "Enable", run: () => changeUser(u, {disabled: false}, null, `Enabled ${n}: they can sign in again.`)}
       : {text: "Disable…", run: () => changeUser(u, {disabled: true}, {title: `Disable ${n}?`, message: [
           "They're signed out everywhere and can't sign in until an admin enables the account again.",
-          "Their profiles and records stay as they are."], action: "Disable", danger: true})},
+          "Their profiles and records stay as they are."], action: "Disable", danger: true}, `Disabled ${n}: they're signed out everywhere.`)},
     null,
     {text: "Remove account…", danger: true, run: () => { $("#rmUser").value = u.id; USERZONE.show(n); }}].filter(e => e !== false), "user", "user-more");
 }
@@ -218,6 +219,9 @@ function tfOffSays(u) {
   return `It removes their authenticator app${k ? `, its recovery codes and ${keys}` : " and its recovery codes"}. Do this only if they lost both ` +
     `their phone and their recovery codes${k ? `, and can't use ${k > 1 ? "any of their passkeys" : "their passkey"}` : ""}.`;
 }
+/* and, once done, what went (#541) */
+const tfOffGone = u => u.authenticator_app ? `the authenticator app${u.passkeys ? `, its recovery codes and ${plural(u.passkeys, "passkey")}` : " and its recovery codes"}`
+  : plural(u.passkeys, "passkey");
 /* what the last action under Accounts said in a row, or where one was, in the accounts' list or the ownerless one's,
    gone as the next starts (#532: “No such account.” stayed through a Make owner, and “No such profile.” where the
    ownerless list was until it changed) */
@@ -234,6 +238,7 @@ function rowSay(id, text, bad = false) {
   rowBack(id);   // focus on its ⋯ if it was lost, and the row in view where it fits
   tr.scrollIntoView({block: "nearest"});
 }
+/* done: what follows (a reset's password shown), or the words saying it worked, in its row (#541: it said nothing) */
 async function changeUser(u, body, sure, done) {
   rowSay(null);
   if (sure && !await ask(sure)) return;
@@ -245,7 +250,8 @@ async function changeUser(u, body, sure, done) {
       if (!await ask({title: `Disable ${u.username} anyway?`, message: e.message, action: "Disable anyway", danger: true})) throw new Error("Not disabled.");
       r = await call("users/" + u.id, "PATCH", {...body, force: true});
     }
-    await loadUsers(u.id); done && done(r);   // (a reset's password then shown, focus on it: #499)
+    await loadUsers(u.id);
+    typeof done === "function" ? done(r) : rowSay(u.id, done);   // (a reset's password then shown, focus on it: #499)
   } catch (e) {
     if (e.status !== 404) return rowSay(u.id, e.message, true);   // (the check's Cancel: its form went with it)
     // removed meanwhile (#528: its row stayed, and the zone offered it): drawn away, why said where it was (util.js)

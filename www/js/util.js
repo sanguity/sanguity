@@ -643,7 +643,7 @@ function liveFollow() {
   if (!t || t.parentElement === to || modal?.matches(".sg-ask")) return;
   const had = t.contains(document.activeElement) ? document.activeElement : null;
   to.append(t);
-  if (to !== document.body) t.removeAttribute("popover");
+  if (to !== document.body) { t.removeAttribute("popover"); t.style.removeProperty("--toasts-lift"); }   // (not lifted there: toast())
   else if (!t.matches(":popover-open")) { t.setAttribute("popover", "manual"); t.showPopover(); }
   if (had) had.focus({preventScroll: true});   // (a move takes focus away)
 }
@@ -939,8 +939,28 @@ const toast = (() => {
     region.showPopover();
     liveFollow();   // into a dialog, if one is open
     // while toasts show over the page, what takes focus is scrolled clear of them (scroll-padding, app.css, #362)
-    new ResizeObserver(() => placeAt(document.documentElement, {"--toasts-h": list.offsetHeight})).observe(list);
+    new ResizeObserver(() => { placeAt(document.documentElement, {"--toasts-h": list.offsetHeight}); lift(); }).observe(list);
+    addEventListener("scroll", lift, {passive: true});
+    addEventListener("resize", lift);
+    seen.observe(document.body);   // (what's above a bar grown or shrunk moves it)
   };
+  /* over the page, lifted clear of a group bar under them (#541), wherever the bar sits: at the foot, wrapped to two
+     lines or ridden up at the page's end; in a dialog, in its flow (liveFollow) */
+  let raf = 0;
+  const seen = new ResizeObserver(() => lift());
+  const lift = () => raf || (raf = requestAnimationFrame(() => {
+    raf = 0;
+    const was = parseFloat(region.style.getPropertyValue("--toasts-lift")) || 0;   // (as lifted now: app.css)
+    if (region.parentElement !== document.body || !list.firstElementChild) { region.style.removeProperty("--toasts-lift"); return; }
+    const r = list.getBoundingClientRect(), foot = r.bottom + was;   // the stack's foot unlifted
+    let up = 0;
+    for (const b of document.querySelectorAll("body .sg-bar")) {
+      seen.observe(b);
+      const s = b.getBoundingClientRect();
+      if (!b.closest("dialog") && s.height && s.top < foot && s.bottom > foot - r.height) up = Math.max(up, Math.ceil(foot - s.top) + 8);
+    }
+    if (up !== was) placeAt(region, {"--toasts-lift": up});
+  }));
   make();   // there from the start, as announce()'s lines are: a live region is followed only if it was there first
   if (!region) document.addEventListener("DOMContentLoaded", make);
   // where focus came from into the toasts (Alt+N, Tab or a click), to go back to: not a question asked from a toast

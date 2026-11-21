@@ -12349,6 +12349,87 @@ def main():
             check("…(#536) the check, asked as How often changes: focus back on How often after its Cancel and its Confirm (it fell to the page), "
                   "and Cancel's line says why once", bk536 == [["bkSched-daily", "Not saved: you didn't confirm it's you."],
                                                                ["bkSched-off", "Scheduled backups are off."]] and js(sched)[0] == "off", bk536)
+            # #541: focus fell to the page after the check from Keep the newest saved by Enter (its Cancel and Confirm), and
+            # from a toast's Undo that needs it (Confirm and Cancel), and that Undo's Cancel read “Undo didn't work: Not done:
+            # you didn't confirm it's you.” Then, with its toasts showing and the bar's error, at 375, 768 and 1400 px, at
+            # the page's top, near its end and at its end, nothing of the bar under a toast (they were lifted a fixed 76 px,
+            # while the bar wrapped to two lines, or rode up by the toasts' height at the end, under them)
+            db541, vp541, bk541 = dbm536.connect(), page.viewport_size, []
+            seen541 = f"""(() => {{ const s = {IN_SIGHT}; return s && [s[1] || s[3], !!document.activeElement.closest('#sgToasts')]; }})()"""
+            toast541 = "[...document.querySelectorAll('#sgToasts .sg-toast-text')].pop().textContent"
+            bar_msg541 = "document.querySelector('#admBar .msg').textContent"
+            def check541(how):   # the check's box, answered
+                page.wait_for_selector("#bkReauth input[type=password]", state="visible", timeout=10000)
+                if how == "Confirm":
+                    page.fill("#bkReauth input[type=password]", PW)
+                page.locator("#bkReauth").get_by_role("button", name=how).click()
+            def undo541(how, said):
+                db541.execute("UPDATE sessions SET verified_at=0")
+                page.click("#sgToasts .sg-toast:last-child button:text-is('Undo')")
+                answer_ask(page)
+                check541(how)
+                page.wait_for_function(said, timeout=10000)
+                settle(200)
+                return js(seen541)
+            try:
+                page.set_viewport_size({"width": 375, "height": 667})
+                page.click("#bkSchedSeg label:has-text('Daily')")   # (keeping 3 of one backup: not asked)
+                page.wait_for_function(f"{sched_msg}.startsWith('Backups are scheduled daily')", timeout=10000)
+                for how, said in (("Cancel", f"{bar_msg541}.startsWith('“Keep the newest” isn')"), ("Confirm", f"{sched_msg}.startsWith('Saved: keeping the newest 1')")):
+                    db541.execute("UPDATE sessions SET verified_at=0")
+                    page.fill("#bkKeep", "1")
+                    page.press("#bkKeep", "Enter")
+                    answer_ask(page)
+                    check541(how)
+                    page.wait_for_function(said, timeout=10000)
+                    settle(200)
+                    bk541.append(js(seen541) + ([js(bar_msg541)] if how == "Cancel" else []))
+                page.fill("#bkKeep", "20")   # (more: neither asked nor checked)
+                page.press("#bkKeep", "Enter")
+                page.wait_for_function(f"{sched_msg}.startsWith('Saved: keeping the newest 20')", timeout=10000)
+                bk541.append(undo541("Cancel", f"{toast541}.includes('didn')") + [js(toast541)])
+                bk541.append(undo541("Confirm", f"{sched_msg}.startsWith('Undone')"))
+                js("document.getElementById('bkSchedSeg').scrollIntoView({block: 'center'})")   # (clear of the toasts)
+                page.click("#bkSchedSeg label:has-text('Off')")
+                answer_ask(page)
+                page.wait_for_function(f"{sched_msg}.startsWith('Scheduled backups are off')", timeout=10000)
+                js("document.getElementById('bkSchedSeg').scrollIntoView({block: 'center'})")
+                page.click("#bkSchedSeg label:has-text('Daily')")
+                answer_ask(page)   # (keeping 1: the next deletes one)
+                page.wait_for_function(f"{sched_msg}.startsWith('Backups are scheduled daily')", timeout=10000)
+                bk541.append(undo541("Cancel", f"{toast541}.includes('didn')") + [js(toast541)])
+                bk541.append(undo541("Confirm", f"{sched_msg}.startsWith('Undone')"))
+                # the bar with its error, three toasts over the page
+                page.fill("#bkKeep", "0")
+                page.click("#admBar button:text-is('Save')")
+                page.wait_for_function(f"{bar_msg541}.includes('between 1 and')", timeout=10000)
+                under541 = {}
+                UNDER541 = """() => { const ts = [...document.querySelectorAll('body > #sgToasts .sg-toast')].map(t => t.getBoundingClientRect());
+                  const parts = [...document.querySelectorAll('#admBar .sg-bar-n, #admBar .msg, #admBar button')];
+                  return [ts.length, parts.filter(p => p.textContent && ts.some(t => (r => r.left < t.right && r.right > t.left && r.top < t.bottom && r.bottom > t.top)(p.getBoundingClientRect())))
+                    .map(p => p.textContent.slice(0, 12))]; }"""
+                for w, h in ((375, 667), (768, 1000), (1400, 900)):
+                    page.set_viewport_size({"width": w, "height": h})
+                    for at in ("0", "document.documentElement.scrollHeight - innerHeight - 40", "1e6"):
+                        js(f"scrollTo(0, {at})")
+                        settle(250)
+                        n, out = js(UNDER541)
+                        if not n or out:
+                            under541[f"{w} {at[:4]}"] = [n, out]
+                page.click("#admBar button:text-is('Discard')")
+            finally:
+                db541.close()
+                page.set_viewport_size(vp541)
+            js("call('backups/schedule', 'PUT', {schedule: 'off', keep: 3}).then(drawBackups)")   # (as it was, for the checks below)
+            page.wait_for_function("BK.keep === 3 && BK.schedule === 'off'", timeout=10000)
+            problems[refused_from:] = [x for x in problems[refused_from:] if "403" not in x]
+            check("…(#541) focus on Keep the newest after the check's Cancel and Confirm from its Enter, on the toast's Undo after an Undo's "
+                  "Cancel and on what it put back after its Confirm, in sight (it fell to the page); each Cancel's reason said once",
+                  bk541 == [["bkKeep", False, "“Keep the newest” isn't saved: you didn't confirm it's you."], ["bkKeep", False],
+                            ["Undo", True, "Saved: keeping the newest 20 backups. Undo didn't work: you didn't confirm it's you."], ["bkKeep", False],
+                            ["Undo", True, "Backups are scheduled daily, keeping the newest 1. Undo didn't work: you didn't confirm it's you."], ["bkSched-off", False]], bk541)
+            check("…(#541) with toasts and the bar's error, at 375, 768 and 1400 px, at the page's top, near its end and at its end: "
+                  "nothing of the bar (its count, its error, Discard, Save) under a toast", under541 == {}, under541)
             # stale: the backup made 10 days ago, as far as the app can tell (its name says when it was made)
             stale_name = time.strftime("sanguity-backup-%Y%m%d-%H%M%S.tar.gz", time.localtime(time.time() - 10 * 86400))
             os.replace(os.path.join(bk_dir, made[0]), os.path.join(bk_dir, stale_name))
@@ -18989,6 +19070,12 @@ def main():
             answer_ask(page)
             page.wait_for_function("[...document.querySelectorAll('#userList tr')].some(r => r.textContent.includes('alex') && [...r.querySelectorAll('.tag')].some(t => t.textContent === 'admin'))", timeout=10000)
             check("…confirming makes them an admin", alex_is()["is_admin"])
+            # #541: each ⋯ change says what it did, in its row and to a screen reader, focus on the row's ⋯ (it was drawn
+            # again saying nothing: only “Manage alex” was heard again)
+            SAID541 = """(async () => { await new Promise(r => setTimeout(r, 200)); const m = document.querySelector('#userList .row-msg');
+              return m && [m.closest('tr').querySelector('b').textContent, m.textContent, document.getElementById('sgStatus').textContent,
+                           document.activeElement.getAttribute('aria-label')]; })()"""
+            said541 = [js(SAID541)]
             alex_do("Remove admin…")
             asked = answer_ask(page, yes=False)
             settle(300)
@@ -18997,6 +19084,7 @@ def main():
             answer_ask(page)
             page.wait_for_function("[...document.querySelectorAll('#userList tr')].some(r => r.textContent.includes('alex') && ![...r.querySelectorAll('.tag')].some(t => t.textContent === 'admin') && r.textContent.includes('Make admin…'))", timeout=10000)
             check("…confirming removes it", not alex_is()["is_admin"])
+            said541.append(js(SAID541))
             # #314: requiring two-factor sign-in for everyone asks first, saying how many accounts have no second factor;
             # Cancel changes nothing. Turning it off again isn't asked. The admin has a second factor now, so the count
             # is of other accounts (without one, it isn't asked at all: #318, above)
@@ -19033,6 +19121,15 @@ def main():
                 prow536.get_by_role("button", name="Manage pk536").click()
                 prow536.get_by_role("menuitem", name="Turn off two-factor sign-in…").click()
                 asked536 = answer_ask(page, yes=False)
+                prow536.get_by_role("button", name="Manage pk536").click()   # (#541: and done, said)
+                prow536.get_by_role("menuitem", name="Turn off two-factor sign-in…").click()
+                answer_ask(page)
+                page.wait_for_function("!document.getElementById('reauth').hidden || document.querySelector('#userList .row-msg')", timeout=10000)
+                if js("!document.getElementById('reauth').hidden"):   # (the check, if it's due)
+                    page.fill("#reauth input", PW)
+                    page.locator("#reauth").get_by_role("button", name="Confirm").click()
+                    page.wait_for_selector("#userList .row-msg", timeout=10000)
+                said541.append(js(SAID541))
             finally:
                 db.execute("DELETE FROM passkeys WHERE user_id=?", (pk536,))
                 db.execute("DELETE FROM users WHERE id=?", (pk536,))
@@ -19062,6 +19159,12 @@ def main():
             check("disabling a profile's only owner then asks about that", asked[0] == "Disable alex anyway?" and "only owner of Alex's records" in asked[1], asked)
             page.wait_for_function("document.querySelector('#ownerless') && document.querySelector('#ownerless').textContent.includes(\"Alex's records\")", timeout=10000)
             check("an admin sees profiles left without an owner", True)
+            said541.append(js(SAID541))
+            check("…(#541) Make admin, Remove admin, Turn off two-factor sign-in and Disable say what they did, in the account's row and to a "
+                  "screen reader, focus on its ⋯ (they said nothing); Enable too, below",
+                  said541 == [["alex", t, t, "Manage alex"] for t in ("alex is an admin now.", "alex isn't an admin any more.")]
+                  + [["pk536"] + ["Turned off two-factor sign-in for pk536: 2 passkeys removed."] * 2 + ["Manage pk536"]]
+                  + [["alex"] + ["Disabled alex: they're signed out everywhere."] * 2 + ["Manage alex"]], said541)
             # #502: Make owner, its row gone with it, puts focus on the next profile's Make owner, else the one before's (it
             # fell to the page). Two more of alex's, given to this admin, then deleted
             db502 = dbm.connect()
@@ -19222,7 +19325,8 @@ def main():
             check("…(#532) the last profile without an owner deleted elsewhere, then its Make owner: at 375×667 “No such profile.” where the list "
                   "was, focus on it, in sight (focus was on the card's heading, above the screen); and no “No such …” line after the next action "
                   "(“No such account.” stayed through a Make owner's reply, “No such profile.” through an account's Enable)",
-                  last532 == [True, True, True] and stale532 == [["No such account."], ["No active account with that username."], []], [last532, stale532])
+                  last532 == [True, True, True] and stale532 == [["No such account."], ["No active account with that username."],
+                                                                  ["Enabled alex: they can sign in again."]], [last532, stale532])   # (#541: said)
             # #515: another account's Disable keeps a username typed in Make owner (each account's action emptied the list),
             # and removing an account that alone owned a profile, at 375×667, leaves the zone's reply and focus on its
             # picker in sight once that profile is listed over it (they were under the tab bar and below the screen), the
