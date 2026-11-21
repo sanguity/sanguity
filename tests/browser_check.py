@@ -10003,6 +10003,33 @@ def main():
             check("after the toast's Undo on Sources, Import history shows the import undone at once, with no Undo of its own; focus not on a toast (#508)",
                   hist508 == [True, False, False, True], hist508)
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            # (#512) A added, then undone in Import history while its toast stays up; B added next has an id of its own,
+            # and A's toast's Undo, pressed then, doesn't undo B
+            def add512(name, row):
+                js("SgSources.show('upload')")
+                page.wait_for_selector("#pickFiles", state="attached", timeout=10000)
+                page.set_input_files("#pickFiles", files=[{"name": name, "mimeType": "text/csv",
+                                                           "buffer": f"Date,Test,Result,Units,Reference Range\n2026-11-17,{row}\n".encode()}])
+                page.wait_for_function(f"/^Ready to import/.test({card508}?.textContent)", timeout=30000)
+                js(f"{card508}.querySelector('.imp-actions .primary').click()")
+                page.wait_for_function(f"/^Imported/.test({card508}.textContent)", timeout=30000)
+                return js(f"fetch('api/profiles/{epid504}/imports', {{cache: 'no-store'}}).then(r => r.json()).then(j => j.imports[0].id)")
+            a512 = add512("a-512.csv", "Potassium,4.1,mmol/L,3.5 - 5.1")
+            js("SgSources.show('history')")
+            page.click(f"#import-{a512} button.undo")
+            answer_ask(page)
+            page.wait_for_function(f"document.getElementById('import-{a512}')?.classList.contains('undone')", timeout=10000)
+            b512 = add512("b-512.csv", "Calcium,9.4,mg/dL,8.6 - 10.3")
+            n512 = len(problems)
+            page.click("#sgToasts .sg-toast:first-child button:text-is('Undo…')")   # A's
+            answer_ask(page)
+            page.wait_for_function("/didn't work/.test(document.querySelector('#sgToasts .sg-toast:first-child').textContent)", timeout=10000)
+            problems[n512:] = [x for x in problems[n512:] if f"/imports/{a512}/undo" not in x and "status of 404" not in x]   # (refused: the point)
+            left512 = js(f"""fetch('api/profiles/{epid504}/imports', {{cache: 'no-store'}}).then(r => r.json())
+                .then(j => j.imports.filter(e => e.id === {b512}).map(e => e.state))""")
+            check("an import added after another's Undo has an id of its own, and the other's toast's Undo doesn't undo it (#512)",
+                  b512 != a512 and left512 == ["active"], [a512, b512, left512])
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             page.set_viewport_size({"width": 1400, "height": 900})
             page.goto("about:blank")
             db = dbm.connect()

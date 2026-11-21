@@ -391,4 +391,4 @@ the same shape as an importer's output and undone the same way, with the uploads
 | Route | |
 |---|---|
 | `GET /api/profiles/{pid}/imports` | Anyone the profile is shared with. `{"can_undo", "imports": [...]}`, newest first: `id`, `at`, `origin`, `label`, `by`, `files`, `counts`, `range`, `state` (active, undone), `can_undo`, `note`. |
-| `POST /api/profiles/{pid}/imports/{id}/undo` | Owners and editors. A setup build import is refused (409): the next rebuild would bring it back. A command-line import is undone, but what it replaced can't come back. |
+| `POST /api/profiles/{pid}/imports/{id}/undo` | Owners and editors. A setup build import is refused (409): the next rebuild would bring it back. A command-line import is undone, but what it replaced can't come back. `?at=` (optional, the entry's `at`): another import with that id is refused (404), as is one undone already (#512; ids are never used again since schema version 37). |

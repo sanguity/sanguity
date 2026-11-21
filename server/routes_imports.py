@@ -21,11 +21,12 @@ def list_imports(pid: int, s=Depends(user), db=Depends(get_db)):
 
 
 @router.post("/api/profiles/{pid}/imports/{iid}/undo")
-def undo_import(pid: int, iid: int, request: Request, s=Depends(user), db=Depends(get_db)):
-    """Remove everything the import brought. Returns its history entry, now undone."""
+def undo_import(pid: int, iid: int, request: Request, at: Optional[int] = None, s=Depends(user), db=Depends(get_db)):
+    """Remove everything the import brought. at (optional): when the import asked about was saved; another import
+    with its id is refused (#512). Returns its history entry, now undone."""
     need(db, s, pid, "editor")
     try:
-        return history.undo(db, pid, iid, s, _client_ip(request))
+        return history.undo(db, pid, iid, s, _client_ip(request), at=at)
     except history.Refused as e:
         raise HTTPException(e.status, str(e)) from None
 

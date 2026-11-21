@@ -709,6 +709,34 @@ SCHEMA = [
     ALTER TABLE labmaps ADD COLUMN used INTEGER;
     CREATE INDEX labmaps_import ON labmaps(import_id);
     """,
+    # version 37: an import's id never comes again (#512). Without AUTOINCREMENT, the next import after undoing the
+    # newest took its id, which the undone one keeps in import_undos and the page still finds it by (a toast's Undo).
+    # SQLite can't add AUTOINCREMENT to a table, so imports is made again, its rows copied as they are (the tables that
+    # point at it keep pointing at the same ids: steps run with foreign keys off, init), and the count starts after the
+    # highest id it has had, undone ones included.
+    """
+    CREATE TABLE imports_37(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        at INTEGER NOT NULL,
+        origin TEXT NOT NULL,                      -- build | dataset | upload | manual | sync (version 10 says each)
+        format TEXT NOT NULL,                      -- the reader that produced it ("sanguity-data": a data.json)
+        meta TEXT,                                 -- JSON: when it was built, its source, the profile-wide lists
+        synced INTEGER,                            -- (version 17)
+        connection_id INTEGER REFERENCES connections(id) ON DELETE SET NULL,   -- (version 19)
+        note TEXT,                                 -- (version 21)
+        name TEXT,                                 -- (version 25)
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL);   -- (version 35)
+    INSERT INTO imports_37(id, profile_id, at, origin, format, meta, synced, connection_id, note, name, created_by)
+        SELECT id, profile_id, at, origin, format, meta, synced, connection_id, note, name, created_by FROM imports;
+    DROP TABLE imports;
+    ALTER TABLE imports_37 RENAME TO imports;
+    CREATE INDEX imports_profile ON imports(profile_id);
+    CREATE INDEX imports_connection ON imports(connection_id);
+    INSERT INTO sqlite_sequence(name, seq) SELECT 'imports', 0 WHERE NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name='imports');
+    UPDATE sqlite_sequence SET seq = MAX(seq, (SELECT COALESCE(MAX(id), 0) FROM imports),
+                                         (SELECT COALESCE(MAX(import_id), 0) FROM import_undos)) WHERE name='imports';
+    """,
 ]
 
 
@@ -727,10 +755,33 @@ def init():
     os.makedirs(os.path.join(config.DATA_DIR, "profiles"), exist_ok=True)
     db = connect()
     db.execute("PRAGMA journal_mode=WAL")
-    have = db.execute("PRAGMA user_version").fetchone()[0]
-    for v, sql in enumerate(SCHEMA[have:], start=have + 1):
-        db.executescript("BEGIN;" + sql + f"PRAGMA user_version={v};COMMIT;")
+    upgrade(db)
     db.close()
+
+
+def upgrade(db):
+    """Run the schema steps db hasn't had. With foreign keys off, as SQLite says to make a table again that others
+    point at (version 37): dropping the old one would otherwise take their rows with it. Each step is checked before
+    it commits: it may leave no row pointing at nothing that wasn't so before."""
+    have = db.execute("PRAGMA user_version").fetchone()[0]
+    if have >= len(SCHEMA):
+        return
+    db.execute("PRAGMA foreign_keys=OFF")
+    try:
+        for v, sql in enumerate(SCHEMA[have:], start=have + 1):
+            before = set(map(tuple, db.execute("PRAGMA foreign_key_check")))
+            db.executescript("BEGIN;" + sql)
+            broken = set(map(tuple, db.execute("PRAGMA foreign_key_check"))) - before
+            if broken:
+                raise RuntimeError(f"schema version {v} would leave rows pointing at nothing: {sorted(broken)[:5]}")
+            db.execute(f"PRAGMA user_version={v}")
+            db.execute("COMMIT")
+    except BaseException:
+        if db.in_transaction:
+            db.execute("ROLLBACK")
+        raise
+    finally:
+        db.execute("PRAGMA foreign_keys=ON")
 
 
 @contextmanager

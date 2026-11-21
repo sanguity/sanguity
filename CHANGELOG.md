@@ -1996,6 +1996,10 @@ Everything on `main` so far; it becomes the first tagged release.
   card; on a phone a passkey's name, its dates and its buttons each take a line. The command palette finds Share links
   for "remove share link" and "delete share link", People's Who has access for "remove person", "remove member", "make
   editor" and "change role", and Connected-source apps for "client secret", "client id", "issuer" and the vendors' names.
+- **An import's id is never used again** (#512): the next import after undoing the newest got the undone one's id, so
+  Import history listed several imports as one id, and a toast's Undo left from before undid the later import. Ids
+  count on from the highest there has been (schema version 37 makes the imports table again, every import and what
+  points at it kept), and an Undo names the import asked about, so another one is refused.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
