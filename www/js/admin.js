@@ -249,10 +249,17 @@ async function loadOwnerless() {
         if (who.toLowerCase() === ME.user.username.toLowerCase() &&
             !await ask({title: `Own ${p.name} yourself?`, message: `This gives you access to the records in ${p.name}.`, action: "Make me owner"})) return;
         const at = list.indexOf(p);
-        try { await call(`ownerless/${p.id}/owner`, "POST", {username: who}); await loadOwnerless(); say("#userMsg", `${who} now owns ${p.name}.`); }
+        try { await call(`ownerless/${p.id}/owner`, "POST", {username: who}); await loadOwnerless(); }
         catch (e) { say("#userMsg", e.message, true); return; }
-        // its row gone (#502: focus fell to the page): on the next profile's Make owner, else the one before's, else the card's heading
-        focusNear([...$("#ownerless").querySelectorAll(".ownerless > .row")], at, "button", $("#users h2"));
+        // its row gone (#502: focus fell to the page): on the next profile's Make owner, else the one before's, saying
+        // so under the list; the last one gone, what it said is where the list was, with focus on it (#506: focus went
+        // to the card's heading, the message out of sight under the accounts)
+        const rows = [...$("#ownerless").querySelectorAll(".ownerless > .row")], done = `${who} now owns ${p.name}.`;
+        if (rows.length) { say("#userMsg", done); return focusNear(rows, at, "button"); }
+        say("#userMsg", "");
+        const m = el("p", {class: "msg", tabindex: "-1", text: done + " Every profile has an owner now."});
+        $("#ownerless").replaceChildren(m);
+        m.focus({preventScroll: true}); m.scrollIntoView({block: "nearest"});
       }});
       return el("div", {class: "row"}, el("b", {text: p.name}),
         el("span", {class: "muted", text: p.members.length ? p.members.map(m => `${m.username} (${m.role}${m.disabled ? ", disabled" : ""})`).join(", ") : "no members"}),

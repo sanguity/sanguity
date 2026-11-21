@@ -253,18 +253,20 @@ const SgPalette = (() => {
      (#452: the Journal view before Add's Journal entry), .5 its title starts with it all, 1 each word typed starts a word of the title, 2 the first does, 3 only what else it's known by has them;
      -1 not at all. A word typed is found only at the start of a word, never inside one ("hem" isn't in "theme").
      Words are letters and digits: "two-factor" is "two factor", as "mg/dL" is "mg dl". A plural typed finds its
-     singular too (#502: "codes" finds "code", "matches" "match") */
+     singular too (#502: "codes" finds "code", "matches" "match"; #506: "activities" "activity"). where: where it is
+     (its page, its group), which counts for less than its own words (#506: "remove account" found Account's Passkeys,
+     "add remove" there and "account" its page, before Admin's Accounts): .5 more when a word is only there */
   const flat = s => " " + norm(s).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-  const singular = w => w.length < 4 ? w : w.replace(/(ch|sh|x|ss)es$/, "$1").replace(/([^s])s$/, "$1");
-  function score(title, also, words) {
-    const t = flat(title), hay = t + flat(also), at = (h, w) => h.includes(" " + w) || h.includes(" " + singular(w));
-    if (!words.every(w => at(hay, w))) return -1;
-    const all = " " + words.join(" ");
-    return t === all ? 0 : t.startsWith(all) ? .5 : words.every(w => at(t, w)) ? 1 : at(t, words[0]) ? 2 : 3;
+  const singular = w => w.length < 4 ? w : /ies$/.test(w) ? w.slice(0, -3) + "y" : w.replace(/(ch|sh|x|ss)es$/, "$1").replace(/([^s])s$/, "$1");
+  function score(title, also, words, where = "") {
+    const t = flat(title), own = t + flat(also), at = (h, w) => h.includes(" " + w) || h.includes(" " + singular(w));
+    if (!words.every(w => at(own + flat(where), w))) return -1;
+    const all = " " + words.join(" "), less = words.every(w => at(own, w)) ? 0 : .5;
+    return t === all ? 0 : t.startsWith(all) ? .5 : words.every(w => at(t, w)) ? 1 : (at(t, words[0]) ? 2 : 3) + less;
   }
-  /* xs scored (x.s, or its title, then where it is and its words), best first, then as given or by more, at most
+  /* xs scored (x.s, or its title, then its words, then where it is), best first, then as given or by more, at most
      cap: [[score, x]] */
-  const ranked = (xs, words, cap, more = () => 0) => xs.map(x => [x.s ?? score(x.title, [x.ctx, x.words].join(" "), words), x])
+  const ranked = (xs, words, cap, more = () => 0) => xs.map(x => [x.s ?? score(x.title, x.words || "", words, x.ctx), x])
     .filter(([n]) => n >= 0).sort((a, b) => a[0] - b[0] || more(a[1], b[1])).slice(0, cap);
   /* the groups found for what's typed: [heading, entries], those with the best match first, so the one marked (what
      Enter opens) is the best of all; and a note to show, if any. Offline (offline.js, on the records page) what needs
