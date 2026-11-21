@@ -253,14 +253,31 @@ button.tile{cursor:pointer}
   .tile .lbl .st{margin-left:0}
 }
 /* ---- a setting row (#286), Settings', Sharing's, Account's and Admin's: what's set on the left (about 38%: its name, a
-   hint, its ⓘ), its control on the right, one under the other below about 600 px; a hairline above it after anything.
+   hint, its ⓘ), its control on the right, one under the other below about 600 px. Both start at the top (#494: a QR
+   code or a list first in the control kept a name on its baseline far down). A hairline above each, the first one
+   under the card's head: its heading and one line of hint (#494), wherever the rows are.
    .set-row > .set-row-lbl + .set-row-ctl (setRow() in util.js); .wide: the control under its name, as wide as the row.
    The control's side is a container: what's in it lays itself out by its own width (@container). */
-.set-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--sp-2) var(--sp-5);padding:var(--sp-3) 0}   /* a name on its field's line */
-.set-row:not(:first-child){border-top:1px solid var(--grid)}
+.set-row{display:flex;flex-wrap:wrap;align-items:flex-start;gap:var(--sp-2) var(--sp-5);padding:var(--sp-3) 0;border-top:1px solid var(--grid)}
+.danger-zone>.set-row{border-top:0}   /* (its box's own edge above it) */
 .set-row-lbl{flex:38 1 0;min-width:min(100%,14rem)}
 .set-row-ctl{flex:62 1 0;min-width:min(100%,21rem);container-type:inline-size}
 .set-row.wide>*{flex-basis:100%}
+/* ---- step cards (#284, #494): Phone setup's and Admin's walk-through, one pattern: a numbered card per step, its
+   heading beside its number (ol.steps[role=list] > li.step > .step-hd, an h3, or an h4 under one); a value to give the
+   other side (.copy-val): its name over it, then the value, its Copy and, for a phone, its QR code */
+.steps{list-style:none;counter-reset:step;display:grid;gap:var(--sp-3);margin:0;padding:0}
+.step{counter-increment:step;min-width:0;padding:var(--sp-3);border:1px solid var(--ring);border-radius:var(--r-md);overflow-wrap:anywhere}
+.step-hd{display:flex;align-items:center;gap:var(--sp-2);margin:0 0 var(--sp-2);font-size:var(--fs-3);font-weight:var(--fw-semibold);color:var(--ink)}
+.step-hd::before{content:counter(step);flex:none;display:grid;place-items:center;width:24px;height:24px;border-radius:var(--r-pill);background:var(--hover);color:var(--ink2);font-size:var(--fs-2)}
+.step p{margin:0 0 var(--sp-2)}
+.step>:last-child{margin-bottom:0}
+@media (max-width:600px){ .steps{gap:var(--sp-2)} .step{padding:var(--sp-2) var(--sp-3)} }
+.copy-val{margin:var(--sp-2) 0}
+.copy-val-name{display:block;font-size:var(--fs-2);color:var(--muted)}
+.copy-val-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-1) var(--sp-2)}
+.copy-val-row>.btn{margin:0}
+.copy-val code{min-width:0;background:color-mix(in srgb,var(--ink) 5%,var(--raised));padding:1px var(--sp-1);border-radius:var(--r-sm);user-select:all;overflow-wrap:anywhere}
 /* ---- the danger zone (#287, dangerZone() in util.js): what can't be undone (deleting a profile, removing an account)
    in one red-edged box of its own, last, apart from the settings: a setting row, its title in red; opened, what goes,
    what to do first, and the name to type before its red button works. */
@@ -1031,6 +1048,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .sets .set-in{margin:0 0 var(--sp-2);font-size:var(--fs-2);color:var(--muted);font-weight:var(--fw-medium)}
 .sets .set-unsaved{display:none;color:var(--accent);background:none;box-shadow:inset 0 0 0 1px currentColor}
 .sets .set-changed .set-unsaved{display:inline-block}
+.sets .set-solo:not(.set-changed)>.set-row-lbl:not(:has(.tag:not([hidden],.set-unsaved))){display:none}   /* alone in its card, nothing to mark (#494) */
 .sets .set-msg{display:block;margin:var(--sp-3) 0 0}
 .sets .set-msg:empty{display:none}
 /* the group bar (#272, sidebar.js): "3 changes · Discard · Save", at the foot of the screen while there are any */
@@ -1059,7 +1077,6 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .sets .set-hd>.vh~.btn{display:none}   /* a card alone in its group: its Reset beside the h1 (sidebar.js, #409) */
 .sets .set-hd h2{margin:0}
 .sets .set-hd:has(>h2.vh)+.set-row{border-top:0;padding-top:0}   /* (a card alone in its group: the h1 its heading) */
-.sets .set-row:has(>.set-row-ctl>.switch:first-child){align-items:flex-start}   /* a switch first: no baseline of its words to share */
 .sets .set-row-lbl>:is(label,.set-row-name){display:block;font-size:var(--fs-3);font-weight:var(--fw-semibold);color:var(--ink2);margin:0 0 var(--sp-1)}   /* a field's name, as a setting's h3 (#286) */
 .sets .set h3 .tag{font-weight:var(--fw-medium)}
 .sets .set-labs{margin:var(--sp-1) 0;padding-left:var(--sp-5);max-width:560px}
@@ -1109,24 +1126,12 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 /* Settings: dates and times (#42) */
 .sets .set-select{max-width:100%}
 /* Sources → Phone and watch (#284, sources-watch.js): the live check (a pulsing dot while it waits, a ✓ once received),
-   the iPhone | Android switch, a card per step numbered in its heading, and each value with Copy and its QR code */
+   the iPhone | Android switch; its steps are step cards (the components layer) */
 .w-live{display:flex;align-items:center;gap:var(--sp-2);margin:var(--sp-3) 0;font-weight:var(--fw-semibold)}
 .w-live.got{color:var(--good-text)}
 .w-live.wait::before{content:"";flex:none;width:.6em;height:.6em;border-radius:var(--r-pill);background:var(--accent);animation:sg-pulse calc(var(--dur-2) * 4) var(--ease-out) infinite alternate}
 .w-pick{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2) var(--sp-3);margin:0 0 var(--sp-3)}
-.w-steps{list-style:none;counter-reset:w-step;display:grid;gap:var(--sp-3);margin:0;padding:0}
-.w-step{counter-increment:w-step;padding:var(--sp-3);border:1px solid var(--ring);border-radius:var(--r-md);overflow-wrap:anywhere}
-.w-step-hd{display:flex;align-items:center;gap:var(--sp-2);margin:0 0 var(--sp-2);font-size:var(--fs-3);font-weight:var(--fw-semibold)}
-.w-step-hd::before{content:counter(w-step);flex:none;display:grid;place-items:center;width:24px;height:24px;border-radius:var(--r-pill);background:var(--hover);color:var(--ink2);font-size:var(--fs-2)}
-.w-step p,.w-more{margin:0 0 var(--sp-2)}
-.w-step>:last-child{margin-bottom:0}
-.w-more{padding-left:var(--sp-4)}
-.w-val{margin:var(--sp-2) 0}
-.w-val-name{display:block;font-size:var(--fs-2);color:var(--muted)}
-.w-val-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-1) var(--sp-2)}
-.w-val-row>.btn{margin:0}
-@media (max-width:600px){ .w-steps{gap:var(--sp-2)} .w-step{padding:var(--sp-2) var(--sp-3)} }
-.w-val code{min-width:0;background:var(--hover);padding:1px var(--sp-1);border-radius:var(--r-sm);user-select:all;overflow-wrap:anywhere}
+.w-more{margin:0 0 var(--sp-2);padding-left:var(--sp-4)}
 /* find your provider (providers.js, #93) */
 .dir .dir-src{border-left:3px solid var(--c-study);padding:var(--sp-1) 0 var(--sp-1) var(--sp-3);margin:var(--sp-2) 0 var(--sp-3);font-size:var(--fs-3)}
 .dir .dir-src p{margin:0 0 var(--sp-2)}
@@ -1164,12 +1169,10 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .dir .dir-from{margin-top:var(--sp-3)}
 .dir a{overflow-wrap:anywhere}
 /* connected sources (connect.html) */
-.conn code{background:var(--hover);padding:1px var(--sp-1);border-radius:var(--r-sm);user-select:all;overflow-wrap:anywhere}
+.conn code{background:color-mix(in srgb,var(--ink) 5%,var(--raised));padding:1px var(--sp-1);border-radius:var(--r-sm);user-select:all;overflow-wrap:anywhere}
 .conn .conn-item.conn-bad{border-left:3px solid var(--crit);padding-left:var(--sp-3)}
 .conn .conn-alert{border-left:3px solid var(--crit);padding:var(--sp-1) 0 var(--sp-1) var(--sp-3);margin:var(--sp-3) 0;font-weight:var(--fw-medium)}
 .conn .conn-warn li{color:var(--ink2);font-size:var(--fs-3);margin:var(--sp-1) 0}
-.conn .conn-guide{font-size:var(--fs-3);border:1px solid var(--grid);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3)}
-.conn .conn-guide ol{padding-left:var(--sp-4);margin:var(--sp-2) 0}
 .conn .conn-disc{border-top:1px solid var(--grid);margin-top:var(--sp-2);padding-top:var(--sp-2)}
 .conn p,.conn dd{overflow-wrap:anywhere}
 /* Settings · Outside connections (#59, #97) */
@@ -1201,19 +1204,10 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 /* ---- connecting a portal or health plan made easier (#165): Admin's walk-through, numbered steps with values to
    copy, the form a step of its own; a source waiting for the vendor's review, on Admin and on Portals and health plans */
 .conn #srcForm{max-width:680px}
-.conn .conn-guide{padding:var(--sp-2) var(--sp-4)}
+.conn .conn-guide{margin:var(--sp-2) 0;font-size:var(--fs-3)}   /* its steps are cards (#494): no box around them */
 .conn .conn-guide>p{margin:var(--sp-2) 0}
-.conn ol.walk{padding-left:var(--sp-5);margin:var(--sp-3) 0 var(--sp-2)}
-.conn ol.walk>li{padding:2px 0 var(--sp-3) var(--sp-1);margin:0 0 var(--sp-3);border-bottom:1px solid var(--grid);min-width:0}
-.conn ol.walk>li:last-child{border-bottom:0;margin-bottom:0;padding-bottom:0}
-.conn ol.walk>li::marker{font-weight:var(--fw-bold);color:var(--accent)}
-.conn .walk-t{margin:0 0 var(--sp-1);font-size:var(--fs-3);font-weight:var(--fw-semibold);color:var(--ink)}
-.conn .walk-step p{margin:var(--sp-1) 0}
-.conn .walk-copy{display:flex;flex-wrap:wrap;gap:var(--sp-1) var(--sp-2);align-items:center;margin:var(--sp-2) 0}
-.conn .walk-k{flex:0 0 100%;font-size:var(--fs-2);font-weight:var(--fw-semibold);color:var(--ink2)}
-.conn .walk-v{flex:1 1 240px;min-width:0;padding:var(--sp-1) var(--sp-2);background:color-mix(in srgb,var(--ink) 5%,var(--raised));color:var(--ink);font:var(--fs-2) var(--font-mono);line-height:1.5}
-.conn .walk-acts{display:inline-flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center}
-.conn .walk-acts .msg{border:0;padding:0;margin:0;font-size:var(--fs-2)}
+.conn ol.walk{margin:var(--sp-3) 0 var(--sp-2)}   /* step cards (the components layer, #494) */
+.conn .copy-val-row .msg{border:0;padding:0;margin:0;font-size:var(--fs-2)}
 .conn .walk-fields{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--sp-2);margin-top:var(--sp-2)}
 .conn .walk-fields .hint{margin:-4px 0 0}
 .conn label.walk-wait{justify-self:start;color:var(--ink);white-space:normal}   /* wraps, with text spacing at 375 px (#256) */
@@ -1401,6 +1395,7 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
 :is(.ov-panel,.ov-out)+.tiles .tile>.delta{min-height:2lh}   /* a panel's row of key labs as tall in either font: a change that just fits wraps in one, not the other (#338, #441) */
 .chart-aids .pop>.menu-list{margin-left:var(--sp-3)}   /* a Legend 12 px from a phone's edge (#441), on Labs and Body (#442) */
 .sets .set-grp{margin:var(--sp-3) 0 0}
+.sets .set-groups>.set-grp:first-child{margin-top:0}   /* level with its row's name (#494) */
 @media (max-width:700px){#labsHeatmap .lab-find{flex:1 1 100%;margin-left:0}}
 .sets .set-view{border:1px solid var(--grid);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3);margin:var(--sp-2) 0;max-width:560px}
 .sets .set-view .row{display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-2);align-items:center}
@@ -1425,7 +1420,6 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
 .sets .set-units .set-radios{margin:var(--sp-1) 0 var(--sp-3)}
 .sets .set-units>:first-child{margin-top:0}
 .sets .set-units>:last-child{margin-bottom:0}
-.sets .set-row:has(>.set-row-ctl>.set-units){align-items:flex-start}   /* (its first line a legend, which gives no baseline, #286) */
 /* settings page: reference ranges from settings (#44) */
 .sets .rng{max-width:860px;grid-template-columns:minmax(0,2fr) minmax(0,1fr) 92px 64px 64px 72px 72px auto}
 .sets .rng .set-line select{width:100%}
@@ -1696,8 +1690,8 @@ select option,select optgroup{background:var(--raised);color:var(--ink)}
 .src #detail .dir-copy{margin-bottom:var(--sp-3)}
 /* the Sharing page (#168, sharing.html): Settings' sidebar (main.sets) with Account's cards; Profile set apart in it */
 .shr .shr-members td:first-child{overflow-wrap:anywhere}
-.shr .shr-share input{flex:1 1 140px;min-width:0}
-.shr #shareWith>.set-row{border-top:1px solid var(--grid)}   /* under who has access (#286) */
+:is(.shr-share,.user-new) input{flex:1 1 140px;min-width:0}   /* Share with someone, Create an account (#494) */
+.user-new label.check{padding:0}
 /* ---- About this person (#194): Settings → About this person (about.js, #267), and its section on a share link's page */
 .about .about-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);margin-top:var(--sp-2)}
 .about .about-typed{border:0;padding:0;margin:0;min-width:0}

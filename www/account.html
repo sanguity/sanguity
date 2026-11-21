@@ -33,9 +33,10 @@
   <!-- Sign-in and security -->
   <section class="card" id="password">
     <h2>Password</h2>
-    <!-- a setting row (#286, app.css .set-row): what it's for on the left, the control on the right -->
+    <p class="hint" id="pwHint"></p>
+    <!-- a setting row (#286, app.css .set-row): its name on the left, the control on the right, under the card's head (#494) -->
     <div class="set-row">
-      <div class="set-row-lbl"><p class="hint" id="pwHint"></p></div>
+      <div class="set-row-lbl"><p class="set-row-name">Change your password</p></div>
       <div class="set-row-ctl"><form id="pwForm" class="form">
         <label>Current password <input type="password" id="pwCur" autocomplete="current-password" required></label>
         <label>New password <input type="password" id="pwNew" autocomplete="new-password" required></label>
@@ -49,29 +50,27 @@
 
   <section class="card" id="twofa">
     <h2>Two-factor sign-in</h2>
+    <p class="hint" id="tfHint"></p>
+    <div class="about-words" hidden>
+      <p>Authenticator apps include Google Authenticator, Microsoft Authenticator, 1Password and Bitwarden. Once it's on,
+        Sanguity asks for the app's code after your password.</p>
+      <p>Turning it on gives you recovery codes, each of which signs you in once if you lose your phone.</p>
+    </div>
     <div class="set-row">
-      <div class="set-row-lbl">
-        <p class="hint" id="tfHint"></p>
-        <div class="about-words" hidden>
-          <p>Authenticator apps include Google Authenticator, Microsoft Authenticator, 1Password and Bitwarden. Once it's on,
-            Sanguity asks for the app's code after your password.</p>
-          <p>Turning it on gives you recovery codes, each of which signs you in once if you lose your phone.</p>
-        </div>
-      </div>
+      <div class="set-row-lbl"><p class="set-row-name">Authenticator app</p></div>
       <div class="set-row-ctl"><div id="tfBody"></div><span class="msg" id="tfMsg" role="status"></span></div>
     </div>
   </section>
 
   <section class="card" id="passkeys">
     <h2>Passkeys</h2>
+    <p class="hint" id="pkHint"></p>
+    <div class="about-words" hidden>
+      <p>A passkey signs you in on its own, or as the step after your password. It can't be phished or guessed, and your
+        password still works too.</p>
+    </div>
     <div class="set-row">
-      <div class="set-row-lbl">
-        <p class="hint" id="pkHint"></p>
-        <div class="about-words" hidden>
-          <p>A passkey signs you in on its own, or as the step after your password. It can't be phished or guessed, and your
-            password still works too.</p>
-        </div>
-      </div>
+      <div class="set-row-lbl"><p class="set-row-name">Your passkeys</p></div>
       <div class="set-row-ctl">
         <p class="howto" id="pkWhy" hidden></p>
         <div id="pkList"></div>
@@ -83,8 +82,9 @@
 
   <section class="card" id="sessions">
     <h2>Where you're signed in</h2>
+    <p class="hint">Sign out any device you don't recognise. Changing your password also signs out every other device.</p>
     <div class="set-row">
-      <div class="set-row-lbl"><p class="hint">Sign out any device you don't recognise. Changing your password also signs out every other device.</p></div>
+      <div class="set-row-lbl"><p class="set-row-name">Other devices</p></div>
       <div class="set-row-ctl"><div class="row"><button class="btn" id="sessOthers" type="button">Sign out all other devices</button><span class="msg" id="sessMsg" role="status"></span></div></div>
     </div>
     <div id="sessList"></div>

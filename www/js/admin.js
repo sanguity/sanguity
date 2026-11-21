@@ -283,7 +283,7 @@ async function loadLabmaps() {
   const [list, names] = await Promise.all([call("labmaps"), call("lab-names").catch(() => [])]);
   $("#labmapNames").replaceChildren(...[...new Set([...names, ...list.map(m => m.target).filter(Boolean)])].map(n => el("option", {value: n})));
   $("#labmaps").hidden = false;
-  if (!list.length) { $("#labmapList").replaceChildren(el("p", {class: "muted", text: "None yet: they're made when an import's lab names are matched at its preview."})); return; }
+  if (!list.length) { $("#labmapList").replaceChildren(emptyState("None yet: they're made when an import's lab names are matched at its preview.", null, {cls: ""})); return; }   // (#494)
   const as = m => m.target ? `charted as “${m.target}”` : "kept as a series of its own";
   $("#labmapList").replaceChildren(el("table", {class: "tbl"},
     el("thead", {}, el("tr", {}, ...["Reported as", "Goes to", "From", "Added", ""].map(h => el("th", {text: h})))),

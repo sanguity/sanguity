@@ -66,12 +66,15 @@ function labsEditor(value, changed, ro) {
 
 /* rows of inputs (a table on wide screens, stacked on phones); cols: [{key, label, type, only, ...attrs}]. A
    checkbox column with only: true is ticked in one row at most (ticking it in one row unticks the others); a radio
-   column is one choice across the rows (#259: a milestone's Primary), its radios one group. */
+   column is one choice across the rows (#259: a milestone's Primary), its radios one group. With none, empty says what
+   would be listed (emptyState(), #494) in place of the columns' names, and Add a row is the next step. */
 let rowsEditors = 0;
-function rowsEditor(rows, cols, changed, ro, blank, cls = "") {
+function rowsEditor(rows, cols, changed, ro, blank, cls = "", empty = "Nothing here yet.") {
   const body = el("div", {class: "set-lines c" + cols.length + (cls ? " " + cls : "")}), group = "rows" + (++rowsEditors) + "-";
   let made = 0;
   const head = el("div", {class: "set-line set-head", "aria-hidden": "true"}, ...cols.map(c => el("span", {text: c.label})), el("span"));
+  const none = emptyState(empty, null, {cls: "set-none"});
+  const tidy = () => { const n = !body.querySelector(".set-line:not(.set-head)"); head.hidden = n; none.hidden = !n; };
   const tick = c => c.type === "checkbox" || c.type === "radio";
   const only = (c, input) => { if (c.only && input.checked) for (const x of body.querySelectorAll(`[data-k="${c.key}"]`)) if (x !== input) x.checked = false; };
   const make = r => {
@@ -80,13 +83,17 @@ function rowsEditor(rows, cols, changed, ro, blank, cls = "") {
       el("span", {class: "set-lbl", id: id + c.key + "-l", text: c.label}),
       el("input", {"data-k": c.key, id: id + c.key, "aria-labelledby": c.of ? `${id}${c.key}-l ${id}${c.of}` : null, type: c.type || "text", name: c.type === "radio" ? group + c.key : null, value: tick(c) ? null : r[c.key] ?? "", checked: tick(c) ? !!r[c.key] : null,
         disabled: ro, oninput: ev => { if (tick(c)) only(c, ev.target); changed(); }, ...(c.attrs || {})}))));
-    row.append(ro ? el("span") : beside("Remove", "Remove this row", () => { row.remove(); changed(); }));
+    row.append(ro ? el("span") : beside("Remove", "Remove this row", () => {
+      const next = row.nextElementSibling?.querySelector("input") || row.previousElementSibling?.querySelector("input") || addBtn;
+      row.remove(); tidy(); next?.focus(); changed(); }));
     return row;
   };
   body.append(head, ...rows.map(make));
-  const box = el("div", {}, body);
-  if (!ro) box.append(el("div", {class: "set-add"}, el("button", {class: "btn small", type: "button", text: "Add a row",
-    onclick: () => { const r = make(blank); body.append(r); r.querySelector("input").focus(); changed(); }})));
+  const addBtn = ro ? null : el("button", {class: "btn small", type: "button", text: "Add a row",
+    onclick: () => { const r = make(blank); body.append(r); tidy(); r.querySelector("input").focus(); changed(); }});
+  const box = el("div", {}, none, body);
+  if (!ro) box.append(el("div", {class: "set-add"}, addBtn));
+  tidy();
   const read = () => [...body.querySelectorAll(".set-line:not(.set-head)")].map(row =>
     Object.fromEntries(cols.map(c => { const i = row.querySelector(`[data-k="${c.key}"]`), v = i.value;
       return [c.key, tick(c) ? i.checked : c.type === "number" ? (v === "" ? null : +v) : v.trim()]; })));
@@ -97,7 +104,8 @@ function namesEditor(value, changed, ro, setting) {
   const isLab = setting.key === "labNicknames";
   const cols = [{key: "from", label: isLab ? "Name in the records" : "Tag in the records", attrs: {maxlength: 120, ...(isLab ? {list: "labNames"} : {})}},
                 {key: "to", label: "Shown as", attrs: {maxlength: 120}}];
-  const r = rowsEditor(Object.entries(value).map(([from, to]) => ({from, to})), cols, changed, ro, {from: "", to: ""});
+  const r = rowsEditor(Object.entries(value).map(([from, to]) => ({from, to})), cols, changed, ro, {from: "", to: ""}, "",
+    isLab ? "No lab names changed yet: each shows as the records name it." : "No result sources named yet: each shows as its tag in the records.");
   return {node: r.node, get: () => Object.fromEntries(r.read().filter(x => x.from || x.to).map(x => [x.from, x.to]))};
 }
 
@@ -109,7 +117,7 @@ function rulesEditor(value, changed, ro) {
                 {key: "name", label: "Count as", attrs: {maxlength: 80, placeholder: "Physical therapy"}},
                 {key: "minutes", label: "Minutes", type: "number", attrs: {min: 1, max: 600, step: 1}},
                 {key: "regex", label: "Regular expression", type: "checkbox"}];
-  const r = rowsEditor(value, cols, changed, ro, {match: "", name: "", minutes: 45, regex: false}, "rules");
+  const r = rowsEditor(value, cols, changed, ro, {match: "", name: "", minutes: 45, regex: false}, "rules", "No visits count as workouts yet.");
   return {node: r.node, get: () => r.read().filter(x => x.match || x.name)
     .map(x => ({match: x.match, regex: x.regex, name: x.name, minutes: x.minutes}))};   // the server's order, for same()
 }
@@ -120,7 +128,7 @@ function milestonesEditor(value, changed, ro) {
   const cols = [{key: "date", label: "Date", type: "date", attrs: {min: "1900-01-01", max: "2100-12-31", required: true}},
                 {key: "label", label: "Name", attrs: {maxlength: 60, placeholder: "Diagnosis"}},
                 {key: "primary", label: "Primary", type: "radio", of: "label"}];
-  const r = rowsEditor(value, cols, changed, ro, {date: "", label: "", primary: false}, "ms");
+  const r = rowsEditor(value, cols, changed, ro, {date: "", label: "", primary: false}, "ms", "No milestones yet: each one is marked on every chart.");
   return {node: r.node, get: () => r.read().filter(x => x.date || x.label)
     .map(x => ({date: x.date, label: x.label, ...(x.primary ? {primary: true} : {})}))};
 }
@@ -503,7 +511,8 @@ const setBase = () => PID == null ? "settings/user" : `profiles/${PID}/settings`
    preference on its way to the server isn't a change not saved (#407): counts() is what the bar, the sidebar's dot,
    "not saved" and the questions before leaving count; for one of those, only one held for the bar: refused by the
    server, or filled in by put(). solo: the section, when this is its only setting, with its name, which the section's
-   heading says: no heading of its own, only its marks (#398), and the section's help beside it. */
+   heading says: no heading of its own, only its marks (#398), its help with the section's in the card's head (#494),
+   and its control as wide as the row. */
 const SET_ITEMS = {};   // key -> the setting's item drawn last: put(value) fills its editor in, unsaved (presets.js, #186)
 const WIDE = new Set(["ranges"]);   // a table of many columns: under its label, the card's width (#286)
 function settingNode(st, changed, mixed, solo) {
@@ -511,7 +520,7 @@ function settingNode(st, changed, mixed, solo) {
   const msg = el("span", {class: "msg", role: "status"});
   const from = el("span", {class: "tag"});
   const unsaved = el("span", {class: "tag set-unsaved", text: "not saved"});
-  const node = el("div", {class: "set set-row" + (WIDE.has(st.kind) ? " wide" : ""), "data-key": st.key, "data-scope": st.scope});   // a setting row (#286)
+  const node = el("div", {class: "set set-row" + (WIDE.has(st.kind) ? " wide" : solo ? " wide set-solo" : ""), "data-key": st.key, "data-scope": st.scope});   // a setting row (#286)
   const tag = () => { from.textContent = FROM[st.from] || st.from; from.hidden = atDefault(st); };
   let ed = null;
   const item = {st, node, msg, instant: INSTANT.has(st.kind) && !ro, held: false,
@@ -528,7 +537,7 @@ function settingNode(st, changed, mixed, solo) {
   SET_ITEMS[st.key] = item;
   tag();
   node.append(el("div", {class: "set-row-lbl"}, el(solo ? "div" : "h3", {class: "sub"}, solo ? null : st.label, from, mixed && SCOPE_TAG[st.scope] ? el("span", {class: "tag", text: SCOPE_TAG[st.scope]}) : null, unsaved),
-    solo ? helpNodes(solo.help, ...st.help.split("\n")) : helpNodes(st.help)),   // (alone in its section: the section's help with its own, #280)
+    solo ? null : helpNodes(st.help)),   // (alone in its section: its help with the section's, in the card's head, #494)
     el("div", {class: "set-row-ctl"}, ed.node, msg));
   return item;
 }
@@ -599,7 +608,7 @@ function sectionCard(sec, opts = {}) {
   tidy();
   card = el("section", {class: "card", id: "sec-" + sec.id},
     el("div", {class: "set-hd"}, el("h2", {id: `sec-${sec.id}-hd`, tabindex: -1, text: sec.title}), reset),
-    solo ? null : helpNodes(sec.help),   // (alone: beside its setting, in the row, #286)
+    helpNodes(sec.help, ...(solo ? solo.settings[0].help.split("\n") : [])),   // the card's head: one line of hint, the rest behind its ⓘ (#494)
     sec.id === "overview" ? presetsBlock(sec) : null,   // "Start from a condition" (presets.js, #186)
     ...items.map(it => it.node), msg);   // (at its foot: words changing there move nothing in it)
   return Object.assign(card, {sgItems: items, sgSec: sec, sgChanged: () => changed(), sgTidy: tidy});

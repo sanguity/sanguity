@@ -23,13 +23,13 @@ function shareLinksPanel(p, {open = false} = {}) {
   const box = el("div", {class: "share-links", hidden: true});
   const msg = el("span", {class: "msg", role: "status"});
   const fail = e => sayIn(msg, e.message, true);
-  const list = el("div"), made = el("div");
+  const list = el("div", {class: "share-list"}), made = el("div");
   let info = null;
 
   function drawList() {
     const rows = info.links;
     if (!rows.length) {   // New share link, below, is the next step (#199)
-      list.replaceChildren(el("p", {class: "muted", text: "No share links yet: each one you make is listed here, with when it was last opened."}));
+      list.replaceChildren(emptyState("No share links yet: each one you make is listed here, with when it was last opened.", null, {cls: ""}));
       return;
     }
     const names = Object.fromEntries(info.sections.map(s => [s.id, s.label]));

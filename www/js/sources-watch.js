@@ -79,8 +79,8 @@
       el("figcaption", {text: "Scan it with the phone's camera to copy it there."})) : null;
     const show = fig ? el("button", {class: "btn small", type: "button", text: "QR code", "aria-expanded": false, "aria-controls": fig.id,
       "aria-label": `QR code of ${what}`, onclick: () => { fig.hidden = !fig.hidden; show.setAttribute("aria-expanded", !fig.hidden); }}) : null;
-    return el("div", {class: "w-val"}, el("span", {class: "w-val-name", text: name}),
-      el("div", {class: "w-val-row"}, code, copy ? copied : null, show), fig);
+    return el("div", {class: "copy-val"}, el("span", {class: "copy-val-name", text: name}),
+      el("div", {class: "copy-val-row"}, code, copy ? copied : null, show), fig);
   }
   const b = t => el("b", {text: t});
   const para = (...c) => el("p", {}, ...c);
@@ -109,7 +109,7 @@
         : ST.has_secret ? el("p", {class: "hint", text: "Shown only when it's made. Lost it, or setting up another phone? Make a new one, and give it to the phone app."}) : null,
       el("div", {class: "row"}, go, msg));
   }
-  const step = (title, ...body) => el("li", {class: "w-step"}, el("h3", {class: "w-step-hd", text: title}), ...body);
+  const step = (title, ...body) => el("li", {class: "step"}, el("h3", {class: "step-hd", text: title}), ...body);
   const secretStep = () => step(ST.has_secret || ST.legacy ? "The secret" : "Make a secret", ...secret());
   const testStep = how => step("Send a test upload", para(how, " The check at the top of this card turns to ", b("Received"), " when it arrives."));
 
@@ -142,7 +142,7 @@
     ],
   };
   function steps() {
-    return el("ol", {class: "w-steps", id: "watchSteps", role: "list", "aria-label": `Setting up an ${OS[os]}`}, ...STEPS[os]());
+    return el("ol", {class: "steps", id: "watchSteps", role: "list", "aria-label": `Setting up an ${OS[os]}`}, ...STEPS[os]());
   }
 
   function drawWatch(st) {

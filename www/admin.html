@@ -66,13 +66,18 @@
           <p class="msg req-tf-msg" id="reqTfMsg" role="status"></p>   <!-- the setting's own replies, beside it (#323) -->
         </div>
       </div>
+      <!-- adding someone: a setting row, as Sharing's Share with someone is (#494) -->
+      <div class="set-row" id="userNewRow">
+        <div class="set-row-lbl"><p class="set-row-name">Create an account</p>
+          <p class="hint">Its person chooses their own password at first sign-in.</p></div>
+        <div class="set-row-ctl"><form id="userNew" class="row user-new">
+          <input id="userName" autocapitalize="none" spellcheck="false" required placeholder="username" aria-label="Username for the new account">
+          <label class="check"><input type="checkbox" id="userAdmin"> Admin</label>
+          <button class="btn" type="submit">Create account</button>
+        </form></div>
+      </div>
       <div id="userList"></div>
       <div id="ownerless"></div>
-      <form id="userNew" class="form inline">
-        <label>Username <input id="userName" autocapitalize="none" spellcheck="false" required></label>
-        <label class="check"><input type="checkbox" id="userAdmin"> Admin</label>
-        <button class="btn" type="submit">Create account</button>
-      </form>
     </div>
     <span class="msg" id="userMsg" role="status"></span>
     <!-- removing an account: the danger zone (admin.js; util.js dangerZone, #287), last, apart from the rest -->

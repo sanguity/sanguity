@@ -191,14 +191,15 @@ const SgLogout = (() => {
     toast(on ? "Offline records are on for this device." : "Offline records are off for this device: its copy is deleted.",
       {action: "Undo", onAction: () => turn(!on)});
   };
-  box.replaceChildren(   // a setting row (#286, util.js): what it does on the left, the switch on the right
+  box.replaceChildren(   // the card's head (#494: a line of hint, its ⓘ), then a setting row (#286, util.js): its name, the switch
     el("h2", {text: "Offline records on this device"}),
-    setRow([el("p", {class: "hint", text: "A copy of the last profile you opened, to read its records here without a connection."}),
+    el("p", {class: "hint", text: "A copy of the last profile you opened, to read its records here without a connection."}),
     aboutWords("Sanguity opens from your home screen without a connection either way. With this on, this device also keeps a copy of " +
       "the last profile you opened, read-only, with the time it was loaded. A record's details, such as a result's values or a claim's " +
       "lines, are kept once you've opened it on this device.",
       "It holds that one profile's records, settings and watch data, never documents or other profiles. It's deleted when you sign " +
-      "out, when your sign-in ends, and when you turn this off.")],
+      "out, when your sign-in ends, and when you turn this off."),
+    setRow(el("p", {class: "set-row-name", text: "A copy on this device"}),
     // the warning before turning it on stays in full (#280), beside the switch
     [el("p", {class: "howto", text: "That copy isn't encrypted the way records on the server are: anyone who can use this device while " +
       "it's unlocked could open it. Leave it off on a shared device."}),
@@ -276,7 +277,8 @@ const SgInstall = (() => {
     }
     // the last answer stays when the card is drawn again (a used prompt is gone, so the button is too)
     const more = [...parts.slice(1), ...(SgInstall.can() || !msg.textContent ? [] : [el("div", {class: "row"}, msg)])];
-    body.replaceChildren(...(more.length ? [setRow(parts[0], more)] : parts));   // a setting row (#286) where there's more than words
+    // the card's head a line of hint (#494), then a setting row (#286) where there's more than words
+    body.replaceChildren(parts[0], ...(more.length ? [setRow(el("p", {class: "set-row-name", text: "How to install"}), more)] : []));
   }
   box.replaceChildren(el("h2", {text: "Install on this device"}), body);
   let https = null;
