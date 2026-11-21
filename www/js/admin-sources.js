@@ -141,7 +141,8 @@ async function loadSetup() {
   $("#returnAddr").textContent = SETUP.return_address || "(not set: see below)";
   $("#copyReturn").hidden = !SETUP.return_address;
   $("#addrWarn").replaceChildren(...SETUP.warnings.map(w => el("li", {text: w})));
-  $("#sourceList").replaceChildren(...SETUP.sources.map(sourceRow));
+  $("#sourceList").replaceChildren(...SETUP.sources.length ? SETUP.sources.map(sourceRow)   // none: said so (util.js, #499: it showed nothing)
+    : [emptyState("No source set up yet: each one added below is listed here, for people to connect.", null, {cls: ""})]);
   if (editing === null) fill(null);
   else {   // the source being changed, as saved now; the form keeps what's typed in it
     const s = SETUP.sources.find(x => x.id === editing);

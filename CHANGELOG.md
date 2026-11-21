@@ -1869,6 +1869,15 @@ Everything on `main` so far; it becomes the first tagged release.
   too. The danger zone keeps focus in its name box while it runs, so a removal that fails or a question about who takes
   over leaves it there; an account removed meanwhile drops from the list and the picker. On a phone the zone opened
   comes into view whole, its red button clear of the tabs. Share links gained an ⓘ at each role change; it keeps one.
+- **Admin's one-time password shown where it's seen, focus kept in sight after "Confirm it's you" and two-factor's
+  buttons, and the palette and empty lists caught up** (#499): a new account's or a reset's one-time password, shown
+  once, was written under the list of accounts, 1,500 px out of sight on a phone with 17 accounts; it's now under
+  Create an account with its Copy, which has focus, in view. After "Confirm it's you" and its Cancel the account's ⋯
+  is brought into view; Create as an admin left focus on the page, and its Cancel says why beside the form. Two-factor
+  sign-in's Cancel, Confirm and "I've saved them" left focus on the page: it goes to Turn on, the recovery codes and
+  the card's heading. The remove-an-account zone picked from its own list comes into view on a phone. The command
+  palette finds Accounts for "create account" and Cycle tracking for "delete cycle data" and "turn off cycle". Outside
+  connections' empty lists and Set up a source with no sources say what would be there.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
