@@ -219,8 +219,9 @@
   }
 
   // results that look like ones already in the profile from another source (#96): flagged, never merged unless ticked
-  const when = t => { const d = new Date(String(t).length === 10 ? t + "T12:00:00" : t); if (isNaN(d)) return String(t); const o = {year: "numeric", month: "short", day: "numeric"};
-    return /T(00:00|12:00):00$/.test(t) || String(t).length === 10 ? d.toLocaleDateString(undefined, o) : d.toLocaleString(undefined, {...o, hour: "numeric", minute: "2-digit"}); };
+  // when each was taken, in the person's zone and date format, its time kept whole (dates.js, #522: not the browser's)
+  const when = t => { t = String(t); const ms = zParse(t); if (!isFinite(ms)) return t;
+    return t.length === 10 || /T(00:00|12:00):00$/.test(t) ? fmtD(ms) : fmtDT(ms); };
   const valueText = x => `${x.value} ${x.unit || ""}`.trim();
   function sameChoices(j) {
     const listed = j.possible || [];

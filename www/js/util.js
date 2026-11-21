@@ -897,7 +897,7 @@ aboutWire();
    {text, onClick} or a link {text, href, onClick} (onClick, if any, before the link is followed). An onClick that
    gives back false wasn't done (a question it asked was answered No): the toast stays. A toast with something to do
    (an Undo) stays until it's done, put away or sent away by a fourth (#362: on a touch screen nothing else could keep
-   it, and an Undo may be the only way back); one that only says stays at least 10 seconds (timeout, in ms, can only
+   it, and an Undo may be the only way back), or its actions are taken away (#522); one that only says stays at least 10 seconds (timeout, in ms, can only
    make it longer), its time stopping while the pointer is on it or focus is in it. Its close button puts it away, as
    Escape does with focus in it. Alt+N takes focus to the newest toast's first button (not while typing in a field: on a Mac, Option+N types ñ,
    #361); no toast takes focus by itself. Focus that went into the toasts, however it got there, goes back where it
@@ -957,7 +957,8 @@ const toast = (() => {
         else list.lastElementChild?.querySelector("button, a").focus();
       }
     };
-    const run = () => { clearTimeout(timer); if (!acts.length) { start = Date.now(); timer = setTimeout(gone, left); } };   // (one to act on stays)
+    const acting = () => !!t.querySelector(".sg-toast-acts");   // (taken away, it only says: #522)
+    const run = () => { clearTimeout(timer); if (!acting()) { start = Date.now(); timer = setTimeout(gone, left); } };   // (one to act on stays)
     const pause = () => { if (timer) { clearTimeout(timer); timer = 0; left = Math.max(2000, left - (Date.now() - start)); } };
     const resume = () => { if (!over && !t.contains(document.activeElement)) run(); };
     // its words and its actions in one box, which wraps the actions under the words, and its ✕ beside that box, on the
@@ -975,6 +976,9 @@ const toast = (() => {
         }}))) : null),
       el("button", {class: "btn quiet sg-toast-x", type: "button", "aria-label": "Dismiss", onclick: gone}, icon("x")),
       acts.length ? el("span", {class: "vh", text: " Alt+N goes to it."}) : null);
+    // its actions taken away (an Undo done elsewhere: import-jobs.js undoneElsewhere), it only says, so it goes in
+    // time as one that only says does (#522: it stayed, over Import history's foot)
+    if (acts.length) new MutationObserver((_, o) => { if (!acting()) { o.disconnect(); resume(); } }).observe(t.firstElementChild, {childList: true});
     t.addEventListener("pointerenter", () => { over = true; pause(); });
     t.addEventListener("pointerleave", () => { over = false; resume(); });
     t.addEventListener("focusin", ev => { from(ev); pause(); });

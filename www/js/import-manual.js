@@ -252,20 +252,30 @@
         onHealth ? el("a", {href: recordsLink(p, "health"), text: "See them on Body and activity"}) : null,
         typed.height ? el("a", {href: `settings.html?profile=${p}#about`, text: "See the height history"}) : null].filter(Boolean);
       const what = [n ? plural(n, "result", "results") : "", others ? plural(others, "record", "records") : ""].filter(Boolean).join(" and ");
-      const said = `Saved ${what || "nothing new"}.`
-        + (j.skipped ? ` ${plural(j.skipped, "was", "were")} in this profile already and left out.` : "");
+      const skipped = j.skipped ? ` ${plural(j.skipped, "was", "were")} in this profile already and left out.` : "";
+      const said = `Saved ${what || "nothing new"}.${skipped}`;
       // shown here with its links, said by a toast (#263) with the first of them (Open Labs charting what was typed,
       // as its link does, #360) and an Undo, which asks first in Import history's words: the form is cleared already
       sayIn(msg, [said, ...links.flatMap(a => [" ", a])], false, {say: false});
-      const t = toast(said, {actions: [...links.slice(0, 1).map(a => ({text: a.textContent.replace(/^See them on /, "Open "), href: a.href,
+      // the toast names what it saved, so two saves' toasts aren't both "Saved 1 result." (#522): the tests as typed in
+      // the rows saved (j.rows, numbered as sent), and the kinds of the rest ("Saved 1 result: Sodium.", "Saved 1
+      // record: 1 payment.")
+      const kept = JSON.parse(sent).keep_duplicates, tests = [...new Set((j.rows || []).filter(d => d.ok && d.name && (kept || !d.duplicate))
+        .map(d => rs[d.row - 1] && valueOf(rs[d.row - 1]).test).filter(Boolean))];
+      const rest = sanguityImport.importCounts({typed: Object.fromEntries(Object.entries(typed).filter(([k]) => k !== "labs"))});
+      const named = [n ? (tests.length > 3 ? tests.slice(0, 3).join(", ") + ` and ${tests.length - 3} more` : tests.join(", ")) : "",
+        others && rest !== "No records" ? rest : ""].filter(Boolean).join("; ");
+      const t = toast(named && what ? `Saved ${what}: ${named}.${skipped}` : said, {actions: [...links.slice(0, 1).map(a => ({text: a.textContent.replace(/^See them on /, "Open "), href: a.href,
           onClick: names.length ? () => openTrends(p, names) : null})),   // (the first link is Labs', when there are labs)
         // (asked as Import history and an upload's toast ask it, #508: import-jobs.js undoAsk; the page told, Import
         // history read again; focus on the line saying so, not on a toast)
         ...(j.import_id != null && (n || others) ? [{text: "Undo…", onClick: async () => {
+          // the line is this save's still, not a later one's (#522: an older toast's Undo said the latest was gone)
+          const ours = msg.dataset.savedLine === String(j.import_id);
           const said = await sanguityImport.undoAsk(p, j.import_id, {origin: "manual", label: "Typed in", counts: j.counts, upload: null});
           if (!said) return false;
-          sayIn(msg, "Undone: what was saved is gone from the profile.", false, {say: false});
-          sanguityImport.undoneFocus(msg, said);
+          if (ours) sayIn(msg, "Undone: what was saved is gone from the profile.", false, {say: false});   // (as undoneElsewhere said it)
+          sanguityImport.undoneFocus(ours ? msg : null, said);
           toast("Undone: what was saved is gone from the profile.");
         }}] : [])]});
       if (j.import_id != null) {

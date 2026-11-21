@@ -148,10 +148,22 @@ function emptyCard(head, ...kids) {
    reviews and a file still sending stay). Records that come while they're being drawn are drawn in place after */
 let firstDrawn = null;
 function recordsFirst(data) {
-  if (firstDrawn || DATA) return (firstDrawn || Promise.resolve()).then(() => storeRecords(data));
+  if (firstDrawn || DATA) return (firstDrawn || Promise.resolve()).then(() => recordsAgain(data));
   if (mainKids) document.querySelector("main").replaceChildren(...mainKids);
   $(".tabs").hidden = false; $(".filters").hidden = false;
   return firstDrawn = recordsDraw(data);
+}
+/* the profile's records read again (an import saved from the upload dialog, drop.js, or undone: sg:imports below)
+   drawn in place, with the watch data and cycle records, which come apart from them (#522: an Apple Health zip's
+   readings and cycle records, which only a reload drew, and an Undo left drawn); read as recordsDraw reads them, then
+   joined to the records (storeRecords) */
+async function recordsAgain(data) {
+  try {
+    const w = await api(`profiles/${PROFILE.id}/watch`);
+    if (w.status === 200) WATCH = await w.json(); else if (w.status === 204) WATCH = null;
+  } catch (e) {}
+  await cycleLoad();
+  storeRecords(data);
 }
 const canImport = p => p.role === "owner" || p.role === "editor";
 /* the profile shown has no records: its empty card (#199), for someone who can bring them in, or not */
@@ -163,7 +175,7 @@ function emptyProfile() {
         {href: `sharing.html?profile=${PROFILE.id}#people`, text: "See who has access"}));
 }
 /* an import of the profile shown undone (a toast's Undo, import-jobs.js told, #508): its records read again and drawn
-   in place (store.js), or, with none left, its empty card back, as a reload would show it; focus, where the import's
+   in place (recordsAgain: its watch data and cycle records too, #522), or, with none left, its empty card back, as a reload would show it; focus, where the import's
    card isn't shown (the upload dialog closed), on the empty card's next step, or the tab's own link (it's always in
    the bar, nav.js), else its first heading shown */
 document.addEventListener("sg:imports", ev => {
@@ -173,7 +185,7 @@ document.addEventListener("sg:imports", ev => {
     await firstDrawn;   // (an empty profile's first records still being drawn)
     const r = await api(`profiles/${PROFILE.id}/data`);
     if (r.status === 200) {
-      storeRecords(await r.json());
+      await recordsAgain(await r.json());
       // the drawer showing one of the import's records, or a medication only it brought, closes (#513: it stayed, with
       // its pencil, ⋯ and Source link), and whatever else it shows that's gone with it (drawerStill, #517: an upcoming
       // appointment); focus where it closes to (drawer.js)

@@ -10017,6 +10017,43 @@ def main():
             drawer517 = js("[drawer.classList.contains('open'), drawer.open, document.activeElement !== document.body && !drawer.contains(document.activeElement)]")
             check("an upcoming appointment open in the drawer closes after its import's Undo, focus on the page (#517)",
                   open517 == "Follow-up visit" and drawer517 == [False, False, True], [up517, open517, drawer517])
+            # (#522) cycle tracking on, an Apple Health zip with home readings and a period dropped into the dialog on Body
+            # and activity and added: its cards and cycle records drawn without a reload (only the records were read
+            # again), and its toast's Undo takes them away again
+            js(f"api('profiles/{dpid497}/cycle', {{method: 'PUT', body: JSON.stringify({{on: true}})}}).then(r => r.status)")
+            hk522 = lambda t, u, d, v, src="Test Device": f'<Record type="HKQuantityTypeIdentifier{t}" sourceName="{src}" unit="{u}" startDate="{d}" endDate="{d}" value="{v}"/>\n'
+            flow522 = '<Record type="HKCategoryTypeIdentifierMenstrualFlow" sourceName="Test Phone" startDate="{0} 00:00:00 -0500" endDate="{0} 00:00:00 -0500" value="HKCategoryValueMenstrualFlow{1}"/>\n'
+            xml522 = ('<?xml version="1.0" encoding="UTF-8"?>\n<HealthData locale="en_US">\n<ExportDate value="2026-11-13 09:00:00 -0500"/>\n'
+                      '<Correlation type="HKCorrelationTypeIdentifierBloodPressure" sourceName="Test Cuff" startDate="2026-11-09 09:00:00 -0500" endDate="2026-11-09 09:00:00 -0500">\n'
+                      + hk522("BloodPressureSystolic", "mmHg", "2026-11-09 09:00:00 -0500", 118, "Test Cuff")
+                      + hk522("BloodPressureDiastolic", "mmHg", "2026-11-09 09:00:00 -0500", 76, "Test Cuff") + "</Correlation>\n"
+                      + hk522("BodyTemperature", "degC", "2026-11-09 07:05:00 -0500", "36.8") + hk522("BloodGlucose", "mg/dL", "2026-11-09 07:30:00 -0500", 96)
+                      + hk522("OxygenSaturation", "%", "2026-11-09 02:00:00 -0500", "0.97") + hk522("RespiratoryRate", "count/min", "2026-11-09 02:00:00 -0500", 14)
+                      + flow522.format("2026-11-09", "Medium") + flow522.format("2026-11-10", "Light") + "</HealthData>\n")
+            zip522 = io.BytesIO()
+            with zipfile.ZipFile(zip522, "w") as z:
+                z.writestr("apple_health_export/export.xml", xml522)
+            tab_click(page, "#tab-health")
+            cards522 = "[...document.querySelectorAll('#view-health h2, #view-health h3')].filter(h => h.checkVisibility()).map(h => h.textContent.trim())"
+            watch522 = [js(cards522)]
+            js("""([bytes, name]) => { const dt = new DataTransfer(); dt.items.add(new File([new Uint8Array(bytes)], name, {type: 'application/zip'}));
+                document.body.dispatchEvent(new DragEvent('dragenter', {dataTransfer: dt, bubbles: true}));
+                const v = document.querySelector('.drop-veil'), e = new DragEvent('drop', {dataTransfer: dt, bubbles: true, cancelable: true});
+                (v && v.matches(':popover-open') ? v : document.body).dispatchEvent(e); }""", [list(zip522.getvalue()), "watch-522.zip"])
+            page.wait_for_function(f"/^Ready to import/.test({dcard497}?.textContent) && {dcard497}.closest('.job').querySelector('h3').textContent === 'watch-522.zip'", timeout=30000)
+            js(f"{dcard497}.querySelector('.imp-actions .primary').click()")
+            page.wait_for_function(f"/^Imported/.test({dcard497}.textContent)", timeout=30000)
+            page.click("dialog.up-dlg .sheet-x")
+            page.wait_for_function(f"{cards522}.includes('Blood pressure') && CYCLE.length > 0", timeout=10000)
+            watch522 += [js(cards522), js("CYCLE.length")]
+            page.click("#sgToasts .sg-toast:last-child button:text-is('Undo…')")
+            answer_ask(page)
+            page.wait_for_function(f"!{cards522}.includes('Blood pressure') && !CYCLE.length", timeout=10000)
+            watch522 += [js(cards522), js("[CYCLE.length, WATCH]")]
+            check("an Apple Health zip added from the dialog on the records page draws its watch cards and cycle records without a reload, "
+                  "and its toast's Undo takes them away (#522: only a reload drew them)",
+                  watch522[0] == [] and all(c in watch522[1] for c in ("Blood pressure", "Blood glucose", "Body temperature", "Blood oxygen (SpO2)", "Respiratory rate"))
+                  and watch522[2] == 1 and watch522[3] == [] and watch522[4] == [0, None], watch522)
             # (#504) a profile with no records: two CSVs dropped into the dialog, the first added, the dialog closed: its
             # records are drawn without loading the page again, the toast's Undo and the other review kept
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
@@ -10140,6 +10177,31 @@ def main():
             check("after Import history's Undo, Type records in's line says it's undone, and the toast has no Open link (#517)",
                   man517 == ["Undone: what was saved is gone from the profile.", 0, "Undone: the import's records are gone from the profile.", []], man517)
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            # (#522) A typed and saved, then B: each toast names what it saved, and A's Undo leaves the line saying B's
+            # save (it said "Undone: what was saved is gone" while B was saved)
+            js("SgSources.show('manual')")
+            ids522 = []
+            for t522, v522 in (("Sodium", "140"), ("Potassium", "4.3")):
+                for f522, x522 in (("date", "2026-11-18"), ("test", t522), ("value", v522), ("unit", "mmol/L")):
+                    page.fill(f".man-row:nth-child(1) [data-f={f522}]", x522)
+                page.wait_for_function("!document.getElementById('manSave').disabled", timeout=10000)
+                page.click("#manSave")
+                page.wait_for_function(f"document.querySelectorAll('#sgToasts .sg-toast[data-undo-import]').length === {len(ids522) + 1}", timeout=10000)
+                ids522.append(js("+[...document.querySelectorAll('#sgToasts .sg-toast[data-undo-import]')].pop().dataset.undoImport"))
+            toast522 = "id => document.querySelector(`#sgToasts .sg-toast[data-undo-import=\"${id}\"]`)"
+            said522 = [js(f"id => ({toast522})(id).querySelector('.sg-toast-text').textContent", i) for i in ids522]
+            page.click(f"#sgToasts .sg-toast[data-undo-import='{ids522[0]}'] button:text-is('Undo…')")
+            answer_ask(page)
+            page.wait_for_function(f"!({toast522})({ids522[0]})", timeout=10000)
+            settle(300)
+            line522 = js("(m => [m.textContent, [...m.querySelectorAll('a')].map(a => a.textContent), m.dataset.savedLine])(document.getElementById('manMsg'))")
+            check("two typed saves' toasts name what each saved, and the first's Undo leaves the line saying the second's save (#522)",
+                  said522 == ["Saved 1 result: Sodium.", "Saved 1 result: Potassium."] and line522[0].startswith("Saved 1 result.")
+                  and line522[1] == ["See them on Labs"] and line522[2] == str(ids522[1]), [said522, line522])
+            page.click(f"#sgToasts .sg-toast[data-undo-import='{ids522[1]}'] button:text-is('Undo…')")
+            answer_ask(page)
+            page.wait_for_function("document.getElementById('manMsg').textContent.startsWith('Undone')", timeout=10000)
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             # (#512, #513) A added, then undone in Import history while its toast stays up: the toast offers no Undo now,
             # and says so; B added next has an id of its own, and A's Undo asked for then (as its toast's did) is refused
             # without a question, leaving B
@@ -10165,6 +10227,13 @@ def main():
                 (document.querySelector('#sgToasts .sg-toast[data-undo-import="{a512}"]'))""")
             check("after Import history's Undo, that import's toast offers no Undo, and says it's undone (#513)",
                   toast513 == [False, "Undone: the import's records are gone from the profile."], toast513)
+            # (#522) and with nothing left to do in it, it goes by itself, as a toast that only says does (it stayed until
+            # dismissed, over Import history's foot): the pointer away from it and focus outside it
+            page.mouse.move(2, 2)
+            js("document.activeElement?.closest('#sgToasts') && document.activeElement.blur()")
+            gone522 = js(f"""new Promise(r => {{ const t0 = Date.now(), t = document.querySelector('#sgToasts .sg-toast[data-undo-import="{a512}"]');
+                const tick = () => !t.isConnected ? r(Date.now() - t0) : Date.now() - t0 > 14000 ? r(null) : setTimeout(tick, 200); tick(); }})""")
+            check("…and, its Undo gone, it leaves by itself after its 10 seconds (#522)", gone522 is not None and gone522 > 2000, gone522)
             b512 = add512("b-512.csv", "Calcium,9.4,mg/dL,8.6 - 10.3")
             stale512 = js(f"sanguityImport.undoAsk({epid504}, {a512}, null).then(x => 'asked', e => e.message)")
             left512 = js(f"""fetch('api/profiles/{epid504}/imports', {{cache: 'no-store'}}).then(r => r.json())
@@ -10240,6 +10309,31 @@ def main():
                     ampm517[f"{sec517} {w}"] = js(AMPM509, sel517)
             check("fmtDT's time has a no-break space before AM or PM, and the hub and Import history keep each time whole at 320–1100 px (#517)",
                   ampm517["fmtDT"] is True and not any(v for k, v in ampm517.items() if k != "fmtDT"), ampm517)
+            # (#522) a review's results possibly the same as another source's: each time in the person's date format (here
+            # year-month-day) and zone, through dates.js, its AM or PM kept with it at 375 px (it was the browser's own
+            # format and zone, and split "8:31 / AM")
+            fmt522 = js("api('settings/user').then(r => r.json()).then(u => u['dates.format'])")
+            js("api('settings/user/dates.format', {method: 'PUT', body: JSON.stringify({value: 'ymd'})}).then(r => r.status)")
+            page.set_viewport_size({"width": 375, "height": 800})
+            page.goto(base + f"/sources.html?profile={epid504}#upload")
+            page.reload()   # (the same page: only its hash changed; loaded again, in the new format)
+            page.wait_for_selector("#pickFiles", state="attached", timeout=10000)
+            for n522, row522 in enumerate(("14.4,g/dL", "144,g/L")):
+                page.set_input_files("#pickFiles", files=[{"name": f"same-{n522}.csv", "mimeType": "text/csv",
+                    "buffer": f"Date,Time,Test,Result,Units,Reference Range\n2026-10-17,08:31,Hemoglobin,{row522},13.5 - 17.5\n".encode()}])
+                page.wait_for_function(f"/^(Ready to import|All duplicates)/.test(document.querySelectorAll('#importer .import-job')[{n522}]?.textContent)", timeout=30000)
+                if not n522:
+                    js("document.querySelector('#importer .import-job .imp-actions .primary').click()")
+                    page.wait_for_function("/^Imported/.test(document.querySelector('#importer .import-job').textContent)", timeout=30000)
+            li522 = "document.querySelectorAll('#importer .import-job')[1].querySelector('.imp-same li')"
+            page.wait_for_function(f"!!{li522}", timeout=10000)
+            js(f"{li522}.scrollIntoView()")
+            same522 = [js(f"{li522}.textContent"), js(AMPM509, "#importer .imp-same li")]
+            check("a review's possibly-the-same result gives each time in the person's date format, its time kept whole at 375 px (#522)",
+                  same522[0].count("2026-10-17 8:31 AM") == 2 and same522[1] == [], same522)
+            js("(j => fetch(`api/profiles/" + str(epid504) + "/jobs/${j}/discard`, {method: 'POST', headers: {'X-Sanguity': '1'}}))"
+               "(document.querySelectorAll('#importer .import-job')[1].dataset.job)")
+            js(f"api('settings/user/dates.format', {{method: 'PUT', body: JSON.stringify({{value: {json.dumps(fmt522)}}})}}).then(r => r.status)")
             page.set_viewport_size({"width": 1400, "height": 900})
             page.goto("about:blank")
             db = dbm.connect()

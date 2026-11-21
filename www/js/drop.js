@@ -155,7 +155,7 @@ const SgDrop = (() => {
       return;
     }
     const r = await api(`profiles/${pid}/data`).catch(() => null);
-    if (r && r.status === 200) (DATA ? storeRecords : recordsFirst)(await r.json());
+    if (r && r.status === 200) (DATA ? recordsAgain : recordsFirst)(await r.json());   // (its watch data and cycle records too, #522)
   }
 
   return {here(target, show) { here = {target, show}; }};
