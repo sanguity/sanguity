@@ -47,7 +47,7 @@
         el("span", {class: "muted", text: `${ORIGIN[e.origin] || e.origin} ${when(e.at)}` + (e.by ? ` · ${e.by}` : "")}),   // no name: typed in before it was kept (#325)
         undone ? el("span", {class: "tag", text: "undone"}) : null),
       e.files && e.files.length ? el("p", {class: "files muted", text: "Files: " + e.files.join(", ") +
-        (e.file_count > e.files.length ? ` and ${(e.file_count - e.files.length).toLocaleString()} more` : "")}) : null,
+        (e.file_count > e.files.length ? ` and ${(e.file_count - e.files.length).toLocaleString("en-US")} more` : "")}) : null,
       // an import that saved only what's never named here (#534: cycle records, #223) names its source alone
       el("p", {class: "what", text: (counts(e) === "No records" && !e.removal ? "From " + e.label : counts(e)) + (e.range ? ` (${e.range.from === e.range.to ? recordDate(e.range.from) : recordDate(e.range.from) + " to " + recordDate(e.range.to)})` : "")}),   // dates.js (#317)
       undone ? el("p", {class: "muted", text: `Undone ${when(e.undone_at)} by ${e.undone_by}.`}) : null,
@@ -116,7 +116,7 @@
       }});
       return el("li", {}, el("span", {},
         `${CATEGORY[v.from] || v.from} titled “${v.title}”${v.label ? " from " + v.label : ""} go to ${CATEGORY[v.k] || v.k}`,
-        el("small", {class: "muted", text: ` · ${n ? `moves ${n.toLocaleString()} now` : "nothing to move now"}`})), " ", del);
+        el("small", {class: "muted", text: ` · ${n ? `moves ${n.toLocaleString("en-US")} now` : "nothing to move now"}`})), " ", del);
     }));
   }
 

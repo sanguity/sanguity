@@ -1683,6 +1683,12 @@ class Api(unittest.TestCase):
                       pia.get("/api/me/passkeys", params={"origin": "http://127.0.0.1:8730"}).json()["problem"])
         self.assertEqual(c.get("/api/me").status_code, 401)
         self.assertEqual(c.post("/api/login/code", json={"ticket": first["ticket"], "code": "123456"}, headers=H).status_code, 401)
+        # #540: at a name none was made at, the refusal says where they were, and no code, which pia hasn't got
+        from server import passkeys
+        with self.assertRaises(passkeys.PasskeyError) as no:
+            passkeys.authentication_options(db, "http://localhost:8730", pia_id)
+        self.assertEqual((no.exception.status, str(no.exception)),
+                         (409, "None of your passkeys was made at this address. Open Sanguity at https://health.example.com to use one."))
         o = c.post("/api/login/passkey/options", json={"ticket": first["ticket"]}, headers=O).json()
         self.assertEqual([x["id"] for x in o["options"]["allowCredentials"]], [SoftKey.b64(key.cid)])
         answer = key.get(o["options"], verified=False)   # after a password, presence is enough

@@ -35,16 +35,18 @@ function useDates(zone, format) {
   _zfmt = z ? new Intl.DateTimeFormat("en-US", {timeZone: z, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric"}) : null;
 }
 const _withZone = (o = {}) => DATES.zone && !o.timeZone ? {...o, timeZone: DATES.zone} : o;
-/* t in the browser's language with these options (which name the parts to show: year, month, hour...), in their
-   zone: what Date's toLocaleDateString, toLocaleTimeString and toLocaleString give, with each formatter made once
-   and kept, since making one is most of the time those take (a ten-year record shows thousands of dates, #201). A
-   time keeps its AM or PM here, at the source (#517): the space between them is a no-break one, so no line on any
-   page ends "10:06" with "AM" on the next */
+/* t in English, the interface's language, as the browser's region writes it ("en-DE": "6 Oct 2026, 14:05"; #540: the
+   format setting's order with a German month, "Okt 6, 2026"), with these options (which name the parts to show: year,
+   month, hour...), in their zone: what Date's toLocaleDateString, toLocaleTimeString and toLocaleString give, with
+   each formatter made once and kept, since making one is most of the time those take (a ten-year record shows
+   thousands of dates, #201). A time keeps its AM or PM here, at the source (#517): the space between them is a
+   no-break one, so no line on any page ends "10:06" with "AM" on the next */
+const DATE_LOC = (() => { try { const r = new Intl.Locale(navigator.language).maximize().region; return r ? "en-" + r : "en"; } catch (e) { return "en"; } })();
 const _fmts = new Map();
 function _fmt(t, o) {
   const key = JSON.stringify(o) + DATES.zone;
   let f = _fmts.get(key);
-  if (!f) _fmts.set(key, f = new Intl.DateTimeFormat(undefined, _withZone(o)));
+  if (!f) _fmts.set(key, f = new Intl.DateTimeFormat(DATE_LOC, _withZone(o)));
   const d = new Date(t);
   if (isNaN(d)) return "Invalid Date";   // as Date's own say it, where format() would throw
   if (!o.hour) return f.format(d);

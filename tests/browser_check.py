@@ -2653,12 +2653,14 @@ def main():
         notes531 = hp.evaluate("""() => Object.fromEntries([...document.querySelectorAll('#shareBody section')].filter(s => s.querySelector('table.measures'))
           .map(s => [s.id, [[...s.querySelectorAll('p:not(.hint):not(.muted)')].map(p => p.textContent),
             [...s.querySelectorAll('p.hint')].map(p => p.textContent).find(t => t.startsWith('The latest ')) || '']]))""")
-        # #535: the same in a German browser: the page's own counts there are "1.381" ("The latest 20 of 1.381 readings."),
-        # the server's leads, its "CGM: n" and "Meter: n" cells and targets' "4 of 62 readings above it" were "1,381" or "1381".
-        # The fixture's counts are under 1,000 here, so the view's blood pressure is given 1,381 readings and a CGM day
-        # 1,234, as the server writes them (test_summary.py: measures' counts with their separator)
-        de535 = browser.new_context(viewport={"width": 1400, "height": 900}, locale="de-DE")
-        dep = de535.new_page()
+        # #535, #540: the same in a German and an Indian English browser: counts are written one way, the app's ("1,381"),
+        # the page's own ("The latest 20 of 1,381 readings.") and the server's (its leads, "CGM: 1,234 in 23.5 h", a count
+        # and a decimal on one line) alike, and the server's text as it is (#540: a typed note "120,135,140 · took 2,500
+        # IU" read "120.135.140 · took 2.500 IU" in German, "12,01,35,140" in Indian English; and "1.096 days · average
+        # 96.4%"). The fixture's counts are under 1,000 here, so the view's blood pressure is given 1,381 readings and a
+        # CGM day 1,234, as the server writes them (test_summary.py: measures' counts with their separator), and a dose
+        # in the medication log that note
+        typed540 = "BP before and after: 120,135,140 · took 2,500 IU"
 
         def big535(route):
             got = route.fetch()
@@ -2668,17 +2670,27 @@ def main():
                 j["home_bp"]["total"] = 1381
             for r in (j.get("glucose") or {}).get("rows") or []:
                 if isinstance(r[1], str) and r[1].startswith("CGM: "):
-                    r[1] = re.sub(r"^CGM: \d+", "CGM: 1,234", r[1])
+                    r[1] = re.sub(r"^CGM: \d+( in [\d.]+ h)?", "CGM: 1,234 in 23.5 h", r[1])
                     break
+            if not (j.get("medlog") or {}).get("rows"):   # (a section of its own, as the server sends one)
+                j["sections"] = [s for s in j["sections"] if s["id"] != "medlog"] + [{"id": "medlog", "label": "Medication log", "what": "each dose logged"}]
+                j["medlog"] = {"cols": [["Date and time", "time", 110], ["Medication", "text", 150], ["What happened", "text", 80], ["Note", "text", 150],
+                                        ["From", "text", None]], "rows": [["2026-11-14T08:00", "Vitamin D3 (fictional)", "Taken", "", "Typed in"]],
+                               "lead": ["Vitamin D3 (fictional): 1 taken"], "note": "", "empty": "No doses logged in this period.", "total": 1, "of": "doses"}
+            j["medlog"]["rows"][0][3] = typed540
             route.fulfill(response=got, json=j)
-        dep.route("**/api/share/view", big535)
-        dep.goto(base + "/" + made491["path"])
-        dep.wait_for_selector("#share-results .share-latest", timeout=10000)
-        notes535 = dep.evaluate("""() => Object.fromEntries([...document.querySelectorAll('#shareBody section')].filter(s => s.querySelector('table.measures'))
-          .map(s => [s.id, [[...s.querySelectorAll('p:not(.hint):not(.muted)')].map(p => p.textContent),
-            [...s.querySelectorAll('p.hint')].map(p => p.textContent).find(t => t.startsWith('The latest ')) || '',
-            [...s.querySelectorAll('table.measures td')].map(td => td.textContent).filter(t => /^(CGM|Meter): |\\d+ of \\d/.test(t))]]))""")
-        de535.close()
+        notes535 = {}
+        for loc in ("de-DE", "en-IN"):
+            de535 = browser.new_context(viewport={"width": 1400, "height": 900}, locale=loc)
+            dep = de535.new_page()
+            dep.route("**/api/share/view", big535)
+            dep.goto(base + "/" + made491["path"])
+            dep.wait_for_selector("#share-results .share-latest", timeout=10000)
+            notes535[loc] = dep.evaluate("""() => Object.fromEntries([...document.querySelectorAll('#shareBody section')].filter(s => s.querySelector('table.measures'))
+              .map(s => [s.id, [[...s.querySelectorAll('p:not(.hint):not(.muted)')].map(p => p.textContent),
+                [...s.querySelectorAll('p.hint')].map(p => p.textContent).find(t => t.startsWith('The latest ')) || '',
+                [...s.querySelectorAll('table.measures td')].map(td => td.textContent).filter(t => /^(CGM|Meter): |\\d+ of \\d|^BP /.test(t))]]))""")
+            de535.close()
         # #501: Show all keeps focus while it loads (aria-disabled, not disabled: focus fell to the page), saying
         # "Loading…" in the line it's described by, a live region; a failure said there, focus still on it; and the rows
         # come without pulling focus to them once it has moved on (another long section's: costs' are below)
@@ -2798,14 +2810,17 @@ def main():
               len(cut531) >= 2 and all(m and m[2] != "rows" for m in cut531.values())
               and any(v[1] for v in same531.values()) and all(ln.startswith(n + " ") for n, lns in same531.values() for ln in lns)
               and not any(re.search(r"(?<![\d.,:–-])\d{4,}(?![\d.,:–-])", t) for v in notes531.values() for t in v[0] + [v[1]]), notes531)
-        cut535 = {k: re.fullmatch(r"The latest \d+ of ([\d.]+) (.+)\.", v[1]) for k, v in notes535.items() if v[1]}
-        same535 = {k: [m[1], [ln for ln in notes535[k][0] if re.match(r"[\d.,]+ ", ln) and re.sub(r"\D", "", ln.split()[0]) == re.sub(r"\D", "", m[1])]]
-                   for k, m in cut535.items() if m}
-        check("…(#535) with de-DE, a measure's lead and the note under it write a count the same way, “1.381”, as the page's own counts there "
-              "(the lead said “1,381 readings” over “of 1.381 readings”); no count of four digits or more with a comma, or none, in a lead, note or cell",
-              len(cut535) >= 2 and any(v[1] for v in same535.values()) and all(ln.startswith(n + " ") for n, lns in same535.values() for ln in lns)
-              and same535.get("share-home_bp", [""])[0] == "1.381" and any(t.startswith("CGM: 1.234 ") for t in notes535.get("share-glucose", [[], "", []])[2])
-              and not any(re.search(r"\d,\d{3}(?!\d)|(?<![\d.,:–-])\d{4,}(?![\d.,:–-])", t) for v in notes535.values() for t in v[0] + [v[1]] + v[2]), notes535)
+        for loc, n535 in notes535.items():
+            cut535 = {k: re.fullmatch(r"The latest \d+ of ([\d,]+) (.+)\.", v[1]) for k, v in n535.items() if v[1]}
+            same535 = {k: [m[1], [ln for ln in n535[k][0] if re.match(r"[\d.,]+ ", ln) and re.sub(r"\D", "", ln.split()[0]) == re.sub(r"\D", "", m[1])]]
+                       for k, m in cut535.items() if m}
+            check(f"…(#535, #540) with {loc}, a measure's lead and the note under it write a count the same way, “1,381”, the app's way, as the "
+                  "server's “CGM: 1,234 in 23.5 h” does beside its decimal; no count of four digits or more written otherwise in a lead, note or cell; "
+                  "and a dose's note “120,135,140 · took 2,500 IU” as typed (#540: “120.135.140 · took 2.500 IU”, “12,01,35,140”)",
+                  len(cut535) >= 2 and any(v[1] for v in same535.values()) and all(ln.startswith(n + " ") for n, lns in same535.values() for ln in lns)
+                  and same535.get("share-home_bp", [""])[0] == "1,381" and "CGM: 1,234 in 23.5 h" in n535.get("share-glucose", [[], "", []])[2]
+                  and n535.get("share-medlog", [[], "", []])[2] == [typed540]
+                  and not any(re.search(r"\d\.\d{3}(?!\d)|\d,\d\d,|(?<![\d.,:–-])\d{4,}(?![\d.,:–-])", t) for v in n535.values() for t in v[0] + [v[1]] + v[2]), n535)
         # #501: a year's link to visits, lab results and medications (the form's default sections and dates, the year to
         # the demo's last day), printed with every history open: no page before the last is more than a quarter empty
         # (Chrome breaks a table row only when it's longer than a page, so a history went to the next whole, its test's
@@ -13967,6 +13982,53 @@ def main():
             check("…and its count written one way in its heading, its lead and the note under it (#531: “1381 readings”, “of 1,381”)",
                   bp531[0] and bp531[1].startswith(bp531[0] + " readings") and (not bp531[-1] or f" of {bp531[0]} are listed." in bp531[-1])
                   and bp531[0] == f"{int(re.sub(r'[,.]', '', bp531[0])):,}", bp531)
+            # #540: in a German and an Indian English browser the preview shows the server's text as it is: a dose's note
+            # "120,135,140 · took 2,500 IU" as typed (it read "120.135.140 · took 2.500 IU", "12,01,35,140"), a lead's
+            # "1,096 days · average 96.4%" one way (it read "1.096 days · average 96.4%"); its For line names the place,
+            # as the PDF's does; and dates have English months, in the person's format and in the region's own order
+            # ("Okt 6, 2026" was the format's order with a German month). The preview's answer is given the note, the line
+            # and a place (a dose in the medication log of its own if the records have none)
+            typed540 = "BP before and after: 120,135,140 · took 2,500 IU"
+
+            def pv540(route):
+                got = route.fetch()
+                j = got.json()
+                j["for"] = {**(j.get("for") or {"title": "Follow-up visit", "date": j["prepared"]}), "who": "Dr. Rowan Vale (fictional)", "where": "Maple Street Clinic (fictional)"}
+                ms = j.setdefault("measures", {})
+                if not (ms.get("medlog") or {}).get("rows"):
+                    ms["medlog"] = {"cols": [["Date and time", "time", 110], ["Medication", "text", 150], ["What happened", "text", 80], ["Note", "text", 150], ["From", "text", None]],
+                                    "rows": [["2026-11-14T08:00", "Vitamin D3 (fictional)", "Taken", "", "Typed in"]], "lead": ["Vitamin D3 (fictional): 1 taken"],
+                                    "note": "", "empty": "No doses logged in this period.", "total": 1, "history": True}
+                ms["medlog"]["rows"][0][3] = typed540
+                ms["medlog"]["lead"].append("1,096 days · average 96.4%")
+                if "medlog" not in j["sections"]:
+                    j["sections"].append("medlog")
+                route.fulfill(response=got, json=j)
+            seen540 = {}
+            for loc in ("de-DE", "en-IN"):
+                ctx540 = browser.new_context(viewport={"width": 1400, "height": 900}, locale=loc, bypass_csp=True)
+                ctx540.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
+                p540 = ctx540.new_page()
+                p540.route("**/api/profiles/1/summary/preview", pv540)
+                p540.goto(base + "/sharing.html?profile=1#summary")
+                p540.wait_for_selector("#preview:not([hidden]):not([aria-busy]) h3", timeout=10000)
+                p540.wait_for_function("[...document.querySelectorAll('#preview td')].some(t => t.textContent.startsWith('BP '))", timeout=10000)
+                seen540[loc] = p540.evaluate("""async () => { const pv = document.getElementById('preview'), ps = [];
+                  const h = [...pv.querySelectorAll('h3')].find(x => /^(Medication log|medlog)\\b/.test(x.textContent));
+                  for (let e = h.nextElementSibling; e && e.tagName !== 'H3'; e = e.nextElementSibling) if (e.tagName === 'P') ps.push(e.textContent);
+                  await datesReady();
+                  const t = Date.UTC(2026, 9, 6, 12), was = [DATES.zone, DATES.format], in_ = f => (useDates(was[0], f), [fmtD(t), fmtMonth(t)]);
+                  const dates = {mdy: in_('mdy'), dmy: in_('dmy'), '': in_('')}; useDates(...was);
+                  return [pv.querySelector('.sum-head p:nth-child(2)').textContent, ps,
+                          [...pv.querySelectorAll('td')].map(t => t.textContent).filter(t => t.startsWith('BP ')), dates]; }""")
+                ctx540.close()
+            check("visit summary (#540): in de-DE and en-IN the preview shows a dose's note “120,135,140 · took 2,500 IU” as typed, a lead's count and "
+                  "decimal one way, “1,096 days · average 96.4%”, the For line with its place; and dates with English months, “Oct 6, 2026” in the "
+                  "person's format, “6 Oct 2026” in the region's (it read “120.135.140 · took 2.500 IU”, “12,01,35,140”, “1.096 days”, “Okt 6, 2026”)",
+                  len(seen540) == 2 and all(v[0].endswith(" · Dr. Rowan Vale (fictional) · Maple Street Clinic (fictional)") and "1,096 days · average 96.4%" in v[1]
+                                            and v[2] == [typed540] and v[3] == {"mdy": ["Oct 6, 2026", "October 2026"], "dmy": ["6 Oct 2026", "October 2026"],
+                                                                                 "": ["6 Oct 2026", "October 2026"]} for v in seen540.values()),
+                  seen540)
             check("…glucose by day, CGM time in ranges labelled as the standard published ranges (not anyone's targets)",
                   "Blood glucose at home since" in pv and "time in the standard ranges" in pv and "standard published ranges" in pv
                   and "not anyone's own targets" in pv and not re.search(r"(?i)\b(normal|good|bad|target range)\b", pv), heads)
@@ -17991,6 +18053,14 @@ def main():
             page.wait_for_selector("#pkBody form input[type=password], #pkBody .pw input, #pkWhy:not([hidden])", timeout=10000)
             pw492 = {"account": js(pw_fields)}
             page.unroute(re.compile(r".*/api/me/passkeys\?.*"), pk_ok)
+            # #540: at 127.0.0.1 Account's passkeys card says where they work, its address a link to this page there (it
+            # was words, and had no path)
+            page.goto(base + "/account.html#passkeys")
+            page.wait_for_selector("#pkWhy:not([hidden]) a", timeout=10000)
+            why540 = js("[document.getElementById('pkWhy').textContent, [...document.querySelectorAll('#pkWhy a')].map(a => [a.textContent, a.href])]")
+            here540 = base.replace("127.0.0.1", "localhost")
+            check("Account's passkeys card at 127.0.0.1 links the address where they work, to the account page there (#540: words, with no path)",
+                  why540 == [f"Passkeys don't work at an IP address. Open Sanguity at {here540} to use one.", [[here540, here540 + "/account.html"]]], why540)
             page.goto(base + "/admin.html#accounts")
             page.wait_for_selector("#userList tbody tr", timeout=10000)
             js("() => { confirmIdentity().catch(() => {}); }")   # (as the server asks for it; with an authenticator app, #532)
@@ -19687,6 +19757,25 @@ def main():
                       document.getElementById('pk').textContent, document.getElementById('pk').hasAttribute('aria-describedby'), location.pathname.endsWith('login.html')]; }""")
             check("…its Use another account goes back to the username, emptied, with focus, the password step again (#518: back was a reload)",
                   pk518b == ["u", "", False, "", False, True, "Sign in with a passkey", False, True], pk518b)
+            # #540: …and at a name none of the account's passkeys was made at (here localhost; the server sends where they
+            # were), that's said first, naming where as links to this page there, focus on it and no passkey button (it said
+            # "Use your passkey to finish signing in", and pressing it, to use a code the account hadn't got)
+            pk.fill("#u", USER)
+            pk.fill("#p", PW)
+            pk.route("**/api/login", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(
+                {"two_factor": True, "ticket": "t540", "methods": {"code": False, "passkey": True, "sites": ["sanguity.example", "records.example"]}})))
+            pk.click("#b")
+            pk.wait_for_selector("#pkSays a", timeout=10000)
+            pk.unroute("**/api/login")
+            pk.wait_for_timeout(200)
+            pk540 = pk.evaluate("""() => [document.activeElement.id, document.getElementById('pkSays').textContent,
+              [...document.querySelectorAll('#pkSays a')].map(a => [a.textContent, a.href]), document.getElementById('pk').checkVisibility()]""")
+            pk.click("#other")
+            check("…at a name none of the account's passkeys was made at, the passkey-only step says so, naming and linking where they were "
+                  "made, focus on it, no passkey button (#540: “Use your passkey to finish signing in”, then a code the account hadn't got)",
+                  pk540 == ["pkSays", "Password accepted, but this account finishes signing in with a passkey, and none of its passkeys was made at this "
+                            "address. Open Sanguity at https://sanguity.example or https://records.example and sign in there, or use another account.",
+                            [["https://sanguity.example", "https://sanguity.example/login.html"], ["https://records.example", "https://records.example/login.html"]], False], pk540)
             # #523: …and where passkeys can't work (a browser without them stood in for here) that step says why and
             # how to sign in instead, with focus on it (it had nothing to press, focus on the page); Enter in the
             # username sends nothing and keeps the step (it sent the hidden Continue's empty code, answered "That took

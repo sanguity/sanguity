@@ -42,7 +42,7 @@ let SH_CUT = {};
 function shLong(heads, rows, empty, cls, noun, id, more, total = rows.length) {
   const box = shTable(heads, rows, empty, cls), whole = SH_CUT[id] || 0;
   total = Math.max(total, whole);
-  const n = k => k.toLocaleString(), said = k => total > k ? `The latest ${n(k)} of ${n(total)}${noun ? " " + noun : ""}.` : "";
+  const n = k => k.toLocaleString("en-US"), said = k => total > k ? `The latest ${n(k)} of ${n(total)}${noun ? " " + noun : ""}.` : "";
   if (!whole) return total > rows.length ? el("div", {}, box, el("p", {class: "hint", text: said(rows.length)})) : box;
   // #501: the note a live region the button is described by, saying it's loading and why it failed; the button
   // aria-disabled while it loads, not disabled, so focus stays on it; the new rows take focus only if it's still there
@@ -166,7 +166,7 @@ function shLatest(list) {
   }});
   // pressed while every history is open (#491): with one closed by hand, the next press opens them all again
   const follow = () => all.setAttribute("aria-pressed", String(hists.every(([b]) => b.getAttribute("aria-expanded") === "true")));
-  const many = (k, w) => `${k.toLocaleString()} ${w}${k === 1 ? "" : "s"}`;   // "5,432 results", as the page's other counts (#505)
+  const many = (k, w) => `${k.toLocaleString("en-US")} ${w}${k === 1 ? "" : "s"}`;   // "5,432 results", as the page's other counts (#505)
   return el("div", {}, el("div", {class: "share-tools"}, el("p", {class: "share-count"},
     `The latest of ${many(n, "result")} in ${many(list.length, "test")}.`, el("span", {text: " A test's name opens its history."})), list.length > 1 ? all : null),
     scrollBox({class: "share-scroll"}, table));
@@ -288,13 +288,13 @@ function shPhoto(p, fallback) {
    table and the note under it. Times are the local times the phone took them at, written in this browser's format.
    What its rows are comes with it, for "The latest 20 of 1,381 readings." (#527, #531: "days and readings" where they mix) */
 function shBlock(b, id) {
-  // its counts written as the page's own, "The latest 20 of 1.381 readings." in German (#535, util.js localCounts)
-  const cellOf = (kind, v) => !v ? v : kind === "day" ? shDay(v) : kind === "time" ? fmtDT(zParse(v)) : localCounts(v), rows = b.rows || [];
+  // the server's text as it is, its counts written as the page's own, "1,381" (#540: a typed "120,135,140" was rewritten)
+  const cellOf = (kind, v) => !v ? v : kind === "day" ? shDay(v) : kind === "time" ? fmtDT(zParse(v)) : v, rows = b.rows || [];
   const cells = rs => rs.map(r => r.map((v, i) => cellOf(b.cols[i][1], v)));
-  return el("div", {}, ...(b.lead || []).map(t => el("p", {text: localCounts(t)})),
+  return el("div", {}, ...(b.lead || []).map(t => el("p", {text: t})),
     shLong((b.cols || []).map(c => c[0]), cells(rows), b.empty || "None in this range.", "measures", b.of, id,
       async () => cells((await shWhole(id)).rows || []), Math.max(b.total || 0, rows.length)),
-    b.note ? el("p", {class: "hint", text: localCounts(b.note)}) : null);
+    b.note ? el("p", {class: "hint", text: b.note}) : null);
 }
 
 async function shLoad() {

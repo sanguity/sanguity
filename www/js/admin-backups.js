@@ -226,7 +226,7 @@ function drawResult(run) {
   }
   const counts = res.counts || {}, now = res.now || {}, w = res.watch;
   const rows = BK_TABLES.filter(([t]) => t in counts);
-  const words = rows.map(([t, w]) => `${counts[t].backup.toLocaleString()} ${w}${counts[t].backup === 1 ? "" : "s"}`).join(", ");
+  const words = rows.map(([t, w]) => `${counts[t].backup.toLocaleString("en-US")} ${w}${counts[t].backup === 1 ? "" : "s"}`).join(", ");
   box.replaceChildren(...present(
     run.ok ? el("p", {class: "bk-state good"}, el("b", {}, icon("check"), " Good. "),
       `The backup from ${bkWhen(run.file)} restored into a temporary folder: its ${plural(res.files, "file")} match their checksums, ` +
@@ -238,18 +238,18 @@ function drawResult(run) {
       el("thead", {}, el("tr", {}, ...["", "Backup", "Expected", "Now"].map(h => el("th", {text: h})))),
       el("tbody", {}, ...rows.map(([t, w]) => el("tr", {},
         el("th", {scope: "row", text: w[0].toUpperCase() + w.slice(1) + "s"}),
-        el("td", {text: counts[t].backup.toLocaleString()}),
-        el("td", {text: counts[t].expected == null ? "not recorded" : counts[t].expected.toLocaleString()}),
-        el("td", {text: t in now ? now[t].toLocaleString() : "—"})))))) : null,
+        el("td", {text: counts[t].backup.toLocaleString("en-US")}),
+        el("td", {text: counts[t].expected == null ? "not recorded" : counts[t].expected.toLocaleString("en-US")}),
+        el("td", {text: t in now ? now[t].toLocaleString("en-US") : "—"})))))) : null,
     run.ok ? el("p", {class: "bk-watch", text: bkWatchChecked(w)}) : null,
     w && w.counts ? el("div", {class: "tbl-wrap"}, el("table", {class: "tbl bk-counts bk-watch-counts"},
       el("caption", {text: "Phone and watch data in the backup, and in the receiver's folder now"}),
       el("thead", {}, el("tr", {}, ...["", "Backup", "Expected", "Now"].map(h => el("th", {text: h})))),
       el("tbody", {}, ...BK_WATCH.filter(([k]) => k in w.counts).map(([k, label]) => el("tr", {},
         el("th", {scope: "row", text: label + "s"}),
-        el("td", {text: w.counts[k].backup.toLocaleString()}),
-        el("td", {text: w.counts[k].expected == null ? "not recorded" : w.counts[k].expected.toLocaleString()}),
-        el("td", {text: w.now && k in w.now ? w.now[k].toLocaleString() : "—"})))))) : null));
+        el("td", {text: w.counts[k].backup.toLocaleString("en-US")}),
+        el("td", {text: w.counts[k].expected == null ? "not recorded" : w.counts[k].expected.toLocaleString("en-US")}),
+        el("td", {text: w.now && k in w.now ? w.now[k].toLocaleString("en-US") : "—"})))))) : null));
 }
 /* the watch receiver's data in a good backup (#227): when the receiver had last saved it, and what came after */
 function bkWatchChecked(w) {

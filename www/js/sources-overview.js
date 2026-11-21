@@ -34,7 +34,7 @@
     return d < 60 ? "just now" : d < 3600 ? `${Math.floor(d / 60)} min ago` : d < 86400 ? `${Math.floor(d / 3600)} h ago`
       : d < 7 * 86400 ? `${Math.floor(d / 86400)} day${d < 2 * 86400 ? "" : "s"} ago` : fmtD(s * 1000);
   }
-  const plural = (n, one, many) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+  const plural = (n, one, many) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
   /* ---------------------------------------------------------------- Waiting for you */
   /* an import's preview, opened here: the card it has already (a first pull's, connect.js, or one left open in Upload
@@ -102,7 +102,7 @@
         all = true;
         drawWaiting(items);
         waitList.children[FEW]?.querySelector("button, a")?.focus();   // the first of the rest
-      }}, `Show ${n.toLocaleString()} more`)));
+      }}, `Show ${n.toLocaleString("en-US")} more`)));
     }
     if (!shown.length && review.children.length) waitList.append(el("li", {class: "src-wait-none", text: "Nothing else is waiting for you."}));
     if (had) waitList.querySelector(`[data-key="${had}"]`)?.focus();

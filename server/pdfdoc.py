@@ -71,16 +71,6 @@ def width(text, size, bold=False):
     return total * size / 1000
 
 
-def fit(text, size, room, bold=False):
-    """text cut to fit room points, ending in "…" when it was cut."""
-    text = plain(text)
-    if width(text, size, bold) <= room:
-        return text
-    while text and width(text + "…", size, bold) > room:
-        text = text[:-1]
-    return text.rstrip() + "…" if text else ""
-
-
 def wrap(text, size, room, bold=False):
     """text broken into lines that fit room points (a word longer than a line is broken across lines, never cut)."""
     lines = []

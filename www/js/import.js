@@ -28,7 +28,7 @@ const dropTarget = (() => {
   }
   const size = n => n >= 2 ** 30 ? (n / 2 ** 30).toFixed(1) + " GB" : n >= 2 ** 20 ? (n / 2 ** 20).toFixed(1) + " MB"
     : n >= 1024 ? Math.round(n / 1024) + " KB" : n + " bytes";
-  const plural = (n, word) => `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
+  const plural = (n, word) => `${n.toLocaleString("en-US")} ${word}${n === 1 ? "" : "s"}`;
   const zipped = it => /\.zip$/i.test(it.path);   // what the server unpacks
   const leaving = e =>{ if (!sgLeaving) { e.preventDefault(); e.returnValue = ""; } };   // while files are being sent
 
@@ -37,7 +37,7 @@ const dropTarget = (() => {
     if (!L) return "";
     const big = items.find(it => it.file.size > L.file_bytes);
     if (big) return `${big.path} is ${size(big.file.size)}: a file can be at most ${size(L.file_bytes)}.`;
-    if (items.length > L.files) return `That's ${items.length.toLocaleString()} files: an upload can hold at most ${L.files.toLocaleString()}.`;
+    if (items.length > L.files) return `That's ${items.length.toLocaleString("en-US")} files: an upload can hold at most ${L.files.toLocaleString("en-US")}.`;
     const total = items.reduce((s, it) => s + it.file.size, 0);
     if (total > L.total_bytes) return `That's ${size(total)}: an upload can hold at most ${size(L.total_bytes)}.`;
     return "";
@@ -81,7 +81,7 @@ const dropTarget = (() => {
       sent.set(it, n);
       const all = [...sent.values()].reduce((s, v) => s + v, 0);
       f.progress(all / total);
-      f.text(`Sent ${size(all)} of ${size(total)}` + (items.length > 1 ? ` · ${done.toLocaleString()} of ${plural(items.length, "file")}` : ""));
+      f.text(`Sent ${size(all)} of ${size(total)}` + (items.length > 1 ? ` · ${done.toLocaleString("en-US")} of ${plural(items.length, "file")}` : ""));
     };
     try {
       f.step("send", items.length > 1 ? `Sending ${plural(items.length, "file")}…` : "Sending…");

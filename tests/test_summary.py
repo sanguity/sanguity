@@ -427,6 +427,23 @@ class Summary(unittest.TestCase):
         self.assertTrue(len(lines) > 1 and all(pdfdoc.width(x, 9) <= 60 for x in lines))
         self.assertEqual("".join(lines), word, "a long word is broken across lines, not cut")
 
+    def test_for_since_and_extra_lines_wrap_whole(self):   # #540: For, Since and an extra section's rows were cut to one line
+        s = self.preview()
+        big = {**s, "sections": ["x540"],
+               "for": {"title": "Pediatric hematology follow-up for the iron infusion plan (fictional)", "date": d(10),
+                       "who": "Dr. Alexandra Rivera-Castellanos", "where": "Maple Street Children's Hospital, Building C, Floor 4"},
+               "since": {**s["since"], "label": "Pediatric hematology follow-up after the second infusion, with the bloodwork reviewed"},
+               "extra": [{"id": "x540", "label": "Extra (fictional)", "rows": [{"when": d(-3), "title": "A long row",
+                          "text": "a line of words long enough to run well past the width of one printed line on a Letter page, ending here"}]}]}
+        pdf, fit = summary.render(big)
+        self.assertTrue(fit["fits"])
+        text = text_of(pdf)[1]
+        self.assertNotIn("…", text, "nothing is cut")
+        words = " ".join(text.split())
+        for part in ("Dr. Alexandra Rivera-Castellanos", "Maple Street Children's Hospital, Building C, Floor 4",
+                     "with the bloodwork reviewed)", "on a Letter page, ending here"):
+            self.assertIn(part, words)
+
     def test_no_records(self):
         db = dbm.connect()
         pid = prof.create_profile(db, "Empty (fictional)", owner_id=self.uid["robin"])
@@ -703,8 +720,6 @@ class Writer(unittest.TestCase):
         self.assertEqual(pdfdoc.plain("≤ 5 · µg “ok” ▲ naïve 日"), "<= 5 · µg “ok” ^ naïve ?")
         self.assertAlmostEqual(pdfdoc.width("Hi", 10), (722 + 222) / 100)
         self.assertGreater(pdfdoc.width("Hi", 10, bold=True), pdfdoc.width("Hi", 10))
-        self.assertTrue(pdfdoc.fit("a long line of words to cut", 10, 60).endswith("…"))
-        self.assertLessEqual(pdfdoc.width(pdfdoc.fit("a long line of words to cut", 10, 60), 10), 60)
         lines = pdfdoc.wrap("one two three four five six seven eight nine ten", 10, 80)
         self.assertGreater(len(lines), 1)
         self.assertTrue(all(pdfdoc.width(l, 10) <= 80 for l in lines))

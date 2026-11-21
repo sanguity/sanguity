@@ -250,7 +250,7 @@ const SgPalette = (() => {
      line over it says them; on another page, of everything on file, which is the period it opens with from there
      (timeline(), #470: its saved period counted no more), in the kinds it shows (its saved ones, util.js savedCats: a
      lab result has none, its lab day is listed) and its workouts when it lists them (timeline.js tlWorkListed) */
-  const many = n => `${n.toLocaleString()} event${n === 1 ? "" : "s"}`;
+  const many = n => `${n.toLocaleString("en-US")} event${n === 1 ? "" : "s"}`;
   function tlCount(lq, hit) {
     if (!onRecords) {
       let s = null;
@@ -268,7 +268,7 @@ const SgPalette = (() => {
     } finally { state.q = was; }
   }
   /* the workouts found that the list leaves out, as the line over it says them (timeline.js tlSum, #472) */
-  const unlisted = w => w ? ` · ${w.toLocaleString()} workout${w === 1 ? "" : "s"}, not listed` : "";
+  const unlisted = w => w ? ` · ${w.toLocaleString("en-US")} workout${w === 1 ? "" : "s"}, not listed` : "";
 
   /* how well something matches what's typed (#403), the same in every group, lower better: 0 its title is what's typed
      (#452: the Journal view before Add's Journal entry), .5 its title starts with it all, 1 each word typed starts a word of the title, 2 the first does, 3 only what else it's known by has them;

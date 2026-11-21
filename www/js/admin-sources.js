@@ -414,10 +414,10 @@ async function loadDirectory() {
   const missing = j.sources.filter(s => !s.included);
   const why = s => (s.why || "").replace(/ Run tools.*$/, "");
   $("#dirSources").replaceChildren(
-    el("p", {}, el("b", {text: `${j.total.toLocaleString()} providers, insurers and sandboxes`}), ` in this server's list, from:`),
+    el("p", {}, el("b", {text: `${j.total.toLocaleString("en-US")} providers, insurers and sandboxes`}), ` in this server's list, from:`),
     el("ul", {class: "adm-dir"}, ...j.sources.map(s => el("li", {},
       el("b", {text: s.label}), " · ",
-      s.included ? `loaded${s.entries ? `, ${s.entries.toLocaleString()} entries` : ""}${s.retrieved ? `, read ${fmtD(s.retrieved)}` : ""}`
+      s.included ? `loaded${s.entries ? `, ${s.entries.toLocaleString("en-US")} entries` : ""}${s.retrieved ? `, read ${fmtD(s.retrieved)}` : ""}`
         : el("span", {class: "bad", text: "not loaded"}),
       s.included ? ". " : `. ${why(s)} `,
       el("a", {href: s.terms, target: "_blank", rel: "noopener noreferrer", text: "Terms"})))),

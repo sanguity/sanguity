@@ -49,7 +49,7 @@
     const j = await r.json().catch(() => ({}));
     return typeof j.detail === "string" ? j.detail : `The server answered ${r.status}.`;
   }
-  const plural = (n, [one, many]) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+  const plural = (n, [one, many]) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
   const day = s => { const t = dayTs(s); return isNaN(t) ? s : fmtD(t); };   // dates.js
 
   function host(container) {
@@ -187,7 +187,7 @@
       });
       const tr = node("tr", {"data-ref": l.ref},
         node("td", {}, node("b", {text: l.name}), unitText(l.unit), l.loinc ? node("span", {class: "loinc", text: ` · LOINC ${l.loinc}`}) : null),
-        node("td", {class: "num", "data-label": "Results"}, (l.n || 0).toLocaleString()),
+        node("td", {class: "num", "data-label": "Results"}, (l.n || 0).toLocaleString("en-US")),
         node("td", {}, box, node("datalist", {id: id + "-list"}, opts), why));
       return {l, box, read, initial, tr};
     });
@@ -272,7 +272,7 @@
         const when = it.t ? keepDates(it.to ? `${day(it.t)} – ${day(it.to)}` : day(it.t)) : "Undated";
         return node("li", {}, node(it.ref ? "label" : "span", {}, b, " ", node("span", {class: "d"}, when), " ", what));
       })),
-      d.more ? node("p", {class: "hint", text: `…and ${d.more.toLocaleString()} more.`}) : null,
+      d.more ? node("p", {class: "hint", text: `…and ${d.more.toLocaleString("en-US")} more.`}) : null,
       watch ? node("p", {class: "hint", text: `Of these, not listed and always skipped: ${watch}.`}) : null)
       : all ? node("p", {class: "hint", text: !n ? `Already here, skipped: ${watch}.` : `Already here: ${dups}, skipped` + (watch ? `, ${watch} among them.` : ".")})
       : null;
@@ -335,11 +335,11 @@
       const some = rows(x.k).filter(r => r[1]);
       return node("div", {class: "tile"},
         node("span", {class: "lbl"}, toned(x.mark(), x.tone), cap(x.words[x.n === 1 ? 0 : 1])),
-        node("span", {class: "val", text: x.n.toLocaleString()}),
+        node("span", {class: "val", text: x.n.toLocaleString("en-US")}),
         x.k === "results" ? node("span", {class: "delta", text: "in " + plural(c.series || 0, ["test", "tests"]) +
           ((c.kinds || {}).lab ? ", from " + plural(c.kinds.lab, KIND.lab) : "")}) : null,
         some.length ? node("ul", {}, some.map(([t, what]) => node("li", {}, t ? node("span", {class: "d", text: day(t)}) : null, " ", what)),
-                           x.n > some.length ? node("li", {class: "more", text: `and ${(x.n - some.length).toLocaleString()} more`}) : null) : null);
+                           x.n > some.length ? node("li", {class: "more", text: `and ${(x.n - some.length).toLocaleString("en-US")} more`}) : null) : null);
     }));
   }
 
@@ -356,7 +356,7 @@
     const bar = el("svg:svg", {class: "imp-bar", viewBox: `0 0 ${total} 1`, preserveAspectRatio: "none", "aria-hidden": "true", focusable: "false"},
       parts.filter(p => p[1]).map(([k, n]) => { const r = el("svg:rect", {class: k, x, y: 0, width: n, height: 1}); x += n; return r; }));
     return node("div", {class: "imp-split"}, bar,
-      node("ul", {}, parts.map(([k, n, words]) => node("li", {class: k}, node("b", {text: n.toLocaleString()}), " " + words))));
+      node("ul", {}, parts.map(([k, n, words]) => node("li", {class: k}, node("b", {text: n.toLocaleString("en-US")}), " " + words))));
   }
 
   // the button's words: what it adds (#282), "Add 6 lab results", or null when it adds nothing
@@ -648,7 +648,7 @@
     return `Everything this ${typed ? "typed-in" : e.label} import brought is removed${what ? ": " + what.toLowerCase() : ""}` +
       (e.upload != null ? ", and the files uploaded for it" : "") + "." +
       (!n ? "" : n === 1 ? " The lab-name match made for it is forgotten too: the next import of that name asks about it again."
-       : ` The ${n.toLocaleString()} lab-name matches made for it are forgotten too: the next import of those names asks about them again.`) +
+       : ` The ${n.toLocaleString("en-US")} lab-name matches made for it are forgotten too: the next import of those names asks about them again.`) +
       ` This can't be reversed; you can ${typed ? "type them in" : "import the files"} again.`;
   }
   /* an import saved or undone, told to the page (#508) as document's "sg:imports", detail {pid, id, undone, wait(p),

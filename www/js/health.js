@@ -24,7 +24,7 @@ let H_PAGE = 200;   // (the browser check shows fewer, to see Show more on the d
 const hShown = {};
 function hTable(key, heads, rows) {
   const n = Math.max(H_PAGE, hShown[key] || 0);
-  return [chartTable(heads, rows.slice(0, n)), rows.length > n ? el("button", {class: "btn h-more", type: "button", text: `Show ${Math.min(H_PAGE, rows.length - n).toLocaleString()} more`,
+  return [chartTable(heads, rows.slice(0, n)), rows.length > n ? el("button", {class: "btn h-more", type: "button", text: `Show ${Math.min(H_PAGE, rows.length - n).toLocaleString("en-US")} more`,
     onclick: () => { hShown[key] = n + H_PAGE; renderHealth();
       const r = $(`${key} tbody`)?.rows[n]; if (r) { r.tabIndex = -1; r.focus(); } }}) : null].filter(Boolean);   // the first one added
 }
@@ -277,7 +277,7 @@ function renderHealth() {
   // the stage averages are hours (H.sleep's p[2], p[3]); shown in minutes, as the chart's tooltip and table give them (#216)
   tile("Sleep", sAvg != null ? sAvg.toFixed(1) : "–", "h / night", sIn.some(p => p[2] + p[3] + p[4] > 0) ? (st => `${Math.round(mean(st.map(p => p[2])) * 60)} min deep\u00a0· ${Math.round(mean(st.map(p => p[3])) * 60)} min REM`)(sIn.filter(p => p[2] + p[3] + p[4] > 0)) : sIn.length ? `${sIn.length} nights\u00a0· no stage data` : "", "#h-sleep");
   const stIn = mean(inR(H.steps, a, b).map(p => p[1])), stPrev = mean(prev(H.steps).map(p => p[1]));
-  tile("Steps", stIn != null ? Math.round(stIn).toLocaleString() : "–", "/ day", stPrev != null ? `${chg(stIn, stPrev, v => Math.round(v).toLocaleString())} vs previous period` : "", "#h-activity");
+  tile("Steps", stIn != null ? Math.round(stIn).toLocaleString("en-US") : "–", "/ day", stPrev != null ? `${chg(stIn, stPrev, v => Math.round(v).toLocaleString("en-US"))} vs previous period` : "", "#h-activity");
   const exIn = H.ex.filter(x => x.t >= a && x.t <= b);
   tile("Workouts", exIn.length, exIn.length === 1 ? "session" : "sessions", exIn.length ? `${Math.round(exIn.reduce((s, x) => s + x.min, 0) / 60 * 10) / 10} hours total` : "", "#h-activity");
 
@@ -289,7 +289,7 @@ function renderHealth() {
   const byDay = (...sets) => { const m = new Map();
     sets.forEach((pts, i) => { for (const p of inR(pts, a, b)) { const k = isoDay(p[0]); if (!m.has(k)) m.set(k, {t: p[0], v: []}); m.get(k).v[i] = p; } });
     return [...m.values()].sort((p, q) => q.t - p.t); };
-  const f1 = p => p ? p[1].toFixed(1) : "", f0 = p => p ? Math.round(p[1]).toLocaleString() : "";
+  const f1 = p => p ? p[1].toFixed(1) : "", f0 = p => p ? Math.round(p[1]).toLocaleString("en-US") : "";
   const weekOf = t => "Week of " + fmtD(t - 3 * DAY);
   const vx = {a, b, long, legend, head, byDay};   // for the readings' cards (#180)
   // Body: weight and body composition, with BMI; then a child's growth
@@ -393,7 +393,7 @@ function renderHealth() {
     if (!state.tables.has("#h-activity")) hChart(act, a, b, {h: 190, fmtY: v => v >= 1000 ? Math.round(v / 1000) + "k" : v, label: long ? "Steps, weekly averages" : "Steps", noun: long ? "week" : "day", nav: stBars, layers: [
       {type: "bars", data: stBars.map(p => [p[0], p[1]]), keys: ["steps"], colors: [C.steps], every: long ? 7 * DAY : DAY},
       {type: "line", data: rolling(H.steps, long ? 30 : 7), color: "var(--ink2)", width: 1.6, gap: 10}],
-      tip: t => { const p = nearest(stBars, t, long ? 4 : .6); return p && {t: p[0], rows: [el("div", {class: "v", text: `${Math.round(p[1]).toLocaleString()} steps${long ? " / day avg" : ""}`}), el("div", {class: "s", text: long ? "Week of " + fmtD(p[0] - 3 * DAY) : fmtD(p[0])})]}; }});
+      tip: t => { const p = nearest(stBars, t, long ? 4 : .6); return p && {t: p[0], rows: [el("div", {class: "v", text: `${Math.round(p[1]).toLocaleString("en-US")} steps${long ? " / day avg" : ""}`}), el("div", {class: "s", text: long ? "Week of " + fmtD(p[0] - 3 * DAY) : fmtD(p[0])})]}; }});
     // workout calendar (in the table instead, with Table, #60)
     const cal = el("div", {class: "mt-3"}, el("h4", {class: "sub", text: `Workouts · ${exIn.length} in this period${exIn.some(x => x.pt) ? ` (${listOf([...new Set(exIn.filter(x => x.pt).map(x => x.rule))].map(r => { const xs = exIn.filter(x => x.pt && x.rule === r); return `${xs.length} ${r.toLowerCase()} appointment${xs.length === 1 ? "" : "s"}, counted as ${xs[0].min} min each`; }))})` : ""}`}));
     if (!state.tables.has("#h-activity")) act.append(cal);

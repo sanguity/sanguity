@@ -120,7 +120,7 @@
     SHOWN = st;
   }
   const onWords = st => `On since ${day(st.since)}. ` + (st.deletion && !st.deletion.done ? "Deleting what was kept: nothing is shown until the receiver has done it."
-    : st.count ? `Kept: ${st.count.toLocaleString()} record${st.count === 1 ? "" : "s"}, shown on the Timeline.` : "Nothing received yet.");
+    : st.count ? `Kept: ${st.count.toLocaleString("en-US")} record${st.count === 1 ? "" : "s"}, shown on the Timeline.` : "Nothing received yet.");
   /* an import of the profile saved or undone (import-jobs.js told): what's kept counted again (#534: "Kept: 2 records"
      stayed), the card drawn again only where more than that changed */
   async function again() {
