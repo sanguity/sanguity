@@ -628,22 +628,72 @@ class App(unittest.TestCase):
             self.assertEqual(self.c["robin"].post(f"/api/profiles/{pid}/jobs/{jid}/confirm", headers=H).status_code, 202)
             done = self.wait_job(pid, jid, ("done", "failed"))
             self.assertEqual((done["state"], done.get("cycle")), ("done", None), done)
-        # read while on, then turned off while it's saved: none kept, none counted
+        # read while on, then turned off while it's saved: none kept, none counted; one of cycle records only then
+        # keeps nothing, so it's cancelled as an empty preview is (#542): no import of nothing, no upload left
         self.assertEqual(self.c["robin"].put(url, json={"on": True}, headers=H).status_code, 200)
-        waiting, _ = self.import_export(pid, confirm=False, xml=only.replace(b"2026-09-", b"2026-08-"))
-        self.assertEqual(waiting["counts"]["cycle"], 2)
-        inside, go, slow = paused(jobs.uploads.stored_files)
-        with mock.patch.object(jobs.uploads, "stored_files", slow):
-            self.assertEqual(self.c["robin"].post(f"/api/profiles/{pid}/jobs/{waiting['id']}/confirm", headers=H).status_code, 202)
-            self.assertTrue(inside.wait(10))
-            self.assertEqual(self.c["robin"].put(url, json={"on": False}, headers=H).status_code, 200)
-            go.set()
-            done = self.wait_job(pid, waiting["id"], ("done", "failed"))
-        self.assertEqual(done["state"], "done", done)
-        self.assertNotIn("cycle", done, "a save counts what was kept: none")
+        imports = len(self.c["robin"].get(f"/api/profiles/{pid}/imports").json()["imports"])
+        for xml, rest in ((only.replace(b"2026-09-", b"2026-08-"), False), (None, True)):
+            self.assertEqual(self.c["robin"].put(url, json={"on": True}, headers=H).status_code, 200)
+            waiting, _ = self.import_export(pid, confirm=False, xml=xml)
+            self.assertTrue(waiting["counts"]["cycle"])
+            inside, go, slow = paused(jobs.uploads.stored_files)
+            with mock.patch.object(jobs.uploads, "stored_files", slow):
+                self.assertEqual(self.c["robin"].post(f"/api/profiles/{pid}/jobs/{waiting['id']}/confirm", headers=H).status_code, 202)
+                self.assertTrue(inside.wait(10))
+                self.assertEqual(self.c["robin"].put(url, json={"on": False}, headers=H).status_code, 200)
+                go.set()
+                done = self.wait_job(pid, waiting["id"], ("done", "failed", "discarded"))
+            self.assertNotIn("cycle", done, "a save counts what was kept: none")
+            # the rest of the export is here already: saved as all duplicates are, with no import either
+            self.assertEqual(len(self.c["robin"].get(f"/api/profiles/{pid}/imports").json()["imports"]), imports, "no import of nothing")
+            if rest:
+                self.assertEqual((done["state"], done["import_id"]), ("done", None), done)
+                continue
+            self.assertEqual((done["state"], done["import_id"], done["message"]), ("discarded", None, jobs.NOTHING), done)
+            self.assertFalse(os.path.exists(jobs.uploads.folder(pid, waiting["upload_id"])), "its upload is gone")
+            self.assertFalse(os.path.exists(jobs.preview_path(pid, waiting["id"])))
         self.assertEqual(self.c["robin"].put(url, json={"on": True}, headers=H).status_code, 200)
         self.assertEqual(self.c["robin"].get(url).json()["count"], 0)
+        self.assertNotIn("cycle", self.c["robin"].get(f"/api/profiles/{pid}/jobs/{done['id']}").json())
         self.assertEqual(self.c["robin"].put(url, json={"on": False}, headers=H).status_code, 200)
+
+    def test_9c_an_upload_holding_nothing(self):   # #542
+        """An upload left holding nothing once read (cycle records only, with tracking off; only a type Sanguity
+        ignores; an empty export.xml) is cancelled at once, its upload removed, saying why: nothing else would show it.
+        A saved import's cycle records are named to who saved it only while they're kept."""
+        from server import jobs, uploads
+        db = dbm.connect()
+        try:
+            pid = prof.create_profile(db, "Noa (fictional)", owner_id=self.uid["robin"])
+        finally:
+            db.close()
+        head = '<?xml version="1.0" encoding="UTF-8"?>\n<HealthData locale="en_US">\n<ExportDate value="2026-09-13 09:00:00 -0500"/>\n'
+        flow = ('<Record type="HKCategoryTypeIdentifierMenstrualFlow" sourceName="Test Phone" startDate="2026-09-01 00:00:00 -0500" '
+                'endDate="2026-09-01 00:00:00 -0500" value="HKCategoryValueMenstrualFlowMedium"/>\n')
+        ignored = ('<Record type="HKQuantityTypeIdentifierDietaryWater" sourceName="Test Phone" unit="mL" '
+                   'startDate="2026-09-01 08:00:00 -0500" endDate="2026-09-01 08:00:00 -0500" value="250"/>\n')
+        for body in (flow, ignored, ""):
+            j = self.wait_job(pid, self.start_import(pid, (head + body + "</HealthData>\n").encode()), ("preview", "discarded", "failed"))
+            self.assertEqual((j["state"], j["message"]), ("discarded", jobs.NOTHING), body or "empty")
+            self.assertFalse(os.path.exists(uploads.folder(pid, j["upload_id"])), "its upload is gone")
+            self.assertFalse(os.path.exists(jobs.preview_path(pid, j["id"])))
+        self.assertEqual(self.c["robin"].get(f"/api/profiles/{pid}/jobs", params={"state": "preview"}).json(), [])
+        # one left from before, holding nothing: cancelled whatever it held when tracking is turned on, then
+        # everything deleted (drop_imported)
+        url = f"/api/profiles/{pid}/cycle"
+        self.assertEqual(self.c["robin"].put(url, json={"on": True}, headers=H).status_code, 200)
+        waiting, _ = self.import_export(pid, confirm=False)
+        held = json.loads(crypto.read_file(jobs.preview_path(pid, waiting["id"])))
+        crypto.write_file(jobs.preview_path(pid, waiting["id"]), json.dumps(
+            {**held, "data": {**held["data"], "events": [], "labs": [], "costs": []}, "watch": {}}).encode())
+        self.assertEqual(self.c["robin"].post(f"{url}/delete", headers=H).status_code, 200)
+        self.assertEqual(self.c["robin"].get(f"/api/profiles/{pid}/jobs/{waiting['id']}").json()["state"], "discarded")
+        self.assertFalse(os.path.exists(uploads.folder(pid, waiting["upload_id"])))
+        # a saved import's cycle records: named to who saved it while they're kept, not once tracking is turned off
+        _, done = self.import_export(pid, xml=(head + flow + "</HealthData>\n").encode())
+        self.assertEqual(done.get("cycle"), 1, done)
+        self.assertEqual(self.c["robin"].put(url, json={"on": False}, headers=H).status_code, 200)
+        self.assertNotIn("cycle", self.c["robin"].get(f"/api/profiles/{pid}/jobs/{done['id']}").json(), "deleted: not named")
 
 
 def watch_store_own(pid):

@@ -4,6 +4,7 @@ An import of an upload (uploads.py) is a row in jobs (schema versions 12 and 13)
 
   queued -> running (detecting, parsing) -> preview -> confirm: queued -> running (saving) -> done | failed
                                                     -> discard: discarded (the upload too, unless another job uses it)
+  running, holding nothing to import (#542): discarded likewise, at once, with a message saying why
 
 The preview (#22) holds the parsed records, sealed in profiles/<id>/previews/<job id> (crypto.write_file), and says
 what they would add: counts by kind, the date range, and the duplicates of what the profile has (preview.py), which
@@ -184,12 +185,14 @@ def _import(db, j):
     labs = labmap.plan(db, pid, mod.NAME, data)   # lab names to match; remembered ones go before duplicates are found
     path = preview_path(pid, jid)
     # cycle tracking asked again (#539), under the lock turning it off takes (cycle_tracking.drop_imported): turned off
-    # or its records deleted while this was read, they're left out, and an upload that held only them is cancelled
+    # or its records deleted while this was read, they're left out. An upload left holding nothing (only those, or only
+    # what Sanguity doesn't read) is cancelled at once, its upload removed (#542): nothing would show it to cancel it
     with preview_lock(jid):
         from . import cycle_tracking
-        if mark and cycle_tracking.mark(db, pid) != mark and isinstance(watch, dict) and watch.pop("cycle", None) is not None \
-                and _holds_nothing({"data": data, "watch": watch}):
-            _cancel(db, pid, jid, cycle_tracking.changed_by(db, pid), state="running")
+        dropped = mark and cycle_tracking.mark(db, pid) != mark and isinstance(watch, dict) and watch.pop("cycle", None) is not None
+        if _holds_nothing({"data": data, "watch": watch}) and not _first_pull(db, jid):
+            who = cycle_tracking.changed_by(db, pid) if dropped else _account(db, j["created_by"])
+            _cancel(db, pid, jid, who, state="running", message=NOTHING)
             return
         report = _report(db, pid, mod.NAME, data, watch, labs)
         os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
@@ -203,6 +206,19 @@ def _import(db, j):
             raise
     if not n:
         _remove(path)
+
+
+NOTHING = "Nothing in this upload could be imported, so it was removed."   # a job cancelled holding nothing (#542)
+
+
+def _first_pull(db, jid):
+    """Whether the job is a connected source's first pull, whose save starts its syncing (sync.first_saved): never
+    cancelled for holding nothing."""
+    return db.execute("SELECT 1 FROM connections WHERE first_job=?", (jid,)).fetchone() is not None
+
+
+def _account(db, uid):
+    return db.execute("SELECT id, username FROM users WHERE id=?", (uid,)).fetchone() if uid else None
 
 
 def _holds_nothing(held):
@@ -395,47 +411,60 @@ def _save(db, j):
     summary["skipped"] = {k: skipped[k] for k in ("events", "kinds", "results", "other")}
     if same:
         summary["linked"] = len(same)
-    # watch data: what the profile has already is counted as skipped (#497); all of it there, it isn't saved again
-    fresh, here, new_watch = _watch_split(db, pid, watch) if watch else ({}, {}, None)
-    if here:
-        summary["skipped"]["watch"] = here
-    summary["range"] = _with_days(summary["range"], new_watch)   # what it brought, the wearable's new days too (#500)
-    watch = watch if any(fresh.values()) else None
     who_id = j["confirmed_by"] or j["created_by"]
     who = db.execute("SELECT id, username FROM users WHERE id=?", (who_id,)).fetchone() if who_id else None
+    from . import cycle_tracking
     with dbm.transaction(db):
-        iid = None
-        # all duplicates: nothing to add, not even an empty import; but watch data needs an import to be undone by
-        if preview.adds_anything(new) or watch:
-            keepdocs, n = prof.index_documents(db, pid, new["details"], stored)
-            summary["counts"]["documents"] = n
-            iid = records.store(db, pid, new, "upload", fmt=name)
-            prof.link_documents(db, iid, keepdocs)
-        if watch:   # last, so a failure before it leaves no file behind
-            kept = watch_store.save_import(db, pid, watch, import_id=iid)   # all of it, as it came: undone with its import
-            summary["counts"].update(watch_days=fresh["watch_days"], workouts=fresh["workouts"],   # what's new of it (#497)
-                                     **{k: fresh[k] for k in ("ecgs", "rhythm", "bp_readings", "temp_readings", "glucose_readings",
-                                                              "cgm_days", "heights") if fresh.get(k)})   # ECGs (#182), #223
-            # apart from the counts, which Import history and the activity log show (#223, #534); only if they were
-            # kept (#539: not once tracking is turned off)
-            if fresh.get("cycle") and kept.get("cycle"):
-                summary["cycle"] = fresh["cycle"]
-        for x in same if iid else ():
-            crossmatch.decide(db, pid, who["id"] if who else None, x["other_key"], x["key"], True,
-                              [x["other"], {k: x[k] for k in ("name", "t", "value", "unit")}])
-        remembered = labmap.remember(db, name, held.get("labs"), sent, raw, who, import_id=iid)   # undone with it (#500)
-        labmap.used(db, labmap.applied(held.get("labs"), sent))   # ...unless another import used them since
-        matched = sum(1 for t in labmap.choices(held.get("labs"), sent).values() if t)
-        summary["lab_names"] = {"matched": matched, "remembered": remembered}
-        activity.log(db, "import", who, pid, {"importer": name, "counts": summary["counts"], "job": jid,
-                                              "skipped": summary["skipped"], "kept": len(keep),
-                                              **({"same": len(same)} if same else {}),
-                                              **({"labs": summary["lab_names"]} if matched or remembered else {})},
-                     ip=_ips.get(jid), actor=None if who else "removed account")
-        db.execute("UPDATE jobs SET state='done', stage=NULL, import_id=?, summary=?, finished=? WHERE id=?",
-                   (iid, crypto.enc(json.dumps(summary)), dbm.now(), jid))
-        from . import sync   # the first pull of a connected source (#91): its import and cursor go to the connection
-        sync.first_saved(db, jid, iid)
+        # cycle records only while tracking is on, asked under the write lock (#542: turned off while this waited to be
+        # saved, which drop_imported leaves alone); left holding nothing, it's cancelled like an empty preview, its
+        # upload removed, not saved as an import of nothing
+        cancelled = None
+        if isinstance(watch, dict) and watch.get("cycle") and not cycle_tracking.is_on(db, pid):
+            watch = {k: v for k, v in watch.items() if k != "cycle"}
+            if _holds_nothing({"data": data, "watch": watch}) and not _first_pull(db, jid):
+                cancelled = _cancelled(db, pid, jid, cycle_tracking.changed_by(db, pid), None, "running", NOTHING)
+        if not cancelled:
+            # watch data: what the profile has already is counted as skipped (#497); all of it there, it isn't saved again
+            fresh, here, new_watch = _watch_split(db, pid, watch) if watch else ({}, {}, None)
+            if here:
+                summary["skipped"]["watch"] = here
+            summary["range"] = _with_days(summary["range"], new_watch)   # what it brought, the wearable's new days too (#500)
+            watch = watch if any(fresh.values()) else None
+            iid = None
+            # all duplicates: nothing to add, not even an empty import; but watch data needs an import to be undone by
+            if preview.adds_anything(new) or watch:
+                keepdocs, n = prof.index_documents(db, pid, new["details"], stored)
+                summary["counts"]["documents"] = n
+                iid = records.store(db, pid, new, "upload", fmt=name)
+                prof.link_documents(db, iid, keepdocs)
+            if watch:   # last, so a failure before it leaves no file behind
+                kept = watch_store.save_import(db, pid, watch, import_id=iid)   # all of it, as it came: undone with its import
+                summary["counts"].update(watch_days=fresh["watch_days"], workouts=fresh["workouts"],   # what's new of it (#497)
+                                         **{k: fresh[k] for k in ("ecgs", "rhythm", "bp_readings", "temp_readings", "glucose_readings",
+                                                                  "cgm_days", "heights") if fresh.get(k)})   # ECGs (#182), #223
+                # apart from the counts, which Import history and the activity log show (#223, #534); only if they were
+                # kept (#539: not once tracking is turned off)
+                if fresh.get("cycle") and kept.get("cycle"):
+                    summary["cycle"] = fresh["cycle"]
+            for x in same if iid else ():
+                crossmatch.decide(db, pid, who["id"] if who else None, x["other_key"], x["key"], True,
+                                  [x["other"], {k: x[k] for k in ("name", "t", "value", "unit")}])
+            remembered = labmap.remember(db, name, held.get("labs"), sent, raw, who, import_id=iid)   # undone with it (#500)
+            labmap.used(db, labmap.applied(held.get("labs"), sent))   # ...unless another import used them since
+            matched = sum(1 for t in labmap.choices(held.get("labs"), sent).values() if t)
+            summary["lab_names"] = {"matched": matched, "remembered": remembered}
+            activity.log(db, "import", who, pid, {"importer": name, "counts": summary["counts"], "job": jid,
+                                                  "skipped": summary["skipped"], "kept": len(keep),
+                                                  **({"same": len(same)} if same else {}),
+                                                  **({"labs": summary["lab_names"]} if matched or remembered else {})},
+                         ip=_ips.get(jid), actor=None if who else "removed account")
+            db.execute("UPDATE jobs SET state='done', stage=NULL, import_id=?, summary=?, finished=? WHERE id=?",
+                       (iid, crypto.enc(json.dumps(summary)), dbm.now(), jid))
+            from . import sync   # the first pull of a connected source (#91): its import and cursor go to the connection
+            sync.first_saved(db, jid, iid)
+    if cancelled:
+        _cancel_files(db, pid, jid, cancelled)
+        return
     _remove(path)
 
 
@@ -482,25 +511,38 @@ def discard(db, pid, jid, who, ip=None):
         _refuse_not_preview(db, pid, jid)
 
 
-def _cancel(db, pid, jid, who, ip=None, state="preview"):
+def _cancel(db, pid, jid, who, ip=None, state="preview", message=None):
     """discard's work, for a job in that state; who may be None (an account since removed). Also for one left with
-    nothing once cycle tracking is turned off (#539: cycle_tracking.drop_imported, or _import while it's read, as
-    "running"). Returns whether it was."""
+    nothing (#539: once cycle tracking is turned off, by cycle_tracking.drop_imported; #542: holding nothing once
+    read, by _import, as "running", saying why in message). Returns whether it was."""
     with dbm.transaction(db):
-        r = db.execute("SELECT * FROM jobs WHERE id=? AND profile_id=?", (jid, pid)).fetchone()
-        if not r or r["state"] != state:
-            return False
-        db.execute("UPDATE jobs SET state='discarded', stage=NULL, finished=?, confirmed_by=? WHERE id=?",
-                   (dbm.now(), who["id"] if who else None, jid))
-        others = db.execute("""SELECT 1 FROM jobs WHERE upload_id=? AND id != ?
-                               AND state IN ('queued', 'running', 'preview', 'done') LIMIT 1""", (r["upload_id"], jid)).fetchone()
-        activity.log(db, "discard", who, pid, {"importer": r["importer"], "job": jid, "upload": r["upload_id"]}, ip,
-                     actor=None if who else "removed account")
+        r = _cancelled(db, pid, jid, who, ip, state, message)
+    if r:
+        _cancel_files(db, pid, jid, r)
+    return bool(r)
+
+
+def _cancelled(db, pid, jid, who, ip, state, message=None):
+    """_cancel's rows, in the caller's transaction: (the job's upload, whether another job uses it), or None."""
+    r = db.execute("SELECT * FROM jobs WHERE id=? AND profile_id=?", (jid, pid)).fetchone()
+    if not r or r["state"] != state:
+        return None
+    db.execute("UPDATE jobs SET state='discarded', stage=NULL, finished=?, confirmed_by=?, message=? WHERE id=?",
+               (dbm.now(), who["id"] if who else None, crypto.enc(message) if message else None, jid))
+    others = db.execute("""SELECT 1 FROM jobs WHERE upload_id=? AND id != ?
+                           AND state IN ('queued', 'running', 'preview', 'done') LIMIT 1""", (r["upload_id"], jid)).fetchone()
+    activity.log(db, "discard", who, pid, {"importer": r["importer"], "job": jid, "upload": r["upload_id"]}, ip,
+                 actor=None if who else "removed account")
+    return r["upload_id"], bool(others)
+
+
+def _cancel_files(db, pid, jid, cancelled):
+    """Once _cancelled has committed: the job's preview file, and its upload unless another job uses it."""
+    upload_id, others = cancelled
     _remove(preview_path(pid, jid))
     if not others:
         with contextlib.suppress(uploads.UploadError):
-            uploads.discard(db, pid, r["upload_id"])
-    return True
+            uploads.discard(db, pid, upload_id)
 
 
 def _refuse_not_preview(db, pid, jid):
@@ -590,7 +632,12 @@ def get(db, pid, jid, uid=None):
     """A job; a preview read again first if the profile's records have changed since (freshen). uid: who asks."""
     freshen(db, pid, jid)
     r = db.execute("SELECT * FROM jobs WHERE id=? AND profile_id=?", (jid, pid)).fetchone()
-    return describe(r, uid=uid) if r else None
+    out = describe(r, uid=uid) if r else None
+    if out and out.get("cycle"):   # the cycle records a saved one brought, while they're still kept (#542: not once
+        from . import cycle_tracking   # tracking is turned off or they're deleted, which an Undo's question would name)
+        if not (r["import_id"] and cycle_tracking.is_on(db, pid) and os.path.isfile(cycle_tracking.imported_path(pid, r["import_id"]))):
+            del out["cycle"]
+    return out
 
 
 STATES = ("queued", "running", "preview", "done", "failed", "discarded")

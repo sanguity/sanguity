@@ -9992,6 +9992,7 @@ def main():
             c534 = browser.new_context(storage_state=page.context.storage_state(), viewport={"width": 1400, "height": 900}, bypass_csp=True)
             t534 = c534.new_page()
             t534.on("pageerror", lambda e: problems.append(f"script error (#534's tab): {e}"))
+            t534.on("response", lambda r: r.status >= 500 and problems.append(f"HTTP {r.status} (#534's tab, #542): {r.url}"))
             t534.goto(base + "/sources.html#overview")
             t534.wait_for_function("typeof api === 'function' && SgSources", timeout=10000)
             pid534 = t534.evaluate("""api('profiles', {method: 'POST', body: JSON.stringify({name: 'Cycle 534'})}).then(r => r.json())
@@ -10075,6 +10076,8 @@ def main():
                   "card, toast and Undo (#534: \"Days of activity data 2\", \"4 new\", and \"2 days of watch data\")",
                   new534 == "2 new" and not any(re.search("activity|watch data", x, re.I) for x in (read534, saved534[0], saved534[1][0], undo534[1]))
                   and "1 blood pressure reading, 1 body temperature reading" in undo534[1], [new534, read534, saved534, undo534])
+            # (#542) the profile deleted once its Undo is done, not while it's in flight (the server answered 500)
+            t534.wait_for_function("[...document.querySelectorAll('#sgToasts .sg-toast-text')].some(t => t.textContent.startsWith('Undone'))", timeout=10000)
             t534.evaluate(f"api('profiles/{pid534}', {{method: 'DELETE', body: JSON.stringify({{confirm_name: 'Cycle 534'}})}})")
             c534.close()
             js("window.__real281 = sanguityImport.uploaded; window.__hook = []; sanguityImport.uploaded = a => { window.__hook.push({profileId: a.profileId, uploadId: a.uploadId, card: a.frame.card.isConnected}); return null; }; 0")
@@ -10356,6 +10359,48 @@ def main():
             page.click("#sgToasts .sg-toast button:text-is('Undo…')")
             answer_ask(page)
             page.wait_for_function(f"!{runs534}.length", timeout=10000)
+            # (#542) cycle tracking turned off elsewhere (the API, which this page isn't told of), with tracking on: a zip of
+            # a temperature reading and a period added from the dialog, then tracking turned off: its toast's Undo asks
+            # about the reading alone, its cycle records being gone. Then a zip of cycle records only, left in review in
+            # the dialog when tracking is turned off: its Add, and another's Cancel, say "Cancelled." as Cancel would
+            # (it said "This import was cancelled." with the review still live); tracking left off
+            turn542 = lambda on: js(f"api('profiles/{dpid497}/cycle', {{method: 'PUT', body: JSON.stringify({{on: {'true' if on else 'false'}}})}}).then(r => r.status)")
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+
+            def drop542(name, body):
+                b = io.BytesIO()
+                with zipfile.ZipFile(b, "w") as z:
+                    z.writestr("apple_health_export/export.xml", xml522.split("<Correlation")[0] + body + "</HealthData>\n")
+                js(dropzip522, [list(b.getvalue()), name])
+                page.wait_for_function(f"/^Ready to import/.test({dcard497}?.textContent) && {dcard497}.closest('.job').querySelector('h3').textContent === '{name}'", timeout=30000)
+            drop542("mixed-542.zip", hk522("BodyTemperature", "degC", "2026-11-05 07:05:00 -0500", "36.7") + flow522.format("2026-11-05", "Medium"))
+            js(f"{dcard497}.querySelector('.imp-actions .primary').click()")
+            page.wait_for_function(f"/^Imported/.test({dcard497}.textContent) && document.querySelector('#sgToasts .sg-toast')", timeout=30000)
+            page.click("dialog.up-dlg .sheet-x")
+            off542 = [js("document.querySelector('#sgToasts .sg-toast:last-child .sg-toast-text').textContent"), turn542(False)]
+            page.click("#sgToasts .sg-toast:last-child button:text-is('Undo…')")
+            undo542 = answer_ask(page)[1]
+            page.wait_for_function("[...document.querySelectorAll('#sgToasts .sg-toast-text')].some(t => t.textContent.startsWith('Undone'))", timeout=10000)
+            check("a toast's Undo, once cycle tracking is turned off, asks about what's left, not the cycle records deleted (#542: "
+                  "\"removed: 1 body temperature reading, 1 cycle tracking record\")",
+                  "cycle" in off542[0] and off542[1] == 200 and "removed: 1 body temperature reading, and the files" in undo542
+                  and "cycle" not in undo542.lower(), [off542, undo542])
+            gone542, seen542 = [], len(problems)
+            for n542, button in enumerate(("primary", "btn:not(.primary)")):
+                turn542(True)
+                drop542(f"cycle-542-{n542}.zip", flow522.format(f"2026-11-0{n542 + 1}", "Light"))
+                turn542(False)
+                js(f"{dcard497}.querySelector('.imp-actions .{button}').focus()")
+                page.keyboard.press("Enter")
+                page.wait_for_function(f"!/^Ready to import/.test({dcard497}.textContent)", timeout=10000)
+                settle(300)
+                gone542.append(js(f"""(c => [c.textContent, !!c.querySelector('.imp-actions'), document.activeElement === c.querySelector('p')])({dcard497})"""))
+            page.click("dialog.up-dlg .sheet-x")
+            # (the Add's and Cancel's 409, which the card answers, were the point)
+            problems[seen542:] = [x for x in problems[seen542:] if not re.search(r"HTTP 409: \S+/jobs/\d+/(confirm|discard)$|status of 409 \(Conflict\)", x)]
+            check("a review in the dialog cancelled elsewhere (cycle tracking turned off) says \"Cancelled.\" on its Add and its Cancel, "
+                  "focus on that line (#542: \"This import was cancelled.\" with the review still live)",
+                  all(g[0].startswith("Cancelled. Nothing was saved") and g[1:] == [False, True] for g in gone542), gone542)
             # (#504) a profile with no records: two CSVs dropped into the dialog, the first added, the dialog closed: its
             # records are drawn without loading the page again, the toast's Undo and the other review kept
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")

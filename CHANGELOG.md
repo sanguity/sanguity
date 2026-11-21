@@ -2226,6 +2226,16 @@ Everything on `main` so far; it becomes the first tagged release.
   with no "Not done:". Make admin, Remove admin, Turn off two-factor sign-in, Disable and Enable said nothing when they
   worked; each says what it did in the account's row and to a screen reader ("Turned off two-factor sign-in for ben:
   2 passkeys removed.").
+- **Records in: an upload holding nothing kept forever, a review cancelled elsewhere left live, an empty import
+  saved as tracking is turned off, Undo racing a profile's deletion, and Undo naming deleted cycle records** (#542):
+  an upload the server read nothing from (an Apple Health export of cycle records only with tracking off, of only a
+  type Sanguity ignores, or an empty one) waited for review with its upload, shown only in the tab that sent it; it's
+  cancelled once read, its upload removed, and its card says "Nothing in this upload could be imported, so it was
+  removed." Turning tracking off cancels any review left holding nothing, whatever it held, and a confirmed import of
+  cycle records only that it catches before it's saved is cancelled the same way, not saved as an import of nothing
+  with an Undo. A review cancelled in another tab answered Add and Cancel with "This import was cancelled." while
+  still offering both; it says "Cancelled." as Cancel would. An Undo while the profile was being deleted answered 500;
+  it's refused as gone. A toast's Undo, once tracking was turned off, named the cycle records it no longer had.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -202,11 +202,12 @@ def drop_imported(db, pid, who=None, ip=None):
                 report = json.loads(crypto.dec(r["summary"])) if r and r["summary"] else None
             except (OSError, ValueError, crypto.KeyError_):
                 continue
-            if not isinstance(held.get("watch"), dict) or held["watch"].pop("cycle", None) is None:
+            if not r:
                 continue
-            if jobs._holds_nothing(held):   # an upload of cycle records only (#539)
-                jobs._cancel(db, pid, jid, who, ip)
-            elif jobs.rewrite_preview(db, jid, path, held):
+            had = isinstance(held.get("watch"), dict) and held["watch"].pop("cycle", None) is not None
+            if jobs._holds_nothing(held) and not jobs._first_pull(db, jid):   # an upload of cycle records only (#539),
+                jobs._cancel(db, pid, jid, who, ip)   # or one left holding nothing whatever it held (#542)
+            elif had and jobs.rewrite_preview(db, jid, path, held):
                 if isinstance(report, dict) and (report.get("counts") or {}).pop("cycle", None) is not None:   # nor counted
                     # and read again without them (#534): what's new then
                     db.execute("UPDATE jobs SET summary=? WHERE id=? AND state='preview'", (crypto.enc(json.dumps({**report, "stamp": None})), jid))
