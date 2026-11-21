@@ -840,7 +840,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .acct .msg:empty{display:none}
 .acct .msg.bad{color:var(--crit)}
 .acct .msg code{background:var(--hover);padding:1px var(--sp-1);border-radius:var(--r-sm);user-select:all}
-.acct .tag{display:inline-block;margin-left:var(--sp-2);font-size:var(--fs-1);font-weight:var(--fw-semibold);color:var(--ink2);background:var(--hover);border-radius:var(--r-pill);padding:1px var(--sp-2);vertical-align:1px}
+.acct .tag{display:inline-block;margin-left:var(--sp-2);font-size:var(--fs-1);font-weight:var(--fw-semibold);color:var(--ink2);background:var(--hover);border-radius:var(--r-pill);padding:1px var(--sp-2);vertical-align:1px;outline:1px solid transparent;outline-offset:-1px}
 .acct .muted{color:var(--muted);font-size:var(--fs-2)}
 .acct .tbl{width:100%;border-collapse:collapse;font-size:var(--fs-3);margin-top:var(--sp-2)}
 .acct .tbl th{text-align:left;color:var(--muted);font-weight:var(--fw-medium);font-size:var(--fs-2);padding:var(--sp-1) var(--sp-2) var(--sp-1) 0}
@@ -852,12 +852,11 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .acct .lm-edit input{flex:1 1 140px}
 .acct .prof{border-top:1px solid var(--grid);padding:var(--sp-3) 0}
 .acct .prof:first-child{border-top:0}
-.acct .prof-hd{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
 .acct .activity-wrap{margin-top:var(--sp-3)}
 .acct .ownerless{margin-top:var(--sp-3);padding:var(--sp-2) var(--sp-3);border:1px solid var(--c-study);border-radius:var(--r-md)}   /* to repair, not to undo: a warning's edge, not the danger zone's */
 .acct .ownerless p{margin:0 0 var(--sp-2);font-size:var(--fs-3)}
 .acct .ownerless .row{border-top:1px solid var(--grid);padding-top:var(--sp-2)}
-.acct .tag.off{background:none;outline:1px solid var(--ring);outline-offset:-1px}   /* disabled: an outline, not a fill */
+.acct .tag.off{background:none;outline-color:var(--ring)}   /* disabled: an outline, not a fill */
 .acct .users .new-pw{display:block}
 .acct .tbl.users td.acts{display:table-cell;width:1%}   /* the ⋯ column as narrow as its button */
 /* Passkeys under their name, the card's width (.set-row.wide, #519: beside it they ran past the card at tablet widths):
@@ -874,7 +873,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 }
 .acct :is(.pk,#sessList) .btn{white-space:nowrap}
 .acct .activity{margin-top:var(--sp-2)}
-.acct .activity td.nowrap{white-space:nowrap}
+.acct .activity .when>span{white-space:nowrap}
 #acctLog{margin-top:var(--sp-3)}
 .acct .tf-setup{display:flex;gap:var(--sp-2) var(--sp-4);align-items:flex-start;flex-wrap:wrap;margin:0 0 var(--sp-2)}   /* its QR code (qr.js, #495), the key beside it */
 .acct .tf-setup>.qr-fig{margin:0}
@@ -1155,7 +1154,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .dir .dir-src{border-left:3px solid var(--c-study);padding:var(--sp-1) 0 var(--sp-1) var(--sp-3);margin:var(--sp-2) 0 var(--sp-3);font-size:var(--fs-3)}
 .dir .dir-src p{margin:0 0 var(--sp-2)}
 .dir .dir-src pre{margin:0 0 var(--sp-2);white-space:pre-wrap}
-.dir .dir-src code,.dir .dir-steps code{background:var(--hover);padding:1px var(--sp-1);border-radius:var(--r-sm)}
+.dir .dir-src code{background:var(--hover);padding:1px var(--sp-1);border-radius:var(--r-sm)}
 .dir .dir-src ul{margin:0;padding-left:var(--sp-4);color:var(--ink2)}
 .dir .form{max-width:none}
 .dir .form input{width:100%;font-size:var(--fs-4)}
@@ -1175,13 +1174,9 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .dir #detail h3.sub{margin:var(--sp-4) 0 var(--sp-2)}
 .dir .dir-copy{display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center}
 .dir .dir-copy-v{flex:1 1 220px;font:var(--fs-2) var(--font-mono)}
-.dir .dir-back{margin-bottom:var(--sp-2)}
-.dir .dir-back p{margin:var(--sp-1) 0 0}
 .dir .bad{color:var(--crit)}
 .dir .dir-real{border-left:3px solid var(--good);padding:var(--sp-1) 0 var(--sp-1) var(--sp-3);margin:0 0 var(--sp-2);font-size:var(--fs-3)}
 .dir .dir-real.caution{border-color:var(--c-study)}
-.dir .dir-steps{margin:var(--sp-2) 0 0;padding-left:var(--sp-5);font-size:var(--fs-3)}
-.dir .dir-steps li{margin-bottom:var(--sp-1)}
 .dir .dir-places,.dir .dir-aka p{overflow-wrap:anywhere}
 .dir .dir-aka{margin-top:var(--sp-4);font-size:var(--fs-3)}
 .dir .dir-aka summary{cursor:pointer;color:var(--ink2)}

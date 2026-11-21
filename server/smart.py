@@ -148,7 +148,7 @@ class Client:
             except net.Refused as e:
                 raise Refused(str(e)) from None
             except net.Errors as e:
-                err = Unavailable(f"{host} didn't answer ({type(e).__name__}).")
+                err = Unavailable(f"{host} didn't answer: {net.why(e)}.")
                 wait = 2 ** attempt
             else:
                 if resp.status != 429 and resp.status < 500:

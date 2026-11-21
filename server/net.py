@@ -16,6 +16,7 @@ removing it, stops the next request even in the middle of a pull.
                                           connected; with ip, it connects to that address (checked beforehand)
                                           while the certificate is still checked for the host
   Errors                                  what a host that didn't answer, or broke off, raises: (OSError, HTTPException)
+  why(e) -> str                           one of those in plain words, for people ("its name wasn't found")
 
 Each host is recorded once per permit and purpose (record(host, purpose)), before anything is sent to it, so an
 attempt that fails is listed too. Only the host is recorded: never a path, query, token or anything else sent.
@@ -24,6 +25,22 @@ import http.client, socket, ssl, urllib.parse
 
 Errors = (OSError, http.client.HTTPException)
 DEFAULT_PORTS = {"https": 443, "http": 80}
+
+
+def why(e):
+    """what went wrong reaching a host, in plain words (#528: a failed test said "didn't answer (gaierror)", the name
+    of a Python exception)"""
+    if isinstance(e, socket.gaierror):
+        return "its name wasn't found (check the address)"
+    if isinstance(e, TimeoutError):
+        return "it took too long to answer"
+    if isinstance(e, ConnectionRefusedError):
+        return "it refused the connection"
+    if isinstance(e, ssl.SSLCertVerificationError):
+        return "its HTTPS certificate isn't valid"
+    if isinstance(e, ssl.SSLError):
+        return "the secure connection failed"
+    return "the connection broke off"
 
 
 class Refused(Exception):

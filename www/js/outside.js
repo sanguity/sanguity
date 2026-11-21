@@ -13,9 +13,9 @@ const SgOutside = (() => {
   const profileOf = e => e.profile_name || (e.profile == null ? "no profile (an admin's test)" : "profile " + e.profile);
 
   function source(s) {
-    const h = s.hosts || {};
+    const h = s.hosts || {}, v = s.vendor_label || s.vendor;   // its vendor as Set up a source names it (#528: "epic")
     const box = el("div", {class: "out-src"},
-      el("h4", {text: s.name + (s.vendor ? ` (${s.vendor})` : "")}),
+      el("h4", {text: s.name + (v ? ` · ${v}` : "")}),
       dl([["FHIR server", code(h.issuer || "")],
           h.token && ["Sign-in tokens", code(h.token)],
           h.revocation && ["Revoking access", code(h.revocation)],

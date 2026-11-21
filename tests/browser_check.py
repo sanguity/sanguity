@@ -14539,7 +14539,8 @@ def main():
                 phrases: Object.fromEntries(phrases.map(p => [p, found(p)]))};
               document.querySelector('dialog.palette').close();
               return out; }"""
-            ask524 = {"admin": ["delete passkey", "disable 2fa", "reset 2fa", "lost phone", "leave profile", "failed sign-ins", "audit", "audit log", "qr"],
+            ask524 = {"admin": ["delete passkey", "disable 2fa", "reset 2fa", "lost phone", "leave profile", "failed sign-ins", "audit", "audit log", "qr",
+                                "account password", "require 2fa", "remove someone"],   # (#528)
                       "owner": ["make owner", "add owner", "change owner", "transfer ownership", "give access", "share with", "stop sharing", "audit"],
                       "editor": ["remove account", "new account", "add person"], "viewer": []}
 
@@ -14553,6 +14554,15 @@ def main():
                     out["groups"].update({(name, g): v for g, v in r["groups"].items()})
                     out["phrases"].update(r["phrases"])
                 return out
+            # #528: two connections on profile 1, made up here and gone after, for the sweep to see Portals' connection
+            # controls and Waiting for you's (they exist only with a connection, so #524's didn't): one failing (its warning
+            # noted already, so not logged), one whose access ended; neither due to sync
+            cdb528, now528 = dbm.connect(), dbm.now()
+            conns528 = [cdb528.execute("""INSERT INTO connections(profile_id, source, issuer, fhir_base, credential, scopes, state, cursor, last_sync,
+                                            next_sync, failures, error_kind, warned, created) VALUES(1, ?, ?, ?, 'refresh', 'launch/patient openid patient/Observation.read', ?, '{}', ?, ?, ?, ?, ?, ?)""",
+                                       (n, f"https://fhir.example.org/{n[:5].lower()}528", f"https://fhir.example.org/{n[:5].lower()}528", st, now528, now528 + 864000,
+                                        fails, kind, now528, now528)).lastrowid
+                        for n, st, fails, kind in (("Failing 528", "active", 5, "unavailable"), ("Ended 528", "needs reconnect", 0, "access"))]
             swept524 = {"admin": sweep524(page, "admin")}
             # the others: accounts of their own, on profile 1, gone again after (with more than one account Admin needs a
             # second factor: the admin's turn came first)
@@ -14578,6 +14588,8 @@ def main():
                 adb524.execute("DELETE FROM users WHERE username IN (?, ?, ?)", tuple(users524.values()))
                 adb524.execute("DELETE FROM activity WHERE actor IN (?, ?, ?)", tuple(users524.values()))   # (their sign-ins, the records opened)
                 adb524.close()
+                cdb528.execute(f"DELETE FROM connections WHERE id IN ({conns528[0]}, {conns528[1]})")
+                cdb528.close()
             page_of = lambda f: f[0] if f[1] == "Page" else f[1].split(" › ")[0]
             bad524, n524 = [], {}
             for role, s in swept524.items():
@@ -14606,6 +14618,14 @@ def main():
                   all(said524[r][q][:1] == [t] for r, qs in first524.items() for q, t in qs.items())
                   and all(ts <= set(said524[r][q]) for r, qs in among524.items() for q, ts in qs.items())
                   and not any(page_of(f) == "Account" for q in ("remove account", "new account") for f in swept524["editor"]["phrases"][q]), said524)
+            labs528 = {role: {g: [lab for lab, _ in sw["groups"].get(("sources", g), [])] for g in ("portals", "overview")} for role, sw in swept524.items()}
+            check("…(#528) and the sweep sees Portals' connection controls (Sync now, What it pulls, Disconnect, Sign in again) and Waiting for "
+                  "you's Fix it, each finding Sources first (they had no words); an admin's “account password” finds Password first (Accounts "
+                  "did), “require 2fa” Require two-factor sign-in and “remove someone” Who has access or Accounts (they found nothing)",
+                  all({"Sync now", "What it pulls", "Disconnect", "Sign in again"} <= set(labs528[r]["portals"]) and "Fix it" in labs528[r]["overview"]
+                      for r in ("admin", "owner", "editor"))
+                  and said524["admin"]["account password"][:1] == ["Password"] and said524["admin"]["require 2fa"][:1] == ["Require two-factor sign-in"]
+                  and said524["admin"]["remove someone"][:1] in (["Who has access"], ["Accounts"]), [labs528, {q: said524["admin"][q] for q in ("account password", "require 2fa", "remove someone")}])
             page.goto(base + "/settings.html?profile=1#dashboard")
             page.wait_for_selector("#sections > section", state="attached", timeout=10000)
             settle(300)
@@ -16451,6 +16471,54 @@ def main():
             check("…(#524) a source removed elsewhere, open in Change: its row's Waiting for review draws the list again without it, “No such "
                   "source.” where it was, in sight at 375×667, focus on a Test beside it, the form a new source's (its row stayed, the form "
                   "still “Change …”)", src524 == ["No such source.", True, "test", True, False, "Add a source"], src524)
+            # #528: a confidential source removed elsewhere while open in Change: Save asks for its secret, focus on it (its
+            # field said “Kept”, and Save again was refused for want of it), and with it typed, Save adds it as a new
+            # source. Then, open in Change with something typed and removed elsewhere, its row's Test keeps what's typed
+            # (it emptied the form); and the walk-through's Test says so in its step, focus there (it went to another
+            # source's Test, which a second Enter then tested)
+            had528, src528 = len(problems), []
+            new528 = lambda n, auth: js("b => api('connect/sources', {method: 'POST', body: JSON.stringify(b)}).then(r => r.json()).then(j => loadSetup({walk: false}).then(() => j.id))",
+                                        {"vendor": "other", "name": n, "issuer": f"https://fhir.example.org/{n.replace(' ', '').lower()}", "client_id": "c528", "auth": auth,
+                                         **({"secret": "s528"} if auth == "confidential" else {}), "scopes": "launch/patient openid fhirUser patient/Observation.read"})
+            drop528 = lambda i: js("i => api('connect/sources/' + i, {method: 'DELETE'}).then(r => r.status)", i)
+            FORM528 = "['fName', 'fClient', 'fSecret'].map(i => document.getElementById(i).value).concat(document.getElementById('formTitle').textContent)"
+            id528 = new528("Conf 528", "confidential")
+            page.locator("#sourceList .prof", has_text="Conf 528").get_by_role("button", name="Change").click()
+            page.fill("#fName", "Conf 528 again")
+            drop528(id528)
+            page.click("#fSave")
+            page.wait_for_function("document.getElementById('fMsg').textContent.includes('removed meanwhile')", timeout=10000)
+            src528.append(js(f"[document.getElementById('fMsg').textContent, document.activeElement.id, document.getElementById('fSecret').placeholder, ({SEEN524s})(document.activeElement)].concat({FORM528})"))
+            page.fill("#fSecret", "s528 again")
+            page.click("#fSave")
+            page.wait_for_function("document.getElementById('fMsg').textContent === 'Saved Conf 528 again. Last step: test it.'", timeout=10000)
+            id528 = js("SETUP.sources.find(s => s.name === 'Conf 528 again').id")
+            check("…(#528) a confidential source removed elsewhere while open in Change: Save asks for its secret, focus on it, in sight, what's "
+                  "typed kept, and with it typed Save adds it as a new source (its field said “Kept”, and Save again was refused for want of it)",
+                  src528[0] == ["No such source. It was removed meanwhile: type its client secret, then Save to add it as a new source.", "fSecret", "", True,
+                                "Conf 528 again", "c528", "", "Add a source"] and id528, src528)
+            page.locator("#sourceList .prof", has_text="Conf 528 again").get_by_role("button", name="Change").click()
+            page.fill("#fClient", "typed 528")
+            drop528(id528)
+            page.locator("#sourceList .prof", has_text="Conf 528 again").get_by_role("button", name="Test this connection").click()
+            page.wait_for_selector("#sourceList .row-msg", timeout=10000)
+            settle(300)
+            src528.append(js(f"[document.querySelector('#sourceList .row-msg').textContent, document.activeElement.dataset.act, document.getElementById('fMsg').textContent].concat({FORM528})"))
+            id528 = new528("Spare 528", "public")
+            page.locator("#sourceList .prof", has_text="Spare 528").get_by_role("button", name="Change").click()
+            page.fill("#fClient", "typed 528 too")
+            drop528(id528)
+            page.click("#walkTest")
+            page.wait_for_function("document.getElementById('walkResult').textContent.includes('removed meanwhile')", timeout=10000)
+            settle(300)
+            src528.append(js(f"[document.activeElement.textContent, !!document.activeElement.closest('#walkResult'), ({SEEN524s})(document.activeElement), document.getElementById('sourceList').textContent.includes('Spare 528')].concat({FORM528})"))
+            problems[had528:] = [x for x in problems[had528:] if not re.search(r"HTTP 404: .*/api/connect/sources/\d+(/test)?$|status of 404", x)]   # (the point)
+            check("…(#528) open in Change, something typed, and removed elsewhere: its row's Test keeps what's typed, the form a new source's "
+                  "asking for its secret (it emptied the form); the walk-through's Test says so in its step, focus there and in sight (it went to "
+                  "another source's Test, which a second Enter tested)",
+                  src528[1] == ["No such source.", "test", "No such source. It was removed meanwhile: type its client secret, then Save to add it as a new source.",
+                                "Conf 528 again", "typed 528", "", "Add a source"]
+                  and src528[2] == ["No such source. It was removed meanwhile: Save to add it as a new source.", True, True, False, "Spare 528", "typed 528 too", "", "Add a source"], src528[1:])
             page.set_viewport_size({"width": 1400, "height": 900})
             page.goto(base + "/connect.html")   # its old address: Sources → Portals and health plans (#166)
             page.wait_for_url(re.compile(r"/sources\.html(\?[^#]*)?#portals$"), timeout=10000)   # with or without the ?profile= nav.js adds
@@ -16894,6 +16962,9 @@ def main():
             except Exception:   # (said below)
                 pass
             check("…and Outside connections lists it and its host at once, without a reload (#515)", js(out515), js("document.getElementById('outsideBody').innerText.slice(0, 300)"))
+            out528 = js("[...document.querySelectorAll('#outsideBody h4')].map(h => h.textContent).find(t => t.startsWith('Lakeside Health (fictional)'))")
+            check("…named with its vendor as Set up a source names it, “Epic (MyChart)” (#528: “(epic)”, the vendor's key)",
+                  out528 == "Lakeside Health (fictional) · Epic (MyChart)", out528)
             wait_id = js("SETUP.sources.find(s => s.name === 'Lakeside Health (fictional)').id")
             for width in (1400, 375):
                 page.set_viewport_size({"width": width, "height": 800 if width == 375 else 900})
@@ -17692,6 +17763,49 @@ def main():
                   any("Hemoglobin Whole Bld" in t and "Hemoglobin" in t and "demo" in t and "CSV" in t and "Change" in t and "Remove" in t for t in lm)
                   and "only admins can change or remove" in js("[...document.querySelectorAll('.about-words')].find(w => w.getAttribute('aria-label') === 'About Lab name matches').textContent")   # (behind its ⓘ, #280)
                   and js(display, "labmaps") != "none", lm)
+            # #528: at 375×667 a match's Save (by Enter in its box) leaves focus on its Change, and Remove → Forget match on the
+            # next match's Remove, in sight (it fell to the page); one removed elsewhere, then saved, is drawn away, “No such
+            # lab name match.” where it was, focus beside it (it stayed, said under the list). Two made up here, gone after
+            from server import crypto as crypto528, labmap as labmap528
+            lmdb528 = dbm.connect()
+            for n in ("Ferritin 528", "Glucose 528"):
+                lmdb528.execute("INSERT INTO labmaps(lookup, importer, source, target, created_by, created_name, created) VALUES(?, 'manual', ?, ?, NULL, ?, ?)",
+                                (labmap528.lookup("manual", n, "g/dL", None), crypto528.enc(json.dumps({"name": n, "unit": "g/dL", "loinc": None})),
+                                 crypto528.enc("Hemoglobin"), USER, dbm.now()))
+            js("loadLabmaps()")
+            page.wait_for_function("document.getElementById('labmapList').textContent.includes('Glucose 528')", timeout=10000)
+            vp528, had528 = page.viewport_size, len(problems)
+            page.set_viewport_size({"width": 375, "height": 667})
+            SEENLM528 = """e => { if (!e) return false; const r = e.getBoundingClientRect(), p = getComputedStyle(document.documentElement);
+              return r.height > 0 && r.top >= parseFloat(p.scrollPaddingTop) - 1 && r.bottom <= innerHeight - parseFloat(p.scrollPaddingBottom) + 1; }"""
+            LM528 = f"""(() => {{ const a = document.activeElement, m = document.querySelector('#labmapList .row-msg');
+              return [a.textContent, a.closest('tr')?.querySelector('b')?.textContent ?? null, ({SEENLM528})(a), m && m.textContent, !!m && ({SEENLM528})(m)]; }})()"""
+            lmrow528 = lambda n: page.locator("#labmapList tr[data-labmap]", has_text=n)  # noqa: E731
+            lm528 = []
+            lmrow528("Ferritin 528").get_by_role("button", name="Change").click()
+            lmrow528("Ferritin 528").locator("input").fill("Ferritin")
+            lmrow528("Ferritin 528").locator("input").press("Enter")
+            page.wait_for_function("document.getElementById('labmapMsg').textContent.startsWith('“Ferritin 528” is now')", timeout=10000)
+            settle(300)
+            lm528.append(js(LM528))
+            lmrow528("Ferritin 528").get_by_role("button", name="Remove").click()
+            answer_ask(page)
+            page.wait_for_function("!document.getElementById('labmapList').textContent.includes('Ferritin 528')", timeout=10000)
+            settle(300)
+            lm528.append(js(LM528)[:3])
+            lmrow528("Glucose 528").get_by_role("button", name="Change").click()
+            lmdb528.execute("DELETE FROM labmaps WHERE id=?", (int(lmrow528("Glucose 528").get_attribute("data-labmap")),))
+            lmdb528.close()
+            page.keyboard.press("Enter")
+            page.wait_for_selector("#labmapList .row-msg", timeout=10000)
+            settle(300)
+            lm528.append(js(LM528) + [js("[...document.querySelectorAll('#labmapList b')].some(b => b.textContent === 'Glucose 528')")])
+            problems[had528:] = [x for x in problems[had528:] if not re.search(r"HTTP 404: .*/api/labmaps/\d+$|status of 404", x)]   # (the point)
+            page.set_viewport_size(vp528)
+            check("…(#528) at 375×667 a match's Save leaves focus on its Change, Remove on the next match's Remove, in sight (it fell to the "
+                  "page); one removed elsewhere, then saved, is drawn away, “No such lab name match.” where it was, focus on a Change beside it",
+                  lm528[0] == ["Change", "Ferritin 528", True, None, False] and lm528[1][0] == "Remove" and lm528[1][1] and lm528[1][2]
+                  and lm528[2][0] == "Change" and lm528[2][2:] == [True, "No such lab name match.", True, False], lm528)
             # the old Profiles tab's address opens Sharing → People (#168); a section link still lands on Account
             page.goto(base + "/account.html#profiles")
             page.wait_for_url(re.compile(r"/sharing\.html(\?[^#]*)?#people$"), timeout=10000)
@@ -17946,7 +18060,7 @@ def main():
             check("admin sees the install's activity, under Admin → Install activity", js(display, "installLog") != "none" and js(display, "users") == "none")
             # #524: at 768 and 900 px an activity log's addresses break only where they don't fit: an IPv4 one never ("127.0.0." /
             # "1" there), on Install activity and Sharing → Activity, the table within its card
-            split524 = {}
+            split524, what528 = {}, {}
             for path, box in (("/admin.html#activity", "#acctLog"), ("/sharing.html?profile=1#activity", "#actBody")):
                 if not path.startswith("/admin"):
                     page.goto(base + path)
@@ -17957,9 +18071,17 @@ def main():
                     split524[f"{path} {w}"] = js("""box => { const cells = [...document.querySelectorAll(box + ' .activity tbody td:nth-child(4)')].filter(td => /^[\\d.]+$/.test(td.textContent));
                       const split = cells.filter(td => { const r = document.createRange(); r.selectNodeContents(td); return new Set([...r.getClientRects()].map(x => Math.round(x.top))).size > 1; });
                       return [cells.length, split.map(td => td.textContent), document.querySelector(box + ' .activity table').getBoundingClientRect().right <= document.querySelector(box).getBoundingClientRect().right + 0.5]; }""", box)
+                    # #528: its What as wide as before #524 (101 px at 768; 81 once the address kept whole), When breaking only
+                    # between its date and its time
+                    what528[f"{path} {w}"] = js("""box => { const rows = [...document.querySelectorAll(box + ' .activity tbody tr')].filter(tr => tr.cells.length === 4);
+                      const lines = e => { const r = document.createRange(); r.selectNodeContents(e); return new Set([...r.getClientRects()].map(x => Math.round(x.top))).size; };
+                      return [Math.round(Math.min(...rows.map(tr => tr.cells[2].getBoundingClientRect().width))), Math.max(...rows.map(tr => lines(tr.cells[0]))),
+                              rows.every(tr => [...tr.cells[0].children].every(c => lines(c) === 1))]; }""", box)
             page.set_viewport_size({"width": 1400, "height": 900})
             check("…(#524) at 768 and 900 px no IPv4 address in an activity log split across lines, on Install activity and Sharing → Activity, "
                   "the table within its card (“127.0.0.” / “1”)", all(v[0] > 0 and not v[1] and v[2] for v in split524.values()), split524)
+            check("…(#528) and its What at least 101 px wide at 768 and 900 px, as before #524 (81 px at 768), When breaking only between its "
+                  "date and its time", all(v[0] >= 101 and v[1] <= 2 and v[2] for v in what528.values()), what528)
             page.goto(base + "/sharing.html?profile=1#export")
             page.wait_for_selector("#exportLink", timeout=10000)
             href = js("document.getElementById('exportLink').getAttribute('href')")
@@ -18484,6 +18606,30 @@ def main():
             check("Make owner leaves focus on the next profile's Make owner, else the one before's, in sight (#502: it fell to the page); "
                   "Enter in its Another account does what it does (#524: nothing)",
                   own502 == [["Make owner", "Orphan 502 two", True], ["Make owner", "Alex's records", True], [200, 200]], own502)
+            # #528: a profile without an owner deleted elsewhere, then its Make owner, at 375×667: drawn away, “No such
+            # profile.” where it was, focus on the next profile's Make owner, both in sight (it said so under its row, which stayed)
+            SEEN528 = """e => { if (!e) return false; const r = e.getBoundingClientRect(), p = getComputedStyle(document.documentElement);
+              return r.height > 0 && r.top >= parseFloat(p.scrollPaddingTop) - 1 && r.bottom <= innerHeight - parseFloat(p.scrollPaddingBottom) + 1; }"""
+            db528 = dbm.connect()
+            orph528 = profiles.create_profile(db528, "Orphan 528", owner_id=alex)
+            js("loadOwnerless()")
+            page.wait_for_function("document.querySelector('#ownerless').textContent.includes('Orphan 528')", timeout=10000)
+            vp528, had528 = page.viewport_size, len(problems)
+            page.set_viewport_size({"width": 375, "height": 667})
+            db528.execute("DELETE FROM profiles WHERE id=?", (orph528,))
+            db528.close()
+            orow528 = page.locator("#ownerless .ownerless > .row", has_text="Orphan 528")
+            orow528.get_by_role("textbox", name="Another account").fill("nobody528")
+            orow528.get_by_role("button", name="Make owner").click()
+            page.wait_for_selector("#ownerless .row-msg", timeout=10000)
+            settle(300)
+            own528 = js(f"""(() => {{ const m = document.querySelector('#ownerless .row-msg'), a = document.activeElement, seen = {SEEN528};
+              return [m.textContent, seen(m), a.textContent, a.closest('.row')?.querySelector('b').textContent, seen(a), document.getElementById('ownerless').textContent.includes('Orphan 528')]; }})()""")
+            problems[had528:] = [x for x in problems[had528:] if not re.search(r"HTTP 404: .*/api/ownerless/\d+/owner$|status of 404", x)]   # (the point)
+            page.set_viewport_size(vp528)
+            check("…(#528) a profile without an owner deleted elsewhere, then its Make owner: at 375×667 drawn away, “No such profile.” where "
+                  "it was, focus on the next profile's Make owner, both in sight (its row stayed)",
+                  own528 == ["No such profile.", True, "Make owner", "Alex's records", True, False], own528)
             # #506: the last one given an owner, what it said is where the list was, focus on it, in sight at 375×667 (focus
             # went to the card's heading, the message out of sight under the accounts). The server's list answered here,
             # one profile and then none, so Alex's records stays as it is
@@ -18650,6 +18796,51 @@ def main():
             check("…an account removed meanwhile: “No such account.”, gone from the list and the zone's picker; in the zone with focus on its "
                   "picker while another account is left, under Accounts with focus on the page's heading once none is (#493)",
                   gone493 == {"kept493": ["rmUser", "", False, True, False, False], None: ["groupTitle", "userMsg", False, True, False, True]}, gone493)
+            # #528: an account removed elsewhere, then its row's Disable, at 375×667: drawn away, from the zone's picker too,
+            # “No such account.” where it was, focus on a ⋯ beside it, both in sight (it said so under its row, which stayed)
+            GONE528 = f"""list => {{ const m = document.querySelector(list + ' .row-msg'), a = document.activeElement;
+              return [m?.textContent, ({SEEN528})(m), (a.getAttribute('aria-label') || a.textContent).split(' ')[0], ({SEEN528})(a), document.querySelector(list).textContent]; }}"""
+            db_528 = dbm.connect()
+            for n in ("gone528", "kept528"):   # (kept: another account for focus to go to)
+                db_528.execute("INSERT INTO users(username, pw_hash, is_admin, created) VALUES(?, 'x', 0, 0)", (n,))
+            js("loadUsers()")
+            page.wait_for_function("document.getElementById('userList').textContent.includes('gone528')", timeout=10000)
+            vp528, had528 = page.viewport_size, len(problems)
+            page.set_viewport_size({"width": 375, "height": 667})
+            db_528.execute("DELETE FROM users WHERE username='gone528'")
+            row528 = page.locator("#userList tr", has_text="gone528")
+            row528.get_by_role("button", name="Manage gone528").click()
+            row528.get_by_role("menuitem", name="Disable…").click()
+            answer_ask(page)
+            page.wait_for_selector("#userList .row-msg", timeout=10000)
+            settle(300)
+            acct528 = js(GONE528, "#userList")
+            acct528[4] = ["gone528" in acct528[4], js("[...document.querySelectorAll('#rmUser option')].some(o => o.textContent === 'gone528')")]
+            problems[had528:] = [x for x in problems[had528:] if not re.search(r"HTTP 404: .*/api/users/\d+$|status of 404", x)]   # (the point)
+            page.set_viewport_size(vp528)
+            check("…(#528) an account removed elsewhere, then its row's Disable: at 375×667 drawn away, from the zone's picker too, “No such "
+                  "account.” where it was, focus on a ⋯ beside it, both in sight (its row stayed, the zone offering it)",
+                  acct528 == ["No such account.", True, "Manage", True, [False, False]], acct528)
+            # #528: with forced colours, light and dark, each account's badge (admin, two-factor, disabled) keeps an edge (its fill
+            # is dropped there: admin and two-factor had none)
+            tags528 = {}
+            db_528.execute("INSERT INTO users(username, pw_hash, is_admin, created, disabled) VALUES('badge528', 'x', 0, 0, 1)")
+            js("loadUsers()")
+            page.wait_for_function("document.getElementById('userList').textContent.includes('badge528')", timeout=10000)
+            for scheme in ("light", "dark"):
+                page.emulate_media(forced_colors="active", color_scheme=scheme)
+                settle(150)
+                tags528[scheme] = js("""[...document.querySelectorAll('#userList .tag')].map(t => { const s = getComputedStyle(t);
+                  return [t.textContent, s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) >= 1 && !/rgba\\(.*, 0\\)|transparent/.test(s.outlineColor)]; })""")
+            page.emulate_media(forced_colors="none", color_scheme="light")
+            db_528.execute("DELETE FROM users WHERE username IN ('badge528', 'kept528')")
+            db_528.close()
+            js("loadUsers()")
+            check("…(#528) with forced colours, light and dark, each account's badge keeps an edge (admin and two-factor had none)",
+                  all({"admin", "disabled"} <= {t for t, _ in v} and all(ok for _, ok in v) for v in tags528.values()), tags528)
+            css528 = open(os.path.join(ROOT, "www", "css", "app.css")).read()
+            check("…(#528) and app.css has none of the rules nothing uses any more (.prof-hd since #168, .dir-steps and .dir-back since #166)",
+                  not re.search(r"\.(prof-hd|dir-steps|dir-back)\b", css528), re.findall(r"[^\n]*\.(?:prof-hd|dir-steps|dir-back)\b[^\n]*", css528))
             # log out ends the session: the API now refuses
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
@@ -18832,6 +19023,30 @@ def main():
                   pk524[:4] == ["No such passkey.", True, "Remove", True] and "Renamed key 524" not in pk524[4].replace("No such passkey.", "")
                   and sess524[:4] in (["No such session.", True, "Sign out", True], ["No such session.", True, "Where you're signed in", True]) and "192.0.2.24" not in sess524[4], [pk524[:4], sess524[:4]])
             pk.evaluate("Promise.all([loadPasskeys(), loadSessions()])")
+            # #528: Admin's check that it's you offers Use a passkey only where one can work: at localhost with one made
+            # there, and not with none, nor at an IP address (pressed, it said only "None of your passkeys was made at this
+            # address", "Passkeys don't work at an IP address")
+            no_pk528 = json_ok('{"passkeys": [], "problem": null, "required": false, "authenticator_app": true, "site": "localhost", "user_handle": null}')
+            def reauth528(pg, at):
+                pg.goto(at + "/admin.html#accounts")
+                pg.wait_for_selector("#userList tbody tr", timeout=10000)
+                pg.evaluate("() => { confirmIdentity().catch(() => {}); }")
+                pg.wait_for_selector("#reauth .pw input", timeout=10000)
+                said = [pg.locator("#reauth").get_by_role("button", name="Use a passkey").count(), "or a passkey" in pg.inner_text("#reauth")]
+                pg.click("#reauth button:text-is('Cancel')")
+                return said
+            pk528 = {"localhost, one made here": reauth528(pk, local)}
+            pk.route(re.compile(r".*/api/me/passkeys\?.*"), no_pk528)
+            pk528["localhost, none"] = reauth528(pk, local)
+            pk.unroute(re.compile(r".*/api/me/passkeys\?.*"), no_pk528)
+            ctx528 = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
+            ctx528.add_cookies([c for c in page.context.cookies() if c["name"] == "sg_session"])
+            pk528["127.0.0.1"] = reauth528(ctx528.new_page(), base)
+            ctx528.close()
+            pk.goto(local + "/account.html")
+            pk.wait_for_selector("#pkList tbody tr", timeout=10000)
+            check("…(#528) Admin's check that it's you offers Use a passkey at localhost with one made there, and not with none, nor at an IP "
+                  "address (pressed, it could only say so)", pk528 == {"localhost, one made here": [1, True], "localhost, none": [0, False], "127.0.0.1": [0, False]}, pk528)
             pk.set_viewport_size({"width": 1400, "height": 900})
             acct_field.update(pk.evaluate(FIELD_LOOK_JS, "#pkBody input[type=password]"))
             pk.set_viewport_size({"width": 375, "height": 800})

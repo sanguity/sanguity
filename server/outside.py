@@ -140,6 +140,8 @@ def view(db, s):
             named[k] = net.host_of(conf[key]) if isinstance(conf.get(key), str) else None
         hosts = {net.norm(h) for h in hosts}
         return {"id": kid, "name": name, "vendor": vendor, "issuer": issuer,
+                # what Set up a source calls it ("Epic (MyChart)"; #528: its key, "epic", was shown)
+                "vendor_label": connections.GUIDES[vendor]["label"] if vendor in connections.GUIDES else None,
                 "hosts": {k: net.norm(v) if v else None for k, v in named.items()}, "may_contact": sorted(hosts),
                 "scopes_requested": requested, "tested": tested,
                 "connections": [{"id": c["id"], "profile": c["profile_id"], "profile_name": profiles.get(c["profile_id"]),

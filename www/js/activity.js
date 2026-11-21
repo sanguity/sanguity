@@ -92,9 +92,13 @@ const FILTERS = [["", "Everything"], ["view", "Opened the records"], ["document"
 const describe = e => (WHAT[e.action] || (() => e.action))(e.detail || {}, e);
 function activityRows(list) {
   return list.map(e => el("tr", {},
-    el("td", {class: "nowrap", text: when(e.at)}), el("td", {text: e.actor + (e.actor_removed ? " (removed)" : "")}), el("td", {text: describe(e)}),
+    el("td", {class: "when"}, ...whenParts(e.at)), el("td", {text: e.actor + (e.actor_removed ? " (removed)" : "")}), el("td", {text: describe(e)}),
     el("td", {class: "muted"}, ...addressBreaks(e.ip || ""))));
 }
+/* when, its date and its time each kept whole, the line breaking between them only where it doesn't fit (app.css,
+   #528: kept on one line, at tablet widths What was squeezed to a word a line) */
+const whenParts = t => { const s = when(t), h = fmtTime(t * 1000), i = s.endsWith(h) ? s.length - h.length : 0;
+  return i ? [el("span", {text: s.slice(0, i).trimEnd()}), " ", el("span", {text: h})] : [el("span", {text: s})]; };
 /* an address, able to break after each colon of an IPv6 one, and nowhere else (app.css, #524: "127.0.0." / "1") */
 const addressBreaks = ip => ip.split(/(?<=:)/).flatMap((p, i) => i ? [el("wbr"), p] : [p]);
 /* a log that opens on demand (or at once, with open): newest first, filtered by person (profile logs) and kind,

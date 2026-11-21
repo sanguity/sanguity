@@ -69,7 +69,7 @@ function testStep() {
         if (t.ok) await loadSetup({walk: false});   // the list's "tested" now; this step, its result and focus kept (#502)
         else SgOutside.load();   // (its contact, #515)
       } catch (e) {
-        if (e.status === 404) return rowsAgain(s.id, null, null, e.message);   // removed elsewhere (#524): said where its row was
+        if (e.status === 404) return rowsAgain(s.id, null, null, e.message, true);   // removed elsewhere (#524, #528): said here
         out.replaceChildren(el("p", {class: "msg bad", role: "alert", text: e.message})); SgOutside.load();
       }
       // in sight (#524: under a phone's tabs, focus on this button): with its button where they fit, else from its top
@@ -149,21 +149,40 @@ const rowFailed = (s, msg, e) => e.status === 404 ? rowsAgain(s.id, null, null, 
    focus on the same button (act) of the source's new row, what it said (kept: a test's result) back under it, in view;
    the source gone, on the next row's Test, else the one before's, else on the card's heading. Only the list (#506:
    the walk-through drawn again emptied a new source half typed in); the source open in Change takes its new waiting,
-   which Save would otherwise undo, and the form goes back to Add a source once it's removed */
-async function rowsAgain(id, act, kept, gone) {
+   which Save would otherwise undo, and the form goes back to Add a source once it's removed; removed elsewhere, as
+   formGone says. walk: the walk-through's Test, whose result says it there, focus on it (#528: on another source's
+   Test, a second Enter tested that one) */
+async function rowsAgain(id, act, kept, gone, walk) {
   const rows = () => [...$("#sourceList").querySelectorAll(".prof[data-src]")], at = rows().findIndex(r => r.dataset.src === String(id));
   await loadSetup({walk: false});
-  if (editing === id) {
-    const s = SETUP.sources.find(x => x.id === id);
-    if (!s) { saved = null; fill(null); }
-    else $("#fWaiting").checked = !!s.waiting;
-  }
+  const open = editing === id, s = SETUP.sources.find(x => x.id === id);
+  if (open && s) $("#fWaiting").checked = !!s.waiting;
+  else if (open && gone) formGone(gone, walk ? "walk" : "row");   // (#528: fill(null) emptied what was typed in Change)
+  else if (open) { saved = null; fill(null); }
+  if (walk && open) return;
   const r = act && rows().find(r => r.dataset.src === String(id));
   if (gone) return goneSay(rows(), Math.max(at, 0), gone, "[data-act=test]", $("#admin h2"), $("#sourceList"));   // (util.js)
   if (!r) return focusNear(rows(), Math.max(at, 0), "[data-act=test]", $("#admin h2"));
   const msg = r.querySelector(".src-msg");
   if (kept) { msg.replaceChildren(...kept); msg.scrollIntoView({block: "nearest"}); }
   focusNear([r], 0, `[data-act=${act}]`);
+}
+
+/* the source open in Change removed elsewhere (#524): the form a new source's, keeping what's typed in it, saying so
+   (text: what the server said), in the walk-through's last step (where: "walk") or beside Save (a row's action, "row";
+   else Save's own); a confidential one's secret asked for again (#528: "Kept" stayed in its field, and Save was then
+   refused for want of it). -> whether it is */
+function formGone(text, where) {
+  const walk = where === "walk";
+  editing = saved = null;
+  $("#formTitle").textContent = "Add a source"; $("#fCancel").hidden = true;
+  const sec = $("#fSecret"), need = $("#fAuth").value === "confidential" && !sec.value;
+  sec.placeholder = "";
+  $("#walk").lastElementChild.replaceWith(testStep());
+  const m = walk ? $("#walkResult").appendChild(el("p", {class: "msg", tabindex: "-1"})) : $("#fMsg");
+  sayIn(m, `${text} It was removed meanwhile: ${need ? "type its client secret, then Save" : where ? "Save" : "Save again"} to add it as a new source.`, true);
+  if (walk) { m.focus({preventScroll: true}); m.scrollIntoView({block: "nearest"}); }
+  return need;
 }
 
 /* walk: false keeps the walk-through's last step as it is (its own test, which said how it went). Drawn again (a source
@@ -240,11 +259,9 @@ $("#srcForm").onsubmit = async ev => {
     // the source being changed removed elsewhere (#524: the form still said "Change …"): the list drawn again, the form
     // a new source's, with what's typed kept, saying so
     if (e.status === 404 && editing !== null) {
-      editing = saved = null;
       await loadSetup({walk: false});
-      $("#formTitle").textContent = "Add a source"; $("#fCancel").hidden = true;
-      $("#walk").lastElementChild.replaceWith(testStep());
-      return sayIn(m, e.message + " It was removed meanwhile: Save again to add it as a new source.", true);
+      if (formGone(e.message)) $("#fSecret").focus();   // (its secret, to type again)
+      return;
     }
     sayIn(m, e.message, true);
   }

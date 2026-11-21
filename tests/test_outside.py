@@ -123,6 +123,14 @@ class Gateway(unittest.TestCase):
         self.assertEqual(net.norm("x.example.org:443"), "x.example.org")
         self.assertTrue(net.Permit("t", {"x.example.org:443"}).allows("X.example.org"))
 
+    def test_a_host_that_didnt_answer_is_said_in_plain_words(self):
+        """#528: a failed test said "didn't answer (gaierror)", a Python exception's name"""
+        import socket, ssl
+        said = [net.why(e) for e in (socket.gaierror(-2, "Name or service not known"), TimeoutError(), ConnectionRefusedError(),
+                                     ssl.SSLCertVerificationError(), ConnectionResetError(), http.client.RemoteDisconnected())]
+        self.assertEqual(said, ["its name wasn't found (check the address)", "it took too long to answer", "it refused the connection",
+                                "its HTTPS certificate isn't valid", "the connection broke off", "the connection broke off"])
+
     def test_the_guard_catches_code_that_goes_around_the_gateway(self):
         conn = http.client.HTTPConnection("203.0.113.9", 80, timeout=1)   # TEST-NET-3: never routed anyway
         with self.assertRaises(ConnectionRefusedError):
@@ -222,6 +230,7 @@ class View(unittest.TestCase):
         v = self.view(self.robin)
         self.assertIn("Nothing else leaves this server", v["nothing_else"])
         s = self.mine(v, sid)
+        self.assertEqual((s["vendor"], s["vendor_label"]), ("epic", "Epic (MyChart)"))   # as Set up a source names it (#528)
         self.assertEqual((s["hosts"]["issuer"], s["hosts"]["token"]), (self.own, self.own))
         self.assertIn(self.own, v["may_contact"])
         self.assertIn("patient/Observation", s["scopes_requested"])
