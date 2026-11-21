@@ -2149,6 +2149,16 @@ Everything on `main` so far; it becomes the first tagged release.
   127.0.0.1 (or ::1) sign-in's passkey-only step and Account's passkeys card said to open Sanguity at its https://
   name; passkeys work at http://localhost, which they name, with the port. guide.html?new with profiles already there
   was titled "Getting started: Whose records"; it's "A new profile", as its heading.
+- **Account and Admin: the palette's "rename profile" opening the delete row, Lab name matches on phones, Backups'
+  schedule unfindable, goneSay's focus out of sight, and stale lines under Accounts** (#532): in the command palette
+  "rename profile" found Delete this profile first ("rename" only in where it is); Rename or delete comes first now,
+  and "delete profile" still finds the delete row. Backups' schedule ("schedule", "daily backup", "how many to keep"),
+  Lab name matches ("lab name change", "forget match") and "change profile name" found nothing; they do, as does every
+  field's and segmented control's label on Sources, Sharing, Settings, Account and Admin. On a phone Lab name matches
+  broke words ("Chan/ge", "Glucos/e") in a 55 px column; a match's name, where it goes and its buttons each take a line.
+  The last profile without an owner, deleted elsewhere, said "No such profile." with focus on the card's heading off
+  the screen; focus is on the message. "No such account." and "No such profile." no longer stay after the next action.
+  "Confirm it's you" offers a code from an authenticator app only to someone with one, and an unused class is gone.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

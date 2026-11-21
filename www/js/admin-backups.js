@@ -201,7 +201,7 @@ function drawList(st) {
     el("thead", {}, el("tr", {}, ...["Made", "Size", "Last checked", ""].map(h => el("th", {text: h})))),
     el("tbody", {}, ...shown.map(b => el("tr", {"data-backup": b.name},
       el("td", {}, when(b.at), el("div", {class: "muted bk-name", text: b.name})),
-      el("td", {class: "nowrap", text: bkSize(b.size)}),
+      el("td", {text: bkSize(b.size)}),
       el("td", {}, b.checked ? [icon(b.checked.ok ? "check" : "x"), ` ${b.checked.ok ? "good" : "not good"}, ${when(b.checked.at)}`] : "not yet"),
       el("td", {class: "acts"}, el("button", {class: "btn small", type: "button", text: "Check", disabled: !!st.running,
         "aria-label": `Check the backup from ${when(b.at)}`, onclick: () => checkBackup(b)})))))),

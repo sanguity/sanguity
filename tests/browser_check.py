@@ -14537,19 +14537,31 @@ def main():
             # Show, what a record or a count names (a condition's Choose, a source's Test, "Show all 3 backups"), and what
             # every form has (Save, Cancel, Remove, Copy…). And what the eighth review typed finds what it names: nothing on
             # Account for an editor's "remove account" or "new account" (Passkeys and Password: a page's name narrows its
-            # titles down, never finds an entry by itself), and Sharing's Who has access, not New profile, for "add person"
+            # titles down, never finds an entry by itself), and Sharing's Who has access, not New profile, for "add person".
+            # #532: and each field's and segmented control's label (its own, its row's name, its group's), outside a list's
+            # rows (what names a record there): Backups' “How often” and “How many to keep” found nothing. Left out: a
+            # record's own fields (Type records in's Date, Test, Value…, a target's Low end, a workout's Minutes, a sync
+            # default's Value) and Display's Default theme (the theme is your menu's, #410: “theme” finds it alone)
             PAL524 = """async ([name, phrases]) => {
               const wait = ms => new Promise(r => setTimeout(r, ms));
-              const SAME = new Set(['Save', 'Discard', 'Cancel', 'Add', 'Add a row', 'Remove', 'Remove this row', 'Reset to defaults', 'Copy', 'Clear', 'Show older', 'Undo', 'Close', 'Done']);
+              const SAME = new Set(['Save', 'Discard', 'Cancel', 'Add', 'Add a row', 'Remove', 'Remove this row', 'Reset to defaults', 'Copy', 'Clear', 'Show older', 'Undo', 'Close', 'Done',
+                'Date', 'Time (optional)', 'Test', 'Value', 'Unit', 'Range', 'Flag', 'Lab', 'For', 'Typed in', 'Low end', 'High end', 'Set by (optional)', 'On (optional)', 'Minutes', 'Default theme']);
               const menuShown = x => { const p = x.closest('[popover]'); return !!p && [...document.querySelectorAll('button')].some(b => b.popoverTargetElement === p && b.checkVisibility()); };
+              const words = n => { if (!n) return ''; const c = n.cloneNode(true); c.querySelectorAll('input, select, textarea, button, .tag, .vh, .about-words').forEach(x => x.remove()); return c.textContent; };
+              const named = x => [words(x.labels?.[0]), x.matches('fieldset') && words(x.querySelector(':scope > legend')),
+                (x.getAttribute('aria-labelledby') || '').split(' ').map(i => words(document.getElementById(i))).join(' '),
+                words(x.closest('.set-row')?.querySelector('.set-row-name')), !x.closest('tr, .row, li') && x.getAttribute('aria-label')];
               const groups = {};
               for (const a of [...document.querySelectorAll('.set-nav-list a[data-group]')].filter(a => a.checkVisibility())) {
                 location.hash = a.dataset.group;
                 await wait(150);
-                groups[a.dataset.group] = [...new Set([...document.querySelectorAll('main :is(button, a.btn, [role^=menuitem])')]
+                groups[a.dataset.group] = [...new Set([...[...document.querySelectorAll('main :is(button, a.btn, [role^=menuitem])')]
                   .filter(x => !x.closest('nav, dialog, .pre-offer') && !x.matches('.chip, .pw-show, #walkTest, [aria-pressed], [role=radio], [role=switch], [role=tab], [role=checkbox]')
                     && !/^About /.test(x.getAttribute('aria-label') || '') && (x.checkVisibility() || (x.matches('[role^=menuitem]') && menuShown(x))))
-                  .map(x => x.textContent.replace(/\\s+/g, ' ').trim().replace(/…$/, '')).filter(t => t && !SAME.has(t) && !/\\d/.test(t)))];
+                  .map(x => x.textContent),
+                  ...[...document.querySelectorAll('main :is(fieldset:has(.seg), input:not([type=radio], [type=checkbox], [type=hidden], [type=file], [role=switch]), select, textarea)')]
+                  .filter(x => !x.closest('nav, dialog, .pre-offer') && x.checkVisibility()).flatMap(named)]
+                  .filter(Boolean).map(t => t.replace(/\\s+/g, ' ').trim().replace(/…$/, '')).filter(t => t && !SAME.has(t) && !/\\d/.test(t)))];
               }
               SgPalette.open();
               await wait(1000);   // (who's signed in, asked as it opens)
@@ -14562,7 +14574,9 @@ def main():
               document.querySelector('dialog.palette').close();
               return out; }"""
             ask524 = {"admin": ["delete passkey", "disable 2fa", "reset 2fa", "lost phone", "leave profile", "failed sign-ins", "audit", "audit log", "qr",
-                                "account password", "require 2fa", "remove someone"],   # (#528)
+                                "account password", "require 2fa", "remove someone",   # (#528)
+                                "rename profile", "profile rename", "rename this profile", "change profile name", "delete profile", "schedule",
+                                "backup schedule", "daily backup", "keep backups", "how many to keep", "lab name change", "forget match"],   # (#532)
                       "owner": ["make owner", "add owner", "change owner", "transfer ownership", "give access", "share with", "stop sharing", "audit"],
                       "editor": ["remove account", "new account", "add person"], "viewer": []}
 
@@ -14624,7 +14638,7 @@ def main():
                            if not found or page_of(found[0]) not in on[lab]]
             check("…(#524) every visible button's and menu item's label on Sources, Sharing, Settings, Account and Admin, for an admin, an "
                   "owner, an editor and a viewer, finds a page or setting of its own page first (it found nothing for “Test this connection”, "
-                  "“Back up now”, “New share link”…)", not bad524 and n524["admin"] >= 20 and n524["owner"] >= 12 and n524["editor"] >= 10 and n524["viewer"] >= 4,
+                  "“Back up now”, “New share link”…); #532: each field's and segmented control's label too (“How often”, “How many to keep”)", not bad524 and n524["admin"] >= 20 and n524["owner"] >= 12 and n524["editor"] >= 10 and n524["viewer"] >= 4,
                   bad524[:8] or n524)
             said524 = {role: {q: [t for t, _ in f] for q, f in s["phrases"].items()} for role, s in swept524.items()}
             first524 = {"admin": {"delete passkey": "Passkeys", "disable 2fa": "Two-factor sign-in", "reset 2fa": "Two-factor sign-in", "lost phone": "Two-factor sign-in",
@@ -14648,6 +14662,13 @@ def main():
                       for r in ("admin", "owner", "editor"))
                   and said524["admin"]["account password"][:1] == ["Password"] and said524["admin"]["require 2fa"][:1] == ["Require two-factor sign-in"]
                   and said524["admin"]["remove someone"][:1] in (["Who has access"], ["Accounts"]), [labs528, {q: said524["admin"][q] for q in ("account password", "require 2fa", "remove someone")}])
+            first532 = {**{q: "Rename or delete" for q in ("rename profile", "profile rename", "rename this profile", "change profile name")}, "delete profile": "Delete this profile",
+                        **{q: "Backups" for q in ("schedule", "backup schedule", "daily backup", "keep backups", "how many to keep")},
+                        "lab name change": "Lab name matches", "forget match": "Lab name matches"}
+            check("…(#532) “rename profile”, “profile rename”, “rename this profile” and “change profile name” find Settings' Rename or delete "
+                  "first (Delete this profile, “rename” only in its place, or nothing), “delete profile” still Delete this profile; Backups' schedule "
+                  "(“schedule”, “daily backup”, “how many to keep”…) and Lab name matches (“lab name change”, “forget match”) found (nothing was)",
+                  all(said524["admin"][q][:1] == [t] for q, t in first532.items()), {q: said524["admin"][q][:2] for q in first532})
             page.goto(base + "/settings.html?profile=1#dashboard")
             page.wait_for_selector("#sections > section", state="attached", timeout=10000)
             settle(300)
@@ -17727,13 +17748,13 @@ def main():
             page.wait_for_selector("#tfBody form input[type=password], #tfBody .pw input", timeout=10000)
             page.wait_for_selector("#pkBody form input[type=password], #pkBody .pw input, #pkWhy:not([hidden])", timeout=10000)
             pw492 = {"account": js(pw_fields)}
-            page.unroute("**/api/me/2fa", tf_on)
             page.unroute(re.compile(r".*/api/me/passkeys\?.*"), pk_ok)
             page.goto(base + "/admin.html#accounts")
             page.wait_for_selector("#userList tbody tr", timeout=10000)
-            js("() => { confirmIdentity().catch(() => {}); }")   # (as the server asks for it)
+            js("() => { confirmIdentity().catch(() => {}); }")   # (as the server asks for it; with an authenticator app, #532)
             page.wait_for_selector("#reauth .pw input", timeout=5000)
             pw492["admin"] = js(pw_fields)
+            page.unroute("**/api/me/2fa", tf_on)
             page.click("#reauth button:text-is('Cancel')")
             page.goto(base + "/admin.html#apps")
             page.wait_for_function("!document.getElementById('admin').hidden && document.getElementById('returnAddr').textContent.length > 5",
@@ -17828,6 +17849,38 @@ def main():
                   "page); one removed elsewhere, then saved, is drawn away, “No such lab name match.” where it was, focus on a Change beside it",
                   lm528[0] == ["Change", "Ferritin 528", True, None, False] and lm528[1][0] == "Remove" and lm528[1][1] and lm528[1][2]
                   and lm528[2][0] == "Change" and lm528[2][2:] == [True, "No such lab name match.", True, False], lm528)
+            # #532: at 320 and 375 px, and with a row's Change open, no word of the matches is broken across lines (“Chan/ge”,
+            # “Remo/ve”, “Glucos/e”: its first column was 55 px). One with a long name, made up here and gone after
+            lmdb532 = dbm.connect()
+            lm532 = lmdb532.execute("INSERT INTO labmaps(lookup, importer, source, target, created_by, created_name, created) VALUES(?, 'manual', ?, ?, NULL, ?, ?)",
+                                    (labmap528.lookup("manual", "Glucose fasting 532", "mg/dL", None), crypto528.enc(json.dumps({"name": "Glucose fasting, a long name from an outside lab 532", "unit": "mg/dL", "loinc": None})),
+                                     crypto528.enc("Glucose"), USER, dbm.now())).lastrowid
+            BROKEN532 = """(() => { const out = [], w = document.createTreeWalker(document.getElementById('labmapList'), NodeFilter.SHOW_TEXT);
+              for (let n; (n = w.nextNode());) if (n.parentElement.checkVisibility()) for (const m of n.textContent.matchAll(/\\S+/g)) {
+                const r = document.createRange(); r.setStart(n, m.index); r.setEnd(n, m.index + m[0].length);
+                if (new Set([...r.getClientRects()].filter(x => x.width).map(x => Math.round(x.top))).size > 1) out.push(m[0]); }
+              return out; })()"""
+            broken532 = {}
+            try:
+                js("loadLabmaps()")
+                page.wait_for_function("document.getElementById('labmapList').textContent.includes('outside lab 532')", timeout=10000)
+                for w in (320, 375):
+                    page.set_viewport_size({"width": w, "height": 667})
+                    settle(200)
+                    broken532[w] = js(BROKEN532)
+                    for n in ("outside lab 532", "Hemoglobin Whole Bld"):
+                        lmrow528(n).get_by_role("button", name="Change").click()
+                        settle(200)
+                        broken532[f"{w} {n}"] = js(BROKEN532)
+                        lmrow528(n).get_by_role("button", name="Cancel").click()
+                        settle(200)
+            finally:
+                lmdb532.execute("DELETE FROM labmaps WHERE id=?", (lm532,))
+                lmdb532.close()
+                page.set_viewport_size(vp528)
+                js("loadLabmaps()")
+            check("…(#532) at 320 and 375 px, and with a match's Change open, no word in Lab name matches is broken across lines (“Chan/ge”, "
+                  "“Glucos/e”: its first column was 55 px)", len(broken532) == 6 and not any(broken532.values()), broken532)
             # the old Profiles tab's address opens Sharing → People (#168); a section link still lands on Account
             page.goto(base + "/account.html#profiles")
             page.wait_for_url(re.compile(r"/sharing\.html(\?[^#]*)?#people$"), timeout=10000)
@@ -18729,6 +18782,57 @@ def main():
                   "375×667 with the Make owner focus is on (they were under the accounts list, under the tab bar)",
                   own510 == [["Make owner", "Lone 510 A", True, "No active account with that username.", True, "Lone 510 A", "Lone 510 B", ""],
                              ["Make owner", "Lone 510 C", True, "noor510 now owns Lone 510 B.", True, "Lone 510 A", "Lone 510 C", ""]], own510)
+            # #532: at 375×667 the last profile without an owner deleted elsewhere, then its Make owner: “No such profile.”
+            # where the list was, focus on it, both in sight (focus went to the card's heading, above the screen); and no
+            # “No such …” line left after the next action (“No such account.” stayed through a Make owner, and “No such
+            # profile.” until the list changed). The server answered here: alex's Make admin, then the ownerless list
+            lone532 = ['[{"id": 99532, "name": "Lone 532", "members": [{"username": "nobody532", "role": "owner", "disabled": true}]}]']
+            def ownerless532(route):
+                if route.request.method == "POST":
+                    lone532[0] = "[]"
+                    return route.fulfill(status=404, content_type="application/json", body='{"detail": "No such profile."}')
+                route.fulfill(status=200, content_type="application/json", body=lone532[0])
+            gone532 = lambda r: r.fulfill(status=404, content_type="application/json", body='{"detail": "No such account."}') if r.request.method == "PATCH" else r.continue_()  # noqa: E731
+            SAID532 = """(() => [...document.querySelectorAll('#users .row-msg')].map(m => m.textContent))()"""
+            stale532, before532 = [], len(problems)
+            page.set_viewport_size({"width": 375, "height": 667})
+            page.route(re.compile(rf"/api/users/{alex}$"), gone532)
+            alex_do("Make admin…")
+            answer_ask(page)
+            page.wait_for_selector("#userList .row-msg", timeout=10000)
+            page.unroute(re.compile(rf"/api/users/{alex}$"), gone532)
+            stale532.append(js(SAID532))
+            orow532 = page.locator("#ownerless .ownerless > .row", has_text="Alex's records")
+            orow532.get_by_role("textbox", name="Another account").fill("nobody532")
+            orow532.get_by_role("button", name="Make owner").click()
+            page.wait_for_function("document.querySelector('#ownerless .row-msg')?.textContent.includes('No active')", timeout=10000)
+            stale532.append(js(SAID532))
+            page.route(re.compile(r"/api/ownerless(/\d+/owner)?$"), ownerless532)
+            js("loadOwnerless()")
+            page.wait_for_function("document.querySelector('#ownerless').textContent.includes('Lone 532')", timeout=10000)
+            page.locator("#ownerless .ownerless > .row", has_text="Lone 532").get_by_role("textbox", name="Another account").fill("noor532")
+            page.locator("#ownerless .ownerless > .row", has_text="Lone 532").get_by_role("button", name="Make owner").click()
+            page.wait_for_function("document.querySelector('#ownerless .row-msg')?.textContent === 'No such profile.'", timeout=10000)
+            settle(300)
+            last532 = js(f"""(() => {{ const m = document.querySelector('#ownerless .row-msg'), seen = {SEEN528};
+              return [document.activeElement === m, seen(m), !document.querySelector('#ownerless .row')]; }})()""")
+            alex_do("Enable")   # (the next action: an account's)
+            page.wait_for_function("[...document.querySelectorAll('#userList tr')].some(r => r.textContent.includes('alex') && !r.textContent.includes('disabled'))", timeout=10000)
+            settle(300)
+            stale532.append(js(SAID532))
+            page.unroute(re.compile(r"/api/ownerless(/\d+/owner)?$"), ownerless532)
+            alex_do("Disable…")   # (alex as before: Alex's records without an owner)
+            answer_ask(page)
+            answer_ask(page)
+            page.wait_for_function("[...document.querySelectorAll('#userList tr')].some(r => r.textContent.includes('alex') && r.textContent.includes('disabled'))", timeout=10000)
+            problems[before532:] = [x for x in problems[before532:] if not re.search(r"404|409", x)]   # (the point; and the refusal asked for)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("loadOwnerless()")
+            page.wait_for_function("document.querySelector('#ownerless').textContent.includes(\"Alex's records\")", timeout=10000)
+            check("…(#532) the last profile without an owner deleted elsewhere, then its Make owner: at 375×667 “No such profile.” where the list "
+                  "was, focus on it, in sight (focus was on the card's heading, above the screen); and no “No such …” line after the next action "
+                  "(“No such account.” stayed through a Make owner's reply, “No such profile.” through an account's Enable)",
+                  last532 == [True, True, True] and stale532 == [["No such account."], ["No active account with that username."], []], [last532, stale532])
             # #515: another account's Disable keeps a username typed in Make owner (each account's action emptied the list),
             # and removing an account that alone owned a profile, at 375×667, leaves the zone's reply and focus on its
             # picker in sight once that profile is listed over it (they were under the tab bar and below the screen), the
@@ -19080,10 +19184,29 @@ def main():
             ctx528.add_cookies([c for c in page.context.cookies() if c["name"] == "sg_session"])
             pk528["127.0.0.1"] = reauth528(ctx528.new_page(), base)
             ctx528.close()
+            # #532: and a code from an authenticator app only for someone with one (an admin whose only second factor is a
+            # passkey was offered “a code from your authenticator app”, “Password or code”); the app's state answered here
+            code532 = {}
+            for on in (False, True):
+                app532 = json_ok(json.dumps({"on": on, "recovery_codes_left": 10 if on else 0, "required": False, "passkeys": 1}))
+                pk.route(re.compile(r".*/api/me/2fa$"), app532)
+                pk.goto(local + "/admin.html#accounts")
+                pk.wait_for_selector("#userList tbody tr", timeout=10000)
+                pk.evaluate("() => { confirmIdentity().catch(() => {}); }")
+                pk.wait_for_selector("#reauth .pw input", timeout=10000)
+                code532[on] = pk.evaluate("""(b => [b.querySelector('p').textContent.replace(/ \\(it then.*/, ''), b.querySelector('.pw input').placeholder,
+                  b.querySelector('.pw input').getAttribute('aria-label'), [...b.querySelectorAll('button')].map(x => x.textContent).includes('Use a passkey')])(document.getElementById('reauth'))""")
+                pk.click("#reauth button:text-is('Cancel')")
+                pk.unroute(re.compile(r".*/api/me/2fa$"), app532)
             pk.goto(local + "/account.html")
             pk.wait_for_selector("#pkList tbody tr", timeout=10000)
             check("…(#528) Admin's check that it's you offers Use a passkey at localhost with one made there, and not with none, nor at an IP "
                   "address (pressed, it could only say so)", pk528 == {"localhost, one made here": [1, True], "localhost, none": [0, False], "127.0.0.1": [0, False]}, pk528)
+            check("…(#532) and a code from an authenticator app only to someone with one: with only a passkey, “your password or a passkey”, "
+                  "its box “Password” (it offered a code, “Password or code”)",
+                  code532 == {False: ["Confirm it's you. This needs your password or a passkey", "Password", "Your password", True],
+                              True: ["Confirm it's you. This needs your password, a code from your authenticator app or a passkey", "Password or code",
+                                     "Your password, or a code from your authenticator app", True]}, code532)
             pk.set_viewport_size({"width": 1400, "height": 900})
             acct_field.update(pk.evaluate(FIELD_LOOK_JS, "#pkBody input[type=password]"))
             pk.set_viewport_size({"width": 375, "height": 800})

@@ -206,8 +206,9 @@ const SgPalette = (() => {
       for (const g of P.groups) {
         if (g.rest || (g.needs && role < RANK[g.needs])) continue;
         const here = P.page === page;   // (first of those found as well, #524)
-        out.push({icon: g.icon, title: g.title, ctx: P.title, words: g.words, here, go: () => goTo(P, g.id)});
-        for (const [title, id, words, needs] of g.finds || []) if (!needs || role >= RANK[needs]) out.push({icon: sgIcon(P.page.replace(".html", "/") + id), title, ctx: `${P.title} › ${g.title}`, words, here, go: () => goTo(P, id, true)});
+        const up = {icon: g.icon, title: g.title, ctx: P.title, words: g.words, here, go: () => goTo(P, g.id)};
+        out.push(up);
+        for (const [title, id, words, needs] of g.finds || []) if (!needs || role >= RANK[needs]) out.push({icon: sgIcon(P.page.replace(".html", "/") + id), title, ctx: `${P.title} › ${g.title}`, words, here, up, go: () => goTo(P, id, true)});
       }
     }
     if (page !== "guide.html") out.push({icon: sgIcon("guide"), title: "Getting started", ctx: "Page", words: "guide first records", go: () => { location.href = "guide.html" + (pid() ? "?profile=" + pid() : ""); }});
@@ -265,10 +266,11 @@ const SgPalette = (() => {
      label is still what a title is compared with */
   const flat = s => " " + norm(s).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
   const singular = w => w.length < 4 ? w : /ies$/.test(w) ? w.slice(0, -3) + "y" : w.replace(/(ch|sh|x|ss)es$/, "$1").replace(/([^s])s$/, "$1");
-  const STOP = new Set("a an the this that my your our its it all of or and to for from on in at".split(" "));
+  const STOP = new Set("a an the this that my your our its it all of or and to for from on in at as if".split(" "));
   const kept = typed => typed.some(w => !STOP.has(w)) ? typed.filter(w => !STOP.has(w)) : typed;
+  const at = (h, w) => h.includes(" " + w) || h.includes(" " + singular(w));
   function score(title, also, typed, where = "") {
-    const t = flat(title), own = t + flat(also), at = (h, w) => h.includes(" " + w) || h.includes(" " + singular(w)), words = kept(typed);
+    const t = flat(title), own = t + flat(also), words = kept(typed);
     if (!words.every(w => at(own + flat(where), w))) return -1;
     const away = words.filter(w => !at(own, w));
     if (away.length && away.length < words.length && !words.every(w => away.includes(w) || at(t, w))) return -1;
@@ -281,7 +283,16 @@ const SgPalette = (() => {
   const nearer = words => (a, b) => whole(b, words) - whole(a, words) || (b.here ? 1 : 0) - (a.here ? 1 : 0);
   /* xs scored (x.s, or its title, then its words, then where it is), best first, then as given or by more, at most
      cap: [[score, x]] */
-  const ranked = (xs, words, cap, more = () => 0) => xs.map(x => [x.s ?? score(x.title, x.words || "", words, x.ctx), x])
+  /* a part found (a group's finds, x.up its group) with a word typed only in its place that its group's own title or
+     words hold comes after that group (#532: “rename profile” found Delete this profile, “rename” only in “Settings ›
+     Rename or delete”, before Rename or delete) */
+  function scored(x, words) {
+    const n = score(x.title, x.words || "", words, x.ctx), g = x.up, own = flat(x.title) + flat(x.words || "");
+    if (n < 0 || !g || !kept(words).some(w => !at(own, w) && at(flat(g.title) + flat(g.words || ""), w))) return n;
+    const above = score(g.title, g.words || "", words, g.ctx);
+    return above < 0 ? n : Math.max(n, above + .25);
+  }
+  const ranked = (xs, words, cap, more = () => 0) => xs.map(x => [x.s ?? scored(x, words), x])
     .filter(([n]) => n >= 0).sort((a, b) => a[0] - b[0] || more(a[1], b[1])).slice(0, cap);
   /* the groups found for what's typed: [heading, entries], those with the best match first, so the one marked (what
      Enter opens) is the best of all; and a note to show, if any. Offline (offline.js, on the records page) what needs
