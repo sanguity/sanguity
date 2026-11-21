@@ -1436,6 +1436,7 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
 .acct .share-links-wrap{margin-top:var(--sp-2)}
 .acct .share-links{margin-top:var(--sp-2)}   /* no left border (#492: on a phone the form started at x 44) */
 .acct .share-links tr.ended td{color:var(--muted)}
+@media (max-width:640px){ .acct .share-list .tbl tr{grid-template-columns:minmax(0,1fr)} }   /* a phone: one cell a line, Revoke last (#501: in two columns the first was 31 px) */
 .acct .share-form{max-width:640px;margin-top:var(--sp-3)}
 .acct :is(.share-opts,.share-side){display:grid;gap:var(--sp-2);align-content:start;min-width:0}
 /* #288: what a holder will see beside the choices at 1200 px and wider, kept in sight under the top bar as they scroll */
@@ -1459,13 +1460,13 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
    results' one Latest results table, a row per test under its panel, its history in the row under it; and the page
    printed: the records in light, without the controls. #491: the bar's chips scroll sideways on a narrow screen (with a
    thin scrollbar for a mouse); #498: on a wider one they wrap to two rows at most (--chips-w, share.js), scrolling
-   sideways beyond them with a scrollbar shown, and under 700 px tall the bar isn't sticky. The title in the pages'
-   title style. Printed, a history breaks across pages, each naming its test */
+   sideways beyond them with a scrollbar shown, and under 700 px tall the bar isn't sticky (#501: on a phone upright,
+   one row, it is). The title in the pages' title style. Printed, a history breaks across pages, each naming its test */
 .share-bar{position:sticky;top:var(--head-h,0px);z-index:10;overflow-x:auto;scrollbar-width:none;margin:0 0 var(--sp-3);padding:var(--sp-2) 0;background:var(--page)}
 .share-chips{display:flex;gap:var(--sp-2);width:max-content}
 @media (pointer:fine){ .share-bar{scrollbar-width:thin} }
 @media (min-width:641px){ .share-bar{scrollbar-width:thin} .share-chips{flex-wrap:wrap;width:var(--chips-w,auto);min-width:100%} }
-@media (max-height:699px){ .share-bar{position:static} }
+@media (min-width:641px) and (max-height:699px),(max-height:500px){ .share-bar{position:static} }   /* two rows, or a phone on its side; a phone's one row sticks (#501) */
 .share .share-hd>h1{font-size:var(--fs-6);font-weight:var(--fw-semibold);letter-spacing:-.01em}
 .acct .tbl>thead>tr.share-printed{display:none}
 .share .share-more{margin-top:var(--sp-2)}
@@ -1505,6 +1506,14 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
   .acct .tbl>thead>tr.share-printed{display:table-row}
   .share-printed>th{white-space:normal;color:var(--ink);font-size:var(--fs-3);font-weight:var(--fw-semibold)}
   .share .share-scroll{overflow:visible}
+  /* #501: Latest results as a block of one-row tables, each history a block: Chrome breaks a table row only when it's
+     longer than a page, so a history moved whole to the next, with its test's row, leaving half a page empty */
+  .share-latest,.share-latest>*,.share-hist,.share-hist>td{display:block}
+  .share-latest>*>tr:not(.share-hist){display:table;width:100%;table-layout:fixed}
+  .share-latest>*>tr:not(.share-hist)>*{width:10%}
+  .share-latest>*>tr:not(.share-hist)>:first-child{width:36%}
+  .share-latest>*>tr:not(.share-hist)>:is(:nth-child(2),:nth-child(5)){width:15%}
+  .share-latest>*>tr:not(.share-hist)>:nth-child(3){width:14%}
 }
 .share .share-entry{border-top:1px solid var(--grid);padding:var(--sp-2) 0}
 .share .share-note{white-space:pre-wrap;margin:var(--sp-1) 0 0;color:var(--ink2)}

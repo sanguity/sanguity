@@ -202,6 +202,11 @@ class Api(unittest.TestCase):
         self.assertEqual(anon.post("/api/setup", json=bad, headers=H).status_code, 403)
         weak = {**bad, "code": CODE, "password": "short"}
         self.assertEqual(anon.post("/api/setup", json=weak, headers=H).status_code, 400)
+        # each refusal names its field (#501): the username's words in a password refusal mark the password
+        for body, field in ((weak, "password"), ({**weak, "password": "benbenbenbenbenben"}, "password"),
+                            ({**weak, "username": "b e n"}, "username")):
+            r = anon.post("/api/setup", json=body, headers=H)
+            self.assertEqual((r.status_code, r.json()["field"]), (400, field), r.text)
         ben = client()
         r = ben.post("/api/setup", json={**bad, "code": CODE.lower()}, headers=H)
         self.assertEqual(r.status_code, 200, r.text)

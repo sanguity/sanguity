@@ -353,6 +353,16 @@ def setup_state(db=Depends(get_db)):
                         "idle_minutes": config.SESSION_IDLE_MINUTES}}
 
 
+class SetupRefused(Exception):
+    """an account setup can't create: its message, and the field it's about ("username" or "password", #501)"""
+
+
+@app.exception_handler(SetupRefused)
+async def setup_refused(request: Request, exc: SetupRefused):
+    e = exc.args[0]
+    return JSONResponse({"detail": str(e), "field": e.field}, status_code=e.status)
+
+
 @app.post("/api/setup")
 def setup(body: Setup, request: Request, response: Response, db=Depends(get_db)):
     keys = ("pair:setup|" + _client_ip(request),)
@@ -370,8 +380,8 @@ def setup(body: Setup, request: Request, response: Response, db=Depends(get_db))
             raise HTTPException(409, "Sanguity is already set up. Sign in instead.")
         try:
             uid, _ = accounts.create(db, body.username, is_admin=True, password=body.password)
-        except accounts.AccountError as e:
-            raise HTTPException(e.status, str(e))
+        except accounts.AccountError as e:   # naming the field it's about, which setup marks (#501)
+            raise SetupRefused(e)
         owned = accounts.claim_unowned(db, uid)   # the records already on this server
         first = {"id": uid, "username": body.username.strip()}
         activity.log(db, "setup", first, ip=_client_ip(request))
