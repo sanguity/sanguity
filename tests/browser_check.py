@@ -1609,7 +1609,7 @@ def main():
         strict.evaluate("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
         # the Sources page (#166): its old addresses open their sections, each part drawn by its own script
         strict.goto(base + "/import.html")
-        strict.wait_for_url("**/sources.html#upload", timeout=10000)
+        strict.wait_for_url(re.compile(r"/sources\.html(\?[^#]*)?#upload$"), timeout=10000)
         strict.wait_for_selector("#importer", state="visible", timeout=10000)
         check("under the CSP: the Sources page's scripts run, import.html opening Upload files",
               strict.evaluate("document.querySelectorAll('#profile option').length") == 2 and strict.evaluate(
@@ -11196,7 +11196,7 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 900})
             # ---- the Admin page (#167): the server's sync defaults, from their old address on Settings
             page.goto(base + "/settings.html#sources")
-            page.wait_for_url("**/admin.html#apps", timeout=10000)
+            page.wait_for_url(re.compile(r"/admin\.html(\?[^#]*)?#apps$"), timeout=10000)
             page.wait_for_selector("#sec-sync .set", timeout=10000)
             check("Admin: an old Settings address opens its new place, the sync defaults (#167)",
                   js(display, "sec-sync") != "none" and js(display, "admin") != "none" and js(display, "users") == "none")
@@ -13661,7 +13661,7 @@ def main():
             pal("password")
             pw = js(pal_found)
             page.keyboard.press("Enter")
-            page.wait_for_url("**/account.html#password", timeout=10000)
+            page.wait_for_url(re.compile(r"/account\.html(\?[^#]*)?#password$"), timeout=10000)
             page.wait_for_function("document.querySelector('#acctNav [aria-current=page]')?.dataset.group === 'security'", timeout=10000)
             check("…“password” finds Account's Password first (Sign-in and security), and Enter opens that group there, at it",
                   pw[:1] == [["Pages and settings", "Password"]] and js("document.getElementById('password').checkVisibility()"), pw[:3])
@@ -14373,7 +14373,7 @@ def main():
                   seen433 == [[None, None], "system", [None, None], ["light", "light"]], seen433)
             check("…and an account with Dark signing in again has its first page dark from the first frame, not the system's (#436)", first436 == "dark", first436)
             zb.evaluate("location.hash = '#watch'")
-            zb.wait_for_url("**/sources.html#phone", timeout=10000)
+            zb.wait_for_url(re.compile(r"/sources\.html(\?[^#]*)?#phone$"), timeout=10000)
             check("…an old Settings address followed within the page opens its new home (#watch → Sources)", True)
             sdb.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, 1, 'viewer')", (uid2,))
             zb.evaluate("""Promise.all([['dates.timeZone', 'Pacific/Auckland'], ['dates.format', 'ymd']].map(([k, v]) =>
@@ -15348,7 +15348,7 @@ def main():
             fake.register_client("sanguity-browser-check", [base + "/connect/return"])
             allowed.add(origin(fake.fhir_base))   # its sign-in page, which the browser visits
             page.goto(base + "/connect.html#admin")   # its old address: the setup is on the Admin page now (#167)
-            page.wait_for_url("**/admin.html#admin", timeout=10000)
+            page.wait_for_url(re.compile(r"/admin\.html(\?[^#]*)?#admin$"), timeout=10000)
             page.wait_for_selector("#sourceList", state="attached")
             page.wait_for_function("document.getElementById('returnAddr').textContent.length > 5 && !document.getElementById('admin').hidden", timeout=10000)
             check("connected sources: the setup screen gives the exact return address to register",
@@ -15641,7 +15641,7 @@ def main():
 
             # ---- outside connections (#97, #59): the Admin page lists every host the install may contact, by purpose
             page.goto(base + "/settings.html#outside")   # its old address (#167)
-            page.wait_for_url("**/admin.html#outside", timeout=10000)
+            page.wait_for_url(re.compile(r"/admin\.html(\?[^#]*)?#outside$"), timeout=10000)
             page.wait_for_function("document.getElementById('outsideBody').textContent.includes('May contact now')", timeout=10000)
             out = page.inner_text("#outside")
             check("Admin says plainly that nothing else is contacted (the lead, and the rest behind its ⓘ, #280)",
@@ -16572,11 +16572,11 @@ def main():
             check("…and axe-core finds nothing serious or critical there, light and dark (#320)", not cl_axe, cl_axe[:6])
             page.set_viewport_size({"width": 1400, "height": 900})
             page.goto(base + "/account.html#users")   # the old Admin tab's addresses open the Admin page
-            page.wait_for_url("**/admin.html#users", timeout=10000)
+            page.wait_for_url(re.compile(r"/admin\.html(\?[^#]*)?#users$"), timeout=10000)
             page.wait_for_function("!document.getElementById('users').hidden && document.querySelectorAll('#userList tbody tr').length > 0", timeout=10000)
             check("the old Admin tab's address opens the Admin page, on Accounts", js(display, "users") != "none" and js(display, "labmaps") == "none")
             page.goto(base + "/account.html#labmaps")
-            page.wait_for_url("**/admin.html#labmaps", timeout=10000)
+            page.wait_for_url(re.compile(r"/admin\.html(\?[^#]*)?#labmaps$"), timeout=10000)
             page.wait_for_function("document.querySelector('#labmapList tr[data-labmap]')", timeout=10000)
             lm = js("[...document.querySelectorAll('#labmapList tr[data-labmap]')].map(tr => tr.textContent)")
             check("Admin lists the lab name match, who made it and from what, with Change and Remove (#23)",
@@ -16585,7 +16585,7 @@ def main():
                   and js(display, "labmaps") != "none", lm)
             # the old Profiles tab's address opens Sharing → People (#168); a section link still lands on Account
             page.goto(base + "/account.html#profiles")
-            page.wait_for_url("**/sharing.html#people", timeout=10000)
+            page.wait_for_url(re.compile(r"/sharing\.html(\?[^#]*)?#people$"), timeout=10000)
             page.wait_for_selector("#memberList tbody tr", timeout=10000)
             check("the old Profiles tab's address opens Sharing → People", js("document.querySelector('#shrNav [aria-current=page]').textContent") == "People")
             page.goto(base + "/account.html#twofa")
@@ -16660,7 +16660,7 @@ def main():
             totp = lambda key, ahead=0: twofactor._code(key, int(_time.time() // twofactor.PERIOD) + ahead)
             check("the admin's note links to Account's security tab", js("document.querySelector('#adminTf a').getAttribute('href')") == "account.html#security")
             page.click("#adminTf a")
-            page.wait_for_url("**/account.html#security", timeout=10000)
+            page.wait_for_url(re.compile(r"/account\.html(\?[^#]*)?#security$"), timeout=10000)
             page.wait_for_function("document.getElementById('tfHint').textContent.length > 0", timeout=10000)
             check("which opens it", js(display, "twofa") != "none")
             # #499: each of its buttons that draws it again (Cancel, Confirm, I've saved them) took itself away, focus
