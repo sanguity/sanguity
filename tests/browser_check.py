@@ -2576,8 +2576,21 @@ def main():
             # px in 262)
             hp.locator("#share-results .share-tools button", has_text="Open every history").click()
             flag514 = hp.evaluate("""() => [...document.querySelectorAll('#share-results .share-hist:not([hidden]) table')].map(t => {
-              const box = t.closest('.share-scroll').getBoundingClientRect(), r = t.tHead.rows[t.tHead.rows.length - 1].cells[3].getBoundingClientRect();
+              const box = t.closest('.share-scroll').getBoundingClientRect(), hd = t.tHead.rows[t.tHead.rows.length - 1].cells, r = hd[hd.length - 1].getBoundingClientRect();
               return r.left >= box.left - 0.5 && r.right <= box.right + 0.5; })""")
+            # #523: …with the widest flag, "◆ Abnormal" (shFlag's word for a C-CDA A or AA), in each history's first
+            # result: its flag beside its value, under it if need be, no column past its box (in a column of its own it
+            # put every history 15-23 px past its 262 px box)
+            wide523 = hp.evaluate("""() => [...document.querySelectorAll('#share-results .share-hist:not([hidden]) table')].map(t => {
+              const td = t.tBodies[0].rows[0].cells[1], was = [...td.childNodes];
+              td.replaceChildren(el('span', {}, td.textContent + ' ', shFlag('Abnormal')));
+              const box = t.closest('.share-scroll'), hd = t.tHead.rows[t.tHead.rows.length - 1].cells, b = box.getBoundingClientRect(),
+                f = td.querySelector('.share-flag'), rg = document.createRange();
+              rg.selectNodeContents(f);
+              const ok = hd[hd.length - 1].getBoundingClientRect().right <= b.right + 0.5 && box.scrollWidth <= box.clientWidth + 1
+                && f.getBoundingClientRect().right <= b.right + 0.5 && new Set([...rg.getClientRects()].map(x => Math.round(x.top))).size === 1;
+              td.replaceChildren(...was);
+              return ok; })""")
             # #518: …and no flag, in a history or a test's row, on two lines ("▲" above "High")
             flag518 = hp.evaluate("""() => { const fl = [...document.querySelectorAll('#share-results .share-flag')].filter(f => f.getClientRects().length);
               return [fl.length, fl.filter(f => { const rg = document.createRange(); rg.selectNodeContents(f);
@@ -2689,7 +2702,7 @@ def main():
         hp.emulate_media(media="screen")
         hp.locator("#share-results .share-tools button", has_text="Open every history").click()   # closed again
         dated = [sum(1 for ln in pg if re.search(r"\b[A-Z][a-z]{2} \d{1,2}, \d{4}\b", ln)) for pg in pages491]
-        unnamed = [i + 1 for i, pg in enumerate(pages491) for j, ln in enumerate(pg) if ln.strip() == "Date Result Reference range Flag"
+        unnamed = [i + 1 for i, pg in enumerate(pages491) for j, ln in enumerate(pg) if ln.strip() == "Date Result Reference range"   # (#523: its flag beside its value)
                    and not (j and pg[j - 1].rstrip().endswith(": every result"))]
         headed498 = [(i + 1, pg[-2:]) for i, pg in enumerate(pages491) if pg and pg[-1].strip() in heads498]
         hp.set_viewport_size({"width": 568, "height": 320})
@@ -2727,6 +2740,8 @@ def main():
               [ampm509s, cells509])
         check("…at 320 px each opened history's Flag column in view, without scrolling it sideways (#514: past its 262 px box)",
               len(flag514) >= 8 and all(flag514), flag514)
+        check("…and with “◆ Abnormal”, the widest flag, beside a result, every history's columns still in view, the flag on one line (#523: its own column was past the box)",
+              len(wide523) >= 8 and all(wide523), wide523)
         check("…and no flag in Lab results on two lines at 320 px, every history open (#518: “▲” above “High”)",
               flag518[0] >= 1 and not flag518[1], flag518)
         check("…at 600 and 640 px its tables (but a measure's) tables, as they fit: their heads shown, no word broken, none scrolling (#514: a cell a line)",
@@ -6452,21 +6467,38 @@ def main():
             se518 = js("""(async () => { const med = [...new Set(EV.filter(e => e.k === 'med' || e.k === 'rx').map(e => e.title))].sort()[0];
                 const r = await api(`profiles/${PROFILE.id}/journal`, {method: 'POST', body: JSON.stringify({kind: 'side_effect', t: isoDay(Date.now() - 2 * DAY),
                   title: 'Nausea (browser check)', severity: 4, med})});
-                return {status: r.status, id: (await r.json()).id, med}; })()""")
+                // #523: and a symptom linked to one, its medication sent too (the form said only a side effect's)
+                const s2 = await api(`profiles/${PROFILE.id}/journal`, {method: 'POST', body: JSON.stringify({kind: 'symptom', t: isoDay(Date.now() - 3 * DAY),
+                  title: 'Dizziness (browser check)', severity: 2, med})});
+                return {status: r.status, id: (await r.json()).id, med, sym: s2.status === 201 ? (await s2.json()).id : null}; })()""")
             # a share link shows the photo only when "Photos in the journal" is ticked, under the real CSP, with no session
-            made = js("""(async () => { const r = await api(`profiles/${PROFILE.id}/links`); const offered = (await r.json()).sections.map(s => s.id);
+            made = js("""(async () => { const r = await api(`profiles/${PROFILE.id}/links`), secs = (await r.json()).sections, offered = secs.map(s => s.id);
+                const what = secs.find(s => s.id === 'journal').what;
                 const mk = async secs => (await (await api(`profiles/${PROFILE.id}/links`, {method: 'POST', body: JSON.stringify({sections: secs, hours: 1, label: 'Journal (browser check)'})})).json());
-                return {offered, without: await mk(['journal']), with: await mk(['journal', 'journal_photos'])}; })()""")
+                return {offered, what, without: await mk(['journal']), with: await mk(['journal', 'journal_photos'])}; })()""")
             holder = browser.new_context(viewport={"width": 375, "height": 800})
             hp = holder.new_page()
             hp.on("console", lambda m: m.type == "error" and problems.append(f"share page console error: {m.text}"))
             hp.goto(base + "/" + made["without"]["path"])
             hp.wait_for_selector("#share-journal .share-entry", timeout=10000)
             plain = hp.evaluate("""({pics: document.querySelectorAll('.share-pic').length, where: [...document.querySelectorAll('#share-journal .share-entry p.muted')].map(p => p.textContent),
-                side: [...document.querySelectorAll('#share-journal .share-entry > div:first-child')].map(d => d.textContent).filter(t => t.includes('Nausea (browser check)'))})""")
+                side: [...document.querySelectorAll('#share-journal .share-entry > div:first-child')].map(d => d.textContent).filter(t => t.includes('Nausea (browser check)')),
+                sym: [...document.querySelectorAll('#share-journal .share-entry > div:first-child')].map(d => d.textContent).filter(t => t.includes('Dizziness (browser check)'))})""")
             check("a share link with the journal shows the medication a side effect is about beside it (#518: not sent)",
                   se518["status"] == 201 and se518["med"] and len(plain["side"]) == 1
                   and plain["side"][0].startswith(f"Side effect: Nausea (browser check) · {se518['med']}severity 4"), [se518, plain["side"]])
+            check("…and so does a symptom linked to one, as the form's Journal says: “the medication an entry is linked to” (#523: it said a side effect's)",
+                  se518["sym"] and len(plain["sym"]) == 1 and plain["sym"][0].startswith(f"Symptom: Dizziness (browser check) · {se518['med']}severity 2")
+                  and "the medication an entry is linked to" in made["what"] and "side effect is about" not in made["what"], [plain["sym"], made["what"]])
+            # #523: its # changed to a link that doesn't work (one cut short: no request, so no 404 in its console),
+            # the title doesn't name the profile it was showing
+            hp.evaluate("location.hash = 'cut-short'")
+            for _ in range(50):
+                if hp.evaluate("document.querySelector('#shareHead h1')?.textContent === \"This link doesn't work\""):
+                    break
+                hp.wait_for_timeout(100)
+            check("…and its # changed to a link that doesn't work, the title says so, not the profile's (#523: it kept the one shown before)",
+                  hp.title() == "This link doesn't work · Sanguity", hp.title())
             hp.goto(base + "/" + made["with"]["path"])
             hp.reload()
             for _ in range(100):   # under the CSP: evaluate, not wait_for_function (a string the CSP won't run)
@@ -6486,8 +6518,9 @@ def main():
                   and any("Where: Head, Back of the neck" in w for w in plain["where"]) and shared["alt"] == "Red patch, fictional"
                   and shared["src"] == "data:image/jpeg" and "share-journal_photos" not in shared["cards"] and not sbad, [made["offered"], plain, shared, sbad])
             js("ids => Promise.all(ids.map(i => api(`profiles/${PROFILE.id}/links/${i}`, {method: 'DELETE'})))", [made["without"]["link"]["id"], made["with"]["link"]["id"]])
-            if se518.get("id"):
-                js("i => api(`profiles/${PROFILE.id}/journal/${i}`, {method: 'DELETE'})", se518["id"])
+            for i in (se518.get("id"), se518.get("sym")):
+                if i:
+                    js("i => api(`profiles/${PROFILE.id}/journal/${i}`, {method: 'DELETE'})", i)
             # removed again: the entries (and the photo with its entry) and the group
             js("""Promise.all(JOURNAL.map(e => api(`profiles/${PROFILE.id}/journal/${e.j.id}`, {method: 'DELETE'})))
                 .then(() => api(`profiles/${PROFILE.id}/settings/journal.groups`, {method: 'PUT', body: JSON.stringify({value: []})}))""")
@@ -13485,6 +13518,17 @@ def main():
                     return td.offsetParent && (c.right > r.right + 0.5 || td.scrollWidth > td.clientWidth + 1); })
                   .map(td => td.textContent.slice(0, 40))""")
             check("…and no preview cell is wider than its row at 375 and 320 px (#324)", not wide[375] and not wide[320], wide)
+            # #523: beside the sidebar at 768-1100 px no preview table runs past its pane (the trends' seven columns ran
+            # 294 px past it at 768, 162 at 900, kept on a line each): its cells wrap, and a row is a card where too narrow
+            past523 = {}
+            for w in (1100, 900, 768):
+                page.set_viewport_size({"width": w, "height": 900})
+                settle(200)
+                past523[w] = js("""(() => { const pane = document.getElementById('prevBody').getBoundingClientRect();
+                    return [...document.querySelectorAll('#prevBody table')].filter(t => t.offsetParent && t.getBoundingClientRect().right > pane.right + 0.5)
+                      .map(t => [t.tHead.rows[0].textContent.slice(0, 30), Math.round(t.getBoundingClientRect().right - pane.right)]); })()""")
+            check("…and at 1100, 900 and 768 px, beside the sidebar, no preview table goes past its pane (#523)",
+                  not any(past523.values()) and js("document.querySelectorAll('#prevBody table').length") >= 3, past523)
             page.set_viewport_size({"width": 1400, "height": 900})
             with page.expect_download(timeout=20000) as dl:
                 page.click("#download")
@@ -15262,6 +15306,22 @@ def main():
             np_.fill("#p", PW2)
             np_.click("#b")
             np_.wait_for_url(lambda u: "login.html" not in u, timeout=10000)
+            # #523: its last profile left (one of its own, given to it for this and deleted after), Sharing's title and
+            # address name no profile (they stayed "Sharing: People · Sanguity" and ?profile=N)
+            lp523 = lprof.create_profile(sdb, "Last to leave (fictional)", owner_id=sdb.execute("SELECT id FROM users WHERE username=?", (USER,)).fetchone()[0])
+            sdb.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'viewer')", (uid501, lp523))
+            np_.goto(base + f"/sharing.html?profile={lp523}#people")
+            np_.wait_for_selector(f"#people[data-profile='{lp523}'] #memberList button", timeout=10000)
+            title523 = [np_.title()]
+            np_.locator("#memberList button", has_text="Leave").click()
+            answer_ask(np_)
+            np_.wait_for_function("!document.getElementById('noProfiles').hidden", timeout=10000)
+            np_.wait_for_timeout(300)
+            title523 += [np_.title(), np_.evaluate("location.search")]
+            za.evaluate("""pid => fetch('api/profiles/' + pid, {method: 'DELETE', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'},
+              body: JSON.stringify({confirm_name: 'Last to leave (fictional)'})})""", lp523)
+            check("after leaving its last profile, Sharing's title and address name no profile (#523: “Sharing: People” and ?profile= stayed)",
+                  title523 == ["Sharing: People · Sanguity", "Sharing · Sanguity", ""], title523)
             # #505: nor on Sources, import.html (which goes there) and the guide's New profile, which stop before the menu
             tabs501, make518, h1_518 = {}, {}, None
             for w, h in ((1400, 900), (375, 667)):
@@ -18595,6 +18655,40 @@ def main():
                       document.getElementById('pk').textContent, document.getElementById('pk').hasAttribute('aria-describedby'), location.pathname.endsWith('login.html')]; }""")
             check("…its Use another account goes back to the username, emptied, with focus, the password step again (#518: back was a reload)",
                   pk518b == ["u", "", False, "", False, True, "Sign in with a passkey", False, True], pk518b)
+            # #523: …and where passkeys can't work (a browser without them stood in for here) that step says why and
+            # how to sign in instead, with focus on it (it had nothing to press, focus on the page); Enter in the
+            # username sends nothing and keeps the step (it sent the hidden Continue's empty code, answered "That took
+            # too long", and the password was emptied)
+            pk.fill("#u", USER)
+            pk.fill("#p", PW)
+            pk.evaluate("delete window.PublicKeyCredential")
+            pk.route("**/api/login", lambda route: route.fulfill(status=200, content_type="application/json",
+                                                                 body=json.dumps({"two_factor": True, "ticket": "t523", "methods": {"code": False, "passkey": True}})))
+            sent523 = []
+            pk.route("**/api/login/code", lambda route: (sent523.append(route.request.url), route.abort()))
+            pk.click("#b")
+            pk.wait_for_selector("#pkSays", state="visible", timeout=10000)
+            pk.unroute("**/api/login")
+            pk.wait_for_timeout(200)
+            pk523 = pk.evaluate("""() => { const a = document.activeElement;
+              return [a.id, a.textContent, document.getElementById('pkBox').hidden, document.getElementById('b').hidden]; }""")
+            pk523bad = []
+            for w in (1400, 320):
+                pk.set_viewport_size({"width": w, "height": 800 if w > 400 else 640})
+                pk523bad += axe_check(pk, f"sign-in's passkey step where passkeys can't work, {w} px")[0] + (phone_fits(pk, "sign-in's passkey step where passkeys can't work") if w < 400 else [])
+            pk.set_viewport_size({"width": 1400, "height": 900})
+            check("…where passkeys can't work, that step says so and how to sign in instead, with focus on it (#523: nothing to press)",
+                  pk523[0] == "pkSays" and pk523[1] == "Password accepted, but this account finishes signing in with a passkey, and passkeys don't work "
+                  "here: this browser doesn't have them. Sign in with one that does, or use another account." and pk523[2] and pk523[3] and not pk523bad, [pk523, pk523bad])
+            pk.focus("#u")
+            pk.keyboard.press("Enter")
+            pk.wait_for_timeout(400)
+            enter523 = pk.evaluate("""() => [document.getElementById('step2').hidden, document.getElementById('step1').hidden, document.getElementById('e').textContent,
+              document.getElementById('u').readOnly, document.getElementById('pkSays').checkVisibility()]""")
+            pk.unroute("**/api/login/code")
+            check("…and Enter in its username sends nothing and keeps the step (#523: it sent an empty code, answered “That took too long”)",
+                  not sent523 and enter523 == [False, True, "", True, True], [sent523, enter523])
+            pk.click("#other")
             problems[before:] = [x for x in problems[before:] if "401" not in x]   # signed out on the way, on purpose
             ctx.close()
         except Exception as e:   # report what was caught so far instead of a bare traceback

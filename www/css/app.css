@@ -1350,6 +1350,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .jmood{cursor:pointer}
 .jmood:focus{outline:none}
 .jmood:focus-visible>rect:first-child,.jmood.sel>rect:first-child{stroke:var(--ink);stroke-width:1.5}
+.share .share-med{display:inline-block}   /* (#523) */
 .share .share-pics{display:flex;flex-wrap:wrap;gap:var(--sp-2);margin-top:var(--sp-2)}
 .share .share-pic{margin:0;max-width:240px;min-width:0}
 .share .share-pic img{display:block;max-width:100%;border-radius:var(--r-md);border:1px solid var(--ring)}
@@ -1515,7 +1516,8 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
 .share-latest .share-when{display:block;color:var(--muted);font-size:var(--fs-2)}
 .acct .share-latest>tbody>.share-hist>td{border-top:0;padding:0 0 var(--sp-3) var(--sp-5)}
 /* a history's head and cells wrap, its dates (share.js keepDates), ranges and flags kept whole (#514: at 320 px its Flag
-   was out of sight; #518: "▲ High" broke after its ▲, so its flag is at the heads' size and its columns closer, to fit) */
+   was out of sight; #518: "▲ High" broke after its ▲, so its flag is at the heads' size and its columns closer, to fit;
+   #523: the flag is beside its result, share.js, as "◆ Abnormal" in a column of its own didn't) */
 .acct .share-latest .tbl.measures :is(th,td){white-space:normal;overflow-wrap:normal;padding-right:var(--sp-1)}
 .acct .share-latest .tbl.measures :is(th,td):last-child{padding-right:0}
 .acct .share-latest .tbl.measures td:nth-child(3),.share-flag{white-space:nowrap}

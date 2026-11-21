@@ -53,8 +53,16 @@ function codeStep(on, methods = {code: true}) {
   const says = document.getElementById("pkSays"), pkOnly = !!on && !code;
   says.hidden = !pkOnly;
   if (pkOnly) pkBtn.setAttribute("aria-describedby", says.id); else pkBtn.removeAttribute("aria-describedby");
-  if (on) (code ? document.getElementById("c") : pkBtn).focus();
-  sayIn(says, pkOnly ? "Password accepted. Use your passkey to finish signing in." : "");
+  // #523: where passkeys can't work (plain HTTP away from localhost, or a browser without them) there's no button to
+  // press: the step says why and how to sign in instead, and takes focus itself
+  const stuck = pkOnly && !passkeysWork();
+  if (stuck) says.tabIndex = -1; else says.removeAttribute("tabindex");
+  sayIn(says, !pkOnly ? "" : !stuck ? "Password accepted. Use your passkey to finish signing in." :
+    "Password accepted, but this account finishes signing in with a passkey, and passkeys don't work here: " +
+    (window.isSecureContext ? "this browser doesn't have them. Sign in with one that does" : "this page isn't using HTTPS. Open Sanguity at its " +
+      `https:// address${/^[\d.]+$|:/.test(location.hostname) ? ", by its name rather than an IP address," : ""} and sign in there`) + ", or use another account.",
+    false, {say: !stuck});   // (read as it takes focus)
+  if (on) (code ? document.getElementById("c") : stuck ? says : pkBtn).focus();
 }
 /* Use another account (#518): back to the first step, its username and password empty, from the second step */
 document.getElementById("other").addEventListener("click", ev => {
@@ -107,6 +115,8 @@ pkBtn.addEventListener("click", async () => {
 });
 f.addEventListener("submit", async ev => {
   ev.preventDefault();
+  // a passkey the only way on (#523): Enter in the username sent the hidden Continue's empty code, refused as too late
+  if (ticket && document.getElementById("codeBox").hidden) return;
   const username = document.getElementById("u").value.trim(), password = document.getElementById("p").value;
   btn.disabled = true; fieldSaid(err, "", null, pkBox); pwSent(f);   // hidden as it's sent, so a browser saves it as a password
   let said = "", refused = false;
