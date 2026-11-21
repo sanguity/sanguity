@@ -51,7 +51,8 @@ async function loadSessions() {
     el("thead", {}, el("tr", {}, ...["Device", "Address", "Signed in", "Last active", ""].map(h => el("th", {text: h})))),
     el("tbody", {}, ...list.map(s => el("tr", {},
       el("td", {}, device(s.agent), s.current ? el("span", {class: "tag", text: "this device"}) : null),
-      el("td", {text: s.ip || "–"}), el("td", {text: when(s.created)}), el("td", {text: when(s.last_seen)}),
+      // each time kept with its AM or PM (keepDates, util.js; #515: "8:37 / AM" at 320 px)
+      el("td", {text: s.ip || "–"}), el("td", {}, keepDates(when(s.created))), el("td", {}, keepDates(when(s.last_seen))),
       el("td", {}, s.current ? null : el("button", {class: "btn small", type: "button", text: "Sign out",
         onclick: async () => {
           const at = list.indexOf(s);
