@@ -31,6 +31,7 @@
   const pid = () => +$("#profile").value;
   const tell = (text, isBad = false, link = null, urgent = isBad) => {   // urgent: said at once (sayIn, util.js)
     sayIn(msg, [text, ...(link ? [" ", link] : [])], urgent, {repeat: urgent}); msg.classList.toggle("bad", isBad);
+    delete msg.dataset.savedLine;   // (no longer the line of a save, for an Undo elsewhere to change)
   };
   const today = zToday;   // dates.js
   const rows = () => [...box.querySelectorAll(".man-row")];
@@ -268,6 +269,7 @@
           toast("Undone: what was saved is gone from the profile.");
         }}] : [])]});
       if (j.import_id != null) {
+        msg.dataset.savedLine = j.import_id;   // undone elsewhere, the line says so (import-jobs.js undoneElsewhere, #517)
         sanguityImport.undoable(t, j.import_id);   // its Undo taken away once it's undone elsewhere (#513)
         sanguityImport.told(p, j.import_id, false);   // Import history lists it at once, with its Undo (#508)
       }

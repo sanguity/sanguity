@@ -99,6 +99,7 @@ function medLogSection(m) {
 /* the log / correct form, in the drawer. d: the dose (null: a new one); preset: {status, slot} */
 function doseForm(m, d, preset = {}) {
   const body = drawerHead("med", d ? "Correct a dose" : "Log a dose", m.name);
+  drawerStill = () => MEDS.some(x => x.key === m.key);   // the medication's import undone: closed (app.js, #517)
   const uid = Math.random().toString(36).slice(2, 8), id = n => `dose-${n}-${uid}`;
   const msg = el("p", {class: "hint edit-msg", role: "status"});
   let status = d ? d.status : preset.status || "taken";

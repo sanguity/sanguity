@@ -558,15 +558,23 @@
     for (const t of document.querySelectorAll(`#sgToasts .sg-toast[data-undo-import="${id}"]`)) {
       const b = [...t.querySelectorAll(".sg-toast-acts button")].find(x => x.textContent === "Undo…");
       if (!b || b.getAttribute("aria-disabled") === "true") continue;
-      const had = b === document.activeElement;
-      b.remove();
+      // its Open link goes with its Undo (#517: "Open Labs" to records that are gone)
+      const acts = b.closest(".sg-toast-acts"), had = acts.contains(document.activeElement);
+      acts.remove();
       t.querySelector(".sg-toast-text").textContent = "Undone: the import's records are gone from the profile.";
-      if (had) t.querySelector("a, button").focus();
+      if (had) t.querySelector("button").focus();
     }
     for (const c of document.querySelectorAll(`.import-job[data-saved="${id}"]`)) {
       const had = c.contains(document.activeElement), line = undoneLine();
       c.replaceChildren(line);
       if (had) { line.tabIndex = -1; line.focus(); }
+    }
+    // Type records in's line saying what was saved, and its links (#517: "Saved 1 result. See them on Labs" stayed)
+    for (const m of document.querySelectorAll(`[data-saved-line="${id}"]`)) {
+      const had = m.contains(document.activeElement);
+      sayIn(m, "Undone: what was saved is gone from the profile.", false, {say: false});
+      delete m.dataset.savedLine;
+      if (had) { m.tabIndex = -1; m.focus(); }
     }
     freshOthers(null, pid);
   }
@@ -578,9 +586,27 @@
                  letter: ["letter", "letters"], document: ["document", "documents"], stay: ["hospital stay", "hospital stays"],
                  med: ["medication", "medications"], rx: ["pharmacy fill", "pharmacy fills"], claim: ["claim", "claims"],
                  immunization: ["immunization", "immunizations"]};   // #179
+  // records typed in, by kind (the save's counts.typed, routes_manual.py), in Type records in's words (#517: a problem,
+  // an appointment and a payment were "No records", a vitals entry "3 lab results in 3 tests"); readings at home as
+  // one count, as before (#224); a height is said below
+  const TYPED = {...HKIND, labs: ["lab result", "lab results"], study: ["report or study", "reports or studies"],
+                 claim: ["insurance claim", "insurance claims"], problem: LISTED.problem, upcoming: LISTED.upcoming, payment: ["payment", "payments"],
+                 vitals: ["vitals entry", "vitals entries"], home: ["weight or steps entry at home", "weight or steps entries at home"],
+                 workout: ["workout", "workouts"], readings: ["reading taken at home", "readings taken at home"]};
+  const AT_HOME = ["home_bp", "home_glucose", "home_temp", "home_spo2"];
   function importCounts(c, draws = true) {
     c = c || {};
     const out = [];
+    if (c.typed) {
+      const typed = Object.entries(c.typed).filter(([k, n]) => n > 0 && k !== "height" && !AT_HOME.includes(k));
+      const home = AT_HOME.reduce((n, k) => n + (c.typed[k] || 0), 0);
+      if (home) typed.push(["readings", home]);
+      // "in 2 tests" only where the results are all lab results: vitals are charted as results too
+      out.push(...typed.sort((a, b) => b[1] - a[1]).map(([k, n]) => plural(n, TYPED[k] || [k, k])
+        + (k === "labs" && !c.typed.vitals && c.series ? " in " + plural(c.series, ["test", "tests"]) : "")));
+      if (c.heights_set) out.push(plural(c.heights_set, ["height", "heights"]) + " put in About this person (kept there if this is undone)");
+      return out.length ? out.join(", ") : "No records";
+    }
     const listed = Object.entries(c.kinds || {}).filter(([k]) => k !== "labitem").sort((a, b) => b[1] - a[1]);
     const kinds = listed.filter(([k]) => !(k === "lab" && !draws && c.results));
     if (kinds.length) out.push(...kinds.map(([k, v]) => plural(v, HKIND[k] || [k, k])));
@@ -590,6 +616,7 @@
     if (c.allergies) out.push(plural(c.allergies, ["allergy", "allergies"]));   // #179 (jobs.summarise)
     if (c.problems) out.push(plural(c.problems, ["problem or diagnosis", "problems or diagnoses"]));
     if (c.upcoming) out.push(plural(c.upcoming, ["upcoming appointment", "upcoming appointments"]));
+    if (c.payments) out.push(plural(c.payments, ["payment", "payments"]));   // typed in before its counts were kept (#517)
     if (c.entries) out.push(plural(c.entries, ["problem, appointment or weight", "problems, appointments or weights"]));
     if (c.watch_days) out.push(plural(c.watch_days, ["day", "days"]) + " of watch data");
     if (c.workouts) out.push(plural(c.workouts, ["workout", "workouts"]));

@@ -6771,7 +6771,7 @@ def main():
                             ov: [...document.querySelectorAll('#ovDoses .dose-slot')].map(s => s.textContent),
                             week: c.querySelector('.dose-week').textContent, text: c.textContent}; })()""")
                 mine = [r for r in (today235 or {}).get("rows", []) if r[1] == cur["name"]]
-                want = ["8:00 AM", "8:00 PM", "Also"] if today235 and today235["weekday"] else ["Any time"]
+                want = ["8:00\xa0AM", "8:00\xa0PM", "Also"] if today235 and today235["weekday"] else ["Any time"]
                 check("today's medication doses, a row for each of the reminder's times today (or one, “Any time”), the dose logged beside it; no row says “Today” (#440)",
                       today235 and [r[0] for r in mine] == want and "Taken" in mine[-1][3] and len({r[1] for r in today235["rows"]}) == today235["cur"]
                       and "Today" not in [r[0] for r in today235["rows"]] + today235["ov"] and today235["ov"], today235)
@@ -6944,7 +6944,7 @@ def main():
                       and med275["lane"] == med275["want"][2] >= len(med275["cur"]) and cur["name"] in med275["today"], {k: v for k, v in med275.items() if k != "text"})
                 check("…the current medication with a reminder: since when, as listed, its last fill and the reminder's times, each fact named",
                       len(row275) == 5 and row275[1].startswith("Since ") and row275[2].startswith("As listed ") and row275[3].startswith("Last fill ")
-                      and row275[4].startswith("Reminders 8:00 AM and 8:00 PM"), row275)
+                      and row275[4].startswith("Reminders 8:00\xa0AM and 8:00\xa0PM"), row275)   # (#517: each time with its AM or PM)
                 check("…never saying a dose was due or a medication should be taken", not re.search(r"(?i)\b(due|should|missed|overdue|adherence)\b", med275["text"]),
                       med275["text"][:300])
                 # a row opens the medication's drawer; Escape takes focus back to it
@@ -9996,6 +9996,27 @@ def main():
             drawer513 = js(f"[drawer.classList.contains('open'), drawer.open, byId.has({ev513}), state.selEv, document.activeElement !== document.body && !drawer.contains(document.activeElement)]")
             check("a record open in the drawer isn't shown after its import's Undo from the toast: the drawer closes, focus on the page (#513)",
                   drawer513 == [False, False, False, None, True], drawer513)
+            # (#517) an upcoming appointment typed in, open in the drawer from the Overview, then its import undone: the
+            # drawer closes too (it checked only a record and a medication, and an appointment is neither)
+            from datetime import date as date517, timedelta as days517
+            soon517 = (date517.today() + days517(days=30)).isoformat()
+            up517 = js(f"""fetch('api/profiles/{dpid497}/manual', {{method: 'POST', headers: {{'X-Sanguity': '1', 'Content-Type': 'application/json'}},
+                body: JSON.stringify({{items: [{{kind: 'upcoming', date: '{soon517}', time: '10:00', title: 'Follow-up visit'}}], save: true}})}})
+                .then(r => r.json()).then(j => j.import_id ?? j.detail)""")
+            page.goto(base + f"/index.html?profile={dpid497}#overview")
+            page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE && PROFILE.id === {dpid497}", timeout=20000)
+            page.click("#ovUpcoming .ov-row")
+            page.wait_for_function("drawer.classList.contains('open')", timeout=5000)
+            open517 = js("document.getElementById('dtitle').textContent")
+            js("""new Promise(r => { if (typeof sanguityImport !== 'undefined') return r();   // (drop.js loads it with the upload dialog)
+                const s = document.createElement('script'); s.src = 'js/import-jobs.js'; s.onload = r; document.head.append(s); })""")
+            js(f"window._undo517 = sanguityImport.undoAsk({dpid497}, {json.dumps(up517)}, null); 0")
+            answer_ask(page)
+            page.wait_for_function("!(DATA.upcoming || []).some(u => u.title === 'Follow-up visit')", timeout=10000)
+            settle(300)
+            drawer517 = js("[drawer.classList.contains('open'), drawer.open, document.activeElement !== document.body && !drawer.contains(document.activeElement)]")
+            check("an upcoming appointment open in the drawer closes after its import's Undo, focus on the page (#517)",
+                  open517 == "Follow-up visit" and drawer517 == [False, False, True], [up517, open517, drawer517])
             # (#504) a profile with no records: two CSVs dropped into the dialog, the first added, the dialog closed: its
             # records are drawn without loading the page again, the toast's Undo and the other review kept
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
@@ -10108,6 +10129,16 @@ def main():
                 document.activeElement !== document.body])(document.getElementById('import-{up508}'))""")
             check("after the toast's Undo on Sources, Import history shows the import undone at once, with no Undo of its own; focus not on a toast (#508)",
                   hist508 == [True, False, False, True], hist508)
+            # (#517) the typed result undone in Import history: Type records in's line says so (it kept "Saved 1 result.
+            # See them on Labs"), and its toast has no Open link left with its Undo gone
+            page.click(f"#import-{man508} button.undo")
+            answer_ask(page)
+            page.wait_for_function(f"document.getElementById('import-{man508}')?.classList.contains('undone')", timeout=10000)
+            man517 = js(f"""(t => [document.getElementById('manMsg').textContent, document.getElementById('manMsg').querySelectorAll('a').length,
+                t && t.querySelector('.sg-toast-text').textContent, t && [...t.querySelectorAll('a, button:not(.sg-toast-x)')].map(b => b.textContent)])
+                (document.querySelector('#sgToasts .sg-toast[data-undo-import="{man508}"]'))""")
+            check("after Import history's Undo, Type records in's line says it's undone, and the toast has no Open link (#517)",
+                  man517 == ["Undone: what was saved is gone from the profile.", 0, "Undone: the import's records are gone from the profile.", []], man517)
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             # (#512, #513) A added, then undone in Import history while its toast stays up: the toast offers no Undo now,
             # and says so; B added next has an id of its own, and A's Undo asked for then (as its toast's did) is refused
@@ -10176,6 +10207,39 @@ def main():
             check("Sources' Overview counts an import added from Waiting for you, and no longer once it's undone (#513)",
                   hubs513 == [hubs513[0], f"{n513 + 1} imports", hubs513[0]], hubs513)
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            # (#517) a typed problem, upcoming appointment, payment and vitals entry, each saved on its own: Import history
+            # and its Undo question name what was typed (the first three were "No records", the vitals "3 lab results in
+            # 3 tests")
+            ids517 = js("""(async pid => { const ids = [];
+                for (const it of [{kind: 'problem', name: 'Iron deficiency anemia', status: 'Active', since: '2026-05-04'},
+                    {kind: 'upcoming', date: '2026-12-03', time: '10:00', title: 'Follow-up visit'},
+                    {kind: 'payment', date: '2026-06-01', payee: 'Lakeside Clinic (fictional)', amount: '60'},
+                    {kind: 'vitals', date: '2026-05-04', time: '09:35', bp: '118/76', hr: '72'}])
+                  ids.push(await fetch(`api/profiles/${pid}/manual`, {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'},
+                    body: JSON.stringify({items: [it], save: true})}).then(r => r.json()).then(j => j.import_id ?? j.detail));
+                return ids; })""" + f"({epid504})")
+            page.goto(base + f"/sources.html?profile={epid504}#history")
+            page.reload()   # (the same page: only its hash changed, so the list is loaded afresh)
+            page.wait_for_selector(f"#import-{ids517[-1]} button.undo", state="attached", timeout=10000)
+            typed517 = []
+            for i517 in ids517:
+                what517 = js(f"document.querySelector('#import-{i517} .what').textContent")
+                page.click(f"#import-{i517} button.undo")
+                typed517.append([what517, answer_ask(page, yes=False)[1].split(": ", 1)[1].split(".")[0]])
+            check("a typed problem, appointment, payment and vitals entry each name what was typed in Import history and their Undo question (#517)",
+                  typed517 == [[w, w] for w in ("1 problem or diagnosis", "1 upcoming appointment", "1 payment", "1 vitals entry")], typed517)
+            # (#517) each time on the hub and in Import history kept whole, with its AM or PM, from 320 to 1100 px (fmtDT: a
+            # no-break space before it, at the source); "Last upload Nov 21, 2026, 10:06 / AM" at 320, 568 and 1100
+            ampm517 = {"fmtDT": js("fmtDT(Date.UTC(2026, 10, 21, 15, 6)).includes('\\u00a0') && /\\d\\u00a0[AP]M$/.test(fmtDT(Date.UTC(2026, 10, 21, 15, 6)))")}
+            for sec517, sel517 in (("history", "#historyList"), ("overview", "#srcOverview")):
+                js(f"SgSources.show('{sec517}')")
+                page.wait_for_function(f"/\\d:\\d\\d\\s?[AP]M/.test(document.querySelector('{sel517}')?.textContent || '')", timeout=10000)
+                for w in (320, 568, 768, 1100):
+                    page.set_viewport_size({"width": w, "height": 900})
+                    settle(150)
+                    ampm517[f"{sec517} {w}"] = js(AMPM509, sel517)
+            check("fmtDT's time has a no-break space before AM or PM, and the hub and Import history keep each time whole at 320–1100 px (#517)",
+                  ampm517["fmtDT"] is True and not any(v for k, v in ampm517.items() if k != "fmtDT"), ampm517)
             page.set_viewport_size({"width": 1400, "height": 900})
             page.goto("about:blank")
             db = dbm.connect()
@@ -18343,6 +18407,15 @@ def main():
               return [past, broken, list.querySelectorAll('td.acts button').length, above]; }""")
             check("…and at 320 px, no word in it broken across lines and nothing past the card, Rename and Remove on a line of their own (#510: "
                   "“Re/na/me”, the table 14 px past the card)", pk320 == [[], [], 2, True], pk320)
+            # #517: each time in the list keeps its AM or PM from 320 to 1100 px (fmtDT's no-break space: it split, as the hub
+            # and Import history did)
+            pk517 = {}
+            for w in (320, 568, 768, 1100):
+                pk.set_viewport_size({"width": w, "height": 800})
+                pk.wait_for_timeout(150)
+                pk517[w] = pk.evaluate(AMPM509, "#pkList")
+            check("…and each of its times kept whole, with its AM or PM, at 320–1100 px (#517)",
+                  pk.evaluate("/\\d:\\d\\d\\s?[AP]M/.test(document.getElementById('pkList').textContent)") and not any(pk517.values()), pk517)
             pk.set_viewport_size({"width": 1400, "height": 900})
             menu_click(pk, "#logout")
             pk.wait_for_url("**/login.html", timeout=10000)

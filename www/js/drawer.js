@@ -12,6 +12,10 @@
    says it's open (or opening). */
 const drawer = $("#drawer");
 let drawerReturn = null, drawerFrom = null;   // what opened it, and where that was on the page (drawerSpot)
+/* whether what the drawer shows is still in the records, for what isn't a record of its own (an upcoming appointment,
+   a medication's dose or reminder form): set as it's drawn, null again with the next head (drawerHead); after an
+   Undo, app.js closes the drawer when it says no (#517) */
+let drawerStill = null;
 function closeDrawer() {
   const a = document.activeElement, want = drawer.classList.contains("open") && (drawer.contains(a) || a === document.body), sel = state.selEv;
   const r = drawerBack(), mine = want && r && drawerTo(sel) === r ? r : null;   // what opened it, as it is now
@@ -157,7 +161,7 @@ function drawerHead(k, title, line, tone, days = []) {
   $("#dtitle").textContent = title; $("#dsub").textContent = line;
   drawerSaid = new Set([title, ...title.split(" · "), ...line.split(" · ").flatMap(x => x.split(" – ")), ...days.filter(isFinite).map(fmtD)].filter(Boolean).map(saidKey));
   drawerKeys = [];
-  drawerMenu([]); delete drawer.dataset.med;   // a medication's history marks it again (meds.js medShown, #417)
+  drawerMenu([]); delete drawer.dataset.med; drawerStill = null;   // a medication's history marks it again (meds.js medShown, #417)
   const body = $("#dbody"); body.replaceChildren(); body.scrollTop = 0; body.classList.remove("fill");
   return body;
 }

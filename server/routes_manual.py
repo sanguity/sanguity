@@ -32,7 +32,8 @@ of nothing but duplicates is refused.
 
 A save is one import (records.store, origin "manual", format "manual"), run through importers.check() first, in a
 transaction with its documents and its activity log entry ("import", {"importer": "manual", "counts"}, with how many
-of each kind were typed in counts["typed"]). Home measurements and workouts are saved as that import's own watch data
+of each kind were typed in counts["typed"]); the counts are kept on the import too (imports.note), for its history
+entry (#517). Home measurements and workouts are saved as that import's own watch data
 (watch_store.save_import with its id). So undoing the import (history.py) takes all of it away: the records, the
 documents and the uploads holding their files, and the watch data. Owners and editors only; the CSRF check in
 main.guard covers the POST like every other change.
@@ -330,6 +331,9 @@ def manual(pid: int, body: Rows, request: Request, s=Depends(user), db=Depends(g
             if watch:   # last: its file is written once everything else is in the transaction
                 w = watch_store.save_import(db, pid, watch, import_id=iid)
                 counts.update(watch_days=w["days"], workouts=w["workouts"], **({"readings": w["readings"]} if w.get("readings") else {}))
+            # what was typed, for Import history and the Undo's question (history.py, #517): the rows can't say it (a
+            # problem is in the profile's lists, a vitals entry is charted as results, a weight is watch data)
+            db.execute("UPDATE imports SET note=? WHERE id=?", (records._enc({"counts": counts}), iid))
             activity.log(db, "import", s, pid, {"importer": NAME, "counts": counts, **({"skipped": skipped} if skipped else {})},
                          ip=_client_ip(request))
     return {"import_id": iid, "counts": counts, "range": summary["range"], "rows": shown, "items": items,

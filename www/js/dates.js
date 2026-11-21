@@ -37,14 +37,19 @@ function useDates(zone, format) {
 const _withZone = (o = {}) => DATES.zone && !o.timeZone ? {...o, timeZone: DATES.zone} : o;
 /* t in the browser's language with these options (which name the parts to show: year, month, hour...), in their
    zone: what Date's toLocaleDateString, toLocaleTimeString and toLocaleString give, with each formatter made once
-   and kept, since making one is most of the time those take (a ten-year record shows thousands of dates, #201) */
+   and kept, since making one is most of the time those take (a ten-year record shows thousands of dates, #201). A
+   time keeps its AM or PM here, at the source (#517): the space between them is a no-break one, so no line on any
+   page ends "10:06" with "AM" on the next */
 const _fmts = new Map();
 function _fmt(t, o) {
   const key = JSON.stringify(o) + DATES.zone;
   let f = _fmts.get(key);
   if (!f) _fmts.set(key, f = new Intl.DateTimeFormat(undefined, _withZone(o)));
   const d = new Date(t);
-  return isNaN(d) ? "Invalid Date" : f.format(d);   // as Date's own say it, where format() would throw
+  if (isNaN(d)) return "Invalid Date";   // as Date's own say it, where format() would throw
+  if (!o.hour) return f.format(d);
+  const p = f.formatToParts(d), am = i => p[i]?.type === "dayPeriod";
+  return p.map((x, i) => x.type === "literal" && (am(i - 1) || am(i + 1)) ? x.value.replace(/\s/g, "\u00a0") : x.value).join("");
 }
 /* ms to add to an instant to get their wall-clock time as if it were UTC (offsets change only on a quarter hour) */
 function zOffset(t) {
