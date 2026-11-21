@@ -146,8 +146,15 @@ def user_values(s=Depends(user), db=Depends(get_db)):
     return _user_values(db, s["id"])
 
 
+class UserValue(Value):
+    # the browser's own, filled in by the first page after signing in (dates.js datesReady): stored only if this
+    # person hasn't one yet, and not logged, as they changed nothing (#524: each first sign-in logged "changed their
+    # own setting Time zone")
+    if_unset: bool = False
+
+
 @router.put("/api/settings/user/{key}")
-def change_user_value(key: str, body: Value, request: Request, s=Depends(user), db=Depends(get_db)):
+def change_user_value(key: str, body: UserValue, request: Request, s=Depends(user), db=Depends(get_db)):
     try:
         d = settings.get_def(key)
     except settings.SettingError as e:
@@ -156,8 +163,13 @@ def change_user_value(key: str, body: Value, request: Request, s=Depends(user), 
         raise HTTPException(404, "That setting belongs to a profile.")
     try:
         with dbm.transaction(db):
-            settings.put(db, key, body.value, uid=s["id"], by=s["id"])
-            _log(db, s, None, "user", {"setting": key, "label": d.label}, request)
+            if body.if_unset:
+                d.clean(body.value)   # checked all the same
+                if key not in settings.stored(db, "user", uid=s["id"]):
+                    settings.put(db, key, body.value, uid=s["id"], by=s["id"])
+            else:
+                settings.put(db, key, body.value, uid=s["id"], by=s["id"])
+                _log(db, s, None, "user", {"setting": key, "label": d.label}, request)
     except settings.SettingError as e:
         raise HTTPException(400, str(e))
     return _user_values(db, s["id"])

@@ -10,7 +10,7 @@ async function call(path, method = "GET", body) {
   const j = await r.json().catch(() => ({}));
   if (!r.ok) {
     const d = j.detail, e = new Error(Array.isArray(d) ? "Please check the fields." : (d && d.message) || d || r.status + " " + r.statusText);
-    e.detail = d; throw e;
+    e.detail = d; e.status = r.status; throw e;
   }
   return j;
 }
@@ -56,7 +56,12 @@ async function loadSessions() {
       el("td", {}, s.current ? null : el("button", {class: "btn small", type: "button", text: "Sign out",
         onclick: async () => {
           const at = list.indexOf(s);
-          try { await call("sessions/" + s.id, "DELETE"); await loadSessions(); } catch (e) { say("#sessMsg", e.message, true); return; }
+          try { await call("sessions/" + s.id, "DELETE"); await loadSessions(); }
+          catch (e) {   // signed out elsewhere (#524: its row stayed, "No such session." above the page's top): where it was
+            if (e.status !== 404) { say("#sessMsg", e.message, true); return; }
+            await loadSessions(); say("#sessMsg", "");
+            return goneSay([...$("#sessList tbody").rows], at, e.message, "button", $("#sessions h2"), $("#sessList"));
+          }
           sessFocus(at);
         }})))))));
   $("#sessOthers").disabled = list.length < 2;
@@ -177,14 +182,18 @@ async function loadPasskeys() {
   $("#pkList").replaceChildren(st.passkeys.length ? el("table", {class: "tbl pk"},
     el("thead", {}, el("tr", {}, ...["Name", "Added", "Last used", ""].map(h => el("th", {text: h})))),
     el("tbody", {}, ...st.passkeys.map(k => {
-      const name = el("input", {value: k.name, maxlength: 60, "aria-label": "Passkey name"});
+      // Enter in its name renames it, as its Rename does (#524)
+      const name = el("input", {value: k.name, maxlength: 60, "aria-label": "Passkey name", enterkeyhint: "done",
+        onkeydown: ev => { if (ev.key === "Enter" && !ev.isComposing) { ev.preventDefault(); ev.target.closest("tr").querySelector("td.acts button").click(); } }});
       return el("tr", {"data-pk": k.id},
         el("td", {}, name, k.here ? null : el("div", {class: "muted", text: `works at ${k.rp_id} only`})),
         el("td", {text: when(k.created)}), el("td", {text: k.last_used ? when(k.last_used) : "never"}),
         el("td", {class: "acts"},
           el("button", {class: "btn small", type: "button", text: "Rename", onclick: async () => {
             pkSay(null);
-            try { await call("me/passkeys/" + k.id, "PATCH", {name: name.value}); pkSay(k.id, "Renamed."); } catch (e) { pkSay(k.id, e.message, true); } }}),
+            // its new name the one Remove asks about (#524: it named the old one)
+            try { k.name = (await call("me/passkeys/" + k.id, "PATCH", {name: name.value})).name; name.value = k.name; pkSay(k.id, "Renamed."); }
+            catch (e) { e.status === 404 ? pkGone(st.passkeys.indexOf(k), e.message) : pkSay(k.id, e.message, true); } }}),
           el("button", {class: "btn small", type: "button", text: "Remove", disabled: last || null,
             title: last ? "This server requires two-factor sign-in, and this is your only second step" : null, onclick: async () => {
               if (!await ask({title: `Remove the passkey “${k.name}”?`, message: "Remove it from the device too, in its passwords or passkeys settings.",
@@ -194,7 +203,7 @@ async function loadPasskeys() {
                 const r = await call("me/passkeys/" + k.id, "DELETE");
                 if (r.must_change_pw) { location.replace("account.html#password"); location.reload(); return; }
                 await loadPasskeys();
-              } catch (e) { say("#pkMsg", e.message, true); return; }
+              } catch (e) { e.status === 404 ? pkGone(at, e.message) : say("#pkMsg", e.message, true); return; }
               pkFocus(at); }})));
     }))) : emptyState("No passkeys yet: each one you add is listed here, with when it was last used.", null, {cls: ""}));   // (#494)
   if (last) $("#pkList").append(el("p", {class: "hint", text: "This server requires two-factor sign-in, so your only passkey can't be removed until you add another or turn on the authenticator app."}));
@@ -202,7 +211,7 @@ async function loadPasskeys() {
   const pw = el("input", {type: "password", autocomplete: "current-password", placeholder: "Your password", "aria-label": "Your password", required: true});
   const nm = el("input", {value: guessName(), maxlength: 60, placeholder: "Name, e.g. My phone", "aria-label": "Passkey name"});
   $("#pkBody").replaceChildren(el("form", {class: "row", onsubmit: async ev => { ev.preventDefault();
-    say("#pkMsg", ""); pwSent(ev.target);
+    pkSay(null); pwSent(ev.target);   // a row's last reply gone too (#524: two at once)
     try {
       const o = await call("me/passkeys/options", "POST", {password: pw.value});
       let credential;
@@ -230,6 +239,12 @@ function pkSay(id, text, bad = false, focus = false) {
 /* its button gone with the passkey removed (#502), as Sign out's (sessFocus): focus on the next passkey's Remove, else
    the one before's, else (none left, or the last can't be removed) on the card's heading */
 const pkFocus = at => focusNear([...$("#pkList").querySelectorAll("tbody tr")], at, "td.acts button:last-child", $("#passkeys h2"));
+/* removed elsewhere (#524: its row stayed, "No such passkey." under the Add form, out of sight): the list drawn again,
+   what the server said where it was (util.js goneSay), focus as after a Remove */
+async function pkGone(at, text) {
+  await loadPasskeys();
+  goneSay([...$("#pkList").querySelectorAll("tbody tr")], at, text, "td.acts button:last-child", $("#passkeys h2"), $("#pkList"));
+}
 
 /* ---------------------------------------------------------------- the sidebar and the address */
 /* The sidebar every account page has (sidebar.js, #266): one group shown at a time, the address following it

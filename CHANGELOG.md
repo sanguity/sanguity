@@ -2085,6 +2085,25 @@ Everything on `main` so far; it becomes the first tagged release.
   review's results possibly the same as another source's gave their times in the browser's format and zone, which
   could split "8:31 / AM"; they're in the person's date format and zone, the time kept whole. A toast whose Undo went
   with an Undo elsewhere stayed until dismissed; it now leaves after its 10 seconds.
+- **Account and Admin: Remove names a renamed passkey, rows removed elsewhere drawn away, the walk-through's result in
+  sight, Enter in two name boxes, activity's addresses whole, and one sweep of the palette's words** (#524): after a
+  Rename, Remove asked about the passkey's old name. A passkey, a device or a source removed in another tab or by
+  another admin stayed listed, "No such …" said out of sight (above the page's top, under the Add form, under a row
+  that was gone, with the form still on it); the list is drawn again without it and the reason said where it was, in
+  sight, and a source open in Change goes back to Add a source. At 375 px the walk-through's test result was under the
+  phone's tabs; it's brought into view. Enter in a passkey's name renames it and in Make owner's "Another account" makes
+  them owner. Activity logs split "127.0.0.1" at 768 and 900 px; an address breaks only where it doesn't fit, an IPv6 one
+  after a colon. Adding a passkey clears a row's earlier message (two were shown at once), and Rename and Remove sit
+  centred in their row. The
+  command palette finds each button's and menu item's label on Sources, Sharing, Settings, Account and Admin on its own
+  page, for an admin, an owner, an editor and a viewer, with the little words of a label ("this", "all") left out and,
+  between equal matches, one with the words typed whole, then one on the page you're on, first. A page's name narrows
+  its titles down but finds nothing on its own ("remove account" found Passkeys, "new account" Password, for someone
+  with no Admin), "add person" finds Sharing's Who has access, not New profile, and it finds what was missing: "delete
+  passkey", "disable" and "reset 2fa", "lost phone", "leave profile", "audit", "failed sign-ins", "qr", and an owner's
+  "make owner", "transfer ownership", "give access", "share with" and "stop sharing". Each account's first sign-in no
+  longer logs "changed their own setting “Time zone”" and "“Date format”": the browser's own are stored only if none is
+  yet, and not logged; a change the person makes still is.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

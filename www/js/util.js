@@ -192,6 +192,18 @@ function focusNear(rows, i, sel, fallback) {
   to.focus({preventScroll: true});
   to.scrollIntoView({block: "nearest"});
 }
+/* a row removed elsewhere (#524: another tab, another device or another admin; its row stayed, what the server said
+   out of sight): once the list is drawn again without it (rows, as now), that said where it was, a line across a
+   table (tr.row-msg) or before the next row, else in box once none is left; focus as focusNear puts it, both in view.
+   The list's next drawing, or its next reply (a .row-msg's), takes it away */
+function goneSay(rows, at, text, sel, fallback, box) {
+  const m = el("p", {class: "msg bad"}), near = rows[at] || rows[at - 1];
+  const line = near?.matches("tr") ? el("tr", {class: "row-msg"}, el("td", {colspan: near.cells.length}, m)) : (m.classList.add("row-msg"), m);
+  rows[at] ? rows[at].before(line) : near ? near.after(line) : box.prepend(line);
+  sayIn(m, text, true);
+  focusNear(rows, at, sel, fallback);
+  line.scrollIntoView({block: "nearest"});
+}
 /* An empty state (#199): one sentence saying what would appear here, and the one next step, a link ({href, text}) or
    a button ({onclick, text}); none (null) for someone who can't take it. tag: "div" for a whole card's place, "li"
    inside a list. The records tabs, the Sources and Sharing lists and the journal use it. */
