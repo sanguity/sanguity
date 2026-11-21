@@ -3,7 +3,7 @@
    it: only owners turn it on or off, or delete what's kept); viewers don't see it at all, and aren't told whether it's
    on. The card says plainly what's kept, who sees it, where it never goes, and what deleting reaches and what it
    can't. The Sources page signs in and chooses the profile (sources-page.js). */
-"use strict";   // $, el, api, ask, sayIn, aboutWords come from util.js
+"use strict";   // $, el, api, ask, sayIn, aboutWords, dangerZone come from util.js
 (() => {
   async function call(path, method = "GET", body) {
     const r = await api(path, {method, body: body === undefined ? undefined : JSON.stringify(body)});
@@ -28,17 +28,46 @@
     catch (e) { box.replaceChildren(el("h2", {text: "Cycle tracking"}), el("p", {class: "msg bad", role: "alert", text: e.message})); box.hidden = false; }
   }
   /* what deleting reaches, and what it can't (said before turning it on, and while it's on), behind a disclosure named
-     for it (#494): the card's help is a line */
-  const reach = () => el("details", {class: "more cy-reach"},
-    el("summary", {text: "What deleting reaches"}),
-    el("ul", {class: "cy-list"},
+     for it (#494): the card's help is a line; in full in the danger zone, where it's deleted (#495) */
+  const reach = () => el("details", {class: "more cy-reach"}, el("summary", {text: "What deleting reaches"}), reachList());
+  const reachList = () => el("ul", {class: "cy-list"},
       el("li", {text: "Deleted: what the watch receiver keeps (its database, every upload it archived, rewritten without them, and its summary for this page). Sanguity's own database never holds the records."}),
       el("li", {text: "Not reached: backups of the server or of the receiver's folder made before you delete. A backup can't be rewritten: it keeps what it had until it's deleted itself."}),
       el("li", {text: "Not reached: exports and visit summaries already downloaded with them ticked in, and an Apple Health export you uploaded (it's kept as uploaded and may hold cycle records Sanguity doesn't read; undo that import under Import history to delete it)."}),
-      el("li", {text: "Not reached: your phone. Health Connect or Apple Health, and the app that sends them, keep their own."})));
+      el("li", {text: "Not reached: your phone. Health Connect or Apple Health, and the app that sends them, keep their own."}));
+  /* deleting what's kept, or turning it off (which deletes it too): neither can be undone, so they're in the danger zone
+     (util.js dangerZone, #495), as deleting a profile or removing an account is: each button opens it saying what goes
+     and what deleting reaches, and goes ahead once the profile's name is typed exactly */
+  function cycleZone(name, msg) {
+    let off = false;
+    const z = dangerZone({title: "Delete cycle data", hint: "What's kept for this profile goes for good, the receiver's copies too.", action: "Delete all",
+      says: () => [off ? "Turning it off deletes everything kept for this profile, and from then on cycle records are left out of every upload again."
+        : "Everything kept for this profile is deleted: the receiver's database, every upload it archived, and what imported Apple Health exports brought. " +
+          "Cycle tracking stays on, so new records from the phone are kept again.",   // #223
+        el("p", {}, el("b", {text: "What deleting reaches"})), reachList()],
+      run: async typed => {
+        if (typed.trim() !== name) throw new Error(`Type ${name} exactly.`);
+        const st = await call(off ? `profiles/${PID}/cycle` : `profiles/${PID}/cycle/delete`, off ? "PUT" : "POST", off ? {on: false} : {});
+        draw(st);
+        const now = $("#cycleState"); now.tabIndex = -1; now.focus();   // (the card drawn again: focus on what it says now)
+        sayIn($("#cycleMsg"), off ? "Cycle tracking is off. What was kept is being deleted." : "Deleting what was kept.");
+      },
+      pick: el("div", {class: "row"})});
+    const body = z.node.querySelector(".dz-body"), go = body.querySelector(".btn.danger");
+    const opener = (id, text, isOff, action) => el("button", {class: "btn", type: "button", id, text, "aria-expanded": "false", "aria-controls": body.id, onclick: ev => {
+      const again = !body.hidden && off === isOff;
+      for (const b of z.node.querySelectorAll("[aria-controls]")) b.setAttribute("aria-expanded", "false");
+      if (again) { z.hide(); return; }
+      off = isOff; go.textContent = action;
+      z.show(name); ev.currentTarget.setAttribute("aria-expanded", "true");
+    }});
+    z.node.querySelector(".row").append(opener("cycleDelete", "Delete all cycle data…", false, "Delete all cycle data"), opener("cycleOff", "Turn off…", true, "Turn off and delete"));
+    return z.node;
+  }
 
   function draw(st) {
     const box = $("#cycle"), msg = el("span", {class: "msg", id: "cycleMsg", role: "status"}), owner = st.can_change;
+    let zone = null;
     const parts = [el("h2", {text: "Cycle tracking"})];
     const send = async (path, method, body, btn) => {
       btn.disabled = true;
@@ -68,28 +97,15 @@
         el("ul", {class: "cy-list"},
           el("li", {text: "Android: in Health Connect, let Life Dashboard Companion read cycle tracking (menstruation, ovulation tests, cervical mucus, spotting). It sends them with the rest."}),
           el("li", {text: "iPhone: in Health Auto Export, add a REST API automation like the others, with Cycle Tracking's menstrual flow, ovulation test result, cervical mucus quality and spotting (intermenstrual bleeding), and no time grouping."}),
-          el("li", {id: "cycleExport", text: "Or upload the Health app's export (Export All Health Data) under Upload files: its cycle records come in while this is on, and are left out while it's off."})),   // #223
-        reach());
-      if (owner) {
-        const del = el("button", {class: "btn", type: "button", id: "cycleDelete", text: "Delete all cycle data…", onclick: async () => {
-          if (!await ask({title: "Delete all cycle data?", action: "Delete all", danger: true, message: [
-            "Everything kept for this profile is deleted: the receiver's database, every upload it archived, and what imported Apple Health exports brought. Cycle tracking stays on, so new records from the phone are kept again.",   // #223
-            "Backups made before now, downloaded exports and summaries, uploaded Apple Health exports and your phone keep their own copies: deleting can't reach them."]})) return;
-          send(`profiles/${PID}/cycle/delete`, "POST", {}, del);
-        }});
-        const off = el("button", {class: "btn", type: "button", id: "cycleOff", text: "Turn off…", onclick: async () => {
-          if (!await ask({title: "Turn off cycle tracking?", action: "Turn off and delete", danger: true, message: [
-            "Turning it off deletes everything kept for this profile, and from then on cycle records are left out of every upload again.",
-            "Backups made before now, downloaded exports and summaries, uploaded Apple Health exports and your phone keep their own copies: deleting can't reach them."]})) return;
-          send(`profiles/${PID}/cycle`, "PUT", {on: false}, off);
-        }});
-        parts.push(el("div", {class: "row"}, del, off, msg));
-      } else parts.push(el("p", {class: "hint", text: "Only the profile's owners can turn it off or delete what's kept."}));
+          el("li", {id: "cycleExport", text: "Or upload the Health app's export (Export All Health Data) under Upload files: its cycle records come in while this is on, and are left out while it's off."})));   // #223
+      if (owner) { parts.push(el("div", {class: "row"}, msg)); zone = cycleZone(ME.profiles.find(x => x.id === PID)?.name || "", msg); }
+      else parts.push(reach(), el("p", {class: "hint", text: "Only the profile's owners can turn it off or delete what's kept."}));
     }
     if (st.deletion) parts.push(el("p", {class: "hint", id: "cycleDeleted", text: st.deletion.done
       ? `Last deleted ${fmtDT(Date.parse(st.deletion.done))}, from the receiver's database and its archive of uploads (asked ${day(st.deletion.asked)}).`
       : `Deletion asked ${fmtDT(st.deletion.asked * 1000)}: the receiver does it within a minute while it's running, or as soon as it next starts. Until then nothing is shown.`}));
     if (!st.on) parts.push(reach());
+    if (zone) parts.push(zone);   // last, apart from the rest (#495)
     box.replaceChildren(...parts);
     box.hidden = false;
   }

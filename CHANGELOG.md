@@ -1851,6 +1851,16 @@ Everything on `main` so far; it becomes the first tagged release.
   steps, Cycle tracking's "What deleting reaches", Backups' "How many to keep" and each vendor's notes in Admin's
   walk-through went behind a disclosure or an ⓘ. Admin's Create account is a setting row, as Share with someone is;
   its walk-through uses Phone setup's step cards.
+- **One Copy and one QR code, the palette finding what Redesign 6 added, and cycle data's deletion confirmed as other
+  deletions are** (#495): every Copy (Phone setup, a new share link, the calendar feed, Admin's walk-through and its
+  return address, Find your provider, two-factor's key) is one control: named for what it copies, "Copied" on itself
+  and said, back to "Copy", and selecting the value where the browser keeps the clipboard from the page (Admin's return
+  address copied silently, a share link's said "Copied" for good). Every QR code is our own encoder's, behind a "QR
+  code" button where it's a choice: a new share link's too, and the calendar feed's address has one now. Two-factor
+  sign-in's is drawn in the page from its otpauth address, so the server no longer draws one and segno is no longer a
+  dependency. The command palette finds Phone and watch for "iphone", "apple health" and "health auto export", and
+  Accounts for removing, deleting or disabling an account and for requiring two-factor sign-in. Deleting cycle data
+  and turning cycle tracking off are in a danger zone that asks for the profile's name, as deleting a profile does.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

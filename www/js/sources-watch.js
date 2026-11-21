@@ -5,7 +5,7 @@
    that only its last characters. Above the steps, a live check: "Waiting for the first upload…", asking the server
    every few seconds while this section is in sight, turns to "Received just now" when the phone's upload arrives.
    The Sources page signs in and chooses the profile (sources-page.js). */
-"use strict";   // $, el, api, ask, sayIn, announce, icon, aboutWords come from util.js; qrSvg from qr.js; fmtWhen, fmtD from dates.js
+"use strict";   // $, el, api, ask, sayIn, announce, icon, aboutWords, copyBtn come from util.js; qrShow from qr.js; fmtWhen, fmtD from dates.js
 (() => {
   async function call(path, method = "GET", body) {
     const r = await api(path, {method, body: body === undefined ? undefined : JSON.stringify(body)});
@@ -67,20 +67,12 @@
   document.addEventListener("sources:group", e => { if (e.detail === "phone") poll(true); });
 
   /* ---- a value to give the phone app: its name, the value, and for what (the upload address...) Copy and its QR code
-     behind a button, each named for it */
-  let qrN = 0;
+     behind a button, each named for it: the app's one Copy (util.js copyBtn) and one QR code (qr.js qrShow, #495) */
   function value(name, text, {what, copy = !!what, qr = false, cls = "w-addr", id} = {}) {
     const code = el("code", {class: cls, id, text});
-    const copied = el("button", {class: "btn small", type: "button", text: "Copy", "aria-label": `Copy ${what}`, onclick: async () => {
-      try { await navigator.clipboard.writeText(text); copied.textContent = "Copied"; announce("Copied."); setTimeout(() => { copied.textContent = "Copy"; }, 2000); }
-      catch (e) { getSelection().selectAllChildren(code); announce("Select it and copy it: it's selected."); }
-    }});
-    const fig = qr ? el("figure", {class: "qr-fig", id: `watchQr${++qrN}`, hidden: true}, qrSvg(text, {label: `${what[0].toUpperCase() + what.slice(1)}, as a QR code`}),
-      el("figcaption", {text: "Scan it with the phone's camera to copy it there."})) : null;
-    const show = fig ? el("button", {class: "btn small", type: "button", text: "QR code", "aria-expanded": false, "aria-controls": fig.id,
-      "aria-label": `QR code of ${what}`, onclick: () => { fig.hidden = !fig.hidden; show.setAttribute("aria-expanded", !fig.hidden); }}) : null;
+    const q = qr ? qrShow(text, {what, caption: "Scan it with the phone's camera to copy it there."}) : null;
     return el("div", {class: "copy-val"}, el("span", {class: "copy-val-name", text: name}),
-      el("div", {class: "copy-val-row"}, code, copy ? copied : null, show), fig);
+      el("div", {class: "copy-val-row"}, code, copy ? copyBtn(text, {what, sel: code}) : null, q?.btn), q?.fig);
   }
   const b = t => el("b", {text: t});
   const para = (...c) => el("p", {}, ...c);

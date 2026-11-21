@@ -2226,6 +2226,19 @@ def main():
         # #284: the new link as a QR code under it (qr.js), read back to the address by tests/test_qr.py's reader, named
         # for a screen reader, dark on white in both themes
         from tests.test_qr import path_modules, read_qr
+        # #495: behind its "QR code" button beside Copy, as Phone setup's are (it was always shown); Copy the app's one
+        # (it said "Copied" for good, unannounced), named for the link
+        sl495 = strict.evaluate("""() => { const q = document.querySelector('.share-made button[aria-label="QR code of the share link"]'), c = document.querySelector('.share-made .copy-btn');
+            const f = q && document.getElementById(q.getAttribute('aria-controls')), r = [f && f.hidden, q && q.getAttribute('aria-expanded'), c && c.getAttribute('aria-label')];
+            q?.click(); return [...r, f && !f.hidden, q && q.getAttribute('aria-expanded')]; }""")
+        strict.click(".share-made .copy-btn")
+        strict.wait_for_timeout(200)
+        sl495.append([strict.inner_text(".share-made .copy-btn"), strict.evaluate("document.getElementById('sgStatus').textContent")])
+        strict.wait_for_timeout(2100)
+        sl495.append(strict.inner_text(".share-made .copy-btn"))
+        check("share links: the new link's QR code is behind its button beside Copy, the one Copy, named for the link, said, and back to Copy after (#495)",
+              sl495[:5] == [True, "false", "Copy the share link", True, "true"] and sl495[5] in (["Copied", "Copied."], ["Selected", "Selected: press Ctrl+C or ⌘C to copy it."])
+              and sl495[6] == "Copy", sl495)
         qr284 = strict.evaluate("""() => { const s = document.querySelector('.share-made figure.qr-fig > svg.qr'); if (!s) return null;
             const ink = t => { document.documentElement.dataset.theme = t; return [getComputedStyle(s).backgroundColor, getComputedStyle(s.querySelector('path')).fill]; };
             const was = document.documentElement.dataset.theme, inks = [ink('light'), ink('dark')];
@@ -5099,13 +5112,29 @@ def main():
                   js("!document.querySelector('#sections input[value=cycle]').checked && [...document.querySelectorAll('#sections input')].filter(i => i.value !== 'cycle' && !OPTS.sections.find(x => x.id === i.value).off).every(i => i.checked)"))   # #225: measures unticked too
             page.goto(base + "/sources.html?profile=1#phone")
             page.wait_for_selector("#cycleDelete", timeout=10000)
+            # #495: deleting it can't be undone, so it's in the danger zone, as deleting a profile is: it says what goes and
+            # what deleting reaches, and its red button works only once the profile's name is typed exactly
             page.click("#cycleDelete")
-            asked = answer_ask(page, yes=True)
+            settle(200)
+            zone495 = js("""(() => { const z = document.querySelector('#cycle .danger-zone'), go = z.querySelector('.dz-body .btn.danger'), t = document.activeElement;
+                return [z.querySelector('h3').textContent, document.getElementById('cycleDelete').getAttribute('aria-expanded'), t.labels?.[0]?.textContent,
+                  go.textContent, go.disabled, z.querySelector('.dz-says').textContent, z === z.parentElement.lastElementChild]; })()""")
+            cy_name = js("fetch('api/me').then(r => r.json()).then(m => m.profiles.find(p => p.id === 1).name)")
+            cy_axe += axe_check(page, "Sources cycle card, its danger zone open, light 1400")[0]
+            page.keyboard.type(cy_name[:-1])
+            short495 = js("document.querySelector('#cycle .dz-body .btn.danger').disabled")
+            page.keyboard.type(cy_name[-1])
+            check("…Delete all cycle data opens the danger zone (#495), last in the card: what goes and what deleting reaches, and the "
+                  "red button works only once the profile's name is typed",
+                  zone495[:5] == ["Delete cycle data", "true", f"Type {cy_name} to confirm", "Delete all cycle data", True]
+                  and "Cycle tracking stays on" in zone495[5] and "Not reached: backups" in zone495[5] and zone495[6] and short495
+                  and not js("document.querySelector('#cycle .dz-body .btn.danger').disabled"), [zone495, cy_name, short495])
+            page.click("#cycle .dz-body .btn.danger")
             page.wait_for_selector("#cycleDeleted", timeout=10000)
-            check("…Delete all cycle data asks, saying what it can't reach; then nothing is shown until the receiver has done it",
-                  asked[0] == "Delete all cycle data?" and "can't reach them" in asked[1] and "Deleting what was kept" in page.inner_text("#cycleState")
+            check("…then nothing is shown until the receiver has done it, focus on what the card says now",
+                  "Deleting what was kept" in page.inner_text("#cycleState") and js("document.activeElement.id") == "cycleState"
                   and js("fetch('api/profiles/1/cycle').then(r => r.json()).then(c => c.spans.length + c.marks.length)") == 0
-                  and keys_doc().get("cycle_purge", {}).get(""), [asked, page.inner_text("#cycleState")])
+                  and keys_doc().get("cycle_purge", {}).get(""), page.inner_text("#cycleState"))
             cycle_receiver_sweep()   # the receiver's worker, between uploads
             rx_store = CYCLE_RX["store"]
             page.reload()
@@ -5114,9 +5143,13 @@ def main():
                   rx_store.db.execute("SELECT COUNT(*) FROM cycle").fetchone()[0] == 0 and page.inner_text("#cycleDeleted").startswith("Last deleted")
                   and page.inner_text("#cycleState").endswith("Nothing received yet."), page.inner_text("#cycle")[:300])
             page.click("#cycleOff")
-            asked = answer_ask(page, yes=True)
+            settle(200)
+            asked = js("""(z => [z.querySelector('.dz-says').textContent, z.querySelector('.dz-body .btn.danger').textContent])(document.querySelector('#cycle .danger-zone'))""")
+            page.keyboard.type(cy_name)
+            page.click("#cycle .dz-body .btn.danger")
             page.wait_for_function("document.getElementById('cycleState').textContent.startsWith('Off.')", timeout=10000)
-            check("…turning it off asks, deletes too and tells the receiver", asked[1].startswith("Turning it off deletes everything kept") and keys_doc().get("cycle") == [],
+            check("…turning it off is in the danger zone too, its name typed (#495), and deletes too and tells the receiver",
+                  asked[0].startswith("Turning it off deletes everything kept") and asked[1] == "Turn off and delete" and keys_doc().get("cycle") == [],
                   [asked, keys_doc().get("cycle")])
             cycle_receiver_sweep()
             check("…the cycle pages fit 375 px and the lane is 3:1 against the page, in light and dark", not cy_bad, cy_bad[:6])
@@ -10969,6 +11002,19 @@ def main():
                   re.match(re.escape(base) + r"/api/profiles/1/calendar\.ics\?token=[\w-]{40,}$", feed_url) is not None
                   and all(w in steps for w in ("iPhone", "Mac", "Google Calendar", "Outlook")) and page.locator("#calCopy").is_visible(), feed_url)
             check("…and warns that a local plain-HTTP address won't reach a calendar elsewhere", "plain HTTP" in page.inner_text("#calReach"))
+            # #495: the app's one Copy and one QR code: Copy named for the address, said and back to Copy; the QR code behind
+            # its button (it's an address for a phone's calendar), reading back to the address; both gone with Done
+            from tests.test_qr import path_modules, read_qr
+            page.click("#calCopy")
+            page.wait_for_function("['Copied', 'Selected'].includes(document.getElementById('calCopy').textContent) && document.getElementById('sgStatus').textContent !== ''", timeout=5000)
+            cal495 = js("""(() => { const c = document.getElementById('calCopy'), q = document.querySelector('#calSetup button[aria-label="QR code of the feed\\'s address"]');
+                const f = q && document.getElementById(q.getAttribute('aria-controls')), was = f && f.hidden; q?.click();
+                const s = f?.querySelector('svg.qr');
+                return [c.matches('.copy-btn'), c.getAttribute('aria-label'), document.getElementById('sgStatus').textContent, was, q?.getAttribute('aria-expanded'),
+                  s && s.querySelector('path').getAttribute('d'), s && s.viewBox.baseVal.width - 8]; })()""")
+            check("…its address has the one Copy, said, and its QR code behind a button, reading back to the address (#495)",
+                  cal495[:2] == [True, "Copy the feed's address"] and cal495[2].endswith(("Copied.", "Selected: press Ctrl+C or ⌘C to copy it.")) and cal495[3:5] == [True, "true"]
+                  and cal495[5] and read_qr(path_modules(cal495[5], cal495[6])).decode() == feed_url, cal495[:5])
             with urllib.request.urlopen(feed_url) as resp:
                 ics = resp.read().decode("utf-8")
                 cache = resp.headers.get("Cache-Control")
@@ -13197,6 +13243,17 @@ def main():
             page.wait_for_function("document.querySelector('#acctNav [aria-current=page]')?.dataset.group === 'security'", timeout=10000)
             check("…“password” finds Account's Password first (Sign-in and security), and Enter opens that group there, at it",
                   pw[:1] == [["Pages and settings", "Password"]] and js("document.getElementById('password').checkVisibility()"), pw[:3])
+            # #495: the palette finds what Redesign 6 added: an iPhone's way in (Phone and watch), and what's done to an
+            # account on Admin (it found nothing for these)
+            found495 = {}
+            for q in ("iphone", "apple health", "health auto export", "remove account", "delete account", "disable account", "require two-factor"):
+                pal(q, "Control+k" if not found495 else None)
+                found495[q] = [t for g, t in js(pal_found) if g == "Pages and settings"][:3]
+            page.keyboard.press("Escape")
+            check("…(#495) it finds Phone and watch for “iphone”, “apple health” and “health auto export”, and Admin's Accounts for removing, "
+                  "deleting or disabling an account and for requiring two-factor sign-in",
+                  all("Phone and watch" in found495[q] for q in ("iphone", "apple health", "health auto export"))
+                  and all("Accounts" in found495[q] for q in ("remove account", "delete account", "disable account", "require two-factor")), found495)
             page.goto(base + "/settings.html?profile=1#dashboard")
             page.wait_for_selector("#sections > section", state="attached", timeout=10000)
             settle(300)
@@ -14265,7 +14322,7 @@ def main():
             # each value's QR code, behind its button, is the value: read back by tests/test_qr.py's reader
             from tests.test_qr import path_modules, read_qr
             qrs284 = {}
-            for btn284 in page.locator("#watch button[aria-controls^=watchQr]").all():
+            for btn284 in page.locator("#watch button[aria-controls^=qrFig]").all():
                 btn284.click()
                 qrs284[btn284.get_attribute("aria-label")] = js("""id => { const f = document.getElementById(id), s = f.querySelector('svg.qr');
                     return [f.hidden, f.closest('.copy-val').querySelector('code').textContent, s.viewBox.baseVal.width - 8, s.querySelector('path').getAttribute('d'),
@@ -14276,7 +14333,7 @@ def main():
                               "QR code of the upload address": [False, True, "The upload address, as a QR code"]}
                   and js("document.querySelectorAll('#watch button[aria-label=\"Copy the upload address\"]').length") == 1, read284)
             page.click("#watch .w-os [data-os=iphone]")
-            for btn284 in page.locator("#watch button[aria-controls^=watchQr]").all():
+            for btn284 in page.locator("#watch button[aria-controls^=qrFig]").all():
                 btn284.click()
             hae_txt = page.inner_text("#watchSteps")
             check("watch card: Health Auto Export's steps (address, header, data, how often, workouts), the header's value with Copy and its QR code",
@@ -15226,9 +15283,18 @@ def main():
                   "its notes behind “Notes on Epic (MyChart)”, its hint one line", walk494 == [True, "counter(step)", "solid", "none", True, "Notes on Epic (MyChart)", 0, 1], walk494)
             ret = page.locator("#walk .copy-val", has_text="Return address")
             ret.get_by_role("button", name="Copy the return address").click()
-            page.wait_for_function("document.querySelector('#walk .copy-val .msg').textContent !== ''", timeout=5000)
-            said = ret.locator(".msg").inner_text()
-            check("…Copy copies it, or selects it where the browser keeps the clipboard from the page", said in ("Copied.", "Selected: press Ctrl+C or ⌘C."), said)
+            page.wait_for_function("['Copied', 'Selected'].includes(document.querySelector('#walk .copy-val .copy-btn').textContent) && document.getElementById('sgStatus').textContent !== ''", timeout=5000)
+            said = [ret.locator(".copy-btn").inner_text(), js("document.getElementById('sgStatus').textContent")]
+            check("…Copy copies it, or selects it where the browser keeps the clipboard from the page, saying which on itself and aloud (#495)",
+                  said in (["Copied", "Copied."], ["Selected", "Selected: press Ctrl+C or ⌘C to copy it."]), said)
+            # #495: every Copy on Admin is the app's one (util.js copyBtn), the return address's at the top too (it copied
+            # silently), named for what it copies; and it's "Copy" again after a moment
+            page.wait_for_function("document.querySelector('#walk .copy-val .copy-btn').textContent === 'Copy'", timeout=5000)
+            copies495 = js("""[...document.querySelectorAll('main button')].filter(b => b.checkVisibility() && /^(Copy|Copied|Selected)$/.test(b.textContent.trim()))
+                .map(b => [b.matches('.copy-btn'), b.getAttribute('aria-label')])""")
+            check("…every Copy on Admin's walk-through is the one control, named for what it copies, back to “Copy” after (#495)",
+                  len(copies495) >= 2 and all(c[0] and c[1].startswith("Copy the ") for c in copies495)
+                  and ["true", "Copy the return address"] in [[str(c[0]).lower(), c[1]] for c in copies495], copies495)
             page.fill("#fScopes", "launch/patient patient/Patient.read patient/Observation.read")
             check("…the types to pick follow the scopes typed in", js("document.querySelector('#walk [data-paste=types]').textContent") == "Patient, Observation",
                   js("document.querySelector('#walk [data-paste=types]').textContent"))
@@ -16048,7 +16114,19 @@ def main():
             page.locator("#twofa").get_by_role("button", name="Turn on").click()
             page.wait_for_selector("#twofa .tf-key")
             key = js("document.querySelector('#twofa .tf-key').textContent").replace(" ", "")
-            check("2FA setup shows a QR code", js("document.querySelector('#twofa .tf-setup img').naturalWidth > 100"))
+            # #495: its QR code is qr.js's, as every other is (the server drew a second, an <img>), shown, as it's the way
+            # in, and it reads back to the otpauth address; the key under it has the one Copy; and the row's name stays
+            # level with the code's top (#494: it sat at the code's foot)
+            from tests.test_qr import path_modules, read_qr
+            tf495 = js("""(() => { const s = document.querySelector('#twofa .tf-setup figure.qr-fig > svg.qr'), r = document.querySelector('#twofa .set-row');
+                return s && [s.getAttribute('aria-label'), s.viewBox.baseVal.width - 8, s.querySelector('path').getAttribute('d'), !!document.querySelector('#twofa img'),
+                  document.querySelector('#twofa .tf-setup .copy-btn')?.getAttribute('aria-label'),
+                  Math.round(r.querySelector('.set-row-name').getBoundingClientRect().top - s.closest('.set-row-ctl').firstElementChild.getBoundingClientRect().top)]; })()""")
+            tf_read = tf495 and read_qr(path_modules(tf495[2], tf495[1])).decode()
+            check("2FA setup shows qr.js's QR code, which reads back to the authenticator app's otpauth address with this key, the key with the one Copy, "
+                  "the row's name level with the code (#495, #494)",
+                  tf495 and tf495[0] == "The key for your authenticator app, as a QR code" and not tf495[3] and tf495[4] == "Copy the key"
+                  and abs(tf495[5]) <= 8 and tf_read.startswith("otpauth://totp/Sanguity:") and f"secret={key}" in tf_read, [tf495 and tf495[:2] + tf495[3:], tf_read])
             page.locator("#twofa input").fill(totp(key))
             page.locator("#twofa").get_by_role("button", name="Confirm").click()
             page.wait_for_selector("#twofa .tf-codes")

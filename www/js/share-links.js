@@ -12,12 +12,9 @@ function slRange(from, to) {
     : to ? `dated up to ${fmtD(dayTs(to))}` : "of any date";
 }
 
-/* the new link as a QR code (#284, qr.js), under it while it's shown: a phone's camera opens it, so the person it's for
-   can take it there and then, without it being sent. Nothing if it's too long for one. */
-function slQr(url) {
-  const svg = qrSvg(url, {label: "The share link, as a QR code"});
-  return svg ? el("figure", {class: "qr-fig share-qr"}, svg, el("figcaption", {text: "Or let them scan it: a phone's camera opens the link."})) : null;
-}
+/* the new link as a QR code (#284, qr.js qrShow), behind its button beside Copy (#495): a phone's camera opens it, so
+   the person it's for can take it there and then, without it being sent. Nothing if it's too long for one. */
+const slQr = url => qrShow(url, {what: "the share link", caption: "Or let them scan it: a phone's camera opens the link.", field: true});
 
 function shareLinksPanel(p, {open = false} = {}) {
   const box = el("div", {class: "share-links", hidden: true});
@@ -96,11 +93,10 @@ function shareLinksPanel(p, {open = false} = {}) {
         const j = await call(`profiles/${p.id}/links`, "POST", chosen());
         const url = new URL(j.path, location.href).href;
         const field = el("input", {value: url, readonly: true, "aria-label": "The share link", class: "share-url", onfocus: e => e.target.select()});
-        const copy = el("button", {class: "btn", type: "button", text: "Copy", onclick: async () => {
-          try { await navigator.clipboard.writeText(url); copy.textContent = "Copied"; } catch (e) { field.select(); } }});
+        const copy = copyBtn(url, {what: "the share link", sel: field}), qr = slQr(url);   // the app's one Copy and one QR code (#495)
         made.replaceChildren(el("div", {class: "share-made"}, el("p", {}, el("b", {text: "Copy the link now."}),
           " It's shown only this once: Sanguity keeps a fingerprint of it, not the link itself, so it can't show it again."),
-          el("div", {class: "row"}, field, copy), slQr(url)));
+          el("div", {class: "row"}, field, copy, qr?.btn), qr?.fig));
         f.remove(); await load();
       } catch (e) { fail(e); }
     }},

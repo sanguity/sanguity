@@ -862,9 +862,9 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .acct .activity{margin-top:var(--sp-2)}
 .acct .activity td.nowrap{white-space:nowrap}
 #acctLog{margin-top:var(--sp-3)}
-.acct .tf-setup{display:flex;gap:var(--sp-4);align-items:center;flex-wrap:wrap;margin:var(--sp-2) 0}
-.acct .tf-setup img{border-radius:var(--r-md);background:var(--paper)}
-.acct .tf-key{font-size:var(--fs-4);letter-spacing:.04em;user-select:all;word-break:break-all}
+.acct .tf-setup{display:flex;gap:var(--sp-2) var(--sp-4);align-items:flex-start;flex-wrap:wrap;margin:0 0 var(--sp-2)}   /* its QR code (qr.js, #495), the key beside it */
+.acct .tf-setup>.qr-fig{margin:0}
+.acct .tf-key{font-size:var(--fs-4);letter-spacing:.04em;word-break:break-all}
 .acct .tf-codes{columns:2;font:var(--fs-4)/1.7 var(--font-mono);background:var(--hover);padding:var(--sp-2) var(--sp-4);border-radius:var(--r-sm);user-select:all;max-width:340px}
 .acct #users label.check{margin:var(--sp-1) 0 var(--sp-2)}
 @media (max-width:640px){

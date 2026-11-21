@@ -16,28 +16,21 @@ const PASTE = {
   types: {label: "Types it reads", get: () => scopeTypes($("#fScopes").value).join(", ")},
   sandbox: {label: "Sandbox FHIR base", get: g => g.sandbox},
 };
-/* a value to paste, and Copy, which selects it instead where the browser keeps the clipboard from the page (plain HTTP) */
+/* a value to paste, and the app's one Copy (util.js copyBtn, #495: it selects the value instead where the browser keeps
+   the clipboard from the page, plain HTTP); its text as it is when pressed (the scopes follow what's typed) */
 function copyLine(key, g) {
   const p = PASTE[key], value = p.get(g);
   if (!value) return key === "return_address"
     ? el("p", {class: "msg bad", text: "No return address yet: see the warning at the top of this section."}) : null;
   const code = el("code", {"data-paste": key, text: value});
-  const done = el("span", {class: "msg", role: "status"});
-  const copy = el("button", {class: "btn small", type: "button", text: "Copy", "aria-label": "Copy the " + p.label.toLowerCase(), onclick: async () => {
-    try { await navigator.clipboard.writeText(code.textContent); done.textContent = "Copied."; }
-    catch (e) {
-      const r = document.createRange(); r.selectNodeContents(code);
-      const s = getSelection(); s.removeAllRanges(); s.addRange(r);
-      done.textContent = "Selected: press Ctrl+C or ⌘C.";
-    }
-    setTimeout(() => { done.textContent = ""; }, 2500);
-  }});
+  const done = el("span", {class: "msg"});
   const use = key === "sandbox" ? el("button", {class: "btn small", type: "button", text: "Use it", onclick: () => {
     $("#fIssuer").value = g.sandbox; if (!$("#fName").value) $("#fName").value = g.sandbox_name || "Sandbox";
     if ($("#fVendor").value === "insurer") { $("#fAuth").value = "confidential"; $("#fSecretWrap").hidden = false; }
-    done.textContent = "Filled in below.";
+    sayIn(done, "Filled in below.");
   }}) : null;
-  return el("div", {class: "copy-val"}, el("span", {class: "copy-val-name", text: p.label}), el("div", {class: "copy-val-row"}, code, copy, use, done));
+  return el("div", {class: "copy-val"}, el("span", {class: "copy-val-name", text: p.label}),
+    el("div", {class: "copy-val-row"}, code, copyBtn(() => code.textContent, {what: "the " + p.label.toLowerCase(), sel: code}), use, use ? done : null));
 }
 /* a step: a step card, as Phone setup's are (app.css .steps, #494), its heading an h4 under the form's h3 */
 function stepItem(title, ...body) {
@@ -169,7 +162,10 @@ function prefill() {
   $("#fName").value = p.get("name") || "";
 }
 
-$("#copyReturn").onclick = () => { try { navigator.clipboard.writeText(SETUP.return_address); } catch (e) {} };
+{   // the return address's Copy at the top, the app's one (#495: it copied silently, and a refusal went unhandled)
+  const b = copyBtn(() => SETUP.return_address, {what: "the return address", sel: $("#returnAddr")});
+  b.id = "copyReturn"; $("#copyReturn").replaceWith(b);
+}
 $("#fVendor").onchange = () => {
   const v = $("#fVendor").value, sc = $("#fScopes");
   // an untouched default follows the vendor: an insurer's API is claims, coverage and the patient (#92)

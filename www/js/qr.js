@@ -9,7 +9,9 @@
    qrCode(text, {mask}) -> {version, mask, size, modules: rows of 0 (light) and 1 (dark)}, or null when the text is too
                            long; text a string or a Uint8Array
    qrSvg(text, {label})  -> an <svg class="qr" role="img"> of it with its 4-module quiet zone (app.css .qr: dark on
-                           light in both themes, kept so in forced colours), or null when too long */
+                           light in both themes, kept so in forced colours), or null when too long
+   qrShow(text, {what, caption, shown}) -> {btn, fig}: the one way a page shows one (#495: share links, Phone setup,
+                           the calendar feed, two-factor sign-in), below */
 "use strict";
 const qrCode = (() => {
   // level M per version: the error correction codewords of each block, then [blocks, data codewords in each] per group
@@ -150,4 +152,19 @@ function qrSvg(text, {label = "QR code"} = {}) {
   const d = q.modules.flatMap((row, r) => [...row.join("").matchAll(/1+/g)].map(x => `M${x.index + 4} ${r + 4}h${x[0].length}v1h-${x[0].length}z`)).join("");
   return el("svg:svg", {class: "qr", viewBox: `0 0 ${q.size + 8} ${q.size + 8}`, role: "img", "aria-label": label, "shape-rendering": "crispEdges"},
     el("svg:path", {d, fill: "currentColor"}));
+}
+
+/* a QR code as the app shows one (#495), the same everywhere: its figure (app.css .qr-fig), the code and under it what
+   scanning it does (caption), behind a "QR code" button named for it ("QR code of the upload address", aria-expanded)
+   where it's a choice beside Copy (as tall as a field beside one, field: true, #352); shown, with no button, where
+   it's the way in (two-factor sign-in's). what: what it holds ("the upload address"). -> {btn (null when shown), fig},
+   or null when the text is too long for one */
+let qrShows = 0;
+function qrShow(text, {what, caption, shown = false, field = false}) {
+  const svg = qrSvg(text, {label: `${what[0].toUpperCase() + what.slice(1)}, as a QR code`});
+  if (!svg) return null;
+  const fig = el("figure", {class: "qr-fig", id: "qrFig" + (++qrShows), hidden: !shown || null}, svg, el("figcaption", {text: caption}));
+  const btn = shown ? null : el("button", {class: field ? "btn" : "btn small", type: "button", text: "QR code", "aria-expanded": "false", "aria-controls": fig.id,
+    "aria-label": `QR code of ${what}`, onclick: () => { fig.hidden = !fig.hidden; btn.setAttribute("aria-expanded", String(!fig.hidden)); }});
+  return {btn, fig};
 }

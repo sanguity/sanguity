@@ -729,7 +729,7 @@ class Api(unittest.TestCase):
         self.assertFalse(tess.get("/api/me/2fa").json()["on"])
         started = tess.post("/api/me/2fa/start", headers=H).json()
         secret = started["secret"]
-        self.assertTrue(started["uri"].startswith("otpauth://totp/Sanguity:tess?") and started["qr"].startswith("data:image/svg+xml;base64,"))
+        self.assertTrue(started["uri"].startswith("otpauth://totp/Sanguity:tess?") and "qr" not in started)   # the page draws it (qr.js, #495)
         self.assertEqual(tess.post("/api/me/2fa/confirm", json={"code": "000000"}, headers=H).status_code, 400)
         first_code = code(secret)   # kept: the same code must not work again
         r = tess.post("/api/me/2fa/confirm", json={"code": first_code}, headers=H)
