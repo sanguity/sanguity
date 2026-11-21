@@ -14020,6 +14020,20 @@ def main():
                   "apps for testing and removing a source",
                   all(found506[q][:1] == [t] for q, t in want506.items() if q not in ("activities", "entries"))
                   and all(t in found506[q] for q, t in want506.items()), found506)
+            # #510: and Share links, People's Who has access and Connected-source apps for what's done or typed there (it
+            # found nothing for these), each first
+            want510 = {"remove share link": "Share links", "delete share link": "Share links", "remove person": "Who has access",
+                       "remove member": "Who has access", "make editor": "Who has access", "change role": "Who has access",
+                       "client secret": "Connected-source apps", "client id": "Connected-source apps", "issuer": "Connected-source apps",
+                       "epic": "Connected-source apps"}
+            found510 = {}
+            for q in want510:
+                pal(q, "Control+k" if not found510 else None)
+                found510[q] = [t for g, t in js(pal_found) if g == "Pages and settings"][:3]
+            page.keyboard.press("Escape")
+            check("…(#510) Share links for removing or deleting a share link, Who has access (People) for removing a person or member, making "
+                  "an editor and changing a role, Connected-source apps for a client secret or id, an issuer and Epic, each the first page found",
+                  all(found510[q][:1] == [t] for q, t in want510.items()), found510)
             page.goto(base + "/settings.html?profile=1#dashboard")
             page.wait_for_selector("#sections > section", state="attached", timeout=10000)
             settle(300)
@@ -15766,6 +15780,26 @@ def main():
                   wait506 == [True, "Review done"], wait506)
             epic506.get_by_role("button", name="Review done").click()   # (as it was, for connecting it below)
             page.wait_for_function("SETUP.sources.find(s => s.name === 'Fake Epic sandbox').waiting === null && !document.getElementById('fWaiting').checked", timeout=10000)
+            # #510: the form's "Saved …" goes once it's on another source (Change on another row) or back to Add a source
+            # (the source in Change removed from its row): it stayed, beside an empty form whose Test said to save first.
+            # A spare source for it, removed
+            js("api('connect/sources', {method: 'POST', body: JSON.stringify({vendor: 'other', name: 'Spare 510', issuer: 'https://fhir.example.org/spare510', "
+               "client_id: 'spare', auth: 'public', scopes: 'launch/patient openid fhirUser patient/Observation.read'})}).then(r => r.status).then(() => loadSetup({walk: false}))")
+            page.wait_for_function("document.getElementById('sourceList').textContent.includes('Spare 510')", timeout=10000)
+            said510 = "[document.getElementById('formTitle').textContent, document.getElementById('fMsg').textContent]"
+            msg510 = [js(said510)]   # (Fake Epic sandbox's "Saved …", from above)
+            spare510 = page.locator("#sourceList .prof", has_text="Spare 510")
+            spare510.get_by_role("button", name="Change").click()
+            msg510.append(js(said510))
+            page.click("#fSave")
+            page.wait_for_function("document.getElementById('fMsg').textContent.startsWith('Saved Spare 510')", timeout=10000)
+            spare510.get_by_role("button", name="Remove").click()
+            answer_ask(page)
+            page.wait_for_function("!document.getElementById('sourceList').textContent.includes('Spare 510')", timeout=10000)
+            settle(300)
+            msg510.append(js(said510))
+            check("…(#510) Change on another row, and removing the source open in Change, leave no “Saved …” beside the form",
+                  msg510[0][1].startswith("Saved Fake Epic sandbox") and msg510[1:] == [["Change Spare 510", ""], ["Add a source", ""]], msg510)
             page.goto(base + "/connect.html")   # its old address: Sources → Portals and health plans (#166)
             page.wait_for_url(re.compile(r"/sources\.html(\?[^#]*)?#portals$"), timeout=10000)   # with or without the ?profile= nav.js adds
             page.wait_for_selector("#adminNote:not([hidden])", timeout=10000)
@@ -17703,7 +17737,7 @@ def main():
                 orow.get_by_role("textbox", name="Another account").fill(USER)
                 orow.get_by_role("button", name="Make owner").click()
                 answer_ask(page)   # (owning it yourself is asked)
-                page.wait_for_function(f"!document.querySelector('#ownerless').textContent.includes('Orphan 502 {n}')", timeout=10000)
+                page.wait_for_function(f"![...document.querySelectorAll('#ownerless .ownerless > .row')].some(r => r.textContent.includes('Orphan 502 {n}'))", timeout=10000)   # (#510: what it says is in the list now)
                 settle(200)
                 own502.append(js("(a => [a.textContent, a.closest('.row')?.querySelector('b').textContent])(document.activeElement)") + [js(IN_SIGHT) is not None])
             own502.append([js(f"api('profiles/{pid}', {{method: 'DELETE', body: JSON.stringify({{confirm_name: 'Orphan 502 {n}'}})}}).then(r => r.status)")
@@ -17734,6 +17768,44 @@ def main():
             page.wait_for_function("document.querySelector('#ownerless').textContent.includes(\"Alex's records\")", timeout=10000)
             check("…and the last one given an owner says so where the list was, with focus on it, in sight at 375×667 (#506: on the card's heading, "
                   "the message far under it)", last506 == ["nobody506 now owns Lone 506. Every profile has an owner now.", True, True, ""], last506)
+            # #510: a wrong username, then a middle profile's Make owner, at 375×667: each reply beside its row, in sight
+            # with the Make owner focus is on (they were under the accounts list, under the tab bar). The server's list
+            # answered here: three profiles, the first's owner refused, then the second given one
+            lone510 = [{"id": 99510 + i, "name": f"Lone 510 {n}", "members": [{"username": "nobody510", "role": "owner", "disabled": True}]}
+                       for i, n in enumerate(("A", "B", "C"))]
+            def ownerless510(route):
+                pid = route.request.url.rsplit("/", 2)[-2] if route.request.method == "POST" else ""
+                if pid == "99510": return route.fulfill(status=404, content_type="application/json", body='{"detail": "No active account with that username."}')
+                if pid: lone510.pop(1); return route.fulfill(status=200, content_type="application/json", body="{}")
+                route.fulfill(status=200, content_type="application/json", body=json.dumps(lone510))
+            page.route(re.compile(r"/api/ownerless(/\d+/owner)?$"), ownerless510)
+            page.set_viewport_size({"width": 375, "height": 667})
+            js("loadOwnerless()")
+            page.wait_for_function("document.querySelector('#ownerless').textContent.includes('Lone 510 C')", timeout=10000)
+            seen510 = """(() => { const seen = e => { const r = e.getBoundingClientRect(), at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+                return r.top >= 0 && r.bottom <= innerHeight && (at === e || e.contains(at)); }, a = document.activeElement, m = document.querySelector('#ownerless .row-msg');
+              return [a.textContent, a.closest('.row')?.querySelector('b').textContent, seen(a), m?.textContent, m && seen(m),
+                m?.previousElementSibling?.querySelector('b')?.textContent, m?.nextElementSibling?.querySelector('b')?.textContent || null,
+                document.getElementById('userMsg').textContent]; })()"""
+            own510 = []
+            before510 = len(problems)
+            for n, who in (("A", "nobody-here"), ("B", "noor510")):
+                orow = page.locator("#ownerless .ownerless > .row", has_text=f"Lone 510 {n}")
+                orow.get_by_role("textbox", name="Another account").fill(who)   # (no active member: the box is shown)
+                orow.get_by_role("button", name="Make owner").focus()
+                page.keyboard.press("Enter")
+                page.wait_for_function(f"document.querySelector('#ownerless .row-msg')?.textContent.includes('{'No active' if n == 'A' else 'now owns'}')", timeout=10000)
+                settle(300)
+                own510.append(js(seen510))
+            page.unroute(re.compile(r"/api/ownerless(/\d+/owner)?$"), ownerless510)
+            problems[before510:] = [x for x in problems[before510:] if "404" not in x]   # (the refusal asked for)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("loadOwnerless()")
+            page.wait_for_function("document.querySelector('#ownerless').textContent.includes(\"Alex's records\")", timeout=10000)
+            check("…(#510) a wrong Make owner username is said under its row, and a middle profile's reply where its row was, each in sight at "
+                  "375×667 with the Make owner focus is on (they were under the accounts list, under the tab bar)",
+                  own510 == [["Make owner", "Lone 510 A", True, "No active account with that username.", True, "Lone 510 A", "Lone 510 B", ""],
+                             ["Make owner", "Lone 510 C", True, "noor510 now owns Lone 510 B.", True, "Lone 510 A", "Lone 510 C", ""]], own510)
             # removing that account (#287): its row's "Remove account…" opens the danger zone for it, focus on the box for
             # its username, which has to be typed exactly before Remove works; then asked who owns Alex's records instead
             # (this admin)
@@ -17876,6 +17948,22 @@ def main():
             cl_tables, cl_bad = cell_labels(pk, "Account → Passkeys")
             check("…at 375 px with its name, added and last used under their columns' names, the buttons unlabelled (#320)",
                   not cl_bad and any(t[0].startswith("pkList") and t[1] and t[3] == 3 * t[2] for t in cl_tables), cl_bad[:6] or cl_tables)
+            # #510: at 320 px no word in the list broken across lines (Rename and Remove were 40 px wide, "Re/na/me"), and
+            # nothing past the card's content edge (the table ended 14 px past it); Rename and Remove on a line of their own
+            pk.set_viewport_size({"width": 320, "height": 800})
+            pk.wait_for_timeout(200)
+            pk320 = pk.evaluate("""() => { const card = document.getElementById('passkeys'), cs = getComputedStyle(card), list = document.getElementById('pkList');
+              const edge = card.getBoundingClientRect().right - parseFloat(cs.paddingRight) - parseFloat(cs.borderRightWidth);
+              const past = [...list.querySelectorAll('*')].filter(e => e.getBoundingClientRect().right > edge + 0.5).map(e => e.tagName + ' ' + (e.value || e.textContent).slice(0, 20));
+              const broken = [], walk = document.createTreeWalker(list, NodeFilter.SHOW_TEXT);
+              for (let n; (n = walk.nextNode());) for (const m of n.data.matchAll(/\\S+/g)) {
+                const r = document.createRange(); r.setStart(n, m.index); r.setEnd(n, m.index + m[0].length);
+                if (r.getClientRects().length > 1) broken.push(m[0]); }
+              const row = list.querySelector('tbody tr'), acts = row.querySelector('td.acts').getBoundingClientRect();
+              const above = [...row.cells].filter(c => !c.matches('.acts')).every(c => c.getBoundingClientRect().bottom <= acts.top + 0.5);
+              return [past, broken, list.querySelectorAll('td.acts button').length, above]; }""")
+            check("…and at 320 px, no word in it broken across lines and nothing past the card, Rename and Remove on a line of their own (#510: "
+                  "“Re/na/me”, the table 14 px past the card)", pk320 == [[], [], 2, True], pk320)
             pk.set_viewport_size({"width": 1400, "height": 900})
             menu_click(pk, "#logout")
             pk.wait_for_url("**/login.html", timeout=10000)

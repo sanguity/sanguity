@@ -51,9 +51,10 @@ const SG_PAGES = {
   sharing: {page: "sharing.html", title: "Sharing", icon: "share-2", profile: true, words: "share who sees", groups: [
     // no part labels: "Sharing" over all of them only said the page's title again (#402)
     {id: "people", title: "People", icon: "users", has: ["people"],
-     words: "share who has access invite account owner editor viewer role leave", finds: [["Who has access", "people", "members"]]},
+     words: "share who has access invite account owner editor viewer role leave",
+     finds: [["Who has access", "people", "members remove person make change role editor viewer"]]},   // (#510: what's done to one, on its own: in the group's, "remove account" and "make owner" found it before Admin's Accounts)
     {id: "links", title: "Share links", icon: "send", has: ["links"], needs: "owner", why: "Share links are made by a profile's owners.",
-     words: "share link doctor clinician provider send revoke expire"},
+     words: "share link doctor clinician provider send revoke expire remove delete"},   // (#510: revoking one)
     {id: "calendar", title: "Calendar feed", icon: "calendar", has: ["calendar"], words: "ics subscribe appointments calendar"},
     {id: "summary", title: "Visit summary", icon: "file-text", has: ["summaryIntro", "build", "preview", "sumTicked"],   // sumTicked: from Settings → Dashboard (#402)
      words: "doctor appointment print pdf questions", finds: [["Measures ticked at first", "sumTicked", "home readings watch"]]},
@@ -97,7 +98,7 @@ const SG_PAGES = {
     {id: "activity", title: "Install activity", icon: "logs", part: "People", has: ["installLog"], words: "log sign-ins"},
     {id: "backups", title: "Backups", icon: "archive", part: "Data safety", has: ["backups"], words: "backup restore"},   // #200
     {id: "apps", title: "Connected-source apps", icon: "app-window", part: "Connections", has: ["admin", "sec-sync"],
-     words: "set up a source client portal app test connection change remove waiting for review done", finds: [["Sync defaults", "sec-sync", "attachments"]]},   // (#506: a source's buttons)
+     words: "set up a source client portal app test connection change remove waiting for review done id secret issuer vendor epic mychart oracle cerner", finds: [["Sync defaults", "sec-sync", "attachments"]]},   // (#506: a source's buttons; #510: its form's)
     {id: "directory", title: "Provider directory", icon: "book-user", part: "Connections", has: ["directory"], words: "providers"},
     {id: "outside", title: "Outside connections", icon: "globe", part: "Connections", has: ["outside"], words: "network internet"},
     {id: "labs", title: "Lab name matches", icon: "arrow-right-left", part: "Lab matching", has: ["labmaps"], words: "aliases mapping"},
