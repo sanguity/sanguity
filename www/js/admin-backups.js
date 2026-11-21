@@ -159,13 +159,14 @@ const bkUndo = (part, from, to) => async () => {
   if (!st) return false;   // (asked, and the answer was no: the toast stays)
   sayIn($("#bkSchedMsg"), "Undone: " + bkSays(st));
 };
-/* how often: saved as it's picked */
+/* how often: saved as it's picked; focus back on it after the check's Confirm or Cancel (#536: it went with the box) */
 async function bkFreq(v) {
-  const from = BK.schedule;
+  const from = BK.schedule, back = () => [null, document.body].includes(document.activeElement) && $("input[name=bkSched]:checked").focus();
   let st;
   try { st = await bkPut({schedule: v, keep: BK.keep}); }
-  catch (e) { drawSchedule(BK); sayIn($("#bkSchedMsg"), `Not saved: ${e.message}`, true); return; }
+  catch (e) { drawSchedule(BK); sayIn($("#bkSchedMsg"), `Not saved: ${e.why || e.message}`, true); back(); return; }
   if (!st) { drawSchedule(BK); return; }   // (the answer was no: as it was)
+  back();
   const said = bkSays(st);
   sayIn($("#bkSchedMsg"), said, false, {say: false});
   toast(said, {action: "Undo", onAction: bkUndo("schedule", from, v)});
@@ -176,7 +177,7 @@ async function bkKeepSave(msg, had) {
   if (!Number.isInteger(keep) || keep < 1 || keep > BK.keep_max) { sayIn(msg, `${what}keep between 1 and ${BK.keep_max} backups.`, true); return; }
   let st;
   try { st = await bkPut({schedule: BK.schedule, keep}); }
-  catch (e) { sayIn(msg, what + e.message, true); return; }
+  catch (e) { sayIn(msg, what + (e.why || e.message), true); return; }
   if (!st) return;   // (the answer was no: it stays in the bar)
   bkTyped = null; drawSchedule(st);
   const said = `Saved: keeping the newest ${plural(st.keep, "backup")}.`;

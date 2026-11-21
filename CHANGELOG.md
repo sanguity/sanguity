@@ -2189,6 +2189,15 @@ Everything on `main` so far; it becomes the first tagged release.
   table's "CGM: n" and "Meter: n" and targets' "4 of 62 readings above it" have separators. At 127.0.0.1 the
   passkey-only step and Account's passkeys card named http://localhost even when the account's passkeys were made at
   another name; they name where they were made, and sign-in's addresses are links.
+- **Account and Admin: Lab name matches in its card at tablet widths, Backups' check keeping focus, and Turn off
+  two-factor for a passkey-only account** (#536): from 762 to 804 px Lab name matches with a match's Change open ran
+  past its card, its Change and Remove outside it and the page scrolling sideways; wherever its columns don't fit the
+  card, each match is a little card, as on a phone. A match saved a second or more after it was made moved to the top
+  of the list, and focus went to another match's Change; it follows the match. How often under Backups, changed while the check was due, left
+  focus on the page after the check's Confirm or Cancel; it's back on How often, and Cancel's line no longer says
+  "Not saved: Not done: you didn't confirm it's you." Turn off two-factor sign-in told of a phone and recovery codes
+  to an account with only passkeys, and never said its passkeys go; it names what's removed, the authenticator app,
+  the passkeys or both, and what they'd have lost.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

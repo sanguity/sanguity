@@ -12305,6 +12305,33 @@ def main():
             bk_fresh("Scheduled backups are off")
             problems[refused_from:] = [x for x in problems[refused_from:] if "403" not in x]   # that refusal is what asks for the fresh check
             check("…turning it off is asked first, in the app's dialog", asked[0] == "Turn off scheduled backups?" and js(sched)[0] == "off", asked)
+            # #536: at 375×667, How often → Off with the check due: after its Cancel and after its Confirm focus is on How
+            # often again (it fell to the page, the box gone with it), and Cancel's line gives its reason once (“Not saved:
+            # Not done: you didn't confirm it's you.”). Daily first (neither asked nor checked), off again by the Confirm
+            from server import db as dbm536
+            db536, vp536, bk536 = dbm536.connect(), page.viewport_size, []
+            try:
+                page.set_viewport_size({"width": 375, "height": 667})
+                page.click("#bkSchedSeg label:has-text('Daily')")
+                page.wait_for_function(f"{sched_msg}.startsWith('Backups are scheduled daily')", timeout=10000)
+                for how, said in (("Cancel", "Not saved"), ("Confirm", "Scheduled backups are off")):
+                    db536.execute("UPDATE sessions SET verified_at=0")
+                    page.click("#bkSchedSeg label:has-text('Off')")
+                    answer_ask(page)
+                    page.wait_for_selector("#bkReauth input[type=password]", state="visible", timeout=10000)
+                    if how == "Confirm":
+                        page.fill("#bkReauth input[type=password]", PW)
+                    page.locator("#bkReauth").get_by_role("button", name=how).click()
+                    page.wait_for_function(f"{sched_msg}.startsWith({json.dumps(said)})", timeout=10000)
+                    settle(200)
+                    bk536.append(js(f"[document.activeElement.id, {sched_msg}]"))
+            finally:
+                db536.close()
+                page.set_viewport_size(vp536)
+            problems[refused_from:] = [x for x in problems[refused_from:] if "403" not in x]
+            check("…(#536) the check, asked as How often changes: focus back on How often after its Cancel and its Confirm (it fell to the page), "
+                  "and Cancel's line says why once", bk536 == [["bkSched-daily", "Not saved: you didn't confirm it's you."],
+                                                               ["bkSched-off", "Scheduled backups are off."]] and js(sched)[0] == "off", bk536)
             # stale: the backup made 10 days ago, as far as the app can tell (its name says when it was made)
             stale_name = time.strftime("sanguity-backup-%Y%m%d-%H%M%S.tar.gz", time.localtime(time.time() - 10 * 86400))
             os.replace(os.path.join(bk_dir, made[0]), os.path.join(bk_dir, stale_name))
@@ -18094,6 +18121,26 @@ def main():
                 js("loadLabmaps()")
             check("…(#532) at 320 and 375 px, and with a match's Change open, no word in Lab name matches is broken across lines (“Chan/ge”, "
                   "“Glucos/e”: its first column was 55 px)", len(broken532) == 6 and not any(broken532.values()), broken532)
+            # #536: with a match's Change open, from 700 to 820 px every 4 px, nothing of Lab name matches past its card's
+            # right edge and no sideways scroll (at 762–804 its five columns ended at 775 px, Change and Remove outside)
+            out536 = {}
+            try:
+                page.wait_for_selector("#labmapList tr[data-labmap]", timeout=10000)
+                lmrow528("Hemoglobin Whole Bld").get_by_role("button", name="Change").click()
+                for w in range(700, 821, 4):
+                    page.set_viewport_size({"width": w, "height": 800})
+                    settle(60)
+                    o = js("""(() => { const r = document.getElementById('labmaps').getBoundingClientRect().right;
+                      return [document.documentElement.scrollWidth - innerWidth, ...[...document.querySelectorAll('#labmaps *')]
+                        .filter(e => e.checkVisibility() && e.getBoundingClientRect().right > r + 0.5).map(e => e.tagName).slice(0, 3)]; })()""")
+                    if o[0] > 0 or len(o) > 1:
+                        out536[w] = o
+                edit536 = js("!!document.querySelector('#labmapList .lm-edit input')")
+                lmrow528("Hemoglobin Whole Bld").get_by_role("button", name="Cancel").click()
+            finally:
+                page.set_viewport_size(vp528)
+            check("…(#536) with a match's Change open, from 700 to 820 px every 4 px, Lab name matches stays in its card, with no sideways "
+                  "scroll (at 762–804 px Change and Remove were past it)", edit536 and not out536, out536)
             # the old Profiles tab's address opens Sharing → People (#168); a section link still lands on Account
             page.goto(base + "/account.html#profiles")
             page.wait_for_url(re.compile(r"/sharing\.html(\?[^#]*)?#people$"), timeout=10000)
@@ -18901,6 +18948,27 @@ def main():
             page.click("#reqTf")
             page.wait_for_function("document.getElementById('reqTfMsg').textContent === 'Two-factor sign-in is now optional.'", timeout=10000)
             check("…and turning it off isn't asked", not js("document.querySelector('dialog.sg-ask')") and required() is False)
+            # #536: Turn off two-factor sign-in… for an account whose second factor is only its passkeys names them, and not a
+            # phone or recovery codes it never had; Cancel. One with two passkeys, made up here and removed after
+            pk536 = db.execute("INSERT INTO users(username, pw_hash, is_admin, created) VALUES('pk536', 'x', 0, 0)").lastrowid
+            try:
+                for n in (1, 2):
+                    db.execute("INSERT INTO passkeys(user_id, credential_id, public_key, rp_id, name, created) VALUES(?, ?, x'00', 'localhost', ?, 1)",
+                               (pk536, f"cred-536-{n}", f"Key 536 {n}"))
+                js("loadUsers()")
+                page.wait_for_function("document.querySelector('#userList').textContent.includes('pk536')", timeout=10000)
+                prow536 = page.locator("#userList tr", has_text="pk536")
+                prow536.get_by_role("button", name="Manage pk536").click()
+                prow536.get_by_role("menuitem", name="Turn off two-factor sign-in…").click()
+                asked536 = answer_ask(page, yes=False)
+            finally:
+                db.execute("DELETE FROM passkeys WHERE user_id=?", (pk536,))
+                db.execute("DELETE FROM users WHERE id=?", (pk536,))
+                js("loadUsers()")
+                page.wait_for_function("!document.querySelector('#userList').textContent.includes('pk536')", timeout=10000)
+            check("…(#536) Turn off two-factor sign-in for an account with only passkeys says its passkeys go, naming no phone or recovery codes",
+                  asked536[0] == "Turn off two-factor sign-in for pk536?" and "It removes their 2 passkeys." in asked536[1]
+                  and not re.search(r"phone|recovery|authenticator", asked536[1], re.I), asked536)
             # Disable asks first (#249); for the only owner of a profile, the server's refusal is asked once more, after it
             alex = db.execute("SELECT id FROM users WHERE username='alex'").fetchone()[0]
             profiles.create_profile(db, "Alex's records", owner_id=alex)

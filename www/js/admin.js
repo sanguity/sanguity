@@ -103,7 +103,8 @@ async function confirmIdentity(box = $("#reauth")) {
     const msg = el("span", {class: "msg", role: "status"});
     const secret = el("input", {type: "password", autocomplete: "current-password", placeholder: app ? "Password or code" : "Password",
       "aria-label": app ? "Your password, or a code from your authenticator app" : "Your password", required: true});
-    const done = ok => { box.hidden = true; box.replaceChildren(); ok ? resolve() : reject(new Error("Not done: you didn't confirm it's you.")); };
+    const done = ok => { box.hidden = true; box.replaceChildren();   // (its why, for a line saying "Not saved" itself: #536)
+      ok ? resolve() : reject(Object.assign(new Error("Not done: you didn't confirm it's you."), {why: "you didn't confirm it's you."})); };
     const failed = e => sayIn(msg, e.message, true);
     const viaPasskey = async () => {
       try {
@@ -200,7 +201,7 @@ function userMenu(u) {
       (u.two_factor ? " Their two-factor sign-in stays on." : "")], action: "Reset password", danger: true},
       r => showTemp(n, r.temporary_password, r.temporary_days, u.id))},
     u.two_factor ? {text: "Turn off two-factor sign-in…", run: () => changeUser(u, {disable_2fa: true}, {title: `Turn off two-factor sign-in for ${n}?`,
-      message: ["Do this only if they lost both their phone and their recovery codes.", "They'll be signed out everywhere."], action: "Turn off", danger: true})} : false,
+      message: [tfOffSays(u), "They'll be signed out everywhere."], action: "Turn off", danger: true})} : false,
     u.disabled
       ? {text: "Enable", run: () => changeUser(u, {disabled: false})}
       : {text: "Disable…", run: () => changeUser(u, {disabled: true}, {title: `Disable ${n}?`, message: [
@@ -208,6 +209,14 @@ function userMenu(u) {
           "Their profiles and records stay as they are."], action: "Disable", danger: true})},
     null,
     {text: "Remove account…", danger: true, run: () => { $("#rmUser").value = u.id; USERZONE.show(n); }}].filter(e => e !== false), "user", "user-more");
+}
+/* what turning off someone's two-factor sign-in removes (#536: a passkey-only account was told of a phone and recovery
+   codes it never had, and not that its passkeys go): the server takes the authenticator app, its codes and every passkey */
+function tfOffSays(u) {
+  const k = u.passkeys, keys = k > 1 ? `their ${k} passkeys` : "their passkey", any = k > 1 ? "any of them" : "it";
+  if (!u.authenticator_app) return `It removes ${keys}. Do this only if they can't use ${any} any more.`;
+  return `It removes their authenticator app${k ? `, its recovery codes and ${keys}` : " and its recovery codes"}. Do this only if they lost both ` +
+    `their phone and their recovery codes${k ? `, and can't use ${k > 1 ? "any of their passkeys" : "their passkey"}` : ""}.`;
 }
 /* what the last action under Accounts said in a row, or where one was, in the accounts' list or the ownerless one's,
    gone as the next starts (#532: “No such account.” stayed through a Make owner, and “No such profile.” where the
@@ -426,13 +435,15 @@ async function loadLabmaps() {
 
 /* the matches drawn again after a Save, Cancel or Remove (#528: focus fell to the page): focus on the same button of
    its row (sel: Change, or Remove), else the next row's or the one before's, as Passkeys' (util.js focusNear); one
-   removed elsewhere (gone: what the server said), that said where it was */
+   removed elsewhere (gone: what the server said), that said where it was. Its row found by id where it's still there:
+   a match changed moves to the top (newest first), and by its old place focus went to another's Change */
 async function lmAgain(id, sel, gone) {
-  const rows = () => [...$("#labmapList").querySelectorAll("tr[data-labmap]")], at = Math.max(0, rows().findIndex(r => r.dataset.labmap === String(id)));
+  const rows = () => [...$("#labmapList").querySelectorAll("tr[data-labmap]")], find = () => rows().findIndex(r => r.dataset.labmap === String(id));
+  const at = Math.max(0, find());
   await loadLabmaps();
   sel = "td.acts " + sel;
   if (gone) return goneSay(rows(), at, gone, sel, $("#labmaps h2"), $("#labmapList"));
-  focusNear(rows(), at, sel, $("#labmaps h2"));
+  focusNear(rows(), find() < 0 ? at : find(), sel, $("#labmaps h2"));
 }
 
 /* ---------------------------------------------------------------- requiring two-factor sign-in, install activity */

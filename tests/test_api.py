@@ -801,8 +801,13 @@ class Api(unittest.TestCase):
         finally:
             tess.patch("/api/settings", json={"require_2fa": False}, headers=H)
         self.assertEqual(uma.get("/api/profiles/1/data").status_code, 404)   # past the gate: just not shared
+        # an admin's list says which second factor each has, for what turning it off removes (#536)
+        listed = {u["username"]: (u["two_factor"], u["authenticator_app"], u["passkeys"]) for u in ben.get("/api/users").json()}
+        self.assertEqual(listed["tess"], (1, 1, 0))
+        self.assertEqual(listed["ben"][::2], (1, 1))
         # an admin, or the command line, can turn someone's off (lost phone and codes): signed out everywhere
         self.assertEqual(ben.patch(f"/api/users/{tess_id}", json={"disable_2fa": True}, headers=H).status_code, 200)
+        self.assertEqual(next(u for u in ben.get("/api/users").json() if u["username"] == "tess")["authenticator_app"], 0)
         self.assertEqual(tess.get("/api/me").status_code, 401)
         self.assertEqual(client().post("/api/login", json={"username": "tess", "password": "tess keeps a long passphrase 2"},
                                        headers=H).json(), {"must_change_pw": False})
