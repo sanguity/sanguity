@@ -1214,6 +1214,7 @@ def users(s=Depends(admin), db=Depends(get_db)):
     return [dict(r) for r in db.execute(
         """SELECT id, username, is_admin, disabled, must_change_pw, created,
                   totp_secret IS NOT NULL OR EXISTS(SELECT 1 FROM passkeys k WHERE k.user_id = users.id) AS two_factor,
+                  totp_secret IS NOT NULL AS authenticator_app, (SELECT COUNT(*) FROM passkeys k WHERE k.user_id = users.id) AS passkeys,
                   (SELECT COUNT(*) FROM sessions x WHERE x.user_id = users.id AND x.expires > ?) AS sessions
            FROM users ORDER BY username COLLATE NOCASE""", (dbm.now(),))]
 
