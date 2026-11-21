@@ -242,13 +242,13 @@ def save_import(db, pid, summary, import_id=None):
     """Store an imported summary for the profile, replacing an earlier import's overlapping days and workouts. With
     import_id (the records import it came with, jobs.py) it is kept as that import's own, so undoing the import takes
     it away again; without, it joins the legacy layer, which can't be undone. Returns {"path", "days", "workouts"}
-    (days with at least one point, in this summary)."""
+    (days with at least one point, in this summary), and "cycle": the cycle records kept, if any (#539)."""
     target, _ = _target(db, pid)
     _migrate_profile(db, pid)
     summary = dict(summary)
     _save_waves(pid, summary.pop("ecg_waves", None))   # ECG samples (#182): files of their own, before the summary lists them
     from . import cycle_tracking   # an export's cycle records (#223): never in the summary, kept apart only while on
-    cycle_tracking.save_imported(db, pid, import_id, summary.pop("cycle", None))
+    cycled = cycle_tracking.save_imported(db, pid, import_id, summary.pop("cycle", None))
     if import_id is None:
         _write(layer_path(pid), merge(_read(layer_path(pid)), summary))
     else:
@@ -258,7 +258,8 @@ def save_import(db, pid, summary, import_id=None):
     days = {str(d)[:10] for m in summary.get("metrics") or [] for d, _ in m.get("pts") or []}
     readings = sum(len(summary.get(k) or []) for k in READINGS)   # #224
     return {"path": target, "days": len(days), "workouts": len(summary.get("exercise") or []), **ecg.counts(summary),
-            **measure_counts(summary), **({"readings": readings} if readings else {})}   # (#223, #224)
+            **measure_counts(summary), **({"readings": readings} if readings else {}),   # (#223, #224)
+            **({"cycle": cycled} if cycled else {})}   # the cycle records kept (#539: none once tracking is off)
 
 
 def unseen(have, summary):

@@ -2198,6 +2198,13 @@ Everything on `main` so far; it becomes the first tagged release.
   "Not saved: Not done: you didn't confirm it's you." Turn off two-factor sign-in told of a phone and recovery codes
   to an account with only passkeys, and never said its passkeys go; it names what's removed, the authenticator app,
   the passkeys or both, and what they'd have lost.
+- **Records in: cycle records left behind once cycle tracking is turned off** (#539): an import of cycle records only,
+  left in review when tracking was turned off or its records deleted, wasn't listed anywhere but stayed waiting with
+  its upload, which still held them; it's cancelled as Cancel would, its upload removed, and an open review of it says
+  so. An Apple Health export being read at that moment came to its review with "Cycle tracking records 2", and saving
+  it said "2 cycle tracking records" with an Undo though none were kept; tracking is asked again before its review is
+  written, and a save counts only what it kept. "What deleting reaches" says which waiting imports go, and how to
+  delete an upload that's kept.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

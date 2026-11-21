@@ -174,7 +174,7 @@ def _import(db, j):
             files = stack.enter_context(uploads.open_plain(db, pid, upload_id))
         except uploads.UploadError as e:   # not finished, or discarded since
             raise Failed(str(e)) from None
-        mod, data, warnings = _read(db, jid, j["importer"], files, pid)
+        mod, data, warnings, mark = _read(db, jid, j["importer"], files, pid)
         names = sorted(files)
 
     for d in data["details"].values():   # stored under a random name, so the type comes from the path in the upload
@@ -182,19 +182,33 @@ def _import(db, j):
             d["ext"] = posixpath.splitext(d["url"].split("#", 1)[0])[1].lstrip(".").lower()
     watch = data.pop("watch", None)   # daily wearable data: saved with watch_store, not as records
     labs = labmap.plan(db, pid, mod.NAME, data)   # lab names to match; remembered ones go before duplicates are found
-    report = _report(db, pid, mod.NAME, data, watch, labs)
     path = preview_path(pid, jid)
-    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
-    crypto.write_file(path, json.dumps({"importer": mod.NAME, "data": data, "watch": watch, "paths": names, "labs": labs},
-                                       separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
-    try:
-        n = db.execute("UPDATE jobs SET state='preview', stage=NULL, warnings=?, summary=? WHERE id=? AND state='running'",
-                       (crypto.enc(json.dumps(warnings)), crypto.enc(json.dumps(report)), jid)).rowcount
-    except BaseException:
-        _remove(path)
-        raise
+    # cycle tracking asked again (#539), under the lock turning it off takes (cycle_tracking.drop_imported): turned off
+    # or its records deleted while this was read, they're left out, and an upload that held only them is cancelled
+    with preview_lock(jid):
+        from . import cycle_tracking
+        if mark and cycle_tracking.mark(db, pid) != mark and isinstance(watch, dict) and watch.pop("cycle", None) is not None \
+                and _holds_nothing({"data": data, "watch": watch}):
+            _cancel(db, pid, jid, cycle_tracking.changed_by(db, pid), state="running")
+            return
+        report = _report(db, pid, mod.NAME, data, watch, labs)
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+        crypto.write_file(path, json.dumps({"importer": mod.NAME, "data": data, "watch": watch, "paths": names, "labs": labs},
+                                           separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+        try:
+            n = db.execute("UPDATE jobs SET state='preview', stage=NULL, warnings=?, summary=? WHERE id=? AND state='running'",
+                           (crypto.enc(json.dumps(warnings)), crypto.enc(json.dumps(report)), jid)).rowcount
+        except BaseException:
+            _remove(path)
+            raise
     if not n:
         _remove(path)
+
+
+def _holds_nothing(held):
+    """Whether a preview's file (or its parts) holds no records at all, new or already here (#539: an upload of cycle
+    records only, once they're left out), as the page's sgNothing says of its summary."""
+    return not preview.adds_anything(held["data"]) and not any(_watch_counts(held.get("watch") or {}).values())
 
 
 def _report(db, pid, name, data, watch, labs):
@@ -398,11 +412,13 @@ def _save(db, j):
             iid = records.store(db, pid, new, "upload", fmt=name)
             prof.link_documents(db, iid, keepdocs)
         if watch:   # last, so a failure before it leaves no file behind
-            watch_store.save_import(db, pid, watch, import_id=iid)   # all of it, as it came: undone with its import
+            kept = watch_store.save_import(db, pid, watch, import_id=iid)   # all of it, as it came: undone with its import
             summary["counts"].update(watch_days=fresh["watch_days"], workouts=fresh["workouts"],   # what's new of it (#497)
                                      **{k: fresh[k] for k in ("ecgs", "rhythm", "bp_readings", "temp_readings", "glucose_readings",
                                                               "cgm_days", "heights") if fresh.get(k)})   # ECGs (#182), #223
-            if fresh.get("cycle"):   # apart from the counts, which Import history and the activity log show (#223, #534)
+            # apart from the counts, which Import history and the activity log show (#223, #534); only if they were
+            # kept (#539: not once tracking is turned off)
+            if fresh.get("cycle") and kept.get("cycle"):
                 summary["cycle"] = fresh["cycle"]
         for x in same if iid else ():
             crossmatch.decide(db, pid, who["id"] if who else None, x["other_key"], x["key"], True,
@@ -462,18 +478,29 @@ def confirm(db, pid, jid, uid, keep=None, ip=None, labs=None, same=None):
 
 def discard(db, pid, jid, who, ip=None):
     """Throw a previewed import away: its preview file, and its upload too unless another job uses it."""
+    if not _cancel(db, pid, jid, who, ip):
+        _refuse_not_preview(db, pid, jid)
+
+
+def _cancel(db, pid, jid, who, ip=None, state="preview"):
+    """discard's work, for a job in that state; who may be None (an account since removed). Also for one left with
+    nothing once cycle tracking is turned off (#539: cycle_tracking.drop_imported, or _import while it's read, as
+    "running"). Returns whether it was."""
     with dbm.transaction(db):
         r = db.execute("SELECT * FROM jobs WHERE id=? AND profile_id=?", (jid, pid)).fetchone()
-        if not r or r["state"] != "preview":
-            _refuse_not_preview(db, pid, jid)
-        db.execute("UPDATE jobs SET state='discarded', finished=?, confirmed_by=? WHERE id=?", (dbm.now(), who["id"], jid))
+        if not r or r["state"] != state:
+            return False
+        db.execute("UPDATE jobs SET state='discarded', stage=NULL, finished=?, confirmed_by=? WHERE id=?",
+                   (dbm.now(), who["id"] if who else None, jid))
         others = db.execute("""SELECT 1 FROM jobs WHERE upload_id=? AND id != ?
                                AND state IN ('queued', 'running', 'preview', 'done') LIMIT 1""", (r["upload_id"], jid)).fetchone()
-        activity.log(db, "discard", who, pid, {"importer": r["importer"], "job": jid, "upload": r["upload_id"]}, ip)
+        activity.log(db, "discard", who, pid, {"importer": r["importer"], "job": jid, "upload": r["upload_id"]}, ip,
+                     actor=None if who else "removed account")
     _remove(preview_path(pid, jid))
     if not others:
         with contextlib.suppress(uploads.UploadError):
             uploads.discard(db, pid, r["upload_id"])
+    return True
 
 
 def _refuse_not_preview(db, pid, jid):
@@ -486,9 +513,10 @@ def _refuse_not_preview(db, pid, jid):
 
 
 def _read(db, jid, name, files, pid=None):
-    """Pick the importer (or take the one asked for), parse and check: (module, data, warnings). An importer that
-    can read menstrual cycle records (READS_CYCLE: Apple Health's, #223) is asked to only for a profile with cycle
-    tracking on; otherwise it never reads them."""
+    """Pick the importer (or take the one asked for), parse and check: (module, data, warnings, mark). An importer
+    that can read menstrual cycle records (READS_CYCLE: Apple Health's, #223) is asked to only for a profile with cycle
+    tracking on; otherwise it never reads them. mark: how tracking stood when it was asked (cycle_tracking.mark), or
+    None when it wasn't (#539: asked again before the preview is written)."""
     if not files:
         raise Failed("The upload is empty.")
     tied = []
@@ -503,14 +531,16 @@ def _read(db, jid, name, files, pid=None):
             raise Failed(no_match_message())
     _stage(db, jid, "parsing", mod.NAME)
     from . import cycle_tracking
-    out = mod.parse(files, cycle=True) if getattr(mod, "READS_CYCLE", False) and pid and cycle_tracking.is_on(db, pid) else mod.parse(files)
+    mark = cycle_tracking.mark(db, pid) if getattr(mod, "READS_CYCLE", False) and pid else None
+    mark = mark if mark and mark[0] else None
+    out = mod.parse(files, cycle=True) if mark else mod.parse(files)
     problems = registry.check(out, files)
     if problems:
         raise Failed(f"The {mod.LABEL} importer returned records Sanguity can't load: " + "; ".join(problems[:5]) + ".")
     warnings = [str(w) for w in out.get("warnings") or []]
     if tied:
         warnings.insert(0, f"These files also look like {', '.join(m.LABEL for m in tied)}; read them as {mod.LABEL}.")
-    return mod, out["data"], warnings
+    return mod, out["data"], warnings, mark
 
 
 def summarise(data):

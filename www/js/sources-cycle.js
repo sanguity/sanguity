@@ -33,8 +33,9 @@
   const reach = () => el("details", {class: "more cy-reach"}, el("summary", {text: "What deleting reaches"}), reachList());
   const reachList = () => el("ul", {class: "cy-list"},
       el("li", {text: "Deleted: what the watch receiver keeps (its database, every upload it archived, rewritten without them, and its summary for this page). Sanguity's own database never holds the records."}),
+      el("li", {text: "Deleted: what imported Apple Health exports brought, and an import waiting for review that held only cycle records (it's cancelled, and its upload removed)."}),   // #539
       el("li", {text: "Not reached: backups of the server or of the receiver's folder made before you delete. A backup can't be rewritten: it keeps what it had until it's deleted itself."}),
-      el("li", {text: "Not reached: exports and visit summaries already downloaded with them ticked in, and an Apple Health export you uploaded (it's kept as uploaded and may hold cycle records Sanguity doesn't read; undo that import under Import history to delete it)."}),
+      el("li", {text: "Not reached: exports and visit summaries already downloaded with them ticked in, and an Apple Health export you uploaded (it's kept as uploaded and may hold cycle records Sanguity doesn't read; cancel its review, or undo its import under Import history, to delete it)."}),
       el("li", {text: "Not reached: your phone. Health Connect or Apple Health, and the app that sends them, keep their own."}));
   /* deleting what's kept, or turning it off (which deletes it too): neither can be undone, so they're in the danger zone
      (util.js dangerZone, #495), as deleting a profile or removing an account is: each button opens it saying what goes

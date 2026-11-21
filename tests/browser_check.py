@@ -9972,7 +9972,7 @@ def main():
             # (#534) in a tab of its own, on a profile of its own (deleted after), with cycle tracking on: an export of cycle
             # records only, saved: its card and toast count them, with an Undo whose question names them; Import history
             # names its source (not "No records", nor them), and Phone and watch's count follows the save and the Undo.
-            # One left in review when tracking is turned off says nothing is left and isn't in Waiting for you. A zip of a
+            # One left in review when tracking is turned off is cancelled, its upload with it (#539), and isn't in Waiting for you. A zip of a
             # blood pressure and a temperature reading counts 2 new, with no days of activity data, nor its Undo
             c534 = browser.new_context(storage_state=page.context.storage_state(), viewport={"width": 1400, "height": 900}, bypass_csp=True)
             t534 = c534.new_page()
@@ -10031,21 +10031,23 @@ def main():
             t534.keyboard.type("Cycle 534")
             t534.click("#cycle .dz-body .btn.danger")
             t534.wait_for_function(f"{state534}.startsWith('Off.')", timeout=10000)
-            t534.locator("a[href='#upload']:visible").first.click()
-            t534.wait_for_function(f"{last_card}.querySelector('.imp-state')?.textContent !== 'Ready to import'", timeout=10000)
-            empty534 = t534.evaluate(f"""(c => [c.querySelector('.imp-state').textContent, c.querySelector('.hint').textContent,
-                c.querySelector('.imp-actions .primary').textContent, c.querySelector('.imp-actions .primary').disabled, c.closest('.job').dataset.job])({last_card})""")
+            t534.wait_for_function(f"/^Cancelled/.test({last_card}.textContent)", timeout=10000)   # (drawn again, while Phone and watch is shown)
+            empty534 = [t534.evaluate(f"{last_card}.textContent")]
+            t534.locator("a[href='#upload']:visible").first.click()   # (where a settled card goes)
+            empty534.append(t534.evaluate("[...document.querySelectorAll('.import-job')].filter(c => c.querySelector('.imp-actions') && /cycle/i.test(c.textContent)).length"))
             t534.locator("a[href='#overview']:visible").first.click()
-            t534.wait_for_function(f"api('profiles/{pid534}/jobs?state=preview').then(r => r.json()).then(j => j.length === 1)", timeout=10000)
+            empty534.append(t534.evaluate(f"api('profiles/{pid534}/jobs?state=preview').then(r => r.json()).then(j => j.length)"))
             t534.wait_for_timeout(1500)   # (Waiting for you drawn)
-            wait534 = t534.evaluate("[...document.querySelectorAll('#waiting [data-job]')].map(r => r.dataset.job)")
-            check("a review of cycle records only, left open when tracking is turned off, says nothing is left, and isn't in Waiting for you "
-                  "(#534: \"Ready to import\" with no tiles, and \"Ready to review\")",
-                  empty534[:4] == ["Nothing left to import", "Nothing in this upload is left to add to this profile. Cancel it to remove the upload.", "Nothing to add", True]
-                  and wait534 == [], [empty534, wait534])
-            t534.locator("a[href='#upload']:visible").first.click()
-            t534.evaluate(f"[...{last_card}.querySelectorAll('.imp-actions button')].find(b => b.textContent === 'Cancel').click()")
-            t534.wait_for_function(f"/^Cancelled/.test({last_card}.textContent)", timeout=10000)
+            waiting539 = "[...document.querySelectorAll('#waiting [data-job]')].map(r => r.dataset.job)"
+            wait534 = [t534.evaluate(waiting539)]
+            t534.reload()   # (and read again from the server)
+            t534.wait_for_function("typeof api === 'function' && SgSources", timeout=10000)
+            t534.wait_for_timeout(1500)   # (Waiting for you drawn)
+            wait534.append(t534.evaluate(waiting539))
+            check("a review of cycle records only, left open when tracking is turned off, is cancelled with its upload, and nothing is left "
+                  "in Waiting for you, nor a review offering them, then or once reloaded (#539: a preview no one could reach, its upload kept; #534)",
+                  empty534[0].startswith("Cancelled. Nothing was saved, and the upload was removed.") and empty534[1:] == [0, 0]
+                  and wait534 == [[], []], [empty534, wait534])
             read534 = review534("readings-534.zip", '<Correlation type="HKCorrelationTypeIdentifierBloodPressure" sourceName="Test Cuff" startDate="2026-11-09 09:00:00 -0500" endDate="2026-11-09 09:00:00 -0500">\n'
                                 + hk534("BloodPressureSystolic", "mmHg", "2026-11-09 09:00:00 -0500", 118, "Test Cuff")
                                 + hk534("BloodPressureDiastolic", "mmHg", "2026-11-09 09:00:00 -0500", 76, "Test Cuff") + "</Correlation>\n"
