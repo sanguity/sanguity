@@ -516,12 +516,14 @@
     freshOthers(card, pid);
     FRAMES.get(card).end("done");
     const c = j.counts || {}, items = countItems(c), sk = j.skipped || {};
-    // the duplicates skipped, counted as the review counted them (hereCount: a lab draw with its results), and a
-    // wearable's data there already (#497)
-    const skipped = hereCount({duplicates: sk, counts: {results: (c.results || 0) + (sk.results || 0)}}), watch = watchHere(sk.watch);
+    // the duplicates skipped, in the review's one count and its words (#508: allHere, a wearable's data there already
+    // among them; a lab draw with its results, #497): "10 duplicates skipped, 2 days of activity data and 1 workout among them."
+    const was = {duplicates: sk, counts: {results: (c.results || 0) + (sk.results || 0)}};
+    const skipped = hereCount(was), all = allHere(was), watch = watchHere(sk.watch);
     const ln = j.lab_names || {};
     const said = node("p", {}, node("b", {text: "Imported."}), ` Read as ${j.label || j.importer}${rangeText(j.range)}.`);
-    const dup = [skipped ? `${plural(skipped, ["duplicate", "duplicates"])} skipped.` : null, watch ? `${cap(watch)} already here, not added again.` : null].filter(Boolean);
+    const dup = !all ? [] : [!skipped ? `${cap(watch)} already here, not added again.`
+      : `${plural(all, ["duplicate", "duplicates"])} skipped` + (watch ? `, ${watch} among them.` : ".")];
     fill(card, said,
       items.length ? node("ul", {}, items) : node("p", {text: dup.length ? "Nothing new: it was all in the profile already." : "The files held no records to show."}),
       dup.length ? node("p", {class: "hint", text: dup.join(" ")}) : null,
@@ -537,32 +539,98 @@
     const labs = c.results > 0, where = labs ? "labs" : "timeline";
     toast(what.length ? `Imported ${most.slice(0, 2).join(", ")}${what.length > 2 ? " and more" : ""}.` : "Imported: nothing new.", {
       actions: [{text: labs ? "Open Labs" : "Open the timeline", href: `index.html?profile=${pid}#${where}`},
-        ...(j.import_id != null && what.length ? [{text: "Undo…", onClick: () => undoImport(card, pid, j, what)}] : [])]});
+        ...(j.import_id != null && what.length ? [{text: "Undo…", onClick: () => undoImport(card, pid, j)}] : [])]});
+    if (j.import_id != null) told(pid, j.import_id, false);   // Import history read again (#508: a save from Waiting for you too), the guide's steps
   }
-  /* what an Undo asks (#504: one wording, Import history's too, import-history.js): what goes ("6 lab results in 2
-     tests"), with the files uploaded for it, and the lab-name matches its review made, as many as undoing it would
-     forget now (#500, the server's labmap.forgettable: not those another import has used since) */
-  function undoAsks(label, what, files, matches) {
-    const n = matches || 0;
-    return `Everything this ${label} import brought is removed: ${what.toLowerCase()}` + (files ? ", and the files uploaded for it" : "") + "." +
+  /* an import's counts in Import history's words (import-history.js lists them: "1 lab draw, 1 lab result in 1 test");
+     the Undo's question says them too (#508), with a lab draw left out where there are results (draws false), as the
+     review and the toast count it (counted, above) */
+  const HKIND = {visit: ["visit", "visits"], lab: ["lab draw", "lab draws"], imaging: ["imaging study", "imaging studies"],
+                 procedure: ["procedure", "procedures"], study: ["report", "reports"], message: ["message", "messages"],
+                 letter: ["letter", "letters"], document: ["document", "documents"], stay: ["hospital stay", "hospital stays"],
+                 med: ["medication", "medications"], rx: ["pharmacy fill", "pharmacy fills"], claim: ["claim", "claims"],
+                 immunization: ["immunization", "immunizations"]};   // #179
+  function importCounts(c, draws = true) {
+    c = c || {};
+    const out = [];
+    const listed = Object.entries(c.kinds || {}).filter(([k]) => k !== "labitem").sort((a, b) => b[1] - a[1]);
+    const kinds = listed.filter(([k]) => !(k === "lab" && !draws && c.results));
+    if (kinds.length) out.push(...kinds.map(([k, v]) => plural(v, HKIND[k] || [k, k])));
+    else if (c.events && !listed.length) out.push(plural(c.events, ["event", "events"]));
+    if (c.results) out.push(plural(c.results, ["lab result", "lab results"]) + " in " + plural(c.series || 0, ["test", "tests"]));
+    if (c.documents) out.push(plural(c.documents, ["attached file", "attached files"]));
+    if (c.allergies) out.push(plural(c.allergies, ["allergy", "allergies"]));   // #179 (jobs.summarise)
+    if (c.problems) out.push(plural(c.problems, ["problem or diagnosis", "problems or diagnoses"]));
+    if (c.upcoming) out.push(plural(c.upcoming, ["upcoming appointment", "upcoming appointments"]));
+    if (c.entries) out.push(plural(c.entries, ["problem, appointment or weight", "problems, appointments or weights"]));
+    if (c.watch_days) out.push(plural(c.watch_days, ["day", "days"]) + " of watch data");
+    if (c.workouts) out.push(plural(c.workouts, ["workout", "workouts"]));
+    if (c.readings) out.push(plural(c.readings, ["reading taken at home", "readings taken at home"]));   // typed in (#224)
+    if (c.heights_set) out.push(plural(c.heights_set, ["height", "heights"]) + " put in About this person (kept there if this is undone)");
+    if (c.ecgs) out.push(plural(c.ecgs, ["ECG recording", "ECG recordings"]));   // #182
+    if (c.rhythm) out.push(plural(c.rhythm, ["irregular rhythm notification", "irregular rhythm notifications"]));
+    if (c.bp_readings) out.push(plural(c.bp_readings, ["blood pressure reading", "blood pressure readings"]));   // #223 (never cycle records)
+    if (c.temp_readings) out.push(plural(c.temp_readings, ["body temperature reading", "body temperature readings"]));
+    if (c.glucose_readings) out.push(plural(c.glucose_readings, ["glucose meter reading", "glucose meter readings"]));
+    if (c.cgm_days) out.push(plural(c.cgm_days, ["day of CGM readings", "days of CGM readings"]));
+    if (c.heights) out.push(plural(c.heights, ["height", "heights"]));
+    return out.length ? out.join(", ") : "No records";
+  }
+  /* what an Undo asks, of an import as Import history has it (e, GET imports' entry), in one wording wherever it's
+     asked (#504; #508: the toast's, Type them in's and Import history's): what goes, in one count (importCounts), the
+     files uploaded for it only when it was uploaded, and the lab-name matches its review made, as many as undoing it
+     would forget now (#500, the server's labmap.forgettable: not those another import has used since) */
+  function undoAsks(e) {
+    const n = e.lab_matches || 0, typed = e.origin === "manual";
+    return `Everything this ${typed ? "typed-in" : e.label} import brought is removed: ${importCounts(e.counts, false).toLowerCase()}` +
+      (e.upload != null ? ", and the files uploaded for it" : "") + "." +
       (!n ? "" : n === 1 ? " The lab-name match made for it is forgotten too: the next import of that name asks about it again."
        : ` The ${n.toLocaleString()} lab-name matches made for it are forgotten too: the next import of those names asks about them again.`) +
-      " This can't be reversed; you can import the files again.";
+      ` This can't be reversed; you can ${typed ? "type them in" : "import the files"} again.`;
   }
-  /* the Undo of a toast: Import history's, asked first as it asks (false: kept), with its matches counted as it's
-     asked; the card then saying it's undone, and focus on that line, from the toast (#504: not the next toast's ✕) */
-  async function undoImport(card, pid, j, what) {
-    const id = j.import_id, path = `profiles/${encodeURIComponent(pid)}/imports`;
+  /* an import saved or undone, told to the page (#508) as document's "sg:imports", detail {pid, id, undone, wait(p),
+     focus}: Import history reads its list again, the guide its steps, the records page its records (an empty profile's
+     card back). Each gives wait() what it's doing, and after an Undo the page may name where focus goes when the card
+     isn't shown (focus). -> the detail, once they're done */
+  function told(pid, id, undone) {
+    const waits = [], detail = {pid: +pid, id, undone, wait: p => waits.push(Promise.resolve(p).catch(() => {})), focus: null};
+    document.dispatchEvent(new CustomEvent("sg:imports", {detail}));
+    return Promise.all(waits).then(() => detail);
+  }
+  /* an Undo from a toast (an upload's card's, Type them in's): asked first as Import history asks it, of the import as
+     the history has it now (undoAsks; fallback, as the toast knows it, if the list can't be read), then undone and the
+     page told (told). -> false: kept; else told's detail. Throws what went wrong, which the toast says */
+  async function undoAsk(pid, id, fallback) {
+    const path = `profiles/${encodeURIComponent(pid)}/imports`;
     const now = await api(path).then(r => r.ok ? r.json() : null).catch(() => null);
-    const matches = ((now || {}).imports || []).find(e => e.id === id)?.lab_matches;
-    if (!await ask({title: "Undo this import?", danger: true, action: "Undo import", cancel: "Keep it",
-                    message: undoAsks(j.label || j.importer, what.join(", "), true, matches)})) return false;
+    const e = ((now || {}).imports || []).find(x => x.id === id) || fallback;
+    if (!await ask({title: "Undo this import?", danger: true, action: "Undo import", cancel: "Keep it", message: undoAsks(e)})) return false;
     const r = await api(`${path}/${id}/undo`, {method: "POST"});
-    if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(typeof e.detail === "string" ? e.detail : `the server answered ${r.status}`); }
-    const line = node("p", {tabindex: "-1"}, node("b", {text: "Undone."}), " The import's records are gone from the profile; Import history lists it as undone.");
+    if (!r.ok) { const x = await r.json().catch(() => ({})); throw new Error(typeof x.detail === "string" ? x.detail : `the server answered ${r.status}`); }
+    return told(pid, id, true);
+  }
+  /* focus after a toast's Undo: on line, the one saying it's undone, where it's shown (#504: not the next toast's ✕);
+     else (the card put away: the upload dialog closed) once the toast has gone and given focus back where it came
+     from, if that left it on a toast or nowhere (#508), where the page names (told's focus), else its first heading */
+  function undoneFocus(line, said) {
+    const lost = () => { const a = document.activeElement; return !a || a === document.body || !!a.closest("#sgToasts"); };
+    if (line && lost() && line.checkVisibility()) { line.tabIndex = -1; line.focus(); return; }
+    setTimeout(() => {
+      if (!lost()) return;
+      const to = said?.focus || [...document.querySelectorAll("main h1, main h2")].find(h => h.checkVisibility() && !h.matches(".vh"));
+      if (!to) return;
+      if (to.matches("h1, h2, h3")) to.tabIndex = -1;
+      to.focus({preventScroll: true});
+      to.scrollIntoView({block: "nearest"});
+    });
+  }
+  /* the Undo of an upload's toast (undoAsk), the card then saying it's undone, and focus on that line (undoneFocus) */
+  async function undoImport(card, pid, j) {
+    const said = await undoAsk(pid, j.import_id, {label: j.label || j.importer, counts: j.counts, upload: j.upload_id ?? null});
+    if (!said) return false;
+    const line = node("p", {}, node("b", {text: "Undone."}), " The import's records are gone from the profile; Import history lists it as undone.");
     card.replaceChildren(line);
-    const a = document.activeElement;
-    if ((!a || a === document.body || a.closest("#sgToasts")) && line.checkVisibility()) line.focus();
+    undoneFocus(line, said);
     toast("Undone: the import's records are gone from the profile.");
   }
 
@@ -643,5 +711,5 @@
     return poll(f.body, opts.profileId, opts.jobId, text);
   }
 
-  window.sanguityImport = {uploaded, follow, frame, fresh, undoAsks};
+  window.sanguityImport = {uploaded, follow, frame, fresh, importCounts, undoAsks, undoAsk, undoneFocus, told};
 })();

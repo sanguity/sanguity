@@ -3,19 +3,13 @@
      GET  api/profiles/{pid}/imports              {can_undo, imports: [...]}
      POST api/profiles/{pid}/imports/{id}/undo    removes everything that import brought
    It follows the page's Profile choice, which lists every profile shared with you (sources-page.js); with none, a
-   choice of its own. After an import finishes through window.sanguityImport (import-jobs.js), the list is read again.
+   choice of its own. After an import is saved or undone anywhere on the page (import-jobs.js told, #508), the list is read again.
    Each import is #import-<id>: a record's Source link on the main page (sources.js, #100) opens
    sources.html?profile=<pid>#import-<id>, and that import is scrolled to and highlighted.
-   Plain script in its own scope; $, el and api come from util.js, the Undo's question from import-jobs.js (undoAsks). */
+   Plain script in its own scope; $, el and api come from util.js, the counts' words and the Undo's question from import-jobs.js (importCounts, undoAsks). */
 "use strict";
 (function () {
-  const KIND = {visit: ["visit", "visits"], lab: ["lab draw", "lab draws"], imaging: ["imaging study", "imaging studies"],
-                procedure: ["procedure", "procedures"], study: ["report", "reports"], message: ["message", "messages"],
-                letter: ["letter", "letters"], document: ["document", "documents"], stay: ["hospital stay", "hospital stays"],
-                med: ["medication", "medications"], rx: ["pharmacy fill", "pharmacy fills"], claim: ["claim", "claims"],
-                immunization: ["immunization", "immunizations"]};   // #179
   const ORIGIN = {upload: "Uploaded", manual: "Typed in", sync: "Synced", dataset: "Loaded from the command line", build: "From the setup build"};
-  const n = (k, [one, many]) => `${k.toLocaleString()} ${k === 1 ? one : many}`;
   const when = t => fmtDT(t * 1000);   // dates.js
   let ME = null, PID = null, seq = 0;
 
@@ -44,30 +38,7 @@
     return j;
   }
 
-  function counts(e) {
-    const c = e.counts || {}, out = [];
-    const kinds = Object.entries(c.kinds || {}).filter(([k]) => k !== "labitem").sort((a, b) => b[1] - a[1]);
-    if (kinds.length) out.push(...kinds.map(([k, v]) => n(v, KIND[k] || [k, k])));
-    else if (c.events) out.push(n(c.events, ["event", "events"]));
-    if (c.results) out.push(n(c.results, ["lab result", "lab results"]) + " in " + n(c.series || 0, ["test", "tests"]));
-    if (c.documents) out.push(n(c.documents, ["attached file", "attached files"]));
-    if (c.allergies) out.push(n(c.allergies, ["allergy", "allergies"]));   // #179 (jobs.summarise)
-    if (c.problems) out.push(n(c.problems, ["problem or diagnosis", "problems or diagnoses"]));
-    if (c.upcoming) out.push(n(c.upcoming, ["upcoming appointment", "upcoming appointments"]));
-    if (c.entries) out.push(n(c.entries, ["problem, appointment or weight", "problems, appointments or weights"]));
-    if (c.watch_days) out.push(n(c.watch_days, ["day", "days"]) + " of watch data");
-    if (c.workouts) out.push(n(c.workouts, ["workout", "workouts"]));
-    if (c.readings) out.push(n(c.readings, ["reading taken at home", "readings taken at home"]));   // typed in (#224)
-    if (c.heights_set) out.push(n(c.heights_set, ["height", "heights"]) + " put in About this person (kept there if this is undone)");
-    if (c.ecgs) out.push(n(c.ecgs, ["ECG recording", "ECG recordings"]));   // #182
-    if (c.rhythm) out.push(n(c.rhythm, ["irregular rhythm notification", "irregular rhythm notifications"]));
-    if (c.bp_readings) out.push(n(c.bp_readings, ["blood pressure reading", "blood pressure readings"]));   // #223 (never cycle records)
-    if (c.temp_readings) out.push(n(c.temp_readings, ["body temperature reading", "body temperature readings"]));
-    if (c.glucose_readings) out.push(n(c.glucose_readings, ["glucose meter reading", "glucose meter readings"]));
-    if (c.cgm_days) out.push(n(c.cgm_days, ["day of CGM readings", "days of CGM readings"]));
-    if (c.heights) out.push(n(c.heights, ["height", "heights"]));
-    return out.length ? out.join(", ") : "No records";
-  }
+  const counts = e => sanguityImport.importCounts(e.counts);   // in the words the Undo asks in (import-jobs.js, #508)
 
   function item(e, canUndo) {
     const undone = e.state === "undone";
@@ -95,14 +66,14 @@
     const matches = ((now || {}).imports || []).find(x => x.id === e.id)?.lab_matches ?? e.lab_matches;
     if (!await ask({title: e.removal ? "Put back what this took out?" : "Undo this import?",
       message: e.removal ? `What comes back: ${counts(e).toLowerCase()}.` :
-        sanguityImport.undoAsks(e.label, counts(e), e.upload != null, matches) + (e.origin === "dataset" ? " What it replaced when it was loaded won't come back." : ""),
+        sanguityImport.undoAsks({...e, lab_matches: matches}) + (e.origin === "dataset" ? " What it replaced when it was loaded won't come back." : ""),
       action: e.removal ? "Put them back" : "Undo import", cancel: "Keep it", danger: true})) return;
     opener.disabled = true;
     say("Undoing…");
     try {
       await call(`profiles/${PID}/imports/${e.id}/undo`, "POST");
       say(e.removal ? "Undone: the records it took out are back." : `Undone: the ${e.label} import's records are gone from the profile.`);
-      await load();
+      await sanguityImport.told(PID, e.id, true);   // the page told, as a toast's Undo tells it (#508): this list read again (below)
       const li = document.getElementById("import-" + e.id);   // drawn again, marked undone: focus on it, not lost with the button
       if (li && opener && !opener.isConnected) li.focus();
     } catch (err) {
@@ -190,10 +161,7 @@
     }
   })();
 
-  // after an import finishes (import-jobs.js resolves with the job), read the list again
-  const hook = window.sanguityImport;
-  if (hook && typeof hook.uploaded === "function") {
-    const uploaded = hook.uploaded;
-    hook.uploaded = async opts => { try { return await uploaded(opts); } finally { if (opts && +opts.profileId === PID) load(); } };
-  }
+  // an import of this profile saved or undone, wherever it was (import-jobs.js told, #508: an upload's card, Waiting
+  // for you's review, a toast's Undo, this list's own): the list read again
+  document.addEventListener("sg:imports", ev => { if (ev.detail.pid === PID) ev.detail.wait(load()); });
 })();

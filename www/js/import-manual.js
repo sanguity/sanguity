@@ -8,7 +8,7 @@
    has already are pointed out, and left out of the save unless "Save again what's already there" is ticked.
    The date and time are the browser's pickers (#285). What a picker can't hold (a date pasted as 11/02/2026) is kept
    on it (data-raw) and sent as it was, so the server reads it as it reads a spreadsheet's; once read, the picker shows it.
-   Plain script after util.js and import.js; its own names stay inside this function. */
+   Plain script after util.js, import-jobs.js (its Undo, #508) and import.js; its own names stay inside this function. */
 "use strict";
 (function () {
   const FIELDS = [   // [field, caption, placeholder]: nothing that could pass for a value typed in
@@ -258,14 +258,16 @@
       sayIn(msg, [said, ...links.flatMap(a => [" ", a])], false, {say: false});
       toast(said, {actions: [...links.slice(0, 1).map(a => ({text: a.textContent.replace(/^See them on /, "Open "), href: a.href,
           onClick: names.length ? () => openTrends(p, names) : null})),   // (the first link is Labs', when there are labs)
+        // (asked as Import history and an upload's toast ask it, #508: import-jobs.js undoAsk; the page told, Import
+        // history read again; focus on the line saying so, not on a toast)
         ...(j.import_id != null && (n || others) ? [{text: "Undo…", onClick: async () => {
-          if (!await ask({title: "Undo what was saved?", danger: true, action: "Undo import", cancel: "Keep it",
-                          message: `Remove everything this typed-in import brought: ${what}. This can't be reversed; you can type them in again.`})) return false;
-          const u = await api(`profiles/${encodeURIComponent(p)}/imports/${j.import_id}/undo`, {method: "POST"});
-          if (!u.ok) { const e = await u.json().catch(() => ({})); throw new Error(typeof e.detail === "string" ? e.detail : `the server answered ${u.status}`); }
+          const said = await sanguityImport.undoAsk(p, j.import_id, {origin: "manual", label: "Typed in", counts: j.counts, upload: null});
+          if (!said) return false;
           sayIn(msg, "Undone: what was saved is gone from the profile.", false, {say: false});
+          sanguityImport.undoneFocus(msg, said);
           toast("Undone: what was saved is gone from the profile.");
         }}] : [])]});
+      if (j.import_id != null) sanguityImport.told(p, j.import_id, false);   // Import history lists it at once, with its Undo (#508)
     } catch (e) {
       saving = false;
       tell("Couldn't save: " + e.message + " Nothing was saved.", true);

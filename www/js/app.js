@@ -147,6 +147,38 @@ function recordsFirst(data) {
   $(".tabs").hidden = false; $(".filters").hidden = false;
   return firstDrawn = recordsDraw(data);
 }
+const canImport = p => p.role === "owner" || p.role === "editor";
+/* the profile shown has no records: its empty card (#199), for someone who can bring them in, or not */
+function emptyProfile() {
+  emptyCard(canImport(PROFILE)
+    ? emptyState(`${PROFILE.name} has no records yet: lab results, visits, medications and the rest appear here once they're brought in.`,
+        {href: `guide.html?profile=${PROFILE.id}`, text: "Get started"})
+    : emptyState(`${PROFILE.name} has no records yet: its owners and editors bring them in, and they appear here for you too.`,
+        {href: `sharing.html?profile=${PROFILE.id}#people`, text: "See who has access"}));
+}
+/* an import of the profile shown undone (a toast's Undo, import-jobs.js told, #508): its records read again and drawn
+   in place (store.js), or, with none left, its empty card back, as a reload would show it; focus, where the import's
+   card isn't shown (the upload dialog closed), on the empty card's next step, or the tab's own link (it's always in
+   the bar, nav.js), else its first heading shown */
+document.addEventListener("sg:imports", ev => {
+  const d = ev.detail;
+  if (!d.undone || !PROFILE || d.pid !== PROFILE.id || !(DATA || firstDrawn)) return;
+  d.wait((async () => {
+    await firstDrawn;   // (an empty profile's first records still being drawn)
+    const r = await api(`profiles/${PROFILE.id}/data`);
+    if (r.status === 200) {
+      storeRecords(await r.json());
+      d.focus = [$("#tab-" + state.tab), ...document.querySelectorAll(`#view-${state.tab} h2:not(.vh)`)].find(h => h.checkVisibility());
+    } else if (r.status === 204) {
+      if (drawer.classList.contains("open")) closeDrawer();
+      DATA = null; firstDrawn = null; booted = false;
+      $("#meta").textContent = "";
+      emptyProfile();
+      doseOffer();
+      d.focus = document.querySelector("main > .empty .empty-next");
+    }
+  })());
+});
 /* another profile: the page again (nav.js remembers the choice first), on the tab that profile last showed here, so
    the address loses its tab's # (#208) */
 function renderProfileMenu() {
@@ -185,7 +217,6 @@ async function settingsLoad() {
     if (ME.user.must_change_pw) { location.replace("account.html#password"); return; }
     if (ME.user.needs_two_factor) { location.replace("account.html#twofa"); return; }
     $("#who").textContent = ME.user.username;
-    const canImport = p => p.role === "owner" || p.role === "editor";
     doseOffer();   // none until the records are here (#401)
     // the first-run guide and the empty states (#199): with no profile, make one (guide.html?new)
     if (!ME.profiles.length) {   // (with the account's own theme, as Settings shows it, #433)
@@ -211,11 +242,7 @@ async function settingsLoad() {
       await settingsLoad();
       applyTabs(CFG.tabs);   // its tabs as it has them, as the other pages show them (#425)
       applyTheme(CFG.theme);   // and the account's theme, as with records (#430)
-      emptyCard(canImport(PROFILE)
-        ? emptyState(`${PROFILE.name} has no records yet: lab results, visits, medications and the rest appear here once they're brought in.`,
-            {href: `guide.html?profile=${PROFILE.id}`, text: "Get started"})
-        : emptyState(`${PROFILE.name} has no records yet: its owners and editors bring them in, and they appear here for you too.`,
-            {href: `sharing.html?profile=${PROFILE.id}#people`, text: "See who has access"}));
+      emptyProfile();
       // arriving from Add on another page (#401): a journal entry can be the first record; a dose can't, and says why
       await dates;
       if (location.hash === "#log-dose") logDose(); else if (canImport(PROFILE)) journalResume();

@@ -1965,6 +1965,19 @@ Everything on `main` so far; it becomes the first tagged release.
   "histories", "directories", "entries"), Accounts for "make owner" and "profiles without an owner", and Connected-source
   apps for "test connection" and "remove source". Giving the last profile without an owner its owner says so where the
   list was, with focus on it (focus went to the card's heading, the message 2,000 px under it on a phone).
+- **Records in: an Undo tells the page, Waiting for you's saves reach Import history, the saved card's one count, and
+  one Undo question** (#508): a toast's Undo changed only its card. On the records page the import's records stayed
+  (an empty profile kept its tabs until a reload), and with the upload dialog closed focus went to the "Undone"
+  toast's ✕; the records are drawn again in place now, an empty profile's card comes back, and focus goes to its next
+  step or the tab's link. On Sources, Import history kept offering "Undo this import…", which then failed "No such
+  import"; on the guide, step 2 still said "The records are in". Wherever an import is saved or undone, Import history
+  and the guide's steps are read again, so a save from Waiting for you (or typed in) is listed at once. A later Apple
+  Health export's saved card said "7 duplicates skipped. 2 days of activity data and 1 workout already here" after its
+  review's "10 duplicates"; it says "10 duplicates skipped, 2 days of activity data and 1 workout among them." The
+  Undo question is one wherever it's asked, typed-in records' toast included ("Undo what was saved?" before), of the
+  import as Import history lists it: the files uploaded for it only when there were some (the toast always said so),
+  and one count, a lab draw not counted beside its results ("1 lab draw, 1 lab result" in Import history's, "1 lab
+  result" in the toast's).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
