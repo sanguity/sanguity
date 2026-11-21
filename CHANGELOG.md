@@ -2063,6 +2063,15 @@ Everything on `main` so far; it becomes the first tagged release.
   so the review could be drawn from its old counts. A sealed file is written through a temporary name of its own, a
   preview is read again one request at a time, a cancelled or saved preview's file no longer comes back if that
   lands while it's being read again, and the Overview reads its waiting previews again only while it's shown.
+- **Records in: an older toast's Undo leaves the latest typed save's line, imports from the drop dialog draw their
+  watch data and cycle records, same-result times in the person's format, and toasts that leave** (#522): on Type
+  records in, two saves, then the first one's Undo: the line, which described the second, said "Undone: what was saved
+  is gone from the profile."; it now changes only for its own save, and each toast names what it saved ("Saved 1
+  result: Sodium."). An Apple Health export added from the upload dialog on the records page, or undone, left Body and
+  activity's readings and the cycle records as they were until a reload; they're read again with the records. A
+  review's results possibly the same as another source's gave their times in the browser's format and zone, which
+  could split "8:31 / AM"; they're in the person's date format and zone, the time kept whole. A toast whose Undo went
+  with an Undo elsewhere stayed until dismissed; it now leaves after its 10 seconds.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
