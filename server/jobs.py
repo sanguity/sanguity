@@ -27,6 +27,8 @@ Jobs left queued or running when the app stopped never committed, so at start-up
 except one that was saving a confirmed preview: it goes back to "preview".
 """
 import collections, contextlib, json, logging, os, posixpath, queue, re, threading
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import activity, config, crossmatch, crypto, db as dbm, importers as registry, labmap, preview, profiles as prof, records, uploads, watch_store
 
@@ -207,8 +209,9 @@ def _report(db, pid, name, data, watch, labs):
     listed = [e for e in labs["listed"] if not _all_here(named, dups, int(e["ref"][2:]))]
     report["labs"], report["lab_targets"] = listed, labs["targets"] if listed else []
     if watch:   # what the profile has already counts as already here (#497), not as new
-        fresh, here = _watch_split(db, pid, watch)
+        fresh, here, _ = _watch_split(db, pid, watch)
         report["counts"].update(fresh)
+        report["range"] = _with_days(report["range"], watch)   # the dates the upload covers, its watch data's too (#500)
         if here:
             report["duplicates"]["watch"] = here
         report["new"] = report["new"] or any(fresh.values())
@@ -227,9 +230,35 @@ def _all_here(data, dups, i):
 
 def _watch_split(db, pid, watch):
     """An import's watch data counted as what's new to the profile and what it has already (watch_store.unseen):
-    (the new counts, as _watch_counts gives them, {count key: how many already here})."""
-    whole, fresh = _watch_counts(watch), _watch_counts(watch_store.unseen(watch_store.load(db, pid), watch))
-    return fresh, {k: n - fresh.get(k, 0) for k, n in whole.items() if n > fresh.get(k, 0)}
+    (the new counts, as _watch_counts gives them, {count key: how many already here}, the new data itself)."""
+    new = watch_store.unseen(watch_store.load(db, pid), watch)
+    whole, fresh = _watch_counts(watch), _watch_counts(new)
+    return fresh, {k: n - fresh.get(k, 0) for k, n in whole.items() if n > fresh.get(k, 0)}, new
+
+
+def _with_days(rng, watch):
+    """A range ({"from", "to"} or None, summarise's) widened to the days of watch data (#500): its daily points',
+    workouts' and home readings' (an Apple Health export's later days may be all it brings that's new), a time with
+    an offset on its day in the data's own time zone ("tz": a zone's name or "UTC-0700"), as its daily points are."""
+    w = watch or {}
+    tz, off = timezone.utc, re.fullmatch(r"UTC([+-])(\d\d)(\d\d)", str(w.get("tz") or ""))
+    try:
+        tz = (timezone((-1 if off[1] == "-" else 1) * timedelta(hours=int(off[2]), minutes=int(off[3]))) if off
+              else ZoneInfo(str(w.get("tz") or "UTC")))
+    except (ZoneInfoNotFoundError, ValueError, OSError):
+        pass
+
+    def day(s):
+        try:
+            t = datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+        except ValueError:
+            return str(s)[:10]
+        return (t.astimezone(tz) if t.tzinfo else t).date().isoformat()
+    days = {str(p[0])[:10] for m in w.get("metrics") or [] if isinstance(m, dict) for p in m.get("pts") or [] if isinstance(p, list) and p}
+    days |= {day(x.get("start")) for x in w.get("exercise") or [] if isinstance(x, dict)}
+    days |= {day(r[0]) for k in watch_store.READINGS for r in w.get(k) or [] if isinstance(r, list) and r}
+    days = {d for d in days if re.match(r"^\d{4}-\d{2}-\d{2}$", d)} | ({rng["from"], rng["to"]} if rng else set())
+    return {"from": min(days), "to": max(days)} if days else None
 
 
 def _stamp(db, pid):
@@ -310,9 +339,10 @@ def _save(db, j):
     if same:
         summary["linked"] = len(same)
     # watch data: what the profile has already is counted as skipped (#497); all of it there, it isn't saved again
-    fresh, here = _watch_split(db, pid, watch) if watch else ({}, {})
+    fresh, here, new_watch = _watch_split(db, pid, watch) if watch else ({}, {}, None)
     if here:
         summary["skipped"]["watch"] = here
+    summary["range"] = _with_days(summary["range"], new_watch)   # what it brought, the wearable's new days too (#500)
     watch = watch if any(fresh.values()) else None
     who_id = j["confirmed_by"] or j["created_by"]
     who = db.execute("SELECT id, username FROM users WHERE id=?", (who_id,)).fetchone() if who_id else None
@@ -332,7 +362,8 @@ def _save(db, j):
         for x in same if iid else ():
             crossmatch.decide(db, pid, who["id"] if who else None, x["other_key"], x["key"], True,
                               [x["other"], {k: x[k] for k in ("name", "t", "value", "unit")}])
-        remembered = labmap.remember(db, name, held.get("labs"), sent, raw, who)
+        remembered = labmap.remember(db, name, held.get("labs"), sent, raw, who, import_id=iid)   # undone with it (#500)
+        labmap.used(db, labmap.applied(held.get("labs"), sent))   # ...unless another import used them since
         matched = sum(1 for t in labmap.choices(held.get("labs"), sent).values() if t)
         summary["lab_names"] = {"matched": matched, "remembered": remembered}
         activity.log(db, "import", who, pid, {"importer": name, "counts": summary["counts"], "job": jid,

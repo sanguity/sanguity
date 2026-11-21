@@ -9281,6 +9281,16 @@ def main():
                   "the palette finds it; deleted, the profile has no records yet again (#472)",
                   only472 == ["#timeline-journal", "timeline", "journal", False, True, True, ["#timeline-journal", "timeline", "journal"]] and not bad472
                   and "no records yet" in page.inner_text("main"), [only472, bad472])
+            # (#500) that empty page (Get started, no records bar or Events card), resized across 700 px, where the
+            # dates and search move between the bar and the phone's sheets: no script error
+            errs500 = []
+            on500 = lambda e: errs500.append(str(e))
+            page.on("pageerror", on500)
+            for w in (600, 1400, 600, 1400):
+                page.set_viewport_size({"width": w, "height": 900})
+                settle(150)
+            page.remove_listener("pageerror", on500)
+            check("…and resized across 700 px, that empty profile's page logs no error (#500)", not errs500, errs500)
             # #477: a profile with a phone connected and nothing imported, no journal either: the watch's summary is its
             # records, so it opens on Body and activity with its charts (it said "no records yet", even at #health), and
             # its Overview leads with Get started, with no phone to connect
@@ -9760,6 +9770,23 @@ def main():
                       js("!document.querySelector('dialog.up-dlg').open"), js("!document.querySelector('.drop-veil')?.matches(':popover-open')")]
             answer_ask(page, yes=False)
             check("…a drop while ask() is open is kept from the browser (the page stays), and nothing is uploaded (#497)", ask497 == [True] * 5, ask497)
+            # (#500) from "/?profile=N", where sign-in lands: a CSV dropped into the dialog and added, its toast's Open
+            # Labs, then its card's "See them on the timeline" (the dialog closed), each change the tab without a reload
+            page.goto(base + f"/?profile={dpid497}")
+            page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE && PROFILE.id === {dpid497}", timeout=20000)
+            js("window._page500 = 1")
+            js(drop497, ["root-500.csv", "Date,Test,Result,Units,Reference Range\n2026-11-15,Sodium,141,mmol/L,135 - 145\n"])
+            page.wait_for_function(f"/^Ready to import/.test({dcard497}?.textContent)", timeout=30000)
+            js(f"{dcard497}.querySelector('.imp-actions .primary').click()")
+            page.wait_for_function(f"/^Imported/.test({dcard497}.textContent)", timeout=30000)
+            page.click("#sgToasts .sg-toast:last-child a:text-is('Open Labs')")
+            page.wait_for_function("state.tab === 'labs' && !document.querySelector('dialog.up-dlg').open", timeout=5000)
+            labs500 = js("[window._page500, location.pathname + location.search + location.hash]")
+            js(f"{dcard497}.querySelector('a[href$=\"#timeline\"]').click()")
+            page.wait_for_function("state.tab === 'timeline'", timeout=5000)
+            tl500 = js("[window._page500, location.pathname + location.search + location.hash]")
+            check("from “/?profile=N”, the dialog's Open Labs and “See them on the timeline” change the tab without a reload (#500)",
+                  labs500 == [1, f"/?profile={dpid497}#labs"] and tl500 == [1, f"/?profile={dpid497}#timeline"], [labs500, tl500])
             page.set_viewport_size({"width": 1400, "height": 900})
             page.goto("about:blank")
             db = dbm.connect()
@@ -10669,12 +10696,74 @@ def main():
                 [...c.querySelectorAll('.imp-dups li')].map(li => li.textContent.replace(/^.*?\\d{{4}} /, '')),
                 c.querySelector('.imp-dups ul + p.hint')?.textContent, [c.querySelector('.imp-actions .primary').textContent, c.querySelector('.imp-actions .primary').disabled]])({last_card})""")
             check("…and the zip again says nothing new: all duplicates, no tiles, its activity and workout already here, every duplicate it counts listed (#497)",
-                  dup497[:4] == ["All duplicates", False, ["0 new", "7 already here", "0 possibly the same"], "Already here: 7 duplicates, skipped unless ticked"]
+                  dup497[:4] == ["All duplicates", False, ["0 new", "10 already here", "0 possibly the same"], "Already here: 7 duplicates, skipped unless ticked"]   # (its 2 days and workout too, #500)
                   and dup497[4] == 7 and dup497[5] == 5 and any(t.startswith("Allergy: ") for t in dup497[6]) and any(t.startswith("problem or diagnosis: ") for t in dup497[6])
                   and dup497[7] == "Already here as well: 2 days of activity data and 1 workout, skipped." and dup497[8] == ["Nothing to add", True], dup497)
+            # (#500) a duplicate ticked, focus on its box, the review drawn again (as another import's Add or Review in
+            # Waiting for you draws it): the list stays open, focus on the same box, still ticked; then on its summary
+            box500 = page.locator("#importer .import-job").last.locator(".imp-dups input[type=checkbox]").first
+            box500.check()
+            box500.focus()
+            ref500 = js("document.activeElement.value")
+            redraw500 = f"window._old500 = document.activeElement; window.sanguityImport.fresh({last_card})"
+            js(redraw500)
+            page.wait_for_function("!window._old500.isConnected", timeout=10000)
+            again500 = js(f"""(c => [c.querySelector('.imp-dups').open, document.activeElement.matches('.imp-dups input[type=checkbox]'), document.activeElement.value,
+                document.activeElement.checked, c.querySelector('.imp-actions .primary').textContent])({last_card})""")
+            page.locator("#importer .import-job").last.locator(".imp-dups summary").focus()
+            js(redraw500)
+            page.wait_for_function("!window._old500.isConnected", timeout=10000)
+            again500.append(js(f"document.activeElement === {last_card}.querySelector('.imp-dups summary')"))
+            check("a review drawn again with a duplicate ticked keeps its list open and focus on that box, still ticked, or on the list's summary (#500)",
+                  again500[:4] == [True, True, ref500, True] and again500[4].startswith("Add 1 ") and again500[5], [ref500, again500])
             for card497 in (fcard497, last_card):
                 js(f"[...{card497}.querySelectorAll('.imp-actions button')].find(b => b.textContent === 'Cancel').click()")
                 page.wait_for_function(f"{card497}.textContent.startsWith('Cancelled.')", timeout=10000)
+            # (#500) a later export of the same Apple Health data with one more day of steps and one more workout: its
+            # review's bar counts them as new (the rest already here) and its range takes them in, as the saved card's does
+            later500 = ('<Record type="HKQuantityTypeIdentifierStepCount" sourceName="Test Phone" unit="count" startDate="2025-06-03 09:00:00 -0700" '
+                        'endDate="2025-06-03 09:30:00 -0700" value="4400"/>\n<Workout workoutActivityType="HKWorkoutActivityTypeCycling" duration="40" '
+                        'durationUnit="min" sourceName="Test Phone" startDate="2025-06-03 18:00:00 -0700" endDate="2025-06-03 18:40:00 -0700"/>\n</HealthData>')
+            buf500 = io.BytesIO()
+            with zipfile.ZipFile(buf500, "w", zipfile.ZIP_DEFLATED) as z:
+                for d, _, names in os.walk(ah497):
+                    for n in names:
+                        with open(os.path.join(d, n), "rb") as f:
+                            data500 = f.read()
+                        if n == "export.xml":
+                            data500 = data500.replace(b"</HealthData>", later500.encode()).replace(b"2025-06-02 08:00", b"2025-06-09 08:00")
+                        z.writestr("apple_health_export/" + os.path.relpath(os.path.join(d, n), ah497).replace(os.sep, "/"), data500)
+            page.set_input_files("#pickFiles", files=[{"name": "export-later.zip", "mimeType": "application/zip", "buffer": buf500.getvalue()}])
+            page.wait_for_function(f"/^Ready to import/.test({last_card}.textContent) && {last_card}.closest('.job').querySelector('h3').textContent === 'export-later.zip'", timeout=30000)
+            new500 = js(f"(c => [[...c.querySelectorAll('.imp-split li')].map(li => li.textContent), c.querySelector('.imp-title').textContent])({last_card})")
+            js(f"{last_card}.querySelector('.imp-actions .primary').click()")
+            page.wait_for_function(f"/^Imported/.test({last_card}.textContent)", timeout=30000)
+            new500.append(js(f"{last_card}.querySelector('p').textContent"))
+            check("a later Apple Health export's review counts its new day and workout as new, its range and the saved card's taking them in (#500)",
+                  new500[0] == ["2 new", "10 already here", "0 possibly the same"] and new500[1].endswith(" – Jun 3, 2025")
+                  and new500[2].endswith(" from Jun 3, 2025."), new500)
+            # (#500) a lab name matched to a series by hand, added, then undone from its toast: the question says the
+            # match goes too, and the same file again asks about the name again
+            undo500 = csv497.replace("XR", "XV").format("2026-11-12", "12.7").encode()
+            page.set_input_files("#pickFiles", files=[{"name": "undo-500.csv", "mimeType": "text/csv", "buffer": undo500}])
+            page.wait_for_function(f"/^Ready to import/.test({last_card}.textContent) && {last_card}.closest('.job').querySelector('h3').textContent === 'undo-500.csv'", timeout=30000)
+            page.locator("#importer .import-job").last.locator(".imp-labs input[list]").fill("Zeta marker XR")
+            js(f"{last_card}.querySelector('.imp-labs input[list]').dispatchEvent(new Event('change'))")
+            js(f"{last_card}.querySelector('.imp-actions .primary').click()")
+            page.wait_for_function(f"/^Imported/.test({last_card}.textContent)", timeout=30000)
+            matches500 = js(f"fetch('api/profiles/{pid497}/imports', {{cache: 'no-store'}}).then(r => r.json()).then(j => j.imports[0].lab_matches)")
+            page.click("#sgToasts .sg-toast:last-child button:text-is('Undo…')")
+            asked500 = answer_ask(page)
+            page.wait_for_function(f"/^Undone/.test({last_card}.textContent)", timeout=10000)
+            page.set_input_files("#pickFiles", files=[{"name": "undo-500-again.csv", "mimeType": "text/csv", "buffer": undo500}])
+            page.wait_for_function(f"/^Ready to import/.test({last_card}.textContent) && {last_card}.closest('.job').querySelector('h3').textContent === 'undo-500-again.csv'", timeout=30000)
+            ask500 = js(f"(c => [!!c.querySelector('.imp-labs input[list]'), !!c.querySelector('.imp-labs .before'), c.querySelector('.imp-labs .why')?.textContent])({last_card})")
+            js(f"[...{last_card}.querySelectorAll('.imp-actions button')].find(b => b.textContent === 'Cancel').click()")
+            page.wait_for_function(f"{last_card}.textContent.startsWith('Cancelled.')", timeout=10000)
+            settle(200)   # (what's said of it said before the next check listens: focus was in the toasts, so its review was said)
+            check("after Undo, the same upload asks about its lab name again, the question having said its match goes too (#500)",
+                  matches500 == 1 and "The lab-name match made for it is forgotten too" in asked500[1]
+                  and ask500[:2] == [True, False] and ask500[2], [matches500, asked500, ask500])
             # (#497) a card put away for another profile says nothing as it reaches its review
             js("window._said497 = []; for (const id of ['sgStatus', 'sgAlert']) new MutationObserver(() => { const t = document.getElementById(id).textContent; "
                "if (t) window._said497.push(t); }).observe(document.getElementById(id), {childList: true, characterData: true, subtree: true})")

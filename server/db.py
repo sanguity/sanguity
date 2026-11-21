@@ -701,6 +701,14 @@ SCHEMA = [
     """
     ALTER TABLE imports ADD COLUMN created_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
     """,
+    # version 36: a lab name's match forgotten with the import that made it (#500; labmap.py). import_id: the import
+    # whose review made the choice (NULL for those made before this, and once that import is gone); used: when another
+    # import was last saved with it. Undoing the import forgets a choice no other import has used and no admin changed.
+    """
+    ALTER TABLE labmaps ADD COLUMN import_id INTEGER REFERENCES imports(id) ON DELETE SET NULL;
+    ALTER TABLE labmaps ADD COLUMN used INTEGER;
+    CREATE INDEX labmaps_import ON labmaps(import_id);
+    """,
 ]
 
 

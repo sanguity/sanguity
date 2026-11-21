@@ -3,7 +3,7 @@
 Sanguity keeps everything in one SQLite database, `DATA_DIR/sanguity.db`, plus files in the data folder that it
 points at (documents, uploads, previews, watch summaries). The schema is built step by step from `SCHEMA` in
 [`server/db.py`](../server/db.py): each step is a numbered version (`PRAGMA user_version`), applied once at start-up,
-so an older install upgrades itself. This page describes **schema version 35**. When you add a step, update the
+so an older install upgrades itself. This page describes **schema version 36**. When you add a step, update the
 diagrams here too.
 
 Two things hold everywhere:
@@ -359,11 +359,13 @@ When an import's preview finds a lab name that `lab-aliases.json` doesn't know, 
 an existing series or keeps it as its own (`server/labmap.py`). The choice is remembered in **labmaps** and applied to
 later imports on every profile of the install, so it belongs to no profile. Rows are looked up by a keyed hash of the
 importer, the name as reported, its unit and LOINC code; the name and the series it goes to are encrypted. Only admins
-can change or remove one.
+can change or remove one, but for undoing the import whose review made it (`import_id`, schema version 36, #500): that
+forgets it, unless another import has been saved with it since (`used`) or an admin has changed it.
 
 ```mermaid
 erDiagram
     users |o--o{ labmaps : "created or changed"
+    imports |o--o{ labmaps : "made by its review"
 
     labmaps {
         int id PK
@@ -377,6 +379,8 @@ erDiagram
         int changed_by FK
         text changed_name
         int changed
+        int import_id FK "its import, until undone"
+        int used "another import saved with it"
     }
 ```
 

@@ -236,6 +236,29 @@ class LabMapping(unittest.TestCase):
         finally:
             db.close()
 
+    def test_undo_forgets_the_matches_its_import_made(self):
+        """#500: undoing the import whose review made a match forgets it, so the next import asks again; the history
+        entry counts it for the question asked first. A match another import has been saved with since stays."""
+        pid = self.with_hemoglobin("Undone")
+        hist = lambda: self.robin.get(f"/api/profiles/{pid}/imports").json()["imports"][0]
+        j = self.previewed(pid, csv(["2026-02-05", "HGB-U", "12.0", "g/dL", "13.5 - 17.5", "L", "CBC", "718-7"]))
+        done = self.save(pid, j, {self.entry(j, "HGB-U")["ref"]: "Hemoglobin"})
+        self.assertEqual(hist()["lab_matches"], 1)
+        r = self.robin.post(f"/api/profiles/{pid}/imports/{done['import_id']}/undo", headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        j = self.previewed(pid, csv(["2026-02-05", "HGB-U", "12.0", "g/dL", "13.5 - 17.5", "L", "CBC", "718-7"]))
+        self.assertIsNone(self.entry(j, "HGB-U")["before"])   # asked again
+        # matched again, then used by another import (in another profile) before the first is undone: it stays
+        done = self.save(pid, j, {self.entry(j, "HGB-U")["ref"]: "Hemoglobin"})
+        other = self.profile("Undone elsewhere")
+        k = self.previewed(other, csv(["2026-03-05", "HGB-U", "12.4", "g/dL", "13.5 - 17.5", "L", "CBC", "718-7"]))
+        self.save(other, k)
+        self.assertEqual(hist()["lab_matches"], 0)
+        self.robin.post(f"/api/profiles/{pid}/imports/{done['import_id']}/undo", headers=H)
+        j = self.previewed(pid, csv(["2026-04-05", "HGB-U", "12.8", "g/dL", "13.5 - 17.5", "L", "CBC", "718-7"]))
+        self.assertEqual(self.entry(j, "HGB-U")["before"], {"target": "Hemoglobin"})
+        self.robin.post(f"/api/profiles/{pid}/jobs/{j['id']}/discard", headers=H)
+
     # ---------------------------------------------------------------- the list: admins only, logged
 
     def test_only_admins_edit_the_list(self):

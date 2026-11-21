@@ -1892,6 +1892,16 @@ Everything on `main` so far; it becomes the first tagged release.
   tab of the page under it. A card put away for another profile says nothing as it goes. A folder or several files no
   longer show an Unpacking stage: only a zip has one. Files dropped while another dialog is open no longer open in the
   browser in place of the page.
+- **Records in: the dialog's links change the tab from "/", a wearable's new data counts as new, a review drawn again
+  keeps its lists open and focus, and Undo forgets the lab-name matches it made** (#500): from "/" or "/?profile=N",
+  where sign-in lands, the drop dialog's "See them on the timeline" and its toast's Open Labs loaded the whole page
+  again (a file still sending asked "Leave site?"); they change the tab only. A later Apple Health export with one more
+  day of steps and a workout said "0 new" in its review's bar, and its dates left that day out: a wearable's new and
+  already-here data count in the bar, and the review's and the saved card's dates take it in. A review drawn again
+  closed its list of duplicates and put focus on the card: each list keeps its state and focus goes back to the same
+  box or summary. A lab name matched by hand outlived its import's Undo, on every profile: undoing an import now
+  forgets the matches its review made, unless another import has been saved with them since or an admin changed them,
+  and the Undo question says so. An empty profile's page no longer logs an error when resized across 700 px.
 - **Sharing and setup keep focus, the clinician's page prints its heads with their rows, its section bar is two rows
   at most, and a link sends a long section's latest rows** (#498): Share links' Cancel, Sharing's Leave and a wrong
   setup code left focus on the page. Cancel puts it on New share link, Leave on the page's heading (the next profile's),

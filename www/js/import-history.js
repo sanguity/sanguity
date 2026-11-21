@@ -88,12 +88,16 @@
     return li;
   }
 
+  // what else an Undo takes away (#500, the server's labmap.forget): the lab-name matches the import's review made,
+  // unless another import has used them since (as the toast's Undo says it, import-jobs.js)
+  const forgets = n => !n ? "" : n === 1 ? " The lab-name match made for it is forgotten too: the next import of that name asks about it again."
+    : ` The ${n.toLocaleString()} lab-name matches made for it are forgotten too: the next import of those names asks about them again.`;
   // asked first, in the app's dialog (ask(), util.js; #363), the red button its action and focus on Keep it
   async function confirmUndo(e, opener) {
     if (!await ask({title: e.removal ? "Put back what this took out?" : "Undo this import?",
       message: e.removal ? `What comes back: ${counts(e).toLowerCase()}.` :
         `Everything this ${e.label} import brought is removed: ${counts(e).toLowerCase()}` + (e.upload != null ? ", and the files uploaded for it" : "") +
-        ". This can't be reversed; you can import the files again." + (e.origin === "dataset" ? " What it replaced when it was loaded won't come back." : ""),
+        "." + forgets(e.lab_matches) + " This can't be reversed; you can import the files again." + (e.origin === "dataset" ? " What it replaced when it was loaded won't come back." : ""),
       action: e.removal ? "Put them back" : "Undo import", cancel: "Keep it", danger: true})) return;
     opener.disabled = true;
     say("Undoing…");

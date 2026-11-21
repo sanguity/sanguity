@@ -199,6 +199,7 @@ fSheet.addEventListener("close", () => $("#ftoggle").setAttribute("aria-expanded
 /* the date boxes and the search: in the sheets on a phone; wider, the dates in the records bar and the search after the
    kinds, in the Events card's header (#277) */
 function barOrSheet() {
+  if (!$("#periodWords") || !$("#chips")) return;   // an empty profile's Get started has no records bar or Events card (#500)
   if (PHONE.matches) { datesBox.append($("#dates")); qSlot.append($("#q")); }
   else { $("#periodWords").after($("#dates")); $("#chips").after($("#q")); fSheet.close(); }
   if (typeof booted !== "undefined" && booted) renderPeriod();
