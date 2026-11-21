@@ -252,10 +252,12 @@ const SgPalette = (() => {
   /* how well something matches what's typed (#403), the same in every group, lower better: 0 its title is what's typed
      (#452: the Journal view before Add's Journal entry), .5 its title starts with it all, 1 each word typed starts a word of the title, 2 the first does, 3 only what else it's known by has them;
      -1 not at all. A word typed is found only at the start of a word, never inside one ("hem" isn't in "theme").
-     Words are letters and digits: "two-factor" is "two factor", as "mg/dL" is "mg dl" */
+     Words are letters and digits: "two-factor" is "two factor", as "mg/dL" is "mg dl". A plural typed finds its
+     singular too (#502: "codes" finds "code", "matches" "match") */
   const flat = s => " " + norm(s).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const singular = w => w.length < 4 ? w : w.replace(/(ch|sh|x|ss)es$/, "$1").replace(/([^s])s$/, "$1");
   function score(title, also, words) {
-    const t = flat(title), hay = t + flat(also), at = (h, w) => h.includes(" " + w);
+    const t = flat(title), hay = t + flat(also), at = (h, w) => h.includes(" " + w) || h.includes(" " + singular(w));
     if (!words.every(w => at(hay, w))) return -1;
     const all = " " + words.join(" ");
     return t === all ? 0 : t.startsWith(all) ? .5 : words.every(w => at(t, w)) ? 1 : at(t, words[0]) ? 2 : 3;

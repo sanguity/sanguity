@@ -134,6 +134,7 @@ async function startTwoFactor() {
 }
 function showRecoveryCodes(codes, justTurnedOn) {
   const text = "Sanguity recovery codes for " + ME.user.username + "\nEach works once, in place of a code from your app.\n\n" + codes.join("\n") + "\n";
+  say("#tfMsg", "");   // (#502: a wrong code's "doesn't match" stayed under them)
   tfHint((justTurnedOn ? "Two-factor sign-in is on. " : "") +
     "Save these recovery codes somewhere safe, away from your phone. Each one signs you in once if you lose your phone. " +
     "They won't be shown again.", true);
@@ -186,11 +187,13 @@ async function loadPasskeys() {
             title: last ? "This server requires two-factor sign-in, and this is your only second step" : null, onclick: async () => {
               if (!await ask({title: `Remove the passkey “${k.name}”?`, message: "Remove it from the device too, in its passwords or passkeys settings.",
                               action: "Remove passkey", danger: true})) return;
+              const at = st.passkeys.indexOf(k);
               try {
                 const r = await call("me/passkeys/" + k.id, "DELETE");
                 if (r.must_change_pw) { location.replace("account.html#password"); location.reload(); return; }
-                loadPasskeys();
-              } catch (e) { say("#pkMsg", e.message, true); } }})));
+                await loadPasskeys();
+              } catch (e) { say("#pkMsg", e.message, true); return; }
+              pkFocus(at); }})));
     }))) : emptyState("No passkeys yet: each one you add is listed here, with when it was last used.", null, {cls: ""}));   // (#494)
   if (last) $("#pkList").append(el("p", {class: "hint", text: "This server requires two-factor sign-in, so your only passkey can't be removed until you add another or turn on the authenticator app."}));
   if (!usable) { $("#pkBody").replaceChildren(); return; }
@@ -208,6 +211,9 @@ async function loadPasskeys() {
     } catch (e) { say("#pkMsg", e.message, true); } }},
     nm, pwField(pw).box, el("button", {class: "btn primary small", type: "submit", text: "Add a passkey"})));   // with Show (#492)
 }
+/* its button gone with the passkey removed (#502), as Sign out's (sessFocus): focus on the next passkey's Remove, else
+   the one before's, else (none left, or the last can't be removed) on the card's heading */
+const pkFocus = at => focusNear([...$("#pkList").querySelectorAll("tbody tr")], at, "td.acts button:last-child", $("#passkeys h2"));
 
 /* ---------------------------------------------------------------- the sidebar and the address */
 /* The sidebar every account page has (sidebar.js, #266): one group shown at a time, the address following it

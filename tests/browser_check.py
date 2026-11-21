@@ -13596,6 +13596,19 @@ def main():
             page.keyboard.press("Escape")
             check("…(#499) it finds Admin's Accounts for “create account”, and Cycle tracking for “delete cycle data” and “turn off cycle”",
                   "Accounts" in found499["create account"] and all("Cycle tracking" in found499[q] for q in ("delete cycle data", "turn off cycle")), found499)
+            # #502: and what's done on Account and to an account (it found nothing for these): a word typed in the plural
+            # finds it in the singular too ("codes" finds "code")
+            want502 = {"recovery codes": "Two-factor sign-in", "new recovery codes": "Two-factor sign-in", "turn off two-factor": "Two-factor sign-in",
+                       "turn on two-factor": "Two-factor sign-in", "one-time password": "Accounts", "make admin": "Accounts",
+                       "remove passkey": "Passkeys", "add passkey": "Passkeys", "sign out everywhere": "Where you're signed in"}
+            found502 = {}
+            for q in want502:
+                pal(q, "Control+k" if not found502 else None)
+                found502[q] = [t for g, t in js(pal_found) if g == "Pages and settings"][:3]
+            page.keyboard.press("Escape")
+            check("…(#502) it finds Two-factor sign-in for recovery codes, new ones, and turning it on or off; Admin's Accounts for “one-time "
+                  "password” and “make admin”; Passkeys for adding and removing one; Where you're signed in for “sign out everywhere”",
+                  all(found502[q][:1] == [t] for q, t in want502.items()), found502)
             page.goto(base + "/settings.html?profile=1#dashboard")
             page.wait_for_selector("#sections > section", state="attached", timeout=10000)
             settle(300)
@@ -15265,10 +15278,35 @@ def main():
             page.fill("#fIssuer", fake.fhir_base)
             page.fill("#fClient", "sanguity-browser-check")
             page.click("#fSave")
-            page.wait_for_function("document.getElementById('sourceList').textContent.includes('Fake Epic sandbox')", timeout=10000)
-            page.locator("#sourceList .prof", has_text="Fake Epic sandbox").get_by_role("button", name="Test this connection").click()
-            page.wait_for_function("[...document.querySelectorAll('#sourceList .prof')].some(p => p.textContent.includes('Fake Epic sandbox') && "
-                                   "(p.textContent.includes('Discovery works') || p.textContent.includes('tested ') && !p.textContent.includes('not tested')))", timeout=10000)   # its test done, not "not tested yet"
+            page.wait_for_function("document.getElementById('sourceList').textContent.includes('Fake Epic sandbox') && document.activeElement.id === 'walkTest'", timeout=10000)
+            # #502: a test, failing then OK, keeps its result and focus on its button, in sight: the walk-through's (an OK
+            # one drew its step again, taking both) and a row's (the list drawn again). Failing as the server answers it
+            # for a source it can't read (the fake can be read)
+            test502, src502 = "**/api/connect/sources/*/test", {}
+            fail502 = lambda route: route.fulfill(status=200, content_type="application/json",
+                                                  body='{"ok": false, "problem": "its discovery couldn\'t be read (a fictional failure).", "kind": "network"}')
+            sees502 = """(sel => { const a = document.activeElement, r = a.getBoundingClientRect(), row = a.closest('#sourceList .prof');
+                return [a.id || a.dataset.act || a.tagName, row?.querySelector('b').textContent || null,
+                  (sel ? document.querySelector(sel) : row?.querySelector('.src-msg'))?.textContent.slice(0, 15) || '', r.top >= 0 && r.bottom <= innerHeight]; })"""
+            for ok in (False, True):
+                said = "Discovery works" if ok else "Test failed"
+                if not ok:
+                    page.route(test502, fail502)
+                page.click("#walkTest")
+                page.wait_for_function(f"document.getElementById('walkResult').textContent.startsWith('{said}')", timeout=10000)
+                settle(500)   # (an OK one's list drawn again)
+                src502[f"walk-through, {'OK' if ok else 'failing'}"] = js(sees502, "#walkResult")
+                page.locator("#sourceList .prof", has_text="Fake Epic sandbox").get_by_role("button", name="Test this connection").click()
+                page.wait_for_function("[...document.querySelectorAll('#sourceList .prof')].some(p => p.textContent.includes('Fake Epic sandbox') && "
+                                       f"p.querySelector('.src-msg').textContent.startsWith('{said}')" +
+                                       (" && p.textContent.includes('tested ') && !p.textContent.includes('not tested')" if ok else "") + ")", timeout=10000)
+                settle(500)
+                src502[f"row, {'OK' if ok else 'failing'}"] = js(sees502, None)
+                if not ok:
+                    page.unroute(test502, fail502)
+            check("a source's test, failing and OK, leaves its result and focus on its button, in sight: the walk-through's and a row's (#502)",
+                  all(v == (["walkTest", None] if k.startswith("walk") else ["test", "Fake Epic sandbox"]) + [("Discovery works" if "OK" in k else "Test failed: its")[:15], True]
+                      for k, v in src502.items()), src502)
             page.goto(base + "/connect.html")   # its old address: Sources → Portals and health plans (#166)
             page.wait_for_url(re.compile(r"/sources\.html(\?[^#]*)?#portals$"), timeout=10000)   # with or without the ?profile= nav.js adds
             page.wait_for_selector("#adminNote:not([hidden])", timeout=10000)
@@ -15772,9 +15810,19 @@ def main():
             check("Review done needs the client ID first, and says so", "Waiting for review" in row.inner_text(), row.inner_text()[:200])
             problems[:] = [x for x in problems if not ("HTTP 400: " in x and "/api/connect/sources" in x)
                            and "status of 400" not in x]   # refused on purpose: that was the point
-            page.evaluate(f"api('connect/sources/{wait_id}', {{method: 'DELETE'}}).then(r => r.status)")
-            page.reload()
-            page.wait_for_function("typeof SETUP !== 'undefined' && SETUP && !SETUP.sources.some(s => s.name === 'Lakeside Health (fictional)')", timeout=10000)
+            # #502: Remove asks first (it removed at once), and then focus is on another source's Test, in sight (it fell to the page)
+            row.get_by_role("button", name="Remove").click()
+            asked502 = answer_ask(page, yes=False)
+            settle(200)
+            kept502 = [row.count(), js("document.activeElement.dataset.act")]
+            row.get_by_role("button", name="Remove").click()
+            answer_ask(page)
+            page.wait_for_function("!SETUP.sources.some(s => s.name === 'Lakeside Health (fictional)') && !document.getElementById('sourceList').textContent.includes('Lakeside')", timeout=10000)
+            settle(300)
+            gone502 = js("(() => { const a = document.activeElement, r = a.getBoundingClientRect(); return [a.dataset.act, !!a.closest('#sourceList .prof'), r.top >= 0 && r.bottom <= innerHeight]; })()")
+            check("…Remove asks first; Cancel keeps it, focus back on its Remove; removed, focus on another source's Test, in sight (#502)",
+                  asked502[0] == "Remove Lakeside Health (fictional)?" and "Nobody can connect it" in asked502[1] and kept502 == [1, "remove"]
+                  and gone502 == ["test", True, True], [asked502, kept502, gone502])
 
             # ---- #246: the Timeline list's row is .tl-row, so the pages' rows of buttons (.row) have no divider under them
             # and no pointer, and what's typed into a field isn't its label's semibold; every group of each page
@@ -16558,12 +16606,20 @@ def main():
                   tf495 and tf495[0] == "The key for your authenticator app, as a QR code" and not tf495[3] and tf495[4] == "Copy the key"
                   and abs(tf495[5]) <= 8 and tf_read.startswith("otpauth://totp/Sanguity:") and f"secret={key}" in tf_read, [tf495 and tf495[:2] + tf495[3:], tf_read])
             page.set_viewport_size({"width": 375, "height": 667})
+            # #502: a wrong code first, then the right one: its "doesn't match" stayed, red, under the recovery codes
+            before502 = len(problems)
+            page.locator("#twofa input").fill(totp(key, 9))
+            page.locator("#twofa").get_by_role("button", name="Confirm").click()
+            page.wait_for_function("document.getElementById('tfMsg').classList.contains('bad') && document.getElementById('tfMsg').textContent", timeout=10000)
+            problems[before502:] = [x for x in problems[before502:] if "400" not in x]   # the wrong code's refusal
             page.locator("#twofa input").fill(totp(key))
             page.locator("#twofa").get_by_role("button", name="Confirm").click()
             page.wait_for_selector("#twofa .tf-codes")
             settle(200)
             tf499["Confirm"] = js(seen499)
             check("2FA confirmed, 10 recovery codes shown", len(js("document.querySelector('#twofa .tf-codes').textContent").split()) == 10)
+            check("…after a wrong code first, with no error left under them (#502)", js("document.getElementById('tfMsg').textContent") == "",
+                  js("document.getElementById('tfMsg').textContent"))
             page.locator("#twofa").get_by_role("button", name="I've saved them").click()
             page.wait_for_function("document.getElementById('tfHint').textContent.startsWith('On.') && document.querySelector('#tfMsg a[href=\"admin.html\"]')", timeout=10000)
             settle(200)
@@ -17007,7 +17063,7 @@ def main():
             # it was read from where focus was at the redraw, by then the page, as the check's form had gone
             row493 = "[document.activeElement.getAttribute('aria-label'), !!document.activeElement.closest('tr[data-user]')]"
             page.locator("#reauth").get_by_role("button", name="Cancel").click()
-            page.wait_for_function("document.getElementById('reauth').hidden && document.getElementById('userMsg').textContent.startsWith('Not done')", timeout=10000)
+            page.wait_for_function("document.getElementById('reauth').hidden && document.querySelector('#userList .row-msg')?.textContent.startsWith('Not done')", timeout=10000)   # in alex's row (#502)
             settle(200)
             back493 = [js(row493) + [js(IN_SIGHT) is not None]]
             alex_do("Reset password…")
@@ -17035,6 +17091,12 @@ def main():
             temp499 = """(() => { const t = document.getElementById('userTemp'), r = t?.isConnected && t.getBoundingClientRect();
                 return r ? [t.querySelector('.copy-val-name').textContent, r.top >= 0 && r.bottom <= innerHeight] : null; })()"""
             out499, last499 = {}, "fill499-13"
+            # #502: the check's Cancel's "Not done" said in the row, under its name, in sight (it was under the list, at y
+            # 1285 at 375×667), and gone once the next change is asked
+            said502 = """(() => { const m = document.querySelector('#userList .row-msg'), r = m?.getBoundingClientRect(), p = getComputedStyle(document.documentElement);
+                return m ? [m.textContent, m.closest('tr').querySelector('b').textContent,
+                  r.top >= parseFloat(p.scrollPaddingTop) - 1 && r.bottom <= innerHeight - parseFloat(p.scrollPaddingBottom) + 1] : null; })()"""
+            cleared502 = {}
             row499 = page.locator("#userList tr", has_text=last499)
             for w, h in ((1400, 900), (375, 667)):
                 page.set_viewport_size({"width": w, "height": h})
@@ -17047,6 +17109,7 @@ def main():
                     answer_ask(page)
                     page.wait_for_selector("#reauth input", state="visible", timeout=10000)
                     if confirm:
+                        cleared502[w] = js("!document.querySelector('#userList .row-msg') && !document.getElementById('userMsg').textContent")
                         page.fill("#reauth input", PW)
                         page.locator("#reauth").get_by_role("button", name="Confirm").click()
                         page.wait_for_function(f"document.getElementById('reauth').hidden && document.querySelector('#userTemp .copy-val-name')?.textContent === 'One-time password for {last499}'", timeout=10000)
@@ -17054,7 +17117,7 @@ def main():
                         page.locator("#reauth").get_by_role("button", name="Cancel").click()
                         page.wait_for_function("document.getElementById('reauth').hidden", timeout=10000)
                     settle(300)
-                    out499[f"{w} reset" + ("" if confirm else ", Cancel")] = js(seen499)[1:] + [js(temp499) if confirm else None]
+                    out499[f"{w} reset" + ("" if confirm else ", Cancel")] = js(seen499)[1:] + [js(temp499) if confirm else js(said502)]
                 for n, admin, confirm in ((f"new499-{w}", False, True), (f"adm499-{w}", True, False), (f"adm499-{w}", True, True)):
                     db.execute("UPDATE sessions SET verified_at=0")
                     page.fill("#userName", n)
@@ -17071,18 +17134,37 @@ def main():
                     out499[f"{w} create" + (" an admin" if admin else "") + ("" if confirm else ", Cancel")] = js(seen499)[1:] + [
                         js(temp499) if confirm else js("document.getElementById('userNewMsg').textContent")]
             page.set_viewport_size({"width": 1400, "height": 900})
+            # #502: the one-time password shown stays while another account goes, and goes with its own account (it was
+            # still shown for an account removed, disabled or renamed): adm499-375's, new499-375 removed, then adm499-375 in
+            # the danger zone
+            temp502 = [js(temp499)[0]]
+            db.execute("DELETE FROM users WHERE username='new499-375'")
+            js("loadUsers()")
+            page.wait_for_function("!document.querySelector('#userList').textContent.includes('new499-375')", timeout=10000)
+            temp502.append(js("!!document.getElementById('userTemp')?.isConnected"))
+            arow502 = page.locator("#userList tr", has_text="adm499-375")
+            arow502.get_by_role("button", name="Manage adm499-375").click()
+            arow502.get_by_role("menuitem", name="Remove account…").click()
+            page.locator("#userDanger .danger-zone").get_by_label("Type adm499-375 to confirm").fill("adm499-375")
+            page.locator("#userDanger .danger-zone").get_by_role("button", name="Remove the account").click()
+            page.wait_for_function("!document.querySelector('#userList').textContent.includes('adm499-375')", timeout=10000)
+            temp502.append(js("!!document.getElementById('userTemp')?.isConnected"))
+            check("…the one-time password shown stays while another account is removed, and goes once its own account is removed (#502)",
+                  temp502 == ["One-time password for adm499-375", True, False], temp502)
             db.execute("DELETE FROM users WHERE username LIKE 'fill499-%' OR username LIKE 'new499-%' OR username LIKE 'adm499-%'")
             js("loadUsers()")
             page.wait_for_function("!document.querySelector('#userList').textContent.includes('499-')", timeout=10000)
             want499 = {}
             for w in (1400, 375):
                 copy499 = lambda n: ["Copy the one-time password", True, [f"One-time password for {n}", True]]  # noqa: E731
-                want499.update({f"{w} reset, Cancel": [f"Manage {last499}", True, None], f"{w} reset": copy499(last499),
+                want499.update({f"{w} reset, Cancel": [f"Manage {last499}", True, ["Not done: you didn't confirm it's you.", last499, True]], f"{w} reset": copy499(last499),
                                 f"{w} create": copy499(f"new499-{w}"), f"{w} create an admin, Cancel": ["Create account", True, "Not done: you didn't confirm it's you."],
                                 f"{w} create an admin": copy499(f"adm499-{w}")})
             check("…with 16 accounts and more, at 1400×900 and 375×667: after a reset and after Create (as an admin too, after the check), the one-time password "
-                  "in sight with focus on its Copy; after the check's Cancel, focus in sight on the row's ⋯, or on Create with why beside it (#499)",
+                  "in sight with focus on its Copy; after the check's Cancel, focus in sight on the row's ⋯ with “Not done” in the row, in sight (#502), "
+                  "or on Create with why beside it (#499)",
                   out499 == want499, {k: v for k, v in out499.items() if want499.get(k) != v} or out499)
+            check("…and the row's “Not done” gone once the next change is asked, while its check is open (#502)", cleared502 == {1400: True, 375: True}, cleared502)
             problems[before:] = [x for x in problems[before:] if "403" not in x]   # the refusal that asks
             # Make admin and Remove admin ask first, naming the account (#249); Cancel leaves the flag as it was
             alex_do("Make admin…")
@@ -17149,6 +17231,26 @@ def main():
             check("disabling a profile's only owner then asks about that", asked[0] == "Disable alex anyway?" and "only owner of Alex's records" in asked[1], asked)
             page.wait_for_function("document.querySelector('#ownerless') && document.querySelector('#ownerless').textContent.includes(\"Alex's records\")", timeout=10000)
             check("an admin sees profiles left without an owner", True)
+            # #502: Make owner, its row gone with it, puts focus on the next profile's Make owner, else the one before's (it
+            # fell to the page). Two more of alex's, given to this admin, then deleted
+            db502 = dbm.connect()
+            orph502 = [profiles.create_profile(db502, f"Orphan 502 {n}", owner_id=alex) for n in ("one", "two")]
+            db502.close()
+            js("loadOwnerless()")
+            page.wait_for_function("document.querySelector('#ownerless').textContent.includes('Orphan 502 two')", timeout=10000)
+            own502 = []
+            for n in ("one", "two"):
+                orow = page.locator("#ownerless .ownerless > .row", has_text=f"Orphan 502 {n}")
+                orow.get_by_role("textbox", name="Another account").fill(USER)
+                orow.get_by_role("button", name="Make owner").click()
+                answer_ask(page)   # (owning it yourself is asked)
+                page.wait_for_function(f"!document.querySelector('#ownerless').textContent.includes('Orphan 502 {n}')", timeout=10000)
+                settle(200)
+                own502.append(js("(a => [a.textContent, a.closest('.row')?.querySelector('b').textContent])(document.activeElement)") + [js(IN_SIGHT) is not None])
+            own502.append([js(f"api('profiles/{pid}', {{method: 'DELETE', body: JSON.stringify({{confirm_name: 'Orphan 502 {n}'}})}}).then(r => r.status)")
+                           for n, pid in zip(("one", "two"), orph502)])
+            check("Make owner leaves focus on the next profile's Make owner, else the one before's, in sight (#502: it fell to the page)",
+                  own502 == [["Make owner", "Orphan 502 two", True], ["Make owner", "Alex's records", True], [200, 200]], own502)
             # removing that account (#287): its row's "Remove account…" opens the danger zone for it, focus on the box for
             # its username, which has to be typed exactly before Remove works; then asked who owns Alex's records instead
             # (this admin)
@@ -17263,6 +17365,28 @@ def main():
             pk.locator("#pkBody").get_by_role("button", name="Add a passkey").click()
             pk.wait_for_selector("#pkList tbody tr", timeout=10000)
             check("a passkey is added and listed", "never" in pk.inner_text("#pkList"), pk.inner_text("#pkMsg"))
+            # #502: Remove, its row gone with it, puts focus on the next passkey's Remove, else the one before's, in sight (it
+            # fell to the page), as Sign out does (#493). Two more, made up here, removed in turn
+            from server import db as pk_db
+            pdb = pk_db.connect()
+            uid502 = pdb.execute("SELECT id FROM users WHERE username=?", (USER,)).fetchone()[0]
+            for n in ("Old key 502", "Old phone 502"):
+                pdb.execute("INSERT INTO passkeys(user_id, credential_id, public_key, rp_id, name, created) VALUES(?, ?, x'00', 'localhost', ?, 1)",
+                            (uid502, n.replace(" ", "-"), n))
+            pdb.close()
+            pk.evaluate("loadPasskeys()")
+            pk_names = "[...document.querySelectorAll('#pkList tbody tr input')].map(i => i.value)"
+            pk.wait_for_function(f"{pk_names}.length === 3")
+            pk502 = []
+            for n in ("Old key 502", "Old phone 502"):
+                pk.locator("#pkList tbody tr").nth(pk.evaluate(f"{pk_names}.indexOf('{n}')")).get_by_role("button", name="Remove").click()
+                answer_ask(pk)
+                pk.wait_for_function(f"!{pk_names}.includes('{n}')", timeout=10000)
+                pk.wait_for_timeout(200)
+                pk502.append(pk.evaluate("(a => [a.textContent, a.closest('#pkList tr')?.querySelector('input').value])(document.activeElement)") + [pk.evaluate(IN_SIGHT) is not None])
+            pk_left = pk.evaluate(pk_names)
+            check("passkeys' Remove leaves focus on the next passkey's Remove, else the one before's, in sight (#502: it fell to the page)",
+                  len(pk_left) == 1 and pk502 == [["Remove", "Old phone 502", True], ["Remove", pk_left[0], True]], [pk502, pk_left])
             acct_field.update(pk.evaluate(FIELD_LOOK_JS, "#pkBody input[type=password]"))
             pk.set_viewport_size({"width": 375, "height": 800})
             pk.wait_for_timeout(200)

@@ -84,15 +84,15 @@ const SG_PAGES = {
   account: {page: "account.html", title: "Account", icon: "key-round", words: "sign-in security", groups: [
     {id: "security", title: "Sign-in and security", icon: "lock", hint: "How you sign in, and where you're signed in now.",
      has: ["password", "twofa", "passkeys", "sessions"],
-     finds: [["Password", "password", "change passphrase"], ["Two-factor sign-in", "twofa", "2fa authenticator code totp recovery"],
-       ["Passkeys", "passkeys", "security key fingerprint face"], ["Where you're signed in", "sessions", "sessions devices sign out log out"]]},
+     finds: [["Password", "password", "change passphrase"], ["Two-factor sign-in", "twofa", "2fa authenticator code totp turn on off recovery make new"],
+       ["Passkeys", "passkeys", "security key fingerprint face add remove"], ["Where you're signed in", "sessions", "sessions devices sign out log out everywhere other"]]},   // (#502: what's done there)
     {id: "device", title: "This device", icon: "smartphone", hint: "Sanguity on the device you're using now: as an app, and offline.",
      has: ["installApp", "offlineRecords"],
      finds: [["Install on this device", "installApp", "app home screen"], ["Offline records on this device", "offlineRecords", "offline without a connection"]]},
   ]},
   admin: {page: "admin.html", title: "Admin", icon: "wrench", admin: true, words: "server install", groups: [
     {id: "accounts", title: "Accounts", icon: "user-cog", part: "People", has: ["users"],
-     words: "users new create add account reset password remove delete disable require two-factor"},   // (#495, #499: what's done to an account)
+     words: "users new create add account reset password one-time temporary remove delete disable make admin require two-factor"},   // (#495, #499, #502: what's done to an account)
     {id: "activity", title: "Install activity", icon: "logs", part: "People", has: ["installLog"], words: "log sign-ins"},
     {id: "backups", title: "Backups", icon: "archive", part: "Data safety", has: ["backups"], words: "backup restore"},   // #200
     {id: "apps", title: "Connected-source apps", icon: "app-window", part: "Connections", has: ["admin", "sec-sync"],

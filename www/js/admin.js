@@ -125,9 +125,11 @@ function confirmIdentity(box = $("#reauth")) {
 }
 /* a one-time password (#499): shown once, so where it's seen, with focus on its Copy, in view: under Create an account,
    over the list (for a reset from a row's ⋯ too: #userMsg, where it was, is under the list); under the note asking for
-   a second factor, once Admin waits for one. It stays until the next one */
+   a second factor, once Admin waits for one. It stays until the next one, or until its account (id) is removed,
+   disabled or renamed (#502: loadUsers) */
 const TEMP = el("div", {id: "userTemp", class: "temp-pw", role: "group", "aria-labelledby": "userTempName"});
-function showTemp(username, pw, days) {
+function showTemp(username, pw, days, id) {
+  Object.assign(TEMP.dataset, {user: id, name: username});
   const code = el("code", {text: pw}), copy = copyBtn(pw, {what: "the one-time password", sel: code});
   const how = `Give it to them privately: it isn't shown again, and stops working if it isn't used within ${days || 7} days.`;
   TEMP.replaceChildren(el("div", {class: "copy-val"}, el("span", {class: "copy-val-name", id: "userTempName", text: `One-time password for ${username}`}),
@@ -148,6 +150,8 @@ const devices = n => n ? plural(n, "device") : "no device";
 async function loadUsers(mine = document.activeElement?.closest?.("#userList tr[data-user]")?.dataset.user) {
   const list = await call("users");
   loadOwnerless();
+  const t = TEMP.isConnected && list.find(u => String(u.id) === TEMP.dataset.user);
+  if (TEMP.isConnected && (!t || t.disabled || t.username !== TEMP.dataset.name)) TEMP.remove();   // its password no use now (#502)
   $("#userList").replaceChildren(el("table", {class: "tbl users"},
     el("thead", {}, el("tr", {}, ...["Account", "Signed in on", ""].map(h => el("th", {text: h})))),
     el("tbody", {}, ...list.map(u => {
@@ -187,7 +191,7 @@ function userMenu(u) {
       "Their password stops working at once, and they're signed out everywhere.",
       "You'll get a one-time password to give them; they choose a new one when they first sign in with it." +
       (u.two_factor ? " Their two-factor sign-in stays on." : "")], action: "Reset password", danger: true},
-      r => showTemp(n, r.temporary_password, r.temporary_days))},
+      r => showTemp(n, r.temporary_password, r.temporary_days, u.id))},
     u.two_factor ? {text: "Turn off two-factor sign-in…", run: () => changeUser(u, {disable_2fa: true}, {title: `Turn off two-factor sign-in for ${n}?`,
       message: ["Do this only if they lost both their phone and their recovery codes.", "They'll be signed out everywhere."], action: "Turn off", danger: true})} : false,
     u.disabled
@@ -198,7 +202,21 @@ function userMenu(u) {
     null,
     {text: "Remove account…", danger: true, run: () => { $("#rmUser").value = u.id; USERZONE.show(n); }}].filter(e => e !== false), "user", "user-more");
 }
+/* a row's action's reply (#502: it was under the list, out of sight): said in its row, under the account's name, until
+   the next action starts (id null: just that) */
+function rowSay(id, text, bad = false) {
+  for (const m of document.querySelectorAll("#userList .row-msg")) m.remove();
+  say("#userMsg", "");
+  const tr = id != null && $(`#userList tr[data-user="${id}"]`);
+  if (!tr) return text && say("#userMsg", text, bad);
+  const m = el("p", {class: "msg row-msg"});
+  tr.querySelector("td.who").append(m);
+  sayIn(m, text, bad);
+  rowBack(id);   // focus on its ⋯ if it was lost, and the row in view where it fits
+  tr.scrollIntoView({block: "nearest"});
+}
 async function changeUser(u, body, sure, done) {
+  rowSay(null);
   if (sure && !await ask(sure)) return;
   try {
     let r;
@@ -209,7 +227,7 @@ async function changeUser(u, body, sure, done) {
       r = await call("users/" + u.id, "PATCH", {...body, force: true});
     }
     await loadUsers(u.id); done && done(r);   // (a reset's password then shown, focus on it: #499)
-  } catch (e) { say("#userMsg", e.message, true); rowBack(u.id); }   // (the check's Cancel: its form went with it)
+  } catch (e) { rowSay(u.id, e.message, true); }   // (the check's Cancel: its form went with it)
 }
 /* profiles nobody can manage (every owner disabled or removed): an admin names a new owner; never shows records */
 async function loadOwnerless() {
@@ -230,8 +248,11 @@ async function loadOwnerless() {
         if (!who) return;
         if (who.toLowerCase() === ME.user.username.toLowerCase() &&
             !await ask({title: `Own ${p.name} yourself?`, message: `This gives you access to the records in ${p.name}.`, action: "Make me owner"})) return;
-        try { await call(`ownerless/${p.id}/owner`, "POST", {username: who}); say("#userMsg", `${who} now owns ${p.name}.`); loadOwnerless(); }
-        catch (e) { say("#userMsg", e.message, true); }
+        const at = list.indexOf(p);
+        try { await call(`ownerless/${p.id}/owner`, "POST", {username: who}); await loadOwnerless(); say("#userMsg", `${who} now owns ${p.name}.`); }
+        catch (e) { say("#userMsg", e.message, true); return; }
+        // its row gone (#502: focus fell to the page): on the next profile's Make owner, else the one before's, else the card's heading
+        focusNear([...$("#ownerless").querySelectorAll(".ownerless > .row")], at, "button", $("#users h2"));
       }});
       return el("div", {class: "row"}, el("b", {text: p.name}),
         el("span", {class: "muted", text: p.members.length ? p.members.map(m => `${m.username} (${m.role}${m.disabled ? ", disabled" : ""})`).join(", ") : "no members"}),
@@ -301,7 +322,7 @@ $("#userNew").onsubmit = async ev => {
     form.reset();
     if (r.admin_needs_two_factor) { ME.user.admin_needs_two_factor = true; adminGate(); }   // not the only account any more
     else await loadUsers();
-    showTemp(r.username, r.temporary_password, r.temporary_days);
+    showTemp(r.username, r.temporary_password, r.temporary_days, r.id);
   } catch (e) {
     // said beside the form (#499: it was under the list, out of sight); after the check's Cancel (its form went with
     // it: an admin's is the one Create that asks), focus back on Create, in view
