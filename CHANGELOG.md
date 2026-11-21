@@ -2159,6 +2159,13 @@ Everything on `main` so far; it becomes the first tagged release.
   The last profile without an owner, deleted elsewhere, said "No such profile." with focus on the card's heading off
   the screen; focus is on the message. "No such account." and "No such profile." no longer stay after the next action.
   "Confirm it's you" offers a code from an authenticator app only to someone with one, and an unused class is gone.
+- **Records in: cycle records keep their ids, and an open review read again once cycle tracking is turned off** (#530):
+  cycle records were numbered in order each time they were read, so after an import's Undo another period took the
+  undone one's number: the drawer open on the undone period stayed open, and the Timeline marked the other as chosen.
+  Each now has an id from its day and kind, the same each time; the drawer closes. Turning cycle tracking on or off,
+  or deleting its records, under Phone and watch left a review open in Upload files offering the cycle records ("Cycle
+  tracking records 5", counted in its "new"), which Add then saved without; the profile's open reviews are read again,
+  as after a save.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

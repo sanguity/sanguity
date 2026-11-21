@@ -9904,6 +9904,34 @@ def main():
                   "2 glucose meter readings", "1 day of cgm readings", "2 heights, offered for about this person")) and "cycle" not in card.lower(), items)
             js(f"[...{last_card}.querySelectorAll('.imp-actions button')].find(b => b.textContent === 'Cancel').click()")
             page.wait_for_function(f"!/^Ready to import/.test({last_card}.textContent)", timeout=10000)
+            # (#530) with cycle tracking on, the export again: its review counts the cycle records; turned off under Phone
+            # and watch, the review left open in Upload files is read again, as after a save: no cycle tile, and its count
+            # drops them (it kept both, and Add saved without them); cancelled, tracking left off as it was. In a tab of its
+            # own: another section shown clears this one's finished cards (#283), which the checks below open
+            c530 = browser.new_context(storage_state=page.context.storage_state(), viewport={"width": 1400, "height": 900}, bypass_csp=True)
+            t530 = c530.new_page()
+            t530.on("pageerror", lambda e: problems.append(f"script error (#530's tab): {e}"))
+            t530.goto(base + "/sources.html?profile=2#phone")
+            t530.click("#cycleOn")
+            answer_ask(t530)
+            t530.wait_for_function("document.getElementById('cycleState')?.textContent.startsWith('On since')", timeout=10000)
+            t530.locator("a[href='#upload']:visible").first.click()
+            t530.set_input_files("#pickFiles", files=[{"name": "export.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
+            t530.wait_for_function(f"/^Ready to import/.test({last_card}?.textContent)", timeout=30000)
+            rev530 = f"""(c => [[...c.querySelectorAll('.imp-tiles .tile .lbl')].some(t => /cycle/i.test(t.textContent)),
+                c.querySelector('.imp-split li.new').textContent])({last_card})"""
+            seen530 = [t530.evaluate(rev530)]
+            t530.locator("a[href='#phone']:visible").first.click()
+            t530.click("#cycleOff")
+            t530.keyboard.type("Second person")
+            t530.click("#cycle .dz-body .btn.danger")
+            t530.wait_for_function(f"document.getElementById('cycleState').textContent.startsWith('Off.') && !{rev530}[0]", timeout=10000)
+            seen530.append(t530.evaluate(rev530))
+            check("a review left open in Upload files is read again once cycle tracking is turned off: no cycle tile, its count without them (#530)",
+                  seen530[0][0] and not seen530[1][0] and int(seen530[0][1].split()[0]) - int(seen530[1][1].split()[0]) == 5, seen530)
+            t530.evaluate(f"[...{last_card}.querySelectorAll('.imp-actions button')].find(b => b.textContent === 'Cancel').click()")
+            t530.wait_for_function(f"!/^Ready to import/.test({last_card}.textContent)", timeout=10000)
+            c530.close()
             js("window.__real281 = sanguityImport.uploaded; window.__hook = []; sanguityImport.uploaded = a => { window.__hook.push({profileId: a.profileId, uploadId: a.uploadId, card: a.frame.card.isConnected}); return null; }; 0")
             page.set_input_files("#pickFiles", files=[{"name": n, "mimeType": "text/csv", "buffer": b"date,test,value\n2026-02-01,WBC,6.1\n"}
                                                       for n in ("a.csv", "b.csv")])
@@ -10126,6 +10154,34 @@ def main():
                   "and its toast's Undo takes them away (#522: only a reload drew them)",
                   watch522[0] == [] and all(c in watch522[1] for c in ("Blood pressure", "Blood glucose", "Body temperature", "Blood oxygen (SpO2)", "Respiratory rate"))
                   and watch522[2] == 1 and watch522[3] == [] and watch522[4] == [0, None], watch522)
+            # (#530) cycle records' ids by day and kind, not by place: two zips added from the dialog, a period in November
+            # and one in October, the drawer open on October's, and its toast's Undo: the drawer closes, November's kept
+            # with its id (numbered in order, November's took October's id, and the drawer stayed on it); then undone too
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            for n530, d530 in enumerate(("2026-11-09", "2026-10-12")):
+                zip530 = io.BytesIO()
+                with zipfile.ZipFile(zip530, "w") as z:
+                    z.writestr("apple_health_export/export.xml", xml522.split("<Correlation")[0] + hk522("BodyTemperature", "degC", f"{d530} 07:05:00 -0500", "36.8")
+                                + flow522.format(d530, "Medium") + "</HealthData>\n")   # (a reading too: an import of cycle records alone offers no Undo)
+                js(dropzip522, [list(zip530.getvalue()), f"cycle-530-{n530}.zip"])
+                page.wait_for_function(f"/^Ready to import/.test({dcard497}?.textContent) && {dcard497}.closest('.job').querySelector('h3').textContent === 'cycle-530-{n530}.zip'", timeout=30000)
+                js(f"{dcard497}.querySelector('.imp-actions .primary').click()")
+                page.wait_for_function(f"/^Imported/.test({dcard497}.textContent)", timeout=30000)
+                page.click("dialog.up-dlg .sheet-x")
+                page.wait_for_function(f"CYCLE.length === {n530 + 1}", timeout=10000)
+            nov530 = js("CYCLE.find(e => e.t.startsWith('2026-11')).id")
+            js("openEvent(CYCLE.find(e => e.t.startsWith('2026-10')))")
+            page.wait_for_function("drawer.classList.contains('open')", timeout=5000)
+            page.click("#sgToasts .sg-toast:last-child button:text-is('Undo…')")
+            answer_ask(page)
+            page.wait_for_function("CYCLE.length === 1", timeout=10000)
+            settle(300)
+            drawer530 = js("[drawer.classList.contains('open'), state.selEv, CYCLE.map(e => [e.id, e.t.slice(0, 10)])]")
+            check("a cycle span open in the drawer closes after its import's Undo, another span kept with its id (#530: it took the undone one's, and the drawer stayed)",
+                  drawer530 == [False, None, [[nov530, "2026-11-09"]]], [nov530, drawer530])
+            page.click("#sgToasts .sg-toast button:text-is('Undo…')")
+            answer_ask(page)
+            page.wait_for_function("!CYCLE.length", timeout=10000)
             # (#504) a profile with no records: two CSVs dropped into the dialog, the first added, the dialog closed: its
             # records are drawn without loading the page again, the toast's Undo and the other review kept
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
