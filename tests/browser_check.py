@@ -15974,6 +15974,28 @@ def main():
             check("account page lists devices, and nothing of the server's (#167) or of profiles (#168)",
                   js("!document.getElementById('tab-admin') && !document.getElementById('users') && !document.getElementById('labmaps') && !document.getElementById('secNotice')")
                   and js("!document.getElementById('acctTabs') && !document.getElementById('profiles') && !document.getElementById('profList')"))
+            # #493: Sign out takes its button away with the device: focus then on the next device's Sign out (else the one
+            # before's), and with only this device left on the card's heading, in sight; it fell to the page. Two more
+            # devices for it, by keyboard
+            from server import db as dbm_493
+            db_493 = dbm_493.connect()
+            me_493 = db_493.execute("SELECT id FROM users WHERE username=?", (USER,)).fetchone()[0]
+            for n in (1, 2):   # (started now: the list leaves out one older than a session's lifetime)
+                db_493.execute("INSERT INTO sessions(token_hash, user_id, created, last_seen, expires, ip, agent, verified_at) VALUES(?,?,?,?,?,?,?,?)",
+                               (f"browser-check-493-{n}", me_493, dbm_493.now(), dbm_493.now(), dbm_493.now() + 3600, "192.0.2.1", "Mozilla/5.0 Firefox/120.0", 0))
+            db_493.close()
+            page.reload()
+            page.wait_for_function("document.querySelectorAll('#sessList tbody button').length >= 2", timeout=10000)
+            out493 = []
+            for n in range(js("document.querySelectorAll('#sessList tbody button').length"), 0, -1):
+                page.focus("#sessList tbody button")
+                page.keyboard.press("Enter")
+                page.wait_for_function(f"document.querySelectorAll('#sessList tbody button').length === {n - 1}", timeout=10000)
+                settle(200)
+                out493.append((js(IN_SIGHT) or [None] * 4)[::3])
+            check("Account → Sign out: focus then on the next device's Sign out, and with only this device left on the card's heading, "
+                  "in sight (#493: it fell to the page)", len(out493) >= 2 and out493[:-1] == [["BUTTON", "Sign out"]] * (len(out493) - 1)
+                  and out493[-1] == ["H2", "Where you're signed in"], out493)
             # #492: every password field has Show (pwField, util.js), named for what it holds: Account's password change,
             # turning off two-factor sign-in and adding a passkey (their forms drawn as if two-factor were on and passkeys
             # could be made here), Admin's check of who you are and a source's client secret, a Health Link's passcode
@@ -16011,28 +16033,6 @@ def main():
                                         ["Your password", "Show password"], ["Your password", "Show password"]],
                             "admin": [["Your password, or a code from your authenticator app", "Show password or code"], ["fSecret", "Show client secret"]],
                             "sources": [["shlPass", "Show passcode"]]}, pw492)
-            # #493: Sign out takes its button away with the device: focus then on the next device's Sign out (else the one
-            # before's), and with only this device left on the card's heading, in sight; it fell to the page. Two more
-            # devices for it, by keyboard
-            from server import db as dbm_493
-            db_493 = dbm_493.connect()
-            me_493 = db_493.execute("SELECT id FROM users WHERE username=?", (USER,)).fetchone()[0]
-            for n in (1, 2):   # (started now: the list leaves out one older than a session's lifetime)
-                db_493.execute("INSERT INTO sessions(token_hash, user_id, created, last_seen, expires, ip, agent, verified_at) VALUES(?,?,?,?,?,?,?,?)",
-                               (f"browser-check-493-{n}", me_493, dbm_493.now(), dbm_493.now(), dbm_493.now() + 3600, "192.0.2.1", "Mozilla/5.0 Firefox/120.0", 0))
-            db_493.close()
-            page.reload()
-            page.wait_for_function("document.querySelectorAll('#sessList tbody button').length >= 2", timeout=10000)
-            out493 = []
-            for n in range(js("document.querySelectorAll('#sessList tbody button').length"), 0, -1):
-                page.focus("#sessList tbody button")
-                page.keyboard.press("Enter")
-                page.wait_for_function(f"document.querySelectorAll('#sessList tbody button').length === {n - 1}", timeout=10000)
-                settle(200)
-                out493.append((js(IN_SIGHT) or [None] * 4)[::3])
-            check("Account → Sign out: focus then on the next device's Sign out, and with only this device left on the card's heading, "
-                  "in sight (#493: it fell to the page)", len(out493) >= 2 and out493[:-1] == [["BUTTON", "Sign out"]] * (len(out493) - 1)
-                  and out493[-1] == ["H2", "Where you're signed in"], out493)
             # #320: on a phone the account pages' tables hid their headings and left the values on their own (Admin's "off" and
             # "10", two dates per device): each cell is labelled with its column's name now, the one name a screen reader
             # hears as the hidden headings are hidden from it too; axe-core clean, light and dark
