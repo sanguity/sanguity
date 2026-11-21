@@ -286,13 +286,12 @@ function shPhoto(p, fallback) {
 
 /* the phone's and watch's measures, immunizations, ECGs and BMI (#225; server/measures.py): a block's lead lines, its
    table and the note under it. Times are the local times the phone took them at, written in this browser's format.
-   What a block's rows are, where they're one kind, for "The latest 20 of 1,381 readings." (#527: it named nothing) */
-const SH_ROWS_ARE = {home_bp: "readings", temperature: "readings", respiratory: "days", vo2max: "days", immunizations: "vaccines", medlog: "doses"};
+   What its rows are comes with it, for "The latest 20 of 1,381 readings." (#527, #531: "days and readings" where they mix) */
 function shBlock(b, id) {
   const cellOf = (kind, v) => !v ? v : kind === "day" ? shDay(v) : kind === "time" ? fmtDT(zParse(v)) : v, rows = b.rows || [];
   const cells = rs => rs.map(r => r.map((v, i) => cellOf(b.cols[i][1], v)));
   return el("div", {}, ...(b.lead || []).map(t => el("p", {text: t})),
-    shLong((b.cols || []).map(c => c[0]), cells(rows), b.empty || "None in this range.", "measures", SH_ROWS_ARE[id] || "rows", id,
+    shLong((b.cols || []).map(c => c[0]), cells(rows), b.empty || "None in this range.", "measures", b.of, id,
       async () => cells((await shWhole(id)).rows || []), Math.max(b.total || 0, rows.length)),
     b.note ? el("p", {class: "hint", text: b.note}) : null);
 }

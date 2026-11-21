@@ -1649,6 +1649,8 @@ class Api(unittest.TestCase):
 
         # where passkeys can't work, it says why
         self.assertIn("IP address", pia.get("/api/me/passkeys", params={"origin": "http://192.168.1.20:8730"}).json()["problem"])
+        for o in ("http://127.0.0.1:8730", "http://[::1]:8730"):   # this computer's own: its name works without HTTPS (#531)
+            self.assertIn("Open Sanguity at http://localhost:8730 to use one.", pia.get("/api/me/passkeys", params={"origin": o}).json()["problem"])
         r = pia.post("/api/me/passkeys/options", json={"password": "pia keeps a long passphrase"}, headers={**H, "Origin": "http://testserver"})
         self.assertEqual(r.status_code, 400)
         self.assertIn("HTTPS", r.json()["detail"])

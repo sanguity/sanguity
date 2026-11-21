@@ -132,7 +132,7 @@ function shareLinksPanel(p, {open = false} = {}) {
     // the form is built from the sections and labs that come with the links: before they have, wait for them (#306)
     if (!info) { try { await (loading || load()); } catch (e) { fail(e); return; } }
     if (box.querySelector(".share-form")) return;
-    made.replaceChildren(); sayIn(msg, "");
+    sayIn(msg, "");   // a made link's box stays until the next is made: it's shown only once, and Cancel can't bring it back (#531)
     add.after(form());
     announce("New share link: choose what it shows. What anyone with the link will see is written after the choices, and changes with them.");
   }});

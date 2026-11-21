@@ -160,10 +160,10 @@ function renderPreview(s) {
       parts.push(el("h3", {text: `My questions (${s.questions.length})`}));
       parts.push(s.questions.length ? el("ol", {}, ...s.questions.map(q => el("li", {text: q}))) : none("No questions written down."));
     } else if (s.measures && s.measures[id]) {   // the phone's and watch's measures (#225): lead lines, a table, a note
-      const b = s.measures[id];
-      parts.push(el("h3", {text: `${labels[id] || id}${b.history ? "" : ` since ${since}`} (${b.total})`}), ...b.lead.map(t => el("p", {text: t})));
+      const b = s.measures[id], n = b.total.toLocaleString();   // "1,381", as the lead writes it (#531)
+      parts.push(el("h3", {text: `${labels[id] || id}${b.history ? "" : ` since ${since}`} (${n})`}), ...b.lead.map(t => el("p", {text: t})));
       parts.push(b.rows.length ? table(b.cols.map(c => c[0]), b.rows.map(r => el("tr", {}, ...r.map((v, i) => cell(measureCell(b.cols[i][1], v))))), "measures") : none(b.empty));
-      if (b.total > b.rows.length) parts.push(el("p", {class: "hint", text: `The latest ${b.rows.length} of ${b.total} are listed.`}));
+      if (b.total > b.rows.length) parts.push(el("p", {class: "hint", text: `The latest ${b.rows.length} of ${n} are listed.`}));
       if (b.note) parts.push(el("p", {class: "hint", text: b.note}));
     } else {
       const ex = s.extra.find(x => x.id === id); if (!ex) continue;

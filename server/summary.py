@@ -431,7 +431,7 @@ class _Layout:
     def heading(self, text, count=None):
         self.need(40)   # a heading with at least a row under it
         self.y -= 8
-        self.page.text(MARGIN, self.y, text + (f" ({count})" if count is not None else ""), 12, True, INK)
+        self.page.text(MARGIN, self.y, text + (f" ({count:,})" if count is not None else ""), 12, True, INK)
         self.y -= 5
         self.page.line(MARGIN, self.y, pdfdoc.WIDTH - MARGIN, self.y, 0.6, RULE)
         self.y -= 13
@@ -622,7 +622,7 @@ def _render(s):
                 lay.table(sid, [(h.upper(), w) for h, _, w in b["cols"]], b["rows"],
                           lambda r, kinds=kinds: [_cell(k, v) for k, v in zip(kinds, r)])
                 if b["total"] > len(b["rows"]):
-                    lay.note(f"The latest {len(b['rows'])} of {b['total']}; Sanguity has them all.", 7.5)
+                    lay.note(f"The latest {len(b['rows'])} of {b['total']:,}; Sanguity has them all.", 7.5)   # as the lead (#531)
                 if b["note"]:
                     lay.note(b["note"], 7.5)
             else:

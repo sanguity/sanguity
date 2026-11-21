@@ -61,7 +61,9 @@ function codeStep(on, methods = {code: true}) {
     "Password accepted, but this account finishes signing in with a passkey, and passkeys don't work here: " +
     (!window.isSecureContext ? "this page isn't using HTTPS. Open Sanguity at its " +
       `https:// address${ipHost() ? ", by its name rather than an IP address," : ""} and sign in there`
-      : ipHost() ? "this is an IP address. Open Sanguity at its https:// name and sign in there"   // (#527)
+      : ipHost() ? "this is an IP address. Open Sanguity at " +   // (#527) this computer's own (#531): localhost works without HTTPS
+        (/^(127\.|\[::1\]$)/.test(location.hostname) ? location.origin.replace(location.hostname, "localhost") : "its https:// name") +
+        " and sign in there"
       : "this browser doesn't have them. Sign in with one that does") + ", or use another account.",
     false, {say: !stuck});   // (read as it takes focus)
   if (on) (code ? document.getElementById("c") : stuck ? says : pkBtn).focus();
