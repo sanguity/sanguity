@@ -255,7 +255,8 @@ def samples(new):
 
 def report(data, dups, summarise):
     """For the page: what's new (counts by kind, as jobs.summarise counts them, and a few of each: samples), the date
-    range the upload covers, and the duplicates (counted, and listed with a ref to keep one anyway)."""
+    range the upload covers, and the duplicates (counted, and listed with a ref to keep one anyway; an entry of the
+    profile-wide lists, an allergy or a problem, with none)."""
     new = trim(data, dups)
     whole = summarise(data)
     out = summarise(new)
@@ -280,6 +281,15 @@ def report(data, dups, summarise):
             if days and days[-1] != days[0]:
                 item["to"] = days[-1]
             items.append(item)
+    # the profile-wide lists' entries there already (#497), listed too, with no ref: an entry isn't added twice
+    lists = _meta_lists(data)
+    for path, drop in dups["meta"].items():
+        for n in sorted(drop):
+            x = lists.get(path, [])[n] if n < len(lists.get(path, [])) else None
+            if isinstance(x, dict):
+                kind = ("allergy" if x.get("type") == "Allergy" else "problem") if path == "problems" else path
+                items.append({"ref": None, "kind": kind, "t": str(x.get("date") or x.get("t") or "")[:10],
+                              "title": str(x.get("name") or x.get("title") or "")})
     items.sort(key=lambda x: (x["t"], x["title"]))
     out["duplicates"] = {"events": sum(kinds.values()), "kinds": dict(sorted(kinds.items())), "results": results,
                          "other": sum(len(v) for v in dups["meta"].values()),

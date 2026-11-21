@@ -1878,6 +1878,20 @@ Everything on `main` so far; it becomes the first tagged release.
   the card's heading. The remove-an-account zone picked from its own list comes into view on a phone. The command
   palette finds Accounts for "create account" and Cycle tracking for "delete cycle data" and "turn off cycle". Outside
   connections' empty lists and Set up a source with no sources say what would be there.
+- **Records in: a review drawn again keeps what was typed, a re-upload counts as already here throughout, and the drop
+  dialog's table, links and drops behave** (#497): a review drawn again (another review's Add, Review from Waiting for
+  you) lost the series typed and the boxes ticked; it keeps them, and a lab name it asked about is still asked, saying
+  a series of its name is in the profile now, so Review in Waiting for you brings a review open in Upload files as it
+  was. An Apple
+  Health export uploaded again offered its days of activity and workouts as new ("Ready to import", "Add all of this",
+  then "Imported … 1 workout"): a wearable's data already in the profile counts as already here, is named in the list
+  of duplicates, and isn't saved again; the allergies and problems it counts as already here are listed too. A review
+  read again plans its lab names again, and none is asked about whose results are all in the profile. The toast after
+  saving names the largest kinds first ("Imported 12 lab results…"). The lab-name table's header no longer sticks over
+  its rows in the dialog, and the dialog closes when its "See them on the timeline" or its toast's Open Labs goes to a
+  tab of the page under it. A card put away for another profile says nothing as it goes. A folder or several files no
+  longer show an Unpacking stage: only a zip has one. Files dropped while another dialog is open no longer open in the
+  browser in place of the page.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

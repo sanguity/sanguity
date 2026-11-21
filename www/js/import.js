@@ -29,7 +29,8 @@ const dropTarget = (() => {
   const size = n => n >= 2 ** 30 ? (n / 2 ** 30).toFixed(1) + " GB" : n >= 2 ** 20 ? (n / 2 ** 20).toFixed(1) + " MB"
     : n >= 1024 ? Math.round(n / 1024) + " KB" : n + " bytes";
   const plural = (n, word) => `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
-  const leaving = e => { if (!sgLeaving) { e.preventDefault(); e.returnValue = ""; } };   // while files are being sent
+  const zipped = it => /\.zip$/i.test(it.path);   // what the server unpacks
+  const leaving = e =>{ if (!sgLeaving) { e.preventDefault(); e.returnValue = ""; } };   // while files are being sent
 
   /* what the server would refuse, said before anything is sent */
   function problem(items, L) {
@@ -92,9 +93,9 @@ const dropTarget = (() => {
       };
       try { await Promise.all(Array.from({length: Math.min(PARALLEL, items.length)}, worker)); }
       catch (e) { for (const x of xhrs) x.abort(); throw e; }
-      const zip = items.some(it => /\.zip$/i.test(it.path));
-      if (zip || items.length > 1) f.step("unpack", zip ? "Unpacking on the server…" : "Checking the files on the server…");
-      else f.text("Checking the file on the server…");   // one file, not a zip: nothing to unpack (#489), no stage of its own
+      // only a zip is unpacked (#497): a file or a folder has no stage of its own here (#489)
+      if (items.some(zipped)) f.step("unpack", "Unpacking on the server…");
+      else f.text(items.length > 1 ? "Checking the files on the server…" : "Checking the file on the server…");
       f.progress(null);
       const r = await call(`profiles/${pid}/uploads/${uploadId}/finish`, "POST");
       if (r.files !== items.length) f.note(`${plural(r.files, "file")} once unpacked`);
@@ -102,7 +103,7 @@ const dropTarget = (() => {
       if (uploadId != null) try { await call(`profiles/${pid}/uploads/${uploadId}`, "DELETE"); } catch (x) {}   // nothing half-sent is kept
       f.end("failed");
       f.body.replaceChildren(el("p", {}, el("b", {text: "Not uploaded. "}), e.message));
-      announce("Not uploaded: " + e.message, {error: true});
+      if (!f.card.hidden) announce("Not uploaded: " + e.message, {error: true});   // (one put away says nothing, #497)
       return null;
     } finally {
       if (--sending === 0) removeEventListener("beforeunload", leaving);
@@ -138,9 +139,9 @@ const dropTarget = (() => {
       if (why) return say(why);
       say("");
       const total = items.reduce((s, it) => s + it.file.size, 0), pid = opts.pid();
-      const one = items.length === 1 && !/\.zip$/i.test(items[0].path);   // nothing to unpack (#489)
+      // nothing to unpack but a zip (#489, #497: a folder or several files neither)
       const f = window.sanguityImport.frame({container: jobs, title: named(items), pid,
-        steps: one ? ["send", "find", "review", "saved"] : null, size: (items.length > 1 ? plural(items.length, "file") + " · " : "") + size(total)});
+        steps: items.some(zipped) ? null : ["send", "find", "review", "saved"], size: (items.length > 1 ? plural(items.length, "file") + " · " : "") + size(total)});
       const j = await send(pid, items, f);
       if (j && j.state === "done" && opts.onDone) opts.onDone(j);
       return j;
