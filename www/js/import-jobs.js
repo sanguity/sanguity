@@ -452,7 +452,7 @@
           node("div", {class: "sg-bar imp-actions", role: "region", "aria-label": "Add or cancel this import"},
             node("span", {class: "sg-bar-what"}, node("span", {class: "sg-bar-n", text: "Not saved yet"}), msg),
             node("span", {class: "sg-bar-acts"}, cancel, add)));
-        barRoom(card.querySelector(".imp-actions"));
+        sgFoot();   // (its room at the foot, util.js: #489, #544)
         if (again) return;
         // the stage line says Review (#281); its "Ready to import" is said by focus on it, or else here, unless the
         // card is put away for another profile (Sources, #497): nothing is said of a card no one sees
@@ -503,20 +503,6 @@
 
   // replaceChildren turns a null into the text "null"; parts that aren't there are left out instead
   function fill(card, ...parts) { card.replaceChildren(...parts.filter(p => p != null)); }
-  /* the room the review's bar takes at the foot of what scrolls (the page, or a dialog's body), measured (#489), so
-     what takes focus is scrolled clear of it (--sg-bar-room, app.css): the tallest bar there, with its gap below */
-  const ROOM = new ResizeObserver(es => { for (const e of es) {
-    if (!e.target.isConnected) ROOM.unobserve(e.target);
-    const at = e.target.sgRoom, bars = [...at.querySelectorAll(".sg-bar:not([hidden])")].filter(b => b.offsetHeight);
-    if (!bars.length) { at.style.removeProperty("--sg-bar-room"); continue; }
-    const pad = at === document.documentElement ? 0 : parseFloat(getComputedStyle(at).paddingBottom) || 0;   // (a sticky bar keeps clear of it)
-    // its height and what's under it: the gap, and a phone's tabs (its bottom, app.css)
-    placeAt(at, {"--sg-bar-room": Math.ceil(pad + Math.max(...bars.map(b => b.offsetHeight + (parseFloat(getComputedStyle(b).bottom) || 0)))) + 8});
-  } });
-  function barRoom(bar) {
-    bar.sgRoom = bar.closest(".sheet-body") || document.documentElement;
-    ROOM.observe(bar);
-  }
   /* the line saying how it ended takes focus where focus was in the card, or was on its Add or Cancel and went
      nowhere else meanwhile (#489: the button pressed is gone) */
   function result(card, line) {

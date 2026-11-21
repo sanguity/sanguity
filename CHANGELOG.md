@@ -2245,6 +2245,16 @@ Everything on `main` so far; it becomes the first tagged release.
   plain text; there's no passkey button, and where they work is said beside the code's box, as a link. A share link's
   "Opened" count has its separator ("1,381 times"), and sign-in offers a localhost link only on a page at this
   computer's own address (elsewhere, behind a proxy or on another device, it pointed at the wrong place).
+- **The changes bar and the toasts: one layer at the foot of the screen, and Password's reply in sight** (#544): the
+  page kept focus a fixed 72 px clear of a changes bar, which an error wraps to 150 at 375 px, so fields that took
+  focus were under it (85 of About this person's, Backups' ⓘ, its Off at 768 px); and toasts lifted above a bar that
+  had ridden up at the page's end covered its last fields, and on a phone on its side, My questions. The bar of
+  Settings, Admin and Sharing is fixed at the foot, in its column, with the toasts just above it; the stack takes at
+  most 40% of what's above the bar, scrolling within itself with the newest in view; and the page's scroll padding,
+  and the room at its end, are the layer's measured height, on every page. A review's bar in Sources sits above the
+  layer, in its card. My questions, given focus, is brought into view whole as far as it fits, not just its first
+  line. Account's Password reply ("Your current password is wrong.", "Password changed.") was under a phone's tabs
+  or below the screen; it's brought into view, focus kept.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
