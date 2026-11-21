@@ -26,7 +26,7 @@ Formats (all carry the id of the key that wrote them, so the right line is used)
 Anything without the marker is plaintext from before encryption and is read as such, then encrypted by the
 start-up migration.
 """
-import base64, hashlib, os, secrets, threading
+import base64, contextlib, hashlib, os, secrets, threading
 
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -190,12 +190,18 @@ def read_file(path):
 
 
 def write_file(path, data):
-    """Write sealed bytes atomically (mode 600)."""
-    tmp = path + ".tmp"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "wb") as f:
-        f.write(seal(data))
-    os.replace(tmp, path)
+    """Write sealed bytes atomically (mode 600), through a temporary name of its own beside path (still ending in
+    ".tmp", which the at-rest walk and backups leave out), so two writers of one file can't take each other's (#521)."""
+    tmp = f"{path}.{secrets.token_hex(6)}.tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(seal(data))
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(tmp)
+        raise
 
 
 def file_is_encrypted(path):
