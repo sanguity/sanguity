@@ -9871,6 +9871,82 @@ def main():
             check("an empty profile's dialog closed after Add draws its records without a reload, keeping the toast's Undo and the other review (#504)",
                   empty504 == [1, False, True, 2, True, False], empty504)
             js(f"(j => fetch(`api/profiles/{epid504}/jobs/${{j}}/discard`, {{method: 'POST', headers: {{'X-Sanguity': '1'}}}}))({dcards504}[1].dataset.job)")
+            # (#508) then the toast's Undo, the dialog closed: the records gone again and the empty card back, as a reload
+            # would show it, without one; focus in sight on the page, not on the "Undone" toast's ✕
+            page.click("#sgToasts .sg-toast button:text-is('Undo…')")
+            answer_ask(page)
+            page.wait_for_function("!!document.querySelector('main > .empty')", timeout=20000)
+            settle(300)
+            undo508 = js("""[window._page504, !DATA, document.querySelector('.tabs').hidden, document.querySelector('main > .empty .empty-next')?.textContent,
+                !!document.activeElement.closest('#sgToasts'), document.activeElement !== document.body && inSight(document.activeElement)]""")
+            check("after the toast's Undo on the records page, the dialog closed, the records are gone and the empty card back without a reload, "
+                  "focus in sight and not on a toast (#508)", undo508 == [1, True, True, "Get started", False, True],
+                  [undo508, js("document.activeElement.outerHTML.slice(0, 120)")])
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            # (#508) on the guide, a CSV added in its step 2, then undone from its toast: the step isn't done any more,
+            # and focus is on the card's "Undone." line
+            page.goto(base + f"/guide.html?profile={epid504}#records")
+            page.wait_for_function("!document.getElementById('guideDrop') && !document.getElementById('step-records').hidden", timeout=20000)
+            settle(300)
+            js(drop497, ["guide-508.csv", "Date,Test,Result,Units,Reference Range\n2026-11-15,Sodium,140,mmol/L,135 - 145\n"])
+            page.wait_for_function("/^Ready to import/.test(document.querySelector('#step-records .import-job')?.textContent)", timeout=30000)
+            js("document.querySelector('#step-records .import-job .imp-actions .primary').click()")
+            page.wait_for_selector("#recordsHave:not([hidden])", timeout=30000)
+            page.click("#sgToasts .sg-toast button:text-is('Undo…')")
+            answer_ask(page)
+            page.wait_for_selector("#recordsHave", state="hidden", timeout=10000)
+            settle(300)
+            guide508 = js("""[[...document.querySelectorAll('#guideSteps li')].find(li => li.textContent.includes('First records'))?.classList.contains('done'),
+                document.querySelector('#step-records [data-skip]').hidden, document.querySelector('#step-records [data-next]').hidden,
+                document.activeElement.textContent.startsWith('Undone.') && !!document.activeElement.closest('#step-records .import-job')]""")
+            check("after the toast's Undo on the guide, step 2 isn't done, offering Skip and not Continue, focus on the card's “Undone.” line (#508)",
+                  guide508 == [False, False, True, True], guide508)
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            # (#508) on Sources, a CSV added in Upload files and typed records saved: each toast's Undo asks as Import
+            # history asks of the same import, files only for the upload; undone from the toast, Import history shows it
+            # undone at once, with no Undo of its own
+            page.goto(base + f"/sources.html?profile={epid504}#upload")
+            page.wait_for_selector("#importer", state="visible", timeout=10000)
+            card508 = "[...document.querySelectorAll('#importer .import-job')].pop()"
+            page.set_input_files("#pickFiles", files=[{"name": "undo-508.csv", "mimeType": "text/csv",
+                                                       "buffer": b"Date,Test,Result,Units,Reference Range\n2026-11-16,Sodium,139,mmol/L,135 - 145\n"}])
+            page.wait_for_function(f"/^Ready to import/.test({card508}?.textContent)", timeout=30000)
+            js(f"{card508}.querySelector('.imp-actions .primary').click()")
+            page.wait_for_function(f"/^Imported/.test({card508}.textContent)", timeout=30000)
+            up508 = js(f"fetch('api/profiles/{epid504}/imports', {{cache: 'no-store'}}).then(r => r.json()).then(j => j.imports[0].id)")
+            page.wait_for_selector(f"#import-{up508} button.undo", state="attached", timeout=10000)
+            page.click("#sgToasts .sg-toast:last-child button:text-is('Undo…')")
+            asks508 = [answer_ask(page, yes=False)]
+            js("SgSources.show('history')")
+            page.click(f"#import-{up508} button.undo")
+            asks508.append(answer_ask(page, yes=False))
+            js("SgSources.show('manual')")
+            page.wait_for_selector("#typeIn", state="visible", timeout=10000)
+            for f508, v508 in (("date", "2026-11-16"), ("test", "Ferritin"), ("value", "61"), ("unit", "ng/mL")):
+                page.fill(f".man-row:nth-child(1) [data-f={f508}]", v508)
+            page.wait_for_function("!document.getElementById('manSave').disabled", timeout=10000)
+            page.click("#manSave")
+            page.wait_for_function("document.getElementById('manMsg').textContent.startsWith('Saved')", timeout=10000)
+            man508 = js(f"fetch('api/profiles/{epid504}/imports', {{cache: 'no-store'}}).then(r => r.json()).then(j => j.imports[0].id)")
+            page.wait_for_selector(f"#import-{man508} button.undo", state="attached", timeout=10000)
+            page.click("#sgToasts .sg-toast:last-child button:text-is('Undo…')")
+            asks508.append(answer_ask(page, yes=False))
+            js("SgSources.show('history')")
+            page.click(f"#import-{man508} button.undo")
+            asks508.append(answer_ask(page, yes=False))
+            check("each Undo asks one question of one import, its toast's and Import history's the same, files only for the upload, "
+                  "a lab draw not counted beside its result (#508)",
+                  asks508[0] == asks508[1] and asks508[2] == asks508[3] and asks508[0][0] == asks508[2][0] == "Undo this import?"
+                  and "1 lab result in 1 test, and the files uploaded for it." in asks508[0][1] and "lab draw" not in asks508[0][1]
+                  and asks508[2][1].startswith("Everything this typed-in import brought is removed: ") and "files" not in asks508[2][1], asks508)
+            page.click("#sgToasts .sg-toast button:text-is('Undo…')")   # the upload's, the first of the two
+            answer_ask(page)
+            page.wait_for_function(f"document.getElementById('import-{up508}')?.classList.contains('undone')", timeout=10000)
+            settle(300)   # (focus moved once the toast has gone)
+            hist508 = js(f"""(li => [li.classList.contains('undone'), !!li.querySelector('button.undo'), !!document.activeElement.closest('#sgToasts'),
+                document.activeElement !== document.body])(document.getElementById('import-{up508}'))""")
+            check("after the toast's Undo on Sources, Import history shows the import undone at once, with no Undo of its own; focus not on a toast (#508)",
+                  hist508 == [True, False, False, True], hist508)
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             page.set_viewport_size({"width": 1400, "height": 900})
             page.goto("about:blank")
@@ -10014,8 +10090,9 @@ def main():
             page.click(f"{man_toast} button:text-is('Undo…')")
             asked = answer_ask(page, yes=False)
             kept_imp = js("fetch('api/profiles/2/imports', {cache: 'no-store'}).then(r => r.json()).then(j => j.imports[0])")
-            check("typed records' toast (#360): Undo… asks first, as Import history does, and Keep it leaves the import and the toast there",
-                  asked[0] == "Undo what was saved?" and "2 results" in asked[1] and "can't be reversed" in asked[1] and not kept_imp.get("undone_at")
+            check("typed records' toast (#360): Undo… asks first, as Import history does (#508: in its words), and Keep it leaves the import and the toast there",
+                  asked[0] == "Undo this import?" and asked[1].startswith("Everything this typed-in import brought is removed: ") and "2 lab results in 2 tests" in asked[1]
+                  and "files" not in asked[1] and "can't be reversed" in asked[1] and not kept_imp.get("undone_at")
                   and js(f"document.querySelector('{man_toast} .sg-toast-text').textContent").startswith("Saved 2 results"), [asked, kept_imp.get("undone_at")])
             js("localStorage.removeItem('ht-state:2')")   # nothing chosen on Labs in this browser: what's charted is what Open Labs picks
             page.click(f"{man_toast} a:text-is('Open Labs')")
@@ -10683,6 +10760,14 @@ def main():
             check("…and saved from there, Add's count going down with it, focus then on the card's result (#489)",
                   js(f"fetch('api/profiles/2/jobs/{left}', {{cache: 'no-store'}}).then(r => r.json()).then(j => j.state)") == "done" and added489,
                   js("document.activeElement.outerHTML.slice(0, 120)"))
+            iid508 = js(f"fetch('api/profiles/2/jobs/{left}', {{cache: 'no-store'}}).then(r => r.json()).then(j => j.import_id)")
+            try:
+                page.wait_for_function(f"document.querySelector('#historyList > li')?.dataset.import === '{iid508}'", timeout=5000)
+            except Exception:
+                pass
+            check("…and Import history lists it at once, at its top (#508: a save from Waiting for you wasn't listed)",
+                  iid508 is not None and js("document.querySelector('#historyList > li')?.dataset.import") == str(iid508),
+                  [iid508, js("document.querySelector('#historyList > li')?.dataset.import")])
             page.click(f"#srcWait li[data-job='{left2}'] button:text-is('Cancel import…')")
             asked = answer_ask(page)
             page.wait_for_function(f"!document.querySelector('#srcWait li[data-job=\"{left2}\"]')", timeout=10000)
@@ -10830,6 +10915,9 @@ def main():
                   and new500[3].endswith(" from Jun 3, 2025."), new500)
             check("…its bar and its list of duplicates give one count of what's already here (#504)",
                   new500[2] == "Already here: 10 duplicates, skipped unless ticked", new500[:3])
+            saved508 = js(f"[...{last_card}.querySelectorAll('p.hint')].map(p => p.textContent)")
+            check("…and its saved card gives the review's one count, the wearable's days and workout among them (#508: it split them, 7 and the rest)",
+                  "10 duplicates skipped, 2 days of activity data and 1 workout among them." in saved508, saved508)
             # (#500) a lab name matched to a series by hand, added, then undone from its toast: the question says the
             # match goes too, and the same file again asks about the name again
             undo500 = csv497.replace("XR", "XV").format("2026-11-12", "12.7").encode()

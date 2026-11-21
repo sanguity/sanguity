@@ -128,13 +128,15 @@
       : "There are no records yet, so the Overview starts empty. It fills in as records come in: Add, in the top bar, brings them in any time.";
     drawList();
   }
-  /* the first records' drop target (#281, import.js): once one is saved, the step says the profile has records. A
-     drop anywhere on this page comes here, the step shown first (drop.js) */
+  /* the first records' drop target (#281, import.js): once one is saved, the step says the profile has records, and
+     once it's undone (its toast's Undo, #508), it says so no longer: the steps read again whenever the page is told
+     (import-jobs.js told). A drop anywhere on this page comes here, the step shown first (drop.js) */
   function dropHere() {
-    const t = dropTarget({pid: () => P.id, canEdit: () => P.role === "owner" || P.role === "editor", onDone: status});
+    const t = dropTarget({pid: () => P.id, canEdit: () => P.role === "owner" || P.role === "editor"});
     $("#guideDrop").replaceWith(t.el);
     SgDrop.here(t, () => { if (current !== "records") show("records"); });
   }
+  document.addEventListener("sg:imports", ev => { if (P && ev.detail.pid === P.id) ev.detail.wait(status()); });
   $("#finish").onclick = async () => {
     $("#finish").disabled = true;
     await setGuide("done");
