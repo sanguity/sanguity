@@ -99,10 +99,14 @@ async function startTwoFactor() {
   try { s = await call("me/2fa/start", "POST"); } catch (e) { return say("#tfMsg", e.message, true); }
   const code = el("input", {inputmode: "numeric", autocomplete: "one-time-code", placeholder: "123 456", "aria-label": "Code from your authenticator app", required: true});
   tfHint(`Scan this with ${APPS}, then enter the code it shows. If you can't scan, type the key instead.`, true);
+  // its QR code drawn here from the otpauth address (qr.js, #495: the server drew a second one), shown, as it's the way
+  // in; the key under it with the app's one Copy (util.js copyBtn), for typing it in instead
+  const key = el("code", {class: "tf-key", text: s.secret.match(/.{1,4}/g).join(" ")});
   $("#tfBody").replaceChildren(
     el("div", {class: "tf-setup"},
-      el("img", {src: s.qr, alt: "QR code for your authenticator app", width: 180, height: 180}),
-      el("div", {}, el("div", {class: "muted", text: "Key"}), el("code", {class: "tf-key", text: s.secret.match(/.{1,4}/g).join(" ")}))),
+      qrShow(s.uri, {what: "the key for your authenticator app", caption: "Scan it with the authenticator app.", shown: true})?.fig,
+      el("div", {class: "copy-val"}, el("span", {class: "copy-val-name", text: "Key"}),
+        el("div", {class: "copy-val-row"}, key, copyBtn(s.secret, {what: "the key", sel: key})))),
     el("form", {class: "row", onsubmit: async ev => { ev.preventDefault();
       try { showRecoveryCodes((await call("me/2fa/confirm", "POST", {code: code.value})).recovery_codes, true); } catch (e) { say("#tfMsg", e.message, true); } }},
       code, el("button", {class: "btn primary small", type: "submit", text: "Confirm"}),

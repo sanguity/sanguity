@@ -1,6 +1,6 @@
 """Two-factor sign-in: time-based one-time codes (TOTP, RFC 6238, as authenticator apps make them) and one-time
-recovery codes. Standard library only, apart from drawing the QR code (segno), which happens on the server so the
-browser fetches nothing from elsewhere.
+recovery codes. Standard library only. The page draws the QR code from the otpauth address (www/js/qr.js, our own
+encoder, #495), as it draws every other QR code.
 
 TOTP here: SHA-1, 6 digits, 30-second steps, accepting the step before and after for clock drift, and never the
 same step twice for an account (so a code seen over someone's shoulder can't be replayed).
@@ -9,9 +9,7 @@ Recovery codes: 10 per account, 8 characters each (about 40 bits), each usable o
 under 112 bits; the pepper, see security.py, means a copied database alone can't be searched for them). Codes made
 before that are plain SHA-256 and keep working until the account's codes are replaced.
 """
-import base64, hashlib, hmac, io, re, secrets, struct, time, urllib.parse
-
-import segno
+import base64, hashlib, hmac, re, secrets, struct, time, urllib.parse
 
 from . import security as sec
 
@@ -52,13 +50,6 @@ def uri(secret, username):
     label = urllib.parse.quote(f"{ISSUER}:{username}", safe=":")
     return f"otpauth://totp/{label}?" + urllib.parse.urlencode(
         {"secret": secret, "issuer": ISSUER, "algorithm": "SHA1", "digits": DIGITS, "period": PERIOD})
-
-
-def qr_data_uri(text):
-    """The QR code as an SVG data: URI, which the page's CSP allows for images."""
-    out = io.BytesIO()
-    segno.make(text, error="m").save(out, kind="svg", scale=5, border=2, dark="#000", light="#fff", xmldecl=False)
-    return "data:image/svg+xml;base64," + base64.b64encode(out.getvalue()).decode()
 
 
 def new_recovery_codes():

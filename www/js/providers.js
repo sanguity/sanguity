@@ -18,17 +18,12 @@
   const say = (text, bad = false) => sayIn($("#status"), text, bad);   // shown and said (util.js, #209)
   const kindLabel = {provider: "Provider", payer: "Insurer", sandbox: "Test sandbox"};
 
-  /* copy a value, saying so; falls back to selecting it where the clipboard isn't available (plain HTTP) */
+  /* a value in a field, with the app's one Copy (util.js copyBtn, #495: it selects it instead where the clipboard isn't
+     available, plain HTTP) */
   function copyBox(value, label) {
     const input = el("input", {value, readonly: "", "aria-label": label, class: "dir-copy-v", spellcheck: "false"});
-    const done = el("span", {class: "msg", role: "status"});
-    const btn = el("button", {class: "btn small", type: "button", text: "Copy", onclick: async () => {
-      try { await navigator.clipboard.writeText(value); done.textContent = "Copied."; }
-      catch (e) { input.focus(); input.select(); done.textContent = "Selected: press Ctrl+C or ⌘C."; }
-      setTimeout(() => { done.textContent = ""; }, 2500);
-    }});
     input.addEventListener("focus", () => input.select());
-    return el("div", {class: "dir-copy"}, input, btn, done);
+    return el("div", {class: "dir-copy"}, input, copyBtn(value, {what: "the " + label, sel: input}));
   }
 
   /* ---------------------------------------------------------------- which lists this server has */

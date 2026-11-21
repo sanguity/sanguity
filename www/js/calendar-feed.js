@@ -2,7 +2,7 @@
    make a private feed of the profile for your own calendar app, see its address once with setup steps, change how
    much it says, get a new address, or turn it off. Owners also see and can turn off everyone's feeds.
    Follows the page's profile picker (#profile, filled by sharing.js) without changing sharing.js. */
-"use strict";   // $, el and api come from util.js
+"use strict";   // $, el, api and copyBtn come from util.js; qrShow from qr.js
 (() => {
   let pid = null, me = null;
   const card = $("#calendar"), msg = $("#calMsg");
@@ -31,9 +31,18 @@
     return notes.join(" ");
   }
 
+  /* the address's Copy and its QR code, the app's one each (#495): the code behind its button, for a phone's calendar */
+  const copy = copyBtn(() => $("#calUrl").value, {what: "the feed's address", sel: $("#calUrl")});
+  copy.id = "calCopy";
+  $("#calCopy").replaceWith(copy);
+  let qr = null;
+  const unQr = () => { qr?.btn?.remove(); qr?.fig?.remove(); qr = null; };
   function showSetup(path) {
     const url = new URL(path, location.href.replace(/[^/]*$/, "")).href;
     $("#calUrl").value = url;
+    unQr();
+    qr = qrShow(url, {what: "the feed's address", caption: "Scan it with the phone's camera to take the address there, then subscribe to it.", field: true});
+    if (qr) { copy.after(qr.btn); $("#calSetup .cal-url").after(qr.fig); }
     const r = reach();
     $("#calReach").textContent = r;
     $("#calReach").hidden = !r;
@@ -50,7 +59,7 @@
     catch (e) { card.hidden = true; return; }
     card.hidden = false;
     $("#calSetup").hidden = true;
-    $("#calUrl").value = "";
+    $("#calUrl").value = ""; unQr();
     const f = d.mine;
     $("#calNew").hidden = !!f;
     $("#calHave").hidden = !f;
@@ -117,12 +126,7 @@
   $("#calDetailsNow").onchange = () => patch({details: $("#calDetailsNow").value});
   $("#calLabsNow").onchange = () => patch({labs: $("#calLabsNow").checked});
   $("#calMedsNow").onchange = () => patch({meds: $("#calMedsNow").checked});   // (#162)
-  $("#calCopy").onclick = async () => {
-    const box = $("#calUrl");
-    try { await navigator.clipboard.writeText(box.value); say("Address copied."); }
-    catch (e) { box.focus(); box.select(); say("Select the address and copy it (Ctrl+C or ⌘C)."); }
-  };
-  $("#calDone").onclick = () => { $("#calSetup").hidden = true; $("#calUrl").value = ""; say(""); };
+  $("#calDone").onclick = () => { $("#calSetup").hidden = true; $("#calUrl").value = ""; unQr(); say(""); };
 
   /* follow the profile picker: sharing.js fills it, then sets its value */
   const sel = $("#profile");

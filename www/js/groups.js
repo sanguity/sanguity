@@ -41,7 +41,7 @@ const SG_PAGES = {
     {id: "portals", title: "Portals and health plans", icon: "plug", part: "Connected", has: ["mine"], needs: "editor",   // the ways in: owners' and editors' (#401)
      words: "connect portal patient health plan insurance fhir sync"},
     {id: "phone", title: "Phone and watch", icon: "watch", part: "Connected", has: ["watch", "cycle"], needs: "editor",   // cycle tracking (#183)
-     words: "health connect android watch phone steps sleep", finds: [["Cycle tracking", "cycle", "period menstrual"]]},
+     words: "health connect android watch phone steps sleep iphone apple health auto export", finds: [["Cycle tracking", "cycle", "period menstrual"]]},   // (#495: an iPhone's words)
     {id: "upload", title: "Upload files", icon: "upload", part: "One-off", has: ["importer"], needs: "editor", words: "import zip folder files export takeout"},
     {id: "manual", title: "Type records in", icon: "keyboard", part: "One-off", has: ["typeIn"], needs: "editor",
      words: "manual enter lab result home reading blood pressure weight payment cost"},
@@ -91,7 +91,8 @@ const SG_PAGES = {
      finds: [["Install on this device", "installApp", "app home screen"], ["Offline records on this device", "offlineRecords", "offline without a connection"]]},
   ]},
   admin: {page: "admin.html", title: "Admin", icon: "wrench", admin: true, words: "server install", groups: [
-    {id: "accounts", title: "Accounts", icon: "user-cog", part: "People", has: ["users"], words: "users new account reset password"},
+    {id: "accounts", title: "Accounts", icon: "user-cog", part: "People", has: ["users"],
+     words: "users new account reset password remove delete disable require two-factor"},   // (#495: what's done to an account)
     {id: "activity", title: "Install activity", icon: "logs", part: "People", has: ["installLog"], words: "log sign-ins"},
     {id: "backups", title: "Backups", icon: "archive", part: "Data safety", has: ["backups"], words: "backup restore"},   // #200
     {id: "apps", title: "Connected-source apps", icon: "app-window", part: "Connections", has: ["admin", "sec-sync"],

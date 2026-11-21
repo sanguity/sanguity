@@ -172,6 +172,30 @@ function dangerZone(o) {
    inside a list. The records tabs, the Sources and Sharing lists and the journal use it. */
 const emptyState = (what, next, {tag = "div", cls = "card"} = {}) => el(tag, {class: `${cls} empty-state`.trim()}, el("p", {text: what}),
   next ? el(next.href ? "a" : "button", {class: `btn primary empty-next ${/\bcard\b/.test(cls) ? "large" : "small"}`, href: next.href, type: next.href ? null : "button", text: next.text, onclick: next.onclick}) : null);
+/* the one Copy (#495), for every value there is to copy: a small button named for it ("Copy the upload address", what
+   = "the upload address"). Copied, it says "Copied" on itself and to a screen reader, and "Copy" again after 2 s.
+   Where the browser keeps the clipboard from the page (plain HTTP) or refuses, it selects the value instead (sel: the
+   field or the element showing it) and says so, "Selected" on itself and "Selected: press Ctrl+C or ⌘C to copy it."
+   aloud. text: the value, or a function giving it when pressed. Its size: small beside a value shown as text, a
+   field's height beside a field (sel an input, #352). -> the button */
+function copyBtn(text, {what = "it", sel = null} = {}) {
+  const b = el("button", {class: `btn${sel?.tagName === "INPUT" ? "" : " small"} copy-btn`, type: "button", text: "Copy", "aria-label": `Copy ${what}`});
+  let back = null;
+  b.onclick = async () => {
+    let said = "Copied.";
+    try {
+      if (!navigator.clipboard) throw new Error("no clipboard here");
+      await navigator.clipboard.writeText(typeof text === "function" ? text() : text);
+      b.textContent = "Copied";
+    } catch (e) {
+      if (sel && typeof sel.select === "function") { sel.focus(); sel.select(); } else if (sel) getSelection().selectAllChildren(sel);
+      b.textContent = "Selected"; said = "Selected: press Ctrl+C or ⌘C to copy it.";
+    }
+    announce(said);
+    clearTimeout(back); back = setTimeout(() => { b.textContent = "Copy"; }, 2000);
+  };
+  return b;
+}
 /* a password field (#290), every one in the app (#492: sign-in, setup, Account's, Admin's, a Health Link's passcode).
    A Show button in the field's end shows what's typed, and Hide hides it again (named "Show password", or "Show" and
    the name given: "Show passcode"); pwSent(form) hides it again as the form is really sent, after its own checks

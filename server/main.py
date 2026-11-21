@@ -740,13 +740,14 @@ def two_factor_state(s=Depends(settled), db=Depends(get_db)):
 
 @app.post("/api/me/2fa/start")
 def two_factor_start(s=Depends(settled), db=Depends(get_db)):
-    """A new secret to scan; it takes effect only once a code from it is confirmed."""
+    """A new secret to scan; it takes effect only once a code from it is confirmed. The page draws its QR code from the
+    otpauth address (www/js/qr.js, #495)."""
     if s["totp_secret"]:
         raise HTTPException(409, "Two-factor sign-in is already on.")
     secret = twofactor.new_secret()
     db.execute("UPDATE users SET totp_pending=? WHERE id=?", (crypto.enc(secret), s["id"]))
     link = twofactor.uri(secret, s["username"])
-    return {"secret": secret, "uri": link, "qr": twofactor.qr_data_uri(link)}
+    return {"secret": secret, "uri": link}
 
 
 @app.post("/api/me/2fa/confirm")
