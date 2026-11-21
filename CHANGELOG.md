@@ -1805,6 +1805,16 @@ Everything on `main` so far; it becomes the first tagged release.
   spreadsheet keep its dates (10/25/2026, 8:30 AM), shown in the pickers once read. Height is typed in About this
   person, where its history is, and no longer among the kinds. A lab result's row fits its card at every width: one
   line where there's room, two beside the sidebar (from 761 to 900 px it ran out of its card), four on a phone.
+- **The clinician's page prints each history with its test, its section bar reaches every section, and ten years fit**
+  (#491): printed with every history open, a history went to the next page whole, leaving its test's row alone at a
+  page's foot, and its pages didn't name its test; now a history breaks across pages, each naming its test above its
+  columns, and no table's first or last row is left alone. With eight sections the bar's chips ran past its edge with
+  no scrollbar, so a mouse couldn't reach the last; they wrap on a wide screen now, and scroll with a thin scrollbar
+  for a mouse where they don't. On a phone held sideways the header scrolls away and the bar sticks at the top, not
+  61 px below it. The title is in the pages' title style; **Open every history** is pressed only while every history
+  is open; and the bar no longer marks a section that's out of sight. Visits, procedures, costs and the home readings
+  show their latest 20 when there are more than 40, saying how many there are, with **Show all**: a link to ten years
+  with every section was 162,286 px at 1400 px, and is 9,812.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

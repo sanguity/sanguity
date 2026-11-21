@@ -6,7 +6,8 @@
    sign anyone in or reach any other page's data. No cookie is used or set, and nothing is kept in this browser.
    Dates are shown in this browser's own zone and format (dates.js, without anyone's settings).
    For a clinician (#289): a bar of the sections that stays in view, lab results as one table of the latest ones that
-   open their histories, labs by the names the profile gives them, and Print (app.css's print rules: the records, not the controls). */
+   open their histories, labs by the names the profile gives them, and Print (app.css's print rules: the records, not the controls).
+   Ten years of records (#491): a long table shows its latest rows, with Show all. */
 "use strict";
 const SH_KIND = {visit: "Visit", stay: "Hospital stay", procedure: "Procedure", imaging: "Imaging", study: "Report / study",
   note: "Note", symptom: "Symptom", side_effect: "Side effect", mood: "Mood"};
@@ -20,18 +21,43 @@ $("#theme").onclick = () => {
   applyTheme();
 };
 
-/* a table that scrolls sideways inside its card on a narrow screen, never the page */
-function shTable(heads, rows, empty, cls = "", name = "") {   // cls "measures": stays a table on a phone (#225)
+/* a table that scrolls sideways inside its card on a narrow screen, never the page. printed: a head row naming it, over
+   its column names, shown only in print, where each page the table spans repeats its head (#491: a history's pages
+   each name its test) */
+function shTable(heads, rows, empty, cls = "", name = "", printed = "") {   // cls "measures": stays a table on a phone (#225)
   if (!rows.length) return el("p", {class: "muted", text: empty});
   return scrollBox({class: "share-scroll", "aria-label": name || heads.filter(Boolean).join(", ")}, el("table", {class: ("tbl " + cls).trim()},
-    el("thead", {}, el("tr", {}, ...heads.map(h => el("th", {text: h})))),
-    el("tbody", {}, ...rows.map(r => el("tr", {}, ...r.map(c => c && c.nodeType ? el("td", {}, c) : el("td", {text: c == null ? "" : String(c)})))))));
+    el("thead", {}, printed ? el("tr", {class: "share-printed"}, el("th", {colspan: heads.length, text: printed})) : null,
+      el("tr", {}, ...heads.map(h => el("th", {text: h})))),
+    el("tbody", {}, ...rows.map(shRow))));
+}
+const shRow = r => el("tr", {}, ...r.map(c => c && c.nodeType ? el("td", {}, c) : el("td", {text: c == null ? "" : String(c)})));
+/* a long table, newest first (#491: ten years are 2,000 claims, and 1,000 readings of a home measure): its latest
+   SH_FIRST rows when there are more than SH_MANY, saying so, and Show all, which adds the rest and gives the first of
+   them focus. total: how many there are, when the server sent only the latest (a measure's block) */
+const SH_FIRST = 20, SH_MANY = 40;
+function shLong(heads, rows, empty, cls, noun, total = rows.length) {
+  const box = shTable(heads, rows.length > SH_MANY ? rows.slice(0, SH_FIRST) : rows, empty, cls);
+  const n = k => k.toLocaleString(), said = k => total > k ? `The latest ${n(k)} of ${n(total)}${noun ? " " + noun : ""}.` : "";
+  if (rows.length <= SH_MANY) return total > rows.length ? el("div", {}, box, el("p", {class: "hint", text: said(rows.length)})) : box;
+  const note = el("p", {class: "hint", text: said(SH_FIRST)});
+  const all = el("button", {class: "btn small", type: "button", text: total > rows.length ? `Show the latest ${n(rows.length)}` : `Show all ${n(rows.length)}`,
+    onclick: () => {
+      const more = rows.slice(SH_FIRST).map(shRow);
+      box.querySelector("tbody").append(...more);
+      note.textContent = said(rows.length);
+      (note.textContent ? all : tools).remove();
+      more[0].tabIndex = -1;
+      more[0].focus();
+    }});
+  const tools = el("div", {class: "share-tools share-more"}, note, all);
+  return el("div", {}, box, tools);
 }
 
 const SH_DRAW = {
-  visits: list => shTable(["Date", "What", "Details"], list.map(v => [v.end ? `${shDay(v.t)} – ${shDay(v.end)}` : shWhen(v.t),
-    (SH_KIND[v.kind] && v.kind !== "visit" ? SH_KIND[v.kind] + ": " : "") + v.title, v.sub]), "No visits or stays in this range."),
-  procedures: list => shTable(["Date", "Kind", "Title"], list.map(v => [shDay(v.t), SH_KIND[v.kind] || "", v.title]), "None in this range."),
+  visits: list => shLong(["Date", "What", "Details"], list.map(v => [v.end ? `${shDay(v.t)} – ${shDay(v.end)}` : shWhen(v.t),
+    (SH_KIND[v.kind] && v.kind !== "visit" ? SH_KIND[v.kind] + ": " : "") + v.title, v.sub]), "No visits or stays in this range.", "", "visits and stays"),
+  procedures: list => shLong(["Date", "Kind", "Title"], list.map(v => [shDay(v.t), SH_KIND[v.kind] || "", v.title]), "None in this range.", "", "records"),
   medications: list => shTable(["Medication", "Instructions", "From", "Until"], list.map(m => [m.name + (m.status ? ` (${m.status})` : ""),
     m.instructions, shDay(m.since), m.until ? shDay(m.until) : "—"]), "No medications in this range."),
   results: list => list.length ? shLatest(list) : el("p", {class: "muted", text: "No lab results in this range."}),
@@ -49,8 +75,8 @@ const SH_DRAW = {
     el("dt", {text: "Birth date"}), el("dd", {text: a.birthDate ? shDay(a.birthDate) : "Not given"}),
     el("dt", {text: "Sex used for reference ranges"}), el("dd", {text: a.sex || "Not given"})),
     shTable(["Date", "Height"], (a.heights || []).map(h => [shDay(h.date), h.text]), "No heights written down in this range.")),
-  costs: list => shTable(["Date", "Service", "Provider", "Billed", "Insurance paid", "Your share"],
-    list.map(c => [shDay(c.t), c.title, c.provider, shUsd(c.billed), shUsd(c.paid), shUsd(c.owe)]), "No claims in this range."),
+  costs: list => shLong(["Date", "Service", "Provider", "Billed", "Insurance paid", "Your share"],
+    list.map(c => [shDay(c.t), c.title, c.provider, shUsd(c.billed), shUsd(c.paid), shUsd(c.owe)]), "No claims in this range.", "", "claims"),
 };
 
 /* Lab results (#289): one Latest results table, a row per test (by the profile's name for it, under its panel, labGroups
@@ -77,11 +103,11 @@ function shLatest(list) {
   const row = s => {
     const last = s.results[0], id = "shareHist" + ++SH_HIST, days = new Set(s.results.map(p => String(p.t).slice(0, 10)));
     const open = el("button", {class: "cell-btn share-open", type: "button", "aria-expanded": false, "aria-controls": id,
-      onclick: () => shOpen(open, hist, open.getAttribute("aria-expanded") !== "true")}, icon("chevron-down"), s.label);
+      onclick: () => { shOpen(open, hist, open.getAttribute("aria-expanded") !== "true"); follow(); }}, icon("chevron-down"), s.label);
     const hist = el("tr", {class: "share-hist", id, hidden: ""}, el("td", {colspan: heads.length},
       s.label !== s.name ? el("p", {class: "hint", text: `Named “${s.name}” on its reports.`}) : null,
       shTable(["Date", "Result", "Reference range", "Flag"], s.results.map(p => [days.size < s.results.length ? shWhen(p.t) : shDay(p.t),
-        p.value, p.range, shFlag(p.flag)]), "", "measures", `${s.label}: every result`)));
+        p.value, p.range, shFlag(p.flag)]), "", "measures", `${s.label}: every result`, `${s.label}${s.unit ? ` (${s.unit})` : ""}: every result`)));
     hists.push([open, hist]);
     return [el("tr", {class: last.flag ? "out" : null},
       el("th", {scope: "row"}, open, s.unit ? el("span", {class: "share-unit", text: s.unit}) : null),
@@ -96,8 +122,10 @@ function shLatest(list) {
   const all = el("button", {class: "btn small", type: "button", "aria-pressed": false, text: "Open every history", onclick: () => {
     const on = all.getAttribute("aria-pressed") !== "true";
     for (const [b, h] of hists) shOpen(b, h, on);
-    all.setAttribute("aria-pressed", String(on));
+    follow();
   }});
+  // pressed while every history is open (#491): with one closed by hand, the next press opens them all again
+  const follow = () => all.setAttribute("aria-pressed", String(hists.every(([b]) => b.getAttribute("aria-expanded") === "true")));
   const many = (k, w) => `${k} ${w}${k === 1 ? "" : "s"}`;
   return el("div", {}, el("div", {class: "share-tools"}, el("p", {class: "share-count"},
     `The latest of ${many(n, "result")} in ${many(list.length, "test")}.`, el("span", {text: " A test's name opens its history."})), list.length > 1 ? all : null),
@@ -106,7 +134,9 @@ function shLatest(list) {
 function shOpen(btn, hist, on) { btn.setAttribute("aria-expanded", String(on)); hist.hidden = !on; }
 
 /* the sections' bar (#289): a chip per section, sticky under the page's header, that scrolls to it and gives its heading
-   focus; the one in view is marked. Buttons, not #links: this page's address after the # is the link's token. */
+   focus; the one in view is marked. Buttons, not #links: this page's address after the # is the link's token. On a
+   wide screen its chips wrap, so a mouse reaches each; on a narrow or short one they scroll sideways; under 500 px
+   tall, where the header scrolls away, the bar sticks at the top (#491, app.css). */
 function shBar(secs) {
   const bar = $("#shareBar");
   bar.replaceChildren(...secs.map(s => el("button", {class: "chip", type: "button", "data-for": "share-" + s.id, text: s.label, onclick: () => {
@@ -122,17 +152,20 @@ function shBar(secs) {
 }
 function shTop() {   // the header's and the bar's heights: the bar sticks under the one, what gets focus scrolls clear of both
   const head = document.querySelector("body>header"), bar = $("#shareBar"), root = document.documentElement.style;
+  const stuck = getComputedStyle(head).position === "sticky" ? head.offsetHeight : 0;   // not under 500 px tall (#491)
   root.setProperty("--head-h", head.offsetHeight + "px");
-  root.setProperty("--bar-h", head.offsetHeight + (bar.hidden ? 0 : bar.offsetHeight) + "px");
+  root.setProperty("--bar-h", stuck + (bar.hidden ? 0 : bar.offsetHeight) + "px");
 }
-new ResizeObserver(shTop).observe(document.querySelector("body>header"));
+{ const ro = new ResizeObserver(shTop); ro.observe(document.querySelector("body>header")); ro.observe($("#shareBar")); }
+matchMedia("(max-height:500px)").addEventListener("change", shTop);
 let shPick = null;   // the section a chip went to, until the page is scrolled by hand
-function shSpy() {   // the section in view: the last whose top has passed under the bar, or the last at the page's foot
-  const bar = $("#shareBar"), chips = [...bar.children];
+function shSpy() {   // the section in view: of those not all under the bar (#491), the last whose top has passed under it
+  const bar = $("#shareBar"), chips = [...bar.children];   // or else the first; or the last, at the page's foot
   if (bar.hidden || !chips.length) return;
-  const line = bar.getBoundingClientRect().bottom + 16;
-  let on = chips[0];
-  for (const c of chips) if (document.getElementById(c.dataset.for)?.getBoundingClientRect().top <= line) on = c;
+  const under = bar.getBoundingClientRect().bottom, line = under + 16, box = c => document.getElementById(c.dataset.for)?.getBoundingClientRect();
+  const seen = chips.filter(c => box(c)?.bottom > under);
+  let on = seen[0] || chips[chips.length - 1];
+  for (const c of seen) if (box(c).top <= line) on = c;
   if (innerHeight + scrollY >= document.documentElement.scrollHeight - 2) on = chips[chips.length - 1];
   on = chips.find(c => c.dataset.for === shPick) || on;
   for (const c of chips) if (c === on) c.setAttribute("aria-current", "true"); else c.removeAttribute("aria-current");
@@ -140,7 +173,7 @@ function shSpy() {   // the section in view: the last whose top has passed under
     bar.scrollLeft = on.offsetLeft - 8;
 }
 let shSpied = 0;
-addEventListener("scroll", () => { shSpied ||= requestAnimationFrame(() => { shSpied = 0; shSpy(); }); }, {passive: true});
+for (const t of ["scroll", "resize"]) addEventListener(t, () => { shSpied ||= requestAnimationFrame(() => { shSpied = 0; shSpy(); }); }, {passive: true});
 for (const t of ["wheel", "touchstart", "keydown", "pointerdown"]) addEventListener(t, ev => { if (!ev.target.closest?.("#shareBar")) shPick = null; }, {passive: true});
 
 /* a journal photo (#161), only in a link whose owner ticked "Photos in the journal": asked for by the token like the
@@ -163,10 +196,10 @@ function shPhoto(p, fallback) {
 /* the phone's and watch's measures, immunizations, ECGs and BMI (#225; server/measures.py): a block's lead lines, its
    table and the note under it. Times are the local times the phone took them at, written in this browser's format. */
 function shBlock(b) {
-  const cellOf = (kind, v) => !v ? v : kind === "day" ? shDay(v) : kind === "time" ? fmtDT(zParse(v)) : v;
+  const cellOf = (kind, v) => !v ? v : kind === "day" ? shDay(v) : kind === "time" ? fmtDT(zParse(v)) : v, rows = b.rows || [];
   return el("div", {}, ...(b.lead || []).map(t => el("p", {text: t})),
-    shTable((b.cols || []).map(c => c[0]), (b.rows || []).map(r => r.map((v, i) => cellOf(b.cols[i][1], v))), b.empty || "None in this range.", "measures"),
-    b.total > (b.rows || []).length ? el("p", {class: "hint", text: `The latest ${b.rows.length} of ${b.total}.`}) : null,
+    shLong((b.cols || []).map(c => c[0]), rows.map(r => r.map((v, i) => cellOf(b.cols[i][1], v))), b.empty || "None in this range.", "measures",
+      "", Math.max(b.total || 0, rows.length)),
     b.note ? el("p", {class: "hint", text: b.note}) : null);
 }
 
@@ -174,7 +207,7 @@ async function shLoad() {
   const status = $("#shareStatus");
   const token = location.hash.slice(1);
   const broken = () => {
-    $("#shareHead").replaceChildren(el("h1", {text: "This link doesn't work"}),
+    $("#shareHead").replaceChildren(el("div", {class: "share-hd"}, el("h1", {text: "This link doesn't work"})),
       el("p", {class: "hint", text: "It may have expired or been revoked, or the address may be incomplete. Ask the person who sent it for a new link."}));
     $("#shareBody").replaceChildren();
     shBar([]);

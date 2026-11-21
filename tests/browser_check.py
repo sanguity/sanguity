@@ -2212,6 +2212,20 @@ def main():
               opened["expanded"] == "true" and opened["shown"] and opened["next"] and opened["rows"] == int(opened["count"]) > 1
               and "“Automated Abs Neutrophil Cnt”" in opened["named"] and closed["expanded"] == "false" and not closed["shown"]
               and all_open and every.get_attribute("aria-pressed") == "true", [opened, closed, all_open])
+        # #491: Open every history follows the histories: one closed by hand and it's no longer pressed, so the next press
+        # opens them all again (it closed them); every one opened by hand and it's pressed
+        ALL491 = "[...document.querySelectorAll('#share-results .share-hist')].map(h => h.hidden ? 0 : 1).join('')"
+        nbtn.click()
+        follow491 = [every.get_attribute("aria-pressed")]
+        every.click()
+        follow491 += [every.get_attribute("aria-pressed"), "0" not in hp.evaluate(ALL491)]
+        every.click()
+        follow491 += [every.get_attribute("aria-pressed"), "1" not in hp.evaluate(ALL491)]
+        for i in range(hp.locator("#share-results .share-open").count()):
+            hp.locator("#share-results .share-open").nth(i).click()
+        follow491 += [every.get_attribute("aria-pressed"), "0" not in hp.evaluate(ALL491)]
+        check("…Open every history follows the histories: not pressed once one is closed by hand, so a press opens them all; "
+              "pressed once each is opened by hand (#491)", follow491 == ["false", "true", True, "false", True, "true", True], follow491)
         hp.evaluate("scrollTo(0, 0)")
         hp.wait_for_timeout(200)
         BAR289 = """() => { const b = document.getElementById('shareBar'), h = document.activeElement;
@@ -2268,6 +2282,77 @@ def main():
         check("…with every history open: no serious axe-core finding at 1400, 375 and 320 px, light and dark; fitting 375 and 320 px and "
               "with WCAG's text spacing; each Tab stop shown and clear of the header and the bar, at 1400 and 375 px",
               not a289 and not f289 and not k289, (a289 + f289 + k289)[:8])
+        # ---- the clinician's page with every section the demo offers, of any date (#491). Printed to PDF with every history
+        # open (pypdf reads each page back): no page short of rows (a test's row isn't left at a page's foot, its history
+        # carried to the next: each history breaks across pages, and no table's first or last row is alone), and each
+        # history's pages name its test above its column names. At 1400 px the bar's chips (eight or more) wrap, a mouse
+        # reaching each; at 568×320, a phone on its side, the header scrolls away and the bar sticks at the top, a chip's
+        # section coming in under it. The title in the pages' title style, as on Sharing. Scrolled down the page, the bar
+        # never marks a section all out of sight. Costs' claims show their latest 20, saying so, and Show all lists the
+        # rest, the first of them focused (the ten-year fixture's 2,000 and the page's height: tests/test_performance.py)
+        made491 = strict.evaluate("""async () => { const h = {'X-Sanguity': '1', 'Content-Type': 'application/json'};
+          const secs = (await (await fetch('api/profiles/1/links', {headers: h})).json()).sections.map(s => s.id);
+          return (await fetch('api/profiles/1/links', {method: 'POST', headers: h, body: JSON.stringify({sections: secs, label: 'Every section (browser check)', hours: 1})})).json(); }""")
+        hp.set_viewport_size({"width": 1400, "height": 900})
+        hp.goto("about:blank")
+        hp.goto(base + "/" + made491["path"])
+        hp.wait_for_selector("#share-results .share-latest", timeout=10000)
+        reach491 = hp.evaluate("""() => [...document.querySelectorAll('#shareBar .chip')].map(c => { const r = c.getBoundingClientRect(),
+          hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return [c.textContent, c.contains(hit) && r.left >= 0 && r.right <= innerWidth]; })""")
+        H1_491 = "() => { const c = getComputedStyle(document.querySelector('main h1')); return [c.fontFamily, c.fontSize, c.fontWeight, c.letterSpacing]; }"
+        strict.set_viewport_size({"width": 1400, "height": 900})
+        h1_491 = [hp.evaluate(H1_491), strict.evaluate(H1_491), strict.url]
+        spy491 = hp.evaluate("""async () => { const bar = document.getElementById('shareBar'), off = [];
+          for (let y = 0; y < document.documentElement.scrollHeight - innerHeight; y += 37) {
+            scrollTo(0, y); await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+            const on = bar.querySelector('[aria-current]'), s = document.getElementById(on.dataset.for).getBoundingClientRect();
+            if (s.bottom <= bar.getBoundingClientRect().bottom || s.top >= innerHeight) off.push([y, on.textContent]); }
+          return off; }""")
+        hp.evaluate("scrollTo(0, 0)")
+        costs491 = hp.evaluate("""() => { const s = document.getElementById('share-costs'), m = s.querySelector('.share-more');
+          return [s.querySelectorAll('tbody tr').length, m?.querySelector('.hint').textContent, m?.querySelector('button').textContent]; }""")
+        hp.locator("#share-costs .share-more button").click()
+        costs491 += hp.evaluate("""() => { const rows = [...document.querySelectorAll('#share-costs tbody tr')];
+          return [rows.length, rows.indexOf(document.activeElement), !document.querySelector('#share-costs .share-more')]; }""")
+        hp.locator("#share-results .share-tools button", has_text="Open every history").click()
+        from pypdf import PdfReader
+        import io
+        hp.emulate_media(media="print")   # (the page is on "screen" since #289's print check, which a PDF would take)
+        pages491 = [p_.extract_text().splitlines() for p_ in PdfReader(io.BytesIO(hp.pdf(format="Letter"))).pages]
+        hp.emulate_media(media="screen")
+        hp.locator("#share-results .share-tools button", has_text="Open every history").click()   # closed again
+        dated = [sum(1 for ln in pg if re.search(r"\b[A-Z][a-z]{2} \d{1,2}, \d{4}\b", ln)) for pg in pages491]
+        unnamed = [i + 1 for i, pg in enumerate(pages491) for j, ln in enumerate(pg) if ln.strip() == "Date Result Reference range Flag"
+                   and not (j and pg[j - 1].rstrip().endswith(": every result"))]
+        hp.set_viewport_size({"width": 568, "height": 320})
+        hp.evaluate("scrollTo(0, 1500)")
+        hp.wait_for_timeout(200)
+        side491 = hp.evaluate("""() => { const b = document.getElementById('shareBar'); return {sticky: getComputedStyle(b).position, top: Math.round(b.getBoundingClientRect().top),
+          head: getComputedStyle(document.querySelector('body>header')).position}; }""")
+        hp.locator("#shareBar .chip", has_text="Medications").click()
+        y491 = None
+        for _ in range(40):   # till the smooth scroll has stopped
+            hp.wait_for_timeout(150)
+            if y491 == (y491 := hp.evaluate("scrollY")):
+                break
+        side491.update(hp.evaluate("""() => ({bottom: document.getElementById('shareBar').getBoundingClientRect().bottom,
+          h2: document.querySelector('#share-medications h2').getBoundingClientRect().top})"""))
+        f491 = phone_fits(hp, "share page, every section, 568×320 (#491)")
+        hp.set_viewport_size({"width": 1400, "height": 900})
+        strict.evaluate("id => fetch('api/profiles/1/links/' + id, {method: 'DELETE', headers: {'X-Sanguity': '1'}})", made491["link"]["id"])
+        check("…every section, printed with every history open: no page short of rows, and each history's pages name its test (#491)",
+              len(pages491) > 3 and min(dated[:-1]) >= 8 and dated[-1] >= 2 and not unnamed
+              and sum(1 for pg in pages491 for ln in pg if ln.rstrip().endswith(": every result")) > len(l289["tests"]), [dated, unnamed])
+        check("…at 1400 px the bar's chips wrap, a mouse reaching each (eight or more); at 568×320 the header scrolls away and the bar "
+              "sticks at the top, a chip's section coming in under it (#491)", len(reach491) >= 8 and all(r[1] for r in reach491)
+              and side491["sticky"] == "sticky" and side491["head"] != "sticky" and side491["top"] == 0
+              and side491["bottom"] <= side491["h2"] < side491["bottom"] + 60 and not f491, [reach491, side491, f491[:4]])
+        check("…its title in the pages' title style, as Sharing's: the serif at 22 px, semibold (#491)",
+              h1_491[0] == h1_491[1] and "Serif" in h1_491[0][0] and h1_491[0][1:3] == ["22px", "600"], h1_491)
+        check("…scrolled down the page, the bar never marks a section all out of sight (#491)", not spy491, spy491[:6])
+        n491 = int(re.sub(r"\D", "", costs491[2] or "") or 0)
+        check("…Costs' claims (more than 40): the latest 20, saying so, and Show all lists the rest, the first of them focused (#491)",
+              n491 > 40 and costs491 == [20, f"The latest 20 of {n491:,} claims.", f"Show all {n491:,}", n491, 20, True], costs491)
         strict.evaluate("id => fetch('api/profiles/1/links/' + id, {method: 'DELETE', headers: {'X-Sanguity': '1'}})", made289["link"]["id"])
         hp.goto("about:blank")
         hp.goto(share_url)   # back to the first link, which is revoked below

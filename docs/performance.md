@@ -66,6 +66,7 @@ regression like the one fixed below (seconds instead of a tenth of one) still fa
 | `tab_elements` | Elements in a tab with the period **All** | 16,185 (Body and activity) | 18,000 |
 | `phone_page_ready_ms` | `page_ready_ms` at 375 px with the CPU four times slower, like a phone's | 437 ms | 5,000 ms |
 | `phone_tab_draw_ms` | `tab_draw_ms` the same way | 453 ms (Body and activity) | 3,000 ms |
+| `share_page_px` | A share link's page with every section, of any date, at 1400 px (#491, below) | 9,812 px | 20,000 px |
 | `static_bytes` | The app's stylesheets, fonts and SVG icons in `www/`, as nginx sends them (#253, below) | 281.9 KB | 310 KB |
 
 Measured on a 20-thread desktop (Intel Core Ultra 7 265K), Chromium headless. Each tab's own numbers, and the size
@@ -196,6 +197,15 @@ card on Table ("health, every table" in `tab_draw_ms` and `tab_elements`):
 |---|---:|---:|
 | Elements | 10,260 | |
 | First draw | 124 ms | 549 ms |
+
+## A share link's page (#491)
+
+A share link to ten years with every section the big profile offers (twelve, the four home measures among them) drew
+every row: Costs and claims its 2,000 claims (58,717 px at 1400 px), each home measure 1,000 readings (about 29,500
+px each), and the page was 162,286 px tall. Visits, procedures, costs and each home measure now show their latest
+20 when there are more than 40, saying how many there are, with **Show all** (the first row it adds focused); Lab
+results was already one table of the latest results, with each history on demand (#289). The page is 9,812 px.
+`share_page_px` is that height at 1400 px; the test also presses Costs' Show all and finds every claim.
 
 ## A record's details when it's opened (#217)
 

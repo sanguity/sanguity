@@ -421,10 +421,11 @@ const smoothly = () => matchMedia("(prefers-reduced-motion: reduce)").matches ? 
 /* A table's column names on its cells (#320): on a phone an .acct .tbl hides its header row and each row is a little
    card (app.css), so each cell shows its column's name before its value instead, from data-label (td::before).
    labelCells(table) copies the names; a cell under an empty heading (a row's buttons), spanning columns or with
-   nothing in it gets none.
+   nothing in it gets none. The names are the head's last row (a share link's history has its test's name above, #491).
    It's run here for every table.tbl on the account pages as it's drawn or redrawn, so no page labels its own. */
 function labelCells(table) {
-  const heads = table.tHead && table.tHead.rows[0] ? [...table.tHead.rows[0].cells].flatMap(th => Array(th.colSpan).fill(th.colSpan > 1 ? "" : th.textContent.trim())) : [];
+  const top = table.tHead && table.tHead.rows[table.tHead.rows.length - 1];
+  const heads = top ? [...top.cells].flatMap(th => Array(th.colSpan).fill(th.colSpan > 1 ? "" : th.textContent.trim())) : [];
   for (const body of table.tBodies) for (const row of body.rows) {
     let col = 0;
     for (const c of row.cells) {

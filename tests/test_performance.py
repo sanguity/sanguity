@@ -60,7 +60,8 @@ BUDGETS = {
     "tab_elements": 18_000,             # elements in a tab with the period "All"
     "phone_page_ready_ms": 5000,        # the same at 375 px with the CPU four times slower, like a phone's
     "phone_tab_draw_ms": 3000,
-    "static_bytes": 310_000,            # www/'s stylesheets, fonts and SVG icons as nginx sends them, whatever the records
+    "share_page_px": 20_000,            # a share link's page with every section, of any date, at 1400 px (#491)
+    "static_bytes": 310_000,           # www/'s stylesheets, fonts and SVG icons as nginx sends them, whatever the records
                                         # (#253; compressed as sent since Redesign 4, the owner's choice): room for R4–R7
 }
 RUNS = 3
@@ -533,6 +534,38 @@ class PageBudgets(unittest.TestCase):
         self.assertEqual(errors, [])
         self.check_timeline(tl_all, "phone_")
         self.check("phone_", {"page_ready_ms": ready_ms, "tab_draw_ms": {**draw_ms, "timeline, Show more": tl_all["ms"]}})
+
+    def test_share_page(self):
+        """a share link with every section the big profile offers, of any date (#491): at 1400 px its page is within
+        share_page_px, each long table (2,000 claims, 1,000 readings a home measure) showing its latest 20 and saying
+        so; Costs' Show all lists every claim, the first one added focused"""
+        from playwright.sync_api import sync_playwright
+        offered = [s["id"] for s in CLIENT.get("/api/profiles/1/links", headers=H).json()["sections"]]
+        r = CLIENT.post("/api/profiles/1/links", headers=H, json={"label": "Every section (performance)", "sections": offered, "hours": 1})
+        self.assertEqual(r.status_code, 200, r.text)
+        errors = []
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page(viewport={"width": 1400, "height": 900})
+            page.on("pageerror", lambda e: errors.append(str(e)))
+            page.goto(f"{BASE}/{r.json()['path']}")
+            page.wait_for_selector("#share-costs .share-more", timeout=60000)
+            page.wait_for_timeout(300)
+            height = measure("share_page_px", page.evaluate("document.documentElement.scrollHeight"))
+            long = page.evaluate("""() => [...document.querySelectorAll('#shareBody .share-more')].map(m => [m.closest('section').id,
+              m.closest('section').querySelectorAll('tbody tr').length, m.querySelector('.hint').textContent, m.querySelector('button').textContent])""")
+            page.locator("#share-costs .share-more button").click()
+            costs = page.evaluate("""() => { const rows = [...document.querySelectorAll('#share-costs tbody tr')];
+              return [rows.length, rows.indexOf(document.activeElement), !!document.querySelector('#share-costs .share-more')]; }""")
+            browser.close()
+        measure("share_page_sections", offered)
+        self.assertEqual(errors, [])
+        self.assertTrue({"costs", "home_bp", "glucose", "oxygen"} <= set(offered), offered)
+        self.assertTrue(["share-costs", 20, "The latest 20 of 2,000 claims.", "Show all 2,000"] in long
+                        and all(n == 20 and t.startswith("The latest 20 of ") for _, n, t, _ in long)
+                        and {"share-costs", "share-home_bp", "share-glucose", "share-oxygen"} <= {s for s, *_ in long}, long)
+        self.assertEqual(costs, [2000, 20, False])
+        self.assertLessEqual(height, BUDGETS["share_page_px"], "over budget (docs/performance.md)")
 
 
 if __name__ == "__main__":
