@@ -8,7 +8,7 @@
      ago", "Not set up") and its last activity, its title the link to its section; on a phone, where the sidebar gives
      way to them (app.css), the way into each section. A profile nothing has come into yet has an empty state with a
      picture above them; someone who can only view the profile sees the ways that brought it records, and the history.
-   Read again when the profile changes and each time the Overview is shown.
+   Read again when the profile changes, each time the Overview is shown, and once an import is saved or undone (#513).
      GET api/profiles/{pid}/connections         what each connection is doing, and when it last pulled (connect.js's)
      GET api/profiles/{pid}/imports             every import, a sync's naming its connection (import-history.js's)
      GET api/profiles/{pid}/watch/receiver      the phone's setup and its last upload (owners and editors)
@@ -197,6 +197,9 @@
     if (!await SgSources.ready) return;
     $("#profile").addEventListener("change", () => { review.replaceChildren(); all = false; load(); });
     document.addEventListener("sources:group", ev => { if (ev.detail === "overview") load(); });
+    // an import of the profile saved or undone, wherever it was (import-jobs.js told, #513: a Review here added, a
+    // toast's Undo): the cards and what's waiting read again
+    document.addEventListener("sg:imports", ev => { if (ev.detail.pid === SgSources.pid()) ev.detail.wait(load()); });
     load();
   })();
 })();

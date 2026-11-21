@@ -168,7 +168,10 @@ document.addEventListener("sg:imports", ev => {
     const r = await api(`profiles/${PROFILE.id}/data`);
     if (r.status === 200) {
       storeRecords(await r.json());
-      d.focus = [$("#tab-" + state.tab), ...document.querySelectorAll(`#view-${state.tab} h2:not(.vh)`)].find(h => h.checkVisibility());
+      // the drawer showing one of the import's records, or a medication only it brought, closes (#513: it stayed, with
+      // its pencil, ⋯ and Source link); focus where it closes to (drawer.js)
+      if (drawer.classList.contains("open") && (state.selEv != null && !byId.has(state.selEv) || drawer.dataset.med != null && !medShown())) closeDrawer();
+      d.focus =[$("#tab-" + state.tab), ...document.querySelectorAll(`#view-${state.tab} h2:not(.vh)`)].find(h => h.checkVisibility());
     } else if (r.status === 204) {
       if (drawer.classList.contains("open")) closeDrawer();
       DATA = null; firstDrawn = null; booted = false;

@@ -9903,6 +9903,18 @@ def main():
             tl500 = js("[window._page500, location.pathname + location.search + location.hash]")
             check("from “/?profile=N”, the dialog's Open Labs and “See them on the timeline” change the tab without a reload (#500)",
                   labs500 == [1, f"/?profile={dpid497}#labs"] and tl500 == [1, f"/?profile={dpid497}#timeline"], [labs500, tl500])
+            # (#513) that import's lab draw open in the drawer, then its toast's Undo: the drawer doesn't show it any more
+            iid513 = js(f"fetch('api/profiles/{dpid497}/imports', {{cache: 'no-store'}}).then(r => r.json()).then(j => j.imports[0].id)")
+            js(f"openEvent(EV.find(e => e.imp === {iid513} && e.k === 'lab'))")
+            page.wait_for_function("drawer.classList.contains('open') && state.selEv != null", timeout=10000)
+            ev513 = js("state.selEv")
+            page.click("#sgToasts .sg-toast:last-child button:text-is('Undo…')")
+            answer_ask(page)
+            page.wait_for_function(f"!EV.some(e => e.imp === {iid513})", timeout=10000)
+            settle(300)
+            drawer513 = js(f"[drawer.classList.contains('open'), drawer.open, byId.has({ev513}), state.selEv, document.activeElement !== document.body && !drawer.contains(document.activeElement)]")
+            check("a record open in the drawer isn't shown after its import's Undo from the toast: the drawer closes, focus on the page (#513)",
+                  drawer513 == [False, False, False, None, True], drawer513)
             # (#504) a profile with no records: two CSVs dropped into the dialog, the first added, the dialog closed: its
             # records are drawn without loading the page again, the toast's Undo and the other review kept
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
@@ -9994,6 +10006,10 @@ def main():
                   asks508[0] == asks508[1] and asks508[2] == asks508[3] and asks508[0][0] == asks508[2][0] == "Undo this import?"
                   and "1 lab result in 1 test, and the files uploaded for it." in asks508[0][1] and "lab draw" not in asks508[0][1]
                   and asks508[2][1].startswith("Everything this typed-in import brought is removed: ") and "files" not in asks508[2][1], asks508)
+            typed513 = js(f"document.getElementById('import-{man508}').textContent")
+            check("one typed result is “1 lab result in 1 test” in Import history and its Undo question, not 2 events (#513)",
+                  "1 lab result in 1 test" in typed513 and "event" not in typed513
+                  and asks508[2][1].startswith("Everything this typed-in import brought is removed: 1 lab result in 1 test."), [typed513, asks508[2]])
             page.click("#sgToasts .sg-toast button:text-is('Undo…')")   # the upload's, the first of the two
             answer_ask(page)
             page.wait_for_function(f"document.getElementById('import-{up508}')?.classList.contains('undone')", timeout=10000)
@@ -10003,32 +10019,72 @@ def main():
             check("after the toast's Undo on Sources, Import history shows the import undone at once, with no Undo of its own; focus not on a toast (#508)",
                   hist508 == [True, False, False, True], hist508)
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
-            # (#512) A added, then undone in Import history while its toast stays up; B added next has an id of its own,
-            # and A's toast's Undo, pressed then, doesn't undo B
-            def add512(name, row):
+            # (#512, #513) A added, then undone in Import history while its toast stays up: the toast offers no Undo now,
+            # and says so; B added next has an id of its own, and A's Undo asked for then (as its toast's did) is refused
+            # without a question, leaving B
+            def pick512(name, row):
                 js("SgSources.show('upload')")
                 page.wait_for_selector("#pickFiles", state="attached", timeout=10000)
+                n = js("document.querySelectorAll('#importer .import-job').length")
                 page.set_input_files("#pickFiles", files=[{"name": name, "mimeType": "text/csv",
                                                            "buffer": f"Date,Test,Result,Units,Reference Range\n2026-11-17,{row}\n".encode()}])
-                page.wait_for_function(f"/^Ready to import/.test({card508}?.textContent)", timeout=30000)
-                js(f"{card508}.querySelector('.imp-actions .primary').click()")
-                page.wait_for_function(f"/^Imported/.test({card508}.textContent)", timeout=30000)
+                page.wait_for_function(f"/^(Ready to import|All duplicates)/.test(document.querySelectorAll('#importer .import-job')[{n}]?.textContent)", timeout=30000)
+                return f"document.querySelectorAll('#importer .import-job')[{n}]"
+            def add512(name, row):
+                c = pick512(name, row)
+                js(f"{c}.querySelector('.imp-actions .primary').click()")
+                page.wait_for_function(f"/^Imported/.test({c}.textContent)", timeout=30000)
                 return js(f"fetch('api/profiles/{epid504}/imports', {{cache: 'no-store'}}).then(r => r.json()).then(j => j.imports[0].id)")
             a512 = add512("a-512.csv", "Potassium,4.1,mmol/L,3.5 - 5.1")
             js("SgSources.show('history')")
             page.click(f"#import-{a512} button.undo")
             answer_ask(page)
             page.wait_for_function(f"document.getElementById('import-{a512}')?.classList.contains('undone')", timeout=10000)
+            toast513 = js(f"""(t => t && [[...t.querySelectorAll('button')].some(b => b.textContent === 'Undo…'), t.querySelector('.sg-toast-text').textContent])
+                (document.querySelector('#sgToasts .sg-toast[data-undo-import="{a512}"]'))""")
+            check("after Import history's Undo, that import's toast offers no Undo, and says it's undone (#513)",
+                  toast513 == [False, "Undone: the import's records are gone from the profile."], toast513)
             b512 = add512("b-512.csv", "Calcium,9.4,mg/dL,8.6 - 10.3")
-            n512 = len(problems)
-            page.click("#sgToasts .sg-toast:first-child button:text-is('Undo…')")   # A's
-            answer_ask(page)
-            page.wait_for_function("/didn't work/.test(document.querySelector('#sgToasts .sg-toast:first-child').textContent)", timeout=10000)
-            problems[n512:] = [x for x in problems[n512:] if f"/imports/{a512}/undo" not in x and "status of 404" not in x]   # (refused: the point)
+            stale512 = js(f"sanguityImport.undoAsk({epid504}, {a512}, null).then(x => 'asked', e => e.message)")
             left512 = js(f"""fetch('api/profiles/{epid504}/imports', {{cache: 'no-store'}}).then(r => r.json())
-                .then(j => j.imports.filter(e => e.id === {b512}).map(e => e.state))""")
-            check("an import added after another's Undo has an id of its own, and the other's toast's Undo doesn't undo it (#512)",
-                  b512 != a512 and left512 == ["active"], [a512, b512, left512])
+                .then(j => [!!document.querySelector('dialog.sg-ask[open]'), ...j.imports.filter(e => e.id === {b512}).map(e => e.state)])""")
+            check("an import added after another's Undo has an id of its own, and the other's Undo, asked for again, is refused and leaves it (#512)",
+                  b512 != a512 and stale512 == "This import was undone already." and left512 == [False, "active"], [a512, b512, stale512, left512])
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            # (#513) A added; B with the same row in review, all duplicates, its Add off; A's toast's Undo: B's review is
+            # drawn again, its row new, and it can Add
+            add512("a-513.csv", "Magnesium,2.0,mg/dL,1.7 - 2.2")
+            b513 = pick512("b-513.csv", "Magnesium,2.0,mg/dL,1.7 - 2.2")
+            before513 = js(f"[/^All duplicates/.test({b513}.textContent), {b513}.querySelector('.imp-actions .primary').disabled]")
+            page.click("#sgToasts .sg-toast:last-child button:text-is('Undo…')")
+            answer_ask(page)
+            page.wait_for_function(f"!{b513}.querySelector('.imp-actions .primary').disabled", timeout=10000)
+            after513 = js(f"[/^Ready to import/.test({b513}.textContent), {b513}.querySelector('.imp-actions .primary').textContent]")
+            check("after A's Undo, B's review of the same row counts it as new and can Add (#513)",
+                  before513 == [True, True] and after513 == [True, "Add 1 lab result"], [before513, after513])
+            js(f"(j => fetch(`api/profiles/{epid504}/jobs/${{j}}/discard`, {{method: 'POST', headers: {{'X-Sanguity': '1'}}}}))({b513}.dataset.job)")
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            # (#513) Sources' Overview: a CSV left at its review in Upload files, added from Waiting for you's Review, then
+            # undone from its toast: the hub's Import history card counts it in, then out, without the Overview shown again
+            pick512("hub-513.csv", "Phosphorus,3.6,mg/dL,2.5 - 4.5")
+            js("SgSources.show('overview')")
+            page.wait_for_selector("#srcWait button:text-is('Review')", timeout=10000)
+            hub513 = "document.querySelector('[data-way=history] .src-way-st')?.textContent"
+            page.wait_for_function(f"!!{hub513}", timeout=10000)
+            hubs513 = [js(hub513)]
+            page.click("#srcWait li:first-child button:text-is('Review')")
+            page.wait_for_function("/^Ready to import/.test(document.querySelector('#srcReview .import-job')?.textContent)", timeout=30000)
+            js("document.querySelector('#srcReview .import-job .imp-actions .primary').click()")
+            page.wait_for_function("/^Imported/.test(document.querySelector('#srcReview .import-job').textContent)", timeout=30000)
+            page.wait_for_function(f"{hub513} !== {json.dumps(hubs513[0])}", timeout=10000)
+            hubs513.append(js(hub513))
+            page.click("#sgToasts .sg-toast:last-child button:text-is('Undo…')")
+            answer_ask(page)
+            page.wait_for_function(f"{hub513} === {json.dumps(hubs513[0])}", timeout=10000)
+            hubs513.append(js(hub513))
+            n513 = int(hubs513[0].split()[0])
+            check("Sources' Overview counts an import added from Waiting for you, and no longer once it's undone (#513)",
+                  hubs513 == [hubs513[0], f"{n513 + 1} imports", hubs513[0]], hubs513)
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             page.set_viewport_size({"width": 1400, "height": 900})
             page.goto("about:blank")
