@@ -195,7 +195,9 @@ function focusNear(rows, i, sel, fallback) {
 /* a row removed elsewhere (#524: another tab, another device or another admin; its row stayed, what the server said
    out of sight): once the list is drawn again without it (rows, as now), that said where it was, a line across a
    table (tr.row-msg) or before the next row, else in box once none is left; focus as focusNear puts it, both in view.
-   The list's next drawing, or its next reply (a .row-msg's), takes it away */
+   The list's next drawing, or its next reply (a .row-msg's), takes it away. Focus that bringing the line into view
+   leaves out of sight (#532: the card's heading, far above the last ownerless profile's line on a phone) goes to the
+   line itself */
 function goneSay(rows, at, text, sel, fallback, box) {
   const m = el("p", {class: "msg bad"}), near = rows[at] || rows[at - 1];
   const line = near?.matches("tr") ? el("tr", {class: "row-msg"}, el("td", {colspan: near.cells.length}, m)) : (m.classList.add("row-msg"), m);
@@ -203,6 +205,8 @@ function goneSay(rows, at, text, sel, fallback, box) {
   sayIn(m, text, true);
   focusNear(rows, at, sel, fallback);
   line.scrollIntoView({block: "nearest"});
+  const r = document.activeElement.getBoundingClientRect(), pad = getComputedStyle(document.documentElement);
+  if (r.top < parseFloat(pad.scrollPaddingTop) || r.bottom > innerHeight - parseFloat(pad.scrollPaddingBottom)) { m.tabIndex = -1; m.focus({preventScroll: true}); }
 }
 /* An empty state (#199): one sentence saying what would appear here, and the one next step, a link ({href, text}) or
    a button ({onclick, text}); none (null) for someone who can't take it. tag: "div" for a whole card's place, "li"

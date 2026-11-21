@@ -93,14 +93,16 @@ async function fresh(action, box = $("#reauth")) {
   return action();
 }
 /* its Use a passkey only where one can work (#528: at an IP address, or with none made here, it could only say so once
-   pressed): a browser that has them, at a name with HTTPS (util.js passkeysWork), and a passkey of yours made here */
+   pressed): a browser that has them, at a name with HTTPS (util.js passkeysWork), and a passkey of yours made here; a
+   code asked for only from someone with an authenticator app (#532: an admin whose second factor is a passkey has none) */
 async function confirmIdentity(box = $("#reauth")) {
-  const pk = passkeysWork() && await call("me/passkeys?origin=" + encodeURIComponent(location.origin))
-    .then(st => !st.problem && st.passkeys.some(k => k.here), () => false);
+  const [pk, app] = await Promise.all([passkeysWork() && call("me/passkeys?origin=" + encodeURIComponent(location.origin))
+    .then(st => !st.problem && st.passkeys.some(k => k.here), () => false), call("me/2fa").then(st => st.on, () => true)]);
+  const ways = ["your password", app && "a code from your authenticator app", pk && "a passkey"].filter(Boolean);
   return new Promise((resolve, reject) => {
     const msg = el("span", {class: "msg", role: "status"});
-    const secret = el("input", {type: "password", autocomplete: "current-password", placeholder: "Password or code",
-      "aria-label": "Your password, or a code from your authenticator app", required: true});
+    const secret = el("input", {type: "password", autocomplete: "current-password", placeholder: app ? "Password or code" : "Password",
+      "aria-label": app ? "Your password, or a code from your authenticator app" : "Your password", required: true});
     const done = ok => { box.hidden = true; box.replaceChildren(); ok ? resolve() : reject(new Error("Not done: you didn't confirm it's you.")); };
     const failed = e => sayIn(msg, e.message, true);
     const viaPasskey = async () => {
@@ -113,12 +115,12 @@ async function confirmIdentity(box = $("#reauth")) {
       } catch (e) { failed(e); }
     };
     box.replaceChildren(
-      el("p", {}, el("b", {text: "Confirm it's you. "}), `This needs your password${pk ? ", a code from your authenticator app or a passkey" : " or a code from your authenticator app"} ` +
+      el("p", {}, el("b", {text: "Confirm it's you. "}), `This needs ${ways.slice(0, -1).join(", ")}${ways.length > 1 ? " or " : ""}${ways.at(-1)} ` +
         `(it then isn't asked again for ${ME.reauth_minutes} minutes).`),
       el("form", {class: "row", onsubmit: async ev => { ev.preventDefault();
         pwSent(ev.target);
         try { await call("me/reauth", "POST", {secret: secret.value}); done(true); } catch (e) { failed(e); } }},
-        pwField(secret, {name: "password or code"}).box, el("button", {class: "btn primary small", type: "submit", text: "Confirm"}),
+        pwField(secret, {name: app ? "password or code" : "password"}).box, el("button", {class: "btn primary small", type: "submit", text: "Confirm"}),
         pk ? el("button", {class: "btn small", type: "button", text: "Use a passkey", onclick: viaPasskey}) : null,
         el("button", {class: "btn small", type: "button", text: "Cancel", onclick: () => done(false)})),
       msg);
@@ -207,11 +209,14 @@ function userMenu(u) {
     null,
     {text: "Remove account…", danger: true, run: () => { $("#rmUser").value = u.id; USERZONE.show(n); }}].filter(e => e !== false), "user", "user-more");
 }
+/* what the last action under Accounts said in a row, or where one was, in the accounts' list or the ownerless one's,
+   gone as the next starts (#532: “No such account.” stayed through a Make owner, and “No such profile.” where the
+   ownerless list was until it changed) */
+const accQuiet = () => { for (const m of document.querySelectorAll("#userList .row-msg, #ownerless .row-msg")) m.remove(); say("#userMsg", ""); };
 /* a row's action's reply (#502: it was under the list, out of sight): said in its row, under the account's name, until
    the next action starts (id null: just that) */
 function rowSay(id, text, bad = false) {
-  for (const m of document.querySelectorAll("#userList .row-msg")) m.remove();
-  say("#userMsg", "");
+  accQuiet();
   const tr = id != null && $(`#userList tr[data-user="${id}"]`);
   if (!tr) return text && say("#userMsg", text, bad);
   const m = el("p", {class: "msg row-msg"});
@@ -296,8 +301,7 @@ function ownerlessRow(p) {
 /* Make owner's reply (#510), as a row's action's is (rowSay): under its row, or, its row gone, before the next one,
    in view with the Make owner focus is on, until the next Make owner (row null: just that) */
 function ownSay(row, text, bad = false, before = false) {
-  for (const m of document.querySelectorAll("#ownerless .row-msg")) m.remove();
-  say("#userMsg", "");
+  accQuiet();
   if (!row) return;
   const m = el("p", {class: "msg row-msg"});
   row[before ? "before" : "after"](m);
@@ -335,6 +339,7 @@ function zoneSay(text, bad = false) {
   else { sayIn(USERZONE.msg, text, bad); $("#rmUser").focus({preventScroll: true}); USERZONE.node.scrollIntoView({block: "nearest"}); }
 }
 async function removeAccount(u, typed) {
+  accQuiet();
   let body = {confirm_name: typed};
   for (;;) {
     try {
@@ -361,7 +366,7 @@ async function removeAccount(u, typed) {
 $("#userNew").onsubmit = async ev => {
   ev.preventDefault();
   const form = ev.target;
-  sayIn($("#userNewMsg"), "");
+  sayIn($("#userNewMsg"), ""); accQuiet();
   try {
     const body = {username: $("#userName").value.trim(), is_admin: $("#userAdmin").checked};
     const r = await fresh(() => call("users", "POST", body));
@@ -386,7 +391,7 @@ async function loadLabmaps() {
   $("#labmaps").hidden = false;
   if (!list.length) { $("#labmapList").replaceChildren(emptyState("None yet: they're made when an import's lab names are matched at its preview.", null, {cls: ""})); return; }   // (#494)
   const as = m => m.target ? `charted as “${m.target}”` : "kept as a series of its own";
-  $("#labmapList").replaceChildren(el("table", {class: "tbl"},
+  $("#labmapList").replaceChildren(el("table", {class: "tbl lm"},
     el("thead", {}, el("tr", {}, ...["Reported as", "Goes to", "From", "Added", ""].map(h => el("th", {text: h})))),
     el("tbody", {}, ...list.map(m => {
       const goes = el("td", {class: "lm-target", text: m.target || "its own series"});

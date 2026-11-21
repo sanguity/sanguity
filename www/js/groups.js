@@ -40,7 +40,7 @@ const SG_PAGES = {
      words: "sources connections where records come from waiting for you review fix sign in again"},   // (#528: a connection's)
     {id: "portals", title: "Portals and health plans", icon: "plug", part: "Connected", has: ["mine"], needs: "editor",   // the ways in: owners' and editors' (#401)
      words: "connect portal patient health plan insurance fhir sync epic mychart oracle cerner find hospital clinic " +
-       "sync now pull again sign in again reconnect disconnect what it pulls use server defaults fetch anyway"},   // (#515: the vendors' and portals' names; #528: a connection's)
+       "sync now pull again sign in again reconnect disconnect what it pulls use server defaults fetch anyway name city state"},   // (#515: the vendors' and portals' names; #528: a connection's)
     {id: "phone", title: "Phone and watch", icon: "watch", part: "Connected", has: ["watch", "cycle"], needs: "editor",   // cycle tracking (#183)
      words: "health connect android watch phone steps sleep iphone apple health auto export upload address header key make new secret qr code",
      finds: [["Cycle tracking", "cycle", "period menstrual turn off stop delete data"]]},   // (#495: an iPhone's words; #499: its danger zone's)
@@ -57,9 +57,9 @@ const SG_PAGES = {
      finds: [["Who has access", "people", "members remove person someone make change role editor viewer owner ownership transfer add give share with stop sharing"]]},   // (#510: what's done to one, on its own: in the group's, "remove account" and "make owner" found it before Admin's Accounts)
     {id: "links", title: "Share links", icon: "send", has: ["links"], needs: "owner", why: "Share links are made by a profile's owners.",
      words: "share link doctor clinician provider send revoke expire remove delete new create make qr code"},   // (#510: revoking one)
-    {id: "calendar", title: "Calendar feed", icon: "calendar", has: ["calendar"], words: "ics subscribe appointments calendar create make turn off stop get new address"},
+    {id: "calendar", title: "Calendar feed", icon: "calendar", has: ["calendar"], words: "ics subscribe appointments calendar create make turn off stop get new address what each event says minimal full"},
     {id: "summary", title: "Visit summary", icon: "file-text", has: ["summaryIntro", "build", "preview", "sumTicked"],   // sumTicked: from Settings → Dashboard (#402)
-     words: "doctor appointment print pdf download questions", finds: [["Measures ticked at first", "sumTicked", "home readings watch"]]},
+     words: "doctor appointment print pdf download questions changes since another lab trend", finds: [["Measures ticked at first", "sumTicked", "home readings watch"]]},
     {id: "export", title: "Export everything", icon: "download", has: ["export"], needs: "editor", why: "A profile's owners and editors can export it.",
      words: "download backup zip copy"},
     {id: "activity", title: "Activity", icon: "scroll-text", has: ["activity"], needs: "owner", why: "A profile's activity is for its owners.",
@@ -68,26 +68,26 @@ const SG_PAGES = {
   settings: {page: "settings.html", title: "Settings", icon: "settings", profile: true, words: "preferences options", groups: [
     // sec-summary (#186) is set on Sharing → Visit summary (#402): kept here out of sight, for Start from a condition
     {id: "dashboard", title: "Dashboard", icon: "layout-dashboard", part: "This profile", has: ["sec-overview", "sec-tabs", "sec-trends", "sec-summary"],
-     finds: [["Overview tiles", "sec-overview", "key labs home readings start from a condition choose conditions preset use most measured"], ["Tabs", "sec-tabs", "edit order hide show", "editor"],
+     finds: [["Overview tiles", "sec-overview", "key labs home readings start from a condition choose conditions preset use most measured add"], ["Tabs", "sec-tabs", "edit order hide show", "editor"],
        ["Lab charts", "sec-trends", "labs selected at first saved views add view no default"]]},
     {id: "about", title: "About this person", icon: "user", part: "This profile", has: ["about", "targets"],   // #194, #234; on Sharing before #267
-     finds: [["Birth date, sex and height", "about", "age birthday date of birth dob born child baby due date growth tall cm inches maximum heart rate add"], ["Targets of your own", "targets", "goals"]]},
+     finds: [["Birth date, sex and height", "about", "age birthday date of birth dob born child baby due date growth tall cm inches maximum heart rate measured bpm early add"], ["Targets of your own", "targets", "goals"]]},
     {id: "labs", title: "Labs and ranges", icon: "ruler", part: "This profile", has: ["sec-names", "sec-ranges"], words: "reference ranges normal high low add",
-     finds: [["Names", "sec-names", "nicknames rename lab names result sources"]]},   // Names on Dashboard before #402
+     finds: [["Names", "sec-names", "nicknames rename lab names result sources records shown"]]},   // Names on Dashboard before #402
     {id: "milestones", title: "Milestones", icon: "flag", part: "This profile", has: ["sec-milestones"], words: "diagnosis surgery treatment named dates"},
-    {id: "activity", title: "Workouts", icon: "dumbbell", part: "This profile", has: ["sec-health"], words: "visits exercise body and activity"},   // visits counted as workouts (#43)
+    {id: "activity", title: "Workouts", icon: "dumbbell", part: "This profile", has: ["sec-health"], words: "visits exercise body and activity title contains count"},   // visits counted as workouts (#43)
     {id: "profile", title: "Rename or delete", icon: "user-pen", part: "This profile", has: ["profileCard"], needs: "owner",   // on Sharing before #402
-     why: "Only a profile's owners can rename or delete it.", words: "profile name rename delete remove", finds: [["Delete this profile", "profileCard", "remove erase"]]},
+     why: "Only a profile's owners can rename or delete it.", words: "profile name rename change delete remove", finds: [["Delete this profile", "profileCard", "remove erase"]]},
     {id: "display", title: "Display", icon: "monitor", part: "You", has: ["sec-appearance", "sec-dates", "sec-units"],
       finds: [["Appearance", "sec-appearance", "default use browser"],   // (not "theme": the theme is your menu's Dark or Light mode, #410)
         ["Dates and times", "sec-dates", "time zone date format"],
-        ["Units", "sec-units", "metric imperial mmol mg kg lb pounds kilograms weight temperature celsius fahrenheit height cm inches"]]},
+        ["Units", "sec-units", "metric imperial mmol mg kg lb pounds kilograms weight temperature celsius fahrenheit height cm inches lab tests"]]},
     {id: "more", title: "More", icon: "folder", has: [], rest: true},   // a section no group names yet
   ]},
   account: {page: "account.html", title: "Account", icon: "key-round", words: "sign-in security", groups: [
     {id: "security", title: "Sign-in and security", icon: "lock", hint: "How you sign in, and where you're signed in now.",
      has: ["password", "twofa", "passkeys", "sessions"],
-     finds: [["Password", "password", "change new reset forgot passphrase"], ["Two-factor sign-in", "twofa", "2fa authenticator code totp turn on off recovery make new disable enable reset lost phone qr scan"],
+     finds: [["Password", "password", "change new reset forgot passphrase current repeat"], ["Two-factor sign-in", "twofa", "2fa authenticator app code totp turn on off recovery make new disable enable reset lost phone qr scan"],
        ["Passkeys", "passkeys", "security key fingerprint face add rename remove delete"], ["Where you're signed in", "sessions", "sessions devices sign out log out logout everywhere other"]]},   // (#502: what's done there; #519: logout)
     {id: "device", title: "This device", icon: "smartphone", hint: "Sanguity on the device you're using now: as an app, and offline.",
      has: ["installApp", "offlineRecords"],
@@ -99,12 +99,13 @@ const SG_PAGES = {
        "owner ownerless profile without an turn off sign-in admin someone",   // (#495, #499, #502: what's done to an account; #506: Make owner, under the list; #515: enable)
      finds: [["Require two-factor sign-in", "users", "2fa everyone"]]},   // (#528: "require 2fa")
     {id: "activity", title: "Install activity", icon: "logs", part: "People", has: ["installLog"], words: "log sign-ins failed audit"},
-    {id: "backups", title: "Backups", icon: "archive", part: "Data safety", has: ["backups"], words: "backup restore back up now make check show all fewer"},   // #200
+    {id: "backups", title: "Backups", icon: "archive", part: "Data safety", has: ["backups"], words: "backup restore back up now make check show all fewer " +
+      "schedule how often daily weekly off keep newest many oldest"},   // #200 (#532: its schedule's; and each field's and segmented control's label finds its place)
     {id: "apps", title: "Connected-source apps", icon: "app-window", part: "Connections", has: ["admin", "sec-sync"],
      words: "set up a source client portal app test connection change remove delete waiting for review done id secret issuer vendor epic mychart oracle cerner " +
-       "new return address redirect uri sandbox use add another notes", finds: [["Sync defaults", "sec-sync", "attachments"]]},   // (#506: a source's buttons; #510: its form's; #515: delete; #519: its return address)
+       "new return address redirect uri sandbox use add another notes name people see fhir base how signs scopes ask", finds: [["Sync defaults", "sec-sync", "attachments"]]},   // (#506: a source's buttons; #510: its form's; #515: delete; #519: its return address)
     {id: "directory", title: "Provider directory", icon: "book-user", part: "Connections", has: ["directory"], words: "providers"},
     {id: "outside", title: "Outside connections", icon: "globe", part: "Connections", has: ["outside"], words: "network internet"},
-    {id: "labs", title: "Lab name matches", icon: "arrow-right-left", part: "Lab matching", has: ["labmaps"], words: "aliases mapping"},
+    {id: "labs", title: "Lab name matches", icon: "arrow-right-left", part: "Lab matching", has: ["labmaps"], words: "aliases mapping reported goes series change remove forget"},   // (#532: its rows' Change and Remove)
   ]},
 };

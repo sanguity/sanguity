@@ -893,6 +893,9 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
   /* a passkey's name, its dates, then its buttons, a line each (#510: "Re/na/me" at 320 px, past the card) */
   .acct .tbl.pk tr{grid-template-columns:repeat(2,minmax(0,1fr))}
   .acct .tbl.pk :is(td:first-child,td.acts){grid-column:1/-1}
+  /* a lab name match: its name, where it goes, its buttons, a line each (#532: "Chan/ge") */
+  .acct .tbl.lm tr{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .acct .lm :is(td:first-child,.lm-target,.acts){grid-column:1/-1}
 }
 /* uploading (#281, import.js dropTarget): Sources → Upload files, the guide's step 2 and the dialog a drop opens
    (drop.js); the drop target, then each upload's card (import-jobs.js frame): its title, the stage line, one bar,
