@@ -1672,7 +1672,10 @@ class Api(unittest.TestCase):
         # after the password: the passkey is the second step; the password alone gives no session
         c = client()
         first = c.post("/api/login", json={"username": "pia", "password": "pia keeps a long passphrase"}, headers=H).json()
-        self.assertEqual((first["two_factor"], first["methods"]), (True, {"code": False, "passkey": True}))
+        self.assertEqual((first["two_factor"], first["methods"]), (True, {"code": False, "passkey": True, "sites": ["health.example.com"]}))
+        # #535: at this computer's own address, Account points to where the passkeys were made, not to localhost
+        self.assertIn("Open Sanguity at https://health.example.com to use one.",
+                      pia.get("/api/me/passkeys", params={"origin": "http://127.0.0.1:8730"}).json()["problem"])
         self.assertEqual(c.get("/api/me").status_code, 401)
         self.assertEqual(c.post("/api/login/code", json={"ticket": first["ticket"], "code": "123456"}, headers=H).status_code, 401)
         o = c.post("/api/login/passkey/options", json={"ticket": first["ticket"]}, headers=O).json()

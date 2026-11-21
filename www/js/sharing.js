@@ -141,7 +141,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
   }
   async function leave(p) {
     try { await call(`profiles/${p.id}/members/${ME.user.id}`, "DELETE"); await refresh(null); note(`You no longer have access to ${p.name}.`); }
-    catch (e) { sayIn($("#peopleMsg"), e.message, true); return; }
+    catch (e) { sayIn($("#peopleMsg"), e.message, true); $("#peopleMsg").scrollIntoView({block: "nearest"}); return; }
     // its Leave went with it (#498): focus on the page's heading, the next profile's now, or on "no profile" without one
     const h = $("#intro").hidden ? $("#noProfiles h1") : $("#groupTitle");
     h.tabIndex = -1;
@@ -185,6 +185,13 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
           }}); }, `${m.username}'s role`, `role-${m.user_id}`) : m.role),
         el("td", {class: "acts"}, m.user_id === me ? el("button", {class: "btn small", type: "button", text: "Leave",
           onclick: async () => {
+            // its only owner, as the server counts them (sureOfRole): why not, at once and in sight, not asked and then
+            // refused (#535)
+            if (owner && !MEMBERS.some(x => x.role === "owner" && x.user_id !== me && !x.disabled)) {
+              sayIn(msg, `You're the only owner of ${p.name}, so you can't leave it: make someone else an owner first.`, true);
+              msg.scrollIntoView({block: "nearest"});
+              return;
+            }
             if (!await ask({title: `Leave ${p.name}?`, message: "You'll stop having access to its records." + (owner ? "" : " An owner can share it with you again."),
                             action: "Leave profile", danger: true})) return;
             leave(p); }})

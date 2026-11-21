@@ -2177,6 +2177,18 @@ Everything on `main` so far; it becomes the first tagged release.
   pressure and a temperature reading counted as 2 days of activity data too ("4 new"); days of activity data are the
   activity metrics' only, said one way everywhere. Phone and watch's "Kept: 2 records" now follows a save or an Undo,
   with separators in the count, and turning cycle tracking on from the keyboard leaves focus in its card.
+- **Sharing and first run: the visit summary PDF cutting medication instructions, the made link's box offering a
+  revoked link and sitting under the form, Leave for the only owner, counts in other languages, and the loopback
+  passkey hint** (#535): the visit summary PDF cut each table cell to one line ("Take 1 tablet every 8 hours as ne…");
+  cells wrap, a row as tall as its tallest cell, and a word too long for its column is broken, never cut. A made share
+  link's box kept its Copy and QR code once that link was revoked; it says so, with nothing to copy, and it names its
+  link ("“Dr. Rivera” is made."), sitting above New share link, so an opened form is under it, not over 1,000 px
+  above it. Leave for a profile's only owner asked "Leave Ben?" and was then refused; it says why at once, in sight
+  above a phone's tab bar. In a German browser a measure's lead said "1,381 readings" over "The latest 20 of 1.381
+  readings."; the share page and the summary's preview write the server's counts as their own, and the glucose
+  table's "CGM: n" and "Meter: n" and targets' "4 of 62 readings above it" have separators. At 127.0.0.1 the
+  passkey-only step and Account's passkeys card named http://localhost even when the account's passkeys were made at
+  another name; they name where they were made, and sign-in's addresses are links.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

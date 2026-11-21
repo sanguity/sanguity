@@ -2653,6 +2653,32 @@ def main():
         notes531 = hp.evaluate("""() => Object.fromEntries([...document.querySelectorAll('#shareBody section')].filter(s => s.querySelector('table.measures'))
           .map(s => [s.id, [[...s.querySelectorAll('p:not(.hint):not(.muted)')].map(p => p.textContent),
             [...s.querySelectorAll('p.hint')].map(p => p.textContent).find(t => t.startsWith('The latest ')) || '']]))""")
+        # #535: the same in a German browser: the page's own counts there are "1.381" ("The latest 20 of 1.381 readings."),
+        # the server's leads, its "CGM: n" and "Meter: n" cells and targets' "4 of 62 readings above it" were "1,381" or "1381".
+        # The fixture's counts are under 1,000 here, so the view's blood pressure is given 1,381 readings and a CGM day
+        # 1,234, as the server writes them (test_summary.py: measures' counts with their separator)
+        de535 = browser.new_context(viewport={"width": 1400, "height": 900}, locale="de-DE")
+        dep = de535.new_page()
+
+        def big535(route):
+            got = route.fetch()
+            j = got.json()
+            if isinstance(j.get("home_bp"), dict) and j["home_bp"].get("lead"):
+                j["home_bp"]["lead"][0] = re.sub(r"^[\d,]+ readings", "1,381 readings", j["home_bp"]["lead"][0])
+                j["home_bp"]["total"] = 1381
+            for r in (j.get("glucose") or {}).get("rows") or []:
+                if isinstance(r[1], str) and r[1].startswith("CGM: "):
+                    r[1] = re.sub(r"^CGM: \d+", "CGM: 1,234", r[1])
+                    break
+            route.fulfill(response=got, json=j)
+        dep.route("**/api/share/view", big535)
+        dep.goto(base + "/" + made491["path"])
+        dep.wait_for_selector("#share-results .share-latest", timeout=10000)
+        notes535 = dep.evaluate("""() => Object.fromEntries([...document.querySelectorAll('#shareBody section')].filter(s => s.querySelector('table.measures'))
+          .map(s => [s.id, [[...s.querySelectorAll('p:not(.hint):not(.muted)')].map(p => p.textContent),
+            [...s.querySelectorAll('p.hint')].map(p => p.textContent).find(t => t.startsWith('The latest ')) || '',
+            [...s.querySelectorAll('table.measures td')].map(td => td.textContent).filter(t => /^(CGM|Meter): |\\d+ of \\d/.test(t))]]))""")
+        de535.close()
         # #501: Show all keeps focus while it loads (aria-disabled, not disabled: focus fell to the page), saying
         # "Loading…" in the line it's described by, a live region; a failure said there, focus still on it; and the rows
         # come without pulling focus to them once it has moved on (another long section's: costs' are below)
@@ -2772,6 +2798,14 @@ def main():
               len(cut531) >= 2 and all(m and m[2] != "rows" for m in cut531.values())
               and any(v[1] for v in same531.values()) and all(ln.startswith(n + " ") for n, lns in same531.values() for ln in lns)
               and not any(re.search(r"(?<![\d.,:–-])\d{4,}(?![\d.,:–-])", t) for v in notes531.values() for t in v[0] + [v[1]]), notes531)
+        cut535 = {k: re.fullmatch(r"The latest \d+ of ([\d.]+) (.+)\.", v[1]) for k, v in notes535.items() if v[1]}
+        same535 = {k: [m[1], [ln for ln in notes535[k][0] if re.match(r"[\d.,]+ ", ln) and re.sub(r"\D", "", ln.split()[0]) == re.sub(r"\D", "", m[1])]]
+                   for k, m in cut535.items() if m}
+        check("…(#535) with de-DE, a measure's lead and the note under it write a count the same way, “1.381”, as the page's own counts there "
+              "(the lead said “1,381 readings” over “of 1.381 readings”); no count of four digits or more with a comma, or none, in a lead, note or cell",
+              len(cut535) >= 2 and any(v[1] for v in same535.values()) and all(ln.startswith(n + " ") for n, lns in same535.values() for ln in lns)
+              and same535.get("share-home_bp", [""])[0] == "1.381" and any(t.startswith("CGM: 1.234 ") for t in notes535.get("share-glucose", [[], "", []])[2])
+              and not any(re.search(r"\d,\d{3}(?!\d)|(?<![\d.,:–-])\d{4,}(?![\d.,:–-])", t) for v in notes535.values() for t in v[0] + [v[1]] + v[2]), notes535)
         # #501: a year's link to visits, lab results and medications (the form's default sections and dates, the year to
         # the demo's last day), printed with every history open: no page before the last is more than a quarter empty
         # (Chrome breaks a table row only when it's longer than a page, so a history went to the next whole, its test's
@@ -18375,6 +18409,27 @@ def main():
                 onCancel: document.activeElement === b[0], bg: rgb(getComputedStyle(d).backgroundColor), ink: rgb(getComputedStyle(d).color),
                 action: rgb(getComputedStyle(b[1]).backgroundColor), inside: r.left >= 16 && r.right <= innerWidth - 16 && r.top >= 0 && r.bottom <= innerHeight,
                 centred: d.classList.contains('sg-dlg-center'), live: d.contains(document.getElementById('sgStatus')) && d.contains(document.getElementById('sgAlert'))}; })()"""
+            # #535: its only owner is told why they can't leave at once, in sight above the phone's tab bar, focus on Leave:
+            # not asked "Leave Second person?" and then refused by the server
+            page.locator("#memberList button", has_text="Leave").click()
+            settle(300)
+            only535 = js("""(() => { const m = document.getElementById('peopleMsg'), r = m.getBoundingClientRect(), pad = parseFloat(getComputedStyle(document.documentElement).scrollPaddingBottom);
+              return [m.textContent, m.classList.contains('bad'), !!document.querySelector('dialog.sg-ask'), r.top >= 0 && r.bottom <= innerHeight - pad, document.activeElement.textContent]; })()""")
+            check("at 375 px, Leave for a profile's only owner says why not at once, in sight above the tab bar, focus still on Leave, nothing asked (#535: "
+                  "“Leave Second person?”, then refused)", only535 == ["You're the only owner of Second person, so you can't leave it: make someone else an owner first.",
+                                                                       True, False, True, "Leave"]
+                  and js("fetch('api/profiles/2/members').then(r => r.json()).then(m => m.length)") == 1, only535)
+            js("sayIn(document.getElementById('peopleMsg'), '')")
+            # the dialog below is a Leave that's asked: another owner listed (the members' list stubbed, the server's own
+            # refusal untouched), its rows drawn again
+            def co_owner(route):
+                if route.request.method != "GET":
+                    return route.continue_()
+                got = route.fetch()
+                route.fulfill(response=got, json=got.json() + [{"user_id": 99535, "username": "coowner535", "role": "owner", "disabled": False}])
+            page.route("**/api/profiles/2/members", co_owner)
+            page.reload()
+            page.wait_for_function("document.getElementById('people').dataset.profile === '2' && document.querySelectorAll('#memberList tbody tr').length === 2", timeout=10000)
             for theme in ("light", "dark"):
                 js(f"localStorage.setItem('ht-theme', '{theme}'); applyTheme()")
                 page.locator("#memberList button", has_text="Leave").click()
@@ -18390,10 +18445,13 @@ def main():
                 page.wait_for_selector("dialog.sg-ask", state="detached", timeout=10000)
                 check(f"…{theme}: Escape cancels it, and focus is back on Leave",
                       js("document.activeElement.textContent") == "Leave" and USER in page.inner_text("#memberList")
-                      and js("fetch('api/profiles/2/members').then(r => r.json()).then(m => m.length)") == 1, js("document.activeElement.outerHTML"))
+                      and js("fetch('api/profiles/2/members').then(r => r.json()).then(m => m.filter(x => x.username !== 'coowner535').length)") == 1, js("document.activeElement.outerHTML"))
                 check(f"…{theme}: it's the shared dialog's centred way (#262), the status line inside it while it's open (what's behind a modal dialog isn't heard) and back after",
                       d["centred"] and d["live"] and js("document.getElementById('sgStatus').parentElement === document.body && document.getElementById('sgAlert').parentElement === document.body"),
                       [d["centred"], d["live"]])
+            page.unroute("**/api/profiles/2/members", co_owner)   # (#535) the members' list as it is again
+            page.reload()
+            page.wait_for_function("document.getElementById('people').dataset.profile === '2' && document.querySelectorAll('#memberList tbody tr').length === 1", timeout=10000)
             # the sign-in page's note after a recovery code: on the page with a Continue, not an alert (#210)
             ctx = browser.new_context(viewport={"width": 375, "height": 800}, color_scheme="dark")   # no session: the sign-in page
             lp = ctx.new_page()
@@ -18457,8 +18515,21 @@ def main():
             page.locator("#links button", has_text="New share link").click()
             page.wait_for_selector("#links .share-form", timeout=10000)
             kept531 = [js("[...document.querySelectorAll('#links .share-made .share-url')].map(i => i.value)")]
+            # #535: the box names its link, and sits above the open form (it was under it, 1,070 px below its top at 1400)
+            made535 = js("""(() => { const m = document.querySelector('#links .share-made'), f = document.querySelector('#links .share-form');
+              return [m.querySelector('p b').textContent, m.getBoundingClientRect().bottom <= f.getBoundingClientRect().top]; })()""")
             page.locator("#links .share-form button", has_text="Cancel").click()
             kept531.append(js("[...document.querySelectorAll('#links .share-made .share-url')].map(i => i.value)"))
+            # #535: Revoke on the made link, in the list, changes its box: no Copy, no QR code, saying it was revoked
+            page.locator("#links tr:has-text('Kept 527') button", has_text="Revoke").click()
+            answer_ask(page, yes=True)
+            page.wait_for_selector("#links .share-made.ended", timeout=10000)
+            ended535 = js("""(() => { const m = document.querySelector('#links .share-made');
+              return [m.textContent, m.querySelectorAll('input, button').length]; })()""")
+            check("…(#535) the made link's box names its link, and is above an open New share link form (it was under it)",
+                  made535 == ["“Kept 527” is made. Copy the link now.", True], made535)
+            check("…(#535) and Revoke on that link in the list changes its box: said, with no Copy, QR code or link left (they were offered for a dead link)",
+                  ended535 == ["“Kept 527” was revoked. Its link no longer works.", 0], ended535)
             page.click("#shrNav a[data-group=people]")
             page.wait_for_selector("#shareWith form input", timeout=10000)
             js("""() => fetch('api/profiles/2/links').then(r => r.json()).then(j => Promise.all(j.links.filter(l => l.label === 'Kept 527' && l.state === 'active')
@@ -19439,7 +19510,26 @@ def main():
             ipp.click("#b")
             ipp.wait_for_selector("#pkSays", state="visible", timeout=10000)
             signin527.append(ipp.evaluate("[document.activeElement.id, document.getElementById('pkSays').textContent, document.getElementById('pk').checkVisibility()]"))
+            links535 = [ipp.evaluate("[...document.querySelectorAll('#pkSays a')].map(a => [a.textContent, a.href])")]
+            # #535: an account whose passkeys were made at another name (the server sends where): that's named, as a link,
+            # not http://localhost, where they don't work; one made at localhost too, both
+            ipp.unroute("**/api/login")
+            ipp.route("**/api/login", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(
+                {"two_factor": True, "ticket": "t535", "methods": {"code": False, "passkey": True, "sites": ["sanguity.example", "localhost"]}})))
+            ipp.click("#other")
+            ipp.fill("#u", USER)
+            ipp.fill("#p", PW)
+            ipp.click("#b")
+            ipp.wait_for_selector("#pkSays a[href^='https://sanguity.example']", timeout=10000)
+            links535.append(ipp.evaluate("[document.activeElement.id, document.getElementById('pkSays').textContent, [...document.querySelectorAll('#pkSays a')].map(a => [a.textContent, a.href])]"))
             ip527.close()
+            here535 = base.replace("127.0.0.1", "localhost")
+            check("…(#535) and the address it names is a link; where the account's passkeys were made at another name, it names that, as a link "
+                  "(http://localhost, where they don't work, was named, as words)",
+                  links535 == [[[here535, here535 + "/login.html"]], ["pkSays",
+                  "Password accepted, but this account finishes signing in with a passkey, and passkeys don't work here: this is an IP address. "
+                  f"Open Sanguity at https://sanguity.example or {here535} and sign in there, or use another account.",
+                  [["https://sanguity.example", "https://sanguity.example/login.html"], [here535, here535 + "/login.html"]]]], links535)
             check("passkeysWork() is false at an IP address, IPv4 or IPv6, true at a name; sign-in at 127.0.0.1 shows no passkey button, and the "
                   "passkey-only step says why, naming http://localhost, where they work (#527: offered, then “Passkeys don't work at this address” "
                   "once pressed; #531: it said to open its https:// name)",

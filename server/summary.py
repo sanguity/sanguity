@@ -458,25 +458,29 @@ class _Layout:
         self.need(12 + 15)
         header()
         for i, r in enumerate(rows):
+            # each cell wrapped to its column, never cut (#535): the row is as tall as its tallest cell
+            texts = cells(r)
+            lines = [None if t is None else pdfdoc.wrap(t[0] if isinstance(t, tuple) else t, 9, cw - 6, isinstance(t, tuple))
+                     for (_, cw), t in zip(xs, texts)]
+            extra = 11 * (max((len(x) for x in lines if x), default=1) - 1)
             try:
-                if self.y - 15 < FOOT + 6:
+                if self.y - 15 - extra < FOOT + 6:
                     self.new_page()
                     header()
             except _Full:
                 self.left_out[sid] = len(rows) - i
                 raise
             if i % 2 == 0:
-                self.page.rect(MARGIN, self.y - 4, right - MARGIN, 14, SHADE)
-            for (cx, cw), text, (h, _) in zip(xs, cells(r), cols):
+                self.page.rect(MARGIN, self.y - 4 - extra, right - MARGIN, 14 + extra, SHADE)
+            for (cx, cw), text, cell in zip(xs, texts, lines):
                 if text is None:
                     if draw:
                         draw(self.page, r, cx + 2, self.y - 2, cw - 6)
                     continue
                 bold = isinstance(text, tuple)
-                t = text[0] if bold else text
-                color = CRIT if bold else INK
-                self.page.text(cx + 2, self.y, pdfdoc.fit(t, 9, cw - 6, bold), 9, bold, color)
-            self.y -= 15
+                for n, line in enumerate(cell):
+                    self.page.text(cx + 2, self.y - 11 * n, line, 9, bold, CRIT if bold else INK)
+            self.y -= 15 + extra
 
 
 def _spark(page, row, x, y, w, h=10):

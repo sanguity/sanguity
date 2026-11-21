@@ -405,6 +405,28 @@ class Summary(unittest.TestCase):
         self.assertIn("Page 2 of 2", text)
         self.assertIn("isn't medical advice", reader.pages[1].extract_text(), "the notice is on every page")
 
+    def test_cells_wrap_whole(self):   # #535: a table's cells wrap, a row as tall as its tallest cell, never cut
+        s = self.preview(labs=["Ferritin"])
+        long = "Take 1 tablet every 8 hours as needed for nausea, with food, and no more than 3 in a day"
+        big = {**s, "sections": ["out_of_range", "medications"],
+               "medications": [{"name": "Ondansetron 4 mg tablet (fictional)", "instructions": long, "since": d(-9),
+                                "source": "Maple Street Clinic"}],
+               "out_of_range": [{"label": "Lymphocytes (absolute)", "name": "Lymphocytes (absolute)", "out": 9, "of": 12,
+                                 "value": "0.7", "unit": "10*3/uL", "flag": "Low", "range": "1.0–4.8", "date": d(-5),
+                                 "source": "Maple Street Clinic"}]}
+        pdf, fit = summary.render(big)
+        self.assertTrue(fit["fits"])
+        text = text_of(pdf)[1]
+        self.assertNotIn("…", text, "no cell is cut")
+        words = " ".join(text.split())
+        for part in ("Take 1 tablet every 8 hours", "needed for nausea", "no more than 3 in a day", "Lymphocytes (absolute)",
+                     "(9 of 12)", "Ondansetron 4 mg tablet (fictional)"):
+            self.assertIn(part, words)
+        word = "a-word-far-too-long-for-its-column-to-hold-on-one-line"
+        lines = pdfdoc.wrap(word, 9, 60)
+        self.assertTrue(len(lines) > 1 and all(pdfdoc.width(x, 9) <= 60 for x in lines))
+        self.assertEqual("".join(lines), word, "a long word is broken across lines, not cut")
+
     def test_no_records(self):
         db = dbm.connect()
         pid = prof.create_profile(db, "Empty (fictional)", owner_id=self.uid["robin"])
@@ -609,6 +631,10 @@ class Summary(unittest.TestCase):
         pdf, fit = summary.render({"profile": "x", "prepared": d(0), "date_format": "", "for": None, "since": {"date": d(-30), "label": ""},
                                    "sections": ["home_bp"], "notice": summary.NOTICE, "measures": {"home_bp": b}, "extra": []})
         self.assertIn(f"The latest {measures.SUMMARY_MOST} of 60", text_of(pdf)[1])
+        # #535: targets' counts as the leads write theirs, with a separator (the page writes them in its own way)
+        self.assertEqual(measures._outside(["high"] * 1200 + [""] * 100), "1,200 of 1,300 readings above it")
+        self.assertEqual(measures._outside(["high"] * 1000 + ["low"] * 2), "1,000 of 1,002 readings above, 2 below")
+        self.assertEqual(measures._outside([""] * 1500), "None of 1,500 outside it")
 
     def test_a_childs_growth_percentiles(self):
         """#196's percentiles on the server (growth.py, as growth.js): a child's weights, heights and BMI, each on the

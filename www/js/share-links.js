@@ -21,10 +21,23 @@ function shareLinksPanel(p, {open = false} = {}) {
   const msg = el("span", {class: "msg", role: "status"});
   const fail = e => sayIn(msg, e.message, true);
   const list = el("div", {class: "share-list"}), made = el("div");
-  let info = null;
+  let info = null, shown = null;   // the made link in the box below the list, {id, label}
+  const named = l => l.label ? `“${l.label}”` : "The new link";
+
+  /* the made link's box once its link no longer works (#535: Copy and QR code offered for a revoked link): said, with
+     nothing left to copy; focus, if it was there, on what's said */
+  function madeEnded(l) {
+    const had = made.contains(document.activeElement);
+    const p = el("p", {tabindex: -1}, el("b", {text: `${named(shown)} ${!l ? "is no longer listed" : l.state === "revoked" ? "was revoked"
+      : l.state === "expired" ? "has expired" : "has stopped (its maker is no longer an owner)"}.`}), " Its link no longer works.");
+    made.replaceChildren(el("div", {class: "share-made ended"}, p));
+    shown.ended = true;
+    if (had) p.focus({preventScroll: true});
+  }
 
   function drawList() {
     const rows = info.links;
+    if (shown && !shown.ended && rows.find(l => l.id === shown.id)?.state !== "active") madeEnded(rows.find(l => l.id === shown.id));
     if (!rows.length) {   // New share link, below, is the next step (#199)
       list.replaceChildren(emptyState("No share links yet: each one you make is listed here, with when it was last opened.", null, {cls: ""}));
       return;
@@ -99,7 +112,8 @@ function shareLinksPanel(p, {open = false} = {}) {
         const url = new URL(j.path, location.href).href;
         const field = el("input", {value: url, readonly: true, "aria-label": "The share link", class: "share-url", onfocus: e => e.target.select()});
         const copy = copyBtn(url, {what: "the share link", sel: field}), qr = slQr(url);   // the app's one Copy and one QR code (#495)
-        made.replaceChildren(el("div", {class: "share-made"}, el("p", {}, el("b", {text: "Copy the link now."}),
+        shown = {id: j.link.id, label: j.link.label};   // named, as there may be others listed beside it (#535)
+        made.replaceChildren(el("div", {class: "share-made"}, el("p", {}, el("b", {text: `${named(shown)} is made. Copy the link now.`}),
           " It's shown only this once: Sanguity keeps a fingerprint of it, not the link itself, so it can't show it again."),
           el("div", {class: "row"}, field, copy, qr?.btn), qr?.fig));
         // focus on its Copy, as it says (#493): Make the link goes with the form
@@ -142,7 +156,7 @@ function shareLinksPanel(p, {open = false} = {}) {
     // one put there already is kept, not another added beside it (#493)
     document.getElementById("slAbout")?.closest(".info") ? null : aboutWords({id: "slAbout"}, "A share link suits a clinician or a relative. It works until it expires or you revoke it, and each time it's opened " +
       "is logged in this profile's activity, with the address it came from. Sanguity keeps a fingerprint of each link, not the link itself."),
-    list, add, made, msg));
+    list, made, add, msg));   // a made link's box above New share link, so an open form is under it (#535)
   const toggle = el("button", {class: "btn small", type: "button", text: "Share links", "aria-expanded": "false",
     onclick: async () => { box.hidden = !box.hidden; toggle.setAttribute("aria-expanded", !box.hidden); if (!box.hidden) { try { await load(); } catch (e) { fail(e); } } }});
   if (open) { toggle.hidden = true; box.hidden = false; load().catch(fail); }

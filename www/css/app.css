@@ -1487,7 +1487,8 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
 .acct .share-sees{border:1px solid var(--c-study);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3);font-size:var(--fs-3)}
 .acct .share-sees p{margin:var(--sp-1) 0}
 .acct .share-sees ul{margin:var(--sp-1) 0;padding-left:var(--sp-5)}
-.acct .share-made{border:1px solid var(--good);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3);margin-top:var(--sp-3)}
+.acct .share-made{border:1px solid var(--good);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3);margin:var(--sp-3) 0}
+.acct .share-made.ended{border-color:var(--axis)}   /* its link revoked or expired (#535) */
 .acct .share-url{flex:1 1 240px;font-family:var(--font-mono);font-size:var(--fs-2)}
 .share-page main.share{max-width:960px}
 /* the clinician's page (#289, share.js): the sections' bar, sticky under the header (--head-h); the head's Print; Lab
