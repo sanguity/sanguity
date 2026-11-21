@@ -156,14 +156,18 @@ function recordsFirst(data) {
 /* the profile's records read again (an import saved from the upload dialog, drop.js, or undone: sg:imports below)
    drawn in place, with the watch data and cycle records, which come apart from them (#522: an Apple Health zip's
    readings and cycle records, which only a reload drew, and an Undo left drawn); read as recordsDraw reads them, then
-   joined to the records (storeRecords) */
-async function recordsAgain(data) {
-  try {
-    const w = await api(`profiles/${PROFILE.id}/watch`);
-    if (w.status === 200) WATCH = await w.json(); else if (w.status === 204) WATCH = null;
-  } catch (e) {}
-  await cycleLoad();
-  storeRecords(data);
+   joined to the records (storeRecords). One at a time, each after the last (#526: two together put the cycle records
+   in twice) */
+let againLast = Promise.resolve();
+function recordsAgain(data) {
+  return againLast = againLast.catch(() => {}).then(async () => {
+    try {
+      const w = await api(`profiles/${PROFILE.id}/watch`);
+      if (w.status === 200) WATCH = await w.json(); else if (w.status === 204) WATCH = null;
+    } catch (e) {}
+    await cycleLoad();
+    storeRecords(data);
+  });
 }
 const canImport = p => p.role === "owner" || p.role === "editor";
 /* the profile shown has no records: its empty card (#199), for someone who can bring them in, or not */
@@ -194,7 +198,7 @@ document.addEventListener("sg:imports", ev => {
       d.focus =[$("#tab-" + state.tab), ...document.querySelectorAll(`#view-${state.tab} h2:not(.vh)`)].find(h => h.checkVisibility());
     } else if (r.status === 204) {
       if (drawer.classList.contains("open")) closeDrawer();
-      DATA = null; firstDrawn = null; booted = false;
+      DATA = null; WATCH = null; firstDrawn = null; booted = false;   // (#526: its watch data drawn again with the next records)
       $("#meta").textContent = "";
       emptyProfile();
       doseOffer();
@@ -289,7 +293,7 @@ async function recordsDraw(data) {
   // optional: watch data from the Health Connect receiver
   try {
     const w = await api(`profiles/${PROFILE.id}/watch`);
-    if (w.status === 200) WATCH = await w.json();
+    if (w.status === 200) WATCH = await w.json(); else if (w.status === 204) WATCH = null;   // (none now: #526)
   } catch (e) {}
   await datesReady();   // before any time is read: one without an offset is this person's wall-clock time
   storeRecords(data);   // the records, the watch's joined to them, ready to draw (store.js, #271)

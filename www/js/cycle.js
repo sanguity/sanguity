@@ -18,14 +18,16 @@ let cycleOnCharts = false;  // Labs: "Cycle tracking" ticked (never remembered)
 const CYCLE_BASE = 5e8;
 const CYCLE_SHAPE = {ovulation: "circle", mucus: "diamond", spotting: "dot"};
 
+let cycleAsked = 0;   // the latest load's number: an earlier one still waiting adds nothing (#526)
 async function cycleLoad() {
+  const ask = ++cycleAsked;
   if (CYCLE.length) EV = EV.filter(e => e.k !== "cycle");   // loaded again: in place of the earlier ones
   CYCLE = [];
   cycleControls();
   if (!PROFILE || (PROFILE.role !== "owner" && PROFILE.role !== "editor")) return;
   let c = null;
   try { const r = await api(`profiles/${PROFILE.id}/cycle`); if (r.ok) c = await r.json(); } catch (e) {}
-  if (!c || !c.on) return;
+  if (ask !== cycleAsked || !c || !c.on) return;
   let id = CYCLE_BASE;
   for (const s of c.spans || []) {
     const e = {id: ++id, k: "cycle", t: s.from + "T00:00:00", end: s.to + "T23:59:59", title: s.title, sub: s.text, cy: {...s, kind: "span"}};

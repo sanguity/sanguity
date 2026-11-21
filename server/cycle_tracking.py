@@ -55,7 +55,8 @@ def _store(db, pid, v, by):
 
 def turn(db, pid, on, by):
     """Turn tracking on or off (inside the caller's transaction; publish after it commits). Off asks the receiver to
-    delete everything it keeps. Returns whether anything changed."""
+    delete everything it keeps, and the caller deletes what uploads brought once it commits (drop_imported). Returns
+    whether anything changed."""
     v = setting(db, pid)
     if bool(v.get("on")) == bool(on):
         return False
@@ -65,16 +66,15 @@ def turn(db, pid, on, by):
     else:
         v.pop("since", None)
         v.update(purge=secrets.token_hex(12), purge_at=dbm.now())
-        drop_imported(db, pid)   # what uploaded exports brought (#223)
     _store(db, pid, v, by)
     return True
 
 
 def delete_all(db, pid, by):
-    """Ask for everything kept to be deleted, leaving tracking as it is (inside the caller's transaction)."""
+    """Ask for everything kept to be deleted, leaving tracking as it is (inside the caller's transaction; then
+    drop_imported once it commits)."""
     v = setting(db, pid)
     v.update(purge=secrets.token_hex(12), purge_at=dbm.now())
-    drop_imported(db, pid)   # what uploaded exports brought (#223)
     _store(db, pid, v, by)
 
 
@@ -170,20 +170,24 @@ def imported(db, pid):
 
 def drop_imported(db, pid):
     """Delete every cycle record uploaded exports brought this profile: the imports' own, and those in an import's
-    preview still waiting to be confirmed (its sealed file is written again without them)."""
+    preview still waiting to be confirmed (its sealed file is written again without them). Called once the change
+    has committed (routes_cycle.py), since a preview read again holds its lock while it waits to write (jobs.freshen):
+    each preview is written again under that lock, so neither writes back what the other took out, and not for a job
+    saved or cancelled meanwhile (jobs.rewrite_preview, #526)."""
     from . import jobs
     shutil.rmtree(imported_dir(pid), ignore_errors=True)
-    for r in db.execute("SELECT id, summary FROM jobs WHERE profile_id=? AND state='preview'", (pid,)).fetchall():
-        path = jobs.preview_path(pid, r["id"])
-        try:
-            held = json.loads(crypto.read_file(path))
-            report = json.loads(crypto.dec(r["summary"])) if r["summary"] else None
-        except (OSError, ValueError, crypto.KeyError_):
-            continue
-        if isinstance(held.get("watch"), dict) and held["watch"].pop("cycle", None) is not None:
-            crypto.write_file(path, json.dumps(held, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
-            if isinstance(report, dict) and (report.get("counts") or {}).pop("cycle", None) is not None:   # nor counted
-                db.execute("UPDATE jobs SET summary=? WHERE id=?", (crypto.enc(json.dumps(report)), r["id"]))
+    for (jid,) in db.execute("SELECT id FROM jobs WHERE profile_id=? AND state='preview'", (pid,)).fetchall():
+        with jobs.preview_lock(jid):
+            r = db.execute("SELECT summary FROM jobs WHERE id=? AND state='preview'", (jid,)).fetchone()
+            path = jobs.preview_path(pid, jid)
+            try:
+                held = json.loads(crypto.read_file(path)) if r else {}
+                report = json.loads(crypto.dec(r["summary"])) if r and r["summary"] else None
+            except (OSError, ValueError, crypto.KeyError_):
+                continue
+            if isinstance(held.get("watch"), dict) and held["watch"].pop("cycle", None) is not None and jobs.rewrite_preview(db, jid, path, held):
+                if isinstance(report, dict) and (report.get("counts") or {}).pop("cycle", None) is not None:   # nor counted
+                    db.execute("UPDATE jobs SET summary=? WHERE id=? AND state='preview'", (crypto.enc(json.dumps(report)), jid))
 
 
 def summary_rows(db, pid, data, since, now):

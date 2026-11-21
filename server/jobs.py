@@ -277,8 +277,26 @@ def freshen(db, pid, jid):
     found again on confirm anyway (_save), but for the lab names to match, planned again and kept for confirm (#497).
     A preview that can't be read again keeps what it said. One at a time per job (#521): the open review's own fetch
     and the Overview's list can ask together, and the second then finds the first's summary already fresh."""
-    with _FRESHENING[int(jid) % len(_FRESHENING)]:
+    with preview_lock(jid):
         _freshen(db, pid, jid)
+
+
+def preview_lock(jid):
+    """Held while a waiting preview is read and written again: by freshen, and by turning cycle tracking off
+    (cycle_tracking.drop_imported, #526), so neither writes back what the other took out."""
+    return _FRESHENING[int(jid) % len(_FRESHENING)]
+
+
+def rewrite_preview(db, jid, path, held):
+    """A waiting preview's file written again (with preview_lock held); not for a job saved or cancelled before or
+    while it's written, whose file mustn't come back (#521). Returns whether it's still waiting, written."""
+    if _left(db, jid):
+        return False
+    crypto.write_file(path, json.dumps(held, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+    if _left(db, jid):
+        _remove(path)
+        return False
+    return True
 
 
 def _left(db, jid):
@@ -300,13 +318,8 @@ def _freshen(db, pid, jid):
         # the lab names to match planned again too (#497), what was asked still asked (a choice may be typed in it)
         labs = labmap.plan(db, pid, held["importer"], held["data"], keep={e["ref"] for e in (held.get("labs") or {}).get("listed") or []})
         report = _report(db, pid, held["importer"], held["data"], held.get("watch"), labs)
-        if labs != held.get("labs"):   # what confirm (_save) reads the choices against
-            if _left(db, jid):
-                return
-            crypto.write_file(path, json.dumps({**held, "labs": labs}, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
-            if _left(db, jid):   # saved or cancelled while it was written: the file mustn't come back (#521)
-                _remove(path)
-                return
+        if labs != held.get("labs") and not rewrite_preview(db, jid, path, {**held, "labs": labs}):   # what confirm (_save) reads the choices against
+            return
     except Exception:   # gone (saved or cancelled meanwhile), or an importer since removed
         log.warning("the preview of job %s couldn't be read again", jid, exc_info=True)
         return
