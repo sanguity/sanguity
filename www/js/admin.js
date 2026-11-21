@@ -148,8 +148,9 @@ const devices = n => n ? plural(n, "device") : "no device";
 /* mine: the account whose ⋯ focus goes back to once drawn again (a change from its row, #493: remembered before it's
    asked or checked, by which time focus has moved on); by default the row focus is in now */
 async function loadUsers(mine = document.activeElement?.closest?.("#userList tr[data-user]")?.dataset.user) {
-  const list = await call("users");
-  loadOwnerless();
+  // the profiles without an owner too, drawn before what's said and focused under them (#515: drawn after, the zone's
+  // reply went out of sight); they're drawn again only where they changed
+  const [list] = await Promise.all([call("users"), loadOwnerless()]);
   const t = TEMP.isConnected && list.find(u => String(u.id) === TEMP.dataset.user);
   if (TEMP.isConnected && (!t || t.disabled || t.username !== TEMP.dataset.name)) TEMP.remove();   // its password no use now (#502)
   $("#userList").replaceChildren(el("table", {class: "tbl users"},
@@ -229,42 +230,52 @@ async function changeUser(u, body, sure, done) {
     await loadUsers(u.id); done && done(r);   // (a reset's password then shown, focus on it: #499)
   } catch (e) { rowSay(u.id, e.message, true); }   // (the check's Cancel: its form went with it)
 }
-/* profiles nobody can manage (every owner disabled or removed): an admin names a new owner; never shows records */
+/* profiles nobody can manage (every owner disabled or removed): an admin names a new owner; never shows records. Drawn
+   again only when the list changed, and then a profile's row only if it did (#515: each account's action emptied every
+   name typed or picked here, and what Make owner said): OWNERLESS has each row drawn, by profile id, with what from */
+let OWNERLESS = new Map();
 async function loadOwnerless() {
-  const list = await call("ownerless"), box = $("#ownerless");
+  const list = await call("ownerless"), box = $("#ownerless"), drawn = JSON.stringify(list);
+  if (box.dataset.drawn === drawn) return;
+  box.dataset.drawn = drawn;
+  const had = OWNERLESS, a = document.activeElement;
+  OWNERLESS = new Map(list.map(p => { const k = JSON.stringify(p), o = had.get(p.id); return [p.id, o && o[0] === k ? o : [k, ownerlessRow(p)]]; }));
   if (!list.length) { box.replaceChildren(); return; }
   box.replaceChildren(el("div", {class: "ownerless"},
     el("p", {}, el("b", {text: "Profiles without an owner. "}), "Every owner of these was disabled or removed, so nobody can ",
       "share or rename them. Give each an owner who should look after it. Whoever you choose can see its records."),
-    ...list.map(p => {
-      const active = p.members.filter(m => !m.disabled);
-      const pick = el("select", {"aria-label": `New owner of ${p.name}`},
-        ...active.map(m => el("option", {value: m.username, text: `${m.username} (now ${m.role})`})),
-        el("option", {value: "", text: "Another account…"}));
-      const other = el("input", {placeholder: "username", autocapitalize: "none", spellcheck: "false", "aria-label": "Another account", hidden: active.length > 0});
-      pick.onchange = () => { other.hidden = pick.value !== ""; if (!other.hidden) other.focus(); };
-      const go = el("button", {class: "btn small", type: "button", text: "Make owner", onclick: async () => {
-        const who = (pick.value || other.value).trim();
-        if (!who) return;
-        if (who.toLowerCase() === ME.user.username.toLowerCase() &&
-            !await ask({title: `Own ${p.name} yourself?`, message: `This gives you access to the records in ${p.name}.`, action: "Make me owner"})) return;
-        const at = list.indexOf(p), row = go.closest(".row");
-        ownSay(null);
-        try { await call(`ownerless/${p.id}/owner`, "POST", {username: who}); await loadOwnerless(); }
-        catch (e) { return ownSay(row, e.message, true); }   // under its row, focus still on its Make owner (#510)
-        // its row gone (#502: focus fell to the page): on the next profile's Make owner, else the one before's, what it
-        // said where its row was (#510: it was under the accounts list, out of sight); the last one gone, where the list
-        // was, with focus on it (#506: focus went to the card's heading, the message out of sight under the accounts)
-        const rows = [...$("#ownerless").querySelectorAll(".ownerless > .row")], done = `${who} now owns ${p.name}.`;
-        if (rows.length) { focusNear(rows, at, "button"); return rows[at] ? ownSay(rows[at], done, false, true) : ownSay(rows[at - 1], done); }
-        const m = el("p", {class: "msg", tabindex: "-1", text: done + " Every profile has an owner now."});
-        $("#ownerless").replaceChildren(m);
-        m.focus({preventScroll: true}); m.scrollIntoView({block: "nearest"});
-      }});
-      return el("div", {class: "row"}, el("b", {text: p.name}),
-        el("span", {class: "muted", text: p.members.length ? p.members.map(m => `${m.username} (${m.role}${m.disabled ? ", disabled" : ""})`).join(", ") : "no members"}),
-        pick, other, go);
-    })));
+    ...[...OWNERLESS.values()].map(([, row]) => row)));
+  if (a && a.isConnected && a !== document.activeElement) a.focus({preventScroll: true});   // (a row kept: moved, it lost focus)
+}
+/* a profile's row: who's in it, a new owner picked or typed, and Make owner */
+function ownerlessRow(p) {
+  const active = p.members.filter(m => !m.disabled);
+  const pick = el("select", {"aria-label": `New owner of ${p.name}`},
+    ...active.map(m => el("option", {value: m.username, text: `${m.username} (now ${m.role})`})),
+    el("option", {value: "", text: "Another account…"}));
+  const other = el("input", {placeholder: "username", autocapitalize: "none", spellcheck: "false", "aria-label": "Another account", hidden: active.length > 0});
+  pick.onchange = () => { other.hidden = pick.value !== ""; if (!other.hidden) other.focus(); };
+  const go = el("button", {class: "btn small", type: "button", text: "Make owner", onclick: async () => {
+    const who = (pick.value || other.value).trim();
+    if (!who) return;
+    if (who.toLowerCase() === ME.user.username.toLowerCase() &&
+        !await ask({title: `Own ${p.name} yourself?`, message: `This gives you access to the records in ${p.name}.`, action: "Make me owner"})) return;
+    const row = go.closest(".row"), at = [...$("#ownerless").querySelectorAll(".ownerless > .row")].indexOf(row);
+    ownSay(null);
+    try { await call(`ownerless/${p.id}/owner`, "POST", {username: who}); await loadOwnerless(); }
+    catch (e) { return ownSay(row, e.message, true); }   // under its row, focus still on its Make owner (#510)
+    // its row gone (#502: focus fell to the page): on the next profile's Make owner, else the one before's, what it
+    // said where its row was (#510: it was under the accounts list, out of sight); the last one gone, where the list
+    // was, with focus on it (#506: focus went to the card's heading, the message out of sight under the accounts)
+    const rows = [...$("#ownerless").querySelectorAll(".ownerless > .row")], done = `${who} now owns ${p.name}.`;
+    if (rows.length) { focusNear(rows, at, "button"); return rows[at] ? ownSay(rows[at], done, false, true) : ownSay(rows[at - 1], done); }
+    const m = el("p", {class: "msg", tabindex: "-1", text: done + " Every profile has an owner now."});
+    $("#ownerless").replaceChildren(m);
+    m.focus({preventScroll: true}); m.scrollIntoView({block: "nearest"});
+  }});
+  return el("div", {class: "row"}, el("b", {text: p.name}),
+    el("span", {class: "muted", text: p.members.length ? p.members.map(m => `${m.username} (${m.role}${m.disabled ? ", disabled" : ""})`).join(", ") : "no members"}),
+    pick, other, go);
 }
 /* Make owner's reply (#510), as a row's action's is (rowSay): under its row, or, its row gone, before the next one,
    in view with the Make owner focus is on, until the next Make owner (row null: just that) */
@@ -300,11 +311,12 @@ function accountsZone(others) {
   if (!pick.value) USERZONE.hide();
   USERZONE.node.hidden = !others.length;   // yours alone: nothing to remove here
 }
-/* an account gone from the zone: said on its line, focus on its picker (the box it was typed in went with it); with no
-   other account left, the zone hidden, on Accounts' line and the page's heading (#493) */
+/* an account gone from the zone: said on its line, focus on its picker (the box it was typed in went with it), both in
+   view once the list over them is drawn (#515: under a phone's tabs); with no other account left, the zone hidden, on
+   Accounts' line and the page's heading (#493) */
 function zoneSay(text, bad = false) {
   if (USERZONE.node.hidden) { say("#userMsg", text, bad); focusNear([], 0, null, $("#users h2")); }
-  else { sayIn(USERZONE.msg, text, bad); $("#rmUser").focus(); }
+  else { sayIn(USERZONE.msg, text, bad); $("#rmUser").focus({preventScroll: true}); USERZONE.node.scrollIntoView({block: "nearest"}); }
 }
 async function removeAccount(u, typed) {
   let body = {confirm_name: typed};

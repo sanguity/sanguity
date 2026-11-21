@@ -67,7 +67,8 @@ function testStep() {
           "vendor's review, so nobody can connect it yet. Once the review is done, untick that above and save."}) : null,
           t.ok && !now.waiting ? el("p", {class: "msg", text: "Done: people can now connect it under Sources → Portals and health plans."}) : null));
         if (t.ok) loadSetup({walk: false});   // the list's "tested" now; this step, its result and focus kept (#502)
-      } catch (e) { out.replaceChildren(el("p", {class: "msg bad", role: "alert", text: e.message})); }
+        else SgOutside.load();   // (its contact, #515)
+      } catch (e) { out.replaceChildren(el("p", {class: "msg bad", role: "alert", text: e.message})); SgOutside.load(); }
     }});
   return stepItem("Test this connection",
     el("p", {text: "This reads what the vendor publishes about its server (its discovery) to check the address and what it " +
@@ -118,8 +119,8 @@ function sourceRow(s) {
     el("div", {class: "row"},
       el("button", {class: "btn small primary", type: "button", text: "Test this connection", "data-act": "test", onclick: async () => {
         msg.replaceChildren(el("p", {class: "muted", text: "Reading its discovery…"}));
-        try { const t = await call(`connect/sources/${s.id}/test`, "POST"); msg.replaceChildren(testResult(t)); if (t.ok) rowsAgain(s.id, "test", [...msg.childNodes]); }
-        catch (e) { msg.replaceChildren(el("p", {class: "msg bad", role: "alert", text: e.message})); } }}),
+        try { const t = await call(`connect/sources/${s.id}/test`, "POST"); msg.replaceChildren(testResult(t)); t.ok ? rowsAgain(s.id, "test", [...msg.childNodes]) : SgOutside.load(); }
+        catch (e) { msg.replaceChildren(el("p", {class: "msg bad", role: "alert", text: e.message})); SgOutside.load(); } }}),
       el("button", {class: "btn small", type: "button", text: "Change", onclick: () => { saved = null; fill(s); $("#fName").focus(); }}),
       el("button", {class: "btn small", type: "button", text: s.waiting ? "Review done" : "Waiting for review", "data-act": "wait",
         "data-tip": s.waiting ? "The vendor has approved the app: people can connect it once it's tested" : "Say the vendor is still reviewing the app",
@@ -153,8 +154,10 @@ async function rowsAgain(id, act, kept) {
   focusNear([r], 0, `[data-act=${act}]`);
 }
 
-/* walk: false keeps the walk-through's last step as it is (its own test, which said how it went) */
+/* walk: false keeps the walk-through's last step as it is (its own test, which said how it went). Drawn again (a source
+   saved, tested, changed or removed), Outside connections is too (outside.js, #515: it was as the page opened) */
 async function loadSetup({walk = true} = {}) {
+  const again = SETUP !== null;
   try { SETUP = await call("connect/sources"); }
   catch (e) {
     $("#admin").hidden = false;
@@ -163,6 +166,7 @@ async function loadSetup({walk = true} = {}) {
     return;
   }
   $("#admin").hidden = false;
+  if (again) SgOutside.load();
   $("#returnAddr").textContent = SETUP.return_address || "(not set: see below)";
   $("#copyReturn").hidden = !SETUP.return_address;
   $("#addrWarn").replaceChildren(...SETUP.warnings.map(w => el("li", {text: w})));

@@ -14115,8 +14115,22 @@ def main():
                 found510[q] = [t for g, t in js(pal_found) if g == "Pages and settings"][:3]
             page.keyboard.press("Escape")
             check("…(#510) Share links for removing or deleting a share link, Who has access (People) for removing a person or member, making "
-                  "an editor and changing a role, Connected-source apps for a client secret or id, an issuer and Epic, each the first page found",
-                  all(found510[q][:1] == [t] for q, t in want510.items()), found510)
+                  "an editor and changing a role, Connected-source apps for a client secret or id, an issuer and Epic, each the first page found "
+                  "(Epic's: one of the first three, #515: after Portals and health plans, a person's way in)",
+                  all((t in found510[q]) if q == "epic" else found510[q][:1] == [t] for q, t in want510.items()), found510)
+            # #515: Connected-source apps for deleting a source (Cycle tracking came first: its "delete data", with "source"
+            # only its page's name), Accounts for enabling one, and Sources' Portals and health plans for a vendor's or
+            # portal's name (only Admin's apps had them)
+            first515 = {"delete source": "Connected-source apps", "enable account": "Accounts"}
+            found515 = {}
+            for q in [*first515, "mychart", "connect mychart", "connect epic"]:
+                pal(q, "Control+k" if not found515 else None)
+                found515[q] = [t for g, t in js(pal_found) if g == "Pages and settings"][:3]
+            page.keyboard.press("Escape")
+            check("…(#515) Connected-source apps first for “delete source”, Accounts for “enable account”, and Portals and health plans "
+                  "among the first for “mychart”, “connect mychart” and “connect epic”",
+                  all(found515[q][:1] == [t] for q, t in first515.items())
+                  and all("Portals and health plans" in found515[q] for q in ("mychart", "connect mychart", "connect epic")), found515)
             page.goto(base + "/settings.html?profile=1#dashboard")
             page.wait_for_selector("#sections > section", state="attached", timeout=10000)
             settle(300)
@@ -16318,6 +16332,13 @@ def main():
                   "Waiting for review" in row.inner_text() and "people are told to upload" in row.inner_text()
                   and js("document.activeElement.id") == "walkTest" and not js("document.getElementById('walkTest').disabled")
                   and "waiting for the vendor's review" in page.inner_text("#fMsg"), [row.inner_text()[:300], page.inner_text("#fMsg")])
+            # #515: Outside connections, on the same page, lists it and its host without a reload (it was as the page opened)
+            out515 = "[...document.querySelectorAll('#outsideBody h4')].some(h => h.textContent.startsWith('Lakeside Health (fictional)')) && [...document.querySelectorAll('#outsideBody .out-hosts code')].some(c => c.textContent === 'fhir.lakeside.example')"
+            try:
+                page.wait_for_function(out515, timeout=10000)
+            except Exception:   # (said below)
+                pass
+            check("…and Outside connections lists it and its host at once, without a reload (#515)", js(out515), js("document.getElementById('outsideBody').innerText.slice(0, 300)"))
             wait_id = js("SETUP.sources.find(s => s.name === 'Lakeside Health (fictional)').id")
             for width in (1400, 375):
                 page.set_viewport_size({"width": width, "height": 800 if width == 375 else 900})
@@ -16367,6 +16388,19 @@ def main():
                     check(f"…the waiting note at {width} px, {theme}: readable" + (", and it fits" if width == 375 else ""),
                           not bad and min(looks) >= 4.5 and lp.evaluate("document.documentElement.scrollWidth") <= width, [bad[:6], looks])
             lp.set_viewport_size({"width": 1400, "height": 900})
+            # #515: for someone who isn't an admin, a vendor's or portal's name finds Portals and health plans first (only
+            # Admin's Connected-source apps had them, so nothing was found)
+            lp.keyboard.press("Control+k")
+            lp.wait_for_selector("dialog.palette[open]", timeout=5000)
+            lp.wait_for_timeout(600)   # (who's signed in, asked as it opens)
+            lee515 = {}
+            for q in ("mychart", "connect mychart", "connect epic"):
+                lp.fill("#palQ", q)
+                lp.wait_for_timeout(150)
+                lee515[q] = lp.evaluate("[...document.querySelectorAll('#palList [role=option] .pal-t')].map(t => t.textContent)")[:3]
+            lp.keyboard.press("Escape")
+            check("…(#515) and, for an editor who isn't an admin, “mychart”, “connect mychart” and “connect epic” find Portals and health plans "
+                  "among the first, and no Admin page", all("Portals and health plans" in v and "Connected-source apps" not in v for v in lee515.values()), lee515)
             lp.click(f"#wait-{wait_id} a")
             lp.wait_for_function("document.querySelector('main.src').dataset.group === 'upload'", timeout=5000)
             shut494 = lp.evaluate("[document.getElementById('appleRecords').open, document.querySelector('#appleRecords > summary').textContent]")
@@ -16399,6 +16433,12 @@ def main():
             check("…Remove asks first; Cancel keeps it, focus back on its Remove; removed, focus on another source's Test, in sight (#502)",
                   asked502[0] == "Remove Lakeside Health (fictional)?" and "Nobody can connect it" in asked502[1] and kept502 == [1, "remove"]
                   and gone502 == ["test", True, True], [asked502, kept502, gone502])
+            try:
+                page.wait_for_function(f"!({out515.split(' && ')[0]})", timeout=10000)
+            except Exception:   # (said below)
+                pass
+            check("…and Outside connections no longer lists it, without a reload (#515)", not js(out515.split(" && ")[0]),
+                  js("document.getElementById('outsideBody').innerText.slice(0, 300)"))
 
             # ---- #246: the Timeline list's row is .tl-row, so the pages' rows of buttons (.row) have no divider under them
             # and no pointer, and what's typed into a field isn't its label's semibold; every group of each page
@@ -16976,6 +17016,19 @@ def main():
             check("account page lists devices, and nothing of the server's (#167) or of profiles (#168)",
                   js("!document.getElementById('tab-admin') && !document.getElementById('users') && !document.getElementById('labmaps') && !document.getElementById('secNotice')")
                   and js("!document.getElementById('acctTabs') && !document.getElementById('profiles') && !document.getElementById('profList')"))
+            # #515: at 320 px each time in Where you're signed in keeps its AM or PM, and its date the comma after it ("Nov 21, /
+            # 2026, 8:37 / AM"), so it's two lines at most: the date, then the time
+            page.set_viewport_size({"width": 320, "height": 640})
+            settle(200)
+            sess515 = [js(AMPM509, "#sessList tbody"), js("""() => [...document.querySelectorAll('#sessList tbody td')].filter(td => /\\d:\\d\\d\\s?[AP]M/.test(td.textContent)).map(td => {
+                const tw = document.createTreeWalker(td, NodeFilter.SHOW_TEXT), lines = new Map();
+                for (let n; (n = tw.nextNode());) for (let i = 0; i < n.data.length; i++) {
+                  const rg = document.createRange(); rg.setStart(n, i); rg.setEnd(n, i + 1); const r = rg.getBoundingClientRect();
+                  if (r.width) { const y = Math.round(r.top); lines.set(y, (lines.get(y) || '') + n.data[i]); } }
+                return [...lines.values()].map(l => l.trim()); })""")]
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…at 320 px each of its times keeps its AM or PM, and its date's comma: the date, then the time (#515: “2026, 8:37 / AM”)",
+                  not sess515[0] and len(sess515[1]) >= 2 and all(len(x) <= 2 and not any(y.startswith(",") for y in x) for x in sess515[1]), sess515)
             # #493: Sign out takes its button away with the device: focus then on the next device's Sign out (else the one
             # before's), and with only this device left on the card's heading, in sight; it fell to the page. Two more
             # devices for it, by keyboard
@@ -17889,6 +17942,50 @@ def main():
                   "375×667 with the Make owner focus is on (they were under the accounts list, under the tab bar)",
                   own510 == [["Make owner", "Lone 510 A", True, "No active account with that username.", True, "Lone 510 A", "Lone 510 B", ""],
                              ["Make owner", "Lone 510 C", True, "noor510 now owns Lone 510 B.", True, "Lone 510 A", "Lone 510 C", ""]], own510)
+            # #515: another account's Disable keeps a username typed in Make owner (each account's action emptied the list),
+            # and removing an account that alone owned a profile, at 375×667, leaves the zone's reply and focus on its
+            # picker in sight once that profile is listed over it (they were under the tab bar and below the screen), the
+            # name typed still there. Two accounts and a profile only for this, removed afterwards
+            db515 = dbm.connect()
+            for n in ("other515", "solo515"):
+                db515.execute("INSERT INTO users(username, pw_hash, is_admin, created) VALUES(?, 'x', 0, 0)", (n,))
+            solo515 = profiles.create_profile(db515, "Solo 515", owner_id=db515.execute("SELECT id FROM users WHERE username='solo515'").fetchone()[0])
+            page.set_viewport_size({"width": 375, "height": 667})
+            js("loadUsers()")
+            page.wait_for_function("document.querySelector('#userList').textContent.includes('solo515')", timeout=10000)
+            typed515 = page.locator("#ownerless .ownerless > .row", has_text="Alex's records").get_by_role("textbox", name="Another account")
+            typed515.fill("noor515")
+            other515 = page.locator("#userList tr", has_text="other515")
+            other515.get_by_role("button", name="Manage other515").click()
+            other515.get_by_role("menuitem", name="Disable…").click()
+            answer_ask(page)
+            page.wait_for_function("[...document.querySelectorAll('#userList tr')].some(r => r.textContent.includes('other515') && r.textContent.includes('disabled'))", timeout=10000)
+            settle(300)
+            kept515 = [typed515.input_value()]
+            solo_row = page.locator("#userList tr", has_text="solo515")
+            solo_row.get_by_role("button", name="Manage solo515").click()
+            solo_row.get_by_role("menuitem", name="Remove account…").click()
+            page.get_by_label("Type solo515 to confirm").fill("solo515")
+            before515 = len(problems)
+            page.keyboard.press("Enter")
+            answer_ask(page)   # (no one named: removed anyway, Solo 515 left without an owner)
+            page.wait_for_function("document.querySelector('#userDanger .dz-msg').textContent.startsWith('Removed solo515')", timeout=10000)
+            settle(300)
+            problems[before515:] = [x for x in problems[before515:] if "409" not in x]   # the question's refusal
+            kept515 += js("""(() => { const seen = e => { const r = e.getBoundingClientRect(), at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+                return r.top >= 0 && r.bottom <= innerHeight && (at === e || e.contains(at)); }, a = document.activeElement, m = document.querySelector('#userDanger .dz-msg');
+              return [a.id, seen(a), m.textContent, seen(m), document.getElementById('ownerless').textContent.includes('Solo 515')]; })()""")
+            kept515.append(typed515.input_value())
+            db515.execute("DELETE FROM users WHERE username='other515'")
+            profiles.delete_profile(db515, solo515)
+            db515.close()
+            typed515.fill("")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("loadUsers()")
+            page.wait_for_function("!document.querySelector('#userList').textContent.includes('other515') && !document.getElementById('ownerless').textContent.includes('Solo 515')", timeout=10000)
+            check("…(#515) a username typed in Make owner stays through another account's Disable; removing an account that alone owned a profile, "
+                  "at 375×667, leaves the zone's reply and focus on its picker in sight once that profile is listed over them, the name typed kept",
+                  kept515 == ["noor515", "rmUser", True, "Removed solo515.", True, True, "noor515"], kept515)
             # removing that account (#287): its row's "Remove account…" opens the danger zone for it, focus on the box for
             # its username, which has to be typed exactly before Remove works; then asked who owns Alex's records instead
             # (this admin)

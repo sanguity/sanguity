@@ -2008,6 +2008,17 @@ Everything on `main` so far; it becomes the first tagged release.
   records page, a record open in the drawer stayed there, with its pencil, ⋯ and Source link, once its import was
   undone; the drawer closes. One typed Ferritin result read "2 events, 1 lab result in 1 test" in Import history and
   its Undo question; it's "1 lab result in 1 test".
+- **Settings, Account and Admin: removing an owner's message in sight, Make owner's typing kept, Outside connections up
+  to date, and the palette's last gaps** (#515): removing an account that alone owned a profile left its message below
+  a phone's screen and focus on the zone's picker under its tab bar, as the profiles without an owner were listed again
+  over them afterwards; they're listed first now, and the message and the picker brought into view. Each account's
+  action (Disable, Enable, Reset password, Make or Remove admin, Create, Remove) emptied every username typed or picked
+  in Make owner; that list is drawn again only when it changed, and then only the rows that did. Outside connections
+  kept saying no source was set up until a reload; it's read again once a source is saved, tested, changed or removed.
+  The command palette finds Connected-source apps for "delete source" (Cycle tracking came first), Accounts for "enable
+  account", and Sources → Portals and health plans for "mychart", "connect mychart" and "connect epic", for anyone who
+  can connect a profile (only an admin's Connected-source apps had them). At 320 px Where you're signed in broke "Nov 21,
+  / 2026, 8:37 / AM"; a time keeps its AM or PM and a date the comma after it, so it's the date, then the time.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

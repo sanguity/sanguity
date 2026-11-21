@@ -39,7 +39,7 @@ const SG_PAGES = {
     {id: "overview", title: "Overview", icon: "layout-list", has: ["waiting", "srcOverview"],   // #283
      words: "sources connections where records come from waiting for you review"},
     {id: "portals", title: "Portals and health plans", icon: "plug", part: "Connected", has: ["mine"], needs: "editor",   // the ways in: owners' and editors' (#401)
-     words: "connect portal patient health plan insurance fhir sync"},
+     words: "connect portal patient health plan insurance fhir sync epic mychart oracle cerner"},   // (#515: the vendors' and portals' names)
     {id: "phone", title: "Phone and watch", icon: "watch", part: "Connected", has: ["watch", "cycle"], needs: "editor",   // cycle tracking (#183)
      words: "health connect android watch phone steps sleep iphone apple health auto export", finds: [["Cycle tracking", "cycle", "period menstrual turn off stop delete data"]]},   // (#495: an iPhone's words; #499: its danger zone's)
     {id: "upload", title: "Upload files", icon: "upload", part: "One-off", has: ["importer"], needs: "editor", words: "import zip folder files export takeout"},
@@ -93,12 +93,12 @@ const SG_PAGES = {
   ]},
   admin: {page: "admin.html", title: "Admin", icon: "wrench", admin: true, words: "server install", groups: [
     {id: "accounts", title: "Accounts", icon: "user-cog", part: "People", has: ["users"],
-     words: "users new create add account reset password one-time temporary remove delete disable make admin require two-factor " +
-       "owner ownerless profile without an"},   // (#495, #499, #502: what's done to an account; #506: Make owner, under the list)
+     words: "users new create add account reset password one-time temporary remove delete disable enable make admin require two-factor " +
+       "owner ownerless profile without an"},   // (#495, #499, #502: what's done to an account; #506: Make owner, under the list; #515: enable)
     {id: "activity", title: "Install activity", icon: "logs", part: "People", has: ["installLog"], words: "log sign-ins"},
     {id: "backups", title: "Backups", icon: "archive", part: "Data safety", has: ["backups"], words: "backup restore"},   // #200
     {id: "apps", title: "Connected-source apps", icon: "app-window", part: "Connections", has: ["admin", "sec-sync"],
-     words: "set up a source client portal app test connection change remove waiting for review done id secret issuer vendor epic mychart oracle cerner", finds: [["Sync defaults", "sec-sync", "attachments"]]},   // (#506: a source's buttons; #510: its form's)
+     words: "set up a source client portal app test connection change remove delete waiting for review done id secret issuer vendor epic mychart oracle cerner", finds: [["Sync defaults", "sec-sync", "attachments"]]},   // (#506: a source's buttons; #510: its form's; #515: delete)
     {id: "directory", title: "Provider directory", icon: "book-user", part: "Connections", has: ["directory"], words: "providers"},
     {id: "outside", title: "Outside connections", icon: "globe", part: "Connections", has: ["outside"], words: "network internet"},
     {id: "labs", title: "Lab name matches", icon: "arrow-right-left", part: "Lab matching", has: ["labmaps"], words: "aliases mapping"},
