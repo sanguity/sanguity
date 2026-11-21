@@ -34,6 +34,7 @@ if (SgLogout.due()) {
   addEventListener("storage", e => { if (e.key === SgLogout.KEY) end(); });
 }
 pwField(document.getElementById("p"));   // Show and Hide (util.js, #290)
+for (const id of ["p", "c"]) document.getElementById(id).addEventListener("input", ev => ev.target.removeAttribute("aria-invalid"));   // (#505)
 let ticket = null;   // after a correct password, when the account has two-factor sign-in on
 const pkBtn = document.getElementById("pk"), pkBox = document.getElementById("pkBox");
 pkBox.hidden = !passkeysWork();   // only over HTTPS (or localhost), in a browser that has them
@@ -65,7 +66,7 @@ function signedIn(j) {
   go.focus();
 }
 pkBtn.addEventListener("click", async () => {
-  pkBtn.disabled = btn.disabled = true; err.textContent = "";
+  pkBtn.disabled = btn.disabled = true; fieldSaid(err, "", null, pkBox);
   try {
     if (!await settled()) throw new Error("Couldn't reach the server.");
     let r = await api("login/passkey/options", {method: "POST", body: JSON.stringify({ticket})});
@@ -87,7 +88,8 @@ pkBtn.addEventListener("click", async () => {
 f.addEventListener("submit", async ev => {
   ev.preventDefault();
   const username = document.getElementById("u").value.trim(), password = document.getElementById("p").value;
-  btn.disabled = true; err.textContent = ""; pwSent(f);   // hidden as it's sent, so a browser saves it as a password
+  btn.disabled = true; fieldSaid(err, "", null, pkBox); pwSent(f);   // hidden as it's sent, so a browser saves it as a password
+  let said = "", refused = false;
   try {
     if (!await settled()) throw new Error("not reached");   // said as the server not reached, below
     const r = ticket
@@ -96,9 +98,12 @@ f.addEventListener("submit", async ev => {
     const j = await r.json().catch(() => ({}));
     if (r.ok && j.two_factor) { codeStep(j.ticket, j.methods); btn.disabled = false; return; }
     if (r.ok) { signedIn(j); return; }
-    err.textContent = j.detail || "Sign-in failed (" + r.status + ").";
+    said = j.detail || "Sign-in failed (" + r.status + ").";
+    refused = r.status === 401;   // the password or the code wrong: the reason under it, in sight with it (#505)
     if (ticket && /too long/.test(j.detail || "")) { codeStep(null); document.getElementById("p").value = ""; }
-  } catch (e) { err.textContent = "Couldn't reach the server."; }
+  } catch (e) { said = "Couldn't reach the server."; }
   btn.disabled = false;
-  (ticket ? document.getElementById("c") : document.getElementById("p")).select();
+  const field = ticket ? document.getElementById("c") : document.getElementById("p");
+  field.select();
+  fieldSaid(err, said, refused ? field : null, pkBox);
 });

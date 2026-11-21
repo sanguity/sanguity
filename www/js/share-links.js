@@ -30,15 +30,17 @@ function shareLinksPanel(p, {open = false} = {}) {
       return;
     }
     const names = Object.fromEntries(info.sections.map(s => [s.id, s.label]));
+    // each date kept whole (keepDates, util.js), so a date and its time take two lines at most (#505: a word a line at
+    // 768 px); where the list is too narrow for that, it's a cell a line (app.css)
     list.replaceChildren(scrollBox({class: "share-scroll", "aria-label": "Share links"}, el("table", {class: "tbl"},
       el("thead", {}, el("tr", {}, ...["Link", "Shows", "Ends", "Opened", ""].map(h => el("th", {text: h})))),
       el("tbody", {}, ...rows.map(l => el("tr", {class: l.state === "active" ? "" : "ended", "data-link": l.id},
-        el("td", {}, el("b", {text: l.label || "Unnamed link"}), el("div", {class: "muted", text: `made by ${l.created_by}, ${when(l.created)}`})),
+        el("td", {}, el("b", {text: l.label || "Unnamed link"}), el("div", {class: "muted"}, keepDates(`made by ${l.created_by}, ${when(l.created)}`))),
         el("td", {}, l.sections.map(s => names[s] || s).join(", ") + (l.labs.length ? ` (${l.labs.length} lab${l.labs.length === 1 ? "" : "s"})` : ""),
-          el("div", {class: "muted", text: slRange(l.from, l.to)})),
-        el("td", {}, l.state === "active" ? when(l.expires) : SL_STATE[l.state],
-          l.state === "revoked" ? el("div", {class: "muted", text: `by ${l.revoked_by}, ${when(l.revoked)}`}) : null),
-        el("td", {text: l.views ? `${l.views} time${l.views === 1 ? "" : "s"}, last ${when(l.last_viewed)}` : "never"}),
+          el("div", {class: "muted"}, keepDates(slRange(l.from, l.to)))),
+        el("td", {}, l.state === "active" ? keepDates(when(l.expires)) : SL_STATE[l.state],
+          l.state === "revoked" ? el("div", {class: "muted"}, keepDates(`by ${l.revoked_by}, ${when(l.revoked)}`)) : null),
+        el("td", {}, l.views ? keepDates(`${l.views} time${l.views === 1 ? "" : "s"}, last ${when(l.last_viewed)}`) : "never"),
         el("td", {}, l.state === "revoked" || l.state === "expired" ? null : el("button", {class: "btn small", type: "button", text: "Revoke",
           onclick: async () => {
             if (!await ask({title: `Revoke ${l.label ? `“${l.label}”` : "this link"}?`, message: "It stops working at once, for anyone who has it.",

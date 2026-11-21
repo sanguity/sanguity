@@ -61,10 +61,12 @@ function shLong(heads, rows, empty, cls, noun, id, more, total = rows.length) {
         all.textContent = label;
         return;
       }
-      const here = document.activeElement === all;
+      const here = document.activeElement === all, head = tools.closest("section")?.querySelector("h2")?.textContent;
       box.querySelector("tbody").replaceChildren(...got);
       note.textContent = said(got.length);
       (note.textContent ? all : tools).remove();
+      // #505: every row in, and focus moved on: said in the page's live line, which stays (the note went with the button)
+      if (!here && !note.textContent) announce(`${head ? head + ": " : ""}all ${n(got.length)} ${noun || "rows"} shown.`);
       if (!here) return;
       const first = got[rows.length] || got[0];
       first.tabIndex = -1;
@@ -156,7 +158,7 @@ function shLatest(list) {
   }});
   // pressed while every history is open (#491): with one closed by hand, the next press opens them all again
   const follow = () => all.setAttribute("aria-pressed", String(hists.every(([b]) => b.getAttribute("aria-expanded") === "true")));
-  const many = (k, w) => `${k} ${w}${k === 1 ? "" : "s"}`;
+  const many = (k, w) => `${k.toLocaleString()} ${w}${k === 1 ? "" : "s"}`;   // "5,432 results", as the page's other counts (#505)
   return el("div", {}, el("div", {class: "share-tools"}, el("p", {class: "share-count"},
     `The latest of ${many(n, "result")} in ${many(list.length, "test")}.`, el("span", {text: " A test's name opens its history."})), list.length > 1 ? all : null),
     scrollBox({class: "share-scroll"}, table));

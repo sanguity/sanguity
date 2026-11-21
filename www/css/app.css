@@ -1437,6 +1437,15 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
 .acct .share-links{margin-top:var(--sp-2)}   /* no left border (#492: on a phone the form started at x 44) */
 .acct .share-links tr.ended td{color:var(--muted)}
 @media (max-width:640px){ .acct .share-list .tbl tr{grid-template-columns:minmax(0,1fr)} }   /* a phone: one cell a line, Revoke last (#501: in two columns the first was 31 px) */
+/* #505: and wherever the list is too narrow for its dates (each kept whole, share-links.js) on two lines, by its own
+   width: at 768 px, beside the sidebar, they ran a word a line, rows 140 px tall */
+.acct .share-list{container-type:inline-size}
+@container (width < 540px){
+  .acct .share-list .tbl thead{display:none}
+  .acct .share-list .tbl tr{display:grid;grid-template-columns:minmax(0,1fr);gap:2px;border-top:1px solid var(--grid);padding:var(--sp-1) 0}
+  .acct .share-list .tbl td{border:0;padding:0;overflow-wrap:anywhere}
+  .acct .share-list .tbl td[data-label]::before{content:attr(data-label);display:block;color:var(--muted);font-size:var(--fs-2);font-weight:var(--fw-medium);overflow-wrap:normal}
+}
 .acct .share-form{max-width:640px;margin-top:var(--sp-3)}
 .acct :is(.share-opts,.share-side){display:grid;gap:var(--sp-2);align-content:start;min-width:0}
 /* #288: what a holder will see beside the choices at 1200 px and wider, kept in sight under the top bar as they scroll */
@@ -1507,8 +1516,9 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
   .share-printed>th{white-space:normal;color:var(--ink);font-size:var(--fs-3);font-weight:var(--fw-semibold)}
   .share .share-scroll{overflow:visible}
   /* #501: Latest results as a block of one-row tables, each history a block: Chrome breaks a table row only when it's
-     longer than a page, so a history moved whole to the next, with its test's row, leaving half a page empty */
-  .share-latest,.share-latest>*,.share-hist,.share-hist>td{display:block}
+     longer than a page, so a history moved whole to the next, with its test's row, leaving half a page empty. #505: the
+     table itself stays one, its head a header group, so each page it spans repeats it (the head's row a table too) */
+  .share-latest>tbody,.share-hist,.share-hist>td{display:block}
   .share-latest>*>tr:not(.share-hist){display:table;width:100%;table-layout:fixed}
   .share-latest>*>tr:not(.share-hist)>*{width:10%}
   .share-latest>*>tr:not(.share-hist)>:first-child{width:36%}

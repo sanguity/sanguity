@@ -261,6 +261,26 @@ function pwField(input, {min = 0, hint = null, name = "password"} = {}) {
 }
 /* the passwords in a form (or any box) hidden again as it's sent (pwField) */
 const pwSent = box => box.querySelectorAll(".pw > input").forEach(i => i.dispatchEvent(new Event("pw-sent")));
+/* sign-in's and setup's reason (#505): err, their alert line, put under the field it's about, which is marked invalid,
+   described by it (aria-errormessage and -describedby) and given focus, the field's label, the field and the reason
+   scrolled into sight together (on a phone the reason was under the button, out of sight); with no field, back at its
+   place, after home. Each send clears the last mark ("" and no field) */
+function fieldSaid(err, text, field, home) {
+  for (const f of document.querySelectorAll(`[aria-errormessage="${err.id}"]`)) {
+    const d = f.getAttribute("aria-describedby").split(" ").filter(x => x !== err.id).join(" ");
+    f.removeAttribute("aria-invalid"); f.removeAttribute("aria-errormessage");
+    if (d) f.setAttribute("aria-describedby", d); else f.removeAttribute("aria-describedby");
+  }
+  (field ? field.closest(".pw") || field : home).after(err);   // moved before its words, so they're said where it is
+  err.textContent = text;
+  if (!field) { if (text) err.scrollIntoView({block: "nearest"}); return; }
+  field.setAttribute("aria-invalid", "true");
+  field.setAttribute("aria-errormessage", err.id);
+  field.setAttribute("aria-describedby", [err.id, field.getAttribute("aria-describedby")].filter(Boolean).join(" "));
+  field.focus({preventScroll: true});
+  err.scrollIntoView({block: "nearest"});
+  field.labels?.[0]?.scrollIntoView({block: "nearest"});
+}
 /* a line of text with each date in it kept on one line (#330), so a tile's "▼ −0.03 since Aug 18, 2026" never leaves
    its year alone below: the text as parts for el(), a date in a <span class="nw">, its textContent unchanged. The
    app's three date formats (dates.js): "Aug 18, 2026", "18 Aug 2026" and "2026-08-18", and "as of" kept as one too

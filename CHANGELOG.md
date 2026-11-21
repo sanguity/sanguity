@@ -1946,6 +1946,16 @@ Everything on `main` so far; it becomes the first tagged release.
   everywhere", and Accounts for "one-time password" and "make admin". An account's "Not done" or refusal is said in its
   row, in sight, and goes when the next change starts (it was under the list, 1,285 px down on a phone). A one-time
   password shown goes once its account is removed, disabled or renamed.
+- **Sharing and first run: printed Latest results heads each page, no records tabs with no profile anywhere, setup's
+  and sign-in's reason beside the field, and the links list at tablet widths** (#505): printed, Lab results' Latest
+  results table had its column names on page 1 only (since #501); they head each page it spans again, its histories
+  still breaking where they fall. With no profile, the records tabs were still on Sources (and import.html and
+  providers.html, which go there) and the guide's New profile; the top bar hides them on every page now. A refused
+  setup or sign-in puts its reason under the field it marks, which it describes, and brings the label, the field and the
+  reason into view together (on a phone the reason was under Create account, out of sight). Share links' list ran its
+  dates a word a line at 768 px, beside the sidebar; each date is kept whole, and the list is a cell a line wherever it's
+  too narrow for that, by its own width. Show all loaded after you've moved on says so, and Latest results' count is
+  written as the page's others are ("5,432 results").
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

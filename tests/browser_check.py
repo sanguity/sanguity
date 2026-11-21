@@ -2307,7 +2307,27 @@ def main():
               if (new Set([...rg.getClientRects()].map(x => Math.round(x.top))).size > 1) bad.push(m[0]); } }
           const rv = [...t.querySelectorAll('tbody button')].filter(b => b.textContent === 'Revoke').map(b => Math.round(b.getBoundingClientRect().height));
           return [bad, rv, document.documentElement.scrollWidth <= innerWidth]; }""")
+        # #505: at 768 px (the sidebar beside the list) and 900, no date in the list, with its time, on more than two
+        # lines (they ran a word a line at 768: "Nov / 28, / 2026, / 5:52 / AM"), and the list not scrolled sideways
+        dates505 = {}
+        for w in (768, 900):
+            strict.set_viewport_size({"width": w, "height": 900})
+            strict.wait_for_timeout(150)
+            dates505[w] = strict.evaluate("""() => { const t = document.querySelector('#links .share-list table'), out = [];
+              for (const td of t.querySelectorAll('tbody td')) {
+                const ns = [], tw = document.createTreeWalker(td, NodeFilter.SHOW_TEXT); let s = '';
+                for (let n; (n = tw.nextNode());) { ns.push([n, s.length]); s += n.textContent; }
+                const at = i => { const [n, o] = ns.findLast(([, o]) => o <= i); return [n, i - o]; };
+                for (const m of s.matchAll(/[A-Z][a-z]{2} \\d{1,2}, \\d{4}(, \\d{1,2}:\\d{2}\\s?[AP]M)?/g)) {
+                  const rg = document.createRange(), [en, eo] = at(m.index + m[0].length - 1);
+                  rg.setStart(...at(m.index)); rg.setEnd(en, eo + 1);
+                  const tops = [...rg.getClientRects()].filter(q => q.width > 0).map(q => q.top).sort((a, b) => a - b);
+                  out.push([m[0], tops.filter((y, i) => !i || y - tops[i - 1] > 4).length]); } }
+              return [out, t.offsetWidth <= t.parentElement.clientWidth]; }""")
         strict.set_viewport_size({"width": 1400, "height": 900})
+        check("share links: …at 768 and 900 px no date in the list, with its time, on more than two lines, the list not scrolled sideways "
+              "(#505: a word a line at 768 px, beside the sidebar)",
+              all(len(v[0]) >= 2 and all(n <= 2 for _, n in v[0]) and v[1] for v in dates505.values()), dates505)
         check("share links: at 375×667 the new link's QR code, opened from its button at the screen's foot, comes into sight, its button too (#501)",
               qr501[:3] == [True, True, True] and qr501[3] > qr501[6] - 120, qr501)
         check("share links: …at 320 px the list has no word broken mid-word and Revoke on one line (#501: Revoke a letter a line)",
@@ -2567,11 +2587,21 @@ def main():
             hp.unroute(view_api)
             sl_until(hp, f"!document.querySelector('#share-{other501} .share-more button')")
             show501.append(hp.evaluate("document.activeElement === document.querySelector('#shareHead .btn')"))
+            # #505: …and that's said, in the page's live line, which stays (the note went with the button)
+            try:
+                sl_until(hp, "/shown\\.$/.test(document.getElementById('sgStatus').textContent)")
+            except TimeoutError:
+                pass
+            said505 = hp.evaluate(f"""[document.getElementById('sgStatus').textContent, document.querySelector('#share-{other501} h2').textContent,
+              document.querySelectorAll('#share-{other501} tbody tr').length, !!document.getElementById('shMore-{other501}')]""")
         check("…Show all keeps focus while it loads, saying “Loading…” in the live line it's described by; a failure is said there, focus still "
               "on it; the rows come without pulling focus once it's moved on (#501)",
               other501 and show501[0][:5] == [True, None, show501[0][2], "status", True] and show501[0][2].startswith("Show all")
               and show501[0][5] == "The rest couldn't be loaded. Try again, or reload the page."
               and show501[1] == [True, "true", "Loading…", "status", True, "Loading…"] and show501[2] is True, [other501, show501])
+        check("…Show all loaded after focus has moved on says so in the page's live line: the section, “all N … shown” (#505: the note went with its button)",
+              other501 and re.fullmatch(re.escape(said505[1]) + r": all [\d,]+ [a-z ]+ shown\.", said505[0]) is not None
+              and f"all {said505[2]:,} " in said505[0] and said505[3] is False, [other501, said505 if other501 else None])
         hp.locator("#share-costs .share-more button").click()   # (#498: asks the server for the rest)
         sl_until(hp, "document.querySelectorAll('#share-costs tbody tr').length > 20")
         costs491 += hp.evaluate("""() => { const rows = [...document.querySelectorAll('#share-costs tbody tr')];
@@ -2652,6 +2682,27 @@ def main():
         check("…a year's link to visits, lab results and medications, printed with every history open: no page before the last more than a "
               "quarter empty (#501: a history and its test's row moved to the next page whole, page 1 left 420 pt short)",
               len(low501) > 2 and max(low501[:-1]) <= 792 / 4, low501)
+        # #505: a ten-year link to lab results, printed with every history open: Latest results' column names head each
+        # page it spans (#501's block of one-row tables printed them on page 1 only), its breaks kept
+        made505 = strict.evaluate("""() => fetch('api/profiles/1/links', {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'},
+          body: JSON.stringify({sections: ['results'], from: '2016-11-15', label: 'Ten years of results (browser check)', hours: 1})}).then(r => r.json())""")
+        hp.goto("about:blank")
+        hp.goto(base + "/" + made505["path"])
+        hp.wait_for_selector("#share-results .share-latest", timeout=10000)
+        hp.locator("#share-results .share-tools button", has_text="Open every history").click()
+        head505 = " ".join(hp.evaluate("[...document.querySelectorAll('#share-results .share-latest>thead th')].map(c => c.textContent)"))
+        hp.emulate_media(media="print")
+        pages505 = []
+        for p_ in PdfReader(io.BytesIO(hp.pdf(format="Letter"))).pages:
+            ys = []
+            lines = [ln.strip() for ln in p_.extract_text(visitor_text=lambda t, cm, tm, fd, fs: ys.append(tm[5] * cm[3] + cm[5]) if t.strip() else None).splitlines()]
+            pages505.append([lines.count(head505), round(min(ys)) if ys else 792])
+        hp.emulate_media(media="screen")
+        strict.evaluate("id => fetch('api/profiles/1/links/' + id, {method: 'DELETE', headers: {'X-Sanguity': '1'}})", made505["link"]["id"])
+        check("…a ten-year link to lab results, printed with every history open: Latest results' column names on each of its pages, no page before "
+              "the last more than a quarter empty (#505: on page 1 only)",
+              head505 == "Test Latest Range Flag Trend Results" and len(pages505) > 3 and all(p[0] == 1 for p in pages505)
+              and max(p[1] for p in pages505[:-1]) <= 792 / 4, [head505, pages505])
         strict.evaluate("id => fetch('api/profiles/1/links/' + id, {method: 'DELETE', headers: {'X-Sanguity': '1'}})", made289["link"]["id"])
         hp.goto("about:blank")
         hp.goto(share_url)   # back to the first link, which is revoked below
@@ -2737,11 +2788,21 @@ def main():
         page.on("request", elsewhere)
         page.goto(base + "/")
         page.wait_for_url("**/login.html", timeout=10000)   # signed out: the app sends you to sign in
+        page.set_viewport_size({"width": 568, "height": 320})   # a phone on its side (#505)
         page.fill("#u", USER)
         page.fill("#p", "wrong password")
         page.click("#b")
         page.wait_for_function("document.getElementById('e').textContent.length > 0")
+        page.wait_for_timeout(150)
+        # #505: the reason under the password it marks, describing it, the label, field and reason in sight (at 568×320
+        # it was under the passkey button, below the fold)
+        said505 = page.evaluate("""() => { const a = document.activeElement, e = document.getElementById('e'), seen = x => { const r = x.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; };
+          return [a.id, a.getAttribute('aria-invalid'), a.getAttribute('aria-errormessage'), (a.getAttribute('aria-describedby') || '').split(' ').includes('e'),
+            seen(a.labels[0]), seen(a), seen(e)]; }""")
+        page.set_viewport_size({"width": 1400, "height": 900})
         check("wrong password refused", "Wrong username or password" in page.inner_text("#e"))
+        check("…at 568×320 its reason under the password, which it marks and describes, the label, field and reason in sight (#505)",
+              said505 == ["p", "true", "e", True, True, True, True], said505)
         check("no plain-HTTP warning on this machine", page.is_hidden("#insecure") and page.evaluate("plainHttpWarning()") is None)
         problems[:] = [x for x in problems if "401" not in x]   # signed out so far: the 401s were the point
         page.evaluate("localStorage.setItem('ht-state', JSON.stringify({tab: 'heatmap', preset: '1y', v: 2}))")   # a view saved before profiles
@@ -14662,17 +14723,23 @@ def main():
             np_.fill("#p", PW2)
             np_.click("#b")
             np_.wait_for_url(lambda u: "login.html" not in u, timeout=10000)
+            # #505: nor on Sources, import.html (which goes there) and the guide's New profile, which stop before the menu
             tabs501 = {}
             for w, h in ((1400, 900), (375, 667)):
                 np_.set_viewport_size({"width": w, "height": h})
-                np_.goto(base + "/sharing.html#people")
-                np_.wait_for_function("!document.getElementById('noProfiles').hidden", timeout=10000)
-                np_.wait_for_timeout(300)
-                tabs501[w] = np_.evaluate("[...document.querySelectorAll('header [id^=tab-], header .tab-more')].filter(t => t.checkVisibility()).map(t => t.textContent)")
+                for pg_, ready_ in (("sharing.html#people", "!document.getElementById('noProfiles').hidden"),
+                                    ("sources.html", "!document.getElementById('noProfiles').hidden"),
+                                    ("import.html", "location.pathname.endsWith('sources.html') && !document.getElementById('noProfiles').hidden"),
+                                    ("guide.html?new", "!document.getElementById('guideHd').hidden")):
+                    np_.goto(base + "/" + pg_)
+                    np_.wait_for_function(ready_, timeout=10000)
+                    np_.wait_for_timeout(500)
+                    tabs501[f"{pg_} {w}"] = np_.evaluate("[...document.querySelectorAll('header [id^=tab-], header .tab-more')].filter(t => t.checkVisibility()).map(t => t.textContent)")
             nctx.close()
             sdb.execute("DELETE FROM users WHERE id=?", (uid501,))
-            check("with no profile, the top bar has no records tabs, at 1400 and 375 px (#501: Overview, Body, … Costs were still there after Leave)",
-                  tabs501 == {1400: [], 375: []}, tabs501)
+            check("with no profile, the top bar has no records tabs on Sharing, Sources, import.html and the guide's New profile, at 1400 and 375 px "
+                  "(#501: Overview, Body, … Costs were still there after Leave; #505: on Sources and New profile too)",
+                  len(tabs501) == 8 and not any(tabs501.values()), tabs501)
             zb.goto(base + "/sharing.html?profile=1#people")
             zb.wait_for_selector("#people[data-profile='1'] #memberList tbody tr", state="attached", timeout=10000)
             zb.click("#shrNav a[data-group=calendar]")
@@ -18444,6 +18511,35 @@ def main():
             check("first run: a password built from the username marks and focuses the password only; the next send clears it, "
                   "a username refused marking the username alone (#501: the username was marked, by the message's words)",
                   marks501 == [["p", "p"], ["u", "u"]], marks501)
+            # #505: on a phone, upright and on its side, a wrong setup code and a refused password each put the reason
+            # under the field it marks, the field described by it (aria-errormessage and -describedby), and its label,
+            # the field and the reason all in sight (at 320×568 the code was at 172 px and its reason at 860, under
+            # Create account)
+            SAID505 = """() => { const a = document.activeElement, e = document.getElementById('e'), seen = x => { const r = x.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; };
+                return [a.id, a.getAttribute('aria-invalid'), a.getAttribute('aria-errormessage'), (a.getAttribute('aria-describedby') || '').split(' ').includes('e'),
+                  e.textContent !== '', seen(a.labels[0]), seen(a), seen(e)]; }"""
+            said505 = {}
+            with open(code_file, encoding="utf-8") as f:
+                right505 = f.read().strip()
+            f_expect.update(("400", "403"))
+            for w, h in ((320, 568), (568, 320)):
+                fp.set_viewport_size({"width": w, "height": h})
+                for what, code, pw in (("code", "NOPE-NOPE-NOPE", "a fictional first-run passphrase"), ("password", right505, "robinrobinrobinrobin")):
+                    fp.evaluate("scrollTo(0, 0)")
+                    fp.fill("#c", code)
+                    fp.fill("#u", "robin")
+                    fp.fill("#p", pw)
+                    fp.fill("#p2", pw)
+                    fp.click("#b")
+                    f_until("document.getElementById('e').textContent !== ''")
+                    fp.wait_for_timeout(150)
+                    said505[f"{what} {w}x{h}"] = fp.evaluate(SAID505)
+            f_expect.difference_update(("400", "403"))
+            fp.set_viewport_size({"width": 1400, "height": 900})
+            check("first run: at 320×568 and 568×320 a wrong setup code and a refused password each have their reason under the field, "
+                  "describing it, and the label, field and reason in sight (#505: the reason was under Create account, out of sight)",
+                  said505 == {f"{what} {s}": [f, "true", "e", True, True, True, True, True] for s in ("320x568", "568x320") for what, f in (("code", "c"), ("password", "p"))},
+                  said505)
             fp.fill("#u", "robin")
             # #492: passwords that don't match are said with both left as they were, shown, focus on the repeat, to see
             # what differs (they were hidden on any submit, before setup.js found the mismatch)
