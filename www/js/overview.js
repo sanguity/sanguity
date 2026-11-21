@@ -243,7 +243,7 @@ function watchTiles() {
     }
     const cur = avg(s, now - 7 * DAY, now), base = avg(s, now - 35 * DAY, now - 7 * DAY);
     const label = {hr_rest: "Resting heart rate", sleep: "Sleep", steps: "Steps", hr: "Heart rate, average"}[s.key];
-    const fmt = v => s.key === "steps" ? Math.round(v).toLocaleString() : s.key === "sleep" ? v.toFixed(1) : Math.round(v).toString();
+    const fmt = v => s.key === "steps" ? Math.round(v).toLocaleString("en-US") : s.key === "sleep" ? v.toFixed(1) : Math.round(v).toString();
     out.push(el("button", {class: "tile", onclick: () => { setPeriod("30d"); pickTab("health"); }},
       el("span", {class: "lbl", text: label}),
       el("span", {class: "val"}, cur == null ? "–" : fmt(cur), el("small", {text: s.key === "sleep" ? "h / night" : s.key === "steps" ? "/ day" : "bpm"})),

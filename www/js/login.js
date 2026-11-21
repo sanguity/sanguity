@@ -40,13 +40,15 @@ const pkBtn = document.getElementById("pk"), pkBox = document.getElementById("pk
 pkBox.hidden = !passkeysWork();   // only over HTTPS (or localhost), in a browser that has them
 function codeStep(on, methods = {code: true}) {
   ticket = on || null;
-  const code = !on || methods.code !== false;
+  const code = !on || methods.code !== false, sites = methods.sites || [];
+  // #540: a passkey the only way on, and none of the account's made at this name: said first, with where they were
+  const away = !!on && !code && passkeysWork() && sites.length > 0 && !sites.includes(location.hostname);
   document.getElementById("step1").hidden = !!on; document.getElementById("step2").hidden = !on;
   document.getElementById("codeBox").hidden = !on || !code; btn.hidden = !code;
   document.getElementById("u").readOnly = !!on; document.getElementById("p").required = !on;
   btn.textContent = on ? "Continue" : "Sign in";
   // after the password: a passkey is the other way to finish, if the account has one; before it, one signs in alone
-  pkBox.hidden = !passkeysWork() || (on && !methods.passkey);
+  pkBox.hidden = !passkeysWork() || (on && !methods.passkey) || away;
   document.getElementById("pkOr").hidden = on && !code;
   pkBtn.textContent = on ? "Use a passkey" : "Sign in with a passkey";
   // a passkey the only way on: what's needed said, and the button described by it (#518: it said "Use a passkey" alone)
@@ -55,16 +57,18 @@ function codeStep(on, methods = {code: true}) {
   if (pkOnly) pkBtn.setAttribute("aria-describedby", says.id); else pkBtn.removeAttribute("aria-describedby");
   // #523: where passkeys can't work (plain HTTP away from localhost, or a browser without them) there's no button to
   // press: the step says why and how to sign in instead, and takes focus itself
-  const stuck = pkOnly && !passkeysWork();
+  const stuck = pkOnly && (!passkeysWork() || away);
   if (stuck) says.tabIndex = -1; else says.removeAttribute("tabindex");
   // this computer's own address (#531): where the account's passkeys were made, as links (#535: localhost, though they
   // were made at another name), else localhost, which works without HTTPS; a name's port isn't kept (passkeys.py where)
   const own = /^(127\.|\[::1\]$)/.test(location.hostname), port = location.port ? ":" + location.port : "";
-  const go = (methods.sites?.length ? methods.sites : ["localhost"]).flatMap((h, i) => {
+  const go = (sites.length ? sites : ["localhost"]).flatMap((h, i) => {
     const at = /(^|\.)localhost$/.test(h) ? `${location.protocol}//${h}${port}` : `https://${h}`;
     return [i ? " or " : "", el("a", {href: at + location.pathname, text: at})];
   });
   sayIn(says, !pkOnly ? "" : !stuck ? "Password accepted. Use your passkey to finish signing in." :
+    away ? ["Password accepted, but this account finishes signing in with a passkey, and none of its passkeys was made at this address. Open Sanguity at ",
+      ...go, " and sign in there, or use another account."] :
     ["Password accepted, but this account finishes signing in with a passkey, and passkeys don't work here: ",
       ...(!window.isSecureContext ? ["this page isn't using HTTPS. Open Sanguity at its " +
         `https:// address${ipHost() ? ", by its name rather than an IP address," : ""} and sign in there`]

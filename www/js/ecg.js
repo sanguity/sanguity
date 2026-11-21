@@ -57,7 +57,7 @@ function ecgBody(e, d) {
   })();
   return out;
 }
-const ecgNum = (v, n = 2) => (+v.toFixed(n)).toLocaleString(undefined, {maximumFractionDigits: n});
+const ecgNum = (v, n = 2) => (+v.toFixed(n)).toLocaleString("en-US", {maximumFractionDigits: n});
 /* the trace, its readout, the summary table and the download, from the samples (µV) */
 function ecgRecording(e, d, w, width) {
   const W = Math.round(Math.max(300, Math.min(900, width || 628))), ROW = W < 520 ? 5 : 10;   // px wide; seconds a row
@@ -118,7 +118,7 @@ function ecgRecording(e, d, w, width) {
   svg.addEventListener("pointerleave", () => { if (svg._kt == null) clear(); });
   const table = el("table", {class: "data ecg-sum"}, el("caption", {class: "vh", text: "The recording, summed up"}),
     el("tbody", {}, [["Duration", `${ecgNum(dur, 1)} s`], ["Sample rate", `${ecgNum(rate)} Hz`], ["Lead", lead], ["Classification", cls],
-      ["Samples", S.length.toLocaleString()], ["Unit", "µV as recorded; drawn in mV"]].filter(x => x[1])
+      ["Samples", S.length.toLocaleString("en-US")], ["Unit", "µV as recorded; drawn in mV"]].filter(x => x[1])
       .map(([k, v]) => el("tr", {}, el("th", {scope: "row", text: k}), el("td", {text: v})))));
   const say = el("p", {class: "hint", role: "status"});
   const dl = el("button", {class: "btn", type: "button", text: "Download as CSV", onclick: () => {
@@ -128,7 +128,7 @@ function ecgRecording(e, d, w, width) {
     const url = URL.createObjectURL(blob), a = el("a", {href: url, download: name, hidden: true});
     dl.after(a); a.click(); a.remove();   // beside the button: in the drawer, which may be a modal dialog (#262)
     setTimeout(() => URL.revokeObjectURL(url), 60000);
-    sayIn(say, `Downloaded ${name}: ${S.length.toLocaleString()} samples.`);
+    sayIn(say, `Downloaded ${name}: ${S.length.toLocaleString("en-US")} samples.`);
   }});
   return [el("figure", {class: "ecg-trace"}, svg, readout), table, el("div", {class: "btns"}, dl), say];
 }

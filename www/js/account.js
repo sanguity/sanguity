@@ -173,8 +173,9 @@ async function loadPasskeys() {
   say("#pkMsg", "");
   const usable = passkeysWork() && !st.problem;
   $("#pkHint").textContent = "Face ID, Touch ID, Windows Hello, your phone or a security key, on its own or after your password.";
-  // what's in the way, to act on, stays in full (#280)
-  $("#pkWhy").textContent = usable ? "" : st.problem || "This browser can't make passkeys here: open Sanguity at its https:// address.";
+  // what's in the way, to act on, stays in full (#280), its addresses links to this page there (#540: as words, no path)
+  $("#pkWhy").replaceChildren(...(usable ? "" : st.problem || "This browser can't make passkeys here: open Sanguity at its https:// address.")
+    .split(/(https?:\/\/[\w.:[\]-]*[\w\]])/).map((t, i) => i % 2 ? el("a", {href: t + location.pathname, text: t}) : t));
   $("#pkWhy").hidden = usable;
   if (usable && st.user_handle)   // the device can forget passkeys removed here (or on another device)
     passkeySignalAccepted(st.site, st.user_handle, st.passkeys.filter(k => k.here).map(k => k.credential_id));

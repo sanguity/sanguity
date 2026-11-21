@@ -140,7 +140,7 @@ function readText(s, p) {
   const u = s.unit;
   if (s.kind === "band") return [`${fmtNum(p[1])} ${u} avg`, p.lo != null ? `range ${fmtNum(p.lo)}–${fmtNum(p.hi)}` : ""];
   if (s.kind === "stack") { const pr = p.parts || {}; return [`${fmtNum(p[1])} h asleep`, ["deep", "rem", "light"].filter(k => pr[k]).map(k => `${k === "rem" ? "REM" : k} ${fmtNum(pr[k])} h`).join(" · ")]; }
-  if (s.kind === "bars") return [`${Math.round(p[1]).toLocaleString()} ${u}`, ""];
+  if (s.kind === "bars") return [`${Math.round(p[1]).toLocaleString("en-US")} ${u}`, ""];
   return [`${p[5] || fmtNum(p[1])} ${u}`, ucOrig(s, p) ? "Reported as " + ucOrig(s, p) : ""];   // #41: as reported, beside a converted value
 }
 /* under a chart's name, when its results' reference ranges differ (two labs, or a lab that changed its range): which

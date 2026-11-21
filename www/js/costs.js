@@ -107,8 +107,8 @@ function drawCosts() {
   const tile = statTile;
   costFigures(box, claimFigures(rows),
   [tile("Discounts & not covered", usd(Math.max(0, billed - paid - owe)), "network discounts, write-offs, denials"),
-    tile("Claims", rows.length.toLocaleString(), `${rows.filter(r => r.kind === "pharmacy").length} pharmacy fills`),
-    tile("Denied", denied.toLocaleString(), denied ? `${rows.filter(r => /PROVIDER_DENIED/i.test(r.status)).length} provider-denied` : "")]);
+    tile("Claims", rows.length.toLocaleString("en-US"), `${rows.filter(r => r.kind === "pharmacy").length} pharmacy fills`),
+    tile("Denied", denied.toLocaleString("en-US"), denied ? `${rows.filter(r => /PROVIDER_DENIED/i.test(r.status)).length} provider-denied` : "")]);
   // the chart, by month or by year
   const ds = rows.map(r => r.d).sort(), span = ds.length ? (+ds.at(-1).slice(0, 4) - +ds[0].slice(0, 4)) * 12 + (+ds.at(-1).slice(5, 7) - +ds[0].slice(5, 7)) + 1 : 0;
   const by = costState.by || (span > 48 ? "year" : "month");
@@ -121,7 +121,7 @@ function drawCosts() {
   box.append(mc);
   if (state.tables.has("#costBars")) mc.append(stacked(chartTable([by === "year" ? "Year" : "Month", "Insurance paid", "Your share", "Billed", "Claims"],
     [...costBuckets(rows, by)].reverse().map(([k, m]) => [by === "year" ? k : zdate(dayTs(k + "-15")).toLocaleDateString(undefined, {month: "long", year: "numeric"}),
-      usd(m.paid), usd(m.owe), usd(m.billed), m.n.toLocaleString()]))));
+      usd(m.paid), usd(m.owe), usd(m.billed), m.n.toLocaleString("en-US")]))));
   else {
     mc.append(el("div", {class: "legend mb-2"},
       el("span", {}, el("i", {style: {background: "var(--c-lab)"}}), "Paid by insurance"),
@@ -165,7 +165,7 @@ function drawCosts() {
   const on = !!(costState.q || costState.cat || costState.deniedOnly);
   const totals = `${on ? "For the claims shown: billed" : `${list.length} claims · billed`} ${usd(sumOf(list, "billed"))} · insurance paid ${usd(sumOf(list, "paid"))} · your share ${usd(sumOf(list, "owe"))}`;
   tc.append(el("h2", {tabindex: -1, text: "Claims"}), el("div", {class: "toolbar", style: {marginTop: "8px"}}, q, sel, den),
-    filterLine(on ? [`Showing ${list.length.toLocaleString()} of ${rows.length.toLocaleString()} claims`, costState.cat && `type of care: ${costState.cat}`,
+    filterLine(on ? [`Showing ${list.length.toLocaleString("en-US")} of ${rows.length.toLocaleString("en-US")} claims`, costState.cat && `type of care: ${costState.cat}`,
       costState.q && `matching “${costState.q.trim()}”`, costState.deniedOnly && "denied only"] : [],
       () => { Object.assign(costState, {q: "", cat: "", deniedOnly: false}); renderCosts(); }, () => $("#costTable input.search")),
     el("p", {class: "hint", text: totals}));
@@ -321,8 +321,8 @@ function renderPaid(box, claimRows, periodLabel) {
     tile("Payments", usd(sum(pays)), [typed && `${usd(typed)} typed in`, exp && `${usd(exp)} from an export`].filter(Boolean).join("\u00a0· ") || "none in this period"),
     claims ? tile("Claim shares with no payment", usd(sum(shares)), "per the insurers; counted until a payment matches") : hsaTile];
   const tiles = [];
-  if (claims) tiles.push(tile("Payments matched to claims", matched.toLocaleString(), dups ? `${dups} that arrived twice, counted once` : "by amount, date and provider, or by hand"), hsaTile);
-  else if (dups) tiles.push(tile("Counted once", dups.toLocaleString(), "payments that arrived twice"));
+  if (claims) tiles.push(tile("Payments matched to claims", matched.toLocaleString("en-US"), dups ? `${dups} that arrived twice, counted once` : "by amount, date and provider, or by hand"), hsaTile);
+  else if (dups) tiles.push(tile("Counted once", dups.toLocaleString("en-US"), "payments that arrived twice"));
   tiles.push(tile("Paid with an FSA", usd(fsa), "tagged FSA", "oopFsa"));
   if (prem) tiles.push(tile("Insurance premiums", usd(prem), counted.some(r => r.est && /premium/i.test(r.group)) ? "includes estimated months" : "paid from your accounts"));
   const bal = meta.balance || {}, settled = bal.owed === 0 && bal.asOf ? fmtD(dayTs(bal.asOf)) : "";
@@ -399,7 +399,7 @@ function renderPaid(box, claimRows, periodLabel) {
     el("span", {class: "hint", style: {margin: 0}, text: fil ? `For the amounts shown: ${usd(sum(list))} counted` : `${list.length} amount${list.length === 1 ? "" : "s"} · ${usd(sum(list))} counted`}),
     ...["HSA", "FSA"].filter(t => all.some(r => r.hsa === t)).map(t => el("button", {class: "toggle", type: "button", "aria-pressed": fil === t, text: `${t} only`,   // on/off chips (#193)
       onclick: () => { paidState.q = fil === t ? "" : t; keepFocus(renderCosts); }}))),
-    filterLine(fil ? [`Showing ${list.length.toLocaleString()} of ${rows.length.toLocaleString()} amounts`, kept] : [],
+    filterLine(fil ? [`Showing ${list.length.toLocaleString("en-US")} of ${rows.length.toLocaleString("en-US")} amounts`, kept] : [],
       () => { paidState.q = ""; renderCosts(); }, () => $("#paidTable .toggle") || $("#paidTable")));
   // opened, its row in sight first, then as much of the editor under it as fits: an editor taller than the window (a
   // sideways phone) lined up with its top would put the date that has focus above it (#473, 2.4.11), and clear of the

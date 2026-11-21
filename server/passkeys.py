@@ -177,9 +177,13 @@ def authentication_options(db, origin, uid=None):
     allow = None
     if uid is not None:
         allow = _descriptors(db, uid, rp_id)
-        if not allow:
-            raise PasskeyError("None of your passkeys was made at this address. Use your authenticator code, "
-                               "or open Sanguity where you added the passkey.", 409)
+        if not allow:   # where they were made, and a code only to an account with one (#540)
+            parts = urllib.parse.urlsplit(origin)
+            at = " or ".join(where(h, parts.scheme, parts.port) for h in sites(db, uid))
+            code = db.execute("SELECT totp_secret FROM users WHERE id=?", (uid,)).fetchone()[0]
+            raise PasskeyError("None of your passkeys was made at this address." + (f" Open Sanguity at {at} to use one" if at else "")
+                               + (", or use your authenticator code." if at and code else " Use your authenticator code." if code
+                                  else "." if at else ""), 409)
     opts = webauthn.generate_authentication_options(
         rp_id=rp_id, allow_credentials=allow,
         user_verification=UserVerificationRequirement.PREFERRED if uid is not None else UserVerificationRequirement.REQUIRED)

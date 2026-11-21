@@ -538,13 +538,16 @@ def _render(s):
     lay.y -= 15
     a = s.get("for")
     who = " · ".join(x for x in ((a or {}).get("who"), (a or {}).get("where")) if x)
-    p.text(MARGIN, lay.y, pdfdoc.fit(f"For: {a['title']} on {fmt_date(a['date'])}" + (f" · {who}" if who else "") if a
-                                     else "For: no particular appointment", 10, W - 2 * MARGIN), 10, False, INK)
-    lay.y -= 13
     since = s["since"]
-    p.text(MARGIN, lay.y, pdfdoc.fit(f"Since: {fmt_date(since['date'])}" + (f" ({since['label']})" if since.get("label") else ""),
-                                     10, W - 2 * MARGIN), 10, False, INK)
-    lay.y -= 8
+    # each wrapped as a cell is, never cut (#540: "For: Pediatric hematology … on Nov 25, 2026 · Dr. Alexandra Rivera…"
+    # lost the clinician and the place)
+    for line in [*pdfdoc.wrap(f"For: {a['title']} on {fmt_date(a['date'])}" + (f" · {who}" if who else "") if a
+                              else "For: no particular appointment", 10, W - 2 * MARGIN),
+                 *pdfdoc.wrap(f"Since: {fmt_date(since['date'])}" + (f" ({since['label']})" if since.get("label") else ""),
+                              10, W - 2 * MARGIN)]:
+        p.text(MARGIN, lay.y, line, 10, False, INK)
+        lay.y -= 13
+    lay.y += 5
 
     labels = dict(sections())
     for sid in s["sections"]:
@@ -634,13 +637,16 @@ def _render(s):
                 lay.heading(labels.get(sid, sid), len(ex["rows"]))
                 for i, r in enumerate(ex["rows"]):
                     text = " · ".join(x for x in (_when(r.get("when")), r.get("title"), r.get("text")) if x)
+                    lines = pdfdoc.wrap(text, 9.5, W - 2 * MARGIN - 14)   # whole, as a cell is (#540: cut to one line)
                     try:
-                        lay.need(13)
+                        lay.need(13 * len(lines))
                     except _Full:
                         lay.left_out[sid] = len(ex["rows"]) - i
                         raise
-                    lay.page.text(MARGIN + 2, lay.y, pdfdoc.fit("• " + text, 9.5, W - 2 * MARGIN - 4), 9.5, False, INK)
-                    lay.y -= 13
+                    lay.page.text(MARGIN + 2, lay.y, "•", 9.5, False, INK)
+                    for line in lines:
+                        lay.page.text(MARGIN + 12, lay.y, line, 9.5, False, INK)
+                        lay.y -= 13
         except _Full:   # out of room on the last page: this section's remaining rows and every later section
             for x in s["sections"][s["sections"].index(sid):]:
                 lay.left_out.setdefault(x, _count(s, x))

@@ -2205,6 +2205,18 @@ Everything on `main` so far; it becomes the first tagged release.
   it said "2 cycle tracking records" with an Undo though none were kept; tracking is asked again before its review is
   written, and a save counts only what it kept. "What deleting reaches" says which waiting imports go, and how to
   delete an upload that's kept.
+- **Sharing and first run: counts rewriting typed text, the passkey-only step at another name, the summary PDF's For
+  and Since lines, and Account's passkey hint** (#540): #535's rewriting of counts into the browser's way took any
+  "120,135,140" for one, so a dose's note "120,135,140 · took 2,500 IU" read "120.135.140 · took 2.500 IU" in German
+  and "12,01,35,140" in Indian English, and "1.096 days · average 96.4%" mixed two conventions. Counts and decimals
+  are written one way, the app's own ("1,381", "96.4"), on every page as on the server, and nothing rewrites what was
+  typed; dates
+  have English month names in every language, in the person's format ("Okt 6, 2026" was the format's order with a
+  German month). At a name where none of an account's passkeys were made, the passkey-only step said to use the
+  passkey, then pressed, to use a code the account hadn't got; it says where they were made, as links, and the
+  server's refusal offers a code only to an account with one. The summary PDF's For, Since and extra sections' lines
+  were cut to one ("… · Dr. Alexandra Rivera…"); they wrap, and the preview's For line names the place too.
+  Account's passkeys card links the address where they work, to the account page there.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

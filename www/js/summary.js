@@ -130,7 +130,7 @@ function renderPreview(s) {
   sayIn($("#prevMsg"), `${s.pages} page${s.pages === 1 ? "" : "s"}${s.fits ? "" : ", not everything fits"}`, false, {repeat: false, say: !box.hidden});
   const parts = [el("div", {class: "sum-head"},
     el("p", {}, el("b", {text: s.profile}), ` · prepared ${fmtDay(s.prepared)}`),
-    el("p", {text: s.for ? `For: ${s.for.title} on ${fmtDay(s.for.date)}${s.for.who ? " · " + s.for.who : ""}` : "For: no particular appointment"}),
+    el("p", {text: s.for ? [`For: ${s.for.title} on ${fmtDay(s.for.date)}`, s.for.who, s.for.where].filter(Boolean).join(" · ") : "For: no particular appointment"}),   // its place too, as the PDF's (#540)
     el("p", {text: `Since: ${since}${s.since.label ? ` (${s.since.label})` : ""}`}),
     s.fits ? null : el("p", {class: "fitwarn", text: "Not everything fits on two pages; left out: " +
       Object.entries(s.left_out).map(([k, n]) => `${labels[k] || k}${n ? ` (${n})` : ""}`).join(", ") + ". Untick a section or shorten the questions."}))];
@@ -160,12 +160,12 @@ function renderPreview(s) {
       parts.push(el("h3", {text: `My questions (${s.questions.length})`}));
       parts.push(s.questions.length ? el("ol", {}, ...s.questions.map(q => el("li", {text: q}))) : none("No questions written down."));
     } else if (s.measures && s.measures[id]) {   // the phone's and watch's measures (#225): lead lines, a table, a note
-      // "1,381", as the lead writes it (#531), each in this browser's way (#535, util.js localCounts)
-      const b = s.measures[id], n = b.total.toLocaleString();
-      parts.push(el("h3", {text: `${labels[id] || id}${b.history ? "" : ` since ${since}`} (${n})`}), ...b.lead.map(t => el("p", {text: localCounts(t)})));
-      parts.push(b.rows.length ? table(b.cols.map(c => c[0]), b.rows.map(r => el("tr", {}, ...r.map((v, i) => cell(localCounts(measureCell(b.cols[i][1], v)))))), "measures") : none(b.empty));
+      // "1,381", as the lead writes it (#531); the server's text as it is (#540: a typed "120,135,140" was rewritten)
+      const b = s.measures[id], n = b.total.toLocaleString("en-US");
+      parts.push(el("h3", {text: `${labels[id] || id}${b.history ? "" : ` since ${since}`} (${n})`}), ...b.lead.map(t => el("p", {text: t})));
+      parts.push(b.rows.length ? table(b.cols.map(c => c[0]), b.rows.map(r => el("tr", {}, ...r.map((v, i) => cell(measureCell(b.cols[i][1], v))))), "measures") : none(b.empty));
       if (b.total > b.rows.length) parts.push(el("p", {class: "hint", text: `The latest ${b.rows.length} of ${n} are listed.`}));
-      if (b.note) parts.push(el("p", {class: "hint", text: localCounts(b.note)}));
+      if (b.note) parts.push(el("p", {class: "hint", text: b.note}));
     } else {
       const ex = s.extra.find(x => x.id === id); if (!ex) continue;
       parts.push(el("h3", {text: `${labels[id] || id} (${ex.rows.length})`}));

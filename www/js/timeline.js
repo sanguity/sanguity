@@ -103,7 +103,7 @@ tlSvg.addEventListener("pointermove", ev => {
     return;
   }
   const ds = ev.target?.dataset || {};
-  if (ds.steps) { showTip([el("div", {class: "v", text: `${(+ds.steps).toLocaleString()} steps`}), el("div", {class: "s", text: fmtD(+ds.day) + " · from watch"})], ev); return; }
+  if (ds.steps) { showTip([el("div", {class: "v", text: `${(+ds.steps).toLocaleString("en-US")} steps`}), el("div", {class: "s", text: fmtD(+ds.day) + " · from watch"})], ev); return; }
   if (ds.med != null) { medTip(MEDS[+ds.med], ds, ev); return; }   // a medication's span or fill (meds.js)
   const id = +ds.id; if (id) showEvTip(byId.get(id), ev); else hideTip();
 });
@@ -152,7 +152,7 @@ $("#tlView").onclick = ev => {
    of range, and the workouts. */
 let TL_PAGE = 400;   // events drawn at a time (the browser check draws fewer, to see Show more on the demo)
 const isWork = e => e.k === "exercise";
-const tlN = (n, one, many = one + "s") => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+const tlN = (n, one, many = one + "s") => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 const tlMins = m => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} m` : ""}`).replace(/ /g, "\u00a0");   // kept on one line
 /* Watch the only kind shown: its workouts are what's listed, so List workouts reads on and can't be put off (#444) */
 const tlWatchOnly = () => state.cats.has("watch") && CATS.filter(hasLane).every(c => c.k === "watch" || !state.cats.has(c.k));
@@ -195,7 +195,7 @@ function tlSum(v, listed) {
   const work = v.filter(isWork).length, parts = [], when = periodLabel(), names = [...new Set(tests.map(s => nice(s.name)))];
   const what = !names.length ? tlN(res, "result") : names.length === 1 ? tlN(res, `${names[0]} result`)
     : `${tlN(res, "result")} of the ${names.length} tests matching “${timelineFilters().q || state.q}”`;
-  if (labs.length) parts.push(`${tlN(labs.length, "lab draw")}, ${what}${abn ? `, ${abn.toLocaleString()} out of range` : ""}`);
+  if (labs.length) parts.push(`${tlN(labs.length, "lab draw")}, ${what}${abn ? `, ${abn.toLocaleString("en-US")} out of range` : ""}`);
   if (work) parts.push(tlN(work, "workout") + (listed ? "" : ", not listed"));
   const p = $("#tlSum");
   p.hidden = !parts.length;
@@ -205,7 +205,7 @@ let tlOpen = new Set(), tlList = null;   // the days whose workouts are open ("Y
 function renderList() {
   const listed = tlWorkListed(), all = EV.filter(visible), v = tlListed(all, listed);
   tlSum(all, listed); tlAbnDays();
-  $("#listTitle").textContent = `Events (${v.length.toLocaleString()})`;
+  $("#listTitle").textContent = `Events (${v.length.toLocaleString("en-US")})`;
   for (const b of $("#sortSeg").children) b.setAttribute("aria-pressed", (b.dataset.sort === "asc") === state.asc);
   const wb = $("#tlWork"), only = tlWatchOnly();
   wb.checked = listed;
@@ -255,7 +255,7 @@ function tlMore(n) {
   list.append(frag);
   let next = 0;
   for (let i = L.at; i < L.days.length && next < TL_PAGE; i++) next += L.days[i].n;
-  if (next) list.append(el("button", {class: "btn tl-more", id: "tlMore", type: "button", text: `Show ${next.toLocaleString()} more`,
+  if (next) list.append(el("button", {class: "btn tl-more", id: "tlMore", type: "button", text: `Show ${next.toLocaleString("en-US")} more`,
     onclick: () => tlMore(L.n + TL_PAGE)?.focus()}));   // the first of them focused, the button gone (#202)
   return first;
 }
