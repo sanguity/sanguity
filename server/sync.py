@@ -701,6 +701,7 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
         iid = records.store(db, pid, data, "sync", fmt="fhir")
         prof.link_documents(db, iid, keepdocs)
         db.execute("UPDATE imports SET connection_id=? WHERE id=?", (cid, iid))
+        labmap.used(db, lab_plan["ids"].values())   # the lab-name matches it was saved with (#500)
         changed = _update_in_place(db, pid, iid, updates, {**full.get("details", {}), **src}, stored, costs)
         changed += _apply_meta(db, iid, meta_changes)
         _link_labdays(db, pid, iid, full, set(full_by_key) & (touched | {e.get("key") for e in new_events}))

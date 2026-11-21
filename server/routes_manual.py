@@ -277,7 +277,7 @@ def manual(pid: int, body: Rows, request: Request, s=Depends(user), db=Depends(g
     matched = _matched(db, got)
     recs = read_items(db, pid, body.items)
     results = [r for _, r, p, _ in got if r and not p]
-    lab = labmap.apply_remembered(db, MATCHED_AS, csv_labs.build(results, source=SOURCE, sub=SOURCE))[0] if results else {}
+    lab, _, matches = labmap.apply_remembered(db, MATCHED_AS, csv_labs.build(results, source=SOURCE, sub=SOURCE)) if results else ({}, {}, [])
     base = max([e["id"] for e in lab.get("events") or []], default=0)
     found_heights = _heights(db, pid, recs)   # #224, before building: one refused isn't built
     built, origin = manual_items.build([r for r in recs if r["ok"]], base_id=base)
@@ -326,6 +326,7 @@ def manual(pid: int, body: Rows, request: Request, s=Depends(user), db=Depends(g
             keepdocs, counts["documents"] = prof.index_documents(db, pid, new["details"], lambda url: files.get(url))
             iid = records.store(db, pid, new, NAME, fmt=NAME, by=s["id"])   # who typed it in, for the history (#325)
             prof.link_documents(db, iid, keepdocs)
+            labmap.used(db, matches)   # the lab-name matches it's saved with (#500)
             if watch:   # last: its file is written once everything else is in the transaction
                 w = watch_store.save_import(db, pid, watch, import_id=iid)
                 counts.update(watch_days=w["days"], workouts=w["workouts"], **({"readings": w["readings"]} if w.get("readings") else {}))

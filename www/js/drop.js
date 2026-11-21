@@ -127,12 +127,22 @@ const SgDrop = (() => {
     return {take: dlg.sgTake};
   }
   /* a link to a tab of this page (the card's "See them on the timeline", its toast's Open Labs) only changes the
-     address's hash: the dialog closes, so the tab isn't left under it (#497) */
+     address's hash: the dialog closes, so the tab isn't left under it (#497). "/" and "/index.html" are one page
+     (#500: sign-in lands on "/", the links name index.html), as is an address without ?profile= and one naming the
+     profile shown: the link goes to the hash alone, so nothing loads again, the dialog closed or not (a file may be
+     sending in it, its cards kept) */
+  const page = u => {
+    const q = new URLSearchParams(u.search);
+    if (q.get("profile") === String(SgNav.profile()?.id)) q.delete("profile");
+    return u.origin + u.pathname.replace(/\/index\.html$/, "/") + "?" + q;
+  };
   addEventListener("click", e => {
     const a = e.target instanceof Element ? e.target.closest("a[href]") : null;
-    if (!dlg?.open || !a) return;
+    if (!dlg || !a || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     const to = new URL(a.href, location.href);
-    if (to.hash && to.origin + to.pathname + to.search === location.origin + location.pathname + location.search) dlg.close();
+    if (!to.hash || page(to) !== page(location)) return;
+    if (to.pathname + to.search !== location.pathname + location.search) { e.preventDefault(); location.hash = to.hash; }
+    dlg.close();
   });
   /* an import saved from the dialog on the records page: its records drawn again in place (store.js), or, for a
      profile that had none, the page loaded again once the dialog closes */

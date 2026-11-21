@@ -18,7 +18,9 @@ Each choice is remembered for the install (table labmaps, schema version 16), ke
 unit and LOINC code as reported, normalised: "keep as a series of its own" too (target NULL), so the next import
 doesn't ask again. Remembered choices are applied as soon as an import is parsed, before its duplicates are found,
 and to results typed in (routes_manual.py); the preview shows them as "matched as before", and changing one there
-changes that import only. They affect every profile, so only admins change or remove them (routes_labmaps.py).
+changes that import only. They affect every profile, so only admins change or remove them (routes_labmaps.py), but
+for one way: undoing the import whose review made a choice forgets it, unless another import has been saved with it
+since or an admin has changed it (labmaps.import_id and used, schema version 36; history.undo, #500).
 
 The name, unit and code (source) and the target are health details, so encrypted (crypto.enc); rows are found by
 lookup, a keyed hash of the normalised identity (security.pepper_mac), never by decrypting them all.
@@ -156,6 +158,7 @@ def plan(db, pid, importer, data, keep=()):
 
       {"listed": [{"ref", "name", "unit", "loinc", "n", "suggestions", "before": {"target"} | None}],
        "auto": {ref: target or None}   remembered choices, applied without asking
+       "ids": {ref: labmaps id}        theirs, marked used once the import is saved (used, #500)
        "targets": [{"name", "unit"}]   every series one can be put in (only when something is listed)}
 
     A series is listed when lab-aliases.json doesn't know its name and the profile has no series of that name (or
@@ -169,7 +172,7 @@ def plan(db, pid, importer, data, keep=()):
         if isinstance(s, dict) and isinstance(s.get("name"), str) and s["name"].strip() and not _known(s["name"]):
             candidates[f"s:{i}"] = s
     found = remembered(db, [importer], {ref: _ident(s) for ref, s in candidates.items()})
-    listed, auto = [], {}
+    listed, auto, ids = [], {}, {}
     for ref, s in candidates.items():
         before, same = found.get(ref), lower.get(s["name"].strip().lower())
         if before is None and same and ref not in keep:
@@ -180,9 +183,9 @@ def plan(db, pid, importer, data, keep=()):
             entry["same"] = same   # (kept: left as a series of its own, it joins that one)
         if before is not None:
             entry["before"] = {"target": before["target"]}
-            auto[ref] = before["target"]
+            auto[ref], ids[ref] = before["target"], before["id"]
         listed.append(entry)
-    return {"listed": listed, "auto": auto, "targets": targets(have) if listed else []}
+    return {"listed": listed, "auto": auto, "ids": ids, "targets": targets(have) if listed else []}
 
 
 def _ident(s):
@@ -221,9 +224,10 @@ def apply(data, picked):
     return out
 
 
-def remember(db, importer, lab_plan, sent, data, who):
+def remember(db, importer, lab_plan, sent, data, who, import_id=None):
     """Keep the choices sent for series the preview listed and nothing was remembered for. Inside the import's
-    transaction. A choice remembered meanwhile (by another import, or an admin) wins. Returns how many were kept."""
+    transaction. A choice remembered meanwhile (by another import, or an admin) wins. Returns how many were kept.
+    import_id: the import saved with them, whose Undo forgets them (forget, #500)."""
     listed = {e["ref"]: e for e in (lab_plan or {}).get("listed") or [] if not e.get("before")}
     labs = data.get("labs") or []
     n = 0
@@ -232,13 +236,43 @@ def remember(db, importer, lab_plan, sent, data, who):
         if not e or not ref[2:].isdigit() or int(ref[2:]) >= len(labs):
             continue
         name, unit, code = _ident(labs[int(ref[2:])])
-        n += db.execute("""INSERT INTO labmaps(lookup, importer, source, target, created_by, created_name, created)
-                           VALUES(?, ?, ?, ?, ?, ?, ?) ON CONFLICT(lookup) DO NOTHING""",
+        n += db.execute("""INSERT INTO labmaps(lookup, importer, source, target, created_by, created_name, created, import_id)
+                           VALUES(?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(lookup) DO NOTHING""",
                         (lookup(importer, name, unit, code), importer,
                          crypto.enc(json.dumps({"name": name, "unit": unit, "loinc": code}, ensure_ascii=False)),
                          _enc_target(clean_target(target)), who["id"] if who else None,
-                         who["username"] if who else "removed account", dbm.now())).rowcount
+                         who["username"] if who else "removed account", dbm.now(), import_id)).rowcount
     return n
+
+
+def applied(lab_plan, sent):
+    """The ids of the remembered choices an import is saved with: those not changed for it (choices)."""
+    auto, ids, final = (lab_plan or {}).get("auto") or {}, (lab_plan or {}).get("ids") or {}, choices(lab_plan, sent)
+    return [ids[ref] for ref in ids if ref in auto and final.get(ref) == auto[ref]]
+
+
+def used(db, ids):
+    """Mark remembered choices another import was saved with (inside its transaction): the import that made them
+    no longer takes them away when it's undone (forget)."""
+    ids = sorted({int(i) for i in ids or ()})
+    for i in range(0, len(ids), 500):
+        part = ids[i:i + 500]
+        db.execute(f"UPDATE labmaps SET used=? WHERE id IN ({','.join('?' * len(part))})", (dbm.now(), *part))
+
+
+# what an import's Undo forgets (#500): the choices its review made, unless another import has been saved with them
+# since or an admin has changed them
+_OWN = "FROM labmaps WHERE import_id=? AND used IS NULL AND changed IS NULL"
+
+
+def forgettable(db, import_id):
+    """How many remembered choices undoing the import would forget, for its Undo's question."""
+    return db.execute("SELECT COUNT(*) " + _OWN, (import_id,)).fetchone()[0]
+
+
+def forget(db, import_id):
+    """Forget them, inside the Undo's transaction, so the next import of those names asks again. Returns how many."""
+    return db.execute("DELETE " + _OWN, (import_id,)).rowcount
 
 
 def _enc_target(t):
@@ -268,13 +302,14 @@ def remembered(db, importers, idents):
 
 
 def apply_remembered(db, importers, data):
-    """data with the remembered choices applied to its series (hand entry): (data, {old name: new name})."""
+    """data with the remembered choices applied to its series (hand entry): (data, {old name: new name}, [their ids],
+    marked used once it's saved)."""
     idents = {f"s:{i}": _ident(s) for i, s in enumerate(data.get("labs") or [])
               if isinstance(s, dict) and isinstance(s.get("name"), str) and not _known(s["name"])}
     found = remembered(db, importers, idents)
     picked = {ref: f["target"] for ref, f in found.items()}
     renamed = {idents[ref][0]: t for ref, t in picked.items() if t}
-    return apply(data, picked), renamed
+    return apply(data, picked), renamed, [f["id"] for f in found.values()]
 
 
 # ---------------------------------------------------------------- the list, for admins

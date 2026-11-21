@@ -301,6 +301,8 @@
     ["heights", ["height, offered for About this person", "heights, offered for About this person"], "ruler", "var(--ink2)"],
     ["cycle", ["cycle tracking record", "cycle tracking records"], "droplet", "var(--c-cycle)"]];
   const RECORDS = new Set(["results", "allergies", "problems", "upcoming"]);   // besides events: what's a record
+  // a wearable's (the server's jobs._watch_counts), counted in the review's bar beside the records (#500)
+  const WATCH = new Set(["watch_days", "workouts", "ecgs", "rhythm", "bp_readings", "temp_readings", "glucose_readings", "cgm_days", "heights", "cycle"]);
   // the counts c, each {k, n, words, mark, tone, record}: events by kind, most first (a lab draw left out where there are
   // results: they're its), then EXTRA's
   function counted(c) {
@@ -332,11 +334,13 @@
     }));
   }
 
-  // how many records are new, already here or possibly the same as another source's: a bar in three parts and its key
+  // how many records are new, already here or possibly the same as another source's: a bar in three parts and its key.
+  // A wearable's data counts beside them (#500: a later export's new day and workout, and those it has already)
   function split(j) {
-    const c = j.counts || {}, same = (j.possible || []).length;
-    const records = counted(c).filter(x => x.record).reduce((a, x) => a + x.n, 0);
-    const parts = [["new", Math.max(0, records - same), "new"], ["here", hereCount(j), "already here"], ["same", same, "possibly the same"]];
+    const c = j.counts || {}, same = (j.possible || []).length, w = (j.duplicates || {}).watch || {};
+    const records = counted(c).filter(x => x.record || WATCH.has(x.k)).reduce((a, x) => a + x.n, 0);
+    const here = hereCount(j) + [...WATCH].reduce((a, k) => a + (w[k] || 0), 0);
+    const parts = [["new", Math.max(0, records - same), "new"], ["here", here, "already here"], ["same", same, "possibly the same"]];
     const total = parts.reduce((a, p) => a + p[1], 0);
     if (!total) return null;
     let x = 0;
@@ -439,9 +443,13 @@
         let j = null;
         try { const r = await call(base); if (r.ok) j = await r.json(); } catch (e) {}
         if (!j || j.state !== "preview" || f.card.dataset.step !== "review") return;   // (saved or cancelled meanwhile)
-        const had = card.contains(document.activeElement);
+        // each list's open state, and focus on the same control, found again by what it's for (#500), where it's
+        // still offered; else on the card
+        const a = document.activeElement, had = card.contains(a), back = had && a !== card ? spot(card, a) : null;
+        const open = [...card.querySelectorAll("details")].map(d => [listSel(d), d.open]);
         draw({profile_id: pid, ...j}, true);
-        if (had) card.focus({preventScroll: true});
+        for (const [sel, o] of open) { const d = card.querySelector(sel); if (d) d.open = o; }
+        if (had) { const to = back && back(); (to && to.checkVisibility() ? to : card).focus({preventScroll: true}); }
       };
       draw(job);
     });
@@ -449,6 +457,19 @@
   // a review drawn again (f.fresh, above): one opened again (Sources' Waiting for you), or each other one of the
   // profile on the page once an import of it is saved
   const fresh = card => FRAMES.get(card)?.fresh?.();
+  // a review's list (the lab names, possible matches, duplicates, the notes), as a selector that finds it drawn again
+  const listSel = d => d.classList.length ? "details." + d.classList[0] : "details:not([class])";
+  // the control a, found again in the card drawn again (#500): a box by its ref, a list's summary, else the same
+  // kind of control at the same place in its list or in the card -> () => the element or undefined
+  function spot(card, a) {
+    const d = a.closest("details"), at = d ? listSel(d) + " " : "";
+    const sel = a.matches("summary") ? at + "summary"
+      : a.matches("input[data-ref]") ? at + `input[data-ref="${CSS.escape(a.dataset.ref)}"]`
+      : a.matches("input[type=checkbox]") ? at + `input[type=checkbox][value="${CSS.escape(a.value)}"]` : null;
+    if (sel) return () => card.querySelector(sel);
+    const all = () => [...card.querySelectorAll(at + a.localName)], i = all().indexOf(a);
+    return () => all()[i];
+  }
   const freshOthers = (card, pid) => { for (const c of document.querySelectorAll(`.job[data-step=review][data-pid="${pid}"] .import-job`)) if (c !== card) fresh(c); };
 
   // replaceChildren turns a null into the text "null"; parts that aren't there are left out instead
@@ -507,10 +528,15 @@
       actions: [{text: labs ? "Open Labs" : "Open the timeline", href: `index.html?profile=${pid}#${where}`},
         ...(j.import_id != null && what.length ? [{text: "Undo…", onClick: () => undoImport(card, pid, j, what)}] : [])]});
   }
+  // what else an Undo takes away (#500, the server's labmap.forget): the lab-name matches the import's review made,
+  // as Import history says it (import-history.js)
+  const forgets = n => !n ? "" : n === 1 ? " The lab-name match made for it is forgotten too: the next import of that name asks about it again."
+    : ` The ${n.toLocaleString()} lab-name matches made for it are forgotten too: the next import of those names asks about them again.`;
   /* the Undo of a toast: Import history's, asked first as it asks (false: kept), the card then saying it's undone */
   async function undoImport(card, pid, j, what) {
     if (!await ask({title: "Undo this import?", danger: true, action: "Undo import", cancel: "Keep it",
-                    message: `Remove everything this ${j.label || j.importer} import brought: ${what.join(", ").toLowerCase()}, and the files uploaded for it. This can't be reversed; you can import the files again.`})) return false;
+                    message: `Remove everything this ${j.label || j.importer} import brought: ${what.join(", ").toLowerCase()}, and the files uploaded for it.` +
+                      forgets((j.lab_names || {}).remembered) + " This can't be reversed; you can import the files again."})) return false;
     const id = j.import_id;
     const r = await api(`profiles/${encodeURIComponent(pid)}/imports/${id}/undo`, {method: "POST"});
     if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(typeof e.detail === "string" ? e.detail : `the server answered ${r.status}`); }

@@ -12,7 +12,10 @@ Undo removes everything the import added, and only that, in one transaction:
     the files attached to its documents: the upload is marked discarded in the transaction and its folder
     removed once it commits (uploads.cleanup removes it at the next start if that's interrupted)
   - its watch data (watch_store.forget_import): its own summary set aside and the merged file rebuilt without it
-It never touches anything stored apart from the import's rows: settings, other imports, corrections (#33).
+  - the lab-name matches its review made (labmap.forget, #500), unless another import has been saved with them since
+    or an admin has changed them: the next import of those names asks again. The history entry counts them
+    ("lab_matches"), for the question asked first
+It never touches anything else stored apart from the import's rows: settings, other imports, corrections (#33).
 
 By origin:
   upload    undone as above: the profile is as it was before the import.
@@ -27,7 +30,7 @@ By origin:
 """
 import json, os
 
-from . import activity, crypto, db as dbm, importers as registry, records, uploads, watch_store
+from . import activity, crypto, db as dbm, importers as registry, labmap, records, uploads, watch_store
 
 FILES_SHOWN = 20   # file names listed per import; the rest are counted
 NOTES = {
@@ -102,7 +105,7 @@ def _entry(db, pid, imp):
             "by": by, "job": job["id"] if job else None, "upload": job["upload_id"] if job else None,
             "files": names[:FILES_SHOWN], "file_count": len(names),
             "counts": summary.get("counts") or _counts(db, iid), "range": summary.get("range"),
-            "watch": watch_store.has_import(pid, iid),
+            "watch": watch_store.has_import(pid, iid), "lab_matches": labmap.forgettable(db, iid),   # (#500)
             "connection": _source(db, imp["connection_id"]), "changed": summary.get("changed"),
             "state": "active", "can_undo": origin != "build", "note": NOTES.get(origin)}
 
@@ -166,6 +169,7 @@ def undo(db, pid, iid, who, ip=None):
             if imp["origin"] == "sync":   # a connected source's sync: what it changed in place goes back first
                 from . import sync
                 sync.unapply(db, iid)
+            forgot = labmap.forget(db, iid)   # before its row goes (labmaps.import_id is set null with it)
             records.drop(db, pid, [iid])   # events, series, results, documents: by cascade
             for u in ups:
                 if not _still_used(db, pid, iid, u):
@@ -176,7 +180,8 @@ def undo(db, pid, iid, who, ip=None):
             db.execute("INSERT INTO import_undos(profile_id, import_id, at, by_id, by_name, entry) VALUES(?, ?, ?, ?, ?, ?)",
                        (pid, iid, dbm.now(), who["id"], who["username"], crypto.enc(json.dumps(kept, separators=(",", ":")))))
             activity.log(db, "undo", who, pid, {"import": iid, "origin": imp["origin"], "importer": imp["format"],
-                                                "label": entry["label"], "counts": entry["counts"], "uploads": discard}, ip=ip)
+                                                "label": entry["label"], "counts": entry["counts"], "uploads": discard,
+                                                **({"lab_matches": forgot} if forgot else {})}, ip=ip)
             finish_watch = watch_store.forget_import(db, pid, iid)   # last: files can't roll back with the rest
     except BaseException:
         if finish_watch:
