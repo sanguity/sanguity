@@ -877,6 +877,9 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
   .acct .tbl:not(:where(.share-list *)) td[data-label]::before{content:attr(data-label);display:block;color:var(--muted);font-size:var(--fs-2);font-weight:var(--fw-medium);overflow-wrap:normal}
   .acct .activity .tbl td:nth-child(n+3){grid-column:1/-1}   /* …and an activity log's what and address take the row's width */
   .acct .tbl.users td.acts{grid-area:1/2/span 2}   /* an account's ⋯ on the right, beside its name and devices (#287) */
+  /* a passkey's name, its dates, then its buttons, a line each (#510: "Re/na/me" at 320 px, past the card) */
+  .acct .tbl.pk tr{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .acct .tbl.pk :is(td:first-child,td.acts){grid-column:1/-1}
 }
 /* uploading (#281, import.js dropTarget): Sources → Upload files, the guide's step 2 and the dialog a drop opens
    (drop.js); the drop target, then each upload's card (import-jobs.js frame): its title, the stage line, one bar,

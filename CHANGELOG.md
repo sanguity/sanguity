@@ -1987,6 +1987,15 @@ Everything on `main` so far; it becomes the first tagged release.
   import as Import history lists it: the files uploaded for it only when there were some (the toast always said so),
   and one count, a lab draw not counted beside its results ("1 lab draw, 1 lab result" in Import history's, "1 lab
   result" in the toast's).
+- **Settings, Account and Admin: Make owner's replies in sight, no stale "Saved" beside an empty source form, Passkeys
+  at 320 px, and the palette's missing words** (#510): Make owner's replies were said under the accounts list, under a
+  phone's tab bar while focus stayed on Make owner; a refusal is said under its row now, and a profile given an owner
+  where its row was, both in sight. Set up a source's "Saved …" stayed once its source was removed from its row, beside
+  an empty Add a source form, and once Change opened another; the form clears it whenever it goes to another source or
+  back to Add a source. At 320 px Passkeys' Rename and Remove broke a letter or two a line and the table ran past the
+  card; on a phone a passkey's name, its dates and its buttons each take a line. The command palette finds Share links
+  for "remove share link" and "delete share link", People's Who has access for "remove person", "remove member", "make
+  editor" and "change role", and Connected-source apps for "client secret", "client id", "issuer" and the vendors' names.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

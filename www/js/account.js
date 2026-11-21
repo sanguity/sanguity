@@ -173,7 +173,7 @@ async function loadPasskeys() {
   if (usable && st.user_handle)   // the device can forget passkeys removed here (or on another device)
     passkeySignalAccepted(st.site, st.user_handle, st.passkeys.filter(k => k.here).map(k => k.credential_id));
   const last = st.passkeys.length === 1 && st.required && !st.authenticator_app;
-  $("#pkList").replaceChildren(st.passkeys.length ? el("table", {class: "tbl"},
+  $("#pkList").replaceChildren(st.passkeys.length ? el("table", {class: "tbl pk"},
     el("thead", {}, el("tr", {}, ...["Name", "Added", "Last used", ""].map(h => el("th", {text: h})))),
     el("tbody", {}, ...st.passkeys.map(k => {
       const name = el("input", {value: k.name, maxlength: 60, "aria-label": "Passkey name"});

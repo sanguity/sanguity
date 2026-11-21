@@ -248,15 +248,15 @@ async function loadOwnerless() {
         if (!who) return;
         if (who.toLowerCase() === ME.user.username.toLowerCase() &&
             !await ask({title: `Own ${p.name} yourself?`, message: `This gives you access to the records in ${p.name}.`, action: "Make me owner"})) return;
-        const at = list.indexOf(p);
+        const at = list.indexOf(p), row = go.closest(".row");
+        ownSay(null);
         try { await call(`ownerless/${p.id}/owner`, "POST", {username: who}); await loadOwnerless(); }
-        catch (e) { say("#userMsg", e.message, true); return; }
-        // its row gone (#502: focus fell to the page): on the next profile's Make owner, else the one before's, saying
-        // so under the list; the last one gone, what it said is where the list was, with focus on it (#506: focus went
-        // to the card's heading, the message out of sight under the accounts)
+        catch (e) { return ownSay(row, e.message, true); }   // under its row, focus still on its Make owner (#510)
+        // its row gone (#502: focus fell to the page): on the next profile's Make owner, else the one before's, what it
+        // said where its row was (#510: it was under the accounts list, out of sight); the last one gone, where the list
+        // was, with focus on it (#506: focus went to the card's heading, the message out of sight under the accounts)
         const rows = [...$("#ownerless").querySelectorAll(".ownerless > .row")], done = `${who} now owns ${p.name}.`;
-        if (rows.length) { say("#userMsg", done); return focusNear(rows, at, "button"); }
-        say("#userMsg", "");
+        if (rows.length) { focusNear(rows, at, "button"); return rows[at] ? ownSay(rows[at], done, false, true) : ownSay(rows[at - 1], done); }
         const m = el("p", {class: "msg", tabindex: "-1", text: done + " Every profile has an owner now."});
         $("#ownerless").replaceChildren(m);
         m.focus({preventScroll: true}); m.scrollIntoView({block: "nearest"});
@@ -265,6 +265,17 @@ async function loadOwnerless() {
         el("span", {class: "muted", text: p.members.length ? p.members.map(m => `${m.username} (${m.role}${m.disabled ? ", disabled" : ""})`).join(", ") : "no members"}),
         pick, other, go);
     })));
+}
+/* Make owner's reply (#510), as a row's action's is (rowSay): under its row, or, its row gone, before the next one,
+   in view with the Make owner focus is on, until the next Make owner (row null: just that) */
+function ownSay(row, text, bad = false, before = false) {
+  for (const m of document.querySelectorAll("#ownerless .row-msg")) m.remove();
+  say("#userMsg", "");
+  if (!row) return;
+  const m = el("p", {class: "msg row-msg"});
+  row[before ? "before" : "after"](m);
+  sayIn(m, text, bad);
+  m.scrollIntoView({block: "nearest"});
 }
 
 /* removing an account for good (#287): the danger zone under the list (util.js dangerZone, as deleting a profile), the

@@ -76,8 +76,11 @@ function testStep() {
     el("div", {class: "row"}, btn), out);
 }
 
+/* the form on a source (s), or empty to add one: what it said about another, or about this one before, cleared (#510:
+   "Saved …" stayed beside an empty form once its source was removed, and beside another opened in Change) */
 function fill(s) {
   editing = s ? s.id : null;
+  sayIn($("#fMsg"), "");
   $("#formTitle").textContent = s ? `Change ${s.name}` : "Add a source";
   $("#fVendor").value = s ? s.vendor : "epic";
   $("#fName").value = s ? s.name : "";
@@ -200,7 +203,7 @@ $("#fScopes").addEventListener("input", () => {
   for (const c of document.querySelectorAll("#guide [data-paste]")) if (c.dataset.paste !== "return_address" && c.dataset.paste !== "sandbox") c.textContent = PASTE[c.dataset.paste].get();
 });
 $("#fAuth").onchange = () => { $("#fSecretWrap").hidden = $("#fAuth").value !== "confidential"; };
-$("#fCancel").onclick = () => { saved = null; fill(null); sayIn($("#fMsg"), ""); };
+$("#fCancel").onclick = () => { saved = null; fill(null); };
 pwField($("#fSecret"), {name: "client secret"});   // Show and Hide, as every password field has (util.js, #492)
 $("#srcForm").onsubmit = async ev => {
   ev.preventDefault();
