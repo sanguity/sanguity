@@ -1902,6 +1902,16 @@ Everything on `main` so far; it becomes the first tagged release.
   box or summary. A lab name matched by hand outlived its import's Undo, on every profile: undoing an import now
   forgets the matches its review made, unless another import has been saved with them since or an admin changed them,
   and the Undo question says so. An empty profile's page no longer logs an error when resized across 700 px.
+- **Records in: a redraw keeps focus on Cancel, an empty profile keeps its Undo, one count of what's already here, a
+  half-typed series left alone, and focus after Undo** (#504): with focus on a review's Cancel, another review's Add
+  drew it again with focus on its Add (the next Enter added it), or on nothing where it had nothing to add; focus stays
+  on Cancel. An empty profile's page loaded again once the drop dialog closed after an Add, taking the toast's Undo and
+  the dialog's other reviews with it (and asking "Leave site?" while a file was sending); its records are drawn in
+  place. A later Apple Health export's bar said "10 already here" and its list "7 duplicates": both count its days of
+  activity and workouts. A series half typed came back from a redraw marked "No series by that name"; only a change of
+  your own marks it. After the toast's Undo, focus is on the card's "Undone." line, not the next toast. The Undo
+  question, the toast's and Import history's alike, counts the lab-name matches it forgets as it's asked, so one
+  another import has used since isn't said to go.
 - **Sharing and setup keep focus, the clinician's page prints its heads with their rows, its section bar is two rows
   at most, and a link sends a long section's latest rows** (#498): Share links' Cancel, Sharing's Leave and a wrong
   setup code left focus on the page. Cancel puts it on New share link, Leave on the page's heading (the next profile's),

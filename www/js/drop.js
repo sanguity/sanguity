@@ -145,12 +145,17 @@ const SgDrop = (() => {
     dlg.close();
   });
   /* an import saved from the dialog on the records page: its records drawn again in place (store.js), or, for a
-     profile that had none, the page loaded again once the dialog closes */
+     profile that had none, its tabs drawn once the dialog closes (app.js recordsFirst, #504: not the page loaded
+     again, which took the toast's Undo and the dialog's other reviews, and asked to leave while a file was sending) */
+  let later = false;
   async function saved(pid) {
     if (typeof storeRecords !== "function" || typeof PROFILE === "undefined" || !PROFILE || PROFILE.id !== pid) return;
-    if (typeof DATA === "undefined" || !DATA) { dlg.addEventListener("close", () => location.reload(), {once: true}); return; }
+    if (!DATA && dlg.open) {
+      if (!later) { later = true; dlg.addEventListener("close", () => { later = false; saved(pid); }, {once: true}); }
+      return;
+    }
     const r = await api(`profiles/${pid}/data`).catch(() => null);
-    if (r && r.ok) storeRecords(await r.json());
+    if (r && r.status === 200) (DATA ? storeRecords : recordsFirst)(await r.json());
   }
 
   return {here(target, show) { here = {target, show}; }};

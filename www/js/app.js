@@ -128,11 +128,24 @@ storeOn(STORE_PARTS, parts => {
 /* no records to show (an empty profile, none shared, or an error): a message instead of the tabs, and none of the
    controls that would render them, since those need DATA and the tab sections this replaces. One empty state
    (emptyState, util.js: #199), or the words of an error */
+let mainKids = null;   // the tabs' sections, kept for an empty profile's first records (recordsFirst)
 function emptyCard(...kids) {
   $(".tabs").hidden = true; $(".filters").hidden = true;
   const one = kids.length === 1 && kids[0].nodeType ? kids[0] : el("div", {class: "card"}, ...kids);
   one.classList.add("empty");
-  document.querySelector("main").replaceChildren(one);
+  const main = document.querySelector("main");
+  mainKids ??= [...main.childNodes];
+  main.replaceChildren(one);
+}
+/* an empty profile's first records, saved from the upload dialog (drop.js, #504): its tabs in place of the empty
+   card, drawn as the page draws them when it loads, without loading it again (the toast's Undo, the dialog's other
+   reviews and a file still sending stay). Records that come while they're being drawn are drawn in place after */
+let firstDrawn = null;
+function recordsFirst(data) {
+  if (firstDrawn || DATA) return (firstDrawn || Promise.resolve()).then(() => storeRecords(data));
+  if (mainKids) document.querySelector("main").replaceChildren(...mainKids);
+  $(".tabs").hidden = false; $(".filters").hidden = false;
+  return firstDrawn = recordsDraw(data);
 }
 /* another profile: the page again (nav.js remembers the choice first), on the tab that profile last showed here, so
    the address loses its tab's # (#208) */
@@ -212,6 +225,15 @@ async function settingsLoad() {
     data = await r.json();
     await settingsLoad();
   } catch (e) { emptyCard("Couldn't load the records: " + e.message); return; }
+  await recordsDraw(data);
+  try { performance.mark("sanguity:ready"); } catch (e) {}   // the records page is ready: what docs/performance.md times (#201)
+  journalSaved();   // the first entry on a profile with no records, saved: the page again, with it open (journal.js, #477)
+  journalResume();  // Add → Journal entry from another page (journal.js)
+  SgPalette.resume();   // a lab or an event chosen in the command palette on another page (palette.js, #273)
+  if (location.hash === "#log-dose") logDose();   // arriving from Add on another page (nav.js)
+})();
+/* the records drawn: as the page loads, or an empty profile's first (recordsFirst) */
+async function recordsDraw(data) {
   applyTabs(CFG.tabs);
   applyTheme(CFG.theme);   // this user's default theme (#45), unless this browser has its own (the light/dark toggle)
   // optional: watch data from the Health Connect receiver
@@ -219,7 +241,7 @@ async function settingsLoad() {
     const w = await api(`profiles/${PROFILE.id}/watch`);
     if (w.status === 200) WATCH = await w.json();
   } catch (e) {}
-  await dates;   // before any time is read: one without an offset is this person's wall-clock time
+  await datesReady();   // before any time is read: one without an offset is this person's wall-clock time
   storeRecords(data);   // the records, the watch's joined to them, ready to draw (store.js, #271)
   if (RANGES_USED) for (const n of document.querySelectorAll(".range-note")) n.textContent += RANGE_NOTE_SETTINGS;
   await cycleLoad();   // cycle tracking, only when turned on and for owners and editors (cycle.js, #183)
@@ -242,9 +264,4 @@ async function settingsLoad() {
   switchTab(state.tab);
   if (drug) medCostsShow();   // the drug's claims in sight, focus in their search, as a click on the link (#456)
   booted = true;
-  try { performance.mark("sanguity:ready"); } catch (e) {}   // the records page is ready: what docs/performance.md times (#201)
-  journalSaved();   // the first entry on a profile with no records, saved: the page again, with it open (journal.js, #477)
-  journalResume();  // Add → Journal entry from another page (journal.js)
-  SgPalette.resume();   // a lab or an event chosen in the command palette on another page (palette.js, #273)
-  if (location.hash === "#log-dose") logDose();   // arriving from Add on another page (nav.js)
-})();
+}
