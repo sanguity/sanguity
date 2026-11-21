@@ -2058,6 +2058,11 @@ Everything on `main` so far; it becomes the first tagged release.
   1 result. See them on Labs" and the toast still offered "Open Labs"; the line says it's undone and the toast's link
   goes with its Undo. Times on the Sources hub, in Import history and in Passkeys broke before their AM or PM at some
   widths ("10:06 / AM"); every time the app writes keeps it, on every page.
+- **Two refreshes of one waiting preview no longer collide on its file** (#521): after a save on Sources, the open
+  review and the Overview could read the same preview again at once, and one failed on the file both were writing,
+  so the review could be drawn from its old counts. A sealed file is written through a temporary name of its own, a
+  preview is read again one request at a time, a cancelled or saved preview's file no longer comes back if that
+  lands while it's being read again, and the Overview reads its waiting previews again only while it's shown.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

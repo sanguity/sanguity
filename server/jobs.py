@@ -268,11 +268,26 @@ def _stamp(db, pid):
                                                    for t in ("imports", "events", "series")))
 
 
+_FRESHENING = [threading.Lock() for _ in range(16)]   # freshen, one at a time per job (#521), by its id
+
+
 def freshen(db, pid, jid):
     """A preview read again against the profile as it is now (#490), when its records have changed since it was read:
     the same file saved meanwhile shows as already here, not as new. Only what the page shows changes: what's saved is
     found again on confirm anyway (_save), but for the lab names to match, planned again and kept for confirm (#497).
-    A preview that can't be read again keeps what it said."""
+    A preview that can't be read again keeps what it said. One at a time per job (#521): the open review's own fetch
+    and the Overview's list can ask together, and the second then finds the first's summary already fresh."""
+    with _FRESHENING[int(jid) % len(_FRESHENING)]:
+        _freshen(db, pid, jid)
+
+
+def _left(db, jid):
+    """The job no longer needs its preview file: saved, failed or cancelled (or gone); a confirmed one still does."""
+    r = db.execute("SELECT state FROM jobs WHERE id=?", (jid,)).fetchone()
+    return not r or r["state"] not in ("preview", "queued", "running")
+
+
+def _freshen(db, pid, jid):
     r = db.execute("SELECT summary FROM jobs WHERE id=? AND profile_id=? AND state='preview'", (jid, pid)).fetchone()
     if not r or not r["summary"]:
         return
@@ -285,8 +300,13 @@ def freshen(db, pid, jid):
         # the lab names to match planned again too (#497), what was asked still asked (a choice may be typed in it)
         labs = labmap.plan(db, pid, held["importer"], held["data"], keep={e["ref"] for e in (held.get("labs") or {}).get("listed") or []})
         report = _report(db, pid, held["importer"], held["data"], held.get("watch"), labs)
-        if labs != held.get("labs") and os.path.isfile(path):   # what confirm (_save) reads the choices against
+        if labs != held.get("labs"):   # what confirm (_save) reads the choices against
+            if _left(db, jid):
+                return
             crypto.write_file(path, json.dumps({**held, "labs": labs}, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+            if _left(db, jid):   # saved or cancelled while it was written: the file mustn't come back (#521)
+                _remove(path)
+                return
     except Exception:   # gone (saved or cancelled meanwhile), or an importer since removed
         log.warning("the preview of job %s couldn't be read again", jid, exc_info=True)
         return

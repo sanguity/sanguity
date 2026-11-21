@@ -9,7 +9,8 @@ Fictional data only.
 
   python3 tests/test_preview.py
 """
-import io, json, os, shutil, sys, tempfile, time, unittest
+import io, json, os, shutil, sys, tempfile, threading, time, unittest
+from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-preview-test-")
@@ -248,6 +249,57 @@ class Preview(unittest.TestCase):
         again = self.robin.get(f"/api/profiles/{pid}/jobs/{left['id']}").json()
         self.assertEqual([(e["name"], e.get("same")) for e in again["labs"]], [("Zeta marker XR", "Zeta marker XR")], again["labs"])
         self.assertTrue(again["lab_targets"])
+
+    def test_two_refreshes_of_one_preview_together(self):   # #521: neither fails on the file, both see the new summary
+        pid = self.profile("Refreshed together")
+        files = {"labs.csv": CSV_HEAD + "03/14/2025,Zeta marker XS,4.2,U/L,1 - 9,,\n"}
+        left = [self.previewed(pid, files)[0] for _ in range(5)]
+        self.save(pid, self.previewed(pid, files)[0])   # each left open now has its lab names to plan again: a file to write
+
+        def fresh(jid, ready):
+            db = dbm.connect()
+            try:
+                ready.wait()
+                jobs.freshen(db, pid, jid)
+            finally:
+                db.close()
+        with self.assertNoLogs("sanguity.jobs", logging.WARNING):   # freshen logs what it can't read again, and returns
+            for j in left:
+                ready = threading.Barrier(2)
+                ts = [threading.Thread(target=fresh, args=(j["id"], ready)) for _ in range(2)]
+                for t in ts:
+                    t.start()
+                for t in ts:
+                    t.join()
+        for j in left:
+            again = self.robin.get(f"/api/profiles/{pid}/jobs/{j['id']}").json()
+            self.assertEqual((again["new"], again["labs"]), (False, []), again)
+            listed = json.loads(crypto.read_file(jobs.preview_path(pid, j["id"])))["labs"]["listed"]
+            self.assertEqual([e.get("same") for e in listed], ["Zeta marker XS"])
+        folder = os.path.dirname(jobs.preview_path(pid, left[0]["id"]))
+        self.assertEqual([n for n in os.listdir(folder) if n.endswith(".tmp")], [])   # nothing left half-written
+
+        # cancelled while it's read again: its file doesn't come back
+        files = {"labs.csv": CSV_HEAD + "03/14/2025,Zeta marker XT,4.2,U/L,1 - 9,,\n"}
+        left, _ = self.previewed(pid, files)
+        self.save(pid, self.previewed(pid, files)[0])
+        write = crypto.write_file
+
+        def cancelled_first(path, data):
+            other = dbm.connect()
+            try:
+                jobs.discard(other, pid, left["id"], {"id": self.uids["robin"], "username": "robin"})
+            finally:
+                other.close()
+            write(path, data)
+        db = dbm.connect()
+        try:
+            with mock.patch.object(jobs.crypto, "write_file", cancelled_first):
+                jobs.freshen(db, pid, left["id"])
+        finally:
+            db.close()
+        self.assertFalse(os.path.exists(jobs.preview_path(pid, left["id"])))
+        self.assertEqual(self.robin.get(f"/api/profiles/{pid}/jobs/{left['id']}").json()["state"], "discarded")
 
     def test_apple_health_again_is_all_duplicates(self):   # #497: its activity and workouts, and its lists' entries, too
         pid = self.profile("Apple Health again")
