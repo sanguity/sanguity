@@ -59,8 +59,10 @@ function codeStep(on, methods = {code: true}) {
   if (stuck) says.tabIndex = -1; else says.removeAttribute("tabindex");
   sayIn(says, !pkOnly ? "" : !stuck ? "Password accepted. Use your passkey to finish signing in." :
     "Password accepted, but this account finishes signing in with a passkey, and passkeys don't work here: " +
-    (window.isSecureContext ? "this browser doesn't have them. Sign in with one that does" : "this page isn't using HTTPS. Open Sanguity at its " +
-      `https:// address${/^[\d.]+$|:/.test(location.hostname) ? ", by its name rather than an IP address," : ""} and sign in there`) + ", or use another account.",
+    (!window.isSecureContext ? "this page isn't using HTTPS. Open Sanguity at its " +
+      `https:// address${ipHost() ? ", by its name rather than an IP address," : ""} and sign in there`
+      : ipHost() ? "this is an IP address. Open Sanguity at its https:// name and sign in there"   // (#527)
+      : "this browser doesn't have them. Sign in with one that does") + ", or use another account.",
     false, {say: !stuck});   // (read as it takes focus)
   if (on) (code ? document.getElementById("c") : stuck ? says : pkBtn).focus();
 }

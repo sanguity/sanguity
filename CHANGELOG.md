@@ -2112,6 +2112,18 @@ Everything on `main` so far; it becomes the first tagged release.
   "make owner", "transfer ownership", "give access", "share with" and "stop sharing". Each account's first sign-in no
   longer logs "changed their own setting “Time zone”" and "“Date format”": the browser's own are stored only if none is
   yet, and not logged; a change the person makes still is.
+- **Sharing and first run: a made share link kept through a People change, Sources' title with no profile, no passkey
+  offered at an IP address, a share page's failed reload, and the visit summary's preview with long names** (#527):
+  sharing a profile, changing a role, removing someone or an Undo drew Share links again, losing a link just made (its
+  only copy) and a half-filled New share link; they stay, and only the list is read again. Sources, import.html and
+  providers.html with no profile were titled "Sources: Overview" and the like; they're "Sources". At an IP address,
+  over HTTPS too, sign-in offered "Sign in with a passkey", which browsers refuse there; it's no longer offered (nor
+  Admin's "Use a passkey"), and an account whose passkey is the only way on is told to open Sanguity at its https://
+  name. A share link whose # changed to one that couldn't be opened (opened too often, or the server out of reach)
+  threw and left the records of the link before; its header says why and they go. In the visit summary's preview at
+  1200–1230 px a test's name with a long unbroken word ran Trends past the pane, cutting its last column; the word
+  breaks in its cell. A share page's "The latest 20 of 1,381." for a measure names its rows ("readings", "days",
+  "doses").
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

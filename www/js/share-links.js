@@ -146,5 +146,7 @@ function shareLinksPanel(p, {open = false} = {}) {
   const toggle = el("button", {class: "btn small", type: "button", text: "Share links", "aria-expanded": "false",
     onclick: async () => { box.hidden = !box.hidden; toggle.setAttribute("aria-expanded", !box.hidden); if (!box.hidden) { try { await load(); } catch (e) { fail(e); } } }});
   if (open) { toggle.hidden = true; box.hidden = false; load().catch(fail); }
-  return el("div", {class: "share-links-wrap"}, toggle, box);
+  const wrap = el("div", {class: "share-links-wrap"}, toggle, box);
+  wrap.reload = () => { if (!box.hidden) load().catch(fail); };   // the list alone, a made link and a form kept (#527)
+  return wrap;
 }

@@ -6490,6 +6490,27 @@ def main():
             check("…and so does a symptom linked to one, as the form's Journal says: “the medication an entry is linked to” (#523: it said a side effect's)",
                   se518["sym"] and len(plain["sym"]) == 1 and plain["sym"][0].startswith(f"Symptom: Dizziness (browser check) · {se518['med']}severity 2")
                   and "the medication an entry is linked to" in made["what"] and "side effect is about" not in made["what"], [plain["sym"], made["what"]])
+            # #527: its # changed to a link that couldn't be opened (429: opened too often; or the server out of reach),
+            # the header says why, the records shown before gone, with no script error (it threw: #shareStatus was gone)
+            err527, before527, fail527 = [], len(problems), {}
+            hp.on("pageerror", lambda e: err527.append(str(e)))
+            for why, tok, answer in (("429", made["with"]["path"].split("#")[1], lambda route: route.fulfill(status=429, content_type="application/json", body="{}")),
+                                     ("offline", made["without"]["path"].split("#")[1], lambda route: route.abort())):
+                hp.route("**/api/share/view", answer)
+                hp.evaluate("t => { document.querySelector('#shareHead .hint').textContent = ''; location.hash = t; }", tok)
+                for _ in range(50):
+                    if hp.evaluate("document.querySelector('#shareHead .hint').textContent !== '' && document.getElementById('shareBody').children.length === 0"):
+                        break
+                    hp.wait_for_timeout(100)
+                hp.wait_for_timeout(200)
+                fail527[why] = [hp.title(), hp.evaluate("[document.querySelector('#shareHead h1').textContent, document.querySelector('#shareHead .hint').textContent, document.getElementById('shareBody').children.length]")]
+                hp.unroute("**/api/share/view", answer)
+            problems[before527:] = [x for x in problems[before527:] if "Failed to load resource" not in x]   # (the 429 and the failed request, on purpose)
+            check("…and its # changed to a link that can't be opened (429, or the server out of reach), the header says why and the records "
+                  "shown before go, with no script error (#527: it threw and left them)", not err527 and fail527 == {
+                      "429": ["Shared records · Sanguity", ["Shared records", "This link has been opened many times in a short while. Try again in a few minutes.", 0]],
+                      "offline": ["Shared records · Sanguity", ["Shared records", "Couldn't reach the server. Check the connection and reload the page.", 0]]},
+                  [err527, fail527])
             # #523: its # changed to a link that doesn't work (one cut short: no request, so no 404 in its console),
             # the title doesn't name the profile it was showing
             hp.evaluate("location.hash = 'cut-short'")
@@ -13558,6 +13579,21 @@ def main():
                       .map(t => [t.tHead.rows[0].textContent.slice(0, 30), Math.round(t.getBoundingClientRect().right - pane.right)]); })()""")
             check("…and at 1100, 900 and 768 px, beside the sidebar, no preview table goes past its pane (#523)",
                   not any(past523.values()) and js("document.querySelectorAll('#prevBody table').length") >= 3, past523)
+            # #527: and at 1200-1230 px (the pane 496-510 px), a test's name with a long unbroken word, as a lab feed can
+            # give it, breaks in its cell: Trends went 27 px past the pane, and its last column was cut ("13.5–1…")
+            long527 = js("""(() => { const t = [...document.querySelectorAll('#prevBody table')].find(t => t.tHead.rows[0].cells.length === 7), c = t?.tBodies[0].rows[0]?.cells[0];
+                if (!c) return null; const was = c.firstChild.textContent; c.firstChild.textContent = 'Cholesterol.in LDL/Cholesterol.in HDL (mass ratio)'; return was; })()""")
+            past527 = {}
+            for w in (1200, 1215, 1230):
+                page.set_viewport_size({"width": w, "height": 900})
+                settle(200)
+                past527[w] = js("""(() => { const pane = document.getElementById('prevBody').getBoundingClientRect();
+                    return [...document.querySelectorAll('#prevBody :is(table, th, td)')].filter(e => e.offsetParent && (e.getBoundingClientRect().right > pane.right + 0.5
+                      || e.matches('td, th') && e.scrollWidth > e.clientWidth + 1)).map(e => [e.tagName, e.textContent.slice(0, 30)]); })()""")
+            if long527 is not None:
+                js("w => { document.querySelector('#prevBody table:has(th:nth-child(7)) tbody td').firstChild.textContent = w; }", long527)
+            check("…and at 1200, 1215 and 1230 px a test's name with a long unbroken word breaks in its cell, nothing past the pane or cut (#527)",
+                  long527 is not None and not any(past527.values()), [long527, past527])
             page.set_viewport_size({"width": 1400, "height": 900})
             with page.expect_download(timeout=20000) as dl:
                 page.click("#download")
@@ -15455,6 +15491,16 @@ def main():
               body: JSON.stringify({confirm_name: 'Last to leave (fictional)'})})""", lp523)
             check("after leaving its last profile, Sharing's title and address name no profile (#523: “Sharing: People” and ?profile= stayed)",
                   title523 == ["Sharing: People · Sanguity", "Sharing · Sanguity", ""], title523)
+            # #527: and Sources with no profile, from the first load, and import.html and providers.html, which go there
+            # (“Sources: Overview”, “Sources: Upload files” and “Sources: Portals and health plans”)
+            title527 = {}
+            for pg_ in ("sources.html", "import.html", "providers.html"):
+                np_.goto(base + "/" + pg_)
+                np_.wait_for_function("location.pathname.endsWith('sources.html') && !document.getElementById('noProfiles').hidden", timeout=10000)
+                np_.wait_for_timeout(200)
+                title527[pg_] = [np_.title(), np_.evaluate("document.getElementById('groupTitle').textContent")]
+            check("…and Sources, import.html and providers.html with no profile are titled “Sources · Sanguity” (#527: they named a group)",
+                  all(v == ["Sources · Sanguity", "Sources"] for v in title527.values()), title527)
             # #505: nor on Sources, import.html (which goes there) and the guide's New profile, which stop before the menu
             tabs501, make518, h1_518 = {}, {}, None
             for w, h in ((1400, 900), (375, 667)):
@@ -17573,9 +17619,10 @@ def main():
             check("Account → Sign out: focus then on the next device's Sign out, and with only this device left on the card's heading, "
                   "in sight (#493: it fell to the page)", len(out493) >= 2 and out493[:-1] == [["BUTTON", "Sign out"]] * (len(out493) - 1)
                   and out493[-1] == ["H2", "Where you're signed in"], out493)
-            # #492: every password field has Show (pwField, util.js), named for what it holds: Account's password change,
-            # turning off two-factor sign-in and adding a passkey (their forms drawn as if two-factor were on and passkeys
-            # could be made here), Admin's check of who you are and a source's client secret, a Health Link's passcode
+            # #492: every password field has Show (pwField, util.js), named for what it holds: Account's password change and
+            # turning off two-factor sign-in (its form drawn as if it were on; adding a passkey's, which can't be made at
+            # 127.0.0.1 (#527), is at localhost, below), Admin's check of who you are and a source's client secret, a
+            # Health Link's passcode
             pw_fields = """[...document.querySelectorAll('input[type=password], .pw > input')].filter(i => i.checkVisibility())
                 .map(i => [i.id || i.getAttribute('aria-label'), i.parentElement.matches('.pw') && i.parentElement.querySelector('.pw-show')?.getAttribute('aria-label')])"""
             json_ok = lambda body: lambda route: route.fulfill(status=200, content_type="application/json", body=body)
@@ -17586,7 +17633,7 @@ def main():
             page.goto(base + "/account.html#password")
             page.wait_for_selector("#tfBody form input[type=password], #tfBody .pw input", timeout=10000)
             page.wait_for_selector("#pkBody form input[type=password], #pkBody .pw input, #pkWhy:not([hidden])", timeout=10000)
-            pw492 ={"account": js(pw_fields) if js("passkeysWork()") else "passkeys don't work here"}
+            pw492 = {"account": js(pw_fields)}
             page.unroute("**/api/me/2fa", tf_on)
             page.unroute(re.compile(r".*/api/me/passkeys\?.*"), pk_ok)
             page.goto(base + "/admin.html#accounts")
@@ -17607,7 +17654,7 @@ def main():
             pw492["sources"] = js(pw_fields)
             check("every password field has Show, named for what it holds: Account's, Admin's and a Health Link's passcode (#492)",
                   pw492 == {"account": [["pwCur", "Show current password"], ["pwNew", "Show new password"], ["pwNew2", "Show repeated password"],
-                                        ["Your password", "Show password"], ["Your password", "Show password"]],
+                                        ["Your password", "Show password"]],
                             "admin": [["Your password, or a code from your authenticator app", "Show password or code"], ["fSecret", "Show client secret"]],
                             "sources": [["shlPass", "Show passcode"]]}, pw492)
             # #320: on a phone the account pages' tables hid their headings and left the values on their own (Admin's "off" and
@@ -17984,6 +18031,16 @@ def main():
                   and lp.evaluate("document.getElementById('sgStatus').getBoundingClientRect().width") <= 1
                   and lp.evaluate("document.activeElement.id") == "recoveryGo" and not phone_fits(lp, "sign-in note"), phone_fits(lp, "sign-in note"))
             ctx.close()
+            # #527: a share link made first, its box (the link's only copy) kept through the Share with and role changes
+            # below, which drew Share links' panel again (sharing.js pick) and lost it
+            page.click("#shrNav a[data-group=links]")
+            page.locator("#links button", has_text="New share link").click()
+            page.fill("#links .share-form input[aria-label='Name for this link']", "Kept 527")
+            page.locator("#links .share-form button[type=submit]").click()
+            page.wait_for_selector("#links .share-made .share-url", timeout=10000)
+            made527 = js("document.querySelector('#links .share-made .share-url').value")
+            page.click("#shrNav a[data-group=people]")
+            page.wait_for_selector("#shareWith form input", timeout=10000)
             form.locator("input").fill("alex")
             form.locator("select").select_option("editor")
             form.get_by_role("button", name="Share").click()
@@ -18017,7 +18074,12 @@ def main():
             # #493: each of those role changes drew Share links' panel again (sharing.js pick), whose ⓘ is beside the card's
             # heading, outside it: one more was left there each time ("About Share links" three times after two changes)
             info493 = js("[...document.querySelectorAll('.info > button')].filter(b => b.getAttribute('aria-label') === 'About Share links').map(b => !!document.getElementById(b.getAttribute('aria-controls')))")
-            check("…Share links has one ⓘ still, after those role changes, each drawing its panel again (#493)", info493 == [True], info493)
+            check("…Share links has one ⓘ still, after those role changes (#493)", info493 == [True], info493)
+            kept527 = js("[...document.querySelectorAll('#links .share-made .share-url')].map(i => i.value)")
+            js("""() => fetch('api/profiles/2/links').then(r => r.json()).then(j => Promise.all(j.links.filter(l => l.label === 'Kept 527' && l.state === 'active')
+              .map(l => fetch('api/profiles/2/links/' + l.id, {method: 'DELETE', headers: {'X-Sanguity': '1'}}))))""")   # revoked again, for the checks after
+            check("…and a share link made before them keeps its box, the link's only copy, through Share with and those role changes (#527: it was lost)",
+                  made527.startswith(base + "/share.html#") and kept527 == [made527], [made527, kept527])
             # ---- role changes that are hard to take back ask first (#249): Cancel puts the select back and sends nothing
             alex_sel, my_sel = "#memberList select[aria-label=\"alex's role\"]", f"#memberList select[aria-label=\"{USER}'s role\"]"
             focus_js = "(() => { const d = document.querySelector('dialog.sg-ask[open]'); return [d.getAttribute('role'), document.activeElement.textContent]; })()"
@@ -18638,6 +18700,9 @@ def main():
                                "hasResidentKey": True, "hasUserVerification": True, "isUserVerified": True}})["authenticatorId"]
             pk.goto(local + "/account.html")
             pk.wait_for_selector("#pkBody form")
+            pwpk527 = pk.evaluate("[...document.querySelectorAll('#pkBody .pw')].map(p => [p.querySelector('input').getAttribute('aria-label'), p.querySelector('.pw-show')?.getAttribute('aria-label')])")
+            check("adding a passkey's password has Show, named for it (#492; at localhost, as passkeys can't be made at 127.0.0.1, #527)",
+                  pwpk527 == [["Your password", "Show password"]], pwpk527)
             pk.set_viewport_size({"width": 375, "height": 667})   # (#519, below)
             pk.locator("#pkBody input[type=password]").fill(PW)
             pk.locator("#pkBody").get_by_role("button", name="Add a passkey").click()
@@ -18803,7 +18868,30 @@ def main():
             menu_click(pk, "#logout")
             pk.wait_for_url("**/login.html", timeout=10000)
             check("sign-in page offers a passkey", pk.is_visible("#pk") and pk.inner_text("#pk") == "Sign in with a passkey")
-            looks = {f: pk.evaluate(FIELD_LOOK_JS, f) for f in ("#u", "#p")}
+            # #527: passkeysWork() (util.js) is false at an IP address, IPv4 or IPv6, a secure context or not (a browser
+            # refuses passkeys there); so sign-in at 127.0.0.1 offers none (it did, and only pressing it said so), and an
+            # account whose passkey is the only way on is told why there, as #523's step does
+            pw527 = pk.evaluate("['localhost', 'sanguity.example', '192.0.2.7', '127.0.0.1', '[2001:db8::7]', '2001:db8::7', '[::1]'].map(h => passkeysWork(h))")
+            ip527 = browser.new_context(viewport={"width": 1400, "height": 900})
+            ipp = ip527.new_page()
+            ipp.on("pageerror", lambda e: problems.append(f"script error (sign-in at 127.0.0.1): {e}"))
+            ipp.goto(base + "/login.html")
+            ipp.wait_for_selector("#u", timeout=10000)
+            ipp.route("**/api/login", lambda route: route.fulfill(status=200, content_type="application/json",
+                                                                  body=json.dumps({"two_factor": True, "ticket": "t527", "methods": {"code": False, "passkey": True}})))
+            signin527 = [ipp.evaluate("[window.isSecureContext, passkeysWork(), document.getElementById('pkBox').hidden, document.getElementById('pk').checkVisibility()]")]
+            ipp.fill("#u", USER)
+            ipp.fill("#p", PW)
+            ipp.click("#b")
+            ipp.wait_for_selector("#pkSays", state="visible", timeout=10000)
+            signin527.append(ipp.evaluate("[document.activeElement.id, document.getElementById('pkSays').textContent, document.getElementById('pk').checkVisibility()]"))
+            ip527.close()
+            check("passkeysWork() is false at an IP address, IPv4 or IPv6, true at a name; sign-in at 127.0.0.1 shows no passkey button, and the "
+                  "passkey-only step says why (#527: offered, then “Passkeys don't work at this address” once pressed)",
+                  pw527 == [True, True, False, False, False, False, False] and signin527 == [[True, False, True, False], ["pkSays",
+                  "Password accepted, but this account finishes signing in with a passkey, and passkeys don't work here: this is an IP address. "
+                  "Open Sanguity at its https:// name and sign in there, or use another account.", False]], [pw527, signin527])
+            looks ={f: pk.evaluate(FIELD_LOOK_JS, f) for f in ("#u", "#p")}
             check("sign-in's fields look like the app's (#332): the same background, edge and corner as a field on Account, in light and dark",
                   acct_field and acct_field["light"] != acct_field["dark"] and all(v == acct_field for v in looks.values()), [acct_field, looks])
             ring_bad, ring_seen = ring_walk(pk, "sign-in")

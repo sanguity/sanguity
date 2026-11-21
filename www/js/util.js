@@ -417,7 +417,10 @@ const b64u = {
   dec: s => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), c => c.charCodeAt(0)).buffer,
   enc: b => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""),
 };
-const passkeysWork = () => !!(window.PublicKeyCredential && navigator.credentials && window.isSecureContext);
+/* where passkeys can work: a browser that has them, in a secure context, at a name: a browser refuses them at an IP
+   address, over HTTPS too (#527: sign-in offered one there, and only pressing it said so). h: a hostname, to check one */
+const ipHost = (h = location.hostname) => /^[\d.]+$/.test(h) || h.includes(":");
+const passkeysWork = (h = location.hostname) => !!(window.PublicKeyCredential && navigator.credentials && window.isSecureContext) && !ipHost(h);
 const _creds = list => (list || []).map(c => ({...c, id: b64u.dec(c.id)}));
 async function passkeyCreate(o) {
   const c = await navigator.credentials.create({publicKey: {...o, challenge: b64u.dec(o.challenge),

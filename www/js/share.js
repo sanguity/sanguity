@@ -285,26 +285,30 @@ function shPhoto(p, fallback) {
 }
 
 /* the phone's and watch's measures, immunizations, ECGs and BMI (#225; server/measures.py): a block's lead lines, its
-   table and the note under it. Times are the local times the phone took them at, written in this browser's format. */
+   table and the note under it. Times are the local times the phone took them at, written in this browser's format.
+   What a block's rows are, where they're one kind, for "The latest 20 of 1,381 readings." (#527: it named nothing) */
+const SH_ROWS_ARE = {home_bp: "readings", temperature: "readings", respiratory: "days", vo2max: "days", immunizations: "vaccines", medlog: "doses"};
 function shBlock(b, id) {
   const cellOf = (kind, v) => !v ? v : kind === "day" ? shDay(v) : kind === "time" ? fmtDT(zParse(v)) : v, rows = b.rows || [];
   const cells = rs => rs.map(r => r.map((v, i) => cellOf(b.cols[i][1], v)));
   return el("div", {}, ...(b.lead || []).map(t => el("p", {text: t})),
-    shLong((b.cols || []).map(c => c[0]), cells(rows), b.empty || "None in this range.", "measures", "", id,
+    shLong((b.cols || []).map(c => c[0]), cells(rows), b.empty || "None in this range.", "measures", SH_ROWS_ARE[id] || "rows", id,
       async () => cells((await shWhole(id)).rows || []), Math.max(b.total || 0, rows.length)),
     b.note ? el("p", {class: "hint", text: b.note}) : null);
 }
 
 async function shLoad() {
-  const status = $("#shareStatus");
   const token = location.hash.slice(1);
-  const broken = () => {
-    document.title = "This link doesn't work · Sanguity";   // not the profile's a # changed from (#523)
-    $("#shareHead").replaceChildren(el("div", {class: "share-hd"}, el("h1", {text: "This link doesn't work"})),
-      el("p", {class: "hint", text: "It may have expired or been revoked, or the address may be incomplete. Ask the person who sent it for a new link."}));
+  // what went wrong, in the header, the records of a link shown before gone (#523: its title; #527: a # changed to a
+  // link that couldn't be reached threw, as the first load's #shareStatus was gone, and left them)
+  const failed = (h, why) => {
+    document.title = `${h} · Sanguity`;
+    $("#shareHead").replaceChildren(el("div", {class: "share-hd"}, el("h1", {text: h})), el("p", {class: "hint", text: why}));
     $("#shareBody").replaceChildren();
     shBar([]);
+    announce(why);   // (util.js: the page's live line)
   };
+  const broken = () => failed("This link doesn't work", "It may have expired or been revoked, or the address may be incomplete. Ask the person who sent it for a new link.");
   if (!/^[A-Za-z0-9_-]{20,100}$/.test(token)) { broken(); return; }
   SH_TOKEN = token;
   SH_CUT = {};
@@ -312,8 +316,8 @@ async function shLoad() {
   try {
     r = await fetch("api/share/view", {method: "POST", cache: "no-store", credentials: "omit",
       headers: {"X-Sanguity": "1", "Content-Type": "application/json"}, body: JSON.stringify({token})});
-  } catch (e) { status.textContent = "Couldn't reach the server. Check the connection and reload the page."; return; }
-  if (r.status === 429) { status.textContent = "This link has been opened many times in a short while. Try again in a few minutes."; return; }
+  } catch (e) { failed("Shared records", "Couldn't reach the server. Check the connection and reload the page."); return; }
+  if (r.status === 429) { failed("Shared records", "This link has been opened many times in a short while. Try again in a few minutes."); return; }
   if (!r.ok) { broken(); return; }
   const d = await r.json();
   SH_CUT = d.cut || {};   // the long sections, sent only their latest rows (#498)
