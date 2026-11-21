@@ -128,7 +128,8 @@ storeOn(STORE_PARTS, parts => {
 /* no records to show (an empty profile, none shared, or an error): a message instead of the tabs, and none of the
    controls that would render them, since those need DATA and the tab sections this replaces. One empty state
    (emptyState, util.js: #199), or the words of an error. The page's h1 kept over it, named by head (#514: with no
-   profile, or on an empty one, the page had none; it's the tab's name again once records come) */
+   profile, or on an empty one, the page had none; it's the tab's name again once records come), and the document's
+   title with it */
 let mainKids = null;   // the tabs' sections, kept for an empty profile's first records (recordsFirst)
 function emptyCard(head, ...kids) {
   $(".tabs").hidden = true; $(".filters").hidden = true;
@@ -138,6 +139,7 @@ function emptyCard(head, ...kids) {
   mainKids ??= [...main.childNodes];
   const h1 = mainKids.find(n => n.id === "tabTitle");
   h1.textContent = head;
+  viewTitle(head);   // the browser tab's title says it too (#518: "Sanguity" alone; the tab's name once records come)
   // (offline with no records kept, the banner has the page's h1: offline.js notAvailable, #424)
   main.replaceChildren(...present(document.querySelector("#offlineBanner > h1") ? null : h1, one));
 }
@@ -229,7 +231,7 @@ async function settingsLoad() {
     if (!ME.profiles.length) {   // (with the account's own theme, as Settings shows it, #433)
       const u = await api("settings/user").then(x => x.ok ? x.json() : null).catch(() => null);
       if (u) applyTheme(u.theme);
-      emptyCard("No health profile yet", emptyState(`No health profile is shared with you yet: make one of your own, or ask a profile's owner to share theirs with ${ME.user.username}.`, {href: "guide.html?new", text: "Make a profile"}));
+      emptyCard("No health profile yet", emptyState(`No health profile is shared with you yet: create one of your own, or ask a profile's owner to share theirs with ${ME.user.username}.`, {href: "guide.html?new", text: "Create a profile"}));
       return;
     }
     // the top bar's picker (nav.js, #170): the profile the address names, else this browser's last, else the first

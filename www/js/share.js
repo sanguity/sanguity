@@ -99,6 +99,7 @@ const SH_DRAW = {
   appointments: list => shTable(["When", "What", "With", "Where"], list.map(a => [shWhen(a.t), a.title, a.who, a.where]), "No upcoming appointments."),
   journal: list => list.length ? el("div", {}, ...list.map(j => el("div", {class: "share-entry"},
     el("div", {}, el("b", {text: (SH_KIND[j.kind] || "Note") + (j.title ? `: ${j.title}` : "")}),
+      j.med ? ` · ${j.med}` : null,   // the medication a side effect is about (#518)
       j.severity ? el("span", {class: "tag", text: `severity ${j.severity}`}) : null,
       j.kind === "mood" ? el("span", {class: "tag", text: [j.mood != null && `mood ${j.mood}/10`, j.energy != null && `energy ${j.energy}/10`].filter(Boolean).join(", ")}) : null,
       el("span", {class: "muted"}, " ", keepDates(shWhen(j.t)))),

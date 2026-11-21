@@ -49,8 +49,21 @@ function codeStep(on, methods = {code: true}) {
   pkBox.hidden = !passkeysWork() || (on && !methods.passkey);
   document.getElementById("pkOr").hidden = on && !code;
   pkBtn.textContent = on ? "Use a passkey" : "Sign in with a passkey";
+  // a passkey the only way on: what's needed said, and the button described by it (#518: it said "Use a passkey" alone)
+  const says = document.getElementById("pkSays"), pkOnly = !!on && !code;
+  says.hidden = !pkOnly;
+  if (pkOnly) pkBtn.setAttribute("aria-describedby", says.id); else pkBtn.removeAttribute("aria-describedby");
   if (on) (code ? document.getElementById("c") : pkBtn).focus();
+  sayIn(says, pkOnly ? "Password accepted. Use your passkey to finish signing in." : "");
 }
+/* Use another account (#518): back to the first step, its username and password empty, from the second step */
+document.getElementById("other").addEventListener("click", ev => {
+  ev.preventDefault();
+  codeStep(null);
+  for (const id of ["u", "p", "c"]) document.getElementById(id).value = "";
+  fieldSaid(err, "", null, pkBox);
+  document.getElementById("u").focus();
+});
 function signedIn(j) {
   // the account's own theme, remembered before the first page draws (theme.js), as signing out took the last one's
   // (#433): asked here, at most half a second, so a dark account's first page doesn't start light (#436)
