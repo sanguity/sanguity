@@ -13,7 +13,7 @@
    wasn't uploaded here starts at Recognising), one progress bar, a line saying what's happening now (said as each
    stage starts), then the job's own part (.import-job), which the review, the result or what went wrong fills. Focus
    moves to the review once it's ready, unless it has gone somewhere else on the page meanwhile; after its Add or
-   Cancel, to the line saying how it went (#489).
+   Cancel, to the line saying how it went (#489). fresh(card) draws a review again, as the server reads it now (#490).
    Plain script: no inline code (the pages' CSP allows scripts from js/ only); from other files it needs util.js (el,
    icon, kindIcon, CAT_OF, keepDates, aboutWords for the ⓘ, #280, sayIn, announce, smoothly) and dates.js. */
 "use strict";
@@ -60,8 +60,9 @@
     return h;
   }
 
-  /* the card (#281). opts {container, title, size, steps}: steps, the STEPS it goes through (an upload all of them;
-     one file, not a zip, has nothing to unpack, #489).
+  /* the card (#281). opts {container, title, size, steps, pid}: steps, the STEPS it goes through (an upload all of
+     them; one file, not a zip, has nothing to unpack, #489); pid, the profile it imports into (data-pid: Sources puts
+     away a review for another profile once another is chosen, #490).
      -> {card, body, title, step(id, text), text(t), note(t), progress(v), end(how), focus(), hold()}. card is the whole card,
      body its job's own part (.import-job), which the rest of this file fills and calls the card (FRAMES finds its
      frame). step marks the stages before it done and shows and says text; text(t) changes the line without saying it
@@ -77,7 +78,7 @@
     const now = node("p", {class: "job-now"});
     const body = node("div", {class: "import-job", tabindex: "-1"});
     const about = node("span", {class: "muted", text: opts.size || ""});
-    const card = node("div", {class: "card job"},
+    const card = node("div", {class: "card job", "data-pid": opts.pid ?? null},
       node("div", {class: "job-hd"}, node("h3", {text: opts.title || "Import"}), about),
       node("ol", {class: "job-steps", "aria-label": "Stages"}, lis), bar, now, body);
     host(opts.container).append(card);
@@ -120,7 +121,7 @@
       // nowhere in particular, not from wherever someone has gone since
       focus() {
         const a = document.activeElement, from = card.parentElement.closest("section, dialog") || card.parentElement;
-        if (a && a !== document.body && !from.contains(a)) return false;
+        if (a && a !== document.body && !from.contains(a) || !card.checkVisibility()) return false;
         body.focus({preventScroll: true});
         card.scrollIntoView({block: "start", behavior: smoothly()});   // the card's top under the top bar (scroll-padding)
         return true;
@@ -132,19 +133,12 @@
   }
   // an import started from files already on the server: in the upload's card (frame), else in a card of its own
   // from Recognising on
-  const own = opts => opts.frame || frame({container: opts.container, title: opts.title, steps: ["find", "review", "saved"]});
+  const own = opts => opts.frame || frame({container: opts.container, title: opts.title, steps: ["find", "review", "saved"], pid: opts.profileId});
   /* a mark on the card for Sources (#283), on its job's own part, which its scripts look for, and on the whole card */
   const tag = (card, k, v) => { card.dataset[k] = v; const f = FRAMES.get(card); if (f) f.card.dataset[k] = v; };
 
-  function countItems(c) {
-    const kinds = Object.entries(c.kinds || {}).sort((a, b) => b[1] - a[1]);
-    const items = kinds.filter(([k]) => k !== "labitem").map(([k, n]) => node("li", {text: plural(n, KIND[k] || [k, k])}));
-    for (const [k, words] of EXTRA) {   // the rest, in the review's order (below)
-      if (c[k] && !(k === "workouts" && (c.kinds || {}).exercise))
-        items.push(node("li", {text: plural(c[k], words) + (k === "results" ? " in " + plural(c.series || 0, ["test", "tests"]) : "")}));
-    }
-    return items;
-  }
+  // what came in, counted as the review counts it (counted, below: a lab draw left out where there are results, #490)
+  const countItems = c => counted(c).map(x => node("li", {text: plural(x.n, x.words) + (x.k === "results" ? " in " + plural(c.series || 0, ["test", "tests"]) : "")}));
   const rangeText = r => r ? (r.from === r.to ? ` from ${day(r.from)}` : ` from ${day(r.from)} to ${day(r.to)}`) : "";
   const notes = j => (j.warnings || []).length ? node("details", {}, node("summary", {text: plural(j.warnings.length, ["note", "notes"]) + " from the import"}),
                                                  node("ul", {}, j.warnings.map(w => node("li", {text: w})))) : null;
@@ -239,23 +233,31 @@
     return {part, picked: () => boxes.filter(b => b.checked).map(b => b.value)};
   }
 
-  // the duplicates of what the profile has (#22): skipped, each with a box to add it again anyway
+  /* how many records are already here: one count for the bar and the list (#490), a lab draw left out where there
+     are results, as what's new leaves it out (counted, below): they're its */
+  const draws = j => (j.total || j.counts || {}).results > 0;
+  const hereCount = j => { const d = j.duplicates || {};
+    return Math.max(0, (d.events || 0) - (draws(j) ? (d.kinds || {}).lab || 0 : 0) + (d.results || 0) + (d.other || 0)); };
+  // the duplicates of what the profile has (#22): skipped, each with a box to add it again anyway; a series' results
+  // dated from the first to the last (#490), a lab draw not offered beside its own results
   function dupChoices(j) {
-    const d = j.duplicates || {items: []}, n = (d.events || 0) + (d.results || 0), boxes = [];
-    const part = d.items && d.items.length ? node("details", {class: "imp-dups"},
+    const d = j.duplicates || {items: []}, n = hereCount(j), boxes = [];
+    const items = (d.items || []).filter(it => !(it.kind === "lab" && draws(j)));   // a draw goes with its results
+    const part = items.length ? node("details", {class: "imp-dups"},
       node("summary", {text: `Already here: ${plural(n, ["duplicate", "duplicates"])}, skipped unless ticked`}),
       node("p", {class: "hint", text: "These are in the profile already. Tick any you want added again anyway."}),
-      node("ul", {}, d.items.map(it => {
+      node("ul", {}, items.map(it => {
         const b = node("input", {type: "checkbox", value: it.ref});
         boxes.push(b);
         const what = it.kind === "results" ? plural(it.n || 0, ["lab result", "lab results"]) + ": " + it.title
                                            : (KIND[it.kind] || [it.kind])[0] + ": " + it.title;
-        return node("li", {}, node("label", {}, b, " ", node("span", {class: "d", text: it.t ? day(it.t) : ""}), " ", what));
+        const when = it.t ? keepDates(it.to ? `${day(it.t)} – ${day(it.to)}` : day(it.t)) : "Undated";
+        return node("li", {}, node("label", {}, b, " ", node("span", {class: "d"}, when), " ", what));
       })),
       d.more ? node("p", {class: "hint", text: `…and ${d.more.toLocaleString()} more.`}) : null)
       : n ? node("p", {class: "hint", text: `Already here: ${plural(n, ["duplicate", "duplicates"])}, skipped.`}) : null;
     // what the ticked ones add, by count key: a result's n results, an event one of its kind
-    const ticked = () => (d.items || []).filter((it, i) => boxes[i] && boxes[i].checked);
+    const ticked = () => items.filter((it, i) => boxes[i] && boxes[i].checked);
     return {part, picked: () => ticked().map(it => it.ref), ticked};
   }
 
@@ -310,10 +312,9 @@
 
   // how many records are new, already here or possibly the same as another source's: a bar in three parts and its key
   function split(j) {
-    const c = j.counts || {}, d = j.duplicates || {}, same = (j.possible || []).length, labs = (j.total || c).results > 0;
+    const c = j.counts || {}, same = (j.possible || []).length;
     const records = counted(c).filter(x => x.record).reduce((a, x) => a + x.n, 0);
-    const here = (d.events || 0) - (labs ? (d.kinds || {}).lab || 0 : 0) + (d.results || 0) + (d.other || 0);
-    const parts = [["new", Math.max(0, records - same), "new"], ["here", Math.max(0, here), "already here"], ["same", same, "possibly the same"]];
+    const parts = [["new", Math.max(0, records - same), "new"], ["here", hereCount(j), "already here"], ["same", same, "possibly the same"]];
     const total = parts.reduce((a, p) => a + p[1], 0);
     if (!total) return null;
     let x = 0;
@@ -332,77 +333,96 @@
     return records.length === list.length ? "Add " + plural(records.reduce((a, x) => a + x.n, 0), ["record", "records"]) : "Add all of this";
   }
 
+  /* the review. Drawn again, the same choices offered afresh, when the profile's records may have changed under it
+     (f.fresh: opened again from Waiting for you, or another import of the profile saved on the page, #490): the
+     server reads the preview again, so the same file saved meanwhile shows as already here */
   function jobReview(job, card) {
-    const j = job, pid = j.profile_id, base = `profiles/${encodeURIComponent(pid)}/jobs/${j.id}`, f = FRAMES.get(card);
+    const pid = job.profile_id, base = `profiles/${encodeURIComponent(pid)}/jobs/${job.id}`, f = FRAMES.get(card);
     return new Promise(done => {
-      const range = j.range ? (j.range.from === j.range.to ? day(j.range.from) : `${day(j.range.from)} – ${day(j.range.to)}`) : "";
-      const labs = labTable(j), same = sameChoices(j), dups = dupChoices(j);
-      const msg = node("span", {class: "msg", role: "status"});
-      const add = node("button", {class: "btn primary", type: "button"});
-      const cancel = node("button", {class: "btn", type: "button", text: "Cancel"});
-      // the button follows the duplicates ticked: each adds its results, or one of its kind
-      const words = () => {
-        const c = JSON.parse(JSON.stringify(j.counts || {}));
-        c.kinds = c.kinds || {};
-        for (const it of dups.ticked()) {
-          if (it.kind === "results") c.results = (c.results || 0) + (it.n || 0);
-          else c.kinds[it.kind] = (c.kinds[it.kind] || 0) + 1;
-        }
-        const w = addWords(c);
-        add.textContent = w || "Nothing to add";
-        add.disabled = !w;
+      function draw(j, again) {
+        const range = j.range ? (j.range.from === j.range.to ? day(j.range.from) : `${day(j.range.from)} – ${day(j.range.to)}`) : "";
+        const labs = labTable(j), same = sameChoices(j), dups = dupChoices(j);
+        const msg = node("span", {class: "msg", role: "status"});
+        const add = node("button", {class: "btn primary", type: "button"});
+        const cancel = node("button", {class: "btn", type: "button", text: "Cancel"});
+        // the button follows the duplicates ticked: each adds its results, or one of its kind
+        const words = () => {
+          const c = JSON.parse(JSON.stringify(j.counts || {}));
+          c.kinds = c.kinds || {};
+          for (const it of dups.ticked()) {
+            if (it.kind === "results") c.results = (c.results || 0) + (it.n || 0);
+            else c.kinds[it.kind] = (c.kinds[it.kind] || 0) + 1;
+          }
+          const w = addWords(c);
+          add.textContent = w || "Nothing to add";
+          add.disabled = !w;
+        };
+        words();
+        if (dups.part) dups.part.addEventListener("change", words);
+        const say = t => { msg.textContent = t; };
+        const busy = on => { cancel.disabled = on; if (on) add.disabled = true; else words(); };
+        const act = async (what, body) => {
+          let r;
+          try { r = await call(`${base}/${what}`, {method: "POST", body: JSON.stringify(body || {})}); }
+          catch (e) { say("Couldn't reach the server. Check the connection and try again."); return false; }
+          if (r.status === 401) { location.replace("login.html"); return false; }
+          if (!r.ok) { say(await detail(r)); return false; }
+          return true;
+        };
+        // focus on the button pressed stays in the card while it changes under it (#489): while it's saved, on the
+        // line saying so; then on the line saying how it ended (result, below). A button pressed in vain keeps it
+        const back = b => { if (f.held && !card.contains(document.activeElement)) b.focus({preventScroll: true}); };
+        add.addEventListener("click", async () => {
+          const bad = labs.wrong();
+          if (bad) { say("A lab name has a series that isn't there: pick one from its list, or leave it empty."); bad.focus(); return; }
+          f.held = card.contains(document.activeElement);
+          busy(true); say("Adding…");
+          if (!(await act("confirm", {keep: dups.picked(), labs: labs.picked(), same: same.picked()}))) { busy(false); back(add); return; }
+          card.replaceChildren();
+          f.step("saved", STAGES.saving);
+          f.progress(null);
+          f.hold();
+          done(poll(card, pid, j.id, STAGES.saving));
+        });
+        cancel.addEventListener("click", async () => {
+          f.held = card.contains(document.activeElement);
+          busy(true); say("Cancelling…");
+          if (!(await act("discard"))) { busy(false); back(cancel); return; }
+          showCancelled(card);
+          done(j);
+        });
+        fill(card,
+          node("p", {class: "imp-state", text: j.new ? "Ready to import" : "All duplicates"}),
+          node("h3", {class: "imp-title"}, keepDates([j.label || j.importer, range].filter(Boolean).join(" · "))),
+          node("p", {class: "hint", text: j.new ? "Nothing is saved until you add it with the button at the foot."
+            : "Everything in this upload is in this profile already. Tick a duplicate to add it again anyway, or cancel."}),
+          j.new ? tiles(j) : null, split(j), labs.part, same.part, dups.part, notes(j),
+          node("div", {class: "sg-bar imp-actions", role: "region", "aria-label": "Add or cancel this import"},
+            node("span", {class: "sg-bar-what"}, node("span", {class: "sg-bar-n", text: "Not saved yet"}), msg),
+            node("span", {class: "sg-bar-acts"}, cancel, add)));
+        barRoom(card.querySelector(".imp-actions"));
+        if (again) return;
+        // the stage line says Review (#281); its "Ready to import" is said by focus on it, or else here
+        f.step("review");
+        f.text("");
+        f.progress(false);
+        if (!f.focus()) announce(`${j.new ? "Ready to import" : "All duplicates"}: ${f.title}. Nothing is saved until you add it.`);
+      }
+      f.fresh = async () => {
+        let j = null;
+        try { const r = await call(base); if (r.ok) j = await r.json(); } catch (e) {}
+        if (!j || j.state !== "preview" || f.card.dataset.step !== "review") return;   // (saved or cancelled meanwhile)
+        const had = card.contains(document.activeElement);
+        draw({profile_id: pid, ...j}, true);
+        if (had) card.focus({preventScroll: true});
       };
-      words();
-      if (dups.part) dups.part.addEventListener("change", words);
-      const say = t => { msg.textContent = t; };
-      const busy = on => { cancel.disabled = on; if (on) add.disabled = true; else words(); };
-      const act = async (what, body) => {
-        let r;
-        try { r = await call(`${base}/${what}`, {method: "POST", body: JSON.stringify(body || {})}); }
-        catch (e) { say("Couldn't reach the server. Check the connection and try again."); return false; }
-        if (r.status === 401) { location.replace("login.html"); return false; }
-        if (!r.ok) { say(await detail(r)); return false; }
-        return true;
-      };
-      // focus on the button pressed stays in the card while it changes under it (#489): while it's saved, on the
-      // line saying so; then on the line saying how it ended (result, below). A button pressed in vain keeps it
-      const back = b => { if (f.held && !card.contains(document.activeElement)) b.focus({preventScroll: true}); };
-      add.addEventListener("click", async () => {
-        const bad = labs.wrong();
-        if (bad) { say("A lab name has a series that isn't there: pick one from its list, or leave it empty."); bad.focus(); return; }
-        f.held = card.contains(document.activeElement);
-        busy(true); say("Adding…");
-        if (!(await act("confirm", {keep: dups.picked(), labs: labs.picked(), same: same.picked()}))) { busy(false); back(add); return; }
-        card.replaceChildren();
-        f.step("saved", STAGES.saving);
-        f.progress(null);
-        f.hold();
-        done(poll(card, pid, j.id, STAGES.saving));
-      });
-      cancel.addEventListener("click", async () => {
-        f.held = card.contains(document.activeElement);
-        busy(true); say("Cancelling…");
-        if (!(await act("discard"))) { busy(false); back(cancel); return; }
-        showCancelled(card);
-        done(j);
-      });
-      fill(card,
-        node("p", {class: "imp-state", text: j.new ? "Ready to import" : "All duplicates"}),
-        node("h3", {class: "imp-title"}, keepDates([j.label || j.importer, range].filter(Boolean).join(" · "))),
-        node("p", {class: "hint", text: j.new ? "Nothing is saved until you add it with the button at the foot."
-          : "Everything in this upload is in this profile already. Tick a duplicate to add it again anyway, or cancel."}),
-        j.new ? tiles(j) : null, split(j), labs.part, same.part, dups.part, notes(j),
-        node("div", {class: "sg-bar imp-actions", role: "region", "aria-label": "Add or cancel this import"},
-          node("span", {class: "sg-bar-what"}, node("span", {class: "sg-bar-n", text: "Not saved yet"}), msg),
-          node("span", {class: "sg-bar-acts"}, cancel, add)));
-      barRoom(card.querySelector(".imp-actions"));
-      // the stage line says Review (#281); its "Ready to import" is said by focus on it, or else here
-      f.step("review");
-      f.text("");
-      f.progress(false);
-      if (!f.focus()) announce(`${j.new ? "Ready to import" : "All duplicates"}: ${f.title}. Nothing is saved until you add it.`);
+      draw(job);
     });
   }
+  // a review drawn again (f.fresh, above): one opened again (Sources' Waiting for you), or each other one of the
+  // profile on the page once an import of it is saved
+  const fresh = card => FRAMES.get(card)?.fresh?.();
+  const freshOthers = (card, pid) => { for (const c of document.querySelectorAll(`.job[data-step=review][data-pid="${pid}"] .import-job`)) if (c !== card) fresh(c); };
 
   // replaceChildren turns a null into the text "null"; parts that aren't there are left out instead
   function fill(card, ...parts) { card.replaceChildren(...parts.filter(p => p != null)); }
@@ -434,6 +454,7 @@
 
   function showDone(card, pid, j) {
     settled(card);
+    freshOthers(card, pid);
     FRAMES.get(card).end("done");
     const c = j.counts || {}, items = countItems(c), sk = j.skipped || {};
     const skipped = (sk.events || 0) + (sk.results || 0), ln = j.lab_names || {};
@@ -542,5 +563,5 @@
     return poll(f.body, opts.profileId, opts.jobId, text);
   }
 
-  window.sanguityImport = {uploaded, follow, frame};
+  window.sanguityImport = {uploaded, follow, frame, fresh};
 })();

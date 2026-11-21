@@ -1833,6 +1833,15 @@ Everything on `main` so far; it becomes the first tagged release.
   own file field (a document typed in, a journal entry's photos) goes into that field instead of becoming an import.
   After Add or Cancel, focus is on the line saying how it went, not lost with the button. One file that isn't a zip
   no longer shows an Unpacking stage.
+- **Sources' review: no Add into a profile left behind, previews read again, one count of what's already here**
+  (#490): a review left in Upload files stayed when another profile was chosen, its Add still saving into the first;
+  it's put away now, waiting in its own profile's Waiting for you. A preview left open while the same file was saved
+  still said "6 new" and "Ready to review"; the server reads a preview again once the profile's records have changed,
+  so it shows them as already here, and a review open on the page is drawn again when another import of the profile is
+  saved. Waiting for you lists the latest five, then "Show N more". A review opened from it is titled by its format,
+  not "Import". The bar and the list of what's already here count it the same way (a lab draw no longer counted, nor
+  offered, beside its own results), a test's duplicates are dated from the first to the last, and the saved card
+  counts as the review does. Sources' empty Overview has its sentence centred under its picture.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

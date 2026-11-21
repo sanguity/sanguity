@@ -200,6 +200,35 @@ class Preview(unittest.TestCase):
         days = [e for e in self.robin.get(f"/api/profiles/{pid}/data").json()["events"] if e["k"] == "lab"]
         self.assertEqual(sorted(e["t"][:10] for e in days), ["2025-03-14", "2025-04-02"])
 
+    def test_a_preview_left_open_is_read_again(self):   # #490: the same file saved meanwhile shows as already here
+        pid = self.profile("Left open")
+        files = {"labs.csv": CSV_HEAD + MARCH + APRIL}
+        left, _ = self.previewed(pid, files)
+        self.assertTrue(left["new"])
+        self.assertEqual((left["counts"]["results"], left["duplicates"]["results"]), (4, 0))
+        self.save(pid, self.previewed(pid, files)[0])   # the same file, uploaded again and saved
+        listed = {j["id"]: j for j in self.robin.get(f"/api/profiles/{pid}/jobs", params={"state": "preview"}).json()}
+        self.assertFalse(listed[left["id"]]["new"])   # read again for "Waiting for you"
+        self.assertFalse(listed[left["id"]]["stale"])
+        again = self.robin.get(f"/api/profiles/{pid}/jobs/{left['id']}").json()
+        self.assertEqual((again["state"], again["new"], again["counts"]["results"]), ("preview", False, 0), again)
+        self.assertEqual((again["duplicates"]["results"], again["duplicates"]["kinds"]), (4, {"lab": 2}))
+        self.assertEqual(again["range"], left["range"])
+        # each duplicate series with the days of its results: the first and the last (#490)
+        days = {i["title"]: (i["t"], i.get("to")) for i in again["duplicates"]["items"] if i["kind"] == "results"}
+        self.assertEqual(days["Hemoglobin"], ("2025-03-14", "2025-04-02"))
+        self.assertEqual(days["Ferritin"], ("2025-04-02", None))
+        done = self.save(pid, again)   # and saving it adds nothing, as confirm finds the duplicates again anyway
+        self.assertEqual((done["state"], done["import_id"]), ("done", None), done)
+        # read again only once the records change, and only the latest few when listed: the others say they're stale
+        older = [self.previewed(pid, {"labs.csv": CSV_HEAD + f"05/0{n}/2025,Ferritin,9{n},ng/mL,30-400,,\n"})[0]["id"]
+                 for n in range(1, jobs.FRESH + 2)]
+        self.save(pid, self.previewed(pid, {"labs.csv": CSV_HEAD + "06/01/2025,Ferritin,70,ng/mL,30-400,,\n"})[0])
+        listed = {j["id"]: j["stale"] for j in self.robin.get(f"/api/profiles/{pid}/jobs", params={"state": "preview"}).json()}
+        self.assertEqual([listed[i] for i in older], [True] + [False] * jobs.FRESH)
+        self.assertNotIn("stale", self.robin.get(f"/api/profiles/{pid}/jobs/{older[0]}").json())
+        self.assertFalse(self.robin.get(f"/api/profiles/{pid}/jobs", params={"state": "preview"}).json()[-1]["stale"])
+
     def test_review_samples_what_is_new(self):   # #282: a few of each kind, latest first, the duplicates left out
         pid = self.profile("Samples")
         j, _ = self.previewed(pid, {"labs.csv": CSV_HEAD + MARCH})

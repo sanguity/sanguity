@@ -273,9 +273,13 @@ def report(data, dups, summarise):
         n = len(dups["points"].get(i, ())) + len(dups["txt"].get(i, ()))
         if n:
             results += len(dups["points"].get(i, ()))
-            pts = [p for k, p in enumerate(s.get("pts") or []) if k in dups["points"].get(i, ())]
-            items.append({"ref": f"s:{i}", "kind": "results", "t": str(pts[0][0])[:10] if pts and isinstance(pts[0], list) else "",
-                          "title": str(s.get("name") or ""), "n": n})
+            # the days its duplicates are from (#490), text results' too: the first, and the last where it's another
+            days = sorted(str(x[0])[:10] for key, rows in (("points", s.get("pts")), ("txt", s.get("txt")))
+                          for k, x in enumerate(rows or []) if k in dups[key].get(i, ()) and isinstance(x, list) and x and x[0])
+            item = {"ref": f"s:{i}", "kind": "results", "t": days[0] if days else "", "title": str(s.get("name") or ""), "n": n}
+            if days and days[-1] != days[0]:
+                item["to"] = days[-1]
+            items.append(item)
     items.sort(key=lambda x: (x["t"], x["title"]))
     out["duplicates"] = {"events": sum(kinds.values()), "kinds": dict(sorted(kinds.items())), "results": results,
                          "other": sum(len(v) for v in dups["meta"].values()),

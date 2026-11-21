@@ -139,7 +139,7 @@ const dropTarget = (() => {
       say("");
       const total = items.reduce((s, it) => s + it.file.size, 0), pid = opts.pid();
       const one = items.length === 1 && !/\.zip$/i.test(items[0].path);   // nothing to unpack (#489)
-      const f = window.sanguityImport.frame({container: jobs, title: named(items),
+      const f = window.sanguityImport.frame({container: jobs, title: named(items), pid,
         steps: one ? ["send", "find", "review", "saved"] : null, size: (items.length > 1 ? plural(items.length, "file") + " · " : "") + size(total)});
       const j = await send(pid, items, f);
       if (j && j.state === "done" && opts.onDone) opts.onDone(j);
@@ -160,5 +160,16 @@ if (document.getElementById("upDrop")) {
   (async () => {
     if (!await SgSources.ready) return;
     for (const id of ["#importer", "#typeIn", "#healthLink"]) $(id).hidden = false;   // this page's tabs once (#166)
+    /* another profile chosen (#490): its cards put away, so no Add saves into a profile the page no longer names. One
+       over or in review goes (a review waits in its own profile's Waiting for you); one still on its way is hidden
+       until its profile is chosen again */
+    $("#profile").addEventListener("change", () => {
+      const pid = String(SgSources.pid());
+      for (const c of t.el.querySelectorAll(".job[data-pid]")) {
+        if (c.dataset.pid === pid) c.hidden = false;
+        else if ("settled" in c.dataset || c.dataset.step === "review") c.remove();
+        else c.hidden = true;
+      }
+    });
   })();
 }

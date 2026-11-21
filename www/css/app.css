@@ -1661,6 +1661,7 @@ select option,select optgroup{background:var(--raised);color:var(--ink)}
 .src .src-wait-t{flex:1 1 220px;min-width:0;overflow-wrap:anywhere}
 .src :is(.src-wait-t,.src-way) p,.src .src-wait-none{margin:2px 0 0;font-size:var(--fs-3);color:var(--ink2)}
 .src .src-wait-acts{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
+.src .src-wait-more{padding-top:var(--sp-2);border-top:1px solid var(--grid)}
 .src #srcReview>.job{margin:var(--sp-3) 0 0;padding:var(--sp-3) 0 0;border:0;border-top:1px solid var(--grid);border-radius:0}   /* not a card in a card */
 .src .src-ways{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr));gap:var(--sp-3)}
 .src .src-empty+.src-ways{margin-top:var(--sp-4)}
@@ -1677,7 +1678,7 @@ select option,select optgroup{background:var(--raised);color:var(--ink)}
 .src .src-way-list{margin-top:var(--sp-2);font-size:var(--fs-3)}
 .src .src-way-list li{display:flex;gap:var(--sp-1);align-items:baseline}
 .src .src-empty{text-align:center}
-.src .src-empty p{margin-inline:auto}
+.src .src-empty.empty-state p{margin-inline:auto}   /* (over .empty-state's own, #490) */
 .src .src-pic{display:flex;justify-content:center;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-3);color:var(--muted)}
 .src .src-pic>span{display:flex;padding:var(--sp-2);border-radius:var(--r-pill);background:var(--hover);color:var(--accent)}
 .src .src-pic>.src-pic-to{padding:var(--sp-3);background:var(--accent);color:var(--on-accent)}
