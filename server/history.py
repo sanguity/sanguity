@@ -184,6 +184,9 @@ def undo(db, pid, iid, who, ip=None, at=None):
     finish_watch, discard = None, []
     try:
         with dbm.transaction(db):
+            # asked again under the write lock (#542): undone, or its profile deleted, since it was read above
+            if not db.execute("SELECT 1 FROM imports WHERE id=? AND profile_id=? AND at=?", (iid, pid, imp["at"])).fetchone():
+                raise Refused("No such import. It may have been undone already.", 404)
             ups = [r[0] for r in db.execute("SELECT DISTINCT upload_id FROM jobs WHERE import_id=?", (iid,))]
             ups += [u for u in _document_uploads(db, pid, iid) if u not in ups]   # hand entry's attached files
             if imp["origin"] == "sync":   # a connected source's sync: what it changed in place goes back first

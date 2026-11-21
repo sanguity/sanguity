@@ -400,12 +400,20 @@
         if (dups.part) dups.part.addEventListener("change", words);
         const say = t => { msg.textContent = t; };
         const busy = on => { cancel.disabled = on; if (on) add.disabled = true; else words(); };
+        // -> true: done; false: refused, said; null: cancelled meanwhile (#542: cycle tracking turned off in another
+        // tab), the card then saying so as Cancel would
         const act = async (what, body) => {
           let r;
           try { r = await call(`${base}/${what}`, {method: "POST", body: JSON.stringify(body || {})}); }
           catch (e) { say("Couldn't reach the server. Check the connection and try again."); return false; }
           if (r.status === 401) { location.replace("login.html"); return false; }
-          if (!r.ok) { say(await detail(r)); return false; }
+          if (!r.ok) {
+            const why = await detail(r);
+            const now = r.status === 409 ? await call(base).then(g => g.ok ? g.json() : null).catch(() => null) : null;
+            if (now?.state === "discarded") { showCancelled(card, now.message); done(now); return null; }
+            say(why);
+            return false;
+          }
           return true;
         };
         // focus on the button pressed stays in the card while it changes under it (#489): while it's saved, on the
@@ -416,7 +424,9 @@
           if (bad) { say("A lab name has a series that isn't there: pick one from its list, or leave it empty."); bad.focus(); return; }
           f.held = card.contains(document.activeElement);
           busy(true); say("Adding…");
-          if (!(await act("confirm", {keep: dups.picked(), labs: labs.picked(), same: same.picked()}))) { busy(false); back(add); return; }
+          const ok = await act("confirm", {keep: dups.picked(), labs: labs.picked(), same: same.picked()});
+          if (ok === null) return;
+          if (!ok) { busy(false); back(add); return; }
           card.replaceChildren();
           f.step("saved", STAGES.saving);
           f.progress(null);
@@ -426,7 +436,9 @@
         cancel.addEventListener("click", async () => {
           f.held = card.contains(document.activeElement);
           busy(true); say("Cancelling…");
-          if (!(await act("discard"))) { busy(false); back(cancel); return; }
+          const ok = await act("discard");
+          if (ok === null) return;
+          if (!ok) { busy(false); back(cancel); return; }
           showCancelled(card);
           done(j);
         });
@@ -452,7 +464,7 @@
       f.fresh = async () => {
         let j = null;
         try { const r = await call(base); if (r.ok) j = await r.json(); } catch (e) {}
-        if (j?.state === "discarded" && f.card.dataset.step === "review") { showCancelled(card); done(j); return; }   // (#539: nothing left once cycle tracking was turned off)
+        if (j?.state === "discarded" && f.card.dataset.step === "review") { showCancelled(card, j.message); done(j); return; }   // (#539: nothing left once cycle tracking was turned off)
         if (!j || j.state !== "preview" || f.card.dataset.step !== "review") return;   // (saved or cancelled meanwhile)
         // each list's open state, and focus on the same control, found again by what it's for (#500), where it's
         // still offered; else on the card
@@ -693,7 +705,9 @@
   }
   /* the Undo of an upload's toast (undoAsk), the card then saying it's undone, and focus on that line (undoneFocus) */
   async function undoImport(card, pid, j) {
-    const said = await undoAsk(pid, j.import_id, {label: j.label || j.importer, counts: j.counts, upload: j.upload_id ?? null}, j.cycle);
+    // its cycle records as they are now (#542): none once tracking is turned off or they're deleted
+    const now = await call(`profiles/${encodeURIComponent(pid)}/jobs/${j.id}`).then(r => r.ok ? r.json() : null).catch(() => null);
+    const said = await undoAsk(pid, j.import_id, {label: j.label || j.importer, counts: j.counts, upload: j.upload_id ?? null}, now?.cycle);
     if (!said) return false;
     const line = undoneLine();
     card.replaceChildren(line);
@@ -749,7 +763,7 @@
       if (j) {
         if (j.state === "done") { showDone(card, pid, j); return j; }
         if (j.state === "failed") { showFailed(card, j.message); return j; }
-        if (j.state === "discarded") { showCancelled(card); return j; }
+        if (j.state === "discarded") { showCancelled(card, j.message); return j; }
         if (j.state === "preview") return jobReview({profile_id: pid, ...j}, card);
         const secs = Math.round((Date.now() - began) / 1000);
         const stage = j.state === "queued" && j.stage !== "saving" ? "queued" : j.stage, words = STAGES[stage] || "Working…";
@@ -762,10 +776,11 @@
     }
   }
 
-  function showCancelled(card) {
+  // why: the server's, for one it cancelled itself (#542: an upload holding nothing it could import)
+  function showCancelled(card, why) {
     settled(card);
     FRAMES.get(card).end("cancelled");
-    const said = node("p", {}, node("b", {text: "Cancelled."}), " Nothing was saved, and the upload was removed.");
+    const said = node("p", {}, node("b", {text: "Cancelled."}), " " + (why || "Nothing was saved, and the upload was removed."));
     card.replaceChildren(said);
     result(card, said);
   }

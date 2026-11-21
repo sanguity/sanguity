@@ -319,6 +319,28 @@ class History(unittest.TestCase):
         self.assertEqual([(e["id"], e["state"]) for e in self.history(pid)["imports"]],
                          [(b["import_id"], "undone"), (a["import_id"], "undone")])
 
+    def test_an_undo_racing_its_profiles_deletion(self):   # #542
+        """The profile deleted between the import being read and its undo's transaction: refused as gone (404), not
+        a failed insert (500)."""
+        pid = self.profile()
+        a = self.imported(pid, apple_files())
+        real = history._entry
+
+        def deleted_meanwhile(db, p, imp):
+            out = real(db, p, imp)
+            other = dbm.connect()
+            try:
+                prof.delete_profile(other, p)
+            finally:
+                other.close()
+            return out
+        history._entry = deleted_meanwhile
+        try:
+            r = self.ines.post(f"/api/profiles/{pid}/imports/{a['import_id']}/undo", headers=H)
+        finally:
+            history._entry = real
+        self.assertEqual(r.status_code, 404, r.text)
+
     # ---------------------------------------------------------------- documents and raw files
 
     def test_raw_files_go_with_the_import(self):
