@@ -559,11 +559,12 @@ const SgNav = (() => {
     if (w && id && w === page + "#" + id) focusOn(id, 10000);
   });
   /* Admin, for admins only (#167): once the page's own scripts have asked who's signed in; and on a page that isn't
-     about a profile, the profile menu */
+     about a profile, the profile menu. With no profile at all, no records tabs on any page, here for every one: those
+     that fill the menu themselves may stop first (#505: Sources and the guide's New profile did) */
   const own = onRecords || header.hasAttribute("data-profile");
   document.addEventListener("DOMContentLoaded", () => {
     api("me").then(r => r.ok ? r.json() : null).then(me => {
-      if (me && !own && !locked) profiles(me.profiles);
+      if (me && (!own || me.profiles?.length === 0) && !locked) profiles(me.profiles);
       if (me && !me.offline) saveLater();   // a theme picked offline (#414)
       if (me && me.user && me.user.is_admin && !locked) {
         const a = document.getElementById("adminLink");
