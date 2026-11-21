@@ -8243,6 +8243,7 @@ def main():
             page.keyboard.press("Escape")
             settle(300)
             page.set_viewport_size({"width": 1400, "height": 900})
+            settle(300)   # the bar moves its parts back on the media query's change, after the resize
             check("…and wider than a phone the presets, More… and the date boxes are back in the records bar, the search after the kinds (#277), the pill gone",
                   js("[document.getElementById('periodPill').checkVisibility(), document.getElementById('presets').checkVisibility(), !!document.getElementById('dates').closest('.filters'), document.getElementById('q').previousElementSibling?.id === 'chips', document.getElementById('periodPillList').popover]")
                   == [False, True, True, True, "auto"])
