@@ -5,9 +5,10 @@ from . import config, db as dbm, security as sec
 
 
 class AccountError(ValueError):
-    def __init__(self, message, status=400):
+    """field: "username" or "password", the one it's about (setup marks that field, #501)"""
+    def __init__(self, message, status=400, field=None):
         super().__init__(message)
-        self.status = status
+        self.status, self.field = status, field
 
 
 def temp_password():
@@ -18,10 +19,12 @@ def create(db, username, is_admin=False, password=None):
     """New account. With no password, it gets a one-time one (returned) that its owner replaces at first sign-in.
     Returns (user id, one-time password or None)."""
     name = username.strip()
-    if (p := sec.username_problem(name) or (password is not None and sec.password_problem(password, name))):
-        raise AccountError(p)
+    if (p := sec.username_problem(name)):
+        raise AccountError(p, field="username")
+    if password is not None and (p := sec.password_problem(password, name)):
+        raise AccountError(p, field="password")
     if db.execute("SELECT 1 FROM users WHERE username=?", (name,)).fetchone():
-        raise AccountError("That username is taken.", 409)
+        raise AccountError("That username is taken.", 409, "username")
     temp = None if password is not None else temp_password()
     try:
         uid = db.execute("""INSERT INTO users(username, pw_hash, is_admin, must_change_pw, temp_pw_expires, created)
@@ -29,7 +32,7 @@ def create(db, username, is_admin=False, password=None):
                          (name, sec.hash_password(password if password is not None else temp), int(is_admin),
                           int(temp is not None), temp_expiry() if temp is not None else None, dbm.now())).lastrowid
     except sqlite3.IntegrityError:   # created by someone else since the check above (the UNIQUE index decides)
-        raise AccountError("That username is taken.", 409)
+        raise AccountError("That username is taken.", 409, "username")
     return uid, temp
 
 

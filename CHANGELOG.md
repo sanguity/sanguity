@@ -1904,6 +1904,17 @@ Everything on `main` so far; it becomes the first tagged release.
   all asks the server for the rest, logged in the profile's activity as a view of that section (a ten-year link's view
   went from 877 KB to 460 KB). Setup's two Shows are named apart ("Show repeated password"), and its note says the
   first account owns the records already on the server only where there are some.
+- **The clinician's page keeps a chip Tab reaches in sight, sticks on phones, prints without half-empty pages, and
+  setup marks the field it means** (#501): Tab reached section chips only partly in the bar's view ("Jou"); a chip
+  given focus now scrolls wholly into it. The bar stopped sticking on phones held upright (375×667, 320×568): it scrolls
+  with the page only where it's two rows under 700 px tall, or on a phone on its side. Printed with histories open, a
+  test's history went to the next page whole with its row, leaving pages up to 420 pt short; a history now starts on
+  the page it's on. Show all keeps focus while it loads, saying "Loading…" and any failure in a live line, and no longer
+  pulls focus to the new rows once you've moved on. Setup's refusal of a password built from the username marked the
+  username (its message names it); the server now names the field, and each send clears the last one's marks. Share
+  links' list on a phone puts a cell on each line (dates broke word by word and Revoke a letter a line); a new link's
+  QR code (and two-factor's) is brought into view as it opens; and with no profile left the top bar has no records
+  tabs.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

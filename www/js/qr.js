@@ -165,6 +165,16 @@ function qrShow(text, {what, caption, shown = false, field = false}) {
   if (!svg) return null;
   const fig = el("figure", {class: "qr-fig", id: "qrFig" + (++qrShows), hidden: !shown || null}, svg, el("figcaption", {text: caption}));
   const btn = shown ? null : el("button", {class: field ? "btn" : "btn small", type: "button", text: "QR code", "aria-expanded": "false", "aria-controls": fig.id,
-    "aria-label": `QR code of ${what}`, onclick: () => { fig.hidden = !fig.hidden; btn.setAttribute("aria-expanded", String(!fig.hidden)); }});
+    "aria-label": `QR code of ${what}`, onclick: () => { fig.hidden = !fig.hidden; btn.setAttribute("aria-expanded", String(!fig.hidden)); qrSee(fig, smoothly()); }});
+  if (shown) requestAnimationFrame(() => qrSee(fig));   // once the page has put it in
   return {btn, fig};
+}
+/* #501: a code shown is brought into view, clear of the top bar and a phone's tabs (html's scroll-padding): it opened
+   below the fold on a phone, nothing seen to change. Focus, where the page put it, is kept in sight too */
+function qrSee(fig, behavior = "instant") {
+  if (!fig.isConnected || fig.hidden) return;
+  fig.scrollIntoView({block: "nearest", behavior});
+  const f = document.activeElement, r = f.getBoundingClientRect(), pad = getComputedStyle(document.documentElement);
+  if (behavior === "instant" && f !== document.body && (r.top < parseFloat(pad.scrollPaddingTop) || r.bottom > innerHeight - parseFloat(pad.scrollPaddingBottom)))
+    f.scrollIntoView({block: "nearest"});
 }

@@ -43,22 +43,29 @@ function shLong(heads, rows, empty, cls, noun, id, more, total = rows.length) {
   total = Math.max(total, whole);
   const n = k => k.toLocaleString(), said = k => total > k ? `The latest ${n(k)} of ${n(total)}${noun ? " " + noun : ""}.` : "";
   if (!whole) return total > rows.length ? el("div", {}, box, el("p", {class: "hint", text: said(rows.length)})) : box;
-  const note = el("p", {class: "hint", text: said(rows.length)});
-  const all = el("button", {class: "btn small", type: "button", text: total > whole ? `Show the latest ${n(whole)}` : `Show all ${n(whole)}`,
+  // #501: the note a live region the button is described by, saying it's loading and why it failed; the button
+  // aria-disabled while it loads, not disabled, so focus stays on it; the new rows take focus only if it's still there
+  const note = el("p", {class: "hint", role: "status", id: "shMore-" + id, text: said(rows.length)});
+  const label = total > whole ? `Show the latest ${n(whole)}` : `Show all ${n(whole)}`;
+  const all = el("button", {class: "btn small", type: "button", text: label, "aria-describedby": note.id,
     onclick: async () => {
-      all.disabled = true;
+      if (all.getAttribute("aria-disabled")) return;
+      all.setAttribute("aria-disabled", "true");
+      all.textContent = note.textContent = "Loading…";
       let got;
       try { got = (await more()).map(shRow); }
       catch (e) {
         note.textContent = e.status === 429 ? "This link has been opened many times in a short while. Try again in a few minutes."
           : "The rest couldn't be loaded. Try again, or reload the page.";
-        all.disabled = false;
-        all.focus();
+        all.removeAttribute("aria-disabled");
+        all.textContent = label;
         return;
       }
+      const here = document.activeElement === all;
       box.querySelector("tbody").replaceChildren(...got);
       note.textContent = said(got.length);
       (note.textContent ? all : tools).remove();
+      if (!here) return;
       const first = got[rows.length] || got[0];
       first.tabIndex = -1;
       first.focus();
@@ -159,7 +166,8 @@ function shOpen(btn, hist, on) { btn.setAttribute("aria-expanded", String(on)); 
 /* the sections' bar (#289): a chip per section, sticky under the page's header, that scrolls to it and gives its heading
    focus; the one in view is marked. Buttons, not #links: this page's address after the # is the link's token. On a
    narrow screen its chips scroll sideways (#491); on a wider one they wrap to two rows at most, scrolling sideways
-   beyond them (#498: three or four rows were a third of a laptop's window); under 700 px tall it isn't sticky (app.css). */
+   beyond them (#498: three or four rows were a third of a laptop's window), and under 700 px tall isn't sticky (app.css;
+   #501: a phone's one row is). A chip given focus scrolls wholly into the bar's view (#501). */
 function shBar(secs) {
   const bar = $("#shareBar");
   bar.replaceChildren(el("div", {class: "share-chips"}, ...secs.map(s => el("button", {class: "chip", type: "button", "data-for": "share-" + s.id, text: s.label, onclick: () => {
@@ -190,7 +198,7 @@ function shTop() {   // the header's and the bar's heights: the bar sticks under
   root.setProperty("--bar-h", stuck + (bar.hidden || getComputedStyle(bar).position !== "sticky" ? 0 : bar.offsetHeight) + "px");   // the bar: not sticky under 700 px tall (#498)
 }
 { const ro = new ResizeObserver(shTop); ro.observe(document.querySelector("body>header")); ro.observe($("#shareBar")); }
-for (const q of ["(max-height:500px)", "(max-height:699px)"]) matchMedia(q).addEventListener("change", shTop);
+for (const q of ["(max-height:500px)", "(min-width:641px) and (max-height:699px)"]) matchMedia(q).addEventListener("change", shTop);
 let shPick = null;   // the section a chip went to, until the page is scrolled by hand
 function shSpy() {   // the section in view: of those not all under the bar (#491), the last whose top has passed under it
   const bar = $("#shareBar"), chips = [...bar.querySelectorAll(".chip")];   // or else the first; or the last, at the page's foot
@@ -202,9 +210,15 @@ function shSpy() {   // the section in view: of those not all under the bar (#49
   if (innerHeight + scrollY >= document.documentElement.scrollHeight - 2) on = chips[chips.length - 1];
   on = chips.find(c => c.dataset.for === shPick) || on;
   for (const c of chips) if (c === on) c.setAttribute("aria-current", "true"); else c.removeAttribute("aria-current");
-  const r = on.getBoundingClientRect(), b = bar.getBoundingClientRect();   // kept in sight where the bar scrolls sideways
-  if (r.left < b.left || r.right > b.left + bar.clientWidth) bar.scrollLeft += r.left - b.left - 8;
+  // kept in sight where the bar scrolls sideways, unless a chip has focus, which is (#501)
+  if (!bar.contains(document.activeElement)) shSee(bar, on);
 }
+function shSee(bar, c) {   // a chip wholly in the bar's view, 8 px clear of its edges where it can be
+  const r = c.getBoundingClientRect(), b = bar.getBoundingClientRect(), right = b.left + bar.clientWidth;
+  if (r.left < b.left) bar.scrollLeft += r.left - b.left - 8;
+  else if (r.right > right) bar.scrollLeft += Math.min(r.right - right + 8, r.left - b.left - 8);
+}
+$("#shareBar").addEventListener("focusin", ev => { if (ev.target.matches(".chip")) shSee(ev.currentTarget, ev.target); });
 let shSpied = 0;
 for (const t of ["scroll", "resize"]) addEventListener(t, () => { shSpied ||= requestAnimationFrame(() => { shSpied = 0; shSpy(); }); }, {passive: true});
 for (const t of ["wheel", "touchstart", "keydown", "pointerdown"]) addEventListener(t, ev => { if (!ev.target.closest?.("#shareBar")) shPick = null; }, {passive: true});

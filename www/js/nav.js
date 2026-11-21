@@ -238,7 +238,7 @@ const SgNav = (() => {
      to (not while the select is disabled: offline, or a save under way); its pages' and the tabs' addresses */
   function draw() {
     const p = known.find(x => String(x.id) === pick.value);
-    wrap.hidden = !p || locked;
+    wrap.hidden = tabs.hidden = !p || locked;   // no profile left (#501: after Leave): no records tabs either
     sync();   // Add, by your role on it (#401)
     waitingFor(p);   // and what's waiting for you there (#283)
     canEditTabs(p);

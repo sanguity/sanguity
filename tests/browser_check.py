@@ -2284,7 +2284,35 @@ def main():
         strict.set_viewport_size({"width": 1400, "height": 900})
         check("share links: the list names it, not yet opened", "Dr. Fictional" in mine.locator(".share-links table").inner_text()
               and "never" in mine.locator(".share-links table").inner_text())
-        holder = browser.new_context(viewport={"width": 1400, "height": 900})   # the real CSP, no cookies, no session
+        # #501: at 375×667 the new link's QR code, opened from its button at the screen's foot, is brought into sight, clear
+        # of the top bar and the phone's tabs (it opened below the fold, nothing seen to change); and at 320 px the list
+        # of links has a cell a line: no word broken mid-word ("made by demo" did), Revoke on one line (a letter a line)
+        strict.set_viewport_size({"width": 375, "height": 667})
+        strict.wait_for_timeout(150)
+        qr501 = strict.evaluate("""async () => { const q = document.querySelector('.share-made button[aria-label="QR code of the share link"]'), f = document.getElementById(q.getAttribute('aria-controls'));
+          if (!f.hidden) q.click();
+          q.scrollIntoView({block: 'end'}); await new Promise(r => setTimeout(r, 100));
+          const pad = getComputedStyle(document.documentElement), was = Math.round(q.getBoundingClientRect().bottom);
+          q.focus(); q.click(); await new Promise(r => setTimeout(r, 900));
+          const r = f.getBoundingClientRect(), b = q.getBoundingClientRect();
+          return [!f.hidden, r.top >= parseFloat(pad.scrollPaddingTop) - 1 && r.bottom <= innerHeight - parseFloat(pad.scrollPaddingBottom) + 1,
+            b.top >= parseFloat(pad.scrollPaddingTop) - 1, was, Math.round(r.top), Math.round(r.bottom), innerHeight]; }""")
+        strict.set_viewport_size({"width": 320, "height": 640})
+        strict.wait_for_timeout(150)
+        list501 = strict.evaluate("""() => { const bad = [], t = document.querySelector('#links .share-list table');
+          for (const td of t.querySelectorAll('tbody td')) {
+            const w = document.createTreeWalker(td, NodeFilter.SHOW_TEXT);
+            for (let n; (n = w.nextNode());) for (const m of n.textContent.matchAll(/\\S+/g)) {
+              const rg = document.createRange(); rg.setStart(n, m.index); rg.setEnd(n, m.index + m[0].length);
+              if (new Set([...rg.getClientRects()].map(x => Math.round(x.top))).size > 1) bad.push(m[0]); } }
+          const rv = [...t.querySelectorAll('tbody button')].filter(b => b.textContent === 'Revoke').map(b => Math.round(b.getBoundingClientRect().height));
+          return [bad, rv, document.documentElement.scrollWidth <= innerWidth]; }""")
+        strict.set_viewport_size({"width": 1400, "height": 900})
+        check("share links: at 375×667 the new link's QR code, opened from its button at the screen's foot, comes into sight, its button too (#501)",
+              qr501[:3] == [True, True, True] and qr501[3] > qr501[6] - 120, qr501)
+        check("share links: …at 320 px the list has no word broken mid-word and Revoke on one line (#501: Revoke a letter a line)",
+              not list501[0] and list501[1] and max(list501[1]) < 50 and list501[2], list501)
+        holder =browser.new_context(viewport={"width": 1400, "height": 900})   # the real CSP, no cookies, no session
         hp = holder.new_page()
         hp.on("request", elsewhere)
         hp.on("pageerror", lambda e: csp_problems.append(f"share page script error: {e}"))
@@ -2474,9 +2502,35 @@ def main():
             hp.set_viewport_size({"width": w, "height": h})
             hp.wait_for_timeout(200)
             bar498[f"{w}x{h}"] = hp.evaluate(BAR498)
+        # #501: on a phone upright the bar's one row sticks (the rule for a laptop's two rows under 700 px tall caught it)
+        stick501 = {}
+        for w, h in ((375, 667), (320, 568)):
+            hp.set_viewport_size({"width": w, "height": h})
+            hp.wait_for_timeout(200)
+            stick501[f"{w}x{h}"] = hp.evaluate("[getComputedStyle(shareBar).position, new Set([...shareBar.querySelectorAll('.chip')].map(c => Math.round(c.getBoundingClientRect().top))).size]")
+        # #501: each chip Tab reaches is wholly in the bar's view, at 1400×900 and 768 (it reached ones partly shown, cut)
+        CHIP501 = """() => { const a = document.activeElement, bar = document.getElementById('shareBar'), r = a.getBoundingClientRect(), b = bar.getBoundingClientRect();
+          return a.matches('#shareBar .chip') ? [a.textContent, r.left >= b.left - 0.5 && r.right <= b.left + bar.clientWidth + 0.5] : null; }"""
+        tab501 = {}
+        for w, h in ((1400, 900), (768, 1024)):
+            hp.set_viewport_size({"width": w, "height": h})
+            hp.evaluate("scrollTo(0, 0)")
+            hp.wait_for_timeout(200)
+            hp.focus("#shareHead .btn")
+            tab501[w] = []
+            for _ in range(30):
+                hp.keyboard.press("Tab")
+                if not (c := hp.evaluate(CHIP501)):
+                    break
+                tab501[w].append(c)
+            for _ in range(len(tab501[w])):   # and back
+                hp.keyboard.press("Shift+Tab")
+                if c := hp.evaluate(CHIP501):
+                    tab501[w].append(c)
+            hp.evaluate("document.getElementById('shareBar').scrollLeft = 0")
         hp.set_viewport_size({"width": 1400, "height": 900})
         hp.wait_for_timeout(200)
-        H1_491 = "() => { const c = getComputedStyle(document.querySelector('main h1')); return [c.fontFamily, c.fontSize, c.fontWeight, c.letterSpacing]; }"
+        H1_491 ="() => { const c = getComputedStyle(document.querySelector('main h1')); return [c.fontFamily, c.fontSize, c.fontWeight, c.letterSpacing]; }"
         strict.set_viewport_size({"width": 1400, "height": 900})
         h1_491 = [hp.evaluate(H1_491), strict.evaluate(H1_491), strict.url]
         spy491 = hp.evaluate("""async () => { const bar = document.getElementById('shareBar'), off = [];
@@ -2488,6 +2542,36 @@ def main():
         hp.evaluate("scrollTo(0, 0)")
         costs491 = hp.evaluate("""() => { const s = document.getElementById('share-costs'), m = s.querySelector('.share-more');
           return [s.querySelectorAll('tbody tr').length, m?.querySelector('.hint').textContent, m?.querySelector('button').textContent]; }""")
+        # #501: Show all keeps focus while it loads (aria-disabled, not disabled: focus fell to the page), saying
+        # "Loading…" in the line it's described by, a live region; a failure said there, focus still on it; and the rows
+        # come without pulling focus to them once it has moved on (another long section's: costs' are below)
+        SHOW501 = """id => { const b = document.querySelector('#share-' + id + ' .share-more button'), a = document.activeElement, n = document.getElementById('shMore-' + id);
+          return [a === b, b?.getAttribute('aria-disabled'), b?.textContent, n?.getAttribute('role'), b?.getAttribute('aria-describedby') === n?.id, n?.textContent]; }"""
+        held501, view_api = [], "**/api/share/view"
+        hp.route(view_api, lambda route: route.fulfill(status=500, body="{}") if "section" in (route.request.post_data or "") else route.continue_())
+        hp.focus("#share-costs .share-more button")
+        hp.keyboard.press("Enter")
+        sl_until(hp, "document.getElementById('shMore-costs').textContent.includes(\"couldn't\")")
+        show501 = [hp.evaluate(SHOW501, "costs")]
+        hp.unroute(view_api)
+        other501 = next((k for k in sent498.get("cut", {}) if k != "costs" and hp.evaluate("id => !!document.querySelector('#share-' + id + ' .share-more button')", k)), None)
+        if other501:
+            hp.route(view_api, lambda route: held501.append(route) if "section" in (route.request.post_data or "") else route.continue_())
+            hp.focus(f"#share-{other501} .share-more button")
+            hp.keyboard.press("Enter")
+            sl_until(hp, f"document.getElementById('shMore-{other501}').textContent === 'Loading…'")
+            show501.append(hp.evaluate(SHOW501, other501))
+            hp.focus("#shareHead .btn")   # moved on
+            for r_ in held501:
+                r_.continue_()
+            hp.unroute(view_api)
+            sl_until(hp, f"!document.querySelector('#share-{other501} .share-more button')")
+            show501.append(hp.evaluate("document.activeElement === document.querySelector('#shareHead .btn')"))
+        check("…Show all keeps focus while it loads, saying “Loading…” in the live line it's described by; a failure is said there, focus still "
+              "on it; the rows come without pulling focus once it's moved on (#501)",
+              other501 and show501[0][:5] == [True, None, show501[0][2], "status", True] and show501[0][2].startswith("Show all")
+              and show501[0][5] == "The rest couldn't be loaded. Try again, or reload the page."
+              and show501[1] == [True, "true", "Loading…", "status", True, "Loading…"] and show501[2] is True, [other501, show501])
         hp.locator("#share-costs .share-more button").click()   # (#498: asks the server for the rest)
         sl_until(hp, "document.querySelectorAll('#share-costs tbody tr').length > 20")
         costs491 += hp.evaluate("""() => { const rows = [...document.querySelectorAll('#share-costs tbody tr')];
@@ -2532,6 +2616,10 @@ def main():
         check("…the bar's chips in two rows at most at 1400 and 641 px, scrolling sideways beyond them with a scrollbar; not sticky at "
               "1400×600 (#498: 3 to 4 rows, stuck, were a third of the window)",
               [v[1] for v in bar498.values()] == ["sticky", "sticky", "static"] and all(v[0] <= 2 and v[2] for v in bar498.values()), bar498)
+        check("…on a phone upright, 375×667 and 320×568, the bar's one row sticks (#501: the rule for two rows under 700 px tall caught it)",
+              stick501 == {"375x667": ["sticky", 1], "320x568": ["sticky", 1]}, stick501)
+        check("…each chip Tab reaches, and Shift+Tab back, is wholly in the bar's view at 1400×900 and 768 (#501: “Journal” was cut to “Jou”)",
+              all(len(v) >= 16 and all(c[1] for c in v) for v in tab501.values()), tab501)
         check("…at 1400 px a mouse reaches each of the bar's chips (eight or more; #498: the bar scrolled sideways to it); at 568×320 the "
               "header and the bar scroll away, a chip's section coming in at the top (#491, #498: not sticky under 700 px tall)",
               len(reach491) >= 8 and all(r[1] for r in reach491) and side491["sticky"] == "static" and side491["head"] != "sticky"
@@ -2542,6 +2630,28 @@ def main():
         n491 = int(re.sub(r"\D", "", costs491[2] or "") or 0)
         check("…Costs' claims (more than 40): the latest 20, saying so, and Show all asks for the rest and lists them, the first of them focused (#491, #498)",
               n491 > 40 and costs491 == [20, f"The latest 20 of {n491:,} claims.", f"Show all {n491:,}", n491, 20, True], costs491)
+        # #501: a year's link to visits, lab results and medications (the form's default sections and dates, the year to
+        # the demo's last day), printed with every history open: no page before the last is more than a quarter empty
+        # (Chrome breaks a table row only when it's longer than a page, so a history went to the next whole, its test's
+        # row with it: Lab results moved to page 2 left page 1 about 420 pt short). Each page's lowest text, in points up
+        # from its foot (a Letter page is 792 tall)
+        made501 = strict.evaluate("""() => fetch('api/profiles/1/links', {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'},
+          body: JSON.stringify({sections: ['visits', 'results', 'medications'], from: '2025-11-15', label: 'A year (browser check)', hours: 1})}).then(r => r.json())""")
+        hp.goto("about:blank")
+        hp.goto(base + "/" + made501["path"])
+        hp.wait_for_selector("#share-results .share-latest", timeout=10000)
+        hp.locator("#share-results .share-tools button", has_text="Open every history").click()
+        hp.emulate_media(media="print")
+        low501 = []
+        for p_ in PdfReader(io.BytesIO(hp.pdf(format="Letter"))).pages:
+            ys = []
+            p_.extract_text(visitor_text=lambda t, cm, tm, fd, fs: ys.append(tm[5] * cm[3] + cm[5]) if t.strip() else None)
+            low501.append(round(min(ys)) if ys else 792)
+        hp.emulate_media(media="screen")
+        strict.evaluate("id => fetch('api/profiles/1/links/' + id, {method: 'DELETE', headers: {'X-Sanguity': '1'}})", made501["link"]["id"])
+        check("…a year's link to visits, lab results and medications, printed with every history open: no page before the last more than a "
+              "quarter empty (#501: a history and its test's row moved to the next page whole, page 1 left 420 pt short)",
+              len(low501) > 2 and max(low501[:-1]) <= 792 / 4, low501)
         strict.evaluate("id => fetch('api/profiles/1/links/' + id, {method: 'DELETE', headers: {'X-Sanguity': '1'}})", made289["link"]["id"])
         hp.goto("about:blank")
         hp.goto(share_url)   # back to the first link, which is revoked below
@@ -14338,6 +14448,28 @@ def main():
                   and leave498[2] is False, leave498)
             za.evaluate("""pid => fetch('api/profiles/' + pid, {method: 'DELETE', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'},
               body: JSON.stringify({confirm_name: 'To leave (fictional)'})})""", lpid)   # gone again, for the checks after
+            # #501: with no profile (an account all of whose profiles it has left), the top bar has no records tabs
+            # (Overview, Body, … Costs were still there); an account of its own, removed afterwards
+            uid501 = sdb.execute("INSERT INTO users(username, pw_hash, is_admin, created) VALUES(?, ?, 0, 0)", ("none501", security.hash_password(PW2))).lastrowid
+            nctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
+            np_ = nctx.new_page()
+            np_.on("pageerror", lambda e: problems.append(f"script error (none501): {e}"))
+            np_.goto(base + "/login.html")
+            np_.fill("#u", "none501")
+            np_.fill("#p", PW2)
+            np_.click("#b")
+            np_.wait_for_url(lambda u: "login.html" not in u, timeout=10000)
+            tabs501 = {}
+            for w, h in ((1400, 900), (375, 667)):
+                np_.set_viewport_size({"width": w, "height": h})
+                np_.goto(base + "/sharing.html#people")
+                np_.wait_for_function("!document.getElementById('noProfiles').hidden", timeout=10000)
+                np_.wait_for_timeout(300)
+                tabs501[w] = np_.evaluate("[...document.querySelectorAll('header [id^=tab-], header .tab-more')].filter(t => t.checkVisibility()).map(t => t.textContent)")
+            nctx.close()
+            sdb.execute("DELETE FROM users WHERE id=?", (uid501,))
+            check("with no profile, the top bar has no records tabs, at 1400 and 375 px (#501: Overview, Body, … Costs were still there after Leave)",
+                  tabs501 == {1400: [], 375: []}, tabs501)
             zb.goto(base + "/sharing.html?profile=1#people")
             zb.wait_for_selector("#people[data-profile='1'] #memberList tbody tr", state="attached", timeout=10000)
             zb.click("#shrNav a[data-group=calendar]")
@@ -17976,6 +18108,28 @@ def main():
                   code498 == ["c", "true", True, True, True, False, False], code498)
             with open(code_file, encoding="utf-8") as f:
                 fp.fill("#c", f.read().strip())
+            # #501: a password built from the username ("Don't build the password from the username…") marks and focuses
+            # the password, not the username its words name (the server names the field); a later send clears the marks
+            # of the last: a username refused, the password not typed in since, then marks the username alone
+            MARKS501 = "[document.activeElement.id, ...['c', 'u', 'p', 'p2'].filter(i => document.getElementById(i).getAttribute('aria-invalid') === 'true')]"
+            f_expect.add("400")   # (the refusals, which the browser logs)
+            fp.fill("#u", "robin")
+            fp.fill("#p", "robinrobinrobinrobin")
+            fp.fill("#p2", "robinrobinrobinrobin")
+            fp.click("#b")
+            f_until("document.getElementById('e').textContent.startsWith(\"Don't build\")")
+            fp.wait_for_timeout(100)
+            marks501 = [fp.evaluate(MARKS501)]
+            fp.evaluate("document.getElementById('e').textContent = ''")
+            fp.fill("#u", "rob in")
+            fp.click("#b")
+            f_until("document.getElementById('e').textContent.startsWith('Usernames can')")
+            fp.wait_for_timeout(100)
+            marks501.append(fp.evaluate(MARKS501))
+            f_expect.discard("400")
+            check("first run: a password built from the username marks and focuses the password only; the next send clears it, "
+                  "a username refused marking the username alone (#501: the username was marked, by the message's words)",
+                  marks501 == [["p", "p"], ["u", "u"]], marks501)
             fp.fill("#u", "robin")
             # #492: passwords that don't match are said with both left as they were, shown, focus on the repeat, to see
             # what differs (they were hidden on any submit, before setup.js found the mismatch)
