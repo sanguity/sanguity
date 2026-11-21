@@ -112,7 +112,11 @@ function sideNav(o) {
     // and its ⓘ (#280, util.js), moved beside the h1, and back beside its own title once that shows
     const part = alone ? partsOf(current).find(p => !p.hidden) : null;
     const info = part && (loneInfo && part.contains(loneInfo.sgHome) ? loneInfo : part.querySelector(":scope > .set-hd > .info"));
-    if (loneInfo && loneInfo !== info) { loneInfo.sgHome.querySelector(":scope > h2").after(loneInfo); loneInfo = null; }
+    if (loneInfo && loneInfo !== info) {   // back to its title; or gone, where its card was drawn again without it (#487's phone run)
+      const h = loneInfo.sgHome.isConnected && loneInfo.sgHome.querySelector(":scope > h2");
+      if (h) h.after(loneInfo); else loneInfo.remove();
+      loneInfo = null;
+    }
     if (info && info !== loneInfo) { info.sgHome = info.parentElement; $("#groupTitle").after(info); loneInfo = info; }
     shown = [...on];
     if (bar) bar.draw();
