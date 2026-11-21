@@ -66,9 +66,16 @@ function testStep() {
         out.replaceChildren(...present(testResult(t), t.ok && now.waiting ? el("p", {class: "msg", text: "It's still marked as waiting for the " +
           "vendor's review, so nobody can connect it yet. Once the review is done, untick that above and save."}) : null,
           t.ok && !now.waiting ? el("p", {class: "msg", text: "Done: people can now connect it under Sources → Portals and health plans."}) : null));
-        if (t.ok) loadSetup({walk: false});   // the list's "tested" now; this step, its result and focus kept (#502)
+        if (t.ok) await loadSetup({walk: false});   // the list's "tested" now; this step, its result and focus kept (#502)
         else SgOutside.load();   // (its contact, #515)
-      } catch (e) { out.replaceChildren(el("p", {class: "msg bad", role: "alert", text: e.message})); SgOutside.load(); }
+      } catch (e) {
+        if (e.status === 404) return rowsAgain(s.id, null, null, e.message);   // removed elsewhere (#524): said where its row was
+        out.replaceChildren(el("p", {class: "msg bad", role: "alert", text: e.message})); SgOutside.load();
+      }
+      // in sight (#524: under a phone's tabs, focus on this button): with its button where they fit, else from its top
+      const pad = getComputedStyle(document.documentElement), room = innerHeight - parseFloat(pad.scrollPaddingTop) - parseFloat(pad.scrollPaddingBottom);
+      out.scrollIntoView({block: "nearest"});
+      if (out.getBoundingClientRect().bottom - btn.getBoundingClientRect().top <= room) btn.scrollIntoView({block: "nearest"});
     }});
   return stepItem("Test this connection",
     el("p", {text: "This reads what the vendor publishes about its server (its discovery) to check the address and what it " +
@@ -120,26 +127,30 @@ function sourceRow(s) {
       el("button", {class: "btn small primary", type: "button", text: "Test this connection", "data-act": "test", onclick: async () => {
         msg.replaceChildren(el("p", {class: "muted", text: "Reading its discovery…"}));
         try { const t = await call(`connect/sources/${s.id}/test`, "POST"); msg.replaceChildren(testResult(t)); t.ok ? rowsAgain(s.id, "test", [...msg.childNodes]) : SgOutside.load(); }
-        catch (e) { msg.replaceChildren(el("p", {class: "msg bad", role: "alert", text: e.message})); SgOutside.load(); } }}),
+        catch (e) { rowFailed(s, msg, e); SgOutside.load(); } }}),
       el("button", {class: "btn small", type: "button", text: "Change", onclick: () => { saved = null; fill(s); $("#fName").focus(); }}),
       el("button", {class: "btn small", type: "button", text: s.waiting ? "Review done" : "Waiting for review", "data-act": "wait",
         "data-tip": s.waiting ? "The vendor has approved the app: people can connect it once it's tested" : "Say the vendor is still reviewing the app",
         onclick: async () => {
           try { await call(`connect/sources/${s.id}`, "PATCH", {waiting: !s.waiting}); rowsAgain(s.id, "wait"); }
-          catch (e) { msg.replaceChildren(el("p", {class: "msg bad", role: "alert", text: e.message})); } }}),
+          catch (e) { rowFailed(s, msg, e); } }}),
       el("button", {class: "btn small", type: "button", text: "Remove", "data-act": "remove", onclick: async () => {   // asked first (#502)
         if (!await ask({title: `Remove ${s.name}?`, message: "Nobody can connect it any more. Its app at the vendor stays as it is.",
                         action: "Remove source", danger: true})) return;
-        try { await call(`connect/sources/${s.id}`, "DELETE"); rowsAgain(s.id); } catch (e) { msg.replaceChildren(el("p", {class: "msg bad", role: "alert", text: e.message})); } }})),
+        try { await call(`connect/sources/${s.id}`, "DELETE"); rowsAgain(s.id); } catch (e) { rowFailed(s, msg, e); } }})),
     msg));
   return out;
 }
+/* a row's action refused: said under it; the source removed elsewhere (#524: its row stayed, and the form on it), the
+   list drawn again without it, that said where it was */
+const rowFailed = (s, msg, e) => e.status === 404 ? rowsAgain(s.id, null, null, e.message)
+  : msg.replaceChildren(el("p", {class: "msg bad", role: "alert", text: e.message}));
 /* the list drawn again after a row's action (#502: focus fell to the page, and a test's result went with its row):
    focus on the same button (act) of the source's new row, what it said (kept: a test's result) back under it, in view;
    the source gone, on the next row's Test, else the one before's, else on the card's heading. Only the list (#506:
    the walk-through drawn again emptied a new source half typed in); the source open in Change takes its new waiting,
    which Save would otherwise undo, and the form goes back to Add a source once it's removed */
-async function rowsAgain(id, act, kept) {
+async function rowsAgain(id, act, kept, gone) {
   const rows = () => [...$("#sourceList").querySelectorAll(".prof[data-src]")], at = rows().findIndex(r => r.dataset.src === String(id));
   await loadSetup({walk: false});
   if (editing === id) {
@@ -148,6 +159,7 @@ async function rowsAgain(id, act, kept) {
     else $("#fWaiting").checked = !!s.waiting;
   }
   const r = act && rows().find(r => r.dataset.src === String(id));
+  if (gone) return goneSay(rows(), Math.max(at, 0), gone, "[data-act=test]", $("#admin h2"), $("#sourceList"));   // (util.js)
   if (!r) return focusNear(rows(), Math.max(at, 0), "[data-act=test]", $("#admin h2"));
   const msg = r.querySelector(".src-msg");
   if (kept) { msg.replaceChildren(...kept); msg.scrollIntoView({block: "nearest"}); }
@@ -224,7 +236,18 @@ $("#srcForm").onsubmit = async ev => {
     sayIn($("#fMsg"), s.waiting ? `Saved ${s.name}, waiting for the vendor's review. You can test it now or once the review is done.`
       : `Saved ${s.name}. Last step: test it.`);
     $("#walkTest").focus();
-  } catch (e) { sayIn(m, e.message, true); }
+  } catch (e) {
+    // the source being changed removed elsewhere (#524: the form still said "Change …"): the list drawn again, the form
+    // a new source's, with what's typed kept, saying so
+    if (e.status === 404 && editing !== null) {
+      editing = saved = null;
+      await loadSetup({walk: false});
+      $("#formTitle").textContent = "Add a source"; $("#fCancel").hidden = true;
+      $("#walk").lastElementChild.replaceWith(testStep());
+      return sayIn(m, e.message + " It was removed meanwhile: Save again to add it as a new source.", true);
+    }
+    sayIn(m, e.message, true);
+  }
 };
 
 /* ---------------------------------------------------------------- the defaults of every connection (#101, #102) */

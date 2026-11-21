@@ -273,6 +273,7 @@ function ownerlessRow(p) {
     $("#ownerless").replaceChildren(m);
     m.focus({preventScroll: true}); m.scrollIntoView({block: "nearest"});
   }});
+  other.onkeydown = ev => { if (ev.key === "Enter" && !ev.isComposing) { ev.preventDefault(); go.click(); } };   // as Make owner (#524)
   return el("div", {class: "row"}, el("b", {text: p.name}),
     el("span", {class: "muted", text: p.members.length ? p.members.map(m => `${m.username} (${m.role}${m.disabled ? ", disabled" : ""})`).join(", ") : "no members"}),
     pick, other, go);

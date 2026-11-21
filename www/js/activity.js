@@ -93,8 +93,10 @@ const describe = e => (WHAT[e.action] || (() => e.action))(e.detail || {}, e);
 function activityRows(list) {
   return list.map(e => el("tr", {},
     el("td", {class: "nowrap", text: when(e.at)}), el("td", {text: e.actor + (e.actor_removed ? " (removed)" : "")}), el("td", {text: describe(e)}),
-    el("td", {class: "muted", text: e.ip || ""})));
+    el("td", {class: "muted"}, ...addressBreaks(e.ip || ""))));
 }
+/* an address, able to break after each colon of an IPv6 one, and nowhere else (app.css, #524: "127.0.0." / "1") */
+const addressBreaks = ip => ip.split(/(?<=:)/).flatMap((p, i) => i ? [el("wbr"), p] : [p]);
 /* a log that opens on demand (or at once, with open): newest first, filtered by person (profile logs) and kind,
    older entries on request */
 function activityPanel(path, members, {open = false} = {}) {

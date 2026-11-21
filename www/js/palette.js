@@ -154,7 +154,7 @@ const SgPalette = (() => {
     if (profile()?.role === "owner") out.push({icon: sgIcon("sharing/links"), title: "New share link", ctx: "Sharing", go: newLink});
     // the profile menu's New profile, its only one (#402), even where that menu isn't shown (no profile yet)
     const np = document.getElementById("newProfileLink");
-    if (np && !document.getElementById("barSearch").hidden) out.push({icon: sgIcon("sharing/newProfile"), title: "New profile", ctx: "Profile menu", words: "create add person child family someone else",
+    if (np && !document.getElementById("barSearch").hidden) out.push({icon: sgIcon("sharing/newProfile"), title: "New profile", ctx: "Profile menu", words: "create add child family someone else another",   // (#524: not "person": “add person” is Sharing's)
       server: true, go: () => { location.href = np.href; }});
     const th = document.getElementById("theme");
     if (th && !th.hidden) out.push({icon: sgIcon("theme"), title: th.textContent.trim(), ctx: "Your menu", words: "theme dark light", go: () => th.click()});
@@ -205,8 +205,9 @@ const SgPalette = (() => {
       if (!all) continue;
       for (const g of P.groups) {
         if (g.rest || (g.needs && role < RANK[g.needs])) continue;
-        out.push({icon: g.icon, title: g.title, ctx: P.title, words: g.words, go: () => goTo(P, g.id)});
-        for (const [title, id, words, needs] of g.finds || []) if (!needs || role >= RANK[needs]) out.push({icon: sgIcon(P.page.replace(".html", "/") + id), title, ctx: `${P.title} › ${g.title}`, words, go: () => goTo(P, id, true)});
+        const here = P.page === page;   // (first of those found as well, #524)
+        out.push({icon: g.icon, title: g.title, ctx: P.title, words: g.words, here, go: () => goTo(P, g.id)});
+        for (const [title, id, words, needs] of g.finds || []) if (!needs || role >= RANK[needs]) out.push({icon: sgIcon(P.page.replace(".html", "/") + id), title, ctx: `${P.title} › ${g.title}`, words, here, go: () => goTo(P, id, true)});
       }
     }
     if (page !== "guide.html") out.push({icon: sgIcon("guide"), title: "Getting started", ctx: "Page", words: "guide first records", go: () => { location.href = "guide.html" + (pid() ? "?profile=" + pid() : ""); }});
@@ -255,15 +256,28 @@ const SgPalette = (() => {
      Words are letters and digits: "two-factor" is "two factor", as "mg/dL" is "mg dl". A plural typed finds its
      singular too (#502: "codes" finds "code", "matches" "match"; #506: "activities" "activity"). where: where it is
      (its page, its group), which counts for less than its own words (#506: "remove account" found Account's Passkeys,
-     "add remove" there and "account" its page, before Admin's Accounts): .5 more when a word is only there */
+     "add remove" there and "account" its page, before Admin's Accounts): .5 more when a word is only there, and then
+     only for an entry with each of the others in its title (#524: "remove account" still found Passkeys, and "new account"
+     Password, for someone with no Admin: a page's name narrows its titles down, as in "account password", and finds
+     nothing by itself with the rest in an entry's words). The little words of a button's label ("Test this
+     connection", "Sign out all other devices") needn't be anywhere (STOP), unless they're all that's typed; its whole
+     label is still what a title is compared with */
   const flat = s => " " + norm(s).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
   const singular = w => w.length < 4 ? w : /ies$/.test(w) ? w.slice(0, -3) + "y" : w.replace(/(ch|sh|x|ss)es$/, "$1").replace(/([^s])s$/, "$1");
-  function score(title, also, words, where = "") {
-    const t = flat(title), own = t + flat(also), at = (h, w) => h.includes(" " + w) || h.includes(" " + singular(w));
+  const STOP = new Set("a an the this that my your our its it all of or and to for from on in at".split(" "));
+  const kept = typed => typed.some(w => !STOP.has(w)) ? typed.filter(w => !STOP.has(w)) : typed;
+  function score(title, also, typed, where = "") {
+    const t = flat(title), own = t + flat(also), at = (h, w) => h.includes(" " + w) || h.includes(" " + singular(w)), words = kept(typed);
     if (!words.every(w => at(own + flat(where), w))) return -1;
-    const all = " " + words.join(" "), less = words.every(w => at(own, w)) ? 0 : .5;
+    const away = words.filter(w => !at(own, w));
+    if (away.length && away.length < words.length && !words.every(w => away.includes(w) || at(t, w))) return -1;
+    const all = " " + typed.join(" "), less = away.length ? .5 : 0;
     return t === all ? 0 : t.startsWith(all) ? .5 : words.every(w => at(t, w)) ? 1 : (at(t, words[0]) ? 2 : 3) + less;
   }
+  /* between pages and settings found as well (#524): one with more of the words typed whole first ("use" is Admin's
+     "Use it", not "users"), then one on this page ("Turn off" on Account is two-factor sign-in's, not cycle tracking's) */
+  const whole = (x, words) => { const h = flat([x.title, x.words].join(" ")) + " "; return kept(words).filter(w => h.includes(` ${w} `) || h.includes(` ${singular(w)} `)).length; };
+  const nearer = words => (a, b) => whole(b, words) - whole(a, words) || (b.here ? 1 : 0) - (a.here ? 1 : 0);
   /* xs scored (x.s, or its title, then its words, then where it is), best first, then as given or by more, at most
      cap: [[score, x]] */
   const ranked = (xs, words, cap, more = () => 0) => xs.map(x => [x.s ?? score(x.title, x.words || "", words, x.ctx), x])
@@ -276,7 +290,7 @@ const SgPalette = (() => {
     const acts = known(actions()).filter(x => !off || !x.server), pgs = all => off ? [] : pages(all);   // (every page is another)
     const offNote = off ? "Pages and settings aren't listed: they need the server, and you're offline." : "";
     if (!words.length) return {groups: [["Actions", acts], ["Records tabs", tabs()], ["Pages", pgs(false)]], offNote};
-    const groups = [["Actions", ranked(acts, words, 8)], ["Records tabs", ranked(tabs(true), words, 8)], ["Pages and settings", ranked(pgs(true), words, 10)]];
+    const groups = [["Actions", ranked(acts, words, 8)], ["Records tabs", ranked(tabs(true), words, 8)], ["Pages and settings", ranked(pgs(true), words, 10, nearer(words))]];
     const L = labs(), E = events();
     if (L) groups.push(["Labs", ranked(L.map(s => ({icon: "test-tube-diagonal", title: s.shown, n: s.n, s: score(s.shown, [s.name, s.panel].join(" "), words),
       ctx: [s.shown !== s.name && "In the records: " + s.name, `${s.n} result${s.n === 1 ? "" : "s"}`].filter(Boolean).join(" · "), go: () => openLab(s.name)})),

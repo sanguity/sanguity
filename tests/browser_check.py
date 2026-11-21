@@ -14397,9 +14397,9 @@ def main():
                 found506[q] = [t for g, t in js(pal_found)][:3]
             page.keyboard.press("Escape")
             check("…(#506) Admin's Accounts first for “remove account”, “add account” and “new account”; a word in “-ies” finds it in “-y” "
-                  "(activities, histories, directories, entries); Accounts for making an owner of a profile without one; Connected-source "
-                  "apps for testing and removing a source",
-                  all(found506[q][:1] == [t] for q, t in want506.items() if q not in ("activities", "entries"))
+                  "(activities, histories, directories, entries); Accounts for making an owner of a profile without one (“make owner”: one of "
+                  "the first, after Sharing's Who has access, #524: an owner's of their own profile); Connected-source apps for testing and removing a source",
+                  all(found506[q][:1] == [t] for q, t in want506.items() if q not in ("activities", "entries", "make owner"))
                   and all(t in found506[q] for q, t in want506.items()), found506)
             # #510: and Share links, People's Who has access and Connected-source apps for what's done or typed there (it
             # found nothing for these), each first
@@ -14443,6 +14443,104 @@ def main():
             check("…(#519) Passkeys for “rename passkey”, Where you're signed in for “logout”, Connected-source apps for “return address”, "
                   "“redirect”, “redirect uri” and “new source”, Password for “new”, “reset” and “forgot password”, each first",
                   all(found519[q][:1] == [t] for q, t in want519.items()), found519)
+            # #524: one sweep of the palette's words (each round found more it had none for). Every visible button's and menu
+            # item's label on Sources, Sharing, Settings, Account and Admin, each group shown in turn, for an admin, an owner,
+            # an editor and a viewer of the profile, finds a page or setting of its own page first (of one of its pages, for a
+            # label on more than one: Rename). Left out: what picks a value (a chip, a toggle, a switch), an ⓘ, a password's
+            # Show, what a record or a count names (a condition's Choose, a source's Test, "Show all 3 backups"), and what
+            # every form has (Save, Cancel, Remove, Copy…). And what the eighth review typed finds what it names: nothing on
+            # Account for an editor's "remove account" or "new account" (Passkeys and Password: a page's name narrows its
+            # titles down, never finds an entry by itself), and Sharing's Who has access, not New profile, for "add person"
+            PAL524 = """async ([name, phrases]) => {
+              const wait = ms => new Promise(r => setTimeout(r, ms));
+              const SAME = new Set(['Save', 'Discard', 'Cancel', 'Add', 'Add a row', 'Remove', 'Remove this row', 'Reset to defaults', 'Copy', 'Clear', 'Show older', 'Undo', 'Close', 'Done']);
+              const menuShown = x => { const p = x.closest('[popover]'); return !!p && [...document.querySelectorAll('button')].some(b => b.popoverTargetElement === p && b.checkVisibility()); };
+              const groups = {};
+              for (const a of [...document.querySelectorAll('.set-nav-list a[data-group]')].filter(a => a.checkVisibility())) {
+                location.hash = a.dataset.group;
+                await wait(150);
+                groups[a.dataset.group] = [...new Set([...document.querySelectorAll('main :is(button, a.btn, [role^=menuitem])')]
+                  .filter(x => !x.closest('nav, dialog, .pre-offer') && !x.matches('.chip, .pw-show, #walkTest, [aria-pressed], [role=radio], [role=switch], [role=tab], [role=checkbox]')
+                    && !/^About /.test(x.getAttribute('aria-label') || '') && (x.checkVisibility() || (x.matches('[role^=menuitem]') && menuShown(x))))
+                  .map(x => x.textContent.replace(/\\s+/g, ' ').trim().replace(/…$/, '')).filter(t => t && !SAME.has(t) && !/\\d/.test(t)))];
+              }
+              SgPalette.open();
+              await wait(1000);   // (who's signed in, asked as it opens)
+              const q = document.getElementById('palQ');
+              const found = typed => { q.value = typed; q.dispatchEvent(new Event('input'));
+                return [...document.querySelectorAll('#palList [role=group]')].filter(g => g.firstChild.textContent === 'Pages and settings')
+                  .flatMap(g => [...g.querySelectorAll('[role=option]')].map(o => [o.querySelector('.pal-t').textContent, o.querySelector('.pal-c').lastChild.textContent])); };
+              const out = {groups: Object.fromEntries(Object.entries(groups).map(([g, labs]) => [g, labs.map(l => [l, found(l)])])),
+                phrases: Object.fromEntries(phrases.map(p => [p, found(p)]))};
+              document.querySelector('dialog.palette').close();
+              return out; }"""
+            ask524 = {"admin": ["delete passkey", "disable 2fa", "reset 2fa", "lost phone", "leave profile", "failed sign-ins", "audit", "audit log", "qr"],
+                      "owner": ["make owner", "add owner", "change owner", "transfer ownership", "give access", "share with", "stop sharing", "audit"],
+                      "editor": ["remove account", "new account", "add person"], "viewer": []}
+
+            def sweep524(pg, role):
+                out = {"groups": {}, "phrases": {}}
+                for name in ("sources", "sharing", "settings", "account") + (("admin",) if role == "admin" else ()):
+                    pg.goto(base + f"/{name}.html" + ("?profile=1" if name in ("sources", "sharing", "settings") else ""))
+                    pg.wait_for_selector(".set-nav-list a[data-group]", timeout=10000)
+                    pg.wait_for_timeout(1200)   # (what each card fetches)
+                    r = pg.evaluate(PAL524, [name, ask524[role] if name == "sources" else []])
+                    out["groups"].update({(name, g): v for g, v in r["groups"].items()})
+                    out["phrases"].update(r["phrases"])
+                return out
+            swept524 = {"admin": sweep524(page, "admin")}
+            # the others: accounts of their own, on profile 1, gone again after (with more than one account Admin needs a
+            # second factor: the admin's turn came first)
+            from server import db as db524, security as sec524
+            adb524 = db524.connect()
+            users524 = {"owner": "own524", "editor": "edit524", "viewer": "view524"}
+            for role, u in users524.items():
+                uid = adb524.execute("INSERT INTO users(username, pw_hash, is_admin, created) VALUES(?, ?, 0, 0)", (u, sec524.hash_password(PW2))).lastrowid
+                adb524.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, 1, ?)", (uid, role))
+            try:
+                for role, u in users524.items():
+                    ctx524 = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
+                    p524 = ctx524.new_page()
+                    p524.on("pageerror", lambda e, u=u: problems.append(f"script error ({u}): {e}"))
+                    p524.goto(base + "/login.html")
+                    p524.fill("#u", u)
+                    p524.fill("#p", PW2)
+                    p524.click("#b")
+                    p524.wait_for_function("!location.pathname.endsWith('login.html')", timeout=20000)
+                    swept524[role] = sweep524(p524, role)
+                    ctx524.close()
+            finally:
+                adb524.execute("DELETE FROM users WHERE username IN (?, ?, ?)", tuple(users524.values()))
+                adb524.execute("DELETE FROM activity WHERE actor IN (?, ?, ?)", tuple(users524.values()))   # (their sign-ins, the records opened)
+                adb524.close()
+            page_of = lambda f: f[0] if f[1] == "Page" else f[1].split(" › ")[0]
+            bad524, n524 = [], {}
+            for role, s in swept524.items():
+                on = {}
+                for (name, g), ctls in s["groups"].items():
+                    for lab, _ in ctls:
+                        on.setdefault(lab, set()).add(name.title())
+                n524[role] = sum(len(c) for c in s["groups"].values())
+                bad524 += [[role, name, g, lab, found[:2]] for (name, g), ctls in s["groups"].items() for lab, found in ctls
+                           if not found or page_of(found[0]) not in on[lab]]
+            check("…(#524) every visible button's and menu item's label on Sources, Sharing, Settings, Account and Admin, for an admin, an "
+                  "owner, an editor and a viewer, finds a page or setting of its own page first (it found nothing for “Test this connection”, "
+                  "“Back up now”, “New share link”…)", not bad524 and n524["admin"] >= 20 and n524["owner"] >= 12 and n524["editor"] >= 10 and n524["viewer"] >= 4,
+                  bad524[:8] or n524)
+            said524 = {role: {q: [t for t, _ in f] for q, f in s["phrases"].items()} for role, s in swept524.items()}
+            first524 = {"admin": {"delete passkey": "Passkeys", "disable 2fa": "Two-factor sign-in", "reset 2fa": "Two-factor sign-in", "lost phone": "Two-factor sign-in",
+                                  "leave profile": "People", "failed sign-ins": "Install activity"},
+                        "owner": {q: "Who has access" for q in ("make owner", "add owner", "change owner", "transfer ownership", "give access", "share with", "stop sharing")},
+                        "editor": {"add person": "Who has access"}}
+            among524 = {"admin": {"audit": {"Install activity", "Activity"}, "audit log": {"Install activity", "Activity"},
+                                  "qr": {"Two-factor sign-in", "Share links", "Paste a Health Link", "Phone and watch"}}, "owner": {"audit": {"Activity"}}}
+            check("…(#524) and what the eighth review typed finds what it names, first: an admin's “delete passkey”, “disable” and “reset 2fa”, "
+                  "“lost phone”, “leave profile”, “failed sign-ins”, “audit” and “qr”; an owner's “make”, “add” and “change owner”, “transfer "
+                  "ownership”, “give access”, “share with” and “stop sharing”; an editor's “add person” (New profile), and nothing on Account for "
+                  "their “remove account” or “new account” (Passkeys, Password)",
+                  all(said524[r][q][:1] == [t] for r, qs in first524.items() for q, t in qs.items())
+                  and all(ts <= set(said524[r][q]) for r, qs in among524.items() for q, ts in qs.items())
+                  and not any(page_of(f) == "Account" for q in ("remove account", "new account") for f in swept524["editor"]["phrases"][q]), said524)
             page.goto(base + "/settings.html?profile=1#dashboard")
             page.wait_for_selector("#sections > section", state="attached", timeout=10000)
             settle(300)
@@ -15009,6 +15107,11 @@ def main():
             mine = lambda pg: pg.evaluate("fetch('api/settings/user').then(r => r.json())")
             check("time zone and date format set from the browser on first sign-in",
                   mine(zb)["dates.timeZone"] == "America/Chicago" and mine(zb)["dates.format"] == "mdy", mine(zb))
+            # #524: and not logged as changes (Install activity said "changed their own setting “Time zone”" and
+            # "“Date format”" for each first sign-in): the person changed nothing
+            logged524 = lambda: [r[0] for r in sdb.execute("SELECT action FROM activity WHERE actor_id=? AND action='settings.user'", (uid2,))]
+            first524 = logged524()
+            check("…(#524) and not logged in Install activity as changes", first524 == [], first524)
             before = mine(za)   # the demo account's, put back afterwards for the checks below
             za.goto(base + "/settings.html?profile=1#sec-dates")
             za.wait_for_selector("#sec-dates select", timeout=10000)
@@ -15077,6 +15180,7 @@ def main():
             zb.select_option("[data-key='dates.format'] select", "dmy")
             zb.wait_for_function("document.querySelector('#sec-dates .set-msg').textContent == 'Saved “Date format”.'", timeout=10000)
             check("…and saves them", mine(zb)["dates.format"] == "dmy", mine(zb))
+            check("…(#524) a change of their own logged, once", logged524() == ["settings.user"], logged524())
             # #433: on a browser where an account with Dark was signed in, one with no profile sees its own theme on the
             # records page, and a change to it after a reload
             ctx433 = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True, timezone_id="America/Chicago")
@@ -16240,6 +16344,39 @@ def main():
             msg510.append(js(said510))
             check("…(#510) Change on another row, and removing the source open in Change, leave no “Saved …” beside the form",
                   msg510[0][1].startswith("Saved Fake Epic sandbox") and msg510[1:] == [["Change Spare 510", ""], ["Add a source", ""]], msg510)
+            # #524: at 375×667 the walk-through's result is in sight once its test is done, with focus still on its button (the
+            # result was under the phone's tabs); and a source open in Change, removed elsewhere (another tab, another admin),
+            # then its row's Waiting for review: the list drawn again without it, “No such source.” where it was and in sight,
+            # focus beside it, the form a new source's (its row stayed, the reply under it, the form still “Change …”)
+            SEEN524s = """e => { if (!e) return false; const r = e.getBoundingClientRect(), p = getComputedStyle(document.documentElement);
+              return r.height > 0 && r.top >= parseFloat(p.scrollPaddingTop) - 1 && r.bottom <= innerHeight - parseFloat(p.scrollPaddingBottom) + 1; }"""
+            js("api('connect/sources', {method: 'POST', body: JSON.stringify({vendor: 'other', name: 'Spare 524', issuer: 'https://fhir.example.org/spare524', "
+               "client_id: 'spare', auth: 'public', scopes: 'launch/patient openid fhirUser patient/Observation.read'})}).then(r => r.status).then(() => loadSetup({walk: false}))")
+            page.wait_for_function("document.getElementById('sourceList').textContent.includes('Spare 524')", timeout=10000)
+            spare524 = page.locator("#sourceList .prof", has_text="Spare 524")
+            spare524.get_by_role("button", name="Change").click()
+            page.set_viewport_size({"width": 375, "height": 667})
+            page.route(test502, fail502)
+            page.click("#walkTest")
+            page.wait_for_function("document.getElementById('walkResult').textContent.startsWith('Test failed')", timeout=10000)
+            settle(300)
+            page.unroute(test502, fail502)
+            walk524 = js(f"[document.activeElement.id, ({SEEN524s})(document.activeElement), ({SEEN524s})(document.getElementById('walkResult'))]")
+            check("…(#524) at 375×667 the walk-through's test result is in sight, focus still on its button (it was under the phone's tabs)",
+                  walk524 == ["walkTest", True, True], walk524)
+            had524 = len(problems)
+            js("id => api('connect/sources/' + id, {method: 'DELETE'}).then(r => r.status)", js("SETUP.sources.find(s => s.name === 'Spare 524').id"))
+            spare524.get_by_role("button", name="Waiting for review").click()
+            page.wait_for_selector("#sourceList .row-msg", timeout=10000)
+            settle(300)
+            src524 = js(f"""(() => {{ const m = document.querySelector('#sourceList .row-msg'), a = document.activeElement;
+              return [m.textContent, ({SEEN524s})(m), a.dataset.act || a.id, ({SEEN524s})(a), [...document.querySelectorAll('#sourceList .prof b')].map(b => b.textContent).includes('Spare 524'),
+                document.getElementById('formTitle').textContent]; }})()""")
+            problems[had524:] = [x for x in problems[had524:] if not re.search(r"HTTP 404: .*/api/connect/sources/\d+$|status of 404", x)]   # (the point)
+            check("…(#524) a source removed elsewhere, open in Change: its row's Waiting for review draws the list again without it, “No such "
+                  "source.” where it was, in sight at 375×667, focus on a Test beside it, the form a new source's (its row stayed, the form "
+                  "still “Change …”)", src524 == ["No such source.", True, "test", True, False, "Add a source"], src524)
+            page.set_viewport_size({"width": 1400, "height": 900})
             page.goto(base + "/connect.html")   # its old address: Sources → Portals and health plans (#166)
             page.wait_for_url(re.compile(r"/sources\.html(\?[^#]*)?#portals$"), timeout=10000)   # with or without the ?profile= nav.js adds
             page.wait_for_selector("#adminNote:not([hidden])", timeout=10000)
@@ -17731,6 +17868,22 @@ def main():
             page.goto(base + "/admin.html#activity")
             page.wait_for_function("document.querySelector('#acctLog tbody') && document.querySelector('#acctLog tbody').textContent.includes('created the account alex')", timeout=10000)
             check("admin sees the install's activity, under Admin → Install activity", js(display, "installLog") != "none" and js(display, "users") == "none")
+            # #524: at 768 and 900 px an activity log's addresses break only where they don't fit: an IPv4 one never ("127.0.0." /
+            # "1" there), on Install activity and Sharing → Activity, the table within its card
+            split524 = {}
+            for path, box in (("/admin.html#activity", "#acctLog"), ("/sharing.html?profile=1#activity", "#actBody")):
+                if not path.startswith("/admin"):
+                    page.goto(base + path)
+                page.wait_for_function(f"[...document.querySelectorAll('{box} .activity tbody td:nth-child(4)')].some(td => /^[\\d.]+$/.test(td.textContent))", timeout=10000)
+                for w in (768, 900):
+                    page.set_viewport_size({"width": w, "height": 900})
+                    settle(150)
+                    split524[f"{path} {w}"] = js("""box => { const cells = [...document.querySelectorAll(box + ' .activity tbody td:nth-child(4)')].filter(td => /^[\\d.]+$/.test(td.textContent));
+                      const split = cells.filter(td => { const r = document.createRange(); r.selectNodeContents(td); return new Set([...r.getClientRects()].map(x => Math.round(x.top))).size > 1; });
+                      return [cells.length, split.map(td => td.textContent), document.querySelector(box + ' .activity table').getBoundingClientRect().right <= document.querySelector(box).getBoundingClientRect().right + 0.5]; }""", box)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…(#524) at 768 and 900 px no IPv4 address in an activity log split across lines, on Install activity and Sharing → Activity, "
+                  "the table within its card (“127.0.0.” / “1”)", all(v[0] > 0 and not v[1] and v[2] for v in split524.values()), split524)
             page.goto(base + "/sharing.html?profile=1#export")
             page.wait_for_selector("#exportLink", timeout=10000)
             href = js("document.getElementById('exportLink').getAttribute('href')")
@@ -18227,14 +18380,18 @@ def main():
             for n in ("one", "two"):
                 orow = page.locator("#ownerless .ownerless > .row", has_text=f"Orphan 502 {n}")
                 orow.get_by_role("textbox", name="Another account").fill(USER)
-                orow.get_by_role("button", name="Make owner").click()
+                if n == "one":
+                    orow.get_by_role("button", name="Make owner").click()
+                else:   # (#524: Enter in Another account did nothing)
+                    orow.get_by_role("textbox", name="Another account").press("Enter")
                 answer_ask(page)   # (owning it yourself is asked)
                 page.wait_for_function(f"![...document.querySelectorAll('#ownerless .ownerless > .row')].some(r => r.textContent.includes('Orphan 502 {n}'))", timeout=10000)   # (#510: what it says is in the list now)
                 settle(200)
                 own502.append(js("(a => [a.textContent, a.closest('.row')?.querySelector('b').textContent])(document.activeElement)") + [js(IN_SIGHT) is not None])
             own502.append([js(f"api('profiles/{pid}', {{method: 'DELETE', body: JSON.stringify({{confirm_name: 'Orphan 502 {n}'}})}}).then(r => r.status)")
                            for n, pid in zip(("one", "two"), orph502)])
-            check("Make owner leaves focus on the next profile's Make owner, else the one before's, in sight (#502: it fell to the page)",
+            check("Make owner leaves focus on the next profile's Make owner, else the one before's, in sight (#502: it fell to the page); "
+                  "Enter in its Another account does what it does (#524: nothing)",
                   own502 == [["Make owner", "Orphan 502 two", True], ["Make owner", "Alex's records", True], [200, 200]], own502)
             # #506: the last one given an owner, what it said is where the list was, focus on it, in sight at 375×667 (focus
             # went to the card's heading, the message out of sight under the accounts). The server's list answered here,
@@ -18539,6 +18696,49 @@ def main():
             pk_left = pk.evaluate(pk_names)
             check("passkeys' Remove leaves focus on the next passkey's Remove, else the one before's, in sight (#502: it fell to the page)",
                   len(pk_left) == 1 and pk502 == [["Remove", "Old phone 502", True], ["Remove", pk_left[0], True]], [pk502, pk_left])
+            # #524: Enter in a passkey's name renames it, as its Rename does, and Remove then asks about the new name (it
+            # named the old one); at 375×667 a passkey, then a device, removed elsewhere (another tab, another device) is
+            # drawn away, what the server said where its row was and focus beside it, both in sight (its row stayed, "No
+            # such passkey." under the Add form, "No such session." above the page's top)
+            pdb524, had524 = pk_db.connect(), len(problems)
+            pdb524.execute("INSERT INTO passkeys(user_id, credential_id, public_key, rp_id, name, created) VALUES(?, 'old-524', x'00', 'localhost', 'Old key 524', 1)", (uid502,))
+            pdb524.execute("INSERT INTO sessions(token_hash, user_id, created, last_seen, expires, ip, agent, verified_at) VALUES(?,?,?,?,?,?,?,?)",
+                           ("browser-check-524", uid502, pk_db.now(), pk_db.now(), pk_db.now() + 3600, "192.0.2.24", "Mozilla/5.0 Firefox/120.0", 0))
+            pk.evaluate("Promise.all([loadPasskeys(), loadSessions()])")
+            pk.wait_for_function(f"{pk_names}.includes('Old key 524') && document.getElementById('sessList').textContent.includes('192.0.2.24')", timeout=10000)
+            pk.set_viewport_size({"width": 375, "height": 667})
+            row524 = pk.locator("#pkList tbody tr").nth(pk.evaluate(f"{pk_names}.indexOf('Old key 524')"))
+            row524.locator("input").fill("Renamed key 524")
+            row524.locator("input").press("Enter")
+            pk.wait_for_function("document.getElementById('pkRowMsg')?.textContent === 'Renamed.'", timeout=10000)
+            row524.get_by_role("button", name="Remove").click()
+            asked524 = answer_ask(pk, yes=False)
+            check("…(#524) Enter in a passkey's name renames it, and Remove then asks about its new name (it named the old one)",
+                  asked524[0] == "Remove the passkey “Renamed key 524”?" and pk.evaluate(f"{pk_names}.includes('Renamed key 524')")
+                  and pk.evaluate("fetch('api/me/passkeys?origin=' + encodeURIComponent(location.origin)).then(r => r.json()).then(j => j.passkeys.map(k => k.name))").count("Renamed key 524") == 1, asked524)
+            SEEN524 = """e => { if (!e) return false; const r = e.getBoundingClientRect(), p = getComputedStyle(document.documentElement);
+              return r.height > 0 && r.top >= parseFloat(p.scrollPaddingTop) - 1 && r.bottom <= innerHeight - parseFloat(p.scrollPaddingBottom) + 1; }"""
+            gone524 = f"""list => {{ const m = document.querySelector(list + ' .row-msg'), a = document.activeElement;
+              return [m?.textContent, ({SEEN524})(m), a.textContent, ({SEEN524})(a), document.querySelector(list).textContent]; }}"""
+            pdb524.execute("DELETE FROM passkeys WHERE credential_id='old-524'")
+            row524.get_by_role("button", name="Remove").click()
+            answer_ask(pk)
+            pk.wait_for_selector("#pkList tr.row-msg", timeout=10000)
+            pk.wait_for_timeout(200)
+            pk524 = pk.evaluate(gone524, "#pkList")
+            pdb524.execute("DELETE FROM sessions WHERE token_hash='browser-check-524'")
+            pk.locator("#sessList tbody tr", has_text="192.0.2.24").get_by_role("button", name="Sign out").click()
+            pk.wait_for_selector("#sessList tr.row-msg", timeout=10000)
+            pk.wait_for_timeout(200)
+            sess524 = pk.evaluate(gone524, "#sessList")
+            pdb524.close()
+            problems[had524:] = [x for x in problems[had524:] if not re.search(r"HTTP 404: .*/api/(me/passkeys|sessions)/\d+$|status of 404", x)]   # (the point)
+            check("…(#524) a passkey and a device removed elsewhere: at 375×667, each drawn away, “No such passkey.” and “No such session.” "
+                  "where its row was, focus on a Remove or Sign out beside it (none left: the card's heading), both in sight (its row stayed, the message out of sight)",
+                  pk524[:4] == ["No such passkey.", True, "Remove", True] and "Renamed key 524" not in pk524[4].replace("No such passkey.", "")
+                  and sess524[:4] in (["No such session.", True, "Sign out", True], ["No such session.", True, "Where you're signed in", True]) and "192.0.2.24" not in sess524[4], [pk524[:4], sess524[:4]])
+            pk.evaluate("Promise.all([loadPasskeys(), loadSessions()])")
+            pk.set_viewport_size({"width": 1400, "height": 900})
             acct_field.update(pk.evaluate(FIELD_LOOK_JS, "#pkBody input[type=password]"))
             pk.set_viewport_size({"width": 375, "height": 800})
             pk.wait_for_timeout(200)

@@ -145,8 +145,9 @@ function datesReady() {
       const want = {"dates.timeZone": browserZone(), "dates.format": browserFormat()};
       for (const [k, v] of Object.entries(want)) {
         if (u[k]) continue;   // chosen already
-        const w = await api(`settings/user/${encodeURIComponent(k)}`, {method: "PUT", body: JSON.stringify({value: v})});
-        if (w.ok) u[k] = v;
+        // only if none was chosen meanwhile (another tab), and not logged as a change: nobody made one (#524)
+        const w = await api(`settings/user/${encodeURIComponent(k)}`, {method: "PUT", body: JSON.stringify({value: v, if_unset: true})});
+        if (w.ok) u[k] = (await w.json())[k];
       }
       useDates(u["dates.timeZone"], u["dates.format"]);
     } catch (e) {}

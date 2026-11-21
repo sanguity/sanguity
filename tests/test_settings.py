@@ -701,6 +701,31 @@ class Settings(unittest.TestCase):
             for key in ("dates.timeZone", "dates.format"):
                 self.c[who].delete(f"/api/profiles/1/settings/{key}", headers=H)
 
+    def test_dates_from_the_browser_arent_logged(self):
+        """#524: the browser's time zone and date format, filled in by the first page after signing in (if_unset), are
+        stored only if none is yet, and logged as no change; one the person chooses still is"""
+        def logged():
+            return [e["detail"]["setting"] for e in self.c["ada"].get("/api/activity").json()
+                    if e["action"] == "settings.user" and e["actor"] == "kim" and "setting" in e["detail"]]
+        before = logged()
+        put = lambda key, body: self.c["kim"].put(f"/api/settings/user/{key}", json=body, headers=H)
+        try:
+            r = put("dates.timeZone", {"value": "Asia/Tokyo", "if_unset": True})
+            self.assertEqual((r.status_code, r.json()["dates.timeZone"]), (200, "Asia/Tokyo"), r.text)
+            self.assertEqual(put("dates.format", {"value": "ymd", "if_unset": True}).json()["dates.format"], "ymd")
+            self.assertEqual(logged(), before)   # nobody changed anything
+            # another tab's, once one is stored: the one stored kept, and said
+            r = put("dates.timeZone", {"value": "Europe/Paris", "if_unset": True})
+            self.assertEqual((r.status_code, r.json()["dates.timeZone"]), (200, "Asia/Tokyo"))
+            self.assertEqual(put("dates.format", {"value": "nope", "if_unset": True}).status_code, 400)   # still checked
+            # the person's own change: stored and logged
+            r = put("dates.timeZone", {"value": "Europe/Paris"})
+            self.assertEqual((r.status_code, r.json()["dates.timeZone"]), (200, "Europe/Paris"))
+            self.assertEqual(logged(), ["dates.timeZone"] + before)
+        finally:
+            for key in ("dates.timeZone", "dates.format"):
+                self.c["kim"].delete(f"/api/profiles/1/settings/{key}", headers=H)
+
     def test_own_settings_without_a_profile(self):
         """#169: someone with no profile still has Display on the Settings page: their own settings' sections,
         and Reset to defaults for one of them."""
