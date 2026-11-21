@@ -256,7 +256,7 @@
       // shown here with its links, said by a toast (#263) with the first of them (Open Labs charting what was typed,
       // as its link does, #360) and an Undo, which asks first in Import history's words: the form is cleared already
       sayIn(msg, [said, ...links.flatMap(a => [" ", a])], false, {say: false});
-      toast(said, {actions: [...links.slice(0, 1).map(a => ({text: a.textContent.replace(/^See them on /, "Open "), href: a.href,
+      const t = toast(said, {actions: [...links.slice(0, 1).map(a => ({text: a.textContent.replace(/^See them on /, "Open "), href: a.href,
           onClick: names.length ? () => openTrends(p, names) : null})),   // (the first link is Labs', when there are labs)
         // (asked as Import history and an upload's toast ask it, #508: import-jobs.js undoAsk; the page told, Import
         // history read again; focus on the line saying so, not on a toast)
@@ -267,7 +267,10 @@
           sanguityImport.undoneFocus(msg, said);
           toast("Undone: what was saved is gone from the profile.");
         }}] : [])]});
-      if (j.import_id != null) sanguityImport.told(p, j.import_id, false);   // Import history lists it at once, with its Undo (#508)
+      if (j.import_id != null) {
+        sanguityImport.undoable(t, j.import_id);   // its Undo taken away once it's undone elsewhere (#513)
+        sanguityImport.told(p, j.import_id, false);   // Import history lists it at once, with its Undo (#508)
+      }
     } catch (e) {
       saving = false;
       tell("Couldn't save: " + e.message + " Nothing was saved.", true);

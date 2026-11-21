@@ -28,7 +28,7 @@ By origin:
   dataset   undone, but it replaced the profile's records when it was loaded, and those can't be brought back.
   build     refused: the profile is kept in step with the setup build, so the next rebuild would bring it back.
 """
-import json, os
+import collections, json, os
 
 from . import activity, crypto, db as dbm, importers as registry, labmap, records, uploads, watch_store
 
@@ -63,9 +63,17 @@ def label(fmt, origin=None):
     return mod.LABEL if mod else fmt
 
 
-def _counts(db, iid):
-    return {t: db.execute(f"SELECT COUNT(*) FROM {t} WHERE import_id=?", (iid,)).fetchone()[0]
-            for t in ("events", "series", "results", "documents")}
+def _counts(db, iid, typed=False):
+    """An import's rows, counted, for one with no job to say what it brought. typed: records typed in (#513), counted
+    as what was typed, by kind as a job counts them (kinds), and not the lab draws made for typed results or their
+    results' items (counted as results): one Ferritin result is "1 lab result in 1 test", not "2 events"."""
+    out = {t: db.execute(f"SELECT COUNT(*) FROM {t} WHERE import_id=?", (iid,)).fetchone()[0]
+           for t in ("events", "series", "results", "documents")}
+    if typed:
+        kinds = collections.Counter(json.loads(crypto.dec(r[0])).get("k") for r in db.execute("SELECT body FROM events WHERE import_id=?", (iid,)))
+        kinds = {str(k): n for k, n in sorted(kinds.items(), key=lambda x: str(x[0])) if k not in ("lab", "labitem")}
+        out.update(events=sum(kinds.values()), kinds=kinds)
+    return out
 
 
 def _names(db, pid, upload_id):
@@ -98,13 +106,13 @@ def _entry(db, pid, imp):
     if note:
         summary = {**summary, "counts": note.get("counts")}
     if not summary.get("counts") and watch_store.has_import(pid, iid):   # typed in (no job): its watch data counted too (#224)
-        summary = {**summary, "counts": {**_counts(db, iid), **watch_store.import_counts(pid, iid)}}
+        summary = {**summary, "counts": {**_counts(db, iid, origin == "manual"), **watch_store.import_counts(pid, iid)}}
     own =db.execute("SELECT name FROM imports WHERE id=?", (iid,)).fetchone()   # its own name (#38), if given
     return {"id": iid, "name": crypto.dec(own["name"]) if own and own["name"] else None, "at": imp["at"], "origin": origin, "format": imp["format"],
             "label": (note or {}).get("label") or label(imp["format"], origin), "removal": bool(note and note.get("removed")),
             "by": by, "job": job["id"] if job else None, "upload": job["upload_id"] if job else None,
             "files": names[:FILES_SHOWN], "file_count": len(names),
-            "counts": summary.get("counts") or _counts(db, iid), "range": summary.get("range"),
+            "counts": summary.get("counts") or _counts(db, iid, origin == "manual"), "range": summary.get("range"),
             "watch": watch_store.has_import(pid, iid), "lab_matches": labmap.forgettable(db, iid),   # (#500)
             "connection": _source(db, imp["connection_id"]), "changed": summary.get("changed"),
             "state": "active", "can_undo": origin != "build", "note": NOTES.get(origin)}

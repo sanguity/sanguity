@@ -131,6 +131,9 @@ class Manual(unittest.TestCase):
             self.assertEqual((log["actor"], log["detail"]["importer"], log["detail"]["counts"]["results"]), ("robin", "manual", 3))
         finally:
             db.close()
+        # the history counts what was typed (#513): three results in three tests, not the lab day and its items as events
+        e = self.robin.get(f"/api/profiles/{self.pid}/imports").json()["imports"][0]
+        self.assertEqual((e["origin"], e["counts"]), ("manual", {"events": 0, "kinds": {}, "series": 3, "results": 3, "documents": 0}))
 
     def test_same_rows_as_a_csv_import_same_keys(self):
         db = dbm.connect()

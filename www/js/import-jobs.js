@@ -537,10 +537,38 @@
     const what = items.map(li => li.textContent);
     const most = counted(c).map((x, i) => [x.n, what[i]]).sort((a, b) => b[0] - a[0]).map(x => x[1]);   // the largest first (#497)
     const labs = c.results > 0, where = labs ? "labs" : "timeline";
-    toast(what.length ? `Imported ${most.slice(0, 2).join(", ")}${what.length > 2 ? " and more" : ""}.` : "Imported: nothing new.", {
+    const t = toast(what.length ? `Imported ${most.slice(0, 2).join(", ")}${what.length > 2 ? " and more" : ""}.` : "Imported: nothing new.", {
       actions: [{text: labs ? "Open Labs" : "Open the timeline", href: `index.html?profile=${pid}#${where}`},
         ...(j.import_id != null && what.length ? [{text: "Undo…", onClick: () => undoImport(card, pid, j)}] : [])]});
-    if (j.import_id != null) told(pid, j.import_id, false);   // Import history read again (#508: a save from Waiting for you too), the guide's steps
+    if (j.import_id != null) {
+      tag(card, "saved", j.import_id);   // which import it saved: undone elsewhere, it says so (told, #513)
+      undoable(t, j.import_id);
+      told(pid, j.import_id, false);   // Import history read again (#508: a save from Waiting for you too), the guide's steps
+    }
+  }
+  /* a toast with an import's Undo (an upload's, Type them in's), marked with the import, for told to take its Undo away
+     once the import is undone elsewhere (#513) */
+  function undoable(t, id) { if (t?.node) t.node.dataset.undoImport = id; }
+  const undoneLine = () => node("p", {}, node("b", {text: "Undone."}), " The import's records are gone from the profile; Import history lists it as undone.");
+  /* an import undone, wherever it was (#513: Import history's Undo, another toast's): its toasts offer no Undo now and
+     say it was undone, and its saved cards say so, focus kept on what's left of them (not the toast whose Undo is
+     running: it goes once that's done, undoImport); the profile's other reviews drawn again, as what the import brought
+     is no longer a duplicate */
+  function undoneElsewhere(pid, id) {
+    for (const t of document.querySelectorAll(`#sgToasts .sg-toast[data-undo-import="${id}"]`)) {
+      const b = [...t.querySelectorAll(".sg-toast-acts button")].find(x => x.textContent === "Undo…");
+      if (!b || b.getAttribute("aria-disabled") === "true") continue;
+      const had = b === document.activeElement;
+      b.remove();
+      t.querySelector(".sg-toast-text").textContent = "Undone: the import's records are gone from the profile.";
+      if (had) t.querySelector("a, button").focus();
+    }
+    for (const c of document.querySelectorAll(`.import-job[data-saved="${id}"]`)) {
+      const had = c.contains(document.activeElement), line = undoneLine();
+      c.replaceChildren(line);
+      if (had) { line.tabIndex = -1; line.focus(); }
+    }
+    freshOthers(null, pid);
   }
   /* an import's counts in Import history's words (import-history.js lists them: "1 lab draw, 1 lab result in 1 test");
      the Undo's question says them too (#508), with a lab draw left out where there are results (draws false), as the
@@ -593,6 +621,7 @@
      card back). Each gives wait() what it's doing, and after an Undo the page may name where focus goes when the card
      isn't shown (focus). -> the detail, once they're done */
   function told(pid, id, undone) {
+    if (undone) undoneElsewhere(pid, id);
     const waits = [], detail = {pid: +pid, id, undone, wait: p => waits.push(Promise.resolve(p).catch(() => {})), focus: null};
     document.dispatchEvent(new CustomEvent("sg:imports", {detail}));
     return Promise.all(waits).then(() => detail);
@@ -604,6 +633,7 @@
     const path = `profiles/${encodeURIComponent(pid)}/imports`;
     const now = await api(path).then(r => r.ok ? r.json() : null).catch(() => null);
     const list = (now || {}).imports || [], e = list.find(x => x.id === id && x.state === "active") || list.find(x => x.id === id) || fallback;
+    if (e.state === "undone") throw new Error("This import was undone already.");   // (elsewhere, #513: not asked about)
     if (!await ask({title: "Undo this import?", danger: true, action: "Undo import", cancel: "Keep it", message: undoAsks(e)})) return false;
     // the import asked about, by when it was saved too: never another that has its id (#512, from before ids stayed
     // their own); one undone already is refused
@@ -630,7 +660,7 @@
   async function undoImport(card, pid, j) {
     const said = await undoAsk(pid, j.import_id, {label: j.label || j.importer, counts: j.counts, upload: j.upload_id ?? null});
     if (!said) return false;
-    const line = node("p", {}, node("b", {text: "Undone."}), " The import's records are gone from the profile; Import history lists it as undone.");
+    const line = undoneLine();
     card.replaceChildren(line);
     undoneFocus(line, said);
     toast("Undone: the import's records are gone from the profile.");
@@ -713,5 +743,5 @@
     return poll(f.body, opts.profileId, opts.jobId, text);
   }
 
-  window.sanguityImport = {uploaded, follow, frame, fresh, importCounts, undoAsks, undoAsk, undoneFocus, told};
+  window.sanguityImport = {uploaded, follow, frame, fresh, importCounts, undoAsks, undoAsk, undoneFocus, told, undoable};
 })();

@@ -2000,6 +2000,14 @@ Everything on `main` so far; it becomes the first tagged release.
   Import history listed several imports as one id, and a toast's Undo left from before undid the later import. Ids
   count on from the highest there has been (schema version 37 makes the imports table again, every import and what
   points at it kept), and an Undo names the import asked about, so another one is refused.
+- **Records in: an Undo done elsewhere reaches the toasts, the other reviews, the hub and the drawer, and typed-in
+  records counted once** (#513): an import undone in Import history left its toast's Undo, which asked and then said
+  "No such import"; its toasts and saved cards say it's undone now, with no Undo. Another review of the same rows still
+  said "All duplicates · Nothing to add" after the import was undone; it's drawn again, and can add them. Sources'
+  Overview didn't change after a save from Waiting for you or an Undo ("2 imports" stayed); it's read again. On the
+  records page, a record open in the drawer stayed there, with its pencil, ⋯ and Source link, once its import was
+  undone; the drawer closes. One typed Ferritin result read "2 events, 1 lab result in 1 test" in Import history and
+  its Undo question; it's "1 lab result in 1 test".
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
