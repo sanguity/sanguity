@@ -371,10 +371,8 @@ class App(unittest.TestCase):
         self.assertNotIn("_cycle", json.dumps(self.c["robin"].get(f"/api/profiles/{self.pid}/settings").json()))
 
     # ---- uploaded Apple Health exports (#223): read only while tracking is on, kept apart, deleted with the rest
-    def import_export(self, pid, confirm=True, xml=None):
-        """Upload the fictional export.zip (tests/fixtures/apple_health), or xml, as the Sources page does and import
-        it: the job, once it's waiting in its preview (or done, confirmed)."""
-        import time
+    def start_import(self, pid, xml=None):
+        """Upload the fictional export.xml, or xml, and start its import: the job's id."""
         if xml is None:
             with open(os.path.join(ROOT, "tests", "fixtures", "apple_health", "apple_health_export", "export.xml"), "rb") as f:
                 xml = f.read()
@@ -383,7 +381,23 @@ class App(unittest.TestCase):
         self.assertEqual(c.put(f"/api/profiles/{pid}/uploads/{up}/files", params={"path": "apple_health_export/export.xml"}, content=xml,
                                headers={**H, "Content-Type": "application/octet-stream"}).status_code, 200)
         self.assertEqual(c.post(f"/api/profiles/{pid}/uploads/{up}/finish", headers=H).status_code, 200)
-        jid = c.post(f"/api/profiles/{pid}/uploads/{up}/import", headers=H).json()["id"]
+        return c.post(f"/api/profiles/{pid}/uploads/{up}/import", headers=H).json()["id"]
+
+    def wait_job(self, pid, jid, states):
+        import time
+        end = time.time() + 20
+        while time.time() < end:
+            j = self.c["robin"].get(f"/api/profiles/{pid}/jobs/{jid}").json()
+            if j["state"] in states:
+                return j
+            time.sleep(0.05)
+        self.fail(f"job {jid} didn't reach {states}")
+
+    def import_export(self, pid, confirm=True, xml=None):
+        """Upload the fictional export.zip (tests/fixtures/apple_health), or xml, as the Sources page does and import
+        it: the job, once it's waiting in its preview (or done, confirmed)."""
+        import time
+        c, jid = self.c["robin"], self.start_import(pid, xml)
         end, seen = time.time() + 20, None
         while time.time() < end:
             j = c.get(f"/api/profiles/{pid}/jobs/{jid}").json()
@@ -542,15 +556,94 @@ class App(unittest.TestCase):
         entry = self.c["lee"].get(f"/api/profiles/{pid}/imports").json()["imports"][0]
         self.assertEqual((entry["id"], entry["can_undo"]), (done["import_id"], True))
         self.assertNotIn("cycle", json.dumps(entry["counts"]))
-        # waiting when tracking is turned off: nothing new is left in it
-        waiting, _ = self.import_export(pid, confirm=False, xml=xml.replace(b"2026-11-", b"2026-10-"))
-        self.assertTrue(waiting["new"])
-        self.assertEqual(self.c["robin"].put(f"/api/profiles/{pid}/cycle", json={"on": False}, headers=H).status_code, 200)
-        j = self.c["robin"].get(f"/api/profiles/{pid}/jobs/{waiting['id']}").json()
-        self.assertEqual((j["state"], j["new"]), ("preview", False), j)
-        self.assertNotIn("cycle", j["counts"])
-        listed = self.c["robin"].get(f"/api/profiles/{pid}/jobs", params={"state": "preview"}).json()
-        self.assertEqual([(x["new"], x["stale"]) for x in listed], [(False, False)])
+        # waiting when tracking is turned off, or everything is deleted: nothing is left in it, so it's cancelled as
+        # Cancel would (#539), its upload removed, and nothing is left waiting
+        from server import uploads
+        for turn_off in (False, True):
+            waiting, _ = self.import_export(pid, confirm=False, xml=xml.replace(b"2026-11-", b"2026-10-"))
+            self.assertTrue(waiting["new"])
+            if turn_off:
+                self.assertEqual(self.c["robin"].put(f"/api/profiles/{pid}/cycle", json={"on": False}, headers=H).status_code, 200)
+            else:
+                self.assertEqual(self.c["robin"].post(f"/api/profiles/{pid}/cycle/delete", headers=H).status_code, 200)
+            j = self.c["robin"].get(f"/api/profiles/{pid}/jobs/{waiting['id']}").json()
+            self.assertEqual(j["state"], "discarded", j)
+            self.assertFalse(os.path.exists(uploads.folder(pid, waiting["upload_id"])), "its upload is gone")
+            self.assertFalse(os.path.exists(os.path.join(prof.profile_dir(pid), "previews", str(waiting["id"]))))
+            self.assertEqual(self.c["robin"].get(f"/api/profiles/{pid}/jobs", params={"state": "preview"}).json(), [])
+            self.assertEqual(self.c["robin"].post(f"/api/profiles/{pid}/jobs/{waiting['id']}/confirm", headers=H).status_code, 409)
+        d = dbm.connect()
+        try:
+            logged = [json.loads(crypto.dec(r["detail"]))["job"] for r in d.execute(
+                "SELECT detail FROM activity WHERE profile_id=? AND action='discard' AND actor_id=?", (pid, self.uid["robin"]))]
+        finally:
+            d.close()
+        self.assertEqual(len(logged), 2, "each in the activity log, as cancelled by who turned it off or deleted")
+
+    def test_9b_turned_off_while_an_export_is_read_or_saved(self):   # #539
+        """An export being read when tracking is turned off (or everything deleted) leaves its cycle records out of its
+        preview, or is cancelled if that was all it held; one being saved keeps none and doesn't count them."""
+        from unittest import mock
+        from server import jobs, labmap
+        db = dbm.connect()
+        try:
+            pid = prof.create_profile(db, "Ari (fictional)", owner_id=self.uid["robin"])
+        finally:
+            db.close()
+        url = f"/api/profiles/{pid}/cycle"
+        flow = ('<Record type="HKCategoryTypeIdentifierMenstrualFlow" sourceName="Test Phone" startDate="2026-09-0{0} 00:00:00 -0500" '
+                'endDate="2026-09-0{0} 00:00:00 -0500" value="HKCategoryValueMenstrualFlowMedium"/>\n')
+        only = ('<?xml version="1.0" encoding="UTF-8"?>\n<HealthData locale="en_US">\n<ExportDate value="2026-09-13 09:00:00 -0500"/>\n'
+                + flow.format(1) + flow.format(2) + "</HealthData>\n").encode()
+        plan = labmap.plan
+
+        def paused(gate, *calls):
+            """While an export is read (past the parse, before its preview is written): calls run, then it goes on."""
+            inside, go = threading.Event(), threading.Event()
+
+            def slow(*a, **k):
+                inside.set()
+                go.wait(10)
+                return gate(*a, **k)
+            return inside, go, slow
+        for xml, change in ((None, "off"), (None, "delete"), (only, "off")):
+            self.assertEqual(self.c["robin"].put(url, json={"on": True}, headers=H).status_code, 200)
+            inside, go, slow = paused(plan)
+            with mock.patch.object(jobs.labmap, "plan", slow):
+                jid = self.start_import(pid, xml)
+                self.assertTrue(inside.wait(10))
+                r = (self.c["robin"].put(url, json={"on": False}, headers=H) if change == "off"
+                     else self.c["robin"].post(f"{url}/delete", headers=H))
+                self.assertEqual(r.status_code, 200)
+                go.set()
+                j = self.wait_job(pid, jid, ("preview", "discarded", "failed"))
+            if xml is only:
+                self.assertEqual(j["state"], "discarded", "nothing else in it: cancelled, its upload removed")
+                self.assertFalse(os.path.exists(jobs.uploads.folder(pid, j["upload_id"])))
+                self.assertEqual(self.c["robin"].get(f"/api/profiles/{pid}/jobs", params={"state": "preview"}).json(), [])
+                continue
+            self.assertEqual(j["state"], "preview", j)
+            self.assertNotIn("cycle", j["counts"], change)
+            self.assertNotIn("cycle", json.loads(crypto.read_file(jobs.preview_path(pid, jid)))["watch"])
+            self.assertEqual(self.c["robin"].post(f"/api/profiles/{pid}/jobs/{jid}/confirm", headers=H).status_code, 202)
+            done = self.wait_job(pid, jid, ("done", "failed"))
+            self.assertEqual((done["state"], done.get("cycle")), ("done", None), done)
+        # read while on, then turned off while it's saved: none kept, none counted
+        self.assertEqual(self.c["robin"].put(url, json={"on": True}, headers=H).status_code, 200)
+        waiting, _ = self.import_export(pid, confirm=False, xml=only.replace(b"2026-09-", b"2026-08-"))
+        self.assertEqual(waiting["counts"]["cycle"], 2)
+        inside, go, slow = paused(jobs.uploads.stored_files)
+        with mock.patch.object(jobs.uploads, "stored_files", slow):
+            self.assertEqual(self.c["robin"].post(f"/api/profiles/{pid}/jobs/{waiting['id']}/confirm", headers=H).status_code, 202)
+            self.assertTrue(inside.wait(10))
+            self.assertEqual(self.c["robin"].put(url, json={"on": False}, headers=H).status_code, 200)
+            go.set()
+            done = self.wait_job(pid, waiting["id"], ("done", "failed"))
+        self.assertEqual(done["state"], "done", done)
+        self.assertNotIn("cycle", done, "a save counts what was kept: none")
+        self.assertEqual(self.c["robin"].put(url, json={"on": True}, headers=H).status_code, 200)
+        self.assertEqual(self.c["robin"].get(url).json()["count"], 0)
+        self.assertEqual(self.c["robin"].put(url, json={"on": False}, headers=H).status_code, 200)
 
 
 def watch_store_own(pid):

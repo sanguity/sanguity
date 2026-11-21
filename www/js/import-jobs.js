@@ -452,6 +452,7 @@
       f.fresh = async () => {
         let j = null;
         try { const r = await call(base); if (r.ok) j = await r.json(); } catch (e) {}
+        if (j?.state === "discarded" && f.card.dataset.step === "review") { showCancelled(card); done(j); return; }   // (#539: nothing left once cycle tracking was turned off)
         if (!j || j.state !== "preview" || f.card.dataset.step !== "review") return;   // (saved or cancelled meanwhile)
         // each list's open state, and focus on the same control, found again by what it's for (#500), where it's
         // still offered; else on the card

@@ -22,7 +22,8 @@ summary: <profile_dir>/watch/cycle/<import id>.json, a list of records in cycle.
 app "Apple Health", so a record both sent is shown once). They are never in daily.json. The page gets them with the
 receiver's (status()); undoing the import takes them away (watch_store.forget_import); turning tracking off, or
 asking for everything to be deleted, deletes them all at once, here in the app (drop_imported). The uploaded export
-itself is kept as it came, like any upload: deleting can't reach it, as the page says.
+itself is kept as it came, like any upload: deleting can't reach it, as the page says, but an import still waiting
+for review that held nothing else is cancelled, and its upload with it (#539).
 """
 import json, os, secrets, shutil
 
@@ -44,6 +45,19 @@ def setting(db, pid):
 
 def is_on(db, pid):
     return bool(setting(db, pid).get("on"))
+
+
+def mark(db, pid):
+    """How tracking stands: (on, the latest deletion asked for). Turning it off or deleting changes it (#539: an
+    export read meanwhile leaves out what it read, jobs._import)."""
+    v = setting(db, pid)
+    return bool(v.get("on")), v.get("purge")
+
+
+def changed_by(db, pid):
+    """The account that last changed the setting ({"id", "username"}), or None (removed since)."""
+    return db.execute("SELECT u.id, u.username FROM settings s JOIN users u ON u.id=s.changed_by WHERE s.key=? "
+                      "AND s.profile_id=? AND s.user_id IS NULL", (KEY, pid)).fetchone()
 
 
 def _store(db, pid, v, by):
@@ -168,15 +182,18 @@ def imported(db, pid):
     return out
 
 
-def drop_imported(db, pid):
+def drop_imported(db, pid, who=None, ip=None):
     """Delete every cycle record uploaded exports brought this profile: the imports' own, and those in an import's
-    preview still waiting to be confirmed (its sealed file is written again without them). Called once the change
-    has committed (routes_cycle.py), since a preview read again holds its lock while it waits to write (jobs.freshen):
-    each preview is written again under that lock, so neither writes back what the other took out, and not for a job
-    saved or cancelled meanwhile (jobs.rewrite_preview, #526)."""
+    preview still waiting to be confirmed (its sealed file is written again without them; one that held nothing else
+    is cancelled, its upload removed, as who would with Cancel, #539). Called once the change has committed
+    (routes_cycle.py), since a preview read again holds its lock while it waits to write (jobs.freshen): each preview
+    is written again under that lock, so neither writes back what the other took out, and not for a job saved or
+    cancelled meanwhile (jobs.rewrite_preview, #526). An export still being read asks again under the same lock
+    before its preview is written (jobs._import), so one that gets there meanwhile is seen here (#539)."""
     from . import jobs
     shutil.rmtree(imported_dir(pid), ignore_errors=True)
-    for (jid,) in db.execute("SELECT id FROM jobs WHERE profile_id=? AND state='preview'", (pid,)).fetchall():
+    for (jid,) in db.execute("SELECT id FROM jobs WHERE profile_id=? AND (state='preview' OR state='running' AND stage IS NOT 'saving')",
+                             (pid,)).fetchall():
         with jobs.preview_lock(jid):
             r = db.execute("SELECT summary FROM jobs WHERE id=? AND state='preview'", (jid,)).fetchone()
             path = jobs.preview_path(pid, jid)
@@ -185,9 +202,13 @@ def drop_imported(db, pid):
                 report = json.loads(crypto.dec(r["summary"])) if r and r["summary"] else None
             except (OSError, ValueError, crypto.KeyError_):
                 continue
-            if isinstance(held.get("watch"), dict) and held["watch"].pop("cycle", None) is not None and jobs.rewrite_preview(db, jid, path, held):
+            if not isinstance(held.get("watch"), dict) or held["watch"].pop("cycle", None) is None:
+                continue
+            if jobs._holds_nothing(held):   # an upload of cycle records only (#539)
+                jobs._cancel(db, pid, jid, who, ip)
+            elif jobs.rewrite_preview(db, jid, path, held):
                 if isinstance(report, dict) and (report.get("counts") or {}).pop("cycle", None) is not None:   # nor counted
-                    # and read again without them (#534): what's new then, none for an upload that held only them
+                    # and read again without them (#534): what's new then
                     db.execute("UPDATE jobs SET summary=? WHERE id=? AND state='preview'", (crypto.enc(json.dumps({**report, "stamp": None})), jid))
                     jobs.freshen_held(db, pid, jid)
 

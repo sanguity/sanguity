@@ -39,7 +39,7 @@ def turn(pid: int, body: Turn, request: Request, s=Depends(user), db=Depends(get
         if changed:
             activity.log(db, "cycle", s, pid, {"change": "on" if body.on else "off"}, _client_ip(request))
     if changed and not body.on:
-        ct.drop_imported(db, pid)   # what uploaded exports brought (#223), once it's off (#526)
+        ct.drop_imported(db, pid, s, _client_ip(request))   # what uploaded exports brought (#223), once it's off (#526)
     watch_keys.publish(db)
     return ct.status(db, pid, role)
 
@@ -50,6 +50,6 @@ def delete_all(pid: int, request: Request, s=Depends(user), db=Depends(get_db)):
     with dbm.transaction(db):
         ct.delete_all(db, pid, s["id"])
         activity.log(db, "cycle", s, pid, {"change": "delete"}, _client_ip(request))
-    ct.drop_imported(db, pid)   # (#223, #526)
+    ct.drop_imported(db, pid, s, _client_ip(request))   # (#223, #526; a preview left with nothing cancelled as s, #539)
     watch_keys.publish(db)
     return ct.status(db, pid, role)
