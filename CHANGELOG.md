@@ -2085,6 +2085,14 @@ Everything on `main` so far; it becomes the first tagged release.
   review's results possibly the same as another source's gave their times in the browser's format and zone, which
   could split "8:31 / AM"; they're in the person's date format and zone, the time kept whole. A toast whose Undo went
   with an Undo elsewhere stayed until dismissed; it now leaves after its 10 seconds.
+- **Records in: undone watch readings no longer come back, overlapping redraws no longer double the cycle records,
+  and turning off cycle tracking no longer races a preview's refresh** (#526): on an empty profile, an Apple Health
+  export added from the upload dialog and undone, then a lab CSV added, drew the undone glucose and temperature
+  readings on Body and activity until a reload; they're gone with the import. Two redraws of the records at once (a
+  save from the dialog and an Undo, say) put the cycle records in twice; they're drawn once. Turning cycle tracking
+  off, or deleting its records, takes them out of each waiting preview one preview at a time with its refresh, so a
+  refresh at the same moment can't write them back, and a preview cancelled or saved meanwhile doesn't get its file
+  back.
 - **Account and Admin: Remove names a renamed passkey, rows removed elsewhere drawn away, the walk-through's result in
   sight, Enter in two name boxes, activity's addresses whole, and one sweep of the palette's words** (#524): after a
   Rename, Remove asked about the passkey's old name. A passkey, a device or a source removed in another tab or by

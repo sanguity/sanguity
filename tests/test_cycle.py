@@ -453,6 +453,71 @@ class App(unittest.TestCase):
             self.assertNotIn(w, on_disk().lower(), "nothing left anywhere in the profile's folder")
         self.assertEqual(self.c["robin"].post(f"/api/profiles/{pid}/jobs/{waiting['id']}/confirm", headers=H).status_code, 202)
 
+    def test_8_deleted_while_a_preview_is_read_again_or_cancelled(self):   # #526
+        """drop_imported writes a waiting preview again as freshen does (jobs.rewrite_preview, under its lock): one being
+        read again at the same moment doesn't get its cycle records back, and a cancelled one's file doesn't come back."""
+        from unittest import mock
+        from server import jobs
+        db = dbm.connect()
+        try:
+            pid = prof.create_profile(db, "Alex (fictional)", owner_id=self.uid["robin"])
+        finally:
+            db.close()
+        self.assertEqual(self.c["robin"].put(f"/api/profiles/{pid}/cycle", json={"on": True}, headers=H).status_code, 200)
+
+        def held(jid):
+            return json.loads(crypto.read_file(jobs.preview_path(pid, jid)))
+
+        def counts(jid):
+            d = dbm.connect()
+            try:
+                return json.loads(crypto.dec(d.execute("SELECT summary FROM jobs WHERE id=?", (jid,)).fetchone()["summary"]))["counts"]
+            finally:
+                d.close()
+
+        def run(f, *a):
+            d = dbm.connect()
+            try:
+                f(d, pid, *a)
+            finally:
+                d.close()
+        # read again (the profile's records changed since: an import saved) while the deletion runs
+        jid = self.import_export(pid, confirm=False)[0]["id"]
+        self.import_export(pid)
+        self.assertEqual(counts(jid)["cycle"], 5)
+        inside, go, report = threading.Event(), threading.Event(), jobs._report
+
+        def slow(*a):
+            inside.set()
+            go.wait(5)
+            return report(*a)
+        with mock.patch.object(jobs, "_report", slow):
+            fresh = threading.Thread(target=run, args=(jobs.freshen, jid))
+            fresh.start()
+            self.assertTrue(inside.wait(5))
+            drop = threading.Thread(target=run, args=(cycle_tracking.drop_imported,))
+            drop.start()
+            drop.join(0.3)
+            self.assertTrue(drop.is_alive(), "it waits for the preview read again")
+            go.set()
+            fresh.join(5)
+            drop.join(5)
+        self.assertNotIn("cycle", held(jid)["watch"])
+        self.assertNotIn("cycle", counts(jid))
+        self.assertNotIn("cycle", self.c["robin"].get(f"/api/profiles/{pid}/jobs/{jid}").json()["counts"])
+        # cancelled while its file is written again: it doesn't come back
+        gone = self.import_export(pid, confirm=False)[0]["id"]
+        write = crypto.write_file
+
+        def cancelled_first(path, data):
+            if path == jobs.preview_path(pid, gone):
+                run(lambda d, p: jobs.discard(d, p, gone, {"id": self.uid["robin"], "username": "robin"}))
+            write(path, data)
+        with mock.patch.object(jobs.crypto, "write_file", cancelled_first):
+            run(cycle_tracking.drop_imported)
+        self.assertFalse(os.path.exists(jobs.preview_path(pid, gone)))
+        self.assertEqual(self.c["robin"].get(f"/api/profiles/{pid}/jobs/{gone}").json()["state"], "discarded")
+
 
 def watch_store_own(pid):
     from server import watch_store

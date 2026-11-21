@@ -10069,16 +10069,20 @@ def main():
             tab_click(page, "#tab-health")
             cards522 = "[...document.querySelectorAll('#view-health h2, #view-health h3')].filter(h => h.checkVisibility()).map(h => h.textContent.trim())"
             watch522 = [js(cards522)]
-            js("""([bytes, name]) => { const dt = new DataTransfer(); dt.items.add(new File([new Uint8Array(bytes)], name, {type: 'application/zip'}));
+            dropzip522 = """([bytes, name]) => { const dt = new DataTransfer(); dt.items.add(new File([new Uint8Array(bytes)], name, {type: 'application/zip'}));
                 document.body.dispatchEvent(new DragEvent('dragenter', {dataTransfer: dt, bubbles: true}));
                 const v = document.querySelector('.drop-veil'), e = new DragEvent('drop', {dataTransfer: dt, bubbles: true, cancelable: true});
-                (v && v.matches(':popover-open') ? v : document.body).dispatchEvent(e); }""", [list(zip522.getvalue()), "watch-522.zip"])
+                (v && v.matches(':popover-open') ? v : document.body).dispatchEvent(e); }"""
+            js(dropzip522, [list(zip522.getvalue()), "watch-522.zip"])
             page.wait_for_function(f"/^Ready to import/.test({dcard497}?.textContent) && {dcard497}.closest('.job').querySelector('h3').textContent === 'watch-522.zip'", timeout=30000)
             js(f"{dcard497}.querySelector('.imp-actions .primary').click()")
             page.wait_for_function(f"/^Imported/.test({dcard497}.textContent)", timeout=30000)
             page.click("dialog.up-dlg .sheet-x")
             page.wait_for_function(f"{cards522}.includes('Blood pressure') && CYCLE.length > 0", timeout=10000)
             watch522 += [js(cards522), js("CYCLE.length")]
+            # (#526) two redraws at once (a drop-dialog save and an Undo, say) leave its cycle records once, not twice
+            twice526 = js("Promise.all([recordsAgain(DATA), recordsAgain(DATA)]).then(() => [CYCLE.length, EV.filter(e => e.k === 'cycle').length])")
+            check("two overlapping redraws of the records leave the cycle records once (#526: twice)", twice526 == [1, 1], twice526)
             page.click("#sgToasts .sg-toast:last-child button:text-is('Undo…')")
             answer_ask(page)
             page.wait_for_function(f"!{cards522}.includes('Blood pressure') && !CYCLE.length", timeout=10000)
@@ -10131,6 +10135,31 @@ def main():
             check("…and its document title names the profile, the tab's name once records come, and again after the Undo (#518: “Sanguity” alone)",
                   title518[0] == title518[2] == "Empty (fictional): no records yet · Sanguity" and title518[1].endswith(" · Empty (fictional) · Sanguity"), title518)
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            # (#526) then an Apple Health zip with home readings added from the dialog, its toast's Undo (the empty card
+            # back), and a lab CSV added: Body and activity draws no watch card (the undone readings were kept and drawn
+            # again, until a reload); the CSV undone after, so the profile is empty again for the checks below
+            def add526(drop, arg, name):
+                js(drop, arg)
+                page.wait_for_function(f"/^Ready to import/.test({dcard497}?.textContent) && {dcard497}.closest('.job').querySelector('h3').textContent === '{name}'", timeout=30000)
+                js(f"{dcard497}.querySelector('.imp-actions .primary').click()")
+                page.wait_for_function(f"/^Imported/.test({dcard497}.textContent)", timeout=30000)
+                page.click("dialog.up-dlg .sheet-x")
+                page.wait_for_function("typeof booted !== 'undefined' && booted && DATA && !document.querySelector('main > .empty')", timeout=20000)
+
+            def undo526():
+                page.click("#sgToasts .sg-toast:last-child button:text-is('Undo…')")
+                answer_ask(page)
+                page.wait_for_function("!!document.querySelector('main > .empty')", timeout=20000)
+                js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            add526(dropzip522, [list(zip522.getvalue()), "watch-526.zip"], "watch-526.zip")
+            watch526 = [js("!!WATCH")]
+            undo526()
+            add526(drop497, ["after-526.csv", "Date,Test,Result,Units,Reference Range\n2026-11-15,Sodium,139,mmol/L,135 - 145\n"], "after-526.csv")
+            tab_click(page, "#tab-health")
+            watch526 += [js("WATCH"), js(cards522)]
+            check("after an undone Apple Health zip and a lab CSV on an empty profile, Body and activity draws no watch card (#526: its readings came back)",
+                  watch526[:2] == [True, None] and not {"Vitals", "Blood glucose", "Body temperature", "Blood pressure"} & set(watch526[2]), watch526)
+            undo526()
             # (#508) on the guide, a CSV added in its step 2, then undone from its toast: the step isn't done any more,
             # and focus is on the card's "Undone." line
             page.goto(base + f"/guide.html?profile={epid504}#records")
