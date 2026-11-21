@@ -1861,6 +1861,14 @@ Everything on `main` so far; it becomes the first tagged release.
   dependency. The command palette finds Phone and watch for "iphone", "apple health" and "health auto export", and
   Accounts for removing, deleting or disabling an account and for requiring two-factor sign-in. Deleting cycle data
   and turning cycle tracking off are in a danger zone that asks for the profile's name, as deleting a profile does.
+- **Focus stays in sight after Remove, Share, Revoke and Sign out, through Admin's "Confirm it's you" and the danger
+  zone, and Share links has one ⓘ** (#493): Sharing's Remove and Share, Share links' Make the link and Revoke, and
+  Account's Sign out left focus on the page, their button gone with what they changed. Focus goes to the next row's
+  button (else the one before's), to the list's heading when none is left, to the box to share with someone else, and
+  to the new link's Copy. Admin's accounts put focus back on the row's ⋯ after "Confirm it's you" and after its Cancel,
+  too. The danger zone keeps focus in its name box while it runs, so a removal that fails or a question about who takes
+  over leaves it there; an account removed meanwhile drops from the list and the picker. On a phone the zone opened
+  comes into view whole, its red button clear of the tabs. Share links gained an ⓘ at each role change; it keeps one.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

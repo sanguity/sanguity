@@ -133,7 +133,9 @@ function rowMenu(label, entries, act, cls = "set-more") {
    that opens the rest: what goes (o.says(name), nodes), what to do first (o.first(name): Export everything first), and
    the name to type exactly before its red button, o.action, does o.run(typed), which throws to say why not (the server
    checks the name again). -> {node, show(name, {focus}), hide(), msg}: show(name) opens it for that name, focus on the
-   box to type it in unless focus is false; msg says how it went, under it */
+   box to type it in unless focus is false, the whole of it brought into view (its red button too, clear of a phone's
+   tabs); msg says how it went, under it. While it runs, focus waits in the box (#493: the red button turns itself off),
+   so it's there still once a question asked meanwhile closes, or the run fails and msg says why */
 let dangerZones = 0;
 function dangerZone(o) {
   const id = "dz" + (++dangerZones), typed = el("input", {id: id + "Name", autocomplete: "off", autocapitalize: "none", spellcheck: "false"});
@@ -141,13 +143,20 @@ function dangerZone(o) {
   const said = el("div", {class: "dz-says"}), first = el("div", {class: "dz-first"}), lbl = el("label", {for: typed.id});
   const msg = el("p", {class: "msg dz-msg"});
   const body = el("div", {class: "dz-body", id: id + "Body", hidden: true}, said, first, el("div", {class: "dz-name"}, lbl, typed), go);
-  let name = null;
-  const ready = () => { go.disabled = name == null || typed.value.trim() !== name; };
+  let name = null, busy = false;
+  const ready = () => { go.disabled = busy || name == null || typed.value.trim() !== name; };
   typed.oninput = ready;
   typed.onkeydown = ev => { if (ev.key === "Enter" && !go.disabled) { ev.preventDefault(); go.click(); } };
   go.onclick = async () => {
-    go.disabled = true; sayIn(msg, "");
-    try { await o.run(typed.value); } catch (e) { sayIn(msg, e.message, true); ready(); }
+    if (document.activeElement === go) typed.focus({preventScroll: true});
+    busy = true; ready(); sayIn(msg, "");
+    try { await o.run(typed.value); }
+    catch (e) {
+      sayIn(msg, e.message, true);
+      // still in the zone: the box, open still, else what's left of it (o.run may have closed it: the account gone)
+      if (!node.contains(document.activeElement)) (body.hidden ? node.querySelector("select, .dz-open") : typed)?.focus();
+    }
+    finally { busy = false; ready(); }
   };
   const open = o.open ? el("button", {class: "btn dz-open", type: "button", text: o.open, "aria-expanded": "false", "aria-controls": body.id,
     onclick: () => body.hidden ? show(o.name) : hide()}) : null;
@@ -159,13 +168,29 @@ function dangerZone(o) {
     body.hidden = false; open?.setAttribute("aria-expanded", "true"); sayIn(msg, ""); ready();
     if (!focus) return;
     typed.focus({preventScroll: true});
-    typed.scrollIntoView({block: "nearest", behavior: smoothly()});
+    // all of it in view, clear of the top bar and a phone's tabs (html's scroll-padding); taller than the room there
+    // is, its foot (the red button) at the room's foot
+    const pad = getComputedStyle(document.documentElement);
+    const fits = body.getBoundingClientRect().height <= innerHeight - parseFloat(pad.scrollPaddingTop) - parseFloat(pad.scrollPaddingBottom);
+    (fits ? body : go).scrollIntoView({block: fits ? "nearest" : "end", behavior: smoothly()});
   }
   function hide() { body.hidden = true; open?.setAttribute("aria-expanded", "false"); name = o.open ? o.name : null; typed.value = ""; ready(); }
   const node = el("section", {class: "danger-zone", "aria-labelledby": id + "Title"},
     setRow([el("h3", {class: "sub", id: id + "Title", text: o.title}), o.hint ? el("p", {class: "hint", text: o.hint}) : null], o.pick || open),
     body, msg);
   return {node, show, hide, msg};
+}
+/* focus once a row's action has taken its control away (#493: Remove, Revoke, Sign out): the same control in the row
+   now in its place (the next one), else in the nearest before it, else fallback (a heading, made focusable; a card's
+   heading said only, its card alone in its group, gives way to the page's, sidebar.js), in view. rows: the rows as
+   drawn now; i: where the row was among them; sel: the control in a row */
+function focusNear(rows, i, sel, fallback) {
+  const near = [...rows.slice(i), ...rows.slice(0, i).reverse()].map(r => r.querySelector(sel)).find(x => x && !x.disabled);
+  const to = near || (fallback?.classList.contains("vh") && document.getElementById("groupTitle")) || fallback;
+  if (!to) return;
+  if (!near && to.matches("h1, h2, h3, h4")) to.tabIndex = -1;
+  to.focus({preventScroll: true});
+  to.scrollIntoView({block: "nearest"});
 }
 /* An empty state (#199): one sentence saying what would appear here, and the one next step, a link ({href, text}) or
    a button ({onclick, text}); none (null) for someone who can't take it. tag: "div" for a whole card's place, "li"

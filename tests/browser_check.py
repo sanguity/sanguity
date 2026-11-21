@@ -2222,6 +2222,10 @@ def main():
         form.locator("button[type=submit]").click()
         strict.wait_for_selector(".share-made .share-url", timeout=10000)
         share_url = strict.input_value(".share-made .share-url")
+        strict.wait_for_timeout(200)
+        made493 = strict.evaluate(IN_SIGHT)
+        check("share links: …focus then on its Copy, in sight, as the card says “Copy the link now” (#493: it fell to the page)",
+              (made493 or [0])[0] == "BUTTON" and made493[3] == "Copy" and strict.evaluate("!!document.activeElement.closest('.share-made')"), made493)
         check("share links: the link is shown once, with its token after the #", re.fullmatch(re.escape(base) + r"/share\.html#[\w-]{43}", share_url), share_url)
         # #284: the new link as a QR code under it (qr.js), read back to the address by tests/test_qr.py's reader, named
         # for a screen reader, dark on white in both themes
@@ -2501,6 +2505,10 @@ def main():
         mine.locator(".share-links button", has_text="Revoke").first.click()
         answer_ask(strict)
         sl_until(strict, "document.querySelector('#links .share-links table').textContent.includes('revoked')")
+        strict.wait_for_timeout(200)
+        rv493 = strict.evaluate(IN_SIGHT)
+        check("share links: after Revoke, focus on the next link's Revoke, else New share link, in sight (#493: it fell to the page)",
+              (rv493 or [0])[0] == "BUTTON" and rv493[3] in ("Revoke", "New share link"), rv493)
         hp.reload()
         sl_until(hp, "document.querySelector('#shareHead h1').textContent === \"This link doesn't work\"")
         check("share links: a revoked link shows nothing", hp.evaluate("document.getElementById('shareBody').children.length") == 0)
@@ -16003,6 +16011,28 @@ def main():
                                         ["Your password", "Show password"], ["Your password", "Show password"]],
                             "admin": [["Your password, or a code from your authenticator app", "Show password or code"], ["fSecret", "Show client secret"]],
                             "sources": [["shlPass", "Show passcode"]]}, pw492)
+            # #493: Sign out takes its button away with the device: focus then on the next device's Sign out (else the one
+            # before's), and with only this device left on the card's heading, in sight; it fell to the page. Two more
+            # devices for it, by keyboard
+            from server import db as dbm_493
+            db_493 = dbm_493.connect()
+            me_493 = db_493.execute("SELECT id FROM users WHERE username=?", (USER,)).fetchone()[0]
+            for n in (1, 2):   # (started now: the list leaves out one older than a session's lifetime)
+                db_493.execute("INSERT INTO sessions(token_hash, user_id, created, last_seen, expires, ip, agent, verified_at) VALUES(?,?,?,?,?,?,?,?)",
+                               (f"browser-check-493-{n}", me_493, dbm_493.now(), dbm_493.now(), dbm_493.now() + 3600, "192.0.2.1", "Mozilla/5.0 Firefox/120.0", 0))
+            db_493.close()
+            page.reload()
+            page.wait_for_function("document.querySelectorAll('#sessList tbody button').length >= 2", timeout=10000)
+            out493 = []
+            for n in range(js("document.querySelectorAll('#sessList tbody button').length"), 0, -1):
+                page.focus("#sessList tbody button")
+                page.keyboard.press("Enter")
+                page.wait_for_function(f"document.querySelectorAll('#sessList tbody button').length === {n - 1}", timeout=10000)
+                settle(200)
+                out493.append((js(IN_SIGHT) or [None] * 4)[::3])
+            check("Account → Sign out: focus then on the next device's Sign out, and with only this device left on the card's heading, "
+                  "in sight (#493: it fell to the page)", len(out493) >= 2 and out493[:-1] == [["BUTTON", "Sign out"]] * (len(out493) - 1)
+                  and out493[-1] == ["H2", "Where you're signed in"], out493)
             # #320: on a phone the account pages' tables hid their headings and left the values on their own (Admin's "off" and
             # "10", two dates per device): each cell is labelled with its column's name now, the one name a screen reader
             # hears as the hidden headings are hidden from it too; axe-core clean, light and dark
@@ -16163,12 +16193,28 @@ def main():
                       z[0]?.querySelector('h3').textContent, document.activeElement.labels?.[0]?.textContent,
                       z[0]?.querySelector('.btn.danger').disabled]; })()""")
                 fit287 += phone_fits(page, f"Admin → Accounts, the danger zone open, {w} px") if w < 700 else []
+                clear_of_bar(page)   # (#493: the zone is scrolled into view whole now, which can leave a row's ⋯ half under the bar)
                 for theme in ("light", "dark"):
                     page.emulate_media(color_scheme=theme)
                     axe287 += axe_check(page, f"Admin → Accounts, the danger zone open, {w} px, {theme}")[0]
                 page.emulate_media(color_scheme=None)
                 page.select_option("#rmUser", "")
+            # #493: on a phone the zone opened from a row is brought into view whole, not just the box for the name: its red
+            # button was under the tabs at the screen's foot
+            dz493 = {}
+            for w, h in ((375, 667), (320, 568)):
+                page.set_viewport_size({"width": w, "height": h})
+                js("scrollTo(0, 0)")
+                settle(200)
+                page.locator("#userList tr", has_text="alex").get_by_role("button", name="Manage alex").click()
+                page.get_by_role("menuitem", name="Remove account…").click()
+                settle(900)   # (a smooth scroll, where motion isn't reduced)
+                dz493[w] = js("""(() => { const b = document.querySelector('#userDanger .btn.danger').getBoundingClientRect(), pad = getComputedStyle(document.documentElement);
+                    return [b.top >= parseFloat(pad.scrollPaddingTop) && b.bottom <= innerHeight - parseFloat(pad.scrollPaddingBottom), document.activeElement.labels?.[0]?.textContent]; })()""")
+                page.select_option("#rmUser", "")
             page.set_viewport_size({"width": 1400, "height": 900})
+            check("…on a phone (375×667, 320×568), opened from a row, all of it in view: its red button clear of the bar and the tabs, "
+                  "focus in the box for the name (#493)", dz493 == {375: [True, "Type alex to confirm"], 320: [True, "Type alex to confirm"]}, dz493)
             me287 = [r for r in rows287[1400] if r[2]]
             alex287 = [r for r in rows287[1400] if r[0] == "alex"]
             check("Admin → Accounts: badges for admin and two-factor, and a ⋯ menu on each account but your own (#287)",
@@ -16297,6 +16343,10 @@ def main():
             form.get_by_role("button", name="Share").click()
             page.wait_for_function("document.querySelectorAll('#memberList tbody tr').length === 2 && document.getElementById('peopleMsg').textContent === 'Shared with alex as editor.'", timeout=10000)
             check("sharing adds them, as the role chosen", js("document.querySelector(\"#memberList select[aria-label=\\\"alex's role\\\"]\").value") == "editor")
+            settle(200)
+            share493 = [js(IN_SIGHT), js("[document.activeElement.getAttribute('aria-label'), document.activeElement.value]")]
+            check("…focus then in the box to share with someone else, drawn again empty, in sight (#493: it fell to the page)",
+                  (share493[0] or [0])[0] == "INPUT" and share493[1] == ["Share with username", ""], share493)
             page.focus("#memberList select[aria-label=\"alex's role\"]")
             page.select_option("#memberList select[aria-label=\"alex's role\"]", "viewer")
             page.wait_for_function("document.getElementById('peopleMsg').textContent === 'alex is now a viewer.'", timeout=10000)
@@ -16318,6 +16368,10 @@ def main():
             page.select_option("#memberList select[aria-label=\"alex's role\"]", "viewer")
             page.wait_for_function("document.getElementById('peopleMsg').textContent === 'alex is now a viewer.'", timeout=10000)
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            # #493: each of those role changes drew Share links' panel again (sharing.js pick), whose ⓘ is beside the card's
+            # heading, outside it: one more was left there each time ("About Share links" three times after two changes)
+            info493 = js("[...document.querySelectorAll('.info > button')].filter(b => b.getAttribute('aria-label') === 'About Share links').map(b => !!document.getElementById(b.getAttribute('aria-controls')))")
+            check("…Share links has one ⓘ still, after those role changes, each drawing its panel again (#493)", info493 == [True], info493)
             # ---- role changes that are hard to take back ask first (#249): Cancel puts the select back and sends nothing
             alex_sel, my_sel = "#memberList select[aria-label=\"alex's role\"]", f"#memberList select[aria-label=\"{USER}'s role\"]"
             focus_js = "(() => { const d = document.querySelector('dialog.sg-ask[open]'); return [d.getAttribute('role'), document.activeElement.textContent]; })()"
@@ -16399,6 +16453,10 @@ def main():
             page.keyboard.press("Enter")
             page.wait_for_function("document.querySelectorAll('#memberList tbody tr').length === 1", timeout=10000)
             check("Remove takes their access away", "alex" not in page.inner_text("#memberList"))
+            settle(200)
+            rm493 = js(IN_SIGHT)
+            check("…focus then on the heading, in sight, nobody else being left to remove: the page's, People, as the card's is said "
+                  "only (#493: it fell to the page; with someone left, on their Remove)", (rm493 or [0])[:2] == ["H1", "groupTitle"] and rm493[3] == "People", rm493)
             check("…confirmed by keyboard in the app's dialog: Enter opens it on Cancel, Tab reaches Remove access, Enter does it (#210)",
                   on_cancel == "Cancel" and on_action == "Remove access" and not js("document.querySelector('dialog.sg-ask')"), (on_cancel, on_action))
             # #313: no possessive made from a profile's name ("They'll stop seeing My records's records"): the default profile
@@ -16522,11 +16580,25 @@ def main():
             answer_ask(page)
             page.wait_for_selector("#reauth input", state="visible", timeout=10000)
             check("resetting a password asks to confirm it's you", "Confirm it's you" in page.inner_text("#reauth"))
+            # #493: focus back on alex's ⋯ after the check's Cancel, and after the check and the change, the list drawn again;
+            # it was read from where focus was at the redraw, by then the page, as the check's form had gone
+            row493 = "[document.activeElement.getAttribute('aria-label'), !!document.activeElement.closest('tr[data-user]')]"
+            page.locator("#reauth").get_by_role("button", name="Cancel").click()
+            page.wait_for_function("document.getElementById('reauth').hidden && document.getElementById('userMsg').textContent.startsWith('Not done')", timeout=10000)
+            settle(200)
+            back493 = [js(row493) + [js(IN_SIGHT) is not None]]
+            alex_do("Reset password…")
+            answer_ask(page)
+            page.wait_for_selector("#reauth input", state="visible", timeout=10000)
             page.fill("#reauth input", PW)
             page.locator("#reauth").get_by_role("button", name="Confirm").click()
             page.wait_for_function("document.getElementById('reauth').hidden && document.querySelector('#userMsg code') && "
                                    "document.getElementById('userMsg').textContent.includes('alex')", timeout=10000)
             check("after the password, the reset goes ahead", True)
+            settle(200)
+            back493.append(js(row493) + [js(IN_SIGHT) is not None])
+            check("…focus back on alex's ⋯, in sight, after the check's Cancel and after the check and the reset (#493: it fell to the page)",
+                  back493 == [["Manage alex", True, True]] * 2, back493)
             problems[before:] = [x for x in problems[before:] if "403" not in x]   # the refusal that asks
             # Make admin and Remove admin ask first, naming the account (#249); Cancel leaves the flag as it was
             alex_do("Make admin…")
@@ -16606,6 +16678,15 @@ def main():
             check("…its row's Remove account… opens the danger zone for alex, focus on the box for its username, Remove the account "
                   "off until it's typed exactly (#287)", rm287 == ["alex", "Type alex to confirm"] and gone_btn.is_disabled(), rm287)
             zone.get_by_label("Type alex to confirm").fill("alex")
+            # #493: the red button turned itself off while it had focus, so a run that failed left focus on the page: the
+            # question who takes over cancelled, focus is in the box still, the zone saying it's not removed
+            gone_btn.focus()
+            page.keyboard.press("Enter")
+            answer_ask(page, yes=False)
+            settle(300)
+            failed493 = [js("document.activeElement.labels?.[0]?.textContent"), zone.locator(".dz-msg").inner_text()]
+            check("…a removal that fails (the question who takes over cancelled) leaves focus in the zone, in the box for the name, the "
+                  "zone saying why (#493: it fell to the page)", failed493 == ["Type alex to confirm", "Not removed."], failed493)
             gone_btn.click()
             owner_asked = answer_ask(page, fill=USER)   # (#210: the app's dialog with a box for the name, not prompt)
             page.wait_for_function("!document.querySelector('#userList').textContent.includes('alex')", timeout=10000)
@@ -16614,6 +16695,36 @@ def main():
             problems[before_remove:] = [x for x in problems[before_remove:] if "409" not in x]   # the question's refusal
             mine_now = js("fetch('api/me').then(r => r.json()).then(j => j.profiles.map(p => p.name))")
             check("removing a sole owner hands their profile to whoever is named", "Alex's records" in mine_now, mine_now)
+            # #493: an account removed meanwhile (by another admin, or in another tab): "No such account.", the list and the
+            # zone's picker drawn again without it (it stayed listed). With another account left, said in the zone, focus on
+            # its picker as it closes; with none (the zone hidden), said under Accounts, focus on the page's heading
+            db_493z = dbm.connect()
+            gone493 = {}
+            for left in ("kept493", None):
+                for n in ("gone493", left):
+                    if n:
+                        db_493z.execute("INSERT INTO users(username, pw_hash, is_admin, created) VALUES(?, 'x', 0, 0)", (n,))
+                js("loadUsers()")
+                page.wait_for_function("[...document.querySelectorAll('#rmUser option')].some(o => o.textContent === 'gone493')", timeout=10000)
+                page.select_option("#rmUser", label="gone493")
+                zone.get_by_label("Type gone493 to confirm").fill("gone493")
+                db_493z.execute("DELETE FROM users WHERE username='gone493'")
+                before493 = len(problems)
+                gone_btn.click()
+                page.wait_for_function("[...document.querySelectorAll('#userDanger .dz-msg, #userMsg')].some(m => m.textContent === 'No such account.')", timeout=10000)
+                settle(200)
+                gone493[left] = js("""[document.activeElement.id, [...document.querySelectorAll('#userDanger .dz-msg, #userMsg')].find(m => m.textContent === 'No such account.').id,
+                    [...document.querySelectorAll('#rmUser option')].some(o => o.textContent === 'gone493'), document.querySelector('#userDanger .dz-body').hidden,
+                    [...document.querySelectorAll('#userList b')].some(b => b.textContent === 'gone493'), document.querySelector('#userDanger .danger-zone').hidden]""")
+                problems[before493:] = [x for x in problems[before493:] if "404" not in x]   # the refusal was the point
+                if left:
+                    db_493z.execute("DELETE FROM users WHERE username=?", (left,))
+                    js("loadUsers()")
+                    page.wait_for_function("!document.querySelector('#userList').textContent.includes('kept493')", timeout=10000)
+            db_493z.close()
+            check("…an account removed meanwhile: “No such account.”, gone from the list and the zone's picker; in the zone with focus on its "
+                  "picker while another account is left, under Accounts with focus on the page's heading once none is (#493)",
+                  gone493 == {"kept493": ["rmUser", "", False, True, False, False], None: ["groupTitle", "userMsg", False, True, False, True]}, gone493)
             # log out ends the session: the API now refuses
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)

@@ -136,8 +136,16 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
   function drawPeople(p) {
     const msg = $("#peopleMsg"), fail = e => sayIn(msg, e.message, true);
     const owner = p.role === "owner", me = ME.user.id;
-    // a role changed: yours too, perhaps; focus back where it was, on what's drawn in its place (#409)
-    const again = async () => { const had = document.activeElement?.id; await refresh(p.id); if (had) document.getElementById(had)?.focus({preventScroll: true}); };
+    // a role changed: yours too, perhaps; focus back where it was, on what's drawn in its place (#409); where that went
+    // with it (#493: Remove, Share), lost() puts it somewhere in sight
+    const again = async (lost = null) => {
+      const had = document.activeElement?.id;
+      await refresh(p.id);
+      const back = had && document.getElementById(had);
+      if (back) back.focus({preventScroll: true});
+      else if (lost && P?.id === p.id) lost();
+    };
+    const rows = () => [...$("#memberList tbody").rows];
     $("#memberList").replaceChildren(el("table", {class: "tbl shr-members"},
       el("thead", {}, el("tr", {}, ...["Person", "Role", ""].map(h => el("th", {text: h})))),
       el("tbody", {}, ...MEMBERS.map(m => el("tr", {},
@@ -165,11 +173,13 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
             if (!await ask({title: `Leave ${p.name}?`, message: "You'll stop having access to its records." + (owner ? "" : " An owner can share it with you again."),
                             action: "Leave profile", danger: true})) return;
             leave(p); }})
-          : owner ? el("button", {class: "btn small", type: "button", text: "Remove", "aria-label": `Remove ${m.username}`,
+          : owner ? el("button", {class: "btn small", type: "button", text: "Remove", "aria-label": `Remove ${m.username}`, "data-act": "remove",
             onclick: async () => {
               if (!await ask({title: `Remove ${m.username}'s access?`, message: `They'll stop seeing the records in ${p.name}. You can share it with them again later.`,
                               action: "Remove access", danger: true})) return;
-              try { await call(`profiles/${p.id}/members/${m.user_id}`, "DELETE"); await again(); sayIn($("#peopleMsg"), `${m.username} no longer has access.`); } catch (e) { fail(e); } }})
+              const at = MEMBERS.indexOf(m);   // focus then on the next person's Remove, else the one before, else the heading (util.js)
+              try { await call(`profiles/${p.id}/members/${m.user_id}`, "DELETE"); await again(() => focusNear(rows(), at, "[data-act=remove]", $("#people h2")));
+                    sayIn($("#peopleMsg"), `${m.username} no longer has access.`); } catch (e) { fail(e); } }})
           : null))))));
     if (!owner) {
       const owners = MEMBERS.filter(m => m.role === "owner").map(m => m.username);
@@ -187,7 +197,9 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
       if (had && had.role === role.value) { fail(new Error(`${had.username} already has access as ${had.role}.`)); return; }
       if (!await sureOfRole(p, had || {username: name}, role.value, had && (() => ask({title: `Change ${had.username} to ${role.value}?`,
                             message: `${had.username} already has access to ${p.name} as ${had.role}.`, action: "Change role"})))) return;
-      try { await call(`profiles/${p.id}/members`, "PUT", {username: name, role: role.value}); await again(); sayIn($("#peopleMsg"), `Shared with ${name} as ${role.value}.`); }
+      // focus then in the box, drawn again empty, to share with someone else
+      try { await call(`profiles/${p.id}/members`, "PUT", {username: name, role: role.value}); await again(() => $("#shareWith input")?.focus());
+            sayIn($("#peopleMsg"), `Shared with ${name} as ${role.value}.`); }
       catch (e) { fail(e); } }},
       who, "as", role, el("button", {class: "btn", type: "submit", text: "Share"}))));
   }
