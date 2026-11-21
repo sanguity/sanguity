@@ -85,8 +85,8 @@ const SG_PAGES = {
   account: {page: "account.html", title: "Account", icon: "key-round", words: "sign-in security", groups: [
     {id: "security", title: "Sign-in and security", icon: "lock", hint: "How you sign in, and where you're signed in now.",
      has: ["password", "twofa", "passkeys", "sessions"],
-     finds: [["Password", "password", "change passphrase"], ["Two-factor sign-in", "twofa", "2fa authenticator code totp turn on off recovery make new"],
-       ["Passkeys", "passkeys", "security key fingerprint face add remove"], ["Where you're signed in", "sessions", "sessions devices sign out log out everywhere other"]]},   // (#502: what's done there)
+     finds: [["Password", "password", "change new reset forgot passphrase"], ["Two-factor sign-in", "twofa", "2fa authenticator code totp turn on off recovery make new"],
+       ["Passkeys", "passkeys", "security key fingerprint face add rename remove"], ["Where you're signed in", "sessions", "sessions devices sign out log out logout everywhere other"]]},   // (#502: what's done there; #519: logout)
     {id: "device", title: "This device", icon: "smartphone", hint: "Sanguity on the device you're using now: as an app, and offline.",
      has: ["installApp", "offlineRecords"],
      finds: [["Install on this device", "installApp", "app home screen"], ["Offline records on this device", "offlineRecords", "offline without a connection"]]},
@@ -98,7 +98,8 @@ const SG_PAGES = {
     {id: "activity", title: "Install activity", icon: "logs", part: "People", has: ["installLog"], words: "log sign-ins"},
     {id: "backups", title: "Backups", icon: "archive", part: "Data safety", has: ["backups"], words: "backup restore"},   // #200
     {id: "apps", title: "Connected-source apps", icon: "app-window", part: "Connections", has: ["admin", "sec-sync"],
-     words: "set up a source client portal app test connection change remove delete waiting for review done id secret issuer vendor epic mychart oracle cerner", finds: [["Sync defaults", "sec-sync", "attachments"]]},   // (#506: a source's buttons; #510: its form's; #515: delete)
+     words: "set up a source client portal app test connection change remove delete waiting for review done id secret issuer vendor epic mychart oracle cerner " +
+       "new return address redirect uri", finds: [["Sync defaults", "sec-sync", "attachments"]]},   // (#506: a source's buttons; #510: its form's; #515: delete; #519: its return address)
     {id: "directory", title: "Provider directory", icon: "book-user", part: "Connections", has: ["directory"], words: "providers"},
     {id: "outside", title: "Outside connections", icon: "globe", part: "Connections", has: ["outside"], words: "network internet"},
     {id: "labs", title: "Lab name matches", icon: "arrow-right-left", part: "Lab matching", has: ["labmaps"], words: "aliases mapping"},

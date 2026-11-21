@@ -14204,6 +14204,20 @@ def main():
                   "among the first for “mychart”, “connect mychart” and “connect epic”",
                   all(found515[q][:1] == [t] for q, t in first515.items())
                   and all("Portals and health plans" in found515[q] for q in ("mychart", "connect mychart", "connect epic")), found515)
+            # #519: and Account's Password, Passkeys and Where you're signed in, and Admin's Connected-source apps, for what's
+            # done or typed there (nothing found, or for “new password” only Accounts), each the first page found (“new” and
+            # “reset password”'s: one of the first two, Accounts the other: an admin's for someone else's)
+            want519 = {"rename passkey": "Passkeys", "logout": "Where you're signed in", "return address": "Connected-source apps",
+                       "redirect": "Connected-source apps", "redirect uri": "Connected-source apps", "new source": "Connected-source apps",
+                       "new password": "Password", "reset password": "Password", "forgot password": "Password"}
+            found519 = {}
+            for q in want519:
+                pal(q, "Control+k" if not found519 else None)
+                found519[q] = [t for g, t in js(pal_found) if g == "Pages and settings"][:3]
+            page.keyboard.press("Escape")
+            check("…(#519) Passkeys for “rename passkey”, Where you're signed in for “logout”, Connected-source apps for “return address”, "
+                  "“redirect”, “redirect uri” and “new source”, Password for “new”, “reset” and “forgot password”, each first",
+                  all(found519[q][:1] == [t] for q, t in want519.items()), found519)
             page.goto(base + "/settings.html?profile=1#dashboard")
             page.wait_for_selector("#sections > section", state="attached", timeout=10000)
             settle(300)
@@ -16479,6 +16493,19 @@ def main():
             lp.keyboard.press("Escape")
             check("…(#515) and, for an editor who isn't an admin, “mychart”, “connect mychart” and “connect epic” find Portals and health plans "
                   "among the first, and no Admin page", all("Portals and health plans" in v and "Connected-source apps" not in v for v in lee515.values()), lee515)
+            # #519: and Account's Password, Passkeys and Where you're signed in for what's done there (nothing was found)
+            lp.keyboard.press("Control+k")
+            lp.wait_for_selector("dialog.palette[open]", timeout=5000)
+            lp.wait_for_timeout(600)
+            want_lee519, lee519 = {"new password": "Password", "reset password": "Password", "forgot password": "Password",
+                                   "rename passkey": "Passkeys", "logout": "Where you're signed in"}, {}
+            for q in want_lee519:
+                lp.fill("#palQ", q)
+                lp.wait_for_timeout(150)
+                lee519[q] = [t for g, t in lp.evaluate(pal_found) if g == "Pages and settings"][:3]
+            lp.keyboard.press("Escape")
+            check("…(#519) and Password for “new”, “reset” and “forgot password”, Passkeys for “rename passkey” and Where you're signed in "
+                  "for “logout”, each first", all(lee519[q][:1] == [t] for q, t in want_lee519.items()), lee519)
             lp.click(f"#wait-{wait_id} a")
             lp.wait_for_function("document.querySelector('main.src').dataset.group === 'upload'", timeout=5000)
             shut494 = lp.evaluate("[document.getElementById('appleRecords').open, document.querySelector('#appleRecords > summary').textContent]")
@@ -18174,10 +18201,25 @@ def main():
                                "hasResidentKey": True, "hasUserVerification": True, "isUserVerified": True}})["authenticatorId"]
             pk.goto(local + "/account.html")
             pk.wait_for_selector("#pkBody form")
+            pk.set_viewport_size({"width": 375, "height": 667})   # (#519, below)
             pk.locator("#pkBody input[type=password]").fill(PW)
             pk.locator("#pkBody").get_by_role("button", name="Add a passkey").click()
             pk.wait_for_selector("#pkList tbody tr", timeout=10000)
             check("a passkey is added and listed", "never" in pk.inner_text("#pkList"), pk.inner_text("#pkMsg"))
+            # #519: at 375×667 focus is on its row's Rename (the form that had it was drawn again: it fell to the page), and
+            # “Added …” under its name, both in sight (it was under the form, below the screen); a row's Rename's reply is
+            # beside its row, below
+            SEEN519 = """e => { const r = e.getBoundingClientRect(), p = getComputedStyle(document.documentElement);
+              return r.height > 0 && r.top >= parseFloat(p.scrollPaddingTop) - 1 && r.bottom <= innerHeight - parseFloat(p.scrollPaddingBottom) + 1; }"""
+            PK519 = f"""() => {{ const a = document.activeElement, m = document.getElementById('pkRowMsg');
+              return [a.textContent, a.closest('#pkList tr')?.querySelector('input').value ?? null, ({SEEN519})(a),
+                m && m.textContent, m && m.closest('tr').querySelector('input').value, !!m && ({SEEN519})(m), document.getElementById('pkMsg').textContent]; }}"""
+            pk.wait_for_function("document.getElementById('pkRowMsg')", timeout=10000)
+            add519 = pk.evaluate(PK519)
+            check("…(#519) at 375×667, focus on its row's Rename and “Added …” under its name, both in sight (focus fell to the page, the "
+                  "message below the screen)", add519[0] == "Rename" and add519[1] and add519[2] and add519[3] == f"Added “{add519[1]}”."
+                  and add519[4] == add519[1] and add519[5] and not add519[6], add519)
+            pk.set_viewport_size({"width": 1400, "height": 900})
             # #502: Remove, its row gone with it, puts focus on the next passkey's Remove, else the one before's, in sight (it
             # fell to the page), as Sign out does (#493). Two more, made up here, removed in turn
             from server import db as pk_db
@@ -18190,6 +18232,52 @@ def main():
             pk.evaluate("loadPasskeys()")
             pk_names = "[...document.querySelectorAll('#pkList tbody tr input')].map(i => i.value)"
             pk.wait_for_function(f"{pk_names}.length === 3")
+            # #519: a second row's Rename, at 375×667: its reply under its name, in sight (it was under the Add form, below
+            # the screen), focus still on its Rename; an empty name's, then the name given back
+            pk.set_viewport_size({"width": 375, "height": 667})
+            row519 = pk.locator("#pkList tbody tr").nth(1)
+            name519, ren519, had519 = row519.locator("input").input_value(), [], len(problems)
+            for v, said in (("", "Give the passkey a name."), (name519, "Renamed.")):
+                row519.locator("input").fill(v)
+                row519.get_by_role("button", name="Rename").click()
+                pk.wait_for_function(f"document.getElementById('pkRowMsg')?.textContent === '{said}'", timeout=10000)
+                ren519.append(pk.evaluate(PK519))
+            # (the empty name's 400 was the point)
+            problems[had519:] = [x for x in problems[had519:] if not re.search(r"HTTP 400: .*/api/me/passkeys/\d+$|status of 400", x)]
+            check("…(#519) a second row's Rename at 375×667: its reply, “Give the passkey a name.” then “Renamed.”, under its name and in "
+                  "sight, focus on its Rename (it was under the Add form, below the screen)",
+                  [r[:6] for r in ren519] == [["Rename", "", True, "Give the passkey a name.", "", True], ["Rename", name519, True, "Renamed.", name519, True]]
+                  and not any(r[6] for r in ren519), ren519)
+            # #519: Passkeys under their name, the card's width: at each width nothing past the card, no sideways scroll, a
+            # date two lines at most, Rename, Remove and Where you're signed in's Sign out a line each (beside the name at
+            # 660 px the page scrolled sideways, at 700-740 px the table ran 20 px past the card, a date took 4-5 lines;
+            # “Sign / out” at 660 and 960 px)
+            fit519, sdb519 = {}, pk_db.connect()   # (another device, for a Sign out; gone again below)
+            sdb519.execute("INSERT INTO sessions(token_hash, user_id, created, last_seen, expires, ip, agent, verified_at) VALUES(?,?,?,?,?,?,?,?)",
+                           ("browser-check-519", uid502, pk_db.now(), pk_db.now(), pk_db.now() + 3600, "192.0.2.1", "Mozilla/5.0 Firefox/120.0", 0))
+            pk.evaluate("loadSessions()")
+            pk.wait_for_function("document.querySelectorAll('#sessList tbody button').length > 0", timeout=10000)
+            for w in (360, 660, 700, 768, 960, 1400):
+                pk.set_viewport_size({"width": w, "height": 900})
+                pk.wait_for_timeout(200)
+                fit519[w] = pk.evaluate("""() => { const lines = e => { const r = document.createRange(); r.selectNodeContents(e);
+                    return new Set([...r.getClientRects()].filter(x => x.width > 0).map(x => Math.round(x.top))).size; };
+                  const past = [];
+                  for (const card of [document.getElementById('passkeys'), document.getElementById('sessions')]) {
+                    const cs = getComputedStyle(card), edge = card.getBoundingClientRect().right - parseFloat(cs.paddingRight) - parseFloat(cs.borderRightWidth);
+                    past.push(...[...card.querySelectorAll('*')].filter(e => e.getClientRects().length && e.getBoundingClientRect().right > edge + 0.5).map(e => e.tagName + ' ' + (e.value || e.textContent).slice(0, 20)));
+                  }
+                  const dates = [...document.querySelectorAll('#pkList tbody td:is(:nth-child(2), :nth-child(3))')].map(lines);
+                  const btns = [...document.querySelectorAll('#pkList td.acts button, #sessList tbody button')].map(lines);
+                  return [past, document.documentElement.scrollWidth - innerWidth, Math.max(...dates), dates.length, Math.max(...btns), btns.length]; }""")
+            sdb519.execute("DELETE FROM sessions WHERE token_hash='browser-check-519'")
+            sdb519.close()
+            pk.evaluate("loadSessions()")
+            pk.set_viewport_size({"width": 1400, "height": 900})
+            check("…(#519) at 360, 660, 700, 768, 960 and 1400 px nothing past Passkeys' or Where you're signed in's card, no sideways scroll, "
+                  "a date two lines at most, Rename, Remove and Sign out a line each (at 660-740 and 960 px the table ran past the card, a "
+                  "date took 4-5 lines, “Sign / out”)",
+                  all(v[0] == [] and v[1] <= 0 and v[2] <= 2 and v[3] == 6 and v[4] == 1 and v[5] >= 7 for v in fit519.values()), fit519)
             pk502 = []
             for n in ("Old key 502", "Old phone 502"):
                 pk.locator("#pkList tbody tr").nth(pk.evaluate(f"{pk_names}.indexOf('{n}')")).get_by_role("button", name="Remove").click()

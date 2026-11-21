@@ -859,6 +859,15 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .acct .tag.off{background:none;outline:1px solid var(--ring);outline-offset:-1px}   /* disabled: an outline, not a fill */
 .acct .users .new-pw{display:block}
 .acct .tbl.users td.acts{display:table-cell;width:1%}   /* the ⋯ column as narrow as its button */
+/* Passkeys under their name, the card's width (.set-row.wide, #519: beside it they ran past the card at tablet widths):
+   the name's field gives way first; their buttons and Sign out a word each, never "Sign / out" */
+.acct .tbl.pk input{width:100%;min-width:7rem}
+@container (width < 34rem){   /* (narrow: a line of their own for its buttons, under the columns' names still) */
+  .acct .tbl.pk tr{display:grid;grid-template-columns:minmax(0,1fr) 7rem 7rem}
+  .acct .tbl.pk th:last-child{display:none}
+  .acct .tbl.pk td.acts{grid-column:1/-1;border-top:0}
+}
+.acct :is(.pk,#sessList) .btn{white-space:nowrap}
 .acct .activity{margin-top:var(--sp-2)}
 .acct .activity td.nowrap{white-space:nowrap}
 #acctLog{margin-top:var(--sp-3)}
