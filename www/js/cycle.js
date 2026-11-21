@@ -4,7 +4,7 @@
 
    GET profiles/<id>/cycle gives the spans (a period as logged in Health Connect, or a run of days with flow recorded)
    and the marks (ovulation tests, cervical mucus, spotting), each with its words. They become events of kind "cycle"
-   in EV (ids from CYCLE_BASE up, apart from every record's and workout's): a Timeline lane of their own (TL_LANES,
+   in EV (ids by day and kind, the same each time they're read: palette.js cycleId, #530): a Timeline lane of their own (TL_LANES,
    periods as bars, the rest as marks), its kind chip, the Events list and the drawer; and, when "Cycle tracking" is
    ticked under Labs (#192), a row under each chart (CHART_LAYERS). That tick isn't remembered: it's asked for each
    time the page opens. The records aren't kept in this browser: not in the offline copy (offline.js keeps the
@@ -15,7 +15,6 @@
 "use strict";
 let CYCLE = [];             // the events: {id, k: "cycle", t, end?, ts, te, title, sub, cy: the span or mark}
 let cycleOnCharts = false;  // Labs: "Cycle tracking" ticked (never remembered)
-const CYCLE_BASE = 5e8;
 const CYCLE_SHAPE = {ovulation: "circle", mucus: "diamond", spotting: "dot"};
 
 let cycleAsked = 0;   // the latest load's number: an earlier one still waiting adds nothing (#526)
@@ -28,13 +27,13 @@ async function cycleLoad() {
   let c = null;
   try { const r = await api(`profiles/${PROFILE.id}/cycle`); if (r.ok) c = await r.json(); } catch (e) {}
   if (ask !== cycleAsked || !c || !c.on) return;
-  let id = CYCLE_BASE;
+  const used = new Set();
   for (const s of c.spans || []) {
-    const e = {id: ++id, k: "cycle", t: s.from + "T00:00:00", end: s.to + "T23:59:59", title: s.title, sub: s.text, cy: {...s, kind: "span"}};
+    const e = {id: cycleId(s, used), k: "cycle", t: s.from + "T00:00:00", end: s.to + "T23:59:59", title: s.title, sub: s.text, cy: {...s, kind: "span"}};
     e.ts = zParse(e.t); e.te = zParse(e.end); CYCLE.push(e);
   }
   for (const m of c.marks || []) {
-    const e = {id: ++id, k: "cycle", t: m.day + "T12:00:00", title: m.title, sub: m.app || "", cy: m};
+    const e = {id: cycleId(m, used), k: "cycle", t: m.day + "T12:00:00", title: m.title, sub: m.app || "", cy: m};
     e.ts = e.te = zParse(e.t); CYCLE.push(e);
   }
   CYCLE = CYCLE.filter(e => isFinite(e.ts) && isFinite(e.te));

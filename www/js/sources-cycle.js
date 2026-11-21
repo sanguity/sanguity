@@ -47,8 +47,7 @@
         el("p", {}, el("b", {text: "What deleting reaches"})), reachList()],
       run: async typed => {
         if (typed.trim() !== name) throw new Error(`Type ${name} exactly.`);
-        const st = await call(off ? `profiles/${PID}/cycle` : `profiles/${PID}/cycle/delete`, off ? "PUT" : "POST", off ? {on: false} : {});
-        draw(st);
+        changed(await call(off ? `profiles/${PID}/cycle` : `profiles/${PID}/cycle/delete`, off ? "PUT" : "POST", off ? {on: false} : {}));
         const now = $("#cycleState"); now.tabIndex = -1; now.focus();   // (the card drawn again: focus on what it says now)
         sayIn($("#cycleMsg"), off ? "Cycle tracking is off. What was kept is being deleted." : "Deleting what was kept.");
       },
@@ -65,13 +64,19 @@
     return z.node;
   }
 
+  /* the card drawn as it is now, and the profile's open reviews (Upload files') read again, as a save does (#530:
+     turned off, one still offered the cycle records it would leave out) */
+  function changed(st) {
+    draw(st);
+    window.sanguityImport?.reviewsAgain(PID);
+  }
   function draw(st) {
     const box = $("#cycle"), msg = el("span", {class: "msg", id: "cycleMsg", role: "status"}), owner = st.can_change;
     let zone = null;
     const parts = [el("h2", {text: "Cycle tracking"})];
     const send = async (path, method, body, btn) => {
       btn.disabled = true;
-      try { draw(await call(path, method, body)); sayIn($("#cycleMsg"), method === "PUT" ? (body.on ? "Cycle tracking is on." : "Cycle tracking is off. What was kept is being deleted.") : "Deleting what was kept."); }
+      try { changed(await call(path, method, body)); sayIn($("#cycleMsg"), method === "PUT" ? (body.on ? "Cycle tracking is on." : "Cycle tracking is off. What was kept is being deleted.") : "Deleting what was kept."); }
       catch (e) { sayIn(msg, e.message, true); btn.disabled = false; }
     };
     if (!st.on) {

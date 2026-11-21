@@ -771,5 +771,7 @@
     return poll(f.body, opts.profileId, opts.jobId, text);
   }
 
-  window.sanguityImport = {uploaded, follow, frame, fresh, importCounts, undoAsks, undoAsk, undoneFocus, told, undoable};
+  // reviewsAgain(pid): the profile's open reviews read again, as after a save: cycle tracking turned on or off, or its
+  // records deleted (sources-cycle.js, #530: a review kept offering the cycle records turning it off left out)
+  window.sanguityImport = {uploaded, follow, frame, fresh, importCounts, undoAsks, undoAsk, undoneFocus, told, undoable, reviewsAgain: pid => freshOthers(null, pid)};
 })();

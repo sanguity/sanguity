@@ -34,6 +34,16 @@
    key on its own, WCAG 2.1.4), for this browser.
    SgPalette: open(q, typed in it first), resume(). Plain script, after nav.js and groups.js; all files share one scope. */
 "use strict";
+/* a cycle tracking record's id (cycle.js's, and the palette's on another page): from its first day and kind (a span, or
+   a mark's kind), apart from every record's and workout's, so it names the same record each time they're read (#530:
+   numbered in order, an Undo's reload gave an undone span's id to another, and the drawer stayed open on that one).
+   used: the ids given in this read */
+function cycleId(x, used) {
+  let id = 5e8 + Date.parse(x.from || x.day) / 54e5 + (x.from ? 0 : {ovulation: 4, mucus: 8, spotting: 12}[x.kind] || 0);
+  while (isFinite(id) && used.has(id)) id++;
+  used.add(id);
+  return id;
+}
 const SgPalette = (() => {
   const btn = document.getElementById("barSearch");
   if (!btn || typeof SG_PAGES === "undefined") return {open() {}, resume() {}};
@@ -131,8 +141,7 @@ const SgPalette = (() => {
       if (isFinite(e.ts)) events.push(e);
     }
     if (c && c.on) {
-      let cid = 5e8;   // cycle.js CYCLE_BASE
-      const cy = (t, end, x, sub) => { const e = ev({id: ++cid, k: "cycle", t, title: x.title}, [x.title, sub, "cycle tracking period"]); if (isFinite(e.ts) && isFinite(zParse(end))) events.push(e); };
+      const used = new Set(), cy = (t, end, x, sub) => { const e = ev({id: cycleId(x, used), k: "cycle", t, title: x.title}, [x.title, sub, "cycle tracking period"]); if (isFinite(e.ts) && isFinite(zParse(end))) events.push(e); };
       for (const x of c.spans || []) cy(x.from + "T00:00:00", x.to + "T23:59:59", x, x.text);
       for (const x of c.marks || []) cy(x.day + "T12:00:00", x.day + "T12:00:00", x, x.app);
     }
