@@ -9158,8 +9158,8 @@ def main():
             # know its lab names, so the review has them to match
             with open(os.path.join(ROOT, "tests", "fixtures", "importers", "ccda", "maple-grove-ccd", "maple-grove-ccd.xml"), "rb") as f:
                 ccda489 = f.read()
-            pick489 = "v => { const s = document.getElementById('profile'); s.value = v; s.dispatchEvent(new Event('change')); }"
-            js(pick489, "1")
+            pick490 = "v => { const s = document.getElementById('profile'); s.value = v; s.dispatchEvent(new Event('change')); }"
+            js(pick490, "1")
             page.wait_for_function("SgSources.pid() === 1 && SgSources.canEdit()", timeout=10000)
             cards = js("document.querySelectorAll('.import-job').length")
             page.set_input_files("#pickFiles", files=[{"name": "maple-grove.xml", "mimeType": "text/xml", "buffer": ccda489}])
@@ -9168,9 +9168,17 @@ def main():
             n489, under489 = under_bar(page, "#importer .job:last-child")
             check("a C-CDA's review in Upload files at 375 px, tabbed through: nothing focused is under its bar (#489)",
                   n489 > 3 and not under489, [n489, under489, js("document.querySelector('#importer .job:last-child .imp-actions').offsetHeight")])
-            js(f"fetch('api/profiles/1/jobs/{js(f'{last_card}.dataset.job')}/discard', {{method: 'POST', headers: {{'X-Sanguity': '1'}}}}).then(r => r.status)")
-            js(pick489, "2")
+            # (#490) another profile chosen: the review is put away from Upload files, so its Add can't save into the profile
+            # left behind; it waits in that profile's Waiting for you
+            jid490 = js(f"{last_card}.dataset.job")
+            js(pick490, "2")
             page.wait_for_function("SgSources.pid() === 2 && SgSources.canEdit()", timeout=10000)
+            settle(300)
+            away490 = js("[...document.querySelectorAll('#importer .job')].filter(c => c.checkVisibility()).map(c => c.dataset.pid)")
+            left490 = js(f"fetch('api/profiles/1/jobs?state=preview', {{cache: 'no-store'}}).then(r => r.json()).then(l => l.some(j => j.id === {jid490}))")
+            check("…after a profile change, no review for the other profile is in Upload files; it's left waiting in its own (#490)",
+                  "1" not in away490 and left490 and not js(f"!!document.querySelector('.import-job[data-job=\"{jid490}\"]')"), [away490, left490])
+            js(f"fetch('api/profiles/1/jobs/{jid490}/discard', {{method: 'POST', headers: {{'X-Sanguity': '1'}}}}).then(r => r.status)")
             page.set_viewport_size({"width": 1400, "height": 900})
             # the same export again: everything is a duplicate; cancelling it leaves nothing behind
             imports_before = db.execute("SELECT COUNT(*) FROM imports WHERE profile_id=2").fetchone()[0]
@@ -9275,8 +9283,9 @@ def main():
             check("a CareSpace export uploads and is imported in the background, as CareSpace",
                   card.startswith("Imported.") and "CareSpace" in card and "lab result" in card, card)
             done_toast = js("(t => t && [t.querySelector('.sg-toast-text').textContent, ...[...t.querySelectorAll('a, button')].map(b => b.getAttribute('aria-label') || b.textContent), t.querySelector('a')?.getAttribute('href')])(document.querySelector('#sgToasts .sg-toast:last-child'))")
+            came263 = js(f"[...{last_card}.querySelectorAll('ul > li')].slice(0, 2).map(li => li.textContent).join(', ')")   # (as the card counts, #490)
             check("…and a toast says what came in (#263), with Open Labs and Undo, the card no longer a live region of its own",
-                  done_toast and done_toast[0].startswith("Imported ") and "lab " in done_toast[0] and done_toast[1:4] == ["Open Labs", "Undo…", "Dismiss"]
+                  done_toast and done_toast[0].startswith("Imported " + came263) and done_toast[1:4] == ["Open Labs", "Undo…", "Dismiss"]
                   and done_toast[4] == "index.html?profile=2#labs" and not js(f"{last_card}.hasAttribute('aria-live')"), done_toast)
             page.click("#sgToasts .sg-toast:last-child button:text-is('Undo…')")
             asked = answer_ask(page, yes=False)
@@ -10153,6 +10162,31 @@ def main():
             # is waiting for you, under Add with how many and at the top of the Overview, and is finished or cancelled
             # there; a card whose import is over goes once another section is shown; on a phone the Overview's cards,
             # not the sidebar, are the way into each section, with the way back above every other one
+            # (#490) first, a preview left open, then the same records uploaded again and saved: reopened from Waiting for
+            # you, it's read again, all already here, titled by its format; the bar and the list count it the same
+            upload_csv("left-stale.csv", lab_csv.format("2026-11-15", "13.3").encode())
+            stale = js(f"{last_card}.dataset.job")
+            upload_csv("left-stale-again.csv", lab_csv.format("2026-11-15", "13.3").encode())
+            js(f"{last_card}.querySelector('.imp-actions .primary').click()")
+            page.wait_for_function(f"/^(Imported|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            page.goto(base + "/sources.html?profile=2#waiting")
+            page.wait_for_selector(f"#srcWait li[data-job='{stale}'] button", timeout=10000)
+            for _ in range(50):   # (the same page, only its address's group changed: the Overview reads the list again as it's shown)
+                row490 = js(f"document.querySelector('#srcWait li[data-job=\"{stale}\"] p').textContent")
+                if row490.startswith("All in"):
+                    break
+                settle(200)
+            page.click(f"#srcWait li[data-job='{stale}'] button:text-is('Review')")
+            page.wait_for_function(f"/^(Ready to import|All duplicates)/.test(document.querySelector('#srcReview .import-job[data-job=\"{stale}\"]')?.textContent)", timeout=15000)
+            r490 = js(f"""(c => [c.closest('.job').querySelector('.job-hd h3').textContent, c.querySelector('.imp-state').textContent,
+                c.querySelector('.imp-split li.here b').textContent, (c.querySelector('.imp-dups summary') || c.querySelector('.imp-split + p.hint'))?.textContent,
+                c.querySelector('.imp-actions .primary').textContent])(document.querySelector('#srcReview .import-job[data-job="{stale}"]'))""")
+            check("a preview left open, the same records saved since: Waiting for you says they're all in the profile already, and its Review, "
+                  "titled by its format, shows them as already here, the bar's count and the list's the same (#490)",
+                  row490.startswith("All in the profile already · ") and r490[:3] == ["Lab results spreadsheet (CSV)", "All duplicates", "1"]
+                  and (r490[3] or "").startswith("Already here: 1 duplicate,") and r490[4] == "Nothing to add", [row490, r490])
+            js(f"document.querySelector('#srcReview .import-job[data-job=\"{stale}\"] .imp-actions .btn:not(.primary)').click()")
+            page.wait_for_function(f"document.querySelector('#srcReview .import-job[data-job=\"{stale}\"]').textContent.startsWith('Cancelled.')", timeout=10000)
             upload_csv("left-open.csv", lab_csv.format("2026-11-13", "13.1").encode())
             left = js(f"{last_card}.dataset.job")
             upload_csv("left-open-too.csv", lab_csv.format("2026-11-14", "13.4").encode())
@@ -10195,6 +10229,26 @@ def main():
             page.wait_for_selector("#historyList li[data-import]", timeout=10000)
             check("…the finished card goes once another section is shown", js("document.querySelectorAll('.import-job[data-settled]').length") == 0,
                   js("document.querySelectorAll('.import-job').length"))
+            # (#490) many left open: the latest few, then "Show N more", which shows the rest, focus on the first of them
+            db = dbm.connect()
+            up490 = db.execute("SELECT upload_id FROM jobs WHERE id=?", (left2,)).fetchone()[0]
+            many490 = [db.execute("INSERT INTO jobs(profile_id, upload_id, state, importer, created) VALUES(2, ?, 'preview', 'csv', ?)",
+                                  (up490, int(time.time()) - n)).lastrowid for n in range(8)]
+            db.close()
+            page.click("#srcNav a[data-group=overview]")
+            page.wait_for_selector("#srcWait .src-wait-more button", timeout=10000)
+            n490 = js("fetch('api/profiles/2/jobs?state=preview', {cache: 'no-store'}).then(r => r.json()).then(l => l.length)")
+            few490 = js("[document.querySelectorAll('#srcWait > li[data-job]').length, document.querySelector('#srcWait .src-wait-more button').textContent]")
+            page.click("#srcWait .src-wait-more button")
+            all490 = js("[document.querySelectorAll('#srcWait > li[data-job]').length, !!document.querySelector('#srcWait .src-wait-more'), "
+                        "document.activeElement === document.querySelectorAll('#srcWait > li[data-job]')[5]?.querySelector('button')]")
+            db = dbm.connect()
+            db.execute(f"DELETE FROM jobs WHERE id IN ({','.join('?' * len(many490))})", many490)
+            db.close()
+            check("…with many left open, Waiting for you shows the latest 5 and “Show N more”, which shows the rest, focus on the first of them (#490)",
+                  few490 == [5, f"Show {n490 - 5} more"] and all490 == [n490, False, True], [n490, few490, all490])
+            page.click("#srcNav a[data-group=history]")
+            page.wait_for_selector("#historyList li[data-import]", timeout=10000)
             page.set_viewport_size({"width": 375, "height": 800})
             page.click(".src-back")
             page.wait_for_function("document.querySelector('main').dataset.group === 'overview' && document.activeElement.id === 'groupTitle'", timeout=10000)
@@ -17391,6 +17445,10 @@ def main():
             fp.goto(fbase + f"/sources.html?profile={pid2}")
             fp.wait_for_selector("#srcList .empty-state", timeout=10000)
             src_next = fp.evaluate(nexts, "#srcList")
+            mid490 = fp.evaluate("""[...document.querySelectorAll('#srcList .empty-state :is(.src-pic, p, .empty-next)')].map(e => {
+                const r = e.getBoundingClientRect(); return Math.round(r.left + r.width / 2); })""")
+            check("…Sources' empty Overview: its sentence centred under its picture, as its button is (#490)",
+                  len(mid490) == 3 and max(mid490) - min(mid490) <= 2, mid490)
             fp.click("#srcNav a[data-group=history]")
             fp.wait_for_selector("#historyList .empty-state", timeout=10000)
             check("…Sources' Overview and Import history: what would be listed, and one next step, Upload files",

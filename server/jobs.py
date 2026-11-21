@@ -180,14 +180,7 @@ def _import(db, j):
             d["ext"] = posixpath.splitext(d["url"].split("#", 1)[0])[1].lstrip(".").lower()
     watch = data.pop("watch", None)   # daily wearable data: saved with watch_store, not as records
     labs = labmap.plan(db, pid, mod.NAME, data)   # lab names to match; remembered ones go before duplicates are found
-    named = labmap.apply(data, labs["auto"])
-    dups = preview.find(db, pid, mod.NAME, named)
-    report = preview.report(named, dups, summarise)
-    report["possible"] = crossmatch.public(crossmatch.for_preview(db, pid, named, dups))   # from other sources (#96)
-    report["labs"], report["lab_targets"] = labs["listed"], labs["targets"]
-    if watch:
-        report["counts"].update(_watch_counts(watch))
-        report["new"] = True
+    report = _report(db, pid, mod.NAME, data, watch, labs)
     path = preview_path(pid, jid)
     os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
     crypto.write_file(path, json.dumps({"importer": mod.NAME, "data": data, "watch": watch, "paths": names, "labs": labs},
@@ -200,6 +193,48 @@ def _import(db, j):
         raise
     if not n:
         _remove(path)
+
+
+def _report(db, pid, name, data, watch, labs):
+    """What the preview shows: what's new, the duplicates of what the profile has now, and possible matches from other
+    sources (#96), with the profile's records stamp (_stamp) it was found against."""
+    stamp = _stamp(db, pid)
+    named = labmap.apply(data, labs["auto"])
+    dups = preview.find(db, pid, name, named)
+    report = preview.report(named, dups, summarise)
+    report["possible"] = crossmatch.public(crossmatch.for_preview(db, pid, named, dups))   # from other sources (#96)
+    report["labs"], report["lab_targets"] = labs["listed"], labs["targets"]
+    if watch:
+        report["counts"].update(_watch_counts(watch))
+        report["new"] = True
+    report["stamp"] = stamp
+    return report
+
+
+def _stamp(db, pid):
+    """How the profile's records stand, cheaply: each table's count and latest row. Anything saved or undone since a
+    preview was read changes it, and the preview is read again (freshen)."""
+    return ";".join(f"{n}.{m or 0}" for n, m in (db.execute(f"SELECT COUNT(*), MAX(id) FROM {t} WHERE profile_id=?", (pid,)).fetchone()
+                                                   for t in ("imports", "events", "series")))
+
+
+def freshen(db, pid, jid):
+    """A preview read again against the profile as it is now (#490), when its records have changed since it was read:
+    the same file saved meanwhile shows as already here, not as new. Only what the page shows changes: what's saved is
+    found again on confirm anyway (_save). A preview that can't be read again keeps what it said."""
+    r = db.execute("SELECT summary FROM jobs WHERE id=? AND profile_id=? AND state='preview'", (jid, pid)).fetchone()
+    if not r or not r["summary"]:
+        return
+    old = json.loads(crypto.dec(r["summary"]))
+    if old.get("stamp") == _stamp(db, pid):
+        return
+    try:
+        held = json.loads(crypto.read_file(preview_path(pid, jid)))
+        report = _report(db, pid, held["importer"], held["data"], held.get("watch"), held["labs"])
+    except Exception:   # gone (saved or cancelled meanwhile), or an importer since removed
+        log.warning("the preview of job %s couldn't be read again", jid, exc_info=True)
+        return
+    db.execute("UPDATE jobs SET summary=? WHERE id=? AND state='preview'", (crypto.enc(json.dumps(report)), jid))
 
 
 def _watch_counts(watch):
@@ -391,10 +426,12 @@ def summarise(data):
 
 # ---------------------------------------------------------------- reading jobs
 
-def describe(r):
+def describe(r, stamp=None):
+    """A job for the page; with the profile's records stamp, a preview says whether it was read before they changed
+    ("stale")."""
     mod = registry.get(r["importer"]) if r["importer"] else None
     summary = json.loads(crypto.dec(r["summary"])) if r["summary"] else {}
-    return {"id": r["id"], "profile_id": r["profile_id"], "upload_id": r["upload_id"], "state": r["state"], "stage": r["stage"],
+    out = {"id": r["id"], "profile_id": r["profile_id"], "upload_id": r["upload_id"], "state": r["state"], "stage": r["stage"],
             "importer": r["importer"], "label": mod.LABEL if mod else r["importer"],
             "counts": summary.get("counts"), "samples": summary.get("samples"), "range": summary.get("range"), "total": summary.get("total"),
             "duplicates": summary.get("duplicates"), "new": summary.get("new"), "skipped": summary.get("skipped"),
@@ -403,9 +440,14 @@ def describe(r):
             "warnings": json.loads(crypto.dec(r["warnings"])) if r["warnings"] else [],
             "message": crypto.dec(r["message"]) if r["message"] else None, "import_id": r["import_id"],
             "created": r["created"], "started": r["started"], "finished": r["finished"]}
+    if stamp is not None and r["state"] == "preview":
+        out["stale"] = summary.get("stamp") != stamp
+    return out
 
 
 def get(db, pid, jid):
+    """A job; a preview read again first if the profile's records have changed since (freshen)."""
+    freshen(db, pid, jid)
     r = db.execute("SELECT * FROM jobs WHERE id=? AND profile_id=?", (jid, pid)).fetchone()
     return describe(r) if r else None
 
@@ -414,9 +456,21 @@ STATES = ("queued", "running", "preview", "done", "failed", "discarded")
 WAITING = 100   # previews listed at most: each is an import someone left to save or cancel (#283)
 
 
+FRESH = 5   # previews read again when listed (freshen): the latest, the ones "Waiting for you" shows first (#490)
+
+
 def recent(db, pid, limit=RECENT, state=None):
     """The profile's jobs, newest first: the RECENT latest, or with state, every one in that state (up to WAITING): the
-    Sources overview's "Waiting for you" asks for the previews, however long ago they were left open."""
+    Sources overview's "Waiting for you" asks for the previews, however long ago they were left open; the FRESH latest
+    are read again if the profile has changed since (freshen), the rest marked "stale" until they're opened."""
+    if state == "preview":
+        ids = [r[0] for r in db.execute("SELECT id FROM jobs WHERE profile_id=? AND state='preview' ORDER BY id DESC LIMIT ?",
+                                        (pid, FRESH))]
+        for jid in ids:
+            freshen(db, pid, jid)
+        stamp = _stamp(db, pid)
+        return [describe(r, stamp) for r in db.execute("SELECT * FROM jobs WHERE profile_id=? AND state='preview' ORDER BY id DESC LIMIT ?",
+                                                       (pid, WAITING))]
     if state:
         return [describe(r) for r in db.execute("SELECT * FROM jobs WHERE profile_id=? AND state=? ORDER BY id DESC LIMIT ?",
                                                 (pid, state, WAITING))]

@@ -1,6 +1,7 @@
 /* Sanguity · Sources → Overview (#166, #283): the hub of the Sources page.
    - Waiting for you (#waiting), for the profile's owners and editors: each import left at its preview, a portal's first
-     pull among them (nav.js sgWaiting), with Review (its preview, opened here: import-jobs.js) and Cancel import…; and
+     pull among them (nav.js sgWaiting), the latest few and then "Show N more" (#490), each saying what it would bring
+     as the server reads it now, with Review (its preview, opened here: import-jobs.js) and Cancel import…; and
      each portal that needs you (access ended, or stopped syncing), with the way to it. A preview left open when a tab
      was closed is found again here. Add's "Waiting for you" (nav.js) opens it, and is told its count.
    - Where records come from (#srcOverview): one card per way in, each with how it's doing ("Connected · synced 2 h
@@ -35,14 +36,16 @@
   const plural = (n, one, many) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
 
   /* ---------------------------------------------------------------- Waiting for you */
-  /* an import's preview, opened here: the card it has already (a first pull's, connect.js) brought here, or a new one
-     following it; focus on it. Once it's saved or cancelled the list is read again; the card stays, saying so, until
-     another section is shown (sources-page.js) */
+  /* an import's preview, opened here: the card it has already (a first pull's, connect.js, or one left open in Upload
+     files) brought here and drawn again as the server reads it now (#490: the same file may have been saved since), or
+     a new one following it, titled by its format as its row is; focus on it. Once it's saved or cancelled the list is
+     read again; the card stays, saying so, until another section is shown (sources-page.js) */
   function open(job) {
     let card = document.querySelector(`.import-job[data-job="${job.id}"]:not([data-settled])`);
-    if (card) review.append(card.closest(".job") || card);   // its whole card (#281)
+    if (card) { review.append(card.closest(".job") || card); window.sanguityImport.fresh(card); }   // its whole card (#281)
     else {
-      window.sanguityImport.follow({profileId: SgSources.pid(), jobId: job.id, container: review, text: "Opening its preview…"}).then(() => load());
+      window.sanguityImport.follow({profileId: SgSources.pid(), jobId: job.id, container: review, title: job.label || "An import",   // its format, as its row (#490)
+                                    text: "Opening its preview…"}).then(() => load());
       card = review.lastElementChild.querySelector(".import-job");   // the job's own part of its card (#281)
     }
     card.tabIndex = -1;
@@ -68,7 +71,7 @@
   function waitRow(w) {
     const {job, conn} = w, r = job && job.range;
     if (job) {
-      const said = [job.new === false ? "All in the profile already" : "Ready to review",
+      const said = [job.new === false && !job.stale ? "All in the profile already" : "Ready to review",   // (stale: read before the profile changed, #490)
         r ? (r.from === r.to ? `records from ${fmtD(dayTs(r.from))}` : `records from ${fmtD(dayTs(r.from))} to ${fmtD(dayTs(r.to))}`) : null,
         `${conn ? "pulled" : "uploaded"} ${ago(job.created)}`].filter(Boolean).join(" · ");
       return el("li", {class: "src-wait-row", "data-job": job.id}, icon(conn ? "plug" : "upload"),
@@ -83,10 +86,23 @@
         el("p", {text: ended ? "Sign in again to keep it up to date." : conn.warning.text})),
       el("div", {class: "src-wait-acts"}, el("a", {class: "btn small", href: "#conn-" + conn.id, text: ended ? "Sign in again" : "Fix it"})));
   }
+  /* the latest few (#490: a dozen left open would push the ways in far down), then "Show N more" for the rest, which
+     stay shown until the profile changes */
+  const FEW = 5;
+  let all = false;
   function drawWaiting(items) {
     const shown = items.filter(w => !w.job || !review.querySelector(`.import-job[data-job="${w.job.id}"]:not([data-settled])`));   // (one open below)
     const had = waitList.contains(document.activeElement) && document.activeElement.dataset.key;
-    waitList.replaceChildren(...shown.map(waitRow));
+    const few = all || shown.length <= FEW + 1 ? shown : shown.slice(0, FEW);
+    waitList.replaceChildren(...few.map(waitRow));
+    if (few.length < shown.length) {
+      const n = shown.length - few.length;
+      waitList.append(el("li", {class: "src-wait-more"}, el("button", {class: "btn quiet small", type: "button", "data-key": "more", onclick: () => {
+        all = true;
+        drawWaiting(items);
+        waitList.children[FEW]?.querySelector("button, a")?.focus();   // the first of the rest
+      }}, `Show ${n.toLocaleString()} more`)));
+    }
     if (!shown.length && review.children.length) waitList.append(el("li", {class: "src-wait-none", text: "Nothing else is waiting for you."}));
     if (had) waitList.querySelector(`[data-key="${had}"]`)?.focus();
     wait.hidden = !shown.length && !review.children.length;
@@ -179,7 +195,7 @@
 
   (async () => {
     if (!await SgSources.ready) return;
-    $("#profile").addEventListener("change", () => { review.replaceChildren(); load(); });
+    $("#profile").addEventListener("change", () => { review.replaceChildren(); all = false; load(); });
     document.addEventListener("sources:group", ev => { if (ev.detail === "overview") load(); });
     load();
   })();
