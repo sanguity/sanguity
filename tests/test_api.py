@@ -193,6 +193,7 @@ class Api(unittest.TestCase):
         anon = client()
         self.assertTrue(anon.get("/api/setup").json()["needed"])
         self.assertEqual(anon.get("/api/setup").json()["password_min"], main.config.PASSWORD_MIN)   # setup's live count (#290)
+        self.assertTrue(anon.get("/api/setup").json()["records"])   # the setup build's, which the first account will own (#498)
         self.assertEqual(anon.get("/api/me").status_code, 401)
         self.assertEqual(anon.get("/api/profiles/1/data").status_code, 401)
 
@@ -206,7 +207,7 @@ class Api(unittest.TestCase):
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(anon.post("/api/setup", json={**bad, "code": CODE}, headers=H).status_code, 409)
         self.assertFalse(os.path.exists(os.path.join(TMP, "setup-code.txt")))   # the code's file is gone with it
-        self.assertFalse(anon.get("/api/setup").json()["needed"])
+        self.assertEqual([anon.get("/api/setup").json()[k] for k in ("needed", "records")], [False, False])
 
         me = ben.get("/api/me").json()
         self.assertTrue(me["user"]["is_admin"])

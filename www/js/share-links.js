@@ -115,7 +115,8 @@ function shareLinksPanel(p, {open = false} = {}) {
         el("div", {class: "row"}, el("label", {}, "Records from", from), el("label", {}, "to (empty: no end)", to)),
         el("label", {}, "Stops working after", hours)),
       el("div", {class: "share-side"}, sees,
-        el("div", {class: "row"}, go, el("button", {class: "btn", type: "button", text: "Cancel", onclick: () => f.remove()}))));
+        // Cancel (#498): focus back on New share link, which the form went under, not left on the page
+        el("div", {class: "row"}, go, el("button", {class: "btn", type: "button", text: "Cancel", onclick: () => { f.remove(); add.focus({preventScroll: true}); add.scrollIntoView({block: "nearest"}); }}))));
     f.addEventListener("input", explain); f.addEventListener("change", explain);
     explain();
     return f;

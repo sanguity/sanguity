@@ -344,8 +344,11 @@ class Setup(BaseModel):
 @app.get("/api/setup")
 def setup_state(db=Depends(get_db)):
     """Whether first-run setup is due, how long a new password must be (setup counts toward it as it's typed, #290),
-    and how long a sign-in lasts (for the note on the sign-in page)."""
-    return {"needed": db.execute("SELECT 1 FROM users LIMIT 1").fetchone() is None, "password_min": config.PASSWORD_MIN,
+    and how long a sign-in lasts (for the note on the sign-in page). records: while setup is due, whether there are
+    records here that the first account will own (claim_unowned; #498: setup says so only then, not on an empty install)."""
+    needed = db.execute("SELECT 1 FROM users LIMIT 1").fetchone() is None
+    return {"needed": needed, "password_min": config.PASSWORD_MIN,
+            "records": needed and db.execute("SELECT 1 FROM profiles WHERE id NOT IN (SELECT profile_id FROM memberships) LIMIT 1").fetchone() is not None,
             "session": {"days": config.SESSION_DAYS, "hours_without_2fa": config.SESSION_HOURS_WITHOUT_2FA,
                         "idle_minutes": config.SESSION_IDLE_MINUTES}}
 

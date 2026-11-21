@@ -28,8 +28,13 @@ gives them (Settings → Names, labNicknames; #289), each with its report's name
   from, to   ISO days, both optional (no "to": records added later in the range show too). Upcoming appointments
              are also only those from the day of the view on.
 
-Every view is logged in the profile's activity ("link", {"change": "view", "link", "label"}) under the actor
-SHARE_LINK, with the viewer's address, never the token; so are making and revoking ("create", "revoke"). The
+A long section (#498: ten years are 2,000 claims and 1,000 readings of a home measure) comes in two steps: the view
+sends its latest FIRST rows when it has more than MANY, and says how many there are ("cut": {section: rows}); the
+page's Show all asks for that one section in full ({"token", "section"}), which is logged as a view of it.
+
+Every view is logged in the profile's activity ("link", {"change": "view", "link", "label"}, and "all": the section's
+name for a Show all) under the actor SHARE_LINK, with the viewer's address, never the token; so are making and
+revoking ("create", "revoke"). The
 label and scope are encrypted at rest (atrest.FIELDS): lab names and a clinician's name are health information.
 """
 import json, re
@@ -59,6 +64,8 @@ MAX_ACTIVE = 20              # working links per profile
 MAX_LABS, LABEL_MAX = 100, 80
 KEEP_ENDED_DAYS = 30         # expired or revoked links stay listed (for the owner's record) this long
 SHARE_LINK = activity.SHARE_LINK
+FIRST, MANY = 20, 40         # a long section's view: its latest FIRST rows when it has more than MANY (#498)
+LONG = ("visits", "procedures", "costs", *measures.IDS)   # the sections that can be long (newest first), as share.js cuts them
 
 
 class LinkError(ValueError):
@@ -196,12 +203,16 @@ def find(db, token):
                           WHERE l.token_hash=? AND {_working_sql()}""", (sec.token_hash(token), dbm.now())).fetchone()
 
 
-def viewed(db, link, ip):
-    """Count the view and log it on the profile's activity (call inside a transaction)."""
-    db.execute("UPDATE share_links SET views=views+1, last_viewed=? WHERE id=?", (dbm.now(), link["id"]))
+def viewed(db, link, ip, section=None):
+    """Count the view and log it on the profile's activity (call inside a transaction). section: a long section asked
+    for in full (#498), logged as a view of it but not counted as another opening of the link."""
+    more = "" if section else "views=views+1, "
+    db.execute(f"UPDATE share_links SET {more}last_viewed=? WHERE id=?", (dbm.now(), link["id"]))
     detail = {"change": "view", "link": link["id"]}
     if link["label"]:
         detail["label"] = crypto.dec(link["label"])
+    if section:
+        detail["all"] = next(l for i, l, _ in SECTIONS if i == section)
     activity.log(db, "link", None, link["profile_id"], detail, ip, actor=SHARE_LINK)
 
 
@@ -226,10 +237,33 @@ def _text(v, n=500):
     return " ".join(str(v or "").split())[:n]
 
 
-def build(db, link, today=None):
+def shows(link, section):
+    """Whether section is one of the link's long ones, which its Show all may ask for in full (#498)."""
+    return section in LONG and section in json.loads(crypto.dec(link["scope"]))["sections"]
+
+
+def build(db, link, today=None, section=None):
     """What the holder of the link sees: the profile's name, the link's terms, and each chosen section, cut to the
-    range. Only fields named here leave the server."""
+    range; a long one, to its latest rows, with how many there are ("cut", #498). section: only that one of the link's
+    long sections (shows()), in full, for its Show all. Only fields named here leave the server."""
+    out = _build(db, link, today, section)
+    if section:
+        return {section: out[section]}
+    cut = {}
+    for s in LONG:
+        got = out.get(s)
+        rows = got.get("rows") if isinstance(got, dict) else got
+        if isinstance(rows, list) and len(rows) > MANY:
+            cut[s] = len(rows)
+            out[s] = {**got, "rows": rows[:FIRST]} if isinstance(got, dict) else rows[:FIRST]
+    out["cut"] = cut
+    return out
+
+
+def _build(db, link, today, section):
     scope, pid = json.loads(crypto.dec(link["scope"])), link["profile_id"]
+    if section:   # only that section's records are read and built
+        scope = {**scope, "sections": [section]}
     today = today or settings.local_now(db, link["created_by"]).date().isoformat()
     body = records.served(db, pid)
     data = json.loads(body) if body else {}

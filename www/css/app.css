@@ -1457,13 +1457,15 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
 .share-page main.share{max-width:960px}
 /* the clinician's page (#289, share.js): the sections' bar, sticky under the header (--head-h); the head's Print; Lab
    results' one Latest results table, a row per test under its panel, its history in the row under it; and the page
-   printed: the records in light, without the controls. #491: the bar's chips wrap on a wide screen and scroll sideways
-   on a narrow or short one (with a thin scrollbar for a mouse); under 500 px tall the header scrolls away and the bar
-   sticks at the top. The title in the pages' title style. Printed, a history breaks across pages, each naming its test */
-.share-bar{position:sticky;top:var(--head-h,0px);z-index:10;display:flex;gap:var(--sp-2);overflow-x:auto;scrollbar-width:none;margin:0 0 var(--sp-3);padding:var(--sp-2) 0;background:var(--page)}
+   printed: the records in light, without the controls. #491: the bar's chips scroll sideways on a narrow screen (with a
+   thin scrollbar for a mouse); #498: on a wider one they wrap to two rows at most (--chips-w, share.js), scrolling
+   sideways beyond them with a scrollbar shown, and under 700 px tall the bar isn't sticky. The title in the pages'
+   title style. Printed, a history breaks across pages, each naming its test */
+.share-bar{position:sticky;top:var(--head-h,0px);z-index:10;overflow-x:auto;scrollbar-width:none;margin:0 0 var(--sp-3);padding:var(--sp-2) 0;background:var(--page)}
+.share-chips{display:flex;gap:var(--sp-2);width:max-content}
 @media (pointer:fine){ .share-bar{scrollbar-width:thin} }
-@media (min-width:641px) and (min-height:501px){ .share-bar{flex-wrap:wrap;overflow-x:visible} }
-@media (max-height:500px){ .share-bar{top:0} html:has(>body.share-page){scroll-padding-top:calc(var(--bar-h,0px) + 8px)} }
+@media (min-width:641px){ .share-bar{scrollbar-width:thin} .share-chips{flex-wrap:wrap;width:var(--chips-w,auto);min-width:100%} }
+@media (max-height:699px){ .share-bar{position:static} }
 .share .share-hd>h1{font-size:var(--fs-6);font-weight:var(--fw-semibold);letter-spacing:-.01em}
 .acct .tbl>thead>tr.share-printed{display:none}
 .share .share-more{margin-top:var(--sp-2)}
@@ -1496,7 +1498,8 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
   .share-page>header .iconbtn,.share-bar,.share :is(.share-hd,.share-tools)>.btn,.share-count>span,.share-latest .share-open .icon,.share-page>.skip-link{display:none}
   .share-page main.share{max-width:none;padding:0}
   .share .card{border:0;padding:0}
-  .share h2{break-after:avoid}
+  .share :is(h2,h2+.hint,.share-tools:not(.share-more)),.share .tbl>thead{break-after:avoid}   /* #498: a head kept with the first row */
+  .share .tbl>thead+tbody>tr:first-child{break-before:avoid}
   .share tr:not(.share-hist){break-inside:avoid}
   .share tbody>tr:is(:first-child,:nth-last-child(2)),.share-latest tr:has(+.share-hist:not([hidden])){break-after:avoid}   /* no row alone (#491) */
   .acct .tbl>thead>tr.share-printed{display:table-row}

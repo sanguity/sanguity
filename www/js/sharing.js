@@ -131,7 +131,12 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
   }
   async function leave(p) {
     try { await call(`profiles/${p.id}/members/${ME.user.id}`, "DELETE"); await refresh(null); note(`You no longer have access to ${p.name}.`); }
-    catch (e) { sayIn($("#peopleMsg"), e.message, true); }
+    catch (e) { sayIn($("#peopleMsg"), e.message, true); return; }
+    // its Leave went with it (#498): focus on the page's heading, the next profile's now, or on "no profile" without one
+    const h = $("#intro").hidden ? $("#noProfiles h2") : $("#groupTitle");
+    h.tabIndex = -1;
+    h.focus({preventScroll: true});
+    h.scrollIntoView({block: "nearest"});
   }
   function drawPeople(p) {
     const msg = $("#peopleMsg"), fail = e => sayIn(msg, e.message, true);

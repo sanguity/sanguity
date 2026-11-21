@@ -7,7 +7,7 @@
    Dates are shown in this browser's own zone and format (dates.js, without anyone's settings).
    For a clinician (#289): a bar of the sections that stays in view, lab results as one table of the latest ones that
    open their histories, labs by the names the profile gives them, and Print (app.css's print rules: the records, not the controls).
-   Ten years of records (#491): a long table shows its latest rows, with Show all. */
+   Ten years of records (#491): a long table shows its latest rows, with Show all, which asks the server for the rest (#498). */
 "use strict";
 const SH_KIND = {visit: "Visit", stay: "Hospital stay", procedure: "Procedure", imaging: "Imaging", study: "Report / study",
   note: "Note", symptom: "Symptom", side_effect: "Side effect", mood: "Mood"};
@@ -32,32 +32,55 @@ function shTable(heads, rows, empty, cls = "", name = "", printed = "") {   // c
     el("tbody", {}, ...rows.map(shRow))));
 }
 const shRow = r => el("tr", {}, ...r.map(c => c && c.nodeType ? el("td", {}, c) : el("td", {text: c == null ? "" : String(c)})));
-/* a long table, newest first (#491: ten years are 2,000 claims, and 1,000 readings of a home measure): its latest
-   SH_FIRST rows when there are more than SH_MANY, saying so, and Show all, which adds the rest and gives the first of
-   them focus. total: how many there are, when the server sent only the latest (a measure's block) */
-const SH_FIRST = 20, SH_MANY = 40;
-function shLong(heads, rows, empty, cls, noun, total = rows.length) {
-  const box = shTable(heads, rows.length > SH_MANY ? rows.slice(0, SH_FIRST) : rows, empty, cls);
+/* a long table, newest first (#491: ten years are 2,000 claims, and 1,000 readings of a home measure). The server sends
+   a long section's latest rows and how many it has (#498, SH_CUT: share_links.py FIRST and MANY), said here, with Show
+   all, which asks it for the rest (a view logged like the page's), puts them in and gives the first of them focus.
+   id: the section; more(): its rows in full, as cells; total: how many there are, when even those are only the
+   latest (a measure's block, measures.LINK_MOST) */
+let SH_CUT = {};
+function shLong(heads, rows, empty, cls, noun, id, more, total = rows.length) {
+  const box = shTable(heads, rows, empty, cls), whole = SH_CUT[id] || 0;
+  total = Math.max(total, whole);
   const n = k => k.toLocaleString(), said = k => total > k ? `The latest ${n(k)} of ${n(total)}${noun ? " " + noun : ""}.` : "";
-  if (rows.length <= SH_MANY) return total > rows.length ? el("div", {}, box, el("p", {class: "hint", text: said(rows.length)})) : box;
-  const note = el("p", {class: "hint", text: said(SH_FIRST)});
-  const all = el("button", {class: "btn small", type: "button", text: total > rows.length ? `Show the latest ${n(rows.length)}` : `Show all ${n(rows.length)}`,
-    onclick: () => {
-      const more = rows.slice(SH_FIRST).map(shRow);
-      box.querySelector("tbody").append(...more);
-      note.textContent = said(rows.length);
+  if (!whole) return total > rows.length ? el("div", {}, box, el("p", {class: "hint", text: said(rows.length)})) : box;
+  const note = el("p", {class: "hint", text: said(rows.length)});
+  const all = el("button", {class: "btn small", type: "button", text: total > whole ? `Show the latest ${n(whole)}` : `Show all ${n(whole)}`,
+    onclick: async () => {
+      all.disabled = true;
+      let got;
+      try { got = (await more()).map(shRow); }
+      catch (e) {
+        note.textContent = e.status === 429 ? "This link has been opened many times in a short while. Try again in a few minutes."
+          : "The rest couldn't be loaded. Try again, or reload the page.";
+        all.disabled = false;
+        all.focus();
+        return;
+      }
+      box.querySelector("tbody").replaceChildren(...got);
+      note.textContent = said(got.length);
       (note.textContent ? all : tools).remove();
-      more[0].tabIndex = -1;
-      more[0].focus();
+      const first = got[rows.length] || got[0];
+      first.tabIndex = -1;
+      first.focus();
     }});
   const tools = el("div", {class: "share-tools share-more"}, note, all);
   return el("div", {}, box, tools);
 }
+/* a long section in full, for its Show all (#498): asked for by the token, like the view */
+async function shWhole(id) {
+  const r = await fetch("api/share/view", {method: "POST", cache: "no-store", credentials: "omit",
+    headers: {"X-Sanguity": "1", "Content-Type": "application/json"}, body: JSON.stringify({token: SH_TOKEN, section: id})});
+  if (!r.ok) throw Object.assign(new Error(r.status), {status: r.status});
+  return (await r.json())[id];
+}
 
+/* a long section's table (#498): its rows as cells, now and once Show all has the rest */
+const shList = (id, heads, cells, empty, noun) => list => shLong(heads, list.map(cells), empty, "", noun, id,
+  async () => (await shWhole(id)).map(cells));
 const SH_DRAW = {
-  visits: list => shLong(["Date", "What", "Details"], list.map(v => [v.end ? `${shDay(v.t)} – ${shDay(v.end)}` : shWhen(v.t),
-    (SH_KIND[v.kind] && v.kind !== "visit" ? SH_KIND[v.kind] + ": " : "") + v.title, v.sub]), "No visits or stays in this range.", "", "visits and stays"),
-  procedures: list => shLong(["Date", "Kind", "Title"], list.map(v => [shDay(v.t), SH_KIND[v.kind] || "", v.title]), "None in this range.", "", "records"),
+  visits: shList("visits", ["Date", "What", "Details"], v => [v.end ? `${shDay(v.t)} – ${shDay(v.end)}` : shWhen(v.t),
+    (SH_KIND[v.kind] && v.kind !== "visit" ? SH_KIND[v.kind] + ": " : "") + v.title, v.sub], "No visits or stays in this range.", "visits and stays"),
+  procedures: shList("procedures", ["Date", "Kind", "Title"], v => [shDay(v.t), SH_KIND[v.kind] || "", v.title], "None in this range.", "records"),
   medications: list => shTable(["Medication", "Instructions", "From", "Until"], list.map(m => [m.name + (m.status ? ` (${m.status})` : ""),
     m.instructions, shDay(m.since), m.until ? shDay(m.until) : "—"]), "No medications in this range."),
   results: list => list.length ? shLatest(list) : el("p", {class: "muted", text: "No lab results in this range."}),
@@ -75,8 +98,8 @@ const SH_DRAW = {
     el("dt", {text: "Birth date"}), el("dd", {text: a.birthDate ? shDay(a.birthDate) : "Not given"}),
     el("dt", {text: "Sex used for reference ranges"}), el("dd", {text: a.sex || "Not given"})),
     shTable(["Date", "Height"], (a.heights || []).map(h => [shDay(h.date), h.text]), "No heights written down in this range.")),
-  costs: list => shLong(["Date", "Service", "Provider", "Billed", "Insurance paid", "Your share"],
-    list.map(c => [shDay(c.t), c.title, c.provider, shUsd(c.billed), shUsd(c.paid), shUsd(c.owe)]), "No claims in this range.", "", "claims"),
+  costs: shList("costs", ["Date", "Service", "Provider", "Billed", "Insurance paid", "Your share"],
+    c => [shDay(c.t), c.title, c.provider, shUsd(c.billed), shUsd(c.paid), shUsd(c.owe)], "No claims in this range.", "claims"),
 };
 
 /* Lab results (#289): one Latest results table, a row per test (by the profile's name for it, under its panel, labGroups
@@ -135,32 +158,42 @@ function shOpen(btn, hist, on) { btn.setAttribute("aria-expanded", String(on)); 
 
 /* the sections' bar (#289): a chip per section, sticky under the page's header, that scrolls to it and gives its heading
    focus; the one in view is marked. Buttons, not #links: this page's address after the # is the link's token. On a
-   wide screen its chips wrap, so a mouse reaches each; on a narrow or short one they scroll sideways; under 500 px
-   tall, where the header scrolls away, the bar sticks at the top (#491, app.css). */
+   narrow screen its chips scroll sideways (#491); on a wider one they wrap to two rows at most, scrolling sideways
+   beyond them (#498: three or four rows were a third of a laptop's window); under 700 px tall it isn't sticky (app.css). */
 function shBar(secs) {
   const bar = $("#shareBar");
-  bar.replaceChildren(...secs.map(s => el("button", {class: "chip", type: "button", "data-for": "share-" + s.id, text: s.label, onclick: () => {
+  bar.replaceChildren(el("div", {class: "share-chips"}, ...secs.map(s => el("button", {class: "chip", type: "button", "data-for": "share-" + s.id, text: s.label, onclick: () => {
     const h = document.querySelector(`#share-${s.id} h2`);
     shPick = "share-" + s.id;   // marked, though the page's foot may stop it short of the bar
     h.tabIndex = -1;
     h.focus({preventScroll: true});
     h.closest("section").scrollIntoView({behavior: smoothly(), block: "start"});
     shSpy();
-  }})));
+  }}))));
   bar.hidden = secs.length < 2;
   shTop();
+}
+/* the width the chips wrap in to make two rows at most (#498): the bar's own, or the least wider one that does, as the
+   browser wraps them (each row as many as fit) */
+function shChipsW(bar) {
+  const ws = [...bar.querySelectorAll(".chip")].map(c => c.getBoundingClientRect().width), gap = parseFloat(getComputedStyle(bar.firstChild).columnGap) || 0;
+  const rows = w => { let n = 1, x = 0; for (const c of ws) { if (x && x + gap + c > w) { n++; x = c; } else x += (x ? gap : 0) + c; } return n; };
+  let w = bar.clientWidth;
+  while (rows(w) > 2) w += 8;
+  return Math.ceil(w);
 }
 function shTop() {   // the header's and the bar's heights: the bar sticks under the one, what gets focus scrolls clear of both
   const head = document.querySelector("body>header"), bar = $("#shareBar"), root = document.documentElement.style;
   const stuck = getComputedStyle(head).position === "sticky" ? head.offsetHeight : 0;   // not under 500 px tall (#491)
+  if (bar.firstChild) root.setProperty("--chips-w", shChipsW(bar) + "px");
   root.setProperty("--head-h", head.offsetHeight + "px");
-  root.setProperty("--bar-h", stuck + (bar.hidden ? 0 : bar.offsetHeight) + "px");
+  root.setProperty("--bar-h", stuck + (bar.hidden || getComputedStyle(bar).position !== "sticky" ? 0 : bar.offsetHeight) + "px");   // the bar: not sticky under 700 px tall (#498)
 }
 { const ro = new ResizeObserver(shTop); ro.observe(document.querySelector("body>header")); ro.observe($("#shareBar")); }
-matchMedia("(max-height:500px)").addEventListener("change", shTop);
+for (const q of ["(max-height:500px)", "(max-height:699px)"]) matchMedia(q).addEventListener("change", shTop);
 let shPick = null;   // the section a chip went to, until the page is scrolled by hand
 function shSpy() {   // the section in view: of those not all under the bar (#491), the last whose top has passed under it
-  const bar = $("#shareBar"), chips = [...bar.children];   // or else the first; or the last, at the page's foot
+  const bar = $("#shareBar"), chips = [...bar.querySelectorAll(".chip")];   // or else the first; or the last, at the page's foot
   if (bar.hidden || !chips.length) return;
   const under = bar.getBoundingClientRect().bottom, line = under + 16, box = c => document.getElementById(c.dataset.for)?.getBoundingClientRect();
   const seen = chips.filter(c => box(c)?.bottom > under);
@@ -169,8 +202,8 @@ function shSpy() {   // the section in view: of those not all under the bar (#49
   if (innerHeight + scrollY >= document.documentElement.scrollHeight - 2) on = chips[chips.length - 1];
   on = chips.find(c => c.dataset.for === shPick) || on;
   for (const c of chips) if (c === on) c.setAttribute("aria-current", "true"); else c.removeAttribute("aria-current");
-  if (on.offsetLeft < bar.scrollLeft || on.offsetLeft + on.offsetWidth > bar.scrollLeft + bar.clientWidth)   // kept in sight on a phone
-    bar.scrollLeft = on.offsetLeft - 8;
+  const r = on.getBoundingClientRect(), b = bar.getBoundingClientRect();   // kept in sight where the bar scrolls sideways
+  if (r.left < b.left || r.right > b.left + bar.clientWidth) bar.scrollLeft += r.left - b.left - 8;
 }
 let shSpied = 0;
 for (const t of ["scroll", "resize"]) addEventListener(t, () => { shSpied ||= requestAnimationFrame(() => { shSpied = 0; shSpy(); }); }, {passive: true});
@@ -195,11 +228,12 @@ function shPhoto(p, fallback) {
 
 /* the phone's and watch's measures, immunizations, ECGs and BMI (#225; server/measures.py): a block's lead lines, its
    table and the note under it. Times are the local times the phone took them at, written in this browser's format. */
-function shBlock(b) {
+function shBlock(b, id) {
   const cellOf = (kind, v) => !v ? v : kind === "day" ? shDay(v) : kind === "time" ? fmtDT(zParse(v)) : v, rows = b.rows || [];
+  const cells = rs => rs.map(r => r.map((v, i) => cellOf(b.cols[i][1], v)));
   return el("div", {}, ...(b.lead || []).map(t => el("p", {text: t})),
-    shLong((b.cols || []).map(c => c[0]), rows.map(r => r.map((v, i) => cellOf(b.cols[i][1], v))), b.empty || "None in this range.", "measures",
-      "", Math.max(b.total || 0, rows.length)),
+    shLong((b.cols || []).map(c => c[0]), cells(rows), b.empty || "None in this range.", "measures", "", id,
+      async () => cells((await shWhole(id)).rows || []), Math.max(b.total || 0, rows.length)),
     b.note ? el("p", {class: "hint", text: b.note}) : null);
 }
 
@@ -214,6 +248,7 @@ async function shLoad() {
   };
   if (!/^[A-Za-z0-9_-]{20,100}$/.test(token)) { broken(); return; }
   SH_TOKEN = token;
+  SH_CUT = {};
   let r;
   try {
     r = await fetch("api/share/view", {method: "POST", cache: "no-store", credentials: "omit",
@@ -222,6 +257,7 @@ async function shLoad() {
   if (r.status === 429) { status.textContent = "This link has been opened many times in a short while. Try again in a few minutes."; return; }
   if (!r.ok) { broken(); return; }
   const d = await r.json();
+  SH_CUT = d.cut || {};   // the long sections, sent only their latest rows (#498)
   const range = d.from && d.to ? `from ${shDay(d.from)} to ${shDay(d.to)}` : d.from ? `from ${shDay(d.from)} on` : d.to ? `up to ${shDay(d.to)}` : "of any date";
   document.title = `${d.profile} · shared records · Sanguity`;
   $("#shareHead").replaceChildren(el("div", {class: "share-hd"}, el("h1", {text: `${d.profile}: shared records`}),
@@ -232,7 +268,7 @@ async function shLoad() {
   const secs = d.sections.filter(s => s.id !== "journal_photos");
   $("#shareBody").replaceChildren(...secs.map(s => el("section", {class: "card", id: "share-" + s.id},
     el("h2", {text: s.label}), el("p", {class: "hint", text: "Shows " + s.what + "."}),
-    SH_DRAW[s.id] ? SH_DRAW[s.id](d[s.id] || []) : shBlock(d[s.id] || {}))));   // a measure's block (#225)
+    SH_DRAW[s.id] ? SH_DRAW[s.id](d[s.id] || []) : shBlock(d[s.id] || {}, s.id))));   // a measure's block (#225)
   shBar(secs);
   shSpy();
 }

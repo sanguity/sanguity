@@ -207,6 +207,11 @@ px each), and the page was 162,286 px tall. Visits, procedures, costs and each h
 results was already one table of the latest results, with each history on demand (#289). The page is 9,812 px.
 `share_page_px` is that height at 1400 px; the test also presses Costs' Show all and finds every claim.
 
+The server still sent every row, cut only on screen. Since #498 the view sends a long section's latest 20 and how many
+there are, and Show all asks for that section in full (logged as a view of it): the ten-year link's view went from
+877 KB to 460 KB, nearly all of it now Lab results' 5,432 results (each history is shown whole, and printed). The test
+checks that the view holds no more than the latest 20 of each long section.
+
 ## A record's details when it's opened (#217)
 
 Of the 3.5 MB the records page read, 1.4 MB was each record's details (a result's rows, a claim's lines, a message,

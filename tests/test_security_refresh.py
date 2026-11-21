@@ -305,7 +305,7 @@ class Reach(unittest.TestCase):
         holder = client()
         r = holder.post("/api/share/view", json={"token": token}, headers=H)
         self.assertEqual(r.status_code, 200)
-        self.assertEqual(set(r.json()) - {"profile", "expires", "from", "to", "sections"}, {"visits"})
+        self.assertEqual(set(r.json()) - {"profile", "expires", "from", "to", "sections", "cut"}, {"visits"})   # cut: the long sections cut (#498)
         self.assertNotIn("set-cookie", r.headers)
         for path in (f"/api/profiles/{self.pid}/data", f"/api/profiles/{self.pid}/details?ids=1", f"/api/profiles/{self.pid}/journal", "/api/me"):
             self.assertEqual(holder.get(path).status_code, 401)   # the link is no session

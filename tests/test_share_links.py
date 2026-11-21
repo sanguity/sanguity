@@ -193,6 +193,43 @@ class ShareLinks(unittest.TestCase):
         token, _ = self.make(sections=["visits"])
         self.assertEqual(sorted(v["title"] for v in self.view(token).json()["visits"]), ["Annual physical", "Long-ago visit OLDVISIT"])
 
+    def test_a_long_section_sends_its_latest_rows_and_show_all_the_rest(self):   # #498
+        db = dbm.connect()
+        try:
+            pid = prof.create_profile(db, "Many claims (fictional)", owner_id=self.uid["robin"])
+            with dbm.transaction(db):
+                records.store(db, pid, {"events": [{"id": i, "t": D(-i), "k": "visit", "title": f"Visit {i}", "sub": ""} for i in range(1, 46)],
+                                        "costs": [{"id": i, "d": D(-i), "billed": 10.0 * i, "title": f"Claim {i}", "prov": "Riverside Clinic"}
+                                                  for i in range(1, 46)],
+                                        "labs": [], "details": {}}, "dataset")
+        finally:
+            db.close()
+        few, many = share_links.FIRST, share_links.MANY
+        token, link = self.make(pid=pid, sections=["visits", "costs", "medications"], label="Long")
+        r = self.view(token)
+        j = r.json()
+        self.assertEqual(j["cut"], {"visits": 45, "costs": 45}, "the long ones, with how many rows they have")
+        self.assertEqual([c["title"] for c in j["costs"]], [f"Claim {i}" for i in range(1, few + 1)], "the latest rows only")
+        self.assertEqual(len(j["visits"]), few)
+        self.assertNotIn(f"Claim {few + 1}", r.text)
+        all_ = client().post("/api/share/view", json={"token": token, "section": "costs"}, headers=H)
+        self.assertEqual(all_.status_code, 200, all_.text)
+        self.assertEqual(list(all_.json()), ["costs"], "that section and nothing else")
+        self.assertEqual([c["title"] for c in all_.json()["costs"]], [f"Claim {i}" for i in range(1, 46)])
+        for section in ("medications", "results", "journal", "nonsense", ""):   # not long, not in the link, or no section
+            self.assert_bare(client().post("/api/share/view", json={"token": token, "section": section}, headers=H))
+        self.assert_bare(client().post("/api/share/view", json={"token": "y" * 43, "section": "costs"}, headers=H))
+        # each view logged: the opening, and the Show all as a view of its section (not another opening)
+        log = self.c["robin"].get(f"/api/profiles/{pid}/activity?action=link").json()
+        views = [e["detail"] for e in log if e["detail"].get("change") == "view" and e["detail"].get("link") == link["id"]]
+        self.assertEqual(sorted(views, key=lambda d: "all" in d), [{"change": "view", "link": link["id"], "label": "Long"},
+                                                                   {"change": "view", "link": link["id"], "label": "Long", "all": "Costs and claims"}])
+        listed = {l["id"]: l for l in self.c["robin"].get(f"/api/profiles/{pid}/links").json()["links"]}
+        self.assertEqual(listed[link["id"]]["views"], 1)
+        token, _ = self.make(pid=pid, sections=["costs"], **{"from": D(-many)})   # 40 claims: all of them, nothing cut
+        j = self.view(token).json()
+        self.assertEqual((len(j["costs"]), j["cut"]), (many, {}))
+
     # ---------------------------------------------------------------- the token and what's stored
 
     def test_only_the_hash_is_stored_and_the_rest_is_encrypted(self):
