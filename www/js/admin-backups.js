@@ -125,10 +125,11 @@ function drawSchedule(st) {
       el("fieldset", {class: "set-radios", "aria-labelledby": "bkSchedLbl"},
         el("div", {class: "seg wrap", id: "bkSchedSeg"}, ...opts.map(([v, l]) => el("label", {},
           el("input", {type: "radio", name: "bkSched", id: "bkSched-" + v, value: v, checked: v === st.schedule, onchange: () => bkFreq(v)}), l))))),
-    setRow([el("p", {class: "set-row-name", text: "How many to keep"}),
-      el("p", {class: "hint", text: "While a schedule is on, older backups in the folder are deleted after each new one, keeping " +
-        "this many. Only Sanguity's own backup files are counted or deleted; anything else in the folder is left alone. The " +
-        "app makes the backup when the newest is a day (or a week) old, whoever made it."})],
+    setRow([el("p", {class: "set-row-name"}, "How many to keep",   // its ⓘ beside its name, a line of hint under it (#494)
+        aboutWords({title: "keeping backups"}, "While a schedule is on, older backups in the folder are deleted after each new one, keeping this many. " +
+          "Only Sanguity's own backup files are counted or deleted; anything else in the folder is left alone.",
+          "The app makes the backup when the newest is a day (or a week) old, whoever made it.")),
+      el("p", {class: "hint", text: "The oldest go after each scheduled one."})],
       line),
     el("span", {class: "msg", id: "bkSchedMsg", role: "status"}));
   form.onsubmit = ev => { ev.preventDefault(); $("#admBar .btn.primary")?.click(); };   // Enter: the bar's Save
@@ -194,7 +195,7 @@ const bkWhen = name => { const m = /(\d{4})(\d\d)(\d\d)-(\d\d)(\d\d)(\d\d)/.exec
   return m ? when(new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6]) / 1000) : name; };
 function drawList(st) {
   const box = $("#bkList");
-  if (!st.backups.length) { box.replaceChildren(el("p", {class: "muted", text: "No backups in the folder yet."})); return; }
+  if (!st.backups.length) { box.replaceChildren(emptyState("No backups in the folder yet: each one made is listed here, to check.", null, {cls: ""})); return; }   // (#494)
   const shown = bkShowAll ? st.backups : st.backups.slice(0, 5);
   box.replaceChildren(el("div", {class: "tbl-wrap"}, el("table", {class: "tbl bk-list"},
     el("thead", {}, el("tr", {}, ...["Made", "Size", "Last checked", ""].map(h => el("th", {text: h})))),

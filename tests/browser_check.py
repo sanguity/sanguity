@@ -1699,7 +1699,7 @@ def main():
         # setting is a row, its name and help on the left (about 38%) and its control on the right at 1400 px (a .wide
         # one, a table, under its name), and the two one under the other at 375 px, as wide as the row
         rows_js = """() => { const out = {}; for (const a of document.querySelectorAll('main > nav.set-nav a[data-group]')) { a.click();
-            const rows = [...document.querySelectorAll('main .set-row')].filter(r => r.checkVisibility());
+            const rows = [...document.querySelectorAll('main .set-row')].filter(r => r.checkVisibility() && r.querySelector(':scope > .set-row-lbl').checkVisibility());   // (a card's one setting, nothing to mark: its control alone, #494)
             if (rows.length) out[a.dataset.group] = rows.map(r => { const b = r.getBoundingClientRect(), l = r.querySelector(':scope > .set-row-lbl').getBoundingClientRect(),
               c = r.querySelector(':scope > .set-row-ctl').getBoundingClientRect();
               return [Math.round(l.width / b.width * 100), l.right <= c.left, c.top >= l.bottom - 1, r.matches('.wide')]; }); }
@@ -1720,6 +1720,83 @@ def main():
         check("one setting row (#286): every group with something to set on Settings, Sharing, Account and Admin sets it in rows, each "
               "one's name and help beside its control (about 38%) at 1400 px, above it at 375 px", not bad286 and not missing286,
               [missing286, bad286[:8]] if bad286 or missing286 else {k: sum(len(v) for v in gs.values()) for k, gs in rows286.items()})
+        # ---- #494: one pattern each. Every row's name starts level with its control (within 8 px, where they're side by
+        # side), never a hint in a name's place; a card whose rows follow its head has its line of hint there and its first
+        # rule right under it (Display's, Units, Account's, Offline records, Calendar feed); each list empty says so
+        # through emptyState(); Create account is a setting row, as Share with someone is. At 1400 and 375 px
+        con494_js = r"""() => { const out = {align: [], rule: [], nameless: [], rows: 0}; for (const a of document.querySelectorAll('main > nav.set-nav a[data-group]')) { a.click();
+          const vis = n => !!n && n.checkVisibility();
+          const first = box => [...box.querySelectorAll('*')].find(n => vis(n) && n.getBoundingClientRect().height > 0 && !n.closest('.vh'));
+          for (const r of document.querySelectorAll('main .set-row')) {
+            const l = r.querySelector(':scope > .set-row-lbl'), c = r.querySelector(':scope > .set-row-ctl');
+            if (!vis(r) || !vis(l) || !first(l) || !first(c)) continue;
+            out.rows++;
+            const lb = l.getBoundingClientRect(), cb = c.getBoundingClientRect(), name = l.textContent.trim().replace(/\s+/g, ' ').slice(0, 40);
+            if (first(l).matches('.hint')) out.nameless.push(a.dataset.group + ': ' + name);
+            if (lb.right > cb.left) continue;   // one under the other
+            const d = first(l).getBoundingClientRect().top - first(c).getBoundingClientRect().top;
+            if (Math.abs(d) > 8) out.align.push(`${a.dataset.group}: ${name} ${Math.round(d)}px`);
+          }
+          for (const card of document.querySelectorAll('main .card')) {
+            if (!vis(card)) continue;
+            const kids = [...card.children].filter(vis), at = kids.findIndex(k => !k.matches('h2, .set-hd, p.hint, .info'));
+            const next = kids[at], row = next && (next.matches('.set-row') ? next : [...next.querySelectorAll('.set-row')].find(vis));
+            if (!row || !row.contains(first(next)) && row !== first(next)) continue;   // what follows the card's head isn't its rows
+            const hint = kids.slice(0, at).filter(k => k.matches('p.hint')).pop(), name = a.dataset.group + ': ' + (card.querySelector('h2')?.textContent || card.id);
+            const gap = hint && row.getBoundingClientRect().top - hint.getBoundingClientRect().bottom;
+            if (!hint || getComputedStyle(row).borderTopWidth === '0px' || gap < 0 || gap > 16) out.rule.push(`${name}: ${hint ? Math.round(gap) + 'px under its hint' : 'no hint'}`);
+          }
+        } return out; }"""
+        con494 = {}
+        for w in (1400, 375):
+            strict.set_viewport_size({"width": w, "height": 900})
+            for name in ("settings", "sharing", "account", "admin"):
+                strict.goto(f"{base}/{name}.html?profile=1")
+                strict.wait_for_selector("main > nav.set-nav a[aria-current=page]", timeout=10000)
+                strict.wait_for_timeout(1500)   # (each page's cards drawn)
+                con494[f"{name} {w}"] = strict.evaluate(con494_js)
+        strict.set_viewport_size({"width": 1400, "height": 900})
+        bad494 = {k: {x: v[x] for x in ("align", "rule", "nameless") if v[x]} for k, v in con494.items() if v["align"] or v["rule"] or v["nameless"]}
+        check("one card head and one row (#494): on Settings, Sharing, Account and Admin at 1400 and 375 px, every row's name starts within 8 px "
+              "of its control's top, none has a hint for a name, and each card's first rule follows its line of hint",
+              not bad494 and all(v["rows"] for v in con494.values()), bad494 or {k: v["rows"] for k, v in con494.items()})
+        empty494 = {}
+        for path, sel in (("sharing.html?profile=1#links", "#links .share-list"), ("account.html#security", "#pkList"),
+                          ("admin.html#backups", "#bkList"), ("admin.html#labs", "#labmapList")):
+            strict.goto(f"{base}/{path}")
+            strict.wait_for_selector("main > nav.set-nav a[aria-current=page]", timeout=10000)
+            strict.wait_for_timeout(1200)
+            empty494[sel] = strict.evaluate("""sel => { const c = document.querySelector(sel); return c && [c.querySelector(':scope > .empty-state')?.textContent || null,
+                !!c.querySelector('table'), [...c.children].some(x => x.matches('p.muted, p.hint'))]; }""", sel)
+        strict.goto(base + "/settings.html?profile=1#milestones")
+        strict.wait_for_selector("#sec-milestones .set-hd", state="attached", timeout=10000)
+        empty494["milestones, result sources"] = strict.evaluate("""() => [milestonesEditor([], () => {}, false), namesEditor({}, () => {}, false, {key: 'sources'})].map(e => {
+            document.querySelector('main').append(e.node);
+            const s = e.node.querySelector('.empty-state'), head = e.node.querySelector('.set-head'), r = [s && s.checkVisibility() && s.textContent, head.checkVisibility()];
+            e.node.querySelector('.set-add button').click();
+            r.push(s.checkVisibility(), head.checkVisibility());
+            e.node.querySelector('.set-line:not(.set-head) .btn').click();
+            r.push(s.checkVisibility(), document.activeElement === e.node.querySelector('.set-add button'));
+            e.node.remove(); return r; })""")
+        check("…every list, empty, says so through emptyState() (#494): Share links, Passkeys, Backups and Lab name matches (or lists them), "
+              "Milestones and Result sources (their columns' names once a row is added, and back to the sentence, focus on Add a row, as it's removed)",
+              all(v and (v[0] or v[1]) and not v[2] for k, v in empty494.items() if k.startswith("#"))
+              and [r[:2] for r in empty494["milestones, result sources"]] == [["No milestones yet: each one is marked on every chart.", False],
+                                                                            ["No result sources named yet: each shows as its tag in the records.", False]]
+              and all(r[2:] == [False, True, True, True] for r in empty494["milestones, result sources"]), empty494)
+        strict.goto(base + "/admin.html#accounts")
+        strict.wait_for_selector("main > nav.set-nav a[aria-current=page]", timeout=10000)
+        strict.wait_for_timeout(600)
+        new494 = strict.evaluate("""(() => { const r = document.getElementById('userNew')?.closest('.set-row');
+            return [!!r, r && r.querySelector('.set-row-name')?.textContent, r && r.querySelector('.set-row-lbl .hint')?.textContent.length > 10]; })()""")
+        check("…Create account is a setting row, its name and a line on the left, the form on the right, as Share with someone is (#494)",
+              new494 == [True, "Create an account", True], new494)
+        strict.goto(base + "/admin.html#backups")
+        strict.wait_for_selector("#bkSchedule .set-row", timeout=10000)
+        strict.wait_for_timeout(600)
+        keep494 = strict.evaluate("""(() => { const r = [...document.querySelectorAll('#bkSchedule .set-row')].find(x => x.textContent.includes('How many to keep')), h = r.querySelector('.set-row-lbl .hint');
+            return [Math.round(h.getBoundingClientRect().height / parseFloat(getComputedStyle(h).lineHeight)), r.querySelector('.set-row-name .info > button')?.getAttribute('aria-label')]; })()""")
+        check("…help kept to a line (#494): Backups → How many to keep says one line, the rest behind its ⓘ beside its name", keep494 == [1, "About keeping backups"], keep494)
         strict.goto(base + "/settings.html?profile=1#milestones")
         strict.wait_for_selector("#sec-milestones .set-hd", state="attached", timeout=10000)
         strict.wait_for_timeout(600)
@@ -4852,6 +4929,10 @@ def main():
                   and not js("!!document.getElementById('optCycle')"))
             page.goto(base + "/sources.html?profile=1#phone")
             page.wait_for_selector("#cycle h2", timeout=10000)
+            reach494 = js("(d => d && [d.tagName, d.open, d.querySelector('summary').textContent])(document.querySelector('#cycle .cy-reach'))")
+            check("…what deleting reaches is behind a disclosure named for it, closed at first: the card's help is a line (#494)",
+                  reach494 == ["DETAILS", False, "What deleting reaches"], reach494)
+            page.click("#cycle .cy-reach > summary")   # (opened, for what it says)
             check("…Sources → Phone and watch has a Cycle tracking card saying it's off and nothing is kept",
                   page.inner_text("#cycleState").startswith("Off.") and "left out of every upload before anything is kept" in page.inner_text("#cycleState")
                   and "Not reached: backups" in page.inner_text("#cycle"), page.inner_text("#cycle")[:200])
@@ -14144,7 +14225,7 @@ def main():
                   page.inner_text("#watch")[:300])
             check("…saying when the phone last sent something (#284: Received, with a ✓)", page.inner_text("#watchLast").startswith("Received ")
                   and js("document.getElementById('watchLive').matches('.got') && !!document.querySelector('#watchLive svg.i-check')"), page.inner_text("#watchLast"))
-            steps284 = "[...document.querySelectorAll('#watchSteps > li.w-step > h3.w-step-hd')].map(h => h.textContent)"
+            steps284 = "[...document.querySelectorAll('#watchSteps > li.step > h3.step-hd')].map(h => h.textContent)"
             page.click("#watch .w-os [data-os=iphone]")
             iphone284 = js(steps284)
             page.focus("#watch .w-os [data-os=android]")
@@ -14156,7 +14237,7 @@ def main():
                                 "Choose what it sends, and when", "Send a test upload", "Add the others you need"]
                   and android284 == [["Get Life Dashboard Companion", "The secret", "Give it the address and the secret", "Send a test upload"],
                                      ["false", "true"], "android", "Setting up an Android"]
-                  and js("getComputedStyle(document.querySelector('#watchSteps h3'), '::before').content") == "counter(w-step)", [iphone284, android284])
+                  and js("getComputedStyle(document.querySelector('#watchSteps h3'), '::before').content") == "counter(step)", [iphone284, android284])
             page.reload()
             page.wait_for_selector("#watch #watchRotate", timeout=10000)
             check("…the phone chosen is remembered (#284)", js("document.querySelector('#watch .w-os [aria-pressed=true]').dataset.os") == "android")
@@ -14187,7 +14268,7 @@ def main():
             for btn284 in page.locator("#watch button[aria-controls^=watchQr]").all():
                 btn284.click()
                 qrs284[btn284.get_attribute("aria-label")] = js("""id => { const f = document.getElementById(id), s = f.querySelector('svg.qr');
-                    return [f.hidden, f.closest('.w-val').querySelector('code').textContent, s.viewBox.baseVal.width - 8, s.querySelector('path').getAttribute('d'),
+                    return [f.hidden, f.closest('.copy-val').querySelector('code').textContent, s.viewBox.baseVal.width - 8, s.querySelector('path').getAttribute('d'),
                       s.getAttribute('aria-label')]; }""", btn284.get_attribute("aria-controls"))
             read284 = {k: [h, read_qr(path_modules(d, n)).decode() == v, lbl] for k, (h, v, n, d, lbl) in qrs284.items()}
             check("…each value shows its QR code from a button beside Copy, which reads back to the value: the secret and the address on Android (#284)",
@@ -14209,7 +14290,7 @@ def main():
             page.set_viewport_size({"width": 375, "height": 800})
             settle(200)
             check("…and the card, its steps and QR codes fit 375 px", js("document.documentElement.scrollWidth") <= 375
-                  and js("[...document.querySelectorAll('#watch .w-step, #watch code, #watch svg.qr, #watch .btn')].every(e => e.getBoundingClientRect().right <= 375.5)"),
+                  and js("[...document.querySelectorAll('#watch .step, #watch code, #watch svg.qr, #watch .btn')].every(e => e.getBoundingClientRect().right <= 375.5)"),
                   js("document.documentElement.scrollWidth"))
             page.set_viewport_size({"width": 1400, "height": 900})
             page.reload()
@@ -14736,7 +14817,7 @@ def main():
             check("…the walk-through's types and scopes include immunizations, allergies, fills, appointments and imaging studies (#228)",
                   all(t in walk_scopes and f"patient/{t}." in js("document.getElementById('fScopes').value")
                       for t in ("Immunization", "AllergyIntolerance", "MedicationDispense", "Appointment", "ImagingStudy"))
-                  and "added at the vendor" in page.inner_text("#guide"), walk_scopes)
+                  and "added at the vendor" in js("document.getElementById('guide').textContent"), walk_scopes)   # (its notes behind their disclosure, #494)
             page.fill("#fName", "Fake Epic sandbox")
             page.fill("#fIssuer", fake.fhir_base)
             page.fill("#fClient", "sanguity-browser-check")
@@ -15115,9 +15196,9 @@ def main():
             page.wait_for_function("!document.getElementById('admin').hidden && document.querySelector('#walk > li')", timeout=10000)
             walk = lambda: js("""(() => { const w = document.getElementById('walk'); return {
                 n: w.children.length, steps: SETUP.guides[document.getElementById('fVendor').value].steps.length,
-                copies: [...w.querySelectorAll('.walk-copy')].map(c => [c.querySelector('.walk-k').textContent, c.querySelector('code').textContent,
+                copies: [...w.querySelectorAll('.copy-val')].map(c => [c.querySelector('.copy-val-name').textContent, c.querySelector('code').textContent,
                                                                      !!c.querySelector('button')]),
-                form: !!w.querySelector(':scope > li #srcFields #fClient'), last: w.lastElementChild.querySelector('.walk-t').textContent,
+                form: !!w.querySelector(':scope > li #srcFields #fClient'), last: w.lastElementChild.querySelector('.step-hd').textContent,
                 test: !!w.lastElementChild.querySelector('#walkTest')}; })()""")
             per = {}
             for v in ("epic", "oracle", "insurer", "other"):
@@ -15134,9 +15215,18 @@ def main():
                   and any(c[0] == "Sandbox FHIR base" and "bluebutton" in c[1] for c in per["insurer"]["copies"]),
                   {k: w["copies"] for k, w in per.items()})
             page.select_option("#fVendor", "epic")
-            ret = page.locator("#walk .walk-copy", has_text="Return address")
+            # #494: the walk-through's steps are Phone setup's step cards (ol.steps > li.step, its number in its heading,
+            # a card's edge), each value's name over it; its notes behind a disclosure named for them, its hint a line
+            walk494 = js("""(() => { const w = document.getElementById('walk'), li = w.querySelector(':scope > li'), c = getComputedStyle(li), g = document.getElementById('guide');
+                return [w.matches('ol.steps') && [...w.children].every(x => x.matches('li.step') && x.querySelector(':scope > .step-hd')),
+                  getComputedStyle(li.querySelector('.step-hd'), '::before').content, c.borderTopStyle, getComputedStyle(w).listStyleType,
+                  w.querySelectorAll('.copy-val > .copy-val-name + .copy-val-row > code').length > 0, g.querySelector('details.more > summary')?.textContent,
+                  g.querySelectorAll(':scope > p.muted').length, Math.round(g.querySelector(':scope > p.hint').getBoundingClientRect().height / parseFloat(getComputedStyle(g.querySelector(':scope > p.hint')).lineHeight))]; })()""")
+            check("…its steps are the step cards Phone setup has (#494): numbered in their headings, values named over them; "
+                  "its notes behind “Notes on Epic (MyChart)”, its hint one line", walk494 == [True, "counter(step)", "solid", "none", True, "Notes on Epic (MyChart)", 0, 1], walk494)
+            ret = page.locator("#walk .copy-val", has_text="Return address")
             ret.get_by_role("button", name="Copy the return address").click()
-            page.wait_for_function("document.querySelector('#walk .walk-copy .msg').textContent !== ''", timeout=5000)
+            page.wait_for_function("document.querySelector('#walk .copy-val .msg').textContent !== ''", timeout=5000)
             said = ret.locator(".msg").inner_text()
             check("…Copy copies it, or selects it where the browser keeps the clipboard from the page", said in ("Copied.", "Selected: press Ctrl+C or ⌘C."), said)
             page.fill("#fScopes", "launch/patient patient/Patient.read patient/Observation.read")
@@ -15169,7 +15259,7 @@ def main():
                     js("t => { document.documentElement.dataset.theme = t; }", theme)
                     settle(150)
                     bad = phone_fits(page, f"Admin walk-through, {theme}") if width == 375 else []
-                    looks = {s: js(look_165, s) for s in ("#walk .walk-t", "#walk .walk-v", "#walk .walk-k", "#walk .walk-step > p",
+                    looks = {s: js(look_165, s) for s in ("#walk .step-hd", "#walk code", "#walk .copy-val-name", "#walk .step > p",
                                                          "#sourceList .walk-tag", "label.walk-wait")}
                     wide = js("document.documentElement.scrollWidth")
                     check(f"…the walk-through at {width} px, {theme}: readable steps, values, tags and the waiting switch"
@@ -15213,10 +15303,13 @@ def main():
             lp.set_viewport_size({"width": 1400, "height": 900})
             lp.click(f"#wait-{wait_id} a")
             lp.wait_for_function("document.querySelector('main.src').dataset.group === 'upload'", timeout=5000)
+            shut494 = lp.evaluate("[document.getElementById('appleRecords').open, document.querySelector('#appleRecords > summary').textContent]")
+            lp.click("#appleRecords > summary")   # behind its disclosure, From an iPhone (#494)
             apple = lp.inner_text("#appleRecords")
-            check("…its Upload files opens the upload page, which says an iPhone's Apple Health export holds its Health Records",
+            check("…its Upload files opens the upload page, which says an iPhone's Apple Health export holds its Health Records, behind "
+                  "“From an iPhone” under the drop target (#494: help under the heading is a line)",
                   lp.evaluate("location.hash") == "#upload" and lp.is_visible("#appleRecords") and "Export All Health Data" in apple
-                  and "Health Records" in apple and "FHIR" in apple, apple)
+                  and "Health Records" in apple and "FHIR" in apple and shut494 == [False, "From an iPhone"], [shut494, apple])
             lctx.close()
             sdb.execute("DELETE FROM users WHERE id=?", (uid3,))
             sdb.close()

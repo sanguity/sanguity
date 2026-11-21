@@ -21,7 +21,7 @@ function copyLine(key, g) {
   const p = PASTE[key], value = p.get(g);
   if (!value) return key === "return_address"
     ? el("p", {class: "msg bad", text: "No return address yet: see the warning at the top of this section."}) : null;
-  const code = el("code", {class: "walk-v", "data-paste": key, text: value});
+  const code = el("code", {"data-paste": key, text: value});
   const done = el("span", {class: "msg", role: "status"});
   const copy = el("button", {class: "btn small", type: "button", text: "Copy", "aria-label": "Copy the " + p.label.toLowerCase(), onclick: async () => {
     try { await navigator.clipboard.writeText(code.textContent); done.textContent = "Copied."; }
@@ -37,10 +37,11 @@ function copyLine(key, g) {
     if ($("#fVendor").value === "insurer") { $("#fAuth").value = "confidential"; $("#fSecretWrap").hidden = false; }
     done.textContent = "Filled in below.";
   }}) : null;
-  return el("div", {class: "walk-copy"}, el("span", {class: "walk-k", text: p.label}), code, el("span", {class: "walk-acts"}, copy, use, done));
+  return el("div", {class: "copy-val"}, el("span", {class: "copy-val-name", text: p.label}), el("div", {class: "copy-val-row"}, code, copy, use, done));
 }
+/* a step: a step card, as Phone setup's are (app.css .steps, #494), its heading an h4 under the form's h3 */
 function stepItem(title, ...body) {
-  return el("li", {class: "walk-step"}, el("h4", {class: "walk-t", text: title}), ...body);
+  return el("li", {class: "step"}, el("h4", {class: "step-hd", text: title}), ...body);
 }
 function guide(vendor) {
   const g = SETUP.guides[vendor];
@@ -55,10 +56,10 @@ function guide(vendor) {
   $("#guide").replaceChildren(...[
     el("b", {text: g.label}),
     g.about ? el("p", {text: g.about}) : null,
-    el("p", {class: "hint", text: "Each step says what to do on the vendor's site. Vendors change their pages' wording and " +
-      "menus, so look for what's described rather than an exact button."}),
-    el("ol", {class: "walk", id: "walk"}, ...steps),
-    ...g.notes.map(n => el("p", {class: "muted", text: n}))].filter(Boolean));
+    el("p", {class: "hint", text: "Look for what each step describes: vendors change their sites' wording."}),
+    el("ol", {class: "steps walk", id: "walk", role: "list", "aria-label": `Setting up ${g.label}`}, ...steps),
+    // its notes behind a disclosure named for them (#494): what's unverified, what older apps need
+    g.notes.length ? el("details", {class: "more walk-notes"}, el("summary", {text: `Notes on ${g.label}`}), ...g.notes.map(n => el("p", {text: n}))) : null].filter(Boolean));
 }
 /* the last step: test the source being changed, or the one just saved */
 function testStep() {

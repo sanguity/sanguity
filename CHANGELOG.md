@@ -1842,6 +1842,15 @@ Everything on `main` so far; it becomes the first tagged release.
   not "Import". The bar and the list of what's already here count it the same way (a lab draw no longer counted, nor
   offered, beside its own results), a test's duplicates are dated from the first to the last, and the saved card
   counts as the review does. Sources' empty Overview has its sentence centred under its picture.
+- **One pattern each: card heads, setting rows, empty lists, help kept to a line, adding a person, and walk-throughs'
+  steps** (#494): a setting row's name now starts level with its control's top (with a QR code first, Account's name
+  sat 200 px down at its foot). Every card's head is its heading and a line of hint, its first rule right under it:
+  Account's cards, Units, Milestones, Tabs, Offline records and Install moved the hint out of the row's name, Calendar
+  feed's choices got their rule. Share links, Passkeys, Backups, Lab name matches and the rows of Lab names, Result
+  sources, Workouts and Milestones say what would be there when empty, as the other lists do. Upload files' iPhone
+  steps, Cycle tracking's "What deleting reaches", Backups' "How many to keep" and each vendor's notes in Admin's
+  walk-through went behind a disclosure or an ⓘ. Admin's Create account is a setting row, as Share with someone is;
+  its walk-through uses Phone setup's step cards.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

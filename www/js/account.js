@@ -165,7 +165,7 @@ async function loadPasskeys() {
                 if (r.must_change_pw) { location.replace("account.html#password"); location.reload(); return; }
                 loadPasskeys();
               } catch (e) { say("#pkMsg", e.message, true); } }})));
-    }))) : el("p", {class: "hint", text: "No passkeys yet."}));
+    }))) : emptyState("No passkeys yet: each one you add is listed here, with when it was last used.", null, {cls: ""}));   // (#494)
   if (last) $("#pkList").append(el("p", {class: "hint", text: "This server requires two-factor sign-in, so your only passkey can't be removed until you add another or turn on the authenticator app."}));
   if (!usable) { $("#pkBody").replaceChildren(); return; }
   const pw = el("input", {type: "password", autocomplete: "current-password", placeholder: "Your password", "aria-label": "Your password", required: true});

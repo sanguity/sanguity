@@ -27,9 +27,10 @@
     try { draw(await call(`profiles/${PID}/cycle`)); }
     catch (e) { box.replaceChildren(el("h2", {text: "Cycle tracking"}), el("p", {class: "msg bad", role: "alert", text: e.message})); box.hidden = false; }
   }
-  /* what deleting reaches, and what it can't (said before turning it on, and while it's on) */
-  const reach = () => el("div", {class: "cy-reach"},
-    el("h3", {class: "sub", text: "What deleting reaches"}),
+  /* what deleting reaches, and what it can't (said before turning it on, and while it's on), behind a disclosure named
+     for it (#494): the card's help is a line */
+  const reach = () => el("details", {class: "more cy-reach"},
+    el("summary", {text: "What deleting reaches"}),
     el("ul", {class: "cy-list"},
       el("li", {text: "Deleted: what the watch receiver keeps (its database, every upload it archived, rewritten without them, and its summary for this page). Sanguity's own database never holds the records."}),
       el("li", {text: "Not reached: backups of the server or of the receiver's folder made before you delete. A backup can't be rewritten: it keeps what it had until it's deleted itself."}),
