@@ -2124,6 +2124,21 @@ Everything on `main` so far; it becomes the first tagged release.
   1200–1230 px a test's name with a long unbroken word ran Trends past the pane, cutting its last column; the word
   breaks in its cell. A share page's "The latest 20 of 1,381." for a measure names its rows ("readings", "days",
   "doses").
+- **Account and Admin: accounts and ownerless profiles removed elsewhere drawn away, Set up a source's gone-source
+  cases, the check's passkey button only where it can help, Lab name matches' focus, and smaller things** (#528): an
+  account removed elsewhere stayed listed, and offered for removal, after its ⋯ action said "No such account." under
+  it, as did a profile deleted meanwhile after Make owner said "No such profile."; each is drawn away with the reason
+  where it was. A confidential source removed elsewhere while open in Change kept "Kept" in its secret's field, so
+  saving it as new was refused; its form asks for the secret again. A row's or the walk-through's Test on such a source
+  emptied what was typed in Change, and the walk-through's sent focus to another source's Test; what's typed stays, and
+  the walk-through says it there. Admin's "Confirm it's you" offers Use a passkey only where one can work and you have
+  one made at that address. Lab name matches kept no focus after Remove or Save; it stays on the row's button, or the
+  next row's, and a match removed elsewhere is drawn away. In the command palette "account password" finds Password
+  first, "require 2fa" and "remove someone" find something, and a connection's Sync now, Disconnect, Sign in again and
+  Fix it find Sources. Install activity's What column at tablet widths was squeezed to a word a line; When breaks
+  between its date and its time instead. Outside connections names a source's vendor as Set up a source does ("Epic
+  (MyChart)", not "epic"), and a host that didn't answer is said in plain words ("its name wasn't found"), not as
+  "gaierror". With forced colours the admin and two-factor badges keep their outline, and three unused rules are gone.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

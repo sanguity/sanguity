@@ -37,9 +37,10 @@ function sgIcon(key) {
 const SG_PAGES = {
   sources: {page: "sources.html", title: "Sources", icon: "database", profile: true, words: "import add records bring in", groups: [
     {id: "overview", title: "Overview", icon: "layout-list", has: ["waiting", "srcOverview"],   // #283
-     words: "sources connections where records come from waiting for you review"},
+     words: "sources connections where records come from waiting for you review fix sign in again"},   // (#528: a connection's)
     {id: "portals", title: "Portals and health plans", icon: "plug", part: "Connected", has: ["mine"], needs: "editor",   // the ways in: owners' and editors' (#401)
-     words: "connect portal patient health plan insurance fhir sync epic mychart oracle cerner find hospital clinic"},   // (#515: the vendors' and portals' names)
+     words: "connect portal patient health plan insurance fhir sync epic mychart oracle cerner find hospital clinic " +
+       "sync now pull again sign in again reconnect disconnect what it pulls use server defaults fetch anyway"},   // (#515: the vendors' and portals' names; #528: a connection's)
     {id: "phone", title: "Phone and watch", icon: "watch", part: "Connected", has: ["watch", "cycle"], needs: "editor",   // cycle tracking (#183)
      words: "health connect android watch phone steps sleep iphone apple health auto export upload address header key make new secret qr code",
      finds: [["Cycle tracking", "cycle", "period menstrual turn off stop delete data"]]},   // (#495: an iPhone's words; #499: its danger zone's)
@@ -53,7 +54,7 @@ const SG_PAGES = {
     // no part labels: "Sharing" over all of them only said the page's title again (#402)
     {id: "people", title: "People", icon: "users", has: ["people"],
      words: "share who has access invite account owner editor viewer role leave profile",
-     finds: [["Who has access", "people", "members remove person make change role editor viewer owner ownership transfer add give share with stop sharing"]]},   // (#510: what's done to one, on its own: in the group's, "remove account" and "make owner" found it before Admin's Accounts)
+     finds: [["Who has access", "people", "members remove person someone make change role editor viewer owner ownership transfer add give share with stop sharing"]]},   // (#510: what's done to one, on its own: in the group's, "remove account" and "make owner" found it before Admin's Accounts)
     {id: "links", title: "Share links", icon: "send", has: ["links"], needs: "owner", why: "Share links are made by a profile's owners.",
      words: "share link doctor clinician provider send revoke expire remove delete new create make qr code"},   // (#510: revoking one)
     {id: "calendar", title: "Calendar feed", icon: "calendar", has: ["calendar"], words: "ics subscribe appointments calendar create make turn off stop get new address"},
@@ -95,7 +96,8 @@ const SG_PAGES = {
   admin: {page: "admin.html", title: "Admin", icon: "wrench", admin: true, words: "server install", groups: [
     {id: "accounts", title: "Accounts", icon: "user-cog", part: "People", has: ["users"],
      words: "users new create add account reset password one-time temporary remove delete disable enable make admin require two-factor " +
-       "owner ownerless profile without an turn off sign-in admin"},   // (#495, #499, #502: what's done to an account; #506: Make owner, under the list; #515: enable)
+       "owner ownerless profile without an turn off sign-in admin someone",   // (#495, #499, #502: what's done to an account; #506: Make owner, under the list; #515: enable)
+     finds: [["Require two-factor sign-in", "users", "2fa everyone"]]},   // (#528: "require 2fa")
     {id: "activity", title: "Install activity", icon: "logs", part: "People", has: ["installLog"], words: "log sign-ins failed audit"},
     {id: "backups", title: "Backups", icon: "archive", part: "Data safety", has: ["backups"], words: "backup restore back up now make check show all fewer"},   // #200
     {id: "apps", title: "Connected-source apps", icon: "app-window", part: "Connections", has: ["admin", "sec-sync"],

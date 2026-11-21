@@ -259,7 +259,8 @@ const SgPalette = (() => {
      "add remove" there and "account" its page, before Admin's Accounts): .5 more when a word is only there, and then
      only for an entry with each of the others in its title (#524: "remove account" still found Passkeys, and "new account"
      Password, for someone with no Admin: a page's name narrows its titles down, as in "account password", and finds
-     nothing by itself with the rest in an entry's words). The little words of a button's label ("Test this
+     nothing by itself with the rest in an entry's words), and such an entry is as good as one with them all in its
+     title, less .5 (#528: Password for “account password” came after Admin's Accounts). The little words of a button's label ("Test this
      connection", "Sign out all other devices") needn't be anywhere (STOP), unless they're all that's typed; its whole
      label is still what a title is compared with */
   const flat = s => " " + norm(s).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -272,7 +273,7 @@ const SgPalette = (() => {
     const away = words.filter(w => !at(own, w));
     if (away.length && away.length < words.length && !words.every(w => away.includes(w) || at(t, w))) return -1;
     const all = " " + typed.join(" "), less = away.length ? .5 : 0;
-    return t === all ? 0 : t.startsWith(all) ? .5 : words.every(w => at(t, w)) ? 1 : (at(t, words[0]) ? 2 : 3) + less;
+    return t === all ? 0 : t.startsWith(all) ? .5 : words.every(w => at(t, w)) ? 1 : away.length && away.length < words.length ? 1 + less : (at(t, words[0]) ? 2 : 3) + less;
   }
   /* between pages and settings found as well (#524): one with more of the words typed whole first ("use" is Admin's
      "Use it", not "users"), then one on this page ("Turn off" on Account is two-factor sign-in's, not cycle tracking's) */

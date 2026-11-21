@@ -92,7 +92,11 @@ async function fresh(action, box = $("#reauth")) {
   await confirmIdentity(box);
   return action();
 }
-function confirmIdentity(box = $("#reauth")) {
+/* its Use a passkey only where one can work (#528: at an IP address, or with none made here, it could only say so once
+   pressed): a browser that has them, at a name with HTTPS (util.js passkeysWork), and a passkey of yours made here */
+async function confirmIdentity(box = $("#reauth")) {
+  const pk = passkeysWork() && await call("me/passkeys?origin=" + encodeURIComponent(location.origin))
+    .then(st => !st.problem && st.passkeys.some(k => k.here), () => false);
   return new Promise((resolve, reject) => {
     const msg = el("span", {class: "msg", role: "status"});
     const secret = el("input", {type: "password", autocomplete: "current-password", placeholder: "Password or code",
@@ -109,13 +113,13 @@ function confirmIdentity(box = $("#reauth")) {
       } catch (e) { failed(e); }
     };
     box.replaceChildren(
-      el("p", {}, el("b", {text: "Confirm it's you. "}), `This needs your password, a code from your authenticator app or a passkey ` +
+      el("p", {}, el("b", {text: "Confirm it's you. "}), `This needs your password${pk ? ", a code from your authenticator app or a passkey" : " or a code from your authenticator app"} ` +
         `(it then isn't asked again for ${ME.reauth_minutes} minutes).`),
       el("form", {class: "row", onsubmit: async ev => { ev.preventDefault();
         pwSent(ev.target);
         try { await call("me/reauth", "POST", {secret: secret.value}); done(true); } catch (e) { failed(e); } }},
         pwField(secret, {name: "password or code"}).box, el("button", {class: "btn primary small", type: "submit", text: "Confirm"}),
-        passkeysWork() ? el("button", {class: "btn small", type: "button", text: "Use a passkey", onclick: viaPasskey}) : null,
+        pk ? el("button", {class: "btn small", type: "button", text: "Use a passkey", onclick: viaPasskey}) : null,
         el("button", {class: "btn small", type: "button", text: "Cancel", onclick: () => done(false)})),
       msg);
     box.hidden = false;
@@ -228,7 +232,13 @@ async function changeUser(u, body, sure, done) {
       r = await call("users/" + u.id, "PATCH", {...body, force: true});
     }
     await loadUsers(u.id); done && done(r);   // (a reset's password then shown, focus on it: #499)
-  } catch (e) { rowSay(u.id, e.message, true); }   // (the check's Cancel: its form went with it)
+  } catch (e) {
+    if (e.status !== 404) return rowSay(u.id, e.message, true);   // (the check's Cancel: its form went with it)
+    // removed meanwhile (#528: its row stayed, and the zone offered it): drawn away, why said where it was (util.js)
+    const rows = () => [...$("#userList tbody").rows], at = rows().findIndex(r => r.dataset.user === String(u.id));
+    await loadUsers();
+    goneSay(rows(), Math.max(at, 0), e.message, ".set-more-btn", $("#users h2"), $("#userList"));
+  }
 }
 /* profiles nobody can manage (every owner disabled or removed): an admin names a new owner; never shows records. Drawn
    again only when the list changed, and then a profile's row only if it did (#515: each account's action emptied every
@@ -247,6 +257,7 @@ async function loadOwnerless() {
     ...[...OWNERLESS.values()].map(([, row]) => row)));
   if (a && a.isConnected && a !== document.activeElement) a.focus({preventScroll: true});   // (a row kept: moved, it lost focus)
 }
+const ownRows = () => [...$("#ownerless").querySelectorAll(".ownerless > .row")];
 /* a profile's row: who's in it, a new owner picked or typed, and Make owner */
 function ownerlessRow(p) {
   const active = p.members.filter(m => !m.disabled);
@@ -260,14 +271,18 @@ function ownerlessRow(p) {
     if (!who) return;
     if (who.toLowerCase() === ME.user.username.toLowerCase() &&
         !await ask({title: `Own ${p.name} yourself?`, message: `This gives you access to the records in ${p.name}.`, action: "Make me owner"})) return;
-    const row = go.closest(".row"), at = [...$("#ownerless").querySelectorAll(".ownerless > .row")].indexOf(row);
+    const row = go.closest(".row"), at = ownRows().indexOf(row);
     ownSay(null);
     try { await call(`ownerless/${p.id}/owner`, "POST", {username: who}); await loadOwnerless(); }
-    catch (e) { return ownSay(row, e.message, true); }   // under its row, focus still on its Make owner (#510)
+    catch (e) {
+      // the profile deleted, or given an owner, meanwhile (#528: its row stayed): drawn away, why said where it was
+      if (e.status === 404 || e.status === 409) { await loadOwnerless(); if (!OWNERLESS.has(p.id)) return goneSay(ownRows(), at, e.message, "button", $("#users h2"), $("#ownerless")); }
+      return ownSay(row, e.message, true);   // under its row, focus still on its Make owner (#510)
+    }
     // its row gone (#502: focus fell to the page): on the next profile's Make owner, else the one before's, what it
     // said where its row was (#510: it was under the accounts list, out of sight); the last one gone, where the list
     // was, with focus on it (#506: focus went to the card's heading, the message out of sight under the accounts)
-    const rows = [...$("#ownerless").querySelectorAll(".ownerless > .row")], done = `${who} now owns ${p.name}.`;
+    const rows = ownRows(), done = `${who} now owns ${p.name}.`;
     if (rows.length) { focusNear(rows, at, "button"); return rows[at] ? ownSay(rows[at], done, false, true) : ownSay(rows[at - 1], done); }
     const m = el("p", {class: "msg", tabindex: "-1", text: done + " Every profile has an owner now."});
     $("#ownerless").replaceChildren(m);
@@ -379,11 +394,11 @@ async function loadLabmaps() {
         const input = el("input", {type: "text", list: "labmapNames", value: m.target || "", maxlength: 120, "aria-label": `Series for ${m.name}`,
                                    placeholder: "Leave empty to keep it separate"});
         const ok = el("button", {class: "btn small primary", type: "submit", text: "Save"});
-        const no = el("button", {class: "btn small", type: "button", text: "Cancel", onclick: () => loadLabmaps()});
+        const no = el("button", {class: "btn small", type: "button", text: "Cancel", onclick: () => lmAgain(m.id, "button")});
         goes.replaceChildren(el("form", {class: "lm-edit", onsubmit: async ev => {
           ev.preventDefault();
-          try { const r = await call("labmaps/" + m.id, "PATCH", {target: input.value.trim() || null}); say("#labmapMsg", `“${r.name}” is now ${as(r)}.`); loadLabmaps(); }
-          catch (e) { say("#labmapMsg", e.message, true); }
+          try { const r = await call("labmaps/" + m.id, "PATCH", {target: input.value.trim() || null}); say("#labmapMsg", `“${r.name}” is now ${as(r)}.`); lmAgain(m.id, "button"); }
+          catch (e) { e.status === 404 ? lmAgain(m.id, "button", e.message) : say("#labmapMsg", e.message, true); }
         }}, input, ok, no));
         input.focus();
       };
@@ -398,10 +413,21 @@ async function loadLabmaps() {
             if (!await ask({title: `Forget the match for “${m.name}”?`,
                             message: "The next import that has it will ask again. Results already saved keep their series.",
                             action: "Forget match", danger: true})) return;
-            try { await call("labmaps/" + m.id, "DELETE"); say("#labmapMsg", `Forgot the match for “${m.name}”.`); loadLabmaps(); }
-            catch (e) { say("#labmapMsg", e.message, true); }
+            try { await call("labmaps/" + m.id, "DELETE"); say("#labmapMsg", `Forgot the match for “${m.name}”.`); lmAgain(m.id, "button:last-child"); }
+            catch (e) { e.status === 404 ? lmAgain(m.id, "button:last-child", e.message) : say("#labmapMsg", e.message, true); }
           }})));
     }))));
+}
+
+/* the matches drawn again after a Save, Cancel or Remove (#528: focus fell to the page): focus on the same button of
+   its row (sel: Change, or Remove), else the next row's or the one before's, as Passkeys' (util.js focusNear); one
+   removed elsewhere (gone: what the server said), that said where it was */
+async function lmAgain(id, sel, gone) {
+  const rows = () => [...$("#labmapList").querySelectorAll("tr[data-labmap]")], at = Math.max(0, rows().findIndex(r => r.dataset.labmap === String(id)));
+  await loadLabmaps();
+  sel = "td.acts " + sel;
+  if (gone) return goneSay(rows(), at, gone, sel, $("#labmaps h2"), $("#labmapList"));
+  focusNear(rows(), at, sel, $("#labmaps h2"));
 }
 
 /* ---------------------------------------------------------------- requiring two-factor sign-in, install activity */
