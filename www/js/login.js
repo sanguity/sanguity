@@ -67,6 +67,7 @@ function signedIn(j) {
 }
 pkBtn.addEventListener("click", async () => {
   pkBtn.disabled = btn.disabled = true; fieldSaid(err, "", null, pkBox);
+  let said = "";
   try {
     if (!await settled()) throw new Error("Couldn't reach the server.");
     let r = await api("login/passkey/options", {method: "POST", body: JSON.stringify({ticket})});
@@ -80,10 +81,14 @@ pkBtn.addEventListener("click", async () => {
       if (r.ok) { signedIn(j); return; }
       if (/isn't registered here/.test(j.detail || "")) passkeySignalUnknown(rpId, credential.id);   // the device may delete it
     }
-    err.textContent = j.detail || "Sign-in failed (" + r.status + ").";
+    said = j.detail || "Sign-in failed (" + r.status + ").";
     if (ticket && /too long. Enter your password/.test(j.detail || "")) { codeStep(null); document.getElementById("p").value = ""; }
-  } catch (e) { err.textContent = e.message === "Failed to fetch" ? "Couldn't reach the server." : e.message; }
+  } catch (e) { said = e.message === "Failed to fetch" ? "Couldn't reach the server." : e.message; }
   pkBtn.disabled = btn.disabled = false;
+  // focus back on the button (#509: disabled while it asked, it dropped focus to the page), its reason in sight under it
+  pkBtn.focus({preventScroll: true});
+  fieldSaid(err, said, null, pkBox);
+  pkBtn.scrollIntoView({block: "nearest"});
 });
 f.addEventListener("submit", async ev => {
   ev.preventDefault();

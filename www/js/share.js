@@ -31,7 +31,8 @@ function shTable(heads, rows, empty, cls = "", name = "", printed = "") {   // c
       el("tr", {}, ...heads.map(h => el("th", {text: h})))),
     el("tbody", {}, ...rows.map(shRow))));
 }
-const shRow = r => el("tr", {}, ...r.map(c => c && c.nodeType ? el("td", {}, c) : el("td", {text: c == null ? "" : String(c)})));
+// a date and time's time kept with its AM or PM (keepDates, #509: "10:30 / AM" in Visits)
+const shRow = r => el("tr", {}, ...r.map(c => c && c.nodeType ? el("td", {}, c) : /\d:\d\d/.test(c) ? el("td", {}, keepDates(c)) : el("td", {text: c == null ? "" : String(c)})));
 /* a long table, newest first (#491: ten years are 2,000 claims, and 1,000 readings of a home measure). The server sends
    a long section's latest rows and how many it has (#498, SH_CUT: share_links.py FIRST and MANY), said here, with Show
    all, which asks it for the rest (a view logged like the page's), puts them in and gives the first of them focus.
@@ -98,7 +99,7 @@ const SH_DRAW = {
     el("div", {}, el("b", {text: (SH_KIND[j.kind] || "Note") + (j.title ? `: ${j.title}` : "")}),
       j.severity ? el("span", {class: "tag", text: `severity ${j.severity}`}) : null,
       j.kind === "mood" ? el("span", {class: "tag", text: [j.mood != null && `mood ${j.mood}/10`, j.energy != null && `energy ${j.energy}/10`].filter(Boolean).join(", ")}) : null,
-      el("span", {class: "muted", text: " " + shWhen(j.t)})),
+      el("span", {class: "muted"}, " ", keepDates(shWhen(j.t)))),
     j.where?.length || j.group ? el("p", {class: "muted", text: [j.where?.length && "Where: " + j.where.join(", "), j.group && `Logged with “${j.group}”`].filter(Boolean).join(" · ")}) : null,   // #161
     j.note ? el("p", {class: "share-note", text: j.note}) : null,
     j.photos?.length ? el("div", {class: "share-pics"}, ...j.photos.map((p, i) => shPhoto(p, `Photo ${i + 1} of ${j.photos.length} for ${j.title || "this entry"}`))) : null)))
@@ -164,6 +165,36 @@ function shLatest(list) {
     scrollBox({class: "share-scroll"}, table));
 }
 function shOpen(btn, hist, on) { btn.setAttribute("aria-expanded", String(on)); hist.hidden = !on; }
+/* printed (#509): each open history taken out of Latest results' table, a block between tables of its rows (each with
+   its head), and put back after. A table's head repeats on each page it spans, so it was over a history alone (most of
+   a ten-year print's pages), and a history in a table's row went to the next page whole (app.css) */
+let shSplit = null;
+addEventListener("beforeprint", () => {
+  const t = document.querySelector("#share-results .share-latest"), open = t ? [...t.querySelectorAll(".share-hist:not([hidden])")] : [];
+  if (shSplit || !open.length) return;
+  const at = document.activeElement, rows = [...t.tBodies].map(b => [b, [...b.rows]]), out = el("div", {class: "share-split"});
+  let seg = null;
+  for (const [, rs] of rows) for (const r of rs) {
+    if (open.includes(r)) { out.append(el("div", {class: "share-histp"}, ...r.cells[0].childNodes)); r.remove(); seg = null; }
+    else if (!out.firstChild) continue;   // (rows before the first stay in its table)
+    else if (r.hidden) r.remove();   // a closed history: nothing left at a table's foot to break before
+    else {
+      if (!seg) out.append(el("table", {class: "tbl share-latest"}, t.tHead.cloneNode(true), seg = el("tbody")));
+      seg.append(r);
+    }
+  }
+  shSplit = {rows, open, out, at};
+  t.closest(".share-scroll").after(out);
+});
+addEventListener("afterprint", () => {
+  if (!shSplit) return;
+  const {rows, open, out, at} = shSplit, hists = out.querySelectorAll(":scope>.share-histp");
+  shSplit = null;
+  for (const [b, rs] of rows) b.replaceChildren(...rs);
+  open.forEach((r, i) => r.cells[0].replaceChildren(...hists[i].childNodes));
+  out.remove();
+  if (at !== document.activeElement && at?.isConnected) at.focus({preventScroll: true});
+});
 
 /* the sections' bar (#289): a chip per section, sticky under the page's header, that scrolls to it and gives its heading
    focus; the one in view is marked. Buttons, not #links: this page's address after the # is the link's token. On a
@@ -278,8 +309,8 @@ async function shLoad() {
   document.title = `${d.profile} · shared records · Sanguity`;
   $("#shareHead").replaceChildren(el("div", {class: "share-hd"}, el("h1", {text: `${d.profile}: shared records`}),
     el("button", {class: "btn", type: "button", text: "Print", onclick: () => print()})),
-    el("p", {class: "hint", text: `Records ${range}, shared read-only through a link by an owner of this profile. ` +
-      `The link stops working on ${fmtDT(d.expires * 1000)}, or earlier if it's revoked. Each time it's opened, the profile's owners see that in its activity log.`}));
+    el("p", {class: "hint"}, keepDates(`Records ${range}, shared read-only through a link by an owner of this profile. ` +
+      `The link stops working on ${fmtDT(d.expires * 1000)}, or earlier if it's revoked. Each time it's opened, the profile's owners see that in its activity log.`)));
   // #161: the journal's photos are shown with their entries, not as a section of their own
   const secs = d.sections.filter(s => s.id !== "journal_photos");
   $("#shareBody").replaceChildren(...secs.map(s => el("section", {class: "card", id: "share-" + s.id},

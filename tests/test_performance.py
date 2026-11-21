@@ -575,6 +575,49 @@ class PageBudgets(unittest.TestCase):
                         and all(n <= 40 and (n == 20) == (k in sent["cut"]) for k, n in rows.items()), [sent["cut"], rows])
         self.assertLessEqual(height, BUDGETS["share_page_px"], "over budget (docs/performance.md)")
 
+    def test_share_printed(self):
+        """a year's link to visits, lab results and medications, and ten years of lab results (#509), each printed with
+        every history open: no page before the last more than a quarter empty (#505 left the year's page 4 608 pt short,
+        a history's last rows alone on it), and Latest results' column names above its first row on each page with its
+        rows, never on a page holding only a history (#505: most of the ten years' 173 pages had them over the
+        history's own). browser_check.py checks the breaks on the small demo (#501)"""
+        import io
+        from playwright.sync_api import sync_playwright
+        from pypdf import PdfReader
+        year = (date.fromisoformat(END) - timedelta(days=365)).isoformat()
+        made = [CLIENT.post("/api/profiles/1/links", headers=H, json={"label": label, "sections": sections, "from": since, "hours": 1})
+                for label, sections, since in (("A year, printed (performance)", ["visits", "results", "medications"], year),
+                                               ("Ten years of results, printed (performance)", ["results"], "2016-11-15"))]
+        self.assertEqual([r.status_code for r in made], [200, 200], [r.text for r in made])
+        printed = {}
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page(viewport={"width": 1400, "height": 900})
+            for r in made:
+                page.goto("about:blank")
+                page.goto(f"{BASE}/{r.json()['path']}")
+                page.wait_for_selector("#share-results .share-latest", timeout=60000)
+                page.locator("#share-results .share-tools button", has_text="Open every history").click()
+                head = " ".join(page.evaluate("[...document.querySelectorAll('#share-results .share-latest>thead th')].map(c => c.textContent)"))
+                tests = page.evaluate("[...document.querySelectorAll('#share-results .share-open')].map(b => b.textContent)")
+                page.emulate_media(media="print")
+                pdf = page.pdf(format="Letter")
+                page.emulate_media(media="screen")
+                back = page.evaluate("[!document.querySelector('.share-split'), document.querySelectorAll('#share-results .share-latest').length]")
+                pages = []   # each page's lowest text, in points up from its foot (a Letter page is 792 tall), the first head and row
+                for p_ in PdfReader(io.BytesIO(pdf)).pages:
+                    ys = []
+                    lines = [ln.strip() for ln in p_.extract_text(visitor_text=lambda t, cm, tm, fd, fs: ys.append(tm[5] * cm[3] + cm[5]) if t.strip() else None).splitlines()]
+                    rows = [i for i, ln in enumerate(lines) if any(ln.startswith(t) for t in tests) and not ln.endswith(": every result")]
+                    pages.append([round(min(ys)) if ys else 792, [i for i, ln in enumerate(lines) if ln == head][:1], rows[:1]])
+                printed[r.json()["link"]["label"]] = [head, back, pages]
+            browser.close()
+        measure("share_printed_pages", {k: len(v[2]) for k, v in printed.items()})
+        for label, (head, back, pages) in printed.items():
+            self.assertEqual([head, back], ["Test Latest Range Flag Trend Results", [True, 1]], f"{label}: the histories put back after printing")
+            self.assertTrue(len(pages) > 3 and max(p[0] for p in pages[:-1]) <= 792 / 4, [label, pages])
+            self.assertTrue(all(bool(h) == bool(rs) and (not rs or h[0] < rs[0]) for _, h, rs in pages), [label, pages])
+        self.assertGreater(sum(1 for _, h, rs in printed["Ten years of results, printed (performance)"][2] if not rs), 50, "pages holding only a history")
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
