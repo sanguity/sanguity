@@ -5347,9 +5347,12 @@ def main():
                     if width == 375:
                         cy_bad += phone_fits(page, f"Sources cycle card off, {theme}")
             page.set_viewport_size({"width": 1400, "height": 900})
-            page.click("#cycleOn")
+            page.focus("#cycleOn")   # (by keyboard, #534)
+            page.keyboard.press("Enter")
             asked = answer_ask(page, yes=True)
             page.wait_for_function("document.getElementById('cycleState') && document.getElementById('cycleState').textContent.startsWith('On since')", timeout=10000)
+            check("…turned on by keyboard, focus stays in the card, on what it says now (#534: its button gone, on the page's body)",
+                  js("document.activeElement.id") == "cycleState", js("document.activeElement.outerHTML.slice(0, 80)"))
             check("…turning it on asks first, saying who sees it, where it never goes and that sexual activity is never kept",
                   asked[0] == "Turn on cycle tracking?" and all(w in asked[1] for w in ("Viewers don't", "never in a share link", "Sexual activity is never kept", "delete all of it")), asked)
             check("…then the receiver is told (its secrets file lists this profile's slot)", keys_doc().get("cycle") == [""], keys_doc().get("cycle"))
@@ -9932,6 +9935,97 @@ def main():
             t530.evaluate(f"[...{last_card}.querySelectorAll('.imp-actions button')].find(b => b.textContent === 'Cancel').click()")
             t530.wait_for_function(f"!/^Ready to import/.test({last_card}.textContent)", timeout=10000)
             c530.close()
+            # (#534) in a tab of its own, on a profile of its own (deleted after), with cycle tracking on: an export of cycle
+            # records only, saved: its card and toast count them, with an Undo whose question names them; Import history
+            # names its source (not "No records", nor them), and Phone and watch's count follows the save and the Undo.
+            # One left in review when tracking is turned off says nothing is left and isn't in Waiting for you. A zip of a
+            # blood pressure and a temperature reading counts 2 new, with no days of activity data, nor its Undo
+            c534 = browser.new_context(storage_state=page.context.storage_state(), viewport={"width": 1400, "height": 900}, bypass_csp=True)
+            t534 = c534.new_page()
+            t534.on("pageerror", lambda e: problems.append(f"script error (#534's tab): {e}"))
+            t534.goto(base + "/sources.html#overview")
+            t534.wait_for_function("typeof api === 'function' && SgSources", timeout=10000)
+            pid534 = t534.evaluate("""api('profiles', {method: 'POST', body: JSON.stringify({name: 'Cycle 534'})}).then(r => r.json())
+                .then(j => api(`profiles/${j.id}/cycle`, {method: 'PUT', body: JSON.stringify({on: true})}).then(() => j.id))""")
+            t534.goto(base + f"/sources.html?profile={pid534}#phone")
+            t534.wait_for_function("document.getElementById('cycleState')?.textContent.startsWith('On since')", timeout=10000)
+            hk534 = lambda t, u, d, v, src="Test Device": f'<Record type="HKQuantityTypeIdentifier{t}" sourceName="{src}" unit="{u}" startDate="{d}" endDate="{d}" value="{v}"/>\n'
+            flow534 = '<Record type="HKCategoryTypeIdentifierMenstrualFlow" sourceName="Test Phone" startDate="{0} 00:00:00 -0500" endDate="{0} 00:00:00 -0500" value="HKCategoryValueMenstrualFlow{1}"/>\n'
+
+            def zip534(body):
+                b = io.BytesIO()
+                with zipfile.ZipFile(b, "w") as z:
+                    z.writestr("apple_health_export/export.xml", '<?xml version="1.0" encoding="UTF-8"?>\n<HealthData locale="en_US">\n'
+                               '<ExportDate value="2026-11-13 09:00:00 -0500"/>\n' + body + "</HealthData>\n")
+                return b.getvalue()
+
+            def review534(name, body):
+                t534.locator("a[href='#upload']:visible").first.click()
+                t534.set_input_files("#pickFiles", files=[{"name": name, "mimeType": "application/zip", "buffer": zip534(body)}])
+                t534.wait_for_function(f"/^Ready to import/.test({last_card}?.textContent) && {last_card}.closest('.job').querySelector('h3').textContent === '{name}'", timeout=30000)
+                return t534.evaluate(f"{last_card}.innerText")
+
+            def add534():
+                t534.evaluate("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+                t534.evaluate(f"{last_card}.querySelector('.imp-actions .primary').click()")
+                t534.wait_for_function(f"/^Imported/.test({last_card}.textContent) && document.querySelector('#sgToasts .sg-toast')", timeout=30000)
+                return t534.evaluate(f"""[{last_card}.innerText, (t => [t.querySelector('.sg-toast-text').textContent,
+                    [...t.querySelectorAll('button')].some(b => b.textContent === 'Undo…')])(document.querySelector('#sgToasts .sg-toast:last-child'))]""")
+            state534 = "document.getElementById('cycleState').textContent"
+            review534("cycle-534.zip", flow534.format("2026-11-09", "Medium") + flow534.format("2026-11-10", "Light"))
+            saved534 = add534()
+            t534.locator("a[href='#history']:visible").first.click()
+            t534.wait_for_function("document.querySelector('#historyList li .what')", timeout=10000)
+            hist534 = t534.evaluate("document.querySelector('#historyList li .what').textContent")
+            t534.locator("a[href='#phone']:visible").first.click()
+            t534.wait_for_function(f"{state534}.includes('Kept: 2 records')", timeout=10000)
+            kept534 = [t534.evaluate(state534)]
+            t534.click("#sgToasts .sg-toast:last-child button:text-is('Undo…')")
+            undo534 = answer_ask(t534)
+            t534.wait_for_function(f"{state534}.endsWith('Nothing received yet.')", timeout=10000)
+            kept534.append(t534.evaluate(state534))
+            check("an export of cycle records only, saved: its card and toast count them, with an Undo naming them (#534: \"The files held no "
+                  "records to show.\", \"Imported: nothing new.\", no Undo)",
+                  "2 cycle tracking records" in saved534[0] and saved534[1] == ["Imported 2 cycle tracking records.", True]
+                  and "removed: 2 cycle tracking records, and the files" in undo534[1], [saved534, undo534])
+            check("…Import history names its source, not \"No records\" nor them (#534, #223)", hist534 == "From Apple Health (export.xml)", hist534)
+            check("…Phone and watch's count follows its save and its Undo (#534: \"Kept: 2 records\" stayed)",
+                  kept534[0].endswith("Kept: 2 records, shown on the Timeline.") and kept534[1].endswith("Nothing received yet."), kept534)
+            review534("cycle-534-again.zip", flow534.format("2026-10-12", "Medium"))
+            t534.locator("a[href='#phone']:visible").first.click()
+            t534.click("#cycleOff")
+            t534.keyboard.type("Cycle 534")
+            t534.click("#cycle .dz-body .btn.danger")
+            t534.wait_for_function(f"{state534}.startsWith('Off.')", timeout=10000)
+            t534.locator("a[href='#upload']:visible").first.click()
+            t534.wait_for_function(f"{last_card}.querySelector('.imp-state')?.textContent !== 'Ready to import'", timeout=10000)
+            empty534 = t534.evaluate(f"""(c => [c.querySelector('.imp-state').textContent, c.querySelector('.hint').textContent,
+                c.querySelector('.imp-actions .primary').textContent, c.querySelector('.imp-actions .primary').disabled, c.closest('.job').dataset.job])({last_card})""")
+            t534.locator("a[href='#overview']:visible").first.click()
+            t534.wait_for_function(f"api('profiles/{pid534}/jobs?state=preview').then(r => r.json()).then(j => j.length === 1)", timeout=10000)
+            t534.wait_for_timeout(1500)   # (Waiting for you drawn)
+            wait534 = t534.evaluate("[...document.querySelectorAll('#waiting [data-job]')].map(r => r.dataset.job)")
+            check("a review of cycle records only, left open when tracking is turned off, says nothing is left, and isn't in Waiting for you "
+                  "(#534: \"Ready to import\" with no tiles, and \"Ready to review\")",
+                  empty534[:4] == ["Nothing left to import", "Nothing in this upload is left to add to this profile. Cancel it to remove the upload.", "Nothing to add", True]
+                  and wait534 == [], [empty534, wait534])
+            t534.locator("a[href='#upload']:visible").first.click()
+            t534.evaluate(f"[...{last_card}.querySelectorAll('.imp-actions button')].find(b => b.textContent === 'Cancel').click()")
+            t534.wait_for_function(f"/^Cancelled/.test({last_card}.textContent)", timeout=10000)
+            read534 = review534("readings-534.zip", '<Correlation type="HKCorrelationTypeIdentifierBloodPressure" sourceName="Test Cuff" startDate="2026-11-09 09:00:00 -0500" endDate="2026-11-09 09:00:00 -0500">\n'
+                                + hk534("BloodPressureSystolic", "mmHg", "2026-11-09 09:00:00 -0500", 118, "Test Cuff")
+                                + hk534("BloodPressureDiastolic", "mmHg", "2026-11-09 09:00:00 -0500", 76, "Test Cuff") + "</Correlation>\n"
+                                + hk534("BodyTemperature", "degC", "2026-11-10 07:05:00 -0500", "36.8"))
+            new534 = t534.evaluate(f"{last_card}.querySelector('.imp-split li.new').textContent")
+            saved534 = add534()
+            t534.click("#sgToasts .sg-toast:last-child button:text-is('Undo…')")
+            undo534 = answer_ask(t534)
+            check("a zip of one blood pressure and one temperature reading counts 2 new, with no days of activity data, in its review, "
+                  "card, toast and Undo (#534: \"Days of activity data 2\", \"4 new\", and \"2 days of watch data\")",
+                  new534 == "2 new" and not any(re.search("activity|watch data", x, re.I) for x in (read534, saved534[0], saved534[1][0], undo534[1]))
+                  and "1 blood pressure reading, 1 body temperature reading" in undo534[1], [new534, read534, saved534, undo534])
+            t534.evaluate(f"api('profiles/{pid534}', {{method: 'DELETE', body: JSON.stringify({{confirm_name: 'Cycle 534'}})}})")
+            c534.close()
             js("window.__real281 = sanguityImport.uploaded; window.__hook = []; sanguityImport.uploaded = a => { window.__hook.push({profileId: a.profileId, uploadId: a.uploadId, card: a.frame.card.isConnected}); return null; }; 0")
             page.set_input_files("#pickFiles", files=[{"name": n, "mimeType": "text/csv", "buffer": b"date,test,value\n2026-02-01,WBC,6.1\n"}
                                                       for n in ("a.csv", "b.csv")])
@@ -10162,7 +10256,7 @@ def main():
                 zip530 = io.BytesIO()
                 with zipfile.ZipFile(zip530, "w") as z:
                     z.writestr("apple_health_export/export.xml", xml522.split("<Correlation")[0] + hk522("BodyTemperature", "degC", f"{d530} 07:05:00 -0500", "36.8")
-                                + flow522.format(d530, "Medium") + "</HealthData>\n")   # (a reading too: an import of cycle records alone offers no Undo)
+                                + flow522.format(d530, "Medium") + "</HealthData>\n")   # (a reading too: before #534 an import of cycle records alone offered no Undo)
                 js(dropzip522, [list(zip530.getvalue()), f"cycle-530-{n530}.zip"])
                 page.wait_for_function(f"/^Ready to import/.test({dcard497}?.textContent) && {dcard497}.closest('.job').querySelector('h3').textContent === 'cycle-530-{n530}.zip'", timeout=30000)
                 js(f"{dcard497}.querySelector('.imp-actions .primary').click()")
@@ -10182,6 +10276,35 @@ def main():
             page.click("#sgToasts .sg-toast button:text-is('Undo…')")
             answer_ask(page)
             page.wait_for_function("!CYCLE.length", timeout=10000)
+            # (#534) workouts' ids from when they started, as cycle records' are: two zips of a run each, November's then
+            # October's, the drawer open on October's, and its toast's Undo: the drawer closes, November's kept with its id
+            # (numbered on from the records' last id, November's took October's, and the drawer stayed); then undone too
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            runs534 = "EV.filter(e => e.k === 'exercise' && /^2026-1[01]-0[36]/.test(e.t)).map(e => [e.id, e.t.slice(0, 10)])"
+            for n534, d534 in enumerate(("2026-11-03", "2026-10-06")):
+                zip534 = io.BytesIO()
+                with zipfile.ZipFile(zip534, "w") as z:
+                    z.writestr("apple_health_export/export.xml", xml522.split("<Correlation")[0] + '<Workout workoutActivityType="HKWorkoutActivityTypeRunning" '
+                               f'duration="30" durationUnit="min" sourceName="Test Watch" startDate="{d534} 07:00:00 -0500" endDate="{d534} 07:30:00 -0500"/>\n</HealthData>\n')
+                js(dropzip522, [list(zip534.getvalue()), f"run-534-{n534}.zip"])
+                page.wait_for_function(f"/^Ready to import/.test({dcard497}?.textContent) && {dcard497}.closest('.job').querySelector('h3').textContent === 'run-534-{n534}.zip'", timeout=30000)
+                js(f"{dcard497}.querySelector('.imp-actions .primary').click()")
+                page.wait_for_function(f"/^Imported/.test({dcard497}.textContent)", timeout=30000)
+                page.click("dialog.up-dlg .sheet-x")
+                page.wait_for_function(f"{runs534}.length === {n534 + 1}", timeout=10000)
+            nov534 = js(f"{runs534}.find(r => r[1] === '2026-11-03')[0]")
+            js("openEvent(EV.find(e => e.k === 'exercise' && e.t.startsWith('2026-10-06')))")
+            page.wait_for_function("drawer.classList.contains('open')", timeout=5000)
+            page.click("#sgToasts .sg-toast:last-child button:text-is('Undo…')")
+            answer_ask(page)
+            page.wait_for_function(f"{runs534}.length === 1", timeout=10000)
+            settle(300)
+            drawer534 = js(f"[drawer.classList.contains('open'), state.selEv, {runs534}]")
+            check("a workout open in the drawer closes after its import's Undo, another workout kept with its id (#534: it took the undone one's, and the drawer stayed)",
+                  drawer534 == [False, None, [[nov534, "2026-11-03"]]], [nov534, drawer534])
+            page.click("#sgToasts .sg-toast button:text-is('Undo…')")
+            answer_ask(page)
+            page.wait_for_function(f"!{runs534}.length", timeout=10000)
             # (#504) a profile with no records: two CSVs dropped into the dialog, the first added, the dialog closed: its
             # records are drawn without loading the page again, the toast's Undo and the other review kept
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")

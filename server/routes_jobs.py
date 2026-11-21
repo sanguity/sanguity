@@ -60,7 +60,7 @@ def list_jobs(pid: int, state: Optional[str] = None, s=Depends(user), db=Depends
 def get_job(pid: int, jid: int, s=Depends(user), db=Depends(get_db)):
     """state, stage, importer, counts by kind, the date range, warnings and the message (when it failed)."""
     need(db, s, pid, "editor")
-    j = jobs.get(db, pid, jid)
+    j = jobs.get(db, pid, jid, s["id"])   # (the cycle records saved, to who saved them: #534)
     if not j:
         raise HTTPException(404, "No such import.")
     return j

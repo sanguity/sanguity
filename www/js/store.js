@@ -159,13 +159,13 @@ function storeWatch() {
   }
   const folded = new Set(["weight", "hr_avg", "hr_min", "hr_max", "sleep_h", "sleep_deep_min", "sleep_rem_min", "sleep_light_min", "sleep_awake_min", "steps"]);
   for (const m of WATCH.metrics || []) if (!folded.has(m.key) && !m.key.startsWith("glucose_")) add(m);   // glucose: Body and activity's own (#181)
-  let wid = DATA.events.reduce((m, e) => Math.max(m, +e.id || 0), 1e7);   // after every record's id
+  const wids = new Set();   // ids from when each started (palette.js watchId, #534)
   for (const x of WATCH.exercise || []) {
-    const ev = {id: ++wid, t: x.start, end: x.end, k: "exercise", title: x.name.replace(/_/g, " "), sub: `${x.minutes} min`};
+    const ev = {id: watchId(x, "exercise", wids), t: x.start, end: x.end, k: "exercise", title: x.name.replace(/_/g, " "), sub: `${x.minutes} min`};
     ev.ts = zParse(ev.t); ev.te = zParse(ev.end); ev._q = (ev.title + " workout exercise").toLowerCase();
     DATA.events.push(ev); byId.set(ev.id, ev); DATA.details[ev.id] = {type: "exercise", kind: x.kind, minutes: x.minutes, hr: x.hr};   // hr: heart rate zones (#197)
   }
-  ecgLoad(wid);   // ECGs and irregular rhythm notifications (ecg.js, #182)
+  ecgLoad(wids);   // ECGs and irregular rhythm notifications (ecg.js, #182)
   EV = [...DATA.events];
   applyUnits(SERIES.filter(s => s.watch));   // after the clinic weights joined the scale's (#41)
 }

@@ -44,6 +44,16 @@ function cycleId(x, used) {
   used.add(id);
   return id;
 }
+/* a workout's, an ECG's or a rhythm notification's id (store.js's and ecg.js's, and the palette's), k its kind: from
+   when it started, to the second, and its kind, after every cycle record's, so it too names the same one each time
+   they're read (#534: numbered on from the last record, a workout added or undone gave the next its id) */
+function watchId(x, k, used) {
+  const s = String(x.start || ""), t = Math.round(Date.parse(/(Z|[+-]\d\d:?\d\d)$/i.test(s) ? s : s + "Z") / 1000);
+  let id = 2e9 + (isFinite(t) ? t : 0) * 4 + ({ecg: 1, rhythm: 2}[k] || 0);
+  while (used.has(id)) id += 4;
+  used.add(id);
+  return id;
+}
 const SgPalette = (() => {
   const btn = document.getElementById("barSearch");
   if (!btn || typeof SG_PAGES === "undefined") return {open() {}, resume() {}};
@@ -127,10 +137,10 @@ const SgPalette = (() => {
     const labDay = e => { const names = [...new Set(own.get(e.id).map(([x]) => x.name))]; return [...(d.details?.[e.id]?.ids || []).map(i => title.get(i)), ...names, ...names.map(n => nick[n])]; };
     const ev = (e, words, t = zParse(e.t)) => ({id: e.id, k: e.k, title: e.title || "", ts: t, hidden: !!e.hidden, _q: words.filter(Boolean).join(" ").toLowerCase()});
     const events = (d.events || []).map(e => ev(e, [e.title, e.sub, KIND_LABEL[e.k], ...(e.k === "lab" ? labDay(e) : [])], ts.get(e.id)));
-    let id = (d.events || []).reduce((m, e) => Math.max(m, +e.id || 0), 1e7);   // after every record's id
-    for (const x of w?.exercise || []) { const t = x.name.replace(/_/g, " "); events.push(ev({id: ++id, k: "exercise", t: x.start, title: t}, [t, "workout exercise"])); }
+    const wids = new Set();
+    for (const x of w?.exercise || []) { const t = x.name.replace(/_/g, " "); events.push(ev({id: watchId(x, "exercise", wids), k: "exercise", t: x.start, title: t}, [t, "workout exercise"])); }
     for (const x of w?.ecg || []) if (x && x.start && ["ecg", "irregular_rhythm"].includes(x.type)) {
-      const t = x.type === "ecg" ? (x.classification ? "ECG: " + x.classification : "ECG") : "Irregular rhythm notification", e = ev({id: ++id, k: x.type === "ecg" ? "ecg" : "rhythm", t: x.start, title: t}, [t, "ecg electrocardiogram heart rhythm watch", x.device]);
+      const k = x.type === "ecg" ? "ecg" : "rhythm", t = k === "ecg" ? (x.classification ? "ECG: " + x.classification : "ECG") : "Irregular rhythm notification", e = ev({id: watchId(x, k, wids), k, t: x.start, title: t}, [t, "ecg electrocardiogram heart rhythm watch", x.device]);
       if (isFinite(e.ts)) events.push(e);
     }
     const J = {note: "Note", symptom: "Symptom", side_effect: "Side effect", mood: "Mood"};   // journal.js J_LABEL

@@ -371,12 +371,13 @@ class App(unittest.TestCase):
         self.assertNotIn("_cycle", json.dumps(self.c["robin"].get(f"/api/profiles/{self.pid}/settings").json()))
 
     # ---- uploaded Apple Health exports (#223): read only while tracking is on, kept apart, deleted with the rest
-    def import_export(self, pid, confirm=True):
-        """Upload the fictional export.zip (tests/fixtures/apple_health) as the Sources page does and import it: the
-        job, once it's waiting in its preview (or done, confirmed)."""
+    def import_export(self, pid, confirm=True, xml=None):
+        """Upload the fictional export.zip (tests/fixtures/apple_health), or xml, as the Sources page does and import
+        it: the job, once it's waiting in its preview (or done, confirmed)."""
         import time
-        with open(os.path.join(ROOT, "tests", "fixtures", "apple_health", "apple_health_export", "export.xml"), "rb") as f:
-            xml = f.read()
+        if xml is None:
+            with open(os.path.join(ROOT, "tests", "fixtures", "apple_health", "apple_health_export", "export.xml"), "rb") as f:
+                xml = f.read()
         c = self.c["robin"]
         up = c.post(f"/api/profiles/{pid}/uploads", headers=H).json()["id"]
         self.assertEqual(c.put(f"/api/profiles/{pid}/uploads/{up}/files", params={"path": "apple_health_export/export.xml"}, content=xml,
@@ -517,6 +518,39 @@ class App(unittest.TestCase):
             run(cycle_tracking.drop_imported)
         self.assertFalse(os.path.exists(jobs.preview_path(pid, gone)))
         self.assertEqual(self.c["robin"].get(f"/api/profiles/{pid}/jobs/{gone}").json()["state"], "discarded")
+
+
+    def test_9_cycle_records_only(self):   # #534
+        """An export of cycle records only: saved, counted for the person who saved it alone (never in the import's
+        counts, which Import history shows others); one waiting when tracking is turned off has nothing new left."""
+        db = dbm.connect()
+        try:
+            pid = prof.create_profile(db, "Jo (fictional)", owner_id=self.uid["robin"])
+            db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'editor')", (self.uid["lee"], pid))
+        finally:
+            db.close()
+        flow = ('<Record type="HKCategoryTypeIdentifierMenstrualFlow" sourceName="Test Phone" startDate="{0} 00:00:00 -0500" '
+                'endDate="{0} 00:00:00 -0500" value="HKCategoryValueMenstrualFlowMedium"/>\n')
+        xml = ('<?xml version="1.0" encoding="UTF-8"?>\n<HealthData locale="en_US">\n<ExportDate value="2026-11-13 09:00:00 -0500"/>\n'
+               + flow.format("2026-11-09") + flow.format("2026-11-10") + "</HealthData>\n").encode()
+        self.assertEqual(self.c["robin"].put(f"/api/profiles/{pid}/cycle", json={"on": True}, headers=H).status_code, 200)
+        preview, done = self.import_export(pid, xml=xml)
+        self.assertEqual((preview["new"], preview["counts"]["cycle"]), (True, 2))
+        self.assertEqual((done["state"], done.get("cycle")), ("done", 2), done)
+        self.assertNotIn("cycle", done["counts"])
+        self.assertNotIn("cycle", self.c["lee"].get(f"/api/profiles/{pid}/jobs/{done['id']}").json(), "only to who saved it")
+        entry = self.c["lee"].get(f"/api/profiles/{pid}/imports").json()["imports"][0]
+        self.assertEqual((entry["id"], entry["can_undo"]), (done["import_id"], True))
+        self.assertNotIn("cycle", json.dumps(entry["counts"]))
+        # waiting when tracking is turned off: nothing new is left in it
+        waiting, _ = self.import_export(pid, confirm=False, xml=xml.replace(b"2026-11-", b"2026-10-"))
+        self.assertTrue(waiting["new"])
+        self.assertEqual(self.c["robin"].put(f"/api/profiles/{pid}/cycle", json={"on": False}, headers=H).status_code, 200)
+        j = self.c["robin"].get(f"/api/profiles/{pid}/jobs/{waiting['id']}").json()
+        self.assertEqual((j["state"], j["new"]), ("preview", False), j)
+        self.assertNotIn("cycle", j["counts"])
+        listed = self.c["robin"].get(f"/api/profiles/{pid}/jobs", params={"state": "preview"}).json()
+        self.assertEqual([(x["new"], x["stale"]) for x in listed], [(False, False)])
 
 
 def watch_store_own(pid):

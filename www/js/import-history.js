@@ -48,7 +48,8 @@
         undone ? el("span", {class: "tag", text: "undone"}) : null),
       e.files && e.files.length ? el("p", {class: "files muted", text: "Files: " + e.files.join(", ") +
         (e.file_count > e.files.length ? ` and ${(e.file_count - e.files.length).toLocaleString()} more` : "")}) : null,
-      el("p", {class: "what", text: counts(e) + (e.range ? ` (${e.range.from === e.range.to ? recordDate(e.range.from) : recordDate(e.range.from) + " to " + recordDate(e.range.to)})` : "")}),   // dates.js (#317)
+      // an import that saved only what's never named here (#534: cycle records, #223) names its source alone
+      el("p", {class: "what", text: (counts(e) === "No records" && !e.removal ? "From " + e.label : counts(e)) + (e.range ? ` (${e.range.from === e.range.to ? recordDate(e.range.from) : recordDate(e.range.from) + " to " + recordDate(e.range.to)})` : "")}),   // dates.js (#317)
       undone ? el("p", {class: "muted", text: `Undone ${when(e.undone_at)} by ${e.undone_by}.`}) : null,
       !undone && e.note ? el("p", {class: "hint note", text: e.note}) : null);
     if (!undone && canUndo && e.can_undo) {

@@ -187,7 +187,9 @@ def drop_imported(db, pid):
                 continue
             if isinstance(held.get("watch"), dict) and held["watch"].pop("cycle", None) is not None and jobs.rewrite_preview(db, jid, path, held):
                 if isinstance(report, dict) and (report.get("counts") or {}).pop("cycle", None) is not None:   # nor counted
-                    db.execute("UPDATE jobs SET summary=? WHERE id=? AND state='preview'", (crypto.enc(json.dumps(report)), jid))
+                    # and read again without them (#534): what's new then, none for an upload that held only them
+                    db.execute("UPDATE jobs SET summary=? WHERE id=? AND state='preview'", (crypto.enc(json.dumps({**report, "stamp": None})), jid))
+                    jobs.freshen_held(db, pid, jid)
 
 
 def summary_rows(db, pid, data, since, now):

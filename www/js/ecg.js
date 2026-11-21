@@ -12,12 +12,12 @@
    Plain script, loaded in order by index.html after drawer.js; all files share one global scope. */
 "use strict";
 /* the trace is drawn at the width it has, so its scale's text is its real size: 10 seconds a row, or 5 on a phone */
-/* the watch summary's ECGs as events, ids after nextId; returns the last id used */
-function ecgLoad(nextId) {
+/* the watch summary's ECGs as events, ids from when each started (palette.js watchId), apart from those in used */
+function ecgLoad(used) {
   for (const x of (WATCH && WATCH.ecg) || []) {
     if (!x || !x.start || !["ecg", "irregular_rhythm"].includes(x.type)) continue;
     const rec = x.type === "ecg";
-    const ev = {id: ++nextId, t: x.start, end: x.end || x.start, k: rec ? "ecg" : "rhythm",
+    const ev = {id: watchId(x, rec ? "ecg" : "rhythm", used), t: x.start, end: x.end || x.start, k: rec ? "ecg" : "rhythm",
       title: rec ? (x.classification ? "ECG: " + x.classification : "ECG") : "Irregular rhythm notification",
       sub: [rec && x.avg_hr != null ? `${x.avg_hr} bpm average` : "", x.device || ""].filter(Boolean).join(" · ")};
     ev.ts = zParse(ev.t); ev.te = zParse(ev.end);
@@ -25,7 +25,6 @@ function ecgLoad(nextId) {
     ev._q = (ev.title + " ecg electrocardiogram heart rhythm watch " + (x.device || "")).toLowerCase();
     DATA.events.push(ev); byId.set(ev.id, ev); DATA.details[ev.id] = {...x, type: "ecg"};
   }
-  return nextId;
 }
 const kvList = rows => el("dl", {class: "kv"}, ...rows.filter(x => x[1] != null && x[1] !== "").flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: String(v)})]));
 /* the drawer's body for either kind */

@@ -431,9 +431,10 @@
           done(j);
         });
         fill(card,
-          node("p", {class: "imp-state", text: j.new ? "Ready to import" : "All duplicates"}),
+          node("p", {class: "imp-state", text: stateWords(j)}),
           node("h3", {class: "imp-title"}, keepDates([j.label || j.importer, range].filter(Boolean).join(" · "))),
           node("p", {class: "hint", text: j.new ? "Nothing is saved until you add it with the button at the foot."
+            : sgNothing(j) ? "Nothing in this upload is left to add to this profile. Cancel it to remove the upload."
             : "Everything in this upload is in this profile already. Tick a duplicate to add it again anyway, or cancel."}),
           j.new ? tiles(j) : null, split(j), labs.part, same.part, dups.part, notes(j),
           node("div", {class: "sg-bar imp-actions", role: "region", "aria-label": "Add or cancel this import"},
@@ -446,7 +447,7 @@
         f.step("review");
         f.text("");
         f.progress(false);
-        if (!f.focus() && !f.card.hidden) announce(`${j.new ? "Ready to import" : "All duplicates"}: ${f.title}. Nothing is saved until you add it.`);
+        if (!f.focus() && !f.card.hidden) announce(`${stateWords(j)}: ${f.title}. Nothing is saved until you add it.`);
       }
       f.fresh = async () => {
         let j = null;
@@ -463,6 +464,9 @@
       draw(job);
     });
   }
+  // what a review says it is: one with nothing in it (#534: its cycle records left out once tracking was turned off)
+  // isn't all duplicates
+  const stateWords = j => j.new ? "Ready to import" : sgNothing(j) ? "Nothing left to import" : "All duplicates";
   // a review drawn again (f.fresh, above): one opened again (Sources' Waiting for you), or each other one of the
   // profile on the page once an import of it is saved
   const fresh = card => FRAMES.get(card)?.fresh?.();
@@ -516,7 +520,7 @@
     settled(card);
     freshOthers(card, pid);
     FRAMES.get(card).end("done");
-    const c = j.counts || {}, items = countItems(c), sk = j.skipped || {};
+    const c = {...j.counts, ...(j.cycle ? {cycle: j.cycle} : {})}, items = countItems(c), sk = j.skipped || {};   // (cycle: #534)
     // the duplicates skipped, in the review's one count and its words (#508: allHere, a wearable's data there already
     // among them; a lab draw with its results, #497): "10 duplicates skipped, 2 days of activity data and 1 workout among them."
     const was = {duplicates: sk, counts: {results: (c.results || 0) + (sk.results || 0)}};
@@ -619,7 +623,7 @@
     if (c.upcoming) out.push(plural(c.upcoming, ["upcoming appointment", "upcoming appointments"]));
     if (c.payments) out.push(plural(c.payments, ["payment", "payments"]));   // typed in before its counts were kept (#517)
     if (c.entries) out.push(plural(c.entries, ["problem, appointment or weight", "problems, appointments or weights"]));
-    if (c.watch_days) out.push(plural(c.watch_days, ["day", "days"]) + " of watch data");
+    if (c.watch_days) out.push(plural(c.watch_days, EXTRA.find(x => x[0] === "watch_days")[1]));   // as the review says it (#534)
     if (c.workouts) out.push(plural(c.workouts, ["workout", "workouts"]));
     if (c.readings) out.push(plural(c.readings, ["reading taken at home", "readings taken at home"]));   // typed in (#224)
     if (c.heights_set) out.push(plural(c.heights_set, ["height", "heights"]) + " put in About this person (kept there if this is undone)");
@@ -635,10 +639,12 @@
   /* what an Undo asks, of an import as Import history has it (e, GET imports' entry), in one wording wherever it's
      asked (#504; #508: the toast's, Type them in's and Import history's): what goes, in one count (importCounts), the
      files uploaded for it only when it was uploaded, and the lab-name matches its review made, as many as undoing it
-     would forget now (#500, the server's labmap.forgettable: not those another import has used since) */
+     would forget now (#500, the server's labmap.forgettable: not those another import has used since); e.cycle: the
+     cycle records it saved, which only the toast of the person who saved them knows (#534) */
   function undoAsks(e) {
     const n = e.lab_matches || 0, typed = e.origin === "manual";
-    return `Everything this ${typed ? "typed-in" : e.label} import brought is removed: ${importCounts(e.counts, false).toLowerCase()}` +
+    const what = [importCounts(e.counts, false), e.cycle && plural(e.cycle, EXTRA.find(x => x[0] === "cycle")[1])].filter(w => w && w !== "No records").join(", ");
+    return `Everything this ${typed ? "typed-in" : e.label} import brought is removed${what ? ": " + what.toLowerCase() : ""}` +
       (e.upload != null ? ", and the files uploaded for it" : "") + "." +
       (!n ? "" : n === 1 ? " The lab-name match made for it is forgotten too: the next import of that name asks about it again."
        : ` The ${n.toLocaleString()} lab-name matches made for it are forgotten too: the next import of those names asks about them again.`) +
@@ -657,12 +663,12 @@
   /* an Undo from a toast (an upload's card's, Type them in's): asked first as Import history asks it, of the import as
      the history has it now (undoAsks; fallback, as the toast knows it, if the list can't be read), then undone and the
      page told (told). -> false: kept; else told's detail. Throws what went wrong, which the toast says */
-  async function undoAsk(pid, id, fallback) {
+  async function undoAsk(pid, id, fallback, cycle) {
     const path = `profiles/${encodeURIComponent(pid)}/imports`;
     const now = await api(path).then(r => r.ok ? r.json() : null).catch(() => null);
     const list = (now || {}).imports || [], e = list.find(x => x.id === id && x.state === "active") || list.find(x => x.id === id) || fallback;
     if (e.state === "undone") throw new Error("This import was undone already.");   // (elsewhere, #513: not asked about)
-    if (!await ask({title: "Undo this import?", danger: true, action: "Undo import", cancel: "Keep it", message: undoAsks(e)})) return false;
+    if (!await ask({title: "Undo this import?", danger: true, action: "Undo import", cancel: "Keep it", message: undoAsks({...e, cycle})})) return false;
     // the import asked about, by when it was saved too: never another that has its id (#512, from before ids stayed
     // their own); one undone already is refused
     const r = await api(`${path}/${id}/undo${e.state === "active" ? "?at=" + e.at : ""}`, {method: "POST"});
@@ -686,7 +692,7 @@
   }
   /* the Undo of an upload's toast (undoAsk), the card then saying it's undone, and focus on that line (undoneFocus) */
   async function undoImport(card, pid, j) {
-    const said = await undoAsk(pid, j.import_id, {label: j.label || j.importer, counts: j.counts, upload: j.upload_id ?? null});
+    const said = await undoAsk(pid, j.import_id, {label: j.label || j.importer, counts: j.counts, upload: j.upload_id ?? null}, j.cycle);
     if (!said) return false;
     const line = undoneLine();
     card.replaceChildren(line);

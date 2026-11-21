@@ -281,6 +281,11 @@ def freshen(db, pid, jid):
         _freshen(db, pid, jid)
 
 
+def freshen_held(db, pid, jid):
+    """freshen, with preview_lock held already (cycle_tracking.drop_imported, #534)."""
+    _freshen(db, pid, jid)
+
+
 def preview_lock(jid):
     """Held while a waiting preview is read and written again: by freshen, and by turning cycle tracking off
     (cycle_tracking.drop_imported, #526), so neither writes back what the other took out."""
@@ -326,8 +331,13 @@ def _freshen(db, pid, jid):
     db.execute("UPDATE jobs SET summary=? WHERE id=? AND state='preview'", (crypto.enc(json.dumps(report)), jid))
 
 
+# the daily summaries of readings counted on their own (watch_store.measure_counts): home blood pressure and body
+# temperature (apple_health.VITALS_META, the receiver's too) and glucose, not days of activity data (#534)
+_READ_DAILY = ("bp_", "body_temp", "glucose_")
+
+
 def _watch_counts(watch):
-    days = {str(p[0])[:10] for m in watch.get("metrics") or [] if isinstance(m, dict)
+    days = {str(p[0])[:10] for m in watch.get("metrics") or [] if isinstance(m, dict) and not str(m.get("key") or "").startswith(_READ_DAILY)
             for p in m.get("pts") or [] if isinstance(p, list) and p}
     return {"watch_days": len(days), "workouts": len(watch.get("exercise") or []), **watch_store.ecg.counts(watch),   # ECGs (#182)
             **watch_store.measure_counts(watch),   # home readings, glucose, heights (#223); cycle records: the preview's only,
@@ -392,6 +402,8 @@ def _save(db, j):
             summary["counts"].update(watch_days=fresh["watch_days"], workouts=fresh["workouts"],   # what's new of it (#497)
                                      **{k: fresh[k] for k in ("ecgs", "rhythm", "bp_readings", "temp_readings", "glucose_readings",
                                                               "cgm_days", "heights") if fresh.get(k)})   # ECGs (#182), #223
+            if fresh.get("cycle"):   # apart from the counts, which Import history and the activity log show (#223, #534)
+                summary["cycle"] = fresh["cycle"]
         for x in same if iid else ():
             crossmatch.decide(db, pid, who["id"] if who else None, x["other_key"], x["key"], True,
                               [x["other"], {k: x[k] for k in ("name", "t", "value", "unit")}])
@@ -522,9 +534,10 @@ def summarise(data):
 
 # ---------------------------------------------------------------- reading jobs
 
-def describe(r, stamp=None):
+def describe(r, stamp=None, uid=None):
     """A job for the page; with the profile's records stamp, a preview says whether it was read before they changed
-    ("stale")."""
+    ("stale"). The cycle records a saved one brought ("cycle") only to uid, who saved it (#534): never to others
+    on the profile (#223)."""
     mod = registry.get(r["importer"]) if r["importer"] else None
     summary = json.loads(crypto.dec(r["summary"])) if r["summary"] else {}
     out = {"id": r["id"], "profile_id": r["profile_id"], "upload_id": r["upload_id"], "state": r["state"], "stage": r["stage"],
@@ -538,14 +551,16 @@ def describe(r, stamp=None):
             "created": r["created"], "started": r["started"], "finished": r["finished"]}
     if stamp is not None and r["state"] == "preview":
         out["stale"] = summary.get("stamp") != stamp
+    if summary.get("cycle") and uid is not None and uid == (r["confirmed_by"] or r["created_by"]):
+        out["cycle"] = summary["cycle"]
     return out
 
 
-def get(db, pid, jid):
-    """A job; a preview read again first if the profile's records have changed since (freshen)."""
+def get(db, pid, jid, uid=None):
+    """A job; a preview read again first if the profile's records have changed since (freshen). uid: who asks."""
     freshen(db, pid, jid)
     r = db.execute("SELECT * FROM jobs WHERE id=? AND profile_id=?", (jid, pid)).fetchone()
-    return describe(r) if r else None
+    return describe(r, uid=uid) if r else None
 
 
 STATES = ("queued", "running", "preview", "done", "failed", "discarded")
