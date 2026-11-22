@@ -116,18 +116,114 @@ const inWindow = s => s.pts.filter(p => p.ts >= state.from && p.ts <= state.to);
 panZoom(chartsBox, {...mainWindow,
   plot: ev => { const s = ev.target.closest?.(".chart svg, .ck-axis"); return s && s._geom ? s : null; }, span: svgSpan,   // the charts' one axis too (#293)
   start: () => chartsBox.querySelectorAll(".chart svg").forEach(o => o._hover && o._hover(null)), data: () => seriesSpan(SERIES.filter(s => !s.watch && state.sel.has(s.name))),
-  draw: () => { chartsBox.querySelectorAll(".chart svg").forEach(svg => { if (svg._s && svg._geom) drawChart(svg, svg._s, inWindow(svg._s), svg._read, true); }); labAxisDraw(); drawTrack(); },   // and their one axis (#293), and the event track over them (#294)
+  draw: () => { chartsBox.querySelectorAll(".chart svg").forEach(svg => { if (svg._s && svg._geom) drawChart(svg, svg._s, inWindow(svg._s), svg._read, true); }); labAxisDraw(); drawTrack(); stripDraw(); },   // and their one axis (#293), and the event track over them (#294)
   end: () => { renderFilters(); renderCharts(); save(); }});
 // Labs, as a heatmap: the same date window; columns are draw days, so the time axis is the column area
 panZoom($("#hmWrap"), {...mainWindow,
   plot: ev => ev.target.closest?.("#hm, #hmAxis") && $("#hm")._geom ? $("#hm") : null, span: svgSpan, data: () => seriesSpan(hmLabs().filter(labMatch)),
-  draw: () => renderHeatmap(true), end: () => { renderFilters(); renderHeatmap(); save(); }});   // renderHeatmap lives in a later file: call it, do not reference it at load
+  draw: () => { renderHeatmap(true); stripDraw(); }, end: () => { renderFilters(); renderHeatmap(); save(); }});   // renderHeatmap lives in a later file: call it, do not reference it at load
 // Body and activity: all its charts share the records bar's period too ("All" there is the watch and scale data's span)
 panZoom($("#view-health"), {...mainWindow, minSpan: 3 * DAY,
   plot: ev => { const s = ev.target.closest?.("svg"); return s && s._draw && s._geom ? s : null; }, span: svgSpan,
   get: () => hRange(), data: () => WATCH ? (H = H || hData(), [H.first, H.last]) : null,
-  draw: () => { const [a, b] = hRange(); $("#view-health").querySelectorAll("svg").forEach(s => s._draw && s._draw(a, b, true)); },
+  draw: () => { const [a, b] = hRange(); $("#view-health").querySelectorAll("svg").forEach(s => s._draw && s._draw(a, b, true)); stripDraw(); },
   end: () => { renderFilters(); renderHealth(); save(); }});
+/* ---- the overview strip (#295): under the period bar on Labs, Body and activity and the Timeline (on a phone, in the
+   charts' header with the period's pill: core.js phoneBar). Across every year (All's dates, core.js allSpan), how many of
+   the tab's records each stretch holds (chartkit.js ckStripBins: lab results, the phone's readings, every record), the
+   milestones as flags, and the period as a window: dragged by its middle to move it, by an edge to stretch it, a press
+   beside it bringing it there, a milestone's flag picked "Since" it; for the keyboard its edges are two range inputs, a
+   day a step. The charts follow as it moves; hovering a stretch says its count */
+const STRIP_SAYS = {labs: "lab results", health: "readings", timeline: "records"};
+const strip = $("#strip"), stripSvg = strip.querySelector("svg"), stripIn = [...strip.querySelectorAll("input")];
+let stripAt = null, stripMemo = null, stripRaf = 0;   // the strip as last drawn: its scale, bins and window
+const stripItems = tab => tab === "labs" ? EV.filter(e => e.k === "lab").map(e => [e.ts, e.n || 1])
+  : tab === "health" ? SERIES.filter(s => s.watch).flatMap(s => s.pts.map(p => [p.ts, 1])) : EV.filter(e => !e.hidden).map(e => [e.ts, 1]);
+const stripWin = () => state.tab === "health" ? hRange() : [state.from, state.to];   // Body's All: the phone's data's span (health.js)
+// a stretch in words: "March 2025", "Week of Mar 3, 2025", "Jan ’25 – Mar ’25"
+function stripStretch({edges, step: [n, u]}, i) {
+  const t = edges[i];
+  return u === "y" ? String(zdate(t).getFullYear()) : u === "m" ? (n === 1 ? fmtMonth(t) : `${ckMonth(t)} – ${ckMonth(edges[i + 1] - DAY)}`) : (n === 7 ? "Week of " : "") + fmtD(t);
+}
+function stripDraw() {
+  const [a, b] = allSpan(), says = DATA && isFinite(a + b) && STRIP_SAYS[state.tab], w = says ? strip.clientWidth || strip.parentNode.clientWidth : 0;   // (no records with a date: none)
+  const x = ckScale(a, b, 4, w - 4), key = [state.tab, a, b, w].join();
+  if (says && (stripMemo?.key !== key || stripMemo.ev !== EV)) stripMemo = {key, ev: EV, bins: ckStripBins(stripItems(state.tab), a, b, x)};
+  strip.hidden = !says || !stripMemo.bins.n.some(Boolean);
+  if (strip.hidden || !w) return;
+  const h = 40, B = 26, [wa, wb] = stripWin(), clip = t => Math.max(a, Math.min(b, t)), g = [];
+  ckStripBars(g, stripMemo.bins, x, 5, B);
+  ckStripDates(g, a, b, x, B, 38, w - 6);
+  for (const m of MILESTONES) {
+    const t = dayTs(m.date); if (t < a || t > b) continue;
+    const mx = x(t);
+    g.push(el("svg:line", {class: "msflag", x1: mx, x2: mx, y1: 1, y2: B}), el("svg:path", {class: "msflag-head", d: `M${mx},1L${mx + 6},3.5L${mx},6Z`}));
+  }
+  ckStripWindow(g, x(clip(wa)), x(clip(wb)), h);
+  stripSvg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  stripSvg.replaceChildren(...g);
+  const step = stripStretch(stripMemo.bins, 0).startsWith("Week") ? "week" : {d: "day", m: stripMemo.bins.step[0] === 3 ? "quarter" : "month", y: "year"}[stripMemo.bins.step[1]];
+  stripSvg.setAttribute("aria-label", `${says[0].toUpperCase() + says.slice(1)} per ${step}, ${fmtD(a + DAY)} to ${fmtD(b - DAY)}, the period shown as a window on them: ${fmtD(clip(wa))} to ${fmtD(clip(wb))}.`);
+  stripAt = {x, a, b, wa, wb, w};
+  const day = t => Math.round((clip(t) - a) / DAY);
+  stripIn.forEach((inp, i) => { inp.min = 0; inp.max = day(b); inp.value = day(i ? wb : wa); inp.setAttribute("aria-valuetext", fmtD(clip(i ? wb : wa))); });
+}
+/* the period from the strip: shown at once, the tab drawn again once a frame (all of it when it's let go) */
+function stripSet(a, b, now) {
+  const {a: a0, b: b0} = stripAt, w = Math.min(b - a, b0 - a0);   // kept on the strip, as wide as it at most
+  if (a < a0) [a, b] = [a0, a0 + w]; else if (b > b0) [a, b] = [b0 - w, b0];
+  state.from = stripAt.wa = a; state.to = stripAt.wb = b; state.preset = "custom";
+  cancelAnimationFrame(stripRaf);
+  if (now) renderAll(); else stripRaf = requestAnimationFrame(renderAll);
+}
+stripIn.forEach((inp, i) => inp.oninput = () => {
+  const t = stripAt.a + inp.valueAsNumber * DAY, {wa, wb} = stripAt;
+  stripSet(i ? Math.min(wa, t - 2 * DAY) : t, i ? t : Math.max(wb, t + 2 * DAY), true);
+});
+let stripDrag = null;
+const stripPx = ev => { const r = stripSvg.getBoundingClientRect(); return [(ev.clientX - r.left) * stripAt.w / r.width, (ev.clientY - r.top) * 40 / r.height]; };
+// what a press at px takes: an edge ("a", "b"; within 8 px outside the window, or 6 inside one 16 px wide or more), the window to move ("mid"), or null beside it
+function stripGrab(px) {
+  const xa = stripAt.x(stripAt.wa), xb = stripAt.x(stripAt.wb), wide = xb - xa >= 16;
+  if (px < xa) return xa - px <= 8 ? "a" : null;
+  if (px > xb) return px - xb <= 8 ? "b" : null;
+  return wide && px - xa <= 6 ? "a" : wide && xb - px <= 6 ? "b" : "mid";
+}
+const stripMs = (px, py) => py < 9 ? MILESTONES.find(m => Math.abs(stripAt.x(dayTs(m.date)) - px) <= 5) : null;
+strip.addEventListener("pointerdown", ev => {
+  if (!stripAt || ev.button || ev.target.matches("input")) return;
+  const [px, py] = stripPx(ev), t = stripAt.x.inv(px), ms = stripMs(px, py);
+  let grab = stripGrab(px);
+  if (!grab && !ms) { const half = (stripAt.wb - stripAt.wa) / 2; stripSet(t - half, t + half); grab = "mid"; }   // beside it: brought there
+  stripDrag = {grab, t, wa: stripAt.wa, wb: stripAt.wb, ms, moved: false, id: ev.pointerId};
+  strip.setPointerCapture(ev.pointerId); hideTip(); ev.preventDefault();
+});
+strip.addEventListener("pointermove", ev => {
+  if (!stripAt) return;
+  const [px, py] = stripPx(ev), t = stripAt.x.inv(px), d = stripDrag;
+  if (!d) {   // hovering: the stretch's count, or the milestone's name, and how a press would take it
+    const ms = stripMs(px, py), bins = stripMemo.bins, i = bins.edges.findLastIndex(e => e <= t);
+    strip.dataset.grab = ms ? "ms" : stripGrab(px) || "";
+    if (ms) return showTip([el("div", {class: "v", text: "Since " + lcLabel(ms.label)}), el("div", {class: "s", text: fmtD(dayTs(ms.date))})], ev);
+    return i >= 0 && i < bins.n.length ? showTip([el("div", {class: "v", text: `${bins.n[i].toLocaleString("en-US")} ${STRIP_SAYS[state.tab]}`}), el("div", {class: "s", text: stripStretch(bins, i)})], ev) : hideTip();
+  }
+  if (d.id !== ev.pointerId || (!d.moved && Math.abs(t - d.t) < Math.abs(stripAt.x.inv(4) - stripAt.x.inv(0)))) return;
+  d.moved = true;
+  const dt = t - d.t;
+  const at = Math.max(stripAt.a, Math.min(stripAt.b, t));
+  if (d.grab === "a") stripSet(Math.min(at, d.wb - 2 * DAY), d.wb);
+  else if (d.grab === "b") stripSet(d.wa, Math.max(at, d.wa + 2 * DAY));
+  else if (d.grab === "mid") stripSet(d.wa + dt, d.wb + dt);
+});
+const stripUp = ev => {
+  const d = stripDrag; if (!d || d.id !== ev.pointerId) return;
+  stripDrag = null;
+  if (!d.moved && d.ms && ev.type === "pointerup") return applyPreset(msKey(d.ms));   // a milestone's flag: since it
+  if (d.moved || !d.ms) { cancelAnimationFrame(stripRaf); renderAll(); }
+};
+strip.addEventListener("pointerup", stripUp); strip.addEventListener("pointercancel", stripUp);
+strip.addEventListener("pointerleave", () => { if (!stripDrag) hideTip(); });
+
 /* milestone rules on a time chart: a dashed line in --milestone (never the accent, #334) from y0 to y1, label on its own
    row at labelY (null = no labels). A label stays inside the plot, x(a) to R (#312): after its rule, before it near the
    right edge, against that edge, or shortened with "…" to the room there is; its <title> has the full names and dates.

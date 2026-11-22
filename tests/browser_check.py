@@ -2207,7 +2207,7 @@ def main():
         n_info = sum(len(v) for v in help_seen.values())
         check(f"…each ⓘ ({n_info}) opens under it by Enter, focus kept on it, and Escape closes it, focus on it still", n_info >= 30 and not help_keys, help_keys)
         check("…on the pages that have background to give", all(help_seen.get(w) for w in (
-              "records Overview", "records Body and activity", "records Timeline", "records Journal", "records Labs", "records Labs heatmap",
+              "records Overview", "records Body and activity", "records Journal", "records Labs", "records Labs heatmap",   # (the Timeline's was how to pan, #295)
               "sources upload", "sources portals", "sources phone", "sharing links", "sharing calendar", "sharing export",
               "settings dashboard", "settings about", "account security", "admin accounts", "admin backups", "admin outside")), help_seen)
         # a card alone in its group (Sources → Upload files): its ⓘ beside the h1, and back in the card beside its own
@@ -8994,13 +8994,13 @@ def main():
                   and "Insurance claims by year" in page.inner_text("#view-costs"), labels)
             page.click("#costBy button:text-is('By month')")
             js("costState.by = ''")
-            other = js("(m => m ? msKey(m) : null)(MILESTONES.find(m => m !== primaryMs()))")   # the primary one is a button
-            check("the demo has a milestone besides the primary one, for More…", other is not None)
-            if other:
-                page.click("#periodMoreBtn")
-                page.click(f"#periodMoreList [data-period={other}]")
+            other = js("(m => m ? [msKey(m), 'Since ' + lcLabel(m.label)] : null)(MILESTONES.find(m => m !== primaryMs()))")
+            check("the demo has a milestone besides the primary one", other is not None)
+            if other:   # each milestone a preset button of its own (#295)
+                page.click(f"#presets button:text-is('{other[1]}')")
+                other = other[0]
                 settle(300)
-                check("period: since a milestone, picked from More…", js("[state.preset, isoDay(state.from)]") == [other, js("k => msOf(k).date", other)],
+                check("period: since a milestone besides the primary one, picked from its own button (#295)", js("[state.preset, isoDay(state.from)]") == [other, js("k => msOf(k).date", other)],
                       js("[state.preset, isoDay(state.from)]"))
             open_tab("health")
             start = js("isoDay(state.max - 120 * DAY)")
@@ -9077,9 +9077,9 @@ def main():
                       and js("['presets', 'periodMoreBtn'].every(id => !document.getElementById(id).checkVisibility())"), fits)
             page.set_viewport_size({"width": 1400, "height": 900})
 
-            # ---- the period's controls (#191): each kind of period (a preset, All, the primary milestone's button, another
-            # milestone and a calendar year from More…, custom dates) shows exactly one chosen control and its words; the
-            # date boxes only for custom dates, Clear dates going back; More… is a menu worked by keyboard (arrow keys,
+            # ---- the period's controls (#191): each kind of period (a preset, All, each milestone's button (#295), a
+            # calendar year from More…, custom dates) shows exactly one chosen control and its words; the date boxes only
+            # for custom dates, the Reset chip going back (#295); More… is a menu worked by keyboard (arrow keys,
             # Escape back to its button), closed by a click outside, nothing in it cut off and its text readable, in light
             # and dark at 1400 and 375 px; old saved period keys still open
             period = r"""(() => {
@@ -9098,7 +9098,7 @@ def main():
             kinds = [("2y", "#presets button:text-is('2y')", ["2y"], "Last 2 years", []),
                      ("all", "#presets button:text-is('All')", ["All"], "Everything on file", []),
                      (pm[0], f"#presets button:text-is('{pm[1]}')", [pm[1]], pm[2] + " – today", []),
-                     (om[0], f"#periodMoreList [data-period={om[0]}]", ["More: " + om[1]], om[2] + " – today", [om[0]]),
+                     (om[0], f"#presets button:text-is('{om[1]}')", [om[1]], om[2] + " – today", []),
                      (yr, f"#periodMoreList [data-period='{yr}']", ["More: " + yr], yr, [yr])]
             for key, sel, chosen, words, ticked in kinds:
                 if sel.startswith("#periodMoreList"):
@@ -9116,10 +9116,122 @@ def main():
                   got == {"chosen": ["More: Custom dates"], "words": None, "dates": True, "ticked": ["custom"]} and js("document.activeElement.id") == "from"
                   and js("[document.getElementById('from').value, document.getElementById('to').value]") == [f"{yr}-01-01", f"{yr}-12-31"],
                   [got, js("document.activeElement.id")])
-            page.click("#datesClear")
+            reset = js("(b => [b.textContent, b.dataset.tip, b.previousElementSibling.id, b.checkVisibility()])(document.getElementById('periodReset'))")
+            page.click("#periodReset")
             settle(250)
-            check("…and Clear dates goes back to the period before, the boxes gone", js(period)["chosen"] == ["More: " + yr] and not js(period)["dates"]
-                  and js("document.activeElement.id") == "periodMoreBtn", [js(period), js("document.activeElement.id")])
+            check("…and the Reset chip after the date boxes goes back to the period before, the boxes and the chip gone (#295)",
+                  reset == ["Reset", "Back to " + yr, "dates", True] and js(period)["chosen"] == ["More: " + yr] and not js(period)["dates"]
+                  and js("document.activeElement.id") == "periodMoreBtn" and page.is_hidden("#periodReset"), [reset, js(period), js("document.activeElement.id")])
+            # ---- the overview strip (#295): under the period bar on Labs, Body and activity and the Timeline (not on Costs or
+            # Medications), 40 px: the tab's records per stretch across every year, the milestones as flags and the period
+            # a window. Dragged by its middle it moves the shared period, as wide; by an edge, that edge; a press beside it
+            # brings it there; a milestone's flag is "Since" it; its edges are two range inputs, a day a step, saying their
+            # dates; Reset goes back to the preset. The pan hints are gone. On a phone it's in the charts' header, sharing a
+            # row (Labs: Show's; the Timeline: the pill's), and nothing sticks out; axe clean with it focused, light and dark
+            STRIP = """() => { const s = document.getElementById('strip'), r = s.getBoundingClientRect(), b = s.querySelector('svg').getBoundingClientRect();
+              return {shown: s.checkVisibility(), h: Math.round(r.height), in: s.parentNode.className, top: Math.round(r.top), left: b.left, w: b.width,
+                      xa: stripAt && b.left + stripAt.x(stripAt.wa) * b.width / stripAt.w, xb: stripAt && b.left + stripAt.x(stripAt.wb) * b.width / stripAt.w,
+                      counted: stripMemo && stripMemo.bins.n.reduce((a, v) => a + v, 0),
+                      items: stripAt && stripItems(state.tab).filter(([t]) => t >= stripAt.a && t < stripAt.b).reduce((a, [, n]) => a + n, 0),
+                      win: stripWin(), preset: state.preset, reset: document.getElementById('periodReset').checkVisibility(), y: r.top + 18}; }"""
+            seen295 = {}
+            for t in ("labs", "health", "timeline", "costs", "medications"):
+                open_tab(t)
+                js("applyPreset('2y')")
+                settle(300)
+                seen295[t] = js(STRIP)
+            check("the overview strip: 40 px under the period bar on Labs, Body and activity and the Timeline, counting each one's records (lab results, "
+                  "the phone's readings, every record), and not on Costs or Medications (#295)",
+                  all(seen295[t]["shown"] and seen295[t]["h"] == 40 and seen295[t]["in"] == "filters" and seen295[t]["counted"] == seen295[t]["items"] > 0
+                      for t in ("labs", "health", "timeline")) and not seen295["costs"]["shown"] and not seen295["medications"]["shown"],
+                  {t: {k: v[k] for k in ("shown", "h", "in", "counted", "items")} for t, v in seen295.items()})
+            drag295 = {}
+            for t in ("labs", "health", "timeline"):
+                open_tab(t)
+                js("applyPreset('1y')")
+                js("scrollTo(0, 0)")   # the strip in sight
+                settle(800)   # (the tab's view transition over, which takes the pointer while it runs)
+                g = js(STRIP)
+                mid, w0 = (g["xa"] + g["xb"]) / 2, g["win"][1] - g["win"][0]
+                page.mouse.move(mid, g["y"])
+                page.mouse.down()
+                page.mouse.move(mid - 60, g["y"], steps=6)
+                page.mouse.up()
+                settle(300)
+                moved = js(STRIP)
+                drag295[t] = {"custom": moved["preset"] == "custom", "earlier": moved["win"][0] < g["win"][0] - 20 * 864e5,
+                              "as wide": abs((moved["win"][1] - moved["win"][0]) - w0) < 864e5, "charts follow": js("[state.from, state.to]") == moved["win"], "reset": moved["reset"]}
+            check("…dragged by the window's middle, the shared period moves, as wide, on each tab, and Reset shows (#295)",
+                  all(all(v.values()) for v in drag295.values()), drag295)
+            open_tab("labs")
+            js("applyPreset('1y'); scrollTo(0, 0)")
+            settle(800)
+            g = js(STRIP)
+            page.mouse.move(g["xa"] + 1, g["y"])
+            page.mouse.down()
+            page.mouse.move(g["xa"] - 80, g["y"], steps=6)
+            page.mouse.up()
+            settle(300)
+            edge = js(STRIP)
+            page.mouse.click(g["left"] + 20, g["y"])   # beside the window, near the strip's start
+            settle(300)
+            beside = js(STRIP)
+            ms = js("(() => { const m = MILESTONES.find(m => { const t = dayTs(m.date); return t > stripAt.a && t < stripAt.b; }); return m && msKey(m); })()")
+            page.mouse.click(js("k => { const s = document.querySelector('#strip svg').getBoundingClientRect(); return s.left + stripAt.x(dayTs(msOf(k).date)) * s.width / stripAt.w; }", ms), g["y"] - 14)
+            settle(300)
+            check("…dragged by its edge, only that edge moves; a press beside it brings it there; a milestone's flag picks “Since” it (#295)",
+                  edge["win"][0] < g["win"][0] - 20 * 864e5 and abs(edge["win"][1] - g["win"][1]) < 1000 and beside["win"][0] < edge["win"][0]
+                  and beside["xa"] <= g["left"] + 21 and js("state.preset") == ms, [g["win"], edge["win"], beside["win"], ms, js("state.preset")])
+            js("applyPreset('1y')")
+            settle(300)
+            page.focus("#strip input:first-of-type")
+            before = js("[state.from, state.to]")
+            for _ in range(3):
+                page.keyboard.press("ArrowRight")
+            settle(300)
+            keys = js("""b => [state.preset, Math.round((state.from - b[0]) / DAY), state.to - b[1], document.activeElement.matches('#strip input:first-of-type'),
+                          document.activeElement.getAttribute('aria-label'), document.activeElement.getAttribute('aria-valuetext') === fmtD(state.from)]""", before)
+            page.keyboard.press("Tab")
+            page.keyboard.press("End")
+            settle(300)
+            end = js("[document.activeElement.getAttribute('aria-label'), state.to >= stripAt.b - DAY, document.activeElement.getAttribute('aria-valuetext') === fmtD(state.to)]")
+            ring = js("(() => { const s = document.getElementById('strip'), b = s.querySelector('.sb-b'); return [getComputedStyle(s).outlineStyle, getComputedStyle(b).fill === getComputedStyle(s).outlineColor]; })()")
+            bad = []
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                settle(150)
+                bad += axe_check(page, f"the overview strip focused ({theme})")[0]
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            check("…for the keyboard its edges are range inputs: → three days later, End to the strip's end, each saying its date; the focused edge's grip "
+                  "filled and the strip ringed; axe clean, light and dark (#295)",
+                  keys == ["custom", 3, 0, True, "Period starts", True] and end == ["Period ends", True, True] and ring == ["solid", True] and not bad, [keys, end, ring, bad[:4]])
+            page.click("#periodReset")
+            settle(300)
+            check("…and Reset goes back to the preset, focus on it, the chip gone (#295)",
+                  js("[state.preset, document.activeElement.textContent, document.getElementById('periodReset').checkVisibility()]") == ["1y", "1y", False],
+                  js("[state.preset, document.activeElement.textContent]"))
+            hints = js("""[...document.querySelectorAll('#view-labs .about-words, #view-health .about-words, #view-timeline .about-words')]
+                .map(a => a.textContent).filter(t => /drag|pinch|double-click|double-tap/i.test(t))""")
+            check("…and the hints on how to drag, zoom and double-click are gone from Labs, its heatmap, Body and activity and the Timeline (#295)", not hints, hints)
+            phone295 = {}
+            for w in (412, 375, 360, 320):
+                page.set_viewport_size({"width": w, "height": 800})
+                for t in ("labs", "health", "timeline"):
+                    open_tab(t)
+                    settle(300)
+                    g = js(STRIP)
+                    # sharing a row: beside another of the header's controls, or under a row with less than its 160 px left
+                    shares = js("""() => { const s = document.getElementById('strip'), r = s.getBoundingClientRect(), box = s.parentNode.getBoundingClientRect();
+                      const kids = [...s.parentNode.children].filter(k => k !== s && k.checkVisibility()).map(k => k.getBoundingClientRect());
+                      if (kids.some(k => k.top < r.bottom && k.bottom > r.top)) return true;
+                      const above = kids.filter(k => k.bottom <= r.top), last = Math.max(...above.filter(k => k.bottom > Math.max(...above.map(a => a.bottom)) - 4).map(k => k.right));
+                      return box.right - last - 8 < 160; }""")
+                    phone295[f"{t} {w}"] = {"in": g["in"], "shown": g["shown"], "shares": shares, "fits": phone_fits(page, f"{t} at {w} px")}
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(300)
+            check("…on a phone it's in the charts' header (Labs, Body), the Timeline's in its bar, sharing a row wherever one has room for it, nothing "
+                  "sticking out at 412, 375, 360 and 320 px (#295)",
+                  all(v["shown"] and not v["fits"] and v["in"] == ("filters" if k.startswith("timeline") else "toolbar chart-bar") and v["shares"] for k, v in phone295.items()), phone295)
             js("applyPreset('2y')")
             settle(200)
             menu_state = "[document.getElementById('periodMoreBtn').getAttribute('aria-expanded'), !document.getElementById('periodMoreList').matches(':popover-open'), document.activeElement.id || document.activeElement.textContent]"
@@ -9136,7 +9248,7 @@ def main():
             last = js("document.activeElement.dataset.period")
             page.keyboard.press("Escape")
             check("…Enter opens it on its first item, arrow keys and End move, Escape closes it and focus goes back to the button",
-                  first[:2] == ["true", False] and first[2].startswith(om[1]) and second and last == "custom"
+                  first[:2] == ["true", False] and first[2] == js("periodYears()[0]") and second and last == "custom"
                   and js(menu_state) == ["false", True, "periodMoreBtn"], [first, second, last, js(menu_state)])
             page.keyboard.press("ArrowDown")
             page.keyboard.press("ArrowDown")
@@ -9250,15 +9362,15 @@ def main():
             page.dispatch_event("#from", "change")
             settle(300)
             got = js(pill)
-            check("…a date typed in its box makes the period custom, the sheet open and the pill naming the dates, Clear dates there",
-                  got[1] == "custom" and got[3] and js("isoDay(state.from)") == f"{yr}-03-01" and got[0].startswith("Period: Mar 1, " + yr)
-                  and page.is_visible("dialog.sheet[open] #datesClear"), got)
-            page.click("dialog.sheet[open] #datesClear")
-            settle(300)
-            check("…and Clear dates goes back to the period before, focus on it in the sheet",
-                  js("state.preset") == "6m" and js("document.activeElement.dataset.period") == "6m" and page.is_hidden("#datesClear"), js(pill))
+            check("…a date typed in its box makes the period custom, the sheet open and the pill naming the dates",
+                  got[1] == "custom" and got[3] and js("isoDay(state.from)") == f"{yr}-03-01" and got[0].startswith("Period: Mar 1, " + yr), got)
             page.keyboard.press("Escape")
             settle(300)
+            beside = js("document.getElementById('periodReset').previousElementSibling.classList.contains('period-pick')")
+            page.click("#periodReset")
+            settle(300)
+            check("…and the Reset chip beside the pill goes back to the period before, focus on the pill (#295)",
+                  beside and js("state.preset") == "6m" and js("document.activeElement.id") == "periodPill" and page.is_hidden("#periodReset"), [beside, js(pill)])
             page.set_viewport_size({"width": 1400, "height": 900})
             settle(300)   # the bar moves its parts back on the media query's change, after the resize
             check("…and wider than a phone the presets, More… and the date boxes are back in the records bar, the search after the kinds (#277), the pill gone",
@@ -9285,7 +9397,7 @@ def main():
             check("the period menu at 740×360 and 800×450 opens all on the screen, under or over More…, scrolling inside where it must (#357)", not bad, bad)
             page.set_viewport_size({"width": 1400, "height": 900})
             # periods saved before #191: "dx" (the primary milestone), a milestone, a year
-            for key, chosen in (("dx", [pm[1]]), (om[0], ["More: " + om[1]]), (yr, ["More: " + yr])):
+            for key, chosen in (("dx", [pm[1]]), (om[0], [om[1]]), (yr, ["More: " + yr])):   # (each milestone a button, #295)
                 js("k => localStorage.setItem(stateKey(), JSON.stringify({...JSON.parse(localStorage.getItem(stateKey())), preset: k}))", key)
                 page.reload()
                 page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && booted", timeout=20000)
@@ -9430,11 +9542,11 @@ def main():
             page.keyboard.press("Escape")
             page.keyboard.press("Escape")
             settle(300)
-            titled = js("""() => ['#tab-health', '#datesClear', '#presets button', '#dmoreList button'].flatMap(s => [...document.querySelectorAll(s)])
+            titled = js("""() => ['#tab-health', '#periodReset', '#presets button', '#dmoreList button'].flatMap(s => [...document.querySelectorAll(s)])
                 .filter(b => b.hasAttribute('title')).map(b => b.id || b.textContent)""")
-            check("…and the controls whose title said what's on no screen have tips, their description on focus: the Body and activity tab, the milestone preset, Clear dates, Hide",
+            check("…and the controls whose title said what's on no screen have tips, their description on focus: the Body and activity tab, the milestone preset, Reset, Hide",
                   health and health[1] == "Watch, sleep and smart-scale data" and preset and preset_ax and preset_ax[1] == preset[1]
-                  and hide_ax and hide_ax[1] == "Leave this event out of the records" and js("document.getElementById('datesClear').dataset.tip || ''").startswith("Back to ")
+                  and hide_ax and hide_ax[1] == "Leave this event out of the records" and js("document.getElementById('periodReset').dataset.tip || ''").startswith("Back to ")
                   and not titled, [health, preset, preset_ax, hide_ax, titled])
             open_tab("labs")
             settle(300)
@@ -10163,8 +10275,8 @@ def main():
             info = js("[document.getElementById('chartsInfo').matches(':popover-open'), document.getElementById('chartsInfo').textContent.replace(/\\s+/g, ' ').trim(), document.activeElement.id]")
             page.keyboard.press("Enter")
             settle(200)
-            check("…the ⓘ opens and closes by Enter, with the drag hint and how to zoom, focus kept on it",
-                  info[0] is True and "Drag any chart sideways" in info[1] and "pinch to zoom" in info[1] and info[2] == "chartsInfoBtn"
+            check("…the ⓘ opens and closes by Enter, saying how to compare a date across the charts and no longer how to pan (the overview strip shows it, #295), focus kept on it",
+                  info[0] is True and "same date on every chart" in info[1] and not re.search(r"drag|pinch|double-click", info[1], re.I) and info[2] == "chartsInfoBtn"
                   and not js("document.getElementById('chartsInfo').matches(':popover-open')"), info)
             for w in (390, 375, 320):   # inside a 12 px gutter (#441): at 390 and 375 px it touched the screen's left edge
                 page.set_viewport_size({"width": w, "height": 800})   # (on a phone the legend is in place in Show's box, #615)
