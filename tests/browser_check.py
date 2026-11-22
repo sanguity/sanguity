@@ -3928,6 +3928,7 @@ def main():
             settle(200)
             left291 = js("[...document.querySelectorAll('#view-health svg.ck .cross')].filter(c => c.getAttribute('visibility') === 'visible').length")
             keys291 = js("[...document.querySelectorAll('#h-body .legend i, #h-heart .legend i')].map(i => [i.parentElement.textContent, i.className])")
+            cal561 = js("[...document.querySelectorAll('#h-activity svg:not(.ck):not(.icon) text')].map(t => t.textContent).filter(t => /\\d/.test(t))")   # the workouts' calendar, 87 weeks
             js("[state.preset, state.from, state.to] = window._was291; renderAll()")
             settle(300)
             check("Body and activity (#291): on All its time axes are months over their years, more than one year named, none overlapping, "
@@ -3938,6 +3939,8 @@ def main():
                   and abs(sync291["tipTop"]) <= 1 and left291 == 0, [sync291, left291])
             check("…and its legends key a line with a short line and a visit's reading with a ring",
                   ["14-day average", "line"] in keys291 and ["Clinic visit", "ring"] in keys291 and ["Resting", "line"] in keys291, keys291)
+            check("…the workouts' calendar names its months “Sep ’26” on All, never “Sep 26”, which reads as a day (#561)",
+                  cal561 and all(re.match(r"^[A-Z][a-z]{2} ’\d\d$", t) for t in cal561), cal561)
             for k in ("#h-body", "#h-heart", "#h-bp", "#h-glucose", "#h-temp", "#h-oxygen", "#h-resp", "#h-sleep", "#h-activity", "#h-vo2"):
                 page.click(f"{k} .view-seg button:text-is('Table')")
                 settle(200)
@@ -3993,6 +3996,19 @@ def main():
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
             check("Costs (#250): the running totals' end labels are in ink, 4.5:1 against the card in light and dark, each after a line key in its colour",
                   len(ends) == 4 and all(i and k and contrast(f, bg) >= 4.5 for _, _, f, i, bg, k in ends), [e + [contrast(e[2], e[4])] for e in ends])
+            # #561: Costs' month labels, the claims by month and the running totals, on 1y and All, are "Sep ’26", never
+            # "Sep 26", which reads as a day
+            was561 = js("[state.preset, state.from, state.to, costState.view]")
+            months561 = {}
+            for view in ("claims", "paid"):
+                for per in ("1y", "all"):
+                    js("([v, p]) => { costState.view = v; applyPreset(p); renderCosts(); }", [view, per])
+                    settle(300)
+                    months561[f"{view} {per}"] = js("[...document.querySelectorAll('#view-costs svg text')].map(t => t.textContent).filter(t => /^[A-Z][a-z]{2} [’']?\\d{1,2}$/.test(t))")
+            js("w => { [state.preset, state.from, state.to, costState.view] = w; renderAll(); }", was561)
+            settle(300)
+            check("Costs (#561): the charts' months are written “Sep ’26”, none as “Sep 26”, which reads as a day, on 1y and All",
+                  any(months561.values()) and all(re.match(r"^[A-Z][a-z]{2} ’\d\d$", m) for v in months561.values() for m in v), months561)
             # ---- Costs (#278): Claims | What you paid, a pick-one pair, each view with three figures to read first and the
             # rest under More figures, open or shut as left; at 1400 px the claims' chart on the first screen; money
             # right-aligned in tabular figures, a status only when it isn't the usual "processed"; at 375 px each claim a
@@ -4627,7 +4643,7 @@ def main():
             check("the heatmap's month lines don't take a tap or a hover: the cell under one's pixel does (#479)", line479 == ["rect", "none"], line479)
             under479 = js("""(() => { const c = document.querySelector('#hm rect.cell'), ls = [...document.querySelectorAll('#hm line')].filter(l => l.getAttribute('stroke') === 'var(--grid)');
                 const last = [...document.querySelectorAll('#hm rect.cell')].map(c => c.dataset.k).sort().at(-1), ms = [0, 1].map(b => { const d = new Date(dayTs(last.slice(0, 7) + '-15')); d.setMonth(d.getMonth() - b);
-                  return zdate(d.getTime()).toLocaleDateString(undefined, {month: 'short', year: '2-digit'}); });
+                  return ckMonth(d.getTime()); });
                 const labels = [...document.querySelectorAll('#hmAxis text')].map(t => t.textContent);
                 return [ls.length > 0 && ls.every(l => l.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING), labels.includes(ms[0]), ms, labels.slice(-3)]; })()""")
             check("…drawn under the cells, so a month's first draw keeps its colour; and the latest month is named on the axis (#479, #481)",
@@ -4644,6 +4660,9 @@ def main():
                 over485[per] = js(OVER485)
             check("…in 90 days (one draw day) and All, no two axis labels meet and each is inside the strip: the latest month isn't drawn over “Draw date” (#485)",
                   all(v == [[], []] for v in over485.values()), over485)
+            hm561 = js("[...document.querySelectorAll('#hmAxis text')].map(t => t.textContent).filter(t => /\\d/.test(t))")   # (on All, as left above)
+            check("…and its months are written “Sep ’26”, never “Sep 26”, which reads as a day (#561)",
+                  hm561 and all(re.match(r"^[A-Z][a-z]{2} ’\d\d$", t) for t in hm561), hm561)
             for w476 in (320, 375):
                 page.set_viewport_size({"width": w476, "height": 800})
                 settle(400)

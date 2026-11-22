@@ -449,7 +449,7 @@ function drawPaidCum(svg, claimRows, payRows, settled) {
   g.push(el("svg:line", {x1: L, x2: R, y1: B, y2: B, stroke: "var(--axis)"}));
   const months = Math.max(1, Math.round((t1 - t0) / 2.63e9)), step = Math.max(1, Math.ceil(months / Math.max(2, Math.floor((R - L) / 60))));
   for (let d = zdate(t0), i = (d.setDate(1), d.setHours(0, 0, 0, 0), d.setMonth(d.getMonth() + 1), 0); d.getTime() <= t1; d.setMonth(d.getMonth() + 1), i++)
-    if (i % step === 0) g.push(el("svg:text", {x: x(d.getTime()), y: h - 6, "text-anchor": "middle", text: d.toLocaleDateString(undefined, {month: "short", year: "2-digit"})}));
+    if (i % step === 0) g.push(el("svg:text", {x: x(d.getTime()), y: h - 6, "text-anchor": "middle", text: ckMonth(d.getTime())}));
   const color = ["var(--c-imaging)", "var(--c-procedure)"], label = ["Your share", "Bills paid"];
   series.forEach((s, i) => {
     if (!s.length) return;
@@ -542,7 +542,7 @@ function drawCostBars(svg, rows, by = "month") {
     const yp = y(m.paid), yo = y(m.paid + m.owe);
     if (m.paid > 0) g.push(el("svg:rect", {x: cx - bw / 2, y: yp, width: bw, height: Math.max(0, B - yp), fill: "var(--c-lab)", rx: m.owe > 0 && B - yo > 3 ? 0 : 2}));
     if (m.owe > 0) g.push(el("svg:rect", {x: cx - bw / 2, y: yo, width: bw, height: Math.max(1, yp - yo - (m.paid > 0 ? 1 : 0)), fill: "var(--c-imaging)", rx: 2}));
-    if (i % every === 0) g.push(el("svg:text", {x: cx, y: h - 6, "text-anchor": "middle", text: yearly ? k : zdate(dayTs(k + "-15")).toLocaleDateString(undefined, {month: "short", year: "2-digit"})}));
+    if (i % every === 0) g.push(el("svg:text", {x: cx, y: h - 6, "text-anchor": "middle", text: yearly ? k : ckMonth(dayTs(k + "-15"))}));
     const hit = el("svg:rect", {x: L + slot * i, y: T, width: slot, height: B - T, fill: "transparent", style: "cursor:pointer"});
     hit.addEventListener("pointermove", ev => showTip([el("div", {class: "v", text: usd(m.paid + m.owe)}), el("div", {class: "s", text: yearly ? k : zdate(dayTs(k + "-15")).toLocaleDateString(undefined, {month: "long", year: "numeric"})}),
       el("div", {class: "s"}, el("span", {class: "k", style: {background: "var(--c-lab)"}}), `Insurance paid ${usd(m.paid)}`),

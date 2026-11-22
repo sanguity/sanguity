@@ -115,7 +115,7 @@ function renderHeatmap() {
     const cx = colX.get(k);
     lines.push(el("svg:line", {x1: cx, x2: cx, y1: top - 2, y2: H, stroke: "var(--grid)", "pointer-events": "none"}));
     ax.push(el("svg:line", {x1: cx, x2: cx, y1: 0, y2: 5, stroke: "var(--axis)"}));
-    const t = zdate(ts).toLocaleDateString(undefined, {month: "short", year: "2-digit"});
+    const t = ckMonth(ts);   // "Sep ’26", never a day's "Sep 26" (#561)
     lastT = null;
     // 44 px apart and 6 px clear of the one before as measured (#485: a French "sept. 25" is 43 px wide), and none that
     // would run past the grid's end, not cut there (#476)
