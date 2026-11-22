@@ -40,7 +40,10 @@ document.fonts.addEventListener("loadingdone", () => labelSizes.clear());
 
 /* ---- the time axis: ticks at two levels, the finer over the coarser: days over "Sep 2026", months over "2026"; years
    alone in one row. The step is the smallest whose labels fit side by side, 44 px apart at least: more ticks on a wider
-   or zoomed chart, as many on every chart of the same width and period. */
+   or zoomed chart, as many on every chart of the same width and period. A month is never written so that it reads as a
+   day ("Sep 26", #561): over its year, or where a row has room for one label only, as ckMonth writes it (Costs' charts,
+   the heatmap's axis, the workouts' calendar) */
+const ckMonth = t => { const d = zdate(t); return `${d.toLocaleDateString(undefined, {month: "short"})} ’${String(d.getFullYear()).slice(2)}`; };   // "Sep ’26"
 const CK_STEPS = [[1, "d"], [2, "d"], [7, "d"], [14, "d"], [1, "m"], [2, "m"], [3, "m"], [6, "m"], [1, "y"], [2, "y"], [5, "y"], [10, "y"], [20, "y"]];
 const CK_DAYS = {d: 1, m: 30.44, y: 365.25};
 /* the ticks of one step from a to b, each {t, label, unit}: unit names the coarser level it's in (its month, its year) */

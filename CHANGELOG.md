@@ -1546,6 +1546,9 @@ Everything on `main` so far; it becomes the first tagged release.
   the plot beside the crosshair, clear of the point under the pointer. A legend's key is drawn like its mark: a short
   line for a line, a dot for a reading, a ring for a visit's, a wash for a range. Each result's own range band, the
   ▲/▼/◆ marks, keyboard stepping, the Latest readout and Chart | Table are unchanged.
+- **A chart's month no longer reads as a day** (#561): Costs' two charts, the Labs heatmap's axis and the workouts'
+  calendar on a long period wrote September 2026 as "Sep 26". They now write "Sep ’26". Labs and Body and activity
+  put the months over their years (#291).
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

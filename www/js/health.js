@@ -395,7 +395,7 @@ function renderHealth() {
       for (let wk = 0; wk < weeks; wk++) for (let dd = 0; dd < 7; dd++) {
         const t = start.getTime() + (wk * 7 + dd) * DAY; if (t < a - DAY || t > b) continue;
         const k = isoDay(t), v = byDay.get(k), cx = L + wk * (cs + gap), cy = 14 + dd * (cs + gap);
-        const m = zdate(t).getMonth(); if (dd === 0 && m !== lastM && (weeks < 60 || m % 3 === 0)) { lastM = m; g.push(el("svg:text", {x: cx, y: 10, text: zdate(t).toLocaleDateString(undefined, weeks > 60 ? {month: "short", year: "2-digit"} : {month: "short"})})); }
+        const m = zdate(t).getMonth(); if (dd === 0 && m !== lastM && (weeks < 60 || m % 3 === 0)) { lastM = m; g.push(el("svg:text", {x: cx, y: 10, text: weeks > 60 ? ckMonth(t) : zdate(t).toLocaleDateString(undefined, {month: "short"})})); }
         const fill = !v ? "var(--grid)" : v.min >= 60 ? "var(--seq1)" : v.min >= 30 ? "var(--seq2)" : "var(--seq3)";
         const r = el("svg:rect", {x: cx, y: cy, width: cs, height: cs, rx: cs > 6 ? 2 : 0, fill});
         if (v) { r.style.cursor = "default"; r.addEventListener("pointermove", ev => showTip([el("div", {class: "v", text: fmtD(t)}), ...v.list.map(x => el("div", {class: "s", text: x.pt ? `${x.rule} appointment${x.who ? " with " + x.who : ""} · counted as ${x.min} min` : `${x.name} · ${x.min} min`}))], ev)); r.addEventListener("pointerleave", hideTip); }
