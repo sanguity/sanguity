@@ -2325,6 +2325,13 @@ Everything on `main` so far; it becomes the first tagged release.
   look-alike back, and Install activity says it was kept ("kept the lab name match for “X” → “Y”"), not changed from
   “Y” to “Y”. The upgrade no longer marks a match an admin had changed as to check. And a review's choice for a name
   whose match is to check is remembered in its place, as the review says.
+- **Share links: each section's line names what its page shows, and Procedures sends only that** (#576): the line on
+  the share form (and the link's page) for each section is the owner's account of what a holder sees, and several left
+  things out: Costs' Service column naming the care, a hospital stay's nights, admission type and reason, each
+  medication's status and that one started before the link's dates is listed, Immunizations' "by whom", the results'
+  panel, names and trend, the journal's severity and mood. Each line now names every column and detail its page shows.
+  Procedures, whose page shows a date, kind and title, was also sent each one's clinician, status and hospital; it's
+  sent only those three. A server test ties each section's sent fields to the words of its line.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

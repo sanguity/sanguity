@@ -179,6 +179,90 @@ class ShareLinks(unittest.TestCase):
         self.assertNotIn("REPORTTEXT", json.dumps(j))
         self.assertNotIn("DETAILNOTE", json.dumps(j))
 
+    # #576: what each section sends, by field (a measure's block: by column), and the words of its line on the owner's
+    # form (and the link's page) that name it. A field sent but not here, or named here but not in its line, fails
+    SENT = {
+        "visits": {"t": ["date"], "end": ["first and last days"], "kind": ["hospital stay"], "title": ["the title"],
+                   "sub": ["the clinician and clinic", "where it was", "how many nights", "reason for admission", "admission type"]},
+        "procedures": {"t": ["the date"], "kind": ["the kind"], "title": ["the title"]},
+        "medications": {"name": ["the name"], "status": ["status"], "instructions": ["the instructions"],
+                        "since": ["started"], "until": ["stopped"]},
+        "results": {"label": ["the profile's name for it"], "name": ["its reports' name"], "panel": ["panel"], "unit": ["unit"],
+                    "results": ["how many there are"], "results.t": ["date"], "results.value": ["value"],
+                    "results.v": ["a trend line"], "results.range": ["reference range"], "results.flag": ["flag"]},
+        "appointments": {"t": ["the date and time"], "title": ["the title"], "who": ["with whom"], "where": ["where"]},
+        "journal": {"t": ["date and time"], "kind": ["notes, symptoms, side effects and moods"], "title": ["its title"],
+                    "note": ["what it says"], "severity": ["severity"], "mood": ["mood and energy"], "energy": ["mood and energy"],
+                    "med": ["the medication an entry is linked to"], "where": ["where on the body"],
+                    "group": ["the symptom group it was logged with"], "photos": ["the photos attached"],   # (photos: Photos in
+                    "photos.id": ["the photos attached"], "photos.alt": ["with what each shows"]},       # the journal's line)
+        "journal_photos": {"photos": ["the photos attached"]},   # (sent in the journal's entries, above)
+        "costs": {"t": ["date"], "title": ["the service it was for"], "provider": ["the provider"], "billed": ["what was billed"],
+                  "paid": ["what insurance paid"], "owe": ["your share"]},
+        "about": {"birthDate": ["the birth date"], "sex": ["the sex labs base reference ranges on"], "heights": ["each height"],
+                  "heights.date": ["with its date"], "heights.cm": ["each height"], "heights.text": ["each height"]},
+        # the measures (measures.py): by each column's heading, its unit and a glucose range's numbers left out
+        "home_bp": {"Date and time": ["the date and time"], "Systolic/diastolic": ["both pressures"], "Pulse": ["the pulse"],
+                    "Device": ["the device"]},
+        "glucose": {"Date": ["each day"], "Readings": ["each reading"], "Low–high": ["lowest and highest"], "Average": ["the average"],
+                    "#–#": ["time in the standard published ranges"], "Below #": ["time in the standard published ranges"],
+                    "Above #": ["time in the standard published ranges"]},
+        "temperature": {"Date and time": ["the date and time"], "Temperature": ["the temperature"], "Device": ["the device"]},
+        "oxygen": {"Date": ["each day"], "Readings": ["each reading typed in"], "Average": ["average"], "Lowest": ["lowest"]},
+        "respiratory": {"Date": ["each day"], "Rate": ["rate"]},
+        "vo2max": {"Date": ["its date"], "VO2 max": ["each estimate"]},
+        "immunizations": {"Date": ["the date"], "Vaccine": ["the vaccine"], "Dose": ["the dose"], "Where or by whom": ["where or by whom"]},
+        "ecg": {"Date": ["the date"], "What the watch said": ["what the watch said"], "Details": ["average heart rate"]},
+        "bmi": {"Date": ["on its day"], "Measure": ["each weight", "the BMI", "each measurement"], "Value": ["each weight", "the BMI"],
+                "Percentile": ["growth charts"], "From": ["where each weight came from"]},
+        "targets": {"Measure": ["each target"], "Your target": ["each target"], "Set by": ["who set it"], "Set on": ["and when"],
+                    "In this period": ["how many readings at home were above or below it"]},
+        "medlog": {"Date and time": ["the date and time"], "Medication": ["the medication"], "What happened": ["taken, taken late or skipped"],
+                   "Note": ["its note"], "From": ["typed in or sent by a phone"]},
+    }
+
+    def test_each_sections_line_names_what_it_sends(self):   # #576
+        lines = {s: w for s, _, w in share_links.SECTIONS}
+        self.assertEqual(set(self.SENT), set(lines), "every section is here")
+        for s, fields in self.SENT.items():
+            line = lines[s] + (" " + lines["journal_photos"] if s == "journal" else "")
+            for f, words in fields.items():
+                for w in words:
+                    self.assertIn(w, line, f"{s}: {f} is said in its line as “{w}”")
+        # sent: a journal with a mood, and a symptom with where on the body and its group; a phone's measures
+        pc = self.c["robin"]
+        ids = [pc.post(f"/api/profiles/{self.pid}/journal", json=e, headers=H).json()["id"] for e in
+               ({"kind": "mood", "t": D(-14), "mood": 6, "energy": 4},
+                {"kind": "symptom", "t": D(-13), "title": "Rash", "severity": 2, "where": ["chest"], "group": "Fictional group"})]
+        try:
+            token, _ = self.make(sections=[s for s in share_links.SECTION_IDS if s not in measures.IDS], **{"from": D(-100)})
+            j = self.view(token).json()
+        finally:
+            for i in ids:
+                pc.delete(f"/api/profiles/{self.pid}/journal/{i}", headers=H)
+        ptoken, _ = self.make(pid=self.phone_profile(), sections=list(measures.IDS))
+        j.update({k: v for k, v in self.view(ptoken).json().items() if k in measures.IDS})
+
+        def keys(rows, at=""):
+            got = set()
+            for r in rows if isinstance(rows, list) else [rows]:
+                for k, v in r.items():
+                    got.add(at + k)
+                    if isinstance(v, list) and v and isinstance(v[0], dict):
+                        got |= keys(v, at + k + ".")
+            return got
+        head = lambda c: re.sub(r"\b\d[\d.]*", "#", re.sub(r" \(.*\)$", "", c[0]))
+        for s in self.SENT:
+            if s == "journal_photos":   # (with the journal's entries)
+                continue
+            sent = {head(c) for c in j[s]["cols"]} if s in measures.IDS else keys(j[s])
+            self.assertTrue(sent or s in ("journal",), s)
+            self.assertLessEqual(sent, set(self.SENT[s]), f"{s} sends only what its line names")
+        self.assertTrue({"mood", "energy", "where", "group", "severity", "note"} <= keys(j["journal"]), keys(j["journal"]))
+        self.assertTrue(j["procedures"])
+        for p in j["procedures"]:
+            self.assertEqual(set(p), {"t", "kind", "title"}, "a procedure's page shows its date, kind and title: no sub, no end")
+
     def test_labs_by_the_profiles_names_with_their_panels(self):   # #289: the clinician's page
         r = self.c["robin"].put(f"/api/profiles/{self.pid}/settings/labNicknames/name", json={"name": "SodiumSECRET", "to": "Sodium"}, headers=H)
         self.assertEqual(r.status_code, 200, r.text)
