@@ -65,7 +65,7 @@ function trackTable(items, layers) {
 function drawTrack() {
   const svg = $("#evTrack svg.ev-svg"); if (!svg?.isConnected) return;
   const items = trackItems(), shown = trackLayers(), layers = shown.map(l => [l, l.space()]), geo = $("#charts .chart svg.ck")?._geom;
-  const w = Math.max(320, svg.parentElement.clientWidth - 28), L = geo?.L ?? 52, R = geo ? w - (geo.w - geo.R) : w - 12, x = ckScale(state.from, state.to, L, R);
+  const w = labW(svg.parentElement), L = geo?.L ?? 52, R = geo ? w - (geo.w - geo.R) : w - 12, x = ckScale(state.from, state.to, L, R);
   const flags = ckFlagRows(items.map(i => ({x: x(i.t), text: i.k === "milestone" ? i.words : shortTitle(i.words), cls: i.k === "milestone" ? "mslabel" : "evlabel", rank: i.k === "milestone" ? 0 : 1, i})), L, R);
   const RH = 15, nRows = flags.length ? Math.max(...flags.map(f => f.row)) + 1 : 0, yM = items.length ? 6 + nRows * RH + 8 : 0;
   let h = items.length ? yM + 10 : 2;

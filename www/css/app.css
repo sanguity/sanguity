@@ -1485,7 +1485,7 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
   #view-health .tiles.compact{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(min(max(45%,9.75em),calc(100% - 6em)),1fr);overflow-x:auto;scrollbar-width:none;
     margin-inline:calc(-1 * var(--sp-3));padding-inline:var(--sp-3);scroll-padding-inline:var(--sp-3)}
   main>[id^=view-] .card>.list-hd>:has(+.spacer+.view-seg:last-child){flex:1 1 auto;max-width:100%}
-  :is(#view-health .card,#view-labs :is(.chart,#series)){--card-pad:var(--sp-2)}   /* a chart's card (and the lab list, inset as they are): its plot wider by the padding (the value axis's gutter is the kit's) */
+  :is(#view-health .card,#view-labs :is(.chart,#series,.ck-foot,.ev-track)){--card-pad:var(--sp-2)}   /* a chart's card (and the lab list, the stack's axis and the event track, lined up with them): its plot wider by the padding */
 }
 .sets .set-grp{margin:var(--sp-3) 0 0}
 .sets .set-groups>.set-grp:first-child{margin-top:0}   /* level with its row's name (#494) */

@@ -102,7 +102,10 @@ function renderCharts() {
   if (box.querySelector("svg.ck")) labAxis(box);   // a chart drawn, not only tables: the stack's time axis under it
 }
 /* a lab chart's width in its own units: its card's, less the card's padding; the stack's axis takes the same (#293) */
-const labW = card => Math.max(320, card.clientWidth - 28);
+const labW = card => { const cs = getComputedStyle(card); return Math.max(260, card.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)); };
+/* the plot's left and right edges in a lab chart and the stack's axis, the same in both: a narrower gutter for the
+   values on a phone (#615: the plot was three quarters of the card) */
+const labLR = w => w < 480 ? [40, w - 8] : [52, w - 12];
 /* the stack's one time axis (#293): the kit's (chartkit.js ckAxis), drawn once under the charts on their time scale,
    and kept in view at the foot of the window while they scroll, as the heatmap's is. In a box padded as a card is,
    so it's as wide as every chart and lines up with them */
@@ -113,7 +116,7 @@ function labAxis(box) {
 }
 function labAxisDraw(svg = $("#charts .ck-axis")) {
   if (!svg?.isConnected) return;
-  const w = labW(svg.parentElement), L = 52, R = w - 12, x = ckScale(state.from, state.to, L, R), tk = ckTimeTicks(state.from, state.to, x, w), h = ckAxisH(tk.rows), g = [];
+  const w = labW(svg.parentElement), [L, R] = labLR(w), x = ckScale(state.from, state.to, L, R), tk = ckTimeTicks(state.from, state.to, x, w), h = ckAxisH(tk.rows), g = [];
   ckAxis(g, tk, L, R, .5, 15);
   svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("height", h); svg._geom = {L, R, B: .5, w};
   svg.replaceChildren(...g);
@@ -210,7 +213,7 @@ function drawChart(svg, s, pts, read, live) {   // live: a frame of a drag, at t
   // one chart of the stack (#293): 200–220 px tall, its unit over its numbers, and no time axis of its own: the
   // stack's one is under it (labAxis), each chart on the same time scale (the kit's, chartkit.js). Events are on the
   // track over the stack (#294): only a faint line at each milestone here
-  const w = live && svg._geom ? svg._geom.w : labW(svg.parentElement), L = 52, R = w - 12, x = ckScale(state.from, state.to, L, R);
+  const w = live && svg._geom ? svg._geom.w : labW(svg.parentElement), [L, R] = labLR(w), x = ckScale(state.from, state.to, L, R);
   const T = 22, B = T + 184, h = B + 6;
   svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("height", h); svg._geom = {L, R, T, B, w};
   const smoothOn = state.smooth && s.watch && pts.length > 3;
