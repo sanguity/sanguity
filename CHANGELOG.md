@@ -1603,6 +1603,14 @@ Everything on `main` so far; it becomes the first tagged release.
   row too where they don't fit. Labs' list is folded under **Choose labs (6)**, the charts first. A card's title goes
   over its Chart | Table instead of wrapping beside it, and chart cards have less padding. Body's tiles say a change
   as "−5.3 lb this period", without the ▲/▼ that mark a result's own flags. Wider screens are as they were.
+- **One sparkline, scaled to the reference band** (#299): the Overview, the visit summary and a share link's page
+  each drew their own. The summary's and the share page's scaled each line to its own values, so two results always
+  drew a full-height diagonal and Creatinine −0.03 looked the same as Platelets −15; the Overview's band filled the
+  whole height. Now one sparkline in the chart kit draws all three, and the visit summary's PDF the same way: the
+  band (each result's own range) is the middle 60% of the height, widened for a value outside it, so a change reads
+  by its size against the range. With fewer than three results there's no line, only the latest result's mark
+  against its band. The latest is a dot, or ▲/▼ in red when it's out of range, never stretched with the box. The
+  summary no longer prints this visit's date in the out-of-range red.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

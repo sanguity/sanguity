@@ -62,7 +62,7 @@ const KIND_ICON = {stay: "bed", visit: "stethoscope", contact: "clipboard", lab:
    nothing else. Drawn by shapeMark() below; the Labs charts' marks of procedures and imaging (trends.js), the
    journal's row (journal.js, by an entry's kind), the cycle's (cycle.js, by a mark's kind) and the heatmap's procedures
    (heatmap.js) take theirs from here, and so does the Legend. Kept for a result's own flag, never an event's: ▲ above
-   its range, ▼ below, ◆ flagged otherwise (charts.js abnMark). A span (a medication, a period, a hospital stay) is a
+   its range, ▼ below, ◆ flagged otherwise (chartkit.js abnMark). A span (a medication, a period, a hospital stay) is a
    bar as long as it lasted, and a day's mood and energy two bars (journal.js jMoodBars). */
 const KIND_SHAPE = {labitem: "circle", procedure: "plus", imaging: "square",
   symptom: "star", side_effect: "hexagon", note: "bar",   // the journal's kinds

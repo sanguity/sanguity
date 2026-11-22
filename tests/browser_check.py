@@ -1423,6 +1423,21 @@ TILE_TAB_JS = """([t, p]) => { if (p) setPeriod(p);
   if (t.startsWith('costs')) Object.assign(costState, {view: t === 'costs' ? 'claims' : 'paid', more: true}); switchTab(t.split('-')[0]); }"""
 
 
+# the sparklines under root (#299), each as chartkit.js ckSpark draws it: how many points its line has (0: none), its
+# marks, its band's tallest step in the plot's 100 (the band is the middle 60% at most: the scale is set by it), its
+# first mark's width over its height (1 for a dot not stretched); and how many other pictures are in its place (old)
+SPARK299_JS = r"""root => ({sparks: [...document.querySelectorAll(root + ' svg.spark')].map(s => {
+  const plot = s.querySelector(':scope > svg[preserveAspectRatio=none]'), line = plot?.querySelector('path:not([class])');
+  const marks = [...s.querySelectorAll(':scope > circle, :scope > svg:not([viewBox]) > path')], m = marks[0]?.getBoundingClientRect();
+  return {pts: line ? line.getAttribute('d').split('L').length : 0, marks: marks.length,
+    band: Math.max(0, ...[...(plot?.querySelectorAll('.refband') || [])].map(r => +r.getAttribute('height'))), round: m ? m.width / m.height : null};
+}), old: document.querySelectorAll(`${root} :is(td, .tile) > svg:not(.spark, .icon)`).length})"""
+# … and whether they're all right: a line of three points or more with its latest's mark, or no line and that mark alone
+spark299_ok = lambda v: v["sparks"] and not v["old"] and all(
+    (s["pts"] >= 3 and s["marks"] == 1 or s["pts"] == 0 and s["marks"] <= 1) and s["band"] <= 60.01 and (s["round"] is None or .8 < s["round"] < 1.25)
+    for s in v["sparks"])
+
+
 # a tile's change line (Costs' figures' notes too, #260), as laid out (#330): each one that wraps, as its lines, when it ends in a short
 # fragment (its last line under 40% of its longest, such as "▼ −0.03 since Aug 18," over "2026"), breaks a date, or has
 # only the change on its first line ("▼ −0.03" over "since Aug 18, 2026", #374), or a line that starts with its "·"
@@ -1789,6 +1804,18 @@ def main():
         strict.goto(base + "/sharing.html#summary")   # the visit summary (#48)
         strict.wait_for_selector("#build:not([hidden]) #sections input", timeout=10000)
         check("under the CSP: summary.js runs", strict.evaluate("document.querySelectorAll('#sections input:checked').length") == 5)   # #225: measures unticked
+        # #299: the preview's trends draw the kit's one sparkline (chartkit.js, loaded here too), scaled to each result's
+        # own range: a trend of fewer than three results no line, only its latest's mark against its band; and this
+        # visit's date among the appointments in ink, as the others' (it was the out-of-range red)
+        strict.wait_for_selector("#preview:not([hidden]):not([aria-busy]) #prevBody table", timeout=10000)
+        sum299 = strict.evaluate(SPARK299_JS, "#prevBody")
+        appt299 = strict.evaluate("""() => { const i = document.createElement('i'); i.style.color = 'var(--crit)'; document.body.append(i); const crit = getComputedStyle(i).color; i.remove();
+          const h = [...document.querySelectorAll('#prevBody h3')].find(h => h.textContent.startsWith('Upcoming appointments'));
+          const rows = [...h.nextElementSibling.querySelectorAll('tbody tr')];
+          return {this: rows.filter(r => r.cells[1].textContent.includes('(this visit)')).length, colors: [...new Set(rows.map(r => getComputedStyle(r.cells[0]).color))], crit}; }""")
+        check("the visit summary's trends (#299): each sparkline the kit's, its band the middle 60% at most, a line only of three results or more, "
+              "with one mark, not stretched; this visit's date in ink, not red", spark299_ok(sum299)
+              and appt299["this"] == 1 and len(appt299["colors"]) == 1 and appt299["crit"] not in appt299["colors"], [sum299, appt299])
         strict.wait_for_selector("#calendar:not([hidden])", state="attached", timeout=10000)   # in its own group, so not visible
         strict.wait_for_selector("#memberList tbody tr", state="attached", timeout=10000)
         strict.click("#shrNav a[data-group=activity]")   # drawn when its group is opened
@@ -2634,6 +2661,9 @@ def main():
               and "Neutrophils (absolute)" in l289["tests"] and "Automated Abs Neutrophil Cnt" not in l289["tests"] and len(l289["panels"]) >= 2
               and l289["hists"] == len(l289["tests"]) and l289["open"] == 0 and l289["sparks"] > 0
               and all(f[0] in "▲▼◆" and f[2:] for f in l289["flags"]), l289)
+        sh299 = hp.evaluate(SPARK299_JS, "#share-results")
+        check("…its trends the kit's one sparkline (#299), scaled to each result's own range (its band the middle 60% at most), a line only of "
+              "three results or more, with one mark, not stretched", spark299_ok(sh299) and len(sh299["sparks"]) == len(l289["tests"]), sh299)
         HIST289 = """name => { const b = [...document.querySelectorAll('#share-results .share-open')].find(b => b.textContent === name),
           h = document.getElementById(b.getAttribute('aria-controls')), row = b.closest('tr');
           return {expanded: b.getAttribute('aria-expanded'), shown: h.checkVisibility(), next: row.nextElementSibling === h,
@@ -3883,7 +3913,7 @@ def main():
                 return [name, +s.getAttribute('height'), s.querySelector('.ck-unit')?.textContent === s._s.unit, ref?.textContent || null];
               });
               let n = 0;
-              for (const m of document.querySelectorAll('#charts :is(.refband, .refedge), .lab-strip :is(.refband, .refedge), #view-overview .spark-ref')) {
+              for (const m of document.querySelectorAll('#charts :is(.refband, .refedge), .lab-strip :is(.refband, .refedge), #view-overview .spark :is(.refband, .refedge)')) {
                 const c = getComputedStyle(m), col = m.matches('.refedge') ? c.stroke : c.fill; n++;
                 if (status.includes(col)) bad.push(`${m.getAttribute('class')} in a status colour`);
                 if (m.matches('.refedge') && c.strokeDasharray !== 'none') bad.push('a dashed edge');
@@ -5833,8 +5863,14 @@ def main():
             page.keyboard.press("Escape")
             js("switchTab('overview')")
             settle(300)
-            sp = js("""[...document.querySelectorAll('#view-overview .tile')].find(t => t.textContent.includes('Creatinine'))?.querySelectorAll('svg .spark-ref').length ?? -1""")
+            sp = js("""[...document.querySelectorAll('#view-overview .tile')].find(t => t.textContent.includes('Creatinine'))?.querySelectorAll('svg.spark .refband').length ?? -1""")
             check("Overview (#58): the creatinine tile's sparkline shades each result's own range, stepped", sp == 5, sp)
+            # #299: the tiles' sparklines are the kit's one, scaled to the band: a lab's whose values are all in its range has
+            # its band as the middle 60% of the plot (it filled the whole of it, so most lines were flat at its edges)
+            ov299 = js(SPARK299_JS, "#view-overview")
+            mid299 = js("[...document.querySelectorAll('#view-overview .tile svg.spark .refband')].some(r => Math.abs(r.getAttribute('y') - 20) < .01 && Math.abs(r.getAttribute('height') - 60) < .01)")
+            check("Overview (#299): each tile's sparkline the kit's, its band the middle 60% at most (all of it where every value is in range), "
+                  "a line only of three results or more, with one mark, not stretched", spark299_ok(ov299) and mid299, [ov299, mid299])
             # 375 px, light and dark: the note under the name, in the chart and in the table
             theme_before = js("document.documentElement.dataset.theme || null")
             page.set_viewport_size({"width": 375, "height": 800})

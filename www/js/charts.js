@@ -173,14 +173,6 @@ function msMarks(g, x, a, b, y0, y1, R, labelY) {
 const FLAG_OF = f => !f ? null : /^h/i.test(f) ? ["▲", "High"] : /^l/i.test(f) ? ["▼", "Low"] : ["◆", "Flagged"];
 const flagWord = f => (FLAG_OF(f) || []).join(" ");
 const flagNodes = (f, words) => { const w = FLAG_OF(f); return w ? [el("span", {"aria-hidden": "true", text: w[0] + " "}), words || w[1]] : []; };   // words: another wording (#234)
-/* an out-of-range result's mark on a chart: a triangle pointing up (above its range) or down (below), a diamond for
-   any other flag; s is its half-width */
-function abnMark(cx, cy, f, s = 4.5, cls = "pt abn") {
-  const p = (dx, dy) => `${(cx + dx).toFixed(1)},${(cy + dy).toFixed(1)}`;
-  const d = /^h/i.test(f) ? `M${p(0, -s * 1.1)}L${p(s, s * .7)}L${p(-s, s * .7)}Z` : /^l/i.test(f) ? `M${p(0, s * 1.1)}L${p(s, -s * .7)}L${p(-s, -s * .7)}Z`
-    : `M${p(0, -s)}L${p(s, 0)}L${p(0, s)}L${p(-s, 0)}Z`;
-  return el("svg:path", {class: cls, d});
-}
 /* Chart | Table in a chart's header: a pick-one pair (#193). key: what state.tables remembers it by (a lab's name,
    or "#…" for the other charts); what: the chart, for its label ("Show Hemoglobin as"); redraw() draws it again;
    graphic: the word for the picture ("Heatmap"). Focus stays on the choice once it's redrawn. */

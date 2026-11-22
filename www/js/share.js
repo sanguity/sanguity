@@ -122,17 +122,8 @@ const SH_DRAW = {
    Open every history opens them all (to print them). A flag is said in words beside ▲/▼, never in red alone. */
 const SH_FLAG = {High: "▲ High", Low: "▼ Low"};
 const shFlag = f => f ? el("span", {class: "share-flag", text: SH_FLAG[f] || "◆ " + f}) : "";
-function shSpark(pts) {   // newest first, as the server sends them; null when fewer than two are numbers
-  const got = pts.filter(p => typeof p.v === "number").reverse();
-  if (got.length < 2) return null;
-  const w = 80, h = 20, ts = got.map(p => zParse(String(p.t).slice(0, 19))), vs = got.map(p => p.v);
-  let lo = Math.min(...vs), hi = Math.max(...vs); if (lo === hi) { lo -= 1; hi += 1; }
-  const t0 = Math.min(...ts), t1 = Math.max(...ts);
-  const x = i => (3 + (ts[i] - t0) / ((t1 - t0) || 1) * (w - 6)).toFixed(1), y = v => (h - 3 - (v - lo) / (hi - lo) * (h - 6)).toFixed(1);
-  return el("svg:svg", {class: "share-spark", viewBox: `0 0 ${w} ${h}`, "aria-hidden": "true"},
-    el("svg:path", {d: got.map((p, i) => (i ? "L" : "M") + x(i) + "," + y(p.v)).join("")}),
-    ...got.map((p, i) => el("svg:circle", {cx: x(i), cy: y(p.v), r: p.flag ? 2.2 : 1.4, class: p.flag ? "out" : null})));
-}
+/* a test's sparkline (chartkit.js ckSpark, #299): its results newest first, as the server sends them */
+const shSpark = pts => ckSpark(pts.map(p => ckPt(zParse(String(p.t).slice(0, 19)), p.v, p.lo, p.hi, p.flag)).reverse(), {r: 2.2, cls: "share-spark"});
 let SH_HIST = 0;
 function shLatest(list) {
   const groups = labGroups(list, list), heads = ["Test", "Latest", "Range", "Flag", "Trend", "Results"], hists = [];

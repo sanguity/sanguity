@@ -22,28 +22,8 @@ function statusOf(p) {
   if (st && p.rs === "settings") st.title = "Against a " + RANGE_FROM_SETTINGS;   // #44
   return st;
 }
-function spark(s, pts, {w = 200, h = 34, band = true} = {}) {
-  const svg = el("svg:svg", {viewBox: `0 0 ${w} ${h}`, preserveAspectRatio: "none", "aria-hidden": "true"});
-  if (pts.length < 2) return svg;
-  const t0 = pts[0].ts, t1 = pts[pts.length - 1].ts;
-  const vs = pts.map(p => p[1]), last = pts[pts.length - 1];
-  // each result's own range, stepped where they differ (#58, ranges.js), never one range across labs
-  const steps = band ? rangeSteps(pts, -Infinity, Infinity) : [];
-  const rls = steps.map(st => st.lo).filter(v => v != null), rhs = steps.map(st => st.hi).filter(v => v != null);
-  let lo = Math.min(...vs, ...rls), hi = Math.max(...vs, ...rhs);
-  if (lo === hi) { lo -= 1; hi += 1; }
-  const x = t => 3 + (t - t0) / ((t1 - t0) || 1) * (w - 6), y = v => h - 4 - (v - lo) / (hi - lo) * (h - 8);
-  const g = [];
-  for (const st of steps) {
-    const xa = Math.max(0, x(st.a)), xb = Math.min(w, x(st.b)), a = st.hi != null ? y(st.hi) : 0, b = st.lo != null ? y(st.lo) : h;
-    g.push(el("svg:rect", {class: "spark-ref refband", x: xa, y: a, width: Math.max(0, xb - xa), height: Math.max(0, b - a)}));   // neutral, as a chart's (#293)
-  }
-  g.push(el("svg:path", {d: pts.map((p, i) => (i ? "L" : "M") + x(p.ts).toFixed(1) + "," + y(p[1]).toFixed(1)).join(""), fill: "none", stroke: "var(--muted)", "stroke-width": 1.5, "vector-effect": "non-scaling-stroke"}));
-  g.push(last[4] ? abnMark(x(last.ts), y(last[1]), last[4], 3.4, "spark-abn")   // ▲ or ▼ when it's out of range, not only red (#60)
-    : el("svg:circle", {cx: x(last.ts), cy: y(last[1]), r: 3, fill: s.watch ? "var(--measure)" : "var(--c-lab)"}));   // a lab's in its colour, the watch's and scale's a measure (#301)
-  svg.replaceChildren(...g);
-  return svg;
-}
+/* a tile's sparkline (chartkit.js ckSpark, #299): a lab's latest in its colour, the watch's and scale's a measure (#301) */
+const spark = (s, pts, {band = true} = {}) => ckSpark(pts, {band, color: s.watch ? "var(--measure)" : "var(--c-lab)"});
 /* a tile or row to its lab's chart on Labs, over the last 6 months (the records bar's "6m") */
 function goSeries(name) { state.sel.add(name); state.labsView = "chart"; setPeriod("6m"); pickTab("labs"); }
 // beside every out-of-range colouring (Labs has the same line in index.html)
