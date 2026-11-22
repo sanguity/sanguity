@@ -2357,6 +2357,16 @@ Everything on `main` so far; it becomes the first tagged release.
   tables again, every row and key kept, each count after the highest id it has had), so a stale page's change is
   refused; a deleted profile's slot is deleted by the receiver (Delete this profile says so), and a new profile skips
   any id a slot was left on disk for; and a view is logged once per session and account.
+- **Export everything: a move to another Sanguity keeps the records, corrections, journal and medication log, and
+  only an owner's export has the activity log** (#589): the export held the records with the corrections already
+  applied, so hidden and merged-in records were gone and renamed titles baked in, and loading it dropped the
+  corrections, same-result decisions, the journal and its photos, the medication log and reminders. It now holds the
+  records as imported, with the corrections, same-result decisions and Costs marks beside them, and loading it (by
+  upload on the import page, whose review says what comes back, or `server.manage import`) puts all of them back,
+  each correction still undoable there; a damaged one is refused whole. The activity log, owners' only on the page,
+  was in an editor's export too, share-link viewers' addresses included; it's in an owner's only. The Sharing page
+  and the zip's README say what doesn't come back (the activity log, sharing, share links, calendar feeds, connected
+  sources, which import each record came from).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

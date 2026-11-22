@@ -55,6 +55,7 @@ python tests/test_milestones.py        # milestones and workout rules on the Set
 python tests/test_lab_mapping.py       # matching unknown lab names
 python tests/test_summary.py           # the visit summary PDF
 python tests/test_person.py            # About this person: birth date, sex for ranges, height history (#194)
+python tests/test_export.py            # Export everything loaded elsewhere: corrections, journal, doses back, undoable (#589)
 python tests/test_fhir_export.py       # Export as FHIR: read back into the same records, valid against the R4 schema (#205)
 python tests/test_med_log.py           # the medication log: doses logged, counted, kept, shared only when ticked (#235)
 python tests/test_growth.py            # BMI (#195), and the growth charts' tables against published percentiles (#196)

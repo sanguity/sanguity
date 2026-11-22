@@ -600,14 +600,18 @@ class Journal(unittest.TestCase):
         photo = next(e for e in data["journal"] if e["kind"] == "symptom")["photos"][0]
         self.assertEqual((photo["file"], photo["alt"]), (name, "Fictional patch"))
         self.assertIn("journal/photos/    the photos attached to journal entries: 1", readme)
-        # loading the export again works; like the journal, its photos stay out
+        # loading the export again brings the journal back with its photos (#589)
         tmp = os.path.join(TMP, "export.zip")
         with open(tmp, "wb") as f:
             f.write(r.content)
         db = dbm.connect()
         pid2 = db.execute("INSERT INTO profiles(name, created) VALUES('Loaded (fictional)', 1)").lastrowid
         export.import_archive(db, pid2, tmp)
-        self.assertEqual(db.execute("SELECT COUNT(*) FROM journal_photos WHERE profile_id=?", (pid2,)).fetchone()[0], 0)
+        back = journal.listing(db, pid2)
+        self.assertEqual(sorted(e["kind"] for e in back), ["mood", "symptom"])
+        photo = next(e for e in back if e["kind"] == "symptom")["photos"][0]
+        self.assertEqual(photo["alt"], "Fictional patch")
+        self.assertEqual(journal_photos.get(db, pid2, photo["id"])[0], journal_photos.strip(jpeg_with_metadata())[0])
         db.close()
         # share links: offered once there are photos, never shown unless ticked, and only with the journal
         links = f"/api/profiles/{self.pid}/links"

@@ -5852,6 +5852,16 @@ def main():
             page.check("input[name=exportFormat][value=sanguity]")
             check("…and Sanguity's own again: the list goes, the link is the plain export", js("document.getElementById('exportParts').hidden")
                   and href() == "api/profiles/1/export" and page.inner_text("#exportLink") == "Export everything", href())
+            # (#589) what a move brings back and what it doesn't; an owner's export has the activity log, and the records
+            # as imported with their corrections beside them
+            about589 = " ".join(js("[...document.querySelectorAll('.about-words')].map(w => w.textContent).join(' ')").split())
+            got589 = page.request.get(base + "/api/profiles/1/export")
+            z589 = _zip.ZipFile(_io.BytesIO(got589.body())) if got589.ok else None
+            check("…its about words say what comes back in another Sanguity and what doesn't, and an owner's export has the activity log (#589)",
+                  "with their corrections (which can still be undone there)" in about589
+                  and "The activity log is in it only when an owner exports." in about589 and "share links, calendar feeds" in about589
+                  and z589 is not None and "activity.json" in z589.namelist() and "activity.json" in z589.read("README.txt").decode(),
+                  [about589[:300], z589 and z589.namelist()[:8]])
             page.goto(base + "/sharing.html?profile=1#summary")
             page.wait_for_selector("#sections input[value=cycle]", state="attached", timeout=10000)
             check("…the visit summary offers it too, unticked each time while the other sections are ticked",
@@ -10262,6 +10272,29 @@ def main():
             check("an uploaded Apple Health export's preview counts its blood pressure, temperature, glucose and heights (#223)",
                   card.startswith("Ready to import") and all(w in items for w in ("3 blood pressure readings", "2 body temperature readings",
                   "2 glucose meter readings", "1 day of cgm readings", "2 heights, offered for about this person")) and "cycle" not in card.lower(), items)
+            js(f"[...{last_card}.querySelectorAll('.imp-actions button')].find(b => b.textContent === 'Cancel').click()")
+            page.wait_for_function(f"!/^Ready to import/.test({last_card}.textContent)", timeout=10000)
+            # (#589) a Sanguity export with a correction, a journal entry and a logged dose: its review says they're put
+            # back with the records, and that undoing the import keeps them; cancelled, so nothing is saved
+            buf589 = io.BytesIO()
+            with zipfile.ZipFile(buf589, "w", zipfile.ZIP_DEFLATED) as z:
+                z.writestr("README.txt", "Sanguity export: fictional\n")
+                z.writestr("data.json", json.dumps({
+                    "events": [{"id": 1, "t": "2026-03-02T09:00:00", "k": "visit", "title": "Fictional check-up 589", "sub": "", "key": "bc589:v1"}],
+                    "details": {}, "labs": [], "costs": [],
+                    "corrections": {"edits": [{"action": "rename", "key": "bc589:v1", "value": {"title": "Renamed check-up 589",
+                                               "was": {"k": "visit", "t": "2026-03-02T09:00:00", "title": "Fictional check-up 589"}},
+                                               "at": 1790000000, "by": "demo"}]},
+                    "journal": [{"kind": "note", "t": "2026-03-02", "title": "", "note": "Fictional note 589", "by": "demo", "at": 1790000000}],
+                    "doses": [{"med": "fictionamide", "name": "Fictionamide 10 mg", "t": "2026-03-02T08:00", "status": "taken", "by": "demo", "at": 1790000000}]}))
+            cards = js("document.querySelectorAll('.import-job').length")
+            page.set_input_files("#pickFiles", files=[{"name": "sanguity-export.zip", "mimeType": "application/zip", "buffer": buf589.getvalue()}])
+            page.wait_for_function(f"document.querySelectorAll('.import-job').length > {cards} && "
+                                   f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            card589 = js(f"{last_card}.innerText")
+            check("an uploaded Sanguity export's review says what it puts back besides the records, kept if the import is undone (#589)",
+                  card589.startswith("Ready to import") and "From the export, put back with the records: 1 correction, 1 journal entry and "
+                  "1 logged dose." in card589 and "undoing the import keeps them" in card589, card589[:600])
             js(f"[...{last_card}.querySelectorAll('.imp-actions button')].find(b => b.textContent === 'Cancel').click()")
             page.wait_for_function(f"!/^Ready to import/.test({last_card}.textContent)", timeout=10000)
             # (#530) with cycle tracking on, the export again: its review counts the cycle records; turned off under Phone

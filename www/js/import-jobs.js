@@ -290,6 +290,17 @@
   // the profile-wide lists' entries a duplicate can be (#497)
   const LISTED = {allergy: ["allergy", "allergies"], problem: ["problem or diagnosis", "problems or diagnoses"],
                   upcoming: ["upcoming appointment", "upcoming appointments"]};
+  // what a Sanguity export brings besides its records (#589: its corrections, journal, medication log and reminders),
+  // to be put back (the review) or put back (done): a line, or null when it brings none
+  const RESTORED = [["corrections", ["correction", "corrections"]], ["journal", ["journal entry", "journal entries"]],
+    ["photos", ["photo", "photos"]], ["doses", ["logged dose", "logged doses"]], ["reminders", ["medication reminder", "medication reminders"]]];
+  function restoredLine(r, done) {
+    const said = RESTORED.filter(([k]) => (r || {})[k] > 0).map(([k, words]) => plural(r[k], words));
+    if (!said.length) return null;
+    const list = said.length > 1 ? said.slice(0, -1).join(", ") + " and " + said.at(-1) : said[0];
+    return node("p", {class: "hint", text: done ? `Put back from the export: ${list}. They belong to the profile, so undoing this import keeps them.`
+      : `From the export, put back with the records: ${list}. What this profile has already is left as it is; undoing the import keeps them.`});
+  }
   // what of a wearable's data is there already, in words ("2 days of activity data and 1 workout"), or ""
   function watchHere(w) {
     const said = EXTRA.filter(([k]) => (w || {})[k] > 0).map(([k, words]) => plural(w[k], words));
@@ -396,7 +407,7 @@
             if (it.kind === "results") c.results = (c.results || 0) + (it.n || 0);
             else c.kinds[it.kind] = (c.kinds[it.kind] || 0) + 1;
           }
-          const w = addWords(c);
+          const w = addWords(c) || (j.restores ? "Add from the export" : null);   // (#589: its journal... only)
           add.textContent = w || "Nothing to add";
           add.disabled = !w;
         };
@@ -459,7 +470,7 @@
           node("p", {class: "hint", text: j.new ? "Nothing is saved until you add it with the button at the foot."
             : sgNothing(j) ? "Nothing in this upload is left to add to this profile. Cancel it to remove the upload."
             : "Everything in this upload is in this profile already. Tick a duplicate to add it again anyway, or cancel."}),
-          j.new ? tiles(j) : null, split(j), labs.part, same.part, dups.part, notes(j),
+          j.new ? tiles(j) : null, restoredLine(j.restores, false), split(j), labs.part, same.part, dups.part, notes(j),
           node("div", {class: "sg-bar imp-actions", role: "region", "aria-label": "Add or cancel this import"},
             node("span", {class: "sg-bar-what"}, node("span", {class: "sg-bar-n", text: "Not saved yet"}), msg),
             node("span", {class: "sg-bar-acts"}, cancel, add)));
@@ -541,7 +552,9 @@
     const dup = !all ? [] : [!skipped ? `${cap(watch)} already here, not added again.`
       : `${plural(all, ["duplicate", "duplicates"])} skipped` + (watch ? `, ${watch} among them.` : ".")];
     fill(card, said,
-      items.length ? node("ul", {}, items) : node("p", {text: dup.length ? "Nothing new: it was all in the profile already." : "The files held no records to show."}),
+      items.length ? node("ul", {}, items) : j.restored ? null
+        : node("p", {text: dup.length ? "Nothing new: it was all in the profile already." : "The files held no records to show."}),
+      restoredLine(j.restored, true),
       dup.length ? node("p", {class: "hint", text: dup.join(" ")}) : null,
       ln.matched ? node("p", {class: "hint", text: `${plural(ln.matched, ["lab name", "lab names"])} put in an existing series.`}) : null,
       j.linked ? node("p", {class: "hint", text: `${plural(j.linked, ["result", "results"])} shown once, as the same result from another source.`}) : null,

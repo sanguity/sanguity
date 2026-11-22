@@ -156,9 +156,10 @@ def apply(db, pid, data):
     hidden, folded, moved = set(), {}, False   # folded: id of a merged-in event -> the id it went into
 
     def entry(r, value, hits, found):
-        v = {k: x for k, x in (value or {}).items() if k != "was"}
+        v = {k: x for k, x in (value or {}).items() if k not in ("was", "by")}
         return {"id": r["id"], "action": r["action"], "found": found, "ids": [e["id"] for e in hits], "value": v,
-                "was": (value or {}).get("was") or (_was(hits[0]) if hits else None), "by": r["username"], "at": r["at"]}
+                "was": (value or {}).get("was") or (_was(hits[0]) if hits else None),
+                "by": r["username"] or (value or {}).get("by"), "at": r["at"]}   # by: an export's, by name (#589)
 
     kind_set, rules = set(), []   # kind_set: events moved on their own, which a rule leaves alone
     for r in sorted(rows, key=lambda r: (r["action"] == "merge", r["id"])):

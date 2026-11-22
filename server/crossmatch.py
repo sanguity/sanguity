@@ -347,7 +347,7 @@ def apply(db, pid, data):
         found = bool(a and b and a != b)
         value = _dec(r["value"]) or {}
         listed.append({"id": r["id"], "same": bool(r["same"]), "found": found, "sides": value.get("sides") or [],
-                       "by": r["username"], "at": r["at"]})
+                       "by": r["username"] or value.get("by"), "at": r["at"]})   # by: an export's, by name (#589)
         if found and r["same"]:
             groups.join(a, b)
             links[a].append(r["id"])

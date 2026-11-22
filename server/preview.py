@@ -63,10 +63,12 @@ def _labdays(data):
 
 
 def _meta_lists(data):
-    """The profile-wide lists in data: {path: list}, path "problems" or "outOfPocket.payments"."""
+    """The profile-wide lists in data: {path: list}, path "problems" or "outOfPocket.payments". Not the parts an
+    export's data.json has that are never stored with an import (records.SERVED: its journal, corrections... which
+    export.restore puts back, #589)."""
     out = {}
     for k, v in data.items():
-        if k in ROWS or k == "watch":
+        if k in ROWS or k == "watch" or k in records.SERVED:
             continue
         if isinstance(v, list):
             out[k] = v
