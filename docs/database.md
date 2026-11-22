@@ -655,7 +655,8 @@ erDiagram
 A **calendar feed** (`server/calendar.py`, #51) is the private address a person's own calendar app fetches to show the
 profile's upcoming appointments and expected lab draws. There is one per person and profile. The address carries a
 random token, and only its SHA-256 is kept in `token_hash`, as for sessions. A feed works only while its person can
-still view the profile: the membership and the account are checked at every fetch. Fetches aren't logged, only the
+still view the profile: the membership and the account are checked at every fetch, and the row is deleted once they
+can't, and on Sign out all other devices, an admin's reset and a recovery-code sign-in (#590). Fetches aren't logged, only the
 time of the last one; making, rotating and revoking a feed are logged in the profile's activity (`calendar`).
 
 ```mermaid
@@ -686,7 +687,8 @@ A **share link** (`server/share_links.py`, #47) lets someone without an account 
 sections, labs and date range an owner chose, read-only, until it expires (at most 90 days) or an owner revokes it.
 As for sessions and calendar feeds, only the SHA-256 of the link's token is kept, in `token_hash`. A link works only
 while the owner who made it is still an owner with an account that isn't disabled; if that account is removed,
-`created_by` becomes `NULL` and the link stops. Every view is counted here and logged in the profile's activity
+`created_by` becomes `NULL` and the link stops. Once its maker isn't an owner, the link is revoked for good (#590):
+`revoked` is set with `revoked_name` left `NULL` (no one revoked it), listed as stopped with its maker. Every view is counted here and logged in the profile's activity
 (`link`, actor "share link", with the viewer's address). Revoked and expired links stay listed for 30 days, then
 are deleted.
 

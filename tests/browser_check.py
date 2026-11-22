@@ -858,6 +858,19 @@ def answer_ask(page, yes=True, fill=None, timeout=10000):
     return said
 
 
+def confirm_its_you(page, done, timeout=10000):
+    """After an Admin action the fresh check may be asked for (server main.fresh; #590 added giving a profile an owner,
+    disabling its only owner and handing its profiles over): answer it with the password if it's asked (not within a
+    few minutes of the last one), then wait until done (JS, true once the action has finished)."""
+    page.wait_for_function(f"!document.getElementById('reauth').hidden || ({done})", timeout=timeout)
+    asked = page.evaluate("!document.getElementById('reauth').hidden")
+    if asked:
+        page.fill("#reauth input", PW)
+        page.locator("#reauth").get_by_role("button", name="Confirm").click()
+    page.wait_for_function(done, timeout=timeout)
+    return asked
+
+
 # ---- axe-core (#202): Deque's accessibility engine, from the axe-playwright-python package (requirements-dev.txt), which
 # bundles a pinned axe.min.js. Only that script is used: put into the page under test by page.evaluate, which the
 # Content-Security-Policy doesn't apply to, so the strict pages are checked as they are; the app never loads it.
@@ -18802,6 +18815,10 @@ def main():
             db_493.close()
             page.reload()
             page.wait_for_function("document.querySelectorAll('#sessList tbody button').length >= 2", timeout=10000)
+            page.click("#sessOthers")
+            sess590 = answer_ask(page, yes=False) + [js("document.querySelectorAll('#sessList tbody button').length")]
+            check("Sign out all other devices asks first, saying your calendar feeds are turned off too, and Cancel signs no one out (#590)",
+                  sess590[0] == "Sign out all other devices?" and "calendar feeds are turned off too" in sess590[1] and sess590[2] >= 2, sess590)
             out493 = []
             for n in range(js("document.querySelectorAll('#sessList tbody button').length"), 0, -1):
                 page.focus("#sessList tbody button")
@@ -19148,14 +19165,27 @@ def main():
                 return [a.tagName, (a.getAttribute('aria-label') || a.textContent).trim().slice(0, 30),
                   a !== document.body && r.height > 0 && r.top >= parseFloat(p.scrollPaddingTop) - 1 && r.bottom <= innerHeight - parseFloat(p.scrollPaddingBottom) + 1]; })()"""
             tf499 = {}
+            # #590: your password first, beside Turn on, with Show (a device left signed in turned on an app of its own,
+            # locking its person out); a wrong one is said, and nothing is shown to scan
+            tf590 = [js("[...document.querySelectorAll('#tfBody .pw')].map(p => [p.querySelector('input').getAttribute('aria-label'), p.querySelector('.pw-show')?.getAttribute('aria-label')])")]
+            before590 = len(problems)
+            page.locator("#tfBody input[type=password]").fill("not the password at all")
+            page.locator("#twofa").get_by_role("button", name="Turn on").click()
+            page.wait_for_function("document.getElementById('tfMsg').classList.contains('bad') && document.getElementById('tfMsg').textContent", timeout=10000)
+            tf590.append([js("document.getElementById('tfMsg').textContent"), js("!!document.querySelector('#twofa .tf-key')")])
+            problems[before590:] = [x for x in problems[before590:] if "403" not in x]   # the wrong password's refusal
+            check("Turning on two-factor sign-in asks for your password first, with Show, and a wrong one is said, with nothing to scan (#590)",
+                  tf590 == [[["Your password", "Show password"]], ["Your password is wrong.", False]], tf590)
             page.set_viewport_size({"width": 375, "height": 667})
+            page.locator("#tfBody input[type=password]").fill(PW)
             page.locator("#twofa").get_by_role("button", name="Turn on").click()
             page.wait_for_selector("#twofa .tf-key")
             page.locator("#twofa").get_by_role("button", name="Cancel").click()
-            page.wait_for_function("document.querySelector('#tfBody > button')?.textContent === 'Turn on'", timeout=10000)
+            page.wait_for_function("document.querySelector('#tfBody form [type=submit]')?.textContent === 'Turn on'", timeout=10000)
             settle(200)
             tf499["Cancel"] = js(seen499)
             page.set_viewport_size({"width": 1400, "height": 900})
+            page.locator("#tfBody input[type=password]").fill(PW)
             page.locator("#twofa").get_by_role("button", name="Turn on").click()
             page.wait_for_selector("#twofa .tf-key")
             key = js("document.querySelector('#twofa .tf-key').textContent").replace(" ", "")
@@ -19192,10 +19222,10 @@ def main():
             settle(200)
             tf499["I've saved them"] = js(seen499)
             page.set_viewport_size({"width": 1400, "height": 900})
-            check("…focus in sight at 375×667 after each of its buttons that draws it again (#499: it fell to the page): Cancel's on Turn on, "
-                  "Confirm's on the recovery codes, I've saved them's on the card's heading",
-                  {k: [v[0], v[2]] for k, v in tf499.items()} == {"Cancel": ["BUTTON", True], "Confirm": ["PRE", True], "I've saved them": ["H2", True]}
-                  and tf499["Cancel"][1] == "Turn on" and tf499["I've saved them"][1] == "Two-factor sign-in", tf499)
+            check("…focus in sight at 375×667 after each of its buttons that draws it again (#499: it fell to the page): Cancel's on the "
+                  "password beside Turn on (#590), Confirm's on the recovery codes, I've saved them's on the card's heading",
+                  {k: [v[0], v[2]] for k, v in tf499.items()} == {"Cancel": ["INPUT", True], "Confirm": ["PRE", True], "I've saved them": ["H2", True]}
+                  and tf499["Cancel"][1] == "Your password" and tf499["I've saved them"][1] == "Two-factor sign-in", tf499)
             check("with 2FA on, Account says Admin is open again", True)
             page.click("#tfMsg a")
             page.wait_for_function("!document.getElementById('adminTools').hidden && document.querySelector('#userList').textContent.includes('alex')", timeout=10000)
@@ -19924,7 +19954,7 @@ def main():
             alex_do("Disable…")
             answer_ask(page)
             asked = answer_ask(page)
-            page.wait_for_function("[...document.querySelectorAll('#userList tr')].some(r => r.textContent.includes('alex') && r.textContent.includes('disabled'))", timeout=10000)
+            confirm_its_you(page, "[...document.querySelectorAll('#userList tr')].some(r => r.textContent.includes('alex') && r.textContent.includes('disabled'))")
             problems[before:] = [x for x in problems[before:] if "409" not in x]   # the refusal that prompts the question
             check("disabling a profile's only owner then asks about that", asked[0] == "Disable alex anyway?" and "only owner of Alex's records" in asked[1], asked)
             page.wait_for_function("document.querySelector('#ownerless') && document.querySelector('#ownerless').textContent.includes(\"Alex's records\")", timeout=10000)
@@ -19939,7 +19969,10 @@ def main():
             # fell to the page). Two more of alex's, given to this admin, then deleted
             db502 = dbm.connect()
             orph502 = [profiles.create_profile(db502, f"Orphan 502 {n}", owner_id=alex) for n in ("one", "two")]
+            # (#590: and this admin's check of who they are long ago, so the first Make owner asks for it)
+            db502.execute("UPDATE sessions SET verified_at=0 WHERE user_id=(SELECT id FROM users WHERE username=?)", (USER,))
             db502.close()
+            asked590, had590 = [], len(problems)
             js("loadOwnerless()")
             page.wait_for_function("document.querySelector('#ownerless').textContent.includes('Orphan 502 two')", timeout=10000)
             own502 = []
@@ -19951,14 +19984,17 @@ def main():
                 else:   # (#524: Enter in Another account did nothing)
                     orow.get_by_role("textbox", name="Another account").press("Enter")
                 answer_ask(page)   # (owning it yourself is asked)
-                page.wait_for_function(f"![...document.querySelectorAll('#ownerless .ownerless > .row')].some(r => r.textContent.includes('Orphan 502 {n}'))", timeout=10000)   # (#510: what it says is in the list now)
+                asked590.append(confirm_its_you(page, f"![...document.querySelectorAll('#ownerless .ownerless > .row')].some(r => r.textContent.includes('Orphan 502 {n}'))"))   # (#510: what it says is in the list now)
                 settle(200)
                 own502.append(js("(a => [a.textContent, a.closest('.row')?.querySelector('b').textContent])(document.activeElement)") + [js(IN_SIGHT) is not None])
+            problems[had590:] = [x for x in problems[had590:] if not re.search(r"HTTP 403: .*/api/ownerless/\d+/owner$|status of 403", x)]   # (the check, asked)
             own502.append([js(f"api('profiles/{pid}', {{method: 'DELETE', body: JSON.stringify({{confirm_name: 'Orphan 502 {n}'}})}}).then(r => r.status)")
                            for n, pid in zip(("one", "two"), orph502)])
             check("Make owner leaves focus on the next profile's Make owner, else the one before's, in sight (#502: it fell to the page); "
                   "Enter in its Another account does what it does (#524: nothing)",
                   own502 == [["Make owner", "Orphan 502 two", True], ["Make owner", "Alex's records", True], [200, 200]], own502)
+            check("…(#590) Make owner asks to confirm it's you first (whoever is named can see the profile's records), then not again "
+                  "for a few minutes", asked590 == [True, False], asked590)
             # #528: a profile without an owner deleted elsewhere, then its Make owner, at 375×667: drawn away, “No such
             # profile.” where it was, focus on the next profile's Make owner, both in sight (it said so under its row, which stayed)
             SEEN528 = """e => { if (!e) return false; const r = e.getBoundingClientRect(), p = getComputedStyle(document.documentElement);
@@ -20165,7 +20201,7 @@ def main():
                   "zone saying why (#493: it fell to the page)", failed493 == ["Type alex to confirm", "Not removed."], failed493)
             gone_btn.click()
             owner_asked = answer_ask(page, fill=USER)   # (#210: the app's dialog with a box for the name, not prompt)
-            page.wait_for_function("!document.querySelector('#userList').textContent.includes('alex')", timeout=10000)
+            confirm_its_you(page, "!document.querySelector('#userList').textContent.includes('alex')")
             check("…asked who takes over, in the app's dialog with a box for the name", owner_asked[0] == "Who takes over from alex?"
                   and "only owner of Alex's records" in owner_asked[1], owner_asked)
             problems[before_remove:] = [x for x in problems[before_remove:] if "409" not in x]   # the question's refusal
@@ -20376,16 +20412,24 @@ def main():
                   "a date two lines at most, Rename, Remove and Sign out a line each (at 660-740 and 960 px the table ran past the card, a "
                   "date took 4-5 lines, “Sign / out”)",
                   all(v[0] == [] and v[1] <= 0 and v[2] <= 2 and v[3] == 6 and v[4] == 1 and v[5] >= 7 for v in fit519.values()), fit519)
-            pk502 = []
+            pk502, said590 = [], []
             for n in ("Old key 502", "Old phone 502"):
                 pk.locator("#pkList tbody tr").nth(pk.evaluate(f"{pk_names}.indexOf('{n}')")).get_by_role("button", name="Remove").click()
-                answer_ask(pk)
+                if not said590:   # #590: it asks for your password, with Show and focus on it, and says other devices are signed out
+                    pk.wait_for_selector("dialog.sg-ask[open]", timeout=10000)
+                    said590 = pk.evaluate("""(d => [d.querySelector('.pw > input') === document.activeElement, d.querySelector('.pw-show')?.getAttribute('aria-label'),
+                      d.querySelector('label')?.textContent.startsWith('Your password')])(document.querySelector('dialog.sg-ask[open]'))""")
+                    said590.append(answer_ask(pk, fill=PW)[1])
+                else:
+                    answer_ask(pk, fill=PW)
                 pk.wait_for_function(f"!{pk_names}.includes('{n}')", timeout=10000)
                 pk.wait_for_timeout(200)
                 pk502.append(pk.evaluate("(a => [a.textContent, a.closest('#pkList tr')?.querySelector('input').value])(document.activeElement)") + [pk.evaluate(IN_SIGHT) is not None])
             pk_left = pk.evaluate(pk_names)
             check("passkeys' Remove leaves focus on the next passkey's Remove, else the one before's, in sight (#502: it fell to the page)",
                   len(pk_left) == 1 and pk502 == [["Remove", "Old phone 502", True], ["Remove", pk_left[0], True]], [pk502, pk_left])
+            check("…(#590) Remove asks for your password, focus on it, with Show, and says every other device is signed out (it asked neither)",
+                  said590[:3] == [True, "Show password", True] and "Every other device signed in to your account is signed out." in said590[3], said590)
             # #524: Enter in a passkey's name renames it, as its Rename does, and Remove then asks about the new name (it
             # named the old one); at 375×667 a passkey, then a device, removed elsewhere (another tab, another device) is
             # drawn away, what the server said where its row was and focus beside it, both in sight (its row stayed, "No
@@ -20412,7 +20456,7 @@ def main():
               return [m?.textContent, ({SEEN524})(m), a.textContent, ({SEEN524})(a), document.querySelector(list).textContent]; }}"""
             pdb524.execute("DELETE FROM passkeys WHERE credential_id='old-524'")
             row524.get_by_role("button", name="Remove").click()
-            answer_ask(pk)
+            answer_ask(pk, fill=PW)
             pk.wait_for_selector("#pkList tr.row-msg", timeout=10000)
             pk.wait_for_timeout(200)
             pk524 = pk.evaluate(gone524, "#pkList")

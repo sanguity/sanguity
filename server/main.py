@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import accounts, activity, alerts, atrest, backup, backup_jobs, config, crypto, db as dbm, edits, export, fhir_export, hrzones, jobs, milestones, passkeys, profiles as prof, records, security as sec, settings, sync, twofactor, units, uploads, watch_keys, watch_store
+from . import accounts, activity, alerts, atrest, backup, backup_jobs, calendar, config, crypto, db as dbm, edits, export, fhir_export, hrzones, jobs, milestones, passkeys, profiles as prof, records, security as sec, settings, sync, twofactor, units, uploads, watch_keys, watch_store
 
 log = logging.getLogger("sanguity")
 # security events (sign-ins, refused second steps and access): one JSON line each on the app's output, so
@@ -121,6 +121,8 @@ async def lifespan(app):
             from . import journal_photos   # photos sent for a journal entry never saved, a day on (#591)
             journal_photos.sweep_all(db)
             backup_jobs.recover(db)   # backups and checks a stop interrupted (#200)
+            with dbm.transaction(db):   # share links and feeds an older version left to come back with their person (#590)
+                accounts.end_lost_access(db)
             _setup_code(db)
         finally:
             db.close()
@@ -747,6 +749,27 @@ class TwoFactorOff(BaseModel):
     password: str
 
 
+class TwoFactorStart(BaseModel):
+    password: str
+
+
+class TwoFactorConfirm(BaseModel):
+    code: str
+    password: str   # again (the page keeps what was typed at the start): a secret left pending is no way in
+
+
+def _password(request, s, password, action):
+    """The person's password, checked before a change to how they sign in (#590): throttled as sign-in is, and a wrong
+    one is in the security log as reauth.fail."""
+    keys = ("pair:pw|" + s["username"].lower() + "|" + _client_ip(request),)
+    if (w := sec.throttle.wait(*keys)):
+        raise HTTPException(429, f"Too many wrong passwords. Try again in {w} seconds.")
+    if not sec.verify_password(s["pw_hash"], password[:config.PASSWORD_MAX]):
+        sec.throttle.fail(*keys)
+        _audit("reauth.fail", request, s, action=action)
+        raise HTTPException(403, "Your password is wrong.")
+
+
 @app.get("/api/me/2fa")
 def two_factor_state(s=Depends(settled), db=Depends(get_db)):
     left = db.execute("SELECT COUNT(*) FROM recovery_codes WHERE user_id=? AND used_at IS NULL", (s["id"],)).fetchone()[0]
@@ -755,11 +778,13 @@ def two_factor_state(s=Depends(settled), db=Depends(get_db)):
 
 
 @app.post("/api/me/2fa/start")
-def two_factor_start(s=Depends(settled), db=Depends(get_db)):
+def two_factor_start(body: TwoFactorStart, request: Request, s=Depends(settled), db=Depends(get_db)):
     """A new secret to scan; it takes effect only once a code from it is confirmed. The page draws its QR code from the
-    otpauth address (www/js/qr.js, #495)."""
+    otpauth address (www/js/qr.js, #495). Needs the password, as confirming does (#590): a session left signed in
+    could otherwise turn on an app of its own, and with it the recovery codes, and lock its person out."""
     if s["totp_secret"]:
         raise HTTPException(409, "Two-factor sign-in is already on.")
+    _password(request, s, body.password, "turn on two-factor sign-in")
     secret = twofactor.new_secret()
     db.execute("UPDATE users SET totp_pending=? WHERE id=?", (crypto.enc(secret), s["id"]))
     link = twofactor.uri(secret, s["username"])
@@ -767,9 +792,10 @@ def two_factor_start(s=Depends(settled), db=Depends(get_db)):
 
 
 @app.post("/api/me/2fa/confirm")
-def two_factor_confirm(body: TwoFactorCode, request: Request, s=Depends(settled), db=Depends(get_db)):
+def two_factor_confirm(body: TwoFactorConfirm, request: Request, s=Depends(settled), db=Depends(get_db)):
     if s["totp_secret"]:
         raise HTTPException(409, "Two-factor sign-in is already on.")
+    _password(request, s, body.password, "turn on two-factor sign-in")
     keys = ("pair:2fa|" + str(s["id"]) + "|" + _client_ip(request),)
     if (w := sec.throttle.wait(*keys)):
         raise HTTPException(429, f"Too many wrong codes. Try again in {w} seconds.")
@@ -811,13 +837,7 @@ def two_factor_off(body: TwoFactorOff, request: Request, s=Depends(settled), db=
     if accounts.two_factor_required(db) and not passkeys.count(db, s["id"]):
         raise HTTPException(409, "This server requires two-factor sign-in, so it can't be turned off. "
                                  "Add a passkey first if you want to stop using the authenticator app.")
-    keys = ("pair:pw|" + s["username"].lower() + "|" + _client_ip(request),)
-    if (w := sec.throttle.wait(*keys)):
-        raise HTTPException(429, f"Too many wrong passwords. Try again in {w} seconds.")
-    if not sec.verify_password(s["pw_hash"], body.password[:config.PASSWORD_MAX]):
-        sec.throttle.fail(*keys)
-        _audit("reauth.fail", request, s, action="turn off two-factor sign-in")
-        raise HTTPException(403, "Your password is wrong.")
+    _password(request, s, body.password, "turn off two-factor sign-in")
     with dbm.transaction(db):
         accounts.turn_off_2fa(db, s["id"])
         activity.log(db, "2fa.off", s, ip=_client_ip(request))
@@ -860,13 +880,7 @@ def my_passkeys(origin: str = "", s=Depends(settled), db=Depends(get_db)):
 @app.post("/api/me/passkeys/options")
 def passkey_add_options(body: PasskeyAdd, request: Request, s=Depends(settled), db=Depends(get_db)):
     """Adding a passkey adds a way in, so it needs the password."""
-    keys = ("pair:pw|" + s["username"].lower() + "|" + _client_ip(request),)
-    if (w := sec.throttle.wait(*keys)):
-        raise HTTPException(429, f"Too many wrong passwords. Try again in {w} seconds.")
-    if not sec.verify_password(s["pw_hash"], body.password[:config.PASSWORD_MAX]):
-        sec.throttle.fail(*keys)
-        _audit("reauth.fail", request, s, action="add a passkey")
-        raise HTTPException(403, "Your password is wrong.")
+    _password(request, s, body.password, "add a passkey")
     state, options = passkeys.registration_options(db, s, request.headers.get("origin"))
     return {"state": state, "options": options}
 
@@ -889,10 +903,17 @@ def passkey_rename(pk: int, body: PasskeyRename, s=Depends(settled), db=Depends(
     return {"name": name}
 
 
+class PasskeyRemove(BaseModel):
+    password: str
+
+
 @app.delete("/api/me/passkeys/{pk}")
-def passkey_remove(pk: int, request: Request, s=Depends(settled), db=Depends(get_db)):
+def passkey_remove(pk: int, body: PasskeyRemove, request: Request, s=Depends(settled), db=Depends(get_db)):
     """Remove one. The password always still signs in; but where the server requires two-factor sign-in, the last
-    second factor can't go (that would leave the account unable to use anything until an admin stepped in)."""
+    second factor can't go (that would leave the account unable to use anything until an admin stepped in). Needs the
+    password and signs out everywhere else (#590), as turning off the authenticator app does: a session left signed in
+    can't take away its person's way in, nor keep a device it signed in on."""
+    _password(request, s, body.password, "remove a passkey")
     with dbm.transaction(db):
         r = db.execute("SELECT name FROM passkeys WHERE id=? AND user_id=?", (pk, s["id"])).fetchone()
         if not r:
@@ -902,9 +923,10 @@ def passkey_remove(pk: int, request: Request, s=Depends(settled), db=Depends(get
                                      "Add another passkey or turn on the authenticator app first.")
         db.execute("DELETE FROM passkeys WHERE id=?", (pk,))
         accounts.short_password_check(db, s["id"])
+        n = db.execute("DELETE FROM sessions WHERE user_id=? AND id<>?", (s["id"], s["sid"])).rowcount
         activity.log(db, "passkey.remove", s, detail={"name": r["name"]}, ip=_client_ip(request))
     after = db.execute("SELECT must_change_pw FROM users WHERE id=?", (s["id"],)).fetchone()
-    return {"ok": True, "left": passkeys.count(db, s["id"]), "must_change_pw": bool(after["must_change_pw"])}
+    return {"ok": True, "left": passkeys.count(db, s["id"]), "must_change_pw": bool(after["must_change_pw"]), "signed_out_elsewhere": n}
 
 
 @app.get("/api/sessions")
@@ -924,8 +946,12 @@ def revoke_session(sid: int, s=Depends(any_user), db=Depends(get_db)):
 
 @app.post("/api/sessions/revoke-others")
 def revoke_others(s=Depends(any_user), db=Depends(get_db)):
-    n = db.execute("DELETE FROM sessions WHERE user_id=? AND id<>?", (s["id"], s["sid"])).rowcount
-    return {"ok": True, "revoked": n}
+    """Sign out everywhere else. The account's calendar feeds go too (#590): it may follow a lost phone, whose
+    calendar app holds their addresses."""
+    with dbm.transaction(db):
+        n = db.execute("DELETE FROM sessions WHERE user_id=? AND id<>?", (s["id"], s["sid"])).rowcount
+        feeds = calendar.drop_for(db, s["id"])
+    return {"ok": True, "revoked": n, "calendar_feeds": feeds}
 
 
 # ---------------------------------------------------------------- profiles and sharing
@@ -1016,10 +1042,12 @@ def share(pid: int, body: MemberIn, request: Request, s=Depends(user), db=Depend
     if not u:
         raise HTTPException(404, "No active account with that username. An admin can create it under Admin → Accounts.")
     with dbm.transaction(db):
+        accounts.end_lost_access(db)   # what they had before losing access stays ended (#590)
         before, old = dbm.active_owners(db, pid), role_of(db, u["id"], pid)
         db.execute("""INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, ?)
                       ON CONFLICT(user_id, profile_id) DO UPDATE SET role=excluded.role""", (u["id"], pid, body.role))
         _keep_an_owner(db, pid, before)
+        accounts.end_lost_access(db)   # an owner made an editor or viewer: their share links stop for good
         if old != body.role:
             activity.log(db, "share", s, pid, {"username": u["username"], "role": body.role, **({"from": old} if old else {})},
                          _client_ip(request))
@@ -1037,6 +1065,7 @@ def unshare(pid: int, uid: int, request: Request, s=Depends(user), db=Depends(ge
         before = dbm.active_owners(db, pid)
         db.execute("DELETE FROM memberships WHERE user_id=? AND profile_id=?", (uid, pid))
         _keep_an_owner(db, pid, before)
+        accounts.end_lost_access(db)   # their share links and calendar feed end for good (#590)
         name = db.execute("SELECT username FROM users WHERE id=?", (uid,)).fetchone()["username"]
         activity.log(db, "unshare", s, pid, {"username": name}, _client_ip(request))
     return {"ok": True}
@@ -1287,6 +1316,8 @@ def remove_user(uid: int, body: UserRemove, request: Request, s=Depends(admin), 
             f"{target['username']} is the only owner of {', '.join(sole)}. Who should own "
             f"{'it' if len(sole) == 1 else 'them'} instead? Without an owner nobody can share or rename "
             f"{'it' if len(sole) == 1 else 'them'}."})
+    if sole and hand_to is not None:   # a way into those profiles' records, for the admin or whoever they name (#590)
+        fresh(request, s, "hand profiles over")
     gone = accounts.remove(db, uid, hand_to)
     activity.log(db, "account.remove", s, detail=gone, ip=_client_ip(request))
     return {"ok": True, **gone}
@@ -1314,16 +1345,22 @@ class OwnerIn(BaseModel):
 
 @app.post("/api/ownerless/{pid}/owner")
 def repair_owner(pid: int, body: OwnerIn, request: Request, s=Depends(admin), db=Depends(get_db)):
-    """Give a profile that has no active owner a new one. Only for such profiles: any other is its owners' to share."""
+    """Give a profile that has no active owner a new one. Only for such profiles: any other is its owners' to share.
+    Whoever it's given to can see its records, the admin themself or an account they may have just made, so it needs
+    the fresh check (#590)."""
     p = db.execute("SELECT name FROM profiles WHERE id=?", (pid,)).fetchone()
     if not p:
         raise HTTPException(404, "No such profile.")
     u = db.execute("SELECT id, username FROM users WHERE username=? AND disabled=0", (body.username.strip(),)).fetchone()
     if not u:
         raise HTTPException(404, "No active account with that username.")
+    if dbm.active_owners(db, pid):   # (said before the check: nothing to confirm)
+        raise HTTPException(409, "That profile has an active owner, who can share it.")
+    fresh(request, s, "give a profile an owner")
     with dbm.transaction(db):
         if dbm.active_owners(db, pid):
             raise HTTPException(409, "That profile has an active owner, who can share it.")
+        accounts.end_lost_access(db)   # the old owners' share links stay ended (#590)
         old = role_of(db, u["id"], pid)
         db.execute("""INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'owner')
                       ON CONFLICT(user_id, profile_id) DO UPDATE SET role='owner'""", (u["id"], pid))
@@ -1344,21 +1381,25 @@ def edit_user(uid: int, body: UserPatch, request: Request, s=Depends(admin), db=
     if body.reset_password or body.disable_2fa or (body.is_admin and not target["is_admin"]):   # a way into the account
         fresh(request, s, "reset a password" if body.reset_password else "turn off two-factor sign-in"
               if body.disable_2fa else "make an admin")
-    if body.disabled and not body.force:
-        sole = [name for _, name in accounts.sole_owned(db, uid)]
-        if sole:   # nobody else could then share or rename these; the client asks, then resends with force
-            raise HTTPException(409, {"sole_owner_of": sole, "message":
-                f"This account is the only owner of {', '.join(sole)}. While it is disabled, nobody can share or rename "
-                f"{'that profile' if len(sole) == 1 else 'those profiles'} until an admin gives "
-                f"{'it' if len(sole) == 1 else 'them'} a new owner under Accounts. Disable it anyway?"})
+    sole = [name for _, name in accounts.sole_owned(db, uid)] if body.disabled and not target["disabled"] else []
+    if sole and not body.force:   # nobody else could then share or rename these; the client asks, then resends with force
+        raise HTTPException(409, {"sole_owner_of": sole, "message":
+            f"This account is the only owner of {', '.join(sole)}. While it is disabled, nobody can share or rename "
+            f"{'that profile' if len(sole) == 1 else 'those profiles'} until an admin gives "
+            f"{'it' if len(sole) == 1 else 'them'} a new owner under Accounts. Disable it anyway?"})
+    if sole:   # leaves them for an admin to give a new owner: the first step of a way into their records (#590)
+        fresh(request, s, "disable a profile's only owner")
     out = {"ok": True}
     if body.is_admin is not None and body.is_admin != bool(target["is_admin"]):
         db.execute("UPDATE users SET is_admin=? WHERE id=?", (int(body.is_admin), uid))
         note("account.admin" if body.is_admin else "account.unadmin")
     if body.disabled is not None and body.disabled != bool(target["disabled"]):
-        db.execute("UPDATE users SET disabled=? WHERE id=?", (int(body.disabled), uid))
-        if body.disabled:
-            accounts.sign_out_everywhere(db, uid)
+        with dbm.transaction(db):
+            accounts.end_lost_access(db)   # before enabling: what ended when it was disabled stays ended (#590)
+            db.execute("UPDATE users SET disabled=? WHERE id=?", (int(body.disabled), uid))
+            if body.disabled:
+                accounts.sign_out_everywhere(db, uid)   # its calendar feeds too
+                accounts.end_lost_access(db)   # its share links stop for good
         note("account.disable" if body.disabled else "account.enable")
     if body.reset_password:
         out["temporary_password"] = accounts.set_temp_password(db, uid)   # signs out everywhere: it may follow a lost device

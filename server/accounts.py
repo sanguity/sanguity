@@ -1,7 +1,7 @@
 """Creating accounts, shared by the API (setup wizard, admin page) and the command line (server.manage)."""
 import os, secrets, sqlite3
 
-from . import config, db as dbm, security as sec
+from . import calendar, config, db as dbm, security as sec
 
 
 class AccountError(ValueError):
@@ -53,10 +53,25 @@ def temp_password_expired(u):
     return bool(u["temp_pw_expires"]) and u["temp_pw_expires"] <= dbm.now()
 
 
-def sign_out_everywhere(db, uid):
-    """End every session and forget every known browser of an account (disabled, or given a new password)."""
+def sign_out_everywhere(db, uid, feeds=True):
+    """End every session and forget every known browser of an account (disabled, given a new password, signed in with
+    a recovery code, or its second factors reset). feeds: its calendar feeds go too (#590), whose addresses a lost
+    phone's calendar app holds; not when the person turns off their own authenticator app."""
     db.execute("DELETE FROM sessions WHERE user_id=?", (uid,))
     db.execute("DELETE FROM devices WHERE user_id=?", (uid,))
+    if feeds:
+        calendar.drop_for(db, uid)
+
+
+def end_lost_access(db):
+    """What depended on access that is gone ends for good (#590), so giving the access back doesn't bring it back:
+    share links whose maker is no longer an active owner are revoked (share_links.stop_unowned), and calendar feeds
+    whose person can no longer view the profile are deleted (calendar.drop_without_access). Call it, inside the same
+    transaction, after a change that can take access away and before one that gives it (which also catches what an
+    older version left behind)."""
+    from . import share_links   # (it imports much of the app)
+    share_links.stop_unowned(db)
+    calendar.drop_without_access(db)
 
 
 def forget_setup_code(db):
@@ -109,7 +124,7 @@ def turn_off_2fa(db, uid, passkeys_too=False):
     if passkeys_too:
         db.execute("DELETE FROM passkeys WHERE user_id=?", (uid,))
     short_password_check(db, uid)
-    sign_out_everywhere(db, uid)
+    sign_out_everywhere(db, uid, feeds=passkeys_too)   # an admin's reset may follow a lost phone; turning one's own off doesn't
 
 
 def sole_owned(db, uid):
@@ -127,12 +142,14 @@ def remove(db, uid, hand_to=None):
     u = db.execute("SELECT username FROM users WHERE id=?", (uid,)).fetchone()
     handed = []
     with dbm.transaction(db):
+        end_lost_access(db)   # before hand_to is given profiles: their links and feeds left from an earlier loss stay ended
         if hand_to is not None:
             for pid, name in sole_owned(db, uid):
                 db.execute("""INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'owner')
                               ON CONFLICT(user_id, profile_id) DO UPDATE SET role='owner'""", (hand_to, pid))
                 handed.append(name)
         db.execute("DELETE FROM users WHERE id=?", (uid,))
+        end_lost_access(db)   # its links, now made by no one (the schema cascades its feeds)
     return {"username": u["username"], "handed_over": handed}
 
 

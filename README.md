@@ -469,7 +469,8 @@ of day, which days, from and until. The feed lists them as repeating events in t
 only "Medication" unless you choose full details; they end on their until day, or on the day the records say the
 medication stopped, and each can be turned off. Your calendar app does the reminding.
 Anyone who can view a profile can make a feed of it for themself. The address is the only credential, so it's
-shown once; get a new one or turn the feed off there any time, and a feed stops when its person's access ends.
+shown once; get a new one or turn the feed off there any time. A feed is deleted when its person's access ends, and
+when they sign out all other devices, sign in with a recovery code or have their password reset by an admin.
 Google Calendar and Outlook on the web fetch from their own servers, so they need Sanguity reachable over HTTPS
 from the internet; a phone on your home network or tailnet works without that.
 
@@ -481,7 +482,7 @@ procedures and imaging, upcoming appointments, the journal and, ticked on its ow
 plainly what anyone holding the link will see: the profile's name and those records, nothing else (no documents,
 report text, settings or other profiles, and nothing can be changed). Its page lists each lab's latest result,
 by the names you give labs, with its history a click away, has a bar to go to each section, and prints cleanly.
-A link stops working when it expires (an hour to 90 days), when any owner revokes it, or when the owner who made it stops being one. Every time it's opened is
+A link stops working when it expires (an hour to 90 days), when any owner revokes it, or when the owner who made it stops being one (for good: it doesn't open again if they're made an owner again). Every time it's opened is
 logged in the profile's activity, with the address it came from. The link is shown once; Sanguity keeps only a hash
 of its token, which sits after the `#` so it never reaches a server log. The person you send it to needs to reach
 your Sanguity, so outside your home network or tailnet that means HTTPS from the internet.

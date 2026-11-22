@@ -10,7 +10,9 @@ POST /api/share/view in the request body, so it stays out of every URL a server,
 A link works only while:
   - it hasn't expired and hasn't been revoked;
   - the owner who made it is still an owner of the profile, with an account that isn't disabled. An owner who
-    leaves the profile, loses the owner role or has their account removed takes their links with them.
+    leaves the profile, loses the owner role, or has their account disabled or removed takes their links with them,
+    for good (#590): each is revoked then (stop_unowned), in no one's name (revoked_name NULL, listed as
+    "maker_not_owner"), so the maker getting the role back doesn't open it again.
 
 What a holder sees is built here from the records at each view (records.served, with corrections applied), cut to
 the link's scope; nothing else of the profile is reachable through it: no documents, no report text, no settings,
@@ -134,17 +136,32 @@ def _prune(db, pid):
                (pid, dbm.now() - KEEP_ENDED_DAYS * 86400))
 
 
+_MAKER_OWNS = """EXISTS (SELECT 1 FROM memberships m JOIN users u ON u.id = m.user_id
+                          WHERE m.user_id = l.created_by AND m.profile_id = l.profile_id AND m.role = 'owner' AND u.disabled = 0)"""
+
+
 def _working_sql():
     """The conditions under which a link opens (alias l): not revoked, not expired, its maker still an owner."""
-    return """l.revoked IS NULL AND l.expires > ?
-              AND EXISTS (SELECT 1 FROM memberships m JOIN users u ON u.id = m.user_id
-                          WHERE m.user_id = l.created_by AND m.profile_id = l.profile_id AND m.role = 'owner' AND u.disabled = 0)"""
+    return "l.revoked IS NULL AND l.expires > ? AND " + _MAKER_OWNS
+
+
+def stop_unowned(db, pid=None):
+    """Revoke, for good, every working link whose maker is no longer an active owner of its profile (#590): it would
+    open again with its old token once they were. Called after an owner is taken away and before one is given
+    (accounts.end_lost_access), and as links are listed or opened. revoked_name stays NULL: no one revoked it.
+    pid: only that profile's. Returns how many."""
+    now = dbm.now()
+    return db.execute(f"""UPDATE share_links SET revoked=? WHERE id IN (SELECT l.id FROM share_links l WHERE l.revoked IS NULL
+                          AND l.expires > ? AND NOT {_MAKER_OWNS}{" AND l.profile_id=?" if pid is not None else ""})""",
+                      (now, now, *([pid] if pid is not None else []))).rowcount
 
 
 def _out(db, r, now):
     scope = json.loads(crypto.dec(r["scope"]))
     working = bool(db.execute(f"SELECT 1 FROM share_links l WHERE l.id=? AND {_working_sql()}", (r["id"], now)).fetchone())
-    state = ("revoked" if r["revoked"] else "expired" if r["expires"] <= now else "active" if working else "maker_not_owner")
+    # revoked with no one's name: stopped with its maker (stop_unowned)
+    state = ("maker_not_owner" if r["revoked"] and r["revoked_name"] is None else "revoked" if r["revoked"]
+             else "expired" if r["expires"] <= now else "active" if working else "maker_not_owner")
     return {"id": r["id"], "label": crypto.dec(r["label"]) if r["label"] else "", **scope, "created": r["created"],
             "created_by": r["created_name"], "expires": r["expires"], "revoked": r["revoked"], "revoked_by": r["revoked_name"],
             "views": r["views"], "last_viewed": r["last_viewed"], "state": state}
@@ -152,6 +169,7 @@ def _out(db, r, now):
 
 def listing(db, pid):
     """The profile's links, newest first, working or ended within KEEP_ENDED_DAYS (never their tokens)."""
+    stop_unowned(db, pid)
     now = dbm.now()
     return [_out(db, r, now) for r in db.execute("SELECT * FROM share_links WHERE profile_id=? ORDER BY id DESC", (pid,))]
 
@@ -208,8 +226,11 @@ def find(db, token):
     """The working link this token opens, or None. Anything malformed is simply not found."""
     if not isinstance(token, str) or not 20 <= len(token) <= 100 or not re.fullmatch(r"[A-Za-z0-9_-]+", token):
         return None
-    return db.execute(f"""SELECT l.*, p.name AS profile_name FROM share_links l JOIN profiles p ON p.id = l.profile_id
-                          WHERE l.token_hash=? AND {_working_sql()}""", (sec.token_hash(token), dbm.now())).fetchone()
+    r = db.execute(f"""SELECT l.*, p.name AS profile_name FROM share_links l JOIN profiles p ON p.id = l.profile_id
+                       WHERE l.token_hash=? AND {_working_sql()}""", (sec.token_hash(token), dbm.now())).fetchone()
+    if r is None and (k := db.execute("SELECT profile_id FROM share_links WHERE token_hash=?", (sec.token_hash(token),)).fetchone()):
+        stop_unowned(db, k[0])   # its maker no longer an owner: stopped for good (#590)
+    return r
 
 
 def viewed(db, link, ip, section=None):

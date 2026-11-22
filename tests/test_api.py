@@ -733,12 +733,12 @@ class Api(unittest.TestCase):
         other = self.login("tess", "tess keeps a long passphrase")   # a second device, signed in before 2FA
         # turning it on: a secret to scan, confirmed with a first code, then 10 recovery codes shown once
         self.assertFalse(tess.get("/api/me/2fa").json()["on"])
-        started = tess.post("/api/me/2fa/start", headers=H).json()
+        started = tess.post("/api/me/2fa/start", json={"password": "tess keeps a long passphrase"}, headers=H).json()
         secret = started["secret"]
         self.assertTrue(started["uri"].startswith("otpauth://totp/Sanguity:tess?") and "qr" not in started)   # the page draws it (qr.js, #495)
-        self.assertEqual(tess.post("/api/me/2fa/confirm", json={"code": "000000"}, headers=H).status_code, 400)
+        self.assertEqual(tess.post("/api/me/2fa/confirm", json={"code": "000000", "password": "tess keeps a long passphrase"}, headers=H).status_code, 400)
         first_code = code(secret)   # kept: the same code must not work again
-        r = tess.post("/api/me/2fa/confirm", json={"code": first_code}, headers=H)
+        r = tess.post("/api/me/2fa/confirm", json={"code": first_code, "password": "tess keeps a long passphrase"}, headers=H)
         recovery = r.json()["recovery_codes"]
         self.assertEqual(len(recovery), 10)
         self.assertTrue(tess.get("/api/me").json()["user"]["two_factor"])
@@ -789,13 +789,13 @@ class Api(unittest.TestCase):
         uma = self.login("uma", "uma keeps a long passphrase")
         db.execute("UPDATE users SET is_admin=1 WHERE id=?", (tess_id,))
         self.assertEqual(tess.patch("/api/settings", json={"require_2fa": True}, headers=H).json()["detail"], "admin_two_factor_required")
-        secret = tess.post("/api/me/2fa/start", headers=H).json()["secret"]
-        tess.post("/api/me/2fa/confirm", json={"code": code(secret)}, headers=H)
+        secret = tess.post("/api/me/2fa/start", json={"password": "tess keeps a long passphrase 2"}, headers=H).json()["secret"]
+        tess.post("/api/me/2fa/confirm", json={"code": code(secret), "password": "tess keeps a long passphrase 2"}, headers=H)
         self.assertEqual(tess.patch("/api/settings", json={"require_2fa": True}, headers=H).status_code, 200)
         try:
             self.assertEqual(uma.get("/api/profiles/1/data").json()["detail"], "two_factor_required")
             self.assertTrue(uma.get("/api/me").json()["user"]["needs_two_factor"])
-            self.assertEqual(uma.post("/api/me/2fa/start", headers=H).status_code, 200)   # setting it up is still allowed
+            self.assertEqual(uma.post("/api/me/2fa/start", json={"password": "uma keeps a long passphrase"}, headers=H).status_code, 200)   # setting it up is still allowed
             self.assertEqual(ben.get("/api/profiles/1/data").status_code, 200)   # Ben's passkey counts
             self.assertEqual(tess.post("/api/me/2fa/off", json={"password": "tess keeps a long passphrase 2"}, headers=H).status_code, 409)
         finally:
@@ -842,8 +842,8 @@ class Api(unittest.TestCase):
         self.assertIn('"need":"admin second factor"', logged.output[0])
         self.assertEqual(ada.get("/api/profiles/1/data").status_code, 404)   # the rest of the account works
         # an authenticator app is enough
-        secret = ada.post("/api/me/2fa/start", headers=H).json()["secret"]
-        self.assertEqual(ada.post("/api/me/2fa/confirm", json={"code": code(secret)}, headers=H).status_code, 200)
+        secret = ada.post("/api/me/2fa/start", json={"password": "ada keeps a long passphrase"}, headers=H).json()["secret"]
+        self.assertEqual(ada.post("/api/me/2fa/confirm", json={"code": code(secret), "password": "ada keeps a long passphrase"}, headers=H).status_code, 200)
         self.assertEqual(ada.get("/api/users").status_code, 200)
         self.assertFalse(ada.get("/api/me").json()["user"]["admin_needs_two_factor"])
 
@@ -912,6 +912,96 @@ class Api(unittest.TestCase):
         for name in ("ada", "ivo", "new-admin"):   # leave the others' tests as they were
             db.execute("UPDATE users SET is_admin=0 WHERE username=?", (name,))
         db.execute("DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE username IN ('ada', 'ivo', 'new-admin'))")
+        db.close()
+
+    def test_admin_ways_into_records_need_the_fresh_check(self):   # #590: each gives an admin, or whoever they name, a profile
+        from server import accounts, config, profiles as prof
+        db = dbm.connect()
+        ids = {}
+        for name in ("wes", "zia"):
+            row = db.execute("SELECT id FROM users WHERE username=?", (name,)).fetchone()
+            ids[name] = row[0] if row else accounts.create(db, name, password=f"{name} keeps a long passphrase")[0]
+        pid = prof.create_profile(db, "Wes's (590)", owner_id=ids["wes"])
+        ben = self.login("ben")
+        ben_id = db.execute("SELECT id FROM users WHERE username='ben'").fetchone()[0]
+        stale = lambda: db.execute("UPDATE sessions SET verified_at=? WHERE user_id=?", (dbm.now() - config.REAUTH_MINUTES * 60 - 1, ben_id))
+        refused = lambda r: self.assertEqual((r.status_code, r.json()["detail"]), (403, "reauth_required"), r.text)
+        renew = lambda: self.assertEqual(ben.post("/api/me/reauth", json={"secret": PW["ben"]}, headers=H).status_code, 200)
+        # disabling a profile's only owner (force): asked first as before, then the fresh check
+        stale()
+        self.assertEqual(ben.patch(f"/api/users/{ids['wes']}", json={"disabled": True}, headers=H).status_code, 409)
+        refused(ben.patch(f"/api/users/{ids['wes']}", json={"disabled": True, "force": True}, headers=H))
+        self.assertEqual(db.execute("SELECT disabled FROM users WHERE id=?", (ids["wes"],)).fetchone()[0], 0)
+        renew()
+        self.assertEqual(ben.patch(f"/api/users/{ids['wes']}", json={"disabled": True, "force": True}, headers=H).status_code, 200)
+        # giving the profile left without an owner a new one: oneself, or an account one may have just made
+        stale()
+        for who in ("ben", "zia"):
+            refused(ben.post(f"/api/ownerless/{pid}/owner", json={"username": who}, headers=H))
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM memberships WHERE profile_id=? AND user_id<>?", (pid, ids["wes"])).fetchone()[0], 0)
+        self.assertEqual(ben.get(f"/api/profiles/{pid}/data").status_code, 404)
+        renew()
+        self.assertEqual(ben.post(f"/api/ownerless/{pid}/owner", json={"username": "zia"}, headers=H).status_code, 200)
+        # removing an account and handing its profiles over
+        stale()
+        refused(ben.request("DELETE", f"/api/users/{ids['zia']}", json={"confirm_name": "zia", "hand_to": "ben"}, headers=H))
+        self.assertIsNotNone(db.execute("SELECT 1 FROM users WHERE id=?", (ids["zia"],)).fetchone())
+        self.assertIsNone(main.role_of(db, ben_id, pid))
+        renew()
+        r = ben.request("DELETE", f"/api/users/{ids['zia']}", json={"confirm_name": "zia", "hand_to": "ben"}, headers=H)
+        self.assertEqual((r.status_code, r.json()["handed_over"]), (200, ["Wes's (590)"]))
+        # the everyday ones still don't ask: enabling, and removing an account that hands nothing over
+        stale()
+        self.assertEqual(ben.patch(f"/api/users/{ids['wes']}", json={"disabled": False}, headers=H).status_code, 200)
+        db.execute("DELETE FROM profiles WHERE id=?", (pid,))
+        r = ben.request("DELETE", f"/api/users/{ids['wes']}", json={"confirm_name": "wes", "hand_to": "ben"}, headers=H)
+        self.assertEqual((r.status_code, r.json()["handed_over"]), (200, []))
+        db.close()
+
+    def test_turning_on_two_factor_needs_the_password(self):   # #590: a session left open can't lock its person out
+        import time
+        from server import accounts, twofactor
+        code = lambda secret: twofactor._code(secret, int(time.time() // twofactor.PERIOD))
+        db = dbm.connect()
+        if not db.execute("SELECT 1 FROM users WHERE username='gus'").fetchone():
+            accounts.create(db, "gus", password="gus keeps a long passphrase")
+        gus = self.login("gus", "gus keeps a long passphrase")
+        self.assertEqual(gus.post("/api/me/2fa/start", headers=H).status_code, 422)
+        with self.assertLogs("sanguity.security", "WARNING") as logged:
+            self.assertEqual(gus.post("/api/me/2fa/start", json={"password": "not the password at all"}, headers=H).status_code, 403)
+        self.assertIn('"event":"reauth.fail"', logged.output[0])
+        secret = gus.post("/api/me/2fa/start", json={"password": "gus keeps a long passphrase"}, headers=H).json()["secret"]
+        # the code alone doesn't turn it on, nor the code with a wrong password: a secret left pending is no way in
+        self.assertEqual(gus.post("/api/me/2fa/confirm", json={"code": code(secret)}, headers=H).status_code, 422)
+        self.assertEqual(gus.post("/api/me/2fa/confirm", json={"code": code(secret), "password": "not the password at all"},
+                                  headers=H).status_code, 403)
+        self.assertFalse(gus.get("/api/me/2fa").json()["on"])
+        r = gus.post("/api/me/2fa/confirm", json={"code": code(secret), "password": "gus keeps a long passphrase"}, headers=H)
+        self.assertEqual((r.status_code, len(r.json()["recovery_codes"])), (200, 10))
+        self.assertTrue(gus.get("/api/me/2fa").json()["on"])
+        db.close()
+
+    def test_removing_a_passkey_needs_the_password_and_signs_out_elsewhere(self):   # #590
+        from server import accounts
+        db = dbm.connect()
+        if not db.execute("SELECT 1 FROM users WHERE username='hal'").fetchone():
+            accounts.create(db, "hal", password="hal keeps a long passphrase")
+        hal = self.login("hal", "hal keeps a long passphrase")
+        other = self.login("hal", "hal keeps a long passphrase")   # another device
+        pk = self.add_passkey(hal, "hal keeps a long passphrase", SoftKey())
+        gone = lambda: db.execute("SELECT COUNT(*) FROM passkeys WHERE id=?", (pk,)).fetchone()[0] == 0
+        self.assertEqual(hal.delete(f"/api/me/passkeys/{pk}", headers=H).status_code, 422)
+        with self.assertLogs("sanguity.security", "WARNING") as logged:
+            r = hal.request("DELETE", f"/api/me/passkeys/{pk}", json={"password": "not the password at all"}, headers=H)
+        self.assertEqual(r.status_code, 403)
+        self.assertIn('"event":"reauth.fail"', logged.output[0])
+        self.assertFalse(gone())
+        self.assertEqual(other.get("/api/me").status_code, 200)
+        r = hal.request("DELETE", f"/api/me/passkeys/{pk}", json={"password": "hal keeps a long passphrase"}, headers=H)
+        self.assertEqual((r.status_code, r.json()["left"], r.json()["signed_out_elsewhere"]), (200, 0, 1), r.text)
+        self.assertTrue(gone())
+        self.assertEqual(other.get("/api/me").status_code, 401)   # every other session ends, as turning off two-factor does
+        self.assertEqual(hal.get("/api/me").status_code, 200)     # this one stays
         db.close()
 
     def test_breached_and_context_passwords_are_refused(self):
@@ -1740,17 +1830,17 @@ class Api(unittest.TestCase):
         pk = listed["passkeys"][0]["id"]
         dbm.meta_set(db, "require_2fa", "1")
         try:
-            r = pia.delete(f"/api/me/passkeys/{pk}", headers=H)
+            r = pia.request("DELETE", f"/api/me/passkeys/{pk}", json={"password": "pia keeps a long passphrase"}, headers=H)
             self.assertEqual(r.status_code, 409)
             key2 = SoftKey()
             pk2 = add(pia, "pia", key2, "Laptop").json()["id"]
-            self.assertEqual(pia.delete(f"/api/me/passkeys/{pk}", headers=H).json()["left"], 1)
+            self.assertEqual(pia.request("DELETE", f"/api/me/passkeys/{pk}", json={"password": "pia keeps a long passphrase"}, headers=H).json()["left"], 1)
             # signing in with the one left still works, and counts as two-factor
             c, r = alone(key2)
             self.assertEqual(c.get("/api/profiles/1/data").status_code, 404)   # past the two-factor gate: just not shared
         finally:
             dbm.meta_set(db, "require_2fa", None)
-        self.assertEqual(quinn.delete(f"/api/me/passkeys/{pk2}", headers=H).status_code, 404)   # not theirs
+        self.assertEqual(quinn.request("DELETE", f"/api/me/passkeys/{pk2}", json={"password": "quinn keeps a long passphrase"}, headers=H).status_code, 404)   # not theirs
         self.assertEqual(pia.patch(f"/api/me/passkeys/{pk2}", json={"name": "  Work  laptop "}, headers=H).json()["name"], "Work laptop")
         # an admin's reset (lost phone) takes the passkeys too
         manage.run(["disable-2fa", "pia"])

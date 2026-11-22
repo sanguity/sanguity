@@ -2388,6 +2388,18 @@ Everything on `main` so far; it becomes the first tagged release.
   days after the restore (`RESTORE_KEEP_DAYS`), at start and hourly; an upload whose secret goes while it's being
   written is taken out and refused, and one queued isn't folded in. README and docs/database.md say what the receiver
   keeps and for how long.
+- **Access: an admin into a profile's records only after the fresh check, two-factor sign-in turned on and a passkey
+  removed only with the password, and share links and calendar feeds that stay ended** (#590): disabling a profile's
+  only owner, giving a profile without an owner a new one (yourself or anyone else) and removing an account while
+  handing its profiles over now ask for the fresh check (the password, a code or a passkey within a few minutes), as
+  resetting a password does: an admin session left open could otherwise reach anyone's records. Turning on two-factor
+  sign-in asks for your password first, so a device left signed in can't turn on an app of its own and lock you out;
+  removing a passkey asks for it too, and signs out every other device. A share link stopped because its maker is no
+  longer an owner (removed, made an editor or viewer, disabled, removed for good) is revoked for good, and no longer
+  opens again when they're an owner again; a calendar feed is deleted when its person loses access to the profile
+  (it answered again, unlisted, once they were added back), and on Sign out all other devices, an admin's reset of
+  their password or two-factor sign-in, and a sign-in with a recovery code, each of which may follow a lost phone.
+  Links and feeds an older version left to come back are ended when the app starts.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
