@@ -150,7 +150,8 @@ function labTile(s, since, lastDraw) {
     // "as of" (a value older than the latest draw) on a line of its own, with no "·" to start a line (#389, #338); a
     // date of its own for the change ("since Sep 10, 2026": not the header's) on the next line, in either font, so the
     // tile is as tall in the fallback as in Inter
-    el("span", {class: "delta"}, ...(d == null ? [] : [...keepDates(`${d > 0 ? "▲ +" : d < 0 ? "▼ " : "± "}${fmtNum(Math.abs(d) < 1e-9 ? 0 : d).replace("-", "−")}`
+    // the change as ↑ / ↓ or "no change" (util.js chgWords), never ▲ / ▼, a result's own flags (#623)
+    el("span", {class: "delta"}, ...(d == null ? [] : [...keepDates(chgWords(d, fmtNum(Math.abs(d) < 1e-9 ? 0 : Math.abs(d)))
       + (isoDay(prev.ts) === since ? "" : "\u00a0since")), ...(isoDay(prev.ts) === since ? [] : [" ", el("br"), ...keepDates(fmtD(prev.ts))])]),
       ...(last.ts < (lastDraw || 0) - 2 * DAY ? [...(d == null ? [] : [" ", el("br")]), ...keepDates(`as of ${fmtD(last.ts)}`)] : [])),
     spark(s, recent));
@@ -217,7 +218,7 @@ function watchTiles() {
         el("span", {class: "lbl", text: "Weight"}),
         el("span", {class: "val"}, last[1].toFixed(1), el("small", {text: s.unit})),
         ucOrig(s, last) ? el("span", {class: "orig", text: "Reported " + ucOrig(s, last)}) : null,   // #41
-        el("span", {class: "delta"}, keepDates(d != null ? `${d >= 0 ? "▲ +" : "▼ −"}${Math.abs(d).toFixed(1)} ${s.unit} since ${lcLabel(pm.label)} · ${fmtD(last.ts)}` : fmtD(last.ts))),
+        el("span", {class: "delta"}, keepDates(d != null ? `${chgWords(d, Math.abs(d).toFixed(1), " " + s.unit)} since ${lcLabel(pm.label)} · ${fmtD(last.ts)}` : fmtD(last.ts))),
         spark(s, s.pts.filter(p => p.ts > last.ts - 365 * DAY), {band: false})));
       continue;
     }
@@ -227,7 +228,7 @@ function watchTiles() {
     out.push(el("button", {class: "tile", onclick: () => { setPeriod("30d"); pickTab("health"); }},
       el("span", {class: "lbl", text: label}),
       el("span", {class: "val"}, cur == null ? "–" : fmt(cur), el("small", {text: s.key === "sleep" ? "h / night" : s.key === "steps" ? "/ day" : "bpm"})),
-      el("span", {class: "delta", text: cur != null && base != null ? `${cur >= base ? "▲ +" : "▼ −"}${fmt(Math.abs(cur - base))} vs prior 4 weeks` : "not enough history yet"}),
+      el("span", {class: "delta", text: cur != null && base != null ? `${chgWords(cur - base, fmt(Math.abs(cur - base)))} vs prior 4 weeks` : "not enough history yet"}),
       spark(s, s.pts.filter(p => p.ts > now - 30 * DAY), {band: false})));
   }
   return out;
