@@ -24,7 +24,7 @@ import logging, shutil   # noqa: E402
 
 from fastapi.testclient import TestClient   # noqa: E402
 
-from server import accounts, crypto, db as dbm, main, measures, profiles as prof, records, share_links   # noqa: E402
+from server import accounts, crypto, db as dbm, main, measures, medications, profiles as prof, records, share_links   # noqa: E402
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
 H = {"X-Sanguity": "1"}
@@ -72,6 +72,34 @@ TYPED = {"tz": "America/New_York", "exercise": [], "metrics": [
                          [D(-30) + "T08:00:00", 140.0, None, "Typed in", "after"]],
     "spo2_readings": [[D(-4) + "T08:05:00", 97, None, "Typed in"], [D(-40) + "T08:05:00", 91, None, "Typed in"]]}
 
+
+# #581: a profile with each kind of source: a device's and an app's readings, one at a time, an ECG's and a notification's
+# device, a phone's dose with its app and amount, a CGM's day; stays transferred between hospitals, one told from
+# inpatient results, and a pharmacy claim (its service the medicine)
+SOURCES = {"tz": "UTC", "exercise": [], "metrics": [
+    {"key": "spo2_avg", "unit": "%", "pts": [[D(-10), 97.2]]}, {"key": "spo2_min", "unit": "%", "pts": [[D(-10), 92.0]]},
+    {"key": "glucose_meter", "unit": "mg/dL", "pts": [[D(-4) + "T07:12", 104.0]]},
+    *({"key": "glucose_" + k, "unit": "", "pts": [[D(-5), v]]} for k, v in (("avg", 131.0), ("min", 62.0), ("max", 212.0), ("n", 288),
+                                                                          ("hours", 23.5), ("lt54", 0.0), ("lt70", 4.0), ("in", 78.0), ("gt180", 18.0)))],
+    "bp_readings": [[U(-9, 8), 132, 84, 68, "Fictional cuff", "Health Connect"], [D(-2) + "T20:00:00", 126, 80, None, None, "Typed in"]],
+    "temp_readings": [[U(-8, 7), 37.4, "Fictional thermometer", "Health Connect"]],
+    "spo2_readings": [[U(-4, 8), 95, "FICTIONAL-OXIMETER-X1", "Health Connect"], [D(-3) + "T09:00:00", 97, None, "Typed in"]],
+    "glucose_readings": [[D(-6) + "T07:45:00", 104.0, None, "Typed in", "before"]],
+    "ecg": [{"key": "ecg:0123456789abcdef", "type": "ecg", "start": U(-6, 10), "classification": "Sinus Rhythm", "avg_hr": 72,
+             "device": "FICTIONAL-WATCH-DEVICE"},
+            {"key": "rhythm:0123456789abcdee", "type": "irregular_rhythm", "start": U(-7, 3), "end": U(-7, 4), "device": "FICTIONAL-WATCH-DEVICE"}],
+    "med_doses": [[U(-5, 9), "Fictionalol 10 mg tablet", "taken", 2, "FICTIONAL-UNITS", "FICTIONAL-APP"]]}
+SOURCES_DATA = {"events": [
+    {"id": 1, "t": D(-15) + "T00:00:00", "end": D(-12) + "T23:59:00", "k": "stay", "title": "Hospital stay · Fictional General",
+     "sub": "Ward 5 · 3 nights · transferred to Other Fictional Hospital"},
+    {"id": 2, "t": D(-12) + "T00:00:00", "end": D(-10) + "T23:59:00", "k": "stay", "title": "Hospital stay · Other Fictional Hospital",
+     "sub": "2 nights · transferred from Fictional General"},
+    {"id": 3, "t": D(-50) + "T00:00:00", "end": D(-48) + "T23:59:00", "k": "stay", "title": "Hospital stay",
+     "sub": f"Admitted {D(-50)} · last inpatient result {D(-48)}"},
+    {"id": 4, "t": D(-25) + "T09:00:00", "k": "med", "title": "Fictionalol 10 mg tablet"}],
+    "labs": [], "details": {"4": {"instructions": "Once daily", "status": "Active"}},
+    "costs": [{"id": 4, "d": D(-25), "billed": 40.0, "paid": 30.0, "owe": 10.0, "kind": "pharmacy", "cat": "Pharmacy",
+               "title": "Fictionalol 10 mg tablet", "prov": "Fictional Corner Pharmacy"}]}
 
 def read(*path):
     with open(os.path.join(ROOT, *path), encoding="utf-8") as f:
@@ -197,7 +225,7 @@ class ShareLinks(unittest.TestCase):
                     "group": ["the symptom group it was logged with"], "photos": ["the photos attached"],   # (photos: Photos in
                     "photos.id": ["the photos attached"], "photos.alt": ["with what each shows"]},       # the journal's line)
         "journal_photos": {"photos": ["the photos attached"]},   # (sent in the journal's entries, above)
-        "costs": {"t": ["date"], "title": ["the service it was for"], "provider": ["the provider"], "billed": ["what was billed"],
+        "costs": {"t": ["date"], "title": ["the service or medicine it was for"], "provider": ["the provider"], "billed": ["what was billed"],
                   "paid": ["what insurance paid"], "owe": ["your share"]},
         "about": {"birthDate": ["the birth date"], "sex": ["the sex labs base reference ranges on"], "heights": ["each height"],
                   "heights.date": ["with its date"], "heights.cm": ["each height"], "heights.text": ["each height"]},
@@ -208,17 +236,17 @@ class ShareLinks(unittest.TestCase):
                     "#–#": ["time in the standard published ranges"], "Below #": ["time in the standard published ranges"],
                     "Above #": ["time in the standard published ranges"]},
         "temperature": {"Date and time": ["the date and time"], "Temperature": ["the temperature"], "Device": ["the device"]},
-        "oxygen": {"Date": ["each day"], "Readings": ["each reading typed in"], "Average": ["average"], "Lowest": ["lowest"]},
+        "oxygen": {"Date": ["each day"], "Readings": ["each reading sent one at a time or typed in"], "Average": ["average"], "Lowest": ["lowest"]},
         "respiratory": {"Date": ["each day"], "Rate": ["rate"]},
         "vo2max": {"Date": ["its date"], "VO2 max": ["each estimate"]},
         "immunizations": {"Date": ["the date"], "Vaccine": ["the vaccine"], "Dose": ["the dose"], "Where or by whom": ["where or by whom"]},
-        "ecg": {"Date": ["the date"], "What the watch said": ["what the watch said"], "Details": ["average heart rate"]},
+        "ecg": {"Date": ["the date"], "What the watch said": ["what the watch said"], "Details": ["average heart rate", "the device that made it"]},
         "bmi": {"Date": ["on its day"], "Measure": ["each weight", "the BMI", "each measurement"], "Value": ["each weight", "the BMI"],
                 "Percentile": ["growth charts"], "From": ["where each weight came from"]},
         "targets": {"Measure": ["each target"], "Your target": ["each target"], "Set by": ["who set it"], "Set on": ["and when"],
                     "In this period": ["how many readings at home were above or below it"]},
         "medlog": {"Date and time": ["the date and time"], "Medication": ["the medication"], "What happened": ["taken, taken late or skipped"],
-                   "Note": ["its note"], "From": ["typed in or sent by a phone"]},
+                   "Note": ["its note"], "From": ["where it came from"]},
     }
 
     def test_each_sections_line_names_what_it_sends(self):   # #576
@@ -262,6 +290,63 @@ class ShareLinks(unittest.TestCase):
         self.assertTrue(j["procedures"])
         for p in j["procedures"]:
             self.assertEqual(set(p), {"t", "kind", "title"}, "a procedure's page shows its date, kind and title: no sub, no end")
+
+    # #581: what a column holds, not only its heading: each kind of thing a section's page can show (a cell of a measure's
+    # table, a visit's details, a claim's service), as SOURCES' profile has it, and the words of its line that name it
+    KINDS = [
+        ("home_bp", "Fictional cuff (Health Connect)", ["the device and app that sent it"]),
+        ("home_bp", "Typed in", ["(or “Typed in”)"]),
+        ("temperature", "Fictional thermometer (Health Connect)", ["the device and app that sent it"]),
+        ("oxygen", "Watch, the day's average", ["the watch's average"]),
+        ("oxygen", "FICTIONAL-OXIMETER-X1 (Health Connect), 08:00", ["sent one at a time", "its time", "the device and app that sent it"]),
+        ("oxygen", "Typed in, 09:00", ["typed in at home", "(or “Typed in”)"]),
+        ("glucose", "CGM: 288 in 23.5 h", ["a continuous monitor's", "how many readings there were", "hours worn"]),
+        ("glucose", "Meter: 1", ["a meter's", "how many readings there were"]),
+        ("glucose", "Typed in, 07:45, before a meal", ["typed in at home", "its time and meal note"]),
+        ("ecg", "72 bpm average · FICTIONAL-WATCH-DEVICE", ["average heart rate", "the device that made it"]),
+        ("ecg", "FICTIONAL-WATCH-DEVICE", ["notification", "the device that made it"]),
+        ("medlog", "FICTIONAL-APP, 2 FICTIONAL-UNITS", ["the app that sent it", "the dose taken"]),
+        ("medlog", "Typed in", ["“Typed in”"]),
+        ("visits", "transferred to Other Fictional Hospital", ["a transfer to or from another hospital"]),
+        ("visits", "transferred from Fictional General", ["a transfer to or from another hospital"]),
+        ("visits", "last inpatient result", ["the date of its last inpatient result"]),
+        ("costs", "Fictionalol 10 mg tablet", ["the service or medicine it was for"]),   # a pharmacy claim's: the medicine
+    ]
+    # and where each measure's readings came from, in its line
+    SOURCE = {"home_bp": "the device and app that sent it", "temperature": "the device and app that sent it",
+              "oxygen": "the device and app that sent it", "glucose": "sent by a phone app", "respiratory": "from the watch or phone",
+              "vo2max": "the watch made", "immunizations": "the records say", "ecg": "the device that made it",
+              "bmi": "where each weight came from", "targets": "typed in", "medlog": "where it came from"}
+
+    def test_each_sections_line_names_what_its_columns_hold(self):   # #581
+        lines = {s: w for s, _, w in share_links.SECTIONS}
+        self.assertEqual(set(self.SOURCE), set(measures.IDS), "every measure")
+        for s, w in self.SOURCE.items():
+            self.assertIn(w, lines[s], f"{s}: its line says where each reading came from")
+        path = os.path.join(TMP, "sources", "daily.json")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        crypto.write_file(path, json.dumps(SOURCES).encode())
+        db = dbm.connect()
+        pid = prof.create_profile(db, "Every source (fictional)", owner_id=self.uid["robin"], watch_file=path)
+        with dbm.transaction(db):
+            records.store(db, pid, SOURCES_DATA, "dataset")
+        db.close()
+        try:   # and a dose typed in
+            r = self.c["robin"].post(f"/api/profiles/{pid}/medications/doses", headers=H,
+                                     json={"med": medications.med_key("Fictionalol 10 mg tablet"), "t": D(-4) + "T08:00", "status": "late"})
+            self.assertEqual(r.status_code, 201, r.text)
+            token, _ = self.make(pid=pid, sections=list(share_links.SECTION_IDS), **{"from": D(-100)})
+            j = self.view(token).json()
+        finally:
+            db = dbm.connect()
+            prof.delete_profile(db, pid)
+            db.close()
+        for s, shown, words in self.KINDS:
+            got = ([v for r in j[s]["rows"] for v in r] if s in measures.IDS else
+                   [r["sub"] for r in j[s]] if s == "visits" else [r["title"] for r in j[s]])
+            self.assertTrue(any(shown == v or s == "visits" and shown in v for v in got), f"{s} shows “{shown}”: {got}")
+            for w in words:
+                self.assertIn(w, lines[s], f"{s}: “{shown}” is said in its line as “{w}”")
 
     def test_labs_by_the_profiles_names_with_their_panels(self):   # #289: the clinician's page
         r = self.c["robin"].put(f"/api/profiles/{self.pid}/settings/labNicknames/name", json={"name": "SodiumSECRET", "to": "Sodium"}, headers=H)

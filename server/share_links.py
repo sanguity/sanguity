@@ -45,7 +45,8 @@ from . import activity, crypto, db as dbm, journal, journal_photos, measures, pe
 SECTIONS = [   # #576: each line names everything its page shows, and _build sends nothing more (test_share_links.py ties them)
     ("visits", "Visits and hospital stays", "the date (a hospital stay's first and last days), the title, and the details its "
                "record gives: the clinician and clinic, and for a stay where it was, how many nights, the reason for "
-               "admission and the admission type"),
+               "admission, the admission type, a transfer to or from another hospital and, for a stay told from inpatient "
+               "results, the date of its last inpatient result"),   # #581
     ("results", "Lab results", "each test by the profile's name for it and its reports' name, under its panel: each result's "
                 "date, value and unit, with the reference range and flag printed on its own report, how many there are and "
                 "a trend line of them"),
@@ -59,8 +60,8 @@ SECTIONS = [   # #576: each line names everything its page shows, and _build sen
                 "and the symptom group it was logged with (not who wrote them)"),   # #523, #571: as its page shows
     ("journal_photos", "Photos in the journal", "the photos attached to the journal entries shown, with what each "
                        "shows (only with Journal; offered when there are some)"),   # #161: never unless ticked
-    ("costs", "Costs and claims", "each claim's date, the service it was for, the provider, what was billed, what insurance "
-              "paid and your share"),
+    ("costs", "Costs and claims", "each claim's date, the service or medicine it was for, the provider, what was billed, "
+              "what insurance paid and your share"),   # #581: a pharmacy claim's service is the medicine
     ("about", "About this person", "the birth date, the sex labs base reference ranges on, and each height written down, "
               "with its date (those in the dates chosen)"),   # #194: never unless ticked (the owner's page leaves it unticked)
     *measures.SECTIONS,   # #225: the phone's and watch's measures, immunizations, ECGs, BMI; never unless ticked

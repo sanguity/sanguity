@@ -8,13 +8,13 @@ the person ticks what they want a clinician or relative to see.
                  labelled as the standard, never as anyone's targets; and each meter reading typed in at home (#224,
                  #232), with its meal note
   temperature    body temperature taken at home (#184): count, average, highest, and the readings
-  oxygen         the watch's daily blood oxygen (#184): average and lowest; and each reading typed in at home (#224,
-                 #232)
+  oxygen         the watch's daily blood oxygen (#184): average and lowest; and each reading a device sent one at a
+                 time or typed in at home (#224, #232), with its time and its device and app
   respiratory    the watch's daily respiratory rate (#226)
   vo2max         the watch's cardio fitness estimates (#226)
   immunizations  the vaccines the records say were given (#179), as a list
   ecg            ECGs and irregular rhythm notifications (#182), by ecg.shared_rows: what the device said each one
-                 showed, never the samples
+                 showed and which device it was, never the samples
   bmi            BMI from each weight and the height in effect on its day (#195, person.bmi), the number only; for a
                  child, where each weight, height and BMI falls on the WHO's or the CDC's growth charts (#196,
                  server/growth.py)
@@ -23,8 +23,8 @@ the person ticks what they want a clinician or relative to see.
                  below it (for CGM, the time in the person's own range beside the standard one, each labelled)
 
   medlog         the medication log (#235, server/med_log.py): each dose logged, typed in or sent by the phone
-                 (Apple Health's Medications), with what happened and its note; a line per medication counting what
-                 was logged ("12 of 14 logged doses taken"), never what was expected
+                 (Apple Health's Medications, with its app and the dose taken), with what happened and its note; a
+                 line per medication counting what was logged ("12 of 14 logged doses taken"), never what was expected
 Cycle tracking (#183) isn't here: the visit summary has its own section for it (cycle_tracking.py), offered only to
 owners and editors while it's on and ticked each time, and share links never offer it.
 
@@ -44,20 +44,24 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import ecg, glucose, growth, med_log, medications, person, targets as tg, watch_store
 
-SECTIONS = [   # (id, label, what a share link shows: said on the owner's form and the link's page)
+FROM = "the device and app that sent it (or “Typed in”)"   # #581: where each reading came from, as its page says it
+SECTIONS = [   # (id, label, what a share link shows: said on the owner's form and the link's page; #576, #581: everything it shows)
     ("home_bp", "Blood pressure at home", "each reading taken at home, sent by a phone app or typed in: the date and time, "
-                                          "both pressures, the pulse and the device (or “Typed in”)"),   # #571: as its page says
-    ("glucose", "Blood glucose at home", "each day's lowest and highest reading and the average, a meter's or a continuous "
-                                                "monitor's (CGM), and for CGM days the time in the standard published ranges; "
-                                                "each reading typed in at home, with its meal note"),
+                                          f"both pressures, the pulse and {FROM}"),   # #571: as its page says
+    ("glucose", "Blood glucose at home", "each day's readings sent by a phone app, a meter's or a continuous monitor's (CGM): "
+                                         "the lowest and highest, the average and how many readings there were (a CGM's in how "
+                                         "many hours worn), and for CGM days the time in the standard published ranges; and "
+                                         "each reading typed in at home, with its time and meal note"),
     ("temperature", "Body temperature at home", "each reading taken at home, sent by a phone app or typed in: the date and time, "
-                                                "the temperature and the device (or “Typed in”)"),
-    ("oxygen", "Blood oxygen at home", "the watch's average and lowest reading each day, and each reading typed in at home"),
-    ("respiratory", "Respiratory rate from the watch", "each day's rate, in breaths a minute"),
+                                                f"the temperature and {FROM}"),
+    ("oxygen", "Blood oxygen at home", "the watch's average and lowest reading each day, sent by a phone app; and each reading "
+                                       f"sent one at a time or typed in at home, with its time and {FROM}"),
+    ("respiratory", "Respiratory rate from the watch", "each day's rate from the watch or phone, in breaths a minute"),
     ("vo2max", "Cardio fitness (VO2 max)", "each estimate the watch made, with its date"),
     ("immunizations", "Immunizations", "each vaccine the records say was given: the date, the vaccine, the dose and where or by whom"),
-    ("ecg", "ECGs and irregular rhythm notifications", "the date, what the watch said each recording showed and its average "
-                                                       "heart rate; not the traces themselves"),
+    ("ecg", "ECGs and irregular rhythm notifications", "the date, what the watch said each recording or notification showed, a "
+                                                       "recording's average heart rate, and the device that made it; not the "
+                                                       "traces themselves"),
     ("bmi", "BMI and growth", "each weight with the height in effect on its day and the BMI from them, and where each "
                               "weight came from (the smart scale, or a clinic visit and its clinic); for a child, where each "
                               "measurement falls on the WHO's or the CDC's growth charts"),
@@ -65,7 +69,7 @@ SECTIONS = [   # (id, label, what a share link shows: said on the owner's form a
                                                   "readings at home were above or below it"),   # #234
 
     ("medlog", "Medication log", "each dose logged as taken, taken late or skipped: the date and time, the medication, its "
-                                 "note, and whether it was typed in or sent by a phone"),   # (#235)
+                                 "note, and where it came from: “Typed in”, or the app that sent it and the dose taken"),   # (#235)
 ]
 IDS = [s for s, _, _ in SECTIONS]
 LABELS = {s: l for s, l, _ in SECTIONS}
