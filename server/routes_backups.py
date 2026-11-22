@@ -9,6 +9,8 @@ the live data: restoring stays a command-line step with the app stopped (README,
   POST /api/backups            Back up now: {"id"} of the run (202); 409 while another backup or check runs
   POST /api/backups/check      {"name"}: check that backup by restoring a copy into a temporary folder (202)
   PUT  /api/backups/schedule   {"schedule": "off" | "daily" | "weekly", "keep": 1..365}
+  DELETE /api/backups/replaced/{name}   Delete now: what a restore replaced (DATA_DIR/before-restore-<time>/, #595),
+                               by its name only, with the fresh check; otherwise deleted 30 days after the restore
 """
 import os
 from typing import Literal
@@ -48,6 +50,21 @@ def check_backup(body: CheckIn, request: Request, s=Depends(admin), db=Depends(g
         return {"id": jobs.submit(db, "check", s, _client_ip(request), name=body.name)}
     except jobs.Busy as e:
         raise HTTPException(409, str(e))
+
+
+@router.delete("/api/backups/replaced/{name}")
+def delete_replaced(name: str, request: Request, s=Depends(admin), db=Depends(get_db)):
+    """By name only, one of the before-restore-<time>/ folders restore() leaves in DATA_DIR: never a path or a link."""
+    if not backup._replaced_dir(name):
+        raise HTTPException(404, "There's nothing a restore replaced of that name in the data folder.")
+    fresh(request, s, "delete what a restore replaced")
+    try:
+        if not backup.delete_replaced(name):
+            raise HTTPException(404, "There's nothing a restore replaced of that name in the data folder.")
+    except OSError:   # it couldn't be moved out of the way: nothing of it was deleted
+        raise HTTPException(500, "It couldn't be deleted, and is as it was: check that the app may change its data folder.") from None
+    activity.log(db, "backup.replaced", s, detail={"name": name}, ip=_client_ip(request))
+    return jobs.status(db)
 
 
 class ScheduleIn(BaseModel):

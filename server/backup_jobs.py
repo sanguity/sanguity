@@ -21,6 +21,10 @@ At start-up (recover): rows left queued or running never finished. A backup whos
 (a stop just after writing it, or a database restored from that very backup, which holds its own row as running);
 the others failed. What they left in the backups folder goes (backup.clean_leftovers).
 
+What a restore replaced (DATA_DIR/before-restore-<time>/, #595) is deleted RESTORE_KEEP_DAYS (30) after the restore:
+at start-up, and hourly from the thread (sweep_replaced), each one logged as deleted by "time limit"; or by an admin's
+Delete now (routes_backups.py). The Admin page lists them, with when each goes.
+
 Every backup, check, failure and change of schedule is in the install's activity log (activity.py: backup.*).
 """
 import json, logging, os, shutil, threading, time
@@ -37,6 +41,7 @@ RETRY = 3600                                      # after a failed scheduled bac
 KEEP_DEFAULT, KEEP_MAX = 14, 365
 RUNS_KEPT = 100                                   # rows of backup_runs kept; older ones go
 INTERRUPTED = "Interrupted: the app stopped while this ran. Nothing was changed; start it again."
+SWEEP_EVERY = 3600                                # between looks for what a restore replaced, past its time (#595)
 
 
 class Busy(Exception):
@@ -44,6 +49,7 @@ class Busy(Exception):
 
 
 _thread, _stop, _wake, _ips = None, threading.Event(), threading.Event(), {}   # _ips: run id -> who asked's address
+_swept = [0.0]   # when sweep_replaced last looked
 
 
 def wake():
@@ -72,6 +78,7 @@ def _loop():
         try:
             run_queued()
             run_due()
+            sweep_replaced()
         except Exception:
             log.exception("backups")
         _wake.wait(TICK)
@@ -198,7 +205,8 @@ def status(db, now=None):
             "inside_data": os.path.realpath(config.BACKUP_DIR).startswith(data + os.sep),
             "next": due_at(db, fs[0] if fs else None, now), "running": _busy(db),
             "runs": [_row(r) for r in db.execute("SELECT * FROM backup_runs ORDER BY id DESC LIMIT 10")],
-            "key_file": config.KEY_FILE, "watch": backup.watch_status()}   # what the next backup takes of the receiver's (#227)
+            "key_file": config.KEY_FILE, "watch": backup.watch_status(),   # what the next backup takes of the receiver's (#227)
+            "replaced": backup.replaced(), "replaced_days": backup.KEEP_DAYS}   # (#595)
 
 
 # ---------------------------------------------------------------- asking for a backup or a check
@@ -347,4 +355,30 @@ def recover(db):
         backup.clean_leftovers()
     except OSError:
         log.exception("cleaning up the backups folder")
+    sweep_replaced(db, force=True)
     return failed
+
+
+def sweep_replaced(db=None, now=None, force=False):
+    """What a restore replaced, past RESTORE_KEEP_DAYS: deleted and logged (#595). At most once in SWEEP_EVERY
+    unless force (at start-up). Returns the names deleted."""
+    now = time.time() if now is None else now
+    if not force and now - _swept[0] < SWEEP_EVERY:
+        return []
+    _swept[0] = now
+    try:
+        gone = backup.sweep_replaced(now)
+    except OSError:
+        log.exception("deleting what a restore replaced")
+        return []
+    if gone:
+        own = db is None
+        db = db or dbm.connect()
+        try:
+            for name in gone:
+                activity.log(db, "backup.replaced", detail={"name": name, "days": backup.KEEP_DAYS},
+                             actor=activity.TIME_LIMIT)
+        finally:
+            if own:
+                db.close()
+    return gone

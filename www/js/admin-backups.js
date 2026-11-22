@@ -2,6 +2,7 @@
    and where it went, with a warning when it's late (on every group of the page, and beside Backups in the sidebar);
    Back up now and Check a backup, which run in the background while this polls how they go; and the schedule.
    What the backups take of the watch receiver's data, and a check's counts of it (#227).
+   Restore: what a restore replaced, kept in the data folder until it's deleted, with Delete now (#595).
    Turning the schedule off, or keeping fewer backups than would stay, is asked first (ask(), util.js) and needs the
    fresh check (admin.js fresh()). Uses admin.js's call(), say(), when() and plural(). */
 "use strict";
@@ -54,6 +55,7 @@ function drawBackups(st) {
   }
   drawSchedule(st);
   drawList(st);
+  drawReplaced(st);
   drawRunning(st.running);
   if (st.running) poll();
   else if (was) finished(st.runs.find(r => r.id === was.id));
@@ -266,4 +268,46 @@ function bkWatchChecked(w) {
   const saved = w.saved ? `, as the receiver last saved it ${when(Date.parse(w.saved) / 1000)}` : "";
   return `Its phone and watch data, for ${plural(w.profiles, "profile")}, opens and is intact too${saved}` +
     (w.after ? `, with ${plural(w.after, "upload")} that came after that save (folded in when the receiver starts after a restore).` : ".");
+}
+
+/* ---------------------------------------------------------------- what a restore replaced (#595) */
+/* Restoring stays a command-line step; what it replaces is moved aside in the data folder (before-restore-<time>/)
+   and deleted replaced_days after (backup_jobs.sweep_replaced): it may hold profiles deleted since. Each one is
+   listed with when it goes, and Delete now, asked first and with the fresh check. Focus stays on the button it was on
+   while a run's progress draws the list again. */
+function drawReplaced(st) {
+  const box = $("#bkReplaced"), list = st.replaced || [], now = Date.now() / 1000;
+  const had = box.contains(document.activeElement) ? document.activeElement.dataset.replaced : null;
+  const made = r => `The restore of ${when(r.made)}`;
+  box.replaceChildren(
+    el("p", {class: "hint"}, "Restoring a backup is done on the server with the app stopped (",
+      el("code", {text: "python -m server.manage restore"}), "), never from this page. What it replaces is kept in the data " +
+      `folder, in before-restore-<time>/, and deleted ${plural(st.replaced_days, "day")} after the restore: it may hold ` +
+      "profiles deleted since. Backups never include it."),
+    list.length ? el("div", {class: "tbl-wrap"}, el("table", {class: "tbl bk-replaced"},
+      el("caption", {text: "What restores replaced, kept in the data folder now"}),
+      el("thead", {}, el("tr", {}, ...["Replaced by", "Deleted", ""].map(h => el("th", {text: h})))),
+      el("tbody", {}, ...list.map(r => el("tr", {"data-replaced": r.name},
+        el("td", {}, made(r), el("div", {class: "muted bk-name", text: r.name})),
+        el("td", {text: r.deletes <= now ? "within the hour" : when(r.deletes)}),
+        el("td", {class: "acts"}, el("button", {class: "btn small", type: "button", text: "Delete now", "data-replaced": r.name,
+          "aria-label": `Delete now what the restore of ${when(r.made)} replaced`, onclick: () => bkDeleteReplaced(r)})))))))
+    : el("p", {class: "muted", id: "bkReplacedNone", text: "Nothing a restore replaced is kept now."}));
+  if (had) box.querySelector(`button[data-replaced="${CSS.escape(had)}"]`)?.focus({preventScroll: true});
+}
+async function bkDeleteReplaced(r) {
+  const what = `what the restore of ${when(r.made)} replaced`;
+  const button = () => $("#bkReplaced").querySelector(`button[data-replaced="${CSS.escape(r.name)}"]`);
+  sayIn($("#bkReplacedMsg"), "");
+  if (!await ask({title: `Delete ${what}?`, action: "Delete now", danger: true,
+      message: [`It's deleted from the data folder now, rather than ${r.deletes <= Date.now() / 1000 ? "within the hour" : "on " + when(r.deletes)}, and can't be put back.`,
+                "The live data and the backups stay as they are."]})) { bkBack(button); return; }
+  let st;
+  try { st = await fresh(() => call("backups/replaced/" + encodeURIComponent(r.name), "DELETE"), $("#bkReplacedReauth")); }
+  catch (e) { say("#bkReplacedMsg", `Not deleted: ${e.why || e.message}`, true); bkBack(button); return; }
+  const at = (BK.replaced || []).findIndex(x => x.name === r.name);
+  drawBackups(st);
+  say("#bkReplacedMsg", `Deleted ${what}.`);
+  const next = $("#bkReplaced").querySelectorAll("button[data-replaced]");   // the next one's Delete now, or the heading
+  (next[Math.min(at, next.length - 1)] || $("#bkRestoreH")).focus();
 }

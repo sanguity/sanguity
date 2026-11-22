@@ -110,11 +110,14 @@ def _backup_command(cmd, args):
         elif cmd == "restore" and args:
             m = backup.verify(args[0])
             print(f"Backup from {m['created']}: {len(m['files'])} files. Restoring replaces this install's accounts, "
-                  "profiles and records with the backup's (the current ones are moved aside, not deleted).")
+                  f"profiles and records with the backup's (the current ones are moved aside, and deleted "
+                  f"{backup.KEEP_DAYS} days later).")
             if "--yes" not in args and (not sys.stdin.isatty() or input("Type yes to restore: ").strip().lower() != "yes"):
                 sys.exit("Nothing changed. (Add --yes to restore without being asked.)")
             m, aside = backup.restore(args[0])
-            print(f"Restored. The data it replaced is in {aside}. Start the app again.")
+            print(f"Restored. The data it replaced is in {aside}: the app deletes it {backup.KEEP_DAYS} days from now "
+                  "(RESTORE_KEEP_DAYS), or sooner with Delete now on Admin > Backups. It may hold profiles deleted "
+                  "since the backup was made. Start the app again.")
             w = m.get("watch_restored")   # the receiver's data (#227)
             if w and w["staged"]:
                 print(f"The phone and watch data is waiting for the watch receiver in {w['folder']}. Restart the receiver "

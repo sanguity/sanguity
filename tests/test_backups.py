@@ -477,7 +477,7 @@ class Backups(unittest.TestCase):
         from server import routes_backups
         self.assertEqual(sorted((r.path, m) for r in routes_backups.router.routes for m in r.methods),
                          [("/api/backups", "GET"), ("/api/backups", "POST"), ("/api/backups/check", "POST"),
-                          ("/api/backups/schedule", "PUT")])
+                          ("/api/backups/replaced/{name}", "DELETE"), ("/api/backups/schedule", "PUT")])
 
     # ---------------------------------------------------------------- a stop in the middle
 
@@ -728,6 +728,125 @@ class Backups(unittest.TestCase):
         self.assertTrue(backup.check(path)["ok"])
         self.robin.delete(f"/api/profiles/{self.pid}/journal/{jid}", headers=H)
         self.clear_folder()
+
+
+    # ---------------------------------------------------------------- what a restore replaced (#595)
+
+    @staticmethod
+    def aside(days_ago, name=None, top=DATA):
+        """A before-restore-<time>/ folder as restore() leaves it, made days_ago: a database and a profile's file."""
+        t = time.time() - days_ago * 86400
+        d = os.path.join(top, name or "before-restore-" + time.strftime("%Y%m%d-%H%M%S", time.localtime(t)))
+        os.makedirs(os.path.join(d, "profiles", "9"))
+        for p, data in (("sanguity.db", b"a deleted profile's records, sealed"),
+                        ("profiles/9/note.bin", b"a deleted profile's document, sealed")):
+            with open(os.path.join(d, p), "wb") as f:
+                f.write(data)
+        os.utime(d, (t, t))
+        return d
+
+    def test_9b_what_a_restore_replaced(self):
+        """What a restore moved aside (it may hold a profile deleted since) is deleted RESTORE_KEEP after the restore,
+        at start and now and then while the app runs, or by an admin's Delete now; only folders named as restore()
+        names them. It is never in a backup."""
+        keep = backup.RESTORE_KEEP / 86400
+        self.assertEqual(keep, 30)
+        old = self.aside(keep + 1)
+        again = self.aside(keep + 1, os.path.basename(old) + "-1")   # a second restore in the same second
+        recent = self.aside(1)
+        touched = self.aside(keep + 5)   # old by its name, but changed since: kept from its last change
+        t = time.time() - 2 * 86400
+        os.utime(touched, (t, t))
+        notes = self.aside(keep * 3, "before-restore-notes")   # not a name restore() gives: left alone
+        outside = self.aside(keep * 3, "elsewhere", TMP)
+        link = os.path.join(DATA, "before-restore-20200101-000000")   # a link with restore()'s name: left alone
+        os.symlink(outside, link)
+        st = self.status()
+        self.assertEqual(st["replaced_days"], 30)
+        self.assertEqual([r["name"] for r in st["replaced"]],   # oldest first
+                         [os.path.basename(p) for p in (old, again, touched, recent)], st["replaced"])
+        row = next(r for r in st["replaced"] if r["name"] == os.path.basename(recent))
+        self.assertAlmostEqual(row["deletes"] - row["made"], backup.RESTORE_KEEP, delta=1)
+        self.assertAlmostEqual(row["made"], time.time() - 86400, delta=5)
+
+        # at start: those past their time go, the others stay, and what a deletion stopped halfway left goes
+        halfway = self.aside(0, backup.DELETING + "before-restore-20200101-000000")
+        backup_jobs.stop()
+        try:
+            db = dbm.connect()
+            try:
+                backup_jobs.recover(db)
+            finally:
+                db.close()
+            for d in (old, again, halfway):
+                self.assertFalse(os.path.exists(d), d)
+            for d in (recent, touched, notes, link, outside):
+                self.assertTrue(os.path.exists(d), d)
+            self.assertTrue(os.path.isfile(os.path.join(outside, "sanguity.db")), "a link's target is never touched")
+            logged = self.actions("backup.replaced")
+            self.assertEqual(sorted(e["detail"]["name"] for e in logged), sorted(os.path.basename(d) for d in (old, again)))
+            self.assertEqual({(e["actor"], e["detail"]["days"]) for e in logged}, {("time limit", 30)})
+            # while the app runs: the backups thread looks again an hour on
+            t = time.time() - (keep + 1) * 86400
+            os.utime(touched, (t, t))
+            self.assertEqual(backup_jobs.sweep_replaced(now=time.time() + 60), [], "not again within the hour")
+            self.assertTrue(os.path.exists(touched))
+            self.assertEqual(backup_jobs.sweep_replaced(now=time.time() + 3700), [os.path.basename(touched)])
+            self.assertFalse(os.path.exists(touched))
+
+            # a backup made after a restore doesn't hold it (nor the receiver's, test_9's): the database, profiles/, build/, watch/
+            name = self.backup_now_by_hand()
+            files = backup.verify(os.path.join(FOLDER, name))["files"]
+            self.assertFalse([n for n in files if "before-restore" in n], files)
+            self.assertLessEqual({n.split("/")[0] for n in files}, {"sanguity.db", "profiles", "build", "watch"}, files)
+            # ...nor after a real restore, into another data folder
+            new_data = os.path.join(TMP, "restored-595")
+            os.makedirs(new_data)
+            shutil.copy(os.path.join(DATA, "sanguity.db"), new_data)   # a database there for the restore to replace
+            with mock.patch.object(backup, "_app_is_running", return_value=False), \
+                    mock.patch.multiple(config, DATA_DIR=new_data, DB_PATH=os.path.join(new_data, "sanguity.db")):
+                _, moved = backup.restore(os.path.join(FOLDER, name))
+                self.assertEqual(os.path.dirname(moved), new_data)
+                self.assertTrue(os.path.isfile(os.path.join(moved, "sanguity.db")))
+                self.assertEqual([r["name"] for r in backup.replaced()], [os.path.basename(moved)])
+                after = backup.create(os.path.join(TMP, "after-595"))
+                self.assertFalse([n for n in backup.verify(after)["files"] if "before-restore" in n])
+        finally:
+            backup_jobs.start()
+
+        # Delete now: admins only, by name only, with the fresh check, and logged
+        gone = os.path.basename(recent)
+        path = f"/api/backups/replaced/{gone}"
+        for c, code in ((client(), 401), (self.robin, 403)):
+            self.assertEqual(c.delete(path, headers=H).status_code, code)
+        self.assertEqual(self.ada.delete(path).status_code, 403, "the CSRF check")
+        for bad in ("before-restore-notes", os.path.basename(link), "elsewhere", "before-restore-20990101-000000",
+                    "sanguity.db", "profiles", "..%2Fprofiles", "before-restore-x%2F..%2F..%2Fprofiles"):
+            r = self.ada.delete(f"/api/backups/replaced/{bad}", headers=H)
+            self.assertEqual(r.status_code, 404, (bad, r.text))
+        db = dbm.connect()
+        db.execute("UPDATE sessions SET verified_at=0 WHERE user_id=?", (self.uids["ada"],))
+        db.close()
+        r = self.ada.delete(path, headers=H)
+        self.assertEqual((r.status_code, r.json()["detail"]), (403, "reauth_required"))
+        self.assertTrue(os.path.isdir(recent), "nothing deleted")
+        self.assertEqual(self.ada.post("/api/me/reauth", json={"secret": PW["ada"]}, headers=H).status_code, 200)
+        with mock.patch.object(os, "rename", side_effect=PermissionError("read-only")):   # can't be moved aside: left whole
+            r = self.ada.delete(path, headers=H)
+        self.assertEqual(r.status_code, 500, r.text)
+        self.assertIn("couldn't be deleted, and is as it was", r.json()["detail"])
+        self.assertTrue(os.path.isfile(os.path.join(recent, "profiles", "9", "note.bin")))
+        r = self.ada.delete(path, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["replaced"], [])
+        self.assertFalse(os.path.exists(recent))
+        self.assertEqual(self.ada.delete(path, headers=H).status_code, 404, "once")
+        by = [e for e in self.actions("backup.replaced") if e["detail"]["name"] == gone]
+        self.assertEqual([(e["actor"], e["detail"].get("days")) for e in by], [("ada", None)])
+        for d in (notes, link, outside, os.path.join(DATA, "profiles")):
+            self.assertTrue(os.path.exists(d), d)
+        os.remove(link)
+        shutil.rmtree(notes)
 
 
 def tiny_png():

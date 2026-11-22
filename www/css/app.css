@@ -1958,6 +1958,7 @@ path.pt.abn{stroke-width:1.5}
 .bk .bk-result .bk-watch{margin:var(--sp-4) 0 var(--sp-2);font-size:var(--fs-3);max-width:75ch}   /* the phone and watch data (#227) */
 .bk .bk-counts{max-width:480px}
 .bk .bk-counts caption{text-align:left;font-size:var(--fs-2);color:var(--muted);padding-bottom:var(--sp-1)}
+.bk .bk-replaced caption{text-align:left;font-size:var(--fs-2);color:var(--muted);padding-bottom:var(--sp-1)}   /* what restores replaced (#595) */
 .bk .bk-counts td{font-variant-numeric:tabular-nums}
 .acct .tag:is(.bk-late,.lm-check){color:var(--ink);background:color-mix(in srgb,var(--c-study) 30%,transparent)}
 .menu-item .badge.bk-late{color:var(--ink);border-color:var(--c-study);background:color-mix(in srgb,var(--c-study) 20%,transparent)}

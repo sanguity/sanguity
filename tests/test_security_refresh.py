@@ -158,7 +158,7 @@ ROUTES = {
     ("PATCH", "/api/connect/sources/{cid}"): (ADMIN, None), ("DELETE", "/api/connect/sources/{cid}"): (ADMIN, None),
     ("POST", "/api/connect/sources/{cid}/test"): (ADMIN, None),
     ("GET", "/api/backups"): (ADMIN, None), ("POST", "/api/backups"): (ADMIN, None), ("POST", "/api/backups/check"): (ADMIN, None),
-    ("PUT", "/api/backups/schedule"): (ADMIN, None),
+    ("PUT", "/api/backups/schedule"): (ADMIN, None), ("DELETE", "/api/backups/replaced/{name}"): (ADMIN, None),   # (#595)
 }
 RANK = {"viewer": 1, "editor": 2, "owner": 3}
 
