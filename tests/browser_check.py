@@ -1690,6 +1690,21 @@ def main():
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
+        # headless Chromium has no PDF viewer (navigator.pdfViewerEnabled false), as a phone's Chrome hasn't; every page
+        # here says it has one, as a desktop's browser does, so a PDF shows in its frame; #636's check says it hasn't
+        pdf_viewer_js = "Object.defineProperty(Navigator.prototype, 'pdfViewerEnabled', {get: () => true, configurable: true})"
+        _new_context, _new_page = browser.new_context, browser.new_page
+
+        def new_context_pdf(*a, **k):
+            c = _new_context(*a, **k)
+            c.add_init_script(pdf_viewer_js)
+            return c
+
+        def new_page_pdf(*a, **k):
+            pg = _new_page(*a, **k)
+            pg.context.add_init_script(pdf_viewer_js)
+            return pg
+        browser.new_context, browser.new_page = new_context_pdf, new_page_pdf
         # the app asks in its own dialog (#210): a browser pop-up (confirm, alert, prompt) on any page is a problem,
         # dismissed, never quietly accepted. Every page made from here on watches for one.
         def native_dialog(d):
@@ -12459,6 +12474,19 @@ def main():
             src = js("document.querySelector('#dbody iframe.doc').getAttribute('src')")
             got = js(f"fetch({json.dumps(src.split('#')[0])}).then(async r => [r.status, r.headers.get('content-type'), (await r.text()).slice(0, 8)])")
             check("…and the letter's PDF opens in the drawer", "/documents/" in src and got == [200, "application/pdf", "%PDF-1.4"], [src, got])
+            # #636 (the owner's phone): where the browser can't show a PDF in a page (Chrome on Android), no frame, which
+            # showed "This content is blocked", but a card with Open first and Download, fitting 360 px
+            js("closeDrawer(); Object.defineProperty(navigator, 'pdfViewerEnabled', {get: () => false, configurable: true}); openEvent(EV.find(e => e.title === 'Typed referral letter'))")
+            page.wait_for_selector("#drawer.open #dbody .doc-card", timeout=5000)
+            page.set_viewport_size({"width": 360, "height": 800})
+            settle(300)
+            pdf636 = js("""(() => { const acts = [...document.querySelectorAll('#drawer a.btn')].filter(a => a.href.includes('/documents/'));
+              return {frame: !!document.querySelector('#dbody iframe.doc'), acts: acts.map(a => [a.textContent, a.classList.contains('primary'), a.hasAttribute('download')]),
+                card: document.querySelector('#dbody .doc-card').textContent.includes("can't show it here"), fits: document.getElementById('drawer').scrollWidth <= document.getElementById('drawer').clientWidth}; })()""")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("closeDrawer(); delete navigator.pdfViewerEnabled")
+            check("…and where the browser can't show a PDF in a page, the drawer has no frame but a card, Open first and Download, fitting 360 px (#636)",
+                  pdf636 == {"frame": False, "acts": [["Open", True, False], ["Download", False, True]], "card": True, "fits": True}, pdf636)
             js("closeDrawer(); switchTab('costs')")
             page.wait_for_function("!document.getElementById('view-costs').hidden", timeout=5000)
             js("applyPreset('all')")

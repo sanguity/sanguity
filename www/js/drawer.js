@@ -282,12 +282,17 @@ function openEvent(e) {
   } else if (d.type === "letter") main.push(docFrame(d.html, 600, e.title || "Letter"));
   else if (d.type === "file" && !d.url) main.push(note("Its file wasn't found in what was imported, so there's nothing to show."));   // profiles.py index_documents
   else if (d.type === "file") {
-    go.push(el("a", {class: "btn", href: d.url, target: "_blank", rel: "noopener", text: "Open in new tab"}), el("a", {class: "btn", href: d.url, download: "", text: "Download"}));
+    // a PDF where the browser can't show one in a page (Chrome on Android, #636): no frame, which would show "This
+    // content is blocked"; Open first, a tab of its own, where the phone hands it to its PDF app
+    const noPdf = d.ext === "pdf" && navigator.pdfViewerEnabled === false;
+    go.push(el("a", {class: "btn" + (noPdf ? " primary" : ""), href: d.url, target: "_blank", rel: "noopener", text: noPdf ? "Open" : "Open in new tab"}), el("a", {class: "btn", href: d.url, download: "", text: "Download"}));
     // documents fill the panel's remaining height so the viewer's own scrollbar and toolbar stay on screen
     // HTML records: no scripts (the sandbox has no allow-scripts, and the server sends script-src 'none'), but
     // same-origin, so the record can load the pictures and stylesheet saved beside it (an opaque origin can't)
     if (d.ext === "html" || d.ext === "htm") { body.classList.add("fill"); main.push(el("iframe", {class: "doc", src: d.url, sandbox: "allow-same-origin", title: e.title})); }
     else if (["jpg","jpeg","png","gif"].includes(d.ext)) main.push(el("img", {class: "doc-img", src: d.url, alt: e.title}));
+    else if (noPdf) main.push(el("p", {class: "doc-card"}, icon("file-text"), el("span", {}, el("b", {text: e.title || "Document"}), el("br"),
+      el("span", {class: "muted", text: "A PDF. This browser can't show it here: Open shows it in your PDF app, or Download keeps a copy."}))));
     else if (d.ext === "pdf") { body.classList.add("fill"); main.push(el("iframe", {class: "doc", src: d.url + (d.url.includes("#") ? "" : "#view=FitH"), title: e.title})); }
     else if (d.ext === "tif" || d.ext === "tiff") main.push(note("Scanned TIFF document — browsers can't preview TIFF; use Download and open it in Photos or a PDF viewer."));
   } else if (d.type === "stay") {

@@ -1639,6 +1639,9 @@ Everything on `main` so far; it becomes the first tagged release.
   counts, "What is this test?", the Latest reading, then Chart | Table and ✕ on a row of their own. Now Chart | Table
   and ✕ sit at the end of the name's line (together under a name too long to share it), the unit and counts are one
   muted line with a "?" for What is this test?, and Latest follows. Wider screens are as they were.
+- **A PDF on a phone opens in its PDF app, not an empty box** (#636): Chrome on Android can't show a PDF inside a page, so a
+  document's drawer showed "This content is blocked" where the PDF should be. Where the browser says so
+  (`navigator.pdfViewerEnabled`), the drawer shows the document as a card with **Open** first and **Download**.
 - **Larger text on a phone: the tabs, the profile's name and Labs' chart labels fit** (#622): with text at 200% at
   360 px the tab bar's names ran into each other ("OverviewBody"), the profile menu showed "My r…", and a lab chart's
   numbers, unit, band and time labels fell outside it. Now a tab whose name doesn't fit its place shows its icon alone

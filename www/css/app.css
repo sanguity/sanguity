@@ -776,6 +776,7 @@ html.sg-docked #drawer{width:var(--dock)}
 .dgo:not(:has(.btn)){display:none}
 .res-t{color:var(--muted);font-size:var(--fs-2);font-weight:var(--fw-regular)}
 .doc-img{max-width:100%;border-radius:var(--r-md)}
+.doc-card{display:flex;gap:var(--sp-3);align-items:flex-start;padding:var(--sp-4);border:1px solid var(--ring);border-radius:var(--r-md);margin:0}   /* a PDF the browser can't show in a page (#636) */
 .skel i{display:block;height:var(--sp-4);margin:var(--sp-3) 0;border-radius:var(--r-sm);background:var(--hover);animation:sg-pulse calc(var(--dur-2) * 4) var(--ease-out) infinite alternate}
 .skel i:first-child{height:var(--sp-7)}
 .skel i:nth-child(odd){width:70%}
