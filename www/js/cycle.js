@@ -15,7 +15,6 @@
 "use strict";
 let CYCLE = [];             // the events: {id, k: "cycle", t, end?, ts, te, title, sub, cy: the span or mark}
 let cycleOnCharts = false;  // Labs: "Cycle tracking" ticked (never remembered)
-const CYCLE_SHAPE = {ovulation: "circle", mucus: "diamond", spotting: "dot"};
 
 let cycleAsked = 0;   // the latest load's number: an earlier one still waiting adds nothing (#526)
 async function cycleLoad() {
@@ -42,12 +41,11 @@ async function cycleLoad() {
   cycleControls();
 }
 
-/* ---------------------------------------------------------------- one mark's shape (a span is a bar) */
+/* ---------------------------------------------------------------- one mark's shape (a span is a bar): its kind's
+   (util.js KIND_SHAPE, #301), an ovulation test a ring, cervical mucus a cross, spotting a drop */
 function cycleShape(m, x, y, attrs) {
-  const shape = CYCLE_SHAPE[m.kind];
-  if (shape === "diamond") return el("svg:path", {d: `M${x},${y - 4.5}L${x + 4.5},${y}L${x},${y + 4.5}L${x - 4.5},${y}Z`, fill: "var(--surface)", stroke: "var(--c-cycle)", "stroke-width": 1.6, ...attrs});
-  if (shape === "dot") return el("svg:circle", {cx: x, cy: y, r: 2.6, fill: "var(--c-cycle)", ...attrs});
-  return el("svg:circle", {cx: x, cy: y, r: 3.6, fill: "var(--surface)", stroke: "var(--c-cycle)", "stroke-width": 1.6, ...attrs});
+  const shape = KIND_SHAPE[m.kind] || "ring";
+  return shapeMark(shape, x, y, 3.6, shape === "ring" ? {stroke: "var(--c-cycle)", "stroke-width": 1.6, ...attrs} : {fill: "var(--c-cycle)", ...attrs});
 }
 function cycleDraw(g, x, y, L, R, events, attrsOf, each) {
   for (const e of events) {
@@ -79,6 +77,7 @@ TL_LANES.cycle = {
 
 /* Labs: one row under each chart's time axis, when ticked (#192's "Show on charts") */
 const cycleInWindow = () => cycleOnCharts ? CYCLE.filter(e => e.te >= state.from && e.ts <= state.to && state.cats.has("cycle")) : [];
+LEGEND_HAS.cycle = () => cycleInWindow().length > 0;   // its Legend key (trends.js legendSync, #301)
 CHART_LAYERS.push({
   space: () => cycleInWindow().length ? 18 : 0,
   draw(g, x, top, R) {
@@ -99,14 +98,15 @@ function cycleControls() {
   if (!CYCLE.length) { box?.remove(); key?.remove(); cycleOnCharts = false; return; }
   if (!box && marks) {
     box = el("label", {id: "optCycleLabel", class: "toggle"}, el("input", {type: "checkbox", id: "optCycle", onchange: ev => {
-      cycleOnCharts = ev.target.checked; $("#cycleLegend").hidden = !cycleOnCharts; renderCharts(); }}), " Cycle tracking");
+      cycleOnCharts = ev.target.checked; renderCharts(); }}), " Cycle tracking");
     ($("#optJournalLabel") || marks).after(box);
   }
-  if (!key && legend) legend.append(key = el("span", {id: "cycleLegend", class: "jlegend", hidden: true},
-    el("svg:svg", {viewBox: "0 0 44 12", width: 44, height: 12, "aria-hidden": "true"},
-      el("svg:rect", {x: 1, y: 1, width: 14, height: 10, rx: 3, fill: "var(--c-cycle)", "fill-opacity": .85}),
-      cycleShape({kind: "ovulation"}, 23, 6, {}), cycleShape({kind: "mucus"}, 33, 6, {}), cycleShape({kind: "spotting"}, 41, 6, {})),
-    "Cycle tracking: bar = period or flow recorded; ○\u00a0ovulation test, ◇\u00a0cervical mucus, •\u00a0spotting"));   // each mark kept with its first word (#355)
+  // its Legend key (#301: while it's on the charts in these dates), each mark kept with its word (#355)
+  if (!key && legend) legend.append(key = el("span", {id: "cycleLegend", class: "jlegend keys", "data-legend": "cycle", hidden: true}, "Cycle tracking:",
+    el("span", {}, el("svg:svg", {viewBox: "0 0 16 12", width: 16, height: 12, "aria-hidden": "true"}, el("svg:rect", {x: 1, y: 1, width: 14, height: 10, rx: 3, fill: "var(--c-cycle)", "fill-opacity": .85})),
+      "period or flow recorded"),
+    ...[["ovulation", "ovulation test"], ["mucus", "cervical mucus"], ["spotting", "spotting"]].map(([k, w]) =>
+      el("span", {}, el("svg:svg", {viewBox: "0 0 12 12", width: 12, height: 12, "aria-hidden": "true"}, cycleShape({kind: k}, 6, 6.5, {})), w))));
 }
 
 /* ---------------------------------------------------------------- the drawer */

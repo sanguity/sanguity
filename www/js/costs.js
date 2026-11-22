@@ -124,8 +124,8 @@ function drawCosts() {
       usd(m.paid), usd(m.owe), usd(m.billed), m.n.toLocaleString("en-US")]))));
   else {
     mc.append(el("div", {class: "legend mb-2"},
-      el("span", {}, el("i", {style: {background: "var(--c-lab)"}}), "Paid by insurance"),
-      el("span", {}, el("i", {style: {background: "var(--c-imaging)"}}), "Your share"),
+      el("span", {}, el("i", {style: {background: "var(--muted)"}}), "Paid by insurance"),
+      el("span", {}, el("i", {style: {background: "var(--measure)"}}), "Your share"),
       el("span", {}, el("i", {class: "stay-key"}), "Hospital stay")));   // its edge too (#450)
     const svg = el("svg:svg", {role: "img", "aria-label": by === "year" ? "Yearly insurance costs" : "Monthly insurance costs"}); mc.append(svg);
     requestAnimationFrame(() => drawCostBars(svg, rows, by));
@@ -362,8 +362,8 @@ function renderPaid(box, claimRows, periodLabel) {
     } else {
       const svg = el("svg:svg", {role: "img", height: 210, "aria-label": "Your share and the bills you paid, running totals. Table lists them by month."});   // its height from the start, so what's under it doesn't move when it's drawn a frame later (#473)
       cum.append(el("div", {class: "legend mb-2"},
-        el("span", {}, el("i", {style: {background: "var(--c-imaging)"}}), "Your share per insurers, running total"),
-        el("span", {}, el("i", {style: {background: "var(--c-procedure)"}}), "Medical bills you paid, running total")), svg);
+        el("span", {}, el("i", {style: {background: "var(--measure)"}}), "Your share per insurers, running total"),
+        el("span", {}, el("i", {style: {background: "var(--ink2)"}}), "Medical bills you paid, running total")), svg);
       requestAnimationFrame(() => drawPaidCum(svg, claimRows, bills, settled));
     }
   }
@@ -384,7 +384,7 @@ function renderPaid(box, claimRows, periodLabel) {
       ...pressable(() => pick(g.key)), "aria-pressed": paidState.q === g.key},
       el("span", {class: "n", style: {fontWeight: 500}, text: g.key}), el("span", {class: "v", text: usd(g.v)}),
       el("span", {class: "s cost-bars"},   // the bar the row's width on one scale, its note under it, as the claims' (#483, #485)
-        el("span", {class: "cost-bar-run"}, el("span", {class: "cost-bar", style: {width: Math.max(0, g.v / max * 100) + "%", background: "var(--c-procedure)"}})),
+        el("span", {class: "cost-bar-run"}, el("span", {class: "cost-bar", style: {width: Math.max(0, g.v / max * 100) + "%", background: "var(--ink2)"}})),
         el("span", {class: "cost-bar-note", text: `${g.n} amount${g.n === 1 ? "" : "s"}`}))));
   };
   bars(g1, grp(r => r.group)); bars(g2, grp(r => r.who || "(no payee)"));
@@ -450,7 +450,8 @@ function drawPaidCum(svg, claimRows, payRows, settled) {
   const months = Math.max(1, Math.round((t1 - t0) / 2.63e9)), step = Math.max(1, Math.ceil(months / Math.max(2, Math.floor((R - L) / 60))));
   for (let d = zdate(t0), i = (d.setDate(1), d.setHours(0, 0, 0, 0), d.setMonth(d.getMonth() + 1), 0); d.getTime() <= t1; d.setMonth(d.getMonth() + 1), i++)
     if (i % step === 0) g.push(el("svg:text", {x: x(d.getTime()), y: h - 6, "text-anchor": "middle", text: ckMonth(d.getTime())}));
-  const color = ["var(--c-imaging)", "var(--c-procedure)"], label = ["Your share", "Bills paid"];
+  // money is a measure, not a kind of record (#301): your share in --measure, what was paid in ink, what insurers paid muted
+  const color = ["var(--measure)", "var(--ink2)"], label = ["Your share", "Bills paid"];
   series.forEach((s, i) => {
     if (!s.length) return;
     let dp = `M${x(t0)},${y(0)}`;
@@ -505,8 +506,8 @@ function barList(card, groups, onPick, active) {
       // largest's bar squeezed its note to two lines, and bars sized to what each note left didn't compare)
       el("span", {class: "s cost-bars"},
         el("span", {class: "cost-bar-run"},
-          el("span", {class: "cost-bar", style: {width: w1 + "%", background: "var(--c-lab)", borderRadius: w2 > 0.3 ? "2px 0 0 2px" : null}}),
-          w2 > 0.3 ? el("span", {class: "cost-bar", style: {width: w2 + "%", background: "var(--c-imaging)", borderRadius: "0 2px 2px 0"}}) : null),
+          el("span", {class: "cost-bar", style: {width: w1 + "%", background: "var(--muted)", borderRadius: w2 > 0.3 ? "2px 0 0 2px" : null}}),
+          w2 > 0.3 ? el("span", {class: "cost-bar", style: {width: w2 + "%", background: "var(--measure)", borderRadius: "0 2px 2px 0"}}) : null),
         el("span", {class: "cost-bar-note", text: `${g.n} claim${g.n === 1 ? "" : "s"}${g.owe >= 1 ? ` · your share ${usd(g.owe)}` : ""}`}))));
   }
 }
@@ -540,13 +541,13 @@ function drawCostBars(svg, rows, by = "month") {
   keys.forEach((k, i) => {
     const m = months.get(k), cx = x(i);
     const yp = y(m.paid), yo = y(m.paid + m.owe);
-    if (m.paid > 0) g.push(el("svg:rect", {x: cx - bw / 2, y: yp, width: bw, height: Math.max(0, B - yp), fill: "var(--c-lab)", rx: m.owe > 0 && B - yo > 3 ? 0 : 2}));
-    if (m.owe > 0) g.push(el("svg:rect", {x: cx - bw / 2, y: yo, width: bw, height: Math.max(1, yp - yo - (m.paid > 0 ? 1 : 0)), fill: "var(--c-imaging)", rx: 2}));
+    if (m.paid > 0) g.push(el("svg:rect", {x: cx - bw / 2, y: yp, width: bw, height: Math.max(0, B - yp), fill: "var(--muted)", rx: m.owe > 0 && B - yo > 3 ? 0 : 2}));
+    if (m.owe > 0) g.push(el("svg:rect", {x: cx - bw / 2, y: yo, width: bw, height: Math.max(1, yp - yo - (m.paid > 0 ? 1 : 0)), fill: "var(--measure)", rx: 2}));
     if (i % every === 0) g.push(el("svg:text", {x: cx, y: h - 6, "text-anchor": "middle", text: yearly ? k : ckMonth(dayTs(k + "-15"))}));
     const hit = el("svg:rect", {x: L + slot * i, y: T, width: slot, height: B - T, fill: "transparent", style: "cursor:pointer"});
     hit.addEventListener("pointermove", ev => showTip([el("div", {class: "v", text: usd(m.paid + m.owe)}), el("div", {class: "s", text: yearly ? k : zdate(dayTs(k + "-15")).toLocaleDateString(undefined, {month: "long", year: "numeric"})}),
-      el("div", {class: "s"}, el("span", {class: "k", style: {background: "var(--c-lab)"}}), `Insurance paid ${usd(m.paid)}`),
-      el("div", {class: "s"}, el("span", {class: "k", style: {background: "var(--c-imaging)"}}), `Your share ${usd(m.owe)}`),
+      el("div", {class: "s"}, el("span", {class: "k", style: {background: "var(--muted)"}}), `Insurance paid ${usd(m.paid)}`),
+      el("div", {class: "s"}, el("span", {class: "k", style: {background: "var(--measure)"}}), `Your share ${usd(m.owe)}`),
       el("div", {class: "s", text: `${m.n} claims · billed ${usd(m.billed)}`})], ev));
     hit.addEventListener("pointerleave", hideTip);
     g.push(hit);

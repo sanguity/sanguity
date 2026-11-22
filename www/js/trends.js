@@ -86,7 +86,7 @@ let hoverT = null;
 const CHART_LAYERS = [];
 function renderCharts() {
   const box = $("#charts"); box.replaceChildren();
-  document.querySelectorAll(".marks-key").forEach(k => k.hidden = !state.marks);   // their legend, while they're shown (#250)
+  legendSync();   // the Legend's keys for what the charts draw (#250, #301)
   const sel = SERIES.filter(s => !s.watch && state.sel.has(s.name));
   if (!sel.length) { box.append(el("div", {class: "card empty", text: "Pick lab values in the list to chart them."})); return; }
   // in the list's order, under its panels' names (#441)
@@ -97,16 +97,17 @@ function renderCharts() {
   }
 }
 const MARK_KINDS = new Set(["procedure", "imaging"]);
-/* a procedure's or an imaging's mark at the top of a lab chart, in its kind's colour: a circle and a square, never ▲ or
-   ▼, which on the same chart say above or below range (#250). The legend under Show on charts draws the same. */
-function evHead(k, cx, cy) {
-  const a = {class: "evhead", "data-k": k, fill: CAT_OF[k].color};
-  return k === "imaging" ? el("svg:rect", {...a, x: cx - 3.3, y: cy - 3.3, width: 6.6, height: 6.6})
-    : el("svg:circle", {...a, cx, cy, r: 3.7});
-}
+/* a procedure's or an imaging's mark at the top of a lab chart, in its kind's colour and shape (util.js KIND_SHAPE,
+   #301): a plus and a square, never a ● like a result or a ▲ or ▼, which on the same chart say above or below range
+   (#250). The Legend draws the same. */
+const evHead = (k, cx, cy) => shapeMark(KIND_SHAPE[k], cx, cy, 3.7, {class: "evhead", "data-k": k, fill: CAT_OF[k].color});
+/* the Legend's keys for what's drawn over or under the charts: each only while its kind is on them in these dates
+   (#301), LEGEND_HAS[its data-legend]() saying so; journal.js and cycle.js add theirs */
+const LEGEND_HAS = {procedure: () => markEvents().some(e => e.k === "procedure"), imaging: () => markEvents().some(e => e.k === "imaging")};
+function legendSync() { for (const k of document.querySelectorAll("#view-labs .chart-legend [data-legend]")) k.hidden = !LEGEND_HAS[k.dataset.legend]?.(); }
 {
   const legend = document.querySelector("#view-labs .chart-legend");
-  const key = (k, words) => el("span", {class: "jlegend marks-key", hidden: true}, el("svg:svg", {viewBox: "0 0 10 10", width: 10, height: 10, "aria-hidden": "true"}, evHead(k, 5, 5)), words);
+  const key = (k, words) => el("span", {class: "jlegend marks-key", "data-legend": k, hidden: true}, shapeKey(KIND_SHAPE[k], {fill: CAT_OF[k].color}), words);
   if (legend) legend.append(key("procedure", "Procedure"), key("imaging", "Imaging"));
   // the header's Legend and ⓘ (#279, index.html): each opens under its button as a menu does (nav.js), words, not items
   if ($("#legendBtn")) menuWire({btn: $("#legendBtn"), list: $("#legendList"), text: true});   // (the ⓘ: util.js aboutWire, #280)

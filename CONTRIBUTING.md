@@ -66,6 +66,7 @@ python tests/test_security_refresh.py  # the security review's checks: each rout
 python -m unittest discover -s tests -p "test_importer*.py" -v   # the registry and every importer's fixtures
 python tests/test_anonymise.py         # tools/anonymise.py: every fixture's copy imports the same, nothing of it left
 python tests/test_css_tokens.py        # no new raw colours, px font sizes, radii, shadows or script styles (#252)
+python tests/test_palette.py           # the kinds' colours: eight at most, through the palette checks in light and dark (#301)
 python tests/test_qr.py                # the QR encoder (www/js/qr.js, in node) against known vectors, read back (#284)
 python tests/browser_check.py          # headless browser: every tab, the drawer, pan/zoom, every page at 375 px,
                                        # axe-core's WCAG 2.2 AA rules and a keyboard walk (docs/accessibility.md)

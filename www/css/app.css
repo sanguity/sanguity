@@ -672,7 +672,7 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 #hmAxis{display:block;position:sticky;bottom:var(--tabbar,0px);background:var(--surface);border-top:1px solid var(--axis);z-index:1}
 #hm text.row{fill:var(--ink2);font-size:var(--fs-1)}
 #hm text.grp{fill:var(--ink2);font-size:var(--fs-1);font-weight:var(--fw-semibold)}
-#hm text.hm-proc{fill:var(--c-procedure);font-size:var(--fs-1)}   /* ◆ over a column with a procedure */
+#hm .hm-proc{fill:var(--c-procedure)}   /* a procedure's shape over its column (#301) */
 #hm rect.cell:hover{stroke:var(--ink);stroke-width:1.5}
 .hm-legend{display:flex;gap:2px;align-items:center;font-size:var(--fs-2);color:var(--ink2);flex-wrap:wrap}
 .hm-legend i{display:inline-block;width:22px;height:12px;border-radius:2px}
@@ -1280,6 +1280,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .jmark:hover,.jmark:focus-visible,.jmark.sel{stroke:var(--ink);stroke-width:2;outline:none}
 .jrow-label{font-size:var(--fs-1);fill:var(--muted)}
 .jlegend svg{flex:none}
+.legend .jlegend.keys{flex-wrap:wrap;column-gap:var(--sp-2)}   /* a kind's keys, each shape with its word, wrap as words do (#301) */
 .jfilters{display:flex;flex-wrap:wrap;gap:var(--sp-2);margin:var(--sp-1) 0 var(--sp-2)}
 .jfilters input[type=search]{flex:1 1 160px}
 .jlist{display:flex;flex-direction:column;margin-bottom:var(--sp-3)}
@@ -2118,7 +2119,7 @@ th>.cell-btn{font-weight:inherit;white-space:nowrap}
 .h-sec .tile .delta{min-height:2lh}   /* a delta that wraps in one font only moves nothing (#329), as in one row of all */
 
 /* ---- menstrual cycle tracking, opt-in (#183, cycle.js and sources-cycle.js): its own colour (--c-cycle in
-   tokens.css), the lane's and charts' marks, and the Sources card's lists */
+   tokens.css), the lane's and charts' marks (their shapes: util.js KIND_SHAPE), and the Sources card's lists */
 .cymark{cursor:pointer}
 .cymark:hover,.cymark:focus-visible,.cymark.sel{stroke:var(--ink);stroke-width:2;outline:none}
 .cy-list{margin:var(--sp-1) 0 var(--sp-3);padding-left:var(--sp-5);font-size:var(--fs-3);color:var(--ink2)}

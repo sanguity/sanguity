@@ -42,7 +42,7 @@ What can't be done here is a pass with a real screen reader: see [Still open](#s
 | 1.3.2 Meaningful sequence, 1.3.3 Sensory characteristics | read the pages | Nothing found. |
 | 1.3.4 Orientation | 375 and 320 px, a phone on its side | Nothing found: both orientations work. |
 | 1.3.5 Identify input purpose | read the forms | Nothing found: sign-in, setup and the account page's fields have `autocomplete` (username, current-password, new-password, one-time-code). |
-| 1.4.1 Use of colour | #60, #193; looked again; #250 | **Fixed** (#250): out of range is ▲/▼ as well as red, and a lab day on the Timeline with a result out of range has a red ▲ over it (it was a 2 px red dot). On the Labs charts, procedures and imaging were ▼ like a result below range, told apart only by colour: a procedure is a ● now and imaging a ■, in the legend too. On/off chips differ by a tick and tint. |
+| 1.4.1 Use of colour | #60, #193; looked again; #250 | **Fixed** (#250): out of range is ▲/▼ as well as red, and a lab day on the Timeline with a result out of range has a red ▲ over it (it was a 2 px red dot). On the Labs charts, procedures and imaging were ▼ like a result below range, told apart only by colour: a procedure is a ● now and imaging a ■, in the legend too. Since #301 each kind drawn on or under a chart has a shape of its own (`KIND_SHAPE`, util.js: a procedure a plus, imaging a square, a symptom a star, a side effect a hexagon, a note a bar), so no shape means two things, and the Legend lists only the kinds drawn in the dates shown. On/off chips differ by a tick and tint. |
 | 1.4.3 Contrast (minimum) | axe on every state, both themes | **Fixed.** The muted grey was 3.4:1 on the light theme (`--muted`, 5.2:1 on the page since #254); filled blue buttons with white text were 4.4:1 in light and 3.6:1 in dark (an `--accent-fill` token, navy since #254: 8.2:1 and 6.4:1); blue text on dark cards and red text in dark were under 4.5:1 (lighter there). The tokens are in `www/css/tokens.css`, one copy that every page loads, sign-in and setup included (#251), each a light and dark pair since #254, measured below ([The colours](#the-colours)). The Costs running totals' end labels were in their lines' orange and green (about 3.1:1 and 2.7:1 in light); they're in ink now, each after a short line in its colour (#250). |
 | 1.4.4 Resize text | 200% zoom (700 px wide) | Nothing found beyond reflow, below. |
 | 1.4.5 Images of text | read the pages | None used. |
@@ -142,8 +142,16 @@ reference: a card stands off the page by its white and its edge, not by contrast
 | `--grid` | `--surface` | a divider, a chart's grid | 1.32 (#e3e0d8 on #ffffff) | 1.26 (#2e2c28 on #1a1917) | – |
 | `--axis` | `--surface` | a chart's axis | 1.82 (#c4c0b6 on #ffffff) | 1.58 (#3e3b36 on #1a1917) | – |
 
-The kinds of record keep their colours (`--c-*`, unchanged until Redesign 7): a mark in one is never the only way
-to tell what it is, and text about it is in ink.
+The kinds of record have eight colours at most (`--c-*`, #301), each light and dark pair run through the data-viz
+palette checks as one palette in the Timeline's order: every colour in the lightness band and over the chroma floor,
+neighbours at least 8.4 apart (OKLab ×100) for protanopia and deuteranopia and 15.9 for normal vision, and the four
+that meet on a Labs chart (the lab's line, procedures, imaging, the journal) as far apart with every pair.
+`python tests/test_palette.py` holds them to it. In dark each is 3:1 or more against the card; in light aqua
+(procedures) and yellow (reports) are under it, so their marks have a shape, the lane's name, an icon and a list or
+table beside them. Cycle tracking's lane stays 3:1 against the page in both (#183). Chart activity, immunizations, letters and ECGs are in neutral ink
+with their icons. A measure that isn't a kind of record (weight, heart rate, money) is in `--measure`, a teal apart
+from all eight, never in a kind's colour. A mark in a colour is never the only way to tell what it is, and text about
+it is in ink.
 
 ## Still open
 

@@ -77,7 +77,7 @@ function renderHeatmap() {
     const cx = colX.get(k);
     if (STAYS.some(st => ts >= st.ts - DAY / 2 && ts <= st.te + DAY / 2)) g.push(el("svg:rect", {x: cx, y: 8, width: cw, height: 6, fill: "var(--muted)", "fill-opacity": .5}));
     const procs = EV.filter(e => e.k === "procedure" && isoDay(e.ts) === k);
-    if (procs.length) { const c = el("svg:text", {x: cx + cw / 2, y: 28, "text-anchor": "middle", class: "hm-proc", text: "◆"}); c.dataset.proc = procs.map(e => e.title).join("; "); c.dataset.day = ts; g.push(c); }
+    if (procs.length) g.push(shapeMark(KIND_SHAPE.procedure, cx + cw / 2, 24, 3.4, {class: "hm-proc", "data-proc": procs.map(e => e.title).join("; "), "data-day": ts}));   // its kind's shape (#301)
   }
   g.push(el("svg:text", {x: LW - 8, y: 14, "text-anchor": "end", text: "Hospital"}));
   g.push(el("svg:text", {x: LW - 8, y: 28, "text-anchor": "end", text: "Procedure"}));

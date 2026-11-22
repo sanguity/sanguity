@@ -1023,7 +1023,8 @@ ICON_AUDIT = r"""([glyphs, marks]) => {
 
 def legend_marks_apart(page, sel):
     """#355: at 320 px, each mark (● ◆ ■ ○ ◇ • ▲ ▼) in the legend(s) at sel that a line break parts from the word after
-    it: [(the legend's first words, the mark)]. Each is joined to its word by a no-break space. A legend in a closed
+    it: [(the legend's first words, the mark)]. Each is joined to its word by a no-break space. A key drawn as a shape
+    (#301: a span holding its svg and its word) is held to the same, as [(…, "shape")]. A legend in a closed
     popover (Labs' Legend, #279) is opened for this, and closed again."""
     size = page.viewport_size
     page.set_viewport_size({"width": 320, "height": 800})
@@ -1041,6 +1042,13 @@ def legend_marks_apart(page, sel):
           b.setStart(n, m.index + m[0].length); b.setEnd(n, m.index + m[0].length + 1);
           const ra = line(a), rb = line(b);
           if (!m[0].includes('\u00a0') || !ra || !rb || Math.abs(ra.top - rb.top) > 2) out.push([box.textContent.trim().slice(0, 30), m[0][0]]);
+        }
+        // a key drawn as a shape (#301): its svg and the first letter of its word on one line
+        for (const k of box.querySelectorAll(':scope > span:has(> svg)')) {
+          const t = [...k.childNodes].find(n => n.nodeType === 3 && n.textContent.trim()); if (!t) continue;
+          const r = document.createRange(); r.setStart(t, 0); r.setEnd(t, 1);
+          const a = k.querySelector(':scope > svg').getBoundingClientRect(), b = line(r);
+          if (!b || b.top > a.bottom || b.bottom < a.top) out.push([box.textContent.trim().slice(0, 30), 'shape']);
         }
       }
       shut.forEach(p => p.hidePopover());
@@ -3691,23 +3699,37 @@ def main():
             check("…its out-of-range results are triangles, ▲ above the range and ▼ below, not only red dots",
                   len(flagged) > 0 and len(marks) == len(flagged) and all(t == "path" and d.count("L") == 2 for t, d in marks)
                   and "▲▼" in page.text_content("#view-labs .chart-legend"), [len(flagged), len(marks), marks[:2]])
-            # procedures and imaging, shown (#250): a ● and a ■ at the top, never a triangle like ▲ or ▼ on the same chart;
-            # the legend shows both shapes while they're on, and not while they're off
+            # procedures and imaging, shown (#250): their own shapes at the top (#301: a plus and a square, util.js
+            # KIND_SHAPE), never a ● like a result or a triangle like ▲ or ▼ on the same chart; the legend shows both
+            # shapes while they're on, and not while they're off
             js("window._marks250 = state.marks; state.marks = true; renderCharts()")
             settle(300)
             ev = js("""(() => { const svg = document.querySelector('#charts .chart svg:not(.icon)'), want = markEvents();
                 const heads = [...svg.querySelectorAll('.evhead')];
-                const tri = [...svg.querySelectorAll('path')].filter(p => /var\\(--c-(procedure|imaging)\\)/.test(p.getAttribute('fill') || ''));
                 const keys = [...document.querySelectorAll('#view-labs .chart-legend .marks-key')].filter(k => !k.hidden);
-                return {want: want.length, kinds: [...new Set(want.map(e => e.k))].sort(), heads: heads.map(h => [h.dataset.k, h.tagName]).filter((h, i, a) => a.findIndex(o => o + '' === h + '') === i),
-                  n: heads.length, tri: tri.length, legend: keys.map(k => [k.textContent, k.querySelector('svg .evhead')?.tagName])}; })()""")
+                return {want: want.length, kinds: [...new Set(want.map(e => e.k))].sort(), heads: heads.map(h => [h.dataset.k, h.dataset.shape]).filter((h, i, a) => a.findIndex(o => o + '' === h + '') === i),
+                  n: heads.length, legend: keys.map(k => [k.textContent, k.querySelector('svg [data-shape]')?.dataset.shape])}; })()""")
+            # …and the Legend lists only what the charts draw in these dates (#301): each key shown exactly while a mark of its
+            # kind is on the chart, over all the dates (procedures there) and over a month without any
+            keys301 = """() => { const svg = document.querySelector('#charts .chart svg:not(.icon)');
+              const drawn = {procedure: '.evhead[data-k=procedure]', imaging: '.evhead[data-k=imaging]', journal: '.jmark', mood: '.jmood', cycle: '.cymark'};
+              return [...document.querySelectorAll('#view-labs .chart-legend [data-legend]')].map(k => [k.dataset.legend, !k.hidden, !!svg.querySelector(drawn[k.dataset.legend])]); }"""
+            all301 = js(keys301)
+            js("() => { window._range301 = [state.from, state.to]; const t = Math.min(...EV.filter(e => e.k === 'procedure' || e.k === 'imaging').map(e => e.ts)) - DAY; [state.from, state.to] = [t - 30 * DAY, t]; renderCharts(); }")
+            settle(300)
+            none301 = js(keys301)
+            js("() => { [state.from, state.to] = window._range301; renderCharts(); }")
+            settle(200)
+            check("…and the Legend lists only the kinds drawn in these dates (#301): Procedure while procedures are on the charts, none of them in a month without",
+                  all(shown == drawn for _, shown, drawn in all301 + none301) and ["procedure", True, True] in all301
+                  and not any(shown for k, shown, _ in none301 if k in ("procedure", "imaging")), [all301, none301])
             js("state.marks = window._marks250; renderCharts()")
             settle(200)
             off = js("[...document.querySelectorAll('#view-labs .chart-legend .marks-key')].every(k => k.hidden) === !state.marks")
-            check("Labs (#250): procedures are a ● and imaging a ■ on the charts, no triangle, and the legend shows both while they're on",
-                  ev["want"] > 0 and ev["n"] == ev["want"] and ev["kinds"] == ["imaging", "procedure"] and not ev["tri"]
-                  and sorted(ev["heads"]) == [["imaging", "rect"], ["procedure", "circle"]]
-                  and ev["legend"] == [["Procedure", "circle"], ["Imaging", "rect"]] and off, ev)
+            check("Labs (#250, #301): procedures are a plus and imaging a square on the charts, not a ● or a triangle, and the legend shows both while they're on",
+                  ev["want"] > 0 and ev["n"] == ev["want"] and ev["kinds"] == ["imaging", "procedure"]
+                  and sorted(ev["heads"]) == [["imaging", "square"], ["procedure", "plus"]]
+                  and ev["legend"] == [["Procedure", "plus"], ["Imaging", "square"]] and off, ev)
             # …and their names (#312): at 1400, 375 and 320 px a procedure is named only inside the chart and where no
             # other mark falls on its name, and every mark is still drawn (one left unnamed opens its drawer: below, with
             # the milestone labels, after the #217 check of what details the records come with). At 1400 px there's room
@@ -4099,7 +4121,7 @@ def main():
                 js("t => { document.documentElement.dataset.theme = t; }", theme)
                 settle(150)
                 ends += js("""t => { const tok = v => { const s = document.createElement('span'); s.style.color = `var(${v})`; document.body.append(s); const c = getComputedStyle(s).color; s.remove(); return c; };
-                  const ink = [tok('--ink'), tok('--ink2')], keys = [tok('--c-imaging'), tok('--c-procedure')];
+                  const ink = [tok('--ink'), tok('--ink2')], keys = [tok('--measure'), tok('--ink2')];   // money's colours (#301)
                   return [...document.querySelectorAll('#view-costs svg text.cum-end')].map((e, i) => { const k = e.previousElementSibling;
                     return [t, e.textContent, getComputedStyle(e).fill, ink.includes(getComputedStyle(e).fill), getComputedStyle(e.closest('.card')).backgroundColor,
                       !!k && k.matches('line.cum-key') && getComputedStyle(k).stroke === keys[i]]; }); }""", theme)
@@ -5983,7 +6005,7 @@ def main():
             n_marks = js("document.querySelectorAll('#charts .chart svg .cymark').length")
             check("…ticked, each chart gets a row of them, with a legend", n_marks > 0 and js("!document.getElementById('cycleLegend').hidden"), n_marks)
             apart = legend_marks_apart(page, "#cycleLegend")
-            check("…at 320 px each of its marks (○ ovulation test, ◇ cervical mucus, • spotting) on the same line as its words (#355)", not apart, apart)
+            check("…at 320 px each of its marks (a ring, a cross and a drop since #301) on the same line as its words (#355)", not apart, apart)
             page.focus("#charts .chart svg .cymark")
             page.keyboard.press("Enter")
             settle(300)
@@ -6720,8 +6742,10 @@ def main():
             js("id => setRange(byId.get(id).ts - 20 * DAY, byId.get(id).ts + 20 * DAY)", entry["id"])
             settle()
             lane = js("""(() => { const m = document.querySelector('#tl .jmark'); return {lane: [...document.querySelectorAll('#tl .lane-label')].some(t => t.textContent === 'Journal'),
-                n: document.querySelectorAll('#tl .jmark').length, r: m && +m.getAttribute('r'), shape: m && m.tagName}; })()""")
-            check("…on the timeline in its own Journal lane, sized by severity", lane["lane"] and lane["n"] == 1 and lane["shape"] == "circle" and abs(lane["r"] - 6.15) < 0.01, lane)
+                n: document.querySelectorAll('#tl .jmark').length, w: m && m.getBBox().width, shape: m && m.dataset.shape}; })()""")
+            # a symptom is a star (#301, util.js KIND_SHAPE), 1.3 r from its middle to a point: r 6.15 at severity 7
+            check("…on the timeline in its own Journal lane, a star sized by severity", lane["lane"] and lane["n"] == 1 and lane["shape"] == "star"
+                  and abs(lane["w"] - 2 * 1.3 * 6.15 * 0.9511) < 0.05, lane)
             check("…and in the event list", "Headache (browser check)" in js("document.getElementById('list').textContent"))
             js("closeDrawer()")   # the entry's panel covers the tab bar's right end on narrower or wider fonts
             tab_click(page, "#tab-labs")
@@ -6734,7 +6758,7 @@ def main():
             check("…and as a marker under every Trends chart, labelled with its severity", len(marks) == charts > 0 and all("severity 7/10" in m and "Headache" in m for m in marks), marks[:2])
             check("the Trends legend says what the marker sizes mean", "bigger = more severe" in page.inner_text("#view-labs .legend"))
             apart = legend_marks_apart(page, "#view-labs .legend .jlegend")
-            check("…and at 320 px each of its marks (● symptom, ◆ side effect, ■ note) is on the same line as its words (#355)", not apart, apart)
+            check("…and at 320 px each of its marks (a star, a hexagon and a bar since #301, each with its word) is on the same line as its words (#355)", not apart, apart)
             page.focus("#charts .jmark")
             page.keyboard.press("Enter")
             settle(200)
@@ -7913,8 +7937,9 @@ def main():
             js("switchTab('labs', 'chart')")   # still 320 px, marks on: a procedure left unnamed still opens its drawer
             settle(500)
             unnamed = js("""(() => { const svg = document.querySelector('#charts .chart svg:not(.icon)'), g = svg._geom, xs = [...svg.querySelectorAll('.evlabel')].map(t => +t.getAttribute('x'));
-                const h = [...svg.querySelectorAll('.evhead[data-k=procedure]')].find(h => !xs.some(x => Math.abs(x - 6 - h.cx.baseVal.value) < .5)); if (!h) return null;
-                svg.scrollIntoView({block: 'center'}); const px = h.cx.baseVal.value, r = h.getBoundingClientRect(), xOf = t => g.L + (t - state.from) / (state.to - state.from) * (g.R - g.L);
+                const cx = h => { const b = h.getBBox(); return b.x + b.width / 2; };   // a plus, its middle (#301)
+                const h = [...svg.querySelectorAll('.evhead[data-k=procedure]')].find(h => !xs.some(x => Math.abs(x - 6 - cx(h)) < .5)); if (!h) return null;
+                svg.scrollIntoView({block: 'center'}); const px = cx(h), r = h.getBoundingClientRect(), xOf = t => g.L + (t - state.from) / (state.to - state.from) * (g.R - g.L);
                 return {x: r.x + r.width / 2, y: r.y + r.height / 2, titles: markEvents().filter(e => Math.abs(xOf(e.ts) - px) < 8).map(e => e.title)}; })()""")
             if unnamed:
                 page.mouse.click(unnamed["x"], unnamed["y"])
@@ -8652,6 +8677,42 @@ def main():
             check("…and clicking one hides it, showing so", js(chips)[1][1] == "false" and js(chips)[1][2] == clear, js(chips)[1])
             page.click("#chips .kind:nth-child(2) .toggle")   # each chip with its ⋯ menu (#189)
             settle(200)
+            # ---- #301: each kind in one colour: its chip's key, its marks in its Timeline lane, its rows' icons in the list
+            # and the drawer's key, in light and dark, over every date and kind (put back as they were, nothing saved);
+            # eight colours at most among them, chart activity, immunizations, letters and ECGs in a neutral ink
+            js("""() => { window._was301 = [new Set(state.cats), state.from, state.to];
+              CATS.forEach(c => c.k !== 'claim' && state.cats.add(c.k)); state.from = Math.min(...EV.map(e => e.ts)) - DAY; state.to = Math.max(...EV.map(e => e.te)) + DAY; renderAll(); }""")
+            settle(400)
+            match301 = r"""() => {
+              const col = n => getComputedStyle(n).color, out = {};
+              const paint = n => getComputedStyle(n)[n.getAttribute('fill') === 'var(--surface)' ? 'stroke' : 'fill'];   // a ring's, its edge
+              for (const c of CATS.filter(c => !['stay', 'med', 'mood', 'claim', 'watch'].includes(c.k))) {   // their own lanes and rows
+                const chip = document.querySelector(`#chips .toggle[data-k=${c.k}]`); if (!chip) continue;
+                const marks = [...document.querySelectorAll('#tl .ev[data-id]')].filter(m => CAT_OF[byId.get(+m.dataset.id)?.k] === c);
+                const e = marks.map(m => byId.get(+m.dataset.id)).find(e => document.querySelector(`#list .tl-row[data-id="${e.id}"]`));
+                const row = e && document.querySelector(`#list .tl-row[data-id="${e.id}"] .key`);
+                out[c.k] = {chip: col(chip.querySelector('.key')), lane: [...new Set(marks.filter(m => !m.classList.contains('jmood')).map(paint))], row: row && col(row), drawer: null, e};
+              }
+              for (const v of Object.values(out)) { if (v.e) { openEvent(v.e); v.drawer = col(document.getElementById('dkey')); closeDrawer(); } delete v.e; }   // (it draws the page again)
+              const tok = v => { const s = document.createElement('span'); s.style.color = `var(${v})`; document.body.append(s); const c = getComputedStyle(s).color; s.remove(); return c; };
+              return {kinds: out, ink2: tok('--ink2'), colours: [...new Set(CATS.map(c => c.color).filter(c => /--c-/.test(c)))].length};
+            }"""
+            theme_before, got301 = js("document.documentElement.dataset.theme || null"), {}
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; renderAll(); }", theme)
+                settle(300)
+                got301[theme] = js(match301)
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
+            js("() => { [state.cats, state.from, state.to] = window._was301; renderAll(); }")
+            settle(300)
+            wrong301 = [f"{t} {k}: {v}" for t, g in got301.items() for k, v in g["kinds"].items()
+                        if not v["row"] or v["lane"] != [v["chip"]] or v["row"] != v["chip"] or v["drawer"] != v["chip"]]
+            neutral301 = [f"{t} {k}" for t, g in got301.items() for k in ("contact", "immunization", "letter", "ecg")
+                          if k in g["kinds"] and g["kinds"][k]["chip"] != g["ink2"]]
+            check("Timeline (#301): each kind's chip, its lane's marks, its rows' icons and the drawer's key are one colour, in light and dark; "
+                  "eight colours at most, chart activity, immunizations, letters and ECGs in neutral ink",
+                  all(len(g["kinds"]) >= 6 for g in got301.values()) and not wrong301 and not neutral301
+                  and all(g["colours"] <= 8 for g in got301.values()), wrong301 or neutral301 or got301)
             page.reload()
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && booted", timeout=20000)
             check("…and kept on a reload, the date boxes showing them", js("[state.preset, document.getElementById('from').value, !document.getElementById('dates').hidden]") == ["custom", start, True],

@@ -268,7 +268,8 @@ function renderHealth() {
   const exIn = H.ex.filter(x => x.t >= a && x.t <= b);
   tile("Workouts", exIn.length, exIn.length === 1 ? "session" : "sessions", exIn.length ? `${Math.round(exIn.reduce((s, x) => s + x.min, 0) / 60 * 10) / 10} hours total` : "", "#h-activity");
 
-  const C = {w: "var(--c-lab)", clinic: "var(--muted)", fat: "var(--c-imaging)", lean: "var(--c-procedure)", deep: "var(--seq1)", rem: "var(--seq2)", light: "var(--seq3)", steps: "var(--c-lab)", hr: "var(--c-letter)", rest: "var(--c-message)"};
+  // a measure in --measure, a second beside it in ink, a visit's hollow: never a kind of record's colour (#301)
+  const C = {w: "var(--measure)", clinic: "var(--muted)", fat: "var(--measure)", lean: "var(--measure)", deep: "var(--seq1)", rem: "var(--seq2)", light: "var(--seq3)", steps: "var(--measure)", hr: "var(--ink2)", rest: "var(--measure)"};
   const legend = items => { const k = ckLegend(items); k.classList.add("mb-2"); return k; };   // the kit's (chartkit.js): [colour, words, "line" / 1 a dot / "ring"]
 
   /* Chart | Table on each card (#60, head above): its charts, or one table of what they show, a row per day (or week)
@@ -507,7 +508,7 @@ function renderVitals(box, vx) {
   respCard(box, vx);   // respiratory rate (#226), below
 }
 function bpCard(box, a, b, long, legend, head, home, clinic) {
-  const C = {home: "var(--c-lab)", clinic: "var(--ink2)"}, inP = r => r.t >= a && r.t <= b;
+  const C = {home: "var(--measure)", clinic: "var(--ink2)"}, inP = r => r.t >= a && r.t <= b;
   const card = el("div", {class: "card", id: "h-bp", tabindex: -1}, head("Blood pressure", "#h-bp"),
     el("p", {class: "hint", text: long ? "Home readings as weekly averages, the band from diastolic up to systolic; readings at visits one by one, systolic above diastolic."
       : "Each reading's two pressures, systolic above diastolic, joined by a line: taken at home, and at visits."}));   // (one line with ▲▼'s words, #280)
@@ -579,7 +580,8 @@ function openVital(id) {
    targets. Values are in this person's lab units (#41: mg/dL, or mmol/L with the SI choice) by the metrics' conv.
    Lab glucose stays a Labs series; it is drawn here too only when asked (gOpt.labs, remembered per profile). */
 const G_STD = {mg: ["54", "70", "180"], mmol: ["3.0", "3.9", "10.0"]};   // the standard ranges, as each unit writes them
-const G_C = {cgm: "var(--c-journal)", meter: "var(--c-message)", lab: "var(--c-lab)", lt54: "var(--seq1)", lt70: "var(--seq3)", in: "var(--c-journal)", gt180: "var(--c-study)"};
+// the CGM in --measure, a meter's readings in ink, a lab's results in the Labs colour (they are lab results, #301)
+const G_C = {cgm: "var(--measure)", meter: "var(--ink2)", lab: "var(--c-lab)", lt54: "var(--seq1)", lt70: "var(--seq3)", in: "var(--measure)", gt180: "var(--ink2)"};
 const gOpt = {labs: false};
 const G_MEAL = {before: "before a meal", after: "after a meal", other: "other"};   // a typed reading's note, when chosen (#224)
 const gMeter = (m, fmt, u) => `${m[2] || "Meter"}, ${fmtTime(m[0])}: ${fmt(m[1])} ${u}${m[3] ? " · " + m[3] : ""}${m[4] ? " · " + tgtWord(m[4]) : ""}`;
@@ -718,7 +720,7 @@ function latestList(card, all, n, text, where, flags) {
 }
 /* body temperature (#184): each reading at home and at a visit, in the unit chosen */
 function tempCard(box, a, b, legend, head, {unit, chosen, home, clinic}) {
-  const C = {home: "var(--c-imaging)", clinic: "var(--ink2)"};
+  const C = {home: "var(--measure)", clinic: "var(--ink2)"};
   const val = r => `${r.v[0].toFixed(1)} ${unit}`, where = r => `${fmtDT(r.t)} · ${r.home ? "at home" : "at a visit"} · ${r.src}${homeAlso(r)}`;
   const flags = r => flagsOf(r, ["Temperature"]);
   const card = el("div", {class: "card", id: "h-temp", tabindex: -1}, head("Body temperature", "#h-temp"),
@@ -746,7 +748,7 @@ function tempCard(box, a, b, legend, head, {unit, chosen, home, clinic}) {
 /* blood oxygen (#184): the phone's daily average above the day's low, and each reading at a visit; a reading typed in
    at home (#224) one by one, filled, as a visit's is hollow */
 function oxygenCard(box, a, b, long, legend, head, {home, typed = [], clinic}) {
-  const C = {home: "var(--c-journal)", typed: "var(--c-lab)", clinic: "var(--ink2)"};
+  const C = {home: "var(--measure)", typed: "var(--measure)", clinic: "var(--ink2)"};
   const val = r => r.day ? `${fmtNum(r.v[0])}% average${r.v[1] != null ? `, low ${fmtNum(r.v[1])}%` : ""}` : `${fmtNum(r.v[0])}%`;
   const where = r => r.day ? `${fmtD(r.t)} · ${r.src}` : `${fmtDT(r.t)} · ${r.home ? "at home" : "at a visit"} · ${r.src}${homeAlso(r)}`, flags = r => flagsOf(r, ["SpO2"]);
   const card = el("div", {class: "card", id: "h-oxygen", tabindex: -1}, head("Blood oxygen (SpO2)", "#h-oxygen"),
@@ -797,12 +799,12 @@ function hFitness() {
 /* respiratory rate in Vitals, VO2 max in Activity and fitness (#276) */
 function respCard(box, vx) {
   const {resp} = H.fit = H.fit || hFitness();
-  if (resp.home.length || resp.clinic.length) phoneDayCard(box, vx, {...resp, id: "h-resp", title: "Respiratory rate", name: "Respiratory rate", color: "var(--c-study)", near: .6,
+  if (resp.home.length || resp.clinic.length) phoneDayCard(box, vx, {...resp, id: "h-resp", title: "Respiratory rate", name: "Respiratory rate", color: "var(--measure)", near: .6,
     hint: long => `${long ? "The phone's daily average by week" : "The phone's daily average"} of breaths a minute (most watches measure it asleep); visits' rates one by one.`});
 }
 function vo2Card(box, vx) {
   const {vo2} = H.fit = H.fit || hFitness();
-  if (vo2.home.length) phoneDayCard(box, vx, {...vo2, id: "h-vo2", title: "Cardio fitness (VO2 max)", name: "VO2 max", color: "var(--c-procedure)", near: 4,
+  if (vo2.home.length) phoneDayCard(box, vx, {...vo2, id: "h-vo2", title: "Cardio fitness (VO2 max)", name: "VO2 max", color: "var(--measure)", near: 4,
     hint: long => `The watch's estimate of VO2 max, the most oxygen the body uses in hard exercise, in ${vo2.unit}${long ? ", by week" : ""}: as the device gives it, without fitness levels.`});
 }
 /* one card: the phone's days (weekly averages over a long period) as a line with dots, the visits' readings hollow */
@@ -958,7 +960,7 @@ function bmiChart(card, a, b, {long}) {
   if (who) box.append(el("p", {class: "hint", text: "The World Health Organization's categories of BMI for adults (20 and over): under 18.5, 18.5–24.9, 25–29.9, and 30 and over. "
     + "Shown because they were turned on; they're the WHO's, not advice."}));
   card.append(box);
-  const C = {bmi: "var(--c-lab)", clinic: "var(--muted)"};
+  const C = {bmi: "var(--measure)", clinic: "var(--muted)"};
   const pts = all.map(r => [r.t, r.v, r]), clinic = pts.filter(p => p[2].w[2]), scale = pts.filter(p => !p[2].w[2]);
   hChart(box, a, b, {h: 150, fmtY: v => String(+v.toFixed(1)), label: "BMI", noun: "weight", nav: pts, layers: [
     ...(who ? [{type: "ybands", data: [], bands: WHO_BMI.map(([lo, hi, range]) => [lo, hi, "WHO " + range])}] : []),
@@ -1112,8 +1114,8 @@ function growthChart(host, sex, set, key, pts) {
     const over = labels.length ? labels[labels.length - 1][0] - (B + 4) : 0;
     if (over > 0) for (let i = labels.length - 1; i >= 0; i--) labels[i][0] = Math.min(labels[i][0], (i === labels.length - 1 ? B + 4 : labels[i + 1][0] - 10));
     for (const [ly, text] of labels) g.push(el("svg:text", {class: "growth-pct", x: R + 4, y: ly, text}));
-    if (pts.length > 1) g.push(el("svg:path", {d: "M" + pts.map(m => `${x(m.age.days).toFixed(1)},${y(m.x * f).toFixed(1)}`).join("L"), fill: "none", stroke: "var(--c-lab)", "stroke-width": 1.4, opacity: .7}));
-    for (const m of pts) g.push(el("svg:circle", {cx: x(m.age.days), cy: y(m.x * f), r: pts.length > 60 ? 2.4 : 3.6, fill: "var(--c-lab)", stroke: "var(--surface)", "stroke-width": 1}));
+    if (pts.length > 1) g.push(el("svg:path", {d: "M" + pts.map(m => `${x(m.age.days).toFixed(1)},${y(m.x * f).toFixed(1)}`).join("L"), fill: "none", stroke: "var(--measure)", "stroke-width": 1.4, opacity: .7}));
+    for (const m of pts) g.push(el("svg:circle", {cx: x(m.age.days), cy: y(m.x * f), r: pts.length > 60 ? 2.4 : 3.6, fill: "var(--measure)", stroke: "var(--surface)", "stroke-width": 1}));
     const cross = el("svg:line", {class: "cross", y1: T, y2: B, visibility: "hidden"});
     const hit = el("svg:rect", {x: L, y: T, width: R - L, height: B - T, fill: "transparent"});
     const near = cx => { let best = null; for (const m of pts) { const dx = Math.abs(x(m.age.days) - cx); if (dx <= 14 && (!best || dx < best[0])) best = [dx, m]; } return best && best[1]; };
