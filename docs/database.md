@@ -728,6 +728,16 @@ keep are in `meta` (`backup.schedule`, `backup.keep`). A backup also holds the w
 [the watch receiver's own database](#the-watch-receivers-own-database)); a check's `result` then has its counts too,
 cycle records compared but not named (only a profile's owners and editors may know they're kept).
 
+**What a restore replaced (#595).** A restore (`server.manage restore`, with the app stopped) moves the database,
+`profiles/` and `build/` it replaces to `DATA_DIR/before-restore-<time>/` (`-1` added for a second restore in the same
+second). That folder may hold a profile deleted before the restore, or since, so it is deleted `RESTORE_KEEP_DAYS`
+(30) after the restore (the later of its name's time and its last change): at start-up and hourly while the app runs
+(`backup_jobs.sweep_replaced`), or at once by an admin's **Delete now** on Admin → Backups, which lists them. A folder
+is renamed `.deleting-…` before it's deleted, so a stop halfway leaves nothing that looks newer; what's left goes at
+the next sweep. Only names a restore gives are touched, never a link. Each deletion is an account event
+(`backup.replaced`, by "time limit" or the admin). A backup never includes it: it takes only the database, `profiles/`
+and `build/`.
+
 ```mermaid
 erDiagram
     users ||--o{ backup_runs : "asked for"
@@ -872,7 +882,7 @@ sorting), and your original exports in `RECORDS_DIR`, which Sanguity only reads.
 
 | Deleted | Also removed (cascade) | Kept |
 |---|---|---|
-| A profile | memberships, imports with all their rows, documents, uploads and their files, jobs, edits, same-result links, journal entries and their photos, medication reminders and doses, cost marks, settings, visit summary drafts, calendar feeds, share links, undo history, its activity and outside contacts; and what the watch receiver keeps for its slot (its database, archived uploads, summary, ECG samples and `cycle.json`), which the receiver deletes when told (#588), unless another profile reads the same slot (a slot a profile deleted before that left, after a week, #593) | the original exports, backups made before, the receiver's `before-restore-<time>/` for 30 days |
+| A profile | memberships, imports with all their rows, documents, uploads and their files, jobs, edits, same-result links, journal entries and their photos, medication reminders and doses, cost marks, settings, visit summary drafts, calendar feeds, share links, undo history, its activity and outside contacts; and what the watch receiver keeps for its slot (its database, archived uploads, summary, ECG samples and `cycle.json`), which the receiver deletes when told (#588), unless another profile reads the same slot (a slot a profile deleted before that left, after a week, #593) | the original exports, backups made before, the app's and the receiver's `before-restore-<time>/` for 30 days (#593, #595) |
 | An import (undo) | its events, series, results and documents; its upload's raw files unless another import uses them | edits, same-result links, journal entries, medication reminders and doses, and cost marks (they belong to the profile) |
 | An upload | its files and jobs (a job's saved import stays) | the import it became |
 | A connection (disconnect) | its tokens, key, patient id and stored resources; its imports too, if chosen; its hosts from "may contact" | the row, as disconnected; its outside contacts, listed as earlier ones |

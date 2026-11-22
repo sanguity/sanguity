@@ -100,7 +100,7 @@ const SG_PAGES = {
      finds: [["Require two-factor sign-in", "users", "2fa everyone"]]},   // (#528: "require 2fa")
     {id: "activity", title: "Install activity", icon: "logs", part: "People", has: ["installLog"], words: "log sign-ins failed audit"},
     {id: "backups", title: "Backups", icon: "archive", part: "Data safety", has: ["backups"], words: "backup restore back up now make check show all fewer " +
-      "schedule how often daily weekly off keep newest many oldest"},   // #200 (#532: its schedule's; and each field's and segmented control's label finds its place)
+      "schedule how often daily weekly off keep newest many oldest replaced delete now before-restore"},   // #200 (#595: Restore's; #532: its schedule's; and each field's and segmented control's label finds its place)
     {id: "apps", title: "Connected-source apps", icon: "app-window", part: "Connections", has: ["admin", "sec-sync"],
      words: "set up a source client portal app test connection change remove delete waiting for review done id secret issuer vendor epic mychart oracle cerner " +
        "new return address redirect uri sandbox use add another notes name people see fhir base how signs scopes ask", finds: [["Sync defaults", "sec-sync", "attachments"]]},   // (#506: a source's buttons; #510: its form's; #515: delete; #519: its return address)

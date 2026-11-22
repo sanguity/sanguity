@@ -101,7 +101,8 @@
       <p>Where the backups folder is on the server is the install's choice (BACKUP_DIR in .env; ./backups by default).
         Restoring one replaces the live data, so it's done on the server with the app stopped
         (python -m server.manage restore), never from this page. The watch receiver puts its data back when it's
-        restarted after that.</p>
+        restarted after that. What a restore replaces is kept in the data folder for a while, then deleted: Restore,
+        below, says when.</p>
     </div>
     <div id="bkStatus" class="bk-status"></div>
     <div class="row"><button class="btn primary" type="button" id="bkNow">Back up now</button>
@@ -115,6 +116,11 @@
       deletes the copy. The live data isn't touched.</p>
     <div id="bkList"></div>
     <div id="bkResult" class="bk-result" role="status"></div>
+    <!-- what a restore replaced, kept in the data folder for a while, with Delete now (#595) -->
+    <h3 class="sub" id="bkRestoreH" tabindex="-1">Restore</h3>
+    <div id="bkReplaced"></div>
+    <div id="bkReplacedReauth" class="reauth" hidden></div>
+    <span class="msg" id="bkReplacedMsg" role="status"></span>
   </section>
 
   <!-- Connected-source apps: each vendor's app for this server, and the defaults of every connection (admin-sources.js) -->

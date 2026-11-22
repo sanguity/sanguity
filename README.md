@@ -277,7 +277,7 @@ profile makes one here. The app hands the secrets to the receiver, encrypted, in
 samples) stays in `WATCH_DIR` while the profile is there, and goes when the profile is deleted. Phone data no profile
 reads and no secret uploads to (left behind by a profile deleted with an older version) is deleted a week after the
 receiver first finds it so (`SLOT_GRACE_DAYS` on the receiver, 7); what a restore replaced, 30 days after the restore
-(`RESTORE_KEEP_DAYS`, see [Backup and restore](#backup-and-restore)). Backups keep what they hold until they're deleted.
+(`RESTORE_KEEP_DAYS`, on the receiver and on the app for its own, see [Backup and restore](#backup-and-restore)). Backups keep what they hold until they're deleted.
 
 Two phone apps upload to that address:
 
@@ -703,8 +703,10 @@ ZFS snapshots of these folders are fine too: SQLite recovers from a snapshot as 
 still worth having, since it can be checked (`python -m server.manage verify FILE`, or `check FILE` to restore it
 into a temporary folder as the Admin page does) and copied anywhere.
 
-**Restore** with the app stopped; the data it replaces is moved to `DATA_DIR/before-restore-<time>/`, not deleted,
-and a backup from an older version is upgraded when the app starts:
+**Restore** with the app stopped; the data it replaces is moved to `DATA_DIR/before-restore-<time>/`, and a backup
+from an older version is upgraded when the app starts. That folder may hold profiles deleted since, so the app deletes
+it 30 days after the restore (`RESTORE_KEEP_DAYS` on the app), and **Admin → Backups** lists it with a **Delete now**;
+no backup includes it:
 
 ```sh
 docker compose stop app web receiver

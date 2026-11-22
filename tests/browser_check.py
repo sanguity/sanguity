@@ -13005,11 +13005,59 @@ def main():
             page.keyboard.press("Escape")
             page.click("#backupNotice a")
             page.wait_for_selector("#bkStatus .kv", timeout=10000)
+            # ---- what a restore replaced (#595): said beside the restore, listed with when each goes (30 days after its
+            # restore), and Delete now, asked first and with the fresh check, focus on the next one's; the theme and
+            # size checks below take the list as it's left (one)
+            rs_said = js("document.getElementById('bkReplaced').textContent")
+            check("Backups → Restore (#595): nothing a restore replaced, said in words, and what it would be and for how long, beside the restore",
+                  "python -m server.manage restore" in rs_said and "deleted 30 days after the restore: it may hold profiles deleted since" in rs_said
+                  and "Backups never include it." in rs_said and "Nothing a restore replaced is kept now." in rs_said, rs_said)
+            rs595 = [time.strftime("before-restore-%Y%m%d-%H%M%S", time.localtime(time.time() - d * 86400)) for d in (12, 3)]
+            for d, n in zip((12, 3), rs595):
+                os.makedirs(os.path.join(TMP, n, "profiles"))
+                with open(os.path.join(TMP, n, "sanguity.db"), "wb") as f:
+                    f.write(b"fictional: what a restore replaced")
+                os.utime(os.path.join(TMP, n), (time.time() - d * 86400,) * 2)
+            js("call('backups').then(drawBackups)")
+            page.wait_for_function("document.querySelectorAll('#bkReplaced tbody tr').length === 2", timeout=10000)
+            rs_rows = js("[...document.querySelectorAll('#bkReplaced tbody tr')].map(r => [r.dataset.replaced, ...[...r.cells].map(c => c.textContent)])")
+            check("…each one listed, oldest first: its restore's time and folder, when it's deleted (30 days on), and Delete now",
+                  [r[0] for r in rs_rows] == rs595 and all(r[1].startswith("The restore of ") and r[1].endswith(r[0]) and r[3] == "Delete now" for r in rs_rows)
+                  and js(f"fmtDT({(time.time() + 18 * 86400) // 60 * 60 * 1000})")[:6] in rs_rows[0][2], rs_rows)
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            cl_tables, cl_bad = cell_labels(page, "Admin → Backups → Restore")
+            check("…at 375 px its cells are labelled with their columns' names (#320)",
+                  not cl_bad and any("bk-replaced" in t[0] and t[1] and t[3] >= 4 for t in cl_tables), cl_bad[:6] or cl_tables)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            refused_595 = len(problems)
+            page.focus(f"#bkReplaced button[data-replaced='{rs595[0]}']")
+            page.keyboard.press("Enter")
+            rs_ask = answer_ask(page)
+            for _ in range(50):
+                if js(f"!document.getElementById('bkReplacedReauth').hidden || document.getElementById('bkReplacedMsg').textContent.startsWith('Deleted')"):
+                    break
+                settle(100)
+            if js("!document.getElementById('bkReplacedReauth').hidden"):   # the fresh check, if the sign-in was a while ago
+                page.fill("#bkReplacedReauth input[type=password]", PW)
+                page.click("#bkReplacedReauth button[type=submit]")
+            page.wait_for_function("document.getElementById('bkReplacedMsg').textContent.startsWith('Deleted')", timeout=10000)
+            problems[refused_595:] = [x for x in problems[refused_595:] if "403" not in x]
+            check("…Delete now asks first, saying it can't be put back and the live data and backups stay; then it's gone from the "
+                  "data folder and the list, said, with focus on the next one's Delete now",
+                  rs_ask[0].startswith("Delete what the restore of ") and "can't be put back" in rs_ask[1] and "The live data and the backups stay as they are." in rs_ask[1]
+                  and not os.path.exists(os.path.join(TMP, rs595[0])) and os.path.isdir(os.path.join(TMP, rs595[1]))
+                  and js("[...document.querySelectorAll('#bkReplaced tbody tr')].map(r => r.dataset.replaced)") == rs595[1:]
+                  and js("document.activeElement.dataset.replaced") == rs595[1]
+                  and js("document.getElementById('bkReplacedMsg').textContent").startswith("Deleted what the restore of "),
+                  (rs_ask, js("document.getElementById('bkReplacedMsg').textContent"), js("document.activeElement.outerHTML.slice(0, 80)")))
+            rs_axe = axe_check(page, "Admin → Backups → Restore, one listed")[0]
+            check("…axe finds nothing serious in it (#595)", rs_axe == [], rs_axe)
             theme_was_200 = js("localStorage.getItem('ht-theme')")
             for theme in ("light", "dark"):
                 js(f"localStorage.setItem('ht-theme', '{theme}'); applyTheme()")
                 settle(150)
-                low = js("""[...document.querySelectorAll('#backups .bk-state, #backups .bk-key, #backups .kv dd, #bkResult .bk-state, #bkResult .bk-watch, #backupNotice')]
+                low = js("""[...document.querySelectorAll('#backups .bk-state, #backups .bk-key, #backups .kv dd, #bkResult .bk-state, #bkResult .bk-watch, #backupNotice, #bkReplaced .hint, #bkReplaced td, #bkReplaced .bk-name, #bkReplacedMsg')]
                             .map(e => [e.id || e.className, getComputedStyle(e).color, getComputedStyle(document.getElementById('backups')).backgroundColor])""")
                 low = [(w, contrast(c, bg)) for w, c, bg in low if contrast(c, bg) < 4.5]
                 check(f"…readable in the {theme} theme (text contrast 4.5 or more)", low == [], low)
@@ -13021,6 +13069,7 @@ def main():
                 page.set_viewport_size({"width": 1400, "height": 900})
             js(f"localStorage.setItem('ht-theme', {json.dumps(theme_was_200)}); applyTheme()" if theme_was_200 else "localStorage.removeItem('ht-theme'); applyTheme()")
             os.replace(os.path.join(bk_dir, stale_name), os.path.join(bk_dir, made[0]))   # up to date again for the checks below
+            shutil.rmtree(os.path.join(TMP, rs595[1]))   # (#595) as before, for the checks below
             _config.WATCH_STORE = ""   # (#227) as before, for the checks below
             page.goto(base + "/settings.html?profile=1")   # back to Settings for the checks below
             page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)

@@ -2414,6 +2414,11 @@ Everything on `main` so far; it becomes the first tagged release.
   message, which could quote an upload's values. In the TrueNAS app, the app's `/tmp`, where an import reads its upload
   decrypted, was 64 MiB; it's half the app's memory limit, an upload that won't fit is refused saying how much room it
   needs, and nginx no longer spills large answers (an export) to its temporary files.
+- **What a restore replaced no longer kept for good by the app** (#595): a restore moved the data it replaced to
+  `DATA_DIR/before-restore-<time>/` and never deleted it, so a profile deleted before the restore, or since, stayed
+  there. The app deletes it 30 days after the restore (`RESTORE_KEEP_DAYS`), at start and hourly, each deletion in the
+  install's activity log; **Admin → Backups** says so under Restore, lists each one with when it goes, and has a
+  **Delete now** (asked first, with the fresh check). No backup includes it, which a server test now holds to.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
@@ -2473,6 +2478,10 @@ From an install whose profiles with a phone were deleted (before #588):
 - The receiver deletes the phone data they left a week after it first starts with the updated app (#593), and its
   `before-restore-<time>/` folders 30 days after each restore. To keep one longer, copy it out of `WATCH_DIR` first, or
   set `SLOT_GRACE_DAYS` or `RESTORE_KEEP_DAYS` on the receiver.
+
+From an install that was ever restored from a backup (before #595):
+- On its first start after updating, the app deletes each `DATA_DIR/before-restore-<time>/` folder made more than 30
+  days ago. To keep one, copy it out of `DATA_DIR` before updating, or set `RESTORE_KEEP_DAYS` on the app.
 
 Moving an install from a git checkout to the published image: see [Upgrading to a release](README.md#upgrading-to-a-release).
 
