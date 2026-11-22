@@ -4200,6 +4200,40 @@ def main():
                   and abs(sync291["tipTop"]) <= 1 and left291 == 0, [sync291, left291])
             check("…and its legends key a line with a short line and a visit's reading with a ring",
                   ["14-day average", "line"] in keys291 and ["Clinic visit", "ring"] in keys291 and ["Resting", "line"] in keys291, keys291)
+            # #292: decimation (chartkit.js ckDecimate). Ten thousand points on 300 px: a line keeps each pixel's first,
+            # lowest, highest and last, dots their lowest and highest and every flagged one, bars the tallest; fewer
+            # points than pixels come back as they were. On All the weight chart at 320 px draws fewer of the demo's
+            # scale readings than at 1400 px, the same highest and lowest among them; its table lists every one
+            dec292 = js("""(() => { const pts = Array.from({length: 10000}, (_, i) => [i, Math.sin(i / 50) * 10 + (i % 7) - (i === 4321 ? 30 : 0), i === 777]), px = p => p[0] * 0.03;
+                const cols = new Map(); for (const p of pts) { const c = Math.floor(px(p)); (cols.get(c) || cols.set(c, []).get(c)).push(p); }
+                const line = ckDecimate(pts, px, 1, {ends: true}), dots = ckDecimate(pts, px, 1, {keep: p => p[2]}), bars = ckDecimate(pts, px, 1, {lo: null});
+                const ext = [...cols.values()].every(c => { const vs = c.map(p => p[1]), lo = Math.min(...vs), hi = Math.max(...vs), mine = line.filter(p => c.includes(p));
+                  return mine[0] === c[0] && mine.at(-1) === c.at(-1) && mine.some(p => p[1] === lo) && mine.some(p => p[1] === hi) && mine.length <= 4; });
+                const few = pts.slice(0, 200);
+                return {cols: cols.size, line: line.length, ext, dots: dots.length, flagged: dots.some(p => p[2]), low: dots.some(p => p[1] < -30), bars: bars.length,
+                  ordered: line.every((p, i) => !i || p[0] > line[i - 1][0]), few: ckDecimate(few, p => p[0] * 3, 1) === few}; })()""")
+            js("applyPreset('all')")
+            w292 = {}
+            for width in (1400, 320):
+                page.set_viewport_size({"width": width, "height": 900})
+                settle(500)
+                w292[width] = js("""(() => { const cy = [...document.querySelector('#h-body svg.ck').querySelectorAll('circle[fill="var(--measure)"]')].map(c => +c.getAttribute('cy'));
+                  return [cy.length, Math.min(...cy), Math.max(...cy), H.scale.length, document.querySelectorAll('#h-sleep svg.ck rect:not([fill=transparent]):not([fill="var(--stay)"])').length]; })()""")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("state.tables.add('#h-body'); renderHealth()")
+            settle(300)
+            t292 = js("[...document.querySelectorAll('#h-body table tbody tr')].filter(r => r.cells[2].textContent === 'Smart scale').length")
+            more292 = js("document.querySelectorAll('#h-body .h-more').length")
+            js("state.tables.delete('#h-body'); [state.preset, state.from, state.to] = window._was291; renderAll()")
+            settle(300)
+            check("Body and activity and Labs draw a series with more points than pixels decimated (#292): a line keeps each pixel's first, lowest, "
+                  "highest and last, dots their extremes and every flagged one, bars the tallest, and fewer points than pixels come back as they were",
+                  dec292["ext"] and dec292["ordered"] and dec292["few"] and dec292["line"] <= 4 * dec292["cols"] and dec292["dots"] <= 2 * dec292["cols"] + 1
+                  and dec292["flagged"] and dec292["low"] and dec292["bars"] == dec292["cols"], dec292)
+            check("…on All the weight chart draws fewer of the scale's readings at 320 px than at 1400, with the same highest and lowest, its table "
+                  "every reading; the sleep chart's bars are a path a stage",
+                  w292[320][0] < w292[1400][0] and abs(w292[320][1] - w292[1400][1]) < .01 and abs(w292[320][2] - w292[1400][2]) < .01
+                  and w292[1400][4] == 0 and (t292 == w292[1400][3] or more292 > 0), [w292, t292, more292])
             check("…the workouts' calendar names its months “Sep ’26” on All, never “Sep 26”, which reads as a day (#561)",
                   cal561 and all(re.match(r"^[A-Z][a-z]{2} ’\d\d$", t) for t in cal561), cal561)
             for k in ("#h-body", "#h-heart", "#h-bp", "#h-glucose", "#h-temp", "#h-oxygen", "#h-resp", "#h-sleep", "#h-activity", "#h-vo2"):

@@ -25,7 +25,9 @@ const hmDraw = (p, k) => EV.filter(e => e.k === "lab" && isoDay(e.ts) === k && e
   .sort((a, b) => Math.abs(a.ts - p.ts) - Math.abs(b.ts - p.ts))[0] || null;
 /* another of a day's results, in the tip of one (#471): "Also at 8:31 AM: 0.89 mg/dL · In range" */
 const hmAlso = (s, p) => `Also at ${fmtTime(p.ts)}: ${p[5] || fmtNum(p[1])} ${s.unit}${statusOf(p) ? " · " + statusOf(p).text : ""}`;
-function renderHeatmap() {
+const hmCut = new Map();   // a panel's name as it fits the names' column, by its width (below)
+document.fonts.addEventListener("loadingdone", () => hmCut.clear());
+function renderHeatmap(live) {   // live: a frame of a drag (charts.js), at the width it had (#292)
   const asTable = state.tables.has("#hm");   // Grid | Table (#60)
   const hd = $("#hmHd"); hd.querySelector(".view-seg")?.remove(); hd.append(viewSeg("#hm", "the heatmap", renderHeatmap, "Grid"));
   $("#hmLegend").hidden = $("#hmWrap").hidden = asTable; $("#hmTable").hidden = !asTable;
@@ -44,7 +46,7 @@ function renderHeatmap() {
   const svg = $("#hm"), axis = $("#hmAxis");
   // laid out in its box's own width (#476: not a floor of 320 px, which a phone's 270 px box cut the right of), 320 while
   // it isn't shown
-  const avail = svg.parentElement.clientWidth || 320;
+  const avail = (live && svg._avail) || (svg._avail = svg.parentElement.clientWidth || 320);
   const LW = avail < 600 ? 120 : 190, top = 34, rowH = 14, gap = 2;
   if (!rows.length || !cols.length) {   // keep it draggable so you can pan back to where the draws are
     svg.replaceChildren(el("svg:text", {x: LW, y: 20, text: !rows.length && state.labQ ? "No lab names match the filter." : "No lab draws in this date range."})); svg.setAttribute("viewBox", `0 0 ${avail} 30`); svg.setAttribute("width", avail); svg.setAttribute("height", 30);
@@ -72,11 +74,13 @@ function renderHeatmap() {
   const ax = [];
   const g = [];
   const colX = new Map(cols.map(([k], i) => [k, LW + i * cw]));
-  // hospital stay strip + procedure markers
+  // hospital stay strip + procedure markers (the procedures by day once, not the records once a column: #292)
+  const procDays = new Map();
+  for (const e of EV) if (e.k === "procedure" && e.ts >= state.from - DAY && e.ts <= state.to + DAY) { const k = isoDay(e.ts); (procDays.get(k) || procDays.set(k, []).get(k)).push(e); }
   for (const [k, ts] of cols) {
     const cx = colX.get(k);
     if (STAYS.some(st => ts >= st.ts - DAY / 2 && ts <= st.te + DAY / 2)) g.push(el("svg:rect", {x: cx, y: 8, width: cw, height: 6, fill: "var(--muted)", "fill-opacity": .5}));
-    const procs = EV.filter(e => e.k === "procedure" && isoDay(e.ts) === k);
+    const procs = procDays.get(k) || [];
     if (procs.length) g.push(shapeMark(KIND_SHAPE.procedure, cx + cw / 2, 24, 3.4, {class: "hm-proc", "data-proc": procs.map(e => e.title).join("; "), "data-day": ts}));   // its kind's shape (#301)
   }
   g.push(el("svg:text", {x: LW - 8, y: 14, "text-anchor": "end", text: "Hospital"}));
@@ -96,14 +100,17 @@ function renderHeatmap() {
       ...(edit ? {"data-rename": "lab", "data-key": s.name} : {})},   // clicked; by keyboard, the ✎ in the heatmap's table or a chart (#202: the grid is one picture)
       (nm.length > cut ? nm.slice(0, cut - 1) + "…" : nm) + unit,
       el("svg:title", {text: renamedTitle("lab", s.name) + unit + (edit ? " · click to rename" : "") + rowRanges(s)})));
-    // a day's results side by side in its cell, each its own colour and mark (#471)
-    for (const [k, ps] of cellPts[i]) ps.forEach((p, j) => {
-      const lv = hmLevel(p[1], p[2], p[3]), w = cw / ps.length, x = colX.get(k) + j * w;
-      const r = el("svg:rect", {class: "cell", x: x + (w > 6 ? .5 : 0), y: ry + 1, width: w - (w > 6 ? 1 : 0), height: rowH - gap, rx: w > 8 ? 2 : 0, style: `fill:${lv == null ? "var(--grid)" : hmFill(lv)}`});
+    // a day's results side by side in its cell, each its own colour and mark (#471); columns under a pixel wide (ten
+    // years on a phone) a pixel's cell each, the result furthest outside its range in it (chartkit.js ckDecimate, #292)
+    let cells = [...cellPts[i]].flatMap(([k, ps]) => ps.map((p, j) => ({k, ps, p, j, lv: hmLevel(p[1], p[2], p[3]), x: colX.get(k) + j * cw / ps.length})));
+    if (cw < 1) cells = ckDecimate(cells, c => c.x - LW, 1, {lo: null, hi: c => c.lv == null ? -1 : Math.abs(c.lv)});
+    for (const {k, ps, j, lv, x: cx} of cells) {
+      const w = cw < 1 ? Math.min(1, LW + cols.length * cw - Math.floor(cx)) : cw / ps.length, x = cw < 1 ? Math.floor(cx) : cx;
+      const r = el("svg:rect", {class: "cell", x: x + (w > 6 ? .5 : 0), y: ry + 1, width: w - (w > 6 ? 1 : 0), height: rowH - gap, rx: w > 8 ? 2 : null, style: `fill:${lv == null ? "var(--grid)" : hmFill(lv)}`});
       r.dataset.s = s.name; r.dataset.i = i; r.dataset.k = k; r.dataset.j = j;
       g.push(r);
       if (lv && w >= 3) g.push(abnMark(x + w / 2, ry + 1 + (rowH - gap) / 2, lv > 0 ? "H" : "L", Math.min(3.6, w / 2 - .8), "hm-mark"));   // #60
-    });
+    }
   });
   // month labels go in a separate axis strip that sticks to the bottom of the window until the heatmap's end scrolls into view
   // the month lines go under the cells (#479): over them they took the taps, and on a phone's narrow columns they
@@ -135,10 +142,12 @@ function renderHeatmap() {
   }
   ax.push(el("svg:text", {x: LW - 8, y: AH - 6, "text-anchor": "end", text: "Draw date"}));
   svg.replaceChildren(...lines, ...g); axis.replaceChildren(...ax);
-  // a panel's name kept inside the label column (#441): cut short where it would run into the grid, whole in its tip
+  // a panel's name kept inside the label column (#441): cut short where it would run into the grid, whole in its tip;
+  // measured once for the column's width, not again in each frame of a drag, which laid the whole grid out (#292)
   for (const t of svg.querySelectorAll("text.grp")) {
-    const full = t.textContent;
-    for (let n = full.length; n > 4 && t.getComputedTextLength() > LW - 8; n--) t.textContent = full.slice(0, n - 1).trimEnd() + "…";
+    const full = t.textContent, key = full + "\n" + LW;
+    if (hmCut.has(key)) t.textContent = hmCut.get(key);
+    else { for (let n = full.length; n > 4 && t.getComputedTextLength() > LW - 8; n--) t.textContent = full.slice(0, n - 1).trimEnd() + "…"; hmCut.set(key, t.textContent); }
     if (t.textContent !== full) t.append(el("svg:title", {text: full}));
   }
   svg.onpointermove = ev => {

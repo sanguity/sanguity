@@ -1,11 +1,12 @@
 /* Sanguity · the chart kit (#291): the parts every time chart is drawn with, so they read as one: Labs (trends.js
    drawChart) and Body and activity (health.js hChart) draw through it. Each part is its own small function, for the
-   rest of the kit to plug in beside (decimation, the event track, the overview strip, sparklines):
+   rest of the kit to plug in beside (the event track, the overview strip, sparklines):
    - ckScale, niceTicks: the scales, and a value axis's round numbers;
    - ckTimeTicks, ckAxis, ckFoot: the time axis, its ticks at two levels (days over months, months over years), and
      the plot's foot alone, for a chart in a stack under one axis;
    - ckGrid, ckUnit: the value axis, a hairline and a label at each round number, and its unit as its title;
    - ckBand, ckBandLabel: the reference band, each result's own range, neutral, and its numbers at the right;
+   - ckDecimate: a series with more points than pixels, drawn with what each pixel shows (#292);
    - ckLegend: a chart's key, each mark keyed as it's drawn (a line for a line);
    - ckCross, ckSync, ckTip: the crosshair, at one time on every time chart of a view, and the hover's readout pinned to
      the top of the plot beside it;
@@ -139,6 +140,30 @@ function ckBandLabel(g, words, st, y, R, T, B, pts) {
   const clear = yb => !pts.some(([px, py]) => px > x0 - 5 && px < x1 + 5 && py > yb - 15 && py < yb + 6);
   const yb = at.find(clear) ?? at[0];
   if (yb != null) g.push(el("svg:text", {class: "ck-ref", x: x1, y: yb, "text-anchor": "end", text: words}));
+}
+
+/* ---- decimation (#292): a series with more points than its marks have room for is drawn with fewer, the extremes kept.
+   items in time order, px(p) its x on the chart, w a column's width (1 px for a line or a band, a dot's width for dots,
+   a bar's for bars). With more items than columns, each column keeps its lowest by lo(p) and its highest by hi(p) (lo
+   null: the highest only, as for bars from zero), with ends its first and last too, so a line's path is the same to
+   the pixel; keep(p) is never dropped (a flagged result's ▲ or ▼). Fewer: items as they are. What a chart's table,
+   tooltip and keyboard read is the series itself, never this */
+function ckDecimate(items, px, w, {lo = p => p[1], hi = lo || (p => p[1]), ends = false, keep} = {}) {
+  const n = items.length;
+  if (n < 3 || n <= (px(items[n - 1]) - px(items[0])) / w + 1) return items;
+  const out = [];
+  for (let i = 0; i < n;) {
+    const c = Math.floor(px(items[i]) / w); let j = i + 1, l = i, h = i;   // (a column of one at least, NaN's too)
+    for (; j < n && Math.floor(px(items[j]) / w) === c; j++) {
+      if (lo && lo(items[j]) < lo(items[l])) l = j;
+      if (hi(items[j]) > hi(items[h])) h = j;
+    }
+    const k = new Set(ends ? [i, l, h, j - 1] : lo ? [l, h] : [h]);
+    if (keep) for (let m = i; m < j; m++) if (keep(items[m])) k.add(m);
+    for (const m of [...k].sort((p, q) => p - q)) out.push(items[m]);
+    i = j;
+  }
+  return out;
 }
 
 /* ---- the legend: items [colour, words, how it's drawn]: "line" a short stroke, 1 or "dot" a point, "ring" a hollow

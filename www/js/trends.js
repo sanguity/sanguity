@@ -204,12 +204,12 @@ function chartCard(s) {
   requestAnimationFrame(() => drawChart(svg, s, pts, read));
   return card;
 }
-function drawChart(svg, s, pts, read) {
+function drawChart(svg, s, pts, read, live) {   // live: a frame of a drag, at the width it had (#292)
   if (!svg.isConnected) return;
   // one chart of the stack (#293): 200–220 px tall, its unit over its numbers, and no time axis of its own: the
   // stack's one is under it (labAxis), each chart on the same time scale (the kit's, chartkit.js). Events are on the
   // track over the stack (#294): only a faint line at each milestone here
-  const w = labW(svg.parentElement), L = 52, R = w - 12, x = ckScale(state.from, state.to, L, R);
+  const w = live && svg._geom ? svg._geom.w : labW(svg.parentElement), L = 52, R = w - 12, x = ckScale(state.from, state.to, L, R);
   const T = 22, B = T + 184, h = B + 6;
   svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("height", h); svg._geom = {L, R, T, B, w};
   const smoothOn = state.smooth && s.watch && pts.length > 3;
@@ -242,12 +242,14 @@ function drawChart(svg, s, pts, read) {
   ckFoot(g, L, R, B);
   const dayW = Math.max(1, x(state.from + DAY) - x(state.from));
   const barW = Math.max(1, Math.min(14, dayW * .72));
-  const line = (arr, cls, extra = {}) => arr.length > 1 ? el("svg:path", {class: cls, d: arr.map(([px, py], i) => (i ? "L" : "M") + px.toFixed(1) + "," + py.toFixed(1)).join(""), ...extra}) : null;
+  // a line through [x, y]s, and bars and bands, decimated to what each pixel shows (chartkit.js ckDecimate, #292)
+  const line = (arr, cls, extra = {}) => arr.length > 1 ? el("svg:path", {class: cls, d: ckDecimate(arr, q => q[0], 1, {ends: true}).map(([px, py], i) => (i ? "L" : "M") + px.toFixed(1) + "," + py.toFixed(1)).join(""), ...extra}) : null;
+  const tallest = () => ckDecimate(pts, p => x(p.ts), 1, {lo: null});
   if (s.kind === "bars") {
-    for (const p of pts) { const top = y(p[1]); g.push(el("svg:rect", {x: x(p.ts) - barW / 2, y: top, width: barW, height: Math.max(0, B - top), rx: Math.min(2, barW / 2), fill: "var(--c-lab)", "fill-opacity": smoothOn ? .45 : .85})); }
+    for (const p of tallest()) { const top = y(p[1]); g.push(el("svg:rect", {x: x(p.ts) - barW / 2, y: top, width: barW, height: Math.max(0, B - top), rx: Math.min(2, barW / 2), fill: "var(--c-lab)", "fill-opacity": smoothOn ? .45 : .85})); }
     if (smoothOn) g.push(line(smooth7(pts).map((v, i) => [x(pts[i].ts), y(v)]), "line", {stroke: "var(--ink2)"}));
   } else if (s.kind === "stack") {
-    for (const p of pts) {
+    for (const p of tallest()) {
       const pr = p.parts || {}, cx = x(p.ts) - barW / 2; let acc = 0;
       const segs = pr.deep || pr.rem || pr.light ? [["deep", "--seq1"], ["rem", "--seq2"], ["light", "--seq3"]] : [];
       for (const [k, c] of segs) { const v = pr[k] || 0; if (!v) continue; const y1 = y(acc + v), y0 = y(acc); g.push(el("svg:rect", {x: cx, y: y1, width: barW, height: Math.max(0, y0 - y1 - (acc + v < p[1] - .01 ? 1 : 0)), fill: `var(${c})`, "fill-opacity": smoothOn ? .55 : 1})); acc += v; }
@@ -259,7 +261,8 @@ function drawChart(svg, s, pts, read) {
     if (bp.length > 1) {
       const loS = smoothOn ? smooth7(bp.map(p => Object.assign([p.ts, p.lo], {ts: p.ts}))) : bp.map(p => p.lo);
       const hiS = smoothOn ? smooth7(bp.map(p => Object.assign([p.ts, p.hi], {ts: p.ts}))) : bp.map(p => p.hi);
-      const top = bp.map((p, i) => `${x(p.ts).toFixed(1)},${y(hiS[i]).toFixed(1)}`), bot = bp.map((p, i) => `${x(p.ts).toFixed(1)},${y(loS[i]).toFixed(1)}`).reverse();
+      const edges = ckDecimate(bp.map((p, i) => [x(p.ts), loS[i], hiS[i]]), q => q[0], 1, {lo: q => q[1], hi: q => q[2], ends: true});
+      const top = edges.map(q => `${q[0].toFixed(1)},${y(q[2]).toFixed(1)}`), bot = edges.map(q => `${q[0].toFixed(1)},${y(q[1]).toFixed(1)}`).reverse();
       g.push(el("svg:path", {d: "M" + top.join("L") + "L" + bot.join("L") + "Z", fill: "var(--c-lab)", "fill-opacity": .16}));
     }
     const avg = smoothOn ? smooth7(pts) : pts.map(p => p[1]);

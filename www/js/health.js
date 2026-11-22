@@ -99,10 +99,10 @@ function weekly(pts, fn = mean) {  // [[t, v...]] -> weekly buckets (Monday), av
    keyboard steps through ([[t, …]], the ones its tip reads); h: its height with one row of time labels */
 function hChart(host, a, b, {h = 190, layers, fmtY = v => v, unit = "", zero = false, tip, label = "Chart", noun = "day", nav = layers[0].data}) {
   const svg = el("svg:svg", {role: "img", class: "pz ck", "aria-label": label}); host.append(svg);
-  svg._draw = (a, b) => {   // also called live while dragging, with the new window
-    svg._hover = null;
+  svg._draw = (a, b, live) => {   // also called live while dragging, with the new window: at the width it had, so the
+    svg._hover = null;             // charts drawn before it aren't laid out again to measure it (#292)
     if (!svg.isConnected) return;   // re-rendered before this frame came round
-    const cs = getComputedStyle(host), w = Math.max(260, host.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)), L = 44, R = w - 8, T = msInRange(a, b) ? 22 : 8;
+    const cs = live && svg._geom ? null : getComputedStyle(host), w = cs ? Math.max(260, host.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) : svg._geom.w, L = 44, R = w - 8, T = msInRange(a, b) ? 22 : 8;
     const x = ckScale(a, b, L, R), tk = ckTimeTicks(a, b, x, w), AX = ckAxisH(tk.rows), hh = h - 22 + AX, B = hh - AX;
     svg.setAttribute("viewBox", `0 0 ${w} ${hh}`); svg.setAttribute("height", hh); svg.style.width = "100%"; svg._geom = {L, R, T, B, w};
     const navIn = nav.filter(p => p[0] >= a && p[0] <= b);   // the keyboard's points (#60)
@@ -131,18 +131,25 @@ function hChart(host, a, b, {h = 190, layers, fmtY = v => v, unit = "", zero = f
         for (const v of [l.low, l.high]) if (v != null) g.push(el("svg:line", {class: "tgt-edge", x1: L, x2: R, y1: y(v), y2: y(v)}));
         g.push(el("svg:text", {class: "tgt-label", x: R - 4, y: top - 4 < T + 10 ? top + 12 : top - 4, "text-anchor": "end", text: l.label}));
       } else if (l.type === "bars") {
-        const bw = Math.max(1, Math.min(18, (R - L) / ((b - a) / (l.every || DAY)) * 0.72));
-        for (const p of pts) { let acc = 0; l.keys.forEach((k, i) => { const v = p[i + 1] || 0; if (v <= 0) return; g.push(el("svg:rect", {x: x(p[0]) - bw / 2, y: y(acc + v), width: bw, height: Math.max(0.5, y(acc) - y(acc + v)), fill: l.colors[i]})); acc += v; }); }
+        // a bar a pixel at most, the tallest of each (#292); each colour's bars one path, as they'd look as rects
+        const bw = Math.max(1, Math.min(18, (R - L) / ((b - a) / (l.every || DAY)) * 0.72)), tot = p => l.keys.reduce((s, _, i) => s + (p[i + 1] || 0), 0), d = l.keys.map(() => "");
+        for (const p of ckDecimate(pts, p => x(p[0]), 1, {lo: null, hi: tot})) { let acc = 0; l.keys.forEach((k, i) => { const v = p[i + 1] || 0; if (v <= 0) return;
+          d[i] += `M${(x(p[0]) - bw / 2).toFixed(1)},${y(acc + v).toFixed(1)}h${bw.toFixed(1)}v${Math.max(0.5, y(acc) - y(acc + v)).toFixed(1)}h${(-bw).toFixed(1)}Z`; acc += v; }); }
+        d.forEach((d, i) => d && g.push(el("svg:path", {d, fill: l.colors[i]})));
       } else if (l.type === "band") {
-        const ok = pts.filter(p => p[1] != null && p[2] != null);
+        const ok = ckDecimate(pts.filter(p => p[1] != null && p[2] != null), p => x(p[0]), 1, {lo: p => p[1], hi: p => p[2], ends: true});   // its edges at each pixel (#292)
         if (ok.length > 1) g.push(el("svg:path", {d: "M" + ok.map(p => `${x(p[0])},${y(p[2])}`).join("L") + "L" + ok.slice().reverse().map(p => `${x(p[0])},${y(p[1])}`).join("L") + "Z", fill: l.color, opacity: .16}));
       } else if (l.type === "line") {
-        let d = "", prev = null;
-        for (const p of pts) { d += (prev == null || p[0] - prev > (l.gap || 21) * DAY ? "M" : "L") + `${x(p[0])},${y(p[1])}`; prev = p[0]; }
+        // broken where readings are further apart than its gap, each run its first, lowest, highest and last at each pixel (#292)
+        let d = "";
+        for (let i = 0, j; i < pts.length; i = j) {
+          for (j = i + 1; j < pts.length && pts[j][0] - pts[j - 1][0] <= (l.gap || 21) * DAY;) j++;
+          d += ckDecimate(pts.slice(i, j), p => x(p[0]), 1, {ends: true}).map((p, k) => `${k ? "L" : "M"}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join("");
+        }
         if (d) g.push(el("svg:path", {d, fill: "none", stroke: l.color, "stroke-width": l.width || 2, "stroke-linejoin": "round", "stroke-linecap": "round", opacity: l.opacity || 1}));
       } else if (l.type === "dots") {
-        const r = l.r || (pts.length > 200 ? 1.8 : 3);
-        for (const p of pts) { const f = l.flag && l.flag(p);   // ▲ / ▼ for a reading above or below a target of the person's own (#234)
+        const r = l.r || (pts.length > 200 ? 1.8 : 3);   // the lowest and highest in each half a dot's width, and every flagged one (#292)
+        for (const p of ckDecimate(pts, p => x(p[0]), r, {keep: l.flag})) { const f = l.flag && l.flag(p);   // ▲ / ▼ for a reading above or below a target of the person's own (#234)
           g.push(f ? abnMark(x(p[0]), y(p[1]), f, 4) : el("svg:circle", {cx: x(p[0]), cy: y(p[1]), r, fill: l.hollow ? "var(--surface)" : l.color, stroke: l.hollow ? l.color : "var(--surface)", "stroke-width": l.hollow ? 1.5 : 1, opacity: l.opacity || 1})); }
       } else if (l.type === "ybands") {   // ranges of the value across the chart, each labelled (the WHO's BMI categories, #195)
         l.bands.forEach(([from, to, label], i) => {
@@ -153,7 +160,7 @@ function hChart(host, a, b, {h = 190, layers, fmtY = v => v, unit = "", zero = f
           if (bot - top >= 14) g.push(el("svg:text", {x: R - 4, y: top + 12, "text-anchor": "end", class: "band-label", text: label}));
         });
       } else if (l.type === "pairs") {   // two values of one reading, [t, a, b, flag of a, flag of b] (#180): a line between two dots; a flagged value is ▲ / ▼ (#60)
-        for (const p of pts) {
+        for (const p of ckDecimate(pts, p => x(p[0]), 2 * (l.r || 3), {lo: p => Math.min(p[1] ?? p[2], p[2] ?? p[1]), hi: p => Math.max(p[1] ?? p[2], p[2] ?? p[1]), keep: p => p[3] || p[4]})) {   // #292, as dots
           const cx = x(p[0]);
           if (p[1] != null && p[2] != null) g.push(el("svg:line", {x1: cx, x2: cx, y1: y(p[1]), y2: y(p[2]), stroke: l.color, "stroke-width": 1.5, opacity: .7}));
           for (const i of [1, 2]) if (p[i] != null) g.push(p[i + 2] ? abnMark(cx, y(p[i]), p[i + 2]) : el("svg:circle", {cx, cy: y(p[i]), r: l.r || 3,

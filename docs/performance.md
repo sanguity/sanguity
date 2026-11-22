@@ -63,9 +63,11 @@ regression like the one fixed below (seconds instead of a tenth of one) still fa
 | `sync_s` | A connected source's first pull of the big FHIR patient (186 requests), its preview saved | 1.7 s | 15 s |
 | `page_ready_ms` | The records page, loaded on each tab, from the request to its `sanguity:ready` mark (`www/js/app.js`) | 132 ms (Body and activity) | 1,500 ms |
 | `tab_draw_ms` | A tab's first draw with the period **All**, the page loaded on another tab, to the next frame; and each **Show more** of the Timeline's list (#277, below) | 110 ms (Body and activity) | 1,000 ms |
-| `tab_elements` | Elements in a tab with the period **All** | 16,185 (Body and activity) | 18,000 |
+| `tab_elements` | Elements in a tab with the period **All** | 10,903 (the Timeline) | 12,000 |
 | `phone_page_ready_ms` | `page_ready_ms` at 375 px with the CPU four times slower, like a phone's | 437 ms | 5,000 ms |
 | `phone_tab_draw_ms` | `tab_draw_ms` the same way | 453 ms (Body and activity) | 3,000 ms |
+| `pan_frame_ms` | A frame of dragging a tab's charts with the period **All** (Body and activity, Labs' charts and its heatmap), from the pointer's move to the frame after it, every chart drawn again (#292, below) | 41 ms (Body and activity, the heatmap) | 150 ms |
+| `phone_pan_frame_ms` | `pan_frame_ms` at 375 px with the CPU four times slower | 154 ms (the heatmap) | 250 ms |
 | `share_page_px` | A share link's page with every section, of any date, at 1400 px (#491, below) | 9,812 px | 20,000 px |
 | `static_bytes` | The app's stylesheets, fonts and SVG icons in `www/`, as nginx sends them (#253, below) | 281.9 KB | 310 KB |
 
@@ -244,8 +246,41 @@ reminder or a Costs mark keeps the details kept so far, and an edit, whose reply
 them again. Keeping every record's
 details instead would put back the 1.4 MB for each copy, and more than the person ever looked at on that device.
 
-## Not done yet
+## Ten years, dragged (#292)
 
-- **Body and activity and the Timeline draw a mark per day or per record.** With ten years shown that is about
-  14,500 and 11,000 elements: within the budget, and quick, but they would be summarised by week once many fall on
-  each pixel, as the sleep and steps charts already are.
+Dragging a chart draws every chart of the tab again in each frame, for the moved window. On ten years Body and
+activity drew a mark for each day or reading, 16,408 elements: a frame took 75 ms on the desktop (about 13 frames a
+second) and a third of a second on a phone. The test drags each tab's charts with the period **All** as a mouse would,
+8 px a frame (`PAN_JS` in the test, in a page of its own), and times each frame to the one after it; `pan_frame_ms`
+and `phone_pan_frame_ms` are the median frame of the slowest tab.
+
+- **Decimation** (`ckDecimate` in `www/js/chartkit.js`): a series with more points than its marks have room for is
+  drawn with fewer. Its points are put in columns along the time axis and each column keeps what shows at that size:
+  a line its first, lowest, highest and last point of each pixel, so its path is the same to the pixel; a band its
+  lowest low and highest high; dots the lowest and highest in each half a dot's width, and every reading flagged ▲ or
+  ▼; bars from zero the tallest of each pixel. Body and activity's charts (`hChart`), Labs' charts (`drawChart`) and
+  the heatmap on a phone (a pixel's cell holding the result furthest outside its range, where ten years' draws are
+  under a pixel each) draw through it. It is still SVG, so axe, forced colours and the keyboard work as before, and the
+  tables, tooltips and the keyboard's steps read every point, never the decimated ones.
+- **Bars of one colour are one path** on Body and activity (sleep's stages, steps): 1,566 rectangles were three paths
+  that look the same.
+- **A frame of a drag is drawn at the chart's width as it was**, not measured again: each chart read its box's width
+  after the one before it was drawn, so the browser laid the tab out again for each of its charts. The
+  heatmap's panel names, cut to fit their column, are measured once a width (they were measured in every frame, the
+  whole grid laid out to do it), and its procedures are found by day once, not among every record for each column.
+
+| The big fixture, period **All** | Before | After |
+|---|---:|---:|
+| Body and activity, a frame of a drag | 75 ms | 41 ms |
+| …on a phone (CPU ×4) | 333 ms | 70 ms |
+| Labs' heatmap, a frame of a drag | 49 ms | 41 ms |
+| …on a phone | 337 ms | 154 ms |
+| Labs' charts, a frame of a drag | 17 ms | 17 ms |
+| Body and activity, first draw | 153 ms | 126 ms |
+| …on a phone | 711 ms | 410 ms |
+| Elements on Body and activity | 16,408 | 9,417 |
+
+Before and after were measured on one machine, a slower one than the desktop above. Frames are counted to the next one the browser paints, so a desktop's are steps of about 17 ms. On a phone the heatmap
+is the slowest: its ten years are 5,012 cells, each one a result to hover and open, and only on a phone are its
+columns narrower than a pixel. The Timeline's lanes still draw a mark a record (10,903 elements on **All**), within
+`tab_elements`; the Timeline zooms by its own controls, not by dragging.
