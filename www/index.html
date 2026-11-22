@@ -77,12 +77,16 @@
     <div class="labs-head">
       <div class="toolbar chart-bar">
         <div class="seg" id="labsView" role="group" aria-label="Show the lab results as"><button type="button" data-view="chart" aria-pressed="true">Chart</button><button type="button" data-view="heatmap" aria-pressed="false">Heatmap</button></div>
-        <div class="overlays chart-only" role="group" aria-labelledby="overlaysLbl">
+        <!-- on a phone (#615, core.js): Show, one button opening the overlays, the legend and the ⓘ under the row -->
+        <button class="btn show-btn chart-only" id="showBtn" type="button" aria-expanded="false" aria-controls="showBox">Show<svg class="icon i-chevron-down" aria-hidden="true" focusable="false"><use href="icons/sprite.svg#i-chevron-down"/></svg></button>
+        <div class="show-box chart-only" id="showBox">
+        <div class="overlays" role="group" aria-labelledby="overlaysLbl">
           <span class="lbl" id="overlaysLbl">Show on charts:</span>
           <label class="toggle"><input type="checkbox" id="optMarks"> Procedures &amp; imaging</label>
           <label hidden><input type="checkbox" id="optSmooth"> 7-day average</label>
         </div>
-        <div class="chart-aids chart-only">
+        <div class="chart-aids">
+          <span class="lbl lg-hd" aria-hidden="true">Legend</span>
           <div class="menu pop"><button class="btn" id="legendBtn" type="button" aria-expanded="false" aria-controls="legendList">Legend<svg class="icon i-chevron-down" aria-hidden="true" focusable="false"><use href="icons/sprite.svg#i-chevron-down"/></svg></button>
             <div class="menu-list legend chart-legend" id="legendList" role="group" aria-labelledby="legendBtn" popover>
               <span><i style="background:var(--c-lab);height:3px"></i>Value</span>
@@ -95,10 +99,13 @@
             <p>Scroll or pinch to zoom, double-click to show everything, and hover to compare the same date across charts.</p>
           </div>
         </div>
+        </div>
       </div>
       <p class="range-note">Out-of-range values are flagged against the reference ranges in your own lab reports. This isn't medical advice.</p>
     </div>
     <div class="layout" id="labsChart">
+      <!-- on a phone (#615, core.js): the list folded under this, the charts first -->
+      <button class="btn labs-pick" id="labsPick" type="button" aria-expanded="false" aria-controls="series">Choose labs<svg class="icon i-chevron-down" aria-hidden="true" focusable="false"><use href="icons/sprite.svg#i-chevron-down"/></svg></button>
       <!-- the lab list: its header (the name filter, what's selected, saved views) stays put while the rows scroll (#192) -->
       <div class="card series-list" id="series">
         <h2 class="vh">Lab list</h2>   <!-- its panels' names are h3s, and the charts' (#441, trends.js) -->

@@ -210,6 +210,29 @@ function barOrSheet() {
 }
 PHONE.addEventListener("change", barOrSheet);
 barOrSheet();
+/* ---- Body's and Labs' top on a phone (#615): one row, the period's pill moved from the records bar (hidden then, with
+   nothing left in it) into the charts' header, then Labs' Chart | Heatmap and Show. Show (.show-btn) opens what the
+   charts also show, the legend and the ⓘ under the row, a disclosure; Labs' list of labs is folded under "Choose labs
+   (6)", the charts first; Body's source line goes under its sections. Wider, all of them are as they were: the period
+   in the records bar, Show's parts in the row (app.css: display: contents), the list beside the charts. Called once a
+   tab is drawn (renderAll) and as the window crosses 700 px; a node is only moved when it isn't where it goes, so
+   focus on the pill stays through a redraw */
+function phoneBar() {
+  const pick = $(".period-pick"), filters = $(".filters"), v = $(`#view-${state.tab}`);
+  const bar = PHONE.matches && v && !v.hidden && v.querySelector(".chart-bar"), to = bar && !bar.closest("[hidden]") ? bar : filters;
+  if (pick && pick.parentNode !== to) to.prepend(pick);
+  filters.classList.toggle("moved", to !== filters);
+  const sync = $("#view-health .h-sync"), secs = $("#view-health .h-secbar");
+  if (sync && secs) { if (PHONE.matches) { if (secs.nextSibling !== sync) secs.after(sync); } else if (sync.nextSibling !== secs) secs.before(sync); }
+  const n = $("#labsPick");
+  if (n && typeof state.sel !== "undefined") n.firstChild.textContent = `Choose labs (${state.sel.size})`;
+}
+PHONE.addEventListener("change", () => { if (typeof booted !== "undefined" && booted) phoneBar(); });
+document.addEventListener("click", ev => {   // Show, and Choose labs: each opens and closes what it controls (app.css)
+  const b = ev.target.closest(".show-btn, #labsPick");
+  if (b) b.setAttribute("aria-expanded", String(b.getAttribute("aria-expanded") !== "true"));
+});
+if ($("#seriesSel")) new MutationObserver(() => phoneBar()).observe($("#seriesSel"), {childList: true, subtree: true, characterData: true});   // a lab ticked or cleared: its count
 function renderFilters() {
   renderPeriod();
   renderKinds();
