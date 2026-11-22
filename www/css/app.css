@@ -1957,7 +1957,7 @@ path.pt.abn{stroke-width:1.5}
 .bk .bk-counts{max-width:480px}
 .bk .bk-counts caption{text-align:left;font-size:var(--fs-2);color:var(--muted);padding-bottom:var(--sp-1)}
 .bk .bk-counts td{font-variant-numeric:tabular-nums}
-.acct .tag.bk-late{color:var(--ink);background:color-mix(in srgb,var(--c-study) 30%,transparent)}
+.acct .tag:is(.bk-late,.lm-check){color:var(--ink);background:color-mix(in srgb,var(--c-study) 30%,transparent)}
 .menu-item .badge.bk-late{color:var(--ink);border-color:var(--c-study);background:color-mix(in srgb,var(--c-study) 20%,transparent)}
 main[data-group=backups] #backupNotice{display:none}   /* the Backups group says it itself */
 @media (max-width:640px){   /* the counts stay a table with its headings on a phone */

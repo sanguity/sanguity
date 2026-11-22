@@ -2,8 +2,9 @@
 only an admin may change or remove one. Owners and editors make them by confirming an import's preview. Each entry
 names a test as a lab reported it and the series it goes to; never anyone's results, nor which profile it came from.
 
-  GET    /api/labmaps          [{id, importer, label, name, unit, loinc, target, created, created_by, changed, changed_by}]
-  PATCH  /api/labmaps/{id}     {"target": series name, or null to keep it as a series of its own}
+  GET    /api/labmaps          [{id, importer, label, name, unit, loinc, target, check, created, created_by, changed, changed_by}]
+                               (check: remembered before #546 and not applied until kept; listed first, #569)
+  PATCH  /api/labmaps/{id}     {"target": series name, or null to keep it as a series of its own}; the same target: Keep
   DELETE /api/labmaps/{id}     forget it: the next import with that name asks again
 
 Changes apply to later imports; results already saved keep their series. Each is logged (activity "labmap.change",

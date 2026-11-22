@@ -459,12 +459,13 @@ class Schema(unittest.TestCase):
         db.execute("INSERT INTO import_undos(profile_id, import_id, at, by_name, entry) VALUES(1, 6, 60, 'ines', 'gone')")   # the newest, undone
         db.execute("INSERT INTO activity(at, profile_id, actor, action, detail) VALUES(60, 1, 'ines', 'undo', '{}')")
         tables = ("imports", "events", "series", "results", "documents", "jobs", "labmaps", "import_undos", "activity")
-        before = {t: db.execute(f"SELECT * FROM {t} ORDER BY 1").fetchall() for t in tables}
+        cols = {t: ", ".join(r[1] for r in db.execute(f"PRAGMA table_info({t})")) for t in tables}   # (later versions add some)
+        before = {t: db.execute(f"SELECT {cols[t]} FROM {t} ORDER BY 1").fetchall() for t in tables}
 
         dbm.upgrade(db)
         self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], len(dbm.SCHEMA))
         self.assertEqual(db.execute("PRAGMA foreign_keys").fetchone()[0], 1, "foreign keys on again")
-        self.assertEqual({t: db.execute(f"SELECT * FROM {t} ORDER BY 1").fetchall() for t in tables}, before)
+        self.assertEqual({t: db.execute(f"SELECT {cols[t]} FROM {t} ORDER BY 1").fetchall() for t in tables}, before)
         self.assertEqual(db.execute("PRAGMA foreign_key_check").fetchall(), [])
         self.assertEqual({r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE tbl_name='imports' AND type='index'")},
                          {"imports_profile", "imports_connection"})

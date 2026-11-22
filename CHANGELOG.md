@@ -2294,6 +2294,14 @@ Everything on `main` so far; it becomes the first tagged release.
   column, as they do with a bar, and on Sources the page now keeps what takes focus clear of them. The stack, cut at
   its top, showed an older toast's Undo alone; it's as tall as the newest toasts that fit whole, the older scrolling
   into it.
+- **Records in: lab-name matches remembered before #546 no longer applied unasked, and a specimen part of a name**
+  (#569): a look-alike filled in as sure before #546 and saved with Add ("Vitamin B6" as "Vitamin B1") was still
+  applied to every later import and typed result, with no notice. A match remembered then that #546's rule wouldn't
+  make (not the same name, an alias, the list's LOINC code or the same name written another way) is to check: not
+  applied, a review that would use it shows it as a "Maybe" beside an empty box, saying why, and Admin, Lab name
+  matches lists it first, marked "To check", with Keep and Forget. And blood, serum, plasma, whole blood, urine, CSF
+  and the like count as part of a name: "Ketones, Blood" (or "Hemoglobin Whole Bld") is no longer filled in as the
+  profile's "Ketones" in the same unit, which may be a urine series; it's a "Maybe".
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
@@ -2315,6 +2323,10 @@ From an install that keeps records in `data.json` (before #103):
 - Milestones, from `corrections.json` and from the records' `data.json`, are moved into each profile's settings
   once, at the first start (#39). After that `corrections.json` isn't read and can be deleted; `build.py` no
   longer reads it. A `visitWorkouts` rule written before #43 keeps working as the regular expression it was.
+
+From an install that matched lab names at an import's review before #546:
+- Open Admin → Lab name matches once: a match remembered then that today's rule wouldn't make is listed first as
+  "To check" and isn't used until an admin keeps it (#569). Results already saved keep their series.
 
 From an install with one watch receiver secret (before #46):
 - Nothing to do for the phone that's already set up: `auth/watch_secret` keeps working as the first profile's
