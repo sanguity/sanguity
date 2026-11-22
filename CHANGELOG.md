@@ -2269,6 +2269,13 @@ Everything on `main` so far; it becomes the first tagged release.
   removed."; a failed or interrupted import removes its upload too, unless another import uses it; and the start-up
   tidy-up removes any upload an import read that no import or waiting review holds any more. The security review
   says what's kept and when it goes.
+- **Records in: an upload cancelled as empty said nothing aloud, a review saved in another tab left live, and Import
+  history's stale Undo** (#548): an upload holding nothing, cancelled by the server while focus was on Choose files,
+  said only "Sending… Starting the import…"; its "Cancelled." is said, as a failure is. A review saved in another
+  tab answered Add and Cancel with "This import has been saved already." while still offering both; it shows the
+  import saved, as Add would. Import history in a tab opened before an import was undone elsewhere asked about its
+  Undo, then refused it; it says "This import was undone already." without asking, the row losing its Undo, and a
+  failed Undo reads the list again and leaves focus on its Undo, not lost.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

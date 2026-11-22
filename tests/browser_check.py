@@ -10743,6 +10743,73 @@ def main():
             check("Sources' Overview counts an import added from Waiting for you, and no longer once it's undone (#513)",
                   hubs513 == [hubs513[0], f"{n513 + 1} imports", hubs513[0]], hubs513)
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            # (#548) Upload files with focus on Choose files: an upload holding nothing is cancelled by the server, and that
+            # is said (it was said only "Sending… Starting the import…"), focus left where it was
+            js("SgSources.show('upload')")
+            page.wait_for_selector("#pickFiles", state="attached", timeout=10000)
+            js("window._said548 = []; for (const id of ['sgStatus', 'sgAlert']) new MutationObserver(() => { const t = document.getElementById(id).textContent; "
+               "if (t) window._said548.push(t); }).observe(document.getElementById(id), {childList: true, characterData: true, subtree: true})")
+            page.focus("#pickFiles")
+            n548 = js("document.querySelectorAll('#importer .import-job').length")
+            page.set_input_files("#pickFiles", files=[{"name": "export.xml", "mimeType": "text/xml", "buffer": (
+                '<?xml version="1.0" encoding="UTF-8"?>\n<HealthData locale="en_US">\n<ExportDate value="2026-11-01 10:00:00 -0500"/>\n'
+                '<Record type="HKQuantityTypeIdentifierUVExposure" sourceName="Watch" unit="count" startDate="2026-10-01 10:00:00 -0500" '
+                'endDate="2026-10-01 10:00:00 -0500" value="3"/>\n</HealthData>\n').encode()}])
+            page.wait_for_function(f"document.querySelectorAll('#importer .import-job')[{n548}]?.closest('.job').dataset.step === 'cancelled'", timeout=30000)
+            settle(300)
+            empty548 = js("[window._said548.filter(t => t.startsWith('Cancelled')), document.activeElement.id]")
+            check("an upload holding nothing, cancelled by the server while focus is on Choose files, is said: \"Cancelled: export.xml. Nothing in "
+                  "this upload could be imported…\" (#548: it was silent)",
+                  empty548 == [["Cancelled: export.xml. Nothing in this upload could be imported, so it was removed."], "pickFiles"], empty548)
+            # (#548) two reviews saved meanwhile (as in another tab, here through the API): Add on one, Cancel on the other,
+            # each by keyboard, draws the saved card, focus on its line, with no buttons left (they answered "This import
+            # has been saved already." with the review still live)
+            cards548 = [pick512("saved-548-0.csv", "Quuxalin 548,4.1,mg/L,1 - 9"), pick512("saved-548-1.csv", "Frobnium 548,2.2,mg/L,1 - 9")]
+            jobs548 = [js(f"{c}.dataset.job") for c in cards548]
+            seen548 = len(problems)
+            for j548 in jobs548:
+                js(f"api('profiles/{epid504}/jobs/{j548}/confirm', {{method: 'POST', body: '{{}}'}}).then(r => r.status)")
+            for j548 in jobs548:
+                page.wait_for_function(f"api('profiles/{epid504}/jobs/{j548}').then(r => r.json()).then(j => j.state === 'done')", timeout=30000, polling=300)
+            saved548 = []
+            for c548, button in zip(cards548, (".primary", "button:not(.primary)")):
+                js(f"{c548}.querySelector('.imp-actions {button}').focus()")
+                page.keyboard.press("Enter")
+                page.wait_for_function(f"!/^Ready to import/.test({c548}.textContent)", timeout=10000)
+                settle(300)
+                saved548.append(js(f"""(c => [c.textContent.slice(0, 9), !!c.querySelector('.imp-actions'), [...c.querySelectorAll('button')].filter(b => !b.disabled).length,
+                    document.activeElement === c.querySelector('p')])({c548})"""))
+            check("a review saved meanwhile (another tab) shows it saved on its Add and on its Cancel, focus on that line, no buttons left (#548)",
+                  saved548 == [["Imported.", False, 0, True]] * 2, saved548)
+            # (#548) Import history listed before the first was undone elsewhere (the API): its Undo says it was undone
+            # already without asking, the row loses its Undo, focus on the row; the second's Undo failing (a 500) leaves
+            # focus on its Undo, not on <body>
+            ids548 = [js(f"api('profiles/{epid504}/jobs/{j}').then(r => r.json()).then(j => j.import_id)") for j in jobs548]
+            js("SgSources.show('history')")
+            page.wait_for_selector(f"#import-{ids548[1]} button.undo", timeout=10000)
+            js(f"api('profiles/{epid504}/imports/{ids548[0]}/undo', {{method: 'POST'}}).then(r => r.status)")
+            page.focus(f"#import-{ids548[0]} button.undo")
+            page.keyboard.press("Enter")
+            page.wait_for_function("document.getElementById('historyMsg').textContent || document.querySelector('dialog.sg-ask[open]')", timeout=10000)
+            settle(300)
+            stale548 = js(f"""(li => [!!document.querySelector('dialog.sg-ask[open]'), document.getElementById('historyMsg').textContent,
+                li.classList.contains('undone'), !!li.querySelector('button.undo'), document.activeElement === li])(document.getElementById('import-{ids548[0]}'))""")
+            undo548 = re.compile(r"/api/profiles/\d+/imports/\d+/undo")
+            page.route(undo548, lambda route: route.fulfill(status=500, content_type="application/json", body='{"detail": "A fictional failure."}'))
+            page.focus(f"#import-{ids548[1]} button.undo")
+            page.keyboard.press("Enter")
+            answer_ask(page)
+            page.wait_for_function("document.getElementById('historyMsg').textContent.startsWith(\"Couldn't undo it\")", timeout=10000)
+            settle(300)
+            stale548.append(js(f"document.activeElement === document.querySelector('#import-{ids548[1]} button.undo')"))
+            page.unroute(undo548)
+            js(f"api('profiles/{epid504}/imports/{ids548[1]}/undo', {{method: 'POST'}}).then(r => r.status)")
+            # (the Add's and Cancel's 409 and the Undo's 500, which the page answers, were the point)
+            problems[seen548:] = [x for x in problems[seen548:] if not re.search(r"HTTP (409|500): \S+/(jobs/\d+/(confirm|discard)|imports/\d+/undo(\?at=[\d.]+)?)$|status of (409 \(Conflict\)|500 \(Internal Server Error\))", x)]
+            check("a stale Import history's Undo of an import undone elsewhere says so without asking, the row losing its Undo and focus on it; "
+                  "a failed Undo keeps focus on its Undo (#548)",
+                  stale548 == [False, "This import was undone already.", True, False, True, True], stale548)
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             # (#517) a typed problem, upcoming appointment, payment and vitals entry, each saved on its own: Import history
             # and its Undo question name what was typed (the first three were "No records", the vitals "3 lab results in
             # 3 tests")
