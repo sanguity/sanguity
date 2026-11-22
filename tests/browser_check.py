@@ -855,6 +855,9 @@ def answer_ask(page, yes=True, fill=None, timeout=10000):
         box.query_selector("input").fill(fill)
     box.query_selector(".sg-ask-acts button" + (":last-child" if yes else ":first-child")).click()
     box.wait_for_element_state("hidden", timeout=timeout)
+    # its close handler removes it and gives focus back, after it's hidden: waited for, so a check's own focus that
+    # follows isn't taken back by it (#493's Sign out loop pressed Enter on Sign out all other devices again, on CI)
+    page.wait_for_function("e => !e.isConnected", arg=box, timeout=timeout)
     return said
 
 
