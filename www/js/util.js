@@ -946,17 +946,27 @@ const sgFoot = (() => {
     for (const e of seen) if (!e.isConnected) { ro.unobserve(e); seen.delete(e); }
     for (const e of [document.body, t?.firstElementChild, ...bars]) if (e && !seen.has(e)) { seen.add(e); ro.observe(e); }
     // the page's bar, in its column (its box's content, after a sidebar's: main.sets.with-nav's first column), and
-    // the toasts over it there
-    const bar = bars.find(b => b.matches(".sg-bar-foot") && !b.hidden && !b.closest("dialog"));
+    // the toasts over it there; with no bar, still there, never over the sidebar (#550)
+    const bar = bars.find(b => b.matches(".sg-bar-foot") && !b.hidden && !b.closest("dialog")), p = bar ? bar.parentElement : document.querySelector("main.with-nav");
     let l = 0, w = 0;
-    if (bar) {
-      const p = bar.parentElement, s = getComputedStyle(p), cols = s.display === "grid" ? s.gridTemplateColumns.split(" ") : [];
+    if (p) {
+      const s = getComputedStyle(p), cols = s.display === "grid" ? s.gridTemplateColumns.split(" ") : [];
       const pl = parseFloat(s.paddingLeft) + (cols.length > 1 ? parseFloat(cols[0]) + parseFloat(s.columnGap) : 0);
       l = p.getBoundingClientRect().left + p.clientLeft + pl; w = p.clientWidth - pl - parseFloat(s.paddingRight);
     }
     px(html, "--sg-bar-l", l); px(html, "--sg-bar-w", w);
     const under = bar ? innerHeight - bar.getBoundingClientRect().top : 0;
     px(html, "--sg-foot-bar", under);
+    // the stack as tall as the newest toasts that fit in it whole: none cut at its top to its Undo alone (#550); the
+    // older scroll into it, as all do when the newest alone doesn't fit (in a dialog's flow: its own, app.css)
+    t?.style.removeProperty("max-height");
+    if (t?.parentElement === document.body) {
+      const s = getComputedStyle(t), pad = parseFloat(s.paddingTop) + parseFloat(s.paddingBottom), gap = parseFloat(getComputedStyle(t.firstElementChild).rowGap);
+      const hs = [...t.firstElementChild.children].map(e => e.getBoundingClientRect().height).reverse();
+      let h = -gap, k = 0;
+      while (k < hs.length && h + gap + hs[k] <= parseFloat(s.maxHeight) - pad) h += gap + hs[k++];
+      if (k && k < hs.length) placeAt(t, {"max-height": h + pad});
+    }
     const top = Math.max(under, t?.parentElement === document.body && t.querySelector(".sg-toast") ? innerHeight - t.getBoundingClientRect().top : 0);
     px(html, "--sg-foot", top);
     // a review's bars: the room each takes from the foot of what scrolls, its own height and what's under it
@@ -996,7 +1006,8 @@ const toast = (() => {
     region = el("section", {class: "sg-toasts sg-follow", id: "sgToasts", "aria-label": "Notifications", popover: "manual"}, list);
     document.body.append(region);
     region.showPopover();
-    liveFollow();   // into a dialog, if one is open (and measured, sgFoot)
+    liveFollow();   // into a dialog, if one is open
+    sgFoot();   // measured, and watched from now: on the page too, where nothing else asks (Sources, #550)
   };
   make();   // there from the start, as announce()'s lines are: a live region is followed only if it was there first
   if (!region) document.addEventListener("DOMContentLoaded", make);

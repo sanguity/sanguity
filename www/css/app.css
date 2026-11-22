@@ -425,7 +425,9 @@ header .meta{color:var(--muted);font-size:var(--fs-2)}
 /* the account pages' sidebar: groups, one at a time (sidebar.js, #266), in a 1280 px shell */
 main.sets.with-nav{display:grid;grid-template-columns:220px minmax(0,1fr);column-gap:var(--sp-5);max-width:1280px;align-items:start}
 main.sets.with-nav>*{grid-column:2}
-main.sets.with-nav>.set-nav{grid-column:1;grid-row:1 / span 50;position:sticky;top:76px}
+/* sticky, and within the window (#550): taller than that (a short window), it scrolls in itself, focus brought into view
+   in it; 4 px of room inside, so focus rings aren't cut */
+main.sets.with-nav>.set-nav{grid-column:1;grid-row:1 / span 50;position:sticky;top:72px;max-height:calc(100dvh - 76px);overflow:auto;padding:var(--sp-1);margin:calc(-1 * var(--sp-1))}
 .set-nav input[type=search]{width:100%;margin-bottom:var(--sp-3)}
 .set-nav-list{list-style:none;margin:0;padding:0}
 .set-nav-part{font-size:var(--fs-1);color:var(--muted);text-transform:none;margin:var(--sp-3) var(--sp-2) var(--sp-1);font-weight:var(--fw-semibold)}
@@ -436,7 +438,7 @@ main.sets.with-nav>.set-nav{grid-column:1;grid-row:1 / span 50;position:sticky;t
 .sets .grp-off,.sets .set-off{display:none}
 @media (max-width:760px){
   main.sets.with-nav{display:block}
-  main.sets.with-nav>.set-nav{position:static;margin-bottom:var(--sp-3)}
+  main.sets.with-nav>.set-nav{position:static;max-height:none;overflow:visible;padding:0;margin:0 0 var(--sp-3)}
   .set-nav-list{display:flex;gap:var(--sp-2);overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
   .set-nav-list::-webkit-scrollbar{display:none}
   .set-nav-part{display:none}
@@ -831,7 +833,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .acct .form{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--sp-2);max-width:420px}
 .acct .form select{max-width:100%}   /* one column, as wide as the form: a long option shrinks, not the page wider at 320 px (#256) */
 .acct .form.inline{display:flex;flex-wrap:wrap;align-items:flex-end;max-width:none;margin-top:var(--sp-3)}
-.acct label{display:grid;gap:var(--sp-1);font-size:var(--fs-3);color:var(--ink2);font-weight:var(--fw-medium)}
+.acct label:not(:where(.seg>label)){display:grid;gap:var(--sp-1);font-size:var(--fs-3);color:var(--ink2);font-weight:var(--fw-medium)}   /* (a pick-one's choice: its own look, components, #550) */
 .acct label.check{display:flex;align-items:center;gap:var(--sp-2);padding-bottom:var(--sp-2)}
 .acct .row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);margin:var(--sp-2) 0}   /* 8 px above and below: a row of buttons never sits on the heading or text after it (#309) */
 .acct .btn{margin:0}
@@ -2072,7 +2074,7 @@ th>.cell-btn{font-weight:inherit;white-space:nowrap}
 }
 /* zoomed in a long way, or a phone on its side: the page gets the room (1.4.10). The bar scrolls with the page, so
    what stuck under it sticks at the top instead (#308): the Timeline's month headings and Settings' sidebar */
-@media (max-height:500px){ header{position:relative} html{scroll-padding-top:8px} .month{top:0} main.sets.with-nav>.set-nav{top:8px} }
+@media (max-height:500px){ header{position:relative} html{scroll-padding-top:8px} .month{top:0} main.sets.with-nav>.set-nav{top:4px;max-height:calc(100dvh - 8px)} }
 @media (forced-colors:active){
   .menu-item:focus-visible,.cell-btn:focus-visible{outline-color:Highlight}
 }

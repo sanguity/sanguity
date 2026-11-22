@@ -792,14 +792,16 @@ FOOT_FOCUS_JS = """async () => { await new Promise(r => requestAnimationFrame(()
   if (r.height > foot - top && r.top <= top + 1 && r.bottom >= foot - 1) return null;
   return under > 0.1 ? `${a.id || a.tagName} ${(a.getAttribute('aria-label') || a.textContent || '').trim().slice(0, 30)}: ${Math.round(under * 100)}% under, ${Math.round(r.top)}–${Math.round(r.bottom)}` : null; }"""
 # …and the layer itself: nothing of the bar (its count, its error, Discard, Save) under the toasts, the toasts' stack
-# on the screen with the newest wholly in it (it scrolls within itself)
+# on the screen with the newest wholly in it (it scrolls within itself), and each toast in it whole or out of it (#550:
+# not cut to its Undo)
 FOOT_LAYER_JS = """() => { const g = document.querySelector('body > #sgToasts'), s = g.getBoundingClientRect(), ts = [...g.querySelectorAll('.sg-toast')];
   const bar = document.querySelector('.sg-bar-foot:not([hidden])'), n = ts.at(-1)?.getBoundingClientRect();
   if (!bar || !n) return 'no bar or no toasts';
   const under = [...bar.querySelectorAll('.sg-bar-n, .msg, button')].filter(p => p.textContent && (r => r.left < s.right && r.right > s.left && r.top < s.bottom && r.bottom > s.top)(p.getBoundingClientRect()));
   return under.length ? 'under the toasts: ' + under.map(p => p.textContent.slice(0, 12)).join(', ')
     : s.top < 0 || s.bottom > innerHeight ? `the toasts off the screen: ${Math.round(s.top)}–${Math.round(s.bottom)}`
-    : n.top < s.top - 1 || n.bottom > s.bottom + 1 ? 'the newest toast not in view' : ts.length; }"""
+    : n.top < s.top - 1 || n.bottom > s.bottom + 1 ? 'the newest toast not in view'
+    : ts.some(t => (r => r.bottom > s.top + 1 && r.top < s.top - 1 || r.top < s.bottom - 1 && r.bottom > s.bottom + 1)(t.getBoundingClientRect())) ? 'a toast cut by the stack' : ts.length; }"""
 FOOT_SIZES = ((1400, 900), (768, 1000), (375, 667), (320, 640), (844, 390), (568, 320))
 
 
@@ -1748,6 +1750,56 @@ def main():
             repeats[path] = strict.evaluate(repeats_js)
         check("no card's title shown repeats its group's h1, on any group of Sources, Sharing, Settings, Account or Admin (#409: Phone and watch's)",
               not any(repeats.values()) and strict.evaluate("document.title") != "", repeats)
+        # #550: the sidebar, sticky, within the window when that's short (it scrolls in itself), and the toasts, with no
+        # bar, in the content's column, never over it: each of its links, tabbed to with three toasts showing, in view
+        # and not more than 10% under a toast; and the toasts' stack shows each toast whole or not at all (not cut to its
+        # Undo) at 320×640, 568×320 and 844×390
+        side550_js = """() => { const a = document.activeElement, r = a.getBoundingClientRect();
+            const under = Math.max(0, ...[...document.querySelectorAll('#sgToasts .sg-toast')].map(t => t.getBoundingClientRect()).map(q =>
+              Math.max(0, Math.min(r.right, q.right) - Math.max(r.left, q.left)) * Math.max(0, Math.min(r.bottom, q.bottom) - Math.max(r.top, q.top)) / (r.width * r.height)));
+            const seen = Math.max(0, Math.min(r.bottom, innerHeight) - Math.max(r.top, 0)) / r.height;
+            return seen > 0.99 && under <= 0.1 ? null : `${a.textContent.trim()}: ${Math.round(seen * 100)}% in view, ${Math.round(under * 100)}% under a toast`; }"""
+        whole550_js = """() => { const s = document.getElementById('sgToasts').getBoundingClientRect(), ts = [...document.querySelectorAll('#sgToasts .sg-toast')].map(t => t.getBoundingClientRect());
+            return [ts.length, ts.filter(r => r.bottom > s.top + 1 && r.top < s.top - 1 || r.top < s.bottom - 1 && r.bottom > s.bottom + 1).length, ts.filter(r => r.top >= s.top - 1 && r.bottom <= s.bottom + 1).length]; }"""
+        toasts550 = "for (let i = 1; i <= 3; i++) toast(`Saved a change, number ${i} of three, with an Undo.`, {action: 'Undo', onAction() {}})"
+        side550, whole550 = {}, {}
+        try:
+            for path in ("settings.html?profile=1", "admin.html", "sharing.html?profile=1", "sources.html?profile=1"):
+                for w, h in ((844, 390), (1100, 600), (900, 500)):
+                    strict.set_viewport_size({"width": w, "height": h})
+                    strict.goto(base + "/" + path)
+                    strict.wait_for_selector("main > nav.set-nav a[aria-current=page]", timeout=10000)
+                    strict.evaluate(toasts550)
+                    strict.wait_for_timeout(400)
+                    strict.focus("main > nav.set-nav input[type=search]")
+                    n, bad = 0, []
+                    for _ in range(30):
+                        strict.keyboard.press("Tab")
+                        strict.wait_for_timeout(50)
+                        if not strict.evaluate("!!document.activeElement.closest('nav.set-nav')"):
+                            break
+                        n += 1
+                        got = strict.evaluate(side550_js)
+                        if got:
+                            bad.append(got)
+                    if bad or n < 6:
+                        side550[f"{path.split('.')[0]} {w}x{h}"] = [n, bad[:3]]
+            for path in ("settings.html?profile=1", "sources.html?profile=1"):
+                for w, h in ((320, 640), (568, 320), (844, 390)):
+                    strict.set_viewport_size({"width": w, "height": h})
+                    strict.goto(base + "/" + path)
+                    strict.wait_for_selector("main > nav.set-nav a[aria-current=page]", state="attached", timeout=10000)   # (Sources': none on a phone)
+                    strict.evaluate(toasts550)
+                    strict.wait_for_timeout(400)
+                    v = strict.evaluate(whole550_js)
+                    if v[0] != 3 or v[1] or not v[2]:
+                        whole550[f"{path.split('.')[0]} {w}x{h}"] = v
+        finally:
+            strict.set_viewport_size({"width": 1400, "height": 900})
+        check("the sidebar of Settings, Admin, Sharing and Sources at 844×390, 1100×600 and 900×500, three toasts showing: each link "
+              "tabbed to in view and not more than 10% under a toast (#550: they sat over the sidebar, which ran off a short window)", side550 == {}, side550)
+        check("…and the toasts' stack at 320×640, 568×320 and 844×390 shows each toast whole or not at all, never one cut to its Undo (#550)",
+              whole550 == {}, whole550)
         # ---- #286 one setting row: in every group of Settings, Sharing, Account and Admin with something to set, each
         # setting is a row, its name and help on the left (about 38%) and its control on the right at 1400 px (a .wide
         # one, a table, under its name), and the two one under the other at 375 px, as wide as the row
@@ -13911,6 +13963,28 @@ def main():
             check("…and the one picked looks selected", [x[3] for x in got if x[0] in ("sec-units lab", "sec-units weight")] == ["si", "kg"], got)
             # each saved as it's picked (#272)
             page.wait_for_function("SET_ITEMS.units.st.value.lab === 'si' && SET_ITEMS.units.st.value.weight === 'kg'", timeout=10000)
+            # #550: …as a pick-one's chosen option does everywhere (the records pages' period, Sort): the ink at 600, and in
+            # forced colours HighlightText on Highlight, 4.5:1, light and dark; on Settings (Display, About this person) and
+            # Admin → Backups the page's rule for labels made it ink2 at 500, 2.06:1 in forced colours
+            seg550_js = """() => { const p = document.body.appendChild(document.createElement('div')), b = p.appendChild(document.createElement('button'));
+              p.className = 'seg'; b.type = 'button'; b.setAttribute('aria-pressed', 'true'); b.textContent = 'x';
+              const look = e => { const c = getComputedStyle(e); return [c.color, c.backgroundColor, c.fontWeight]; }, ref = look(b); p.remove();
+              return [ref, [...document.querySelectorAll('main .seg>label:has(>input:checked), main .seg>[aria-checked=true]')].map(e => [e.textContent.trim(), ...look(e)])]; }"""
+            seg550 = {}
+            for path, sel in (("settings.html?profile=1#display", "#sec-units .seg"), ("settings.html?profile=1#about", "#aboutBody .seg"), ("admin.html#backups", "#bkSchedSeg")):
+                page.goto(base + "/" + path)
+                page.wait_for_selector(sel, timeout=10000)
+                page.mouse.move(0, 0)   # (not over a choice: one hovered is its colour in transition as the scheme changes)
+                for forced, scheme in (("none", "light"), ("none", "dark"), ("active", "light"), ("active", "dark")):
+                    page.emulate_media(forced_colors=forced, color_scheme=scheme)
+                    settle(300)
+                    ref, got = js(seg550_js)
+                    bad = [g for g in got if g[1:] != ref or forced == "active" and contrast(g[1], g[2]) < 4.5]
+                    if bad or not got:
+                        seg550[f"{path} {forced} {scheme}"] = [ref, bad or got]
+            page.emulate_media(forced_colors="none", color_scheme=None)
+            check("…the one chosen on Settings (Display, About this person) and Admin → Backups as on the records pages: the ink at 600, and "
+                  "HighlightText on Highlight in forced colours, 4.5:1, light and dark (#550)", seg550 == {}, seg550)
             # ---- on or off as a switch (#259): Settings' tabs are checkboxes with role="switch", each saying on or off
             # (checked) to a screen reader; Space toggles one from the keyboard and marks the section unsaved; on and off
             # look apart (the track's fill and the knob's place) in light, dark and forced colours
