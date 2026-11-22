@@ -3857,7 +3857,6 @@ def main():
                     js("p => applyPreset(p)", per)
                     settle(400)
                     ax291[f"{per} {width}"] = js(CHART_AXIS_JS, "#charts svg.ck-axis")   # the stack's one axis (#293)
-                    ax291[f"{per} {width}"] = js(CHART_AXIS_JS, "#charts .chart svg.ck")   # not the event track over them, which has no axis (#294)
             js("applyPreset('all')")
             page.set_viewport_size({"width": 1400, "height": 900})
             settle(300)
@@ -3876,7 +3875,7 @@ def main():
               const probe = c => { const i = document.createElement('i'); i.style.color = c; document.body.append(i); const v = getComputedStyle(i).color; i.remove(); return v; };
               const status = ['--good', '--good-text', '--crit', '--crit-fill', '--accent'].map(t => probe(`var(${t})`)), ink = probe('var(--ink)');
               const ax = document.querySelector('#charts .ck-axis'), ar = ax?.getBoundingClientRect(), bad = [];
-              const charts = [...document.querySelectorAll('#charts svg.ck')].map(s => {
+              const charts = [...document.querySelectorAll('#charts .chart svg.ck')].map(s => {   // not the event track over them (#294)
                 const g = s._geom, r = s.getBoundingClientRect(), name = s.getAttribute('aria-label').split(':')[0], ref = s.querySelector('.ck-ref');
                 if (ref) { const b = ref.getBBox(); if (b.x < g.L || b.x + b.width > g.R || b.y < g.T - 1 || b.y + b.height > g.B + 1) bad.push(`${name}: its range's numbers outside the plot`); }
                 if ([...s.querySelectorAll('text')].some(t => +t.getAttribute('y') > g.B)) bad.push(`${name}: a label under its plot`);
@@ -3910,7 +3909,7 @@ def main():
             page.focus("#charts .chart svg.ck")
             page.keyboard.press("End")
             settle(200)
-            synced293 = js("[...document.querySelectorAll('#charts svg.ck .cross')].map(c => c.getAttribute('visibility'))")
+            synced293 = js("[...document.querySelectorAll('#charts .chart svg.ck .cross')].map(c => c.getAttribute('visibility'))")   # the charts, not the track (#294)
             page.keyboard.press("Escape")
             js("(w => { state.sel = w[0]; if (w[1]) document.documentElement.dataset.theme = w[1]; else delete document.documentElement.dataset.theme; renderLabs(); })(window._was293)")
             settle(300)
