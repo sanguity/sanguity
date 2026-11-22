@@ -10402,6 +10402,48 @@ def main():
             check("A lab chart's header on a phone (#621), at 360 and 412 px, light and dark: Chart | Table and ✕ together at its name's line's end (under "
                   "a name too long for it), the unit, counts and ? one muted line, Latest last; three lines for Hemoglobin, WBC, Creatinine and Magnesium, "
                   "nothing overlapping", not bad621, bad621)
+            # ---- #622: text at 200% (the font tokens doubled, as #615's) at 360 and 412 px, light and dark (1.4.4): each tab
+            # of the phone's tab bar inside its place, its icon alone where its name doesn't fit, the bar as tall as the
+            # room the page leaves it (--tabbar), every tab still named; the profile's name whole (on a row of its own at
+            # 360); Labs' chart labels, the stack's axis's and the event track's, each inside its chart, none over another.
+            # At the usual size the tabs keep their names and the profile its place on the bar's row
+            T622 = r"""() => { const r = e => e.getBoundingClientRect(), tabs = [...document.querySelectorAll('header.topbar .tabs > a, header.topbar .tab-more')].filter(e => e.checkVisibility());
+              const shown = e => e.checkVisibility() && getComputedStyle(e).clipPath === 'none', bar = r(document.querySelector('header.topbar .tabs'));
+              const name = document.querySelector('.profile-name'), labels = [];
+              for (const s of document.querySelectorAll('#view-labs :is(svg.ck, svg.ck-axis, svg.ev-svg)')) {
+                if (!s.checkVisibility()) continue;
+                const R = r(s), bs = [...s.querySelectorAll('text')].filter(t => t.textContent.trim() && t.checkVisibility()).map(t => [t.textContent.slice(0, 20), r(t)]);
+                for (const [t, b] of bs) if (b.left < R.left - 1 || b.right > R.right + 1 || b.top < R.top - 1 || b.bottom > R.bottom + 1) labels.push(t + ' outside');
+                bs.forEach(([t, a], i) => bs.slice(i + 1).forEach(([u, b]) => { if (a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1) labels.push(t + ' over ' + u); }));
+              }
+              return {over: tabs.filter(a => a.scrollWidth > a.clientWidth + 1).map(a => a.id || a.className),
+                words: tabs.map(a => a.matches('.tab-more') ? shown(a.querySelector('.menu-word')) : a.dataset.short ? getComputedStyle(a, '::after').content !== 'none' : shown(a.querySelector('.tab-long'))),
+                named: tabs.every(a => (a.getAttribute('aria-label') || a.textContent).trim().length > 3), icons: tabs.every(a => a.querySelector('.icon').checkVisibility()),
+                barH: Math.round(bar.height), room: parseFloat(getComputedStyle(document.body).paddingBottom), profWhole: name.scrollWidth <= name.clientWidth + 1 && r(name).right <= innerWidth,
+                profRow: document.querySelector('header.topbar').classList.contains('prof-row'), labels, charts: document.querySelectorAll('#view-labs svg.ck').length}; }"""
+            BIG622 = ":root{--fs-1:23px;--fs-2:25px;--fs-3:28px;--fs-4:31px;--fs-5:36px;--fs-6:44px;--fs-7:56px} html{font-size:200%}"
+            sel622, theme622, bad622 = js("[...state.sel]"), js("document.documentElement.dataset.theme || null"), {}
+            open_tab("labs")
+            js("state.tables.clear(); state.sel = new Set(SERIES.filter(s => !s.watch && s.n >= 2).map(s => s.name))")
+            for w in (360, 412):
+                page.set_viewport_size({"width": w, "height": 800})
+                for mode in ("light", "dark"):
+                    for big in (False, True):
+                        js("([t, css]) => { document.documentElement.dataset.theme = t; const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = css ? [s] : []; renderLabs(); }",
+                           [mode, BIG622 if big else ""])
+                        settle(500)
+                        got = js(T622)
+                        ok = not got["over"] and got["named"] and got["icons"] and got["profWhole"] and not got["labels"] and got["charts"] >= 10 and got["barH"] <= got["room"] + 1
+                        ok = ok and (not all(got["words"]) and (got["profRow"] or w != 360) if big else all(got["words"]) and not got["profRow"])
+                        if not ok:
+                            bad622[f"{w} {mode}{' 200%' if big else ''}"] = got
+                        if big and os.environ.get("SANGUITY_SHOTS"):
+                            page.screenshot(path=os.path.join(os.environ["SANGUITY_SHOTS"], f"622-labs-{w}-{mode}-200.png"))
+            js("([s, t]) => { document.adoptedStyleSheets = []; if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; state.sel = new Set(s); renderLabs(); }", [sel622, theme622])
+            settle(300)
+            check("With text at 200% at 360 and 412 px, light and dark (#622, 1.4.4): the phone's tabs inside their places, icons alone, still named, the bar "
+                  "as tall as the page leaves it; the profile's name whole, on a row of its own at 360; Labs' chart, axis and event-track labels inside their "
+                  "charts, none over another. At the usual size the tabs keep their words and the profile its place", not bad622, bad622)
             page.set_viewport_size({"width": 1400, "height": 900})
             open_tab("overview")
             settle(300)

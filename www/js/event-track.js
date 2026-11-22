@@ -67,7 +67,7 @@ function drawTrack() {
   const items = trackItems(), shown = trackLayers(), layers = shown.map(l => [l, l.space()]), geo = $("#charts .chart svg.ck")?._geom;
   const w = labW(svg.parentElement), L = geo?.L ?? 52, R = geo ? w - (geo.w - geo.R) : w - 12, x = ckScale(state.from, state.to, L, R);
   const flags = ckFlagRows(items.map(i => ({x: x(i.t), text: i.k === "milestone" ? i.words : shortTitle(i.words), cls: i.k === "milestone" ? "mslabel" : "evlabel", rank: i.k === "milestone" ? 0 : 1, i})), L, R);
-  const RH = 15, nRows = flags.length ? Math.max(...flags.map(f => f.row)) + 1 : 0, yM = items.length ? 6 + nRows * RH + 8 : 0;
+  const RH = 15 * ckK(), nRows = flags.length ? Math.max(...flags.map(f => f.row)) + 1 : 0, yM = items.length ? 6 + nRows * RH + 8 : 0;   // (rows as tall as larger text, #622)
   let h = items.length ? yM + 10 : 2;
   const g = [], layersTop = h;
   h += layers.reduce((a, [, n]) => a + n, 0) + 4;
@@ -75,7 +75,7 @@ function drawTrack() {
   if (items.length) {
     g.push(el("svg:line", {class: "gridline", x1: L, x2: R, y1: yM, y2: yM}));
     for (const f of flags) {   // a name, and its leader down to its mark: a milestone's in its own ink, as its flag
-      const ly = 6 + (nRows - 1 - f.row) * RH + 10, ms = f.head.i.k === "milestone";
+      const ly = 6 + (nRows - 1 - f.row) * RH + RH * 2 / 3, ms = f.head.i.k === "milestone";
       g.push(el("svg:line", {class: ms ? "msflag" : "evlead", x1: f.x, x2: f.x, y1: ly + 3, y2: yM - (ms ? 0 : 5)}));
       const more = f.items.length > 1 ? f.text.match(/ \+\d+$/)[0] : "";
       g.push(el("svg:text", {class: f.cls + " ev-name", x: f.a + 2, y: ly, "data-ti": items.indexOf(f.head.i)}, more ? f.text.slice(0, -more.length) : f.text,

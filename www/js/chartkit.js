@@ -46,6 +46,16 @@ function labelW(text, cls) {
   return labelSizes.get(key);
 }
 document.fonts.addEventListener("loadingdone", () => labelSizes.clear());
+/* the labels' size against the 11.5 px the charts are laid out for, 1 or more: with larger text (200%, a phone's font
+   size, #622) a chart's gutters, rows of labels and their offsets grow by it, so its labels stay inside it (1.4.4).
+   The sizes labelW kept go when it changes */
+let ckFs = 0;
+const ckK = () => {
+  if (!labelText?.isConnected) labelW("0", "");
+  const fs = parseFloat(getComputedStyle(labelText).fontSize);
+  if (fs !== ckFs) { ckFs = fs; labelSizes.clear(); }
+  return Math.max(1, fs / 11.5);
+};
 
 /* ---- the time axis: ticks at two levels, the finer over the coarser: days over "Sep 2026", months over "2026"; years
    alone in one row. The step is the smallest whose labels fit side by side, 44 px apart at least: more ticks on a wider
@@ -76,6 +86,7 @@ function ckStepTicks(a, b, n, u) {
 /* -> {rows: 1 or 2, ticks: [{t, x, label, major (the coarser level's words, on a unit's first tick; null), mx}]}; x the
    time scale, W the chart's width (a label kept inside it) */
 function ckTimeTicks(a, b, x, W) {
+  ckK();
   const perDay = Math.abs(x(a + DAY) - x(a));
   let ticks = [], u = "y";
   for (const [n, unit] of CK_STEPS) {
@@ -97,21 +108,23 @@ function ckTimeTicks(a, b, x, W) {
   return {rows: u === "y" ? 1 : 2, ticks};
 }
 /* the height under the plot that ckAxis takes, for rows of labels */
-const ckAxisH = rows => rows === 2 ? 36 : 22;
+const ckAxisH = rows => Math.round((rows === 2 ? 36 : 22) * ckK());
 /* the plot's foot: a line along B, from L to R; ckAxis draws it, and a chart in a stack of them with one axis (#293) */
 const ckFoot = (g, L, R, B) => g.push(el("svg:line", {x1: L, x2: R, y1: B, y2: B, stroke: "var(--axis)"}));
-/* the time axis: its line along the plot's foot (B, from L to R), then its labels, the finer row's baseline at y1 and
-   the coarser's under it */
+/* the time axis: its line along the plot's foot (B, from L to R), then its labels, the finer row's baseline at y1 (as
+   far under B as larger text needs, ckK) and the coarser's under it */
 function ckAxis(g, tk, L, R, B, y1) {
+  const ck = ckK(); y1 = B + (y1 - B) * ck;
   ckFoot(g, L, R, B);
   for (const k of tk.ticks) {
     g.push(el("svg:text", {x: k.x, y: y1, "text-anchor": "middle", text: k.label}));
-    if (k.major) g.push(el("svg:text", {class: "ck-yr", x: k.mx, y: y1 + 14, text: k.major}));
+    if (k.major) g.push(el("svg:text", {class: "ck-yr", x: k.mx, y: y1 + 14 * ck, text: k.major}));
   }
 }
 /* the value axis: a hairline across the plot at each of vals, labelled left of it with fmt(v) */
 function ckGrid(g, y, vals, L, R, fmt) {
-  for (const v of vals) g.push(el("svg:line", {class: "gridline", x1: L, x2: R, y1: y(v), y2: y(v)}), el("svg:text", {x: L - 6, y: y(v) + 4, "text-anchor": "end", text: fmt(v)}));
+  const k = ckK();
+  for (const v of vals) g.push(el("svg:line", {class: "gridline", x1: L, x2: R, y1: y(v), y2: y(v)}), el("svg:text", {x: L - 6, y: y(v) + 4 * k, "text-anchor": "end", text: fmt(v)}));
 }
 /* the value axis's title: the unit, over its numbers at the top left, level, its baseline at yb (#293) */
 const ckUnit = (g, unit, yb) => unit && g.push(el("svg:text", {class: "ck-unit", x: 0, y: yb, text: unit}));
@@ -136,13 +149,16 @@ function ckBand(g, steps, x, y, L, R, T, B) {
 }
 /* the band's numbers at the right of the plot, in ink: words ("13.5–17.5 on report") for the step st at the right end,
    set right-aligned at R, inside the band under its top edge, else over its foot, else just outside it, whichever is
-   the first clear of every point (pts: [px, py]) and inside the plot, T to B */
-function ckBandLabel(g, words, st, y, R, T, B, pts) {
-  const w = labelW(words, "ck-ref"), x1 = R - 4, x0 = x1 - w;
+   the first clear of every point (pts: [px, py]) and inside the plot, T to B; L to R too, its numbers alone where the
+   words are wider (larger text, #622). Its offsets grow with the text (ckK) */
+function ckBandLabel(g, words, st, y, R, T, B, pts, L = 0) {
+  const k = ckK(), x1 = R - 4;
+  if (x1 - labelW(words, "ck-ref") < L) words = words.split(" ")[0];
+  const w = labelW(words, "ck-ref"), x0 = x1 - w;
   const hi = st.hi != null ? Math.max(T, y(st.hi)) : T, lo = st.lo != null ? Math.min(B, y(st.lo)) : B;
-  const inside = lo - hi >= 16 ? (st.hi != null ? [hi + 12, lo - 4] : [lo - 4, hi + 12]) : [];   // by its printed edge first
-  const at = [...inside, hi - 4, lo + 12].filter(yb => yb - 10 >= T && yb + 2 <= B);   // baselines, 10 px of text over each
-  const clear = yb => !pts.some(([px, py]) => px > x0 - 5 && px < x1 + 5 && py > yb - 15 && py < yb + 6);
+  const inside = lo - hi >= 16 * k ? (st.hi != null ? [hi + 12 * k, lo - 4] : [lo - 4, hi + 12 * k]) : [];   // by its printed edge first
+  const at = [...inside, hi - 4, lo + 12 * k].filter(yb => yb - 10 * k >= T && yb + 2 <= B);   // baselines, 10 px of text over each
+  const clear = yb => !pts.some(([px, py]) => px > x0 - 5 && px < x1 + 5 && py > yb - 15 * k && py < yb + 6);
   const yb = at.find(clear) ?? at[0];
   if (yb != null) g.push(el("svg:text", {class: "ck-ref", x: x1, y: yb, "text-anchor": "end", text: words}));
 }
@@ -308,6 +324,7 @@ function ckStripWindow(g, xa, xb, h) {
    the right (an earlier name over a later one) and by rank first, keeping the one with more names, then with more of
    the first rank. -> [{items, head, x (its leader's), text, cls, row (0 the lowest), a, b}] */
 function ckFlagRows(items, L, R, rows = 3) {
+  ckK();
   const start = [], top = Math.min(...items.map(i => i.rank ?? 9));
   for (const it of items) { const g = start.at(-1); if (g && it.x - g[0].x < 6) g.push(it); else start.push([it]); }
   const score = p => p.length * 1e3 + p.filter(f => (f.head.rank ?? 9) === top).length;
