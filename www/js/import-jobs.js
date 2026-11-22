@@ -402,8 +402,17 @@
         if (dups.part) dups.part.addEventListener("change", words);
         const say = t => { msg.textContent = t; };
         const busy = on => { cancel.disabled = on; if (on) add.disabled = true; else words(); };
+        // the card while it's saved, until it says it's saved (poll, showDone)
+        const saving = () => {
+          card.replaceChildren();
+          f.step("saved", STAGES.saving);
+          f.progress(null);
+          f.hold();
+          done(poll(card, pid, j.id, STAGES.saving));
+        };
         // -> true: done; false: refused, said; null: cancelled meanwhile (#542: cycle tracking turned off in another
-        // tab), the card then saying so as Cancel would
+        // tab), the card then saying so as Cancel would, or saved meanwhile (#548: in another tab), the card then
+        // saying so as Add would
         const act = async (what, body) => {
           let r;
           try { r = await call(`${base}/${what}`, {method: "POST", body: JSON.stringify(body || {})}); }
@@ -413,6 +422,8 @@
             const why = await detail(r);
             const now = r.status === 409 ? await call(base).then(g => g.ok ? g.json() : null).catch(() => null) : null;
             if (now?.state === "discarded") { showCancelled(card, now.message); done(now); return null; }
+            if (now?.state === "done") { showDone(card, pid, now); done(now); return null; }
+            if (now?.stage === "saving") { saving(); return null; }
             say(why);
             return false;
           }
@@ -429,11 +440,7 @@
           const ok = await act("confirm", {keep: dups.picked(), labs: labs.picked(), same: same.picked()});
           if (ok === null) return;
           if (!ok) { busy(false); back(add); return; }
-          card.replaceChildren();
-          f.step("saved", STAGES.saving);
-          f.progress(null);
-          f.hold();
-          done(poll(card, pid, j.id, STAGES.saving));
+          saving();
         });
         cancel.addEventListener("click", async () => {
           f.held = card.contains(document.activeElement);
@@ -506,13 +513,14 @@
   // replaceChildren turns a null into the text "null"; parts that aren't there are left out instead
   function fill(card, ...parts) { card.replaceChildren(...parts.filter(p => p != null)); }
   /* the line saying how it ended takes focus where focus was in the card, or was on its Add or Cancel and went
-     nowhere else meanwhile (#489: the button pressed is gone) */
+     nowhere else meanwhile (#489: the button pressed is gone). -> whether it did */
   function result(card, line) {
     const f = FRAMES.get(card), a = document.activeElement;
-    if (!f.card.contains(a) && !(f.held && (!a || a === document.body))) return;
+    if (!f.card.contains(a) && !(f.held && (!a || a === document.body))) return false;
     f.held = false;
     line.tabIndex = -1;
     line.focus();
+    return true;
   }
   /* a card whose import is over (saved, failed or cancelled): Sources clears it once another section is shown (#283) */
   const settled = card => tag(card, "settled", "");
@@ -767,10 +775,12 @@
   // why: the server's, for one it cancelled itself (#542: an upload holding nothing it could import)
   function showCancelled(card, why) {
     settled(card);
-    FRAMES.get(card).end("cancelled");
-    const said = node("p", {}, node("b", {text: "Cancelled."}), " " + (why || "Nothing was saved, and the upload was removed."));
+    const f = FRAMES.get(card), text = why || "Nothing was saved, and the upload was removed.";
+    f.end("cancelled");
+    const said = node("p", {}, node("b", {text: "Cancelled."}), " " + text);
     card.replaceChildren(said);
-    result(card, said);
+    // said where focus didn't go to it (#548: focus on Choose files, an upload holding nothing), as showFailed says
+    if (!result(card, said) && !f.card.hidden) announce(`Cancelled: ${f.title}. ${text}`);
   }
 
   // an import someone else started (a connected source's first pull, connect.js), or one left at its preview (Sources'

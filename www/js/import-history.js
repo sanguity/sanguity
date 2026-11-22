@@ -61,13 +61,15 @@
   }
 
   // asked first, in the app's dialog (ask(), util.js; #363), the red button its action and focus on Keep it; in the
-  // words the toast's Undo asks in (import-jobs.js undoAsks, #504), the lab-name matches it forgets read as it's asked
+  // words the toast's Undo asks in (import-jobs.js undoAsks, #504), the lab-name matches it forgets read as it's asked.
+  // One undone meanwhile (#548: in another tab) is refused without asking, as the toast's Undo is (undoAsk)
   async function confirmUndo(e, opener) {
-    const now = e.removal ? null : await call(`profiles/${PID}/imports`).catch(() => null);
-    const matches = ((now || {}).imports || []).find(x => x.id === e.id)?.lab_matches ?? e.lab_matches;
+    const now = await call(`profiles/${PID}/imports`).catch(() => null);
+    const cur = ((now || {}).imports || []).find(x => x.id === e.id && x.at === e.at);
+    if (cur?.state === "undone") return refused(e, opener, "This import was undone already.", true);
     if (!await ask({title: e.removal ? "Put back what this took out?" : "Undo this import?",
       message: e.removal ? `What comes back: ${counts(e).toLowerCase()}.` :
-        sanguityImport.undoAsks({...e, lab_matches: matches}) + (e.origin === "dataset" ? " What it replaced when it was loaded won't come back." : ""),
+        sanguityImport.undoAsks({...e, lab_matches: cur?.lab_matches ?? e.lab_matches}) + (e.origin === "dataset" ? " What it replaced when it was loaded won't come back." : ""),
       action: e.removal ? "Put them back" : "Undo import", cancel: "Keep it", danger: true})) return;
     opener.disabled = true;
     say("Undoing…");
@@ -78,9 +80,17 @@
       const li = document.getElementById("import-" + e.id);   // drawn again, marked undone: focus on it, not lost with the button
       if (li && opener && !opener.isConnected) li.focus();
     } catch (err) {
-      say("Couldn't undo it: " + err.message, true);
       opener.disabled = false;
+      return refused(e, opener, "Couldn't undo it: " + err.message);
     }
+  }
+  // an Undo refused (#548): the list read again, so one undone meanwhile loses its Undo (the page told, its toasts'
+  // Undo going too); then why, said, and focus on its Undo, or on its row once that's gone (not on <body>)
+  async function refused(e, opener, why, undone) {
+    await (undone ? sanguityImport.told(PID, e.id, true) : load());
+    say(why, true);
+    const li = document.getElementById("import-" + e.id);
+    (opener.isConnected ? opener : li?.querySelector("button.undo") || li)?.focus();
   }
 
   async function load() {
