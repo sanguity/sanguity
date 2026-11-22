@@ -36,7 +36,8 @@ and Health Auto Export (Apple Health, iPhone) REST API automations (#148).
   daily.json; turning tracking off, or asking for them to be deleted, deletes them here and in every archived upload.
 - Backups (#227, server/backup.py): the app reads this folder read-only and takes each watch.db and raw/ into its
   backups. Restoring one leaves them in keys/restore/ (the one folder here the app writes); on start, before anything
-  else, apply_restore() moves what is here to $DATA/before-restore-<time>/ and the backup's in.
+  else, apply_restore() moves what is here to $DATA/before-restore-<time>/ and the backup's in. That folder is
+  deleted $RESTORE_KEEP_DAYS (30) days after the restore (restore_sweep, #593).
 
 One secret per profile (#46). The app makes each profile's secret on its Settings page and writes them all, sealed,
 to $KEYS_FILE (server/watch_keys.py); an upload goes to the profile whose secret signed it. Each profile has a slot:
@@ -45,7 +46,10 @@ profile's id, with its own $DATA/profiles/<slot>/watch.db and raw/, and public/p
 install's single secret from before, $SECRET_FILE, still works for slot "" until that profile (the first) makes one
 of its own in the app ("legacy": false in $KEYS_FILE), and always while there's no $KEYS_FILE. A profile deleted in
 the app is listed under "deleted" in $KEYS_FILE, and everything its slot keeps is deleted here (slot_sweep, #588);
-its secret is gone from the file already, and its id is never a profile's again.
+its secret is gone from the file already, and its id is never a profile's again. An upload whose secret goes while
+it's being kept is taken out again and refused. A slot no profile reads ("slots" in $KEYS_FILE) and no secret uploads
+to (one a profile deleted before #588 left) is deleted $SLOT_GRACE_DAYS (7) days after it's first found so
+(orphan_sweep, #593), at start and hourly after; nothing is taken while $KEYS_FILE doesn't say which slots are read.
 
 Encrypted at rest with the app's key ($SANGUITY_KEY_FILE, see server/crypto.py): every file here is sealed, so
 it runs on the app's image and imports server.crypto. The database is kept in memory and saved as a sealed
@@ -56,7 +60,7 @@ encryption, and files sealed with an older key, are re-sealed with the current k
 Run:  python3 receiver.py            (serve on :8080)
       python3 receiver.py --reprocess (rebuild watch.db and daily.json from raw/; with the receiver stopped)
 """
-import gzip, hashlib, hmac, json, os, queue, shutil, sqlite3, sys, threading, time, traceback
+import gzip, hashlib, hmac, json, os, queue, re, shutil, sqlite3, sys, threading, time, traceback
 from datetime import datetime, timedelta, timezone, date as Date
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -82,6 +86,19 @@ DEFAULT_TZ = os.environ.get("TZ_DEFAULT", "UTC")
 PORT = int(os.environ.get("PORT", "8080"))
 MAX_BODY = 32 * 1024 * 1024
 BAD_FREE = 10   # bad signatures or secrets an address may send in 15 minutes before it waits (#222)
+
+
+def _days(name, default):
+    """A number of days from the environment, in seconds; the default when unset, unreadable or below zero."""
+    try:
+        v = float(os.environ.get(name) or default)
+    except ValueError:
+        v = default
+    return (v if v >= 0 else default) * 86400   # (NaN isn't >= 0)
+
+
+SLOT_GRACE = _days("SLOT_GRACE_DAYS", 7)   # a slot nothing names is deleted this long after it's first found (#593)
+RESTORE_KEEP = _days("RESTORE_KEEP_DAYS", 30)   # a before-restore-<time>/ folder is deleted this long after (#593)
 
 
 class BadSignatures(security.Throttle):
@@ -1046,36 +1063,157 @@ def _remove(path):
         os.remove(aside)
 
 
+def live_slots():
+    """The slots a secret uploads to now."""
+    return {slot for slot, _ in keys()}
+
+
+def named_slots():
+    """Every slot a profile in the app reads ("slots" in $KEYS_FILE, #593) or a secret uploads to. None when the file
+    doesn't say (there's none, it couldn't be read yet, or an app from before #593 wrote it): then no slot is taken
+    for one nothing names."""
+    live = live_slots()
+    doc = _keys["doc"]
+    if not isinstance(doc, dict) or not isinstance(doc.get("slots"), list):
+        return None
+    return live | {str(s) for s in doc["slots"] if isinstance(s, (str, int))}
+
+
+def _json(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            v = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return v if isinstance(v, dict) else {}
+
+
+def _write_json(path, v):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(v, f)
+    os.replace(tmp, path)
+
+
+def _delete_slot(stores, slot):
+    """Everything a slot keeps, and its database in memory. Returns whether anything was on disk."""
+    stores.pop(slot, None)
+    paths = [p for p in slot_paths(slot) if os.path.lexists(p)]
+    for p in paths:
+        _remove(p)
+    return bool(paths)
+
+
 def slot_sweep(stores):
     """Carry out what the app asked when a profile was deleted (#588): everything its slot keeps is deleted, so no
-    profile made later ever reads it. Never a slot a profile's secret still uploads to. A profile slot's id never
-    comes again, so it is deleted whenever anything of it is found (an upload that raced the deletion too); slot "",
-    which another profile may come to read, once for each deletion asked."""
+    profile made later ever reads it. Never a slot a profile's secret still uploads to, nor one a profile reads. A
+    profile slot's id never comes again, so it is deleted whenever anything of it is found (an upload that raced the
+    deletion too). Slot "", which another profile may come to read: once for each deletion asked, and again whenever
+    something is found there while no profile reads it and no secret takes it (an upload checked just before its
+    secret went, #593); from an app that doesn't say which slots its profiles read, only once."""
     asked = deleted_state()
     if not asked:
         return
-    live = {slot for slot, _ in keys()}
+    live, named = live_slots(), named_slots()
     done_file = os.path.join(DATA, DELETED_DONE)
-    try:
-        with open(done_file, encoding="utf-8") as f:
-            done = json.load(f)
-    except (OSError, ValueError):
-        done = {}
+    done = _json(done_file)
     for slot, token in sorted(asked.items()):
-        if slot in live or (slot == "" and done.get("") == token):
+        if slot in live or (named is not None and slot in named):
             continue
-        paths = [p for p in slot_paths(slot) if os.path.lexists(p)]
-        if paths:
-            stores.pop(slot, None)
-            for p in paths:
-                _remove(p)
+        if slot == "" and done.get("") == token and named is None:
+            continue
+        if _delete_slot(stores, slot):
             log(f"deleted what was kept for {slot or 'the first profile'}: its profile was deleted in the app")
-        if slot == "":
+        if slot == "" and done.get("") != token:
             done[""] = token
-            tmp = done_file + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(done, f)
-            os.replace(tmp, done_file)
+            _write_json(done_file, done)
+
+
+ORPHANS = "orphan-slots.json"   # in $DATA: {slot: when it was first found with nothing naming it} (#593)
+
+
+def slots_found():
+    """Every slot something is kept for: "" and each profile slot with a folder (its database's or its summary's)."""
+    out = set()
+    for top in (os.path.join(DATA, "profiles"), os.path.join(DATA, "public", "profiles")):
+        try:
+            out |= {n for n in os.listdir(top) if n.isdigit()}
+        except OSError:
+            pass
+    return sorted(s for s in out | {""} if any(os.path.lexists(p) for p in slot_paths(s)))
+
+
+def orphan_sweep(stores, now=None):
+    """A slot no profile reads and no secret uploads to (left by a profile deleted before #588, or by one the app
+    forgot), deleted SLOT_GRACE after it's first found so (#593); found named again, it starts again. Nothing while
+    $KEYS_FILE doesn't say which slots the app's profiles read."""
+    now = time.time() if now is None else now
+    named = named_slots()
+    if named is None:
+        return
+    path = os.path.join(DATA, ORPHANS)
+    seen = _json(path)
+    found = {s: seen[s] if isinstance(seen.get(s), (int, float)) else now for s in slots_found() if s not in named}
+    for slot, first in sorted(found.items()):
+        if now - first >= SLOT_GRACE:
+            if _delete_slot(stores, slot):
+                log(f"deleted what was kept for {slot or 'the first profile'}: no profile or secret has named it since "
+                    f"{datetime.fromtimestamp(first, timezone.utc).date()}")
+            del found[slot]
+    if found != seen:
+        _write_json(path, found)
+
+
+RESTORE_NAME = re.compile(r"before-restore-(\d{8}-\d{6})(?:-1)*")   # as apply_restore names them
+
+
+def restore_sweep(now=None):
+    """A before-restore-<time>/ folder (what was here before a restore: it may hold a profile deleted since) is
+    deleted RESTORE_KEEP after it was made (#593). Only folders named as apply_restore names them."""
+    now = time.time() if now is None else now
+    try:
+        names = os.listdir(DATA)
+    except OSError:
+        return
+    for n in sorted(names):
+        m = RESTORE_NAME.fullmatch(n)
+        path = os.path.join(DATA, n)
+        if not m or os.path.islink(path) or not os.path.isdir(path):
+            continue
+        try:
+            made = max(datetime.strptime(m.group(1), "%Y%m%d-%H%M%S").timestamp(), os.stat(path).st_mtime)
+        except (ValueError, OSError):
+            continue
+        if now - made >= RESTORE_KEEP:
+            _remove(path)
+            log(f"deleted {n}: what was here before a restore, kept {RESTORE_KEEP / 86400:g} days")
+
+
+def leftover_sweep():
+    """What a deletion interrupted halfway left, moved aside (_remove's .deleting- names): deleted."""
+    for top in (DATA, os.path.join(DATA, "profiles"), os.path.join(DATA, "public"), os.path.join(DATA, "public", "profiles")):
+        try:
+            names = os.listdir(top)
+        except OSError:
+            continue
+        for n in names:
+            p = os.path.join(top, n)
+            if n.startswith(".deleting-"):
+                if os.path.isdir(p) and not os.path.islink(p):
+                    shutil.rmtree(p, ignore_errors=True)
+                else:
+                    os.remove(p)
+
+
+def start_sweep(stores=None, now=None):
+    """At start, before anything is loaded, and from time to time after: what deleted profiles kept (#588), slots
+    nothing names past their grace period, before-restore-<time>/ folders past their time and deletions left halfway
+    (#593)."""
+    stores = {} if stores is None else stores
+    leftover_sweep()
+    slot_sweep(stores)
+    orphan_sweep(stores, now)
+    restore_sweep(now)
 
 
 EXERCISE_INSERT = ("INSERT OR REPLACE INTO exercise(uuid, start_t, end_t, day, type, name, title, duration, src, hr) "
@@ -1160,27 +1298,72 @@ def hae_when(s):
 
 
 def archive(body, slot=""):
+    return _archive(body, slot)[0]
+
+
+def _archive(body, slot):
+    """(its digest, the file) of an upload archived under the slot's raw/."""
     now = datetime.now(timezone.utc)
     d = os.path.join(slot_dir(slot), "raw", now.strftime("%Y/%m/%d"))
     os.makedirs(d, exist_ok=True)
     digest = hashlib.sha256(body).hexdigest()
     path = os.path.join(d, f"{now.strftime('%H%M%S%f')}-{digest[:12]}.json.gz")
     crypto.write_file(path, gzip.compress(body))   # still named .json.gz: gzipped, then sealed
-    return digest
+    return digest, path
+
+
+def unarchive(path, slot):
+    """Take an archived upload out again, and the day folders it leaves empty (never raw/ itself)."""
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+    top, d = os.path.join(slot_dir(slot), "raw"), os.path.dirname(path)
+    while d.startswith(top + os.sep):
+        try:
+            os.rmdir(d)
+        except OSError:
+            break
+        d = os.path.dirname(d)
 
 
 work = queue.Queue()
 
 
+SWEEP_EVERY = 3600   # seconds between the worker's sweeps of slots nothing names and old restore folders (#593)
+
+
+def fold(stores, item):
+    """Fold one queued upload into its slot's database. Returns whether it changed anything. Not for a slot no secret
+    uploads to any more (its profile deleted since the upload was checked, #593): what it kept is being deleted."""
+    slot, body, digest = item
+    if slot not in live_slots():
+        log("not folded in: no secret uploads to", slot or "the first profile", "any more")
+        return False
+    try:
+        if slot not in stores:
+            stores[slot] = Store(slot)
+        res = stores[slot].ingest(json.loads(body), digest)
+        log("ingested", res, "for", slot or "first profile")
+        return res not in ("skipped", "duplicate")
+    except Exception:
+        log("FAILED to process payload", digest[:12]); traceback.print_exc()
+        return False
+
+
 def worker(stores):
     """Folds uploads in, one at a time; a slot's snapshot and summary are written once uploads stop coming."""
-    dirty = set()
+    dirty, swept = set(), time.monotonic()
     while True:
         try:
             item = work.get(timeout=5)
         except queue.Empty:
             try:
                 slot_sweep(stores)   # (#588)
+                if time.monotonic() - swept >= SWEEP_EVERY:   # (#593)
+                    swept = time.monotonic()
+                    orphan_sweep(stores)
+                    restore_sweep()
                 dirty &= set(stores)   # a deleted slot's summary isn't written again
             except Exception:
                 traceback.print_exc()
@@ -1195,16 +1378,8 @@ def worker(stores):
                     traceback.print_exc()
             dirty = set()
             continue
-        slot, body, digest = item
-        try:
-            if slot not in stores:
-                stores[slot] = Store(slot)
-            res = stores[slot].ingest(json.loads(body), digest)
-            log("ingested", res, "for", slot or "first profile")
-            if res not in ("skipped", "duplicate"):
-                dirty.add(slot)
-        except Exception:
-            log("FAILED to process payload", digest[:12]); traceback.print_exc()
+        if fold(stores, item):
+            dirty.add(item[0])
 
 
 class H(BaseHTTPRequestHandler):
@@ -1268,7 +1443,11 @@ class H(BaseHTTPRequestHandler):
             body = cycle.keep(body, cycle_on(slot))
         except ValueError:
             return self._send(400)
-        digest = archive(body, slot)
+        digest, path = _archive(body, slot)
+        if slot not in live_slots():   # its secret went while this was checked and written (#593): not kept
+            unarchive(path, slot)
+            log("rejected: the secret went before the upload was kept, from", self.client_address[0])
+            return self._refuse(401)
         work.put((slot, body, digest))
         self._send(200, b"ok")
 
@@ -1303,8 +1482,9 @@ def restore_dir():
 
 def apply_restore():
     """Move a restored backup's data in, if server.manage restore left one: what is here now goes to
-    $DATA/before-restore-<time>/ (never deleted), with public/'s files (the folder stays: the app has it mounted by
-    itself), which are written again from the restored databases. Returns that folder, or None."""
+    $DATA/before-restore-<time>/ (deleted RESTORE_KEEP after, by restore_sweep, #593), with public/'s files (the
+    folder stays: the app has it mounted by itself), which are written again from the restored databases. Returns
+    that folder, or None."""
     src = restore_dir()
     if not os.path.isfile(os.path.join(src, "restore.json")):
         return None
@@ -1344,9 +1524,11 @@ if __name__ == "__main__":
         sys.exit(f"No secret: neither {SECRET_FILE} nor {KEYS_FILE} exists.")
     if (n := migrate()):
         log(f"encrypted {n} files with the current key")
-    slot_sweep({})   # what deleted profiles kept, before anything of it is loaded (#588)
-    stores = {}
+    start_sweep()   # what deleted profiles kept (#588), slots nothing names and old restore folders (#593)
+    stores, named = {}, named_slots()
     for slot in slots_on_disk():
+        if slot == "" and named is not None and "" not in named and "" not in slots_found():
+            continue   # nothing kept for slot "" and nothing names it: no empty summary written for it (#593)
         store = stores[slot] = Store(slot)
         if (n := store.catch_up()):
             log(f"folded in {n} uploads of {slot or 'the first profile'} archived since the last snapshot")

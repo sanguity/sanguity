@@ -767,6 +767,15 @@ from the database and from the app's. A restore leaves the copy in `keys/restore
 receiver, at start, moves `watch.db`, `raw/`, `profiles/` and the files of `public/` (not the folder, which the app
 has mounted) to `before-restore-<time>/` and the backup's in, then folds in the uploads after its last save.
 
+**What it keeps, and how long (#593).** A slot's database, uploads, summary, ECG samples and `cycle.json` are kept
+while a profile reads the slot or a secret uploads to it. A deleted profile's go when the app says so (`"deleted"` in
+the secrets file, #588); an upload whose secret goes while it's being written is taken out again and refused, and one
+already queued isn't folded in. A slot nothing names (no secret, and not in the file's `"slots"`, every slot a profile
+reads: one a profile deleted before #588 left) is deleted `SLOT_GRACE_DAYS` (7) after the receiver first finds it so,
+noted in `orphan-slots.json`; named again meanwhile, the wait starts again; a secrets file from an app without
+`"slots"` takes nothing. A `before-restore-<time>/` folder is deleted `RESTORE_KEEP_DAYS` (30) after the restore. These
+run at start, before anything is loaded, and hourly.
+
 **Blood glucose (#181)** is `glucose(app, src, id, t, wall, v, kind)`: one row a reading, in mg/dL, from Health
 Connect (`hc`, `id` its uuid) or Health Auto Export (`hae`, `id` its time), with its local time and, when the reading
 says so, `cgm` or `meter` ([`server/glucose.py`](../server/glucose.py) has the rules). A continuous glucose monitor
@@ -861,7 +870,7 @@ sorting), and your original exports in `RECORDS_DIR`, which Sanguity only reads.
 
 | Deleted | Also removed (cascade) | Kept |
 |---|---|---|
-| A profile | memberships, imports with all their rows, documents, uploads and their files, jobs, edits, same-result links, journal entries and their photos, medication reminders and doses, cost marks, settings, visit summary drafts, calendar feeds, share links, undo history, its activity and outside contacts; and what the watch receiver keeps for its slot (its database, archived uploads, summary, ECG samples and `cycle.json`), which the receiver deletes when told (#588), unless another profile reads the same slot | the original exports, backups made before |
+| A profile | memberships, imports with all their rows, documents, uploads and their files, jobs, edits, same-result links, journal entries and their photos, medication reminders and doses, cost marks, settings, visit summary drafts, calendar feeds, share links, undo history, its activity and outside contacts; and what the watch receiver keeps for its slot (its database, archived uploads, summary, ECG samples and `cycle.json`), which the receiver deletes when told (#588), unless another profile reads the same slot (a slot a profile deleted before that left, after a week, #593) | the original exports, backups made before, the receiver's `before-restore-<time>/` for 30 days |
 | An import (undo) | its events, series, results and documents; its upload's raw files unless another import uses them | edits, same-result links, journal entries, medication reminders and doses, and cost marks (they belong to the profile) |
 | An upload | its files and jobs (a job's saved import stays) | the import it became |
 | A connection (disconnect) | its tokens, key, patient id and stored resources; its imports too, if chosen; its hosts from "may contact" | the row, as disconnected; its outside contacts, listed as earlier ones |
