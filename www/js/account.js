@@ -72,7 +72,16 @@ async function loadSessions() {
    (none left but this one) on the card's heading (util.js) */
 const sessFocus = (at = 0) => focusNear([...$("#sessList tbody").rows], at, "button", $("#sessions h2"));
 $("#sessOthers").onclick = async () => {
-  try { const r = await call("sessions/revoke-others", "POST"); say("#sessMsg", `Signed out ${r.revoked} device${r.revoked === 1 ? "" : "s"}.`); await loadSessions(); sessFocus(); }
+  // it turns off your calendar feeds too (#590): asked first, saying so
+  if (!await ask({title: "Sign out all other devices?", action: "Sign out others",
+                  message: "Your calendar feeds are turned off too, as a lost phone's calendar app keeps their addresses. You can make new ones under Sharing."})) return;
+  try {
+    const r = await call("sessions/revoke-others", "POST"), f = r.calendar_feeds;
+    // the calendar feeds that went with them (#590), said, with where to make a new one
+    say("#sessMsg", `Signed out ${r.revoked} device${r.revoked === 1 ? "" : "s"}.` + (f ? ` ${f === 1 ? "Your calendar feed is" : `Your ${f} calendar feeds are`} ` +
+      "turned off too: make a new one under Sharing, Calendar feed." : ""));
+    await loadSessions(); sessFocus();
+  }
   catch (e) { say("#sessMsg", e.message, true); }
 };
 
@@ -96,8 +105,11 @@ async function loadTwoFactor(focus = false) {
   if (!st.on) {
     tfHint(`Ask for a code from an authenticator app as well as your password, so a stolen password alone can't open your records.` +
       (st.required ? " This server requires it." : ""));
-    body.replaceChildren(el("button", {class: "btn primary", type: "button", text: "Turn on", onclick: startTwoFactor}));
-    if (focus) tfFocus(body.firstChild);
+    // your password first (#590: a device left signed in could turn on an app of its own and lock you out), with Show
+    const pw = el("input", {type: "password", autocomplete: "current-password", placeholder: "Your password", "aria-label": "Your password", required: true});
+    body.replaceChildren(el("form", {class: "row", onsubmit: ev => { ev.preventDefault(); pwSent(ev.target); startTwoFactor(pw.value); }},
+      pwField(pw).box, el("button", {class: "btn primary", type: "submit", text: "Turn on"})));
+    if (focus) tfFocus(pw);
     return;
   }
   tfHint(`On. You have ${st.recovery_codes_left} recovery code${st.recovery_codes_left === 1 ? "" : "s"} left` +
@@ -121,9 +133,10 @@ async function loadTwoFactor(focus = false) {
       pwField(pw).box, el("button", {class: "btn small", type: "submit", text: "Turn off"})));   // with Show (#492)
   if (focus) tfFocus($("#twofa h2"));
 }
-async function startTwoFactor() {
+/* password: the one typed beside Turn on, sent again with the first code (the server checks both, #590) */
+async function startTwoFactor(password) {
   let s;
-  try { s = await call("me/2fa/start", "POST"); } catch (e) { return say("#tfMsg", e.message, true); }
+  try { s = await call("me/2fa/start", "POST", {password}); } catch (e) { return say("#tfMsg", e.message, true); }
   const code = el("input", {inputmode: "numeric", autocomplete: "one-time-code", placeholder: "123 456", "aria-label": "Code from your authenticator app", required: true});
   tfHint(`Scan this with ${APPS}, then enter the code it shows. If you can't scan, type the key instead.`, true);
   // its QR code drawn here from the otpauth address (qr.js, #495: the server drew a second one), shown, as it's the way
@@ -135,7 +148,7 @@ async function startTwoFactor() {
       el("div", {class: "copy-val"}, el("span", {class: "copy-val-name", text: "Key"}),
         el("div", {class: "copy-val-row"}, key, copyBtn(s.secret, {what: "the key", sel: key})))),
     el("form", {class: "row", onsubmit: async ev => { ev.preventDefault();
-      try { showRecoveryCodes((await call("me/2fa/confirm", "POST", {code: code.value})).recovery_codes, true); } catch (e) { say("#tfMsg", e.message, true); } }},
+      try { showRecoveryCodes((await call("me/2fa/confirm", "POST", {code: code.value, password})).recovery_codes, true); } catch (e) { say("#tfMsg", e.message, true); } }},
       code, el("button", {class: "btn primary small", type: "submit", text: "Confirm"}),
       el("button", {class: "btn small", type: "button", text: "Cancel", onclick: () => loadTwoFactor(true)})));
   code.focus();
@@ -199,13 +212,20 @@ async function loadPasskeys() {
             catch (e) { e.status === 404 ? pkGone(st.passkeys.indexOf(k), e.message) : pkSay(k.id, e.message, true); } }}),
           el("button", {class: "btn small", type: "button", text: "Remove", disabled: last || null,
             title: last ? "This server requires two-factor sign-in, and this is your only second step" : null, onclick: async () => {
-              if (!await ask({title: `Remove the passkey “${k.name}”?`, message: "Remove it from the device too, in its passwords or passkeys settings.",
-                              action: "Remove passkey", danger: true})) return;
+              // your password, as adding one asks (#590: a device left signed in could take it away); every other
+              // device is signed out, as turning off the authenticator app does
+              const pw = el("input", {type: "password", autocomplete: "current-password", required: true});
+              const label = el("label", {}, "Your password", pw);
+              pwField(pw);
+              if (!await ask({title: `Remove the passkey “${k.name}”?`, message: ["Remove it from the device too, in its passwords or passkeys settings.",
+                                "Every other device signed in to your account is signed out.", label],
+                              action: "Remove passkey", danger: true, field: pw})) return;
               const at = st.passkeys.indexOf(k);
               try {
-                const r = await call("me/passkeys/" + k.id, "DELETE");
+                const r = await call("me/passkeys/" + k.id, "DELETE", {password: pw.value});
                 if (r.must_change_pw) { location.replace("account.html#password"); location.reload(); return; }
-                await loadPasskeys();
+                await Promise.all([loadPasskeys(), loadSessions()]);
+                if (r.signed_out_elsewhere) say("#pkMsg", `Removed. Signed out ${r.signed_out_elsewhere} other device${r.signed_out_elsewhere === 1 ? "" : "s"}.`);
               } catch (e) { e.status === 404 ? pkGone(at, e.message) : say("#pkMsg", e.message, true); return; }
               pkFocus(at); }})));
     }))) : emptyState("No passkeys yet: each one you add is listed here, with when it was last used.", null, {cls: ""}));   // (#494)

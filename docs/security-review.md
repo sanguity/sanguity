@@ -302,7 +302,7 @@ Not opened as issues; written up here for the owner to file or drop:
 | 3.5.1 | OAuth: refresh tokens kept by the relying party | Met | A connected source (#32, #91) is OAuth 2 with PKCE (S256); its refresh token or private key stays on the server, encrypted, and is deleted on disconnect, after revoking it where the vendor allows. The sign-in's state is single use, bound to the session that started it, and lasts 10 minutes (`connections.finish`). |
 | 3.5.2 | Static API keys avoided for users | Met | None for people. The phone's upload secret is a device credential for one profile's watch data only, replaced from the Sources page (Accepted A1 on how it travels). |
 | 3.5.3 | Stateless tokens signed and checked | N/A | None are relied on: a vendor's access token's `aud` and `iss` are compared with what was asked, and the token itself goes back only to that vendor. SMART Health Cards' signatures are checked against their issuer's keys (`shl.check_card`). |
-| 3.7.1 | Re-check before sensitive changes | Met | Changing the password needs the current one. Turning off 2FA and adding a passkey need the password. New recovery codes need a code. Deleting a profile needs its name typed. The most powerful admin actions need a fresh check (4.3.3). |
+| 3.7.1 | Re-check before sensitive changes | Met; **Fixed (#590)** | Changing the password needs the current one. Turning 2FA on or off, adding a passkey and removing one need the password (turning it on and removing a passkey didn't, #590); removing a passkey also signs out every other session. New recovery codes need a code. Deleting a profile needs its name typed. The most powerful admin actions need a fresh check (4.3.3). |
 
 ## V4 Access control
 
@@ -316,7 +316,7 @@ Not opened as issues; written up here for the owner to file or drop:
 | 4.2.2 | CSRF protection | Met; see A7 | `X-Sanguity` header plus Origin check on every state-changing `/api/` call (`main.guard`), and SameSite=Strict (`test_csrf`). |
 | 4.3.1 | Admin interfaces use multi-factor | Met (#75) | The `admin` dependency refuses every admin route, the Admin page's backups, vendor setup, lab-name matches and install settings included, until the admin has an authenticator app or a passkey, once the server has more than one account. |
 | 4.3.2 | No directory browsing or metadata files | Met | nginx serves an allow-list of paths, with no autoindex. |
-| 4.3.3 | Step-up for lower-value systems | Met (#75) | Resetting a password, turning off someone's two-factor sign-in, making someone an admin, and turning scheduled backups off or keeping fewer (#200) (`main.fresh`) need the password, a code or a passkey within `REAUTH_MINUTES` (5). |
+| 4.3.3 | Step-up for lower-value systems | Met (#75); **Fixed (#590)** | Resetting a password, turning off someone's two-factor sign-in, making someone an admin, turning scheduled backups off or keeping fewer (#200), and every way an admin could reach a profile's records (#590: disabling its only owner, giving a profile without an owner a new one, removing an account while handing its profiles over) (`main.fresh`) need the password, a code or a passkey within `REAUTH_MINUTES` (5). |
 
 ## V5 Validation, sanitization and encoding
 
@@ -448,7 +448,7 @@ made, failed, checked and the schedule changed.
 | # | Requirement | Result | Why / where |
 |---|---|---|---|
 | 13.1.1 | Same encoding throughout | Met | JSON over UTF-8; iCalendar and PDF for the two downloads that are those. |
-| 13.1.3 | No sensitive data in API URLs | Met; calendar feeds Accepted | Ids, a search and an upload's file name only, none of them logged (#203). A calendar feed's token is in its address because a calendar app can't sign in: it opens only that person's feed of that profile, minimal by default, is stored as a hash, can be rotated or revoked at once, stops when the person loses access, and is never logged by nginx or the app. |
+| 13.1.3 | No sensitive data in API URLs | Met; calendar feeds Accepted | Ids, a search and an upload's file name only, none of them logged (#203). A calendar feed's token is in its address because a calendar app can't sign in: it opens only that person's feed of that profile, minimal by default, is stored as a hash, can be rotated or revoked at once, is deleted when the person loses access (so it can't answer again once they're back, #590) and on Sign out all other devices, an admin's reset and a recovery-code sign-in, and is never logged by nginx or the app. |
 | 13.1.4 | Authorization at both route and resource level | Met | Dependencies (`user`, `admin`), then `need()` per profile, then the profile's id on every lookup inside it. |
 | 13.1.5 | Unexpected content types refused | Met | FastAPI accepts only JSON bodies for its models. An upload's body is the raw file, read only by the upload route. |
 | 13.2.1 | Only intended HTTP methods | Met | Others get 405; nginx passes only POST to the share-link view and GET/HEAD to the feed. |
@@ -586,7 +586,8 @@ What each added, and how it keeps to the rules above. Each file named has its ow
 - **Least privilege (4.1.3, 4.2.1):** only owners make, list and revoke links. A link shows only the sections, labs
   and dates chosen, built on the server from named fields; no documents, report text, settings or other profile, and
   no route that changes anything. It works only until it expires (at most 90 days) or is revoked, and only while its
-  maker is still an owner with an active account, checked at every view.
+  maker is still an owner with an active account, checked at every view; once they aren't, it is revoked for good, so
+  it doesn't open again if they're made an owner again (#590).
 - **Fails securely (4.1.5, 7.4.1):** a wrong, malformed, expired or revoked token, and a body that isn't JSON, all get
   the same bare 404.
 - **Anti-automation (2.2.1, 8.1.4):** `security.Throttle` per address for wrong tokens and per link for every view; a

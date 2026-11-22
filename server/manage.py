@@ -171,6 +171,7 @@ def _command(db, argv):
         u, enable = _user(db, args[0]), "--enable" in args
         pw = accounts.set_temp_password(db, u["id"])
         if enable:
+            accounts.end_lost_access(db)   # what ended while it was disabled stays ended (#590)
             db.execute("UPDATE users SET disabled=0 WHERE id=?", (u["id"],))
         activity.log(db, "account.reset", detail={"username": u["username"]}, actor=activity.COMMAND_LINE)
         if enable and u["disabled"]:
@@ -185,8 +186,10 @@ def _command(db, argv):
         if not db.execute("SELECT 1 FROM profiles WHERE id=?", (pid,)).fetchone():
             sys.exit(f"No profile {pid}.")
         old = main.role_of(db, u["id"], pid)
+        accounts.end_lost_access(db)   # as the app's Sharing does (#590): what ended with lost access stays ended
         db.execute("""INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, ?)
                       ON CONFLICT(user_id, profile_id) DO UPDATE SET role=excluded.role""", (u["id"], pid, args[2]))
+        accounts.end_lost_access(db)
         if old != args[2]:
             activity.log(db, "share", profile_id=pid, detail={"username": u["username"], "role": args[2], **({"from": old} if old else {})},
                          actor=activity.COMMAND_LINE)

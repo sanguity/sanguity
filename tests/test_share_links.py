@@ -471,17 +471,57 @@ class ShareLinks(unittest.TestCase):
             states = {l["id"]: l["state"] for l in self.c["robin"].get(f"/api/profiles/{self.pid}/links").json()["links"]}
             self.assertEqual(states[link["id"]], "expired")
 
+            # its maker no longer an owner, however that came about: stopped for good, as it's looked at (#590: it
+            # opened again once they were an owner again)
             token, link = self.make(who="ash")
             db.execute("UPDATE memberships SET role='editor' WHERE user_id=? AND profile_id=?", (self.uid["ash"], self.pid))
             self.assert_bare(self.view(token, 404))
             db.execute("UPDATE memberships SET role='owner' WHERE user_id=? AND profile_id=?", (self.uid["ash"], self.pid))
-            self.view(token)
+            self.assert_bare(self.view(token, 404))
+            token, link = self.make(who="ash")
             db.execute("UPDATE users SET disabled=1 WHERE id=?", (self.uid["ash"],))
             self.assert_bare(self.view(token, 404))
             db.execute("UPDATE users SET disabled=0 WHERE id=?", (self.uid["ash"],))
-            self.view(token)
+            self.assert_bare(self.view(token, 404))
+            states = {l["id"]: l["state"] for l in self.c["robin"].get(f"/api/profiles/{self.pid}/links").json()["links"]}
+            self.assertEqual(states[link["id"]], "maker_not_owner")
         finally:
             db.close()
+
+    def test_a_link_stopped_with_its_maker_stays_stopped(self):   # #590
+        states = lambda: {l["id"]: l["state"] for l in self.c["robin"].get(f"/api/profiles/{self.pid}/links").json()["links"]}
+        put = lambda role: self.assertEqual(self.c["robin"].put(f"/api/profiles/{self.pid}/members", json={"username": "ash", "role": role},
+                                                                headers=H).status_code, 200)
+        # made a viewer, then an owner again
+        token, link = self.make(who="ash")
+        self.view(token)
+        put("viewer")
+        self.assertEqual(states()[link["id"]], "maker_not_owner")
+        put("owner")
+        self.assert_bare(self.view(token, 404))
+        self.assertEqual(states()[link["id"]], "maker_not_owner")
+        self.assertEqual(self.c["robin"].delete(f"/api/profiles/{self.pid}/links/{link['id']}", headers=H).status_code, 404)   # nothing left to revoke
+        # taken off the profile, then given it back as an owner
+        token, link = self.make(who="ash")
+        r = self.c["robin"].delete(f"/api/profiles/{self.pid}/members/{self.uid['ash']}", headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        put("owner")
+        self.assert_bare(self.view(token, 404))
+        self.assertEqual(states()[link["id"]], "maker_not_owner")
+        # one stopped before this fix, never looked at since: it stays stopped when its maker is an owner again
+        token, link = self.make(who="ash")
+        db = dbm.connect()
+        try:
+            db.execute("UPDATE memberships SET role='editor' WHERE user_id=? AND profile_id=?", (self.uid["ash"], self.pid))
+            put("owner")
+            self.assert_bare(self.view(token, 404))
+        finally:
+            db.close()
+        # an owner's other links, and other owners' links, are untouched
+        token, link = self.make()
+        put("editor")
+        put("owner")
+        self.view(token)
 
     def test_throttled(self):
         for _ in range(share_links.ShareThrottle.FREE["bad"]):

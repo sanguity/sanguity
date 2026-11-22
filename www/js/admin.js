@@ -83,7 +83,8 @@ function gateCard(card) {
     el("a", {href: "account.html#security", text: "Account → Sign-in & security"}), "."));
   card.hidden = false;
 }
-/* resetting a password, turning off someone's 2FA or making an admin needs a fresh check (the password, a code or a
+/* resetting a password, turning off someone's 2FA, making an admin, and (#590) giving a profile an owner, disabling
+   its only owner or handing its profiles over needs a fresh check (the password, a code or a
    passkey within a few minutes): when the server asks, ask the person, then try again. box: where to ask (Backups
    has its own, #200) */
 async function fresh(action, box = $("#reauth")) {
@@ -248,7 +249,7 @@ async function changeUser(u, body, sure, done) {
     catch (e) {   // disabling the only owner of a profile: the server says which, and it's asked once more
       if (!(e.detail && e.detail.sole_owner_of)) throw e;
       if (!await ask({title: `Disable ${u.username} anyway?`, message: e.message, action: "Disable anyway", danger: true})) throw new Error("Not disabled.");
-      r = await call("users/" + u.id, "PATCH", {...body, force: true});
+      r = await fresh(() => call("users/" + u.id, "PATCH", {...body, force: true}));   // (#590: the fresh check too)
     }
     await loadUsers(u.id);
     typeof done === "function" ? done(r) : rowSay(u.id, done);   // (a reset's password then shown, focus on it: #499)
@@ -293,7 +294,7 @@ function ownerlessRow(p) {
         !await ask({title: `Own ${p.name} yourself?`, message: `This gives you access to the records in ${p.name}.`, action: "Make me owner"})) return;
     const row = go.closest(".row"), at = ownRows().indexOf(row);
     ownSay(null);
-    try { await call(`ownerless/${p.id}/owner`, "POST", {username: who}); await loadOwnerless(); }
+    try { await fresh(() => call(`ownerless/${p.id}/owner`, "POST", {username: who})); await loadOwnerless(); }   // (#590: the fresh check)
     catch (e) {
       // the profile deleted, or given an owner, meanwhile (#528: its row stayed): drawn away, why said where it was
       if (e.status === 404 || e.status === 409) { await loadOwnerless(); if (!OWNERLESS.has(p.id)) return goneSay(ownRows(), at, e.message, "button", $("#users h2"), $("#ownerless")); }
@@ -358,7 +359,7 @@ async function removeAccount(u, typed) {
   let body = {confirm_name: typed};
   for (;;) {
     try {
-      const r = await call("users/" + u.id, "DELETE", body);
+      const r = await fresh(() => call("users/" + u.id, "DELETE", body));   // handing profiles over: the fresh check (#590)
       $("#rmUser").value = "";
       await loadUsers();
       zoneSay(`Removed ${u.username}.` + (r.handed_over.length ? ` ${body.hand_to} now owns ${r.handed_over.join(", ")}.` : ""));

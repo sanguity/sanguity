@@ -5,7 +5,9 @@ A calendar app can't sign in, so the address carries the only credential: a rand
 bits), of which only the SHA-256 is stored (calendar_feeds.token_hash), like a session cookie's. The token is shown
 once, when the feed is made or rotated. Each feed belongs to one person on one profile, and works only while that
 person can still view the profile (role and account checked at every fetch): removing someone's access, or
-disabling their account, stops their feed too.
+disabling their account, deletes their feed, so giving the access back doesn't bring the old address back (#590). So
+do Sign out everywhere else, an admin's password reset and a sign-in with a recovery code: each may follow a lost
+phone, whose calendar app has the address (drop_for).
 
 What a feed holds:
   appointments   the records' `upcoming` list (imported or typed in), from today on
@@ -119,7 +121,8 @@ def revoke(db, pid, feed_id=None, uid=None):
 
 
 def find(db, pid, token):
-    """The feed this token opens on this profile, while its person may still view the profile; else None."""
+    """The feed this token opens on this profile, while its person may still view the profile; else None. A feed
+    whose person can't any more is deleted here (#590), as drop_without_access does, so it can't answer again."""
     if not isinstance(token, str) or not 20 <= len(token) <= 100:
         return None
     r = db.execute("""SELECT f.*, p.name AS profile_name FROM calendar_feeds f
@@ -127,7 +130,28 @@ def find(db, pid, token):
                       JOIN users u ON u.id = f.user_id AND u.disabled = 0
                       JOIN profiles p ON p.id = f.profile_id
                       WHERE f.token_hash=? AND f.profile_id=?""", (sec.token_hash(token), pid)).fetchone()
+    if r is None:
+        db.execute(f"DELETE FROM calendar_feeds WHERE token_hash=? AND profile_id=? AND {_NO_ACCESS}", (sec.token_hash(token), pid))
     return r
+
+
+# a feed whose person can no longer view its profile: off it, or their account disabled (alias-free, on calendar_feeds)
+_NO_ACCESS = """(NOT EXISTS (SELECT 1 FROM memberships m WHERE m.user_id = calendar_feeds.user_id AND m.profile_id = calendar_feeds.profile_id)
+                 OR EXISTS (SELECT 1 FROM users u WHERE u.id = calendar_feeds.user_id AND u.disabled = 1))"""
+
+
+def drop_without_access(db):
+    """Delete every feed whose person can no longer view its profile (#590): it would answer again with its old address
+    once they could, though nobody saw it meanwhile to revoke it. Called after access is taken away and before it is
+    given (accounts.end_lost_access). Returns how many."""
+    return db.execute(f"DELETE FROM calendar_feeds WHERE {_NO_ACCESS}").rowcount
+
+
+def drop_for(db, uid):
+    """Delete every feed of an account (#590): on Sign out everywhere else, an admin's password reset, a sign-in with a
+    recovery code and the other ends of every session (accounts.sign_out_everywhere), since each may follow a lost
+    phone, and its calendar app holds the feed's address. Returns how many."""
+    return db.execute("DELETE FROM calendar_feeds WHERE user_id=?", (uid,)).rowcount
 
 
 def fetched(db, feed):

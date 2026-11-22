@@ -441,6 +441,8 @@ class Calendar(unittest.TestCase):
         self.drop()
 
     def test_feed_stops_when_access_ends(self):
+        # however its person's access ended, the feed is gone for good once it's fetched (#590: it answered again
+        # once they could view the profile again)
         j = self.make(who="lee")
         self.fetch(j["path"])
         db = dbm.connect()
@@ -449,14 +451,99 @@ class Calendar(unittest.TestCase):
             self.fetch(j["path"], 404)
         finally:
             db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'editor')", (self.uid["lee"], self.pid))
+        self.fetch(j["path"], 404)
+        j = self.make(who="lee")
         db.execute("UPDATE users SET disabled=1 WHERE id=?", (self.uid["lee"],))
         try:
             self.fetch(j["path"], 404)
         finally:
             db.execute("UPDATE users SET disabled=0 WHERE id=?", (self.uid["lee"],))
             db.close()
+        self.fetch(j["path"], 404)
+        self.assertIsNone(self.c["lee"].get(f"/api/profiles/{self.pid}/calendar").json()["mine"])
+
+    def test_a_feed_ends_for_good_when_access_ends(self):   # #590
+        put = lambda role: self.assertEqual(self.c["robin"].put(f"/api/profiles/{self.pid}/members", json={"username": "lee", "role": role},
+                                                                headers=H).status_code, 200)
+        # removed by an owner, then added again: the old address stays dead, and nobody is left with a feed they can't see
+        j = self.make(who="lee")
+        self.assertEqual(self.c["robin"].delete(f"/api/profiles/{self.pid}/members/{self.uid['lee']}", headers=H).status_code, 200)
+        self.assertNotIn("lee", {f["username"] for f in self.c["robin"].get(f"/api/profiles/{self.pid}/calendar").json()["everyone"]})
+        put("editor")
+        self.fetch(j["path"], 404)
+        self.assertIsNone(self.c["lee"].get(f"/api/profiles/{self.pid}/calendar").json()["mine"])
+        # one left behind by a removal before this fix, never fetched since: gone when they're added again
+        j = self.make(who="lee")
+        db = dbm.connect()
+        try:
+            db.execute("DELETE FROM memberships WHERE user_id=? AND profile_id=?", (self.uid["lee"], self.pid))
+        finally:
+            db.close()
+        put("editor")
+        self.fetch(j["path"], 404)
+        # a change of role keeps it: they can still view the profile
+        j = self.make(who="lee")
+        put("viewer")
+        self.fetch(j["path"])
+        put("editor")
         self.fetch(j["path"])
         self.drop("lee")
+
+    def test_a_feed_ends_with_sign_out_everywhere_a_reset_and_a_recovery_code(self):   # #590: each may follow a lost phone
+        import time
+        from server import twofactor
+        code = lambda secret, ahead=0: twofactor._code(secret, int(time.time() // twofactor.PERIOD) + ahead)
+        pw, pw2, admin_pw = "nell keeps a long passphrase", "nell keeps another long passphrase", "ops keeps a long passphrase"
+        db = dbm.connect()
+        nell = accounts.create(db, "nell", password=pw)[0]
+        accounts.create(db, "ops", is_admin=True, password=admin_pw)
+        db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'viewer')", (nell, self.pid))
+        db.close()
+
+        def signin(name, password):
+            c = client()
+            r = c.post("/api/login", json={"username": name, "password": password}, headers=H)
+            self.assertEqual(r.status_code, 200, r.text)
+            return c, r.json()
+
+        def feed(c):
+            r = c.post(f"/api/profiles/{self.pid}/calendar", json={"tz": "UTC"}, headers=H)
+            self.assertEqual(r.status_code, 200, r.text)
+            self.fetch(r.json()["path"])
+            return r.json()["path"]
+
+        # Sign out everywhere else, from another of her devices
+        phone, _ = signin("nell", pw)
+        laptop, _ = signin("nell", pw)
+        path = feed(phone)
+        r = laptop.post("/api/sessions/revoke-others", headers=H)
+        self.assertEqual((r.status_code, r.json()["revoked"], r.json()["calendar_feeds"]), (200, 1, 1), r.text)
+        self.fetch(path, 404)
+        # an admin's reset of her password
+        path = feed(laptop)
+        ops, _ = signin("ops", admin_pw)   # an admin with a second factor of their own (admin routes need it)
+        secret = ops.post("/api/me/2fa/start", json={"password": admin_pw}, headers=H).json()["secret"]
+        self.assertEqual(ops.post("/api/me/2fa/confirm", json={"code": code(secret), "password": admin_pw}, headers=H).status_code, 200)
+        r = ops.patch(f"/api/users/{nell}", json={"reset_password": True}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.fetch(path, 404)
+        # signing in with a recovery code
+        temp = r.json()["temporary_password"]
+        c, _ = signin("nell", temp)
+        self.assertEqual(c.post("/api/me/password", json={"current": temp, "new": pw2}, headers=H).status_code, 200)
+        secret = c.post("/api/me/2fa/start", json={"password": pw2}, headers=H).json()["secret"]
+        recovery = c.post("/api/me/2fa/confirm", json={"code": code(secret), "password": pw2}, headers=H).json()["recovery_codes"]
+        path = feed(c)
+        c2, first = signin("nell", pw2)
+        self.assertEqual(c2.post("/api/login/code", json={"ticket": first["ticket"], "code": recovery[0]}, headers=H).status_code, 200)
+        self.fetch(path, 404)
+        # a code from the app ends nothing
+        path = feed(c2)
+        c3, first = signin("nell", pw2)
+        self.assertEqual(c3.post("/api/login/code", json={"ticket": first["ticket"], "code": code(secret, 1)}, headers=H).status_code, 200)
+        self.fetch(path)
+        self.assertEqual(self.c["robin"].delete(f"/api/profiles/{self.pid}/members/{nell}", headers=H).status_code, 200)   # as it was
+        self.fetch(path, 404)
 
     def test_change_details(self):
         j = self.make()
