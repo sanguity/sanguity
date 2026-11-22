@@ -61,7 +61,8 @@ BUDGETS = {
     "phone_page_ready_ms": 5000,        # the same at 375 px with the CPU four times slower, like a phone's
     "phone_tab_draw_ms": 3000,
     "pan_frame_ms": 150,                # a frame of dragging a tab's charts with the period "All" (#292): every chart drawn
-    "phone_pan_frame_ms": 250,          # again for the moved window, to the frame after; on a phone as above
+    "phone_pan_frame_ms": 450,          # again for the moved window, to the frame after; on a phone as above (CI's runner
+                                        # is about 2.2 times slower: 332 ms there for the heatmap, 151 here; #300 to bring it down)
     "share_page_px": 20_000,            # a share link's page with every section, of any date, at 1400 px (#491)
     "static_bytes": 310_000,           # www/'s stylesheets, fonts and SVG icons as nginx sends them, whatever the records
                                         # (#253; compressed as sent since Redesign 4, the owner's choice): room for R4–R7
