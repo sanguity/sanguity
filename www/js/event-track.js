@@ -123,9 +123,10 @@ function drawTrack() {
   };
   svg.onblur = () => { if (svg._kt == null) return; svg._kt = null; ckSync(svg, null); hideTip(); };
   svg._kt = null;
-  // under the top bar while the charts scroll, unless it would take too much of the window; what has focus in a chart
-  // scrolls clear of it (app.css, 2.4.11)
-  const card = svg.closest(".ev-track"), stuck = card.offsetHeight <= innerHeight * .35;
+  // under the top bar while the charts scroll, unless it would take too much of the window, or the window is a phone's
+  // (#615: with the top bar, the tab bar and the stack's axis it left half the screen for the charts); what has focus in
+  // a chart scrolls clear of it (app.css, 2.4.11)
+  const card = svg.closest(".ev-track"), stuck = !matchMedia("(max-width:640px)").matches && card.offsetHeight <= innerHeight * .35;
   card.classList.toggle("stuck", stuck);
   trackRoom(stuck ? card.offsetHeight : 0);
 }
