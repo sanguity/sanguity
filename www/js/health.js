@@ -93,15 +93,18 @@ function weekly(pts, fn = mean) {  // [[t, v...]] -> weekly buckets (Monday), av
   return [...m.entries()].sort((a, b) => a[0] - b[0]).map(([k, ps]) => [k + 3 * DAY, ...ps[0].slice(1).map((_, i) => fn(ps.map(p => p[i + 1] || 0)))]);
 }
 
-/* one chart: x = time [a, b]; layers: bars (stacked), band, line, dots */
+/* one chart: x = time [a, b]; layers: bars (stacked), band, line, dots; drawn with the kit (chartkit.js): its scales,
+   axes and grid, and its crosshair, at one date on every chart of the tab, with the readout pinned above it */
 /* label, noun, nav (#60): what the chart shows ("Weight"), what each point is ("reading"), and the points the
-   keyboard steps through ([[t, …]], the ones its tip reads) */
+   keyboard steps through ([[t, …]], the ones its tip reads); h: its height with one row of time labels */
 function hChart(host, a, b, {h = 190, layers, fmtY = v => v, unit = "", zero = false, tip, label = "Chart", noun = "day", nav = layers[0].data}) {
-  const svg = el("svg:svg", {role: "img", class: "pz", "aria-label": label}); host.append(svg);
+  const svg = el("svg:svg", {role: "img", class: "pz ck", "aria-label": label}); host.append(svg);
   svg._draw = (a, b) => {   // also called live while dragging, with the new window
+    svg._hover = null;
     if (!svg.isConnected) return;   // re-rendered before this frame came round
-    const cs = getComputedStyle(host), w = Math.max(260, host.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)), L = 44, R = w - 8, T = msInRange(a, b) ? 22 : 8, B = h - 22;
-    svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("height", h); svg.style.width = "100%"; svg._geom = {L, R, w};
+    const cs = getComputedStyle(host), w = Math.max(260, host.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)), L = 44, R = w - 8, T = msInRange(a, b) ? 22 : 8;
+    const x = ckScale(a, b, L, R), tk = ckTimeTicks(a, b, x, w), AX = ckAxisH(tk.rows), hh = h - 22 + AX, B = hh - AX;
+    svg.setAttribute("viewBox", `0 0 ${w} ${hh}`); svg.setAttribute("height", hh); svg.style.width = "100%"; svg._geom = {L, R, T, B, w};
     const navIn = nav.filter(p => p[0] >= a && p[0] <= b);   // the keyboard's points (#60)
     chartKeys(svg, `${label}: ${navIn.length} ${noun}${navIn.length === 1 ? "" : "s"}${navIn.length ? ` from ${fmtD(navIn[0][0])} to ${fmtD(navIn[navIn.length - 1][0])}` : " in this period"}. Left and right arrow keys step through them.`,
       () => navIn.map(p => p[0]), () => "", () => {});   // until it's drawn (below)
@@ -111,23 +114,15 @@ function hChart(host, a, b, {h = 190, layers, fmtY = v => v, unit = "", zero = f
       const vs = l.type === "bars" ? [l.keys.reduce((s, _, i) => s + (p[i + 1] || 0), 0)] : l.type === "band" || l.type === "pairs" ? [p[1], p[2]] : [p[1]];
       for (const v of vs) if (v != null && isFinite(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
     }
-    if (!isFinite(lo)) { svg.replaceChildren(el("svg:text", {x: w / 2, y: h / 2, "text-anchor": "middle", text: "No data in this period"})); return; }
+    if (!isFinite(lo)) { svg.replaceChildren(el("svg:text", {x: w / 2, y: hh / 2, "text-anchor": "middle", text: "No data in this period"})); return; }
     for (const l of layers) if (l.type === "target") for (const v of [l.low, l.high]) if (v != null && isFinite(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); }   // #234: in sight
     if (zero || layers.some(l => l.type === "bars")) lo = 0;
     const pad = (hi - lo) * 0.08 || Math.abs(hi) * 0.05 || 1; hi += pad; if (!zero && lo !== 0) lo -= pad;
-    const x = t => L + (t - a) / (b - a) * (R - L), y = v => B - (v - lo) / (hi - lo) * (B - T);
-    const g = [];
+    const y = ckScale(lo, hi, B, T), g = [];
     if (hState.stays) for (const s of STAYS) if (s.te >= a && s.ts <= b) g.push(el("svg:rect", {x: x(Math.max(a, s.ts)), y: T, width: Math.max(2, x(Math.min(b, s.te)) - x(Math.max(a, s.ts))), height: B - T, fill: "var(--stay)"}));
-    for (const v of niceTicks(lo, hi, 4)) { g.push(el("svg:line", {class: "gridline", x1: L, x2: R, y1: y(v), y2: y(v)})); g.push(el("svg:text", {x: L - 6, y: y(v) + 4, "text-anchor": "end", text: fmtY(v)})); }
+    ckGrid(g, y, niceTicks(lo, hi, 4), L, R, fmtY);
     { const ms = msMarks(g, x, a, b, T > 8 ? 17 : T, B, R, 13); if (ms) svg.setAttribute("aria-label", svg.getAttribute("aria-label") + " " + ms); }   // their names in words (#312)
-    g.push(el("svg:line", {x1: L, x2: R, y1: B, y2: B, stroke: "var(--axis)"}));
-    const span = (b - a) / DAY, fmtX = span > 500 ? {year: "numeric"} : span > 75 ? {month: "short"} : {month: "short", day: "numeric"};
-    const step = span > 500 ? 365 : span > 75 ? 30.4 : 7, n = Math.max(1, Math.ceil(span / step / Math.max(2, Math.floor((R - L) / 64))));
-    const d0 = zdate(a); if (span > 500) d0.setMonth(0, 1); else if (span > 75) d0.setDate(1); d0.setHours(12);
-    for (let d = zdate(d0), i = 0; d.getTime() <= b; i++) {
-      if (d.getTime() >= a && i % n === 0) g.push(el("svg:text", {x: x(d.getTime()), y: h - 5, "text-anchor": "middle", text: d.toLocaleDateString(undefined, fmtX)}));
-      if (span > 500) d.setFullYear(d.getFullYear() + 1); else if (span > 75) d.setMonth(d.getMonth() + 1); else d.setDate(d.getDate() + 7);
-    }
+    ckAxis(g, tk, L, R, B, hh - AX + 16);
     for (const l of layers) {
       const pts = (l.data || []).filter(p => p[0] >= a && p[0] <= b);
       if (l.type === "target") {   // a target of the person's own (#234): a band between its ends, or a line at its one end, labelled
@@ -166,24 +161,16 @@ function hChart(host, a, b, {h = 190, layers, fmtY = v => v, unit = "", zero = f
         }
       }
     }
-    const cross = el("svg:line", {class: "cross", y1: T, y2: B, visibility: "hidden"});
-    const hit = el("svg:rect", {x: L, y: T, width: R - L, height: B - T, fill: "transparent"});
-    hit.addEventListener("pointermove", ev => {
-      const r = svg.getBoundingClientRect(), t = a + ((ev.clientX - r.left) * (w / r.width) - L) / (R - L) * (b - a);
-      const nodes = tip && tip(t); if (!nodes) { hideTip(); cross.setAttribute("visibility", "hidden"); return; }
-      cross.setAttribute("x1", x(nodes.t)); cross.setAttribute("x2", x(nodes.t)); cross.setAttribute("visibility", "visible");
-      showTip(nodes.rows, ev);
-    });
-    hit.addEventListener("pointerleave", () => { hideTip(); cross.setAttribute("visibility", "hidden"); });
+    // the crosshair at the tip's point nearest t, on every chart of the tab at once (ckSync); the tooltip this one's
+    const cross = ckCross(T, B), hit = el("svg:rect", {x: L, y: T, width: R - L, height: B - T, fill: "transparent"});
+    svg._hover = t => { const n = t == null ? null : tip?.(t); ckCrossAt(cross, n ? x(n.t) : null); return n; };
+    const show = t => { const n = ckSync(svg, t); n ? ckTip(svg, x(n.t), n.rows) : hideTip(); return n ? tipWords(n.rows) : ""; };
+    hit.addEventListener("pointermove", ev => { const r = svg.getBoundingClientRect(); show(x.inv((ev.clientX - r.left) * (w / r.width))); });
+    hit.addEventListener("pointerleave", () => { ckSync(svg, null); hideTip(); });
     g.push(cross, hit);
     svg.replaceChildren(...g);
-    // the keyboard (#60): the same crosshair and tooltip as hovering, the tooltip at the top of the crosshair
-    chartKeys(svg, svg.getAttribute("aria-label"), () => navIn.map(p => p[0]), t => {
-      const nodes = tip && tip(t); if (!nodes) return "";
-      cross.setAttribute("x1", x(nodes.t)); cross.setAttribute("x2", x(nodes.t)); cross.setAttribute("visibility", "visible");
-      showTip(nodes.rows, svgPoint(svg, x(nodes.t), T));
-      return tipWords(nodes.rows);
-    }, () => { hideTip(); cross.setAttribute("visibility", "hidden"); });
+    // the keyboard (#60): the same crosshairs and tooltip as hovering
+    chartKeys(svg, svg.getAttribute("aria-label"), () => navIn.map(p => p[0]), show, () => { ckSync(svg, null); hideTip(); });
   };
   requestAnimationFrame(() => svg._draw(a, b));
   return svg;
@@ -282,7 +269,7 @@ function renderHealth() {
   tile("Workouts", exIn.length, exIn.length === 1 ? "session" : "sessions", exIn.length ? `${Math.round(exIn.reduce((s, x) => s + x.min, 0) / 60 * 10) / 10} hours total` : "", "#h-activity");
 
   const C = {w: "var(--c-lab)", clinic: "var(--muted)", fat: "var(--c-imaging)", lean: "var(--c-procedure)", deep: "var(--seq1)", rem: "var(--seq2)", light: "var(--seq3)", steps: "var(--c-lab)", hr: "var(--c-letter)", rest: "var(--c-message)"};
-  const legend = items => el("div", {class: "legend mb-2"}, ...items.map(([c, t, round]) => el("span", {}, el("i", {style: {background: c, borderRadius: round ? "50%" : null, width: round ? "9px" : null, height: round ? "9px" : null}}), t)));
+  const legend = items => { const k = ckLegend(items); k.classList.add("mb-2"); return k; };   // the kit's (chartkit.js): [colour, words, "line" / 1 a dot / "ring"]
 
   /* Chart | Table on each card (#60, head above): its charts, or one table of what they show, a row per day (or week)
      in the period, newest first. byDay([pts, …]) -> [{t, v: [the point from each on that day, or undefined]}] */
@@ -305,7 +292,7 @@ function renderHealth() {
       body.append(...hTable("#h-body", ["Date", "Weight (lb)", "From", ...(bm ? ["BMI (kg/m²)"] : []), ...(who ? ["WHO adult category"] : []), ...(comp ? ["Body fat (%)", "Lean mass (lb)"] : [])],
         byDay(wAll, H.fat, H.lean, H.bmi.map(r => [r.t, r.v, r])).map(({t, v: [w, fat, lean, bp]}) => [fmtD(t), w && wSide(w) ? [f1(w), wSide(w), TGT_WORDS[wSide(w)]] : f1(w), w ? (w[2] ? `Clinic visit (${w[2]})` : "Smart scale") : "",
           ...(bm ? [bp ? bmiWords(bp[2]) : ""] : []), ...(who ? [bp && !bp[2].child ? whoWords(bp[2].v) : ""] : []), ...(comp ? [f1(fat), f1(lean)] : [])])));
-    } else { body.append(legend([[C.w, "Smart scale", 1], [C.clinic, "Clinic visit", 1], [C.w, "14-day average"]])); if (wT) body.lastChild.append(tgtKey()); }
+    } else { body.append(legend([[C.w, "Smart scale", 1], [C.clinic, "Clinic visit", "ring"], [C.w, "14-day average", "line"]])); if (wT) body.lastChild.append(tgtKey()); }
     const wTrend = rolling(wAll, 14);
     if (!state.tables.has("#h-body")) hChart(body, a, b, {h: 220, fmtY: v => Math.round(v), label: "Weight", noun: "reading", nav: wAll, layers: [
       ...(wT ? [tgtLayer(wT)] : []),
@@ -341,7 +328,7 @@ function renderHealth() {
       ht.append(...hTable("#h-heart", ["Date", "Resting (bpm)", "Average (bpm)", "Low–high (bpm)", ...(H.hrv.length ? ["Heart rate variability (ms)"] : [])],
         byDay(rest, H.hr, H.hrv).map(({t, v: [r, h, hv]}) => [fmtD(t), f0(r), f0(h), h && h[2] != null ? `${Math.round(h[2])}–${Math.round(h[3])}` : "", ...(H.hrv.length ? [f0(hv)] : [])])));
     } else {
-      ht.append(legend([[C.rest, "Resting"], [C.hr, "Daily average"], ["color-mix(in srgb, " + C.hr + " 30%, transparent)", "Daily low–high"]]));
+      ht.append(legend([[C.rest, "Resting", "line"], [C.hr, "Daily average", "line"], ["color-mix(in srgb, " + C.hr + " 30%, transparent)", "Daily low–high"]]));
       hChart(ht, a, b, {h: 210, fmtY: v => Math.round(v), label: "Heart rate", noun: "day", nav: H.hr.length ? H.hr : rest, layers: [
         {type: "band", data: H.hr.map(p => [p[0], p[2], p[3]]), color: C.hr},
         {type: "line", data: H.hr, color: C.hr, width: 1.4, opacity: .8, gap: 4},
@@ -389,7 +376,7 @@ function renderHealth() {
       act.append(...hTable("#h-activity", [long ? "Week" : "Date", long ? "Steps (average a day)" : "Steps", "Workouts"],
         byDay(stBars, exPts).map(({t, v: [p, e]}) => [long ? weekOf(t) : fmtD(t), f0(p),
           (exBy.get(e ? e[0] : NaN) || []).map(x => x.pt ? `${x.rule} appointment, counted as ${x.min} min` : `${x.name || "Workout"} ${x.min} min`).join("; ")])));
-    } else act.append(legend([[C.steps, long ? "Steps / day (weekly avg)" : "Steps"], ["var(--ink2)", long ? "30-day average" : "7-day average"]]));
+    } else act.append(legend([[C.steps, long ? "Steps / day (weekly avg)" : "Steps"], ["var(--ink2)", long ? "30-day average" : "7-day average", "line"]]));
     if (!state.tables.has("#h-activity")) hChart(act, a, b, {h: 190, fmtY: v => v >= 1000 ? Math.round(v / 1000) + "k" : v, label: long ? "Steps, weekly averages" : "Steps", noun: long ? "week" : "day", nav: stBars, layers: [
       {type: "bars", data: stBars.map(p => [p[0], p[1]]), keys: ["steps"], colors: [C.steps], every: long ? 7 * DAY : DAY},
       {type: "line", data: rolling(H.steps, long ? 30 : 7), color: "var(--ink2)", width: 1.6, gap: 10}],
@@ -534,7 +521,7 @@ function bpCard(box, a, b, long, legend, head, home, clinic) {
         r.pulse != null ? fmtNum(r.pulse) : "", r.home ? "Home" : "Clinic visit", r.src + homeAlso(r).replace(/ · /g, "; ")])));
     return;
   }
-  card.append(legend([[C.home, long ? "At home, weekly average" : "At home", 1], [C.clinic, "At a visit", 1]]));
+  card.append(legend([[C.home, long ? "At home, weekly average" : "At home", 1], [C.clinic, "At a visit", "ring"]]));
   if (bT.some(Boolean)) card.lastChild.append(tgtKey());
   if (clinic.some(r => r.f.some(Boolean))) card.querySelector(".hint").append(" ▲ or ▼ marks a value the clinic's report flagged as high or low.");
   const wk = long ? weekly(home.map(r => [r.t, r.v[0], r.v[1]])) : [];
@@ -697,8 +684,8 @@ function hGlucose(box, a, b, {head, legend, byDay}) {
           ...(labs ? [ls.length ? [ls.map(l => `${fmt(l[1])} (${nice(l[3])})`).join("; "), ls.find(l => l[2])?.[2] || ""] : ""] : [])]; })));
     return;
   }
-  card.append(legend([[G_C.cgm, "CGM daily average"], ["color-mix(in srgb, " + G_C.cgm + " 30%, transparent)", "CGM daily low–high"], [G_C.meter, G.meter.some(m => m[2]) ? "Meter reading, from the phone or typed in" : "Meter reading", 1],
-    ...(labs ? [[G_C.lab, "Lab result", 1]] : []), ["color-mix(in srgb, var(--muted) 30%, transparent)", `${s1}–${s2} ${u}, the standard range`]]));
+  card.append(legend([[G_C.cgm, "CGM daily average", "line"], ["color-mix(in srgb, " + G_C.cgm + " 30%, transparent)", "CGM daily low–high"], [G_C.meter, G.meter.some(m => m[2]) ? "Meter reading, from the phone or typed in" : "Meter reading", 1],
+    ...(labs ? [[G_C.lab, "Lab result", "ring"]] : []), ["color-mix(in srgb, var(--muted) 30%, transparent)", `${s1}–${s2} ${u}, the standard range`]]));
   if (G.mT) card.lastChild.append(tgtKey("Your target for meter readings, as your care team gave it"));
   const std = [];   // the standard range as a band, over the days with glucose
   for (let t = dayTs(isoDay(G.first)) - DAY; t <= G.last + DAY; t += DAY) std.push([t, ...G.inStd]);
@@ -746,7 +733,7 @@ function tempCard(box, a, b, legend, head, {unit, chosen, home, clinic}) {
       [...all].reverse().map(r => [fmtDT(r.t), tgtCell(r.v[0].toFixed(1), r, 0), r.home ? "Home" : "Clinic visit", r.src + homeAlso(r).replace(/ · /g, "; ")])));
     return;
   }
-  card.append(legend([[C.home, "At home", 1], [C.clinic, "At a visit", 1]]));
+  card.append(legend([[C.home, "At home", 1], [C.clinic, "At a visit", "ring"]]));
   if (tT) card.lastChild.append(tgtKey());
   const homePts = home.map(r => [r.t, r.v[0], null, (r.tf || [])[0] || "", "", r]), clinicPts = clinic.map(r => [r.t, r.v[0], null, r.f[0], "", r]);
   const nav = [...homePts, ...clinicPts].sort((p, q) => p[0] - q[0]);
@@ -777,7 +764,7 @@ function oxygenCard(box, a, b, long, legend, head, {home, typed = [], clinic}) {
     return;
   }
   card.append(legend([...(home.length ? [[C.home, long ? "Phone, weekly" : "Phone, daily average", 1]] : []), ...(typed.length ? [[C.typed, "At home, one reading", 1]] : []),
-    [C.clinic, "At a visit", 1]]));
+    [C.clinic, "At a visit", "ring"]]));
   if (oT) card.lastChild.append(tgtKey());
   const dayPts = home.map(r => [r.t, r.v[0], r.v[1] ?? r.v[0], r]), pts = long ? weekly(dayPts.map(p => p.slice(0, 3))) : dayPts;
   const clinicPts = clinic.map(r => [r.t, r.v[0], null, r.f[0], "", r]), typedPts = typed.map(r => [r.t, r.v[0], null, (r.tf || [])[0] || "", "", r]);
@@ -833,7 +820,7 @@ function phoneDayCard(box, {a, b, long, legend, head}, o) {
         r.day ? r.src[0].toUpperCase() + r.src.slice(1) : r.src])));
     return;
   }
-  card.append(legend([[C.home, long ? "Phone, weekly average" : "Phone, by day", 1], ...(visits ? [[C.clinic, "At a visit", 1]] : [])]));
+  card.append(legend([[C.home, long ? "Phone, weekly average" : "Phone, by day", 1], ...(visits ? [[C.clinic, "At a visit", "ring"]] : [])]));
   const dayPts = o.home.map(r => [r.t, r.v[0], null, "", "", r]), pts = long ? weekly(o.home.map(r => [r.t, r.v[0]])) : dayPts;
   const clinicPts = o.clinic.map(r => [r.t, r.v[0], null, r.f[0], "", r]);
   const nav = [...pts, ...clinicPts].sort((p, q) => p[0] - q[0]);
@@ -1107,9 +1094,9 @@ function growthChart(host, sex, set, key, pts) {
     for (const [, ln] of lines) for (const p of ln) { lo = Math.min(lo, p[1]); hi = Math.max(hi, p[1]); }
     for (const m of pts) { lo = Math.min(lo, m.x * f); hi = Math.max(hi, m.x * f); }
     const pad = (hi - lo) * 0.05 || 1; lo -= pad; hi += pad;
-    const x = d => L + (d - from) / (to - from) * (R - L), y = v => B - (v - lo) / (hi - lo) * (B - T);
+    const x = ckScale(from, to, L, R), y = ckScale(lo, hi, B, T);
     const g = [];
-    for (const v of niceTicks(lo, hi, 5)) { g.push(el("svg:line", {class: "gridline", x1: L, x2: R, y1: y(v), y2: y(v)})); g.push(el("svg:text", {x: L - 6, y: y(v) + 4, "text-anchor": "end", text: String(+v.toFixed(1))})); }
+    ckGrid(g, y, niceTicks(lo, hi, 5), L, R, v => String(+v.toFixed(1)));
     g.push(el("svg:line", {x1: L, x2: R, y1: B, y2: B, stroke: "var(--axis)"}));
     const yrs = (to - from) / Y, step = set === "who" ? (w < 420 ? 6 : 3) * MONTH_DAYS : (yrs > 9 || w < 420 ? 2 : 1) * Y;
     for (let d = from; d <= to + 1; d += step) g.push(el("svg:text", {x: x(d), y: B + 15, "text-anchor": "middle", text: String(Math.round(set === "who" ? d / MONTH_DAYS : d / Y))}));

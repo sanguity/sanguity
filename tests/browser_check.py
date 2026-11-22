@@ -1325,6 +1325,33 @@ CHART_LABELS_JS = r"""sel => {
   return out;
 }"""
 
+# a kit chart's time axis (#291, chartkit.js): of each drawn chart matching the selector (an argument), its labels under
+# the plot (below _geom.B: the finer row, and the coarser row's .ck-yr), and what's wrong with them: two in a row that
+# overlap, one sticking out of its chart, or a month written as it would read as a day ("Sep 26", #561)
+CHART_AXIS_JS = r"""sel => {
+  const out = {charts: 0, rows: [], problems: []};
+  for (const svg of document.querySelectorAll(sel)) {
+    const g = svg._geom, r = svg.getBoundingClientRect();
+    if (!g || g.B == null || !svg.checkVisibility() || !r.width) continue;
+    out.charts++;
+    const name = (svg.getAttribute('aria-label') || '').split(/[:,]/)[0], rows = new Map();
+    for (const t of svg.querySelectorAll('text')) {
+      if (+t.getAttribute('y') <= g.B || t.getAttribute('text-anchor') === 'end' || (t.getAttribute('class') && !t.classList.contains('ck-yr'))) continue;   // not a value's label by its gridline
+      const b = t.getBoundingClientRect(), y = t.getAttribute('y');
+      if (!rows.has(y)) rows.set(y, []);
+      rows.get(y).push([b.left, b.right, t.textContent]);
+      if (b.left < r.left - .5 || b.right > r.right + .5) out.problems.push(`${name}: "${t.textContent}" sticks out of its chart`);
+      if (/^[A-Z][a-z]{2} \d{1,2}$/.test(t.textContent)) out.problems.push(`${name}: "${t.textContent}" reads as a day`);
+    }
+    for (const row of rows.values()) {
+      row.sort((p, q) => p[0] - q[0]);
+      row.forEach((p, i) => { if (i && p[0] < row[i - 1][1] - .5) out.problems.push(`${name}: "${row[i - 1][2]}" and "${p[2]}" overlap`); });
+    }
+    out.rows.push([...rows.values()].map(row => row.map(p => p[2])));
+  }
+  return out;
+}"""
+
 # what a chart draws in the accent (#334): of each drawn chart matching the selector (an argument), every element whose
 # computed fill or stroke is the accent's colour (read from an element that uses --accent), and how many milestone rules,
 # milestone labels and cursors were looked at, so the check can't pass on charts with none. A cursor is hidden until a
@@ -3726,6 +3753,25 @@ def main():
                   and js("document.activeElement === document.querySelector('#charts .chart svg:not(.icon)')"))
             ring = js("(s => [getComputedStyle(s).outlineStyle, s.matches(':focus-visible')])(document.querySelector('#charts .chart svg:not(.icon)'))")
             check("…a ring shows the focus", ring == ["solid", True], ring)
+            # #291: Labs' charts draw with the kit (chartkit.js): the time axis's labels in two rows, months over their
+            # years, on All and zoomed in to a month, at 1400 and 320 px: none overlapping or out of its chart, none a
+            # month that reads as a day, more than one year named on All, and a month's days over its name when zoomed
+            ax291 = {}
+            for width in (1400, 320):
+                page.set_viewport_size({"width": width, "height": 900})
+                for per in ("all", "30d"):
+                    js("p => applyPreset(p)", per)
+                    settle(400)
+                    ax291[f"{per} {width}"] = js(CHART_AXIS_JS, "#charts svg.ck")
+            js("applyPreset('all')")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(300)
+            check("Labs (#291): the time axis is the kit's, the finer labels over the coarser, none overlapping, out of its chart or reading as a day, "
+                  "at 1400 and 320 px, on All and 30 days",
+                  all(v["charts"] == 1 and not v["problems"] and len(v["rows"][0]) == 2 for v in ax291.values())
+                  and all(len(ax291[f"all {w}"]["rows"][0][1]) >= 2 and all(re.match(r"^20\d\d$", y) for y in ax291[f"all {w}"]["rows"][0][1]) for w in (1400, 320))
+                  and all(re.match(r"^[A-Z][a-z]{2} 20\d\d$", m) for w in (1400, 320) for m in ax291[f"30d {w}"]["rows"][0][1])
+                  and all(re.match(r"^\d{1,2}$", d) for d in ax291["30d 1400"]["rows"][0][0]), ax291)
             page.click("#charts .chart .view-seg button:text-is('Table')")
             settle(200)
             t = js("""(() => { const t = document.querySelector('#charts .chart table.data');
@@ -3856,6 +3902,42 @@ def main():
             check("…its charts step from the keyboard too, with the hover's crosshair and tooltip", re.match(r"Weight: \d+ readings from", hk[0] or "")
                   and hk[1] == "block" and " lb" in hk[2] and hk[3] == "visible", hk)
             page.keyboard.press("Escape")
+            # #291: Body and activity draws with the kit (chartkit.js). On All (20 months of the demo's watch) its time
+            # axes are months over their years, not one "2026" under them all, none overlapping or out of its chart, at
+            # 1400 and 320 px; hovering one chart puts the crosshair at that date on every chart of the tab, the tooltip
+            # pinned to the top of the plot beside it, and leaving takes them all away; the legends key a line with a
+            # line and a visit's reading with a ring, as they're drawn
+            js("window._was291 = [state.preset, state.from, state.to]; applyPreset('all')")
+            hax291 = {}
+            for width in (1400, 320):
+                page.set_viewport_size({"width": width, "height": 900})
+                settle(500)
+                hax291[width] = js(CHART_AXIS_JS, "#view-health svg.ck")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(500)
+            js("document.querySelector('#h-body svg.ck').scrollIntoView({block: 'center'})")
+            box291 = page.locator("#h-body svg.ck").first.bounding_box()
+            page.mouse.move(box291["x"] + box291["width"] * .6, box291["y"] + box291["height"] * .6)
+            settle(200)
+            sync291 = js("""(() => { const [a, b] = hRange(), s = document.querySelector('#h-body svg.ck'), r = s.getBoundingClientRect(), g = s._geom;
+                const cs = [...document.querySelectorAll('#view-health svg.ck')].map(v => [v, v.querySelector('.cross')]).filter(([, c]) => c);
+                const days = cs.filter(([, c]) => c.getAttribute('visibility') === 'visible').map(([v, c]) => (a + (+c.getAttribute('x1') - v._geom.L) / (v._geom.R - v._geom.L) * (b - a)) / DAY);
+                return {charts: cs.length, on: days.length, spread: days.length ? Math.max(...days) - Math.min(...days) : null, tip: getComputedStyle(tip).display,
+                  tipTop: Math.round(tip.getBoundingClientRect().top - (r.top + g.T * r.height / s.viewBox.baseVal.height))}; })()""")
+            page.mouse.move(5, 5)
+            settle(200)
+            left291 = js("[...document.querySelectorAll('#view-health svg.ck .cross')].filter(c => c.getAttribute('visibility') === 'visible').length")
+            keys291 = js("[...document.querySelectorAll('#h-body .legend i, #h-heart .legend i')].map(i => [i.parentElement.textContent, i.className])")
+            js("[state.preset, state.from, state.to] = window._was291; renderAll()")
+            settle(300)
+            check("Body and activity (#291): on All its time axes are months over their years, more than one year named, none overlapping, "
+                  "out of its chart or reading as a day, at 1400 and 320 px",
+                  all(v["charts"] >= 5 and not v["problems"] and all(len(r) == 2 and len(r[1]) >= 2 for r in v["rows"]) for v in hax291.values()), hax291)
+            check("…hovering one chart puts the crosshair at that date on all of them, the tooltip pinned to the top of the plot; leaving takes them away",
+                  sync291["charts"] >= 5 and sync291["on"] >= 5 and sync291["spread"] <= 4 and sync291["tip"] == "block"
+                  and abs(sync291["tipTop"]) <= 1 and left291 == 0, [sync291, left291])
+            check("…and its legends key a line with a short line and a visit's reading with a ring",
+                  ["14-day average", "line"] in keys291 and ["Clinic visit", "ring"] in keys291 and ["Resting", "line"] in keys291, keys291)
             for k in ("#h-body", "#h-heart", "#h-bp", "#h-glucose", "#h-temp", "#h-oxygen", "#h-resp", "#h-sleep", "#h-activity", "#h-vo2"):
                 page.click(f"{k} .view-seg button:text-is('Table')")
                 settle(200)

@@ -630,8 +630,7 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .list-hd :is(h2,h3){margin:0!important}
 /* a heading wraps beside its one control: no font swap pushes that under it (#426) */
 .list-hd>:has(+.spacer+:last-child){flex:999 1 6em;min-width:0;line-height:1.3}
-.chart .hd .lg{display:inline-flex;gap:var(--sp-2);font-size:var(--fs-1);color:var(--ink2)}
-.chart .hd .lg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:var(--sp-1);vertical-align:-1px}
+.chart .hd .legend{margin:0;font-size:var(--fs-1)}   /* a watch lab's key, on its header's line (ckLegend) */
 .toolbar{display:flex;gap:var(--sp-4);align-items:center;flex-wrap:wrap;margin:0 0 var(--sp-3)}
 .toolbar label:not(.toggle){display:inline-flex;gap:var(--sp-2);align-items:center;font-size:var(--fs-3);color:var(--ink2);cursor:pointer}
 .toolbar input{margin:0}
@@ -687,10 +686,11 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .pt.abn{fill:var(--crit)}
 .stayband{fill:var(--stay)}
 .cross{stroke:var(--cursor);stroke-width:1;pointer-events:none}
+svg text.ck-yr{fill:var(--ink2);font-weight:var(--fw-medium)}   /* the time axis's coarser row: "2026" under its months (chartkit.js) */
 /* Forced colours don't reach SVG strokes and fills: milestones and cursors in system colours there, so a contrast theme
    opposite to the app's own doesn't leave them faint (#341; the ECG maps its cursor the same way) */
 @media (forced-colors:active){.msmark{stroke:CanvasText}.mslabel{fill:CanvasText}.cross{stroke:Highlight}
-  svg text:not([class]),.evlabel,.lane-label,svg text.medname{fill:CanvasText}}   /* a chart's own text too (#346) */
+  svg text:not([class]),.evlabel,.lane-label,svg text.medname,svg text.ck-yr{fill:CanvasText}}   /* a chart's own text too (#346) */
 table.data{border-collapse:collapse;width:100%;font-size:var(--fs-2);font-variant-numeric:tabular-nums}
 table.data th{text-align:left;color:var(--muted);font-weight:var(--fw-semibold);border-bottom:1px solid var(--axis);padding:var(--sp-1) var(--sp-2);position:sticky;top:0;background:var(--surface)}
 table.data td{border-bottom:1px solid var(--grid);padding:var(--sp-1) var(--sp-2);vertical-align:top}
@@ -786,6 +786,12 @@ details.res > div{padding:0 var(--sp-3) var(--sp-2)}
 .legend{display:flex;gap:var(--sp-3);flex-wrap:wrap;font-size:var(--fs-2);color:var(--ink2);margin:var(--sp-1) 0 0}
 .legend span{display:inline-flex;align-items:center;gap:var(--sp-2)}
 .legend i{display:inline-block;width:14px;height:8px;border-radius:2px}
+/* the kit's keys (chartkit.js ckLegend, #291) mirror the marks: a line's a short stroke, a point a dot, a visit's reading
+   a ring, a band a wash; a swatch for bars and areas */
+.legend i.line{height:2px}
+.legend i:is(.dot,.ring){width:8px;height:8px;border-radius:var(--r-pill)}
+.legend i.ring{border:2px solid}
+.legend i.band{opacity:.2}
 .stay-key{background:var(--stay);border:1px solid var(--stay-line)}   /* a hospital stay's shading, with its edge to be seen (#450) */
 /* forced colours drop a background: the swatches keep theirs, as the charts' marks do, and the stay's edge is the text's (#450) */
 @media (forced-colors:active){ .legend i,.hm-legend i{forced-color-adjust:none} .stay-key{border-color:CanvasText} }
