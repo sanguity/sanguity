@@ -102,7 +102,7 @@ function hChart(host, a, b, {h = 190, layers, fmtY = v => v, unit = "", zero = f
   svg._draw = (a, b, live) => {   // also called live while dragging, with the new window: at the width it had, so the
     svg._hover = null;             // charts drawn before it aren't laid out again to measure it (#292)
     if (!svg.isConnected) return;   // re-rendered before this frame came round
-    const cs = live && svg._geom ? null : getComputedStyle(host), w = cs ? Math.max(260, host.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) : svg._geom.w, L = 44, R = w - 8, T = msInRange(a, b) ? 22 : 8;
+    const cs = live && svg._geom ? null : getComputedStyle(host), w = cs ? Math.max(260, host.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) : svg._geom.w, L = w < 480 ? 36 : 44, R = w - 8, T = msInRange(a, b) ? 22 : 8;
     const x = ckScale(a, b, L, R), tk = ckTimeTicks(a, b, x, w), AX = ckAxisH(tk.rows), hh = h - 22 + AX, B = hh - AX;
     svg.setAttribute("viewBox", `0 0 ${w} ${hh}`); svg.setAttribute("height", hh); svg.style.width = "100%"; svg._geom = {L, R, T, B, w};
     const navIn = nav.filter(p => p[0] >= a && p[0] <= b);   // the keyboard's points (#60)
