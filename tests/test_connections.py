@@ -499,6 +499,50 @@ class Connections(unittest.TestCase):
         self.assertEqual(r.json()["removed"], 1)
         self.assertEqual(self.counts(), kept)
 
+    def test_a_disconnect_during_a_pull_leaves_nothing_it_read(self):   # #591
+        """Disconnect (keeping nothing) while a pull is reading, the first or a later one, at whichever step: what it
+        read isn't kept in the connection's store, nor added to the records, once the pull ends."""
+        sid = self.source()
+        before = self.counts()
+        for first, step in ((True, "_merge_store"), (False, "_merge_store"), (False, "_upload")):
+            with self.subTest(first=first, step=step):
+                cid = self.connect(sid)
+                if not first:
+                    self.first_pull(cid)
+                    self.fake.add({**NEW_OBS, "id": f"obs-591-{step}"}, patient="pat-1")
+                real = getattr(sync, step)
+
+                def then_disconnect(*a, **k):   # the network reads are done; the person clicks Disconnect now
+                    r = self.robin.post(f"/api/profiles/{self.pid}/connections/{cid}/disconnect", json={"remove_records": True}, headers=H)
+                    self.assertEqual(r.status_code, 200, r.text)
+                    return real(*a, **k)
+                with mock.patch.object(sync, step, then_disconnect):
+                    res = self.pull(cid)
+                self.assertFalse(res["ok"], res)
+                self.assertEqual(self.row(cid)["state"], "disconnected")
+                self.assertFalse(os.path.exists(sync.store_path(self.pid, cid)))
+                self.assertEqual(self.counts(), before)
+                db = dbm.connect()
+                try:   # no review left waiting either
+                    self.assertFalse(db.execute("SELECT 1 FROM jobs WHERE profile_id=? AND state IN ('queued', 'running', 'preview')",
+                                                (self.pid,)).fetchone())
+                finally:
+                    db.close()
+        # disconnected while its first pull waits for its review: the review goes with it, and what it read
+        cid = self.connect(sid)
+        jid = self.pull(cid)["job"]
+        end = time.time() + 30
+        while self.robin.get(f"/api/profiles/{self.pid}/jobs/{jid}").json()["state"] != "preview":
+            self.assertLess(time.time(), end)
+            time.sleep(0.05)
+        self.assertTrue(os.path.exists(sync.store_path(self.pid, cid)))
+        r = self.robin.post(f"/api/profiles/{self.pid}/connections/{cid}/disconnect", json={"remove_records": True}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        j = self.robin.get(f"/api/profiles/{self.pid}/jobs/{jid}").json()
+        self.assertEqual((j["state"], j["samples"]), ("discarded", None))
+        self.assertFalse(os.path.exists(sync.store_path(self.pid, cid)))
+        self.assertEqual(self.counts(), before)
+
     def test_tokens_encrypted_at_rest(self):
         sid = self.source("confidential", secret="fictional-secret-2")
         url = self.start(sid)

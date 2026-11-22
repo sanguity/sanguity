@@ -12,7 +12,9 @@
    - when the server can't be reached, app.js is answered from that copy (only that profile, and the person's own
      settings as its settings have them: the theme, the date format, units, #428; anything else, and every
      change, is refused as needing the server), and the page says it's offline, read-only, and when the records were
-     loaded. Without a copy it says records aren't available offline. */
+     loaded. Without a copy it says records aren't available offline.
+   - a copy whose profile the server no longer lists for the person (removed from it, left it, or it was deleted:
+     #591) is deleted as soon as the page hears so (SgOffline.still), here and on the other pages (offline-page.js). */
 "use strict";
 const OFFLINE = {on: false, copy: null};   // on: showing the kept copy, without the server
 
@@ -37,7 +39,18 @@ const OFFLINE = {on: false, copy: null};   // on: showing the kept copy, without
   function keep(path, r) {
     if (r.status === 401) { SgOffline.forget(); return; }
     if (!SgOffline.on()) { if (path === "me") SgOffline.drop(); return; }   // turned off (perhaps in another tab)
-    if (path === "me") { me = r.ok ? r.clone().json().catch(() => null) : null; return; }
+    if (path === "me") {
+      me = r.ok ? r.clone().json().catch(() => null) : null;
+      if (!r.ok) return;
+      const who = me;
+      queue = queue.then(async () => {   // no longer theirs (#591): the copy goes, whichever profile this page shows
+        const w = await who;
+        if (!w) return;
+        if (copy && !(w.profiles || []).some(p => p.id === copy.profile.id)) copy = null;
+        await SgOffline.still(w.profiles);
+      }).catch(e => console.warn("offline copy not checked:", e.message));
+      return;
+    }
     const dm = path.match(DETAILS);
     if (dm && r.status === 200) {   // a record opened: its details join the copy, if it's of the same records (#217)
       const pid = +dm[1], rev = r.headers.get("X-Records-Rev"), ids = idsOf(r.url), body = r.clone().json();

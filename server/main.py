@@ -118,6 +118,8 @@ async def lifespan(app):
                 print(f"Removed {gone} upload(s) left unfinished for over a day.", flush=True)
             if (stopped := jobs.recover(db)):
                 print(f"Marked {stopped} import(s) the last stop interrupted as failed; nothing of them was saved.", flush=True)
+            from . import journal_photos   # photos sent for a journal entry never saved, a day on (#591)
+            journal_photos.sweep_all(db)
             backup_jobs.recover(db)   # backups and checks a stop interrupted (#200)
             _setup_code(db)
         finally:
@@ -959,8 +961,10 @@ def delete_profile(pid: int, body: ProfileDelete, request: Request, s=Depends(us
         raise HTTPException(400, "Type the profile's name exactly to confirm.")
     gone = prof.delete_profile(db, pid)
     watch_keys.publish(db)   # its watch secret stops working
-    activity.log(db, "profile.delete", s, detail={"name": gone["name"], "members": gone["members"]}, ip=_client_ip(request))
-    return {"ok": True, "unlinked_build": gone["linked_build"]}
+    activity.log(db, "profile.delete", s, detail={"name": gone["name"], "members": gone["members"],
+                                                  **({"lab_matches": gone["lab_matches"]} if gone["lab_matches"] else {})},
+                 ip=_client_ip(request))
+    return {"ok": True, "unlinked_build": gone["linked_build"], "lab_matches": gone["lab_matches"]}
 
 
 @app.patch("/api/profiles/{pid}")

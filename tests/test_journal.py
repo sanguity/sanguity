@@ -8,7 +8,7 @@ or not at all, in the export, and in a share link only when ticked). Fictional d
 
   python3 tests/test_journal.py
 """
-import base64, io, json, os, re, shutil, struct, sys, tempfile, unittest, zipfile
+import base64, io, json, os, re, shutil, struct, sys, tempfile, unittest, unittest.mock, zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-journal-test-")
@@ -585,6 +585,55 @@ class Journal(unittest.TestCase):
         db = dbm.connect()
         self.assertEqual(db.execute("SELECT COUNT(*) FROM journal_photos WHERE entry_id IS NULL").fetchone()[0], 1)
         db.close()
+
+    def file_of(self, photo_id):
+        db = dbm.connect()
+        try:
+            r = db.execute("SELECT file FROM journal_photos WHERE id=?", (photo_id,)).fetchone()
+            return os.path.join(journal_photos.folder(self.pid), r["file"]) if r else None
+        finally:
+            db.close()
+
+    def test_photos_left_behind_go_at_start_up(self):   # #591
+        """A photo sent for an entry never saved is gone a day later even if no other is sent: the app starts by sweeping
+        them, and a file no photo names (left by a stop at the wrong moment) with them. One sent today stays."""
+        old, new = self.photo(PNG)["id"], self.photo(PNG)["id"]
+        old_file, new_file = self.file_of(old), self.file_of(new)
+        stray = os.path.join(journal_photos.folder(self.pid), "0" * 32 + ".img")
+        with open(stray, "wb") as f:
+            f.write(b"left by a stop")
+        db = dbm.connect()
+        db.execute("UPDATE journal_photos SET created=created-? WHERE id=?", (journal_photos.PENDING_SECONDS + 5, old))
+        db.close()
+        type(self).ctx.__exit__(None, None, None)
+        type(self).ctx = client().__enter__()
+        self.assertIsNone(self.file_of(old))
+        self.assertFalse(os.path.exists(old_file))
+        self.assertFalse(os.path.exists(stray))
+        self.assertTrue(os.path.exists(new_file))
+        self.assertEqual(self.file_of(new), new_file)
+
+    def test_a_save_that_fails_keeps_its_photos(self):   # #591
+        """A photo's file is removed only once the change that takes it away is saved: a save that fails after the
+        photos were matched up leaves the entry's photo whole."""
+        first = self.photo(PNG)["id"]
+        jid = self.add(kind="note", t="2026-04-04", note="Fictional", photos=[{"id": first}])["id"]
+        path, second = self.file_of(first), self.photo(WEBP)["id"]
+        change = {"kind": "note", "t": "2026-04-04", "note": "Fictional", "photos": [{"id": second}]}
+        from server import activity
+
+        def fails(*a, **k):
+            raise OSError("disk trouble, made up for the test")
+        quiet = TestClient(main.app, base_url="http://testserver", raise_server_exceptions=False)
+        quiet.cookies = self.robin.cookies
+        with unittest.mock.patch.object(activity, "log", fails):
+            for step in ("change", "delete"):
+                r = quiet.put(self.url(f"/{jid}"), json=change, headers=H) if step == "change" else quiet.delete(self.url(f"/{jid}"), headers=H)
+                self.assertEqual(r.status_code, 500, step)
+                self.assertTrue(os.path.exists(path), step)
+                self.assertEqual(self.kim.get(f"/api/profiles/{self.pid}/journal/photos/{first}").status_code, 200, step)
+        self.assertEqual(self.robin.put(self.url(f"/{jid}"), json=change, headers=H).status_code, 200)
+        self.assertFalse(os.path.exists(path))   # saved: gone
 
     def test_photos_in_export_and_share_links(self):
         sent = self.photo(jpeg_with_metadata())

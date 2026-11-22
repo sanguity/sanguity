@@ -322,6 +322,47 @@ class LabMapping(unittest.TestCase):
         self.assertEqual(self.entry(j, "HGB-U")["before"], {"target": "Hemoglobin"})
         self.robin.post(f"/api/profiles/{pid}/jobs/{j['id']}/discard", headers=H)
 
+    def test_deleting_a_profile_forgets_the_matches_its_imports_made(self):   # #591
+        """A profile deleted takes the lab-name matches its own reviews made with it (the name as reported, who
+        confirmed it), so they're no longer listed or applied: unless another profile has been saved with one since,
+        an admin has kept or changed one, or another profile's review made it."""
+        gone = self.with_hemoglobin("Deleted")
+        other = self.with_hemoglobin("Staying")
+        j = self.previewed(gone, csv(["2026-02-05", "HGB-D1", "12.0", "g/dL", "13.5 - 17.5", "L", "CBC", "718-7"],
+                                     ["2026-02-05", "HGB-D2", "12.0", "g/dL", "13.5 - 17.5", "L", "CBC", "718-8"],
+                                     ["2026-02-05", "HGB-D3", "12.0", "g/dL", "13.5 - 17.5", "L", "CBC", "718-9"],
+                                     ["2026-02-05", "HGB-D4", "12.0", "g/dL", "13.5 - 17.5", "L", "CBC", "718-6"]))
+        self.save(gone, j, {self.entry(j, n)["ref"]: "Hemoglobin" for n in ("HGB-D1", "HGB-D2", "HGB-D3", "HGB-D4")})
+        # HGB-D2: another profile saved with it since; HGB-D3: kept by an admin; HGB-D5: the other profile's own
+        k = self.previewed(other, csv(["2026-03-05", "HGB-D2", "12.4", "g/dL", "13.5 - 17.5", "L", "CBC", "718-8"],
+                                      ["2026-03-05", "HGB-D5", "12.4", "g/dL", "13.5 - 17.5", "L", "CBC", "718-5"]))
+        self.save(other, k, {self.entry(k, "HGB-D5")["ref"]: "Hemoglobin"})
+        mine = lambda: {m["name"]: m for m in self.ada.get("/api/labmaps").json() if m["name"].startswith("HGB-D")}
+        self.assertEqual(sorted(mine()), ["HGB-D1", "HGB-D2", "HGB-D3", "HGB-D4", "HGB-D5"])
+        self.assertEqual(self.ada.patch(f"/api/labmaps/{mine()['HGB-D3']['id']}", json={"target": "Hemoglobin", "keep": True},
+                                        headers=H).status_code, 200)
+        # HGB-D4: saved with again only by the profile itself, later (no other profile's import since it was made)
+        db = dbm.connect()
+        try:
+            later = dbm.now() + 3600   # past every other profile's import here
+            db.execute("UPDATE labmaps SET created=?, used=? WHERE id=?", (later, later + 5, mine()["HGB-D4"]["id"]))
+        finally:
+            db.close()
+        r = self.robin.request("DELETE", f"/api/profiles/{gone}", json={"confirm_name": "Deleted (fictional)"}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["lab_matches"], 2)
+        self.assertEqual(sorted(mine()), ["HGB-D2", "HGB-D3", "HGB-D5"])
+        db = dbm.connect()
+        try:   # and the activity log says how many went
+            d = json.loads(crypto.dec(db.execute("SELECT detail FROM activity WHERE action='profile.delete' ORDER BY id DESC").fetchone()[0]))
+        finally:
+            db.close()
+        self.assertEqual(d["lab_matches"], 2)
+        # no longer applied: the next import of that name, anywhere, asks again
+        k = self.previewed(other, csv(["2026-04-05", "HGB-D1", "12.4", "g/dL", "13.5 - 17.5", "L", "CBC", "718-7"]))
+        self.assertIsNone(self.entry(k, "HGB-D1")["before"])
+        self.robin.post(f"/api/profiles/{other}/jobs/{k['id']}/discard", headers=H)
+
     def test_a_match_remembered_before_546_is_checked_first(self):   # #569
         """A match remembered before #546 (checked NULL) that #546's rule wouldn't make, Vitamin B6 filled in as
         Vitamin B1, is to check: not applied to an import (its review offers it as a "Maybe") nor to results typed

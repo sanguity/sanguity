@@ -2367,6 +2367,18 @@ Everything on `main` so far; it becomes the first tagged release.
   was in an editor's export too, share-link viewers' addresses included; it's in an owner's only. The Sharing page
   and the zip's README say what doesn't come back (the activity log, sharing, share links, calendar feeds, connected
   sources, which import each record came from).
+- **What outlived it: the offline copy after access ends, a cancelled review's samples, a deleted profile's lab-name
+  matches, abandoned journal photos, and a pull's store after Disconnect** (#591): a device's offline copy of a
+  profile stayed readable after its owner removed the person, or they left it, until the sign-in ended; it goes as soon
+  as a page hears the profile isn't theirs, and on Leave or Delete. An import cancelled at its review (or one that
+  failed) kept the sample records, lab names and matches the review showed, readable by any editor; it keeps only its
+  counts, and older ones lose the rest when the app starts. Deleting a profile left the lab-name matches its reviews
+  made listed on Admin and applied to every profile; they go with it, unless another profile's import has used one
+  since or an admin kept or changed it, and the delete dialog says so. A photo sent for a journal entry never saved
+  stayed until another photo was sent to that profile; abandoned ones also go when the app starts, and a photo's file
+  is removed only once the change dropping it is saved. A pull still reading when its source was disconnected wrote
+  what it read into the connection's store afterwards; the store is written only while the connection is active,
+  and Disconnect with its records removed also cancels a first pull waiting for its review.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -100,7 +100,9 @@ remain the main way records come in; live connections are an extra for those who
 - **A leaked client secret:** it identifies the user's own app, not a patient. Someone holding it still needs the
   patient's sign-in and consent. It's encrypted at rest, and rotating it is a setting.
 - **Disconnecting** revokes the token where the vendor supports revocation, deletes the token, secret and key, and
-  stops all contact with that host. What happens to the records already pulled is the user's choice.
+  stops all contact with that host. What happens to the records already pulled is the user's choice; the resources
+  the connection kept for rebuilding lab days go either way, and a pull still reading when it's disconnected keeps
+  nothing (#591: its store is written only in a transaction that finds the connection active).
 - **Outside requests** stay opt-in: nothing contacts a vendor until the user connects it, and every connection is
   listed with its host (#97, #59): Admin → Outside connections, enforced by `server/net.py`.
 

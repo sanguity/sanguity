@@ -910,9 +910,15 @@ def disconnect(db, who, pid, cid, remove_records=False, ip=None):
         db.execute("""UPDATE connections SET state='disconnected', secret=NULL, patient=NULL, expires=NULL, next_sync=NULL,
                       pending_cursor=NULL, disconnected=? WHERE id=?""", (dbm.now(), cid))
         db.execute("DELETE FROM connect_pending WHERE connection_id=?", (cid,))
-    sync.forget_store(pid, cid)   # the resources it read, kept for rebuilding lab days
+    # the resources it read, kept for rebuilding lab days: after the commit, so a pull that wrote them before it is
+    # undone, and one after it finds it disconnected and writes nothing (sync._keep_store, #591)
+    sync.forget_store(pid, cid)
     removed = 0
     if remove_records:
+        # its first pull's review, if it's waiting: what it read goes too (#591), as its records would
+        if c["first_job"]:
+            from . import jobs
+            jobs._cancel(db, pid, c["first_job"], who, ip)
         for (iid,) in db.execute("SELECT id FROM imports WHERE connection_id=? ORDER BY id DESC", (cid,)).fetchall():
             try:
                 history.undo(db, pid, iid, who, ip)
