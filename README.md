@@ -514,9 +514,11 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
   two-factor sign-in or making someone an admin also asks the admin to confirm it's them (password, code or passkey)
   unless they did so, or signed in, within the last 5 minutes (`REAUTH_MINUTES` in `.env`). The command line
   (`server.manage`) needs neither, so it stays the way back in, for example after an admin loses their phone.
-- **Export everything:** owners and editors can download a profile as one zip (records, documents, settings, watch
-  data, uploaded files and activity) under **Sharing → Export everything**, and load it into another install with `server.manage create-profile` and
-  `import`. Or, there, as **FHIR R4** (#205): a standard bundle other health apps can read, of the kinds of records
+- **Export everything:** owners and editors can download a profile as one zip (records as imported with the
+  corrections made to them, the journal and its photos, the medication log and reminders, documents, settings, watch
+  data and uploaded files; the activity log only in an owner's, #589) under **Sharing → Export everything**, and load
+  it into another install with `server.manage create-profile` and `import`, or upload it on a profile's import page:
+  the corrections come back undoable. Or, there, as **FHIR R4** (#205): a standard bundle other health apps can read, of the kinds of records
   ticked, with the documents' files beside it; Sanguity's own import reads it back into the same records
   ([docs/fhir-export.md](docs/fhir-export.md) says what each record becomes, and what a bundle has no place for).
 - **Settings:** each profile's dashboard preferences (key lab tiles, the labs Labs starts with, saved Labs views, lab and source

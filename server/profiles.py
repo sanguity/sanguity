@@ -90,11 +90,12 @@ def _check(data):
         raise ValueError("it isn't a Sanguity data file (expected an object with an \"events\" list)")
 
 
-def import_dataset(db, pid, src_dir, version=None, mirror_settings=False, origin="dataset"):
+def import_dataset(db, pid, src_dir, version=None, mirror_settings=False, origin="dataset", then=None):
     """Load src_dir/data.json (and settings.json, when there is one) into profile pid as one import. It replaces
     the profile's records, or with origin "build" only what the setup build brought before. A settings.json
     replaces the profile's settings (an export loaded back in); with mirror_settings (the setup build) it only
-    seeds them the first time, see settings.from_build.
+    seeds them the first time, see settings.from_build. then(db, data): more to load from data.json in the same
+    transaction (an export's corrections, journal and medication log, export.restore, #589).
 
     Document ids stay the same across re-imports for the same file, so links people saved keep working.
     Returns the number of documents indexed.
@@ -129,6 +130,8 @@ def import_dataset(db, pid, src_dir, version=None, mirror_settings=False, origin
             settings.replace_profile(db, pid, values)
             db.execute("UPDATE profiles SET settings_seeded=1 WHERE id=?", (pid,))
         db.execute("UPDATE profiles SET build_mtime=? WHERE id=?", (version, pid))
+        if then:
+            then(db, data)
     return n
 
 

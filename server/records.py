@@ -54,7 +54,9 @@ from . import crossmatch, crypto, edits, encounters, journal, medications, oop, 
 
 FORMAT = "sanguity-data"            # imports.format of a data.json (build.py, the demo, an export zip)
 ROWS = ("events", "details", "labs", "costs")   # the parts kept as rows; the rest of the object is the meta
-SERVED = ("imports", "edits", "same", "possible", "journal", "medications", "oop", "reminders", "doses")   # parts assemble() adds: never stored from an import (an export's data.json has them)
+SERVED = ("imports", "edits", "same", "possible", "journal", "medications", "oop", "reminders", "doses",
+          "corrections")   # parts assemble() adds: never stored from an import (an export's data.json has them, and
+                           # its corrections, #589: those go back into their own tables, export.restore)
 
 
 def _enc(obj):
@@ -258,10 +260,13 @@ def _snapshot(db):
         db.execute("COMMIT")
 
 
-def assemble(db, pid):
-    """The profile's records in the shape the page reads, or None when nothing was ever imported into it."""
+def assemble(db, pid, raw=False):
+    """The profile's records in the shape the page reads, or None when nothing was ever imported into it. raw: as they
+    were imported, for Export everything (#589): not tidied, no correction or same-result link applied (the export
+    carries those apart, to be applied again once loaded), and nothing worked out from them (medications,
+    out-of-pocket, units); the journal, doses and reminders listed as ever."""
     with _snapshot(db):
-        return _assemble(db, pid)
+        return _assemble(db, pid, raw)
 
 
 def source_label(origin, fmt):
@@ -297,7 +302,7 @@ def rename_import(db, pid, iid, name):
     return label, name
 
 
-def _assemble(db, pid):
+def _assemble(db, pid, raw=False):
     imps = db.execute("SELECT id, at, origin, format, synced, meta, name FROM imports WHERE profile_id=? ORDER BY id", (pid,)).fetchall()
     if not imps:
         return None
@@ -328,15 +333,18 @@ def _assemble(db, pid):
         pts.setdefault(r["series_id"], []).append(_dec(r["body"]))
     labs = [{**_dec(r["body"]), "imp": r["import_id"], "pts": pts.get(r["id"], [])}
             for r in db.execute("SELECT id, import_id, body FROM series WHERE profile_id=? ORDER BY id", (pid,))]
-    encounters.tidy(events, details)   # chart activity, plain visit titles, reminders (#236); corrections have the last word
-    out = edits.apply(db, pid, {**out, "events": events, "details": details, "labs": labs, "costs": costs})
-    for e in out.get("events") or []:
-        e.pop("orig", None)            # what tidy() changed, kept only for the corrections to find their events
-    out = crossmatch.apply(db, pid, out)
-    out = oop.annotate(db, pid, out, pay_imps)   # out-of-pocket: sources, HSA/FSA, matched to claims, counted once (#55)
+    if raw:   # #589: the rows as stored, for an export to load again exactly
+        out = {**out, "events": events, "details": details, "labs": labs, "costs": costs}
+    else:
+        encounters.tidy(events, details)   # chart activity, plain visit titles, reminders (#236); corrections have the last word
+        out = edits.apply(db, pid, {**out, "events": events, "details": details, "labs": labs, "costs": costs})
+        for e in out.get("events") or []:
+            e.pop("orig", None)            # what tidy() changed, kept only for the corrections to find their events
+        out = crossmatch.apply(db, pid, out)
+        out = oop.annotate(db, pid, out, pay_imps)   # out-of-pocket: sources, HSA/FSA, matched to claims, counted once (#55)
     if (entries := journal.listing(db, pid)):   # only when there are some, like edits
         out["journal"] = entries
-    if (meds := medications.history(out)):   # #50: each medication's spans and fills, only when there are some
+    if not raw and (meds := medications.history(out)):   # #50: each medication's spans and fills, only when there are some
         out["medications"] = meds
     from . import med_reminders
     if (rem := med_reminders.listing(db, pid)):   # #162: reminders for the calendar feed, only when there are some
@@ -344,7 +352,7 @@ def _assemble(db, pid):
     from . import med_log
     if (doses := med_log.listing(db, pid)):   # #235: the medication log, only when there's something in it
         out["doses"] = doses
-    return units.annotate(out)   # which series can be shown in other units, exactly (#41)
+    return out if raw else units.annotate(out)   # which series can be shown in other units, exactly (#41)
 
 
 # the page asks for a profile's records on every load; putting them together decrypts every row, so the result

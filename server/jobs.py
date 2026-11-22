@@ -36,7 +36,7 @@ import collections, contextlib, json, logging, os, posixpath, queue, re, threadi
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from . import activity, config, crossmatch, crypto, db as dbm, importers as registry, labmap, preview, profiles as prof, records, uploads, watch_store
+from . import activity, config, crossmatch, crypto, db as dbm, export, importers as registry, labmap, preview, profiles as prof, records, uploads, watch_store
 
 log = logging.getLogger("sanguity.jobs")
 
@@ -236,7 +236,8 @@ def _account(db, uid):
 def _holds_nothing(held):
     """Whether a preview's file (or its parts) holds no records at all, new or already here (#539: an upload of cycle
     records only, once they're left out), as the page's sgNothing says of its summary."""
-    return not preview.adds_anything(held["data"]) and not any(_watch_counts(held.get("watch") or {}).values())
+    return not preview.adds_anything(held["data"]) and not any(_watch_counts(held.get("watch") or {}).values()) \
+        and not export.brings(held["data"])   # an export's journal, corrections... (#589)
 
 
 def _report(db, pid, name, data, watch, labs):
@@ -257,6 +258,9 @@ def _report(db, pid, name, data, watch, labs):
         if here:
             report["duplicates"]["watch"] = here
         report["new"] = report["new"] or any(fresh.values())
+    if (back := export.brings(data)):   # an export's corrections, journal, medication log and reminders (#589)
+        report["restores"] = back
+        report["new"] = True
     report["stamp"] = stamp
     return report
 
@@ -432,7 +436,12 @@ def _save(db, j):
     who_id = j["confirmed_by"] or j["created_by"]
     who = db.execute("SELECT id, username FROM users WHERE id=?", (who_id,)).fetchone() if who_id else None
     from . import cycle_tracking
-    with dbm.transaction(db):
+
+    def photo(rel):   # a journal photo an export names (#589): its sealed copy in the upload
+        p = stored(rel)
+        return crypto.read_file(p) if p else None
+
+    with export.photo_files(pid) as written, dbm.transaction(db):
         # cycle records only while tracking is on, asked under the write lock (#542: turned off while this waited to be
         # saved, which drop_imported leaves alone); left holding nothing, it's cancelled like an empty preview, its
         # upload removed, not saved as an import of nothing
@@ -448,9 +457,14 @@ def _save(db, j):
                 summary["skipped"]["watch"] = here
             summary["range"] = _with_days(summary["range"], new_watch)   # what it brought, the wearable's new days too (#500)
             watch = watch if any(fresh.values()) else None
+            # an export's corrections, journal, medication log and reminders (#589), what the profile hasn't already
+            back = export.restore(db, pid, data, photo, written) if export.brings(data) else None
+            restored = {k: v for k, v in (back or {}).items() if v and k not in ("here", "photos_missing")}
+            if restored:
+                summary["restored"] = restored
             # all of it here by now (#547: the same file in two reviews, one added): no import, and nothing to undo or
             # remove the upload by, so it's cancelled with it, saying so; a first pull is saved, its upload removed below
-            if not (preview.adds_anything(new) or watch) and not _first_pull(db, jid):
+            if not (preview.adds_anything(new) or watch or restored) and not _first_pull(db, jid):
                 cancelled = _cancelled(db, pid, jid, who, _ips.get(jid), "running", NOTHING_NEW)
                 if cancelled and cancelled[1]:   # another job uses the upload: kept
                     db.execute("UPDATE jobs SET message=? WHERE id=?", (crypto.enc(ALL_HERE), jid))
@@ -481,6 +495,7 @@ def _save(db, j):
             activity.log(db, "import", who, pid, {"importer": name, "counts": summary["counts"], "job": jid,
                                                   "skipped": summary["skipped"], "kept": len(keep),
                                                   **({"same": len(same)} if same else {}),
+                                                  **({"restored": restored} if restored else {}),
                                                   **({"labs": summary["lab_names"]} if matched or remembered else {})},
                          ip=_ips.get(jid), actor=None if who else "removed account")
             db.execute("UPDATE jobs SET state='done', stage=NULL, import_id=?, summary=?, finished=? WHERE id=?",
@@ -666,6 +681,9 @@ def describe(r, stamp=None, uid=None):
         out["stale"] = summary.get("stamp") != stamp
     if summary.get("cycle") and uid is not None and uid == (r["confirmed_by"] or r["created_by"]):
         out["cycle"] = summary["cycle"]
+    for k in ("restores", "restored"):   # an export's corrections, journal, medication log and reminders: to come, put back (#589)
+        if summary.get(k):
+            out[k] = summary[k]
     return out
 
 

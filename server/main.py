@@ -1088,10 +1088,10 @@ def profile_details(pid: int, request: Request, ids: str = "", s=Depends(user), 
 @app.get("/api/profiles/{pid}/export")
 def profile_export(pid: int, request: Request, cycle: bool = False, format: str = "sanguity", include: str = "",
                    s=Depends(user), db=Depends(get_db)):
-    """Everything in the profile as one zip, streamed (owners and editors). ?cycle=1: with the cycle records, when
+    """Everything in the profile as one zip, streamed (owners and editors; the activity log only in an owner's, #589). ?cycle=1: with the cycle records, when
     tracking is on (#183): ticked in each time, never by default. ?format=fhir (#205): a FHIR R4 bundle instead
     (fhir_export.py), of the parts named in include= (fhir_export.PARTS' keys, comma-separated; all when empty)."""
-    need(db, s, pid, "editor")
+    role = need(db, s, pid, "editor")
     if format not in ("sanguity", "fhir"):
         raise HTTPException(400, "The format is sanguity or fhir.")
     prof.sync_build(db, pid)
@@ -1107,7 +1107,7 @@ def profile_export(pid: int, request: Request, cycle: bool = False, format: str 
         zone = settings.effective(db, None, s["id"])["dates.timeZone"][0] or None   # times without an offset are the person's
         return StreamingResponse(fhir_export.stream(p, s["username"], now, zone), media_type="application/zip",
                                  headers={"Content-Disposition": f'attachment; filename="{fhir_export.filename(p["name"], now)}"'})
-    p = export.plan(db, pid, cycle=cycle)
+    p = export.plan(db, pid, cycle=cycle, activity=role == "owner")   # the activity log is owners' only (#589)
     activity.log(db, "export", s, pid, {"cycle": True} if p["cycle"] else None, ip=_client_ip(request))
     now = settings.local_now(db, s["id"])   # dated in the exporting person's own time zone (#42)
     return StreamingResponse(export.stream(p, s["username"], now), media_type="application/zip",

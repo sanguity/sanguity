@@ -70,7 +70,7 @@ check changes without updating the list, and it exercises this table against a l
 | About this person: birth date, sex used for reference ranges, height history (#194) | Read | Change; add and remove heights | Change; add and remove heights | No | Only if its owner ticks About this person (unticked by default) | No |
 | Import history | Read | Undo, rename | Undo, rename | No | No | No |
 | Upload files, import (preview, save, discard), type in records, corrections (with similar entries and category rules, #237), "same result", cost marks | No (403) | Yes | Yes | No | No | No |
-| Export everything (zip) | No | Yes | Yes | No | No | No |
+| Export everything (zip): the activity log in it only for an owner (#589) | No | Yes (no activity log) | Yes | No | No | No |
 | Connected sources: see a profile's | Yes | Yes | Yes | No | No | No |
 | Connected sources: connect, sync now, choose what's pulled, fetch an attachment, disconnect | No | Yes | Yes | No | No | No |
 | Phone and watch: the upload secret and setup | No | Yes (a new secret replaces the old) | Yes | No | No | No |
@@ -371,7 +371,7 @@ Not opened as issues; written up here for the owner to file or drop:
 | 7.2.1 | Authentication decisions logged | **Fixed** | `login.ok` (with method), `login.fail` (with step and reason), `login.throttled`, `setup.fail` and `reauth.fail`. |
 | 7.2.2 | Access-control failures logged | **Fixed** | `access.denied` (profile, role needed) and `csrf.refused`. |
 | 7.3.1 | Log injection prevented | Met | Each event is one JSON-encoded line. Activity details are stored as JSON and shown with `textContent`. |
-| 7.3.3 | Logs protected | Met | Docker's own log storage on the host. A profile's activity log is readable only by its owners; account events, backups, vendor setup and outside contacts with no profile, by admins. |
+| 7.3.3 | Logs protected | Met | Docker's own log storage on the host. A profile's activity log is readable only by its owners, and is in Export everything only when an owner exports (#589); account events, backups, vendor setup and outside contacts with no profile, by admins. |
 | 7.3.4 | Time synced | N/A | The host's clock. |
 | 7.4.1 | Generic error message | Met | Unhandled errors return a plain "Internal Server Error". Debug mode and tracebacks are never sent. A failed import tells the person why in plain words, stored encrypted. |
 | 7.4.2 | Exception handling | Met | Known failures map to clear 4xx answers. A failed import saves nothing (`tests/test_jobs.py`); a failed pull backs off and says so; a failed backup is shown on the Admin page. |

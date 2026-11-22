@@ -3,7 +3,9 @@
 The smallest importer that keeps to the contract, and the one to copy when writing a new one (docs/importers.md).
 The records are already in the shape Sanguity loads, so parse() only finds data.json, checks it, and points each
 document link at the file in the upload. Source keys ("key" on events and lab series) pass through unchanged, so
-records that first came from a FHIR or C-CDA import keep the key that importer gave them.
+records that first came from a FHIR or C-CDA import keep the key that importer gave them. An export's corrections,
+journal, medication log and reminders (#589) are checked here (export.check_parts) and put back when the import is
+saved (jobs._save, export.restore), each journal photo pointing at its file in the upload.
 """
 import json, posixpath
 
@@ -80,6 +82,20 @@ def parse(files):
             d["url"] = None
             continue
         d["url"] = inside + ("#" + frag if frag else "")
+    # an export's corrections, journal, medication log and reminders (#589): checked now, put back when it's saved
+    # (export.restore); each journal photo names its file in the upload
+    from .. import export
+    export.check_parts(data)
+    gone = 0
+    for e in data.get("journal") or []:
+        for ph in e.get("photos") or []:
+            if isinstance(ph, dict) and isinstance(ph.get("file"), str):
+                inside = posixpath.normpath(posixpath.join(base, ph["file"])) if base else posixpath.normpath(ph["file"])
+                ph["file"] = inside if inside in files and not inside.startswith("../") else None
+                gone += ph["file"] is None
+    if gone:
+        warnings.append(f"{gone} photo{'s' if gone != 1 else ''} of the journal {'are' if gone != 1 else 'is'} named in "
+                        f"{rel} but not in the upload; the entries are kept without them.")
     if missing:
         warnings.append(f"{missing} document{'s are' if missing != 1 else ' is'} linked in {rel} but not in the upload; "
                         "the records are kept without them.")
