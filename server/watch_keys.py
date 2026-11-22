@@ -16,6 +16,8 @@ Where things are kept:
       config.WATCH_FILE names), and any other slot to profiles/<slot>/ (public/profiles/<slot>/daily.json)
   the meta row "watch_deleted": the slots of deleted profiles ({slot: token}), in the file as "deleted", so the
       receiver deletes what each kept (forget, #588); a profile's id, and so its slot, never comes again
+  in the file as "slots": every slot a profile reads (read_slots, #593); the receiver deletes, after a grace period,
+      a slot it keeps that none names and no secret uploads to (one a profile deleted before #588 left behind)
 
 Installs from before #46 had one secret (auth/watch_secret) and one summary, read by the first profile (the one whose
 watch_file is config.WATCH_FILE). That keeps working: the receiver accepts the old secret for slot "" until the first
@@ -87,7 +89,7 @@ def publish(db):
             profiles.append({"profile": r["pid"], "slot": row["slot"], "secret": row["secret"]})
     from . import cycle_tracking   # which profiles turned cycle tracking on, and deletions asked for (#183)
     doc = {"version": 1, "legacy": legacy_in_use(db), "profiles": profiles, **cycle_tracking.keys_doc(db),
-           "deleted": deleted(db)}
+           "deleted": deleted(db), "slots": read_slots(db)}
     folder = os.path.dirname(config.WATCH_KEYS)
     if not os.path.isdir(folder):
         if profiles:
@@ -97,6 +99,23 @@ def publish(db):
         return False
     crypto.write_file(config.WATCH_KEYS, json.dumps(doc, separators=(",", ":")).encode())
     return True
+
+
+def read_slots(db):
+    """Every receiver slot a profile reads, or would with a phone set up (its own, or slot "" for the first), sorted:
+    in the file as "slots", so the receiver deletes, after a grace period, a slot none names (#593)."""
+    pub = os.path.abspath(os.path.dirname(config.WATCH_FILE))
+    out = set()
+    for r in db.execute("SELECT id, watch_file FROM profiles").fetchall():
+        out.add(_slot_for(db, r["id"]))
+        wf = r["watch_file"]
+        if _same(wf, config.WATCH_FILE):
+            out.add("")
+        elif wf:
+            parts = os.path.relpath(os.path.abspath(wf), pub).split(os.sep)
+            if len(parts) == 3 and parts[0] == "profiles" and parts[1].isdigit() and parts[2] == "daily.json":
+                out.add(parts[1])
+    return sorted(out, key=lambda s: (s != "", int(s) if s else 0))
 
 
 DELETED = "watch_deleted"   # meta: {slot: token}, the slots of deleted profiles, for the receiver to delete (#588)

@@ -273,6 +273,12 @@ Phone and watch**, a profile's owners and editors see the upload address to give
 stops working). An install from before kept working: `auth/watch_secret` stays the first profile's secret until that
 profile makes one here. The app hands the secrets to the receiver, encrypted, in `WATCH_DIR/keys/`.
 
+**What the receiver keeps, and how long.** A profile's phone data (its database, every upload, its summary and ECG
+samples) stays in `WATCH_DIR` while the profile is there, and goes when the profile is deleted. Phone data no profile
+reads and no secret uploads to (left behind by a profile deleted with an older version) is deleted a week after the
+receiver first finds it so (`SLOT_GRACE_DAYS` on the receiver, 7); what a restore replaced, 30 days after the restore
+(`RESTORE_KEEP_DAYS`, see [Backup and restore](#backup-and-restore)). Backups keep what they hold until they're deleted.
+
 Two phone apps upload to that address:
 
 - **Android: Life Dashboard Companion** reads Health Connect. Give it the upload address and the secret; it signs
@@ -701,7 +707,8 @@ docker compose up -d
 ```
 
 The phone and watch data goes to `WATCH_DIR/keys/restore/` (the one folder of the receiver's the app may write), and
-the receiver puts it back when it starts, moving what it had to `WATCH_DIR/before-restore-<time>/`; if the receiver
+the receiver puts it back when it starts, moving what it had to `WATCH_DIR/before-restore-<time>/`, which it deletes
+30 days later (`RESTORE_KEEP_DAYS` on the receiver; it may hold a profile deleted since); if the receiver
 was left running, `docker compose restart receiver`. On the all-in-one container (Unraid), stop it, run the restore
 with the same folders, and start it again. A backup from before #227 has no phone and watch data, and the receiver's
 is left as it is.

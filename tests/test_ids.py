@@ -4,11 +4,14 @@ once it's deleted: a deleted profile's phone data isn't in the next profile made
 and an id with a slot left on disk is skipped), a page loaded before an undo can't edit the record an import brought
 since, a stale page's save or delete of a journal entry, a dose, a reminder or an edit is refused (404) instead of
 changing the one made after, and a sign-in after another signs out has its views logged. And the upgrade to schema
-version 39, which makes those tables again with AUTOINCREMENT, keeps every row and key. Fictional data only.
+version 39, which makes those tables again with AUTOINCREMENT, keeps every row and key. And what the receiver keeps
+(#593): a slot nothing names goes after a grace period, a restore's folder after its time, and an upload whose secret
+went while it was written isn't kept. Fictional data only.
 
   python3 tests/test_ids.py
 """
-import importlib.util, json, os, shutil, sqlite3, sys, tempfile, unittest
+import importlib.util, json, os, shutil, sqlite3, sys, tempfile, threading, time, unittest, urllib.error, urllib.request
+from datetime import datetime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-ids-test-")
@@ -174,16 +177,161 @@ class Ids(unittest.TestCase):
             self.assertFalse(os.path.exists(rx.summary_file("")))
             self.assertFalse(os.path.exists(os.path.join(RX, "watch.db")))
             self.assertTrue(os.path.isdir(os.path.join(RX, "keys")), "the keys folder stays")
-            crypto.write_file(rx.summary_file(""), b"{}")   # written since (a profile set up for it later): kept
+            # an upload checked just before the secret went, written after the deletion (#593): deleted too, as no
+            # profile reads slot "" and no secret takes it
+            rx.archive(b'{"data": {"metrics": []}}', "")
+            crypto.write_file(rx.summary_file(""), b"{}")
+            rx.slot_sweep({})
+            self.assertEqual(self.kept(""), [])
+            db = dbm.connect()   # written since a profile reads it again: kept
+            db.execute("UPDATE profiles SET watch_file=? WHERE id=?", (config.WATCH_FILE, self.pid))
+            watch_keys.publish(db)
+            db.close()
+            crypto.write_file(rx.summary_file(""), b"{}")
             rx.slot_sweep({})
             self.assertTrue(os.path.exists(rx.summary_file("")))
         finally:
             for f in (rx.summary_file(""), os.path.join(RX, "watch.db")):
                 if os.path.exists(f):
                     os.remove(f)
+            shutil.rmtree(os.path.join(RX, "raw"), True)
             db = dbm.connect()
             db.execute("UPDATE profiles SET watch_file=? WHERE id=?", (config.WATCH_FILE, self.pid))
             db.close()
+
+    # ---------------------------------------------------------------- what the receiver keeps, and how long (#593)
+    def kept(self, slot):
+        return [p for p in rx.slot_paths(slot) if os.path.lexists(p)]
+
+    def leftover(self, slot):
+        """A slot as a profile deleted before #588 left it: its database, an archived upload and its summary."""
+        raw = os.path.join(rx.slot_dir(slot), "raw", "2026", "10", "01")
+        os.makedirs(raw, exist_ok=True)
+        crypto.write_file(os.path.join(rx.slot_dir(slot), "watch.db"), b"fictional")
+        crypto.write_file(os.path.join(raw, "080000000000-cd.json.gz"), b"fictional")
+        os.makedirs(os.path.dirname(rx.summary_file(slot)), exist_ok=True)
+        crypto.write_file(rx.summary_file(slot), json.dumps(steps("2026-10-01", 4444)).encode())
+
+    def keys_file(self, doc):
+        crypto.write_file(config.WATCH_KEYS, json.dumps(doc).encode())
+        os.utime(config.WATCH_KEYS, ns=(time.time_ns(), time.time_ns()))   # the receiver sees it changed
+
+    def test_a_slot_no_profile_or_secret_names_is_deleted_at_start_after_the_grace_period(self):
+        db = dbm.connect()
+        top = db.execute("SELECT seq FROM sqlite_sequence WHERE name='profiles'").fetchone()[0]
+        db.close()
+        gone, back = str(top + 50), str(top + 51)   # profiles deleted before #588: nothing names them
+        self.leftover(gone)
+        self.leftover(back)
+        quiet = self.new_profile("Quinn")   # a profile without a phone, whose slot a restore brought back
+        self.leftover(str(quiet))
+        phoned = self.new_profile("Pat")
+        slot = self.phone(phoned, "2026-11-13", 5)
+        doc = self.keys_doc()
+        self.assertIn(str(quiet), doc["slots"], "the app says which slots its profiles read")
+        self.assertNotIn(gone, doc["slots"])
+        try:
+            old = {k: v for k, v in doc.items() if k != "slots"}   # an app from before this: nothing is taken
+            self.keys_file(old)
+            rx.start_sweep(now=time.time() + 10 * rx.SLOT_GRACE)
+            self.assertTrue(self.kept(gone))
+            self.assertFalse(os.path.exists(os.path.join(RX, rx.ORPHANS)))
+
+            self.keys_file(doc)
+            start = time.time()
+            rx.start_sweep(now=start)
+            self.assertEqual(len(self.kept(gone)), 2, "not at once")
+            self.keys_file({**doc, "slots": doc["slots"] + [back]})   # read again in the meantime (a restore)
+            rx.start_sweep(now=start + rx.SLOT_GRACE / 2)
+            self.keys_file(doc)
+            rx.start_sweep(now=start + rx.SLOT_GRACE - 60)
+            self.assertEqual(len(self.kept(gone)), 2, "nor within the grace period")
+            rx.start_sweep(now=start + rx.SLOT_GRACE + 60)
+            self.assertEqual(self.kept(gone), [], "after it: its database, archived uploads and summary")
+            self.assertFalse(os.path.exists(rx.slot_dir(gone)))
+            self.assertEqual(len(self.kept(back)), 2, "the grace period starts again once nothing names it again")
+            self.assertEqual(len(self.kept(str(quiet))), 2, "a profile's own slot stays")
+            self.assertEqual(len(self.kept(slot)), 2, "and one a secret uploads to")
+            with open(os.path.join(RX, rx.ORPHANS), encoding="utf-8") as f:
+                self.assertEqual(list(json.load(f)), [back])
+            rx.start_sweep(now=start + rx.SLOT_GRACE * 2)
+            self.assertEqual(self.kept(back), [])
+            self.assertEqual([n for d in ("profiles", "public/profiles") for n in os.listdir(os.path.join(RX, d))
+                              if n.startswith(".deleting")], [])
+        finally:
+            for s in (gone, back, str(quiet)):
+                shutil.rmtree(rx.slot_dir(s), True)
+                shutil.rmtree(os.path.dirname(rx.summary_file(s)), True)
+            db = dbm.connect()
+            watch_keys.publish(db)
+            db.close()
+            for pid, name in ((quiet, "Quinn"), (phoned, "Pat")):
+                self.delete(pid, name)
+            rx.slot_sweep({})
+
+    def test_a_restore_folder_past_its_time_is_deleted(self):
+        now = time.time()
+
+        def aside(t, name=None):
+            d = os.path.join(RX, name or "before-restore-" + datetime.fromtimestamp(t).strftime("%Y%m%d-%H%M%S"))
+            os.makedirs(os.path.join(d, "profiles", "9"))
+            crypto.write_file(os.path.join(d, "profiles", "9", "watch.db"), b"fictional")
+            os.utime(d, (t, t))
+            return d
+
+        old = aside(now - rx.RESTORE_KEEP - 3600)
+        again = aside(now - rx.RESTORE_KEEP - 3600, os.path.basename(old) + "-1")   # a second restore that second
+        recent = aside(now - 3600)
+        other = aside(now - rx.RESTORE_KEEP * 2, "before-restore-notes")   # not one the receiver made: left alone
+        try:
+            rx.start_sweep(now=now)
+            self.assertFalse(os.path.exists(old), "past its time")
+            self.assertFalse(os.path.exists(again))
+            self.assertTrue(os.path.exists(recent), "not yet")
+            self.assertTrue(os.path.exists(other))
+            rx.start_sweep(now=now + rx.RESTORE_KEEP)
+            self.assertFalse(os.path.exists(recent))
+            self.assertEqual([n for n in os.listdir(RX) if n.startswith(".deleting")], [])
+        finally:
+            for d in (old, again, recent, other):
+                shutil.rmtree(d, True)
+
+    def test_an_upload_checked_before_its_secret_went_is_not_kept(self):
+        pid = self.new_profile("Rory")
+        secret = self.ok(self.robin.post(f"/api/profiles/{pid}/watch/receiver/rotate", headers=H))["secret"]
+        slot = str(pid)
+        doc = self.keys_doc()
+        http = rx.ThreadingHTTPServer(("127.0.0.1", 0), rx.H)
+        threading.Thread(target=http.serve_forever, daemon=True).start()
+        real = rx._archive
+
+        def racing(body, s):   # the profile deleted between the secret's check and the write
+            self.keys_file({**doc, "profiles": [p for p in doc["profiles"] if p["slot"] != slot]})
+            return real(body, s)
+
+        rx._archive = racing
+        try:
+            req = urllib.request.Request(f"http://127.0.0.1:{http.server_address[1]}/ingest", method="POST",
+                                         data=b'{"data": {"metrics": []}}',
+                                         headers={"Authorization": "Bearer " + secret, "Content-Type": "application/json"})
+            with self.assertRaises(urllib.error.HTTPError) as e:
+                urllib.request.urlopen(req, timeout=10)
+            self.assertEqual(e.exception.code, 401)
+            self.assertEqual(rx.raw_files(slot), [], "not archived")
+            self.assertTrue(rx.work.empty(), "nor folded in")
+            stores = {}   # and an upload already queued for it isn't folded in either
+            rx.fold(stores, (slot, b'{"data": {"metrics": []}}', "0" * 64))
+            self.assertNotIn(slot, stores)
+        finally:
+            rx._archive = real
+            http.shutdown()
+            http.server_close()
+            shutil.rmtree(rx.slot_dir(slot), True)
+            db = dbm.connect()
+            watch_keys.publish(db)
+            db.close()
+            self.delete(pid, "Rory")
+            rx.slot_sweep({})
 
     # ---------------------------------------------------------------- events
     def typed(self, title, date):

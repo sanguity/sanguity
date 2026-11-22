@@ -2379,6 +2379,15 @@ Everything on `main` so far; it becomes the first tagged release.
   is removed only once the change dropping it is saved. A pull still reading when its source was disconnected wrote
   what it read into the connection's store afterwards; the store is written only while the connection is active,
   and Disconnect with its records removed also cancels a first pull waiting for its review.
+- **The watch receiver: phone data of profiles deleted before #588, and what a restore replaced, no longer kept for
+  good** (#593): a profile deleted before #588 left its receiver slot (database, uploads, summary, ECG samples) on disk,
+  unreachable, and in every backup; a restore's `before-restore-<time>/` folder, which can hold a profile deleted
+  since, was never deleted; and an upload checked just before its profile was deleted could be written after, which
+  the first profile's slot kept. The app now tells the receiver every slot a profile reads; a slot none reads and no
+  secret uploads to is deleted a week after the receiver first finds it so (`SLOT_GRACE_DAYS`), a restore's folder 30
+  days after the restore (`RESTORE_KEEP_DAYS`), at start and hourly; an upload whose secret goes while it's being
+  written is taken out and refused, and one queued isn't folded in. README and docs/database.md say what the receiver
+  keeps and for how long.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
@@ -2433,6 +2442,11 @@ From an install with your own compose file or template (before #227):
   service; in `compose.release.yaml` mount `- ${WATCH_DIR:-./watch-data}:/watch:ro` in place of the `/watch/public`
   line. Until then **Admin → Backups** says the backups don't have it. Restoring now stops the receiver too
   (README, Backup and restore).
+
+From an install whose profiles with a phone were deleted (before #588):
+- The receiver deletes the phone data they left a week after it first starts with the updated app (#593), and its
+  `before-restore-<time>/` folders 30 days after each restore. To keep one longer, copy it out of `WATCH_DIR` first, or
+  set `SLOT_GRACE_DAYS` or `RESTORE_KEEP_DAYS` on the receiver.
 
 Moving an install from a git checkout to the published image: see [Upgrading to a release](README.md#upgrading-to-a-release).
 
