@@ -2302,6 +2302,12 @@ Everything on `main` so far; it becomes the first tagged release.
   matches lists it first, marked "To check", with Keep and Forget. And blood, serum, plasma, whole blood, urine, CSF
   and the like count as part of a name: "Ketones, Blood" (or "Hemoglobin Whole Bld") is no longer filled in as the
   profile's "Ketones" in the same unit, which may be a urine series; it's a "Maybe".
+- **Toasts: the stack refitted as each comes and goes, and the palette's results kept in sight** (#570): a fourth
+  toast the height of the oldest it sent away left the stack its old height, so a two-line toast showed its last line
+  only, its Undo and ✕ cut off (900×500 and 844×390 on Settings, Admin and Account); the stack is measured again as
+  each toast comes or goes. In the command palette three Undo toasts took 166 of its 296 px at 844×390, its list a
+  line, the option Enter opens out of sight; there they take at most a quarter of the screen, the newest whole, the
+  older scrolling into it.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

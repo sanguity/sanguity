@@ -404,6 +404,8 @@ dialog:is(.sg-dlg-side,.sg-dlg-sheet)>.sg-toasts:has(.sg-toast){margin:0;padding
 /* in the drawer the stack takes at most a third of its height, and less where its body would have under half (a
    phone on its side: #drawer .db), scrolling within itself with the newest, at the foot, in view (#369) */
 dialog:is(.sg-dlg-side,.sg-dlg-sheet)>.sg-toasts{flex:0 1 auto;min-height:0;max-height:calc(100% / 3);overflow:auto}
+/* in the palette, a quarter of the screen: its list keeps room for the option Enter opens (#570) */
+dialog.palette>.sg-toasts{max-height:25dvh;overflow:auto}
 }
 
 @layer pages {

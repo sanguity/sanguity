@@ -958,9 +958,10 @@ const sgFoot = (() => {
     const under = bar ? innerHeight - bar.getBoundingClientRect().top : 0;
     px(html, "--sg-foot-bar", under);
     // the stack as tall as the newest toasts that fit in it whole: none cut at its top to its Undo alone (#550); the
-    // older scroll into it, as all do when the newest alone doesn't fit (in a dialog's flow: its own, app.css)
+    // older scroll into it, as all do when the newest alone doesn't fit (in a dialog's flow: its own, app.css; the
+    // palette's, a quarter of the screen, fitted so too: #570)
     t?.style.removeProperty("max-height");
-    if (t?.parentElement === document.body) {
+    if (t?.parentElement.matches("body, dialog.palette")) {
       const s = getComputedStyle(t), pad = parseFloat(s.paddingTop) + parseFloat(s.paddingBottom), gap = parseFloat(getComputedStyle(t.firstElementChild).rowGap);
       const hs = [...t.firstElementChild.children].map(e => e.getBoundingClientRect().height).reverse();
       let h = -gap, k = 0;
@@ -1035,6 +1036,7 @@ const toast = (() => {
       if (!t.isConnected) return;
       const had = t.contains(document.activeElement);
       t.remove();
+      sgFoot();   // the stack refitted (#570, below)
       if (had) {
         // where focus was, or what took its place when the page was drawn again (the same id); else another toast
         let to = !back || back === document.body ? null : back.isConnected ? back : back.id ? document.getElementById(back.id) : null;
@@ -1074,6 +1076,9 @@ const toast = (() => {
     while (list.children.length >= 3) list.firstElementChild.sgGone();   // focus in it goes back too
     t.sgGone = gone;
     list.append(t);
+    // (the list's ResizeObserver alone missed a fourth the height of the oldest it sent away: the stack's height kept
+    // for the toasts before, the newest two cut, #570)
+    sgFoot();
     run();
     return {close: gone, node: t};
   };

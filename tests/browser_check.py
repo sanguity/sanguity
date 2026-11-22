@@ -1762,7 +1762,7 @@ def main():
         whole550_js = """() => { const s = document.getElementById('sgToasts').getBoundingClientRect(), ts = [...document.querySelectorAll('#sgToasts .sg-toast')].map(t => t.getBoundingClientRect());
             return [ts.length, ts.filter(r => r.bottom > s.top + 1 && r.top < s.top - 1 || r.top < s.bottom - 1 && r.bottom > s.bottom + 1).length, ts.filter(r => r.top >= s.top - 1 && r.bottom <= s.bottom + 1).length]; }"""
         toasts550 = "for (let i = 1; i <= 3; i++) toast(`Saved a change, number ${i} of three, with an Undo.`, {action: 'Undo', onAction() {}})"
-        side550, whole550 = {}, {}
+        side550, whole550, mixed570 = {}, {}, {}
         try:
             for path in ("settings.html?profile=1", "admin.html", "sharing.html?profile=1", "sources.html?profile=1"):
                 for w, h in ((844, 390), (1100, 600), (900, 500)):
@@ -1794,12 +1794,32 @@ def main():
                     v = strict.evaluate(whole550_js)
                     if v[0] != 3 or v[1] or not v[2]:
                         whole550[f"{path.split('.')[0]} {w}x{h}"] = v
+            # #570: refitted as each comes and goes, toasts of mixed heights: a fourth the oldest's height kept the
+            # stack's height for the three before it, the newest two cut
+            for path in ("settings.html?profile=1", "admin.html", "account.html"):
+                for w, h in ((900, 500), (844, 390)):
+                    strict.set_viewport_size({"width": w, "height": h})
+                    strict.goto(base + "/" + path)
+                    strict.wait_for_selector("main > nav.set-nav a[aria-current=page]", state="attached", timeout=10000)
+                    for seq in ("LSLL", "SLSLL", "LLSS"):
+                        strict.evaluate("""async seq => { document.querySelectorAll('#sgToasts .sg-toast').forEach(t => t.sgGone());
+                            for (const c of seq) {   // one at a time, each measured (L: two lines and an Undo; S: one line)
+                              if (c === 'L') toast('Saved a longer change, with words enough to wrap onto a second line in the stack, and an Undo.', {action: 'Undo', onAction() {}});
+                              else toast('Saved.');
+                              await new Promise(r => setTimeout(r, 150)); } }""", seq)
+                        strict.wait_for_timeout(300)
+                        v = strict.evaluate(whole550_js)
+                        if v[0] != 3 or v[1] or not v[2]:
+                            mixed570[f"{path.split('.')[0]} {w}x{h} {seq}"] = v
+                    strict.evaluate("document.querySelectorAll('#sgToasts .sg-toast').forEach(t => t.sgGone())")
         finally:
             strict.set_viewport_size({"width": 1400, "height": 900})
         check("the sidebar of Settings, Admin, Sharing and Sources at 844×390, 1100×600 and 900×500, three toasts showing: each link "
               "tabbed to in view and not more than 10% under a toast (#550: they sat over the sidebar, which ran off a short window)", side550 == {}, side550)
         check("…and the toasts' stack at 320×640, 568×320 and 844×390 shows each toast whole or not at all, never one cut to its Undo (#550)",
               whole550 == {}, whole550)
+        check("…and toasts of mixed heights, four or five added on Settings, Admin and Account at 900×500 and 844×390: none shows only part of itself (#570)",
+              mixed570 == {}, mixed570)
         # ---- #286 one setting row: in every group of Settings, Sharing, Account and Admin with something to set, each
         # setting is a row, its name and help on the left (about 38%) and its control on the right at 1400 px (a .wide
         # one, a table, under its name), and the two one under the other at 375 px, as wide as the row
@@ -15187,6 +15207,33 @@ def main():
             page.emulate_media(color_scheme="light")
             page.set_viewport_size({"width": 1400, "height": 900})
             check("…axe-core finds nothing serious with it open, light and dark, at 1400 and 375 px, and it's whole on the screen at 320 px too", not pal_axe and not pal_fit, (pal_axe + [pal_fit])[:6])
+            # #570: three Undo toasts, in its flow, take at most a quarter of the screen (scrolling within themselves, the
+            # newest whole): its list keeps room for the option Enter opens, and the one arrowed to (its only focus mark)
+            seen570_js = """() => { const l = document.getElementById('palList').getBoundingClientRect(), q = document.getElementById('palQ');
+                const a = document.getElementById(q.getAttribute('aria-activedescendant') || '-')?.getBoundingClientRect(), g = document.getElementById('sgToasts');
+                const s = g.getBoundingClientRect(), n = [...g.querySelectorAll('.sg-toast')].at(-1)?.getBoundingClientRect();
+                return [g.parentElement.matches('dialog.palette'), g.querySelectorAll('.sg-toast').length, n && n.top >= s.top - 1 && n.bottom <= s.bottom + 1,
+                  a ? Math.round(Math.max(0, Math.min(a.bottom, l.bottom) - Math.max(a.top, l.top)) / a.height * 100) : 0]; }"""
+            pal570 = {}
+            try:
+                for w, h in ((844, 390), (568, 320)):
+                    page.set_viewport_size({"width": w, "height": h})
+                    js("document.querySelectorAll('#sgToasts .sg-toast').forEach(t => t.sgGone()); "
+                       "for (let i = 1; i <= 3; i++) toast(`Saved a change, number ${i} of three, with an Undo.`, {action: 'Undo', onAction() {}})")
+                    pal("backups")
+                    got = [js(seen570_js)]
+                    for _ in range(2):
+                        page.keyboard.press("ArrowDown")
+                        settle(100)
+                        got.append(js(seen570_js))
+                    page.keyboard.press("Escape")
+                    if any(g != [True, 3, True, 100] for g in got):
+                        pal570[f"{w}x{h}"] = got
+            finally:
+                js("document.querySelectorAll('#sgToasts .sg-toast').forEach(t => t.sgGone())")
+                page.set_viewport_size({"width": 1400, "height": 900})
+            check("…with three Undo toasts in it at 844×390 and 568×320, the option Enter opens, and each arrowed to, wholly in view in its list, the newest toast whole (#570)",
+                  pal570 == {}, pal570)
             pal("password")
             pw = js(pal_found)
             page.keyboard.press("Enter")
