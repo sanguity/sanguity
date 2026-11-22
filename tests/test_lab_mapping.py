@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Lab names matched during import (#23): a lab spelled in a way lab-aliases.json doesn't know is suggested an
-existing series, by LOINC code first and then by a similar name with a compatible unit; confirming saves its points
+existing series, by LOINC code first and then by a similar name with a compatible unit (filled in only for the same
+code or the same name written another way, #546; a similar name is only offered); confirming saves its points
 under that series (the results' own rows keep the name as reported); the choice is remembered, so the next import of
 that spelling is matched by itself; "keep as a new series" is remembered too, as a choice to keep it separate; only
 admins change or remove what's remembered, and it's logged; the names are encrypted at rest; and results typed in
@@ -149,10 +150,51 @@ class LabMapping(unittest.TestCase):
         self.save(pid, self.previewed(pid, csv(["2026-01-05", "Vitamin D 25-Hydroxy", "31", "ng/mL", "30-100", "", "", ""])))
         j = self.previewed(pid, csv(["2026-02-05", "VIT D 25-OH", "28", "ng/ml", "30-100", "L", "", ""]))
         e = self.entry(j, "VIT D 25-OH")
-        self.assertEqual(e["suggestions"][0], {"name": "Vitamin D 25-Hydroxy", "unit": "ng/mL", "reason": "similar name, same unit", "sure": True})
+        self.assertEqual(e["suggestions"][0], {"name": "Vitamin D 25-Hydroxy", "unit": "ng/mL", "reason": "same name written another way, same unit", "sure": True})
         j = self.previewed(pid, csv(["2026-02-05", "VIT D 25-OH", "70", "nmol/L", "75-250", "L", "", ""]))
         e = self.entry(j, "VIT D 25-OH")
         self.assertNotIn("Vitamin D 25-Hydroxy", [s["name"] for s in e["suggestions"]])
+
+    def test_a_similar_name_is_offered_never_filled_in(self):   # #546
+        """A similar name with the same unit is only a "Maybe", never sure: names a number or a letter tells apart
+        (B6 and B1, Factor 3 and Factor 1, IgG and IgA) aren't put in the box, and with nothing chosen the results keep
+        their own name and nothing is remembered. The same name, an alias and a LOINC code still fill it."""
+        pid = self.profile("Look-alikes")
+        self.save(pid, self.previewed(pid, csv(["2026-01-05", "Vitamin B1", "120", "nmol/L", "70-180", "", "", ""],
+                                               ["2026-01-05", "Factor 1", "250", "mg/dL", "200-400", "", "", ""],
+                                               ["2026-01-05", "IgA", "180", "mg/dL", "70-400", "", "", ""])))
+        j = self.previewed(pid, csv(["2026-02-05", "Vitamin B6", "40", "nmol/L", "20-125", "", "", ""],
+                                    ["2026-02-05", "Zorblatt Factor 3", "90", "mg/dL", "50-150", "", "", ""],
+                                    ["2026-02-05", "IgG", "900", "mg/dL", "700-1600", "", "", ""],
+                                    ["2026-02-05", "Vitamin B 1", "130", "nmol/L", "70-180", "", "", ""]))
+        b6, f3, igg, b1 = (self.entry(j, n) for n in ("Vitamin B6", "Zorblatt Factor 3", "IgG", "Vitamin B 1"))
+        self.assertEqual(b6["suggestions"][0], {"name": "Vitamin B1", "unit": "nmol/L", "reason": "similar name, same unit", "sure": False})
+        for e in (b6, f3, igg):
+            self.assertFalse([s for s in e["suggestions"] if s["sure"]], e)
+        self.assertNotIn("Factor 1", [s["name"] for s in f3["suggestions"] if s["sure"]])
+        self.assertEqual(b1["suggestions"][0]["name"], "Vitamin B1")   # ("b" alone left out as a filler word: offered only)
+        self.assertFalse(b1["suggestions"][0]["sure"])
+        have = {"Vitamin B1": {"unit": "nmol/L", "loinc": set()}, "Factor 1": {"unit": "mg/dL", "loinc": set()},
+                "Vitamin": {"unit": "nmol/L", "loinc": set()}}
+        for name, unit in (("Vitamin B6", "nmol/L"), ("Factor 3", "mg/dL"), ("Vitamin B", "nmol/L")):
+            self.assertFalse([s for s in labmap.suggest({"name": name, "unit": unit}, have) if s["sure"]], name)
+        # the same name written another way, and the same LOINC code, still fill the box
+        self.assertTrue(labmap.suggest({"name": "VITAMIN-B1 SERUM", "unit": "nmol/l"}, have)[0]["sure"])
+        self.assertTrue(labmap.suggest({"name": "Thiamine X", "unit": "nmol/L", "loinc": "10-1"},
+                                       {"Vitamin B1": {"unit": "nmol/L", "loinc": {"10-1"}}})[0]["sure"])
+        # saved with nothing chosen: each keeps its own series, and nothing is remembered for later imports
+        done = self.save(pid, j)
+        self.assertEqual(done["lab_names"], {"matched": 0, "remembered": 0})
+        self.assertEqual(self.points(pid, "Vitamin B6"), [("2026-02-05", 40.0)])
+        self.assertEqual(self.points(pid, "Vitamin B1"), [("2026-01-05", 120.0)])
+        self.assertEqual(self.points(pid, "Zorblatt Factor 3"), [("2026-02-05", 90.0)])
+        # the exact name, and a name lab-aliases.json knows, aren't asked about: they go to their series
+        j = self.previewed(pid, csv(["2026-03-05", "Vitamin B1", "125", "nmol/L", "70-180", "", "", ""],
+                                    ["2026-03-05", "HGB", "13.0", "g/dL", "13.5 - 17.5", "L", "", ""]))
+        self.assertEqual(j["labs"], [])
+        self.save(pid, j)
+        self.assertEqual(self.points(pid, "Vitamin B1"), [("2026-01-05", 120.0), ("2026-03-05", 125.0)])
+        self.assertEqual(self.points(pid, "Hemoglobin"), [("2026-03-05", 13.0)])
 
     # ---------------------------------------------------------------- confirming, and the choice sticking
 

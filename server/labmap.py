@@ -6,10 +6,14 @@ the name as reported. For each series of an import whose name is neither canonic
 series, the preview suggests a series to put it in:
 
   1. the profile's own series, then lab-aliases.json's names, with the same LOINC code      "same LOINC code"
-  2. then names alike once case, punctuation and common abbreviations are evened out        "similar name, same unit"
+  2. then the same name once case, punctuation and common abbreviations are evened out      "same name written another way, same unit"
+  3. then names alike once evened out                                                      "similar name, same unit"
 
 and only where the units agree (common.unit_for); a name from lab-aliases.json the profile doesn't chart yet has no
-unit to compare, and says so. The person confirms the match, picks another series, or keeps it as a series of its
+unit to compare, and says so. Only 1 and 2 are "sure", put in the box for the person to confirm; a similar name (3)
+is a "Maybe" beside an empty box, chosen only by hand (#546: "Vitamin B6" was filed under "Vitamin B1" as if sure,
+for every profile), so names differing by a number or a letter (B6 and B1, Factor 3 and Factor 1, IgG and IgA) are
+never matched unasked. The person confirms the match, picks another series, or keeps it as a series of its
 own; confirm sends {"labs": {"s:<series index>": "<series name>" | null}} and the import is saved with those names.
 Only the series' name changes: its source key (LOINC or source based) stays, so duplicates are still found by it, and
 the results' own rows (a lab day's details) keep the name as reported.
@@ -72,6 +76,14 @@ def series_loinc(s):
     return str(code).strip() if code else ""
 
 
+def same_name(a, b):
+    """Whether two names are one test written another way (#546): evened out alike, and no single letter left out of
+    one as a filler word ("Vitamin B" isn't "Vitamin")."""
+    def letters(n):
+        return {w for w in norm(n).replace("_", " ").split() if len(w) == 1}
+    return even(a) == even(b) and letters(a) == letters(b)
+
+
 def compatible(target, u1, u2):
     return common.unit_for(target, u1) == common.unit_for(target, u2)
 
@@ -113,8 +125,9 @@ def targets(have):
 
 
 def suggest(s, have):
-    """Up to SUGGESTIONS series for s: [{"name", "unit", "reason", "sure"}], best first. sure: the units could be
-    compared (or the LOINC code is the same), so the preview chooses it unless told otherwise."""
+    """Up to SUGGESTIONS series for s: [{"name", "unit", "reason", "sure"}], best first. sure: the same LOINC code, or
+    the same name written another way (same_name), with units that agree, so the preview puts it in the box; a
+    similar name is never sure (#546), only offered."""
     name, unit, code = str(s.get("name") or ""), str(s.get("unit") or ""), series_loinc(s)
     out, seen = [], set()
 
@@ -137,9 +150,12 @@ def suggest(s, have):
     mine = even(name)
     alike = []
     for n, v in have.items():
-        r = difflib.SequenceMatcher(None, mine, even(n)).ratio()
-        if r >= SIMILAR and compatible(n, v["unit"], unit):
-            alike.append((r, 0, n, v["unit"], "similar name, same unit"))
+        if not compatible(n, v["unit"], unit):
+            continue
+        if same_name(name, n):
+            alike.append((2, 0, n, v["unit"], "same name written another way, same unit"))
+        elif (r := difflib.SequenceMatcher(None, mine, even(n)).ratio()) >= SIMILAR:
+            alike.append((r, 1, n, v["unit"], "similar name, same unit"))
     for n, d in common.lab_defs().items():
         if n in have:
             continue

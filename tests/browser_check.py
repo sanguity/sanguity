@@ -11512,7 +11512,7 @@ def main():
                 why: document.getElementById(box.getAttribute('aria-describedby')).textContent}}; }})()""")
             check("the review lists the unknown lab name in its table, the profile's Hemoglobin series suggested and typed in, a list of the series to pick from (#23, #282)",
                   labs is not None and "Hemoglobin Whole Bld" in labs["text"] and labs["value"] == "Hemoglobin"
-                  and "similar name, same unit" in labs["why"] and labs["options"] > 3, labs)
+                  and "same name written another way, same unit" in labs["why"] and labs["options"] > 3, labs)
             tiles = js(f"[...{last_card}.querySelectorAll('.imp-tiles .tile')].map(t => [t.querySelector('.lbl').textContent, t.querySelector('.val').textContent, t.querySelector('ul li').textContent])")
             check("…the CSV's review: a tile of its lab result with the result in it, and a button saying what it adds (#282)",
                   len(tiles) == 1 and tiles[0][:2] == ["Lab result", "1"] and "Hemoglobin Whole Bld 12.9 g/dL" in tiles[0][2]
@@ -11551,6 +11551,31 @@ def main():
             js(f"{last_card}.querySelector('.imp-actions .primary').click()")
             page.wait_for_function(f"/^(Imported|Not imported)/.test({last_card}.textContent)", timeout=30000)
             check("…and saved into Hemoglobin again", js(f"{last_card}.textContent").startswith("Imported."))
+            # (#546) in a profile of its own: a look-alike isn't filled in. "Vitamin B6", beside the profile's "Vitamin B1" in
+            # the same unit, has an empty box and a "Maybe" to choose; added with nothing chosen, it keeps its own name
+            from server import profiles as prof546
+            db = dbm.connect()
+            pid546 = prof546.create_profile(db, "Look-alikes (fictional)", owner_id=db.execute("SELECT id FROM users WHERE username=?", (USER,)).fetchone()["id"])
+            db.close()
+            page.goto(base + f"/sources.html?profile={pid546}#upload")
+            page.wait_for_selector("#importer", state="visible", timeout=10000)
+            csv546 = "Date,Test,Result,Units,Reference Range\n2026-11-09,{},{},nmol/L,70 - 180\n"
+            for n546, (name546, v546) in enumerate((("Vitamin B1", "120"), ("Vitamin B6", "40"))):
+                page.set_input_files("#pickFiles", files=[{"name": f"b-{n546}.csv", "mimeType": "text/csv", "buffer": csv546.format(name546, v546).encode()}])
+                page.wait_for_function(f"document.querySelectorAll('#importer .import-job').length === {n546 + 1} && /^Ready to import/.test({last_card}.textContent)", timeout=30000)
+                b546 = js(f"""(tr => {{ const box = tr.querySelector('input[list]'); return [tr.querySelector('b').textContent, box.value,
+                    document.getElementById(box.getAttribute('aria-describedby')).textContent,
+                    [...box.list.options].filter(o => o.label.startsWith('Maybe: ')).map(o => o.value)]; }})({last_card}.querySelector('.imp-labs tbody tr'))""")
+                js(f"{last_card}.querySelector('.imp-actions .primary').click()")   # Add, nothing chosen
+                page.wait_for_function(f"/^(Imported|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            check("a lab name like one of the profile's, another test (Vitamin B6, beside Vitamin B1), has an empty box and a Maybe to choose, "
+                  "not the look-alike filled in (#546)",
+                  b546[:3] == ["Vitamin B6", "", "Maybe: Vitamin B1, similar name, same unit. Pick it from the list to match it."] and b546[3] == ["Vitamin B1"], b546)
+            series546 = js(f"fetch('api/profiles/{pid546}/data', {{cache: 'no-store'}}).then(r => r.json()).then(d => d.labs.map(s => [s.name, s.pts.length]).sort())")
+            check("…added with nothing chosen, it keeps its own name, apart from Vitamin B1", series546 == [["Vitamin B1", 1], ["Vitamin B6", 1]], series546)
+            db = dbm.connect()
+            prof546.delete_profile(db, pid546)
+            db.close()
 
             # ---- Sources' Overview as a hub (#283): an import left at its preview (the tab closed before Save or Cancel)
             # is waiting for you, under Add with how many and at the top of the Overview, and is finished or cancelled
