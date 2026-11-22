@@ -35,7 +35,8 @@ the list's LOINC code or the same name written another way) is "to check" (#569)
 use it shows it as a "Maybe", and Admin, Lab name matches lists it first with Keep and Forget. A choice made since,
 by hand or by the rule, and one an admin keeps or changes, is checked; so is one an admin had changed before the
 upgrade (#575), and a review's choice for a name whose match is to check replaces it. A preview planned before a
-match was to check doesn't apply it when it's read again or saved (jobs._stamp, recheck). A name's specimen (blood,
+match was to check, forgotten or changed doesn't apply it when it's saved, and plans again when it's read (#583:
+recheck, and jobs._stamp, which has rev, counting every change to labmaps). A name's specimen (blood,
 serum, urine...) is part of it: "Ketones, Blood" isn't "Ketones" written another way (SPECIMEN).
 """
 import collections, copy, difflib, json, re
@@ -295,6 +296,8 @@ def remember(db, importer, lab_plan, sent, data, who, import_id=None):
                          crypto.enc(json.dumps({"name": name, "unit": unit, "loinc": code}, ensure_ascii=False)),
                          _enc_target(clean_target(target)), who["id"] if who else None,
                          who["username"] if who else "removed account", dbm.now(), import_id, dbm.now())).rowcount
+    if n:
+        _changed(db)
     return n
 
 
@@ -306,21 +309,27 @@ _REPLACE = """DO UPDATE SET source=excluded.source, target=excluded.target, crea
 
 def recheck(db, lab_plan):
     """A stored plan (a preview's, planned when it was read) with its remembered choices checked against labmaps as
-    they are now (#575): one now to check (#569; as after the upgrade to schema version 38) is no longer applied but
-    offered, "check" in place of "before", out of auto and ids, as plan() would have it."""
+    they are now: one is applied only while its row is there, isn't to check and goes to the same series (#583). One
+    forgotten or changed since (an admin's Forget or Change) is out of auto and ids, so its series keeps its own name
+    unless a choice was sent for it, and it isn't marked used; its entry keeps "before", so what's sent for it is for
+    this import only, as the review said. One now to check (#569; as after the upgrade to schema version 38) is offered,
+    "check" in place of "before", as plan() would have it (#575)."""
     ids = (lab_plan or {}).get("ids") or {}
     if not ids:
         return lab_plan
-    rows = {r["id"]: r for r in db.execute(f"SELECT * FROM labmaps WHERE id IN ({','.join('?' * len(ids))})", [int(i) for i in ids.values()])}
-    stale = {ref for ref, i in ids.items() if int(i) in rows and _row(rows[int(i)])["check"]}
-    if not stale:
+    rows = {r["id"]: _row(r) for r in db.execute(f"SELECT * FROM labmaps WHERE id IN ({','.join('?' * len(ids))})",
+                                                [int(i) for i in ids.values()])}
+    auto = lab_plan.get("auto") or {}
+    gone = {ref for ref, i in ids.items() if int(i) not in rows or rows[int(i)]["target"] != auto.get(ref)}
+    flagged = {ref for ref, i in ids.items() if ref not in gone and rows[int(i)]["check"]}
+    if not gone and not flagged:
         return lab_plan
     out = copy.deepcopy(lab_plan)
-    for ref in stale:
+    for ref in gone | flagged:
         out["auto"].pop(ref, None)
         del out["ids"][ref]
     for e in out.get("listed") or []:
-        if e["ref"] in stale and e.get("before"):
+        if e["ref"] in flagged and e.get("before"):
             e["check"], e["before"] = e["before"], None
     return out
 
@@ -352,7 +361,23 @@ def forgettable(db, import_id):
 
 def forget(db, import_id):
     """Forget them, inside the Undo's transaction, so the next import of those names asks again. Returns how many."""
-    return db.execute("DELETE " + _OWN, (import_id,)).rowcount
+    n = db.execute("DELETE " + _OWN, (import_id,)).rowcount
+    if n:
+        _changed(db)
+    return n
+
+
+# every change to labmaps but used, counted in the meta table (#583): a review waiting since plans again (jobs._stamp)
+REV = "labmaps_rev"
+
+
+def _changed(db):
+    db.execute("INSERT INTO meta(k, v) VALUES(?, '1') ON CONFLICT(k) DO UPDATE SET v = CAST(v AS INTEGER) + 1", (REV,))
+
+
+def rev(db):
+    """How many times labmaps has changed: a choice remembered, kept, changed or forgotten."""
+    return int(dbm.meta_get(db, REV) or 0)
 
 
 def _enc_target(t):
@@ -424,7 +449,9 @@ def change(db, mid, target, who):
     """An admin's change, or Keep (the same target): checked from now on (#569)."""
     db.execute("UPDATE labmaps SET target=?, changed_by=?, changed_name=?, changed=?, checked=? WHERE id=?",
                (_enc_target(clean_target(target)), who["id"], who["username"], dbm.now(), dbm.now(), mid))
+    _changed(db)
 
 
 def remove(db, mid):
     db.execute("DELETE FROM labmaps WHERE id=?", (mid,))
+    _changed(db)

@@ -35,7 +35,7 @@ import logging   # noqa: E402
 
 from fastapi.testclient import TestClient   # noqa: E402
 
-from server import accounts, activity, crypto, db as dbm, labmap, main, profiles as prof, twofactor, uploads   # noqa: E402
+from server import accounts, activity, crypto, db as dbm, jobs, labmap, main, profiles as prof, twofactor, uploads   # noqa: E402
 from tests.whole_records import whole   # noqa: E402  records with every record's details (#217)
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
@@ -418,6 +418,61 @@ class LabMapping(unittest.TestCase):
         self.save(pid, b)
         self.assertEqual(self.points(pid, "Vitamin B6 575"), [("2026-02-05", 40.0), ("2026-02-06", 41.0)])
         self.ada.delete(f"/api/labmaps/{mid}", headers=H)
+
+    def test_a_stored_plan_doesnt_apply_a_match_forgotten_or_changed_since(self):   # #583
+        """A review waiting while an admin forgets one match it applied and changes another (both checked): saved as
+        it was shown, each result keeps its own name and the changed match isn't marked used; another waiting review,
+        read again, is planned again: the forgotten name asked, the changed one matched to the admin's new series."""
+        pid = self.profile("Changed meanwhile")
+        self.save(pid, self.previewed(pid, csv(["2026-01-05", "Magnesium", "2.0", "mg/dL", "1.7-2.2", "", "", ""],
+                                               ["2026-01-05", "Potassium", "4.1", "mg/dL", "3.5-5.1", "", "", ""],
+                                               ["2026-01-05", "Calcium", "9.4", "mg/dL", "8.6-10.3", "", "", ""])))
+        mg = self.remembered_as("Magnesium RBC 583", "Magnesium", checked=1, unit="mg/dL")
+        k = self.remembered_as("Potassium RBC 583", "Potassium, Blood", checked=1, unit="mg/dL")
+        rbc = lambda day: csv([day, "Magnesium RBC 583", "5.0", "mg/dL", "4.2-6.8", "", "", ""],
+                              [day, "Potassium RBC 583", "90", "mg/dL", "80-100", "", "", ""])
+        a, b = self.previewed(pid, rbc("2026-02-05")), self.previewed(pid, rbc("2026-02-06"))
+        for j in (a, b):
+            self.assertEqual([self.entry(j, n)["before"] for n in ("Magnesium RBC 583", "Potassium RBC 583")],
+                             [{"target": "Magnesium"}, {"target": "Potassium, Blood"}])
+        self.assertEqual(self.ada.delete(f"/api/labmaps/{mg}", headers=H).status_code, 200)   # Forget
+        self.assertEqual(self.ada.patch(f"/api/labmaps/{k}", json={"target": "Calcium"}, headers=H).status_code, 200)   # Change
+        done = self.save(pid, a)   # confirmed as it was shown, nothing sent
+        self.assertEqual(done["lab_names"], {"matched": 0, "remembered": 0})
+        self.assertEqual(self.points(pid, "Magnesium RBC 583"), [("2026-02-05", 5.0)])
+        self.assertEqual(self.points(pid, "Potassium RBC 583"), [("2026-02-05", 90.0)])
+        for n, v in (("Magnesium", 2.0), ("Potassium, Blood", 4.1), ("Calcium", 9.4)):
+            self.assertEqual(self.points(pid, n), [("2026-01-05", v)])
+        self.assertIsNone(self.labmap_row(k)["used"])   # the stale match isn't marked used
+        j = self.robin.get(f"/api/profiles/{pid}/jobs/{b['id']}").json()   # the other, read again: planned again
+        self.assertEqual([self.entry(j, n)["before"] for n in ("Magnesium RBC 583", "Potassium RBC 583")], [None, {"target": "Calcium"}])
+        self.save(pid, b)
+        self.assertEqual(self.points(pid, "Calcium"), [("2026-01-05", 9.4), ("2026-02-06", 90.0)])
+        self.assertEqual(self.points(pid, "Magnesium RBC 583"), [("2026-02-05", 5.0), ("2026-02-06", 5.0)])
+        self.assertIsNotNone(self.labmap_row(k)["used"])
+        self.ada.delete(f"/api/labmaps/{k}", headers=H)
+
+    def test_any_change_to_the_matches_plans_a_waiting_review_again(self):   # #583
+        """The stamp a preview is read against changes with every change to labmaps, not only how many are to check:
+        an admin's Change or Keep of a checked match, a Forget, and a choice remembered by another review."""
+        pid = self.profile("Stamped")
+        db = dbm.connect()
+        try:
+            stamp = lambda: jobs._stamp(db, pid)
+            before = stamp()
+            mid = self.remembered_as("Vitamin B6 stamp", "Vitamin B1", checked=1)
+            labmap.change(db, mid, "Vitamin B12", {"id": self.uids["ada"], "username": "ada"})
+            self.assertNotEqual(stamp(), before)
+            before = stamp()
+            labmap.change(db, mid, "Vitamin B12", {"id": self.uids["ada"], "username": "ada"})   # Keep
+            self.assertNotEqual(stamp(), before)
+            before = stamp()
+            labmap.used(db, [mid])   # an import saved with it: nothing to plan again
+            self.assertEqual(stamp(), before)
+            labmap.remove(db, mid)
+            self.assertNotEqual(stamp(), before)
+        finally:
+            db.close()
 
     def test_keep_only_the_match_shown(self):   # #575
         """Keep sends the target it showed: once another admin has changed the match, it's refused, not the old

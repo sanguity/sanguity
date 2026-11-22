@@ -171,7 +171,7 @@
       const initial = before ? before.target || KEEP : sure.length ? sure[0].name : KEEP;
       const top = before ? null : sure[0] || unsure[0];
       const said = before ? (before.target == null ? "Kept separate as before." : "Matched as before.")
-                 : l.check && !top?.sure ? `Maybe: ${l.check.target}, matched before by a rule Sanguity no longer uses, so it's not used until an admin checks it. Pick it from the list to match it this time.`
+                 : l.check && !top?.sure ? `Maybe: ${l.check.target}, matched before by a rule Sanguity no longer uses, so it's not used until an admin checks it. Pick it from the list to match it; your choice is used for later imports too.`
                  : l.same ? `This profile has a series of this name now (${l.same}): left empty, its results go there.`   // (saved meanwhile, #497)
                  : top ? (top.sure ? `Suggested: ${top.name}, ${top.reason}.` : `Maybe: ${top.name}, ${top.reason}. Pick it from the list to match it.`)
                  : "Nothing in this profile looks like it.";
