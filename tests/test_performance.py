@@ -57,9 +57,11 @@ BUDGETS = {
     "sync_s": 15,                       # a connected source's first pull of a big patient, its preview saved
     "page_ready_ms": 1500,              # the records page ready, loaded on each tab
     "tab_draw_ms": 1000,                # a tab's first draw with the period "All", the page loaded on another tab
-    "tab_elements": 18_000,             # elements in a tab with the period "All"
+    "tab_elements": 12_000,             # elements in a tab with the period "All" (Body and activity decimated, #292)
     "phone_page_ready_ms": 5000,        # the same at 375 px with the CPU four times slower, like a phone's
     "phone_tab_draw_ms": 3000,
+    "pan_frame_ms": 150,                # a frame of dragging a tab's charts with the period "All" (#292): every chart drawn
+    "phone_pan_frame_ms": 250,          # again for the moved window, to the frame after; on a phone as above
     "share_page_px": 20_000,            # a share link's page with every section, of any date, at 1400 px (#491)
     "static_bytes": 310_000,           # www/'s stylesheets, fonts and SVG icons as nginx sends them, whatever the records
                                         # (#253; compressed as sent since Redesign 4, the owner's choice): room for R4–R7
@@ -436,11 +438,24 @@ TL_ALL_JS = """async () => { const frame = () => new Promise(r => requestAnimati
   for (let b; (b = document.getElementById("tlMore"));) { const s = performance.now(); b.click(); await frame(); times.push(performance.now() - s); }
   return {want, first, rows: rows(), presses: times.length, ms: Math.round(Math.max(0, ...times)), focused: !times.length || document.activeElement.matches("#list .tl-row"),
     elements: document.getElementById("view-timeline").getElementsByTagName("*").length}; }"""
+# a drag across a tab's charts with the period "All" (#292): pointer events as the mouse sends them, 8 px a frame, left
+# then back; each frame timed from the move to the frame after it (panZoom draws every chart again in it), the median
+PAN_TABS = ("health", "labs", "labs-heatmap")
+PAN_JS = """async t => { const [tab, view] = t.split("-"), frame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r)));
+  switchTab(tab, view === "heatmap" ? "heatmap" : "chart", true); await frame(); await frame();
+  const svg = document.querySelector(tab === "health" ? "#view-health svg.ck" : view === "heatmap" ? "#hm" : "#charts .chart svg");
+  svg.scrollIntoView({block: "center"}); await frame();
+  const r = svg.getBoundingClientRect(), y = r.top + r.height / 2, times = [];
+  const at = (type, x) => svg.dispatchEvent(new PointerEvent(type, {bubbles: true, pointerId: 7, pointerType: "mouse", button: 0, buttons: 1, isPrimary: true, clientX: x, clientY: y}));
+  let x = r.left + r.width / 2; at("pointerdown", x);
+  for (let i = 0; i < 24; i++) { x += i < 12 ? -8 : 8; const s = performance.now(); at("pointermove", x); await frame(); times.push(performance.now() - s); }
+  at("pointerup", x); await frame(); applyPreset("all"); await frame();
+  return Math.round(times.sort((p, q) => p - q)[12]); }"""
 
 
 def page_times(viewport, throttle=1):
     """{tab: median ms to the page ready, loaded on that tab}, {tab: median ms of its first draw with the period
-    "All"}, {tab: its elements}, any script or console errors, what Costs' out-of-pocket list shows before and
+    "All"}, {tab: its elements}, {tab: the median frame of a drag across its charts (PAN_JS, #292)}, any script or console errors, what Costs' out-of-pocket list shows before and
     after Show 200 more, Body and activity's sections with their cards (#276), the Timeline's list shown whole
     (TL_ALL_JS, #277), and Body and activity with every card on Table (H_TABLES_JS, #460: its draw and elements are
     the tab's "health, every table"). throttle: Chromium's CPU slowdown (4: a phone)."""
@@ -448,15 +463,19 @@ def page_times(viewport, throttle=1):
     errors, ready_ms, draw_ms, elements = [], {}, {}, {}
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        page = browser.new_page(viewport=viewport)
-        page.on("pageerror", lambda e: errors.append(str(e)))
-        page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
-        page.goto(BASE + "/login.html")
-        page.fill("#u", USER)
-        page.fill("#p", PW)
-        page.click("#b")
-        page.wait_for_url(lambda u: "login" not in u)
-        page.context.new_cdp_session(page).send("Emulation.setCPUThrottlingRate", {"rate": throttle})
+
+        def signed_in():   # a page in a context of its own, signed in, with the CPU as slow as asked
+            page = browser.new_page(viewport=viewport)
+            page.on("pageerror", lambda e: errors.append(str(e)))
+            page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
+            page.goto(BASE + "/login.html")
+            page.fill("#u", USER)
+            page.fill("#p", PW)
+            page.click("#b")
+            page.wait_for_url(lambda u: "login" not in u)
+            page.context.new_cdp_session(page).send("Emulation.setCPUThrottlingRate", {"rate": throttle})
+            return page
+        page = signed_in()
 
         def ready():
             for _ in range(1200):
@@ -500,8 +519,16 @@ def page_times(viewport, throttle=1):
             runs.append(ms)
         draw_ms["health, every table"] = round(statistics.median(runs))
         tables = page.evaluate(H_TABLES_JS)
+        pan_ms = {}
+        page.close()   # the drags in a page of their own: this one has been through every tab, and kept their memory
+        page = signed_in()
+        page.goto(f"{BASE}/index.html?profile=1&pan=1#overview")
+        ready()
+        page.evaluate("() => applyPreset('all')")
+        for tab in PAN_TABS:
+            pan_ms[tab] = statistics.median(page.evaluate(PAN_JS, tab) for _ in range(RUNS))
         browser.close()
-    return ready_ms, draw_ms, elements, errors, paged, sections, tl_all, tables
+    return ready_ms, draw_ms, elements, errors, paged, sections, tl_all, tables, pan_ms
 
 
 class PageBudgets(unittest.TestCase):
@@ -521,19 +548,19 @@ class PageBudgets(unittest.TestCase):
         self.assertEqual([tl_all["rows"], tl_all["focused"]], [tl_all["want"], True], tl_all)
 
     def test_desktop(self):
-        ready_ms, draw_ms, elements, errors, paged, sections, tl_all, tables = page_times({"width": 1400, "height": 900})
+        ready_ms, draw_ms, elements, errors, paged, sections, tl_all, tables, pan_ms = page_times({"width": 1400, "height": 900})
         self.assertEqual(errors, [])
         self.assertEqual(paged, [200, "Show 200 more", 400, True])
         self.assertEqual(sections, SECTIONS, "Body and activity's sections (#276)")
         self.assertTrue(tables["all"] and tables["more"] > 0, f"Body and activity, every card on Table, paged (#460): {tables}")
         self.check_timeline(tl_all, "")
-        self.check("", {"page_ready_ms": ready_ms, "tab_draw_ms": {**draw_ms, "timeline, Show more": tl_all["ms"]}, "tab_elements": elements})
+        self.check("", {"page_ready_ms": ready_ms, "tab_draw_ms": {**draw_ms, "timeline, Show more": tl_all["ms"]}, "tab_elements": elements, "pan_frame_ms": pan_ms})
 
     def test_phone(self):   # 375 px wide, with the CPU four times slower
-        ready_ms, draw_ms, _, errors, _, _, tl_all, _ = page_times({"width": 375, "height": 800}, throttle=4)
+        ready_ms, draw_ms, _, errors, _, _, tl_all, _, pan_ms = page_times({"width": 375, "height": 800}, throttle=4)
         self.assertEqual(errors, [])
         self.check_timeline(tl_all, "phone_")
-        self.check("phone_", {"page_ready_ms": ready_ms, "tab_draw_ms": {**draw_ms, "timeline, Show more": tl_all["ms"]}})
+        self.check("phone_", {"page_ready_ms": ready_ms, "tab_draw_ms": {**draw_ms, "timeline, Show more": tl_all["ms"]}, "pan_frame_ms": pan_ms})
 
     def test_event_track(self):
         """Labs' event track over the charts (#294) on the ten years, with the period "All", procedures and imaging and the

@@ -1582,6 +1582,14 @@ Everything on `main` so far; it becomes the first tagged release.
   "+3" where more share one, then the medications as spans, and the doses, journal and cycle rows when they're ticked.
   Each chart keeps only a faint line at each milestone. Hover it, or step through it with the arrow keys, for each
   event's name and date, and click or press Enter to open it; Chart | Table shows every event as a table.
+- **Ten years drag smoothly** (#292): on ten years of watch data Body and activity drew a mark for every day and
+  reading, 16,408 elements, and each frame of a drag took 75 ms on a desktop and a third of a second on a phone. A
+  series with more points than its chart has pixels is now drawn with what each pixel shows: a line its first, lowest,
+  highest and last point there, a band its lowest and highest, dots the lowest and highest in each half a dot's width
+  and every flagged one, bars the tallest; on a phone the Labs heatmap's ten years of draws, narrower than a pixel
+  each, a pixel's cell each, the result furthest outside its range. The charts are still SVG, and their tables,
+  tooltips and keyboard steps read every point. A frame of a drag is 41 ms on Body and activity (70 ms on a phone) and
+  154 ms at most on a phone (the heatmap), with a budget for it in the performance test (`pan_frame_ms`).
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

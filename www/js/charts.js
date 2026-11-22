@@ -68,17 +68,17 @@ const inWindow = s => s.pts.filter(p => p.ts >= state.from && p.ts <= state.to);
 panZoom(chartsBox, {...mainWindow,
   plot: ev => { const s = ev.target.closest?.(".chart svg, .ck-axis"); return s && s._geom ? s : null; }, span: svgSpan,   // the charts' one axis too (#293)
   start: () => chartsBox.querySelectorAll(".chart svg").forEach(o => o._hover && o._hover(null)),
-  draw: () => { chartsBox.querySelectorAll(".chart svg").forEach(svg => { if (svg._s && svg._geom) drawChart(svg, svg._s, inWindow(svg._s), svg._read); }); labAxisDraw(); drawTrack(); },   // and their one axis (#293), and the event track over them (#294)
+  draw: () => { chartsBox.querySelectorAll(".chart svg").forEach(svg => { if (svg._s && svg._geom) drawChart(svg, svg._s, inWindow(svg._s), svg._read, true); }); labAxisDraw(); drawTrack(); },   // and their one axis (#293), and the event track over them (#294)
   end: () => { renderFilters(); renderCharts(); save(); }});
 // Labs, as a heatmap: the same date window; columns are draw days, so the time axis is the column area
 panZoom($("#hmWrap"), {...mainWindow,
   plot: ev => ev.target.closest?.("#hm, #hmAxis") && $("#hm")._geom ? $("#hm") : null, span: svgSpan,
-  draw: () => renderHeatmap(), end: () => { renderFilters(); renderHeatmap(); save(); }});   // renderHeatmap lives in a later file: call it, do not reference it at load
+  draw: () => renderHeatmap(true), end: () => { renderFilters(); renderHeatmap(); save(); }});   // renderHeatmap lives in a later file: call it, do not reference it at load
 // Body and activity: all its charts share the records bar's period too ("All" there is the watch and scale data's span)
 panZoom($("#view-health"), {...mainWindow, minSpan: 3 * DAY,
   plot: ev => { const s = ev.target.closest?.("svg"); return s && s._draw && s._geom ? s : null; }, span: svgSpan,
   get: () => hRange(),
-  draw: () => { const [a, b] = hRange(); $("#view-health").querySelectorAll("svg").forEach(s => s._draw && s._draw(a, b)); },
+  draw: () => { const [a, b] = hRange(); $("#view-health").querySelectorAll("svg").forEach(s => s._draw && s._draw(a, b, true)); },
   end: () => { renderFilters(); renderHealth(); save(); }});
 /* milestone rules on a time chart: a dashed line in --milestone (never the accent, #334) from y0 to y1, label on its own
    row at labelY (null = no labels). A label stays inside the plot, x(a) to R (#312): after its rule, before it near the
