@@ -648,6 +648,19 @@ Everything on `main` so far; it becomes the first tagged release.
   short line in its colour (the orange and green text was under 4.5:1); a lab day on the Timeline with a result out
   of range has a red ▲ over it instead of a 2 px red dot; on the Labs charts a procedure is a ● and imaging a ■, no
   longer the ▼ that means below range, with both in the legend while they're shown.
+- **Eight colours for the kinds of record, a shape for each kind on the charts** (#301): there were eleven, more than
+  a palette can keep apart (ECG brown and visit green 1.6 apart for deuteranopia, the journal's teal and the ECG's
+  brown reading as grey, three out of the lightness band in dark). Now eight, run through the palette checks in light
+  and dark (`tests/test_palette.py`): visits, labs, imaging, procedures, reports, messages, the journal (plum, was
+  teal) and cycle tracking (orchid in light, rose in dark, was crimson beside the out-of-range red); chart activity,
+  immunizations, letters and ECGs are in neutral ink with their icons, as the watch's are. The chips, the Timeline's
+  lanes, the list and the drawer still match. On and under the Labs charts each kind has a shape of its own: a
+  procedure a plus (was ●, a result's shape), imaging a square, a symptom a star, a side effect a hexagon (was ◆, a
+  flagged result's), a note a bar (was ■, imaging's), an ovulation test a ring, cervical mucus a cross and spotting a
+  drop; the heatmap's procedures are a plus too. The Legend lists only what the charts draw in the dates shown
+  (Journal and Mood were listed with none). Body and activity and Costs no longer borrow the kinds' colours (body fat
+  was imaging's orange, lean mass procedures' green, money orange and green): a measure is one teal of its own, a
+  second series beside it ink.
 - **New share link opens on the first click** (#306): clicked before the share-links panel had loaded its list,
   it did nothing (the form is built from the sections and labs that come with the list); it waits for them now.
 - **Chart labels you can read on a phone** (#312): a milestone's label on the Timeline, the Labs charts and Body and

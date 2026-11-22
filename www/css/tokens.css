@@ -51,16 +51,18 @@
   /* out of range, or something wrong; in range, or done */
   --crit:light-dark(#b3261e,#f2877c); --crit-fill:#b3261e; --good:light-dark(#1e6b34,#6bc08a); --good-text:light-dark(#1e6b34,#6bc08a);
   --brand:light-dark(#8a2438,#b4485e); --brand-ink:light-dark(#fbf4f1,#1c1a19);
-  /* the data: each kind of record in its own colour everywhere (unchanged; Redesign 7 revisits them) */
-  --c-lab:light-dark(#2a78d6,#3987e5); --c-imaging:light-dark(#eb6834,#d95926); --c-procedure:light-dark(#1baf7a,#199e70);
-  --c-study:light-dark(#eda100,#c98500); --c-letter:light-dark(#e87ba4,#d55181); --c-visit:#008300;
-  --c-contact:light-dark(#5c7a62,#8fae95); --c-message:light-dark(#6250d6,#9085e9); --c-journal:light-dark(#0d7f86,#3bb8bf);
-  --c-immunization:light-dark(#a3479c,#d07fc4); --c-ecg:light-dark(#94602a,#c8955a);
+  /* the data: each kind of record in its own colour everywhere, eight at most, in the Timeline's order (#301:
+     tests/test_palette.py checks them as one palette in light and dark, docs/accessibility.md has the figures); the
+     other kinds are in a neutral ink with their icon (CATS, util.js) */
+  --c-visit:#008300; --c-lab:light-dark(#2a78d6,#3987e5); --c-imaging:light-dark(#eb6834,#d95926);
+  --c-procedure:light-dark(#1baf7a,#199e70); --c-study:light-dark(#eda100,#c98500); --c-message:light-dark(#6250d6,#9085e9);
+  --c-journal:light-dark(#a02192,#9840b7); --c-cycle:light-dark(#b26fa4,#d55181);
+  /* a measure that isn't a kind of record (weight, money...), apart from all eight; a second beside it in ink (#301) */
+  --measure:light-dark(#06899d,#0b9db3);
   --stay:light-dark(rgb(26 25 21 / .07),rgb(238 236 230 / .07)); --stay-line:light-dark(#8a867c,#77736a);
   --range:light-dark(rgba(42,120,214,.10),rgba(57,135,229,.16));
   --div-lo:light-dark(#2a78d6,#3987e5); --div-mid:light-dark(#f0efec,#383835); --div-hi:light-dark(#e34948,#e66767);
   --seq1:light-dark(#184f95,#9ec5f4); --seq2:light-dark(#3987e5,#5598e7); --seq3:light-dark(#86b6ef,#1c5cab);
-  --c-cycle:light-dark(#b2305f,#f290b4);   /* menstrual cycle tracking (#183): over 5:1 against the page in both themes */
   /* heart rate zones (#197): one hue, light to dark in light, dark to light in dark */
   --zone1:light-dark(#86b6ef,#1d4f91); --zone2:light-dark(#5598e7,#2d6fc4); --zone3:light-dark(#2f78d4,#4b8fe6);
   --zone4:light-dark(#1d58a8,#7fb1f0); --zone5:light-dark(#123a70,#b5d3f8);

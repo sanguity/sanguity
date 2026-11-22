@@ -310,18 +310,18 @@
   // what an import brings besides events, in the order the counts are listed: [count key, words, icon, colour]
   // (#179 the profile's lists, #182 ECGs, #223 an Apple Health export's readings and cycle records)
   const EXTRA = [["results", ["lab result", "lab results"], "test-tube-diagonal", "var(--c-lab)"],
-    ["documents", ["attached file", "attached files"], "file-text", "var(--c-letter)"],
+    ["documents", ["attached file", "attached files"], "file-text", "var(--ink2)"],
     ["allergies", ["allergy", "allergies"], "triangle-alert", "var(--muted)"],
-    ["problems", ["problem or diagnosis", "problems or diagnoses"], "clipboard", "var(--c-contact)"],
+    ["problems", ["problem or diagnosis", "problems or diagnoses"], "clipboard", "var(--ink2)"],
     ["upcoming", ["upcoming appointment", "upcoming appointments"], "calendar", "var(--c-visit)"],
     ["watch_days", ["day of activity data", "days of activity data"], "watch", "var(--ink2)"],
     ["workouts", KIND.exercise, "dumbbell", "var(--ink2)"],
-    ["ecgs", ["ECG recording", "ECG recordings"], "activity", "var(--c-ecg)"],
-    ["rhythm", ["irregular rhythm notification", "irregular rhythm notifications"], "activity", "var(--c-ecg)"],
+    ["ecgs", ["ECG recording", "ECG recordings"], "activity", "var(--ink2)"],
+    ["rhythm", ["irregular rhythm notification", "irregular rhythm notifications"], "activity", "var(--ink2)"],
     ["bp_readings", ["blood pressure reading", "blood pressure readings"], "heart-pulse", "var(--ink2)"],
     ["temp_readings", ["body temperature reading", "body temperature readings"], "gauge", "var(--ink2)"],
-    ["glucose_readings", ["glucose meter reading", "glucose meter readings"], "droplet", "var(--c-journal)"],
-    ["cgm_days", ["day of CGM readings", "days of CGM readings"], "droplet", "var(--c-journal)"],
+    ["glucose_readings", ["glucose meter reading", "glucose meter readings"], "droplet", "var(--ink2)"],
+    ["cgm_days", ["day of CGM readings", "days of CGM readings"], "droplet", "var(--ink2)"],
     ["heights", ["height, offered for About this person", "heights, offered for About this person"], "ruler", "var(--ink2)"],
     ["cycle", ["cycle tracking record", "cycle tracking records"], "droplet", "var(--c-cycle)"]];
   const RECORDS = new Set(["results", "allergies", "problems", "upcoming"]);   // besides events: what's a record

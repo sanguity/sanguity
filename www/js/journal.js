@@ -5,9 +5,9 @@
    mood: kind "mood", its own lane; id: minus the entry's id, so it never meets a record's), drawn in its timeline lane
    and opened in the drawer like any event. Trends shows them as markers in a row under each chart's time axis
    (CHART_LAYERS, trends.js), and moods in a row of their own. Severity is shown by the marker's size, the kind by its
-   shape (note: square, symptom: circle, side effect: diamond), a mood and energy by bars' heights, and each in its
-   label: never by colour alone. Owners and editors add, change and delete entries (server/routes_journal.py); viewers
-   read them. The journal's home is the Timeline tab's Journal view (#277), a card with its filters and search, and the
+   shape (util.js KIND_SHAPE, #301: symptom a star, side effect a hexagon, note a bar), a mood and energy by bars'
+   heights, and each in its label: never by colour alone. Owners and editors add, change and delete entries
+   (server/routes_journal.py); viewers read them. The journal's home is the Timeline tab's Journal view (#277), a card with its filters and search, and the
    body map of where symptoms have been in the dates shown (journal-body.js); Add → Journal entry opens the form for a
    new one from any tab (#173). Symptom groups are the setting journal.groups (CFG.journal.groups), changed from that card.
    Plain script, loaded in order by index.html after trends.js and journal-body.js; all files share one global scope. */
@@ -53,12 +53,7 @@ $("#journalBtn").onclick = () => { $("#addMenuBtn")?.focus({preventScroll: true}
 
 /* ---------------------------------------------------------------- marks: shape by kind, size by severity */
 const jRadius = j => jRated(j) ? 3 + j.severity * .45 : 4;   // 3 (none) to 7.5 (worst)
-function jShape(j, x, y, attrs) {
-  const r = jRadius(j);
-  if (j.kind === "symptom") return el("svg:circle", {cx: x, cy: y, r, ...attrs});
-  if (j.kind === "side_effect") return el("svg:path", {d: `M${x},${y - r * 1.25}L${x + r * 1.25},${y}L${x},${y + r * 1.25}L${x - r * 1.25},${y}Z`, ...attrs});
-  return el("svg:rect", {x: x - r, y: y - r, width: 2 * r, height: 2 * r, rx: 1.5, ...attrs});
-}
+const jShape = (j, x, y, attrs) => shapeMark(KIND_SHAPE[j.kind] || "bar", x, y, jRadius(j), attrs);
 /* a mood's mark (#161): two bars from a base line, mood filled and energy outlined, each as tall as its 0-10 */
 function jMoodBars(j, x, base, tall, attrs = {}) {
   const bar = (v, dx, filled) => v == null ? null : el("svg:rect", {x: x + dx, y: base - 1.5 - v / 10 * tall, width: 3.5, height: 1.5 + v / 10 * tall, rx: .8,
@@ -128,13 +123,14 @@ CHART_LAYERS.push({
       jOnTrends = ev.target.checked; try { localStorage.setItem("sg-journal-trends", jOnTrends ? "1" : "0"); } catch (e) {} renderCharts(); }});
     marks.after(el("label", {id: "optJournalLabel", class: "toggle"}, box, " Journal"));
   }
-  const legend = document.querySelector("#view-labs .legend");
-  if (legend) legend.append(el("span", {class: "jlegend"}, el("svg:svg", {viewBox: "0 0 30 12", width: 30, height: 12, "aria-hidden": "true"},
-    jShape({kind: "symptom", severity: 2}, 5, 6, {fill: "var(--c-journal)", "fill-opacity": .4, stroke: "var(--c-journal)"}),
-    jShape({kind: "symptom", severity: 8}, 20, 6, {fill: "var(--c-journal)", "fill-opacity": .8, stroke: "var(--c-journal)"})),
-    "Journal: bigger = more severe; ●\u00a0symptom, ◆\u00a0side\u00a0effect, ■\u00a0note"),   // each mark kept with its words (#355)
-    el("span", {class: "jlegend"}, el("svg:svg", {viewBox: "0 0 14 14", width: 14, height: 14, "aria-hidden": "true"}, jMoodBars({mood: 8, energy: 5}, 7, 13.5, 11)),
+  // the Legend's keys, each shape kept with its word (#355), shown while there's an entry of the kind on the charts (#301)
+  const legend = document.querySelector("#view-labs .legend"), ink = {fill: "var(--c-journal)", "fill-opacity": .6, stroke: "var(--c-journal)"};
+  if (legend) legend.append(el("span", {class: "jlegend keys", "data-legend": "journal", hidden: true}, "Journal:",
+    ...J_KINDS.filter(([k]) => k !== "mood").map(([k, n]) => el("span", {}, shapeKey(KIND_SHAPE[k], ink, 3.6), n.toLowerCase())), "bigger = more severe"),
+    el("span", {class: "jlegend", "data-legend": "mood", hidden: true}, el("svg:svg", {viewBox: "0 0 14 14", width: 14, height: 14, "aria-hidden": "true"}, jMoodBars({mood: 8, energy: 5}, 7, 13.5, 11)),
       "Mood: filled bar mood, outlined bar energy; taller = higher"));
+  LEGEND_HAS.journal = () => jInWindow().length > 0;
+  LEGEND_HAS.mood = () => jInWindow("mood").length > 0;
 }
 
 /* ---------------------------------------------------------------- the drawer: one entry, the list, the form */
@@ -191,7 +187,7 @@ const J_FEW = 5;   // the card shows the newest five until "Show all"
 const JOURNAL_HINT = "What you write is kept with the records, not with any import: undoing an import leaves it. It's in “Export everything” and in backups, photos included.";
 const jMatch = e => jFilter.kinds.has(e.j.kind) && (!jFilter.med || e.j.med === jFilter.med) && (!jFilter.where || (e.j.where || []).includes(jFilter.where)) &&
   (!jFilter.q || e._q.includes(jFilter.q)) && (!jFilter.inRange || e.ts >= state.from && e.ts <= state.to);
-const jIcon = e => el("svg:svg", {class: "jicon", viewBox: "0 0 18 18", width: 18, height: 18, "aria-hidden": "true"},
+const jIcon = e => el("svg:svg", {class: "jicon", viewBox: "-1 -1 20 20", width: 18, height: 18, "aria-hidden": "true"},
   e.j.kind === "mood" ? jMoodBars(e.j, 9, 17, 14) : jShape(e.j, 9, 9, {fill: "var(--c-journal)", "fill-opacity": jRated(e.j) ? .25 + e.j.severity * .065 : .85, stroke: "var(--c-journal)"}));
 const jRow = e => el("button", {class: "jrow", type: "button", role: "listitem", onclick: () => openEvent(e), "aria-label": jSay(e.j)},
   el("span", {class: "d", text: fmtD(e.ts)}), jIcon(e),

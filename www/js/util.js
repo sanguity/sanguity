@@ -25,22 +25,26 @@ const present = (...kids) => kids.flat().filter(k => k != null);
    event's words as the Timeline searches them (store.js, palette.js: #463) */
 const KIND_LABEL = {lab:"Lab draw",imaging:"Imaging",procedure:"Procedure",study:"Report / study",message:"Conversation",appt_msg:"Appointment message",auto_msg:"Automated message",letter:"Letter",document:"Document",stay:"Hospital stay",visit:"Visit",contact:"Chart activity",labitem:"Lab result",exercise:"Workout (watch)",med:"Medication",rx:"Pharmacy fill",claim:"Insurance claim",journal:"Journal",mood:"Mood and energy",immunization:"Immunization",ecg:"ECG (watch)",rhythm:"Irregular rhythm notification (watch)",cycle:"Cycle tracking"};
 /* the Timeline's kinds (core.js, the records page) and each kind's icon, here for the command palette on every page
-   too (#470): its events off the records page, counted as the Timeline lists them and shown with their kinds' icons */
+   too (#470): its events off the records page, counted as the Timeline lists them and shown with their kinds' icons.
+   Each kind's colour is the same in its chip, its Timeline lane, its rows and the drawer. Eight kinds have a colour of
+   their own (#301, tokens.css: validated in light and dark); the rest are in a neutral ink and known by their icon and
+   label: chart activity, immunizations, letters and ECGs in --ink2, as the watch's workouts, medications in --muted,
+   claims in --axis, hospital stays in --stay-line. */
 const CATS = [
   {k:"stay",      label:"Hospital stays",   color:"var(--stay-line)", kinds:["stay"]},
   {k:"visit",     label:"Visits",           color:"var(--c-visit)",   kinds:["visit"]},
-  {k:"contact",   label:"Chart activity",   color:"var(--c-contact)", kinds:["contact"]},   // chart reviews, calls, faxes (#236)
+  {k:"contact",   label:"Chart activity",   color:"var(--ink2)",      kinds:["contact"]},   // chart reviews, calls, faxes (#236)
   {k:"lab",       label:"Labs",             color:"var(--c-lab)",     kinds:["lab"]},
   {k:"imaging",   label:"Imaging",          color:"var(--c-imaging)", kinds:["imaging"]},
   {k:"procedure", label:"Procedures",       color:"var(--c-procedure)",kinds:["procedure"]},
-  {k:"immunization", label:"Immunizations", color:"var(--c-immunization)", kinds:["immunization"]},   // #179: vaccines given
+  {k:"immunization", label:"Immunizations", color:"var(--ink2)", kinds:["immunization"]},   // #179: vaccines given
   {k:"study",     label:"Reports & studies",color:"var(--c-study)",   kinds:["study"]},
   {k:"message",   label:"Messages",         color:"var(--c-message)", kinds:["message","appt_msg","auto_msg"]},
-  {k:"letter",    label:"Letters & docs",   color:"var(--c-letter)",  kinds:["letter","document"]},
+  {k:"letter",    label:"Letters & docs",   color:"var(--ink2)",      kinds:["letter","document"]},
   {k:"med",       label:"Medications",      color:"var(--muted)",     kinds:["med","rx"]},
   {k:"claim",     label:"Insurance claims", color:"var(--axis)",      kinds:["claim"]},
   {k:"watch",     label:"Watch",            color:"var(--ink2)",      kinds:["exercise"]},
-  {k:"ecg",       label:"ECG & rhythm",     color:"var(--c-ecg)",     kinds:["ecg","rhythm"]},   // #182: a watch's ECGs and irregular rhythm notifications (ecg.js)
+  {k:"ecg",       label:"ECG & rhythm",     color:"var(--ink2)",      kinds:["ecg","rhythm"]},   // #182: a watch's ECGs and irregular rhythm notifications (ecg.js)
   {k:"journal",   label:"Journal",          color:"var(--c-journal)", kinds:["journal"]},   // the person's own entries (journal.js)
   {k:"mood",      label:"Mood & energy",    color:"var(--c-journal)", kinds:["mood"]},      // #161: a day's mood and energy, written in the journal
   {k:"cycle",     label:"Cycle tracking",   color:"var(--c-cycle)",   kinds:["cycle"]},     // #183: only when its owner turned it on (cycle.js)
@@ -54,6 +58,37 @@ const KIND_ICON = {stay: "bed", visit: "stethoscope", contact: "clipboard", lab:
   appt_msg: "message-square", auto_msg: "message-square", letter: "mail", document: "file-text", med: "pill", rx: "pill",
   claim: "banknote", watch: "watch", exercise: "watch", ecg: "activity", rhythm: "activity", journal: "notebook", mood: "smile",
   cycle: "droplet"};
+/* each kind's shape where it's drawn over or under a chart (#301): one shape for one meaning, so a ● is a result and
+   nothing else. Drawn by shapeMark() below; the Labs charts' marks of procedures and imaging (trends.js), the
+   journal's row (journal.js, by an entry's kind), the cycle's (cycle.js, by a mark's kind) and the heatmap's procedures
+   (heatmap.js) take theirs from here, and so does the Legend. Kept for a result's own flag, never an event's: ▲ above
+   its range, ▼ below, ◆ flagged otherwise (charts.js abnMark). A span (a medication, a period, a hospital stay) is a
+   bar as long as it lasted, and a day's mood and energy two bars (journal.js jMoodBars). */
+const KIND_SHAPE = {labitem: "circle", procedure: "plus", imaging: "square",
+  symptom: "star", side_effect: "hexagon", note: "bar",   // the journal's kinds
+  ovulation: "ring", mucus: "cross", spotting: "drop"};   // the cycle's marks
+/* a kind's shape (#301, KIND_SHAPE) at x, y: about as much ink as a circle of radius r, whichever it is, so
+   none looks bigger than another; attrs its class, fill, stroke and the rest, and data-shape names it */
+function shapeMark(shape, x, y, r, attrs = {}) {
+  const poly = pts => "M" + pts.map(([dx, dy]) => `${(x + dx).toFixed(2)},${(y + dy).toFixed(2)}`).join("L") + "Z";
+  const turn = (n, R, a0 = -90) => Array.from({length: n}, (_, i) => { const a = (a0 + i * 360 / n) * Math.PI / 180; return [R * Math.cos(a), R * Math.sin(a)]; });
+  const a = {"data-shape": shape, ...attrs}, t = r * .42, l = r * 1.15;   // a plus's half-thickness and arm
+  const plus = [[-t, -l], [t, -l], [t, -t], [l, -t], [l, t], [t, t], [t, l], [-t, l], [-t, t], [-l, t], [-l, -t], [-t, -t]];
+  switch (shape) {
+    case "square": return el("svg:rect", {x: x - r * .9, y: y - r * .9, width: r * 1.8, height: r * 1.8, ...a});
+    case "plus": return el("svg:path", {d: poly(plus), ...a});
+    case "cross": return el("svg:path", {d: poly(plus.map(([dx, dy]) => [(dx - dy) * .7071, (dx + dy) * .7071])), ...a});
+    case "star": return el("svg:path", {d: poly(turn(10, 1).map(([dx, dy], i) => [dx * r * (i % 2 ? .58 : 1.3), dy * r * (i % 2 ? .58 : 1.3)])), ...a});
+    case "hexagon": return el("svg:path", {d: poly(turn(6, r * 1.1)), ...a});
+    case "bar": return el("svg:rect", {x: x - r * 1.3, y: y - r * .6, width: r * 2.6, height: r * 1.2, rx: r * .3, ...a});
+    case "drop": return el("svg:path", {d: `M${x},${y - r * 1.5}C${x + r * .5},${y - r * .8} ${x + r},${y - r * .2} ${x + r},${y + r * .25}`
+      + `A${r},${r} 0 0 1 ${x - r},${y + r * .25}C${x - r},${y - r * .2} ${x - r * .5},${y - r * .8} ${x},${y - r * 1.5}Z`, ...a});
+    case "ring": return el("svg:circle", {cx: x, cy: y, r: r * .9, fill: "var(--surface)", ...a});
+    default: return el("svg:circle", {cx: x, cy: y, r, ...a});
+  }
+}
+/* a legend's key: one shape drawn small, its own svg, hidden from screen readers (the words beside it say it) */
+const shapeKey = (shape, attrs, r = 4) => el("svg:svg", {viewBox: "0 0 14 14", width: 14, height: 14, "aria-hidden": "true"}, shapeMark(shape, 7, 7.5, r, attrs));
 /* a kind's icon, hidden from assistive technology beside the kind's name (util.js icon()); cls: a class of its own */
 const kindIcon = (k, cls) => {
   const i = icon(KIND_ICON[k] || KIND_ICON[CAT_OF[k]?.k] || "file-text");
