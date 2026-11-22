@@ -619,10 +619,22 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 :is(.chart,.ev-track) .hd .unit{color:var(--muted);font-size:var(--fs-2)}
 .chart .hd .read{margin-left:auto;font-variant-numeric:tabular-nums;font-size:var(--fs-3);color:var(--ink2)}
 .chart .hd .read b{color:var(--ink);font-size:var(--fs-3)}
-/* on a phone the readout has a row of its own, one line long, so hovering a point (a longer readout: its unit, time and
-   flag) never moves the header onto another line, and the chart from under the pointer (#253: Inter wraps it elsewhere) */
-@media (max-width:640px){.chart .hd .read{flex-basis:100%;margin-left:0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+.chart .hd-sub{display:contents}
+.test-page:not(.tq)>.i-circle-question-mark{display:none}
 .chart .hd>.btn:not(.rename-btn){margin:0;align-self:center}   /* its ✕: the quiet small button (#353); the ✎ keeps the name's line (#373) */
+/* a phone's (#621): the name, Chart | Table and ✕ (the seg keeps the ✕'s room, so the two wrap together under a name
+   too long for them, #615); the unit, counts and a 24 px "?" in a muted line; the readout one line (#253) */
+@media (max-width:700px){
+  .chart .hd{gap:var(--sp-1);align-items:center}
+  .chart .hd>.view-seg{margin:0 calc(var(--sp-7) + var(--sp-1)) 0 auto}
+  .chart .hd>.btn:not(.rename-btn){width:var(--sp-7);margin-left:calc(-1 * (var(--sp-7) + var(--sp-1)))}
+  .chart .hd>.hd-sub{display:block;order:1;flex-basis:100%;color:var(--muted);font-size:var(--fs-2)}
+  .chart .hd .test-page{margin:-5px 0 -5px var(--sp-1);min-width:24px;vertical-align:middle}
+  .chart .hd .test-page>*{display:none}
+  .chart .hd .test-page>.i-circle-question-mark{display:block;font-size:var(--fs-5)}
+  .chart .hd .read{order:2;flex-basis:100%;margin-left:0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chart .hd>.rdiff{order:3}
+}
 :is(.chart svg:not(.icon),.ev-svg){width:100%;display:block}
 .pz{touch-action:pan-y;user-select:none;-webkit-user-select:none;cursor:grab}
 .dragging .pz,.dragging .pz *{cursor:grabbing!important}

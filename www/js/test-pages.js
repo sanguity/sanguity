@@ -25,11 +25,12 @@ function testPage(name) {
 }
 const testPageName = (name, p) => `What is this test? ${nice(name)}: “${p.title}” on ${p.site}, opens in a new tab`;
 /* the link, or null. compact: a 24 px "?" in a circle (the list's rows, the tiles, the drawer), else the words and an
-   arrow out of a box, the link going to another site; both icons (#257), the link named by its aria-label */
+   arrow out of a box, the link going to another site (with the "?", shown in place of them in a lab chart's header on
+   a phone, #621); icons (#257), the link named by its aria-label */
 function testLink(name, compact) {
   const p = testPage(name); if (!p) return null;
   const say = testPageName(name, p);
   return el("a", {class: "test-page" + (compact ? " tq" : ""), href: p.url, target: "_blank", rel: "noopener noreferrer", "aria-label": say, "data-tip": say,   // a tip, not a title: a title beside the same name is its description too (#358)
     onclick: ev => ev.stopPropagation()},   // a drawer row's or a list row's own click stays its own
-    compact ? icon("circle-question-mark") : ["What is this test?", icon("external-link")]);
+    compact ? icon("circle-question-mark") : [icon("circle-question-mark"), el("span", {text: "What is this test?"}), icon("external-link")]);
 }
