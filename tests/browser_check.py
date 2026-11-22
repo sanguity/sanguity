@@ -1640,8 +1640,12 @@ def main():
         strict.fill("#p", PW)
         strict.click("#b")
         for _ in range(100):   # login.js signs in, then the app loads the records
-            if strict.evaluate("location.pathname.endsWith('/') && typeof EV !== 'undefined' && EV.length > 0"):
-                break
+            try:
+                if strict.evaluate("location.pathname.endsWith('/') && typeof EV !== 'undefined' && EV.length > 0"):
+                    break
+            except Exception as e:   # asked while the sign-in navigates: ask again
+                if "Execution context was destroyed" not in str(e) and "navigat" not in str(e):
+                    raise
             strict.wait_for_timeout(200)
         check("under the CSP: login.js signs in and the app starts", strict.evaluate("typeof EV !== 'undefined' && EV.length > 0"))
         # the fonts (#253): Inter loads from www/fonts/ under the real CSP (default-src 'self' covers font-src; a
