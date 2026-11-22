@@ -76,11 +76,11 @@ function codeStep(on, methods = {code: true}) {
     !pkOnly ? "" : !stuck ? "Password accepted. Use your passkey to finish signing in." :
     away ? ["Password accepted, but this account finishes signing in with a passkey, and none of its passkeys was made at this address. Open Sanguity at ",
       ...go, " and sign in there, or use another account."] :
+    // on plain HTTP or at an IP (#527), where the account's passkeys were made (#549: "its https:// address" or name)
     ["Password accepted, but this account finishes signing in with a passkey, and passkeys don't work here: ",
-      ...(!window.isSecureContext ? ["this page isn't using HTTPS. Open Sanguity at its " +
-        `https:// address${ipHost() ? ", by its name rather than an IP address," : ""} and sign in there`]
-        : ipHost() ? ["this is an IP address. Open Sanguity at ", ...(own ? go : ["its https:// name"]), " and sign in there"]   // (#527)
-        : ["this browser doesn't have them. Sign in with one that does"]), ", or use another account."],
+      ...(window.isSecureContext && !ipHost() ? ["this browser doesn't have them. Sign in with one that does"]
+        : [!window.isSecureContext ? "this page isn't using HTTPS" : "this is an IP address", ". Open Sanguity at ", ...go, " and sign in there"]),
+      ", or use another account."],
     false, {say: pkOnly && !stuck});   // (read as it, or the code's field, takes focus)
   if (on) (code ? document.getElementById("c") : stuck ? says : pkBtn).focus();
 }

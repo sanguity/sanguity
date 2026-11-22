@@ -241,6 +241,21 @@ class Summary(unittest.TestCase):
             for k in ("dates.timeZone", "dates.format"):
                 c.put(f"/api/settings/user/{k}", json={"value": ""}, headers=H)
 
+    def test_times_on_the_previews_clock(self):
+        """#549: a reading's time in the PDF (blood pressure, temperature, the medication log) on the preview's 12-hour
+        clock, in each date format (it was "Nov 12 08:30" to the preview's "Nov 12, 2026, 8:30 AM")."""
+        want = {"mdy": ("Nov 12, 8:30 AM", "Nov 12, 2:05 PM", "Mar 1, 2025, 12:15 AM"),
+                "dmy": ("12 Nov, 8:30 AM", "12 Nov, 2:05 PM", "1 Mar 2025, 12:15 AM"),
+                "ymd": ("2026-11-12 8:30 AM", "2026-11-12 2:05 PM", "2025-03-01 12:15 AM")}
+        for f, (am, pm, before) in want.items():
+            token = summary._DATES.set((f, 2026))
+            try:
+                self.assertEqual([summary._cell("time", t) for t in ("2026-11-12T08:30", "2026-11-12T14:05", "2025-03-01T00:15")],
+                                 [am, pm, before], f)
+                self.assertEqual(summary._cell("time", "2026-11-12T12:00"), am.replace("8:30 AM", "12:00 PM"), f)
+            finally:
+                summary._DATES.reset(token)
+
     def test_ranges_are_each_reports_own(self):
         s = self.preview()
         rows = {r["name"]: r for r in s["out_of_range"]}
@@ -637,6 +652,10 @@ class Summary(unittest.TestCase):
         for want in ("Typed in, 19:10, after a meal", "Typed in, 07:45, before a meal", "Meter: 1", "3 meter readings (2 typed in)",
                      "Typed in, 22:30", "Watch, the day's average", "2 readings typed in · average 95.5%", "or typed in"):
             self.assertIn(want, text)
+        r = self.c["robin"].post(f"/api/profiles/{pid}/summary/pdf", json=self.opts(appointment=None, sections=["home_bp"]), headers=H)
+        text = text_of(r.content)[1]
+        self.assertIn(f"{summary._short(d(-2))}, 7:30 AM", text, "on the preview's clock (#549)")
+        self.assertNotIn("07:30", text)
 
     def test_measures_listed_at_most_so_many(self):
         many = {**PHONE, "bp_readings": [[f"{d(-1 - i // 4)}T{8 + i % 4:02d}:00:00+00:00", 120 + i % 9, 80, None, None, "Apple Health"]
