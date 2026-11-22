@@ -2347,6 +2347,16 @@ Everything on `main` so far; it becomes the first tagged release.
   and a stay found from inpatient results' last result; Costs' says the service or medicine a claim was for (a
   pharmacy claim's is the medicine). A server test checks each kind of content against its line on a profile with a
   device, an app, a transfer and a pharmacy claim, and that every measure's line says where its readings came from.
+- **Ids that come back: a deleted profile's phone data no longer in the next profile, a stale page no longer editing
+  another record, and a sign-in after a sign-out logged** (#588): the newest row's id, once deleted, went to the next
+  row made. A profile made after deleting the newest one got its id, and so its watch receiver slot: once its phone
+  was set up it showed the deleted person's readings, and its uploads merged into them. A page loaded before an undo
+  hid, renamed or merged the record the next import brought; a stale page's save or delete of a journal entry, dose,
+  reminder or edit changed the one made after it; and the next sign-in after the newest session signed out had its
+  views and document opens taken as logged already. Ids are never given again now (schema version 39 makes those
+  tables again, every row and key kept, each count after the highest id it has had), so a stale page's change is
+  refused; a deleted profile's slot is deleted by the receiver (Delete this profile says so), and a new profile skips
+  any id a slot was left on disk for; and a view is logged once per session and account.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

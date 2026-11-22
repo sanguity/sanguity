@@ -3,7 +3,7 @@
 Sanguity keeps everything in one SQLite database, `DATA_DIR/sanguity.db`, plus files in the data folder that it
 points at (documents, uploads, previews, watch summaries). The schema is built step by step from `SCHEMA` in
 [`server/db.py`](../server/db.py): each step is a numbered version (`PRAGMA user_version`), applied once at start-up,
-so an older install upgrades itself. This page describes **schema version 37**. When you add a step, update the
+so an older install upgrades itself. This page describes **schema version 39**. When you add a step, update the
 diagrams here too.
 
 Two things hold everywhere:
@@ -135,6 +135,18 @@ import's id is never used again (`AUTOINCREMENT`, schema version 37, #512): undo
 and the page still finds it by that id (Import history, a toast's Undo), so the next import gets a new one. The steps
 run with foreign keys off, as SQLite says to make a table again that others point at, and each is checked before it
 commits (`db.upgrade`).
+
+No id that a page, a file or another table holds is given again either (`AUTOINCREMENT`, schema version 39, #588):
+accounts, profiles, sessions, passkeys, uploads, jobs, events, series, edits, lab-name matches, connected sources and
+connections, their left-out attachments, same-result links, calendar feeds, journal entries and their photos, share
+links, medication reminders and doses. Without it the newest row's id, once deleted, went to the next row made: a
+page loaded before an undo hid or renamed the record the next import brought, a stale page's save or delete changed
+another journal entry, dose, reminder or edit, and the next sign-in after one signed out had its views taken as
+logged already (`activity.once` also matches the account now). Version 39 made those tables again as version 37 made
+imports, each count starting after the highest id it has had (a signed-out session the activity log names included).
+A profile's id is its watch receiver slot, so a deleted profile's phone data showed in the next profile given its
+id: the receiver is now asked to delete the slot (`watch_keys.forget`, `"deleted"` in the receiver's secrets file),
+and a new profile's id also skips any a slot or folder left on disk is named by (`profiles.create_profile`).
 survive re-imports and undo. So do **journal** entries (#49, `server/journal.py`): notes, symptoms and side effects
 the people using the profile write themselves. They aren't records from anywhere, so no import owns them; the
 records the page loads list them as `journal`, and an export carries them in its `data.json`. Since #161 an entry
@@ -847,7 +859,7 @@ sorting), and your original exports in `RECORDS_DIR`, which Sanguity only reads.
 
 | Deleted | Also removed (cascade) | Kept |
 |---|---|---|
-| A profile | memberships, imports with all their rows, documents, uploads and their files, jobs, edits, same-result links, journal entries and their photos, medication reminders and doses, cost marks, settings, visit summary drafts, calendar feeds, share links, undo history, its activity and outside contacts | the original exports |
+| A profile | memberships, imports with all their rows, documents, uploads and their files, jobs, edits, same-result links, journal entries and their photos, medication reminders and doses, cost marks, settings, visit summary drafts, calendar feeds, share links, undo history, its activity and outside contacts; and what the watch receiver keeps for its slot (its database, archived uploads, summary, ECG samples and `cycle.json`), which the receiver deletes when told (#588), unless another profile reads the same slot | the original exports, backups made before |
 | An import (undo) | its events, series, results and documents; its upload's raw files unless another import uses them | edits, same-result links, journal entries, medication reminders and doses, and cost marks (they belong to the profile) |
 | An upload | its files and jobs (a job's saved import stays) | the import it became |
 | A connection (disconnect) | its tokens, key, patient id and stored resources; its imports too, if chosen; its hosts from "may contact" | the row, as disconnected; its outside contacts, listed as earlier ones |

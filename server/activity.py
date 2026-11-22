@@ -99,9 +99,10 @@ def log(db, action, who=None, profile_id=None, detail=None, ip=None, session_id=
 
 def once(db, s, profile_id, action, ip, detail=None, key=None):
     """Log action for this session and profile unless it's already logged (key tells documents apart). detail may be
-    a function, called only when the entry is made (a document's title is looked up then, #342)."""
-    if db.execute("SELECT 1 FROM activity WHERE session_id=? AND profile_id=? AND action=? AND IFNULL(item, '')=?",
-                  (s["sid"], profile_id, action, key or "")).fetchone():
+    a function, called only when the entry is made (a document's title is looked up then, #342). The session's own
+    person too: a session id from before schema version 39 could be another person's, given again (#588)."""
+    if db.execute("""SELECT 1 FROM activity WHERE session_id=? AND actor_id IS ? AND profile_id=? AND action=?
+                     AND IFNULL(item, '')=?""", (s["sid"], s["id"], profile_id, action, key or "")).fetchone():
         return
     log(db, action, s, profile_id, detail() if callable(detail) else detail, ip, s["sid"], item=key)
 

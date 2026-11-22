@@ -78,8 +78,10 @@ def store(db, pid, data, origin, fmt=FORMAT, now=None, by=None):
     events = [e for e in data.get("events") or [] if isinstance(e, dict)]
     meta = {k: v for k, v in data.items() if k not in ROWS and k not in SERVED}
 
-    # the new ids, decided up front (the transaction holds the write lock), so a lab day can list them
-    base = db.execute("SELECT IFNULL(MAX(id), 0) FROM events").fetchone()[0]
+    # the new ids, decided up front (the transaction holds the write lock), so a lab day can list them: after the
+    # highest there has been (AUTOINCREMENT's count, schema version 39), so an undone import's never come again (#588)
+    base = db.execute("""SELECT MAX(IFNULL((SELECT MAX(id) FROM events), 0),
+                                IFNULL((SELECT seq FROM sqlite_sequence WHERE name='events'), 0))""").fetchone()[0]
     ids = {}
     for n, e in enumerate(events, start=base + 1):
         ids.setdefault(str(e.get("id")), n)   # a repeated id: its details and cost go to the first

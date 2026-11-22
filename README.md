@@ -586,7 +586,8 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
   readings** adds blood pressure, glucose and temperature tiles after the key labs, each the latest reading with its
   date and where it came from.
 - **Delete profile:** an owner can delete a profile and everything in it under **Settings → Rename or delete**, after
-  typing its name; the original exports and older backups are left alone.
+  typing its name, the watch receiver's copy of its phone data included; the original exports and older backups are
+  left alone.
 - **Activity log:** each profile's owners can see who opened its records and documents, and who shared, renamed or
   changed it, and when (**Sharing → Activity**); admins see account changes (**Admin > Install activity**). Entries are kept for a year
   (`ACTIVITY_DAYS` in `.env`).

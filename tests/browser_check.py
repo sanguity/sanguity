@@ -19637,6 +19637,9 @@ def main():
                   !z[0]?.contains(n), z[0]?.querySelector('.dz-open').getAttribute('aria-expanded'), document.activeElement.labels?.[0]?.textContent]; })()""")
             check("deleting a profile is its card's danger zone, apart from its name and after it, opened by Delete profile… with "
                   "focus on the box for the name (#287)", dz287 == [1, "Delete this profile", True, True, "true", "Type Second person to confirm"], dz287)
+            says588 = js("document.querySelector('#profileCard .danger-zone')?.textContent || ''")
+            check("…and it says the watch receiver's copy of its phone data goes too, the original exports and older backups stay (#588)",
+                  "what the watch receiver keeps from its phone" in says588 and "Your original exports stay" in says588, says588)
             check("delete needs the profile's name first, typed exactly, with Export everything offered first",
                   go.is_disabled() and second.get_by_role("link", name="Export everything first").get_attribute("href") == "api/profiles/2/export")
             second.get_by_label("Type Second person to confirm").fill("Second perso")

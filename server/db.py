@@ -745,6 +745,394 @@ SCHEMA = [
     ALTER TABLE labmaps ADD COLUMN checked INTEGER;
     UPDATE labmaps SET checked = changed WHERE changed IS NOT NULL;
     """,
+    # version 39: ids that never come again (#588). Without AUTOINCREMENT, the newest row's id, once deleted, went to the
+    # next row made while a page, a file or another table still held it: a deleted profile's phone data (the receiver's
+    # slot is its id) showed in the next profile made, a page loaded before an undo hid or renamed the record the next
+    # import brought, a stale page's save or delete changed another journal entry, dose, reminder or edit, and the next
+    # sign-in after one signed out had its views taken as logged already. Each table whose id leaves it is made again as
+    # version 37 made imports: its rows copied as they are (foreign keys off, db.upgrade), its indexes again, and its
+    # count started after the highest id it has, a signed-out session the activity log names included. A profile's
+    # count also skips any id a receiver slot or folder was left on disk for (profiles.create_profile).
+    """
+    CREATE TABLE users_39(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        pw_hash TEXT NOT NULL,
+        is_admin INTEGER NOT NULL DEFAULT 0,
+        disabled INTEGER NOT NULL DEFAULT 0,
+        must_change_pw INTEGER NOT NULL DEFAULT 0,
+        created INTEGER NOT NULL,
+        totp_secret TEXT,
+        totp_pending TEXT,
+        totp_last_step INTEGER NOT NULL DEFAULT 0,
+        pw_short INTEGER NOT NULL DEFAULT 0,
+        webauthn_handle TEXT,
+        temp_pw_expires INTEGER);
+    INSERT INTO users_39(id, username, pw_hash, is_admin, disabled, must_change_pw, created, totp_secret,
+        totp_pending, totp_last_step, pw_short, webauthn_handle, temp_pw_expires)
+        SELECT id, username, pw_hash, is_admin, disabled, must_change_pw, created, totp_secret, totp_pending,
+            totp_last_step, pw_short, webauthn_handle, temp_pw_expires FROM users;
+    DROP TABLE users;
+    ALTER TABLE users_39 RENAME TO users;
+    CREATE TABLE profiles_39(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        created INTEGER NOT NULL,
+        linked_build INTEGER NOT NULL DEFAULT 0,
+        build_mtime,
+        watch_file TEXT,
+        records_rev INTEGER NOT NULL DEFAULT 0,
+        settings_seeded INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO profiles_39(id, name, created, linked_build, build_mtime, watch_file, records_rev, settings_seeded)
+        SELECT id, name, created, linked_build, build_mtime, watch_file, records_rev, settings_seeded FROM profiles;
+    DROP TABLE profiles;
+    ALTER TABLE profiles_39 RENAME TO profiles;
+    CREATE TABLE sessions_39(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        token_hash TEXT NOT NULL UNIQUE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created INTEGER NOT NULL,
+        last_seen INTEGER NOT NULL,
+        expires INTEGER NOT NULL,
+        ip TEXT,
+        agent TEXT,
+        verified_at INTEGER);
+    INSERT INTO sessions_39(id, token_hash, user_id, created, last_seen, expires, ip, agent, verified_at)
+        SELECT id, token_hash, user_id, created, last_seen, expires, ip, agent, verified_at FROM sessions;
+    DROP TABLE sessions;
+    ALTER TABLE sessions_39 RENAME TO sessions;
+    CREATE INDEX sessions_user ON sessions(user_id);
+    CREATE TABLE passkeys_39(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        credential_id TEXT NOT NULL UNIQUE,
+        public_key BLOB NOT NULL,
+        sign_count INTEGER NOT NULL DEFAULT 0,
+        rp_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        transports TEXT,
+        created INTEGER NOT NULL,
+        last_used INTEGER);
+    INSERT INTO passkeys_39(id, user_id, credential_id, public_key, sign_count, rp_id, name, transports, created,
+        last_used)
+        SELECT id, user_id, credential_id, public_key, sign_count, rp_id, name, transports, created, last_used FROM
+            passkeys;
+    DROP TABLE passkeys;
+    ALTER TABLE passkeys_39 RENAME TO passkeys;
+    CREATE INDEX passkeys_user ON passkeys(user_id);
+    CREATE TABLE uploads_39(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        created INTEGER NOT NULL,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        state TEXT NOT NULL CHECK(state IN ('receiving', 'ready', 'discarded')),
+        files INTEGER NOT NULL DEFAULT 0,
+        bytes INTEGER NOT NULL DEFAULT 0,
+        manifest TEXT);
+    INSERT INTO uploads_39(id, profile_id, created, created_by, state, files, bytes, manifest)
+        SELECT id, profile_id, created, created_by, state, files, bytes, manifest FROM uploads;
+    DROP TABLE uploads;
+    ALTER TABLE uploads_39 RENAME TO uploads;
+    CREATE INDEX uploads_profile ON uploads(profile_id);
+    CREATE TABLE jobs_39(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        upload_id INTEGER NOT NULL REFERENCES uploads(id) ON DELETE CASCADE,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        state TEXT NOT NULL CHECK(state IN ('queued', 'running', 'preview', 'done', 'failed', 'discarded')),
+        stage TEXT CHECK(stage IN ('detecting', 'parsing', 'saving')),
+        importer TEXT,
+        message TEXT,
+        warnings TEXT,
+        summary TEXT,
+        import_id INTEGER REFERENCES imports(id) ON DELETE SET NULL,
+        created INTEGER NOT NULL,
+        started INTEGER,
+        finished INTEGER,
+        confirmed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        keep TEXT,
+        labs TEXT,
+        same TEXT);
+    INSERT INTO jobs_39(id, profile_id, upload_id, created_by, state, stage, importer, message, warnings, summary,
+        import_id, created, started, finished, confirmed_by, keep, labs, same)
+        SELECT id, profile_id, upload_id, created_by, state, stage, importer, message, warnings, summary, import_id,
+            created, started, finished, confirmed_by, keep, labs, same FROM jobs;
+    DROP TABLE jobs;
+    ALTER TABLE jobs_39 RENAME TO jobs;
+    CREATE INDEX jobs_profile ON jobs(profile_id, id);
+    CREATE INDEX jobs_state ON jobs(state);
+    CREATE INDEX jobs_upload ON jobs(upload_id);
+    CREATE TABLE events_39(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        import_id INTEGER NOT NULL REFERENCES imports(id) ON DELETE CASCADE,
+        body TEXT NOT NULL,
+        detail TEXT,
+        cost TEXT,
+        cost_seq INTEGER,
+        key_hash TEXT);
+    INSERT INTO events_39(id, profile_id, import_id, body, detail, cost, cost_seq, key_hash)
+        SELECT id, profile_id, import_id, body, detail, cost, cost_seq, key_hash FROM events;
+    DROP TABLE events;
+    ALTER TABLE events_39 RENAME TO events;
+    CREATE INDEX events_profile ON events(profile_id);
+    CREATE INDEX events_import ON events(import_id);
+    CREATE INDEX events_key ON events(profile_id, key_hash);
+    CREATE TABLE series_39(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        import_id INTEGER NOT NULL REFERENCES imports(id) ON DELETE CASCADE,
+        body TEXT NOT NULL,
+        key_hash TEXT);
+    INSERT INTO series_39(id, profile_id, import_id, body, key_hash)
+        SELECT id, profile_id, import_id, body, key_hash FROM series;
+    DROP TABLE series;
+    ALTER TABLE series_39 RENAME TO series;
+    CREATE INDEX series_profile ON series(profile_id);
+    CREATE INDEX series_import ON series(import_id);
+    CREATE INDEX series_key ON series(profile_id, key_hash);
+    CREATE TABLE edits_39(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        target TEXT NOT NULL,
+        target_key TEXT NOT NULL,
+        action TEXT NOT NULL CHECK(action IN ('hide', 'rename', 'date', 'not_stay', 'merge', 'kind', 'kind_rule')),
+        other TEXT,
+        other_key TEXT,
+        value TEXT,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        at INTEGER NOT NULL);
+    INSERT INTO edits_39(id, profile_id, target, target_key, action, other, other_key, value, created_by, at)
+        SELECT id, profile_id, target, target_key, action, other, other_key, value, created_by, at FROM edits;
+    DROP TABLE edits;
+    ALTER TABLE edits_39 RENAME TO edits;
+    CREATE INDEX edits_target ON edits(profile_id, target);
+    CREATE TABLE labmaps_39(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        lookup TEXT NOT NULL UNIQUE,
+        importer TEXT NOT NULL,
+        source TEXT NOT NULL,
+        target TEXT,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_name TEXT NOT NULL,
+        created INTEGER NOT NULL,
+        changed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        changed_name TEXT,
+        changed INTEGER,
+        import_id INTEGER REFERENCES imports(id) ON DELETE SET NULL,
+        used INTEGER,
+        checked INTEGER);
+    INSERT INTO labmaps_39(id, lookup, importer, source, target, created_by, created_name, created, changed_by,
+        changed_name, changed, import_id, used, checked)
+        SELECT id, lookup, importer, source, target, created_by, created_name, created, changed_by, changed_name,
+            changed, import_id, used, checked FROM labmaps;
+    DROP TABLE labmaps;
+    ALTER TABLE labmaps_39 RENAME TO labmaps;
+    CREATE INDEX labmaps_import ON labmaps(import_id);
+    CREATE TABLE smart_clients_39(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        vendor TEXT NOT NULL,
+        issuer TEXT NOT NULL UNIQUE,
+        client_id TEXT NOT NULL,
+        secret TEXT,
+        auth TEXT NOT NULL CHECK(auth IN ('public', 'confidential', 'dynamic')),
+        scopes TEXT NOT NULL,
+        discovery TEXT,
+        tested INTEGER,
+        created INTEGER NOT NULL,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        changed INTEGER,
+        waiting INTEGER);
+    INSERT INTO smart_clients_39(id, name, vendor, issuer, client_id, secret, auth, scopes, discovery, tested,
+        created, created_by, changed, waiting)
+        SELECT id, name, vendor, issuer, client_id, secret, auth, scopes, discovery, tested, created, created_by,
+            changed, waiting FROM smart_clients;
+    DROP TABLE smart_clients;
+    ALTER TABLE smart_clients_39 RENAME TO smart_clients;
+    CREATE TABLE connections_39(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        client_id INTEGER REFERENCES smart_clients(id) ON DELETE SET NULL,
+        source TEXT NOT NULL,
+        issuer TEXT NOT NULL,
+        fhir_base TEXT NOT NULL,
+        patient TEXT,
+        credential TEXT CHECK(credential IN ('refresh', 'jwt', 'access')),
+        secret TEXT,
+        scopes TEXT,
+        expires INTEGER,
+        state TEXT NOT NULL CHECK(state IN ('active', 'needs reconnect', 'disconnected')),
+        cursor TEXT,
+        pending_cursor TEXT,
+        first_job INTEGER REFERENCES jobs(id) ON DELETE SET NULL,
+        last_sync INTEGER,
+        next_sync INTEGER,
+        failures INTEGER NOT NULL DEFAULT 0,
+        error_kind TEXT,
+        last_error TEXT,
+        report TEXT,
+        created INTEGER NOT NULL,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        disconnected INTEGER,
+        kinds TEXT,
+        since TEXT,
+        attach TEXT,
+        attach_bytes INTEGER NOT NULL DEFAULT 0,
+        warned INTEGER);
+    INSERT INTO connections_39(id, profile_id, client_id, source, issuer, fhir_base, patient, credential, secret,
+        scopes, expires, state, cursor, pending_cursor, first_job, last_sync, next_sync, failures, error_kind,
+        last_error, report, created, created_by, disconnected, kinds, since, attach, attach_bytes, warned)
+        SELECT id, profile_id, client_id, source, issuer, fhir_base, patient, credential, secret, scopes, expires,
+            state, cursor, pending_cursor, first_job, last_sync, next_sync, failures, error_kind, last_error, report,
+            created, created_by, disconnected, kinds, since, attach, attach_bytes, warned FROM connections;
+    DROP TABLE connections;
+    ALTER TABLE connections_39 RENAME TO connections;
+    CREATE INDEX connections_profile ON connections(profile_id);
+    CREATE INDEX connections_due ON connections(state, next_sync);
+    CREATE TABLE same_results_39(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        pair TEXT NOT NULL,
+        a_key TEXT NOT NULL,
+        b_key TEXT NOT NULL,
+        same INTEGER NOT NULL CHECK(same IN (0, 1)),
+        value TEXT,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        at INTEGER NOT NULL,
+        UNIQUE(profile_id, pair));
+    INSERT INTO same_results_39(id, profile_id, pair, a_key, b_key, same, value, created_by, at)
+        SELECT id, profile_id, pair, a_key, b_key, same, value, created_by, at FROM same_results;
+    DROP TABLE same_results;
+    ALTER TABLE same_results_39 RENAME TO same_results;
+    CREATE TABLE calendar_feeds_39(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token_hash TEXT NOT NULL UNIQUE,
+        details TEXT NOT NULL DEFAULT 'minimal' CHECK(details IN ('minimal', 'full')),
+        labs INTEGER NOT NULL DEFAULT 1,
+        tz TEXT,
+        created INTEGER NOT NULL,
+        rotated INTEGER,
+        last_fetched INTEGER,
+        meds INTEGER NOT NULL DEFAULT 1,
+        UNIQUE(profile_id, user_id));
+    INSERT INTO calendar_feeds_39(id, profile_id, user_id, token_hash, details, labs, tz, created, rotated,
+        last_fetched, meds)
+        SELECT id, profile_id, user_id, token_hash, details, labs, tz, created, rotated, last_fetched, meds FROM
+            calendar_feeds;
+    DROP TABLE calendar_feeds;
+    ALTER TABLE calendar_feeds_39 RENAME TO calendar_feeds;
+    CREATE INDEX calendar_feeds_user ON calendar_feeds(user_id);
+    CREATE TABLE journal_39(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        body TEXT NOT NULL,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_name TEXT NOT NULL,
+        created INTEGER NOT NULL,
+        changed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        changed_name TEXT,
+        changed INTEGER);
+    INSERT INTO journal_39(id, profile_id, body, created_by, created_name, created, changed_by, changed_name, changed)
+        SELECT id, profile_id, body, created_by, created_name, created, changed_by, changed_name, changed FROM journal;
+    DROP TABLE journal;
+    ALTER TABLE journal_39 RENAME TO journal;
+    CREATE INDEX journal_profile ON journal(profile_id);
+    CREATE TABLE share_links_39(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_name TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        label TEXT,
+        scope TEXT NOT NULL,
+        created INTEGER NOT NULL,
+        expires INTEGER NOT NULL,
+        revoked INTEGER,
+        revoked_name TEXT,
+        views INTEGER NOT NULL DEFAULT 0,
+        last_viewed INTEGER);
+    INSERT INTO share_links_39(id, profile_id, created_by, created_name, token_hash, label, scope, created, expires,
+        revoked, revoked_name, views, last_viewed)
+        SELECT id, profile_id, created_by, created_name, token_hash, label, scope, created, expires, revoked,
+            revoked_name, views, last_viewed FROM share_links;
+    DROP TABLE share_links;
+    ALTER TABLE share_links_39 RENAME TO share_links;
+    CREATE INDEX share_links_profile ON share_links(profile_id);
+    CREATE TABLE journal_photos_39(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        entry_id INTEGER REFERENCES journal(id) ON DELETE CASCADE,
+        file TEXT NOT NULL,
+        type TEXT NOT NULL CHECK(type IN ('jpeg', 'png', 'webp')),
+        bytes INTEGER NOT NULL,
+        created INTEGER NOT NULL,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL);
+    INSERT INTO journal_photos_39(id, profile_id, entry_id, file, type, bytes, created, created_by)
+        SELECT id, profile_id, entry_id, file, type, bytes, created, created_by FROM journal_photos;
+    DROP TABLE journal_photos;
+    ALTER TABLE journal_photos_39 RENAME TO journal_photos;
+    CREATE INDEX journal_photos_profile ON journal_photos(profile_id, entry_id);
+    CREATE TABLE med_reminders_39(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        body TEXT NOT NULL,
+        active INTEGER NOT NULL DEFAULT 1,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_name TEXT NOT NULL,
+        created INTEGER NOT NULL,
+        changed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        changed_name TEXT,
+        changed INTEGER);
+    INSERT INTO med_reminders_39(id, profile_id, body, active, created_by, created_name, created, changed_by,
+        changed_name, changed)
+        SELECT id, profile_id, body, active, created_by, created_name, created, changed_by, changed_name, changed
+            FROM med_reminders;
+    DROP TABLE med_reminders;
+    ALTER TABLE med_reminders_39 RENAME TO med_reminders;
+    CREATE INDEX med_reminders_profile ON med_reminders(profile_id);
+    CREATE TABLE med_doses_39(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        body TEXT NOT NULL,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_name TEXT NOT NULL,
+        created INTEGER NOT NULL,
+        changed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        changed_name TEXT,
+        changed INTEGER);
+    INSERT INTO med_doses_39(id, profile_id, body, created_by, created_name, created, changed_by, changed_name, changed)
+        SELECT id, profile_id, body, created_by, created_name, created, changed_by, changed_name, changed FROM
+            med_doses;
+    DROP TABLE med_doses;
+    ALTER TABLE med_doses_39 RENAME TO med_doses;
+    CREATE INDEX med_doses_profile ON med_doses(profile_id);
+    CREATE TABLE sync_skipped_39(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        connection_id INTEGER NOT NULL REFERENCES connections(id) ON DELETE CASCADE,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        ref_hash TEXT NOT NULL,
+        detail TEXT NOT NULL,
+        found INTEGER NOT NULL,
+        import_id INTEGER REFERENCES imports(id) ON DELETE SET NULL);
+    INSERT INTO sync_skipped_39(id, connection_id, profile_id, ref_hash, detail, found, import_id)
+        SELECT id, connection_id, profile_id, ref_hash, detail, found, import_id FROM sync_skipped;
+    DROP TABLE sync_skipped;
+    ALTER TABLE sync_skipped_39 RENAME TO sync_skipped;
+    CREATE UNIQUE INDEX sync_skipped_ref ON sync_skipped(connection_id, ref_hash);
+    CREATE INDEX sync_skipped_profile ON sync_skipped(profile_id);
+
+    INSERT INTO sqlite_sequence(name, seq)
+        SELECT column1, 0 FROM (VALUES ('users'), ('profiles'), ('sessions'), ('passkeys'), ('uploads'), ('jobs'),
+            ('events'), ('series'), ('edits'), ('labmaps'), ('smart_clients'), ('connections'), ('same_results'),
+            ('calendar_feeds'), ('journal'), ('share_links'), ('journal_photos'), ('med_reminders'), ('med_doses'),
+            ('sync_skipped'))
+        WHERE column1 NOT IN (SELECT name FROM sqlite_sequence);
+    UPDATE sqlite_sequence SET seq = MAX(seq, (SELECT COALESCE(MAX(session_id), 0) FROM activity)) WHERE
+        name='sessions';
+    """,
 ]
 
 
