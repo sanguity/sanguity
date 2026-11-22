@@ -1635,6 +1635,10 @@ Everything on `main` so far; it becomes the first tagged release.
   milestone is a "Since …" preset of its own, a **Reset** chip shows whenever the period is custom (in place of
   Clear dates), and the hints are gone. On a phone the strip sits in the charts' header, beside Show or the period
   where there's room.
+- **A lab chart's header in three lines on a phone** (#621): it took five before its plot: the name, the unit and
+  counts, "What is this test?", the Latest reading, then Chart | Table and ✕ on a row of their own. Now Chart | Table
+  and ✕ sit at the end of the name's line (together under a name too long to share it), the unit and counts are one
+  muted line with a "?" for What is this test?, and Latest follows. Wider screens are as they were.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

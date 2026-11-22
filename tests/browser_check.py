@@ -10360,6 +10360,48 @@ def main():
             ov623 = js("[...document.querySelectorAll('#view-overview .tile .delta')].map(d => d.textContent.replace(/\\s+/g, ' ').trim()).filter(Boolean)")
             check("…and the Overview's tiles say a change with ↑ or ↓, or “no change”, never ▲ / ▼, a result's own flags (#623)",
                   any(re.match(r"^(↑ \d|↓ \d|no change)", t) for t in ov623) and not any(re.search(r"[▲▼±]|^[+−-]", t) for t in ov623), ov623)
+            # ---- #621: a lab chart's header on a phone, at 360 and 412 px, light and dark, every lab of the demo charted:
+            # Chart | Table and ✕ together at the end of the name's line (or, a name too long to share it, together under it,
+            # the name one line, #615); the unit, counts and a 24 px "?" in one muted line under it; Latest last, one line;
+            # nothing overlapping, nothing outside the header. A lab not renamed, with a short name, is three lines in all
+            HD621 = r"""() => { const r = e => e.getBoundingClientRect(), fs = e => parseFloat(getComputedStyle(e).fontSize), out = {};
+              for (const h of document.querySelectorAll('#charts .chart > .hd')) {
+                const q = s => h.querySelector(s), name = q('.name'), seg = q(':scope > .view-seg'), x = q(':scope > [aria-label^=Remove]'), sub = q(':scope > .hd-sub'), tp = q('.test-page'), read = q('.read'), u = q('.unit');
+                const boxes = [name, q(':scope > .rename-btn'), seg, x, tp, read].filter(e => e && e.checkVisibility()).map(e => [e, r(e)]).concat([...u.getClientRects()].map(b => [u, b]));
+                const over = [], rows = [], H = r(h);
+                for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+                  const [e, a] = boxes[i], [f, b] = boxes[j];
+                  if (e !== f && a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1) over.push(e.className + ' / ' + f.className); }
+                for (const [, b] of [...boxes].sort((a, c) => a[1].top - c[1].top)) { const l = rows[rows.length - 1]; if (l && b.top < l.bottom - 2) l.bottom = Math.max(l.bottom, b.bottom); else rows.push({bottom: b.bottom}); }
+                out[h.parentElement.dataset.lab] = {lines: rows.length, over, nice: nice(h.parentElement.dataset.lab) === h.parentElement.dataset.lab,
+                  together: Math.abs(r(seg).top - r(x).top) < 2 && r(x).left >= r(seg).right - 1,
+                  onName: r(seg).top < r(name).bottom && r(seg).bottom > r(name).top, nameOne: r(name).height < 2.4 * fs(name),
+                  under: r(seg).top >= r(name).bottom - 1 || r(seg).top < r(name).bottom && r(seg).bottom > r(name).top,
+                  sub: getComputedStyle(sub).display === 'block' && r(sub).top >= Math.max(r(name).bottom, r(seg).bottom) - 1 && (!tp || tp.querySelector('.i-circle-question-mark').checkVisibility() && r(tp).width <= 30 && r(tp).top >= r(sub).top - 6 && r(tp).bottom <= r(sub).bottom + 6),
+                  read: r(read).top >= r(sub).bottom - 1 && r(read).height < 2 * fs(read),
+                  inside: boxes.every(([, b]) => b.left >= H.left - 1 && b.right <= H.right + 1)}; }
+              return out; }"""
+            sel621, theme621, bad621, short621 = js("[...state.sel]"), js("document.documentElement.dataset.theme || null"), {}, ("Hemoglobin", "WBC", "Creatinine", "Magnesium")
+            open_tab("labs")
+            js("state.tables.clear(); state.sel = new Set(SERIES.filter(s => !s.watch && s.n >= 2).map(s => s.name)); renderLabs()")
+            for w in (360, 412):
+                page.set_viewport_size({"width": w, "height": 800})
+                for mode in ("light", "dark"):
+                    js("t => { document.documentElement.dataset.theme = t; renderLabs(); }", mode)
+                    settle(400)
+                    got = js(HD621)
+                    for lab, g in got.items():
+                        if (g["over"] or not g["together"] or not g["nameOne"] or not g["under"] or not g["sub"] or not g["read"] or not g["inside"]
+                                or lab in short621 and not (g["nice"] and g["onName"] and g["lines"] <= 3)):
+                            bad621[f"{lab} {w} {mode}"] = g
+                    if not all(n in got for n in short621):
+                        bad621[f"{w} {mode} charted"] = sorted(got)
+                    if os.environ.get("SANGUITY_SHOTS"):
+                        page.screenshot(path=os.path.join(os.environ["SANGUITY_SHOTS"], f"621-labs-{w}-{mode}.png"))
+            js("([s, t]) => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; state.sel = new Set(s); renderLabs(); }", [sel621, theme621])
+            check("A lab chart's header on a phone (#621), at 360 and 412 px, light and dark: Chart | Table and ✕ together at its name's line's end (under "
+                  "a name too long for it), the unit, counts and ? one muted line, Latest last; three lines for Hemoglobin, WBC, Creatinine and Magnesium, "
+                  "nothing overlapping", not bad621, bad621)
             page.set_viewport_size({"width": 1400, "height": 900})
             open_tab("overview")
             settle(300)
