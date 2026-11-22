@@ -450,7 +450,7 @@ height in centimetres to two decimals, and `unit` "cm" or "ftin", how it was typ
 growth charts use it for the corrected age before 2 years; no schema step, a setting like the others); and, since #234,
 `person.targets` (targets of the person's own for home readings, as their care team gave them, `server/targets.py`:
 `{measure: target}` for "bp" (`sysLow`, `sysHigh`, `diaLow`, `diaHigh` in mmHg), "glucose" and "cgm" (`low`, `high` in
-mg/dL), "temp" (°C), "spo2" (%) and "weight" (kg), each bound optional but not both, with `unit` as typed, `by` (who set
+mg/dL), "temp" (°C), "spo2" (%), "weight" (kg) and, since #298, "steps" (steps a day), each bound optional but not both, with `unit` as typed, `by` (who set
 it) and `on` ("" or YYYY-MM-DD); no schema step). For time in that CGM range, the watch summary's `glucose_dist` metric
 counts each CGM day's readings by whole mg/dL (`[lowest, count at it, at the next, ...]`, `server/glucose.py`), sealed
 with the rest of the summary; `GET …/watch` turns it into the day's shares (`glucose_own_lt/in/gt`) and never sends it. **Schema version 30** moved #44's

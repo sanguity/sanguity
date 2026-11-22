@@ -455,7 +455,7 @@ def _outside(sides, what="readings"):
 
 
 T_NAMES = {"bp": "Blood pressure", "glucose": "Glucose (meter)", "cgm": "CGM time in range", "temp": "Temperature",
-           "spo2": "Blood oxygen", "weight": "Weight"}
+           "spo2": "Blood oxygen", "weight": "Weight", "steps": "Steps a day"}
 
 
 def targets_block(c, keep, most):
@@ -466,7 +466,7 @@ def targets_block(c, keep, most):
     mmol, f_, kg = c.units.get("lab") == "si", c.units.get("temperature") == "F", c.units.get("weight") == "kg"
     g = ("mmol/L", "mmol/L", 1) if mmol else ("mg/dL", "mg/dL", 0)
     shown = {"glucose": g, "cgm": g, "temp": ("°F", "F", 1) if f_ else ("°C", "C", 1), "weight": ("kg", "kg", 1) if kg else ("lb", "lb", 1),
-             "spo2": ("%", None, 0)}   # measure -> (unit written, unit converted to, places)
+             "spo2": ("%", None, 0), "steps": ("steps", None, 0)}   # measure -> (unit written, unit converted to, places)
     for k in tg.MEASURES:
         t = T.get(k)
         if not t:
@@ -478,7 +478,7 @@ def targets_block(c, keep, most):
         unit, to, pl = shown[k]
         conv = (lambda v, to=to, k=k: tg.from_canonical(k, v, to)) if to else (lambda v: v)
         lo, hi = conv(t.get("low")), conv(t.get("high"))
-        text = tg.range_text(lo, hi, lambda v, pl=pl: _n(v, pl), unit)
+        text = tg.range_text(lo, hi, (lambda v: f"{v:,.0f}") if k == "steps" else (lambda v, pl=pl: _n(v, pl)), unit)   # "8,000 steps"
         sides = lambda vals: [tg.side(v, lo, hi, pl) for v in vals if v is not None]
         if k == "glucose":
             when = _outside(sides([conv(_num(r[1])) for _, r in _meter(c, keep, mmol)]))
@@ -502,6 +502,8 @@ def targets_block(c, keep, most):
                             (f" {len(cgm) - len(got)} of the CGM days came before Sanguity kept what this needs." if len(cgm) > len(got) else ""))
         elif k == "temp":
             when = _outside(sides([conv(_num(r[1])) for _, r in _home(c, "temp_readings", keep, (1,), 3)]))
+        elif k == "steps":   # each day's count from the phone (#298)
+            when = _outside(sides([v for d, v in c.pts("steps") if keep(d)]), "days")
         elif k == "spo2":
             when = _outside(sides([v for d, v in c.pts("spo2_avg") if keep(d)] +
                                   [_num(r[1]) for _, r in _home(c, "spo2_readings", keep, (1,), 3)]))
@@ -515,7 +517,7 @@ def targets_block(c, keep, most):
     return _block([("Measure", "text", 92), ("Your target", "text", 100), ("Set by", "text", 104), ("Set on", "day", 54),
                    ("In this period", "text", None)], rows, lead,
                   "A blood pressure reading is above its target when its systolic or diastolic is; blood oxygen is each day's average "
-                  "from the watch and each reading typed in; weight, the smart scale's. Readings taken at visits aren't compared. "
+                  "from the watch and each reading typed in; weight, the smart scale's; steps, each day's count from the phone. Readings taken at visits aren't compared. "
                   "Standard published ranges stay labelled as their publisher's. Not medical advice.",
                   "No targets entered.", most, of="targets")
 
