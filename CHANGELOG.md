@@ -2261,6 +2261,14 @@ Everything on `main` so far; it becomes the first tagged release.
   their ranges and trends. Only the same LOINC code, or the same name written another way ("VIT D 25-OH", "Hemoglobin
   Whole Bld"), is put in the box; a similar name is a "Maybe: Vitamin B1" beside an empty box, picked only by hand,
   and left empty the results keep their own name.
+- **Records in: uploads kept forever by a save of nothing new and by a failed import** (#547): the same file in two
+  reviews, one added and then the other, ended "Imported: nothing new." with no import, no Import history row and no
+  Undo, and its upload, a full sealed copy of the records, stayed until the profile was deleted; so did the upload of
+  an import that failed ("Sanguity didn't recognise these files…") or was interrupted by a stop. A save left with
+  nothing new is cancelled with its upload, its card saying "Cancelled. Nothing new to add, so the upload was
+  removed."; a failed or interrupted import removes its upload too, unless another import uses it; and the start-up
+  tidy-up removes any upload an import read that no import or waiting review holds any more. The security review
+  says what's kept and when it goes.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

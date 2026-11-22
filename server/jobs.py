@@ -5,6 +5,11 @@ An import of an upload (uploads.py) is a row in jobs (schema versions 12 and 13)
   queued -> running (detecting, parsing) -> preview -> confirm: queued -> running (saving) -> done | failed
                                                     -> discard: discarded (the upload too, unless another job uses it)
   running, holding nothing to import (#542): discarded likewise, at once, with a message saying why
+  saving, all of it in the profile by now (#547): discarded likewise, saying so (a connected source's first pull: done)
+
+An upload is kept while a job uses it: queued, being read, waiting in review, or saved as an import (until that's
+undone, history.py). A job that ends otherwise, failed, interrupted, cancelled or saving nothing, removes it with
+its own end unless another job uses it (#547); uploads.cleanup removes any left over at the next start.
 
 The preview (#22) holds the parsed records, sealed in profiles/<id>/previews/<job id> (crypto.write_file), and says
 what they would add: counts by kind, the date range, and the duplicates of what the profile has (preview.py), which
@@ -25,7 +30,7 @@ indexed to the stored, sealed copy in profiles/<id>/uploads/<upload id>/ (upload
 decrypted temporary one. The stored copy has a random name, so the document's type comes from the path in the upload.
 
 Jobs left queued or running when the app stopped never committed, so at start-up (recover) they are marked failed,
-except one that was saving a confirmed preview: it goes back to "preview".
+their uploads removed, except one that was saving a confirmed preview: it goes back to "preview".
 """
 import collections, contextlib, json, logging, os, posixpath, queue, re, threading
 from datetime import datetime, timedelta, timezone
@@ -69,13 +74,17 @@ _q, _thread, _ips = None, None, {}   # _ips: job id -> address of whoever starte
 
 def recover(db):
     """At start-up: jobs a stop left queued or running never saved anything. One that was saving a confirmed
-    preview goes back to its preview (still there), to be confirmed again; the others are marked failed. Preview
-    files no waiting job owns are removed. Returns how many failed."""
+    preview goes back to its preview (still there), to be confirmed again; the others are marked failed, and their
+    uploads removed unless another job uses them (#547). Preview files no waiting job owns are removed. Returns how
+    many failed."""
     for r in db.execute("SELECT id, profile_id FROM jobs WHERE state IN ('queued', 'running') AND stage='saving'").fetchall():
         if os.path.isfile(preview_path(r["profile_id"], r["id"])):
             db.execute("UPDATE jobs SET state='preview', stage=NULL WHERE id=?", (r["id"],))
+    stopped = db.execute("SELECT id, profile_id, upload_id FROM jobs WHERE state IN ('queued', 'running')").fetchall()
     n = db.execute("UPDATE jobs SET state='failed', stage=NULL, message=?, finished=? WHERE state IN ('queued', 'running')",
                    (crypto.enc(INTERRUPTED), dbm.now())).rowcount
+    for r in stopped:
+        _drop_upload(db, r["profile_id"], r["upload_id"], r["id"])
     waiting = {(r[0], r[1]) for r in db.execute("SELECT profile_id, id FROM jobs WHERE state='preview'")}
     base = os.path.join(config.DATA_DIR, "profiles")
     for p in os.listdir(base) if os.path.isdir(base) else ():
@@ -143,6 +152,7 @@ def run(jid):
             db.execute("UPDATE jobs SET state='failed', message=?, finished=? WHERE id=?",
                        (crypto.enc(_explain(e, stage)), dbm.now(), jid))
             _remove(preview_path(j["profile_id"], jid))
+            _drop_upload(db, j["profile_id"], j["upload_id"], jid)   # nothing can start it again (#547)
     finally:
         _ips.pop(jid, None)
         db.close()
@@ -209,6 +219,8 @@ def _import(db, j):
 
 
 NOTHING = "Nothing in this upload could be imported, so it was removed."   # a job cancelled holding nothing (#542)
+NOTHING_NEW = "Nothing new to add, so the upload was removed."   # a save of what's all here by now (#547)
+ALL_HERE = "Nothing new to add: it's all in the profile already."   # ...whose upload another job uses
 
 
 def _first_pull(db, jid):
@@ -430,6 +442,13 @@ def _save(db, j):
                 summary["skipped"]["watch"] = here
             summary["range"] = _with_days(summary["range"], new_watch)   # what it brought, the wearable's new days too (#500)
             watch = watch if any(fresh.values()) else None
+            # all of it here by now (#547: the same file in two reviews, one added): no import, and nothing to undo or
+            # remove the upload by, so it's cancelled with it, saying so; a first pull is saved, its upload removed below
+            if not (preview.adds_anything(new) or watch) and not _first_pull(db, jid):
+                cancelled = _cancelled(db, pid, jid, who, _ips.get(jid), "running", NOTHING_NEW)
+                if cancelled and cancelled[1]:   # another job uses the upload: kept
+                    db.execute("UPDATE jobs SET message=? WHERE id=?", (crypto.enc(ALL_HERE), jid))
+        if not cancelled:
             iid = None
             # all duplicates: nothing to add, not even an empty import; but watch data needs an import to be undone by
             if preview.adds_anything(new) or watch:
@@ -466,6 +485,8 @@ def _save(db, j):
         _cancel_files(db, pid, jid, cancelled)
         return
     _remove(path)
+    if iid is None:   # a first pull that kept nothing (#547)
+        _drop_upload(db, pid, upload_id, jid)
 
 
 # ---------------------------------------------------------------- preview: confirm or discard
@@ -529,11 +550,25 @@ def _cancelled(db, pid, jid, who, ip, state, message=None):
         return None
     db.execute("UPDATE jobs SET state='discarded', stage=NULL, finished=?, confirmed_by=?, message=? WHERE id=?",
                (dbm.now(), who["id"] if who else None, crypto.enc(message) if message else None, jid))
-    others = db.execute("""SELECT 1 FROM jobs WHERE upload_id=? AND id != ?
-                           AND state IN ('queued', 'running', 'preview', 'done') LIMIT 1""", (r["upload_id"], jid)).fetchone()
     activity.log(db, "discard", who, pid, {"importer": r["importer"], "job": jid, "upload": r["upload_id"]}, ip,
                  actor=None if who else "removed account")
-    return r["upload_id"], bool(others)
+    return r["upload_id"], _used_elsewhere(db, r["upload_id"], jid)
+
+
+def _used_elsewhere(db, upload_id, jid):
+    """Whether a job other than jid uses the upload: one queued, being read or waiting in review, or one saved as an
+    import (#547: not one that failed, was cancelled or kept nothing)."""
+    return db.execute("""SELECT 1 FROM jobs WHERE upload_id=? AND id != ? AND (state IN ('queued', 'running', 'preview')
+                         OR state='done' AND import_id IS NOT NULL) LIMIT 1""", (upload_id, jid)).fetchone() is not None
+
+
+def _drop_upload(db, pid, upload_id, jid):
+    """A job over without an import (failed, interrupted, or a first pull that kept nothing, #547): its upload is removed
+    unless another job uses it. One still receiving is left to uploads.cleanup."""
+    r = db.execute("SELECT state FROM uploads WHERE id=? AND profile_id=?", (upload_id, pid)).fetchone()
+    if r and r["state"] == "ready" and not _used_elsewhere(db, upload_id, jid):
+        with contextlib.suppress(uploads.UploadError):
+            uploads.discard(db, pid, upload_id)
 
 
 def _cancel_files(db, pid, jid, cancelled):

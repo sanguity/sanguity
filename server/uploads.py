@@ -3,7 +3,8 @@
 An upload belongs to a profile. The browser creates one, sends its files one request each (PUT, the body is the
 file), then finishes it; a zip it sent is unpacked here, on the server, at that point. From then on the upload is
 "ready", and its files stay as the import's raw files: they are in "Export everything", in backups, and go with
-the profile when it is deleted.
+the profile when it is deleted. Once an import job has read it, it goes when no job holds it any more (#547): with
+the job that ends without an import (jobs.py), or else at the next start (cleanup).
 
 On disk, profiles/<id>/uploads/<upload id>/ holds each file sealed as an encrypted stream (crypto.StreamWriter)
 under a random name. Which name holds which path is in the database, encrypted: while receiving, one row per file
@@ -370,14 +371,37 @@ def discard(db, pid, upload_id):
     _rmtree(folder(pid, upload_id))
 
 
+def orphaned(db):
+    """The ready uploads nothing holds any more (#547), by id: read by an import job once, and now used by none
+    (queued, being read, in review, or saved as an import; jobs.py), with no document stored in them. An upload no
+    job ever read is kept: one put back from an export, or a file sent to type records in."""
+    rows = db.execute("""SELECT u.id, u.profile_id FROM uploads u WHERE u.state='ready'
+                         AND EXISTS(SELECT 1 FROM jobs j WHERE j.upload_id=u.id)
+                         AND NOT EXISTS(SELECT 1 FROM jobs j WHERE j.upload_id=u.id AND (j.state IN ('queued', 'running', 'preview')
+                                        OR j.state='done' AND j.import_id IS NOT NULL))""").fetchall()
+    docs, out = {}, []
+    for r in rows:
+        if r["profile_id"] not in docs:
+            docs[r["profile_id"]] = [os.path.realpath(crypto.dec(d["path"]))
+                                     for d in db.execute("SELECT path FROM documents WHERE profile_id=?", (r["profile_id"],)) if d["path"]]
+        root = os.path.realpath(folder(r["profile_id"], r["id"]))
+        if not any(p.startswith(root + os.sep) for p in docs[r["profile_id"]]):
+            out.append(r["id"])
+    return out
+
+
 def cleanup(db, now=None):
-    """At start-up: remove uploads still receiving after a day (abandoned), and any upload folder that no live
-    upload owns (a discarded one, or one left by a crash). Returns how many uploads were removed."""
+    """At start-up: remove uploads still receiving after a day (abandoned), uploads nothing holds (orphaned), and any
+    upload folder that no live upload owns (a discarded one, or one left by a crash). Returns how many uploads still
+    receiving were removed."""
     now = now or dbm.now()
     stale = db.execute("SELECT id, profile_id FROM uploads WHERE state='receiving' AND created < ?", (now - STALE,)).fetchall()
     for r in stale:
         db.execute("DELETE FROM uploads WHERE id=?", (r["id"],))
         _rmtree(folder(r["profile_id"], r["id"]))
+    for r in orphaned(db):
+        db.execute("UPDATE uploads SET state='discarded', manifest=NULL WHERE id=?", (r,))
+        db.execute("DELETE FROM upload_files WHERE upload_id=?", (r,))
     live = {(r["profile_id"], r["id"]) for r in db.execute("SELECT id, profile_id FROM uploads WHERE state != 'discarded'")}
     base = os.path.join(config.DATA_DIR, "profiles")
     for p in os.listdir(base) if os.path.isdir(base) else ():

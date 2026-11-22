@@ -124,7 +124,7 @@ class Preview(unittest.TestCase):
     def save(self, pid, j, keep=None, c=None):
         r = (c or self.robin).post(f"/api/profiles/{pid}/jobs/{j['id']}/confirm", json={"keep": keep or []}, headers=H)
         self.assertEqual(r.status_code, 202, r.text)
-        return self.until(pid, j["id"], ("done", "failed"))
+        return self.until(pid, j["id"], ("done", "failed", "discarded"))
 
     # ---------------------------------------------------------------- #22's done-when
 
@@ -155,12 +155,12 @@ class Preview(unittest.TestCase):
                 self.assertEqual(again["range"], first["range"])
                 self.assertTrue(again["duplicates"]["items"])
                 self.assertTrue(all(i["ref"] is None or i["ref"][:2] in ("e:", "s:") for i in again["duplicates"]["items"]))   # (None: a list's entry, #497)
-                done = self.save(pid, again)
-                self.assertEqual(done["state"], "done", done)
+                done = self.save(pid, again)   # nothing new: cancelled, its upload removed (#547)
+                self.assertEqual((done["state"], done["message"]), ("discarded", jobs.NOTHING_NEW), done)
                 self.assertIsNone(done["import_id"])
                 self.assertEqual(count(pid), after)   # saving added nothing
                 self.assertEqual(self.robin.get(f"/api/profiles/{pid}/data").json(), data)
-                self.assertEqual(done["skipped"]["events"], first["counts"]["events"])
+                self.assertFalse(os.path.exists(uploads.folder(pid, again["upload_id"])))
 
     def test_immunizations_allergies_and_appointments_listed_and_found_again(self):   # #179
         pid = self.profile("portal-everything")
@@ -220,7 +220,7 @@ class Preview(unittest.TestCase):
         self.assertEqual(days["Hemoglobin"], ("2025-03-14", "2025-04-02"))
         self.assertEqual(days["Ferritin"], ("2025-04-02", None))
         done = self.save(pid, again)   # and saving it adds nothing, as confirm finds the duplicates again anyway
-        self.assertEqual((done["state"], done["import_id"]), ("done", None), done)
+        self.assertEqual((done["state"], done["import_id"]), ("discarded", None), done)
         # read again only once the records change, and only the latest few when listed: the others say they're stale
         older = [self.previewed(pid, {"labs.csv": CSV_HEAD + f"05/0{n}/2025,Ferritin,9{n},ng/mL,30-400,,\n"})[0]["id"]
                  for n in range(1, jobs.FRESH + 2)]
@@ -242,7 +242,7 @@ class Preview(unittest.TestCase):
         listed = json.loads(crypto.read_file(jobs.preview_path(pid, left["id"])))["labs"]["listed"]
         self.assertEqual([(e["ref"], e.get("same")) for e in listed], [("s:0", "Zeta marker XQ")])
         done = self.save(pid, again)
-        self.assertEqual((done["state"], done["import_id"]), ("done", None), done)
+        self.assertEqual((done["state"], done["import_id"]), ("discarded", None), done)
         # one with a result still new: still asked about, saying a series of its name is there now
         left, _ = self.previewed(pid, {"labs.csv": CSV_HEAD + "03/14/2025,Zeta marker XR,4.2,U/L,1 - 9,,\n03/15/2025,Zeta marker XR,4.4,U/L,1 - 9,,\n"})
         self.save(pid, self.previewed(pid, {"labs.csv": CSV_HEAD + "03/14/2025,Zeta marker XR,4.2,U/L,1 - 9,,\n"})[0])
@@ -321,9 +321,8 @@ class Preview(unittest.TestCase):
         self.assertTrue({("allergy", True), ("problem", True)} <= listed, d["items"])
         self.assertEqual(sum(1 for i in d["items"] if i["ref"] is None), d["other"])
         done = self.save(pid, again)
-        self.assertEqual((done["state"], done["import_id"]), ("done", None), done)   # nothing new: no import at all
-        self.assertNotIn("workouts", {k for k, n in done["counts"].items() if n})
-        self.assertEqual(done["skipped"]["watch"], again["duplicates"]["watch"])
+        # nothing new, its wearable's days and workouts too: no import at all, cancelled with its upload (#547)
+        self.assertEqual((done["state"], done["import_id"], done["message"]), ("discarded", None, jobs.NOTHING_NEW), done)
         # a watch summary against the one the profile has: only what it lacks, or has with another value
         have = {"metrics": [{"key": "steps", "pts": [["2025-05-30", 3200], ["2025-05-31", 10]]}],
                 "exercise": [{"start": "2025-05-30T07:00:00Z", "key": "w1"}], "bp_readings": [["2025-05-30T08:00:00Z", 120, 80, "Phone", "App"]]}
