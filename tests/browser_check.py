@@ -3791,7 +3791,7 @@ def main():
                 for per in ("all", "30d"):
                     js("p => applyPreset(p)", per)
                     settle(400)
-                    ax291[f"{per} {width}"] = js(CHART_AXIS_JS, "#charts svg.ck")
+                    ax291[f"{per} {width}"] = js(CHART_AXIS_JS, "#charts svg.ck-axis")   # the stack's one axis (#293)
             js("applyPreset('all')")
             page.set_viewport_size({"width": 1400, "height": 900})
             settle(300)
@@ -3801,6 +3801,62 @@ def main():
                   and all(len(ax291[f"all {w}"]["rows"][0][1]) >= 2 and all(re.match(r"^20\d\d$", y) for y in ax291[f"all {w}"]["rows"][0][1]) for w in (1400, 320))
                   and all(re.match(r"^[A-Z][a-z]{2} 20\d\d$", m) for w in (1400, 320) for m in ax291[f"30d {w}"]["rows"][0][1])
                   and all(re.match(r"^\d{1,2}$", d) for d in ax291["30d 1400"]["rows"][0][0]), ax291)
+            # #293: the reference band is neutral, ink at about 6% with solid hairline edges, never a status colour, on
+            # every Labs chart, the lab panel's strip and the Overview's sparklines; its numbers at the right of the plot
+            # and inside it ("13.5–17.5 on report"); the unit the value axis's title; each chart 200–220 px tall; one time
+            # axis under the stack, the kit's, on every chart's scale and lined up with them, and no labels under a
+            # chart; the crosshair still at one date on every chart. In light and dark, at 1400 and 320 px
+            BANDS293_JS = r"""() => {
+              const probe = c => { const i = document.createElement('i'); i.style.color = c; document.body.append(i); const v = getComputedStyle(i).color; i.remove(); return v; };
+              const status = ['--good', '--good-text', '--crit', '--crit-fill', '--accent'].map(t => probe(`var(${t})`)), ink = probe('var(--ink)');
+              const ax = document.querySelector('#charts .ck-axis'), ar = ax?.getBoundingClientRect(), bad = [];
+              const charts = [...document.querySelectorAll('#charts svg.ck')].map(s => {
+                const g = s._geom, r = s.getBoundingClientRect(), name = s.getAttribute('aria-label').split(':')[0], ref = s.querySelector('.ck-ref');
+                if (ref) { const b = ref.getBBox(); if (b.x < g.L || b.x + b.width > g.R || b.y < g.T - 1 || b.y + b.height > g.B + 1) bad.push(`${name}: its range's numbers outside the plot`); }
+                if ([...s.querySelectorAll('text')].some(t => +t.getAttribute('y') > g.B)) bad.push(`${name}: a label under its plot`);
+                if (!ax || Math.abs(r.left - ar.left) > .5 || Math.abs(r.width - ar.width) > .5 || g.L !== ax._geom.L || g.R !== ax._geom.R || g.w !== ax._geom.w) bad.push(`${name}: not lined up with the axis`);
+                return [name, +s.getAttribute('height'), s.querySelector('.ck-unit')?.textContent === s._s.unit, ref?.textContent || null];
+              });
+              let n = 0;
+              for (const m of document.querySelectorAll('#charts :is(.refband, .refedge), .lab-strip :is(.refband, .refedge), #view-overview .spark-ref')) {
+                const c = getComputedStyle(m), col = m.matches('.refedge') ? c.stroke : c.fill; n++;
+                if (status.includes(col)) bad.push(`${m.getAttribute('class')} in a status colour`);
+                if (m.matches('.refedge') && c.strokeDasharray !== 'none') bad.push('a dashed edge');
+                if (m.matches('.refband') && (col !== ink || +c.fillOpacity > .08 || +c.opacity !== 1)) bad.push(`a band not ink at about 6%: ${col} ${c.fillOpacity} ${c.opacity}`);
+              }
+              return {charts, marks: n, axes: document.querySelectorAll('#charts .ck-axis').length, axisLabels: ax ? ax.querySelectorAll('text').length : 0, bad};
+            }"""
+            js("window._was293 = [new Set(state.sel), document.documentElement.dataset.theme || null]; state.tables.clear(); state.sel = new Set(['Hemoglobin', 'Creatinine', 'WBC', 'ALT']); applyPreset('all'); renderLabs()")
+            got293 = {}
+            for width in (1400, 320):
+                page.set_viewport_size({"width": width, "height": 900})
+                for theme in ("light", "dark"):
+                    js("t => { document.documentElement.dataset.theme = t; renderCharts(); }", theme)
+                    settle(400)
+                    got293[f"{theme} {width}"] = js(BANDS293_JS)
+            js("document.querySelector('#charts .chart .hd .lab-open').click()")   # the lab panel's strip (#296)
+            settle(600)
+            got293["strip"] = js(BANDS293_JS)
+            js("closeDrawer()")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("renderCharts()")
+            settle(400)
+            page.focus("#charts .chart svg.ck")
+            page.keyboard.press("End")
+            settle(200)
+            synced293 = js("[...document.querySelectorAll('#charts svg.ck .cross')].map(c => c.getAttribute('visibility'))")
+            page.keyboard.press("Escape")
+            js("(w => { state.sel = w[0]; if (w[1]) document.documentElement.dataset.theme = w[1]; else delete document.documentElement.dataset.theme; renderLabs(); })(window._was293)")
+            settle(300)
+            ref293 = re.compile(r"^(-?[\d.]+–-?[\d.]+|[≤≥] -?[\d.]+) (on report|from settings)$")
+            check("Labs (#293): the reference band is ink at about 6% with solid edges, never a status colour, on the charts, the lab panel's strip "
+                  "and the Overview's sparklines; its numbers inside the plot; the unit the value axis's title; each chart 200–220 px tall; "
+                  "one time axis under the stack, lined up with every chart and none under each; in light and dark, at 1400 and 320 px",
+                  all(not v["bad"] and v["marks"] > 0 for v in got293.values())
+                  and all(v["axes"] == 1 and v["axisLabels"] > 0 and len(v["charts"]) == 4
+                          and all(200 <= h <= 220 and unit and ref and ref293.match(ref) for _, h, unit, ref in v["charts"])
+                          for k, v in got293.items() if k != "strip"), got293)
+            check("…and the crosshair still at one date on every chart, from the keyboard", synced293 == ["visible"] * 4, synced293)
             page.click("#charts .chart .view-seg button:text-is('Table')")
             settle(200)
             t = js("""(() => { const t = document.querySelector('#charts .chart table.data');
