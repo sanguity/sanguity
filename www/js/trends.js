@@ -158,8 +158,8 @@ function chartCard(s) {
   const read = el("span", {class: "read"});
   const showTable = state.tables.has(s.name);
   const hasStages = s.kind === "stack" && pts.some(p => p.parts && (p.parts.deep || p.parts.rem || p.parts.light));
-  const legend = hasStages ? el("span", {class: "lg"}, ...[["Deep", "--seq1"], ["REM", "--seq2"], ["Light", "--seq3"]].map(([n, c]) => el("span", {}, el("i", {style: {background: `var(${c})`}}), n)))
-    : s.kind === "band" ? el("span", {class: "lg"}, el("span", {}, el("i", {style: {background: "var(--c-lab)", height: "3px"}}), "Daily average"), el("span", {}, el("i", {style: {background: "var(--c-lab)", opacity: .2}}), "Low–high")) : null;
+  const legend = hasStages ? ckLegend([["var(--seq1)", "Deep"], ["var(--seq2)", "REM"], ["var(--seq3)", "Light"]], "span")
+    : s.kind === "band" ? ckLegend([["var(--c-lab)", "Daily average", "line"], ["var(--c-lab)", "Low–high", "band"]], "span") : null;
   // its name in the records, when renamed, on the screen beside the unit, not in a tip only a mouse finds (#358)
   card.append(el("div", {class: "hd"}, el("span", {class: "name", text: nice(s.name)}), s.watch ? null : renameButton("lab", s.name),
     el("span", {class: "unit", text: `${s.unit}${!s.watch && nice(s.name) !== s.name ? " · " + renamedTitle("lab", s.name).replace(/^In/, "in") : ""}${s.uc ? ` (converted from ${s.uc.from})` : ""}${s.watch ? (s.key === "weight" ? " · scale + clinic visits" : s.panel.startsWith("Body") ? " · smart scale" : " · watch, daily") : ""} · ${pts.length} ${s.watch ? "day" : "result"}${pts.length === 1 ? "" : "s"}${nAbn ? ` · ${nAbn} outside reference range` : ""}${pts.some(p => p.rs === "settings") ? " · " + RANGE_FROM_SETTINGS + " for results without one" : ""}`}), testLink(s.name), legend, read,   // "What is this test?" (#163, test-pages.js)
@@ -181,7 +181,7 @@ function chartCard(s) {
     { const t = tagLine(pts); if (t) card.append(t); }   // its results' source tags, renamed here (#38)
     return card;
   }
-  const svg = el("svg:svg", {role: "img", class: "pz", "aria-label": `${nice(s.name)} over time`});
+  const svg = el("svg:svg", {role: "img", class: "pz ck", "aria-label": `${nice(s.name)} over time`});
   svg._s = s; svg._read = read;
   card.append(svg);
   requestAnimationFrame(() => drawChart(svg, s, pts, read));
@@ -191,10 +191,11 @@ function drawChart(svg, s, pts, read) {
   if (!svg.isConnected) return;
   const marks = markEvents(), hasMs = msInRange(state.from, state.to);
   const layers = CHART_LAYERS.map(l => [l, l.space()]).filter(([, n]) => n > 0), below = layers.reduce((a, [, n]) => a + n, 0);
-  const w = Math.max(320, svg.parentElement.clientWidth - 28), h = (s.kind === "stack" || s.kind === "bars" ? 150 : 170) + (hasMs ? 14 : 0) + below;
-  const L = 52, R = w - 12, T = (marks.length ? 24 : 10) + (hasMs ? 14 : 0), B = h - 22 - below;
-  svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("height", h); svg._geom = {L, R, w};
-  const x = t => L + (t - state.from) / (state.to - state.from) * (R - L);
+  // the kit's scales and time axis (chartkit.js): one or two rows of labels under the layers, as the period needs
+  const w = Math.max(320, svg.parentElement.clientWidth - 28), L = 52, R = w - 12, x = ckScale(state.from, state.to, L, R);
+  const tk = ckTimeTicks(state.from, state.to, x, w), AX = ckAxisH(tk.rows), h = (s.kind === "stack" || s.kind === "bars" ? 128 : 148) + (hasMs ? 14 : 0) + below + AX;
+  const T = (marks.length ? 24 : 10) + (hasMs ? 14 : 0), B = h - AX - below;
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("height", h); svg._geom = {L, R, T, B, w};
   const smoothOn = state.smooth && s.watch && pts.length > 3;
   const vals = pts.map(p => p[1]).concat(s.kind === "band" ? pts.flatMap(p => [p.lo, p.hi]).filter(v => v != null) : []);
   // the reference band: each result's own range, as steps when they differ (#58, ranges.js), never one range for all
@@ -210,10 +211,10 @@ function drawChart(svg, s, pts, read) {
     if (lo === hi) { lo -= Math.abs(lo) * .1 || 1; hi += Math.abs(hi) * .1 || 1; }
     const pad = (hi - lo) * .08; lo -= pad; hi += pad; if (lo < 0 && Math.min(...vals) >= 0) lo = Math.max(lo, 0 - pad * .5);
   }
-  const y = v => B - (v - lo) / (hi - lo) * (B - T);
+  const y = ckScale(lo, hi, B, T);
   const g = [];
   for (const st of STAYS) { if (st.te < state.from || st.ts > state.to) continue; const a = Math.max(L, x(st.ts)), b = Math.min(R, x(st.te)); g.push(el("svg:rect", {class: "stayband", x: a, y: T, width: Math.max(2, b - a), height: B - T})); }
-  for (const v of niceTicks(lo, hi, 4)) { g.push(el("svg:line", {class: "gridline", x1: L, x2: R, y1: y(v), y2: y(v)})); g.push(el("svg:text", {x: L - 6, y: y(v) + 4, "text-anchor": "end", text: s.kind === "bars" && v >= 1000 ? (v / 1000) + "k" : fmtNum(v)})); }
+  ckGrid(g, y, niceTicks(lo, hi, 4), L, R, v => s.kind === "bars" && v >= 1000 ? (v / 1000) + "k" : fmtNum(v));
   {
     const edge = {lo: "", hi: ""};   // each edge as one stepped path, joined where neighbouring steps both have it
     steps.forEach((st, i) => {
@@ -243,8 +244,7 @@ function drawChart(svg, s, pts, read) {
     g.push(el("svg:text", {class: "evlabel", x: x0, y: T - 5, text}));
     lastEnd = x1;
   });
-  for (const [t, lab] of ticks(state.from, state.to, R - L)) g.push(el("svg:text", {x: x(t), y: h - 6, "text-anchor": "middle", text: lab}));
-  g.push(el("svg:line", {x1: L, x2: R, y1: B, y2: B, stroke: "var(--axis)"}));
+  ckAxis(g, tk, L, R, B, h - AX + 16);
   const dayW = Math.max(1, x(state.from + DAY) - x(state.from));
   const barW = Math.max(1, Math.min(14, dayW * .72));
   const line = (arr, cls, extra = {}) => arr.length > 1 ? el("svg:path", {class: cls, d: arr.map(([px, py], i) => (i ? "L" : "M") + px.toFixed(1) + "," + py.toFixed(1)).join(""), ...extra}) : null;
@@ -276,7 +276,7 @@ function drawChart(svg, s, pts, read) {
     for (const p of pts) if (!dense || p[4]) g.push(p[4] ? abnMark(x(p.ts), y(p[1]), p[4]) : el("svg:circle", {class: "pt", cx: x(p.ts), cy: y(p[1]), r: 3}));   // ▲ above, ▼ below its range (#60)
   }
   if (!pts.length) g.push(el("svg:text", {x: (L + R) / 2, y: (T + B) / 2, "text-anchor": "middle", text: "No values in this date range"}));
-  const cross = el("svg:line", {class: "cross", y1: T, y2: B, visibility: "hidden"});
+  const cross = ckCross(T, B);
   const dot = el("svg:circle", {r: 5.5, fill: "none", stroke: "var(--ink)", "stroke-width": 2, visibility: "hidden", "pointer-events": "none"});
   const hit = el("svg:rect", {x: L, y: T - 12, width: R - L, height: B - T + 12, fill: "transparent"});
   g.push(cross, dot, hit);
@@ -290,17 +290,18 @@ function drawChart(svg, s, pts, read) {
   };
   setRead(null);
   svg._hover = t => {
-    if (t == null || !pts.length) { cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); setRead(null); return null; }
+    if (t == null || !pts.length) { ckCrossAt(cross, null); dot.setAttribute("visibility", "hidden"); setRead(null); return null; }
     let best = pts[0]; for (const p of pts) if (Math.abs(p.ts - t) < Math.abs(best.ts - t)) best = p;
     const tol = Math.max((state.to - state.from) * 0.03, s.watch ? DAY * .6 : 0);
-    if (Math.abs(best.ts - t) > tol) { cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); setRead(null); return null; }
-    cross.setAttribute("x1", x(best.ts)); cross.setAttribute("x2", x(best.ts)); cross.setAttribute("visibility", "visible");
+    if (Math.abs(best.ts - t) > tol) { ckCrossAt(cross, null); dot.setAttribute("visibility", "hidden"); setRead(null); return null; }
+    ckCrossAt(cross, x(best.ts));
     dot.setAttribute("cx", x(best.ts)); dot.setAttribute("cy", y(best[1])); dot.setAttribute("visibility", "visible");
     setRead(best); return best;
   };
-  // what hovering at time t shows (every chart's readout at that date, this one's tooltip at ev); the keyboard too (#60)
-  const showAt = (t, px, ev) => {
-    let mine = null; document.querySelectorAll("#charts svg").forEach(o => { const b = o._hover && o._hover(t); if (o === svg) mine = b; });
+  // what hovering at time t shows: every chart's crosshair and readout at that date (ckSync), this one's tooltip
+  // pinned at the top of its crosshair (ckTip); the keyboard too (#60)
+  const showAt = (t, px) => {
+    const mine = ckSync(svg, t);
     const near = marks.filter(e => Math.abs(x(e.ts) - px) < 8);
     const nodes = [];
     if (mine) {
@@ -312,23 +313,22 @@ function drawChart(svg, s, pts, read) {
         mine[4] ? el("div", {class: "s", style: {color: "var(--crit)"}, text: /^h/i.test(mine[4]) ? "▲ Above range" : /^l/i.test(mine[4]) ? "▼ Below range" : "◆ Flagged"}) : null);
     }
     for (const e of near.slice(0, 3)) nodes.push(el("div", {class: "s mt-1"}, el("span", {class: "k", style: {background: CAT_OF[e.k].color}}), `${e.title} · ${fmtD(e.ts)}`));
-    nodes.length ? showTip(nodes, ev) : hideTip();
+    ckTip(svg, mine ? x(mine.ts) : px, nodes);
     return tipWords(nodes);
   };
   hit.addEventListener("pointermove", ev => {
     const r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) * (w / r.width);
-    showAt(state.from + (px - L) / (R - L) * (state.to - state.from), px, ev);
+    showAt(x.inv(px), px);
   });
   // the keyboard (#60): ← and → step through the results shown, with the same readout and tooltip as hovering
   const unit = s.watch ? (s.kind === "stack" ? "night" : "day") : "result", nAbn = pts.filter(p => p[4]).length;
   chartKeys(svg, `${nice(s.name)}: ${pts.length} ${unit}${pts.length === 1 ? "" : "s"}${pts.length ? ` from ${fmtD(pts[0].ts)} to ${fmtD(lastP.ts)}, latest ${readText(s, lastP)[0]}` : " in this period"}`
     + `${nAbn ? `, ${nAbn} outside reference range` : ""}${rangesDiffer(pts) ? `. ${RANGE_DIFFERS}: ${rangesDiffer(pts)} ${s.unit}` : ""}. Left and right arrow keys step through them.${msWords ? " " + msWords : ""}`,
     () => pts.map(p => p.ts),
-    t => { const p = pts.find(p => p.ts === t); return showAt(t, x(t), svgPoint(svg, x(t), p ? y(p[1]) : T)); },
-    () => { document.querySelectorAll("#charts svg").forEach(o => o._hover && o._hover(null)); hideTip(); });
+    t => showAt(t, x(t)), () => { ckSync(svg, null); hideTip(); });
   hit.addEventListener("click", ev => {
     const r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) * (w / r.width);
     const e = marks.find(e => Math.abs(x(e.ts) - px) < 8); if (e) openEvent(e);
   });
-  hit.addEventListener("pointerleave", () => { if (!chartsBox.classList.contains("dragging")) { document.querySelectorAll("#charts svg").forEach(o => o._hover && o._hover(null)); hideTip(); } });
+  hit.addEventListener("pointerleave", () => { if (!chartsBox.classList.contains("dragging")) { ckSync(svg, null); hideTip(); } });
 }

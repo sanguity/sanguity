@@ -1537,6 +1537,15 @@ Everything on `main` so far; it becomes the first tagged release.
   the serif, **Show** on every password field (hidden again as the form is sent, so a browser still saves it as a
   password), and a live count toward the minimum length under setup's password ("9 of 15", then "Long enough", said
   once), the minimum as the server is set up (`PASSWORD_MIN_LENGTH`).
+- **One chart kit for Labs and Body and activity: time in two rows, one crosshair, keys that look like the marks**
+  (#291): each drew its own axes, ticks and legends. Body and activity's tick rule put one "2026" under 20 months on
+  All, and a zoomed lab chart had "Jul" and "Oct" across 930 px. Both now draw with `www/js/chartkit.js`. Its time
+  axis has two rows: days over the month ("Sep 2026"), or months over the year. It takes as many ticks as fit, so a
+  wider or zoomed chart gets more, and ten years read 2017 to 2026 in one row. Hovering or stepping through a chart
+  puts the crosshair at that date on every chart of the tab, Body and activity's too. The tooltip sits at the top of
+  the plot beside the crosshair, clear of the point under the pointer. A legend's key is drawn like its mark: a short
+  line for a line, a dot for a reading, a ring for a visit's, a wash for a range. Each result's own range band, the
+  ▲/▼/◆ marks, keyboard stepping, the Latest readout and Chart | Table are unchanged.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
