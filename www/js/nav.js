@@ -343,6 +343,16 @@ const SgNav = (() => {
         put(vis);
       }
     }
+    // on a phone with larger text (the name over 16 px, #622), a name cut short with less than 6 em of room beside the
+    // brand and the menus goes to a row of its own under them (.prof-row); the room counted as it is on one row,
+    // whichever it's on. At the usual size the bar stays one row, a name cut at 320 px as before (#268, #315)
+    if (name) {
+      const fs = parseFloat(getComputedStyle(name).fontSize);
+      const cs = getComputedStyle(header), gap = parseFloat(cs.columnGap) || 0, flow = [...header.children].filter(c => c.checkVisibility() && !/fixed|absolute/.test(getComputedStyle(c).position));
+      const room = header.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - (flow.length - 1) * gap
+        - flow.reduce((s, c) => s + (c === wrap ? prof.btn.offsetWidth - name.clientWidth : c.matches(".spacer") ? 0 : c.offsetWidth), 0);
+      header.classList.toggle("prof-row", PHONE.matches && fs > 16 && room < Math.min(name.scrollWidth + 1, 6 * fs));
+    }
     // the profile's name cut short: the whole of it in a tip (said in the button's name already, #396)
     if (name && name.scrollWidth > name.clientWidth) prof.btn.dataset.tip = name.textContent; else delete prof.btn.dataset.tip;
     // a tab that had focus and moved: focus stays with it, or goes to More when it's put away

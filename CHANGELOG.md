@@ -1639,6 +1639,12 @@ Everything on `main` so far; it becomes the first tagged release.
   counts, "What is this test?", the Latest reading, then Chart | Table and ✕ on a row of their own. Now Chart | Table
   and ✕ sit at the end of the name's line (together under a name too long to share it), the unit and counts are one
   muted line with a "?" for What is this test?, and Latest follows. Wider screens are as they were.
+- **Larger text on a phone: the tabs, the profile's name and Labs' chart labels fit** (#622): with text at 200% at
+  360 px the tab bar's names ran into each other ("OverviewBody"), the profile menu showed "My r…", and a lab chart's
+  numbers, unit, band and time labels fell outside it. Now a tab whose name doesn't fit its place shows its icon alone
+  (its name still its link's), a profile name with too little room on the top bar's row goes to a row of its own under
+  it, and Labs' charts, their time axis and the event track make their gutters, rows and offsets as large as the text
+  (WCAG 1.4.4). The usual size is as it was, the profile's caret 4 px nearer its name.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

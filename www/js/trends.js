@@ -104,8 +104,8 @@ function renderCharts() {
 /* a lab chart's width in its own units: its card's, less the card's padding; the stack's axis takes the same (#293) */
 const labW = card => { const cs = getComputedStyle(card); return Math.max(260, card.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)); };
 /* the plot's left and right edges in a lab chart and the stack's axis, the same in both: a narrower gutter for the
-   values on a phone (#615: the plot was three quarters of the card) */
-const labLR = w => w < 480 ? [40, w - 8] : [52, w - 12];
+   values on a phone (#615: the plot was three quarters of the card); wider with larger text (ckK, #622) */
+const labLR = w => w < 480 ? [40 * ckK(), w - 8] : [52 * ckK(), w - 12];
 /* the stack's one time axis (#293): the kit's (chartkit.js ckAxis), drawn once under the charts on their time scale,
    and kept in view at the foot of the window while they scroll, as the heatmap's is. In a box padded as a card is,
    so it's as wide as every chart and lines up with them */
@@ -215,7 +215,7 @@ function drawChart(svg, s, pts, read, live) {   // live: a frame of a drag, at t
   // stack's one is under it (labAxis), each chart on the same time scale (the kit's, chartkit.js). Events are on the
   // track over the stack (#294): only a faint line at each milestone here
   const w = live && svg._geom ? svg._geom.w : labW(svg.parentElement), [L, R] = labLR(w), x = ckScale(state.from, state.to, L, R);
-  const T = 22, B = T + 184, h = B + 6;
+  const k = ckK(), T = 22 * k, B = T + 184, h = B + 6 * k;
   svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("height", h); svg._geom = {L, R, T, B, w};
   const smoothOn = state.smooth && s.watch && pts.length > 3;
   const vals = pts.map(p => p[1]).concat(s.kind === "band" ? pts.flatMap(p => [p.lo, p.hi]).filter(v => v != null) : []);
@@ -236,10 +236,10 @@ function drawChart(svg, s, pts, read, live) {   // live: a frame of a drag, at t
   const g = [];
   for (const st of STAYS) { if (st.te < state.from || st.ts > state.to) continue; const a = Math.max(L, x(st.ts)), b = Math.min(R, x(st.te)); g.push(el("svg:rect", {class: "stayband", x: a, y: T, width: Math.max(2, b - a), height: B - T})); }
   ckGrid(g, y, niceTicks(lo, hi, 5), L, R, v => s.kind === "bars" && v >= 1000 ? (v / 1000) + "k" : fmtNum(v));
-  ckUnit(g, s.unit, T - 10);
+  ckUnit(g, s.unit, T - 10 * k);
   ckBand(g, steps, x, y, L, R, T, B);
   { const st = steps[steps.length - 1];   // the numbers of the range at the right end, as printed (#293)
-    if (st) ckBandLabel(g, `${st.key} ${st.rs === "settings" ? "from settings" : "on report"}`, st, y, R, T, B, pts.map(p => [x(p.ts), y(p[1])])); }
+    if (st) ckBandLabel(g, `${st.key} ${st.rs === "settings" ? "from settings" : "on report"}`, st, y, R, T, B, pts.map(p => [x(p.ts), y(p[1])]), L); }
   // a faint line at each milestone, named once on the event track over the charts (#294), and in the chart's words;
   // procedures and imaging, the medications and the rest are on the track only
   const msAt = g.length, msWords = msMarks(g, x, state.from, state.to, T, B, R, null);

@@ -484,11 +484,12 @@ header.topbar .tabs::-webkit-scrollbar{display:none}
 .tabs>a>.icon,.tab-more>.menu-ico,#userMenuBtn>.menu-ico{display:none}
 @media (max-width:700px){
   header.topbar .profile-pick{flex:999 1 0;max-width:max-content;min-width:0}   /* the room left, before the spacer gets any (#396) */
-  .profile-btn.menu-btn{padding-inline:var(--sp-2)}
+  .profile-btn.menu-btn{padding-inline:var(--sp-2);gap:var(--sp-1)}
   header.topbar .bar-menus{gap:var(--sp-1)}
   :is(#addMenuBtn,#userMenuBtn){min-width:44px;padding-inline:var(--sp-2)}
   #userMenuBtn>.menu-ico{display:inline}
   :is(#addMenuBtn,#userMenuBtn)>.menu-caret{display:none}
+  header.topbar.prof-row .profile-pick{order:4;flex-basis:100%;max-width:none}   /* a row of its own, with too little room for its name (nav.js fit, #622) */
 }
 @media (max-width:480px){ header .brand-name{gap:0} }
 @media (max-width:700px) and (min-height:501px){
@@ -508,7 +509,10 @@ header.topbar .tabs::-webkit-scrollbar{display:none}
    narrower, a tab's whole name beside its short one */
 @media (max-width:700px){ :is(#addMenuBtn,#userMenuBtn)>:is(.menu-word,#who){position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap} }
 @media (max-width:480px){ header :is(.brand-word,.profile-role){position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap} }
-@media (max-width:700px) and (min-height:501px){ .tabs>a[data-short]>.tab-long{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap} }
+@media (max-width:700px) and (min-height:501px){ .tabs>a[data-short]>.tab-long{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  /* a tab narrower than its name (larger text, #622): its icon alone */
+  header.topbar .tabs>:is(a,.menu){container-type:inline-size;font-size:var(--fs-1)}
+  @container (max-width:4.4em){ :is(.tab-long,.menu-word){position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap} .tabs>a[data-short]::after{content:none} } }
 /* ---- sheets (#269, nav.js phoneSheet): a heading and ✕ (a handle to swipe it down by too), then what scrolls; a menu
    in one is its list of items, 44 px each, as the top bar's menus and the period's are on a phone; the period's date
    boxes under its list, the Timeline's search and kinds (a checkbox each, in its colour) with Reset and Done at the
