@@ -2317,6 +2317,14 @@ Everything on `main` so far; it becomes the first tagged release.
   Blood pressure and Body temperature at home said "each reading taken at home with a phone app" over a page listing
   readings typed in; they say "sent by a phone app or typed in", and the Journal names the symptom group an entry was
   logged with, which its page shows.
+- **Records in: lab-name matches to check no longer applied by a review left waiting, and Keep, the upgrade and a
+  review's choice treating them rightly** (#575): a review read before a match became one to check (as at the upgrade)
+  still said "Matched as before" and, added, filed the results under the look-alike; read again or added, its matches
+  are checked again, and one to check is a "Maybe", not applied. Keep in Admin, Lab name matches confirms only the
+  match it showed: once another admin has changed it, Keep is refused, saying what it is now, rather than putting the
+  look-alike back, and Install activity says it was kept ("kept the lab name match for “X” → “Y”"), not changed from
+  “Y” to “Y”. The upgrade no longer marks a match an admin had changed as to check. And a review's choice for a name
+  whose match is to check is remembered in its place, as the review says.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

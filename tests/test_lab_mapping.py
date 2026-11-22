@@ -373,6 +373,120 @@ class LabMapping(unittest.TestCase):
         for k in old.values():
             self.ada.delete(f"/api/labmaps/{k}", headers=H)
 
+    def remembered_as(self, name, target, checked=None, changed=None, unit="nmol/L"):
+        """A remembered choice made up here: checked None and not one #546's rule makes, it's to check (#569)."""
+        db = dbm.connect()
+        try:
+            from server import atrest
+            atrest.load_pepper(db)
+            return db.execute("INSERT INTO labmaps(lookup, importer, source, target, created_name, created, checked, changed, changed_name)"
+                              " VALUES(?, 'csv', ?, ?, 'robin', 1, ?, ?, ?)",
+                              (labmap.lookup("csv", name, unit, ""), crypto.enc(json.dumps({"name": name, "unit": unit, "loinc": ""})),
+                               crypto.enc(target), checked, changed, changed and "ada")).lastrowid
+        finally:
+            db.close()
+
+    def labmap_row(self, mid):
+        db = dbm.connect()
+        try:
+            r = db.execute("SELECT * FROM labmaps WHERE id=?", (mid,)).fetchone()
+            return r and {**dict(r), "target": crypto.dec(r["target"]) if r["target"] else None}
+        finally:
+            db.close()
+
+    def test_a_preview_planned_before_a_match_was_to_check_doesnt_apply_it(self):   # #575
+        """A review waiting while a match it applied becomes one to check (as at the upgrade to schema version 38):
+        saved, the match isn't applied; read again, it's a "Maybe"."""
+        pid = self.profile("Flagged meanwhile")
+        self.save(pid, self.previewed(pid, csv(["2026-01-05", "Vitamin B1", "120", "nmol/L", "70-180", "", "", ""])))
+        mid = self.remembered_as("Vitamin B6 575", "Vitamin B1", checked=1)
+        b6 = lambda day, v: csv([day, "Vitamin B6 575", v, "nmol/L", "20-125", "", "", ""])
+        a, b = self.previewed(pid, b6("2026-02-05", "40")), self.previewed(pid, b6("2026-02-06", "41"))
+        for j in (a, b):
+            self.assertEqual(self.entry(j, "Vitamin B6 575")["before"], {"target": "Vitamin B1"})
+        db = dbm.connect()
+        try:
+            db.execute("UPDATE labmaps SET checked=NULL WHERE id=?", (mid,))   # to check now
+        finally:
+            db.close()
+        done = self.save(pid, a)   # confirmed as it was shown: the box filled, nothing changed, nothing sent
+        self.assertEqual(done["lab_names"], {"matched": 0, "remembered": 0})
+        self.assertEqual(self.points(pid, "Vitamin B6 575"), [("2026-02-05", 40.0)])
+        self.assertEqual(self.points(pid, "Vitamin B1"), [("2026-01-05", 120.0)])
+        e = self.entry(self.robin.get(f"/api/profiles/{pid}/jobs/{b['id']}").json(), "Vitamin B6 575")   # the other, read again
+        self.assertEqual((e["before"], e["check"]), (None, {"target": "Vitamin B1"}))
+        self.save(pid, b)
+        self.assertEqual(self.points(pid, "Vitamin B6 575"), [("2026-02-05", 40.0), ("2026-02-06", 41.0)])
+        self.ada.delete(f"/api/labmaps/{mid}", headers=H)
+
+    def test_keep_only_the_match_shown(self):   # #575
+        """Keep sends the target it showed: once another admin has changed the match, it's refused, not the old
+        look-alike put back as checked."""
+        mid = self.remembered_as("Vitamin B6 keep", "Vitamin B1")
+        self.assertTrue(next(m for m in self.ada.get("/api/labmaps").json() if m["id"] == mid)["check"])
+        r = self.ada.patch(f"/api/labmaps/{mid}", json={"target": None}, headers=H)   # another admin: kept separate
+        self.assertEqual(r.status_code, 200, r.text)
+        r = self.ada.patch(f"/api/labmaps/{mid}", json={"target": "Vitamin B1", "keep": True}, headers=H)   # Keep, as drawn before
+        self.assertEqual(r.status_code, 409, r.text)
+        self.assertIn("changed meanwhile", r.json()["detail"])
+        self.assertIsNone(self.labmap_row(mid)["target"])
+        r = self.ada.patch(f"/api/labmaps/{mid}", json={"target": None, "keep": True}, headers=H)   # what it is now: kept
+        self.assertEqual((r.status_code, r.json()["target"]), (200, None), r.text)
+        db = dbm.connect()
+        try:   # logged as kept, the change before it as a change; the refused Keep not at all
+            log = [json.loads(crypto.dec(r["detail"])) for r in db.execute(
+                "SELECT detail FROM activity WHERE action='labmap.change' AND profile_id IS NULL ORDER BY id")]
+        finally:
+            db.close()
+        mine = [(x["from"], x["to"], x.get("kept")) for x in log if x["name"] == "Vitamin B6 keep"]
+        self.assertEqual(mine, [("Vitamin B1", None, None), (None, None, True)])
+        self.ada.delete(f"/api/labmaps/{mid}", headers=H)
+
+    def test_version_38_checks_what_an_admin_changed(self):   # #575
+        """The upgrade to schema version 38 marks a match an admin had changed as checked (theirs, not one to check);
+        one never changed is left to check."""
+        import sqlite3
+        d = tempfile.mkdtemp(prefix="sanguity-schema38-")
+        self.addCleanup(shutil.rmtree, d, True)
+        db = sqlite3.connect(os.path.join(d, "schema-37.db"), isolation_level=None)
+        db.row_factory = sqlite3.Row
+        for v, sql in enumerate(dbm.SCHEMA[:37], start=1):
+            db.executescript("BEGIN;" + sql + f"PRAGMA user_version={v};COMMIT;")
+        db.execute("INSERT INTO labmaps(lookup, importer, source, target, created_name, created) VALUES('a', 'csv', 's', 't', 'ines', 1)")
+        db.execute("INSERT INTO labmaps(lookup, importer, source, target, created_name, created, changed, changed_name)"
+                   " VALUES('b', 'csv', 's', 't', 'ines', 1, 50, 'ada')")
+        dbm.upgrade(db)
+        self.assertEqual([tuple(r) for r in db.execute("SELECT lookup, checked FROM labmaps ORDER BY lookup")], [("a", None), ("b", 50)])
+        db.close()
+
+    def test_a_reviews_choice_for_a_name_to_check_is_remembered(self):   # #575
+        """The review says a choice is used for later imports: one for a name whose match is to check replaces it,
+        checked, and undone with its import; one an admin has kept meanwhile stays the admin's."""
+        pid = self.profile("Chosen over")
+        self.save(pid, self.previewed(pid, csv(["2026-01-05", "Vitamin B1", "120", "nmol/L", "70-180", "", "", ""])))
+        mid = self.remembered_as("Vitamin B6 pick", "Vitamin B1")
+        j = self.previewed(pid, csv(["2026-02-05", "Vitamin B6 pick", "40", "nmol/L", "20-125", "", "", ""]))
+        e = self.entry(j, "Vitamin B6 pick")
+        self.assertEqual(e["check"], {"target": "Vitamin B1"})
+        done = self.save(pid, j, {e["ref"]: None})   # kept as a series of its own, by hand
+        self.assertEqual(done["lab_names"], {"matched": 0, "remembered": 1})
+        row = self.labmap_row(mid)
+        self.assertEqual((row["target"], row["checked"] is not None, row["import_id"]), (None, True, done["import_id"]))
+        j = self.previewed(pid, csv(["2026-03-05", "Vitamin B6 pick", "42", "nmol/L", "20-125", "", "", ""]))
+        e = self.entry(j, "Vitamin B6 pick")
+        self.assertEqual(e["before"], {"target": None})
+        self.assertNotIn("check", e)
+        self.robin.post(f"/api/profiles/{pid}/jobs/{j['id']}/discard", headers=H)
+        # an admin keeps it while a review is waiting: the admin's stays
+        self.ada.delete(f"/api/labmaps/{mid}", headers=H)
+        mid = self.remembered_as("Vitamin B6 pick", "Vitamin B1")
+        j = self.previewed(pid, csv(["2026-04-05", "Vitamin B6 pick", "44", "nmol/L", "20-125", "", "", ""]))
+        self.assertEqual(self.ada.patch(f"/api/labmaps/{mid}", json={"target": "Vitamin B1", "keep": True}, headers=H).status_code, 200)
+        done = self.save(pid, j, {self.entry(j, "Vitamin B6 pick")["ref"]: None})
+        self.assertEqual(done["lab_names"]["remembered"], 0)
+        self.assertEqual(self.labmap_row(mid)["target"], "Vitamin B1")
+        self.ada.delete(f"/api/labmaps/{mid}", headers=H)
+
     # ---------------------------------------------------------------- the list: admins only, logged
 
     def test_only_admins_edit_the_list(self):

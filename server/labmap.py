@@ -33,8 +33,10 @@ Before #546 a look-alike (Vitamin B6 for Vitamin B1) could be filled in as sure 
 remembered then (checked NULL, schema version 38) that #546's rule wouldn't make (fits: not the same name, an alias,
 the list's LOINC code or the same name written another way) is "to check" (#569): never applied, a review that would
 use it shows it as a "Maybe", and Admin, Lab name matches lists it first with Keep and Forget. A choice made since,
-by hand or by the rule, and one an admin keeps or changes, is checked. A name's specimen (blood, serum, urine...) is
-part of it: "Ketones, Blood" isn't "Ketones" written another way (SPECIMEN).
+by hand or by the rule, and one an admin keeps or changes, is checked; so is one an admin had changed before the
+upgrade (#575), and a review's choice for a name whose match is to check replaces it. A preview planned before a
+match was to check doesn't apply it when it's read again or saved (jobs._stamp, recheck). A name's specimen (blood,
+serum, urine...) is part of it: "Ketones, Blood" isn't "Ketones" written another way (SPECIMEN).
 """
 import collections, copy, difflib, json, re
 
@@ -274,8 +276,9 @@ def apply(data, picked):
 
 def remember(db, importer, lab_plan, sent, data, who, import_id=None):
     """Keep the choices sent for series the preview listed and nothing was remembered for. Inside the import's
-    transaction. A choice remembered meanwhile (by another import, or an admin) wins, one to check too. Returns how
-    many were kept. Made by hand or by #546's rule, they're checked (#569).
+    transaction. A choice remembered meanwhile (by another import, or an admin) wins. A choice for a name whose match
+    is to check replaces it (#575: the review says it's used for later imports), unless an admin has kept or changed
+    it since. Returns how many were kept. Made by hand or by #546's rule, they're checked (#569).
     import_id: the import saved with them, whose Undo forgets them (forget, #500)."""
     listed = {e["ref"]: e for e in (lab_plan or {}).get("listed") or [] if not e.get("before")}
     labs = data.get("labs") or []
@@ -287,12 +290,39 @@ def remember(db, importer, lab_plan, sent, data, who, import_id=None):
         name, unit, code = _ident(labs[int(ref[2:])])
         n += db.execute("""INSERT INTO labmaps(lookup, importer, source, target, created_by, created_name, created, import_id,
                                               checked)
-                           VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(lookup) DO NOTHING""",
+                           VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(lookup) """ + (_REPLACE if e.get("check") else "DO NOTHING"),
                         (lookup(importer, name, unit, code), importer,
                          crypto.enc(json.dumps({"name": name, "unit": unit, "loinc": code}, ensure_ascii=False)),
                          _enc_target(clean_target(target)), who["id"] if who else None,
                          who["username"] if who else "removed account", dbm.now(), import_id, dbm.now())).rowcount
     return n
+
+
+# a review's choice in place of a match to check (#575), not one an admin has kept or changed meanwhile
+_REPLACE = """DO UPDATE SET source=excluded.source, target=excluded.target, created_by=excluded.created_by,
+              created_name=excluded.created_name, created=excluded.created, import_id=excluded.import_id, used=NULL,
+              checked=excluded.checked WHERE labmaps.checked IS NULL"""
+
+
+def recheck(db, lab_plan):
+    """A stored plan (a preview's, planned when it was read) with its remembered choices checked against labmaps as
+    they are now (#575): one now to check (#569; as after the upgrade to schema version 38) is no longer applied but
+    offered, "check" in place of "before", out of auto and ids, as plan() would have it."""
+    ids = (lab_plan or {}).get("ids") or {}
+    if not ids:
+        return lab_plan
+    rows = {r["id"]: r for r in db.execute(f"SELECT * FROM labmaps WHERE id IN ({','.join('?' * len(ids))})", [int(i) for i in ids.values()])}
+    stale = {ref for ref, i in ids.items() if int(i) in rows and _row(rows[int(i)])["check"]}
+    if not stale:
+        return lab_plan
+    out = copy.deepcopy(lab_plan)
+    for ref in stale:
+        out["auto"].pop(ref, None)
+        del out["ids"][ref]
+    for e in out.get("listed") or []:
+        if e["ref"] in stale and e.get("before"):
+            e["check"], e["before"] = e["before"], None
+    return out
 
 
 def applied(lab_plan, sent):

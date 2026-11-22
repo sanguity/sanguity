@@ -433,8 +433,9 @@ async function loadLabmaps() {
         el("td", {}, `${when(m.created)} by ${m.created_by}`, m.changed ? el("div", {class: "muted", text: `changed ${when(m.changed)} by ${m.changed_by}`}) : null),
         el("td", {class: "acts"},
           m.check ? el("button", {class: "btn small primary", type: "button", text: "Keep", onclick: async () => {
-            try { const r = await call("labmaps/" + m.id, "PATCH", {target: m.target}); say("#labmapMsg", `Kept: “${r.name}” is ${as(r)}.`); lmAgain(m.id, "button"); }
-            catch (e) { e.status === 404 ? lmAgain(m.id, "button", e.message) : say("#labmapMsg", e.message, true); }
+            // only the match shown (#575: refused, 409, once another admin has changed it)
+            try { const r = await call("labmaps/" + m.id, "PATCH", {target: m.target, keep: true}); say("#labmapMsg", `Kept: “${r.name}” is ${as(r)}.`); lmAgain(m.id, "button"); }
+            catch (e) { e.status === 404 || e.status === 409 ? lmAgain(m.id, "button", e.message) : say("#labmapMsg", e.message, true); }
           }}) : null,
           el("button", {class: "btn small", type: "button", text: "Change", onclick: edit}),
           el("button", {class: "btn small", type: "button", text: m.check ? "Forget" : "Remove", onclick: async () => {
@@ -450,13 +451,14 @@ async function loadLabmaps() {
 /* the matches drawn again after a Save, Cancel or Remove (#528: focus fell to the page): focus on the same button of
    its row (sel: Change, or Remove), else the next row's or the one before's, as Passkeys' (util.js focusNear); one
    removed elsewhere (gone: what the server said), that said where it was. Its row found by id where it's still there:
-   a match changed moves to the top (newest first), and by its old place focus went to another's Change */
+   a match changed moves to the top (newest first), and by its old place focus went to another's Change; one Keep
+   refused (#575: changed elsewhere), said above its row where it is now */
 async function lmAgain(id, sel, gone) {
   const rows = () => [...$("#labmapList").querySelectorAll("tr[data-labmap]")], find = () => rows().findIndex(r => r.dataset.labmap === String(id));
   const at = Math.max(0, find());
   await loadLabmaps();
   sel = "td.acts " + sel;
-  if (gone) return goneSay(rows(), at, gone, sel, $("#labmaps h2"), $("#labmapList"));
+  if (gone) return goneSay(rows(), find() < 0 ? at : find(), gone, sel, $("#labmaps h2"), $("#labmapList"));
   focusNear(rows(), find() < 0 ? at : find(), sel, $("#labmaps h2"));
 }
 
