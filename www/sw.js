@@ -13,10 +13,10 @@
 // the icons' sprite, #257; v5: the sprite's icons for kinds of record, sidebars and menus, #354; v6: the records
 // page's store, #271; v7: one sidebar, #266, and About this person in Settings, #267; v8: the command palette, #273;
 // v9: renaming and deleting a profile in Settings, #402; v10: the other pages offline, #413; v11: the Medications tab,
-// #275; v12: a drop anywhere uploads, #281; v13: the QR codes, #284; v14: the chart kit, #291, and a lab's panel, #296):
-// the worker installs a fresh copy under the new name, and activating deletes the old one, with any file no longer
-// listed.
-const SHELL = "sanguity-shell-v14";
+// #275; v12: a drop anywhere uploads, #281; v13: the QR codes, #284; v14: the chart kit, #291, and a lab's panel, #296;
+// v15: Labs' event track, #294): the worker installs a fresh copy under the new name, and activating deletes the old
+// one, with any file no longer listed.
+const SHELL = "sanguity-shell-v15";
 const SCOPE = new URL(self.registration.scope);
 // Every page, style, script, font and icon in www/ (tests/test_pwa.py checks this list against the folder). Not the
 // fonts' and icons' licence texts, and not connect-return.html: that's where a connected source's sign-in comes back, with a code
@@ -45,6 +45,7 @@ const FILES = [
   "js/details.js",
   "js/test-pages.js",
   "js/lab-panel.js",
+  "js/event-track.js",
   "js/store.js",
   "js/groups.js", "js/palette.js",
   "js/profile-card.js",

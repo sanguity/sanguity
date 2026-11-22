@@ -81,8 +81,10 @@ function otherSays() {
   d.querySelector(".grp-n").textContent = ` · ${n} lab${n === 1 ? "" : "s"}${on ? `, ${on} charted` : ""}`;
 }
 let hoverT = null;
-/* extra rows under each chart's time axis, one per layer: {space() -> its height in px (0: nothing to show),
-   draw(g, x, top, R)} draws it from y = top, x(t) being the chart's time scale. journal.js adds the journal's markers. */
+/* the rows of the event track over the charts (event-track.js, #294), one per layer: {name, space() -> its height in px
+   (0: nothing to show), draw(g, x, top, R)} draws it from y = top, x(t) being the charts' time scale, and rows() -> [[t,
+   kind, words, open(), its kind's key for an icon]] gives its table's. meds.js, medlog.js, journal.js and cycle.js add
+   theirs. */
 const CHART_LAYERS = [];
 function renderCharts() {
   const box = $("#charts"); box.replaceChildren();
@@ -95,6 +97,7 @@ function renderCharts() {
     if (groups.length > 1) box.append(el("h3", {class: "lab-panel", text: panel}));
     for (const s of labs) box.append(chartCard(s));
   }
+  const track = trackCard(); if (track) box.prepend(track);   // what happened in the period, over them, once (#294)
   if (box.querySelector("svg.ck")) labAxis(box);   // a chart drawn, not only tables: the stack's time axis under it
 }
 /* a lab chart's width in its own units: its card's, less the card's padding; the stack's axis takes the same (#293) */
@@ -115,7 +118,7 @@ function labAxisDraw(svg = $("#charts .ck-axis")) {
   svg.replaceChildren(...g);
 }
 const MARK_KINDS = new Set(["procedure", "imaging"]);
-/* a procedure's or an imaging's mark at the top of a lab chart, in its kind's colour and shape (util.js KIND_SHAPE,
+/* a procedure's or an imaging's mark on the event track over the charts (#294), in its kind's colour and shape (util.js KIND_SHAPE,
    #301): a plus and a square, never a ● like a result or a ▲ or ▼, which on the same chart say above or below range
    (#250). The Legend draws the same. */
 const evHead = (k, cx, cy) => shapeMark(KIND_SHAPE[k], cx, cy, 3.7, {class: "evhead", "data-k": k, fill: CAT_OF[k].color});
@@ -129,11 +132,6 @@ function legendSync() { for (const k of document.querySelectorAll("#view-labs .c
   if (legend) legend.append(key("procedure", "Procedure"), key("imaging", "Imaging"));
   // the header's Legend and ⓘ (#279, index.html): each opens under its button as a menu does (nav.js), words, not items
   if ($("#legendBtn")) menuWire({btn: $("#legendBtn"), list: $("#legendList"), text: true});   // (the ⓘ: util.js aboutWire, #280)
-}
-function shortTitle(t) {
-  let s = t.replace(/\s*\(.*?\)\s*/g, " ").split(/\s+(?:WITH|W\/?O?|WO|AND)\s+/i)[0].trim().toLowerCase();
-  s = s.charAt(0).toUpperCase() + s.slice(1);
-  return s.length > 24 ? s.slice(0, 23) + "…" : s;
 }
 const nice = n => CFG.labNicknames[n] || n;   // the name a lab is shown by (Settings > Names, or renamed where shown: rename.js)
 /* under a lab's table: the source tags its results carry, each as shown, with the tag in the records and ✎ */
@@ -208,12 +206,11 @@ function chartCard(s) {
 }
 function drawChart(svg, s, pts, read) {
   if (!svg.isConnected) return;
-  const marks = markEvents(), hasMs = msInRange(state.from, state.to);
-  const layers = CHART_LAYERS.map(l => [l, l.space()]).filter(([, n]) => n > 0), below = layers.reduce((a, [, n]) => a + n, 0);
   // one chart of the stack (#293): 200–220 px tall, its unit over its numbers, and no time axis of its own: the
-  // stack's one is under it (labAxis), each chart on the same time scale (the kit's, chartkit.js)
+  // stack's one is under it (labAxis), each chart on the same time scale (the kit's, chartkit.js). Events are on the
+  // track over the stack (#294): only a faint line at each milestone here
   const w = labW(svg.parentElement), L = 52, R = w - 12, x = ckScale(state.from, state.to, L, R);
-  const T = (marks.length ? 24 : 22) + (hasMs ? 14 : 0), B = T + 174, h = B + 6 + below;
+  const T = 22, B = T + 184, h = B + 6;
   svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("height", h); svg._geom = {L, R, T, B, w};
   const smoothOn = state.smooth && s.watch && pts.length > 3;
   const vals = pts.map(p => p[1]).concat(s.kind === "band" ? pts.flatMap(p => [p.lo, p.hi]).filter(v => v != null) : []);
@@ -238,21 +235,10 @@ function drawChart(svg, s, pts, read) {
   ckBand(g, steps, x, y, L, R, T, B);
   { const st = steps[steps.length - 1];   // the numbers of the range at the right end, as printed (#293)
     if (st) ckBandLabel(g, `${st.key} ${st.rs === "settings" ? "from settings" : "on report"}`, st, y, R, T, B, pts.map(p => [x(p.ts), y(p[1])])); }
-  const msWords = msMarks(g, x, state.from, state.to, hasMs ? 16 : T, B, R, 12);
-  // treatment events: dashed rule + head, and a procedure named beside it where there is room: inside the chart, clear
-  // of the label before it and of every other mark's head (#312). One left unnamed keeps its tooltip and drawer.
-  const headX = marks.map(e => x(e.ts));
-  let lastEnd = -1e9;
-  marks.forEach((e, i) => {
-    const mx = headX[i];
-    g.push(el("svg:line", {class: "evmark", x1: mx, x2: mx, y1: T - 4, y2: B}));
-    g.push(evHead(e.k, mx, T - 7));
-    if (e.k !== "procedure") return;
-    const text = shortTitle(e.title), x0 = mx + 6, x1 = x0 + labelW(text, "evlabel");
-    if (x0 < lastEnd + 8 || x1 > R || headX.some((hx, j) => j !== i && hx + 5 > x0 && hx - 5 < x1)) return;
-    g.push(el("svg:text", {class: "evlabel", x: x0, y: T - 5, text}));
-    lastEnd = x1;
-  });
+  // a faint line at each milestone, named once on the event track over the charts (#294), and in the chart's words;
+  // procedures and imaging, the medications and the rest are on the track only
+  const msAt = g.length, msWords = msMarks(g, x, state.from, state.to, T, B, R, null);
+  for (const m of g.slice(msAt)) m.classList.add("faint");
   ckFoot(g, L, R, B);
   const dayW = Math.max(1, x(state.from + DAY) - x(state.from));
   const barW = Math.max(1, Math.min(14, dayW * .72));
@@ -289,7 +275,6 @@ function drawChart(svg, s, pts, read) {
   const dot = el("svg:circle", {r: 5.5, fill: "none", stroke: "var(--ink)", "stroke-width": 2, visibility: "hidden", "pointer-events": "none"});
   const hit = el("svg:rect", {x: L, y: T - 12, width: R - L, height: B - T + 12, fill: "transparent"});
   g.push(cross, dot, hit);
-  { let top = B + 1; for (const [l, n] of layers) { l.draw(g, x, top, R); top += n; } }   // after hit, so their marks take the pointer
   svg.replaceChildren(...g.filter(Boolean));
   const lastP = pts[pts.length - 1];
   const setRead = p => {
@@ -311,7 +296,6 @@ function drawChart(svg, s, pts, read) {
   // pinned at the top of its crosshair (ckTip); the keyboard too (#60)
   const showAt = (t, px) => {
     const mine = ckSync(svg, t);
-    const near = marks.filter(e => Math.abs(x(e.ts) - px) < 8);
     const nodes = [];
     if (mine) {
       const [a, b] = readText(s, mine);
@@ -321,7 +305,6 @@ function drawChart(svg, s, pts, read) {
         !s.watch && pointSources(s, mine) ? el("div", {class: "s", text: "From " + pointSources(s, mine)}) : null,
         mine[4] ? el("div", {class: "s", style: {color: "var(--crit)"}, text: /^h/i.test(mine[4]) ? "▲ Above range" : /^l/i.test(mine[4]) ? "▼ Below range" : "◆ Flagged"}) : null);
     }
-    for (const e of near.slice(0, 3)) nodes.push(el("div", {class: "s mt-1"}, el("span", {class: "k", style: {background: CAT_OF[e.k].color}}), `${e.title} · ${fmtD(e.ts)}`));
     ckTip(svg, mine ? x(mine.ts) : px, nodes);
     return tipWords(nodes);
   };
@@ -335,9 +318,5 @@ function drawChart(svg, s, pts, read) {
     + `${nAbn ? `, ${nAbn} outside reference range` : ""}${rangesDiffer(pts) ? `. ${RANGE_DIFFERS}: ${rangesDiffer(pts)} ${s.unit}` : ""}. Left and right arrow keys step through them.${msWords ? " " + msWords : ""}`,
     () => pts.map(p => p.ts),
     t => showAt(t, x(t)), () => { ckSync(svg, null); hideTip(); });
-  hit.addEventListener("click", ev => {
-    const r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) * (w / r.width);
-    const e = marks.find(e => Math.abs(x(e.ts) - px) < 8); if (e) openEvent(e);
-  });
   hit.addEventListener("pointerleave", () => { if (!chartsBox.classList.contains("dragging")) { ckSync(svg, null); hideTip(); } });
 }

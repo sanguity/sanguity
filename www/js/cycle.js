@@ -6,7 +6,7 @@
    and the marks (ovulation tests, cervical mucus, spotting), each with its words. They become events of kind "cycle"
    in EV (ids by day and kind, the same each time they're read: palette.js cycleId, #530): a Timeline lane of their own (TL_LANES,
    periods as bars, the rest as marks), its kind chip, the Events list and the drawer; and, when "Cycle tracking" is
-   ticked under Labs (#192), a row under each chart (CHART_LAYERS). That tick isn't remembered: it's asked for each
+   ticked under Labs (#192), a row on the event track over the charts (CHART_LAYERS, #294). That tick isn't remembered: it's asked for each
    time the page opens. The records aren't kept in this browser: not in the offline copy (offline.js keeps the
    records, settings and watch data only), not in localStorage, and not on the Overview's recent list.
 
@@ -75,11 +75,13 @@ TL_LANES.cycle = {
   },
 };
 
-/* Labs: one row under each chart's time axis, when ticked (#192's "Show on charts") */
+/* Labs: one row on the event track over the charts (#294), when ticked (#192's "Show on charts") */
 const cycleInWindow = () => cycleOnCharts ? CYCLE.filter(e => e.te >= state.from && e.ts <= state.to && state.cats.has("cycle")) : [];
 LEGEND_HAS.cycle = () => cycleInWindow().length > 0;   // its Legend key (trends.js legendSync, #301)
 CHART_LAYERS.push({
+  name: "Cycle tracking",
   space: () => cycleInWindow().length ? 18 : 0,
+  rows: () => cycleInWindow().map(e => [e.ts, "Cycle tracking", `${e.title}, ${cycleWhen(e)}`, () => openEvent(e), "cycle"]),
   draw(g, x, top, R) {
     const y = top + 9;
     g.push(el("svg:text", {class: "jrow-label", x: 46, y: y + 3.5, "text-anchor": "end", text: "Cycle"}));

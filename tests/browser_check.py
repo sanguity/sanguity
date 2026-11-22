@@ -1336,6 +1336,38 @@ CHART_LABELS_JS = r"""sel => {
   return out;
 }"""
 
+# Labs' event track (#294, event-track.js): {items: the events it marks, named: its names, folded: how many a "+N" counts,
+# marks, rows: rows of names, layers: rows under them, stuck: under the top bar, inCharts: any event, name or layer's mark
+# drawn in a chart, problems: a name past the plot, on another or with a leader through it, an event neither named nor
+# counted, a mark too many or too few, a chart whose aria-label doesn't name the milestones}
+TRACK_JS = r"""() => {
+  const out = {items: 0, named: 0, folded: 0, marks: 0, rows: 0, layers: 0, stuck: null, problems: [],
+    inCharts: document.querySelectorAll('#charts .chart svg :is(.evhead, .evlabel, .mslabel, .medbar, .medfill, .jmark, .jmood, .cymark, .dosemark)').length};
+  const card = document.getElementById('evTrack'), svg = card && card.querySelector('svg.ev-svg');
+  if (!svg) return out;
+  const g = svg._geom, items = trackItems();
+  Object.assign(out, {items: items.length, stuck: card.classList.contains('stuck') && getComputedStyle(card).position === 'sticky',
+    marks: svg.querySelectorAll('.evhead, .msflag-head').length, layers: trackLayers().length});
+  const names = [...svg.querySelectorAll('.ev-name')].map(t => ({b: t.getBBox(), text: t.textContent, y: t.getAttribute('y')}));
+  out.rows = new Set(names.map(n => n.y)).size;
+  for (const n of names) {
+    const m = n.text.match(/ \+(\d+)$/); out.named++; out.folded += m ? +m[1] : 0;
+    if (n.b.x < g.L - .5 || n.b.x + n.b.width > g.R + .5) out.problems.push(`"${n.text}" runs past the plot`);
+  }
+  names.forEach((p, i) => names.slice(i + 1).forEach(q => {
+    if (p.b.x < q.b.x + q.b.width && q.b.x < p.b.x + p.b.width && p.b.y < q.b.y + q.b.height && q.b.y < p.b.y + p.b.height) out.problems.push(`"${p.text}" and "${q.text}" overlap`); }));
+  for (const l of svg.querySelectorAll('line.evlead, line.msflag')) {
+    const lx = +l.getAttribute('x1'), y1 = +l.getAttribute('y1') + 1, y2 = +l.getAttribute('y2');
+    for (const n of names) if (lx > n.b.x && lx < n.b.x + n.b.width && y1 < n.b.y + n.b.height && y2 > n.b.y) out.problems.push(`a leader runs through "${n.text}"`);
+  }
+  if (out.named + out.folded !== out.items) out.problems.push(`${out.named} names and ${out.folded} under "+N" for ${out.items} events`);
+  if (out.marks !== out.items) out.problems.push(`${out.marks} marks for ${out.items} events`);
+  const ms = MILESTONES.filter(m => dayTs(m.date) >= state.from && dayTs(m.date) <= state.to).map(m => m.label);
+  for (const c of document.querySelectorAll('#charts .chart svg.ck'))
+    if (!ms.every(m => c.getAttribute('aria-label').includes(m))) out.problems.push(`${c.getAttribute('aria-label').split(':')[0]}: its aria-label doesn't name every milestone`);
+  return out;
+}"""
+
 # a kit chart's time axis (#291, chartkit.js): of each drawn chart matching the selector (an argument), its labels under
 # the plot (below _geom.B: the finer row, and the coarser row's .ck-yr), and what's wrong with them: two in a row that
 # overlap, one sticking out of its chart, or a month written as it would read as a day ("Sep 26", #561)
@@ -3706,21 +3738,21 @@ def main():
             check("…its out-of-range results are triangles, ▲ above the range and ▼ below, not only red dots",
                   len(flagged) > 0 and len(marks) == len(flagged) and all(t == "path" and d.count("L") == 2 for t, d in marks)
                   and "▲▼" in page.text_content("#view-labs .chart-legend"), [len(flagged), len(marks), marks[:2]])
-            # procedures and imaging, shown (#250): their own shapes at the top (#301: a plus and a square, util.js
-            # KIND_SHAPE), never a ● like a result or a triangle like ▲ or ▼ on the same chart; the legend shows both
-            # shapes while they're on, and not while they're off
+            # procedures and imaging, shown (#250): their own shapes (#301: a plus and a square, util.js KIND_SHAPE), never
+            # a ● like a result or a triangle like ▲ or ▼ on the charts under them, on the event track once each (#294) and
+            # in no chart; the legend shows both shapes while they're on, and not while they're off
             js("window._marks250 = state.marks; state.marks = true; renderCharts()")
             settle(300)
-            ev = js("""(() => { const svg = document.querySelector('#charts .chart svg:not(.icon)'), want = markEvents();
-                const heads = [...svg.querySelectorAll('.evhead')];
+            ev = js("""(() => { const svg = document.querySelector('#evTrack svg'), want = markEvents();
+                const heads = [...svg.querySelectorAll('.evhead')], inCharts = document.querySelectorAll('#charts .chart svg .evhead').length;
                 const keys = [...document.querySelectorAll('#view-labs .chart-legend .marks-key')].filter(k => !k.hidden);
                 return {want: want.length, kinds: [...new Set(want.map(e => e.k))].sort(), heads: heads.map(h => [h.dataset.k, h.dataset.shape]).filter((h, i, a) => a.findIndex(o => o + '' === h + '') === i),
-                  n: heads.length, legend: keys.map(k => [k.textContent, k.querySelector('svg [data-shape]')?.dataset.shape])}; })()""")
+                  n: heads.length, inCharts, legend: keys.map(k => [k.textContent, k.querySelector('svg [data-shape]')?.dataset.shape])}; })()""")
             # …and the Legend lists only what the charts draw in these dates (#301): each key shown exactly while a mark of its
-            # kind is on the chart, over all the dates (procedures there) and over a month without any
-            keys301 = """() => { const svg = document.querySelector('#charts .chart svg:not(.icon)');
+            # kind is on the event track (#294), over all the dates (procedures there) and over a month without any
+            keys301 = """() => { const svg = document.querySelector('#evTrack svg');
               const drawn = {procedure: '.evhead[data-k=procedure]', imaging: '.evhead[data-k=imaging]', journal: '.jmark', mood: '.jmood', cycle: '.cymark'};
-              return [...document.querySelectorAll('#view-labs .chart-legend [data-legend]')].map(k => [k.dataset.legend, !k.hidden, !!svg.querySelector(drawn[k.dataset.legend])]); }"""
+              return [...document.querySelectorAll('#view-labs .chart-legend [data-legend]')].map(k => [k.dataset.legend, !k.hidden, !!svg?.querySelector(drawn[k.dataset.legend])]); }"""
             all301 = js(keys301)
             js("() => { window._range301 = [state.from, state.to]; const t = Math.min(...EV.filter(e => e.k === 'procedure' || e.k === 'imaging').map(e => e.ts)) - DAY; [state.from, state.to] = [t - 30 * DAY, t]; renderCharts(); }")
             settle(300)
@@ -3733,26 +3765,59 @@ def main():
             js("state.marks = window._marks250; renderCharts()")
             settle(200)
             off = js("[...document.querySelectorAll('#view-labs .chart-legend .marks-key')].every(k => k.hidden) === !state.marks")
-            check("Labs (#250, #301): procedures are a plus and imaging a square on the charts, not a ● or a triangle, and the legend shows both while they're on",
-                  ev["want"] > 0 and ev["n"] == ev["want"] and ev["kinds"] == ["imaging", "procedure"]
+            check("Labs (#250, #301, #294): procedures are a plus and imaging a square on the event track, once each and in no chart, not a ● or a triangle, and the legend shows both while they're on",
+                  ev["want"] > 0 and ev["n"] == ev["want"] and ev["inCharts"] == 0 and ev["kinds"] == ["imaging", "procedure"]
                   and sorted(ev["heads"]) == [["imaging", "square"], ["procedure", "plus"]]
                   and ev["legend"] == [["Procedure", "plus"], ["Imaging", "square"]] and off, ev)
-            # …and their names (#312): at 1400, 375 and 320 px a procedure is named only inside the chart and where no
-            # other mark falls on its name, and every mark is still drawn (one left unnamed opens its drawer: below, with
-            # the milestone labels, after the #217 check of what details the records come with). At 1400 px there's room
-            # for at least one name (the demo has 6), so the check can't pass with the names gone (#321)
-            js("window._marks312 = state.marks; state.marks = true; renderCharts()")
+            # …and the event track over the charts (#294): at 1400, 375 and 320 px, with the medications too, each milestone,
+            # procedure and imaging marked on it once and in no chart, their names in up to three rows inside the plot, none
+            # on another and no leader through one, every event named or counted under a "+N"; each chart's aria-label
+            # still names the milestones. At 1400 px it stays under the top bar (sticky), and with the medications its
+            # table lists each event and each medication's span. The ten years of the big fixture: test_performance.py
+            js("window._marks294 = [state.marks, medsOnTrends]; state.marks = true; medsOnTrends = true; renderCharts()")
             for width in (1400, 375, 320):
                 page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
                 js("renderCharts()")
                 settle(400)
-                got = js(CHART_LABELS_JS, "#charts .chart svg:not(.icon)")
-                heads = js("[document.querySelectorAll('#charts .chart svg .evhead').length, markEvents().length]")
-                check(f"Labs ({width} px, #312): a procedure's name is inside its chart with no mark on it, and every mark is still drawn"
-                      + (", and at least one is named" if width == 1400 else ""),
-                      got["charts"] and not got["problems"] and heads[1] > 0 and heads[0] == heads[1] * len(got["charts"])
-                      and (width != 1400 or got["ev"] > 0), [got["problems"], got["ev"], heads])
-            js("state.marks = window._marks312; renderCharts()")
+                got = js(TRACK_JS)
+                check(f"Labs ({width} px, #294): one event track over the charts, every event on it once and named or under a \"+N\", no name on another or past the plot"
+                      + (", and it stays under the top bar" if width == 1400 else ""),
+                      got["items"] > 0 and not got["problems"] and got["inCharts"] == 0 and got["layers"] >= 1 and got["rows"] <= 3
+                      and (width != 1400 or (got["stuck"] and got["named"] >= 4)), got)
+                if width == 320:
+                    bad = phone_fits(page, "Labs with the event track, 320 px")
+                    check("…and at 320 px it fits", not bad, bad)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("renderCharts()")
+            settle(300)
+            page.focus("#evTrack svg")
+            page.keyboard.press("ArrowRight")
+            settle(150)
+            first = js("(([i, svg]) => [i.words, svg.getAttribute('role'), svg.getAttribute('aria-roledescription'), getComputedStyle(tip).display, tip.innerText])([trackItems()[0], document.querySelector('#evTrack svg')])")
+            check("…it takes focus, as an event track, and → steps to its first event with its tooltip",
+                  first[1:4] == ["application", "event track", "block"] and first[0] in first[4], first)
+            want = js("trackItems().find(i => i.e)")
+            for _ in range(js("trackItems().findIndex(i => i.e)")):
+                page.keyboard.press("ArrowRight")
+            page.keyboard.press("Enter")
+            settle(300)
+            check("…and Enter opens the event it's on", js("document.getElementById('drawer').classList.contains('open') && document.getElementById('dtitle').textContent") == want["words"], want)
+            js("closeDrawer()")
+            settle(200)
+            page.click("#evTrack .view-seg button:text-is('Table')")
+            settle(300)
+            table = js("""(() => { const rows = [...document.querySelectorAll('#evTrack table tbody tr')];
+              return {rows: rows.length, events: trackItems().length, spans: medsInWindow().reduce((n, m) => n + m.spans.filter(s => medEnd(s) >= state.from && s.ts <= state.to).length, 0),
+                kinds: [...new Set(rows.map(r => r.cells[1].textContent))].sort(), focus: document.activeElement.textContent, svg: !!document.querySelector('#evTrack svg.ev-svg')}; })()""")
+            check("…its Table lists each event and each medication's span, in place of the drawing",
+                  table["rows"] == table["events"] + table["spans"] and table["spans"] > 0 and not table["svg"] and table["focus"] == "Table"
+                  and table["kinds"] == ["Imaging", "Medication", "Milestone", "Procedure"], table)
+            page.locator("#evTrack table tbody button.cell-btn").first.click()
+            settle(300)
+            check("…a record's name there opens it", js("document.getElementById('drawer').classList.contains('open')"))
+            js("closeDrawer()")
+            page.click("#evTrack .view-seg button:text-is('Chart')")
+            js("([m, d]) => { state.marks = m; medsOnTrends = d; renderCharts(); }", js("window._marks294"))
             page.set_viewport_size({"width": 1400, "height": 900})
             settle(300)
             label = js("document.querySelector('#charts .chart svg:not(.icon)').getAttribute('aria-label')")
@@ -3792,6 +3857,7 @@ def main():
                     js("p => applyPreset(p)", per)
                     settle(400)
                     ax291[f"{per} {width}"] = js(CHART_AXIS_JS, "#charts svg.ck-axis")   # the stack's one axis (#293)
+                    ax291[f"{per} {width}"] = js(CHART_AXIS_JS, "#charts .chart svg.ck")   # not the event track over them, which has no axis (#294)
             js("applyPreset('all')")
             page.set_viewport_size({"width": 1400, "height": 900})
             settle(300)
@@ -6065,11 +6131,11 @@ def main():
                   and not js("document.querySelectorAll('#charts .cymark').length"))
             page.check("#optCycle")
             settle(400)
-            n_marks = js("document.querySelectorAll('#charts .chart svg .cymark').length")
-            check("…ticked, each chart gets a row of them, with a legend", n_marks > 0 and js("!document.getElementById('cycleLegend').hidden"), n_marks)
+            n_marks = js("[document.querySelectorAll('#evTrack svg .cymark').length, document.querySelectorAll('#charts .chart svg .cymark').length]")
+            check("…ticked, the event track over the charts gets a row of them, once (#294), with a legend", n_marks[0] > 0 and n_marks[1] == 0 and js("!document.getElementById('cycleLegend').hidden"), n_marks)
             apart = legend_marks_apart(page, "#cycleLegend")
             check("…at 320 px each of its marks (a ring, a cross and a drop since #301) on the same line as its words (#355)", not apart, apart)
-            page.focus("#charts .chart svg .cymark")
+            page.focus("#evTrack svg .cymark")
             page.keyboard.press("Enter")
             settle(300)
             check("…a mark there takes focus and Enter opens it in the drawer", js("document.getElementById('drawer').classList.contains('open') && document.getElementById('dsub').textContent.startsWith('Cycle tracking')"))
@@ -6817,8 +6883,8 @@ def main():
                 js("state.sel.add(SERIES.find(s => !s.watch && s.n >= 2).name); renderLabs()")
                 settle()
             marks = js("[...document.querySelectorAll('#charts .jmark')].map(m => m.getAttribute('aria-label'))")
-            charts = js("document.querySelectorAll('#charts .chart svg:not(.icon)').length")
-            check("…and as a marker under every Trends chart, labelled with its severity", len(marks) == charts > 0 and all("severity 7/10" in m and "Headache" in m for m in marks), marks[:2])
+            charts = js("[document.querySelectorAll('#charts .chart svg:not(.icon)').length, document.querySelectorAll('#evTrack svg .jmark').length]")
+            check("…and as a marker on Labs' event track, once over the charts (#294), labelled with its severity", len(marks) == charts[1] == 1 and charts[0] > 0 and all("severity 7/10" in m and "Headache" in m for m in marks), [marks[:2], charts])
             check("the Trends legend says what the marker sizes mean", "bigger = more severe" in page.inner_text("#view-labs .legend"))
             apart = legend_marks_apart(page, "#view-labs .legend .jlegend")
             check("…and at 320 px each of its marks (a star, a hexagon and a bar since #301, each with its word) is on the same line as its words (#355)", not apart, apart)
@@ -7047,7 +7113,7 @@ def main():
                 js("state.sel.add(SERIES.find(s => !s.watch && s.n >= 2).name); renderLabs()")
                 settle()
             moods = js("[...document.querySelectorAll('#charts .jmood')].map(m => m.getAttribute('aria-label'))")
-            check("…and its own row under every Trends chart, labelled", len(moods) == js("document.querySelectorAll('#charts .chart svg:not(.icon)').length") > 0
+            check("…and its own row on Labs' event track, once over the charts (#294), labelled", len(moods) == js("document.querySelectorAll('#evTrack svg .jmood').length") == 1
                   and all(m.startswith("Mood 9/10, ") for m in moods), moods[:2])
             page.focus("#charts .jmood")
             page.keyboard.press("Enter")
@@ -7353,9 +7419,9 @@ def main():
                 check("Trends leaves the medications out until they're ticked", not page.is_checked("#optMeds") and js("document.querySelectorAll('#charts .medbar').length") == 0)
                 page.check("#optMeds")
                 settle()
-                rows = js(f"""[...document.querySelectorAll('#charts .chart svg:not(.icon)')].map(s => s.querySelectorAll('.medbar[data-med="{med["i"]}"]').length)""")
-                check("…then every chart has the medication's spans under its time axis", len(rows) > 0 and all(n == 2 for n in rows), rows)
-                page.locator(f'#charts .chart svg .medbar[data-med="{med["i"]}"] >> nth=0').click()
+                rows = js(f"""[document.querySelectorAll('#evTrack svg .medbar[data-med="{med["i"]}"]').length, document.querySelectorAll('#charts .chart svg .medbar').length]""")
+                check("…then the event track over the charts has the medication's spans, once (#294), and no chart has any", rows == [2, 0], rows)
+                page.locator(f'#evTrack svg .medbar[data-med="{med["i"]}"] >> nth=0').click()
                 settle(200)
                 check("…and a span there opens the medication's history", js("document.getElementById('dtitle').textContent").startswith("Examplocin"))
                 page.keyboard.press("Escape")
@@ -7637,12 +7703,12 @@ def main():
                       and js("document.querySelectorAll('#charts .dosemark').length") == 0)
                 page.check("#optDoses")
                 settle(300)
-                per = js("[...document.querySelectorAll('#charts .chart svg:not(.icon)')].map(s => s.querySelectorAll('.dosemark').length)")
-                check("…ticked, every chart has a row of the doses, and its legend says the shapes", per and all(n >= 2 for n in per)
+                per = js("[document.querySelectorAll('#evTrack svg .dosemark').length, document.querySelectorAll('#charts .chart svg .dosemark').length]")
+                check("…ticked, the event track over the charts has a row of the doses, once (#294), and its legend says the shapes", per[0] >= 2 and per[1] == 0
                       and js("!document.getElementById('doseLegend').hidden") and "◆ taken late" in page.inner_text("#doseLegend").replace("\xa0", " "), per)
                 apart = legend_marks_apart(page, "#doseLegend")
                 check("…and at 320 px each of its marks (● taken, ◆ taken late, ○ skipped) is on the same line as its words (#355)", not apart, apart)
-                page.locator("#charts .chart svg .dosemark").first.focus()
+                page.locator("#evTrack svg .dosemark").first.focus()
                 page.keyboard.press("Enter")
                 settle(200)
                 check("…a mark there opens the medication by keyboard", js("document.getElementById('dtitle').textContent") == cur["name"])
@@ -7943,7 +8009,7 @@ def main():
             accented, seen = [], {}
             for theme in ("light", "dark"):
                 js("t => { document.documentElement.dataset.theme = t; }", theme)
-                for tab, sel in (("timeline", "#tl"), ("labs", "#charts .chart svg:not(.icon)"), ("health", "#view-health svg.pz")):
+                for tab, sel in (("timeline", "#tl"), ("labs", "#charts svg.ck"), ("health", "#view-health svg.pz")):   # Labs: its charts and event track (#294)
                     js("t => switchTab(t, t === 'labs' ? 'chart' : undefined)", tab)
                     settle(400)
                     got = js(CHART_ACCENT_JS, sel)
@@ -7967,22 +8033,24 @@ def main():
                 const uniq = (q, p) => [...new Set([...document.querySelectorAll(q)].map(m => getComputedStyle(m)[p]))];
                 return {text: probe('CanvasText'), hi: probe('Highlight'), rules: uniq('#charts .msmark', 'stroke'),
                         labels: uniq('#charts .mslabel', 'fill'), cursors: uniq('#charts .cross', 'stroke'),
-                        events: uniq('#charts .evlabel', 'fill'), axis: uniq('#charts svg text:not([class])', 'fill')}; })()""")
+                        events: uniq('#charts .evlabel', 'fill'), axis: uniq('#charts svg text:not([class])', 'fill'),
+                        flags: uniq('#charts :is(.msflag, .evlead)', 'stroke'), heads: uniq('#charts .msflag-head', 'fill')}; })()""")
             page.emulate_media(forced_colors="none")
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme341)
             settle(200)
             check("…and in forced colours, against a contrast theme opposite to the app's, milestones are CanvasText and cursors Highlight (#341), "
-                  "and so are event labels and axis text (#346)",
+                  "and so are event labels and axis text (#346), and the event track's flags and leaders (#294)",
                   fc["rules"] == [fc["text"]] and fc["labels"] == [fc["text"]] and fc["cursors"] == [fc["hi"]]
-                  and fc["events"] in ([], [fc["text"]]) and fc["axis"] == [fc["text"]], fc)
-            # their labels (#312): at 1400, 375 and 320 px each one on the Timeline, every Labs chart (procedures shown)
-            # and every Body and activity chart is inside its plot with no mark on it; one shortened to fit ends in "…"
-            # and keeps the full names in its title; a Labs chart's and a Body and activity chart's aria-label names them
+                  and fc["events"] in ([], [fc["text"]]) and fc["axis"] == [fc["text"]]
+                  and fc["flags"] == [fc["text"]] and fc["heads"] == [fc["text"]], fc)
+            # their labels (#312): at 1400, 375 and 320 px each one on the Timeline and every Body and activity chart is
+            # inside its plot with no mark on it; one shortened to fit ends in "…" and keeps the full names in its title; a
+            # Body and activity chart's aria-label names them (Labs names them on its event track, #294: TRACK_JS)
             js("window._was312 = [state.marks, scrollY]; state.marks = true")
             for width in (1400, 375, 320):
                 page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
-                for tab, sel in (("timeline", "#tl"), ("labs", "#charts .chart svg:not(.icon)"), ("health", "#view-health svg.pz")):
-                    js("t => switchTab(t, t === 'labs' ? 'chart' : undefined)", tab)
+                for tab, sel in (("timeline", "#tl"), ("health", "#view-health svg.pz")):
+                    js("t => switchTab(t)", tab)
                     settle(500)
                     got = js(CHART_LABELS_JS, sel)
                     names = sorted(js("(([a, b]) => MILESTONES.filter(m => dayTs(m.date) >= a && dayTs(m.date) <= b).map(m => m.label))(state.tab === 'health' ? hRange() : [state.from, state.to])"))
@@ -7997,17 +8065,18 @@ def main():
                             wrong.append(f"{c['said'][:30]}: its aria-label doesn't name every milestone")
                     check(f"{tab} ({width} px, #312): milestone labels inside every chart, no mark on them, their full names kept",
                           bool(names) and any(c["marked"] for c in got["charts"]) and not wrong, wrong or got)
-            js("switchTab('labs', 'chart')")   # still 320 px, marks on: a procedure left unnamed still opens its drawer
+            js("switchTab('labs', 'chart')")   # still 320 px, marks on: an event under a "+N" on the event track (#294) still opens its drawer
             settle(500)
-            unnamed = js("""(() => { const svg = document.querySelector('#charts .chart svg:not(.icon)'), g = svg._geom, xs = [...svg.querySelectorAll('.evlabel')].map(t => +t.getAttribute('x'));
+            unnamed = js("""(() => { const svg = document.querySelector('#evTrack svg'), g = svg._geom, items = trackItems(), named = [...svg.querySelectorAll('.ev-name')].map(t => +t.dataset.ti);
+                const heads = [...svg.querySelectorAll('.evhead')], marked = items.filter(i => i.k !== 'milestone');
+                const n = marked.findIndex(i => i.e && !named.includes(items.indexOf(i))); if (n < 0) return null;
                 const cx = h => { const b = h.getBBox(); return b.x + b.width / 2; };   // a plus, its middle (#301)
-                const h = [...svg.querySelectorAll('.evhead[data-k=procedure]')].find(h => !xs.some(x => Math.abs(x - 6 - cx(h)) < .5)); if (!h) return null;
-                svg.scrollIntoView({block: 'center'}); const px = cx(h), r = h.getBoundingClientRect(), xOf = t => g.L + (t - state.from) / (state.to - state.from) * (g.R - g.L);
+                svg.scrollIntoView({block: 'center'}); const h = heads[n], px = cx(h), r = h.getBoundingClientRect(), xOf = t => g.L + (t - state.from) / (state.to - state.from) * (g.R - g.L);
                 return {x: r.x + r.width / 2, y: r.y + r.height / 2, titles: markEvents().filter(e => Math.abs(xOf(e.ts) - px) < 8).map(e => e.title)}; })()""")
             if unnamed:
                 page.mouse.click(unnamed["x"], unnamed["y"])
                 page.wait_for_selector("#drawer.open", timeout=5000)
-            check("…a procedure left unnamed at 320 px still opens its drawer when its mark is clicked",
+            check("…a procedure or imaging under a \"+N\" at 320 px still opens its drawer when its mark is clicked",
                   unnamed is not None and js("document.getElementById('dtitle').textContent") in unnamed["titles"], unnamed)
             js("closeDrawer()")
             js("state.marks = window._was312[0]; switchTab('labs', 'chart')")
@@ -9947,13 +10016,14 @@ def main():
             open_tab("labs")
             settle(300)
             labs441 = js("""(() => { const out = {heads: [...document.querySelectorAll('#labsChart :is(h1, h2, h3, h4, h5, h6)')].map(h => h.tagName + ' ' + (h.matches('.vh') ? h.textContent : h.innerText)),
-                list: [...document.querySelectorAll('#seriesRows .srow input:checked')].map(i => i.dataset.lab), charts: []};
+                list: [...document.querySelectorAll('#seriesRows .srow input:checked')].map(i => i.dataset.lab), charts: [], track: !!document.getElementById('evTrack')};
               let g = null;
               for (const x of document.getElementById('charts').children) if (x.matches('h3')) g = x.innerText; else if (x.dataset.lab) out.charts.push([x.dataset.lab, g]);
               return out; })()""")
             chart_panels = list(dict.fromkeys(g for _, g in labs441["charts"]))
-            check("…Labs' chart view has headings: the list's h2, its panels as h3s in the same words, then the charts' h2 and their panels'",
-                  labs441["heads"] == ["H2 Lab list", *("H3 " + g for g in dict.fromkeys(g for _, g, _ in list279)), "H2 Charts", *("H3 " + g for g in chart_panels)]
+            check("…Labs' chart view has headings: the list's h2, its panels as h3s in the same words, then the charts' h2, the event track's (#294) and their panels'",
+                  labs441["heads"] == ["H2 Lab list", *("H3 " + g for g in dict.fromkeys(g for _, g, _ in list279)), "H2 Charts", *(["H3 Events"] if labs441["track"] else []), *("H3 " + g for g in chart_panels)]
+                  and labs441["track"]
                   and set(want441) <= {g for _, g, _ in list279} and len(chart_panels) > 1 and set(chart_panels) <= set(want441), labs441["heads"])
             check("…its charts follow the list's order, each under its panel's name",
                   [n for n, _ in labs441["charts"]] == labs441["list"] and all(want279.get(n) == g for n, g in labs441["charts"]), labs441)

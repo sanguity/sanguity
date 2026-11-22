@@ -614,16 +614,16 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .charts{display:flex;flex-direction:column;gap:var(--sp-4)}
 .charts>.chart{margin:0}   /* a .card (#353); the list's gap is the space between charts */
 .charts>.lab-panel{margin:0 0 calc(var(--sp-2) * -1)}
-.chart .hd{display:flex;align-items:baseline;gap:var(--sp-2);flex-wrap:wrap}
+:is(.chart,.ev-track) .hd{display:flex;align-items:baseline;gap:var(--sp-2);flex-wrap:wrap}
 .chart .hd .name{font-weight:var(--fw-semibold)}
-.chart .hd .unit{color:var(--muted);font-size:var(--fs-2)}
+:is(.chart,.ev-track) .hd .unit{color:var(--muted);font-size:var(--fs-2)}
 .chart .hd .read{margin-left:auto;font-variant-numeric:tabular-nums;font-size:var(--fs-3);color:var(--ink2)}
 .chart .hd .read b{color:var(--ink);font-size:var(--fs-3)}
 /* on a phone the readout has a row of its own, one line long, so hovering a point (a longer readout: its unit, time and
    flag) never moves the header onto another line, and the chart from under the pointer (#253: Inter wraps it elsewhere) */
 @media (max-width:640px){.chart .hd .read{flex-basis:100%;margin-left:0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
 .chart .hd>.btn:not(.rename-btn){margin:0;align-self:center}   /* its ✕: the quiet small button (#353); the ✎ keeps the name's line (#373) */
-.chart svg:not(.icon){width:100%;display:block}
+:is(.chart svg:not(.icon),.ev-svg){width:100%;display:block}
 .pz{touch-action:pan-y;user-select:none;-webkit-user-select:none;cursor:grab}
 .dragging .pz,.dragging .pz *{cursor:grabbing!important}
 .list-hd{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;margin-bottom:2px}
@@ -634,13 +634,25 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .toolbar{display:flex;gap:var(--sp-4);align-items:center;flex-wrap:wrap;margin:0 0 var(--sp-3)}
 .toolbar label:not(.toggle){display:inline-flex;gap:var(--sp-2);align-items:center;font-size:var(--fs-3);color:var(--ink2);cursor:pointer}
 .toolbar input{margin:0}
-.evmark{stroke:var(--muted);stroke-width:1;stroke-dasharray:2 3;opacity:.7}
 .evlabel{font-size:var(--fs-1);fill:var(--ink2)}
 .msmark{stroke:var(--milestone);stroke-width:1.25;stroke-dasharray:5 3;pointer-events:none}
 .mslabel{font-size:var(--fs-1);font-weight:var(--fw-semibold);fill:var(--milestone)}
+.msmark.faint{stroke-dasharray:none;stroke-width:1;stroke-opacity:.3}   /* in each Labs chart, named on the event track */
+/* Labs' event track (#294, event-track.js): one card over the charts, under the top bar while they scroll where it's
+   short enough (.stuck); what has focus in a chart scrolls clear of it (--track-h, 2.4.11). Names joined to their marks
+   by leaders, a milestone's a flag in its own ink */
+.ev-track.stuck{position:sticky;top:var(--bar-h,0px);z-index:2}
+.charts>.chart *{scroll-margin-top:var(--track-h,0px)}
+.ev-track h3{margin:0;font-size:var(--fs-3)}
+.evlead{stroke:var(--muted)}
+.msflag{stroke:var(--milestone);stroke-width:1.25}
+.msflag-head{fill:var(--milestone)}
+.ev-name[data-ti]{cursor:pointer}
+.ev-more{fill:var(--ink);font-weight:var(--fw-semibold)}
+.tip .ev-tip>svg,.ev-track td>.icon{vertical-align:-2px;margin-right:var(--sp-1)}   /* a tooltip's mark, a table row's icon */
 /* chart labels are placed by their width (labelW in charts.js, #312): laid out at their own size, not the screen's, so
    the width measured is the width drawn whatever the chart's scale (#253) */
-.mslabel,.evlabel{text-rendering:geometricPrecision}
+.mslabel,.evlabel,svg text.medname{text-rendering:geometricPrecision}
 /* overview: its groups (#274), each under its heading, a step apart */
 .ov-h{display:flex;align-items:baseline;gap:var(--sp-2);margin:var(--sp-5) 0 var(--sp-3)}
 .ov-h:first-child{margin-top:var(--sp-1)}
@@ -697,9 +709,9 @@ html:has(#view-labs:not([hidden]) #labsChart:not([hidden]) .ck-foot){scroll-padd
 svg text.ck-yr{fill:var(--ink2);font-weight:var(--fw-medium)}   /* the time axis's coarser row: "2026" under its months (chartkit.js) */
 /* Forced colours don't reach SVG strokes and fills: milestones and cursors in system colours there, so a contrast theme
    opposite to the app's own doesn't leave them faint (#341; the ECG maps its cursor the same way) */
-@media (forced-colors:active){.msmark{stroke:CanvasText}.mslabel{fill:CanvasText}.cross{stroke:Highlight}
+@media (forced-colors:active){.msmark,.msflag,.evlead{stroke:CanvasText}.mslabel,.msflag-head,.ev-more{fill:CanvasText}.cross{stroke:Highlight}
   svg text:not([class]),.evlabel,.lane-label,svg text.medname,svg text:is(.ck-yr,.ck-unit,.ck-ref){fill:CanvasText}
-  .refedge{stroke:CanvasText}svg text.ck-ref{stroke:Canvas}}   /* a chart's own text too (#346); the band's edges (#293) */
+  .refedge{stroke:CanvasText}svg text.ck-ref{stroke:Canvas}}   /* a chart's own text too (#346); the band's edges (#293); the event track (#294) */
 table.data{border-collapse:collapse;width:100%;font-size:var(--fs-2);font-variant-numeric:tabular-nums}
 table.data th{text-align:left;color:var(--muted);font-weight:var(--fw-semibold);border-bottom:1px solid var(--axis);padding:var(--sp-1) var(--sp-2);position:sticky;top:0;background:var(--surface)}
 table.data td{border-bottom:1px solid var(--grid);padding:var(--sp-1) var(--sp-2);vertical-align:top}
@@ -1928,7 +1940,9 @@ dialog.palette[open]{display:flex;flex-direction:column;overflow:hidden}
    existing look, a ring on a chart that has keyboard focus, and the marks that say "out of range" without colour:
    ▲ above the range, ▼ below, on the Labs charts, the heatmap's cells, the Overview's sparklines and their legends */
 .view-seg{flex:none}   /* the small size (.seg.view-seg, components) */
-.chart .hd .view-seg{align-self:center}
+:is(.chart,.ev-track) .hd .view-seg{align-self:center}
+.ev-track .hd .view-seg{margin-left:auto}
+@media (max-width:640px){.ev-track .hd .unit{order:1;flex-basis:100%}}   /* its Chart | Table beside its name, the counts under */
 svg[role=application]:focus{outline:none}
 svg[role=application]:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:var(--r-sm)}
 .chart-table{max-height:360px}

@@ -123,6 +123,7 @@ ALLOWED = {
     # the colour and the spacing are a record's own frame (srcdoc), which doesn't load the tokens: its text, its margin
     # and its table cells' padding
     "www/js/drawer.js": {"script styles": 5, "colours": 1, "px spacing": 2},
+    "www/js/event-track.js": {"script styles": 1},   # the sticky track's height, focus in a chart kept clear of it (#294)
     "www/js/health.js": {"script styles": 13},
     "www/js/heatmap.js": {"script styles": 5},
     "www/js/journal.js": {"script styles": 2},
@@ -132,7 +133,7 @@ ALLOWED = {
     "www/js/overview.js": {"script styles": 2},   # a record's kind icon in its lane's colour, as on the Timeline (#274)
     "www/js/rename.js": {"script styles": 2},
     "www/js/timeline.js": {"script styles": 1},
-    "www/js/trends.js": {"script styles": 5},
+    "www/js/trends.js": {"script styles": 4},
     "www/js/util.js": {"script styles": 2},   # el() itself, where a style object is applied; placeAt(), a popover placed without anchor positioning (#261)
 }
 

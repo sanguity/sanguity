@@ -8,8 +8,9 @@
    - ckBand, ckBandLabel: the reference band, each result's own range, neutral, and its numbers at the right;
    - ckLegend: a chart's key, each mark keyed as it's drawn (a line for a line);
    - ckCross, ckSync, ckTip: the crosshair, at one time on every time chart of a view, and the hover's readout pinned to
-     the top of the plot beside it.
-   CHART_LAYERS (trends.js) and TL_LANES (timeline.js) stay the plug-ins of Labs' charts and the Timeline.
+     the top of the plot beside it;
+   - ckFlagRows: names over marks in up to three rows, with leader lines and "+N" (Labs' event track, event-track.js).
+   CHART_LAYERS (trends.js) and TL_LANES (timeline.js) stay the plug-ins of Labs' event track and the Timeline.
    Plain script, loaded in order by index.html; all files share one global scope. */
 "use strict";
 /* ---- scales */
@@ -169,4 +170,49 @@ function ckTip(svg, px, nodes) {
   if (!nodes.some(Boolean)) return hideTip();
   const p = svgPoint(svg, px, svg._geom.T);
   showTip(nodes, {clientX: p.clientX, clientY: p.clientY - 14});   // showTip sets it 14 px below the point it's given
+}
+
+/* ---- names over marks (#294, the event track): items [{x, text, cls, rank}] in time order, each mark named in one of
+   `rows` rows over it, a leader line from its name down to it. Marks within 6 px share a name: the first by rank, then
+   time, with "+N" for how many more; a name with no room takes its marks to its nearest neighbour's, until every name
+   fits. A name stays inside L..R, 6 px off the next in its row, and no leader runs through a name. Laid out twice, from
+   the right (an earlier name over a later one) and by rank first, keeping the one with more names, then with more of
+   the first rank. -> [{items, head, x (its leader's), text, cls, row (0 the lowest), a, b}] */
+function ckFlagRows(items, L, R, rows = 3) {
+  const start = [], top = Math.min(...items.map(i => i.rank ?? 9));
+  for (const it of items) { const g = start.at(-1); if (g && it.x - g[0].x < 6) g.push(it); else start.push([it]); }
+  const score = p => p.length * 1e3 + p.filter(f => (f.head.rank ?? 9) === top).length;
+  return [false, true].map(byRank => ckFlagLay(start, L, R, rows, byRank)).reduce((a, b) => score(b) > score(a) ? b : a);
+}
+function ckFlagLay(groups, L, R, rows, byRank) {
+  const fit = (t, cls, room) => { if (labelW(t, cls) <= room) return t; for (let n = t.length - 1; n > 1; n--) { const s = t.slice(0, n).trimEnd() + "…"; if (labelW(s, cls) <= room) return s; } return "…"; };
+  const box = (a, w) => Math.max(L, Math.min(R - w, a));
+  for (;;) {
+    const placed = [], failed = new Set(), heads = groups.map(g => g.reduce((h, it) => (it.rank ?? 9) < (h.rank ?? 9) ? it : h));
+    for (const i of groups.map((_, i) => i).sort((i, j) => (byRank ? (heads[i].rank ?? 9) - (heads[j].rank ?? 9) : 0) || j - i)) {
+      const g = groups[i], head = heads[i], x = head.x;
+      const more = g.length > 1 ? ` +${g.length - 1}` : "", text = fit(head.text, head.cls, Math.min(220, R - L) - 4 - (more ? labelW(more, head.cls) : 0)) + more;
+      const w = labelW(text, head.cls) + 4;
+      let at = null;
+      // after its leader in the lowest row with room, else before it (one before it in a lower row would stop any
+      // name to its left going over it)
+      for (const a of new Set([box(x, w), box(x - w, w)])) for (let row = 0; row < rows && !at; row++) {
+        const b = a + w;
+        if (!placed.some(p => p.row === row ? a < p.b + 6 && b > p.a - 6 : p.row < row ? x >= p.a - 3 && x <= p.b + 3 : p.x >= a - 3 && p.x <= b + 3))
+          at = {items: g, head, x, text, cls: head.cls, row, a, b};
+      }
+      if (at) placed.push(at); else failed.add(i);
+    }
+    if (!failed.size || groups.length < 2) return placed;
+    // each name with no room: its marks to the nearer group beside it, a gap in time between them being in px
+    const next = [];
+    let carry = [];
+    groups.forEach((g, i) => {
+      g = [...carry, ...g]; carry = [];
+      if (!failed.has(i)) return next.push(g);
+      const nx = groups[i + 1], left = next.length ? g[0].x - next.at(-1).at(-1).x : Infinity, right = nx ? nx[0].x - g.at(-1).x : Infinity;
+      if (next.length && left <= right) next.at(-1).push(...g); else if (nx) carry = g; else next.push(g);
+    });
+    groups = next;
+  }
 }
