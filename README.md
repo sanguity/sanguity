@@ -360,7 +360,11 @@ higher, raise `client_max_body_size` in `nginx.conf` too. Refused: paths that ar
 than `UPLOAD_MAX_ZIP_RATIO` (200) times its compressed size (a zip bomb). A photo attached to a journal entry
 may be at most `JOURNAL_PHOTO_MAX_MB` (20; nginx lets one through up to 25 MB). An upload left unfinished for a day is
 removed when the app next starts. While an import reads an upload, a decrypted copy sits in the app container's
-`/tmp`, which is in memory, and is removed straight after.
+`/tmp`, which is in memory, and is removed straight after. So `/tmp` needs room for the largest upload you import
+(an Apple Health export unpacks to several times its zip): with compose it's Docker's default, up to half the
+machine's memory; in the TrueNAS app it's half the app's memory limit (1 GiB of the 2 GiB default), so raise
+**Memory** under Resources for a larger one. An upload that won't fit is refused, saying how much it needs, before
+anything is decrypted.
 
 ### Connected sources
 
@@ -672,7 +676,8 @@ warning when it's late (on every Admin group and on the Admin menu item). **Back
 background. The schedule (off, daily or weekly) has the app make one when the newest is a day or a week old, and
 keeps the newest N, deleting older `sanguity-backup-*.tar.gz` files from the folder and nothing else. **Check a
 backup** restores one into a temporary folder beside it, compares it with what its manifest says it holds (every
-file's checksum, the database's row counts, that this install's key opens it), says whether it's good, and deletes
+file's checksum, the database's row counts, that this install's key opens it, that every journal photo, uploaded file
+and document the database names is in it), says whether it's good, and deletes
 the copy; the live data isn't touched. The backups go to `BACKUP_DIR`, so copy that folder off this machine too.
 
 **The phone and watch data** (#227) is in every backup: for each profile, the watch receiver's database (`watch.db`,

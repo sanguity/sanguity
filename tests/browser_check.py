@@ -15751,6 +15751,30 @@ def main():
                       for r in ("admin", "owner", "editor"))
                   and said524["admin"]["account password"][:1] == ["Password"] and said524["admin"]["require 2fa"][:1] == ["Require two-factor sign-in"]
                   and said524["admin"]["remove someone"][:1] in (["Who has access"], ["Accounts"]), [labs528, {q: said524["admin"][q] for q in ("account password", "require 2fa", "remove someone")}])
+            # #592: the Disconnect form says a first pull not saved yet is cancelled either way, and only for one: two
+            # connections on profile 1, made up here and gone after, one at its first pull, one syncing
+            cdb592, now592 = dbm.connect(), dbm.now()
+            conns592 = {n: cdb592.execute("""INSERT INTO connections(profile_id, source, issuer, fhir_base, credential, scopes, state, cursor,
+                                               last_sync, created) VALUES(1, ?, ?, ?, 'refresh', 'launch/patient openid patient/Observation.read',
+                                               'active', ?, ?, ?)""", (n, f"https://fhir.example.org/{n[:5].lower()}592",
+                                                                        f"https://fhir.example.org/{n[:5].lower()}592", cur, now592, now592)).lastrowid
+                        for n, cur in (("Firstpull 592", None), ("Syncing 592", "{}"))}
+            try:
+                said592 = {}
+                for n, cid in conns592.items():
+                    page.goto(base + "/sources.html?profile=1#portals")
+                    page.wait_for_selector(f"#conn-{cid}", timeout=10000)
+                    page.locator(f"#conn-{cid} button", has_text="Disconnect…").click()
+                    page.wait_for_selector(f"#conn-{cid} .conn-disc", timeout=5000)
+                    said592[n] = js(f"document.querySelector('#conn-{cid} .conn-disc').innerText")
+                    page.locator(f"#conn-{cid} .conn-disc button", has_text="Cancel").click()
+            finally:
+                cdb592.execute(f"DELETE FROM connections WHERE id IN ({', '.join(str(i) for i in conns592.values())})")
+                cdb592.close()
+            check("…(#592) and Disconnect… on a source at its first pull says that pull isn't saved yet and is cancelled either way, "
+                  "nothing it read kept; on one syncing it doesn't",
+                  "cancelled either way, and nothing it read is kept" in said592["Firstpull 592"]
+                  and "first pull" not in said592["Syncing 592"] and "Keep them" in said592["Syncing 592"], said592)
             first532 = {**{q: "Rename or delete" for q in ("rename profile", "profile rename", "rename this profile", "change profile name")}, "delete profile": "Delete this profile",
                         **{q: "Backups" for q in ("schedule", "backup schedule", "daily backup", "keep backups", "how many to keep")},
                         "lab name change": "Lab name matches", "forget match": "Lab name matches"}

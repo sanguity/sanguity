@@ -465,6 +465,84 @@ class Manual(unittest.TestCase):
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(count(pid)["events"], before["events"] + 1)
 
+    def test_the_same_records_saved_twice_at_once_are_saved_once(self):
+        """Two tabs (or a double click) save the same visit and result at once, both checked before either saved: one
+        is saved, the other refused saying why, with nothing saved (#592)."""
+        import threading
+        from unittest import mock
+        from server import routes_manual
+        pid = self.dup_pid
+        visit = {"kind": "visit", "date": "2026-08-12", "title": "Race visit", "where": "Lakeside Clinic (fictional)"}
+        row = {"date": "2026-08-12", "test": "Ferritin", "value": "41", "unit": "ng/mL", "range": "15-150"}
+        before = count(pid)
+        both, real, calls, lock = threading.Barrier(2, timeout=10), routes_manual._duplicates, [0], threading.Lock()
+
+        def checked(*a):   # each save's first check waits for the other's: both see the profile without them
+            with lock:
+                calls[0] += 1
+                first = calls[0] <= 2
+            got = real(*a)
+            if first:
+                both.wait()
+            return got
+        out = {}
+        tabs = {n: self.login("robin") for n in (1, 2)}
+        with mock.patch.object(routes_manual, "_duplicates", checked):
+            ts = [threading.Thread(target=lambda n=n: out.__setitem__(n, self.items([visit], rows=[row], pid=pid, c=tabs[n])))
+                  for n in tabs]
+            [t.start() for t in ts]
+            [t.join(30) for t in ts]
+        codes = sorted(out[n].status_code for n in tabs)
+        self.assertEqual(codes, [200, 409], [out[n].text for n in tabs])
+        refused = next(out[n] for n in tabs if out[n].status_code == 409)
+        self.assertIn("Nothing was saved", refused.json()["detail"])
+        after = count(pid)
+        self.assertEqual((after["imports"], after["events"] - before["events"]), (before["imports"] + 1, 3), after)   # one save's: the visit, the lab day, its result
+        self.assertEqual(after["results"], before["results"] + 1)
+        r = self.items([visit], rows=[row], pid=pid)   # saved again, it's found already there, as ever
+        self.assertEqual(r.status_code, 400, r.text)
+
+    def test_an_import_saved_while_the_same_rows_are_typed_in(self):
+        """An upload's review saved by the import worker while the same results are typed in: the worker's duplicates
+        are found under the write lock, so the rows typed in wait for it, are found there, and nothing is saved twice
+        (#592)."""
+        import threading
+        from unittest import mock
+        from server import jobs, preview
+        db = dbm.connect()
+        try:
+            uid = db.execute("SELECT id FROM users WHERE username='robin'").fetchone()[0]
+            pid = prof.create_profile(db, "Robin at once (fictional)", owner_id=uid)
+            up = uploads.create(db, pid, None)
+            with open(CSV, "rb") as f:
+                uploads.add_file(db, pid, up, "labs.csv", io.BytesIO(f.read()))
+            uploads.finish(db, pid, up)
+        finally:
+            db.close()
+        jid = self.robin.post(f"/api/profiles/{pid}/uploads/{up}/import", json={}, headers=H).json()["id"]
+        end = time.time() + 20
+        while self.robin.get(f"/api/profiles/{pid}/jobs/{jid}").json()["state"] != "preview":
+            self.assertLess(time.time(), end)
+            time.sleep(0.05)
+        typed, real = {}, preview.find
+
+        def found(*a):   # the worker's save, once it has looked for duplicates: the same rows typed in, meanwhile
+            got = real(*a)
+            if threading.current_thread() is not threading.main_thread() and "t" not in typed:
+                typed["t"] = threading.Thread(target=lambda: typed.__setitem__("r", self.post(TYPED, pid=pid)))
+                typed["t"].start()
+                typed["t"].join(1.5)   # done by now unless it waits for the worker's write lock
+            return got
+        with mock.patch.object(jobs.preview, "find", found):
+            self.assertEqual(self.robin.post(f"/api/profiles/{pid}/jobs/{jid}/confirm", json={}, headers=H).status_code, 202)
+            while (j := self.robin.get(f"/api/profiles/{pid}/jobs/{jid}").json())["state"] not in ("done", "failed"):
+                self.assertLess(time.time(), end + 20, j)
+                time.sleep(0.05)
+            typed["t"].join(20)
+        self.assertEqual(j["state"], "done", j)
+        self.assertIn(typed["r"].status_code, (400, 409), typed["r"].text)   # found there: nothing typed saved
+        self.assertEqual(count(pid)["imports"], 1, "the rows typed in weren't saved again as an import of their own")
+
     def test_bad_fields_refused_with_reasons_and_nothing_saved(self):
         pid = self.refuse_pid
         before = count(pid)

@@ -905,20 +905,24 @@ def disconnect(db, who, pid, cid, remove_records=False, ip=None):
                 revoked = smart.revoke(http, url, app[0], app[1], token, hint)
             except smart.SmartError:
                 revoked = False
-    from . import sync
+    from . import jobs, sync
     with dbm.transaction(db):
         db.execute("""UPDATE connections SET state='disconnected', secret=NULL, patient=NULL, expires=NULL, next_sync=NULL,
                       pending_cursor=NULL, disconnected=? WHERE id=?""", (dbm.now(), cid))
         db.execute("DELETE FROM connect_pending WHERE connection_id=?", (cid,))
+        # its first pull, not saved yet, whether its records are kept or not (#591, #592): cancelled in this transaction
+        # wherever it is (queued, being read, waiting in review, being saved), with what it read. The job's row is read
+        # here, under the write lock: a pull either made its job before this (found now) or finds this connection
+        # disconnected and makes none (sync._first); a save after this finds it too (sync.first_saved)
+        first = db.execute("SELECT first_job FROM connections WHERE id=? AND cursor IS NULL", (cid,)).fetchone()
+        first = jobs.cancel_first_pull(db, pid, first[0], who, ip) if first and first[0] else None
+    if first:
+        jobs._cancel_files(db, pid, first[0], first[1])
     # the resources it read, kept for rebuilding lab days: after the commit, so a pull that wrote them before it is
     # undone, and one after it finds it disconnected and writes nothing (sync._keep_store, #591)
     sync.forget_store(pid, cid)
     removed = 0
     if remove_records:
-        # its first pull's review, if it's waiting: what it read goes too (#591), as its records would
-        if c["first_job"]:
-            from . import jobs
-            jobs._cancel(db, pid, c["first_job"], who, ip)
         for (iid,) in db.execute("SELECT id FROM imports WHERE connection_id=? ORDER BY id DESC", (cid,)).fetchall():
             try:
                 history.undo(db, pid, iid, who, ip)

@@ -102,7 +102,10 @@ remain the main way records come in; live connections are an extra for those who
 - **Disconnecting** revokes the token where the vendor supports revocation, deletes the token, secret and key, and
   stops all contact with that host. What happens to the records already pulled is the user's choice; the resources
   the connection kept for rebuilding lab days go either way, and a pull still reading when it's disconnected keeps
-  nothing (#591: its store is written only in a transaction that finds the connection active).
+  nothing (#591: its store is written only in a transaction that finds the connection active). A first pull not saved
+  yet is cancelled either way, wherever it is (#592): its job is made in the same transaction as that check, so
+  Disconnect finds it and cancels it whether it's queued, being read, waiting for its review or being saved, and a save
+  that finds the source disconnected is rolled back (`sync.first_saved`).
 - **Outside requests** stay opt-in: nothing contacts a vendor until the user connects it, and every connection is
   listed with its host (#97, #59): Admin → Outside connections, enforced by `server/net.py`.
 

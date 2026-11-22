@@ -121,12 +121,14 @@ def stop(timeout=5):
 
 
 def submit(db, pid, upload_id, uid, importer=None, ip=None):
-    """Queue an import of an upload; returns the job's id."""
+    """Queue an import of an upload; returns the job's id. Inside a transaction() it's queued once that commits (a
+    connection's first pull, #592: the job and the connection's first_job in one), so the worker never looks for it
+    before it's there."""
     jid = db.execute("INSERT INTO jobs(profile_id, upload_id, created_by, state, importer, created) VALUES(?, ?, ?, 'queued', ?, ?)",
                      (pid, upload_id, uid, importer, dbm.now())).lastrowid
     _ips[jid] = ip
-    if _q is not None:
-        _q.put(jid)
+    if _q is not None and not dbm.after_commit(db, lambda: _q.put(jid)):
+        _q.put(jid)   # in a transaction begun another way: as before (the worker waits for its write lock)
     return jid
 
 
@@ -147,15 +149,18 @@ def run(jid):
         if not j or j["state"] != "queued":
             return
         saving = j["stage"] == "saving"   # confirmed after its preview
-        db.execute("UPDATE jobs SET state='running', stage=?, started=IFNULL(started, ?) WHERE id=?",
-                   ("saving" if saving else "detecting", dbm.now(), jid))
+        # only while it's still queued: cancelled since (a Disconnect during a connection's first pull, #592), it stays so
+        if not db.execute("UPDATE jobs SET state='running', stage=?, started=IFNULL(started, ?) WHERE id=? AND state='queued'",
+                          ("saving" if saving else "detecting", dbm.now(), jid)).rowcount:
+            return
         try:
             _save(db, j) if saving else _import(db, j)
         except Exception as e:
             stage = (db.execute("SELECT stage FROM jobs WHERE id=?", (jid,)).fetchone() or {"stage": None})["stage"]
-            log.exception("import job %s (profile %s, upload %s) failed while %s", jid, j["profile_id"], j["upload_id"], stage)
-            db.execute("UPDATE jobs SET state='failed', message=?, finished=?, summary=? WHERE id=?",
-                       (crypto.enc(_explain(e, stage)), dbm.now(), counts_only(_summary_of(db, jid)), jid))
+            # a job cancelled while it ran (#592: its source disconnected) stays cancelled, saying why; no failure to log
+            if db.execute("UPDATE jobs SET state='failed', message=?, finished=?, summary=? WHERE id=? AND state='running'",
+                          (crypto.enc(_explain(e, stage)), dbm.now(), counts_only(_summary_of(db, jid)), jid)).rowcount:
+                log.exception("import job %s (profile %s, upload %s) failed while %s", jid, j["profile_id"], j["upload_id"], stage)
             _remove(preview_path(j["profile_id"], jid))
             _drop_upload(db, j["profile_id"], j["upload_id"], jid)   # nothing can start it again (#547)
     finally:
@@ -417,36 +422,38 @@ def _save(db, j):
     keep = json.loads(j["keep"]) if j["keep"] else []
     sent = json.loads(crypto.dec(j["labs"])) if j["labs"] else {}
     raw, data = data, labmap.apply(data, labmap.choices(held.get("labs"), sent))   # series names as matched
-    dups = preview.keep(data, preview.find(db, pid, name, data), keep)
-    new = preview.trim(data, dups)
-    problems = registry.check({"data": new, "warnings": []}, names)   # a trimmed lab day must still hold together
-    if problems:
-        raise Failed(f"Without the duplicates, the {label} records couldn't be loaded: " + "; ".join(problems[:5]) + ".")
-    skipped = preview.report(data, dups, summarise)["duplicates"]
-    chosen = set(json.loads(j["same"]) if j["same"] else [])   # possible matches confirmed as the same (#96)
-    same = [x for x in crossmatch.for_preview(db, pid, data, dups) if x["ref"] in chosen] if chosen else []
-
-    sealed = {rel: p for uid, rel, p in uploads.stored_files(db, pid) if uid == upload_id and rel in names}
-
-    def stored(url):
-        """The sealed copy of the file a document link names, or None."""
-        p = sealed.get(url.split("#", 1)[0]) if isinstance(url, str) else None
-        return os.path.realpath(p) if p and os.path.isfile(p) else None
-
-    summary = summarise(new)
-    summary["counts"]["documents"] = 0
-    summary["skipped"] = {k: skipped[k] for k in ("events", "kinds", "results", "other")}
-    if same:
-        summary["linked"] = len(same)
-    who_id = j["confirmed_by"] or j["created_by"]
-    who = db.execute("SELECT id, username FROM users WHERE id=?", (who_id,)).fetchone() if who_id else None
     from . import cycle_tracking
-
-    def photo(rel):   # a journal photo an export names (#589): its sealed copy in the upload
-        p = stored(rel)
-        return crypto.read_file(p) if p else None
-
     with export.photo_files(pid) as written, dbm.transaction(db):
+        # what the profile has already, found under the write lock (#592): the same records saved by another save at the
+        # same time (a sync, another review of the same file, records typed in) are found here, and not saved twice
+        dups = preview.keep(data, preview.find(db, pid, name, data), keep)
+        new = preview.trim(data, dups)
+        problems = registry.check({"data": new, "warnings": []}, names)   # a trimmed lab day must still hold together
+        if problems:
+            raise Failed(f"Without the duplicates, the {label} records couldn't be loaded: " + "; ".join(problems[:5]) + ".")
+        skipped = preview.report(data, dups, summarise)["duplicates"]
+        chosen = set(json.loads(j["same"]) if j["same"] else [])   # possible matches confirmed as the same (#96)
+        same = [x for x in crossmatch.for_preview(db, pid, data, dups) if x["ref"] in chosen] if chosen else []
+
+        sealed = {rel: p for uid, rel, p in uploads.stored_files(db, pid) if uid == upload_id and rel in names}
+
+        def stored(url):
+            """The sealed copy of the file a document link names, or None."""
+            p = sealed.get(url.split("#", 1)[0]) if isinstance(url, str) else None
+            return os.path.realpath(p) if p and os.path.isfile(p) else None
+
+        summary = summarise(new)
+        summary["counts"]["documents"] = 0
+        summary["skipped"] = {k: skipped[k] for k in ("events", "kinds", "results", "other")}
+        if same:
+            summary["linked"] = len(same)
+        who_id = j["confirmed_by"] or j["created_by"]
+        who = db.execute("SELECT id, username FROM users WHERE id=?", (who_id,)).fetchone() if who_id else None
+
+        def photo(rel):   # a journal photo an export names (#589): its sealed copy in the upload
+            p = stored(rel)
+            return crypto.read_file(p) if p else None
+
         # cycle records only while tracking is on, asked under the write lock (#542: turned off while this waited to be
         # saved, which drop_imported leaves alone); left holding nothing, it's cancelled like an empty preview, its
         # upload removed, not saved as an import of nothing
@@ -579,6 +586,21 @@ def _cancelled(db, pid, jid, who, ip, state, message=None):
     activity.log(db, "discard", who, pid, {"importer": r["importer"], "job": jid, "upload": r["upload_id"]}, ip,
                  actor=None if who else "removed account")
     return r["upload_id"], _used_elsewhere(db, r["upload_id"], jid)
+
+
+FIRST_PULL_CANCELLED = "Its source was disconnected before this first pull was saved, so nothing from it was kept."
+
+
+def cancel_first_pull(db, pid, jid, who, ip=None):
+    """Disconnect's (connections.disconnect, in its transaction, #592): a connection's first pull cancelled wherever it
+    is, queued, being read, waiting in review or being saved; the worker leaves a job cancelled meanwhile as it is (run,
+    _import), and a save finds the connection disconnected (sync.first_saved). Returns (job id, _cancelled's) for
+    _cancel_files once committed, or None (saved, failed or cancelled already)."""
+    r = db.execute("SELECT state FROM jobs WHERE id=? AND profile_id=?", (jid, pid)).fetchone()
+    if not r or r["state"] not in ("queued", "running", "preview"):
+        return None
+    got = _cancelled(db, pid, jid, who, ip, r["state"], FIRST_PULL_CANCELLED)
+    return (jid, got) if got else None
 
 
 def counts_only(sealed):

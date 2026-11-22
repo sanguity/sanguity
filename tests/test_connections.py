@@ -543,6 +543,103 @@ class Connections(unittest.TestCase):
         self.assertFalse(os.path.exists(sync.store_path(self.pid, cid)))
         self.assertEqual(self.counts(), before)
 
+    def test_a_disconnect_at_any_point_of_a_first_pull_leaves_nothing_from_it(self):   # #592
+        """Disconnect, keeping its records or not, at each point of a first pull: as its job is made, while it's queued,
+        while it's read, while it waits for its review, while it's saved, and with the review confirmed afterwards. No
+        review or job is left going, no records or store from it, and its upload is gone."""
+        import threading
+        from server import jobs, labmap
+        sid = self.source()
+        before = self.counts()
+
+        def job_state(jid, settle=True):
+            end = time.time() + 30
+            while True:
+                j = self.robin.get(f"/api/profiles/{self.pid}/jobs/{jid}").json()
+                if not settle or j["state"] not in ("queued", "running") or time.time() > end:
+                    return j["state"]
+                time.sleep(0.05)
+
+        def until_preview(jid):
+            end = time.time() + 30
+            while job_state(jid, settle=False) != "preview":
+                self.assertLess(time.time(), end)
+                time.sleep(0.05)
+
+        def disconnect(cid, remove):
+            r = self.robin.post(f"/api/profiles/{self.pid}/connections/{cid}/disconnect", json={"remove_records": remove}, headers=H)
+            self.assertEqual(r.status_code, 200, r.text)
+
+        for remove in (True, False):
+            for point in ("made", "queued", "reading", "review", "saving", "confirmed after"):
+                with self.subTest(point=point, remove_records=remove):
+                    cid = self.connect(sid)
+                    later = []
+                    if point == "made":   # the click lands just as the pull makes its job (#592: between it and first_job)
+                        real = jobs.submit
+
+                        def made(*a, **k):
+                            t = threading.Thread(target=disconnect, args=(cid, remove))
+                            t.start()
+                            later.append(t)
+                            time.sleep(0.3)   # it's waiting for the pull's write lock, or done without one
+                            return real(*a, **k)
+                        with mock.patch.object(jobs, "submit", made):
+                            res = self.pull(cid)
+                        later[0].join(30)
+                    elif point in ("queued", "reading"):
+                        name = "run" if point == "queued" else "_read"
+                        real = getattr(jobs, name)
+
+                        def then(*a, real=real, **k):
+                            if not later:
+                                later.append(1)
+                                disconnect(cid, remove)
+                            return real(*a, **k)
+                        with mock.patch.object(jobs, name, then):
+                            res = self.pull(cid)
+                            job_state(res["job"])
+                    else:
+                        res = self.pull(cid)
+                        until_preview(res["job"])
+                        if point == "review":
+                            disconnect(cid, remove)
+                        elif point == "saving":   # confirmed; Disconnect as the worker starts to save it
+                            real = labmap.recheck
+
+                            def then(*a, **k):
+                                if not later:
+                                    later.append(1)
+                                    disconnect(cid, remove)
+                                return real(*a, **k)
+                            with mock.patch.object(jobs.labmap, "recheck", then):
+                                self.assertEqual(self.robin.post(f"/api/profiles/{self.pid}/jobs/{res['job']}/confirm",
+                                                                 headers=H).status_code, 202)
+                                job_state(res["job"])
+                        else:
+                            disconnect(cid, remove)
+                            r = self.robin.post(f"/api/profiles/{self.pid}/jobs/{res['job']}/confirm", headers=H)
+                            self.assertEqual(r.status_code, 409, r.text)
+                    jid = res.get("job") or self.row(cid)["first_job"]
+                    self.assertEqual(self.row(cid)["state"], "disconnected")
+                    if jid:
+                        self.assertIn(job_state(jid), ("discarded", "failed"))
+                        db = dbm.connect()
+                        try:
+                            up = db.execute("SELECT u.state FROM jobs j JOIN uploads u ON u.id=j.upload_id WHERE j.id=?", (jid,)).fetchone()
+                        finally:
+                            db.close()
+                        self.assertEqual(up[0], "discarded", "the pull's upload is removed")
+                    self.assertEqual(self.counts(), before)
+                    self.assertFalse(os.path.exists(sync.store_path(self.pid, cid)))
+                    db = dbm.connect()
+                    try:
+                        self.assertFalse(db.execute("SELECT 1 FROM jobs WHERE profile_id=? AND state IN ('queued', 'running', 'preview')",
+                                                    (self.pid,)).fetchone())
+                        self.assertFalse(db.execute("SELECT 1 FROM imports WHERE connection_id=?", (cid,)).fetchone())
+                    finally:
+                        db.close()
+
     def test_tokens_encrypted_at_rest(self):
         sid = self.source("confidential", secret="fictional-secret-2")
         url = self.start(sid)

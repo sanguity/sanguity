@@ -26,6 +26,11 @@ that user before setup starts, so setup doesn't need root as it does in compose.
 | Record Exports | `/srv/records` | read-only; for `sources.json`; can stay empty |
 | Config | `/config` | read-only; `sources.json`, `settings.json`, `corrections.json`; can stay empty |
 
+Each container's `/tmp` is a tmpfs, in memory: 64 MiB, but the app's is half its memory limit (1 GiB of the 2 GiB
+default), as an import reads its upload decrypted there and nowhere on a disk. To import an upload larger than that
+(an Apple Health export unpacks to several times its zip), raise **Memory** under Resources; one that won't fit is
+refused, saying how much it needs. nginx passes large answers (Export everything) on without its temporary files.
+
 After installing, the setup code is in the logs of the app container (Apps → Sanguity → Workloads → app → logs).
 
 ## Before the catalog: install it as a custom app

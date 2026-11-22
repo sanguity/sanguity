@@ -30,9 +30,11 @@ moved to DATA_DIR/before-restore-<time>/, never deleted, and an older backup's d
 The receiver's data goes to the receiver's keys/restore/ folder, the one of its folders the app may write; the
 receiver moves it in when it next starts, and what it had to before-restore-<time>/ in its own folder.
 """
-import contextlib, datetime, glob, hashlib, io, json, os, re, shutil, sqlite3, tarfile, tempfile
+import contextlib, datetime, glob, hashlib, io, json, logging, os, re, shutil, sqlite3, tarfile, tempfile
 
 from . import config, crypto, db as dbm
+
+log = logging.getLogger("sanguity.backups")
 
 FORMAT = 1
 NAME = re.compile(r"^sanguity-backup-\d{8}-\d{6}\.tar\.gz$")
@@ -42,6 +44,7 @@ SNAPSHOT, CHECKING = ".sanguity-snapshot-", ".sanguity-check-"   # working folde
 WATCH = "watch"          # the receiver's data in the archive (#227)
 WATCH_STAGE = "restore"   # in the receiver's keys folder: a restore's watch data, moved in when the receiver starts
 STAMP = "%Y%m%d%H%M%S%f"   # the receiver's raw/ names and its "saved" mark (watch/receiver.py)
+SNAPSHOT_TRIES = 3   # a backup's database snapshot taken again while files it names are removed as they're read (#592)
 # the receiver's tables a check names in words, and the rows each counts. Every table is compared; cycle records (#183)
 # aren't named: the Admin page is for admins, and only a profile's owners and editors may know they're kept
 WATCH_FRIENDLY = {"readings": ("samples", "buckets", "hae_points", "hae_vitals", "glucose"), "sleep": ("sleep", "hae_sleep"),
@@ -287,6 +290,82 @@ def watch_words(per_slot, uploads=None):
     return out
 
 
+def _data_files():
+    """{name in the archive: path} of the files a backup takes from DATA_DIR besides the database: everything under
+    profiles/ and build/ but a .tmp (a file being replaced right now; the finished one is there already)."""
+    out = {}
+    for top in CONTENTS:
+        for root, dirs, names in os.walk(os.path.join(config.DATA_DIR, top)):
+            for n in names:
+                if not n.endswith(".tmp"):
+                    path = os.path.join(root, n)
+                    out[os.path.relpath(path, config.DATA_DIR).replace(os.sep, "/")] = path
+    return out
+
+
+def _snapshot(copy):
+    """A consistent copy of the live database at copy (SQLite's online backup, so the app keeps running): returns
+    (its schema version, {table: rows})."""
+    src, dst = sqlite3.connect(config.DB_PATH), sqlite3.connect(copy)
+    try:
+        src.backup(dst)
+        return dst.execute("PRAGMA user_version").fetchone()[0], _tables(dst)
+    finally:
+        dst.close()
+        src.close()
+
+
+def _in_data(path):
+    """A document's file as a name in the archive (profiles/... or build/...), or None: outside DATA_DIR (the record
+    exports, which a backup doesn't take), or not a path at all."""
+    if not isinstance(path, str) or not path:
+        return None
+    for base in {os.path.abspath(config.DATA_DIR), os.path.realpath(config.DATA_DIR)}:
+        rel = os.path.relpath(os.path.abspath(path), base)
+        parts = rel.replace(os.sep, "/").split("/")
+        if parts[0] != ".." and not os.path.isabs(rel) and parts[0] in CONTENTS:
+            return "/".join(parts)
+    return None
+
+
+def named_files(con):
+    """{name in the archive: kind} of the files a database's rows name (#592): each journal photo's, each finished
+    upload's (an import's files, and the documents stored in them), each document's under DATA_DIR. A value this
+    install's key doesn't open is passed over (a check says so apart). kind: "photo", "upload" or "document"."""
+    have = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    out = {}
+    if "journal_photos" in have:
+        for pid, file in con.execute("SELECT profile_id, file FROM journal_photos"):
+            out[f"profiles/{int(pid)}/journal/{file}"] = "photo"
+    if "uploads" in have:
+        for uid, pid, manifest in con.execute("SELECT id, profile_id, manifest FROM uploads WHERE state='ready'"):
+            try:
+                entries = json.loads(crypto.dec(manifest)) if manifest else []
+            except (crypto.KeyError_, ValueError, TypeError):
+                continue
+            for e in entries if isinstance(entries, list) else ():
+                if isinstance(e, dict) and isinstance(e.get("f"), str):
+                    out[f"profiles/{int(pid)}/uploads/{int(uid)}/{e['f']}"] = "upload"
+    if "documents" in have:
+        for (path,) in con.execute("SELECT path FROM documents"):
+            try:
+                rel = _in_data(crypto.dec(path))
+            except (crypto.KeyError_, ValueError, TypeError):
+                continue
+            if rel:
+                out.setdefault(rel, "document")
+    return out
+
+
+def _missing(db_path, files):
+    """The names named_files finds in the database at db_path that aren't among files: {name: kind}."""
+    con = sqlite3.connect(db_path)
+    try:
+        return {n: k for n, k in named_files(con).items() if n not in files}
+    finally:
+        con.close()
+
+
 def create(dest=None, keep=None, name=None, progress=None):
     """Write a backup into dest (default BACKUP_DIR) and return its path; with keep, delete all but the newest
     keep backups there. name: the file's name (new_name()); progress(done, total): bytes archived so far."""
@@ -301,10 +380,8 @@ def create(dest=None, keep=None, name=None, progress=None):
     final = os.path.join(dest, name)
     part = final + ".part"
     hashes, counts, done = {}, {}, [0]
-    files = [(root, n) for top in CONTENTS for root, dirs, names in sorted(os.walk(os.path.join(config.DATA_DIR, top)))
-             for n in sorted(names) if not n.endswith(".tmp")]
     watch = _watch_files()   # the receiver's data (#227); none without a receiver
-    total = _size(config.DB_PATH) + sum(_size(os.path.join(r, n)) for r, n in files) + sum(_size(p) for _, p in watch)
+    total = _size(config.DB_PATH) + sum(_size(p) for p in _data_files().values()) + sum(_size(p) for _, p in watch)
 
     def tick(n):   # n more bytes archived
         done[0] += n
@@ -334,26 +411,33 @@ def create(dest=None, keep=None, name=None, progress=None):
                 tar.addfile(info, f)
                 tick(size)
 
-            with tempfile.TemporaryDirectory(prefix=SNAPSHOT, dir=dest) as work:   # the database snapshot, then into the archive
-                copy = os.path.join(work, "sanguity.db")
-                src, dst = sqlite3.connect(config.DB_PATH), sqlite3.connect(copy)
-                try:
-                    src.backup(dst)
-                    schema = dst.execute("PRAGMA user_version").fetchone()[0]
-                    counts = _tables(dst)   # what a check of this backup expects to find (#200)
-                finally:
-                    dst.close()
-                    src.close()
+            # the database snapshot first, then the files as they are after it (#592): a row is committed after the
+            # file it names is written, and a file removed after the row naming it is gone (journal photos, uploads,
+            # an undone import's watch data), so each file the snapshot names is there when it's listed, unless it's
+            # removed while the files are read. One that is, or a file the snapshot names that isn't there: the
+            # snapshot is taken again, after that removal, and the files new since read too. The database goes in last.
+            with tempfile.TemporaryDirectory(prefix=SNAPSHOT, dir=dest) as work:
+                copy, archived = os.path.join(work, "sanguity.db"), set()
+                for _ in range(SNAPSHOT_TRIES):
+                    before = _data_files()
+                    schema, counts = _snapshot(copy)   # counts: what a check of this backup expects to find (#200)
+                    listed = _data_files()
+                    for rel in sorted(set(listed) - archived):
+                        try:
+                            f = open(listed[rel], "rb")   # one open file: the hash is of exactly what goes in
+                        except FileNotFoundError:
+                            continue   # removed since the list was made: taken again below
+                        with f:
+                            add_file(rel, f)
+                        archived.add(rel)
+                    gone = (set(before) | set(listed)) - archived
+                    missing = _missing(copy, archived)
+                    if not gone and not missing:
+                        break
+                if missing:   # still, after every try: missing from the live data too. Check a backup says so
+                    log.warning("backup %s: its database names %d file(s) that aren't in it", name, len(missing))
                 with open(copy, "rb") as f:
                     add("sanguity.db", f.read())
-            for root, n in files:   # .tmp left out: a file being replaced right now; the finished one is there already
-                path = os.path.join(root, n)
-                try:
-                    f = open(path, "rb")   # one open file: the hash is of exactly what goes in
-                except FileNotFoundError:
-                    continue   # removed since the list was made (an upload cleaned up)
-                with f:
-                    add_file(os.path.relpath(path, config.DATA_DIR).replace(os.sep, "/"), f)
             slots = {}   # the receiver's data (#227): each database as it is on disk, sealed, then its uploads
             for arc, path in watch:
                 slot = slots.setdefault(_watch_slot_of(arc), {"saved": None, "counts": None, "uploads": 0, "after": 0})
@@ -585,6 +669,14 @@ def restore(archive):
 
 # ---------------------------------------------------------------- checking a backup by restoring a copy (#200)
 
+MISSING_WORDS = {"photo": ("journal photo", "journal photos"), "upload": ("uploaded file", "uploaded files"),
+                 "document": ("document", "documents")}   # what a check says a backup lacks (#592)
+
+
+def _plural(n, one, many):
+    return f"{n} {one if n == 1 else many}"
+
+
 FRIENDLY = {"users": "accounts", "profiles": "profiles", "events": "records", "results": "lab results",
             "documents": "documents", "imports": "imports"}   # the tables a check names in words
 
@@ -728,6 +820,7 @@ def check(archive, progress=None):
                 if con.execute("PRAGMA user_version").fetchone()[0] != manifest.get("schema"):
                     return bad("The backup's database isn't the version its manifest says.")
                 got = _tables(con)
+                named = named_files(con)   # (#592)
                 pepper = con.execute("SELECT v FROM meta WHERE k='pepper'").fetchone() if "meta" in got else None
             finally:
                 con.close()
@@ -745,7 +838,17 @@ def check(archive, progress=None):
                 if got.get(t) != expected.get(t):
                     bad(f"The backup's database has {got.get(t, 0)} rows in {FRIENDLY.get(t, t)}; it had "
                         f"{expected.get(t, 0)} when the backup was made.")
-        _check_watch(work, manifest, out, bad)   # 5. the receiver's data (#227)
+        # 5. every file a row names is in it (#592): a journal photo, an upload's file, a document
+        present = {os.path.relpath(os.path.join(root, n), work).replace(os.sep, "/") for root, _, names in os.walk(work) for n in names}
+        lost = {}
+        for n, kind in named.items():
+            if n not in present:
+                lost[kind] = lost.get(kind, 0) + 1
+        if lost:
+            bad("The backup's database names files that aren't in it: " +
+                ", ".join(_plural(lost[k], *MISSING_WORDS[k]) for k in MISSING_WORDS if k in lost) +
+                ". They were missing when the backup was made: restored, the records they belong to would be without them.")
+        _check_watch(work, manifest, out, bad)   # 6. the receiver's data (#227)
         out["now"] = _live_counts()
         out["ok"] = not out["problems"]
         say("database", 1, 1)

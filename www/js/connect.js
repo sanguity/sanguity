@@ -200,7 +200,10 @@
       const form = el("div", {class: "conn-disc"},
         el("p", {text: "Disconnecting revokes Sanguity's access where the vendor allows it and deletes the stored tokens. The records it brought:"}),
         el("label", {class: "check"}, el("input", {type: "radio", name: "keep" + c.id, value: "keep", checked: ""}), "Keep them"),
-        el("label", {class: "check"}, el("input", {type: "radio", name: "keep" + c.id, value: "remove"}), `Remove them (${plural(c.imports, "import")}, undone from the history)`));
+        el("label", {class: "check"}, el("input", {type: "radio", name: "keep" + c.id, value: "remove"}), `Remove them (${plural(c.imports, "import")}, undone from the history)`),
+        // its first pull, not saved yet, is cancelled either way (#592)
+        ["first pull", "first pull preview", "first pull saving"].includes(c.phase)
+          ? el("p", {class: "muted", text: "Its first pull isn't saved yet: it's cancelled either way, and nothing it read is kept."}) : null);
       const go = act("Disconnect", async () => {
         const remove = form.querySelector("input[value=remove]").checked;
         const r = await call(`profiles/${PID}/connections/${c.id}/disconnect`, "POST", {remove_records: remove});
