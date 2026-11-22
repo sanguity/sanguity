@@ -53,8 +53,9 @@ Account events (no profile), readable by admins:
   account.remove {"username", "handed_over"}: an account deleted; profiles it alone owned went to someone else
   profile.repair {"name", "username"}: an admin gave a profile with no active owner a new one (also logged on the
                 profile itself, as a share with "repair": true)
-  labmap.change {"name", "importer", "from", "to"} / labmap.remove {"name", "importer", "target"}: an admin changed or
-                removed a lab name matched during import (labmap.py; target null: kept as a series of its own)
+  labmap.change {"name", "importer", "from", "to", ("kept": true)} / labmap.remove {"name", "importer", "target"}: an
+                admin changed (or kept, a match to check, #575) or removed a lab name matched during import (labmap.py;
+                target null: kept as a series of its own)
   connect.source {"name", "issuer", "change"}: an admin set up, changed or removed a connected source's settings
                 (connections.py; change is "add", "edit" or "remove")
   outside       {"host", "purpose"}: Sanguity contacted a vendor with no profile involved (an admin's "Test this

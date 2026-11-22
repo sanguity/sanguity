@@ -11739,6 +11739,41 @@ def main():
             check("…remembered as Vitamin B1 before #546, it isn't applied: an empty box, the match a Maybe saying why, and added it keeps its own name (#569)",
                   b569[0] == "" and b569[1].startswith("Maybe: Vitamin B1, matched before by a rule Sanguity no longer uses") and b569[2][:1] == ["Vitamin B1"]
                   and not b569[3] and series569 == [["Vitamin B1", 1], ["Vitamin B6", 1], ["Vitamin B6", 1]], [b569, series569])   # (a series per import)
+            # #575: a review left waiting while a match it applied becomes one to check (as at the upgrade to schema 38): read
+            # again from Waiting for you, it's a Maybe beside an empty box, and Add keeps the result's own name
+            db = dbm.connect()
+            lm575 = db.execute("INSERT INTO labmaps(lookup, importer, source, target, created_name, created, checked) VALUES(?, 'csv', ?, ?, ?, 1, 1)",
+                               (labmap569.lookup("csv", "Vitamin B6", "nmol/L", None), crypto569.enc(json.dumps({"name": "Vitamin B6", "unit": "nmol/L", "loinc": None})),
+                                crypto569.enc("Vitamin B1"), USER)).lastrowid
+            db.close()
+            try:
+                page.set_input_files("#pickFiles", files=[{"name": "b-575.csv", "mimeType": "text/csv",
+                                                           "buffer": b"Date,Test,Result,Units,Reference Range\n2026-11-17,Vitamin B6,45,nmol/L,20 - 125\n"}])
+                page.wait_for_function(f"document.querySelectorAll('#importer .import-job').length === 4 && /^Ready to import/.test({last_card}.textContent)", timeout=30000)
+                job575 = js(f"{last_card}.dataset.job")
+                LAB575 = f"""(tr => {{ const box = tr?.querySelector('input[list]'); return box && [box.value, document.getElementById(box.getAttribute('aria-describedby'))?.textContent]; }})(
+                    document.querySelector('.import-job[data-job="{job575}"]:not([data-settled]) .imp-labs tbody tr'))"""
+                was575 = js(LAB575)
+                db = dbm.connect()
+                db.execute("UPDATE labmaps SET checked=NULL WHERE id=?", (lm575,))   # to check now
+                db.close()
+                page.goto(base + f"/sources.html?profile={pid546}#waiting")   # (the same page: its card, moved there, is read again)
+                page.click(f"#srcWait li[data-job='{job575}'] button:text-is('Review')")
+                try:
+                    page.wait_for_function(f"({LAB575})?.[1]?.startsWith('Maybe') && document.querySelector('#srcReview .import-job[data-job=\"{job575}\"]')", timeout=15000)
+                except Exception:   # (said by the check below)
+                    pass
+                now575 = js(LAB575)
+                js(f"document.querySelector('#srcReview .import-job[data-job=\"{job575}\"] .imp-actions .primary').click()")   # Add, nothing chosen
+                page.wait_for_function(f"/^(Imported|Not imported)/.test(document.querySelector('#srcReview .import-job[data-job=\"{job575}\"]').textContent)", timeout=30000)
+                series575 = js(f"fetch('api/profiles/{pid546}/data', {{cache: 'no-store'}}).then(r => r.json()).then(d => d.labs.filter(s => s.pts.some(p => String(p[0]).startsWith('2026-11-17'))).map(s => s.name))")
+            finally:
+                db = dbm.connect()
+                db.execute("DELETE FROM labmaps WHERE id=?", (lm575,))
+                db.close()
+            check("…a review waiting while its match becomes one to check, read again, is a Maybe beside an empty box, and added it keeps its own name (#575)",
+                  was575 == ["Vitamin B1", "Matched as before."] and now575[0] == "" and now575[1].startswith("Maybe: Vitamin B1, matched before by a rule")
+                  and series575 == ["Vitamin B6"], [was575, now575, series575])
             db = dbm.connect()
             prof546.delete_profile(db, pid546)
             db.close()

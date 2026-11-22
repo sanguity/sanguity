@@ -740,8 +740,10 @@ SCHEMA = [
     # version 38: lab-name matches to check (#569; labmap.py). checked: when the match was chosen by hand (a review's
     # choice made since, or an admin's Keep or Change). NULL for those remembered before this, when a review could
     # fill in a look-alike name as sure (#546): one #546's rule wouldn't make is then not applied until an admin keeps it.
+    # One an admin had changed already is the admin's own, so checked then (#575).
     """
     ALTER TABLE labmaps ADD COLUMN checked INTEGER;
+    UPDATE labmaps SET checked = changed WHERE changed IS NOT NULL;
     """,
 ]
 

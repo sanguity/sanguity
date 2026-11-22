@@ -305,9 +305,13 @@ def _with_days(rng, watch):
 
 def _stamp(db, pid):
     """How the profile's records stand, cheaply: each table's count and latest row. Anything saved or undone since a
-    preview was read changes it, and the preview is read again (freshen)."""
-    return ";".join(f"{n}.{m or 0}" for n, m in (db.execute(f"SELECT COUNT(*), MAX(id) FROM {t} WHERE profile_id=?", (pid,)).fetchone()
-                                                   for t in ("imports", "events", "series")))
+    preview was read changes it, and the preview is read again (freshen). With how many remembered lab-name matches
+    were never checked (#575): one kept, changed or forgotten by an admin, or replaced by a review's choice, plans its
+    lab names again too, and so does the upgrade to schema version 38 (a stamp without it), whose matches to check
+    (#569) a preview planned before it applied."""
+    parts = [f"{n}.{m or 0}" for n, m in (db.execute(f"SELECT COUNT(*), MAX(id) FROM {t} WHERE profile_id=?", (pid,)).fetchone()
+                                          for t in ("imports", "events", "series"))]
+    return ";".join(parts + [f"labmaps.{db.execute('SELECT COUNT(*) FROM labmaps WHERE checked IS NULL').fetchone()[0]}"])
 
 
 _FRESHENING = [threading.Lock() for _ in range(16)]   # freshen, one at a time per job (#521), by its id
@@ -398,6 +402,7 @@ def _save(db, j):
     name = held["importer"]
     mod = registry.get(name)
     label = mod.LABEL if mod else name
+    held["labs"] = labmap.recheck(db, held.get("labs"))   # a match it applied now to check isn't applied (#575)
     data, watch, names = held["data"], held.get("watch"), set(held.get("paths") or ())
     keep = json.loads(j["keep"]) if j["keep"] else []
     sent = json.loads(crypto.dec(j["labs"])) if j["labs"] else {}

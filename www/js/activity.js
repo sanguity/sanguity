@@ -76,7 +76,8 @@ const WHAT = {
     (d.handed_over && d.handed_over.length ? `, handing ${d.handed_over.join(", ")} to someone else` : ""),
   "profile.repair": d => `made ${d.username} owner of “${d.name}”, which had no active owner`,
   "profile.delete": d => `deleted the profile “${d.name}”${d.members > 1 ? ` (shared with ${d.members - 1} other${d.members > 2 ? "s" : ""})` : ""}`,
-  "labmap.change": d => `changed the lab name match for “${d.name}” from ${d.from ? `“${d.from}”` : "its own series"} to ${d.to ? `“${d.to}”` : "its own series"}`,
+  "labmap.change": d => d.kept ? `kept the lab name match for “${d.name}” → ${d.to ? `“${d.to}”` : "its own series"}`   // Keep (#575)
+    : `changed the lab name match for “${d.name}” from ${d.from ? `“${d.from}”` : "its own series"} to ${d.to ? `“${d.to}”` : "its own series"}`,
   "labmap.remove": d => `removed the lab name match for “${d.name}”${d.target ? ` (to “${d.target}”)` : ""}`,
   // backups (#200): made (Back up now, or the schedule), checked, failing, the schedule changed
   "backup.create": d => `made a backup, ${d.name}` + (d.removed ? `, removing ${d.removed} older one${d.removed === 1 ? "" : "s"}` : ""),
