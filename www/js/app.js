@@ -115,6 +115,7 @@ function renderAll() {
   else if (state.tab === "health") renderHealth();
   else if (state.tab === "medications") renderMedications();   // medications.js (#275)
   else renderOverview();
+  phoneBar();   // on a phone, Body's and Labs' period beside Show (core.js, #615)
   labAgain();   // a lab's panel in the drawer, for the period now shown (lab-panel.js, #296)
   save();
 }

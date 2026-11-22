@@ -821,7 +821,7 @@ details.res > div{padding:0 var(--sp-3) var(--sp-2)}
 /* forced colours drop a background: the swatches keep theirs, as the charts' marks do, and the stay's and band's edges are the text's (#450) */
 @media (forced-colors:active){ .legend i,.hm-legend i{forced-color-adjust:none} :is(.stay-key,.legend i.refband){border-color:CanvasText} }
 @media (max-width:900px){
-  .layout{grid-template-columns:1fr}
+  .layout{grid-template-columns:minmax(0,1fr)}
   .series-list{max-height:300px}
   header,.filters,main{padding-left:var(--sp-4);padding-right:var(--sp-4)}
 }
@@ -1456,6 +1456,37 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
 .tiles>.lab-panel{grid-column:1/-1;margin:var(--sp-1) 0 var(--sp-2)}
 :is(.ov-panel,.ov-out)+.tiles .tile>.delta{min-height:2lh}   /* a panel's row of key labs as tall in either font: a change that just fits wraps in one, not the other (#338, #441) */
 .chart-aids .pop>.menu-list{margin-left:var(--sp-3)}   /* a Legend 12 px from a phone's edge (#441), on Labs and Body (#442) */
+/* on a phone (#615, core.js phoneBar): one row, the period's pill (the records bar, empty then, hidden), Labs' Chart |
+   Heatmap and Show, which opens under the row what the charts also show, the legend in place (its button gone) and the
+   ⓘ; Body's sections one row that scrolls sideways, its source line small under it; Labs' list folded under Choose
+   labs, the charts first; a card's title over its Chart | Table where both don't fit, never squeezed beside it. Wider,
+   Show's parts are in the row (display: contents) and Show and Choose labs aren't there */
+.show-btn,.labs-pick,.lg-hd{display:none}
+.show-box{display:contents}
+@media (max-width:700px){
+  .filters.moved{display:none}
+  .chart-bar{gap:var(--sp-2)}
+  :is(.show-btn,.labs-pick){display:inline-flex;margin:0}
+  .labs-pick{justify-self:start;margin-bottom:var(--sp-3)}
+  :is(.show-btn,.labs-pick)>.icon{transition:transform var(--dur-1)}
+  :is(.show-btn,.labs-pick)[aria-expanded=true]>.icon{transform:rotate(180deg)}
+  :is(.show-btn,.labs-pick)[aria-expanded=false]+*{display:none}
+  .show-box{display:flex;flex-direction:column;gap:var(--sp-3);flex:1 1 100%;padding:var(--sp-3);border:1px solid var(--ring);border-radius:var(--r-md);background:var(--surface)}
+  .show-box>.chart-aids{display:flex;flex-wrap:wrap;align-items:center;margin:0}
+  .show-box .lg-hd{display:block;font-size:var(--fs-3);font-weight:var(--fw-semibold);color:var(--ink2)}
+  .show-box .chart-aids>.pop:not(.info){display:contents}
+  .show-box .chart-aids>.pop:not(.info)>.btn{display:none}
+  .show-box .legend.menu-list:not(:popover-open,.sg-measure){display:flex;flex-direction:row;order:1;flex-basis:100%;position:static;min-width:0;max-width:none;max-height:none;
+    margin:var(--sp-1) 0 0;padding:0;border:0;border-radius:0;box-shadow:none;background:none;overflow:visible;color:var(--ink2)}
+  #view-health .h-secbar{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:var(--sp-3) calc(-1 * var(--sp-3)) var(--sp-1);padding:0 var(--sp-3)}
+  .h-secbar>.chip{flex:none}
+  #view-health .h-sync{font-size:var(--fs-2);color:var(--muted);margin:0}
+  /* a section's tiles: one row that scrolls sideways where they don't fit (more of them, or larger text), the next one's edge showing */
+  #view-health .tiles.compact{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(min(max(45%,9.75em),calc(100% - 6em)),1fr);overflow-x:auto;scrollbar-width:none;
+    margin-inline:calc(-1 * var(--sp-3));padding-inline:var(--sp-3);scroll-padding-inline:var(--sp-3)}
+  main>[id^=view-] .card>.list-hd>:has(+.spacer+.view-seg:last-child){flex:1 1 auto;max-width:100%}
+  :is(#view-health .card,#view-labs :is(.chart,#series)){--card-pad:var(--sp-2)}   /* a chart's card (and the lab list, inset as they are): its plot wider by the padding (the value axis's gutter is the kit's) */
+}
 .sets .set-grp{margin:var(--sp-3) 0 0}
 .sets .set-groups>.set-grp:first-child{margin-top:0}   /* level with its row's name (#494) */
 @media (max-width:700px){#labsHeatmap .lab-find{flex:1 1 100%;margin-left:0}}

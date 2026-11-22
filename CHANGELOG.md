@@ -1596,6 +1596,13 @@ Everything on `main` so far; it becomes the first tagged release.
   further it goes, and springs back when let go; zooming out stops at all of them. Dates typed in past the records
   still leave each chart a plot to drag back toward them and double-click, and above them "No lab draws in these
   dates" (or results, or readings) with **Back to** the period before and **Show all**.
+- **Body and Labs on a phone: the charts start on the first screen** (#615): the top took three or four rows before
+  any record, and Labs put its whole list of labs above the charts. On a phone the period now sits in one row with
+  Labs' Chart | Heatmap and **Show**, which opens what the charts also show, the legend and the ⓘ under the row.
+  Body's sections are one row that scrolls sideways, with the source line small under it, and a section's tiles one
+  row too where they don't fit. Labs' list is folded under **Choose labs (6)**, the charts first. A card's title goes
+  over its Chart | Table instead of wrapping beside it, and chart cards have less padding. Body's tiles say a change
+  as "−5.3 lb this period", without the ▲/▼ that mark a result's own flags. Wider screens are as they were.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

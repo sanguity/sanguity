@@ -188,7 +188,7 @@ function chartCard(s) {
       const cs = [...$("#charts").querySelectorAll(".chart")], next = cs.slice(cs.indexOf(card) + 1).find(c => c.dataset.lab !== s.name)?.dataset.lab;
       state.sel.delete(s.name); renderLabs();
       const box = [...$("#seriesRows").querySelectorAll("input[data-lab]")].find(c => c.dataset.lab === s.name);
-      ([...$("#charts").querySelectorAll(".chart")].find(c => c.dataset.lab === next)?.querySelector(".hd > [aria-label^=Remove]") || (box?.checkVisibility() ? box : box?.closest("details")?.querySelector("summary")) || $("#labQ")).focus(); }}, icon("x")),
+      ([...$("#charts").querySelectorAll(".chart")].find(c => c.dataset.lab === next)?.querySelector(".hd > [aria-label^=Remove]") || [box, box?.closest("details")?.querySelector("summary"), $("#labQ"), $("#labsPick")].find(x => x?.checkVisibility()))?.focus(); }}, icon("x")),   // (on a phone, the list folded: Choose labs, #615)
     rangeNote(s, pts, showTable)));
   { const v = vitalLink(s); if (v) card.append(v); }   // a vital's readings at home, on Body and activity (#180, health.js)
   if (showTable) {

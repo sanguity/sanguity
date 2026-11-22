@@ -4067,8 +4067,8 @@ def main():
             # above jumps to each, its heading taking focus. Labs' header (#442): Hospital stays under "Show on charts", then a
             # Legend and an ⓘ; the sync under it, outside the chart options' group (#444)
             sx = js("""(() => { const secs = [...document.querySelectorAll('#view-health .h-sec')];
-                const t = document.querySelector('#view-health .chart-bar > .overlays'), sync = document.querySelector('#view-health .h-sync');
-                const aids = v => [...document.querySelectorAll(v + ' .chart-bar > .chart-aids > .menu > button')].map(b => b.getAttribute('aria-label') || b.textContent.trim());
+                const t = document.querySelector('#view-health .chart-bar .overlays'), sync = document.querySelector('#view-health .h-sync');   // (in Show's box, #615)
+                const aids = v => [...document.querySelectorAll(v + ' .chart-bar .chart-aids > .menu > button')].map(b => b.getAttribute('aria-label') || b.textContent.trim());
                 return {secs: secs.map(s => [s.querySelector(':scope > h2').textContent, s.getAttribute('aria-labelledby') === s.querySelector(':scope > h2').id,
                     [...s.querySelectorAll('.card')].map(c => c.id), [...s.querySelectorAll('.tile .lbl')].map(l => l.textContent)]),
                   tilesHome: [...document.querySelectorAll('#view-health .tile')].every(x => document.querySelector(x.dataset.card)?.closest('.h-sec') === x.closest('.h-sec')),
@@ -4076,7 +4076,7 @@ def main():
                   bar: [...document.querySelectorAll('#view-health .h-secbar button')].map(b => b.textContent),
                   shows: t && [t.getAttribute('role'), t.innerText.replace(/\\s+/g, ' ').trim(), [...t.children].every(c => c.matches('.lbl, label.toggle'))],
                   aids: [aids('#view-health'), aids('#view-labs')],
-                  sync: sync && [!sync.closest('[role=group]'), sync.previousElementSibling === t.parentElement, sync.textContent.startsWith('Watch and smart scale')]}; })()""")
+                  sync: sync && [!sync.closest('[role=group]'), sync.previousElementSibling === t.closest('.chart-bar'), sync.textContent.startsWith('Watch and smart scale')]}; })()""")
             want = [["Body", True, ["h-body"]], ["Vitals", True, ["h-heart", "h-bp", "h-glucose", "h-temp", "h-oxygen", "h-resp"]],
                     ["Sleep", True, ["h-sleep"]], ["Activity and fitness", True, ["h-activity", "h-zones", "h-vo2"]]]
             check("Body and activity in four sections (#276): Body, Vitals, Sleep, Activity and fitness, each its cards' heading over them",
@@ -8238,6 +8238,9 @@ def main():
             saved = js("api('profiles/' + PROFILE.id + '/settings').then(r => r.json()).then(j => j.trends.views.map(v => [v.name, v.default]))")
             check("…the views are kept by the server, for the profile", saved == [["CBC (browser check)", True], ["Kidney (browser check)", False]], saved)
             page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            if js("document.getElementById('labsPick').getAttribute('aria-expanded')") != "true":
+                page.click("#labsPick")   # on a phone the list is folded under Choose labs (#615)
             page.click("#viewSaveOpen")
             settle(200)
             check("the saved-views bar, with its form open, fits 375 px",
@@ -9168,6 +9171,8 @@ def main():
             for w in (1400, 375):
                 page.set_viewport_size({"width": w, "height": 900 if w == 1400 else 800})
                 settle(300)
+                if w < 700 and js("document.getElementById('labsPick').getAttribute('aria-expanded')") != "true":
+                    page.click("#labsPick")   # on a phone the list is folded under Choose labs (#615)
                 for sel in (".chart .hd > button[data-tip^='Remove ']", ".srow .nm[data-tip]"):
                     loc = page.locator(sel).first
                     loc.scroll_into_view_if_needed()
@@ -9443,8 +9448,11 @@ def main():
             check("…and a swipe down by its heading closes it too", js(closed) == [False, "ftoggle"], js(closed))
             open_tab("labs")
             settle(300)
+            page.click("#showBtn")   # in Show's box on a phone (#615)
+            settle(200)
             check("…and the chart overlays", max(js(fit, "#view-labs .toggle")) <= 375   # and Doses logged once doses are (#235)
                   and len(js(fit, "#view-labs .toggle")) == 1 + 3 + (1 if js("DOSES.length") else 0), js(fit, "#view-labs .toggle"))
+            page.click("#showBtn")
             page.set_viewport_size({"width": 1400, "height": 900})
 
             # ---- Timeline kinds: each chip's name says its state; Show all and Only this by mouse, keyboard and on a
@@ -9637,6 +9645,9 @@ def main():
             check("…filtered: under the box, “Showing lab names matching “hemo” · Reset filters”", fsum("#labSum") == lab_want
                   and js("document.getElementById('labSum').previousElementSibling.contains(document.getElementById('labQ'))"), fsum("#labSum"))
             page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
+            if js("document.getElementById('labsPick').getAttribute('aria-expanded')") != "true":
+                page.click("#labsPick")   # on a phone the list is folded under Choose labs (#615)
             for theme in ("light", "dark"):
                 set_theme(theme)
                 settle(200)
@@ -9738,6 +9749,8 @@ def main():
             for w462 in (1400, 390):
                 page.set_viewport_size({"width": w462, "height": 900})
                 settle(300)
+                if w462 < 700 and js("document.getElementById('labsPick').getAttribute('aria-expanded')") != "true":
+                    page.click("#labsPick")   # on a phone the list is folded under Choose labs (#615)
                 for b462 in ("Clear", "Defaults"):
                     page.focus(f"#seriesSel button:text-is('{b462}')")
                     page.keyboard.press("Enter")
@@ -9851,6 +9864,8 @@ def main():
                 js("t => { document.documentElement.dataset.theme = t; }", mode)
                 page.set_viewport_size({"width": 375, "height": 800})
                 open_tab("labs")
+                if js("document.getElementById('labsPick').getAttribute('aria-expanded')") != "true":
+                    page.click("#labsPick")   # on a phone the list is folded under Choose labs (#615)
                 page.fill("#labQ", "hemo")
                 settle(400)
                 bad = phone_fits(page, f"Labs, filtered ({mode})")
@@ -10025,14 +10040,80 @@ def main():
                   info[0] is True and "Drag any chart sideways" in info[1] and "pinch to zoom" in info[1] and info[2] == "chartsInfoBtn"
                   and not js("document.getElementById('chartsInfo').matches(':popover-open')"), info)
             for w in (390, 375, 320):   # inside a 12 px gutter (#441): at 390 and 375 px it touched the screen's left edge
+                page.set_viewport_size({"width": w, "height": 800})   # (on a phone the legend is in place in Show's box, #615)
+                settle(200)
+                page.click("#showBtn")
+                settle(200)
+                bad = phone_fits(page, f"Labs header, Show open ({w} px)")
+                box = js("""(r => [r.left, r.right, document.getElementById('legendList').checkVisibility(), document.getElementById('legendBtn').checkVisibility(),
+                  document.getElementById('showBtn').getAttribute('aria-expanded')])(document.getElementById('legendList').getBoundingClientRect())""")
+                check(f"…at {w} px the header fits, Show opening the legend in place inside the screen, 12 px from its edges",
+                      not bad and box[0] >= 12 and box[1] <= w - 12 and box[2:] == [True, False, "true"], [bad, box])
+                page.click("#showBtn")
+            # ---- #615: Body's and Labs' top on a phone (360 and 412 px, light and dark, and with text at 200%, the token sizes
+            # doubled under the CSP): one row, the period's pill moved out of the records bar (hidden) beside Show and Labs'
+            # switch, no row of them with one control alone pushed right; the first chart within the first screen (its
+            # card's top with larger text); Body's sections one row, the source line under them; Labs' list folded under
+            # Choose labs, the charts first; no card's title wrapping beside its Chart | Table; a chart as wide as its card
+            # less its 8 px padding; tiles' changes without ▲ / ▼. Show opens and closes its box, which fits, and keeps focus
+            TOP615 = r"""(big) => { const r = e => e.getBoundingClientRect(), v = document.querySelector('main > section:not([hidden])');
+              const tabs = document.querySelector('.tabs'), bottom = tabs && r(tabs).top > innerHeight / 2 ? r(tabs).top : innerHeight;
+              const bar = v.querySelector('.chart-bar'), ctl = [...bar.querySelectorAll(':scope > :is(.period-pick, .seg, .show-btn)')].filter(e => e.checkVisibility());
+              const rows = {}; for (const c of ctl) (rows[Math.round(r(c).top / 6)] ||= []).push(c);
+              const alone = Object.values(rows).filter(cs => cs.length === 1 && r(cs[0]).left > r(bar).left + 2).map(cs => cs[0].className);
+              const svg = [...v.querySelectorAll('svg.ck, .chart svg:not(.icon)')].find(s => s.checkVisibility() && r(s).height > 40), card = svg.closest('.card');
+              const pad = parseFloat(getComputedStyle(card).paddingLeft) + parseFloat(getComputedStyle(card).paddingRight) + 2 * parseFloat(getComputedStyle(card).borderLeftWidth);
+              const squeezed = [...v.querySelectorAll('.card > .list-hd, .chart > .hd')].filter(h => h.checkVisibility()).filter(h => {
+                const t = h.querySelector(':scope > :is(h3, .name)'), s = h.querySelector(':scope > .view-seg'); if (!t || !s) return false;
+                return r(t).height > 1.6 * parseFloat(getComputedStyle(t).lineHeight) && r(s).top < r(t).bottom - 2; }).map(h => h.textContent.slice(0, 30));
+              const narrow = [...v.querySelectorAll('svg.ck, .chart svg:not(.icon)')].filter(s => s.checkVisibility() && r(s).height > 40 && s.closest('.card'))
+                .filter(s => r(s).width < r(s.closest('.card')).width - pad - 1).length;
+              const h = v.id === 'view-health', secs = v.querySelector('.h-secbar'), sync = v.querySelector('.h-sync');
+              return {top: Math.round(r(big ? card : svg).top) < bottom, pill: bar.contains(document.getElementById('periodPill')) && !document.querySelector('.filters').checkVisibility(), alone, squeezed, narrow,
+                secs: !h || new Set([...secs.children].map(c => Math.round(r(c).top))).size === 1 && secs.nextElementSibling === sync,
+                pick: h || document.getElementById('labsPick').checkVisibility() && !document.getElementById('series').checkVisibility() && r(document.getElementById('labsPick')).bottom <= r(card).top,
+                arrows: [...v.querySelectorAll('.tile .delta')].filter(d => /[▲▼]/.test(d.textContent)).length,
+                showShut: !v.querySelector('.show-box').checkVisibility()}; }"""
+            bad615, theme615 = {}, js("document.documentElement.dataset.theme || null")
+            for w in (360, 412):
                 page.set_viewport_size({"width": w, "height": 800})
-                settle(200)
-                page.click("#legendBtn")
-                settle(200)
-                bad = phone_fits(page, f"Labs header, legend open ({w} px)")
-                box = js("(r => [r.left, r.right])(document.getElementById('legendList').getBoundingClientRect())")
-                check(f"…at {w} px the header fits, the legend open inside the screen, 12 px from its edges", not bad and box[0] >= 12 and box[1] <= w - 12, [bad, box])
-                page.keyboard.press("Escape")
+                for mode in ("light", "dark"):
+                    js("t => { document.documentElement.dataset.theme = t; }", mode)
+                    for big in (False, True):
+                        if big:
+                            js("""() => { const s = new CSSStyleSheet(); s.replaceSync(':root{--fs-1:23px;--fs-2:25px;--fs-3:28px;--fs-4:31px;--fs-5:36px;--fs-6:44px;--fs-7:56px} html{font-size:200%}');
+                              document.adoptedStyleSheets = [s]; }""")
+                        for t in ("health", "labs"):
+                            open_tab(t)
+                            settle(300)
+                            if t == "labs" and js("document.getElementById('labsPick').getAttribute('aria-expanded')") == "true":
+                                page.click("#labsPick")   # (opened by the checks above): folded, as a page starts
+                            js("window.scrollTo(0, 0)")
+                            got = js(TOP615, big)
+                            if not big:
+                                got["fits"] = phone_fits(page, f"{t} at {w} px")
+                            show = "#hShowBtn" if t == "health" else "#showBtn"
+                            page.focus(show)
+                            page.keyboard.press("Enter")
+                            settle(150)
+                            got["open"] = js("b => [b.getAttribute('aria-expanded'), document.getElementById(b.getAttribute('aria-controls')).checkVisibility(), document.activeElement === b]",
+                                             page.query_selector(show))
+                            if not big:
+                                got["fits"] += phone_fits(page, f"{t} at {w} px, Show open")
+                            page.keyboard.press("Enter")
+                            settle(150)
+                            got["shut"] = js("b => [b.getAttribute('aria-expanded'), document.getElementById(b.getAttribute('aria-controls')).checkVisibility()]", page.query_selector(show))
+                            ok = (got["top"] and got["pill"] and not got["alone"] and not got["squeezed"] and not got["narrow"] and got["secs"] and got["pick"]
+                                  and not got["arrows"] and got["showShut"] and not got.get("fits") and got["open"] == ["true", True, True] and got["shut"] == ["false", False])
+                            if not ok:
+                                bad615[f"{t} {w} {mode}{' 200%' if big else ''}"] = got
+                            if os.environ.get("SANGUITY_SHOTS"):
+                                page.screenshot(path=os.path.join(os.environ["SANGUITY_SHOTS"], f"615-{t}-{w}-{mode}{'-200' if big else ''}.png"))
+                        js("document.adoptedStyleSheets = []")
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme615)
+            check("Body's and Labs' top on a phone (#615), at 360 and 412 px, light and dark, and with text at 200%: the period beside Show in one row, "
+                  "none alone pushed right, the first chart in the first screen, the sections one row, the lab list folded, titles not squeezed, charts their card's width, "
+                  "no ▲ / ▼ in a tile's change; Show opens and closes by keyboard", not bad615, bad615)
             page.set_viewport_size({"width": 1400, "height": 900})
             open_tab("overview")
             settle(300)

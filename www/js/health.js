@@ -222,12 +222,15 @@ function hBar() {
     el("span", {}, el("svg:svg", {viewBox: "0 0 14 12", width: 14, height: 12, "aria-hidden": "true"}, el("svg:line", {class: "msmark", x1: 7, x2: 7, y1: 0, y2: 12})), "A milestone, named over the charts"));
   const stays = el("input", {type: "checkbox", onchange: e => { hState.stays = e.target.checked; hSave(); keepFocus(renderHealth); }});
   const sync = el("p", {class: "hint h-sync"});
+  // on a phone (#615, core.js): all but the period behind Show, opened under the row, as Labs' are
   const nodes = [el("div", {class: "toolbar chart-bar"},
-    el("div", {class: "overlays", role: "group", "aria-labelledby": "hOverlaysLbl"},
-      el("span", {class: "lbl", id: "hOverlaysLbl", text: "Show on charts:"}),
-      el("label", {class: "toggle"}, stays, "Hospital stays")),
-    el("div", {class: "chart-aids"}, el("div", {class: "menu pop"}, lgBtn, lgList),
-      aboutWords({title: "the charts", id: "hChartsInfo"}, "Drag any chart sideways to move through time: every chart moves together.", "Scroll or pinch to zoom, and double-click to show everything."))), sync];
+    el("button", {class: "btn show-btn", id: "hShowBtn", type: "button", "aria-expanded": false, "aria-controls": "hShowBox"}, "Show", icon("chevron-down")),
+    el("div", {class: "show-box", id: "hShowBox"},
+      el("div", {class: "overlays", role: "group", "aria-labelledby": "hOverlaysLbl"},
+        el("span", {class: "lbl", id: "hOverlaysLbl", text: "Show on charts:"}),
+        el("label", {class: "toggle"}, stays, "Hospital stays")),
+      el("div", {class: "chart-aids"}, el("span", {class: "lbl lg-hd", "aria-hidden": "true", text: "Legend"}), el("div", {class: "menu pop"}, lgBtn, lgList),
+        aboutWords({title: "the charts", id: "hChartsInfo"}, "Drag any chart sideways to move through time: every chart moves together.", "Scroll or pinch to zoom, and double-click to show everything.")))), sync];
   menuWire({btn: lgBtn, list: lgList, text: true});
   return H_BAR = {nodes, stays, sync};
 }
@@ -261,12 +264,14 @@ function renderHealth() {
     onclick: () => { const c = $(href); if (!c) return;   // to its card, its heading focused, as the bar's section's is (#455)
       c.scrollIntoView({behavior: smoothly(), block: "start"}); c.querySelector("h3")?.focus({preventScroll: true}); }},
     el("span", {class: "lbl", text: label}), el("span", {class: "val"}, val, el("small", {text: unit})), el("span", {class: "delta"}, keepDates(delta))));
-  const chg = (cur, base, f, u = "") => cur != null && base != null ? `${cur >= base ? "▲ +" : "▼ −"}${f(Math.abs(cur - base))}${u}` : "";
+  // the change as its sign and size, not ▲ / ▼, which mark a result's own flags (#301, #615)
+  const chg = (cur, base, f, u = "") => { if (cur == null || base == null) return ""; const m = String(f(Math.abs(cur - base)));
+    return `${+m.replace(/,/g, "") === 0 ? "±" : cur > base ? "+" : "−"}${m}${u}`; };   // "±0" for a change that rounds to none
   const latestW = wIn.length ? wIn[wIn.length - 1] : wAll[wAll.length - 1];
-  tile("Weight", latestW ? latestW[1].toFixed(1) : "–", "lb", wIn.length > 1 ? `${chg(wIn[wIn.length - 1][1], wIn[0][1], v => v.toFixed(1), " lb")} over this period` : latestW ? `last ${fmtD(latestW[0])}` : "", "#h-body");
+  tile("Weight", latestW ? latestW[1].toFixed(1) : "–", "lb", wIn.length > 1 ? `${chg(wIn[wIn.length - 1][1], wIn[0][1], v => v.toFixed(1), " lb")} this period` : latestW ? `last ${fmtD(latestW[0])}` : "", "#h-body");
   bmiTile(tile, a, b);   // BMI (#195, below)
   const fIn = inR(H.fat, a, b);
-  if (H.fat.length) tile("Body fat", fIn.length ? fIn[fIn.length - 1][1].toFixed(1) : "–", "%", fIn.length > 1 ? `${chg(fIn[fIn.length - 1][1], fIn[0][1], v => v.toFixed(1), " pts")} over this period` : "no readings in this period", "#h-body");
+  if (H.fat.length) tile("Body fat", fIn.length ? fIn[fIn.length - 1][1].toFixed(1) : "–", "%", fIn.length > 1 ? `${chg(fIn[fIn.length - 1][1], fIn[0][1], v => v.toFixed(1), " pts")} this period` : "no readings in this period", "#h-body");
   const rIn = mean(inR(H.rest, a, b).map(p => p[1])), rPrev = mean(prev(H.rest).map(p => p[1]));
   tile("Resting heart rate", rIn != null ? Math.round(rIn) : "–", "bpm avg", rPrev != null ? `${chg(rIn, rPrev, v => Math.round(v))} vs previous period` : "", "#h-heart");
   vitalTiles(tile, a, b);   // the latest blood pressure (#180)
