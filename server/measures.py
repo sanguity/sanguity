@@ -54,11 +54,12 @@ SECTIONS = [   # (id, label, what a share link shows: said on the owner's form a
                                                 "the temperature and the device (or “Typed in”)"),
     ("oxygen", "Blood oxygen at home", "the watch's average and lowest reading each day, and each reading typed in at home"),
     ("respiratory", "Respiratory rate from the watch", "each day's rate, in breaths a minute"),
-    ("vo2max", "Cardio fitness (VO2 max)", "each estimate the watch made"),
-    ("immunizations", "Immunizations", "each vaccine the records say was given: the date, the vaccine, the dose and where"),
+    ("vo2max", "Cardio fitness (VO2 max)", "each estimate the watch made, with its date"),
+    ("immunizations", "Immunizations", "each vaccine the records say was given: the date, the vaccine, the dose and where or by whom"),
     ("ecg", "ECGs and irregular rhythm notifications", "the date, what the watch said each recording showed and its average "
                                                        "heart rate; not the traces themselves"),
-    ("bmi", "BMI and growth", "each weight with the height in effect on its day and the BMI from them; for a child, where each "
+    ("bmi", "BMI and growth", "each weight with the height in effect on its day and the BMI from them, and where each "
+                              "weight came from (the smart scale, or a clinic visit and its clinic); for a child, where each "
                               "measurement falls on the WHO's or the CDC's growth charts"),
     ("targets", "Your targets for home readings", "each target typed in as the care team gave it, who set it and when, and how many "
                                                   "readings at home were above or below it"),   # #234

@@ -42,19 +42,27 @@ from datetime import date
 
 from . import activity, crypto, db as dbm, journal, journal_photos, measures, person, records, security as sec, settings, summary
 
-SECTIONS = [
-    ("visits", "Visits and hospital stays", "the date, the title and the clinic or clinician the record names"),
-    ("results", "Lab results", "each result's value and unit, with the reference range and flag printed on its own report"),
-    ("medications", "Medications", "the name, the instructions and the dates"),
-    ("procedures", "Procedures, imaging and reports", "titles and dates only: not the reports' text, and no documents"),
+SECTIONS = [   # #576: each line names everything its page shows, and _build sends nothing more (test_share_links.py ties them)
+    ("visits", "Visits and hospital stays", "the date (a hospital stay's first and last days), the title, and the details its "
+               "record gives: the clinician and clinic, and for a stay where it was, how many nights, the reason for "
+               "admission and the admission type"),
+    ("results", "Lab results", "each test by the profile's name for it and its reports' name, under its panel: each result's "
+                "date, value and unit, with the reference range and flag printed on its own report, how many there are and "
+                "a trend line of them"),
+    ("medications", "Medications", "the name and its status in the records, the instructions, and the dates it was started "
+                    "and stopped; each one taken in the dates chosen, so one started before them is listed too"),
+    ("procedures", "Procedures, imaging and reports", "the date, the kind (procedure, imaging or report) and the title only: "
+                   "not who did it or where, not the reports' text, and no documents"),
     ("appointments", "Upcoming appointments", "the date and time, the title, with whom and where"),
-    ("journal", "Journal", "the notes, symptoms, side effects and moods written here, with what they say, the medication "
-                "an entry is linked to, where on the body and the symptom group it was logged with (not who wrote them)"),   # #523, #571: as its page shows
+    ("journal", "Journal", "the notes, symptoms, side effects and moods written here, each with its date and time, its title "
+                "and what it says, its severity or mood and energy, the medication an entry is linked to, where on the body "
+                "and the symptom group it was logged with (not who wrote them)"),   # #523, #571: as its page shows
     ("journal_photos", "Photos in the journal", "the photos attached to the journal entries shown, with what each "
                        "shows (only with Journal; offered when there are some)"),   # #161: never unless ticked
-    ("costs", "Costs and claims", "each claim's date, provider, what was billed, what insurance paid and your share"),
-    ("about", "About this person", "the birth date, the sex labs base reference ranges on, and the heights written down "
-              "(those in the dates chosen)"),   # #194: never unless ticked (the owner's page leaves it unticked)
+    ("costs", "Costs and claims", "each claim's date, the service it was for, the provider, what was billed, what insurance "
+              "paid and your share"),
+    ("about", "About this person", "the birth date, the sex labs base reference ranges on, and each height written down, "
+              "with its date (those in the dates chosen)"),   # #194: never unless ticked (the owner's page leaves it unticked)
     *measures.SECTIONS,   # #225: the phone's and watch's measures, immunizations, ECGs, BMI; never unless ticked
 ]
 SECTION_IDS = [s for s, _, _ in SECTIONS]
@@ -273,16 +281,16 @@ def _build(db, link, today, section):
            "sections": [{"id": s, "label": l, "what": w} for s, l, w in SECTIONS if s in scope["sections"]]}
     want = set(scope["sections"])
 
-    def rows(kinds):
-        got = [{"t": _text(e.get("t"), 25), "end": _text(e.get("end"), 25) or None, "kind": e.get("k"),
-                "title": _text(e.get("title"), 300), "sub": _text(e.get("sub"), 300)}
+    def rows(kinds, more):   # more: a visit's end and details, which its page shows; a procedure's page shows neither (#576)
+        got = [{"t": _text(e.get("t"), 25), "kind": e.get("k"), "title": _text(e.get("title"), 300),
+                **({"end": _text(e.get("end"), 25) or None, "sub": _text(e.get("sub"), 300)} if more else {})}
                for e in events if e.get("k") in kinds and _in(summary._day(e.get("t")), scope)]
         return sorted(got, key=lambda r: r["t"], reverse=True)
 
     if "visits" in want:
-        out["visits"] = rows(VISIT_KINDS)
+        out["visits"] = rows(VISIT_KINDS, True)
     if "procedures" in want:
-        out["procedures"] = rows(PROCEDURE_KINDS)
+        out["procedures"] = rows(PROCEDURE_KINDS, False)
     if "medications" in want:
         meds = []
         for e in events:

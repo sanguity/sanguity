@@ -2656,6 +2656,74 @@ def main():
         sent498 = first498.value.json()
         long498 = {k: len(v["rows"] if isinstance(v, dict) else v) for k, v in sent498.items()
                    if k in ("visits", "procedures", "costs") or isinstance(v, dict) and "rows" in v}
+        # #576: for every section, the form's line names each column and detail its share page shows (Costs' Service,
+        # a stay's nights and reason, a medication's status, Immunizations' "by whom" weren't). Each heading (a measure's
+        # without its unit, a glucose range's numbers as #) and each detail shown, with the words of the line that name it
+        SAYS576 = {
+            "visits": {"Date": "date", "What": "the title", "Details": "the clinician and clinic", "stay": "hospital stay",
+                       "until": "first and last days", "nights": "how many nights", "admit": "reason for admission"},
+            "procedures": {"Date": "the date", "Kind": "the kind", "Title": "the title"},
+            "medications": {"Medication": "the name", "Instructions": "the instructions", "From": "started", "Until": "stopped", "status": "status"},
+            "results": {"Test": "each test", "Latest": "value", "Range": "reference range", "Flag": "flag", "Trend": "a trend line",
+                        "Results": "how many there are", "Date": "date", "Result": "value", "Reference range": "reference range",
+                        "panel": "under its panel", "named": "its reports' name", "unit": "unit"},
+            "appointments": {"When": "the date and time", "What": "the title", "With": "with whom", "Where": "where"},
+            "journal": {"kind": "notes, symptoms, side effects and moods", "when": "date and time", "note": "what it says", "severity": "severity",
+                        "mood": "mood and energy", "med": "the medication an entry is linked to", "where": "where on the body",
+                        "group": "the symptom group it was logged with", "pic": "the photos attached"},
+            "costs": {"Date": "date", "Service": "the service it was for", "Provider": "the provider", "Billed": "what was billed",
+                      "Insurance paid": "what insurance paid", "Your share": "your share"},
+            "about": {"Birth date": "the birth date", "Sex used for reference ranges": "the sex labs base reference ranges on",
+                      "Date": "with its date", "Height": "each height"},
+            "home_bp": {"Date and time": "the date and time", "Systolic/diastolic": "both pressures", "Pulse": "the pulse", "Device": "the device"},
+            "glucose": {"Date": "each day", "Readings": "each reading", "Low–high": "lowest and highest", "Average": "the average",
+                        "#–#": "the standard published ranges", "Below #": "the standard published ranges", "Above #": "the standard published ranges"},
+            "temperature": {"Date and time": "the date and time", "Temperature": "the temperature", "Device": "the device"},
+            "oxygen": {"Date": "each day", "Readings": "each reading typed in", "Average": "average", "Lowest": "lowest"},
+            "respiratory": {"Date": "each day", "Rate": "rate"},
+            "vo2max": {"Date": "its date", "VO2 max": "each estimate"},
+            "immunizations": {"Date": "the date", "Vaccine": "the vaccine", "Dose": "the dose", "Where or by whom": "where or by whom"},
+            "ecg": {"Date": "the date", "What the watch said": "what the watch said", "Details": "average heart rate"},
+            "bmi": {"Date": "on its day", "Measure": "each weight", "Value": "the BMI", "Percentile": "growth charts", "From": "where each weight came from"},
+            "targets": {"Measure": "each target", "Your target": "each target", "Set by": "who set it", "Set on": "and when",
+                        "In this period": "how many readings at home were above or below it"},
+            "medlog": {"Date and time": "the date and time", "Medication": "the medication", "What happened": "taken, taken late or skipped",
+                       "Note": "its note", "From": "typed in or sent by a phone"},
+        }
+        strict.goto(base + "/sharing.html?profile=1#links")   # (the form opened, read and cancelled: Sharing as it was)
+        strict.locator("#links .share-links button", has_text="New share link").click()
+        strict.wait_for_selector("#links .share-form .share-sections label", timeout=10000)
+        lines576 = strict.evaluate("""Object.fromEntries([...document.querySelectorAll('#links .share-form .share-sections label')]
+          .map(l => [l.querySelector('input').value, l.querySelector('.muted').textContent.trim()]))""")
+        strict.locator("#links .share-form button", has_text="Cancel").click()
+        shown576 = hp.evaluate("""() => Object.fromEntries([...document.querySelectorAll('#shareBody > section')].map(s => {
+          const got = new Set([...s.querySelectorAll('thead tr:not(.share-printed) th')].map(h => h.textContent.trim()));
+          const add = (k, sel, re) => { if ([...s.querySelectorAll(sel)].some(e => !re || re.test(e.textContent))) got.add(k); };
+          if (s.id === 'share-visits') {
+            add('stay', 'tbody td:nth-child(2)', /^Hospital stay/); add('until', 'tbody td:first-child', / – /);
+            add('nights', 'tbody td:nth-child(3)', /\\bnights?\\b|same day/); add('admit', 'tbody td:nth-child(3)', /admit/i);
+          }
+          if (s.id === 'share-about') s.querySelectorAll('dt').forEach(d => got.add(d.textContent.trim()));
+          if (s.id === 'share-medications') add('status', 'tbody td:first-child', /\\)$/);
+          if (s.id === 'share-results') { add('panel', '.share-panel'); add('named', '.share-hist .hint', /^Named /); add('unit', '.share-unit'); }
+          if (s.id === 'share-journal') {
+            add('kind', '.share-entry b'); add('when', '.share-entry > div:first-child > .muted'); add('note', '.share-note');
+            add('severity', '.share-entry .tag', /^severity/); add('mood', '.share-entry .tag', /mood|energy/); add('med', '.share-med');
+            add('where', '.share-entry p.muted', /^Where: /); add('group', '.share-entry p.muted', /Logged with/); add('pic', '.share-pic');
+          }
+          return [s.id.slice(6), [...got]]; }))""")
+        miss576 = []
+        for s, got in shown576.items():
+            says = SAYS576.get(s, {})
+            for h in got:
+                h_ = re.sub(r"\b\d[\d.]*", "#", re.sub(r" \(.*\)$", "", h))
+                if h_ not in says or says[h_] not in lines576.get(s, "") + (" " + lines576.get("journal_photos", "") if s == "journal" else ""):
+                    miss576.append([s, h, says.get(h_), lines576.get(s, "")[:80]])
+        check("share links (#576): for every section, the form's line names each column and detail its share page shows (Costs' "
+              "Service, a stay's nights and reason for admission, a medication's status, Immunizations' “by whom” weren't); and "
+              "Procedures, showing a date, kind and title, is sent only those (it was sent each one's clinician and place too)",
+              len(shown576) >= 8 and set(shown576) <= set(lines576) and not miss576 and sent498.get("procedures")
+              and all(set(r) == {"t", "kind", "title"} for r in sent498["procedures"]), [miss576[:8], sorted(shown576), (sent498.get("procedures") or [None])[0]])
         # a mouse reaches each chip, the bar scrolled sideways to it where its two rows are wider than the page (#498)
         reach491 = hp.evaluate("""() => { const bar = document.getElementById('shareBar');
           const out = [...bar.querySelectorAll('.chip')].map(c => { const b = bar.getBoundingClientRect(); let r = c.getBoundingClientRect();
