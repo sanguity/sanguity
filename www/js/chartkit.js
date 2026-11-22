@@ -74,7 +74,7 @@ function ckTimeTicks(a, b, x, W) {
   const perDay = Math.abs(x(a + DAY) - x(a));
   let ticks = [], u = "y";
   for (const [n, unit] of CK_STEPS) {
-    if (n * CK_DAYS[unit] * perDay < 44) continue;
+    if (n * CK_DAYS[unit] * perDay < 36) continue;   // too close to try (36 px: on a phone six months of All is about 43, #615); the labels then tested below
     ticks = ckStepTicks(a, b, n, unit); u = unit;
     if (ticks.every((k, i) => !i || x(k.t) - x(ticks[i - 1].t) >= (labelW(k.label, "") + labelW(ticks[i - 1].label, "")) / 2 + 12)) break;
   }
