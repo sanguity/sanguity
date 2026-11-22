@@ -284,8 +284,7 @@ function renderHealth() {
     el("span", {class: "lbl", text: label}), el("span", {class: "val"}, val, el("small", {text: unit})), el("span", {class: "delta"}, keepDates(delta))));
   // the change as ↑ or ↓ and its size, or "no change" where it rounds to none: never ▲ / ▼, which mark a result's own
   // flags (#301, #615, #298)
-  const chg = (cur, base, f, u = "") => { if (cur == null || base == null) return ""; const m = String(f(Math.abs(cur - base)));
-    return +m.replace(/,/g, "") === 0 ? "no change" : `${cur > base ? "↑" : "↓"} ${m}${u}`; };
+  const chg = (cur, base, f, u = "") => cur == null || base == null ? "" : chgWords(cur - base, f(Math.abs(cur - base)), u);   // (util.js)
   const latestW = wIn.length ? wIn[wIn.length - 1] : wAll[wAll.length - 1];
   tile("Weight", latestW ? latestW[1].toFixed(1) : "–", "lb", wIn.length > 1 ? `${chg(wIn[wIn.length - 1][1], wIn[0][1], v => v.toFixed(1), " lb")} this period` : latestW ? `last ${fmtD(latestW[0])}` : "", "#h-body");
   bmiTile(tile, a, b);   // BMI (#195, below)

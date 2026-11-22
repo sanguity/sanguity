@@ -10241,6 +10241,13 @@ def main():
             check("Body's and Labs' top on a phone (#615), at 360 and 412 px, light and dark, and with text at 200%: the period beside Show in one row, "
                   "none alone pushed right, the first chart in the first screen, the sections one row, the lab list folded, titles not squeezed, charts their card's width, "
                   "no ▲ / ▼ in a tile's change; Show opens and closes by keyboard", not bad615, bad615)
+            # …and the Overview's tiles (#623): a key lab's change since the result before, the weight's since the first
+            # milestone, the watch's against the 4 weeks before, as ↑ or ↓ and its size, or "no change"; none ▲ / ▼ or a sign
+            open_tab("overview")
+            settle(300)
+            ov623 = js("[...document.querySelectorAll('#view-overview .tile .delta')].map(d => d.textContent.replace(/\\s+/g, ' ').trim()).filter(Boolean)")
+            check("…and the Overview's tiles say a change with ↑ or ↓, or “no change”, never ▲ / ▼, a result's own flags (#623)",
+                  any(re.match(r"^(↑ \d|↓ \d|no change)", t) for t in ov623) and not any(re.search(r"[▲▼±]|^[+−-]", t) for t in ov623), ov623)
             page.set_viewport_size({"width": 1400, "height": 900})
             open_tab("overview")
             settle(300)

@@ -1622,6 +1622,10 @@ Everything on `main` so far; it becomes the first tagged release.
   The tiles say a change as "↓ 5.3 lb this period", "↑ 398 vs previous period" or "no change", never ▲/▼, which mark a
   result's own flags. With no height on file, the weight card says how to get each weight's BMI in one line, without
   an empty BMI heading.
+- **The Overview's tiles say a change as Body's do** (#623): a key lab's change since the result before ("▲ +0.1"),
+  the weight's since the first milestone and the watch's against the 4 weeks before were marked with ▲ and ▼, which
+  mark a result's own flags above or below its range. They now say "↑ 0.1", "↓ 4.3 lb since diagnosis" or "no change",
+  as Body and activity's tiles do (#298).
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

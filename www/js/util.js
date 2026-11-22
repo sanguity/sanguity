@@ -344,6 +344,9 @@ function fieldSaid(err, text, field, home) {
    (#517: a no-break space, on every page, keepDates or not) */
 const keepDates = s => String(s).split(/((?<!\p{L})as of(?!\p{L})|(?:(?<![\d.])\d{4}-\d{2}-\d{2}(?![-\d])|(?<![\d.])\d{1,2}\.? \p{L}{2,}\.? \d{4}(?![-\d])|(?<!\p{L})\p{L}{2,}\.? \d{1,2}, \d{4}(?![-\d])),?)/u)
   .map((t, i) => i % 2 ? el("span", {class: "nw", text: t}) : t).filter(t => t !== "");
+/* a tile's change in words (#298, #623): "↑ 5.3 lb", "↓ 0.2", or "no change" where its size is written as nothing (m,
+   as the tile writes it; u its unit). Never ▲ / ▼, which mark a result's own flags (#301) */
+const chgWords = (d, m, u = "") => +String(m).replace(/[^\d.]/g, "") === 0 ? "no change" : `${d > 0 ? "↑" : "↓"} ${m}${u}`;
 /* every backend call: same-origin cookie, never cached, and the X-Sanguity header the API requires on changes */
 const api = (path, opts = {}) => fetch("api/" + path, {cache: "no-store", credentials: "same-origin", ...opts,
   headers: {...(opts.method && opts.method !== "GET" ? {"X-Sanguity": "1", "Content-Type": "application/json"} : {}), ...opts.headers}});
