@@ -25,13 +25,15 @@ const hmDraw = (p, k) => EV.filter(e => e.k === "lab" && isoDay(e.ts) === k && e
   .sort((a, b) => Math.abs(a.ts - p.ts) - Math.abs(b.ts - p.ts))[0] || null;
 /* another of a day's results, in the tip of one (#471): "Also at 8:31 AM: 0.89 mg/dL · In range" */
 const hmAlso = (s, p) => `Also at ${fmtTime(p.ts)}: ${p[5] || fmtNum(p[1])} ${s.unit}${statusOf(p) ? " · " + statusOf(p).text : ""}`;
+/* the labs the heatmap has a row for: twenty results or more, with ranges */
+const hmLabs = () => SERIES.filter(s => !s.watch && s.n >= 20 && s.pts.some(p => p[2] != null || p[3] != null));
 const hmCut = new Map();   // a panel's name as it fits the names' column, by its width (below)
 document.fonts.addEventListener("loadingdone", () => hmCut.clear());
 function renderHeatmap(live) {   // live: a frame of a drag (charts.js), at the width it had (#292)
   const asTable = state.tables.has("#hm");   // Grid | Table (#60)
   const hd = $("#hmHd"); hd.querySelector(".view-seg")?.remove(); hd.append(viewSeg("#hm", "the heatmap", renderHeatmap, "Grid"));
   $("#hmLegend").hidden = $("#hmWrap").hidden = asTable; $("#hmTable").hidden = !asTable;
-  const all = SERIES.filter(s => !s.watch && s.n >= 20 && s.pts.some(p => p[2] != null || p[3] != null)), shown = all.filter(labMatch);   // the Labs filter (#192, trends.js)
+  const all = hmLabs(), shown = all.filter(labMatch);   // the Labs filter (#192, trends.js)
   labCount("#hmQn", shown.length, all.length);
   // by panel as in the list (#279, labGroups in util.js): the most measured first, Other last. grp: a series' panel,
   // by the series, as a lab kept in two units is two rows of one name (#438)
@@ -42,14 +44,18 @@ function renderHeatmap(live) {   // live: a frame of a drag (charts.js), at the 
   const days = new Map();
   for (const s of rows) for (const p of s.pts) if (p.ts >= state.from && p.ts <= state.to) { const k = dayKey(p.ts); if (!days.has(k)) days.set(k, dayTs(k)); }
   const cols = [...days.entries()].sort((a, b) => a[1] - b[1]);
+  $("#hmBack")?.remove();
+  if (rows.length && !cols.length) $("#hmWrap").before(Object.assign(wayBack("lab draws"), {id: "hmBack"}));   // #382
   if (asTable) { hmTable(rows, cols, grp); return; }
   const svg = $("#hm"), axis = $("#hmAxis");
   // laid out in its box's own width (#476: not a floor of 320 px, which a phone's 270 px box cut the right of), 320 while
   // it isn't shown
   const avail = (live && svg._avail) || (svg._avail = svg.parentElement.clientWidth || 320);
   const LW = avail < 600 ? 120 : 190, top = 34, rowH = 14, gap = 2;
-  if (!rows.length || !cols.length) {   // keep it draggable so you can pan back to where the draws are
-    svg.replaceChildren(el("svg:text", {x: LW, y: 20, text: !rows.length && state.labQ ? "No lab names match the filter." : "No lab draws in this date range."})); svg.setAttribute("viewBox", `0 0 ${avail} 30`); svg.setAttribute("width", avail); svg.setAttribute("height", 30);
+  if (!rows.length || !cols.length) {   // a plot kept to drag back to where the draws are, and double-click (#382)
+    svg.replaceChildren(el("svg:rect", {width: avail, height: 96, fill: "transparent"}),
+      el("svg:text", {x: avail / 2, y: 52, "text-anchor": "middle", text: !rows.length && state.labQ ? "No lab names match the filter." : "No lab draws in this date range."}));
+    svg.setAttribute("viewBox", `0 0 ${avail} 96`); svg.setAttribute("width", avail); svg.setAttribute("height", 96);
     svg._geom = {L: LW, R: avail - 8, w: avail}; axis.replaceChildren(); axis.setAttribute("height", 0); return;
   }
   // columns always fit the width (fractional widths are fine, under 1 px too: #476, ten years on a phone); zoom in to

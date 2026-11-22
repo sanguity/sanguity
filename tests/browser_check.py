@@ -8018,13 +8018,13 @@ def main():
             settle()
             box = page.locator("#charts .chart svg:not(.icon)").first.bounding_box()
             before = js("[state.from, state.to]")
-            page.mouse.move(box["x"] + box["width"] * 0.6, box["y"] + box["height"] * 0.5)
-            page.mouse.down()
-            page.mouse.move(box["x"] + box["width"] * 0.3, box["y"] + box["height"] * 0.5, steps=8)
+            page.mouse.move(box["x"] + box["width"] * 0.3, box["y"] + box["height"] * 0.5)   # back in time: the last year ends at the
+            page.mouse.down()                                                               # records' end, past which it springs back (#382)
+            page.mouse.move(box["x"] + box["width"] * 0.6, box["y"] + box["height"] * 0.5, steps=8)
             page.mouse.up()
             settle()
             after = js("[state.from, state.to]")
-            check("Trends drag pans", after[0] > before[0] and abs((after[1] - after[0]) - (before[1] - before[0])) < 1000, f"moved {(after[0] - before[0]) / 864e5:.0f} days")
+            check("Trends drag pans", after[0] < before[0] and abs((after[1] - after[0]) - (before[1] - before[0])) < 1000, f"moved {(after[0] - before[0]) / 864e5:.0f} days")
             span = after[1] - after[0]
             page.mouse.move(box["x"] + box["width"] * 0.5, box["y"] + box["height"] * 0.5)
             page.keyboard.down("Control")
@@ -8033,6 +8033,59 @@ def main():
             settle(700)
             z = js("state.to - state.from")
             check("Trends wheel zooms", z < span * 0.95, f"{span / 864e5:.0f} -> {z / 864e5:.0f} days")
+            # #382: dragging far past the data left nothing to drag back. Labs' charts and heatmap and Body and activity,
+            # from the last year: dragged three widths past each end with the mouse, a touch and a horizontal wheel, the
+            # window goes a quarter of itself past the data at most and springs back to it when let go, data in it.
+            # Dates typed in past the records leave each a plot that drags back toward them and double-clicks to All,
+            # and a way back above it to the period before
+            PAN382 = """async ([view, kind, dir]) => { const frame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r)));
+              const [tab, hm] = view.split('-'); switchTab(tab, hm ? 'heatmap' : 'chart'); applyPreset('1y'); await frame(); await frame();
+              const svg = () => document.querySelector(tab === 'health' ? '#h-body svg.ck' : hm ? '#hm' : '#charts .chart svg.ck');
+              svg().scrollIntoView({block: 'center'}); await frame();
+              const r = svg().getBoundingClientRect(), y = r.top + Math.min(60, r.height / 2), x0 = r.left + r.width / 2, win = () => tab === 'health' ? hRange() : [state.from, state.to];
+              const data = tab === 'health' ? [H.first, H.last] : seriesSpan(hm ? hmLabs() : SERIES.filter(s => !s.watch && state.sel.has(s.name)));
+              const before = win(), w = before[1] - before[0]; let most = 0;
+              const past = () => { const [a, b] = win(); most = Math.max(most, data[0] - a - Math.max(0, data[0] - before[0]), b - data[1] - Math.max(0, before[1] - data[1])); };
+              if (kind === 'wheel') for (let i = 0; i < 30; i++) { svg().dispatchEvent(new WheelEvent('wheel', {bubbles: true, cancelable: true, deltaX: -dir * r.width / 10, clientX: x0, clientY: y})); await frame(); past(); }
+              else {
+                const at = (type, x) => svg().dispatchEvent(new PointerEvent(type, {bubbles: true, pointerId: 9, pointerType: kind, isPrimary: true, button: 0, buttons: type === 'pointerup' ? 0 : 1, clientX: x, clientY: y}));
+                at('pointerdown', x0); for (let i = 1; i <= 30; i++) { at('pointermove', x0 + dir * r.width * i / 10); await frame(); past(); } at('pointerup', x0 + dir * r.width * 3);
+              }
+              await new Promise(r => setTimeout(r, 700)); await frame();
+              const [a, b] = win(), shown = tab === 'health' ? [...document.querySelectorAll('#view-health svg.ck')].filter(s => !/No data in this period/.test(s.textContent)).length
+                : hm ? document.querySelectorAll('#hm rect.cell').length : SERIES.filter(s => state.sel.has(s.name)).reduce((n, s) => n + s.pts.filter(p => p.ts >= a && p.ts <= b).length, 0);
+              return {moved: Math.round((a - before[0]) / 864e5), past: Math.round(most / w * 100) / 100, touching: a <= data[1] && b >= data[0], shown, same: Math.abs((b - a) - w) < 864e5}; }"""
+            EMPTY382 = """async view => { const frame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r)));
+              const [tab, hm] = view.split('-'); switchTab(tab, hm ? 'heatmap' : 'chart'); applyPreset('2y'); setRange(state.max + 400 * DAY, state.max + 520 * DAY); await frame(); await frame();
+              const svg = () => document.querySelector(tab === 'health' ? '#h-body svg.ck' : hm ? '#hm' : '#charts .chart svg.ck');
+              svg().scrollIntoView({block: 'center'}); await frame();
+              const r = svg().getBoundingClientRect(), y = r.top + Math.min(50, r.height / 2), x0 = r.left + r.width / 2, from0 = state.from;
+              const sel = tab === 'health' ? '#view-health .pz-back' : hm ? '#hmBack' : '#charts .pz-back', back = document.querySelector(sel), words = back && [...back.querySelectorAll('button')].map(b => b.textContent);
+              const at = (type, x) => svg().dispatchEvent(new PointerEvent(type, {bubbles: true, pointerId: 9, pointerType: 'mouse', isPrimary: true, button: 0, buttons: type === 'pointerup' ? 0 : 1, clientX: x, clientY: y}));
+              at('pointerdown', x0); for (let i = 1; i <= 6; i++) { at('pointermove', x0 + r.width * i / 20); await frame(); } at('pointerup', x0 + r.width * .3);
+              await new Promise(r => setTimeout(r, 700)); await frame();
+              const dragged = Math.round((from0 - state.from) / DAY), plot = svg().getBoundingClientRect().height;
+              svg().dispatchEvent(new MouseEvent('dblclick', {bubbles: true, cancelable: true, clientX: x0, clientY: y})); await frame();
+              const reset = state.preset;
+              applyPreset('2y'); setRange(state.max + 400 * DAY, state.max + 520 * DAY); await frame(); await frame();
+              document.querySelector(sel + ' button').click(); await frame();
+              return {plot: Math.round(plot), words, dragged, reset, back: state.preset, focus: document.activeElement.closest('#presets, #periodPill') ? 'period' : document.activeElement.tagName}; }"""
+            js("window._was382 = [state.preset, state.from, state.to, state.labsView, state.tab]")
+            pan382, empty382 = {}, {}
+            for view in ("labs", "labs-heatmap", "health"):
+                for kind in ("mouse", "touch", "wheel"):
+                    for d in (1, -1):
+                        pan382[f"{view} {kind} {'back' if d > 0 else 'ahead'}"] = js(PAN382, [view, kind, d])
+                empty382[view] = js(EMPTY382, view)
+            js("w => { [state.preset, state.from, state.to, state.labsView] = w; if (w[0] !== 'custom') setPeriod(w[0]); switchTab(w[4]); renderAll(); }", js("window._was382"))
+            settle(300)
+            check("dragged three widths past the first or last record, with the mouse, a touch or a horizontal wheel, a chart's window goes a quarter of "
+                  "itself past it at most and springs back with the data in it: Labs' charts and heatmap, Body and activity (#382)",
+                  all(v["touching"] and v["shown"] > 0 and v["past"] <= .26 and v["same"] for v in pan382.values()), pan382)
+            check("…dates typed in past the records leave each a plot that drags back toward them and double-clicks to All, with “Back to …” and "
+                  "“Show all” above it, back to the period before",
+                  all(v["plot"] >= 60 and v["dragged"] > 0 and v["reset"] == "all" and v["words"] == ["Back to the last 2 years", "Show all"]
+                      and v["back"] == "2y" and v["focus"] == "period" for v in empty382.values()), empty382)
             js("applyPreset('all')")
             settle()
             check("milestones drawn on Trends", js("document.querySelectorAll('#charts .msmark').length") > 0)

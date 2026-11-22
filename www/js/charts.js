@@ -4,18 +4,54 @@
 "use strict";
 /* drag to pan, scroll wheel or pinch to zoom, double-click to reset — shared by Labs (both views) and Body and activity.
    plot(ev) -> the chart under the pointer (or null); span(plot) -> [left, width] of its time axis in client px;
-   get() -> [a, b]; set(a, b) updates state; draw() redraws live; end() does the full render once the gesture stops. */
-function panZoom(box, {plot, span, get, set, draw, end, reset, start, minSpan = 2 * DAY}) {
+   get() -> [a, b]; set(a, b) updates state; draw() redraws live; end() does the full render once the gesture stops;
+   data() -> [first, last] of what the view draws (null: none).
+   The window keeps touching the data (#382): a gesture moves it as far as the first or last record, or where it was
+   when the gesture began if that was further; past that it goes on as a rubber band does, a quarter of itself at
+   most, and springs back when let go. Zooming out stops at all of it. */
+function panZoom(box, {plot, span, get, set, draw, end, reset, start, data, minSpan = 2 * DAY}) {
   const ptrs = new Map(); let drag = null, pinch = null, raf = 0, dirty = false, finT = 0, justDragged = false;
+  let lim = null, want = null, anim = 0, rest = null;   // the gesture's limits, the window it asks for, the spring back
   const timeAt = (p, cx) => { const [l, w] = span(p), [a, b] = get(); return a + (cx - l) / w * (b - a); };
+  const limits = () => {
+    if (!lim) { const [a, b] = get(), d = data?.(); lim = d && d[0] <= d[1] ? [Math.min(a, d[0]), Math.max(b, d[1])] : [-Infinity, Infinity]; }
+    return lim;
+  };
+  // where a window rests: inside the limits, as wide as they are at most
+  const inside = (a, b) => { const [l0, l1] = limits(), w = b - a; return w >= l1 - l0 ? [l0, l1] : a < l0 ? [l0, l0 + w] : b > l1 ? [l1 - w, l1] : [a, b]; };
+  // the window shown for one asked for: past a limit by x, it goes x·m / (x + m), never m, a quarter of the window
+  const band = (a, b) => {
+    const [c, d] = inside(a, b), m = (d - c) / 4, over = (c - a) || (d - b);
+    if (!over || d - c < b - a) return [c, d];
+    const s = Math.sign(over) * Math.abs(over) * m / (Math.abs(over) + m);
+    return [c - s, d - s];
+  };
   const apply = (a, b) => {
+    if (!isFinite(a) || !isFinite(b)) return;   // a chart taken out of the page mid-gesture measures 0 px wide
     if (b - a < minSpan) { const m = (a + b) / 2; a = m - minSpan / 2; b = m + minSpan / 2; }
+    want = [a, b]; [a, b] = band(a, b);
     set(a, b); dirty = true; cancelAnimationFrame(raf); raf = requestAnimationFrame(draw);
   };
-  const finish = () => { clearTimeout(finT); if (!dirty) return; dirty = false; cancelAnimationFrame(raf); end(); };
+  // let go: back inside the limits, eased over 200 ms (at once with reduced motion), then the full render
+  const finish = () => {
+    clearTimeout(finT); if (!dirty) return; dirty = false; cancelAnimationFrame(raf);
+    const from = get(); rest = inside(...from); lim = want = null;
+    if (from[0] === rest[0] && from[1] === rest[1]) return end();
+    const t0 = performance.now(), dur = matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 200;
+    let was = from;
+    const step = now => {
+      const [a, b] = get(); if (Math.abs(a - was[0]) + Math.abs(b - was[1]) > 1) return anim = 0;   // a period picked meanwhile: that one stays
+      const k = dur ? Math.min(1, (now - t0) / dur) : 1, e = 1 - (1 - k) ** 3;
+      set(...(was = [from[0] + (rest[0] - from[0]) * e, from[1] + (rest[1] - from[1]) * e])); draw();
+      if (k < 1) anim = requestAnimationFrame(step); else { anim = 0; end(); }
+    };
+    anim = requestAnimationFrame(step);
+  };
+  // a new gesture while it springs back starts from where it rests (the full render comes when that one ends)
+  const settle = () => { if (!anim) return; cancelAnimationFrame(anim); anim = 0; set(...rest); dirty = true; };
   box.addEventListener("pointerdown", ev => {
     const p = plot(ev); if (!p || (ev.pointerType === "mouse" && ev.button !== 0)) return;
-    ptrs.set(ev.pointerId, ev.clientX);
+    settle(); ptrs.set(ev.pointerId, ev.clientX);
     if (ptrs.size === 2) {
       const [x1, x2] = [...ptrs.values()], [a, b] = get(); pinch = {d: Math.abs(x1 - x2) || 1, t: timeAt(p, (x1 + x2) / 2), a, b}; drag = null;
       for (const id of ptrs.keys()) try { box.setPointerCapture(id); } catch (e) {}
@@ -47,10 +83,11 @@ function panZoom(box, {plot, span, get, set, draw, end, reset, start, minSpan = 
   };
   box.addEventListener("pointerup", up); box.addEventListener("pointercancel", up);
   box.addEventListener("click", ev => { if (justDragged) { ev.stopPropagation(); ev.preventDefault(); } }, true);
-  box.addEventListener("dblclick", ev => { if (plot(ev)) { ev.preventDefault(); clearTimeout(finT); dirty = false; reset(); } });
+  box.addEventListener("dblclick", ev => { if (plot(ev)) { ev.preventDefault(); clearTimeout(finT); cancelAnimationFrame(anim); anim = 0; dirty = false; lim = want = null; reset(); } });
   box.addEventListener("wheel", ev => {
     const p = plot(ev); if (!p) return;
-    const [a, b] = get();
+    settle();
+    const [a, b] = want || get();   // a gesture's wheel goes on from the window it asked for, not the one held back
     if (!ev.ctrlKey && Math.abs(ev.deltaX) > Math.abs(ev.deltaY)) {   // horizontal swipe / shift+wheel: pan
       const dt = ev.deltaX / span(p)[1] * (b - a); apply(a + dt, b + dt);
     } else {                                  // scroll wheel and trackpad pinch (arrives as ctrl+wheel): zoom around the pointer, like the Timeline
@@ -60,6 +97,17 @@ function panZoom(box, {plot, span, get, set, draw, end, reset, start, minSpan = 
     ev.preventDefault(); hideTip(); clearTimeout(finT); finT = setTimeout(finish, 300);
   }, {passive: false});
 }
+// the first and last time of series' points: what a view's window keeps touching (#382); null for none
+const seriesSpan = list => { let a = Infinity, b = -Infinity; for (const s of list) if (s.pts.length) { a = Math.min(a, s.pts[0].ts); b = Math.max(b, s.pts[s.pts.length - 1].ts); } return a <= b ? [a, b] : null; };
+/* a view's window with nothing of its in it (dates typed in past the records, #382): its charts keep their plots, to
+   drag back and double-click, and this above them says so, with the way back to the period before, or to everything */
+function wayBack(what) {
+  const b = (text, p, cls = "") => el("button", {class: "btn empty-next " + cls, type: "button", text, onclick: () => periodBack(p)});
+  const e = emptyState(`No ${what} in these dates. Drag a chart back toward them, or:`);
+  e.classList.add("pz-back");
+  e.append(el("div", {class: "empty-acts"}, b(backWords(), lastPeriod, "primary"), lastPeriod !== "all" ? b("Show all", "all") : null));
+  return e;
+}
 const svgSpan = svg => { const r = svg.getBoundingClientRect(), g = svg._geom, k = r.width / g.w; return [r.left + g.L * k, (g.R - g.L) * k]; };
 const mainWindow = {get: () => [state.from, state.to], set: (a, b) => { state.from = a; state.to = b; state.preset = "custom"; }, reset: () => applyPreset("all")};
 // Labs, as charts: every chart shares state.from/to, so they all move together
@@ -67,17 +115,17 @@ const chartsBox = $("#charts");
 const inWindow = s => s.pts.filter(p => p.ts >= state.from && p.ts <= state.to);
 panZoom(chartsBox, {...mainWindow,
   plot: ev => { const s = ev.target.closest?.(".chart svg, .ck-axis"); return s && s._geom ? s : null; }, span: svgSpan,   // the charts' one axis too (#293)
-  start: () => chartsBox.querySelectorAll(".chart svg").forEach(o => o._hover && o._hover(null)),
+  start: () => chartsBox.querySelectorAll(".chart svg").forEach(o => o._hover && o._hover(null)), data: () => seriesSpan(SERIES.filter(s => !s.watch && state.sel.has(s.name))),
   draw: () => { chartsBox.querySelectorAll(".chart svg").forEach(svg => { if (svg._s && svg._geom) drawChart(svg, svg._s, inWindow(svg._s), svg._read, true); }); labAxisDraw(); drawTrack(); },   // and their one axis (#293), and the event track over them (#294)
   end: () => { renderFilters(); renderCharts(); save(); }});
 // Labs, as a heatmap: the same date window; columns are draw days, so the time axis is the column area
 panZoom($("#hmWrap"), {...mainWindow,
-  plot: ev => ev.target.closest?.("#hm, #hmAxis") && $("#hm")._geom ? $("#hm") : null, span: svgSpan,
+  plot: ev => ev.target.closest?.("#hm, #hmAxis") && $("#hm")._geom ? $("#hm") : null, span: svgSpan, data: () => seriesSpan(hmLabs().filter(labMatch)),
   draw: () => renderHeatmap(true), end: () => { renderFilters(); renderHeatmap(); save(); }});   // renderHeatmap lives in a later file: call it, do not reference it at load
 // Body and activity: all its charts share the records bar's period too ("All" there is the watch and scale data's span)
 panZoom($("#view-health"), {...mainWindow, minSpan: 3 * DAY,
   plot: ev => { const s = ev.target.closest?.("svg"); return s && s._draw && s._geom ? s : null; }, span: svgSpan,
-  get: () => hRange(),
+  get: () => hRange(), data: () => WATCH ? (H = H || hData(), [H.first, H.last]) : null,
   draw: () => { const [a, b] = hRange(); $("#view-health").querySelectorAll("svg").forEach(s => s._draw && s._draw(a, b, true)); },
   end: () => { renderFilters(); renderHealth(); save(); }});
 /* milestone rules on a time chart: a dashed line in --milestone (never the accent, #334) from y0 to y1, label on its own

@@ -165,8 +165,14 @@ function renderPeriod() {
     group("Since a milestone", MILESTONES.map(m => item(msKey(m), "Since " + lcLabel(m.label), fmtD(dayTs(m.date))))),
     group("Calendar year", periodYears().map(y => item(y, y)))));
   $("#from").value = isoDay(state.from); $("#to").value = isoDay(state.to);
-  const lp = lastPeriod, lm = msOf(lp);
-  $("#datesClear").dataset.tip = "Back to " + (lp === "all" ? "everything on file" : lm ? "since " + lcLabel(lm.label) : PRESET_TEXT[lp] || lp);
+  $("#datesClear").dataset.tip = backWords();
+}
+/* back from custom dates to the period before (lastPeriod), or to p: Clear dates, and a chart's way back (#382). Focus
+   goes to the period's control, which says which it is */
+const backWords = () => { const lp = lastPeriod, lm = msOf(lp); return "Back to " + (lp === "all" ? "everything on file" : lm ? "since " + lcLabel(lm.label) : PRESET_TEXT[lp] || lp); };
+function periodBack(p = lastPeriod) {
+  applyPreset(p);
+  (PHONE.matches ? pillList.querySelector("[aria-checked=true]") || pill : $("#presets [aria-pressed=true]") || moreBtn).focus();
 }
 SgNav.menu({btn: moreBtn, list: moreList, wrap: $("#periodMore"), onOpen() {   // nav.js: a popover, kept on the screen by app.css
   const on = moreList.querySelector("[aria-checked=true]");
@@ -177,10 +183,7 @@ moreList.addEventListener("click", ev => {
   if (b.dataset.period !== "custom") { applyPreset(b.dataset.period); moreBtn.focus(); return; }
   state.preset = "custom"; renderAll(); $("#from").focus();   // the period's dates, to change
 });
-$("#datesClear").onclick = () => {
-  applyPreset(lastPeriod);
-  (PHONE.matches ? pillList.querySelector("[aria-checked=true]") || pill : $("#presets [aria-pressed=true]") || moreBtn).focus();
-};
+$("#datesClear").onclick = () => periodBack();
 /* ---- on a phone (#269, nav.js's sheets): the period is one pill, "Last 2 years ▾", whose sheet lists every period
    (the presets, each milestone, the calendar years: a menu, picked by touch or keyboard as More… is) with the date boxes
    for custom dates under it, moved there from the bar; and on the Timeline, the Events card's Filters (#277) opens a
