@@ -20088,6 +20088,37 @@ def main():
                   "Password accepted, but this account finishes signing in with a passkey, and passkeys don't work here: this is an IP address. "
                   f"Open Sanguity at https://sanguity.example or {here535} and sign in there, or use another account.",
                   [["https://sanguity.example", "https://sanguity.example/login.html"], [here535, here535 + "/login.html"]]]], links535)
+            # #549: …and on plain HTTP at a name, or at an IP that isn't this computer's over HTTPS (this server's pages
+            # served there), the step names where the account's passkeys were made too: a name as a link, localhost in
+            # words (it said "its https:// address", or "its https:// name", whichever the passkeys' name)
+            pk549 = {}
+            for at549 in ("http://sanguity.test", "https://172.16.26.2"):
+                c549 = browser.new_context(viewport={"width": 1400, "height": 900}, service_workers="block")
+                p549 = c549.new_page()
+                p549.on("pageerror", lambda e: problems.append(f"script error (sign-in at another address, #549): {e}"))
+                def serve549(route, at=at549):
+                    path = route.request.url[len(at):]
+                    if path.startswith("/api/login"):
+                        return route.fulfill(status=200, content_type="application/json", body=json.dumps(
+                            {"two_factor": True, "ticket": "t549", "methods": {"code": False, "passkey": True, "sites": ["sanguity.test", "localhost"]}}))
+                    route.fulfill(response=route.fetch(url=base + path))
+                p549.route(re.compile("^" + re.escape(at549) + "/"), lambda route: serve549(route))
+                p549.goto(at549 + "/login.html")
+                p549.wait_for_selector("#u", timeout=10000)
+                p549.fill("#u", USER)
+                p549.fill("#p", PW)
+                p549.click("#b")
+                p549.wait_for_selector("#pkSays", state="visible", timeout=10000)
+                pk549[at549] = p549.evaluate("""() => [window.isSecureContext, document.activeElement.id, document.getElementById('pkSays').textContent,
+                  [...document.querySelectorAll('#pkSays a')].map(a => [a.textContent, a.href])]""")
+                c549.close()
+            to549 = "Open Sanguity at https://sanguity.test or localhost (on the computer it runs on) and sign in there, or use another account."
+            check("…and on plain HTTP at a name, or over HTTPS at an IP that isn't this computer's, it names where the account's passkeys were made, "
+                  "a name as a link and localhost in words (#549: “its https:// address”, then refused again there; “its https:// name”)",
+                  pk549 == {at: [sec, "pkSays", "Password accepted, but this account finishes signing in with a passkey, and passkeys don't work here: "
+                                 f"{why}. {to549}", [["https://sanguity.test", "https://sanguity.test/login.html"]]]
+                            for at, sec, why in (("http://sanguity.test", False, "this page isn't using HTTPS"),
+                                                 ("https://172.16.26.2", True, "this is an IP address"))}, pk549)
             check("passkeysWork() is false at an IP address, IPv4 or IPv6, true at a name; sign-in at 127.0.0.1 shows no passkey button, and the "
                   "passkey-only step says why, naming http://localhost, where they work (#527: offered, then “Passkeys don't work at this address” "
                   "once pressed; #531: it said to open its https:// name)",

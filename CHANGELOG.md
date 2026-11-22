@@ -2276,6 +2276,14 @@ Everything on `main` so far; it becomes the first tagged release.
   import saved, as Add would. Import history in a tab opened before an import was undone elsewhere asked about its
   Undo, then refused it; it says "This import was undone already." without asking, the row losing its Undo, and a
   failed Undo reads the list again and leaves focus on its Undo, not lost.
+- **Sharing and first run: the summary PDF's times on the preview's clock, and the passkey step naming where passkeys
+  were made on plain HTTP and at an IP** (#549): the visit summary PDF wrote a reading's time on a 24-hour clock ("Nov
+  12 08:30") beside the preview's "Nov 12, 2026, 8:30 AM", for blood pressure, temperature and the medication log;
+  it's "Nov 12, 8:30 AM", in the person's format. Signing in on a plain-HTTP page, or at an IP address that isn't
+  this computer's, an account that finishes with a passkey was told to open Sanguity at "its https:// address" or
+  "its https:// name", which could refuse again; it names where its passkeys were made, a name as a link and
+  localhost as "(on the computer it runs on)", and so does the server's refusal, which no longer points a page on
+  another device to https://localhost.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

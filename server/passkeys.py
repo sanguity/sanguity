@@ -38,17 +38,28 @@ class PasskeyError(Exception):
         self.status = status
 
 
-def where(rp_id, scheme="http", port=None):
-    """The address to open for passkeys made at rp_id: this computer's own name with the page's scheme and port, another
-    name at https:// (its port isn't kept)."""
+def _own(host):
+    """A page at this computer's own address: localhost (or a name under it), 127.x or ::1."""
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return host == "localhost" or host.endswith(".localhost")
+
+
+def where(rp_id, page):
+    """The address to open for passkeys made at rp_id, said to a page at page (urlsplit): another name at https:// (its
+    port isn't kept); this computer's own name with the page's scheme and port from a page on this computer, else in
+    words (#549: from another device, localhost is that device, and a proxy's scheme and port aren't the server's)."""
     if rp_id == "localhost" or rp_id.endswith(".localhost"):
-        return f"{scheme}://{rp_id}{f':{port}' if port else ''}"
+        if not _own((page.hostname or "").lower()):
+            return f"{rp_id} (on the computer it runs on)"
+        return f"{page.scheme}://{rp_id}{f':{page.port}' if page.port else ''}"
     return f"https://{rp_id}"
 
 
 def site(origin, made=()):
     """(rp_id, origin) for a browser Origin, or PasskeyError when passkeys can't work at that address. made: the names
-    the account's passkeys were made at, which this computer's own address points to (#535)."""
+    the account's passkeys were made at, which the refusal names (#535; #549: at any IP address, and on plain HTTP)."""
     parts = urllib.parse.urlsplit((origin or "").strip())
     host = (parts.hostname or "").lower()
     if not host:
@@ -57,13 +68,12 @@ def site(origin, made=()):
         ip = ipaddress.ip_address(host)
     except ValueError:
         ip = None
-    if ip:   # this computer's own address (127.x, ::1): its name, localhost, works without HTTPS (#531), or where the
-        # account's passkeys were made (#535)
+    at = lambda: " or ".join(where(h, parts) for h in made or ["localhost"])   # noqa: E731
+    if ip:   # this computer's own address (127.x, ::1): its name, localhost, works without HTTPS (#531)
         raise PasskeyError("Passkeys don't work at an IP address. Open Sanguity " + (
-            "at " + " or ".join(where(h, parts.scheme, parts.port) for h in made or ["localhost"]) if ip.is_loopback
-            else "by its name (with HTTPS)") + " to use one.")
-    if parts.scheme != "https" and host != "localhost" and not host.endswith(".localhost"):
-        raise PasskeyError("Passkeys need HTTPS. Open Sanguity at its https:// address to use one.")
+            f"at {at()}" if ip.is_loopback or made else "by its name (with HTTPS)") + " to use one.")
+    if parts.scheme != "https" and not _own(host):
+        raise PasskeyError(f"Passkeys need HTTPS. Open Sanguity at {at() if made else 'its https:// address'} to use one.")
     return host, f"{parts.scheme}://{parts.netloc}".lower()
 
 
@@ -173,13 +183,12 @@ def register(db, u, state, credential, name):
 def authentication_options(db, origin, uid=None):
     """Options for navigator.credentials.get. With uid (after the password): that account's passkeys at this
     address. Without: any passkey the browser holds for this site, which must verify the person."""
-    rp_id, origin = site(origin)
+    rp_id, origin = site(origin, sites(db, uid) if uid is not None else ())
     allow = None
     if uid is not None:
         allow = _descriptors(db, uid, rp_id)
         if not allow:   # where they were made, and a code only to an account with one (#540)
-            parts = urllib.parse.urlsplit(origin)
-            at = " or ".join(where(h, parts.scheme, parts.port) for h in sites(db, uid))
+            at = " or ".join(where(h, urllib.parse.urlsplit(origin)) for h in sites(db, uid))
             code = db.execute("SELECT totp_secret FROM users WHERE id=?", (uid,)).fetchone()[0]
             raise PasskeyError("None of your passkeys was made at this address." + (f" Open Sanguity at {at} to use one" if at else "")
                                + (", or use your authenticator code." if at and code else " Use your authenticator code." if code

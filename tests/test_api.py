@@ -1689,6 +1689,22 @@ class Api(unittest.TestCase):
             passkeys.authentication_options(db, "http://localhost:8730", pia_id)
         self.assertEqual((no.exception.status, str(no.exception)),
                          (409, "None of your passkeys was made at this address. Open Sanguity at https://health.example.com to use one."))
+        # #549: on plain HTTP, and at an IP that isn't this computer's, the refusal names where they were made too ("its
+        # https:// address", "by its name"); localhost in words off this computer (it was https://localhost to a remote page)
+        for o, want in (("http://sanguity.test", "Passkeys need HTTPS. Open Sanguity at https://health.example.com to use one."),
+                        ("https://172.16.26.2", "Passkeys don't work at an IP address. Open Sanguity at https://health.example.com to use one.")):
+            self.assertEqual(pia.get("/api/me/passkeys", params={"origin": o}).json()["problem"], want)
+            with self.assertRaises(passkeys.PasskeyError) as no:
+                passkeys.authentication_options(db, o, pia_id)
+            self.assertEqual(str(no.exception), want)
+        from urllib.parse import urlsplit as page
+        self.assertEqual([passkeys.where("localhost", page(o)) for o in ("https://sanguity.test", "http://172.16.26.2:8730", "http://127.0.0.1:8730", "http://[::1]")],
+                         ["localhost (on the computer it runs on)"] * 2 + ["http://localhost:8730", "http://localhost"])
+        for o, want in (("http://sanguity.test", "Passkeys need HTTPS. Open Sanguity at localhost (on the computer it runs on) to use one."),
+                        ("https://172.16.26.2", "Passkeys don't work at an IP address. Open Sanguity at localhost (on the computer it runs on) to use one.")):
+            with self.assertRaises(passkeys.PasskeyError) as no:
+                passkeys.site(o, ["localhost"])
+            self.assertEqual(str(no.exception), want)
         o = c.post("/api/login/passkey/options", json={"ticket": first["ticket"]}, headers=O).json()
         self.assertEqual([x["id"] for x in o["options"]["allowCredentials"]], [SoftKey.b64(key.cid)])
         answer = key.get(o["options"], verified=False)   # after a password, presence is enough

@@ -691,11 +691,13 @@ def _short(d):
 
 
 def _cell(kind, v):
-    """A measures block's cell (#225): a day or a local time written as the other dates are, else its text."""
+    """A measures block's cell (#225): a day or a local time written as the other dates are, else its text. A time is on
+    the preview's clock (#549: it read "Nov 12 08:30" to the preview's "8:30 AM"), after a comma but in ymd (fmtDT)."""
     if kind == "day" and v:
         return _short(v[:10])
     if kind == "time" and v:
-        return f"{_short(v[:10])} {v[11:16]}"
+        h = int(v[11:13])
+        return f"{_short(v[:10])}{' ' if _DATES.get()[0] == 'ymd' else ', '}{h % 12 or 12}:{v[14:16]} {'AM' if h < 12 else 'PM'}"
     return str(v if v is not None else "")
 
 
