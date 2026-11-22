@@ -146,7 +146,7 @@ class Jobs(unittest.TestCase):
         return r.json()["id"]
 
     def wait(self, jid, timeout=20, confirm=True):
-        """The job once it's done or failed; a preview is confirmed (saved) on the way, unless confirm is False."""
+        """The job once it's done, failed or cancelled; a preview is confirmed (saved) on the way, unless confirm is False."""
         end = time.time() + timeout
         while time.time() < end:
             j = self.robin.get(f"/api/profiles/{self.pid}/jobs/{jid}").json()
@@ -154,7 +154,7 @@ class Jobs(unittest.TestCase):
                 r = self.robin.post(f"/api/profiles/{self.pid}/jobs/{jid}/confirm", headers=H)
                 self.assertEqual(r.status_code, 202, r.text)
                 continue
-            if j["state"] in ("done", "failed") or (j["state"] == "preview" and not confirm):
+            if j["state"] in ("done", "failed", "discarded") or (j["state"] == "preview" and not confirm):
                 return j
             time.sleep(0.05)
         self.fail(f"job {jid} didn't finish: {j}")
@@ -291,8 +291,10 @@ class Jobs(unittest.TestCase):
 
     def test_unrecognised_upload(self):
         before = count(self.pid)
-        j = self.wait(self.start(self.upload({"holiday.jpg": b"\xff\xd8not records"})))
+        up = self.upload({"holiday.jpg": b"\xff\xd8not records"})
+        j = self.wait(self.start(up))
         self.assertEqual(j["state"], "failed")
+        self.assertFalse(os.path.exists(uploads.folder(self.pid, up)), "its upload is removed (#547)")
         self.assertIn("didn't recognise these files", j["message"])
         self.assertIn("C-CDA" if reg.get("ccda") else reg.get("sanguity").LABEL, j["message"])
         self.assertIn("https://github.com/sanguity/sanguity/issues/new?template=portal-export.yml", j["message"])
@@ -326,15 +328,76 @@ class Jobs(unittest.TestCase):
                     self.assertIn("can't load", j["message"])
                 if when == "save":
                     self.assertIn("couldn't be saved", j["message"])
-                # and it can be tried again after a failure
-                self.assertEqual(self.robin.post(f"/api/profiles/{self.pid}/uploads/{up}/import", headers=H).status_code, 202)
-                self.wait(self.robin.get(f"/api/profiles/{self.pid}/jobs").json()[0]["id"])
+                # its upload goes with it (#547): nothing would show it, nor start it again
+                self.assertFalse(os.path.exists(uploads.folder(self.pid, up)))
+                self.assertEqual(self.upload_state(up), "discarded")
+
+    def until(self, jid, states, timeout=20):
+        end = time.time() + timeout
+        while time.time() < end:
+            j = self.robin.get(f"/api/profiles/{self.pid}/jobs/{jid}").json()
+            if j["state"] in states:
+                return j
+            time.sleep(0.05)
+        self.fail(f"job {jid} never reached {states}: {j}")
+
+    def upload_state(self, up):
+        db = dbm.connect()
+        try:
+            return db.execute("SELECT state FROM uploads WHERE id=?", (up,)).fetchone()[0]
+        finally:
+            db.close()
+
+    def test_a_save_keeping_nothing_removes_its_upload(self):   # #547
+        """The same file in two reviews, one added, then the other: all of it is here by now, so there's no import, and
+        nothing to undo or remove its upload by. It's cancelled, saying so, with its upload, unless another job uses
+        it; and an upload no job holds any more goes at the next start (uploads.cleanup)."""
+        files = {"withdoc.txt": "x", "notes/visit.txt": "Seen twice."}
+        first, second, third = self.upload(files), self.upload(files), self.upload(files)
+        a, b, c = self.start(first), self.start(second), self.start(third)
+        for jid in (a, b, c):
+            self.assertEqual(self.wait(jid, confirm=False)["state"], "preview")
+        self.assertEqual(self.wait(a)["state"], "done")
+        before = count(self.pid)
+        self.assertEqual(self.robin.post(f"/api/profiles/{self.pid}/jobs/{b}/confirm", headers=H).status_code, 202)
+        j = self.until(b, ("done", "failed", "discarded"))
+        self.assertEqual((j["state"], j["import_id"], j["message"]), ("discarded", None, jobs.NOTHING_NEW), j)
+        self.assertEqual(j["message"], "Nothing new to add, so the upload was removed.")
+        self.assertEqual(count(self.pid), before)
+        self.assertEqual(self.upload_state(second), "discarded")
+        self.assertFalse(os.path.exists(uploads.folder(self.pid, second)))
+        self.assertTrue(os.path.isdir(uploads.folder(self.pid, first)))   # the import's raw files
+        self.assertFalse(os.path.exists(jobs.preview_path(self.pid, b)))
+        # one whose upload another job uses (waiting in review): kept, and said so
+        db = dbm.connect()
+        try:
+            other = db.execute("INSERT INTO jobs(profile_id, upload_id, state, created) VALUES(?, ?, 'preview', ?)",
+                               (self.pid, third, dbm.now())).lastrowid
+        finally:
+            db.close()
+        self.assertEqual(self.robin.post(f"/api/profiles/{self.pid}/jobs/{c}/confirm", headers=H).status_code, 202)
+        j = self.until(c, ("done", "failed", "discarded"))
+        self.assertEqual((j["state"], j["message"]), ("discarded", jobs.ALL_HERE), j)
+        self.assertEqual(self.upload_state(third), "ready")
+        # that job ended too, without an import: at the next start nothing holds the upload, and it goes
+        db = dbm.connect()
+        try:
+            db.execute("UPDATE jobs SET state='failed' WHERE id=?", (other,))
+            self.assertEqual(uploads.orphaned(db), [third])
+            uploads.cleanup(db)
+            self.assertEqual(uploads.orphaned(db), [])
+        finally:
+            db.close()
+        self.assertEqual(self.upload_state(third), "discarded")
+        self.assertFalse(os.path.exists(uploads.folder(self.pid, third)))
+        self.assertTrue(os.path.isdir(uploads.folder(self.pid, first)))   # held by its import
+        self.assertEqual(self.upload_state(first), "ready")
 
     def test_importer_override(self):
         up = self.upload({"holiday.jpg": b"\xff\xd8"})
         r = self.robin.post(f"/api/profiles/{self.pid}/uploads/{up}/import", json={"importer": "nope"}, headers=H)
         self.assertEqual(r.status_code, 400)
-        j = self.wait(self.start(self.upload({"notes.txt": "x", "notes/visit.txt": "y"}), body={"importer": "withdoc"}))
+        j = self.wait(self.start(self.upload({"notes.txt": "x", "notes/visit.txt": "Read as asked."}), body={"importer": "withdoc"}))
         self.assertEqual((j["state"], j["importer"]), ("done", "withdoc"))
 
     def test_previews_left_open_are_listed(self):   # Sources' "Waiting for you" (#283)
@@ -359,7 +422,7 @@ class Jobs(unittest.TestCase):
         self.assertNotIn(jid, [j["id"] for j in self.robin.get(url, params={"state": "preview"}).json()])
 
     def test_roles(self):
-        up = self.upload({"withdoc.txt": "x", "notes/visit.txt": "y"})
+        up = self.upload({"withdoc.txt": "x", "notes/visit.txt": "Roles."})
         url = f"/api/profiles/{self.pid}/uploads/{up}/import"
         self.assertEqual(self.kim.post(url, headers=H).status_code, 403)      # a viewer can't start one
         self.assertEqual(self.lee.post(url, headers=H).status_code, 404)      # a stranger isn't told it exists
@@ -393,7 +456,7 @@ class Jobs(unittest.TestCase):
             j = self.robin.get(f"/api/profiles/{self.pid}/jobs/{jid}").json()
             self.assertEqual((j["state"], j["stage"], j["importer"]), ("running", "parsing", "slow"))
             # a second job waits its turn
-            second = self.start(self.upload({"withdoc.txt": "x", "notes/visit.txt": "y"}))
+            second = self.start(self.upload({"withdoc.txt": "x", "notes/visit.txt": "Waiting its turn."}))
             self.assertEqual(self.robin.get(f"/api/profiles/{self.pid}/jobs/{second}").json()["state"], "queued")
         finally:
             GATE.set()
@@ -403,21 +466,28 @@ class Jobs(unittest.TestCase):
     def test_z_interrupted_jobs_fail_at_start_up(self):   # last: it restarts the app
         db = dbm.connect()
         try:
-            up = self.upload({"withdoc.txt": "x"})
+            up, held, left = self.upload({"withdoc.txt": "x"}), self.upload({"withdoc.txt": "y"}), self.upload({"withdoc.txt": "z"})
             ids = [db.execute("INSERT INTO jobs(profile_id, upload_id, state, stage, created, started) VALUES(?, ?, ?, ?, ?, ?)",
-                              (self.pid, up, state, stage, dbm.now(), dbm.now())).lastrowid
-                   for state, stage in (("running", "saving"), ("queued", None))]
+                              (self.pid, u, state, stage, dbm.now(), dbm.now())).lastrowid
+                   for u, state, stage in ((up, "running", "saving"), (up, "queued", None), (held, "queued", None),
+                                           (held, "preview", None), (left, "failed", None))]
         finally:
             db.close()
         type(self).ctx.__exit__(None, None, None)
         type(self).ctx = client().__enter__()
-        for jid in ids:
+        for jid in ids[:3]:
             j = self.robin.get(f"/api/profiles/{self.pid}/jobs/{jid}").json()
             self.assertEqual(j["state"], "failed")
             self.assertIn("interrupted; nothing was saved", j["message"])
             self.assertIsNone(j["stage"])
+        # their uploads go with them (#547), unless another job uses one (here, a review waiting); and one a failed job
+        # left from before goes too (uploads.cleanup)
+        self.assertEqual([self.upload_state(u) for u in (up, held, left)], ["discarded", "ready", "discarded"])
+        self.assertFalse(os.path.exists(uploads.folder(self.pid, up)))
+        self.assertFalse(os.path.exists(uploads.folder(self.pid, left)))
+        self.assertTrue(os.path.isdir(uploads.folder(self.pid, held)))
         # and the new worker takes jobs
-        self.assertEqual(self.wait(self.start(self.upload({"withdoc.txt": "x", "notes/visit.txt": "y"})))["state"], "done")
+        self.assertEqual(self.wait(self.start(self.upload({"withdoc.txt": "x", "notes/visit.txt": "After the restart."})))["state"], "done")
 
 
 if __name__ == "__main__":

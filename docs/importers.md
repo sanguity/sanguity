@@ -370,7 +370,8 @@ adds to the profile's records and never replaces them.
   upload's folder, so the document still opens after the temporary copies are deleted.
 - A `ValueError` from `parse()` is shown to the person as it is, so word it for them. Anything else they see as "the
   importer stopped with an error", and its traceback goes to the app's log.
-- A failure at any point rolls the transaction back. A failed import leaves no records and no documents behind.
+- A failure at any point rolls the transaction back. A failed import leaves no records and no documents behind, and
+  its upload is removed unless another import uses it (#547).
 - When no importer matches, the message lists every `LABEL` and asks for an issue with an anonymised sample.
 
 | Route | |

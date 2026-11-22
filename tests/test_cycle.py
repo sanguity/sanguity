@@ -626,8 +626,9 @@ class App(unittest.TestCase):
             self.assertNotIn("cycle", j["counts"], change)
             self.assertNotIn("cycle", json.loads(crypto.read_file(jobs.preview_path(pid, jid)))["watch"])
             self.assertEqual(self.c["robin"].post(f"/api/profiles/{pid}/jobs/{jid}/confirm", headers=H).status_code, 202)
-            done = self.wait_job(pid, jid, ("done", "failed"))
-            self.assertEqual((done["state"], done.get("cycle")), ("done", None), done)
+            done = self.wait_job(pid, jid, ("done", "failed", "discarded"))
+            # (the same export again, after "off": nothing new, cancelled with its upload, #547)
+            self.assertEqual((done["state"], done.get("cycle")), ("done" if change == "off" else "discarded", None), done)
         # read while on, then turned off while it's saved: none kept, none counted; one of cycle records only then
         # keeps nothing, so it's cancelled as an empty preview is (#542): no import of nothing, no upload left
         self.assertEqual(self.c["robin"].put(url, json={"on": True}, headers=H).status_code, 200)
@@ -644,12 +645,10 @@ class App(unittest.TestCase):
                 go.set()
                 done = self.wait_job(pid, waiting["id"], ("done", "failed", "discarded"))
             self.assertNotIn("cycle", done, "a save counts what was kept: none")
-            # the rest of the export is here already: saved as all duplicates are, with no import either
+            # the rest of the export is here already: cancelled as all duplicates are (#547), with no import either
             self.assertEqual(len(self.c["robin"].get(f"/api/profiles/{pid}/imports").json()["imports"]), imports, "no import of nothing")
-            if rest:
-                self.assertEqual((done["state"], done["import_id"]), ("done", None), done)
-                continue
-            self.assertEqual((done["state"], done["import_id"], done["message"]), ("discarded", None, jobs.NOTHING), done)
+            self.assertEqual((done["state"], done["import_id"], done["message"]),
+                             ("discarded", None, jobs.NOTHING_NEW if rest else jobs.NOTHING), done)
             self.assertFalse(os.path.exists(jobs.uploads.folder(pid, waiting["upload_id"])), "its upload is gone")
             self.assertFalse(os.path.exists(jobs.preview_path(pid, waiting["id"])))
         self.assertEqual(self.c["robin"].put(url, json={"on": True}, headers=H).status_code, 200)
