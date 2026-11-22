@@ -12,6 +12,7 @@ information, not on the Settings screen): {measure: target}, only the measures t
   temp      {"low", "high", "unit"}                      body temperature, °C
   spo2      {"low", "high"}                              blood oxygen, %
   weight    {"low", "high", "unit"}                      kg
+  steps     {"low", "high"}                              steps a day, the phone's count of each day (#298)
 
 each with "by" (who set it, "" when not said) and "on" ("" or the day it was set, YYYY-MM-DD). Values are stored in
 the one unit each measure is kept in (glucose mg/dL, temperature °C, weight kg: #41's canonical units, to two
@@ -36,10 +37,11 @@ MEASURES = {   # id: (name, the unit it's kept in, typed units -> factor to it, 
     "temp": ("Body temperature", "°C", {"C": 1.0, "F": None}, (34, 42), 1),
     "spo2": ("Blood oxygen", "%", {}, (70, 100), 0),
     "weight": ("Weight", "kg", {"kg": 1.0, "lb": None}, (1, 450), 1),
+    "steps": ("Steps a day", "steps", {}, (100, 100000), 0),
 }
 BP = {"sys": ("Systolic", 60, 250), "dia": ("Diastolic", 30, 150)}
 LIMITS = {"glucose": "20 to 600 mg/dL (1.2 to 33.3 mmol/L)", "cgm": "40 to 400 mg/dL (2.3 to 22.2 mmol/L)",
-          "temp": "34 to 42 °C (93.2 to 107.6 °F)", "spo2": "70 to 100%", "weight": "1 to 450 kg (2.3 to 992 lb)",
+          "temp": "34 to 42 °C (93.2 to 107.6 °F)", "spo2": "70 to 100%", "weight": "1 to 450 kg (2.3 to 992 lb)", "steps": "100 to 100,000 steps",
           "sys": "60 to 250 mmHg", "dia": "30 to 150 mmHg"}   # what each accepts, in words
 LB_KG = 0.45359237
 BY_MOST = 80

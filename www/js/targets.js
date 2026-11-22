@@ -22,6 +22,7 @@ const TGT = {
   temp: {name: "Body temperature", what: "readings at home", units: ["C", "F"], places: 1, card: "#h-temp"},
   spo2: {name: "Blood oxygen", what: "readings at home", units: ["%"], places: 0, card: "#h-oxygen"},
   weight: {name: "Weight", what: "smart scale weights", units: ["kg", "lb"], places: 1, card: "#h-body"},
+  steps: {name: "Steps a day", what: "days", units: ["steps"], places: 0, card: "#h-activity", marks: " ▲ or ▼ in the table marks a day above or below it."},   // #298
 };
 const TGT_UNIT = {C: "°C", F: "°F"};
 const tgtLower = k => k === "cgm" ? TGT[k].name : TGT[k].name.toLowerCase();   // "blood pressure", "CGM time in range"
@@ -61,7 +62,7 @@ function tgtSide(v, lo, hi, places = 0) {
   const r = x => Math.round(x * 10 ** places) / 10 ** places;
   return hi != null && r(v) > r(hi) ? "h" : lo != null && r(v) < r(lo) ? "l" : "";
 }
-const tgtNum = (v, places) => places ? (+v.toFixed(places)).toFixed(places).replace(/\.0+$/, "") : String(Math.round(v));
+const tgtNum = (v, places) => places ? (+v.toFixed(places)).toFixed(places).replace(/\.0+$/, "") : Math.round(v).toLocaleString("en-US");   // "8,000 steps"
 /* "80–130 mg/dL", "up to 130 mg/dL", "at least 92%" */
 function tgtRange(lo, hi, places, unit) {
   const f = v => tgtNum(v, places), sp = unit === "%" ? "" : " ";
@@ -121,7 +122,7 @@ function tgtLine(card, k, unit, flags, extra = "") {
   const who = tgtWho(t);
   const p = el("p", {class: "hint tgt-line", "data-target": k}, el("b", {text: `Your target, as your care team gave it: ${tgtText(k, unit)}`}),
     who ? ` (${who}).` : ".", " ", flags ? tgtCount(flags, TGT[k].what) : "", extra,
-    flags && flags.some(Boolean) ? " ▲ or ▼ marks a reading at home above or below it." : "");
+    flags && flags.some(Boolean) ? TGT[k].marks || " ▲ or ▼ marks a reading at home above or below it." : "");
   const at = card.querySelector(":scope > .hint"); if (at) at.after(p); else card.append(p);
   return p;
 }

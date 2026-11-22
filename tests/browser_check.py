@@ -988,13 +988,15 @@ def ax_echoes(page):
 # #355: and in any text shown (each text node, and each element's ::before and ::after), no symbol from the blocks icons
 # came from (arrows, technical, geometric shapes, symbols, dingbats, braille, ⋯, pictographs), but the marks that mean
 # something and are said in words beside them: ▲ ▼ (out of range), ◆ ● ■ ○ ◇ (legends and flags; • is punctuation),
-# ← → in a sentence and ⌘ in "⌘C". A help text naming "the ◐ button" fails here.
+# ← → in a sentence and ⌘ in "⌘C". A help text naming "the ◐ button" fails here. ↑ and ↓ before a number are a tile's
+# change ("↓ 5.3 lb this period", #298, #623), text and not an icon; alone, as a sort's arrow, they are still one.
 ICON_GLYPHS = "✓✔✕✖×⇔◐✎⋯⚠↗⠿▾✗↑↓⌘"
 TEXT_MARKS = "▲▼◆●■○◇←→⌘"
 ICON_AUDIT = r"""([glyphs, marks]) => {
   const vis = n => n.checkVisibility(), out = {n: 0, glyph: [], text: [], hidden: [], unnamed: [], blank: []};
   const sym = /[\u2190-\u21FF\u22EF\u2300-\u23FF\u25A0-\u27BF\u2800-\u28FF\u2B00-\u2BFF\u{1F300}-\u{1FAFF}]/gu;
-  const odd = t => [...new Set(t.match(sym) || [])].filter(c => !marks.includes(c)).join('');
+  const chg = t => t.replace(/[↑↓](?= \d)/g, '');   // a change's arrow (#298)
+  const odd = t => [...new Set(chg(t).match(sym) || [])].filter(c => !marks.includes(c)).join('');
   const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   for (let t; (t = w.nextNode());) {
     const p = t.parentElement, o = odd(t.textContent);
@@ -1008,7 +1010,7 @@ ICON_AUDIT = r"""([glyphs, marks]) => {
     (n.getAttribute('aria-labelledby') || '').split(/\s+/).map(id => document.getElementById(id)?.textContent.trim()).join('');
   for (const b of document.querySelectorAll('button, a[href], [role=button], [role^=menuitem], summary')) {
     if (!vis(b)) continue;
-    const t = b.textContent.trim(), cs = p => getComputedStyle(b, p).content;
+    const t = chg(b.textContent.trim()), cs = p => getComputedStyle(b, p).content;
     if ([...glyphs].some(g => t.includes(g) || cs('::before').includes(g) || cs('::after').includes(g)) || /^[→+?]|→$|^\?$/.test(t))
       out.glyph.push(t.slice(0, 40) || b.id || b.className);
     if (!t && b.querySelector('svg.icon') && !name(b)) out.unnamed.push(b.id || b.className);
@@ -1314,7 +1316,7 @@ def focus_walk(page, label, back=False, stops=60):
 
 
 # the labels on a time chart (#312): of each chart matching the selector (an argument) that is drawn, its aria-label,
-# whether it has milestones, and its milestone labels ([text, the full names and dates in its title]); how many
+# whether it has milestones, how many as a faint line (#298), and its milestone labels ([text, the full names and dates in its title]); how many
 # procedures are named; and what's wrong: a label running past its plot's left or right edge, or a procedure's or
 # imaging's mark (● ■) on a label's text
 CHART_LABELS_JS = r"""sel => {
@@ -1323,7 +1325,7 @@ CHART_LABELS_JS = r"""sel => {
     const g = svg._geom || (svg.id === 'tl' ? tlScale(svg.viewBox.baseVal.width) : null);
     if (!g || !svg.checkVisibility() || !svg.getBoundingClientRect().width) continue;
     const said = svg.getAttribute('aria-label') || '', name = said.split(/[:,]/)[0], heads = [...svg.querySelectorAll('.evhead')].map(h => h.getBBox());
-    const c = {said, marked: !!svg.querySelector('.msmark'), ms: []}; out.charts.push(c);
+    const c = {said, marked: !!svg.querySelector('.msmark'), faint: svg.querySelectorAll('.msmark.faint').length, ms: []}; out.charts.push(c);
     for (const t of svg.querySelectorAll('.mslabel, .evlabel')) {
       const b = t.getBBox(), text = t.firstChild.textContent;
       if (t.classList.contains('mslabel')) c.ms.push([text, t.querySelector('title')?.textContent || '']); else out.ev++;
@@ -1333,6 +1335,46 @@ CHART_LABELS_JS = r"""sel => {
         out.problems.push(`${name}: a mark lies on "${text}"`);
     }
   }
+  return out;
+}"""
+
+# Body and activity's charts in their forms (#298): {hr: the heart rate chart's day band (0 or 1), its highest tick and whether
+# the toggle is there, comp: body fat's and lean mass's dots, their line's points and the share of them on a dot, steps:
+# its bars' fill opacity, its average's stroke and its target lines, sleep: over 150 days, a line, the stages' paths all
+# under the plot, how many, the narrowest gap between bars and between a stack's first two parts, tiles: the changes,
+# bmi: [heights on file, BMI headings, the hint's start]}
+FORMS298_JS = r"""() => {
+  const svgOf = k => document.querySelector(k + ' svg.ck'), g = s => s._geom;
+  const rects = d => [...(d || '').matchAll(/M([\d.-]+),([\d.-]+)h([\d.-]+)v([\d.-]+)/g)].map(m => m.slice(1).map(Number));
+  const ticks = s => [...s.querySelectorAll('text[text-anchor=end]')].filter(t => +t.getAttribute('x') < g(s).L).map(t => parseFloat(t.textContent));
+  const out = {};
+  // heart rate: resting on its own scale, no band; the day's band a toggle away
+  const hr = svgOf('#h-heart');
+  out.hr = {band: hr.querySelectorAll('path[opacity]:not([stroke])').length, top: Math.max(...ticks(hr)), toggle: !!document.getElementById('hrDay')};
+  // body composition: dots under a 14-day average, the line not through every dot
+  out.comp = [...document.querySelectorAll('#h-body .ov-cols svg.ck')].map(s => {
+    const line = s.querySelector('path[stroke]:not(.refedge)'), dots = [...s.querySelectorAll('circle')].map(c => [+c.getAttribute('cx'), +c.getAttribute('cy')]);
+    const vs = [...line.getAttribute('d').matchAll(/[ML]([\d.-]+),([\d.-]+)/g)].map(m => [+m[1], +m[2]]);
+    const on = vs.filter(([x, y]) => dots.some(([cx, cy]) => Math.abs(cx - x) < .6 && Math.abs(cy - y) < .6)).length;
+    return {dots: dots.length, line: vs.length, on: +(on / vs.length).toFixed(2)};
+  });
+  // steps: a pale tint under the ink of its average
+  const st = svgOf('#h-activity'), bars = st.querySelector('path[fill="var(--measure)"]'), avg = st.querySelector('path[stroke]');
+  out.steps = {tint: bars && +bars.getAttribute('fill-opacity'), avg: avg && avg.getAttribute('stroke'), target: st.querySelectorAll('.tgt-edge').length};
+  // sleep: a weekly line with the stages' strip under the plot over 150 days; bars with 2 px gaps under
+  const sl = svgOf('#h-sleep'), G = g(sl), ps = [...sl.querySelectorAll('path[fill^="var(--seq"]')];
+  const all = ps.map(p => rects(p.getAttribute('d')));
+  const xs = [...new Set(all.flat().map(r => r[0]))].sort((a, b) => a - b), w = all.flat()[0]?.[2];
+  let gaps = [];
+  for (let i = 1; i < xs.length; i++) gaps.push(+(xs[i] - xs[i - 1] - w).toFixed(1));
+  // a stack's parts: the second's foot 2 px over the first's top
+  const deep = new Map(all[0]?.map(r => [r[0], r[1]]) || []), seg = (all[1] || []).filter(r => deep.has(r[0])).map(r => +(deep.get(r[0]) - (r[1] + r[3])).toFixed(1));
+  out.sleep = {long: hRange()[1] - hRange()[0] > 150 * DAY, line: !!sl.querySelector('path[stroke]:not(.refedge)'), strip: ps.length && all.flat().every(r => r[1] > G.B),
+    bars: ps.length, minGap: gaps.length ? Math.min(...gaps) : null, minSeg: seg.length ? Math.min(...seg) : null};
+  // the tiles' changes: ↑ / ↓ or "no change", never ▲ / ▼ or a sign
+  out.tiles = [...document.querySelectorAll('#view-health .tile .delta')].map(d => d.textContent).filter(t => / (this|previous) period/.test(t));
+  // no empty BMI block
+  out.bmi = [personOf().heights.length, document.querySelectorAll('#h-body .bmi h4').length, document.querySelector('#h-body .bmi .hint')?.textContent.slice(0, 5)];
   return out;
 }"""
 
@@ -4228,7 +4270,7 @@ def main():
                   sync291["charts"] >= 5 and sync291["on"] >= 5 and sync291["spread"] <= 4 and sync291["tip"] == "block"
                   and abs(sync291["tipTop"]) <= 1 and left291 == 0, [sync291, left291])
             check("…and its legends key a line with a short line and a visit's reading with a ring",
-                  ["14-day average", "line"] in keys291 and ["Clinic visit", "ring"] in keys291 and ["Resting", "line"] in keys291, keys291)
+                  ["14-day average", "line"] in keys291 and ["Clinic visit", "ring"] in keys291 and ["Resting", "dot"] in keys291, keys291)
             # #292: decimation (chartkit.js ckDecimate). Ten thousand points on 300 px: a line keeps each pixel's first,
             # lowest, highest and last, dots their lowest and highest and every flagged one, bars the tallest; fewer
             # points than pixels come back as they were. On All the weight chart at 320 px draws fewer of the demo's
@@ -4246,7 +4288,8 @@ def main():
             for width in (1400, 320):
                 page.set_viewport_size({"width": width, "height": 900})
                 settle(500)
-                w292[width] = js("""(() => { const cy = [...document.querySelector('#h-body svg.ck').querySelectorAll('circle[fill="var(--measure)"]')].map(c => +c.getAttribute('cy'));
+                w292[width] = js("""(() => { const s = document.querySelector('#h-body svg.ck'), g = s._geom;   // (as a share of the plot: its top is under the milestones' names, #298)
+                  const cy = [...s.querySelectorAll('circle[fill="var(--measure)"]')].map(c => (+c.getAttribute('cy') - g.T) / (g.B - g.T));
                   return [cy.length, Math.min(...cy), Math.max(...cy), H.scale.length, document.querySelectorAll('#h-sleep svg.ck rect:not([fill=transparent]):not([fill="var(--stay)"])').length]; })()""")
             page.set_viewport_size({"width": 1400, "height": 900})
             js("state.tables.add('#h-body'); renderHealth()")
@@ -4265,6 +4308,42 @@ def main():
                   and w292[1400][4] == 0 and (t292 == w292[1400][3] or more292 > 0), [w292, t292, more292])
             check("…the workouts' calendar names its months “Sep ’26” on All, never “Sep 26”, which reads as a day (#561)",
                   cal561 and all(re.match(r"^[A-Z][a-z]{2} ’\d\d$", t) for t in cal561), cal561)
+            # #298: each chart in its form, on All (the demo's 20 months: over 150 days) and on 90 days. Resting heart rate
+            # on its own scale, without the day's low–high, which a toggle adds and remembers; body fat and lean mass as
+            # dots under a 14-day average, not joined into a sawtooth; steps a pale tint under the ink of its average, with
+            # a target of the person's own as a line (#234); sleep over 150 days a weekly line with the stages as a strip
+            # under the plot, shorter periods stacked bars with 2 px between bars and between a stack's parts; the tiles'
+            # changes ↑ or ↓, or "no change"; no BMI heading over nothing
+            js("""window._was298 = CFG.person; CFG.person = {...(CFG.person || {}), targets: {...targetsOf(), steps: {low: 8000, high: null, by: "", on: ""}}}""")
+            forms298 = {}
+            for preset in ("all", "90d"):
+                js("p => applyPreset(p)", preset)
+                settle(500)
+                forms298[preset] = js(FORMS298_JS)
+            page.click("label:has(#hrDay)")
+            settle(400)
+            on298 = js("""(() => { const s = document.querySelector('#h-heart svg.ck'), g = s._geom;
+                return [s.querySelectorAll('path[opacity]:not([stroke])').length, Math.max(...[...s.querySelectorAll('text[text-anchor=end]')].filter(t => +t.getAttribute('x') < g.L).map(t => parseFloat(t.textContent))),
+                  JSON.parse(localStorage.getItem(hKey())).hrDay, document.activeElement.id]; })()""")
+            page.click("label:has(#hrDay)")
+            settle(400)
+            off298 = js("[JSON.parse(localStorage.getItem(hKey())).hrDay, document.querySelectorAll('#h-heart svg.ck path[opacity]:not([stroke])').length]")
+            js("CFG.person = window._was298; [state.preset, state.from, state.to] = window._was291; renderAll()")
+            settle(300)
+            f298a, f298b = forms298["all"], forms298["90d"]
+            check("Body and activity's charts in their forms (#298): resting heart rate on its own scale, the day's low–high a toggle away and remembered; "
+                  "body composition as dots under a 14-day average; steps a pale tint under an ink average, with a target's line",
+                  all(f["hr"]["band"] == 0 and f["hr"]["top"] < 100 and f["hr"]["toggle"] for f in forms298.values())
+                  and on298[0] == 1 and on298[1] >= 100 and on298[2] is True and on298[3] == "hrDay" and off298 == [False, 0]
+                  and all(len(f["comp"]) == 2 and all(c["dots"] > 10 and c["on"] < .5 for c in f["comp"]) for f in forms298.values())
+                  and all(f["steps"] == {"tint": .3, "avg": "var(--ink)", "target": 1} for f in forms298.values()), [forms298, on298, off298])
+            check("…sleep over 150 days a weekly line with the stages as a strip under the plot, under it bars with 2 px between them and between a stack's parts",
+                  f298a["sleep"]["long"] and f298a["sleep"]["line"] and f298a["sleep"]["strip"]
+                  and not f298b["sleep"]["long"] and not f298b["sleep"]["line"] and f298b["sleep"]["bars"] >= 3 and f298b["sleep"]["minGap"] >= 1.8 and f298b["sleep"]["minSeg"] >= 1.8,
+                  [f298a["sleep"], f298b["sleep"]])
+            check("…the tiles say a change with ↑ or ↓, or “no change”, never ▲ / ▼ or a sign; no BMI heading without a BMI",
+                  all(f["tiles"] and all(re.match(r"^(↑ \d|↓ \d|no change )", t) for t in f["tiles"]) for f in forms298.values())
+                  and all(f["bmi"][0] or f["bmi"][1:] == [0, "BMI: "] for f in forms298.values()), [{k: [f["tiles"], f["bmi"]] for k, f in forms298.items()}])
             for k in ("#h-body", "#h-heart", "#h-bp", "#h-glucose", "#h-temp", "#h-oxygen", "#h-resp", "#h-sleep", "#h-activity", "#h-vo2"):
                 page.click(f"{k} .view-seg button:text-is('Table')")
                 settle(200)
@@ -5728,8 +5807,9 @@ def main():
             js("state.tables.clear(); setRange(dayTs('2025-06-01'), dayTs('2026-11-14')); switchTab('health')")
             settle(400)
             none = page.inner_text("#h-body .bmi") if page.locator("#h-body .bmi").count() else ""
-            check("BMI (#195): with no height, the weight card says a height in About this person gives each weight's BMI, and there's no BMI tile",
-                  "With a height under About this person" in none and js("document.querySelector('#h-body .bmi a').getAttribute('href')") == "settings.html?profile=1#about"
+            check("BMI (#195): with no height, the weight card says a height in About this person gives each weight's BMI, in one line with no "
+                  "heading over it (#298), and there's no BMI tile",
+                  "BMI: with a height under About this person" in none and not js("document.querySelector('#h-body .bmi h4')") and js("document.querySelector('#h-body .bmi a').getAttribute('href')") == "settings.html?profile=1#about"
                   and "BMI" not in js("[...document.querySelectorAll('#view-health .tile .lbl')].map(l => l.textContent)"), none)
             st195 = [api195("POST", "profiles/1/person/heights", {"date": "2019-01-10", "unit": "cm", "cm": 178}),
                      api195("POST", "profiles/1/person/heights", {"date": "2026-03-02", "unit": "ftin", "ft": 5, "inches": 9.9})]
@@ -8165,9 +8245,11 @@ def main():
                   fc["rules"] == [fc["text"]] and fc["labels"] == [fc["text"]] and fc["cursors"] == [fc["hi"]]
                   and fc["events"] in ([], [fc["text"]]) and fc["axis"] == [fc["text"]]
                   and fc["flags"] == [fc["text"]] and fc["heads"] == [fc["text"]], fc)
-            # their labels (#312): at 1400, 375 and 320 px each one on the Timeline and every Body and activity chart is
-            # inside its plot with no mark on it; one shortened to fit ends in "…" and keeps the full names in its title; a
-            # Body and activity chart's aria-label names them (Labs names them on its event track, #294: TRACK_JS)
+            # their labels (#312): at 1400, 375 and 320 px each one on the Timeline and Body and activity is inside its plot
+            # with no mark on it; one shortened to fit ends in "…" and keeps the full names in its title; a Body and
+            # activity chart's aria-label names them (Labs names them on its event track, #294: TRACK_JS). Body names them
+            # once, over its first chart, each name's title naming the marks under a "+N" too, every chart keeping a faint
+            # solid line at each (#298)
             js("window._was312 = [state.marks, scrollY]; state.marks = true")
             for width in (1400, 375, 320):
                 page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
@@ -8177,7 +8259,16 @@ def main():
                     got = js(CHART_LABELS_JS, sel)
                     names = sorted(js("(([a, b]) => MILESTONES.filter(m => dayTs(m.date) >= a && dayTs(m.date) <= b).map(m => m.label))(state.tab === 'health' ? hRange() : [state.from, state.to])"))
                     wrong = list(got["problems"])
-                    for c in (c for c in got["charts"] if c["marked"]):
+                    if tab == "health":
+                        firsts = [i for i, c in enumerate(got["charts"]) if c["ms"]]
+                        titled = sorted(n.rsplit(" · ", 1)[0] for c in got["charts"] for _, title in c["ms"] for n in title.split("\n"))
+                        wrong += [f"named over chart {firsts}, not over the first only"] if firsts != [0] else []
+                        wrong += [f"named {titled}, not {names}"] if titled != names else []
+                        wrong += [f"{c['said'][:30]}: \"{t}\" isn't the start of {title.split(' · ')[0]}" for c in got["charts"] for t, title in c["ms"]
+                                  if t != title.split(" · ")[0] and not (t.endswith("…") and title.startswith(t[:-1].rstrip()))]
+                        wrong += [f"{c['said'][:30]}: no faint line at each milestone, or not named in its aria-label" for c in got["charts"]
+                                  if c["faint"] != len(names) or not all(n in c["said"] for n in names)]
+                    for c in (c for c in got["charts"] if c["marked"] and tab != "health"):
                         full = [" · ".join(n.rsplit(" · ", 1)[0] for n in title.split("\n")) for _, title in c["ms"]]
                         wrong += [f"{c['said'][:30]}: \"{t}\" is neither \"{f}\" nor its start" for (t, _), f in zip(c["ms"], full)
                                   if t != f and not (t.endswith("…") and f.startswith(t[:-1].rstrip()))]
@@ -8185,7 +8276,8 @@ def main():
                             wrong.append(f"{c['said'][:30]}: labelled {full}, not {names}")
                         if tab != "timeline" and not all(n in c["said"] for n in names):
                             wrong.append(f"{c['said'][:30]}: its aria-label doesn't name every milestone")
-                    check(f"{tab} ({width} px, #312): milestone labels inside every chart, no mark on them, their full names kept",
+                    check(f"{tab} ({width} px, #312{', #298' if tab == 'health' else ''}): milestone labels inside every chart, no mark on them, their full names kept"
+                          + (", named once over the first chart, a faint line at each in every chart" if tab == "health" else ""),
                           bool(names) and any(c["marked"] for c in got["charts"]) and not wrong, wrong or got)
             js("switchTab('labs', 'chart')")   # still 320 px, marks on: an event under a "+N" on the event track (#294) still opens its drawer
             settle(500)
@@ -15717,8 +15809,8 @@ def main():
             tcard = js("[!document.getElementById('targets').hidden && !document.getElementById('targets').classList.contains('grp-off'), "
                        "document.getElementById('targets').innerText]")
             check("…a card of its own beside About this person, worded as the care team's, every measure without one at first",
-                  tcard[0] and "Targets of your own" in tcard[1] and "as your care team gave it" in tcard[1] and tcard[1].count("No target entered.") == 6
-                  and all(n in tcard[1] for n in ("Blood pressure", "Blood glucose, meter readings", "CGM time in range", "Body temperature", "Blood oxygen", "Weight")),
+                  tcard[0] and "Targets of your own" in tcard[1] and "as your care team gave it" in tcard[1] and tcard[1].count("No target entered.") == 7
+                  and all(n in tcard[1] for n in ("Blood pressure", "Blood glucose, meter readings", "CGM time in range", "Body temperature", "Blood oxygen", "Weight", "Steps a day")),
                   tcard[1][:300])
             def t_save(k, vals, said_start):   # typed in, saved with the group's bar (#272), its toast put away
                 for name, v in vals.items():

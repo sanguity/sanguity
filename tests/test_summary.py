@@ -544,7 +544,7 @@ class Summary(unittest.TestCase):
             self.assertEqual(self.mpreview(sections=["targets"])["measures"]["targets"]["rows"], [], "none entered: none listed")
             r = put({"bp": {"sysHigh": 130, "diaHigh": 82, "by": "Dr. Rowan Vale (fictional)", "on": d(-60)},
                      "glucose": {"low": 80, "high": 120, "unit": "mg/dL"}, "cgm": {"low": 3.9, "high": 7.8, "unit": "mmol/L"},
-                     "temp": {"high": 37.2, "unit": "C"}, "spo2": {"low": 95}, "weight": {"high": 164.5, "unit": "lb"}})
+                     "temp": {"high": 37.2, "unit": "C"}, "spo2": {"low": 95}, "weight": {"high": 164.5, "unit": "lb"}, "steps": {"low": 8000}})
             self.assertEqual(r.status_code, 200, r.text)
             o = self.c["kim"].get(f"/api/profiles/{pid}/summary").json()
             self.assertTrue(next(x for x in o["sections"] if x["id"] == "targets").get("off"), "offered once entered, unticked")
@@ -562,6 +562,7 @@ class Summary(unittest.TestCase):
             self.assertEqual(rows["Temperature"][0::3], ["up to 37.2 °C", "1 of 2 readings above it"])
             self.assertEqual(rows["Blood oxygen"][0::3], ["at least 95%", "None of 2 outside it"])
             self.assertEqual(rows["Weight"][0::3], ["up to 164.5 lb", "1 of 2 weights above it"])
+            self.assertEqual(rows["Steps a day"][0::3], ["at least 8,000 steps", "No days"], "#298: no steps on file")
             self.assertIn("Sanguity doesn't suggest targets", b["lead"][0])
             self.assertIn("as the person's care team gave it", b["lead"][0])
             self.assertIn("Not medical advice", b["note"])
@@ -578,7 +579,7 @@ class Summary(unittest.TestCase):
             self.assertIn("CGM time in your own range (3.9–7.8 mmol/L, your target)", text)
         finally:
             c.put("/api/settings/user/units", json={"value": {}}, headers=H)
-            put({k: None for k in ("bp", "glucose", "cgm", "temp", "spo2", "weight")})
+            put({k: None for k in ("bp", "glucose", "cgm", "temp", "spo2", "weight", "steps")})
         self.assertNotIn("targets", {x["id"] for x in self.c["kim"].get(f"/api/profiles/{pid}/summary").json()["sections"]}, "cleared: gone")
 
     def test_measures_in_the_persons_units(self):

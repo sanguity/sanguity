@@ -130,11 +130,13 @@ class TargetRules(unittest.TestCase):   # #234
         w = targets.typed("weight", {"high": 180, "unit": "lb"})
         self.assertEqual(w["high"], 81.65, "kept in kg")
         self.assertEqual(targets.typed("temp", {"high": 100.4, "unit": "F"})["high"], 38, "kept in °C")
+        self.assertEqual(targets.check({"steps": {"low": 8000}})["steps"], {"low": 8000, "high": None, "by": "", "on": ""}, "steps a day (#298), no unit to choose")
         for m, t_, says in [("bp", {}, "a low end, a high end"), ("bp", {"sysLow": 140, "sysHigh": 130}, "below the high end"),
                             ("bp", {"sysHigh": 400}, "60 to 250"), ("glucose", {"low": 4, "unit": "mmol/L"}, "20 to 600 mg/dL"),
                             ("spo2", {"low": 101}, "70 to 100%"), ("glucose", {"high": 140, "unit": "mg"}, "mg/dL or mmol/L"),
                             ("spo2", {"low": True}, "a number"), ("weight", {"high": 80, "by": "x" * 81}, "too long"),
-                            ("temp", {"high": 38, "on": day(1)}, "to today"), ("pulse", {"high": 90}, "no measure")]:
+                            ("temp", {"high": 38, "on": day(1)}, "to today"), ("pulse", {"high": 90}, "no measure"),
+                            ("steps", {"low": 50}, "100 to 100,000 steps")]:
             with self.assertRaises(targets.TargetError, msg=(m, t_)) as e:
                 targets.check({m: t_})
             self.assertIn(says, str(e.exception), (m, t_))

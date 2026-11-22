@@ -12,7 +12,8 @@
      the top of the plot beside it;
    - ckFlagRows: names over marks in up to three rows, with leader lines and "+N" (Labs' event track, event-track.js);
    - abnMark: an out-of-range result's ▲, ▼ or ◆;
-   - ckSpark: the one sparkline, scaled to the reference band (the Overview, the visit summary, a share link's page).
+   - ckSpark: the one sparkline, scaled to the reference band (the Overview, the visit summary, a share link's page);
+   - ckFlagNames: milestones named so over a chart, flags on its top edge (Body and activity's first chart, #298).
    CHART_LAYERS (trends.js) and TL_LANES (timeline.js) stay the plug-ins of Labs' event track and the Timeline.
    Plain script, loaded in order by index.html; all files share one global scope. */
 "use strict";
@@ -291,4 +292,18 @@ function ckFlagLay(groups, L, R, rows, byRank) {
     });
     groups = next;
   }
+}
+/* ---- milestone names over a chart (#298, Body and activity's first): items [{x, text, title}] in time order, named
+   by ckFlagRows in rows under top, each a leader down to a flag on the plot's top edge; a name's <title> has the full
+   names of its marks ("+N" too). -> the plot's top under them (top with none); the plot draws a faint line at each */
+function ckFlagNames(g, items, L, R, top) {
+  if (!items.length) return top;
+  const flags = ckFlagRows(items.map(i => ({...i, cls: "mslabel", rank: 0})), L, R), rows = Math.max(...flags.map(f => f.row)) + 1, T = top + rows * 15 + 10;
+  for (const f of flags) {
+    const ly = top + (rows - f.row) * 15, more = f.items.length > 1 ? f.text.match(/ \+\d+$/)[0] : "";
+    g.push(el("svg:line", {class: "msflag", x1: f.x, x2: f.x, y1: ly + 3, y2: T}), el("svg:text", {class: "mslabel", x: f.a + 2, y: ly}, more ? f.text.slice(0, -more.length) : f.text,
+      more ? el("svg:tspan", {class: "ev-more", text: more}) : null, el("svg:title", {text: f.items.map(i => i.title).join("\n")})));
+  }
+  for (const i of items) g.push(el("svg:path", {class: "msflag-head", d: `M${i.x},${T - 7}L${i.x + 7},${T - 4.5}L${i.x},${T - 2}Z`}));
+  return T;
 }

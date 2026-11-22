@@ -1611,6 +1611,17 @@ Everything on `main` so far; it becomes the first tagged release.
   by its size against the range. With fewer than three results there's no line, only the latest result's mark
   against its band. The latest is a dot, or ▲/▼ in red when it's out of range, never stretched with the box. The
   summary no longer prints this visit's date in the out-of-range red.
+- **Body and activity's charts, each in the form that reads** (#298): the day's low–high heart rate, 50 to 150 bpm, filled
+  the plot and left resting heart rate a few pixels; resting heart rate is now on its own scale, each day a dot under its
+  average, and **Show the day's average and low–high** adds those back, remembered. Body fat and lean mass were joined
+  reading to reading in a sawtooth; they're dots under a 14-day average, as weight is. Steps are a pale tint under the
+  ink of their average, with a target of your own for steps a day as a line (Settings → About this person, #234, and in
+  the visit summary's targets). Over 150 days sleep is a weekly line of the hours asleep, each stage's share a thin strip
+  under it, in place of about 500 stacked bars; shorter periods keep a bar a night, with 2 px between bars and between
+  a night's stages. The milestones are a faint line in each chart, named once over the first, not over every chart.
+  The tiles say a change as "↓ 5.3 lb this period", "↑ 398 vs previous period" or "no change", never ▲/▼, which mark a
+  result's own flags. With no height on file, the weight card says how to get each weight's BMI in one line, without
+  an empty BMI heading.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
