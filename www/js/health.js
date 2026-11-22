@@ -107,9 +107,9 @@ function hChart(host, a, b, {h = 190, layers, fmtY = v => v, unit = "", zero = f
   svg._draw = (a, b, live) => {   // also called live while dragging, with the new window: at the width it had, so the
     svg._hover = null;             // charts drawn before it aren't laid out again to measure it (#292)
     if (!svg.isConnected) return;   // re-rendered before this frame came round
-    const cs = live && svg._geom ? null : getComputedStyle(host), w = cs ? Math.max(260, host.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) : svg._geom.w, L = w < 480 ? 36 : 44, R = w - 8, x = ckScale(a, b, L, R);
+    const cs = live && svg._geom ? null : getComputedStyle(host), w = cs ? Math.max(260, host.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) : svg._geom.w, L = (w < 480 ? 36 : 44) * ckK(), R = w - 8, x = ckScale(a, b, L, R);   // the values' gutter as wide as their text (#622)
     const names = [], ms = named ? MILESTONES.map(m => [dayTs(m.date), m.label]).filter(([t]) => t >= a && t <= b) : [];
-    const T = ms.length ? ckFlagNames(names, ms.map(([t, n]) => ({x: x(t), text: n, title: `${n} · ${fmtD(t)}`})), L, R, 0) : 8;
+    const T = ms.length ? ckFlagNames(names, ms.map(([t, n]) => ({x: x(t), text: n, title: `${n} · ${fmtD(t)}`})), L, R, 0) : 8 * ckK();
     const tk = ckTimeTicks(a, b, x, w), AX = ckAxisH(tk.rows), hh = h - 22 + AX + SH + Math.max(0, T - 22), B = hh - AX - SH;   // (a second row of names taller)
     svg.setAttribute("viewBox", `0 0 ${w} ${hh}`); svg.setAttribute("height", hh); svg.style.width = "100%"; svg._geom = {L, R, T, B, w};
     const navIn = nav.filter(p => p[0] >= a && p[0] <= b);   // the keyboard's points (#60)
@@ -123,7 +123,7 @@ function hChart(host, a, b, {h = 190, layers, fmtY = v => v, unit = "", zero = f
     }
     if (!isFinite(lo)) {   // nothing in the window: its plot and time axis kept, to drag back and double-click (#382)
       const g = [el("svg:rect", {x: L, y: T, width: R - L, height: B - T, fill: "transparent"}), el("svg:text", {x: (L + R) / 2, y: (T + B) / 2, "text-anchor": "middle", text: "No data in this period"}), ...names];
-      ckAxis(g, tk, L, R, B, hh - AX + 16); svg.replaceChildren(...g); return;
+      ckAxis(g, tk, L, R, B, B + SH / ckK() + 16); svg.replaceChildren(...g); return;
     }
     for (const l of layers) if (l.type === "target") for (const v of [l.low, l.high]) if (v != null && isFinite(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); }   // #234: in sight
     if (zero || layers.some(l => l.type === "bars")) lo = 0;
@@ -134,7 +134,7 @@ function hChart(host, a, b, {h = 190, layers, fmtY = v => v, unit = "", zero = f
     { const at = g.length, ms = msMarks(g, x, a, b, T, B, R, null);   // a faint line at each (#298), their names in words (#312)
       for (const m of g.slice(at)) m.classList.add("faint");
       g.push(...names); if (ms) svg.setAttribute("aria-label", svg.getAttribute("aria-label") + " " + ms); }
-    ckAxis(g, tk, L, R, B, hh - AX + 16);
+    ckAxis(g, tk, L, R, B, B + SH / ckK() + 16);
     const slot = l => (R - L) / ((b - a) / (l.every || DAY));   // a bar's room: a day's or a week's
     for (const l of layers) {
       const pts = (l.data || []).filter(p => p[0] >= a && p[0] <= b);
