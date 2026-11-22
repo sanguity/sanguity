@@ -51,7 +51,7 @@ const refText = p => `ref ${p[2] ?? ""}–${p[3] ?? ""}` + (p.rs === "settings" 
 /* ---- each result against its own range on a chart (#58): never one range across results or labs.
    A result's range (p[2], p[3]) is already in the units shown (units.js converts it with the value, #41), so ranges
    from two labs are compared after conversion. rangeWords(p): "0.7–1.3", "≤ 5" or "≥ 60" (null: it has none).
-   rangeSteps(pts, from, to): the reference band as steps in time, [{a, b, lo, hi}], each result's range from halfway
+   rangeSteps(pts, from, to): the reference band as steps in time, [{a, b, lo, hi, key (its words), rs}], each result's range from halfway
    after the result before it to halfway to the next (from and to at the ends); results with no range take no part,
    and neighbours with the same range are one step, so a series whose results all agree is one band.
    rangesDiffer(pts): the different ranges of these results, in order ("0.7–1.3 and 0.6–1.2"), or null if they agree. */
@@ -61,7 +61,7 @@ function rangeSteps(pts, from, to) {
   const rp = pts.filter(p => rangeKey(p) != null), out = [];
   rp.forEach((p, i) => {
     const a = i ? (rp[i - 1].ts + p.ts) / 2 : from, b = i < rp.length - 1 ? (p.ts + rp[i + 1].ts) / 2 : to, last = out[out.length - 1];
-    if (last && last.key === rangeKey(p)) last.b = b; else out.push({a, b, lo: p[2], hi: p[3], key: rangeKey(p)});
+    if (last && last.key === rangeKey(p)) last.b = b; else out.push({a, b, lo: p[2], hi: p[3], key: rangeKey(p), rs: p.rs});
   });
   return out;
 }

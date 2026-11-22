@@ -2,8 +2,10 @@
    drawChart) and Body and activity (health.js hChart) draw through it. Each part is its own small function, for the
    rest of the kit to plug in beside (decimation, the event track, the overview strip, sparklines):
    - ckScale, niceTicks: the scales, and a value axis's round numbers;
-   - ckTimeTicks, ckAxis: the time axis, its ticks at two levels (days over months, months over years);
-   - ckGrid: the value axis, a hairline and a label at each round number;
+   - ckTimeTicks, ckAxis, ckFoot: the time axis, its ticks at two levels (days over months, months over years), and
+     the plot's foot alone, for a chart in a stack under one axis;
+   - ckGrid, ckUnit: the value axis, a hairline and a label at each round number, and its unit as its title;
+   - ckBand, ckBandLabel: the reference band, each result's own range, neutral, and its numbers at the right;
    - ckLegend: a chart's key, each mark keyed as it's drawn (a line for a line);
    - ckCross, ckSync, ckTip: the crosshair, at one time on every time chart of a view, and the hover's readout pinned to
      the top of the plot beside it.
@@ -89,10 +91,12 @@ function ckTimeTicks(a, b, x, W) {
 }
 /* the height under the plot that ckAxis takes, for rows of labels */
 const ckAxisH = rows => rows === 2 ? 36 : 22;
+/* the plot's foot: a line along B, from L to R; ckAxis draws it, and a chart in a stack of them with one axis (#293) */
+const ckFoot = (g, L, R, B) => g.push(el("svg:line", {x1: L, x2: R, y1: B, y2: B, stroke: "var(--axis)"}));
 /* the time axis: its line along the plot's foot (B, from L to R), then its labels, the finer row's baseline at y1 and
    the coarser's under it */
 function ckAxis(g, tk, L, R, B, y1) {
-  g.push(el("svg:line", {x1: L, x2: R, y1: B, y2: B, stroke: "var(--axis)"}));
+  ckFoot(g, L, R, B);
   for (const k of tk.ticks) {
     g.push(el("svg:text", {x: k.x, y: y1, "text-anchor": "middle", text: k.label}));
     if (k.major) g.push(el("svg:text", {class: "ck-yr", x: k.mx, y: y1 + 14, text: k.major}));
@@ -101,6 +105,39 @@ function ckAxis(g, tk, L, R, B, y1) {
 /* the value axis: a hairline across the plot at each of vals, labelled left of it with fmt(v) */
 function ckGrid(g, y, vals, L, R, fmt) {
   for (const v of vals) g.push(el("svg:line", {class: "gridline", x1: L, x2: R, y1: y(v), y2: y(v)}), el("svg:text", {x: L - 6, y: y(v) + 4, "text-anchor": "end", text: fmt(v)}));
+}
+/* the value axis's title: the unit, over its numbers at the top left, level, its baseline at yb (#293) */
+const ckUnit = (g, unit, yb) => unit && g.push(el("svg:text", {class: "ck-unit", x: 0, y: yb, text: unit}));
+
+/* ---- the reference band (#293): each result's own printed range as steps in time (ranges.js rangeSteps), a neutral
+   wash with solid hairline edges, never a status colour: it says where the report's range is, not whether a value is
+   good (app.css .refband, .refedge; the lab panel's strip draws with the same). Each edge one stepped path, joined where
+   neighbouring steps both have it. The band is clipped to the plot, T to B, L to R */
+function ckBand(g, steps, x, y, L, R, T, B) {
+  const edge = {lo: "", hi: ""};
+  steps.forEach((st, i) => {
+    const xa = Math.max(L, x(st.a)), xb = Math.min(R, x(st.b)); if (xb <= xa) return;
+    const a = st.hi != null ? Math.max(T, y(st.hi)) : T, b = st.lo != null ? Math.min(B, y(st.lo)) : B;
+    if (b > a) g.push(el("svg:rect", {class: "refband", x: xa, y: a, width: xb - xa, height: b - a}));
+    for (const k of ["lo", "hi"]) {
+      if (st[k] == null) continue;
+      const ey = Math.max(T, Math.min(B, y(st[k]))).toFixed(1);
+      edge[k] += (i && steps[i - 1][k] != null && edge[k] ? `V${ey}` : `M${xa.toFixed(1)},${ey}`) + `H${xb.toFixed(1)}`;
+    }
+  });
+  for (const k of ["lo", "hi"]) if (edge[k]) g.push(el("svg:path", {class: "refedge", d: edge[k], fill: "none"}));
+}
+/* the band's numbers at the right of the plot, in ink: words ("13.5–17.5 on report") for the step st at the right end,
+   set right-aligned at R, inside the band under its top edge, else over its foot, else just outside it, whichever is
+   the first clear of every point (pts: [px, py]) and inside the plot, T to B */
+function ckBandLabel(g, words, st, y, R, T, B, pts) {
+  const w = labelW(words, "ck-ref"), x1 = R - 4, x0 = x1 - w;
+  const hi = st.hi != null ? Math.max(T, y(st.hi)) : T, lo = st.lo != null ? Math.min(B, y(st.lo)) : B;
+  const inside = lo - hi >= 16 ? (st.hi != null ? [hi + 12, lo - 4] : [lo - 4, hi + 12]) : [];   // by its printed edge first
+  const at = [...inside, hi - 4, lo + 12].filter(yb => yb - 10 >= T && yb + 2 <= B);   // baselines, 10 px of text over each
+  const clear = yb => !pts.some(([px, py]) => px > x0 - 5 && px < x1 + 5 && py > yb - 15 && py < yb + 6);
+  const yb = at.find(clear) ?? at[0];
+  if (yb != null) g.push(el("svg:text", {class: "ck-ref", x: x1, y: yb, "text-anchor": "end", text: words}));
 }
 
 /* ---- the legend: items [colour, words, how it's drawn]: "line" a short stroke, 1 or "dot" a point, "ring" a hollow

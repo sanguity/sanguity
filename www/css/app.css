@@ -680,8 +680,16 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 @media (max-width:900px){.ov-cols{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:600px){ .ov-h{flex-wrap:wrap} }
 .line{fill:none;stroke:var(--c-lab);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
-.refband{fill:var(--good);opacity:.09}
-.refedge{stroke:var(--good);stroke-opacity:.45;stroke-dasharray:3 3}
+/* the reference band (#293, chartkit.js ckBand): ink, never a status colour, its edges solid; its numbers (.ck-ref)
+   and the unit (.ck-unit) in ink. Labs' stack has one time axis (.ck-foot), kept in view, and focus clear of it */
+.refband{fill:var(--ink);fill-opacity:.06}
+.refedge{stroke:var(--ink2);stroke-opacity:.4}
+.legend i.refband{background:color-mix(in srgb,var(--ink) 6%,transparent);border-block:1px solid color-mix(in srgb,var(--ink2) 40%,transparent)}
+svg text:is(.ck-ref,.ck-unit){fill:var(--ink2)}
+svg text.ck-ref{stroke:var(--surface);stroke-width:3px;stroke-linejoin:round;paint-order:stroke}
+.charts>.ck-foot{position:sticky;bottom:var(--tabbar,0px);z-index:1;margin:0;padding-block:0 var(--sp-1)}
+.ck-foot>svg{width:100%;display:block}
+html:has(#view-labs:not([hidden]) #labsChart:not([hidden]) .ck-foot){scroll-padding-bottom:calc(var(--sg-room,var(--tabbar,0px)) + 48px)}
 .pt{fill:var(--c-lab);stroke:var(--surface);stroke-width:2}
 .pt.abn{fill:var(--crit)}
 .stayband{fill:var(--stay)}
@@ -690,7 +698,8 @@ svg text.ck-yr{fill:var(--ink2);font-weight:var(--fw-medium)}   /* the time axis
 /* Forced colours don't reach SVG strokes and fills: milestones and cursors in system colours there, so a contrast theme
    opposite to the app's own doesn't leave them faint (#341; the ECG maps its cursor the same way) */
 @media (forced-colors:active){.msmark{stroke:CanvasText}.mslabel{fill:CanvasText}.cross{stroke:Highlight}
-  svg text:not([class]),.evlabel,.lane-label,svg text.medname,svg text.ck-yr{fill:CanvasText}}   /* a chart's own text too (#346) */
+  svg text:not([class]),.evlabel,.lane-label,svg text.medname,svg text:is(.ck-yr,.ck-unit,.ck-ref){fill:CanvasText}
+  .refedge{stroke:CanvasText}svg text.ck-ref{stroke:Canvas}}   /* a chart's own text too (#346); the band's edges (#293) */
 table.data{border-collapse:collapse;width:100%;font-size:var(--fs-2);font-variant-numeric:tabular-nums}
 table.data th{text-align:left;color:var(--muted);font-weight:var(--fw-semibold);border-bottom:1px solid var(--axis);padding:var(--sp-1) var(--sp-2);position:sticky;top:0;background:var(--surface)}
 table.data td{border-bottom:1px solid var(--grid);padding:var(--sp-1) var(--sp-2);vertical-align:top}
@@ -797,8 +806,8 @@ details.res > div{padding:0 var(--sp-3) var(--sp-2)}
 .legend i.ring{border:2px solid}
 .legend i.band{opacity:.2}
 .stay-key{background:var(--stay);border:1px solid var(--stay-line)}   /* a hospital stay's shading, with its edge to be seen (#450) */
-/* forced colours drop a background: the swatches keep theirs, as the charts' marks do, and the stay's edge is the text's (#450) */
-@media (forced-colors:active){ .legend i,.hm-legend i{forced-color-adjust:none} .stay-key{border-color:CanvasText} }
+/* forced colours drop a background: the swatches keep theirs, as the charts' marks do, and the stay's and band's edges are the text's (#450) */
+@media (forced-colors:active){ .legend i,.hm-legend i{forced-color-adjust:none} :is(.stay-key,.legend i.refband){border-color:CanvasText} }
 @media (max-width:900px){
   .layout{grid-template-columns:1fr}
   .series-list{max-height:300px}

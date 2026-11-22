@@ -36,7 +36,7 @@ function spark(s, pts, {w = 200, h = 34, band = true} = {}) {
   const g = [];
   for (const st of steps) {
     const xa = Math.max(0, x(st.a)), xb = Math.min(w, x(st.b)), a = st.hi != null ? y(st.hi) : 0, b = st.lo != null ? y(st.lo) : h;
-    g.push(el("svg:rect", {class: "spark-ref", x: xa, y: a, width: Math.max(0, xb - xa), height: Math.max(0, b - a), fill: "var(--good)", "fill-opacity": .1}));
+    g.push(el("svg:rect", {class: "spark-ref refband", x: xa, y: a, width: Math.max(0, xb - xa), height: Math.max(0, b - a)}));   // neutral, as a chart's (#293)
   }
   g.push(el("svg:path", {d: pts.map((p, i) => (i ? "L" : "M") + x(p.ts).toFixed(1) + "," + y(p[1]).toFixed(1)).join(""), fill: "none", stroke: "var(--muted)", "stroke-width": 1.5, "vector-effect": "non-scaling-stroke"}));
   g.push(last[4] ? abnMark(x(last.ts), y(last[1]), last[4], 3.4, "spark-abn")   // ▲ or ▼ when it's out of range, not only red (#60)

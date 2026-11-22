@@ -95,6 +95,24 @@ function renderCharts() {
     if (groups.length > 1) box.append(el("h3", {class: "lab-panel", text: panel}));
     for (const s of labs) box.append(chartCard(s));
   }
+  if (box.querySelector("svg.ck")) labAxis(box);   // a chart drawn, not only tables: the stack's time axis under it
+}
+/* a lab chart's width in its own units: its card's, less the card's padding; the stack's axis takes the same (#293) */
+const labW = card => Math.max(320, card.clientWidth - 28);
+/* the stack's one time axis (#293): the kit's (chartkit.js ckAxis), drawn once under the charts on their time scale,
+   and kept in view at the foot of the window while they scroll, as the heatmap's is. In a box padded as a card is,
+   so it's as wide as every chart and lines up with them */
+function labAxis(box) {
+  const svg = el("svg:svg", {class: "ck-axis", "aria-hidden": "true"});
+  box.append(el("div", {class: "card ck-foot"}, svg));
+  requestAnimationFrame(() => labAxisDraw(svg));
+}
+function labAxisDraw(svg = $("#charts .ck-axis")) {
+  if (!svg?.isConnected) return;
+  const w = labW(svg.parentElement), L = 52, R = w - 12, x = ckScale(state.from, state.to, L, R), tk = ckTimeTicks(state.from, state.to, x, w), h = ckAxisH(tk.rows), g = [];
+  ckAxis(g, tk, L, R, .5, 15);
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("height", h); svg._geom = {L, R, B: .5, w};
+  svg.replaceChildren(...g);
 }
 const MARK_KINDS = new Set(["procedure", "imaging"]);
 /* a procedure's or an imaging's mark at the top of a lab chart, in its kind's colour and shape (util.js KIND_SHAPE,
@@ -192,10 +210,10 @@ function drawChart(svg, s, pts, read) {
   if (!svg.isConnected) return;
   const marks = markEvents(), hasMs = msInRange(state.from, state.to);
   const layers = CHART_LAYERS.map(l => [l, l.space()]).filter(([, n]) => n > 0), below = layers.reduce((a, [, n]) => a + n, 0);
-  // the kit's scales and time axis (chartkit.js): one or two rows of labels under the layers, as the period needs
-  const w = Math.max(320, svg.parentElement.clientWidth - 28), L = 52, R = w - 12, x = ckScale(state.from, state.to, L, R);
-  const tk = ckTimeTicks(state.from, state.to, x, w), AX = ckAxisH(tk.rows), h = (s.kind === "stack" || s.kind === "bars" ? 128 : 148) + (hasMs ? 14 : 0) + below + AX;
-  const T = (marks.length ? 24 : 10) + (hasMs ? 14 : 0), B = h - AX - below;
+  // one chart of the stack (#293): 200–220 px tall, its unit over its numbers, and no time axis of its own: the
+  // stack's one is under it (labAxis), each chart on the same time scale (the kit's, chartkit.js)
+  const w = labW(svg.parentElement), L = 52, R = w - 12, x = ckScale(state.from, state.to, L, R);
+  const T = (marks.length ? 24 : 22) + (hasMs ? 14 : 0), B = T + 174, h = B + 6 + below;
   svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("height", h); svg._geom = {L, R, T, B, w};
   const smoothOn = state.smooth && s.watch && pts.length > 3;
   const vals = pts.map(p => p[1]).concat(s.kind === "band" ? pts.flatMap(p => [p.lo, p.hi]).filter(v => v != null) : []);
@@ -215,21 +233,11 @@ function drawChart(svg, s, pts, read) {
   const y = ckScale(lo, hi, B, T);
   const g = [];
   for (const st of STAYS) { if (st.te < state.from || st.ts > state.to) continue; const a = Math.max(L, x(st.ts)), b = Math.min(R, x(st.te)); g.push(el("svg:rect", {class: "stayband", x: a, y: T, width: Math.max(2, b - a), height: B - T})); }
-  ckGrid(g, y, niceTicks(lo, hi, 4), L, R, v => s.kind === "bars" && v >= 1000 ? (v / 1000) + "k" : fmtNum(v));
-  {
-    const edge = {lo: "", hi: ""};   // each edge as one stepped path, joined where neighbouring steps both have it
-    steps.forEach((st, i) => {
-      const xa = Math.max(L, x(st.a)), xb = Math.min(R, x(st.b)); if (xb <= xa) return;
-      const a = st.hi != null ? Math.max(T, y(st.hi)) : T, b = st.lo != null ? Math.min(B, y(st.lo)) : B;
-      if (b > a) g.push(el("svg:rect", {class: "refband", x: xa, y: a, width: xb - xa, height: b - a}));
-      for (const k of ["lo", "hi"]) {
-        if (st[k] == null) continue;
-        const ey = Math.max(T, Math.min(B, y(st[k]))).toFixed(1);
-        edge[k] += (i && steps[i - 1][k] != null && edge[k] ? `V${ey}` : `M${xa.toFixed(1)},${ey}`) + `H${xb.toFixed(1)}`;
-      }
-    });
-    for (const k of ["lo", "hi"]) if (edge[k]) g.push(el("svg:path", {class: "refedge", d: edge[k], fill: "none"}));
-  }
+  ckGrid(g, y, niceTicks(lo, hi, 5), L, R, v => s.kind === "bars" && v >= 1000 ? (v / 1000) + "k" : fmtNum(v));
+  ckUnit(g, s.unit, T - 10);
+  ckBand(g, steps, x, y, L, R, T, B);
+  { const st = steps[steps.length - 1];   // the numbers of the range at the right end, as printed (#293)
+    if (st) ckBandLabel(g, `${st.key} ${st.rs === "settings" ? "from settings" : "on report"}`, st, y, R, T, B, pts.map(p => [x(p.ts), y(p[1])])); }
   const msWords = msMarks(g, x, state.from, state.to, hasMs ? 16 : T, B, R, 12);
   // treatment events: dashed rule + head, and a procedure named beside it where there is room: inside the chart, clear
   // of the label before it and of every other mark's head (#312). One left unnamed keeps its tooltip and drawer.
@@ -245,7 +253,7 @@ function drawChart(svg, s, pts, read) {
     g.push(el("svg:text", {class: "evlabel", x: x0, y: T - 5, text}));
     lastEnd = x1;
   });
-  ckAxis(g, tk, L, R, B, h - AX + 16);
+  ckFoot(g, L, R, B);
   const dayW = Math.max(1, x(state.from + DAY) - x(state.from));
   const barW = Math.max(1, Math.min(14, dayW * .72));
   const line = (arr, cls, extra = {}) => arr.length > 1 ? el("svg:path", {class: cls, d: arr.map(([px, py], i) => (i ? "L" : "M") + px.toFixed(1) + "," + py.toFixed(1)).join(""), ...extra}) : null;

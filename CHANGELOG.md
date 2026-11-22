@@ -1568,6 +1568,13 @@ Everything on `main` so far; it becomes the first tagged release.
   those outside it by ▲/▼, and the change from the first to the latest; with a strip of every result against its own
   stepped band, stepped through from the keyboard. Counts and positions only: no trend line and no word for whether
   it's good. The figures are those of the lab's table, and follow the period as it changes.
+- **A neutral reference band with its numbers, and lab charts that share one time axis** (#293): the band was the
+  "good" green at 9% with dashed edges, which read as "healthy" and as a threshold, and the same green marks
+  procedures and money elsewhere. It's now a wash of ink at 6% with solid hairline edges, on the Labs charts, a lab's
+  panel strip and the Overview's sparklines, with its numbers at the right of the plot ("13.5–17.5 on report", or
+  "from settings" for a range set there). Each lab chart has its unit over its value axis, five round numbers in
+  place of four, and is 200–220 px tall; the charts share one time axis under the stack, kept at the foot of the
+  window as they scroll, in place of one under each chart. The crosshair is still at one date on every chart.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

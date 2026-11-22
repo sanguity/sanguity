@@ -106,7 +106,7 @@ ALLOWED = {
     "www/account.html": {"colours": 1},
     "www/admin.html": {"colours": 1},
     "www/guide.html": {"colours": 1},
-    "www/index.html": {"colours": 1, "style attributes": 2},
+    "www/index.html": {"colours": 1, "style attributes": 1},
     "www/login.html": {"colours": 1},
     "www/settings.html": {"colours": 1},
     "www/setup.html": {"colours": 1},
