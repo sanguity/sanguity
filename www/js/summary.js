@@ -175,6 +175,7 @@ function renderPreview(s) {
   if (s.settings_note) parts.push(el("p", {class: "hint", id: "sumSettingsNote", text: s.settings_note}));   // #44
   parts.push(el("p", {class: "hint sum-notice", text: s.notice}));
   $("#prevBody").replaceChildren(...parts); box.removeAttribute("data-stale"); box.hidden = false;
+  pvSight();
 }
 /* a preview that couldn't be drawn (#492): the pane is shown with what went wrong, the first time too (its message is
    inside it, and was hidden with it); one drawn before stays, dimmed and marked as not up to date */
@@ -183,7 +184,15 @@ function previewFailed(e) {
   box.toggleAttribute("data-stale", had);
   sayIn($("#prevMsg"), had ? `Not up to date: ${e.message}` : `No preview: ${e.message}`, true);
   box.hidden = false;
+  pvSight();
 }
+/* a tick below the preview (#571): the preview drawn again moved its box down, off the screen or under the toasts, and
+   nothing brought it back (sgFoot does only as its layer grows, not as a fourth toast takes the first's place); so
+   once the toasts are measured, and again once the preview's drawn, the box with focus is brought clear of them (the
+   page's scroll padding), a frame later: after the browser's own scroll anchoring has moved the page */
+let pvKeep = "";
+const inSight = id => { sgFoot(); requestAnimationFrame(() => { const a = document.activeElement; if (a?.id === id) a.scrollIntoView({block: "nearest"}); }); };
+function pvSight() { if (pvKeep) inSight(pvKeep); pvKeep = ""; }
 /* the live preview (#288): any choice changed asks for it again, a moment later (a while longer as questions are
    typed), only the last asked for drawn; meanwhile it's marked busy (aria-busy, dimmed). A lab being typed in isn't
    a choice until it's added. */
@@ -206,7 +215,10 @@ $("#build").addEventListener("input", ev => { if (ev.target.id === "questions") 
 /* ---------------------------------------------------------------- download: the PDF is fetched, then saved from memory */
 $("#build").onsubmit = async ev => {
   ev.preventDefault();
-  const b = $("#download"); b.disabled = true; sayIn($("#buildMsg"), "Making the PDF…");
+  // not disabled while it's made (aria-disabled, as a toast's Undo): focus stays on it (#571: it went to the page)
+  const b = $("#download");
+  if (b.getAttribute("aria-disabled") === "true") return;
+  b.setAttribute("aria-disabled", "true"); sayIn($("#buildMsg"), "Making the PDF…");
   try {
     const r = await api(`profiles/${PID}/summary/pdf`, {method: "POST", body: JSON.stringify(chosen())});
     if (r.status === 401) { location.replace("login.html"); return; }
@@ -219,7 +231,7 @@ $("#build").onsubmit = async ev => {
     qSaved = $("#questions").value; qMark();   // the server kept these questions as the draft
     sayIn($("#buildMsg"), `Downloaded ${name}.`);
   } catch (e) { sayIn($("#buildMsg"), e.message, true); }
-  finally { b.disabled = false; }
+  finally { b.removeAttribute("aria-disabled"); }
 };
 
 /* ---------------------------------------------------------------- the measures ticked at first (#186): the profile's
@@ -246,17 +258,18 @@ async function tickSave(st, input) {
   catch (e) { input.checked = !input.checked; sayIn(msg, e.message, true); return; }
   Object.assign(st, {value, from: "profile"});
   const box = document.querySelector(`#sections input[value="${input.value}"]`);
-  if (box) { box.checked = input.checked; previewSoon(); }
+  if (box) { box.checked = input.checked; pvKeep = input.id; previewSoon(); }
   sayIn(msg, said, false, {say: false});
   toast(said, {action: "Undo", onAction: async () => {   // what it was, if it's still as ticked here
     const now = await tickedSetting(pid), back = !!now && same(now.value, value);
     if (back) { if (was.from === "default") await call(path, "DELETE"); else await call(path, "PUT", {value: was.value}); }
     const text = back ? `Undone: “${st.label}” is as before.` : `“${st.label}” was changed since, so it's left as it is.`;
     if (PID !== pid) { toast(`${name}: ${text}`); return; }   // another profile shown now (#367)
-    if (back && box) { box.checked = !input.checked; previewSoon(); }
+    if (back && box) { box.checked = !input.checked; pvKeep = input.id; previewSoon(); }
     await ticked();
     sayIn($("#sumTickedMsg"), text);
   }});
+  inSight(input.id);
 }
 
 /* ---------------------------------------------------------------- follow the profile picker */

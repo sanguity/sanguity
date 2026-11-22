@@ -2308,6 +2308,15 @@ Everything on `main` so far; it becomes the first tagged release.
   each toast comes or goes. In the command palette three Undo toasts took 166 of its 296 px at 844×390, its list a
   line, the option Enter opens out of sight; there they take at most a quarter of the screen, the newest whole, the
   older scrolling into it.
+- **Sharing: a measure's tick kept in sight, Download PDF keeping focus, and the share form saying typed readings
+  are shared** (#571): ticking a box in "Measures ticked at first" ticked it in the summary too, and the preview above,
+  drawn again, pushed the box off the screen or under the toasts (at 1400×900, 1100×600, 844×390 and 390×844); once
+  it's drawn, and as a fourth toast takes the first's place, the box is brought back into view clear of them.
+  Download PDF was disabled while the PDF was made, dropping focus to the page, then and after, and when it failed;
+  focus stays on it, a second press doing nothing, its line saying when it's downloaded or why not. A share link's
+  Blood pressure and Body temperature at home said "each reading taken at home with a phone app" over a page listing
+  readings typed in; they say "sent by a phone app or typed in", and the Journal names the symptom group an entry was
+  logged with, which its page shows.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
