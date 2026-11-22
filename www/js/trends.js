@@ -161,7 +161,7 @@ function chartCard(s) {
   const legend = hasStages ? ckLegend([["var(--seq1)", "Deep"], ["var(--seq2)", "REM"], ["var(--seq3)", "Light"]], "span")
     : s.kind === "band" ? ckLegend([["var(--c-lab)", "Daily average", "line"], ["var(--c-lab)", "Low–high", "band"]], "span") : null;
   // its name in the records, when renamed, on the screen beside the unit, not in a tip only a mouse finds (#358)
-  card.append(el("div", {class: "hd"}, el("span", {class: "name", text: nice(s.name)}), s.watch ? null : renameButton("lab", s.name),
+  card.append(el("div", {class: "hd"}, s.watch ? el("span", {class: "name", text: nice(s.name)}) : labOpener(s, "name"), s.watch ? null : renameButton("lab", s.name),
     el("span", {class: "unit", text: `${s.unit}${!s.watch && nice(s.name) !== s.name ? " · " + renamedTitle("lab", s.name).replace(/^In/, "in") : ""}${s.uc ? ` (converted from ${s.uc.from})` : ""}${s.watch ? (s.key === "weight" ? " · scale + clinic visits" : s.panel.startsWith("Body") ? " · smart scale" : " · watch, daily") : ""} · ${pts.length} ${s.watch ? "day" : "result"}${pts.length === 1 ? "" : "s"}${nAbn ? ` · ${nAbn} outside reference range` : ""}${pts.some(p => p.rs === "settings") ? " · " + RANGE_FROM_SETTINGS + " for results without one" : ""}`}), testLink(s.name), legend, read,   // "What is this test?" (#163, test-pages.js)
     viewSeg(s.name, nice(s.name), renderCharts),   // Chart | Table (#60)
     el("button", {class: "btn quiet small", type: "button", "data-tip": `Remove ${nice(s.name)}`, "aria-label": `Remove ${nice(s.name)}`, onclick: () => {

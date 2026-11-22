@@ -3781,6 +3781,116 @@ def main():
                   t and t["heads"] == [["col", "Date"], ["col", "Value"], ["col", "Ref range"], ["col", "Flag"]] and t["rows"] > len(flagged) - 1
                   and len(t["abn"]) == len(flagged) and all(a in ("▲ High", "▼ Low") for a in t["abn"]) and t["focus"] == "Table:true"
                   and not js("document.querySelector('#charts .chart svg:not(.icon)')"), t)
+            # ---- a lab's panel (#296): its name opens the drawer on the period's counts and positions. For every lab on
+            # file, with All and with 1y, each figure is worked out here from the lab's table as drawn (Date, Value, Ref
+            # range, Flag; newest first) and must be what the panel says: how many, the first and the latest, the
+            # lowest and highest with their days, the median, how many inside their own range and the latest that was,
+            # those outside by mark, and the change from the first to the latest. Then: it's reached by keyboard and
+            # gives focus back, it follows the period, its strip has a mark per result and steps from the keyboard, the
+            # heatmap table's names open it too, and axe-core and 320 px find nothing in it, light and dark
+            def panel_expect(rows):
+                old = list(reversed(rows))
+                val = lambda r: r[1].split(" (reported")[0]
+                num = lambda r: float(re.search(r"-?\d+(?:\.\d+)?", val(r)).group())
+                day = lambda r: re.sub(r",? \d{1,2}:\d{2}.*$", "", r[0])
+                at = lambda r: f"{val(r)} · {day(r)}"
+                def where(r):
+                    f = r[3].strip()
+                    if f: return "above" if f.endswith("High") else "below" if f.endswith("Low") else "flagged"
+                    m = re.match(r"^(-?[\d.]*) – (-?[\d.]*)", r[2])
+                    lo, hi = (float(m.group(1)) if m and m.group(1) else None), (float(m.group(2)) if m and m.group(2) else None)
+                    if lo is None and hi is None: return ""
+                    return "above" if hi is not None and num(r) > hi else "below" if lo is not None and num(r) < lo else "in"
+                def ext(pick):
+                    v = pick(num(r) for r in old); same = [r for r in old if num(r) == v]
+                    return at(same[0]) + (f", and {len(same) - 1} more time{'s' if len(same) > 2 else ''}" if len(same) > 1 else "")
+                ws = [where(r) for r in old]
+                ranged, inside = sum(1 for w in ws if w), ws.count("in")
+                out = [f"{m} {ws.count(k)} {k}" for k, m in (("above", "▲"), ("below", "▼"), ("flagged", "◆")) if ws.count(k)]
+                want = {"n": str(len(rows)), "first": at(old[0]), "latest": at(old[-1]), "low": ext(min), "high": ext(max),
+                        "in": f"{inside} of {ranged} ({int(inside / ranged * 100 + .5)}%)" if ranged else "None has a range"}
+                if ranged:
+                    lin = [r for r, w in zip(old, ws) if w == "in"]
+                    want.update(lastin=at(lin[-1]) if lin else "None in this period", out=" · ".join(out) or "None")
+                if ws.count(""): want["norange"] = f"{ws.count('')} result{'s' if ws.count('') > 1 else ''}"
+                vs = sorted(num(r) for r in old); n = len(vs)
+                return want, (vs[n // 2] if n % 2 else (vs[n // 2 - 1] + vs[n // 2]) / 2), num(old[-1]) - num(old[0])
+            PANEL_JS = """s => { state.sel = new Set([s.name]); state.tables.clear(); state.tables.add(s.name); renderLabs();
+                const card = [...document.querySelectorAll('#charts .chart')].find(c => c.dataset.lab === s.name && c.querySelector('.unit').textContent.startsWith(s.unit));
+                const rows = [...card.querySelectorAll('table.data tbody tr')].map(tr => [...tr.cells].map(td => td.textContent));
+                card.querySelector('.hd .lab-open').click();
+                const got = Object.fromEntries([...document.querySelectorAll('#dbody [data-k]')].map(d => [d.dataset.k, d.textContent]));
+                return {rows, got, title: document.getElementById('dtitle').textContent, shown: labShown() === s}; }"""
+            panel_bad, panel_n = [], 0
+            for preset in ("all", "1y"):
+                js("p => applyPreset(p)", preset)
+                for lab in js("SERIES.filter(s => !s.watch && s.pts.some(p => p.ts >= state.from && p.ts <= state.to)).map(s => [s.name, s.unit])"):
+                    r = js(f"([n, u]) => ({PANEL_JS})(SERIES.find(s => !s.watch && s.name === n && s.unit === u))", lab)
+                    want, med, chg = panel_expect(r["rows"])
+                    got, panel_n = r["got"], panel_n + 1
+                    bad = {k: [v, got.get(k)] for k, v in want.items() if got.get(k) != v}
+                    gm, gc = re.match(r"-?[\d.]+", got.get("median", "")), re.match(r"([+−]?)([\d.]+)", got.get("change", ""))
+                    if not gm or abs(float(gm.group()) - med) > 1e-6 + 10 ** -(len(gm.group().split(".")[1]) if "." in gm.group() else 0) / 2:
+                        bad["median"] = [med, got.get("median")]
+                    if len(r["rows"]) > 1 and "Not worked out" not in got.get("change", ""):
+                        g = gc and float(gc.group(2)) * (-1 if gc.group(1) == "−" else 1)
+                        if g is None or abs(g - chg) > 1e-6 + 10 ** -(len(gc.group(2).split(".")[1]) if "." in gc.group(2) else 0) / 2 or (chg and not gc.group(1)):
+                            bad["change"] = [chg, got.get("change")]
+                    if bad or not r["shown"]:
+                        panel_bad.append([preset, lab, bad, r["title"], r["shown"]])
+            check(f"a lab's panel (#296): for every lab, with All and 1y ({panel_n} panels), its figures are those of the lab's table: the count, first, latest, "
+                  "lowest and highest with their days, median, inside its own range and the latest that was, outside by mark, and the change",
+                  panel_n >= 20 and not panel_bad, panel_bad[:4])
+            js("applyPreset('all'); closeDrawer(); state.tables.clear(); state.sel = new Set(['Hemoglobin']); renderLabs()")
+            settle(400)
+            page.focus("#charts .chart .hd .lab-open")
+            page.keyboard.press("Enter")
+            settle(400)
+            opened = js("""[document.activeElement.id, drawer.classList.contains('open'), labShown()?.name, document.querySelector('#charts .chart .hd .lab-open').getAttribute('aria-haspopup'),
+                document.querySelectorAll('#dbody svg.lab-strip .pt').length, SERIES.find(s => s.name === 'Hemoglobin').pts.filter(p => p.ts >= state.from && p.ts <= state.to).length,
+                document.querySelector('#dbody [data-k=n]').textContent]""")
+            js("applyPreset('1y')")
+            settle(400)
+            follows = js("""[document.querySelector('#dbody [data-k=n]')?.textContent, String(SERIES.find(s => s.name === 'Hemoglobin').pts.filter(p => p.ts >= state.from && p.ts <= state.to).length),
+                document.getElementById('dsub').textContent, document.activeElement.id]""")
+            js("applyPreset('all')")
+            settle(400)
+            page.focus("#dbody svg.lab-strip")
+            page.keyboard.press("End")
+            settle(150)
+            strip = js("""[getComputedStyle(tip).display, tip.innerText, (s => readText(s, s.pts.at(-1))[0])(SERIES.find(s => s.name === 'Hemoglobin')),
+                document.querySelector('#dbody svg.lab-strip').getAttribute('aria-label')]""")
+            page.keyboard.press("Escape")
+            page.focus("#dclose")
+            page.keyboard.press("Escape")
+            settle(400)
+            back = js("[drawer.classList.contains('open'), document.activeElement.matches('#charts .chart .hd .lab-open')]")
+            check("…its name is a button that opens it from the keyboard, focus in the drawer; it has a mark on its strip per result, follows the period "
+                  "(1y), its strip steps from the keyboard with a tooltip, and Escape gives focus back to the name",
+                  opened[:4] == ["dclose", True, "Hemoglobin", "dialog"] and opened[4] > 0 and opened[4] == opened[5] and opened[6] == str(opened[5])
+                  and follows[0] == follows[1] and follows[0] != opened[6] and "last year" in follows[2] and follows[3] == "dclose"
+                  and strip[0] == "block" and strip[2] in strip[1] and "Hemoglobin: " in (strip[3] or "") and back == [False, True],
+                  [opened, follows, strip, back])
+            js("state.tables.add('#hm'); switchTab('labs', 'heatmap')")
+            settle(400)
+            page.click("#hmTable tbody th .lab-open")
+            settle(400)
+            hm296 = js("[labShown()?.name, document.querySelector('#hmTable tbody th .lab-open').textContent.startsWith(nice(labShown()?.name || '-'))]")
+            panel_seen, theme296 = [], js("document.documentElement.dataset.theme || null")
+            for mode in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", mode)
+                for width in (1400, 375, 320):
+                    page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                    settle(400)
+                    panel_seen += axe_check(page, f"lab panel, {width} px, {mode}")[0]
+                    if width < 400:
+                        panel_seen += phone_fits(page, f"lab panel at {width} px ({mode})")
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme296)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("closeDrawer(); state.tables.clear(); switchTab('labs', 'chart')")
+            settle(300)
+            check("…a name in the heatmap's table opens it too, and axe-core and a phone's width find nothing in it at 1400, 375 and 320 px, light and dark",
+                  hm296[0] and hm296[1] and not panel_seen, [hm296, panel_seen[:6]])
             # the heatmap: a mark on every out-of-range cell, and a table with a header per lab and per draw day
             js("state.tables.clear(); switchTab('labs', 'heatmap')")
             settle(400)

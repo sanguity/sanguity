@@ -1549,6 +1549,12 @@ Everything on `main` so far; it becomes the first tagged release.
 - **A chart's month no longer reads as a day** (#561): Costs' two charts, the Labs heatmap's axis and the workouts'
   calendar on a long period wrote September 2026 as "Sep 26". They now write "Sep ’26". Labs and Body and activity
   put the months over their years (#291).
+- **A lab's panel: its results in the period, counted** (#296): a lab's name on its chart (and in the heatmap's table)
+  opens a panel beside it with how many results the period holds, the first and the latest, the lowest and highest
+  with their days, the median, how many sat inside their own printed range (and what share) and the latest that did,
+  those outside it by ▲/▼, and the change from the first to the latest; with a strip of every result against its own
+  stepped band, stepped through from the keyboard. Counts and positions only: no trend line and no word for whether
+  it's good. The figures are those of the lab's table, and follow the period as it changes.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
