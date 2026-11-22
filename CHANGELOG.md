@@ -2255,6 +2255,12 @@ Everything on `main` so far; it becomes the first tagged release.
   layer, in its card. My questions, given focus, is brought into view whole as far as it fits, not just its first
   line. Account's Password reply ("Your current password is wrong.", "Password changed.") was under a phone's tabs
   or below the screen; it's brought into view, focus kept.
+- **Records in: a lab name's look-alike no longer filled in as its match** (#546): in the review's lab names to
+  match, a name Sanguity didn't know was given a series with a similar name and the same unit, in its box as if sure,
+  and Add saved it for every profile: "Vitamin B6" went under "Vitamin B1", "Zorblatt Factor 3" under "Factor 1", with
+  their ranges and trends. Only the same LOINC code, or the same name written another way ("VIT D 25-OH", "Hemoglobin
+  Whole Bld"), is put in the box; a similar name is a "Maybe: Vitamin B1" beside an empty box, picked only by hand,
+  and left empty the results keep their own name.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
