@@ -449,7 +449,7 @@ PAN_JS = """async t => { const [tab, view] = t.split("-"), frame = () => new Pro
   const at = (type, x) => svg.dispatchEvent(new PointerEvent(type, {bubbles: true, pointerId: 7, pointerType: "mouse", button: 0, buttons: 1, isPrimary: true, clientX: x, clientY: y}));
   let x = r.left + r.width / 2; at("pointerdown", x);
   for (let i = 0; i < 24; i++) { x += i < 12 ? -8 : 8; const s = performance.now(); at("pointermove", x); await frame(); times.push(performance.now() - s); }
-  at("pointerup", x); await frame(); applyPreset("all"); await frame();
+  at("pointerup", x); await new Promise(r => setTimeout(r, 400)); applyPreset("all"); await frame();   // after it springs back (#382)
   return Math.round(times.sort((p, q) => p - q)[12]); }"""
 
 

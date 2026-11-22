@@ -1590,6 +1590,12 @@ Everything on `main` so far; it becomes the first tagged release.
   each, a pixel's cell each, the result furthest outside its range. The charts are still SVG, and their tables,
   tooltips and keyboard steps read every point. A frame of a drag is 41 ms on Body and activity (70 ms on a phone) and
   154 ms at most on a phone (the heatmap), with a budget for it in the performance test (`pan_frame_ms`).
+- **A chart dragged past its records springs back** (#382): dragging Labs' charts or heatmap or Body and activity too
+  far, or swiping or shift-scrolling them, moved the period wholly past the first or last record, and the charts were
+  left empty with nothing to drag back. Now a drag goes past the records by a quarter of the chart at most, harder the
+  further it goes, and springs back when let go; zooming out stops at all of them. Dates typed in past the records
+  still leave each chart a plot to drag back toward them and double-click, and above them "No lab draws in these
+  dates" (or results, or readings) with **Back to** the period before and **Show all**.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

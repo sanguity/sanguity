@@ -114,7 +114,10 @@ function hChart(host, a, b, {h = 190, layers, fmtY = v => v, unit = "", zero = f
       const vs = l.type === "bars" ? [l.keys.reduce((s, _, i) => s + (p[i + 1] || 0), 0)] : l.type === "band" || l.type === "pairs" ? [p[1], p[2]] : [p[1]];
       for (const v of vs) if (v != null && isFinite(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
     }
-    if (!isFinite(lo)) { svg.replaceChildren(el("svg:text", {x: w / 2, y: hh / 2, "text-anchor": "middle", text: "No data in this period"})); return; }
+    if (!isFinite(lo)) {   // nothing in the window: its plot and time axis kept, to drag back and double-click (#382)
+      const g = [el("svg:rect", {x: L, y: T, width: R - L, height: B - T, fill: "transparent"}), el("svg:text", {x: (L + R) / 2, y: (T + B) / 2, "text-anchor": "middle", text: "No data in this period"})];
+      ckAxis(g, tk, L, R, B, hh - AX + 16); svg.replaceChildren(...g); return;
+    }
     for (const l of layers) if (l.type === "target") for (const v of [l.low, l.high]) if (v != null && isFinite(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); }   // #234: in sight
     if (zero || layers.some(l => l.type === "bars")) lo = 0;
     const pad = (hi - lo) * 0.08 || Math.abs(hi) * 0.05 || 1; hi += pad; if (!zero && lo !== 0) lo -= pad;
@@ -249,6 +252,7 @@ function renderHealth() {
   bar.stays.closest(".overlays").hidden = noStays; bar.nodes[0].querySelector(".h-stay-key").hidden = noStays;
   bar.sync.textContent = `Watch and smart scale via Health Connect${WATCH.last_payload ? " · last sync " + fmtDT(WATCH.last_payload) : ""}`;
   if (bar.nodes[0].parentNode !== box) box.prepend(...bar.nodes);
+  if (b < H.first || a > H.last) box.append(wayBack("readings from the phone, watch or scale"));   // #382
   const S = hSections(box);
   // tiles, each in its card's section
   const prev = pts => inR(pts, a - len, a);
