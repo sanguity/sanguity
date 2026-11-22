@@ -11804,8 +11804,9 @@ def main():
                 db = dbm.connect()
                 db.execute("DELETE FROM labmaps WHERE id=?", (lm569r,))
                 db.close()
-            check("…remembered as Vitamin B1 before #546, it isn't applied: an empty box, the match a Maybe saying why, and added it keeps its own name (#569)",
+            check("…remembered as Vitamin B1 before #546, it isn't applied: an empty box, the match a Maybe saying why (a choice used for later imports too, #583), and added it keeps its own name (#569)",
                   b569[0] == "" and b569[1].startswith("Maybe: Vitamin B1, matched before by a rule Sanguity no longer uses") and b569[2][:1] == ["Vitamin B1"]
+                  and b569[1].endswith("your choice is used for later imports too.")
                   and not b569[3] and series569 == [["Vitamin B1", 1], ["Vitamin B6", 1], ["Vitamin B6", 1]], [b569, series569])   # (a series per import)
             # #575: a review left waiting while a match it applied becomes one to check (as at the upgrade to schema 38): read
             # again from Waiting for you, it's a Maybe beside an empty box, and Add keeps the result's own name

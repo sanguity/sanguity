@@ -2325,6 +2325,13 @@ Everything on `main` so far; it becomes the first tagged release.
   look-alike back, and Install activity says it was kept ("kept the lab name match for “X” → “Y”"), not changed from
   “Y” to “Y”. The upgrade no longer marks a match an admin had changed as to check. And a review's choice for a name
   whose match is to check is remembered in its place, as the review says.
+- **Records in: a lab-name match an admin forgets or changes no longer applied by a review left waiting** (#583): a
+  review read before an admin's Forget or Change of a match it applied still filed the results under the old series
+  when added; added, each match is checked against Admin, Lab name matches as they are now, and one forgotten or
+  changed since isn't applied (the results keep their own name) or counted as used. Any change to the matches (a
+  choice remembered, kept, changed or forgotten) has a waiting review planned again when it's read, so it shows the
+  match as it is now. A name whose match is to check no longer says a choice from the list is "this time" only: it's
+  used for later imports too.
 - **Share links: each section's line names what its page shows, and Procedures sends only that** (#576): the line on
   the share form (and the link's page) for each section is the owner's account of what a holder sees, and several left
   things out: Costs' Service column naming the care, a hospital stay's nights, admission type and reason, each
