@@ -154,7 +154,7 @@
 
   // the lab names to match (#23), one row each: the series typed or picked from a list (the match made before or the
   // sure suggestion first), or left empty to keep it a series of its own; a similar name is a "Maybe" beside an empty
-  // box, never chosen for the person (#546). -> {part, picked, wrong, kept, put}
+  // box, never chosen for the person (#546), as is a match remembered before that to check (#569). -> {part, picked, wrong, kept, put}
   function labTable(j) {
     const listed = j.labs || [];
     if (!listed.length) return {part: null, picked: () => ({}), wrong: () => null, kept: () => ({}), put: () => {}};
@@ -165,11 +165,13 @@
       const opts = [], seen = new Set();
       const add = (value, label) => { if (seen.has(value)) return; seen.add(value); named.set(value.toLowerCase(), value); opts.push(node("option", {value, label})); };
       if (before && before.target) add(before.target, "Matched as before");
+      if (l.check) add(l.check.target, "Maybe: matched before, to check");   // (#569: remembered before #546, not applied)
       for (const s of [...sure, ...unsure]) add(s.name, `${s.sure ? "Suggested" : "Maybe"}: ${s.reason}`);
       for (const t of j.lab_targets || []) add(t.name, t.unit || null);
       const initial = before ? before.target || KEEP : sure.length ? sure[0].name : KEEP;
       const top = before ? null : sure[0] || unsure[0];
       const said = before ? (before.target == null ? "Kept separate as before." : "Matched as before.")
+                 : l.check && !top?.sure ? `Maybe: ${l.check.target}, matched before by a rule Sanguity no longer uses, so it's not used until an admin checks it. Pick it from the list to match it this time.`
                  : l.same ? `This profile has a series of this name now (${l.same}): left empty, its results go there.`   // (saved meanwhile, #497)
                  : top ? (top.sure ? `Suggested: ${top.name}, ${top.reason}.` : `Maybe: ${top.name}, ${top.reason}. Pick it from the list to match it.`)
                  : "Nothing in this profile looks like it.";

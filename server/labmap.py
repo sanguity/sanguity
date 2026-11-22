@@ -28,6 +28,13 @@ since or an admin has changed it (labmaps.import_id and used, schema version 36;
 
 The name, unit and code (source) and the target are health details, so encrypted (crypto.enc); rows are found by
 lookup, a keyed hash of the normalised identity (security.pepper_mac), never by decrypting them all.
+
+Before #546 a look-alike (Vitamin B6 for Vitamin B1) could be filled in as sure and remembered on Add. A choice
+remembered then (checked NULL, schema version 38) that #546's rule wouldn't make (fits: not the same name, an alias,
+the list's LOINC code or the same name written another way) is "to check" (#569): never applied, a review that would
+use it shows it as a "Maybe", and Admin, Lab name matches lists it first with Keep and Forget. A choice made since,
+by hand or by the rule, and one an admin keeps or changes, is checked. A name's specimen (blood, serum, urine...) is
+part of it: "Ketones, Blood" isn't "Ketones" written another way (SPECIMEN).
 """
 import collections, copy, difflib, json, re
 
@@ -50,6 +57,11 @@ ABBREV = {"hgb": "hemoglobin", "hb": "hemoglobin", "hct": "hematocrit", "plt": "
           "neuts": "neutrophils", "cnt": "count", "ct": "count"}
 FILLER = {"serum", "plasma", "ser", "plas", "bld", "blood", "level", "lvl", "whole", "quant", "quantitative", "result",
           "test", "s", "p", "b", "ext", "external"}
+# what a test was done on: left out when names are compared for a "Maybe", but a name with one is the same name
+# written another way only as a name with the same (#569: "Ketones, Blood" may be another series than "Ketones")
+SPECIMEN = {"serum": "serum", "ser": "serum", "plasma": "plasma", "plas": "plasma", "blood": "blood", "bld": "blood",
+            "whole": "blood", "urine": "urine", "ur": "urine", "urn": "urine", "csf": "csf", "spinal": "csf",
+            "saliva": "saliva", "stool": "stool", "fecal": "stool", "feces": "stool"}
 
 
 # ---------------------------------------------------------------- names and identities
@@ -76,12 +88,27 @@ def series_loinc(s):
     return str(code).strip() if code else ""
 
 
+def specimens(name):
+    """The specimens a name says it was measured in ("blood" in "Red blood cells" names the cells, not a specimen)."""
+    words = norm(name).replace("_", " ").split()
+    return {SPECIMEN[w] for i, w in enumerate(words) if w in SPECIMEN and words[i + 1:i + 2] not in (["cells"], ["cell"])}
+
+
 def same_name(a, b):
-    """Whether two names are one test written another way (#546): evened out alike, and no single letter left out of
-    one as a filler word ("Vitamin B" isn't "Vitamin")."""
+    """Whether two names are one test written another way (#546): evened out alike, no single letter left out of
+    one as a filler word ("Vitamin B" isn't "Vitamin"), and the same specimens (#569)."""
     def letters(n):
         return {w for w in norm(n).replace("_", " ").split() if len(w) == 1}
-    return even(a) == even(b) and letters(a) == letters(b)
+    return even(a) == even(b) and letters(a) == letters(b) and specimens(a) == specimens(b)
+
+
+def fits(name, loinc, target):
+    """Whether #546's rule would match name to target unasked, without a profile to look in: kept separate, the same
+    name, an alias or the list's LOINC code for it, or the same name written another way. A remembered choice that
+    doesn't fit and wasn't checked is "to check" (#569)."""
+    code = str(loinc or "").strip()
+    return (target is None or norm(name) == norm(target) or common.canonical_lab(name, code) == target
+            or bool(code and common.loinc_of(target) == code) or same_name(name, target))
 
 
 def compatible(target, u1, u2):
@@ -172,7 +199,7 @@ def suggest(s, have):
 def plan(db, pid, importer, data, keep=()):
     """What the preview asks about data's lab series, and what's settled already:
 
-      {"listed": [{"ref", "name", "unit", "loinc", "n", "suggestions", "before": {"target"} | None}],
+      {"listed": [{"ref", "name", "unit", "loinc", "n", "suggestions", "before": {"target"} | None, ("check": {"target"})}],
        "auto": {ref: target or None}   remembered choices, applied without asking
        "ids": {ref: labmaps id}        theirs, marked used once the import is saved (used, #500)
        "targets": [{"name", "unit"}]   every series one can be put in (only when something is listed)}
@@ -180,23 +207,28 @@ def plan(db, pid, importer, data, keep=()):
     A series is listed when lab-aliases.json doesn't know its name and the profile has no series of that name (or
     when a choice for it was remembered). keep: refs listed even so, a preview read again asking about what it asked
     before (jobs.freshen, #497), so a choice typed in its review isn't lost; such an entry names the series of its
-    name ("same") the profile has by now."""
+    name ("same") the profile has by now. A remembered choice to check (#569) isn't applied: its entry has "check"
+    instead of "before", offered as a "Maybe"."""
     have = profile_series(db, pid)
     lower = {n.lower(): n for n in have}
     candidates = {}
     for i, s in enumerate(data.get("labs") or []):
         if isinstance(s, dict) and isinstance(s.get("name"), str) and s["name"].strip() and not _known(s["name"]):
             candidates[f"s:{i}"] = s
-    found = remembered(db, [importer], {ref: _ident(s) for ref, s in candidates.items()})
+    found = remembered(db, [importer], {ref: _ident(s) for ref, s in candidates.items()}, flagged=True)
     listed, auto, ids = [], {}, {}
     for ref, s in candidates.items():
         before, same = found.get(ref), lower.get(s["name"].strip().lower())
         if before is None and same and ref not in keep:
             continue
+        check = before if before and before["check"] else None
+        before = None if check else before
         entry = {"ref": ref, "name": s["name"], "unit": str(s.get("unit") or ""), "loinc": series_loinc(s),
                  "n": len(s.get("pts") or []) + len(s.get("txt") or []), "suggestions": suggest(s, have), "before": None}
         if before is None and same:
             entry["same"] = same   # (kept: left as a series of its own, it joins that one)
+        if check:
+            entry["check"] = {"target": check["target"]}
         if before is not None:
             entry["before"] = {"target": before["target"]}
             auto[ref], ids[ref] = before["target"], before["id"]
@@ -242,7 +274,8 @@ def apply(data, picked):
 
 def remember(db, importer, lab_plan, sent, data, who, import_id=None):
     """Keep the choices sent for series the preview listed and nothing was remembered for. Inside the import's
-    transaction. A choice remembered meanwhile (by another import, or an admin) wins. Returns how many were kept.
+    transaction. A choice remembered meanwhile (by another import, or an admin) wins, one to check too. Returns how
+    many were kept. Made by hand or by #546's rule, they're checked (#569).
     import_id: the import saved with them, whose Undo forgets them (forget, #500)."""
     listed = {e["ref"]: e for e in (lab_plan or {}).get("listed") or [] if not e.get("before")}
     labs = data.get("labs") or []
@@ -252,12 +285,13 @@ def remember(db, importer, lab_plan, sent, data, who, import_id=None):
         if not e or not ref[2:].isdigit() or int(ref[2:]) >= len(labs):
             continue
         name, unit, code = _ident(labs[int(ref[2:])])
-        n += db.execute("""INSERT INTO labmaps(lookup, importer, source, target, created_by, created_name, created, import_id)
-                           VALUES(?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(lookup) DO NOTHING""",
+        n += db.execute("""INSERT INTO labmaps(lookup, importer, source, target, created_by, created_name, created, import_id,
+                                              checked)
+                           VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(lookup) DO NOTHING""",
                         (lookup(importer, name, unit, code), importer,
                          crypto.enc(json.dumps({"name": name, "unit": unit, "loinc": code}, ensure_ascii=False)),
                          _enc_target(clean_target(target)), who["id"] if who else None,
-                         who["username"] if who else "removed account", dbm.now(), import_id)).rowcount
+                         who["username"] if who else "removed account", dbm.now(), import_id, dbm.now())).rowcount
     return n
 
 
@@ -295,9 +329,10 @@ def _enc_target(t):
     return None if t is None else crypto.enc(t)
 
 
-def remembered(db, importers, idents):
-    """{ref: {"id", "target"}} for the identities ({ref: (name, unit, loinc)}) a choice was remembered for, under the
-    first of importers that has one."""
+def remembered(db, importers, idents, flagged=False):
+    """{ref: {"id", "target", "check"}} for the identities ({ref: (name, unit, loinc)}) a choice was remembered for,
+    under the first of importers that has one. One to check (#569: never checked, and #546's rule wouldn't make it)
+    is left out unless flagged."""
     if not idents:
         return {}
     keys = {(ref, imp): lookup(imp, *ident) for ref, ident in idents.items() for imp in importers}
@@ -305,14 +340,18 @@ def remembered(db, importers, idents):
     hashes = sorted(set(keys.values()))
     for i in range(0, len(hashes), 500):
         part = hashes[i:i + 500]
-        for r in db.execute(f"SELECT id, lookup, target FROM labmaps WHERE lookup IN ({','.join('?' * len(part))})", part):
+        for r in db.execute(f"SELECT id, lookup, target, checked FROM labmaps WHERE lookup IN ({','.join('?' * len(part))})",
+                            part):
             rows[r["lookup"]] = r
     out = {}
     for ref in idents:
         for imp in importers:
             r = rows.get(keys[(ref, imp)])
             if r is not None:
-                out[ref] = {"id": r["id"], "target": crypto.dec(r["target"]) if r["target"] else None}
+                target = crypto.dec(r["target"]) if r["target"] else None
+                check = r["checked"] is None and not fits(idents[ref][0], idents[ref][2], target)
+                if flagged or not check:
+                    out[ref] = {"id": r["id"], "target": target, "check": check}
                 break
     return out
 
@@ -332,15 +371,18 @@ def apply_remembered(db, importers, data):
 
 def _row(r):
     src = json.loads(crypto.dec(r["source"]))
+    target = crypto.dec(r["target"]) if r["target"] else None
     return {"id": r["id"], "importer": r["importer"], "name": src.get("name"), "unit": src.get("unit") or "",
-            "loinc": src.get("loinc") or "", "target": crypto.dec(r["target"]) if r["target"] else None,
+            "loinc": src.get("loinc") or "", "target": target,
+            "check": r["checked"] is None and not fits(src.get("name"), src.get("loinc"), target),
             "created": r["created"], "created_by": r["created_name"], "changed": r["changed"], "changed_by": r["changed_name"]}
 
 
 def listing(db):
-    """Every remembered choice, last changed first: [{"id", "importer", "name", "unit", "loinc", "target",
-    "created", "created_by", "changed", "changed_by"}]."""
-    return [_row(r) for r in db.execute("SELECT * FROM labmaps ORDER BY IFNULL(changed, created) DESC, id DESC")]
+    """Every remembered choice, those to check (#569) first, then last changed first: [{"id", "importer", "name",
+    "unit", "loinc", "target", "check", "created", "created_by", "changed", "changed_by"}]."""
+    rows = [_row(r) for r in db.execute("SELECT * FROM labmaps ORDER BY IFNULL(changed, created) DESC, id DESC")]
+    return sorted(rows, key=lambda m: not m["check"])
 
 
 def get(db, mid):
@@ -349,8 +391,9 @@ def get(db, mid):
 
 
 def change(db, mid, target, who):
-    db.execute("UPDATE labmaps SET target=?, changed_by=?, changed_name=?, changed=? WHERE id=?",
-               (_enc_target(clean_target(target)), who["id"], who["username"], dbm.now(), mid))
+    """An admin's change, or Keep (the same target): checked from now on (#569)."""
+    db.execute("UPDATE labmaps SET target=?, changed_by=?, changed_name=?, changed=?, checked=? WHERE id=?",
+               (_enc_target(clean_target(target)), who["id"], who["username"], dbm.now(), dbm.now(), mid))
 
 
 def remove(db, mid):

@@ -11624,17 +11624,17 @@ def main():
                 page.set_input_files("#pickFiles", files=[{"name": name, "mimeType": "text/csv", "buffer": body}])
                 page.wait_for_function(f"document.querySelectorAll('.import-job').length && "
                                        f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
-            lab_csv = "Date,Test,Result,Units,Reference Range\n{},Hemoglobin Whole Bld,{},g/dL,13.5 - 17.5\n"
+            lab_csv = "Date,Test,Result,Units,Reference Range\n{},Hemoglobin Lvl,{},g/dL,13.5 - 17.5\n"
             upload_csv("other-lab.csv", lab_csv.format("2026-11-09", "12.9").encode())
             labs = js(f"""(() => {{ const tr = {last_card}.querySelector('.imp-labs tbody tr'); if (!tr) return null;
                 const box = tr.querySelector('input[list]'); return {{text: tr.textContent, value: box.value, options: box.list.options.length,
                 why: document.getElementById(box.getAttribute('aria-describedby')).textContent}}; }})()""")
             check("the review lists the unknown lab name in its table, the profile's Hemoglobin series suggested and typed in, a list of the series to pick from (#23, #282)",
-                  labs is not None and "Hemoglobin Whole Bld" in labs["text"] and labs["value"] == "Hemoglobin"
+                  labs is not None and "Hemoglobin Lvl" in labs["text"] and labs["value"] == "Hemoglobin"
                   and "same name written another way, same unit" in labs["why"] and labs["options"] > 3, labs)
             tiles = js(f"[...{last_card}.querySelectorAll('.imp-tiles .tile')].map(t => [t.querySelector('.lbl').textContent, t.querySelector('.val').textContent, t.querySelector('ul li').textContent])")
             check("…the CSV's review: a tile of its lab result with the result in it, and a button saying what it adds (#282)",
-                  len(tiles) == 1 and tiles[0][:2] == ["Lab result", "1"] and "Hemoglobin Whole Bld 12.9 g/dL" in tiles[0][2]
+                  len(tiles) == 1 and tiles[0][:2] == ["Lab result", "1"] and "Hemoglobin Lvl 12.9 g/dL" in tiles[0][2]
                   and js(f"{last_card}.querySelector('.imp-actions .primary').textContent") == "Add 1 lab result", tiles)
             # a series that isn't there: Add refuses it, saying so at the box; typed in another case, it's the series
             series_box = page.locator(".import-job").last.locator(".imp-labs input[list]").first
@@ -11643,7 +11643,7 @@ def main():
             settle(200)
             check("…a series typed that isn't there isn't added: the box says so and has focus, and nothing's saved (#282)",
                   js(f"{last_card}.textContent").startswith("Ready to import") and series_box.get_attribute("aria-invalid") == "true"
-                  and js("document.activeElement.getAttribute('aria-label')") == "Series for Hemoglobin Whole Bld"
+                  and js("document.activeElement.getAttribute('aria-label')") == "Series for Hemoglobin Lvl"
                   and "No series by that name" in js(f"{last_card}.querySelector('.imp-labs .err')?.textContent || ''"),
                   js(f"{last_card}.querySelector('.imp-actions .msg').textContent"))
             series_box.fill("hemoglobin")
@@ -11662,7 +11662,7 @@ def main():
             settle(300)
             hgb = js("SERIES.filter(s => s.name === 'Hemoglobin').flatMap(s => s.pts.map(p => [p[0].slice(0, 10), p[1]]))")
             check("…and its result is on Trends in the existing Hemoglobin series",
-                  ["2026-11-09", 12.9] in hgb and not js("SERIES.some(s => s.name === 'Hemoglobin Whole Bld')"), hgb)
+                  ["2026-11-09", 12.9] in hgb and not js("SERIES.some(s => s.name === 'Hemoglobin Lvl')"), hgb)
             check("…charted there", "Hemoglobin" in page.inner_text("#charts"), page.inner_text("#charts")[:200])
             upload_csv("other-lab-again.csv", lab_csv.format("2026-11-12", "13.2").encode())
             again = js(f"(() => {{ const tr = {last_card}.querySelector('.imp-labs tbody tr'); return tr && [tr.textContent, tr.querySelector('input[list]').value]; }})()")
@@ -11692,6 +11692,30 @@ def main():
                   b546[:3] == ["Vitamin B6", "", "Maybe: Vitamin B1, similar name, same unit. Pick it from the list to match it."] and b546[3] == ["Vitamin B1"], b546)
             series546 = js(f"fetch('api/profiles/{pid546}/data', {{cache: 'no-store'}}).then(r => r.json()).then(d => d.labs.map(s => [s.name, s.pts.length]).sort())")
             check("…added with nothing chosen, it keeps its own name, apart from Vitamin B1", series546 == [["Vitamin B1", 1], ["Vitamin B6", 1]], series546)
+            # #569: the same look-alike remembered before #546 (checked NULL) isn't applied: its review has an empty box and
+            # the match as a "Maybe", saying why. Made up here and gone after
+            from server import crypto as crypto569, labmap as labmap569
+            db = dbm.connect()
+            lm569r = db.execute("INSERT INTO labmaps(lookup, importer, source, target, created_name, created) VALUES(?, 'csv', ?, ?, ?, 1)",
+                                (labmap569.lookup("csv", "Vitamin B6", "nmol/L", None), crypto569.enc(json.dumps({"name": "Vitamin B6", "unit": "nmol/L", "loinc": None})),
+                                 crypto569.enc("Vitamin B1"), USER)).lastrowid
+            db.close()
+            try:
+                page.set_input_files("#pickFiles", files=[{"name": "b-569.csv", "mimeType": "text/csv",
+                                                           "buffer": b"Date,Test,Result,Units,Reference Range\n2026-11-16,Vitamin B6,44,nmol/L,20 - 125\n"}])
+                page.wait_for_function(f"document.querySelectorAll('#importer .import-job').length === 3 && /^Ready to import/.test({last_card}.textContent)", timeout=30000)
+                b569 = js(f"""(tr => {{ const box = tr.querySelector('input[list]'); return [box.value, document.getElementById(box.getAttribute('aria-describedby')).textContent,
+                    [...box.list.options].filter(o => o.label.startsWith('Maybe: ')).map(o => o.value), !!tr.querySelector('.before')]; }})({last_card}.querySelector('.imp-labs tbody tr'))""")
+                js(f"{last_card}.querySelector('.imp-actions .primary').click()")   # Add, nothing chosen
+                page.wait_for_function(f"/^(Imported|Not imported)/.test({last_card}.textContent)", timeout=30000)
+                series569 = js(f"fetch('api/profiles/{pid546}/data', {{cache: 'no-store'}}).then(r => r.json()).then(d => d.labs.map(s => [s.name, s.pts.length]).sort())")
+            finally:
+                db = dbm.connect()
+                db.execute("DELETE FROM labmaps WHERE id=?", (lm569r,))
+                db.close()
+            check("…remembered as Vitamin B1 before #546, it isn't applied: an empty box, the match a Maybe saying why, and added it keeps its own name (#569)",
+                  b569[0] == "" and b569[1].startswith("Maybe: Vitamin B1, matched before by a rule Sanguity no longer uses") and b569[2][:1] == ["Vitamin B1"]
+                  and not b569[3] and series569 == [["Vitamin B1", 1], ["Vitamin B6", 1], ["Vitamin B6", 1]], [b569, series569])   # (a series per import)
             db = dbm.connect()
             prof546.delete_profile(db, pid546)
             db.close()
@@ -18584,7 +18608,7 @@ def main():
             page.wait_for_function("document.querySelector('#labmapList tr[data-labmap]')", timeout=10000)
             lm = js("[...document.querySelectorAll('#labmapList tr[data-labmap]')].map(tr => tr.textContent)")
             check("Admin lists the lab name match, who made it and from what, with Change and Remove (#23)",
-                  any("Hemoglobin Whole Bld" in t and "Hemoglobin" in t and "demo" in t and "CSV" in t and "Change" in t and "Remove" in t for t in lm)
+                  any("Hemoglobin Lvl" in t and "Hemoglobin" in t and "demo" in t and "CSV" in t and "Change" in t and "Remove" in t for t in lm)
                   and "only admins can change or remove" in js("[...document.querySelectorAll('.about-words')].find(w => w.getAttribute('aria-label') === 'About Lab name matches').textContent")   # (behind its ⓘ, #280)
                   and js(display, "labmaps") != "none", lm)
             # #528: at 375×667 a match's Save (by Enter in its box) leaves focus on its Change, and Remove → Forget match on the
@@ -18593,9 +18617,9 @@ def main():
             from server import crypto as crypto528, labmap as labmap528
             lmdb528 = dbm.connect()
             for n in ("Ferritin 528", "Glucose 528"):
-                lmdb528.execute("INSERT INTO labmaps(lookup, importer, source, target, created_by, created_name, created) VALUES(?, 'manual', ?, ?, NULL, ?, ?)",
+                lmdb528.execute("INSERT INTO labmaps(lookup, importer, source, target, created_by, created_name, created, checked) VALUES(?, 'manual', ?, ?, NULL, ?, ?, ?)",
                                 (labmap528.lookup("manual", n, "g/dL", None), crypto528.enc(json.dumps({"name": n, "unit": "g/dL", "loinc": None})),
-                                 crypto528.enc("Hemoglobin"), USER, dbm.now()))
+                                 crypto528.enc("Hemoglobin"), USER, dbm.now(), dbm.now()))   # (checked: not one to check, #569)
             js("loadLabmaps()")
             page.wait_for_function("document.getElementById('labmapList').textContent.includes('Glucose 528')", timeout=10000)
             vp528, had528 = page.viewport_size, len(problems)
@@ -18633,9 +18657,9 @@ def main():
             # #532: at 320 and 375 px, and with a row's Change open, no word of the matches is broken across lines (“Chan/ge”,
             # “Remo/ve”, “Glucos/e”: its first column was 55 px). One with a long name, made up here and gone after
             lmdb532 = dbm.connect()
-            lm532 = lmdb532.execute("INSERT INTO labmaps(lookup, importer, source, target, created_by, created_name, created) VALUES(?, 'manual', ?, ?, NULL, ?, ?)",
+            lm532 = lmdb532.execute("INSERT INTO labmaps(lookup, importer, source, target, created_by, created_name, created, checked) VALUES(?, 'manual', ?, ?, NULL, ?, ?, ?)",
                                     (labmap528.lookup("manual", "Glucose fasting 532", "mg/dL", None), crypto528.enc(json.dumps({"name": "Glucose fasting, a long name from an outside lab 532", "unit": "mg/dL", "loinc": None})),
-                                     crypto528.enc("Glucose"), USER, dbm.now())).lastrowid
+                                     crypto528.enc("Glucose"), USER, dbm.now(), dbm.now())).lastrowid
             BROKEN532 = """(() => { const out = [], w = document.createTreeWalker(document.getElementById('labmapList'), NodeFilter.SHOW_TEXT);
               for (let n; (n = w.nextNode());) if (n.parentElement.checkVisibility()) for (const m of n.textContent.matchAll(/\\S+/g)) {
                 const r = document.createRange(); r.setStart(n, m.index); r.setEnd(n, m.index + m[0].length);
@@ -18649,7 +18673,7 @@ def main():
                     page.set_viewport_size({"width": w, "height": 667})
                     settle(200)
                     broken532[w] = js(BROKEN532)
-                    for n in ("outside lab 532", "Hemoglobin Whole Bld"):
+                    for n in ("outside lab 532", "Hemoglobin Lvl"):
                         lmrow528(n).get_by_role("button", name="Change").click()
                         settle(200)
                         broken532[f"{w} {n}"] = js(BROKEN532)
@@ -18667,7 +18691,7 @@ def main():
             out536 = {}
             try:
                 page.wait_for_selector("#labmapList tr[data-labmap]", timeout=10000)
-                lmrow528("Hemoglobin Whole Bld").get_by_role("button", name="Change").click()
+                lmrow528("Hemoglobin Lvl").get_by_role("button", name="Change").click()
                 for w in range(700, 821, 4):
                     page.set_viewport_size({"width": w, "height": 800})
                     settle(60)
@@ -18677,11 +18701,46 @@ def main():
                     if o[0] > 0 or len(o) > 1:
                         out536[w] = o
                 edit536 = js("!!document.querySelector('#labmapList .lm-edit input')")
-                lmrow528("Hemoglobin Whole Bld").get_by_role("button", name="Cancel").click()
+                lmrow528("Hemoglobin Lvl").get_by_role("button", name="Cancel").click()
             finally:
                 page.set_viewport_size(vp528)
             check("…(#536) with a match's Change open, from 700 to 820 px every 4 px, Lab name matches stays in its card, with no sideways "
                   "scroll (at 762–804 px Change and Remove were past it)", edit536 and not out536, out536)
+            # #569: a match remembered before #546 that its rule wouldn't make (Vitamin B6 filled in as Vitamin B1; checked
+            # NULL) is to check: listed first, marked, with Keep and Forget, axe clean in light and dark; kept, it's an
+            # ordinary match, focus on its Change. Made up here and gone after
+            lmdb569 = dbm.connect()
+            lm569 = lmdb569.execute("INSERT INTO labmaps(lookup, importer, source, target, created_by, created_name, created) VALUES(?, 'csv', ?, ?, NULL, ?, 1)",
+                                    (labmap528.lookup("csv", "Vitamin B6 569", "nmol/L", None), crypto528.enc(json.dumps({"name": "Vitamin B6 569", "unit": "nmol/L", "loinc": None})),
+                                     crypto528.enc("Vitamin B1"), USER)).lastrowid
+            LM569 = """[...document.querySelectorAll('#labmapList tr[data-labmap]')].map(tr => [tr.querySelector('b').textContent,
+              !!tr.querySelector('.lm-check'), [...tr.querySelectorAll('td.acts button')].map(b => b.textContent).join('|')])"""
+            try:
+                js("loadLabmaps()")
+                page.wait_for_function("document.getElementById('labmapList').textContent.includes('Vitamin B6 569')", timeout=10000)
+                rows569, said569 = js(LM569), js("document.querySelector('#labmapList > p.howto')?.textContent || ''")
+                theme569, axe569 = js("document.documentElement.dataset.theme || null"), []
+                for theme in ("light", "dark"):
+                    js("t => { document.documentElement.dataset.theme = t; }", theme)
+                    settle(300)
+                    axe569 += axe_check(page, f"Lab name matches with one to check, {theme}")[0]
+                js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme569)
+                lmrow528("Vitamin B6 569").get_by_role("button", name="Keep").click()
+                page.wait_for_function("document.getElementById('labmapMsg').textContent.startsWith('Kept: “Vitamin B6 569”')", timeout=10000)
+                settle(300)
+                kept569 = [js(LM569), js("[document.activeElement.textContent, document.activeElement.closest('tr')?.querySelector('b')?.textContent]"),
+                           js("!!document.querySelector('#labmapList > p.howto')"),
+                           lmdb569.execute("SELECT checked IS NOT NULL FROM labmaps WHERE id=?", (lm569,)).fetchone()[0]]
+            finally:
+                lmdb569.execute("DELETE FROM labmaps WHERE id=?", (lm569,))
+                lmdb569.close()
+                js("loadLabmaps()")
+            check("Admin lists a match remembered before #546 that its rule wouldn't make first, marked to check, with Keep and Forget, "
+                  "axe clean in light and dark; kept, it's an ordinary match with Change and Remove, focus on its Change (#569)",
+                  rows569[0] == ["Vitamin B6 569", True, "Keep|Change|Forget"] and all(not r[1] and r[2] == "Change|Remove" for r in rows569[1:])
+                  and said569.startswith("1 match to check") and not axe569
+                  and ["Vitamin B6 569", False, "Change|Remove"] in kept569[0] and kept569[1] == ["Change", "Vitamin B6 569"]
+                  and kept569[2] is False and kept569[3] == 1, [rows569, said569, axe569[:4], kept569])
             # the old Profiles tab's address opens Sharing → People (#168); a section link still lands on Account
             page.goto(base + "/account.html#profiles")
             page.wait_for_url(re.compile(r"/sharing\.html(\?[^#]*)?#people$"), timeout=10000)

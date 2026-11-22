@@ -179,7 +179,7 @@ class LabMapping(unittest.TestCase):
         for name, unit in (("Vitamin B6", "nmol/L"), ("Factor 3", "mg/dL"), ("Vitamin B", "nmol/L")):
             self.assertFalse([s for s in labmap.suggest({"name": name, "unit": unit}, have) if s["sure"]], name)
         # the same name written another way, and the same LOINC code, still fill the box
-        self.assertTrue(labmap.suggest({"name": "VITAMIN-B1 SERUM", "unit": "nmol/l"}, have)[0]["sure"])
+        self.assertTrue(labmap.suggest({"name": "VIT. B1", "unit": "nmol/l"}, have)[0]["sure"])   # (not "... SERUM": #569)
         self.assertTrue(labmap.suggest({"name": "Thiamine X", "unit": "nmol/L", "loinc": "10-1"},
                                        {"Vitamin B1": {"unit": "nmol/L", "loinc": {"10-1"}}})[0]["sure"])
         # saved with nothing chosen: each keeps its own series, and nothing is remembered for later imports
@@ -195,6 +195,27 @@ class LabMapping(unittest.TestCase):
         self.save(pid, j)
         self.assertEqual(self.points(pid, "Vitamin B1"), [("2026-01-05", 120.0), ("2026-03-05", 125.0)])
         self.assertEqual(self.points(pid, "Hemoglobin"), [("2026-03-05", 13.0)])
+
+    def test_a_specimen_is_part_of_the_name(self):   # #569
+        """A name with a specimen (blood, serum, urine...) isn't the same name written another way as one without it,
+        or with another: "Ketones, Blood" is only a "Maybe" for a profile's "Ketones", which may be a urine series.
+        "Blood" in "Red blood cells" names the cells."""
+        pid = self.profile("Specimens")
+        self.save(pid, self.previewed(pid, csv(["2026-01-05", "Ketones", "5", "mg/dL", "0-5", "", "", ""])))
+        j = self.previewed(pid, csv(["2026-02-05", "\"Ketones, Blood\"", "4", "mg/dL", "0-5", "", "", ""]))
+        e = self.entry(j, "Ketones, Blood")
+        self.assertEqual(e["suggestions"][0], {"name": "Ketones", "unit": "mg/dL", "reason": "similar name, same unit", "sure": False})
+        done = self.save(pid, j)
+        self.assertEqual(done["lab_names"], {"matched": 0, "remembered": 0})
+        self.assertEqual(self.points(pid, "Ketones"), [("2026-01-05", 5.0)])
+        self.assertEqual(self.points(pid, "Ketones, Blood"), [("2026-02-05", 4.0)])
+        for a, b in (("Ketones, Blood", "Ketones"), ("Ketones, Urine", "Ketones, Blood"), ("Glucose, Serum", "Glucose, Plasma"),
+                     ("Protein, Ur", "Protein"), ("Glucose CSF", "Glucose")):
+            self.assertFalse(labmap.same_name(a, b), (a, b))
+            self.assertFalse(labmap.same_name(b, a), (b, a))
+        for a, b in (("Ketones, Blood", "KETONES BLD"), ("Lead, Whole Blood", "Lead, Blood"), ("Red blood cells", "RBC"),
+                     ("Vitamin D 25-Hydroxy", "VIT D 25-OH")):
+            self.assertTrue(labmap.same_name(a, b), (a, b))
 
     # ---------------------------------------------------------------- confirming, and the choice sticking
 
@@ -300,6 +321,57 @@ class LabMapping(unittest.TestCase):
         j = self.previewed(pid, csv(["2026-04-05", "HGB-U", "12.8", "g/dL", "13.5 - 17.5", "L", "CBC", "718-7"]))
         self.assertEqual(self.entry(j, "HGB-U")["before"], {"target": "Hemoglobin"})
         self.robin.post(f"/api/profiles/{pid}/jobs/{j['id']}/discard", headers=H)
+
+    def test_a_match_remembered_before_546_is_checked_first(self):   # #569
+        """A match remembered before #546 (checked NULL) that #546's rule wouldn't make, Vitamin B6 filled in as
+        Vitamin B1, is to check: not applied to an import (its review offers it as a "Maybe") nor to results typed
+        in, and listed first for admins; one the rule would make still applies. Once an admin keeps it, it applies."""
+        pid = self.profile("To check")
+        self.save(pid, self.previewed(pid, csv(["2026-01-05", "Vitamin B1", "120", "nmol/L", "70-180", "", "", ""])))
+        db = dbm.connect()
+        try:
+            from server import atrest
+            atrest.load_pepper(db)
+            old = {}
+            for importer, name, target in (("csv", "Vitamin B6", "Vitamin B1"), ("csv", "VIT. B1", "Vitamin B1"),
+                                           ("manual", "Vitamin B6", "Vitamin B1"), ("csv", "Ketones, Blood", "Ketones")):
+                old[(importer, name)] = db.execute(
+                    "INSERT INTO labmaps(lookup, importer, source, target, created_name, created) VALUES(?, ?, ?, ?, 'robin', 1)",
+                    (labmap.lookup(importer, name, "nmol/L", ""), importer,
+                     crypto.enc(json.dumps({"name": name, "unit": "nmol/L", "loinc": ""})), crypto.enc(target))).lastrowid
+        finally:
+            db.close()
+        j = self.previewed(pid, csv(["2026-02-05", "Vitamin B6", "40", "nmol/L", "20-125", "", "", ""],
+                                    ["2026-02-05", "VIT. B1", "130", "nmol/L", "70-180", "", "", ""]))
+        b6, b1 = self.entry(j, "Vitamin B6"), self.entry(j, "VIT. B1")
+        self.assertIsNone(b6["before"])
+        self.assertEqual(b6["check"], {"target": "Vitamin B1"})
+        self.assertEqual(b1["before"], {"target": "Vitamin B1"})   # the same name written another way: applied
+        self.assertNotIn("check", b1)
+        done = self.save(pid, j)
+        self.assertEqual(done["lab_names"], {"matched": 1, "remembered": 0})
+        self.assertEqual(self.points(pid, "Vitamin B6"), [("2026-02-05", 40.0)])
+        self.assertEqual(self.points(pid, "Vitamin B1"), [("2026-01-05", 120.0), ("2026-02-05", 130.0)])
+        row = {"date": "2026-02-06", "test": "Vitamin B6", "value": "41", "unit": "nmol/L", "range": "20-125"}
+        self.assertEqual(self.robin.post(f"/api/profiles/{pid}/manual", json={"rows": [row], "save": False}, headers=H).json()["rows"][0]["name"],
+                         "Vitamin B6")
+        # the list: those to check first, flagged; the others not
+        listed = self.ada.get("/api/labmaps").json()
+        flagged = [m["id"] for m in listed if m["check"]]
+        self.assertEqual(listed[:len(flagged)], [m for m in listed if m["check"]])
+        self.assertEqual(set(flagged), {old[("csv", "Vitamin B6")], old[("manual", "Vitamin B6")], old[("csv", "Ketones, Blood")]})
+        self.assertFalse(next(m for m in listed if m["id"] == old[("csv", "VIT. B1")])["check"])
+        # an admin keeps it: no longer to check, and applied from then on
+        r = self.ada.patch(f"/api/labmaps/{old[('csv', 'Vitamin B6')]}", json={"target": "Vitamin B1"}, headers=H)
+        self.assertEqual((r.status_code, r.json()["check"], r.json()["target"]), (200, False, "Vitamin B1"), r.text)
+        j = self.previewed(pid, csv(["2026-03-05", "Vitamin B6", "42", "nmol/L", "20-125", "", "", ""]))
+        e = self.entry(j, "Vitamin B6")
+        self.assertEqual(e["before"], {"target": "Vitamin B1"})
+        self.assertNotIn("check", e)
+        self.save(pid, j)
+        self.assertIn(("2026-03-05", 42.0), self.points(pid, "Vitamin B1"))
+        for k in old.values():
+            self.ada.delete(f"/api/labmaps/{k}", headers=H)
 
     # ---------------------------------------------------------------- the list: admins only, logged
 

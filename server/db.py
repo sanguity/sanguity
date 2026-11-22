@@ -737,6 +737,12 @@ SCHEMA = [
     UPDATE sqlite_sequence SET seq = MAX(seq, (SELECT COALESCE(MAX(id), 0) FROM imports),
                                          (SELECT COALESCE(MAX(import_id), 0) FROM import_undos)) WHERE name='imports';
     """,
+    # version 38: lab-name matches to check (#569; labmap.py). checked: when the match was chosen by hand (a review's
+    # choice made since, or an admin's Keep or Change). NULL for those remembered before this, when a review could
+    # fill in a look-alike name as sure (#546): one #546's rule wouldn't make is then not applied until an admin keeps it.
+    """
+    ALTER TABLE labmaps ADD COLUMN checked INTEGER;
+    """,
 ]
 
 

@@ -399,17 +399,21 @@ $("#userNew").onsubmit = async ev => {
 };
 
 /* ---------------------------------------------------------------- lab name matches */
-/* lab names matched during imports (#23): install-wide, so admins change or remove them; never shows results */
+/* lab names matched during imports (#23): install-wide, so admins change or remove them; never shows results. Those
+   to check (#569: remembered before #546 could fill in a look-alike as sure, and not applied until kept) come first,
+   marked, with Keep and Forget */
 async function loadLabmaps() {
   const [list, names] = await Promise.all([call("labmaps"), call("lab-names").catch(() => [])]);
   $("#labmapNames").replaceChildren(...[...new Set([...names, ...list.map(m => m.target).filter(Boolean)])].map(n => el("option", {value: n})));
   $("#labmaps").hidden = false;
   if (!list.length) { $("#labmapList").replaceChildren(emptyState("None yet: they're made when an import's lab names are matched at its preview.", null, {cls: ""})); return; }   // (#494)
   const as = m => m.target ? `charted as “${m.target}”` : "kept as a series of its own";
-  $("#labmapList").replaceChildren(el("table", {class: "tbl lm"},
+  const toCheck = list.filter(m => m.check).length;
+  $("#labmapList").replaceChildren(...toCheck ? [el("p", {class: "howto", text: `${toCheck} ${toCheck === 1 ? "match" : "matches"} to check: ` +
+    "made before Sanguity stopped filling in look-alike names (Vitamin B6 as Vitamin B1), so not used until kept."})] : [], el("table", {class: "tbl lm"},
     el("thead", {}, el("tr", {}, ...["Reported as", "Goes to", "From", "Added", ""].map(h => el("th", {text: h})))),
     el("tbody", {}, ...list.map(m => {
-      const goes = el("td", {class: "lm-target", text: m.target || "its own series"});
+      const goes = el("td", {class: "lm-target"}, m.target || "its own series", m.check ? el("span", {class: "tag lm-check", text: "To check"}) : null);
       const edit = () => {
         const input = el("input", {type: "text", list: "labmapNames", value: m.target || "", maxlength: 120, "aria-label": `Series for ${m.name}`,
                                    placeholder: "Leave empty to keep it separate"});
@@ -428,8 +432,12 @@ async function loadLabmaps() {
         el("td", {text: m.label}),
         el("td", {}, `${when(m.created)} by ${m.created_by}`, m.changed ? el("div", {class: "muted", text: `changed ${when(m.changed)} by ${m.changed_by}`}) : null),
         el("td", {class: "acts"},
+          m.check ? el("button", {class: "btn small primary", type: "button", text: "Keep", onclick: async () => {
+            try { const r = await call("labmaps/" + m.id, "PATCH", {target: m.target}); say("#labmapMsg", `Kept: “${r.name}” is ${as(r)}.`); lmAgain(m.id, "button"); }
+            catch (e) { e.status === 404 ? lmAgain(m.id, "button", e.message) : say("#labmapMsg", e.message, true); }
+          }}) : null,
           el("button", {class: "btn small", type: "button", text: "Change", onclick: edit}),
-          el("button", {class: "btn small", type: "button", text: "Remove", onclick: async () => {
+          el("button", {class: "btn small", type: "button", text: m.check ? "Forget" : "Remove", onclick: async () => {
             if (!await ask({title: `Forget the match for “${m.name}”?`,
                             message: "The next import that has it will ask again. Results already saved keep their series.",
                             action: "Forget match", danger: true})) return;
