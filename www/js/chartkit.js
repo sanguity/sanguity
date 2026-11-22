@@ -367,9 +367,9 @@ function ckFlagLay(groups, L, R, rows, byRank) {
    names of its marks ("+N" too). -> the plot's top under them (top with none); the plot draws a faint line at each */
 function ckFlagNames(g, items, L, R, top) {
   if (!items.length) return top;
-  const flags = ckFlagRows(items.map(i => ({...i, cls: "mslabel", rank: 0})), L, R), rows = Math.max(...flags.map(f => f.row)) + 1, T = top + rows * 15 + 10;
+  const flags = ckFlagRows(items.map(i => ({...i, cls: "mslabel", rank: 0})), L, R), rows = Math.max(...flags.map(f => f.row)) + 1, k = ckK(), T = top + rows * 15 * k + 10;   // rows as tall as the text (#622)
   for (const f of flags) {
-    const ly = top + (rows - f.row) * 15, more = f.items.length > 1 ? f.text.match(/ \+\d+$/)[0] : "";
+    const ly = top + (rows - f.row) * 15 * k, more = f.items.length > 1 ? f.text.match(/ \+\d+$/)[0] : "";
     g.push(el("svg:line", {class: "msflag", x1: f.x, x2: f.x, y1: ly + 3, y2: T}), el("svg:text", {class: "mslabel", x: f.a + 2, y: ly}, more ? f.text.slice(0, -more.length) : f.text,
       more ? el("svg:tspan", {class: "ev-more", text: more}) : null, el("svg:title", {text: f.items.map(i => i.title).join("\n")})));
   }
