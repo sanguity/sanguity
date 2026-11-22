@@ -54,6 +54,7 @@ services:
       PUBLIC_ORIGINS: ${PUBLIC_ORIGINS:-}
       HASH_PARALLEL: ${HASH_PARALLEL:-2}
       ACTIVITY_DAYS: ${ACTIVITY_DAYS:-365}
+      RESTORE_KEEP_DAYS: ${RESTORE_KEEP_DAYS:-30}   # what a restore replaced is deleted this long after (#595)
       REAUTH_MINUTES: ${REAUTH_MINUTES:-5}
       UPLOAD_MAX_FILE_MB: ${UPLOAD_MAX_FILE_MB:-4096}
       UPLOAD_MAX_TOTAL_MB: ${UPLOAD_MAX_TOTAL_MB:-16384}
@@ -121,6 +122,8 @@ services:
       SECRET_FILE: /run/secrets/sanguity/watch_secret
       SANGUITY_KEY_FILE: /run/secrets/sanguity/data_key
       TZ_DEFAULT: ${TZ:-UTC}
+      SLOT_GRACE_DAYS: ${SLOT_GRACE_DAYS:-7}   # phone data no profile or secret names, deleted this long after (#593)
+      RESTORE_KEEP_DAYS: ${RESTORE_KEEP_DAYS:-30}   # what a restore replaced, deleted this long after (#593)
       PYTHONDONTWRITEBYTECODE: "1"
     ports:
       - "${RECEIVER_PORT:-8731}:8080"
