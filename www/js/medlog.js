@@ -231,12 +231,14 @@ function doseTip(m, i, ev) {
     d.note ? el("div", {class: "s", text: d.note}) : null, el("div", {class: "s", text: d.phone ? `From ${d.app}` : "Logged in Sanguity"})], ev);
 }
 
-/* ---------------------------------------------------------------- Labs: one row of doses under each chart, when ticked */
+/* ---------------------------------------------------------------- Labs: one row of doses on the event track, when ticked */
 let dosesOnCharts = false;
 try { dosesOnCharts = localStorage.getItem("sg-doses-charts") === "1"; } catch (e) {}
 const dosesInWindow = () => dosesOnCharts && state.cats.has("med") ? DOSES.filter(d => d.ts >= state.from && d.ts <= state.to) : [];
 CHART_LAYERS.push({
+  name: "Doses logged",
   space: () => dosesInWindow().length ? 18 : 0,
+  rows: () => dosesInWindow().map(d => { const m = MEDS.find(m => m.key === d.key); return [d.ts, "Dose logged", doseSay(d), m && (() => openMedication(m)), "med"]; }),
   draw(g, x, top, R) {
     const y = top + 9;
     g.push(el("svg:text", {class: "jrow-label", x: 46, y: y + 3.5, "text-anchor": "end", text: "Doses"}));

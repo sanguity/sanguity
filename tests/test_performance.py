@@ -535,6 +535,39 @@ class PageBudgets(unittest.TestCase):
         self.check_timeline(tl_all, "phone_")
         self.check("phone_", {"page_ready_ms": ready_ms, "tab_draw_ms": {**draw_ms, "timeline, Show more": tl_all["ms"]}})
 
+    def test_event_track(self):
+        """Labs' event track over the charts (#294) on the ten years, with the period "All", procedures and imaging and the
+        medications on: at 1400, 375 and 320 px every event on it once and in no chart, named or counted under a "+N",
+        no name on another, past the plot or with a leader through it (browser_check.py's TRACK_JS, read from that file:
+        it checks the demo the same way)"""
+        import ast
+        from playwright.sync_api import sync_playwright
+        with open(os.path.join(ROOT, "tests", "browser_check.py"), encoding="utf-8") as f:
+            track_js = next(n.value.value for n in ast.parse(f.read()).body if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") == "TRACK_JS")
+        got, errors = {}, []
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page(viewport={"width": 1400, "height": 900})
+            page.on("pageerror", lambda e: errors.append(str(e)))
+            page.goto(BASE + "/login.html")
+            page.fill("#u", USER)
+            page.fill("#p", PW)
+            page.click("#b")
+            page.wait_for_url(lambda u: "login" not in u)
+            page.goto(f"{BASE}/index.html?profile=1#labs")
+            page.wait_for_function(READY_JS, timeout=60000)
+            page.evaluate("() => { applyPreset('all'); state.marks = true; medsOnTrends = true; renderAll(); }")
+            for width in (1400, 375, 320):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                page.evaluate("() => renderCharts()")
+                page.wait_for_timeout(500)
+                got[width] = page.evaluate(track_js)
+            browser.close()
+        measure("event_track", {w: {k: v for k, v in t.items() if k != "problems"} for w, t in got.items()})
+        self.assertEqual(errors, [])
+        for width, t in got.items():
+            self.assertTrue(t["items"] > 0 and t["layers"] > 0 and t["inCharts"] == 0 and t["rows"] <= 3 and not t["problems"], (width, t))
+
     def test_share_page(self):
         """a share link with every section the big profile offers, of any date (#491): at 1400 px its page is within
         share_page_px, each long table (2,000 claims, 1,000 readings a home measure) showing its latest 20 and saying

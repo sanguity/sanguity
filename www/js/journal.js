@@ -3,8 +3,8 @@
    The records (GET api/profiles/{pid}/data) list them as DATA.journal = [{id, kind, t, title, severity, note, med, by,
    at, changed, changed_by, where?, group?, photos?, mood?, energy?}]; each becomes an event of kind "journal" in EV (a
    mood: kind "mood", its own lane; id: minus the entry's id, so it never meets a record's), drawn in its timeline lane
-   and opened in the drawer like any event. Trends shows them as markers in a row under each chart's time axis
-   (CHART_LAYERS, trends.js), and moods in a row of their own. Severity is shown by the marker's size, the kind by its
+   and opened in the drawer like any event. Labs shows them as markers in a row of its event track over the charts
+   (CHART_LAYERS, trends.js; event-track.js, #294), and moods in a row of their own. Severity is shown by the marker's size, the kind by its
    shape (util.js KIND_SHAPE, #301: symptom a star, side effect a hexagon, note a bar), a mood and energy by bars'
    heights, and each in its label: never by colour alone. Owners and editors add, change and delete entries
    (server/routes_journal.py); viewers read them. The journal's home is the Timeline tab's Journal view (#277), a card with its filters and search, and the
@@ -82,8 +82,8 @@ TL_LANES.mood = {
   },
 };
 
-/* Trends: one row of markers under every chart's time axis, toggled beside "Procedures & imaging"; moods in a second
-   row (#161) */
+/* Labs: one row of markers on the event track over the charts (#294), toggled beside "Procedures & imaging"; moods in
+   a second row (#161) */
 let jOnTrends = true;
 try { jOnTrends = localStorage.getItem("sg-journal-trends") !== "0"; } catch (e) {}
 const visibleJournal = e => state.cats.has(e.k);   // the Journal (and Mood) chips on the Timeline hide them everywhere
@@ -96,7 +96,9 @@ function jTrendsMark(m, e) {
   return m;
 }
 CHART_LAYERS.push({
+  name: "Journal",
   space: () => jInWindow().length ? 18 : 0,
+  rows: () => jInWindow().map(e => [e.ts, "Journal", jSay(e.j), () => openEvent(e), "journal"]),
   draw(g, x, top, R) {
     const y = top + 9;
     g.push(el("svg:text", {class: "jrow-label", x: 46, y: y + 3.5, "text-anchor": "end", text: "Journal"}));
@@ -107,7 +109,9 @@ CHART_LAYERS.push({
     }
   },
 }, {
+  name: "Mood",
   space: () => jInWindow("mood").length ? 20 : 0,
+  rows: () => jInWindow("mood").map(e => [e.ts, "Mood and energy", jSay(e.j), () => openEvent(e), "mood"]),
   draw(g, x, top, R) {
     g.push(el("svg:text", {class: "jrow-label", x: 46, y: top + 13, "text-anchor": "end", text: "Mood"}));
     for (const e of jInWindow("mood")) {

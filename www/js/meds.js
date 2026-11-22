@@ -4,7 +4,7 @@
    id, title, pharmacy, supply}], start, stop}] (server/medications.py works them out from the med and rx events).
    On the Timeline the Medications lane draws one row per medication: a bar for each span (a new shade where the
    dose changes), a cap where the records say it stopped, an arrow where they give no end, and a tick for each fill.
-   On Trends the same rows can be shown under every chart (the "Medications" tick box, off until ticked).
+   On Labs the same rows can be shown once, on the event track over the charts (#294; the "Medications" tick box, off until ticked).
    It shows what the records say, never whether a dose or a gap is right. Every date goes through dates.js.
    Reminders (#162, server/med_reminders.py): DATA.reminders = [{id, med (the medication's key), name, times, days,
    from, until, tz, on, by, at}], set in a medication's drawer by owners and editors for a current medication, listed
@@ -93,17 +93,21 @@ function medTip(m, ds, ev) {
     m.fills.length ? el("div", {class: "s", text: `${m.fills.length} pharmacy fill${m.fills.length > 1 ? "s" : ""} in the records`}) : null], ev);
 }
 
-/* ---------------------------------------------------------------- Trends: the same rows under each chart, when ticked */
+/* ---------------------------------------------------------------- Labs: the same rows on the event track, when ticked */
+/* once, over the charts (event-track.js, #294): each medication's name over its spans, clear of the fills of the row
+   above (MED_TRACK px a row) */
 let medsOnTrends = false;
 try { medsOnTrends = localStorage.getItem("sg-meds-trends") === "1"; } catch (e) {}
 const medsInWindow = () => medsOnTrends && state.cats.has("med") ? medsShown(state.from, state.to, "") : [];
+const MED_TRACK = 30;
 CHART_LAYERS.push({
-  space: () => { const n = medsInWindow().length; return n ? 6 + n * 22 : 0; },
+  name: "Medications",
+  space: () => { const n = medsInWindow().length; return n ? 4 + n * MED_TRACK : 0; },
+  rows: () => medsInWindow().flatMap(m => m.spans.filter(s => medEnd(s) >= state.from && s.ts <= state.to).map(s => [s.ts, "Medication", `${m.name} · ${medSpanWhen(s)}`, () => openMedication(m), "med"])),
   draw(g, x, top, R) {
     medsInWindow().forEach((m, n) => {
-      const y = top + 6 + n * 22 + 14;
-      const first = Math.max(52, x(medFrom(m)));
-      g.push(el("svg:text", {class: "medname", x: Math.min(first, R - 80) + 2, y: y - 7, text: medShort(m.name, 40)}));
+      const y = top + 4 + n * MED_TRACK + 20, name = medShort(m.name, 40);
+      g.push(el("svg:text", {class: "medname", x: Math.max(54, Math.min(x(medFrom(m)), R - labelW(name, "medname"))), y: y - 8, text: name}));
       const before = g.length;
       medRow(g, m, x, y, 52, R, CAT_OF.med.color);
       for (const node of g.slice(before)) if (node.dataset?.med != null) {
