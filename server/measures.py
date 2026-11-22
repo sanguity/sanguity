@@ -45,13 +45,13 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from . import ecg, glucose, growth, med_log, medications, person, targets as tg, watch_store
 
 SECTIONS = [   # (id, label, what a share link shows: said on the owner's form and the link's page)
-    ("home_bp", "Blood pressure at home", "each reading taken at home with a phone app: the date and time, both pressures, "
-                                          "the pulse and the device"),
+    ("home_bp", "Blood pressure at home", "each reading taken at home, sent by a phone app or typed in: the date and time, "
+                                          "both pressures, the pulse and the device (or “Typed in”)"),   # #571: as its page says
     ("glucose", "Blood glucose at home", "each day's lowest and highest reading and the average, a meter's or a continuous "
                                                 "monitor's (CGM), and for CGM days the time in the standard published ranges; "
                                                 "each reading typed in at home, with its meal note"),
-    ("temperature", "Body temperature at home", "each reading taken at home with a phone app: the date and time, the temperature "
-                                                "and the device"),
+    ("temperature", "Body temperature at home", "each reading taken at home, sent by a phone app or typed in: the date and time, "
+                                                "the temperature and the device (or “Typed in”)"),
     ("oxygen", "Blood oxygen at home", "the watch's average and lowest reading each day, and each reading typed in at home"),
     ("respiratory", "Respiratory rate from the watch", "each day's rate, in breaths a minute"),
     ("vo2max", "Cardio fitness (VO2 max)", "each estimate the watch made"),

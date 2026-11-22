@@ -6722,6 +6722,9 @@ def main():
             check("…and so does a symptom linked to one, as the form's Journal says: “the medication an entry is linked to” (#523: it said a side effect's)",
                   se518["sym"] and len(plain["sym"]) == 1 and plain["sym"][0].startswith(f"Symptom: Dizziness (browser check) · {se518['med']}severity 2")
                   and "the medication an entry is linked to" in made["what"] and "side effect is about" not in made["what"], [plain["sym"], made["what"]])
+            check("…and the form's Journal names the symptom group an entry was logged with, which the page shows (#571: it didn't say)",
+                  "the symptom group it was logged with" in made["what"] and any("Logged with “Migraine day (browser check)”" in w for w in plain["where"]),
+                  [made["what"], plain["where"]])
             # #527: its # changed to a link that couldn't be opened (429: opened too often; or the server out of reach),
             # the header says why, the records shown before gone, with no script error (it threw: #shareStatus was gone)
             err527, before527, fail527 = [], len(problems), {}
@@ -13125,6 +13128,36 @@ def main():
                   [undone_ticks, js("document.activeElement.id")])
             js("fetch('api/profiles/1/settings/summary.ticked', {method: 'DELETE', headers: {'X-Sanguity': '1'}}).then(r => r.status)")   # as it was
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            # #571: each measure ticked by keyboard, at 1400×900, 1100×600, 844×390 and 390×844, leaves its box in view and
+            # not under a toast: once the preview above it is drawn again (which moved it down, off the screen or under
+            # the toasts) and as a fourth toast takes the first's place; seen where the box is drawn (its corners and middle)
+            hid571 = """() => { const f = document.activeElement, r = f.getBoundingClientRect();
+              const pts = [[r.left + 1, r.top + 1], [r.right - 1, r.bottom - 1], [r.left + r.width / 2, r.top + r.height / 2]];
+              const hid = pts.map(([x, y]) => document.elementFromPoint(x, y)).find(e => !e || !(e === f || e.closest('label')?.contains(f)));
+              return hid === undefined ? null : [f.id, Math.round(r.top), Math.round(r.bottom), innerHeight, hid ? (hid.closest('.sg-toast') ? 'toast' : hid.tagName) : 'off screen']; }"""
+            tick571, redrawn571 = {}, 0
+            for w, h in ((1400, 900), (1100, 600), (844, 390), (390, 844)):
+                page.set_viewport_size({"width": w, "height": h})
+                page.goto(base + "/sharing.html?profile=1#summary")
+                page.wait_for_selector("#preview:not([hidden]):not([aria-busy]) h3", timeout=10000)
+                page.wait_for_selector("#sumTicked:not([hidden]) #sumTickedBoxes input", timeout=10000)
+                tick571[f"{w}x{h}"] = []
+                for v in js("[...document.querySelectorAll('#sumTickedBoxes input:not(:checked)')].map(i => i.value)"):
+                    redrawn571 += js("v => !!document.querySelector(`#sections input[value=\"${v}\"]`)", v)
+                    js("document.getElementById('sumTickedMsg').textContent = ''")
+                    page.focus(f"#sumTick-{v}")
+                    page.keyboard.press("Space")
+                    page.wait_for_function("document.getElementById('sumTickedMsg').textContent.startsWith('Saved') && "
+                                           "!document.getElementById('preview').hasAttribute('aria-busy')", timeout=10000)
+                    settle(150)   # (drawn, and brought into view a frame later)
+                    at = js(hid571)
+                    if at: tick571[f"{w}x{h}"].append(at)
+                js("fetch('api/profiles/1/settings/summary.ticked', {method: 'DELETE', headers: {'X-Sanguity': '1'}}).then(r => r.status)")   # as it was
+                js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…each measure ticked there by keyboard, at 1400×900, 1100×600, 844×390 and 390×844, leaves its box in view and not under "
+                  "a toast, the preview above it drawn again (#571: off screen, or under the toasts)",
+                  len(tick571) == 4 and redrawn571 >= 4 and not any(tick571.values()), [redrawn571, tick571])
             presets_open()   # back on Settings for the checks below
             check("…(the Labs view and the key labs' order put back as they were, for the checks below)",
                   js(api_put, ["profiles/1/settings/trends.views", saved_views]) == 200 and js(api_put, ["profiles/1/settings/overview.keyLabs", p2]) == 200)
@@ -14317,8 +14350,21 @@ def main():
             check("…and at 1200, 1215 and 1230 px a test's name with a long unbroken word breaks in its cell, nothing past the pane or cut (#527)",
                   long527 is not None and not any(past527.values()), [long527, past527])
             page.set_viewport_size({"width": 1400, "height": 900})
+            # #571: Download PDF, pressed from the keyboard, keeps focus on itself while the PDF is made (held here a
+            # moment), a second press doing nothing, and after (it was disabled: focus went to the page)
+            held571 = []
+            page.route("**/summary/pdf", lambda r: held571.append(r))
+            page.focus("#download")
             with page.expect_download(timeout=20000) as dl:
-                page.click("#download")
+                page.keyboard.press("Enter")
+                page.wait_for_function("document.getElementById('buildMsg').textContent === 'Making the PDF…'", timeout=5000)
+                settle(200)
+                pdf571 = [js("[document.activeElement.id, document.getElementById('download').getAttribute('aria-disabled')]")]
+                page.keyboard.press("Enter")
+                settle(200)
+                pdf571.append(len(held571))
+                held571[0].continue_()
+            page.unroute("**/summary/pdf")
             pdf_path = os.path.join(TMP, "summary-download.pdf")
             dl.value.save_as(pdf_path)
             from pypdf import PdfReader
@@ -14331,6 +14377,18 @@ def main():
                                           "Current medications", "Should the next draw be fasting?", "isn't medical advice"))
                   and "Upcoming appointments" not in text, text[:300])
             page.wait_for_function("document.getElementById('buildMsg').textContent.startsWith('Downloaded')", timeout=5000)
+            pdf571.append(js("[document.activeElement.id, document.getElementById('download').hasAttribute('aria-disabled')]"))
+            # …and when it can't be made, focus still on it, saying why
+            before571 = len(problems)
+            page.route("**/summary/pdf", lambda r: r.fulfill(status=422, body="{}", content_type="application/json"))
+            page.keyboard.press("Enter")
+            page.wait_for_function("document.getElementById('buildMsg').textContent === 'Please check the choices.'", timeout=5000)
+            pdf571.append(js("[document.activeElement.id, document.getElementById('download').hasAttribute('aria-disabled')]"))
+            page.unroute("**/summary/pdf")
+            problems[before571:] = [x for x in problems[before571:] if not re.search(r"HTTP 422: \S+/summary/pdf$|status of 422", x)]   # (refused on purpose)
+            check("…Download PDF keeps focus on itself while the PDF is made (a second press doing nothing), once it's downloaded, "
+                  "and when it can't be made, saying why (#571: disabled, it dropped focus to the page)",
+                  pdf571 == [["download", "true"], 1, ["download", False], ["download", False]], pdf571)
             page.reload()
             page.wait_for_selector("#build:not([hidden])", timeout=10000)
             check("…and the questions draft is still there", js("document.getElementById('questions').value").startswith("Is the ferritin result"))
@@ -14541,6 +14599,8 @@ def main():
                 (form.locator(f".share-sections input[value={k}]").check if k in ("home_bp", "glucose") else form.locator(f".share-sections input[value={k}]").uncheck)()
             form.locator("input[type=date]").first.fill("")
             check("…and says what each one shows", "Blood pressure at home: each reading taken at home" in form.locator(".share-sees").inner_text(), form.locator(".share-sees").inner_text()[:200])
+            lines571 = js("""Object.fromEntries([...document.querySelectorAll('#links .share-form .share-sections label')].map(l => [l.querySelector('input').value, l.textContent])
+              .filter(([v]) => v === 'home_bp' || v === 'temperature'))""")
             form.locator("button[type=submit]").click()
             page.wait_for_selector(".share-made .share-url", timeout=10000)
             url225 = page.input_value(".share-made .share-url")
@@ -14552,6 +14612,12 @@ def main():
               [...document.querySelectorAll('#share-home_bp tbody tr')].length, document.querySelector('#share-glucose').textContent]""")
             check("…its page shows only those two: the readings at home, and glucose with the standard ranges labelled",
                   sh[0] == ["share-home_bp", "share-glucose"] and sh[1] > 0 and "standard published ranges" in sh[2], sh[:2])
+            # #571: the form's Blood pressure and Temperature lines say what the page does, readings typed in too (they
+            # said "with a phone app", over a page listing some as “Typed in”)
+            note571 = hp.evaluate("[...document.querySelectorAll('#share-home_bp p')].map(p => p.textContent).find(t => t.startsWith('Taken at home')) || ''")
+            check("…the form's Blood pressure and Temperature at home lines say each reading “sent by a phone app or typed in”, as the page's note does (#571)",
+                  len(lines571) == 2 and all("each reading taken at home, sent by a phone app or typed in" in t and "“Typed in”" in t for t in lines571.values())
+                  and "sent by a phone app or typed in" in note571, [lines571, note571])
             sl_bad, sl_axe = [], []
             for width in (1400, 375):
                 hp.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})

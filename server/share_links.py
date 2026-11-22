@@ -49,7 +49,7 @@ SECTIONS = [
     ("procedures", "Procedures, imaging and reports", "titles and dates only: not the reports' text, and no documents"),
     ("appointments", "Upcoming appointments", "the date and time, the title, with whom and where"),
     ("journal", "Journal", "the notes, symptoms, side effects and moods written here, with what they say, the medication "
-                "an entry is linked to and where on the body (not who wrote them)"),   # #523: any entry's, as sent
+                "an entry is linked to, where on the body and the symptom group it was logged with (not who wrote them)"),   # #523, #571: as its page shows
     ("journal_photos", "Photos in the journal", "the photos attached to the journal entries shown, with what each "
                        "shows (only with Journal; offered when there are some)"),   # #161: never unless ticked
     ("costs", "Costs and claims", "each claim's date, provider, what was billed, what insurance paid and your share"),
