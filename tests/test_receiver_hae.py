@@ -394,6 +394,60 @@ class Upload(unittest.TestCase):
         self.assertEqual([slot for slot, _, _ in self.queued()], ["", "7"])
 
 
+class QuietLog(Base):
+    """An upload that doesn't fold in, a snapshot that can't be saved and an earlier upload that can't be read are
+    logged without a traceback or the exception's message, which can quote what the upload held (#592)."""
+    SECRET = "Truvada 200mg HIV clinic 412"   # what a payload held, quoted in the exception's message
+
+    def logged(self, fn):
+        import contextlib, io
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            fn()
+        return out.getvalue() + err.getvalue()
+
+    def failing(self, *a, **k):
+        raise ValueError(f"could not convert string to float: '{self.SECRET}'")
+
+    def check(self, text, says):
+        self.assertIn(says, text)
+        self.assertIn("ValueError at test_receiver_hae.py:", text, "its type and where, to find the bug by")
+        self.assertNotIn(self.SECRET, text)
+        self.assertNotIn("Traceback", text)
+
+    def test_a_bad_upload_logged_without_what_it_held(self):
+        from unittest import mock
+        b = body(hae_payload())
+        with mock.patch.object(rx.Store, "ingest", self.failing), mock.patch.object(rx, "live_slots", lambda: {""}):
+            text = self.logged(lambda: rx.fold({"": self.store}, ("", b, hashlib.sha256(b).hexdigest())))
+        self.check(text, "FAILED to process payload")
+        with mock.patch.object(rx.Store, "save", self.failing), mock.patch.object(rx, "cycle_sweep", self.failing):
+            text = self.logged(lambda: rx.settle({"": self.store}, {""}))
+        self.check(text, "FAILED to save first profile")
+        self.check(text, "FAILED the cycle records' sweep")
+        rx.archive(b)   # an earlier upload, read again when the receiver starts: skipped, quietly
+        with mock.patch.object(rx.Store, "ingest", self.failing):
+            text = self.logged(lambda: rx.Store().catch_up())
+        self.check(text, "skip")
+
+    def test_a_unit_it_cant_convert_logged_only_if_it_looks_like_one(self):
+        self.assertEqual(rx.unit_shown("furlongs/fortnight"), "(not shown)")   # longer than a unit
+        self.assertEqual(rx.unit_shown("stone"), "'stone'")
+        for odd in (self.SECRET, "my note: dizzy", None, 3, ["mg"]):
+            self.assertEqual(rx.unit_shown(odd), "(not shown)")
+
+    def test_an_error_answering_logged_without_a_traceback(self):
+        srv = rx.Server(("127.0.0.1", 0), rx.H)
+        try:
+            try:
+                self.failing()
+            except ValueError:
+                text = self.logged(lambda: srv.handle_error(None, ("127.0.0.1", 1)))
+        finally:
+            srv.server_close()
+        self.check(text, "FAILED to answer 127.0.0.1")
+
+
 if __name__ == "__main__":
     try:
         unittest.main(verbosity=2)

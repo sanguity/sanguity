@@ -194,6 +194,21 @@ def log(*a):
     print(datetime.now().isoformat(timespec="seconds"), *a, flush=True)
 
 
+def unit_shown(unit):
+    """A unit the phone sent, for the log only if it looks like one (#592): short, letters, digits and unit marks; any
+    other text from the payload isn't written."""
+    return repr(unit) if isinstance(unit, str) and re.fullmatch(r"[A-Za-z0-9/%.·°µ^ _-]{1,16}", unit) else "(not shown)"
+
+
+def quiet(e):
+    """An exception as the log says it (#592): its type and the line it was raised at, never its message nor a
+    traceback's, as the app's QuietTracebacks: a payload that doesn't parse can be quoted in both (a reading's value,
+    a medication's name)."""
+    tb = traceback.extract_tb(e.__traceback__) if e is not None else []
+    where = f" at {os.path.basename(tb[-1].filename)}:{tb[-1].lineno} in {tb[-1].name}" if tb else ""
+    return f"{type(e).__name__}{where} (its message isn't logged: it may quote health data)"
+
+
 def secret():
     """The install's single secret from before #46 (slot ""), or None."""
     try:
@@ -381,7 +396,7 @@ class Store:
                 body = read_raw(p)
                 n += self.ingest(json.loads(body), hashlib.sha256(body).hexdigest()) not in ("skipped", "duplicate")
             except Exception as e:
-                log("skip", p, e)
+                log("skip", p, quiet(e))
         return n
 
     def ingest(self, p, digest):
@@ -496,7 +511,7 @@ class Store:
             unit = m.get("units")
             f = 1 if kind == "percent" else ah.UNITS[kind].get(unit, HAE_UNITS.get(kind, {}).get(unit))
             if f is None:
-                log("skipped Health Auto Export's", name, "in a unit it can't convert:", repr(unit))
+                log("skipped Health Auto Export's", name, "in a unit it can't convert:", unit_shown(unit))
                 continue
             for r in rows:
                 t = hae_when(r.get("date"))
@@ -624,7 +639,7 @@ class Store:
                     got = 0
                 n += bool(got)
             except Exception as e:
-                log("skip", path, e)
+                log("skip", path, quiet(e))
         self.meta("glucose", 1)
         self.db.commit()
         if n:
@@ -662,7 +677,7 @@ class Store:
                 p = json.loads(read_raw(path))
                 n += bool(is_hae(p) and self._ecg_hae(c, p["data"]))
             except Exception as e:
-                log("skip", path, e)
+                log("skip", path, quiet(e))
         self.meta("ecg", 1)
         self.db.commit()
         if n:
@@ -722,7 +737,7 @@ class Store:
                 p = json.loads(read_raw(path))
                 n += bool(is_hae(p) and self._meds_hae(c, p["data"]))
             except Exception as e:
-                log("skip", path, e)
+                log("skip", path, quiet(e))
         self.meta("meds", 1)
         self.db.commit()
         if n:
@@ -853,7 +868,7 @@ class Store:
                 if is_hae(p):
                     n += sum(self._hae_workout(c, w) for w in p["data"].get("workouts") or [] if isinstance(w, dict))
             except Exception as e:
-                log("skip", path, e)
+                log("skip", path, quiet(e))
         self.meta("workout_hr", 1)
         self.db.commit()
         return 0
@@ -1346,8 +1361,8 @@ def fold(stores, item):
         res = stores[slot].ingest(json.loads(body), digest)
         log("ingested", res, "for", slot or "first profile")
         return res not in ("skipped", "duplicate")
-    except Exception:
-        log("FAILED to process payload", digest[:12]); traceback.print_exc()
+    except Exception as e:   # logged without what it held (quiet, #592): it stays in raw/, folded in again at next start
+        log("FAILED to process payload", digest[:12], quiet(e))
         return False
 
 
@@ -1365,21 +1380,30 @@ def worker(stores):
                     orphan_sweep(stores)
                     restore_sweep()
                 dirty &= set(stores)   # a deleted slot's summary isn't written again
-            except Exception:
-                traceback.print_exc()
-            try:
-                cycle_sweep(stores)   # (#183)
-            except Exception:
-                traceback.print_exc()
-            for slot in sorted(dirty):
-                try:
-                    stores[slot].save(); stores[slot].write_summary(); log("summary written:", slot or "first profile")
-                except Exception:
-                    traceback.print_exc()
+            except Exception as e:
+                log("FAILED the slots' sweep", quiet(e))
+            settle(stores, dirty)
             dirty = set()
             continue
         if fold(stores, item):
             dirty.add(item[0])
+
+def settle(stores, dirty):
+    """Once uploads stop coming: the cycle sweep (#183), then each changed slot's snapshot and summary."""
+    try:
+        cycle_sweep(stores)
+    except Exception as e:
+        log("FAILED the cycle records' sweep", quiet(e))
+    for slot in sorted(dirty):
+        try:
+            stores[slot].save(); stores[slot].write_summary(); log("summary written:", slot or "first profile")
+        except Exception as e:
+            log("FAILED to save", slot or "first profile", quiet(e))
+
+
+class Server(ThreadingHTTPServer):
+    def handle_error(self, request, client_address):   # in place of socketserver's traceback on stderr (#592)
+        log("FAILED to answer", client_address[0], quiet(sys.exc_info()[1]))
 
 
 class H(BaseHTTPRequestHandler):
@@ -1539,4 +1563,4 @@ if __name__ == "__main__":
     log(f"taking uploads signed with {len(keys())} secret(s)")
     threading.Thread(target=worker, args=(stores,), daemon=True).start()
     log(f"listening on :{PORT}")
-    ThreadingHTTPServer(("0.0.0.0", PORT), H).serve_forever()
+    Server(("0.0.0.0", PORT), H).serve_forever()

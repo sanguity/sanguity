@@ -21,7 +21,7 @@ in upload_files; once ready, the upload's manifest. So the folder says nothing a
 Limits (config.UPLOAD_*): bytes per file, bytes and files per upload (counted after unpacking), and how much a
 file unpacked from a zip may be bigger than it was compressed.
 """
-import contextlib, json, os, re, secrets, shutil, sqlite3, stat, tempfile, unicodedata, zipfile, zlib
+import contextlib, errno, json, os, re, secrets, shutil, sqlite3, stat, tempfile, unicodedata, zipfile, zlib
 
 from . import config, crypto, db as dbm, profiles as prof
 
@@ -323,6 +323,12 @@ def open_plain(db, pid, upload_id):
     if r["state"] != "ready":
         raise UploadError("This upload isn't finished." if r["state"] == "receiving" else "This upload was discarded.", 409)
     src = folder(pid, upload_id)
+    # room for it first (#592): the TrueNAS app's /tmp is a tmpfs sized from its memory limit, and an upload that
+    # doesn't fit is refused saying so, rather than failing part way with a disk-full error
+    need = sum(e.get("n") or _size_of(os.path.join(src, e["f"])) for e in entries)
+    free = shutil.disk_usage(tempfile.gettempdir()).free
+    if need > free:
+        raise UploadError(no_room(need, free), 507)
     tmp = tempfile.mkdtemp(prefix="sanguity-upload-")
     try:
         os.chmod(tmp, 0o700)
@@ -332,11 +338,31 @@ def open_plain(db, pid, upload_id):
             if not os.path.realpath(target).startswith(root + os.sep):
                 raise UploadError(f"{e['p']} would be outside the upload's folder.")
             os.makedirs(os.path.dirname(target), mode=0o700, exist_ok=True)
-            crypto.decrypt_to(os.path.join(src, e["f"]), target)
+            try:
+                crypto.decrypt_to(os.path.join(src, e["f"]), target)
+            except OSError as x:
+                if x.errno != errno.ENOSPC:
+                    raise
+                raise UploadError(no_room(need, free), 507) from None   # (another import filling it at the same time)
             files[e["p"]] = target
         yield files
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _size_of(path):
+    try:
+        return os.path.getsize(path)
+    except OSError:
+        return 0
+
+
+def no_room(need, free):
+    """Why an upload couldn't be read (#592): no room for its decrypted copy in the app's temporary folder."""
+    return (f"There isn't room to read this upload: it needs about {_size(need)} of temporary space, and the app's "
+            f"temporary folder ({tempfile.gettempdir()}) has {_size(free)} free. Nothing was saved. In the TrueNAS app, "
+            "raise Sanguity's memory limit (its temporary folder is half of it); elsewhere, give the app's /tmp more room "
+            "(the README's Uploading records in the app says how).")
 
 
 def stored_files(db, pid):

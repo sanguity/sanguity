@@ -2400,6 +2400,20 @@ Everything on `main` so far; it becomes the first tagged release.
   (it answered again, unlisted, once they were added back), and on Sign out all other devices, an admin's reset of
   their password or two-factor sign-in, and a sign-in with a recovery code, each of which may follow a lost phone.
   Links and feeds an older version left to come back are ended when the app starts.
+- **Races: a backup missing a file its own database lists, the same record saved twice at once, a Disconnect during
+  a first pull, the receiver's tracebacks and the TrueNAS app's small /tmp** (#592): a file removed while a backup
+  read the files (a journal photo deleted, an upload removed) was left out, though the backup's database still listed
+  it, and Check a backup said it was fine. The database is now snapshotted first and taken again after any such
+  removal, and Check reports any journal photo, uploaded file or document its database names that isn't in it. The
+  same records typed in from two tabs at once, or saved by an import and a sync together, were each checked for
+  duplicates before either was saved, and both saved; the check is made under the write lock in all three, and the
+  typed-in save found different there is refused, saying why, with nothing saved. A Disconnect at any point of a first
+  pull (as its job was made, queued, read, waiting for its review, being saved, or the review confirmed afterwards)
+  could leave its review waiting or save its records to the disconnected source; it cancels the first pull whether its
+  records are kept or not, and the Disconnect form says so. The watch receiver no longer logs tracebacks or an error's
+  message, which could quote an upload's values. In the TrueNAS app, the app's `/tmp`, where an import reads its upload
+  decrypted, was 64 MiB; it's half the app's memory limit, an upload that won't fit is refused saying how much room it
+  needs, and nginx no longer spills large answers (an export) to its temporary files.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

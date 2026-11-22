@@ -637,8 +637,9 @@ class App(unittest.TestCase):
             self.assertEqual(self.c["robin"].put(url, json={"on": True}, headers=H).status_code, 200)
             waiting, _ = self.import_export(pid, confirm=False, xml=xml)
             self.assertTrue(waiting["counts"]["cycle"])
-            inside, go, slow = paused(jobs.uploads.stored_files)
-            with mock.patch.object(jobs.uploads, "stored_files", slow):
+            # paused before the save's transaction (#592: its duplicates are found inside it, under the write lock)
+            inside, go, slow = paused(jobs.labmap.recheck)
+            with mock.patch.object(jobs.labmap, "recheck", slow):
                 self.assertEqual(self.c["robin"].post(f"/api/profiles/{pid}/jobs/{waiting['id']}/confirm", headers=H).status_code, 202)
                 self.assertTrue(inside.wait(10))
                 self.assertEqual(self.c["robin"].put(url, json={"on": False}, headers=H).status_code, 200)

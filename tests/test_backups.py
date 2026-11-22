@@ -649,6 +649,102 @@ class Backups(unittest.TestCase):
         self.assertEqual(days, {"2024-03-09": 3, "2024-03-10": 1, "2024-03-11": 1, "2024-03-12": 1}, days)
         self.assertEqual(backup._tables(rx.Store("5").db), backup._tables(other.db), "the second profile's too")
 
+    # ---------------------------------------------------------------- a file removed while a backup is made (#592)
+
+    def photo_entry(self, title):
+        """A journal entry with a photo, as the journal page saves one: (entry id, the photo's name in a backup)."""
+        r = self.robin.put(f"/api/profiles/{self.pid}/journal/photos", content=tiny_png(), headers={**H, "Content-Type": "image/png"})
+        self.assertEqual(r.status_code, 201, r.text)
+        ph = r.json()["id"]
+        r = self.robin.post(f"/api/profiles/{self.pid}/journal", json={"kind": "symptom", "t": "2026-11-21", "title": title,
+                                                                       "severity": 2, "photos": [{"id": ph, "alt": "a fictional rash"}]}, headers=H)
+        self.assertEqual(r.status_code, 201, r.text)
+        db = dbm.connect()
+        file = db.execute("SELECT file FROM journal_photos WHERE id=?", (ph,)).fetchone()[0]
+        db.close()
+        return r.json()["id"], f"profiles/{self.pid}/journal/{file}"
+
+    def lists_and_holds(self, path):
+        """(the photos a backup's database lists, the files it holds) of the archive at path."""
+        with tarfile.open(path, "r:gz") as tar:
+            names = set(tar.getnames())
+            with tempfile.TemporaryDirectory() as t:
+                with open(os.path.join(t, "db"), "wb") as f:
+                    f.write(tar.extractfile("sanguity.db").read())
+                con = sqlite3.connect(os.path.join(t, "db"))
+                listed = {f"profiles/{p}/journal/{n}" for p, n in con.execute("SELECT profile_id, file FROM journal_photos")}
+                con.close()
+        return listed, names
+
+    def test_10_a_file_removed_while_backing_up(self):
+        """An entry deleted while its photo would be read: the backup's database doesn't list a photo it hasn't, and
+        Check says it's fine; a backup missing a file its database names is reported by Check."""
+        os.makedirs(FOLDER, exist_ok=True)   # (it runs second, before Back up now has made the folder)
+        for when in ("tick", "snapshot"):   # at the first progress tick (the proof's), and just after the snapshot
+            jid, photo = self.photo_entry(f"Rash ({when})")
+            gone = []
+
+            def delete():
+                if not gone:
+                    gone.append(1)
+                    self.assertEqual(self.robin.delete(f"/api/profiles/{self.pid}/journal/{jid}", headers=H).status_code, 200)
+            if when == "tick":
+                path = backup.create(FOLDER, progress=lambda d, t: delete(), name=backup.new_name(FOLDER))
+            else:
+                real = backup._snapshot
+                with mock.patch.object(backup, "_snapshot", lambda copy: (real(copy), delete())[0]):
+                    path = backup.create(FOLDER, name=backup.new_name(FOLDER))
+            self.assertTrue(gone)
+            listed, held = self.lists_and_holds(path)
+            self.assertFalse(listed - held, f"{when}: the backup's database lists a photo the backup hasn't")
+            got = backup.check(path)
+            self.assertTrue(got["ok"], (when, got["problems"]))
+            os.remove(path)
+        # a backup whose database names a photo and an upload's file it hasn't: Check says so, in words
+        jid, photo = self.photo_entry("Rash (kept)")
+        path = backup.create(FOLDER, name=backup.new_name(FOLDER))
+        db = dbm.connect()
+        up = db.execute("SELECT id, manifest FROM uploads WHERE profile_id=? AND state='ready' ORDER BY id", (self.pid,)).fetchone()
+        db.close()
+        upload = f"profiles/{self.pid}/uploads/{up['id']}/" + json.loads(crypto.dec(up["manifest"]))[0]["f"]
+        with tarfile.open(path, "r:gz") as tar:
+            items = [(m.name, tar.extractfile(m).read()) for m in tar.getmembers()]
+        self.assertTrue({photo, upload} <= {n for n, _ in items})
+        manifest = json.loads(dict(items)["manifest.json"])
+        thin = os.path.join(FOLDER, backup.new_name(FOLDER, datetime_later(path)))
+        with tarfile.open(thin, "w:gz") as tar:
+            for n, data in items:
+                if n in (photo, upload):
+                    manifest["files"].pop(n)
+                    continue
+                data = json.dumps(manifest).encode() if n == "manifest.json" else data
+                info = tarfile.TarInfo(n)
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
+        got = backup.check(thin)
+        self.assertFalse(got["ok"], got)
+        self.assertTrue(any("names files that aren't in it" in p and "1 journal photo" in p and "1 uploaded file" in p
+                            for p in got["problems"]), got["problems"])
+        self.assertTrue(backup.check(path)["ok"])
+        self.robin.delete(f"/api/profiles/{self.pid}/journal/{jid}", headers=H)
+        self.clear_folder()
+
+
+def tiny_png():
+    """A one-pixel PNG."""
+    import struct, zlib
+
+    def chunk(t, b):
+        return struct.pack(">I", len(b)) + t + b + struct.pack(">I", zlib.crc32(t + b) & 0xffffffff)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(b"\x00\xff\x00\x00")) + chunk(b"IEND", b""))
+
+
+def datetime_later(path):
+    """A time a minute after the backup at path was made: another backup's name beside it."""
+    import datetime as dt
+    return dt.datetime.fromtimestamp(backup.made_at(path)) + dt.timedelta(minutes=1)
+
 
 # the watch receiver (#227), loaded as tests/test_receiver_*.py do, and a fictional cuff's readings
 _spec = importlib.util.spec_from_file_location("watch_receiver", os.path.join(ROOT, "watch", "receiver.py"))

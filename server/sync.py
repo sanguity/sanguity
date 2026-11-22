@@ -517,18 +517,20 @@ def _first(db, c, got, who, ip):
         return {"ok": True, "first": True, "job": None}
     up = _upload(db, c, got)
     try:
+        # the store, the job and the connection's first_job in one transaction, under the check that it's still active
+        # (#592): a Disconnect is saved before it (nothing kept, no job) or after it, and then finds the job to cancel.
+        # The job is queued once this commits
         with dbm.transaction(db):
             _keep_store(db, c, store)
-    except Disconnected:
-        uploads.discard(db, pid, up)
+            jid = jobs.submit(db, pid, up, (who or {}).get("id") or c["created_by"], "fhir", ip)
+            db.execute("""UPDATE connections SET first_job=?, pending_cursor=?, last_sync=?, next_sync=NULL, failures=0,
+                          error_kind=NULL, last_error=NULL, report=?, warned=NULL WHERE id=? AND state='active'""",
+                       (jid, json.dumps(got["cursor"]), dbm.now(), conns._jenc(_report(got)), cid))
+            _note_attachments(db, c, got)
+    except BaseException:
+        with contextlib.suppress(uploads.UploadError):
+            uploads.discard(db, pid, up)
         raise
-    # committed before the worker can see it (submit queues the job at once)
-    jid = jobs.submit(db, pid, up, (who or {}).get("id") or c["created_by"], "fhir", ip)
-    with dbm.transaction(db):
-        db.execute("""UPDATE connections SET first_job=?, pending_cursor=?, last_sync=?, next_sync=NULL, failures=0,
-                      error_kind=NULL, last_error=NULL, report=?, warned=NULL WHERE id=?""",
-                   (jid, json.dumps(got["cursor"]), dbm.now(), conns._jenc(_report(got)), cid))
-        _note_attachments(db, c, got)
     return {"ok": True, "first": True, "job": jid}
 
 
@@ -549,10 +551,13 @@ def _note_attachments(db, c, got):
 
 def first_saved(db, jid, iid):
     """jobs._save, in its transaction: the first pull of a connection was saved. Its cursor becomes the
-    connection's, and its import belongs to the connection."""
-    c = db.execute("SELECT id FROM connections WHERE first_job=? AND cursor IS NULL", (jid,)).fetchone()
+    connection's, and its import belongs to the connection. Disconnected since (#592): Disconnected, so the save is
+    rolled back, nothing from the pull kept (Disconnect cancels the job too: this is for one it couldn't)."""
+    c = db.execute("SELECT id, state FROM connections WHERE first_job=? AND cursor IS NULL", (jid,)).fetchone()
     if not c:
         return
+    if c["state"] == "disconnected":
+        raise Disconnected(DISCONNECTED)
     if iid is not None:
         db.execute("UPDATE imports SET connection_id=?, synced=? WHERE id=?", (c["id"], dbm.now(), iid))
     db.execute("""UPDATE connections SET cursor=IFNULL(pending_cursor, '{}'), pending_cursor=NULL,
@@ -662,63 +667,65 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
     full_by_key = {e["key"]: e for e in full["events"] if isinstance(e, dict) and isinstance(e.get("key"), str)}
     delta_by_key = {e["key"]: e for e in delta["events"] if isinstance(e, dict) and isinstance(e.get("key"), str)}
 
-    # labs and the profile-wide lists come from what this pull read; lab names matched as remembered
-    lab_plan = labmap.plan(db, pid, "fhir", delta)
-    delta = labmap.apply(delta, lab_plan["auto"])
-    dups = preview.find(db, pid, "fhir", delta)
-    keyless_new = [e for e in delta["events"] if isinstance(e, dict) and not isinstance(e.get("key"), str)
-                   and str(e.get("id")) not in dups["events"]]
-    dups["events"] = {str(e.get("id")) for e in delta["events"] if isinstance(e, dict)}   # events: decided below
-    rest = preview.trim(delta, dups)
+    # under the write lock from here (#592): which of these records the profile has already (the duplicates, the rows
+    # to update in place) is asked where nothing else can save, so the same record saved meanwhile by an import, records
+    # typed in or another pull is found, and not saved twice
+    with dbm.transaction(db):
+        # labs and the profile-wide lists come from what this pull read; lab names matched as remembered
+        lab_plan = labmap.plan(db, pid, "fhir", delta)
+        delta = labmap.apply(delta, lab_plan["auto"])
+        dups = preview.find(db, pid, "fhir", delta)
+        keyless_new = [e for e in delta["events"] if isinstance(e, dict) and not isinstance(e.get("key"), str)
+                       and str(e.get("id")) not in dups["events"]]
+        dups["events"] = {str(e.get("id")) for e in delta["events"] if isinstance(e, dict)}   # events: decided below
+        rest = preview.trim(delta, dups)
 
-    hashes = records.key_hashes(db, touched)
-    have = _rows_by_hash(db, pid, hashes.values())
-    # events come from the whole set read so far (a lab day groups results across pulls), ids as it numbers them;
-    # one only this pull's records have (keyless, or not in the whole set) keeps its own, marked apart
-    new_events, updates, src = [], [], {}
-    for k in sorted(touched):
-        e, details = full_by_key.get(k), full.get("details", {})
-        if e is None:
-            e, details = delta_by_key.get(k), delta.get("details", {})
-            e = e and {**e, "id": f"d{e.get('id')}", "_from": details.get(str(e.get("id")))}
-        if e is None:
-            continue
-        if hashes.get(k) in have:
-            updates.append(e)
-        else:
+        hashes = records.key_hashes(db, touched)
+        have = _rows_by_hash(db, pid, hashes.values())
+        # events come from the whole set read so far (a lab day groups results across pulls), ids as it numbers them;
+        # one only this pull's records have (keyless, or not in the whole set) keeps its own, marked apart
+        new_events, updates, src = [], [], {}
+        for k in sorted(touched):
+            e, details = full_by_key.get(k), full.get("details", {})
+            if e is None:
+                e, details = delta_by_key.get(k), delta.get("details", {})
+                e = e and {**e, "id": f"d{e.get('id')}", "_from": details.get(str(e.get("id")))}
+            if e is None:
+                continue
+            if hashes.get(k) in have:
+                updates.append(e)
+            else:
+                new_events.append(e)
+            src[str(e["id"])] = e.pop("_from", None) if "_from" in e else details.get(str(e["id"]))
+        for e in keyless_new:
+            e = {**e, "id": f"d{e.get('id')}"}
             new_events.append(e)
-        src[str(e["id"])] = e.pop("_from", None) if "_from" in e else details.get(str(e["id"]))
-    for e in keyless_new:
-        e = {**e, "id": f"d{e.get('id')}"}
-        new_events.append(e)
-        src[e["id"]] = delta.get("details", {}).get(e["id"][1:])
-    ids = {str(e.get("id")) for e in new_events}
-    costs = _costs_by_id(full, delta)   # a claim's Costs row goes with its event (#92)
-    data = {**{k: v for k, v in rest.items() if k not in records.ROWS}, "events": [dict(e) for e in new_events],
-            "details": {i: json.loads(json.dumps(src[i])) for i in ids if src.get(i) is not None}, "labs": rest["labs"],
-            "costs": [{**costs[str(e["id"])], "id": e["id"]} for e in new_events if str(e["id"]) in costs]}
-    for d in data["details"].values():   # a lab day's results are linked after saving, when they all have rows
-        if isinstance(d, dict) and d.get("type") == "labday":
-            d["ids"] = [i for i in d.get("ids") or [] if str(i) in ids]
-    problems = registry.check({"data": data, "warnings": []}, names)
-    if problems:
-        raise jobs.Failed("The pulled records couldn't be loaded: " + "; ".join(problems[:5]) + ".")
+            src[e["id"]] = delta.get("details", {}).get(e["id"][1:])
+        ids = {str(e.get("id")) for e in new_events}
+        costs = _costs_by_id(full, delta)   # a claim's Costs row goes with its event (#92)
+        data = {**{k: v for k, v in rest.items() if k not in records.ROWS}, "events": [dict(e) for e in new_events],
+                "details": {i: json.loads(json.dumps(src[i])) for i in ids if src.get(i) is not None}, "labs": rest["labs"],
+                "costs": [{**costs[str(e["id"])], "id": e["id"]} for e in new_events if str(e["id"]) in costs]}
+        for d in data["details"].values():   # a lab day's results are linked after saving, when they all have rows
+            if isinstance(d, dict) and d.get("type") == "labday":
+                d["ids"] = [i for i in d.get("ids") or [] if str(i) in ids]
+        problems = registry.check({"data": data, "warnings": []}, names)
+        if problems:
+            raise jobs.Failed("The pulled records couldn't be loaded: " + "; ".join(problems[:5]) + ".")
 
-    sealed = {rel: p for uid, rel, p in uploads.stored_files(db, pid) if uid == up and rel in names}
+        sealed = {rel: p for uid, rel, p in uploads.stored_files(db, pid) if uid == up and rel in names}
 
-    def stored(url):
-        p = sealed.get(url.split("#", 1)[0]) if isinstance(url, str) else None
-        return os.path.realpath(p) if p and os.path.isfile(p) else None
+        def stored(url):
+            p = sealed.get(url.split("#", 1)[0]) if isinstance(url, str) else None
+            return os.path.realpath(p) if p and os.path.isfile(p) else None
 
-    meta_changes = _meta_changes(db, pid, delta)
-    if not (preview.adds_anything(data) or updates or meta_changes):
-        with dbm.transaction(db):
+        meta_changes = _meta_changes(db, pid, delta)
+        if not (preview.adds_anything(data) or updates or meta_changes):
             _keep_store(db, c, store)
             _done(db, c, got, report)
-        return {"ok": True, "import": None, "counts": None, "changed": 0}
+            return {"ok": True, "import": None, "counts": None, "changed": 0}
 
-    summary = jobs.summarise(data)
-    with dbm.transaction(db):
+        summary = jobs.summarise(data)
         _keep_store(db, c, store)   # before the commit: if that fails, the next pull reads these again (harmless)
         keepdocs, n_docs = prof.index_documents(db, pid, data["details"], stored)
         iid = records.store(db, pid, data, "sync", fmt="fhir")
@@ -740,7 +747,7 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
         activity.log(db, "import", who or conns.SYNC_ACTOR, pid,
                      {"importer": "fhir", "counts": summary["counts"], "job": jid, "changed": changed, "source": c["source"]}, ip=ip)
         records._bump(db, pid)
-    return {"ok": True, "import": iid, "job": jid, "counts": summary["counts"], "changed": changed}
+        return {"ok": True, "import": iid, "job": jid, "counts": summary["counts"], "changed": changed}
 
 
 def _done(db, c, got, report):

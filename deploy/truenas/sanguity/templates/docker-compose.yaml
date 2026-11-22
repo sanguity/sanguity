@@ -4,6 +4,10 @@
 {% set perm_container = tpl.deps.perms(values.consts.perms_container_name) %}
 {% set perms_config = {"uid": values.run_as.user, "gid": values.run_as.group, "mode": "check"} %}
 {% set tmp = {"type": "tmpfs", "tmpfs_config": {"size": 64}} %}
+{# the app's /tmp (#592): an import reads its upload decrypted there, in memory, never on a disk (uploads.open_plain), so
+   it's half the memory limit (1 GiB of the 2 GiB default; raise Memory for a larger import). nginx passes large answers
+   on without its temporary files (nginx.conf), so the web container's 64 MiB is enough #}
+{% set app_tmp = {"type": "tmpfs", "tmpfs_config": {"size": [values.resources.limits.memory // 2, 64] | max}} %}
 {% set key_ro = dict(values.storage.key, read_only=true) %}
 {% set records_ro = dict(values.storage.records, read_only=true) %}
 {% set config_ro = dict(values.storage.config, read_only=true) %}
@@ -35,7 +39,7 @@
 {% do app.environment.add_env("PUBLIC_ORIGINS", values.sanguity.public_origins) %}
 {% do app.environment.add_env("FORWARDED_ALLOW_IPS", "*") %}
 {% do app.environment.add_user_envs(values.sanguity.additional_envs) %}
-{% do app.add_storage("/tmp", tmp) %}
+{% do app.add_storage("/tmp", app_tmp) %}
 {% do app.add_storage(values.consts.key_path, key_ro) %}
 {% do app.add_storage("/data", values.storage.data) %}
 {% do app.add_storage("/backups", values.storage.backups) %}

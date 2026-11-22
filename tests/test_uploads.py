@@ -301,6 +301,26 @@ class Uploads(unittest.TestCase):
         with self.assertRaises(uploads.UploadError):
             with uploads.open_plain(self.db, self.pid, u2):
                 pass
+        # no room in the temporary folder for its decrypted copy (#592: the TrueNAS app's tmpfs): refused before
+        # anything is decrypted, saying how much it needs; and so is one that fills it as it's decrypted
+        from unittest import mock
+        before = set(os.listdir(tempfile.gettempdir()))
+        with mock.patch.object(uploads.shutil, "disk_usage", lambda p: shutil._ntuple_diskusage(10**9, 10**9 - 100, 100)):
+            with self.assertRaises(uploads.UploadError) as e:
+                with uploads.open_plain(self.db, self.pid, u):
+                    self.fail("opened without room")
+        self.assertEqual(e.exception.status, 507)
+        self.assertIn("isn't room to read this upload", str(e.exception))
+        self.assertIn("100 bytes free", str(e.exception))
+        self.assertIn("Nothing was saved", str(e.exception))
+        full = OSError(28, "No space left on device")
+        full.errno = 28
+        with mock.patch.object(uploads.crypto, "decrypt_to", side_effect=full):
+            with self.assertRaises(uploads.UploadError) as e:
+                with uploads.open_plain(self.db, self.pid, u):
+                    pass
+        self.assertEqual(e.exception.status, 507)
+        self.assertFalse({n for n in set(os.listdir(tempfile.gettempdir())) - before if n.startswith("sanguity-upload-")})
 
     def test_interface_for_imports(self):   # what #20 calls, without the API
         u = uploads.create(self.db, self.pid, self.uid["edna"])

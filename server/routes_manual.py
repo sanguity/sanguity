@@ -285,6 +285,7 @@ def manual(pid: int, body: Rows, request: Request, s=Depends(user), db=Depends(g
     data = _combine(lab, built["data"])
     have_watch = watch_store.load(db, pid) if origin["watch"] else None
     dups, dup_rows, found = _duplicates(db, pid, data, lab, got, origin, have_watch)
+    seen = (dups, dict(found))   # asked again under the write lock before saving (#592)
     found.update(found_heights)
     for n, note in manual_items.watch_replaces(have_watch, origin["watch"]).items():   # typed again, other values (#224)
         next(r for r in recs if r["n"] == n)["notes"].append(note)
@@ -318,6 +319,14 @@ def manual(pid: int, body: Rows, request: Request, s=Depends(user), db=Depends(g
     counts["typed"] = dict(sorted(collections.Counter(kinds).items()))
     files, iid = built["files"], None
     with dbm.transaction(db):
+        # the duplicates found again, now that nothing else can save (#592): the same records sent twice at once (two
+        # tabs, a double click) were both checked before either was saved, and both saved. Found different, what was
+        # shown is no longer what would be saved, so nothing is: the person checks again
+        if not body.keep_duplicates:
+            again = _duplicates(db, pid, data, lab, got, origin, watch_store.load(db, pid) if origin["watch"] else None)
+            if (again[0], again[2]) != seen:
+                raise HTTPException(409, "Some of these records were saved in this profile just now, from another tab or "
+                                         "by someone else. Nothing was saved: check them again, then save.")
         if heights:   # About this person's history, not the import's (manual_items.py, HEIGHT): first, so a refusal saves nothing
             days = {h["date"] for h in heights}
             routes_person.apply(db, s, pid, lambda have: {"heights": [h for h in have["heights"] if h["date"] not in days] + heights},
