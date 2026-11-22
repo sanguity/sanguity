@@ -1626,6 +1626,15 @@ Everything on `main` so far; it becomes the first tagged release.
   the weight's since the first milestone and the watch's against the 4 weeks before were marked with ▲ and ▼, which
   mark a result's own flags above or below its range. They now say "↑ 0.1", "↓ 4.3 lb since diagnosis" or "no change",
   as Body and activity's tiles do (#298).
+- **An overview strip to move the period** (#295): over ten years, eight routine years took most of the width, moving
+  through time was explained only in hints ("Drag any chart sideways…"), double-click to reset was invisible, and
+  nothing showed the period had been changed. Labs, Body and activity and the Timeline now have a 40 px strip under
+  the period bar: how many lab results, readings or records each stretch holds across every year, the milestones as
+  flags, and the period as a window. Drag its middle to move it, an edge to stretch it, press beside it to bring it
+  there, or pick a milestone's flag for "Since" it; for the keyboard its edges are two sliders, a day a step. Each
+  milestone is a "Since …" preset of its own, a **Reset** chip shows whenever the period is custom (in place of
+  Clear dates), and the hints are gone. On a phone the strip sits in the charts' header, beside Show or the period
+  where there's room.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

@@ -75,15 +75,17 @@ const PRESETS = [["all","All"],["5y","5y"],["2y","2y"],["1y","1y"],["6m","6m"],[
 const PRESET_DAYS = {"5y": 1826, "2y": 730, "1y": 365, "6m": 182, "90d": 90, "30d": 30};
 const PRESET_TEXT = {"5y": "the last 5 years", "2y": "the last 2 years", "1y": "the last year", "6m": "the last 6 months", "90d": "the last 90 days", "30d": "the last 30 days"};
 const isYearKey = k => /^\d{4}$/.test(k || "");
-let lastPeriod = state.preset;   // the last period that wasn't custom dates: where "Clear dates" goes back to (#191)
+/* All's dates: to the latest entry, however far ahead (state.last, #475), padded by the records' span; the overview
+   strip's too (#295, charts.js) */
+const allSpan = () => { const pad = (state.max - state.min) * .02 + DAY; return [state.min - pad, Math.max(state.max, state.last) + pad]; };
+let lastPeriod = state.preset;   // the last period that wasn't custom dates: where Reset goes back to (#191, #295)
 /* the period's dates in state, drawing nothing (the tab switched to next draws it) */
 function setPeriod(p) {
   if (p === "dx") p = msKey(primaryMs());   // the older saved key for the primary milestone ("all" if there's none)
   const end = state.max + DAY, m = msOf(p);
   if (!(p in PRESET_DAYS) && p !== "all" && !m && !isYearKey(p)) p = "all";   // e.g. a milestone since deleted
   state.preset = lastPeriod = p;
-  // All: to the latest entry, however far ahead (state.last, #475), padded by the records' span
-  if (p === "all") { const pad = (state.max - state.min) * .02 + DAY; state.from = state.min - pad; state.to = Math.max(state.max, state.last) + pad; }
+  if (p === "all") [state.from, state.to] = allSpan();
   else if (m) { state.to = end; state.from = Math.min(zParse(m.date + "T00:00:00"), end - 7 * DAY); }
   else if (isYearKey(p)) { state.from = zParse(p + "-01-01T00:00:00"); state.to = zParse((+p + 1) + "-01-01T00:00:00") - 1; }
   else { state.to = end; state.from = end - PRESET_DAYS[p] * DAY; }
@@ -124,10 +126,10 @@ function periodYears() {
   }
   return YEARS;
 }
-/* ---- the period's controls (#191): preset buttons (All, 5y ... 30d, and "Since <the primary milestone>"), one More…
-   menu (the other milestones, the calendar years, Custom dates…), the period in words beside them, and the date boxes
-   only for custom dates (typed in, or a chart dragged or zoomed), with "Clear dates" back to the period before. One
-   control shows as chosen: a preset button, or More… naming what it picked. */
+/* ---- the period's controls (#191): preset buttons (All, 5y ... 30d, and "Since <milestone>" for each milestone, #295),
+   one More… menu (the calendar years, Custom dates…), the period in words beside them, and the date boxes only for
+   custom dates (typed in, or a chart or the overview strip dragged), with a Reset chip back to the period before (#295).
+   One control shows as chosen: a preset button, or More… naming what it picked. */
 /* the period in words, beside the controls: "Last 2 years", "Apr 14, 2025 – today" (since a milestone), "2025" (a year) */
 function periodWords() {
   const p = state.preset, m = msOf(p);
@@ -138,24 +140,23 @@ function periodWords() {
 }
 const moreBtn = $("#periodMoreBtn"), moreList = $("#periodMoreList");
 function renderPeriod() {
-  const p = state.preset, pm = primaryMs(), pk = pm ? msKey(pm) : null;   // the primary milestone has a button: "Since diagnosis"
-  $("#presets").replaceChildren(...[...PRESETS, ...(pm ? [[pk, "Since " + lcLabel(pm.label)]] : [])].map(([k, l]) =>
-    el("button", {type: "button", "aria-pressed": p === k, text: l, "data-tip": k === pk ? "Since " + fmtD(dayTs(pm.date)) : null, onclick: () => applyPreset(k)})));
+  const p = state.preset;   // each milestone has a button: "Since diagnosis" (#295)
+  $("#presets").replaceChildren(...[...PRESETS, ...MILESTONES.map(m => [msKey(m), "Since " + lcLabel(m.label), "Since " + fmtD(dayTs(m.date))])].map(([k, l, tip]) =>
+    el("button", {type: "button", "aria-pressed": p === k, text: l, "data-tip": tip || null, onclick: () => applyPreset(k)})));
   const item = (k, text, note) => el("button", {type: "button", class: "menu-item", role: "menuitemradio", tabindex: "-1", "aria-checked": p === k, "data-period": k},
     icon("check"), text, note ? el("span", {class: "menu-note", text: note}) : null);
   const group = (label, items) => items.length ? el("div", {role: "group", "aria-label": label}, el("div", {class: "menu-head", "aria-hidden": "true", text: label}), ...items) : null;
   moreList.replaceChildren(...present(   // a group with nothing in it is left out
-    group("Since a milestone", MILESTONES.filter(m => m !== pm).map(m => item(msKey(m), "Since " + lcLabel(m.label), fmtD(dayTs(m.date))))),
     group("Calendar year", periodYears().map(y => item(y, y))),
     el("div", {class: "menu-sep", role: "separator"}), item("custom", "Custom dates…")));
-  const m = p !== pk && msOf(p), picked = m ? "Since " + lcLabel(m.label) : isYearKey(p) ? p : p === "custom" ? "Custom dates" : "";
+  const picked = isYearKey(p) ? p : p === "custom" ? "Custom dates" : "";
   moreBtn.replaceChildren(picked || "More…", el("span", {class: "menu-caret", "aria-hidden": "true"}, icon("chevron-down")));
   moreBtn.classList.toggle("on", !!picked);
   moreBtn.setAttribute("aria-label", picked ? `Period: ${picked}. More periods` : "More periods");
   $("#periodWords").textContent = periodWords();
   $("#periodWords").hidden = p === "custom";   // the date boxes say it
   $("#dates").hidden = p !== "custom" && !PHONE.matches;   // in the phone's sheet they're always there
-  $("#datesClear").hidden = p !== "custom";
+  $("#periodReset").hidden = p !== "custom";
   // on a phone (#269): the pill names the period, and its sheet lists every one
   const pm2 = msOf(p);
   pill.replaceChildren(el("span", {class: "vh", text: "Period: "}), pm2 ? "Since " + lcLabel(pm2.label) : periodWords(),
@@ -165,14 +166,15 @@ function renderPeriod() {
     group("Since a milestone", MILESTONES.map(m => item(msKey(m), "Since " + lcLabel(m.label), fmtD(dayTs(m.date))))),
     group("Calendar year", periodYears().map(y => item(y, y)))));
   $("#from").value = isoDay(state.from); $("#to").value = isoDay(state.to);
-  $("#datesClear").dataset.tip = backWords();
+  $("#periodReset").dataset.tip = backWords();
 }
-/* back from custom dates to the period before (lastPeriod), or to p: Clear dates, and a chart's way back (#382). Focus
+/* back from custom dates to the period before (lastPeriod), or to p: Reset, and a chart's way back (#382). Focus
    goes to the period's control, which says which it is */
 const backWords = () => { const lp = lastPeriod, lm = msOf(lp); return "Back to " + (lp === "all" ? "everything on file" : lm ? "since " + lcLabel(lm.label) : PRESET_TEXT[lp] || lp); };
 function periodBack(p = lastPeriod) {
   applyPreset(p);
-  (PHONE.matches ? pillList.querySelector("[aria-checked=true]") || pill : $("#presets [aria-pressed=true]") || moreBtn).focus();
+  const on = PHONE.matches ? pillList.querySelector("[aria-checked=true]") : $("#presets [aria-pressed=true]");
+  (on?.checkVisibility() ? on : PHONE.matches ? pill : moreBtn).focus();   // (on a phone, its item while the sheet is open)
 }
 SgNav.menu({btn: moreBtn, list: moreList, wrap: $("#periodMore"), onOpen() {   // nav.js: a popover, kept on the screen by app.css
   const on = moreList.querySelector("[aria-checked=true]");
@@ -183,7 +185,7 @@ moreList.addEventListener("click", ev => {
   if (b.dataset.period !== "custom") { applyPreset(b.dataset.period); moreBtn.focus(); return; }
   state.preset = "custom"; renderAll(); $("#from").focus();   // the period's dates, to change
 });
-$("#datesClear").onclick = () => periodBack();
+$("#periodReset").onclick = () => periodBack();
 /* ---- on a phone (#269, nav.js's sheets): the period is one pill, "Last 2 years ▾", whose sheet lists every period
    (the presets, each milestone, the calendar years: a menu, picked by touch or keyboard as More… is) with the date boxes
    for custom dates under it, moved there from the bar; and on the Timeline, the Events card's Filters (#277) opens a
@@ -214,14 +216,19 @@ barOrSheet();
    nothing left in it) into the charts' header, then Labs' Chart | Heatmap and Show. Show (.show-btn) opens what the
    charts also show, the legend and the ⓘ under the row, a disclosure; Labs' list of labs is folded under "Choose labs
    (6)", the charts first; Body's source line goes under its sections. Wider, all of them are as they were: the period
-   in the records bar, Show's parts in the row (app.css: display: contents), the list beside the charts. Called once a
+   in the records bar, Show's parts in the row (app.css: display: contents), the list beside the charts. The Reset chip
+   and the overview strip (#295) go with the pill: the chip after it, the strip at the row's end, its own line (the
+   Timeline's, in the records bar); wider, the chip after the date boxes and the strip under the bar. Called once a
    tab is drawn (renderAll) and as the window crosses 700 px; a node is only moved when it isn't where it goes, so
    focus on the pill stays through a redraw */
 function phoneBar() {
   const pick = $(".period-pick"), filters = $(".filters"), v = $(`#view-${state.tab}`);
   const bar = PHONE.matches && v && !v.hidden && v.querySelector(".chart-bar"), to = bar && !bar.closest("[hidden]") ? bar : filters;
   if (pick && pick.parentNode !== to) to.prepend(pick);
+  const reset = $("#periodReset"), after = PHONE.matches ? pick : $("#dates"), strip = $("#strip");
+  if (reset && after && reset.previousElementSibling !== after) after.after(reset);
   filters.classList.toggle("moved", to !== filters);
+  if (strip && (strip.parentNode !== to || strip.nextElementSibling)) { to.append(strip); stripDraw(); }   // at its new width
   const sync = $("#view-health .h-sync"), secs = $("#view-health .h-secbar");
   if (sync && secs) { if (PHONE.matches) { if (secs.nextSibling !== sync) secs.after(sync); } else if (sync.nextSibling !== secs) secs.before(sync); }
   const n = $("#labsPick");
@@ -236,6 +243,7 @@ if ($("#seriesSel")) new MutationObserver(() => phoneBar()).observe($("#seriesSe
 function renderFilters() {
   renderPeriod();
   renderKinds();
+  stripDraw();   // the overview strip's window (#295, charts.js)
 }
 /* ---------------------------------------------------------------- the Timeline's kinds (#189)
    In the Events card's header with the search (#277: they were in the records bar on every tab, and filter only the

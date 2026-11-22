@@ -34,8 +34,11 @@
     <div class="menu-list" id="periodMoreList" role="menu" aria-label="More periods" popover></div>
   </div>
   <span class="period-words" id="periodWords"></span>
-  <div class="dates" id="dates" role="group" aria-label="Custom dates" hidden><input type="date" id="from" aria-label="From"> – <input type="date" id="to" aria-label="To">
-    <button class="btn" id="datesClear" type="button">Clear dates</button></div>
+  <div class="dates" id="dates" role="group" aria-label="Custom dates" hidden><input type="date" id="from" aria-label="From"> – <input type="date" id="to" aria-label="To"></div>
+  <button class="chip" id="periodReset" type="button" hidden>Reset</button>
+  <!-- the overview strip (#295, charts.js): every year's records, the period a window on them; its edges two range inputs -->
+  <div class="ck-strip" id="strip" role="group" aria-label="The period on every year's records" hidden>
+    <svg role="img"></svg><input class="vh" type="range" aria-label="Period starts"><input class="vh" type="range" aria-label="Period ends"></div>
 </div>
 <main>
   <h1 class="vh" id="tabTitle">Overview</h1>   <!-- the tab's name: its heading, over its sections' h2s (app.js, #255) -->
@@ -52,7 +55,6 @@
       <div class="card">
         <h2>Timeline</h2>
         <p class="hint">Click or tap any mark for details. Shaded columns are hospital stays.</p>
-        <div class="about-words" hidden><p>Scroll or pinch to zoom, drag to pan, and double-click or double-tap to show everything.</p></div>
         <svg id="tl" role="img" aria-label="Timeline of medical events"></svg>
       </div>
       <div class="card" id="tlEvents">
@@ -95,8 +97,7 @@
               <span><i class="stay-key"></i>Hospital stay</span>
             </div></div>
           <div class="about-words" id="chartsInfo" data-title="the charts" hidden>   <!-- its ⓘ (#280, util.js) -->
-            <p>Drag any chart sideways to move through time: every chart moves together.</p>
-            <p>Scroll or pinch to zoom, double-click to show everything, and hover to compare the same date across charts.</p>
+            <p>Hover a chart, or step through it with the arrow keys, to see the same date on every chart.</p>
           </div>
         </div>
         </div>
@@ -125,7 +126,7 @@
         <div class="lab-find"><input type="search" id="hmQ" placeholder="Filter lab names…" aria-label="Filter lab names" aria-describedby="hmQn" autocomplete="off" spellcheck="false"><span class="n" id="hmQn"></span></div></div>
       <p class="fsum" id="hmSum" hidden></p>
       <p class="hint">Each column is a blood draw, each row a lab value, colored by where it sat against its reference range.</p>
-      <div class="about-words" hidden><p>A gray strip is a hospital stay, and ◆ a procedure. Hover a cell for the value, and click to open that day. Drag sideways to move through time, scroll or pinch to zoom, and double-click to show everything.</p></div>
+      <div class="about-words" hidden><p>A gray strip is a hospital stay, and ◆ a procedure. Hover a cell for the value, and click to open that day.</p></div>
       <div class="hm-legend" id="hmLegend"></div>
       <div class="hm-wrap" id="hmWrap"><svg id="hm" class="pz" role="img" aria-label="Heatmap of lab values against reference ranges"></svg><svg id="hmAxis" class="pz" aria-hidden="true"></svg></div>
       <div id="hmTable" hidden></div>

@@ -13,7 +13,9 @@
    - ckFlagRows: names over marks in up to three rows, with leader lines and "+N" (Labs' event track, event-track.js);
    - abnMark: an out-of-range result's ▲, ▼ or ◆;
    - ckSpark: the one sparkline, scaled to the reference band (the Overview, the visit summary, a share link's page);
-   - ckFlagNames: milestones named so over a chart, flags on its top edge (Body and activity's first chart, #298).
+   - ckFlagNames: milestones named so over a chart, flags on its top edge (Body and activity's first chart, #298);
+   - ckStripBins, ckStripBars, ckStripDates, ckStripWindow: the overview strip, every year's records with the period a
+     window on them (#295, charts.js stripDraw).
    CHART_LAYERS (trends.js) and TL_LANES (timeline.js) stay the plug-ins of Labs' event track and the Timeline.
    Plain script, loaded in order by index.html; all files share one global scope. */
 "use strict";
@@ -247,6 +249,56 @@ function ckTip(svg, px, nodes) {
   if (!nodes.some(Boolean)) return hideTip();
   const p = svgPoint(svg, px, svg._geom.T);
   showTip(nodes, {clientX: p.clientX, clientY: p.clientY - 14});   // showTip sets it 14 px below the point it's given
+}
+
+/* ---- the overview strip (#295): a tab's records across every year in 40 px, under the period bar, the period a window
+   on it (charts.js stripDraw). ckStripBins: the stretch, the shortest of a day, a week, a month, a quarter or a year
+   that's 3 px wide at least on x, and how many records each holds; items [[time, how many]], a to b ->
+   {edges: [each stretch's start, then b], n: [its count], step: [n, unit]} */
+function ckStripBins(items, a, b, x) {
+  const perDay = Math.abs(x(a + DAY) - x(a)), step = [[1, "d"], [7, "d"], [1, "m"], [3, "m"], [1, "y"]].find(([n, u]) => n * CK_DAYS[u] * perDay >= 3) || [1, "y"];
+  const edges = [a, ...ckStepTicks(a, b, ...step).map(k => k.t).filter(t => t > a && t < b), b], n = new Array(edges.length - 1).fill(0);
+  for (const [t, k] of items) {
+    if (!(t >= a && t < b)) continue;
+    let lo = 0, hi = n.length - 1;   // the last stretch starting at or before t
+    while (lo < hi) { const m = (lo + hi + 1) >> 1; if (edges[m] <= t) lo = m; else hi = m - 1; }
+    n[lo] += k;
+  }
+  return {edges, n, step};
+}
+/* its bars, one path: each stretch's count up from the foot B, the most up to T (counts, from zero: no scale of their
+   own), any at all 2 px at least; 1 px apart where they're 4 px wide or more */
+function ckStripBars(g, {edges, n}, x, T, B) {
+  const max = n.reduce((m, v) => Math.max(m, v), 0); let d = "";
+  n.forEach((v, i) => {
+    if (!v) return;
+    const x0 = x(edges[i]), w = x(edges[i + 1]) - x0, gap = w >= 4 ? 1 : 0;
+    d += `M${x0.toFixed(1)},${B}h${(w - gap).toFixed(1)}V${(B - Math.max(2, (B - T) * v / max)).toFixed(1)}H${x0.toFixed(1)}Z`;
+  });
+  ckFoot(g, x(edges[0]), x(edges.at(-1)), B);
+  if (d) g.push(el("svg:path", {class: "sb-bar", d}));
+}
+/* its dates under the foot B, baselines at y: the years (each, or every 2, 5 or 10), or for two years or less the months,
+   each at a short tick, as many as fit side by side inside W */
+function ckStripDates(g, a, b, x, B, y, W) {
+  const years = b - a > 730 * DAY;
+  for (const [n, u] of CK_STEPS) {
+    if (u === "d" || (years && u === "m")) continue;
+    const ticks = ckStepTicks(a, b, n, u), say = k => u === "y" ? k.label : ckMonth(k.t);
+    if (ticks.some((k, i) => i && x(k.t) - x(ticks[i - 1].t) < labelW(say(ticks[i - 1]), "") + 10)) continue;
+    for (const k of ticks) {
+      const kx = x(k.t);
+      g.push(el("svg:line", {class: "gridline", x1: kx, x2: kx, y1: B, y2: B + 4}));
+      if (kx + 3 + labelW(say(k), "") <= W) g.push(el("svg:text", {x: kx + 3, y, text: say(k)}));
+    }
+    return;
+  }
+}
+/* the window: the period, xa to xb, the strip's height h, with a grip at each edge; sb-a and sb-b name the grips, for
+   each one's range input to show its focus on it (app.css) */
+function ckStripWindow(g, xa, xb, h) {
+  g.push(el("svg:rect", {class: "sb-win", x: xa, y: 1, width: Math.max(1, xb - xa), height: h - 2, rx: 3}));
+  for (const [px, k] of [[xa, "sb-a"], [xb, "sb-b"]]) g.push(el("svg:rect", {class: "sb-grip " + k, x: px - 3.5, y: h / 2 - 10, width: 7, height: 16, rx: 2}));
 }
 
 /* ---- names over marks (#294, the event track): items [{x, text, cls, rank}] in time order, each mark named in one of

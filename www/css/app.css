@@ -1765,7 +1765,19 @@ select option,select optgroup{background:var(--raised);color:var(--ink)}
 .period-words{color:var(--ink2);font-size:var(--fs-3)}
 .period-words[hidden],.dates[hidden]{display:none}
 .dates input{color:var(--ink)}
-.dates .btn{margin:0 0 0 var(--sp-1)}
+/* the overview strip (#295, charts.js): its own line under the period bar; on a phone the charts' header's last. The
+   window and its grips in the accent (a control's, not the data's); the grip whose range input has focus filled */
+.ck-strip{position:relative;flex:1 1 100%;min-width:0;touch-action:pan-y;cursor:grab}
+.ck-strip>svg{display:block;width:100%;height:40px}
+@media (max-width:700px){ .ck-strip{flex-basis:160px} }   /* beside the pill or Show where there's room */
+.ck-strip:is([data-grab=a],[data-grab=b]){cursor:ew-resize}
+.ck-strip[data-grab=ms]{cursor:pointer}
+.sb-bar{fill:var(--muted)}
+.sb-win{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--accent);stroke-width:1.5}
+.sb-grip{fill:var(--raised);stroke:var(--accent);stroke-width:1.5}
+.ck-strip:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-sm)}
+.ck-strip:has(input:first-of-type:focus-visible) .sb-a,.ck-strip:has(input:last-of-type:focus-visible) .sb-b{fill:var(--accent)}
+@media (forced-colors:active){ .ck-strip{--accent:Highlight} .sb-bar{fill:CanvasText} .sb-win{fill:none} .sb-grip{fill:Canvas} }
 @media (forced-colors:active){
   .period-more-btn.on{forced-color-adjust:none;background:Highlight;color:HighlightText;box-shadow:none;border-color:Highlight}
 }

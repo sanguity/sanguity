@@ -227,7 +227,7 @@ function hSections(box) {
   return S;
 }
 /* the charts' header, Labs' own (#442, index.html; the period is in the records bar): what the charts can also show,
-   then a Legend of the marks every chart shares (each card keys its own lines) and an ⓘ of how to move them (#280);
+   then a Legend of the marks every chart shares (each card keys its own lines) and an ⓘ (#280; moving them is the overview strip's, #295);
    under it, apart from the chart options' group, where the phone's data come from (#444). Made once and kept while
    the rest is drawn again (#450): a popover taken out of the page closes, and its window listeners stayed behind. */
 let H_BAR = null;
@@ -247,7 +247,7 @@ function hBar() {
         el("span", {class: "lbl", id: "hOverlaysLbl", text: "Show on charts:"}),
         el("label", {class: "toggle"}, stays, "Hospital stays")),
       el("div", {class: "chart-aids"}, el("span", {class: "lbl lg-hd", "aria-hidden": "true", text: "Legend"}), el("div", {class: "menu pop"}, lgBtn, lgList),
-        aboutWords({title: "the charts", id: "hChartsInfo"}, "Drag any chart sideways to move through time: every chart moves together.", "Scroll or pinch to zoom, and double-click to show everything.")))), sync];
+        aboutWords({title: "the charts", id: "hChartsInfo"}, "Hover a chart, or step through it with the arrow keys, to see the same date on every chart.")))), sync];
   menuWire({btn: lgBtn, list: lgList, text: true});
   return H_BAR = {nodes, stays, sync};
 }
