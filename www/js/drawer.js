@@ -161,7 +161,7 @@ function drawerHead(k, title, line, tone, days = []) {
   $("#dtitle").textContent = title; $("#dsub").textContent = line;
   drawerSaid = new Set([title, ...title.split(" · "), ...line.split(" · ").flatMap(x => x.split(" – ")), ...days.filter(isFinite).map(fmtD)].filter(Boolean).map(saidKey));
   drawerKeys = [];
-  drawerMenu([]); delete drawer.dataset.med; drawerStill = null;   // a medication's history marks it again (meds.js medShown, #417)
+  drawerMenu([]); delete drawer.dataset.med; delete drawer.dataset.lab; drawerStill = null;   // a medication's history marks it again (meds.js medShown, #417), a lab's panel (lab-panel.js labShown, #296)
   const body = $("#dbody"); body.replaceChildren(); body.scrollTop = 0; body.classList.remove("fill");
   return body;
 }

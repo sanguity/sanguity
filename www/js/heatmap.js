@@ -191,8 +191,9 @@ function hmTable(rows, cols, grp) {
     const about = [nice(s.name) !== s.name ? renamedTitle("lab", s.name) : null,
       differ ? differ.trim() : ranged ? `ref ${ranged[2] ?? ""}–${ranged[3] ?? ""}${s.unit ? " " + s.unit : ""}${ranged.rs === "settings" ? ` (${RANGE_FROM_SETTINGS})` : ""}` : null].filter(Boolean).join("; ");
     const aboutId = about ? "hmAbout" + (++hmAbout) : null, edit = renameButton("lab", s.name), tq = testLink(s.name, true);   // #163
-    for (const b of [edit, tq]) if (b && aboutId) b.setAttribute("aria-describedby", aboutId);
-    tb.append(el("tr", {}, el("th", {scope: "row", "data-tip": renamedTitle("lab", s.name) + differ}, `${nice(s.name)}${s.unit ? ` (${s.unit})` : ""}`,
+    const name = labOpener(s, "", `${nice(s.name)}${s.unit ? ` (${s.unit})` : ""}`);   // its name opens its panel (lab-panel.js, #296)
+    for (const b of [name, edit, tq]) if (b && aboutId) b.setAttribute("aria-describedby", aboutId);
+    tb.append(el("tr", {}, el("th", {scope: "row", "data-tip": renamedTitle("lab", s.name) + differ}, name,
       about ? el("span", {class: "vh"}, ", ", el("span", {id: aboutId, text: about})) : null,
       edit || tq ? el("span", {class: "hm-acts"}, edit, tq) : null),   // the ✎ and ? kept together, a phone's name wrapping (#469)
       ...cols.map(([k]) => {

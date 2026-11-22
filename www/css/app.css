@@ -728,7 +728,11 @@ html.sg-docked #drawer{width:var(--dock)}
 .facts>div{background:var(--raised);border:1px solid var(--ring);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3);min-width:0;overflow-wrap:anywhere}
 .facts dt{color:var(--muted);font-size:var(--fs-2)}
 .facts dd{margin:0;font-weight:var(--fw-medium)}
-.facts dd.abn,.denied{color:var(--crit)}
+.facts dd.abn,.denied,.tip .s.abn{color:var(--crit)}
+/* a lab's name, opening its panel (lab-panel.js, #296), and the panel's strip of every result */
+.lab-open{text-decoration:underline dotted;text-underline-offset:.2em;position:relative;z-index:1}   /* over a ✎ beside it, its touch target (#373) */
+.lab-strip{display:block;width:100%}
+.lab-kv{grid-template-columns:minmax(0,10rem) minmax(0,1fr);overflow-wrap:anywhere}
 .dnote{color:var(--ink2)}
 .dgo{margin-top:var(--sp-4)}
 .dgo>div{display:contents}   /* a medication's history, a journal note: their buttons in the row */
@@ -1933,7 +1937,8 @@ path.pt.abn{stroke-width:1.5}
 .hm-table thead th:first-child{left:0;z-index:3}
 /* on a phone the names wrap, the ✎ and ? together under them, in a column of about 40% of the box: a date's column is seen
    whole beside it, at 320 px too (#469, 1.4.10) */
-@media (max-width:640px){ .hm-table tbody th[scope=row]{white-space:normal;overflow-wrap:anywhere;min-width:36vw;max-width:36vw} .hm-acts{white-space:nowrap} }
+@media (max-width:640px){ .hm-table tbody th[scope=row]{white-space:normal;overflow-wrap:anywhere;min-width:36vw;max-width:36vw} .hm-acts{white-space:nowrap} 
+  .hm-table th>.lab-open{white-space:inherit;display:inline-block;margin-bottom:var(--sp-1)} }   /* its name wrapping as before, clear of the ✎ and ? under it (#296) */
 .hm-table tr.grp th{position:static;color:var(--ink2);font-size:var(--fs-2);font-weight:var(--fw-semibold);padding-top:var(--sp-2)}
 .hm-table tr.grp span{position:sticky;left:var(--sp-2)}   /* its name stays in view scrolled sideways (#464), the cell being the row's width */
 /* ---- each result against its own range (#58): under a chart's name, when its results' ranges differ, which ones;

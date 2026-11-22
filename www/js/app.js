@@ -115,6 +115,7 @@ function renderAll() {
   else if (state.tab === "health") renderHealth();
   else if (state.tab === "medications") renderMedications();   // medications.js (#275)
   else renderOverview();
+  labAgain();   // a lab's panel in the drawer, for the period now shown (lab-panel.js, #296)
   save();
 }
 /* the parts of the records each tab shows (store.js, #271): when one changes (a dose logged, an entry or an edit
