@@ -334,7 +334,7 @@ def _build(db, link, today, section):
         cfg = cfg or settings.merged(db, pid, link["created_by"])
         return cfg
 
-    if "results" in want:   # (#289) each lab by the profile's name for it (Settings → Names), with its panel; v: the number, for a sparkline
+    if "results" in want:   # (#289) each lab by the profile's name for it (Settings → Names), with its panel; v: the number, lo and hi its range's, for a sparkline (#299)
         pick, nick = set(scope["labs"]), owners().get("labNicknames") or {}
         panel = {}
         for s in data.get("labs") or []:
@@ -345,7 +345,7 @@ def _build(db, link, today, section):
             if pick and name not in pick:
                 continue
             pts = [{"t": _text(p["t"], 25), "value": summary.value_text(p), "v": p["v"], "range": summary.range_text(p),
-                    "flag": summary.out_of_range(p)} for p in s["pts"] if _in(p["d"], scope)]
+                    "lo": p["lo"], "hi": p["hi"], "flag": summary.out_of_range(p)} for p in s["pts"] if _in(p["d"], scope)]
             if pts:
                 label = nick.get(name) if isinstance(nick.get(name), str) and nick[name].strip() else name
                 labs.append({"name": name, "label": _text(label, 200), "panel": panel.get(name, ""), "unit": s["unit"],

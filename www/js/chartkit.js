@@ -10,7 +10,9 @@
    - ckLegend: a chart's key, each mark keyed as it's drawn (a line for a line);
    - ckCross, ckSync, ckTip: the crosshair, at one time on every time chart of a view, and the hover's readout pinned to
      the top of the plot beside it;
-   - ckFlagRows: names over marks in up to three rows, with leader lines and "+N" (Labs' event track, event-track.js).
+   - ckFlagRows: names over marks in up to three rows, with leader lines and "+N" (Labs' event track, event-track.js);
+   - abnMark: an out-of-range result's ▲, ▼ or ◆;
+   - ckSpark: the one sparkline, scaled to the reference band (the Overview, the visit summary, a share link's page).
    CHART_LAYERS (trends.js) and TL_LANES (timeline.js) stay the plug-ins of Labs' event track and the Timeline.
    Plain script, loaded in order by index.html; all files share one global scope. */
 "use strict";
@@ -140,6 +142,55 @@ function ckBandLabel(g, words, st, y, R, T, B, pts) {
   const clear = yb => !pts.some(([px, py]) => px > x0 - 5 && px < x1 + 5 && py > yb - 15 && py < yb + 6);
   const yb = at.find(clear) ?? at[0];
   if (yb != null) g.push(el("svg:text", {class: "ck-ref", x: x1, y: yb, "text-anchor": "end", text: words}));
+}
+
+/* ---- marks (#60): an out-of-range result's mark on a chart: a triangle pointing up (above its range) or down (below),
+   a diamond for any other flag; s is its half-width */
+function abnMark(cx, cy, f, s = 4.5, cls = "pt abn") {
+  const p = (dx, dy) => `${(cx + dx).toFixed(1)},${(cy + dy).toFixed(1)}`;
+  const d = /^h/i.test(f) ? `M${p(0, -s * 1.1)}L${p(s, s * .7)}L${p(-s, s * .7)}Z` : /^l/i.test(f) ? `M${p(0, s * 1.1)}L${p(s, -s * .7)}L${p(-s, -s * .7)}Z`
+    : `M${p(0, -s)}L${p(s, 0)}L${p(0, s)}L${p(-s, 0)}Z`;
+  return el("svg:path", {class: cls, d});
+}
+
+/* ---- the sparkline (#299): the one on the Overview's tiles, the visit summary's trends and a share link's results.
+   A lab's values in time on a scale set by its reference band, not by its own values: the band the middle 60% of the
+   height (a one-sided range's edge at the middle), widened for a value outside it, so a change reads by its size
+   against the range (Creatinine −0.03 and Platelets −15 both small) and two results never draw a full-height diagonal.
+   With fewer than three results, no line: the latest one's mark against its band (nothing without a range). The plot
+   is stretched to the box CSS gives it; the latest's mark is drawn over it at its own size, placed in percentages of
+   the box, so never stretched: a dot in color, or ▲/▼/◆ in red when it's out of range.
+   pts: Labs' points ([, value, low, high, flag] with .ts; ckPt makes one), in time order; band false for a measure
+   with no range (the watch's, the scale's); r the dot's radius. Decorative: the text beside it says what it shows */
+const ckPt = (ts, v, lo, hi, f) => Object.assign([null, v, lo ?? null, hi ?? null, f || ""], {ts});
+/* the value scale's ends for values vs and the band's lowest low and highest high (null: none) */
+function ckSparkSpan(vs, lo, hi) {
+  const v0 = Math.min(...vs), v1 = Math.max(...vs);
+  let a, b;
+  if (lo != null && hi != null && hi > lo) { const p = (hi - lo) / 3; a = lo - p; b = hi + p; }
+  else if (lo != null || hi != null) { const e = hi ?? lo, k = Math.max(e - v0, v1 - e, Math.abs(e) / 10) || 1; a = e - k; b = e + k; }
+  else { const k = (v1 - v0) / 10 || Math.abs(v0) / 10 || 1; a = v0 - k; b = v1 + k; }
+  const m = (b - a) / 20;   // room for a value at either end
+  return [Math.min(a, v0 - m), Math.max(b, v1 + m)];
+}
+function ckSpark(pts, {band = true, r = 3, color = "var(--ink)", cls = ""} = {}) {
+  const svg = el("svg:svg", {class: ("spark " + cls).trim(), "aria-hidden": "true"});
+  pts = pts.filter(p => Number.isFinite(p[1]));
+  if (!pts.length) return svg;
+  const last = pts.at(-1), line = pts.length > 2, use = line ? pts : [last];
+  const steps = band ? rangeSteps(use, -Infinity, Infinity) : [];
+  if (!line && !steps.length) return svg;
+  const los = steps.map(st => st.lo).filter(v => v != null), his = steps.map(st => st.hi).filter(v => v != null);
+  const [d0, d1] = ckSparkSpan(use.map(p => p[1]), los.length ? Math.min(...los) : null, his.length ? Math.max(...his) : null);
+  const x = ckScale(line ? pts[0].ts : last.ts - 1, last.ts, 3, 97), y = ckScale(d0, d1, 100, 0), g = [];
+  ckBand(g, steps, x, y, 0, 100, 0, 100);
+  if (line) g.push(el("svg:path", {d: pts.map((p, i) => (i ? "L" : "M") + x(p.ts).toFixed(1) + "," + y(p[1]).toFixed(1)).join(""), fill: "none", stroke: "var(--muted)", "stroke-width": 1.5}));
+  for (const e of g) e.setAttribute("vector-effect", "non-scaling-stroke");
+  const at = {x: x(last.ts) + "%", y: y(last[1]) + "%"};
+  svg.append(el("svg:svg", {viewBox: "0 0 100 100", preserveAspectRatio: "none", width: "100%", height: "100%"}, ...g),
+    last[4] ? el("svg:svg", {...at, overflow: "visible"}, abnMark(0, 0, last[4], r * 1.15, "spark-abn"))   // ▲ or ▼, not only red (#60)
+      : el("svg:circle", {cx: at.x, cy: at.y, r, fill: color}));
+  return svg;
 }
 
 /* ---- decimation (#292): a series with more points than its marks have room for is drawn with fewer, the extremes kept.

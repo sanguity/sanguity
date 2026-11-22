@@ -109,18 +109,8 @@ function table(heads, rows, cls = "") {   // a region that can be scrolled from 
   return scrollBox({class: "scroll", "aria-label": heads.filter(Boolean).join(", ")}, el("table", {class: ("tbl " + cls).trim()},
     el("thead", {}, el("tr", {}, ...heads.map(h => el("th", {text: h})))), el("tbody", {}, ...rows)));
 }
-function spark(pts) {
-  const w = 70, h = 16, svg = el("svg:svg", {class: "spark", viewBox: `0 0 ${w} ${h}`, "aria-hidden": "true"});
-  if (pts.length < 2) return svg;
-  const ts = pts.map(p => zParse(p[0])), vs = pts.map(p => p[1]);
-  let lo = Math.min(...vs), hi = Math.max(...vs); if (lo === hi) { lo -= 1; hi += 1; }
-  const t0 = Math.min(...ts), t1 = Math.max(...ts);
-  const x = t => 3 + (t - t0) / ((t1 - t0) || 1) * (w - 6), y = v => h - 3 - (v - lo) / (hi - lo) * (h - 6);
-  svg.append(el("svg:path", {d: pts.map((p, i) => (i ? "L" : "M") + x(ts[i]).toFixed(1) + "," + y(p[1]).toFixed(1)).join(""),
-    fill: "none", stroke: "var(--muted)", "stroke-width": 1.2}),
-    ...pts.map((p, i) => el("svg:circle", {cx: x(ts[i]).toFixed(1), cy: y(p[1]).toFixed(1), r: p[2] ? 2 : 1.3, fill: p[2] ? "var(--crit)" : "var(--ink)"})));
-  return svg;
-}
+/* a trend's sparkline (chartkit.js ckSpark, #299): the server's [day, value, flag, low, high], oldest first */
+const spark = pts => ckSpark(pts.map(([d, v, f, lo, hi]) => ckPt(zParse(d), v, lo, hi, f)), {r: 2});
 /* a measures block's cell (#225): a day, or a local wall time, in this person's format; else its text */
 const measureCell = (kind, v) => !v ? v : kind === "day" ? fmtDay(v) : kind === "time" ? fmtDT(zParse(v)) : v;
 function renderPreview(s) {
@@ -154,8 +144,9 @@ function renderPreview(s) {
         cell(r.name, "wrap"), cell(r.instructions, "wrap"), cell(fmtDay(r.since)), cell(r.source)))) : none("No current medications in the records."));
     } else if (id === "appointments") {
       parts.push(el("h3", {text: `Upcoming appointments (${s.appointments.length})`}));
+      // this visit's date in ink, as the others: red is for out of range only (#299)
       parts.push(s.appointments.length ? table(["Date", "Appointment", "With", "Where"], s.appointments.map(r => el("tr", {},
-        cell(fmtDay(r.date), r.this ? "flag" : null), cell(r.title + (r.this ? " (this visit)" : "")), cell(r.who), cell(r.where)))) : none("No upcoming appointments in the records."));
+        cell(fmtDay(r.date)), cell(r.title + (r.this ? " (this visit)" : "")), cell(r.who), cell(r.where)))) : none("No upcoming appointments in the records."));
     } else if (id === "questions") {
       parts.push(el("h3", {text: `My questions (${s.questions.length})`}));
       parts.push(s.questions.length ? el("ol", {}, ...s.questions.map(q => el("li", {text: q}))) : none("No questions written down."));

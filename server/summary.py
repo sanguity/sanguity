@@ -12,7 +12,8 @@ Sections, each optional (SECTIONS):
                  range the person set in Settings for that lab and unit (#44, server/ranges.py), if one fits; the
                  range is then printed with "(settings)" after it, and the note under the table says what that is
   trends         the key labs (overview.keyLabs) and any the person picked: the last result on or before the
-                 "since" date, the latest, the change, and a sparkline of the results between
+                 "since" date, the latest, the change, and a sparkline of the results between (each [day, value,
+                 flag, low, high], drawn against their ranges, #299)
   medications    current medications (status active, or no status and no end date)
   appointments   upcoming appointments
   questions      the person's own questions, typed before generating
@@ -375,7 +376,7 @@ def build(db, pid, uid, profile_name, opts):
                                           "flag": out_of_range(last)},
                          "change": None if change is None else ("+" if change > 0 else "") + fmt_num(0 if abs(change) < 1e-9 else change),
                          "since": len(after),
-                         "spark": [[p["d"], p["v"], bool(out_of_range(p))] for p in line if p["v"] is not None]})
+                         "spark": [[p["d"], p["v"], out_of_range(p), p["lo"], p["hi"]] for p in line if p["v"] is not None]})
         out["trends"] = rows
     if "medications" in wanted:
         out["medications"] = _medications(data, now)
@@ -401,7 +402,7 @@ def build(db, pid, uid, profile_name, opts):
 # ---------------------------------------------------------------- the PDF
 
 MARGIN, TOP, FOOT = 46, 746, 64
-INK, MUTED, RULE, SHADE, CRIT = 0.1, 0.42, 0.75, 0.95, (0.66, 0.11, 0.18)
+INK, MUTED, RULE, SHADE, CRIT, BAND = 0.1, 0.42, 0.75, 0.95, (0.66, 0.11, 0.18), 0.86   # BAND: a sparkline's range (#299)
 
 
 class _Full(Exception):
@@ -483,19 +484,49 @@ class _Layout:
             self.y -= 15 + extra
 
 
+def spark_span(vs, lo, hi):
+    """A sparkline's value scale (#299, as chartkit.js ckSparkSpan): the reference band the middle 60% of it (a one-sided
+    range's edge at the middle), else the values' own, widened for every value."""
+    v0, v1 = min(vs), max(vs)
+    if lo is not None and hi is not None and hi > lo:
+        a, b = lo - (hi - lo) / 3, hi + (hi - lo) / 3
+    elif lo is not None or hi is not None:
+        e = hi if hi is not None else lo
+        k = max(e - v0, v1 - e, abs(e) / 10) or 1
+        a, b = e - k, e + k
+    else:
+        k = (v1 - v0) / 10 or abs(v0) / 10 or 1
+        a, b = v0 - k, v1 + k
+    m = (b - a) / 20
+    return min(a, v0 - m), max(b, v1 + m)
+
+
 def _spark(page, row, x, y, w, h=10):
+    """The trends' sparkline, as the preview's (#299): scaled to the band, each result's own range shaded as steps; with
+    fewer than three results only the latest, against its range (nothing without one). The latest dot red when out."""
     pts = row["spark"]
-    if len(pts) < 2:
+    if not pts:
         return
-    days = [datetime.date.fromisoformat(d).toordinal() for d, _, _ in pts]
-    vs = [v for _, v, _ in pts]
-    d0, d1, lo, hi = min(days), max(days), min(vs), max(vs)
-    if hi == lo:
-        lo, hi = lo - 1, hi + 1
-    xy = [(x + (d - d0) / ((d1 - d0) or 1) * w, y + (v - lo) / (hi - lo) * h) for d, v in zip(days, vs)]
-    page.polyline(xy, 0.8, MUTED)
-    for (px, py), (_, _, bad) in zip(xy, pts):
-        page.dot(px, py, 1.5 if bad else 1.0, CRIT if bad else INK)
+    line = len(pts) > 2
+    use = pts if line else pts[-1:]
+    days = [datetime.date.fromisoformat(p[0]).toordinal() for p in use]
+    ranged = [(t, p[3], p[4]) for t, p in zip(days, use) if p[3] is not None or p[4] is not None]
+    if not line and not ranged:
+        return
+    los, his = [r[1] for r in ranged if r[1] is not None], [r[2] for r in ranged if r[2] is not None]
+    v0, v1 = spark_span([p[1] for p in use], min(los) if los else None, max(his) if his else None)
+    t0, t1 = (days[0], days[-1]) if line else (days[0] - 1, days[0])
+    X = lambda t: x + 2 + (t - t0) / ((t1 - t0) or 1) * (w - 4)   # the latest dot over the band's end, not past it
+    Y = lambda v: y + (v - v0) / (v1 - v0) * h
+    for i, (t, lo, hi) in enumerate(ranged):   # each step from halfway after the result before to halfway to the next
+        a = x if i == 0 else max(x, X((ranged[i - 1][0] + t) / 2))
+        b = x + w if i == len(ranged) - 1 else min(x + w, X((t + ranged[i + 1][0]) / 2))
+        bot, top = Y(lo) if lo is not None else y, Y(hi) if hi is not None else y + h
+        if b > a and top > bot:
+            page.rect(a, bot, b - a, top - bot, BAND)
+    if line:
+        page.polyline([(X(t), Y(p[1])) for t, p in zip(days, use)], 0.8, MUTED)
+    page.dot(X(days[-1]), Y(use[-1][1]), 1.5, CRIT if use[-1][2] else INK)
 
 
 # the trends table's columns: Now is wide enough for a value with its flag in words and a date from an earlier year,
@@ -596,8 +627,9 @@ def _render(s):
                 if not rows:
                     lay.note("No upcoming appointments in the records.")
                     continue
+                # this visit's date in ink, as the others: red (a cell's tuple) is for out of range only (#299)
                 lay.table(sid, [("DATE", 72), ("APPOINTMENT", 170), ("WITH", 130), ("WHERE", None)], rows,
-                          lambda r: [(_when(r["date"]),) if r["this"] else _when(r["date"]),
+                          lambda r: [_when(r["date"]),
                                      r["title"] + ("  (this visit)" if r["this"] else ""), r["who"], r["where"]])
             elif sid == "questions":
                 qs = s["questions"]
