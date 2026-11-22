@@ -214,9 +214,11 @@ def build_error(pid):
 
 def delete_profile(db, pid):
     """Remove a profile: its records, settings, its folder (anything imported), document index, memberships and
-    activity. The folder is moved aside first and removed only once the database change is committed, so a
-    failure leaves the profile whole. Original exports and the watch receiver's data are never touched.
+    activity, and the watch receiver is asked to delete what it keeps for it (watch_keys.forget, #588; the caller
+    publishes the secrets file after). The folder is moved aside first and removed only once the database change is
+    committed, so a failure leaves the profile whole. Original exports are never touched.
     Returns what was deleted: {"name", "members", "linked_build"}."""
+    from . import watch_keys
     p = db.execute("SELECT name, linked_build FROM profiles WHERE id=?", (pid,)).fetchone()
     members = db.execute("SELECT COUNT(*) FROM memberships WHERE profile_id=?", (pid,)).fetchone()[0]
     folder, aside = profile_dir(pid), os.path.join(config.DATA_DIR, "profiles", f".deleting-{int(pid)}")
@@ -225,6 +227,7 @@ def delete_profile(db, pid):
         os.replace(folder, aside)
     try:
         with dbm.transaction(db):
+            watch_keys.forget(db, pid)
             db.execute("DELETE FROM profiles WHERE id=?", (pid,))   # cascades: records, memberships, documents, activity
             if p["linked_build"]:   # don't bring it back from the build on the next start
                 dbm.meta_set(db, "build_unlinked", "1")
@@ -248,6 +251,12 @@ def link_build(db, pid):
 
 
 def create_profile(db, name, owner_id=None, linked_build=False, watch_file=None):
+    """A new profile, its id never one a profile had (AUTOINCREMENT, schema version 39) nor one a folder or receiver
+    slot left on disk is named by (#588): that profile's phone data would be the new one's."""
+    from . import watch_keys
+    if (top := watch_keys.leftover_ids(db)):
+        if not db.execute("UPDATE sqlite_sequence SET seq=MAX(seq, ?) WHERE name='profiles'", (top,)).rowcount:
+            db.execute("INSERT INTO sqlite_sequence(name, seq) VALUES('profiles', ?)", (top,))
     cur = db.execute("INSERT INTO profiles(name, created, linked_build, watch_file) VALUES(?, ?, ?, ?)",
                      (name, dbm.now(), int(linked_build), watch_file))
     pid = cur.lastrowid

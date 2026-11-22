@@ -49,6 +49,7 @@ python tests/test_cycle.py             # cycle tracking, opt-in: off keeps nothi
 python tests/test_ecg.py               # ECGs and irregular rhythm notifications: the same from an export and the phone (#182)
 python tests/test_receiver_activity.py # respiratory rate, VO2 max, heart rate zones on workouts (#226, #197)
 python tests/test_import_history.py    # import history and undo
+python tests/test_ids.py               # ids never given again: a deleted profile's phone data, stale pages, views (#588)
 python tests/test_edits.py             # corrections made in the app
 python tests/test_milestones.py        # milestones and workout rules on the Settings page
 python tests/test_lab_mapping.py       # matching unknown lab names

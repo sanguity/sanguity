@@ -45,7 +45,7 @@ async function profileNamed(pid) {
 function profileDelete(p) {
   return dangerZone({title: "Delete this profile", hint: "For everyone it's shared with. It can't be undone.", open: "Delete profile…", name: p.name,
     says: n => el("p", {}, "This deletes ", el("b", {text: n}), " for everyone it's shared with: its records, documents, settings, ",
-      "activity log and sharing. Your original exports and the watch receiver's data stay, and so do backups made before now."),
+      "activity log and sharing, and what the watch receiver keeps from its phone. Your original exports stay, and so do backups made before now."),
     first: () => el("a", {class: "btn small", href: `api/profiles/${p.id}/export`, download: "", text: "Export everything first"}),
     action: "Delete it and everything in it",
     run: async typed => {

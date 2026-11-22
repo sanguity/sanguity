@@ -43,7 +43,9 @@ to $KEYS_FILE (server/watch_keys.py); an upload goes to the profile whose secret
 "" is the receiver's top folder ($DATA/watch.db, $DATA/raw/, public/daily.json), as before #46; any other is the
 profile's id, with its own $DATA/profiles/<slot>/watch.db and raw/, and public/profiles/<slot>/daily.json. The
 install's single secret from before, $SECRET_FILE, still works for slot "" until that profile (the first) makes one
-of its own in the app ("legacy": false in $KEYS_FILE), and always while there's no $KEYS_FILE.
+of its own in the app ("legacy": false in $KEYS_FILE), and always while there's no $KEYS_FILE. A profile deleted in
+the app is listed under "deleted" in $KEYS_FILE, and everything its slot keeps is deleted here (slot_sweep, #588);
+its secret is gone from the file already, and its id is never a profile's again.
 
 Encrypted at rest with the app's key ($SANGUITY_KEY_FILE, see server/crypto.py): every file here is sealed, so
 it runs on the app's image and imports server.crypto. The database is kept in memory and saved as a sealed
@@ -1004,6 +1006,78 @@ def cycle_sweep(stores):
                                                     "purged_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}).encode())
 
 
+DELETED_DONE = "deleted-slots.json"   # in $DATA: the deletion of slot "" done last (#588); a profile slot: its absence
+
+
+def deleted_state():
+    """{slot: the deletion asked for} from $KEYS_FILE: the slots of profiles deleted in the app (#588). None while it
+    exists but couldn't be read yet: then nothing is deleted."""
+    keys()   # reads the file again when it changed
+    doc = _keys["doc"]
+    if not isinstance(doc, dict):
+        return {} if _keys["sig"] is None else None
+    asked = doc.get("deleted")
+    if not isinstance(asked, dict):
+        return {}
+    return {str(k): str(v) for k, v in asked.items() if v and (k == "" or str(k).isdigit())}
+
+
+def slot_paths(slot):
+    """Everything kept for a slot: its database and archived uploads, and its summary, ECG samples and cycle.json
+    (what the app reads). A profile slot's are two folders; slot "", the top folder's own files (never keys/,
+    profiles/, the other slots' public/profiles/ or a restore's before-restore-*/)."""
+    if slot != "":
+        return [slot_dir(slot), os.path.dirname(summary_file(slot))]
+    pub = os.path.dirname(summary_file(""))
+    return [os.path.join(DATA, n) for n in ("watch.db", "watch.db-wal", "watch.db-shm", "raw")] + \
+           [summary_file(""), os.path.join(pub, "ecg"), cycle_file("")]
+
+
+def _remove(path):
+    """Moved aside first (a name slots_on_disk skips), then deleted, so a failure halfway leaves no slot half there."""
+    if not os.path.lexists(path):
+        return
+    aside = os.path.join(os.path.dirname(path), ".deleting-" + os.path.basename(path))
+    shutil.rmtree(aside, ignore_errors=True)
+    os.replace(path, aside)
+    if os.path.isdir(aside) and not os.path.islink(aside):
+        shutil.rmtree(aside)
+    else:
+        os.remove(aside)
+
+
+def slot_sweep(stores):
+    """Carry out what the app asked when a profile was deleted (#588): everything its slot keeps is deleted, so no
+    profile made later ever reads it. Never a slot a profile's secret still uploads to. A profile slot's id never
+    comes again, so it is deleted whenever anything of it is found (an upload that raced the deletion too); slot "",
+    which another profile may come to read, once for each deletion asked."""
+    asked = deleted_state()
+    if not asked:
+        return
+    live = {slot for slot, _ in keys()}
+    done_file = os.path.join(DATA, DELETED_DONE)
+    try:
+        with open(done_file, encoding="utf-8") as f:
+            done = json.load(f)
+    except (OSError, ValueError):
+        done = {}
+    for slot, token in sorted(asked.items()):
+        if slot in live or (slot == "" and done.get("") == token):
+            continue
+        paths = [p for p in slot_paths(slot) if os.path.lexists(p)]
+        if paths:
+            stores.pop(slot, None)
+            for p in paths:
+                _remove(p)
+            log(f"deleted what was kept for {slot or 'the first profile'}: its profile was deleted in the app")
+        if slot == "":
+            done[""] = token
+            tmp = done_file + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(done, f)
+            os.replace(tmp, done_file)
+
+
 EXERCISE_INSERT = ("INSERT OR REPLACE INTO exercise(uuid, start_t, end_t, day, type, name, title, duration, src, hr) "
                    "VALUES(?,?,?,?,?,?,?,?,?,?)")
 
@@ -1105,6 +1179,11 @@ def worker(stores):
         try:
             item = work.get(timeout=5)
         except queue.Empty:
+            try:
+                slot_sweep(stores)   # (#588)
+                dirty &= set(stores)   # a deleted slot's summary isn't written again
+            except Exception:
+                traceback.print_exc()
             try:
                 cycle_sweep(stores)   # (#183)
             except Exception:
@@ -1265,6 +1344,7 @@ if __name__ == "__main__":
         sys.exit(f"No secret: neither {SECRET_FILE} nor {KEYS_FILE} exists.")
     if (n := migrate()):
         log(f"encrypted {n} files with the current key")
+    slot_sweep({})   # what deleted profiles kept, before anything of it is loaded (#588)
     stores = {}
     for slot in slots_on_disk():
         store = stores[slot] = Store(slot)

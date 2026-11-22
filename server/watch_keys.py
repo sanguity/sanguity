@@ -14,6 +14,8 @@ Where things are kept:
       when it changes)
   the summaries: the receiver writes slot "" to its own top folder, as before (public/daily.json, which
       config.WATCH_FILE names), and any other slot to profiles/<slot>/ (public/profiles/<slot>/daily.json)
+  the meta row "watch_deleted": the slots of deleted profiles ({slot: token}), in the file as "deleted", so the
+      receiver deletes what each kept (forget, #588); a profile's id, and so its slot, never comes again
 
 Installs from before #46 had one secret (auth/watch_secret) and one summary, read by the first profile (the one whose
 watch_file is config.WATCH_FILE). That keeps working: the receiver accepts the old secret for slot "" until the first
@@ -84,7 +86,8 @@ def publish(db):
         if row:
             profiles.append({"profile": r["pid"], "slot": row["slot"], "secret": row["secret"]})
     from . import cycle_tracking   # which profiles turned cycle tracking on, and deletions asked for (#183)
-    doc = {"version": 1, "legacy": legacy_in_use(db), "profiles": profiles, **cycle_tracking.keys_doc(db)}
+    doc = {"version": 1, "legacy": legacy_in_use(db), "profiles": profiles, **cycle_tracking.keys_doc(db),
+           "deleted": deleted(db)}
     folder = os.path.dirname(config.WATCH_KEYS)
     if not os.path.isdir(folder):
         if profiles:
@@ -94,6 +97,54 @@ def publish(db):
         return False
     crypto.write_file(config.WATCH_KEYS, json.dumps(doc, separators=(",", ":")).encode())
     return True
+
+
+DELETED = "watch_deleted"   # meta: {slot: token}, the slots of deleted profiles, for the receiver to delete (#588)
+
+
+def deleted(db):
+    try:
+        v = json.loads(dbm.meta_get(db, DELETED) or "{}")
+    except ValueError:
+        v = {}
+    return v if isinstance(v, dict) else {}
+
+
+def forget(db, pid):
+    """A profile is being deleted (call inside its transaction, publish() after): ask the receiver to delete what it
+    keeps for the profile's slot (watch/receiver.py slot_sweep), so no profile made later reads it. Not while another
+    profile reads the same slot (the receiver's own summary, slot "", can be several profiles' watch file): what's
+    kept stays theirs. For slot "", the install's single secret stops working too. Returns the slot, or None."""
+    slot = _slot_for(db, pid)
+    path = summary_path(slot)
+    for r in db.execute("SELECT id, watch_file FROM profiles WHERE id != ?", (pid,)).fetchall():
+        if _same(r["watch_file"], path) or (_row(db, r["id"]) or {}).get("slot") == slot:
+            return None
+    asked = deleted(db)
+    asked[slot] = f"{dbm.now()}-{secrets.token_hex(4)}"   # a new token: slot "" is deleted again
+    dbm.meta_set(db, DELETED, json.dumps(asked, separators=(",", ":")))
+    if slot == "":
+        dbm.meta_set(db, RETIRED, str(dbm.now()))
+    return slot
+
+
+def leftover_ids(db):
+    """The highest profile id a folder on disk or a receiver slot is named by (0: none). A profile deleted before
+    schema version 39 (#588) may have left its receiver slot, which the next profile given its id would read."""
+    top = max((int(s) for s in deleted(db) if s.isdigit()), default=0)
+    dirs = [os.path.join(config.DATA_DIR, "profiles"), os.path.join(os.path.dirname(config.WATCH_FILE), "profiles")]
+    if config.WATCH_STORE:
+        dirs.append(os.path.join(config.WATCH_STORE, "profiles"))
+    for d in dirs:
+        try:
+            names = os.listdir(d)
+        except OSError:
+            continue
+        for n in names:
+            n = n[len(".deleting-"):] if n.startswith(".deleting-") else n
+            if n.isdigit():
+                top = max(top, int(n))
+    return top
 
 
 def ready():
