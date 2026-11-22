@@ -220,7 +220,8 @@ def delete_profile(db, pid):
     activity, and the watch receiver is asked to delete what it keeps for it (watch_keys.forget, #588; the caller
     publishes the secrets file after). The folder is moved aside first and removed only once the database change is
     committed, so a failure leaves the profile whole. Original exports are never touched.
-    Returns what was deleted: {"name", "members", "linked_build"}."""
+    The lab-name matches its own reviews made go with it (labmap.forget_profile, #591).
+    Returns what was deleted: {"name", "members", "linked_build", "lab_matches"}."""
     from . import watch_keys
     p = db.execute("SELECT name, linked_build FROM profiles WHERE id=?", (pid,)).fetchone()
     members = db.execute("SELECT COUNT(*) FROM memberships WHERE profile_id=?", (pid,)).fetchone()[0]
@@ -231,6 +232,8 @@ def delete_profile(db, pid):
     try:
         with dbm.transaction(db):
             watch_keys.forget(db, pid)
+            from . import labmap   # the lab-name matches its reviews made (#591), while its imports are there
+            matches = labmap.forget_profile(db, pid)
             db.execute("DELETE FROM profiles WHERE id=?", (pid,))   # cascades: records, memberships, documents, activity
             if p["linked_build"]:   # don't bring it back from the build on the next start
                 dbm.meta_set(db, "build_unlinked", "1")
@@ -241,7 +244,7 @@ def delete_profile(db, pid):
     shutil.rmtree(aside, ignore_errors=True)
     _failed.pop(pid, None)
     records.forget(pid)
-    return {"name": p["name"], "members": members, "linked_build": bool(p["linked_build"])}
+    return {"name": p["name"], "members": members, "linked_build": bool(p["linked_build"]), "lab_matches": matches}
 
 
 def link_build(db, pid):

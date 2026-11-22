@@ -1180,17 +1180,40 @@ def upgrade(db):
         db.execute("PRAGMA foreign_keys=ON")
 
 
+_after = {}   # id(connection): what to do once the transaction it's in (transaction()) commits (after_commit)
+
+
 @contextmanager
 def transaction(db):
     """BEGIN IMMEDIATE (take the write lock now, so checks inside see what they will change), then COMMIT, or
-    ROLLBACK if anything inside raises."""
+    ROLLBACK if anything inside raises. What after_commit was given inside runs once it has committed."""
     db.execute("BEGIN IMMEDIATE")
+    _after[id(db)] = later = []
     try:
-        yield db
-    except BaseException:
-        db.execute("ROLLBACK")
-        raise
-    db.execute("COMMIT")
+        try:
+            yield db
+        except BaseException:
+            db.execute("ROLLBACK")
+            raise
+        db.execute("COMMIT")
+    finally:
+        _after.pop(id(db), None)
+    for fn in later:
+        fn()
+
+
+def after_commit(db, fn):
+    """Run fn (removing a file, say: #591) once what db is changing is saved: at once outside a transaction, after the
+    COMMIT inside one transaction() opened, never if it rolls back. Inside a transaction begun some other way, not at
+    all (returns False): what fn would remove is left for a sweep that finds it, never removed before it's committed."""
+    if not db.in_transaction:
+        fn()
+        return True
+    later = _after.get(id(db))
+    if later is None:
+        return False
+    later.append(fn)
+    return True
 
 
 def active_owners(db, pid, excluding=None):

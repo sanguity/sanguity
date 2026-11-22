@@ -376,7 +376,9 @@ an existing series or keeps it as its own (`server/labmap.py`). The choice is re
 later imports on every profile of the install, so it belongs to no profile. Rows are looked up by a keyed hash of the
 importer, the name as reported, its unit and LOINC code; the name and the series it goes to are encrypted. Only admins
 can change or remove one, but for undoing the import whose review made it (`import_id`, schema version 36, #500): that
-forgets it, unless another import has been saved with it since (`used`) or an admin has changed it.
+forgets it, unless another import has been saved with it since (`used`) or an admin has changed it. Deleting a profile
+forgets those its imports' reviews made (#591), unless an import of another profile was saved between the match being
+made and its last use (`created` to `used`, by `imports.at`) or an admin has changed it.
 
 ```mermaid
 erDiagram

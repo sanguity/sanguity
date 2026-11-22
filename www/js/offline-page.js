@@ -10,7 +10,9 @@
      to the records kept on this device, if it keeps any. The menus' links to the other pages say why they aren't
      followed, as on the records page (#385). Once the connection is back, the page is loaded again.
    - Gone offline while open: the banner says changes need the server, and what's on the page stays; once the
-     connection is back, or the server answers again, the banner goes. */
+     connection is back, or the server answers again, the banner goes.
+   - The copy kept for the records page goes once its profile isn't the person's any more (#591): when the server's
+     "me" no longer lists it (removed from it by an owner), and on Leave or Delete here (Sharing, Settings). */
 "use strict";
 const OFFLINE = {on: false, copy: null};   // the same flag as offline.js's: on, the server can't be reached
 
@@ -42,7 +44,9 @@ const OFFLINE = {on: false, copy: null};   // the same flag as offline.js's: on,
     }
     reached = true;
     if (OFFLINE.on && !document.body.classList.contains("offline-page")) back();
-    if (r.ok && SETTINGS.test(path) && ((opts && opts.method) || "GET") !== "GET") keepSettings(path, r);
+    const method = ((opts && opts.method) || (input instanceof Request ? input.method : "GET")).toUpperCase();
+    if (r.ok && SETTINGS.test(path) && method !== "GET") keepSettings(path, r);
+    if (r.ok) stillTheirs(path, method, r);
     return r;
   };
   /* settings saved here (Display, your menu's theme, the other sections): the copy of records this device keeps takes
@@ -62,6 +66,27 @@ const OFFLINE = {on: false, copy: null};   // the same flag as offline.js's: on,
       else if (!SgOffline.withUser(c, pid ? SgOffline.mine(now) : now)) return;
       await SgOffline.save(c);
     }).catch(e => console.warn("offline copy not kept:", e.message));
+  }
+
+  /* (#591) the copy's profile no longer the person's: "me" not listing it, or a Leave (members/<your id>) or Delete
+     of it here. A Delete of it takes the copy at once; after a member's removal, which may be yours, "me" is asked,
+     and the copy goes unless it still lists the profile, or if it can't be asked */
+  const GONE = /^profiles\/(\d+)(\/members\/\d+)?$/;
+  function stillTheirs(path, method, r) {
+    if (!SgOffline.on()) return;
+    const gm = method === "DELETE" && path.match(GONE);
+    if (path === "me" && method === "GET") {
+      const body = r.clone().json();
+      kept = kept.then(async () => { await SgOffline.still((await body).profiles); }).catch(e => console.warn("offline copy not checked:", e.message));
+    } else if (gm) {
+      kept = kept.then(async () => {
+        const c = await SgOffline.load();
+        if (!c || c.profile.id !== +gm[1]) return;
+        if (!gm[2]) { await SgOffline.drop(); return; }
+        const now = await realFetch(API + "me", {cache: "no-store", credentials: "same-origin"}).then(x => x.ok ? x.json() : null, () => null);
+        await SgOffline.still(now && now.profiles);
+      }).catch(e => console.warn("offline copy not checked:", e.message));
+    }
   }
 
   const records = () => SgOffline.on()

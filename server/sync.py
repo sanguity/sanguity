@@ -32,7 +32,9 @@ and fetch_anyway() brings it in later, as its own import, linked to its record.
 What a pull read is kept as an upload (pull.json, a Bundle, and Binary/<id>), sealed like any upload, so its files
 are the import's original files. The connection also keeps every resource it has read so far, sealed in
 profiles/<id>/connections/<connection id>, newest version of each: a lab day groups results across pulls, so it
-is rebuilt from all of them.
+is rebuilt from all of them. That store is written only in a transaction that finds the connection still active,
+as its records are (#591): a Disconnect is saved before it, and then nothing is written, or waits for it, and then
+removes the store (connections.disconnect), so nothing a pull read outlives a Disconnect.
 
   The first pull reads everything and goes through the import job flow (jobs.py) like an upload: preview, the
   duplicate check, lab-name matching, then save. Its cursor is kept aside (pending_cursor) and becomes the
@@ -147,6 +149,23 @@ def _save_store(pid, cid, store):
     crypto.write_file(path, json.dumps(store, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
 
 
+class Disconnected(jobs.Failed):
+    """The connection stopped being active while the pull read it: nothing it read is kept."""
+
+
+DISCONNECTED = "This source was disconnected during the pull."
+
+
+def _keep_store(db, c, store):
+    """Inside the pull's dbm.transaction (the write lock, so a Disconnect is saved before it or waits for it): the
+    connection's store written only while the connection is still active, the check its records are saved under;
+    Disconnected otherwise, with nothing written (#591)."""
+    r = db.execute("SELECT state FROM connections WHERE id=?", (c["id"],)).fetchone()
+    if not r or r["state"] != "active":
+        raise Disconnected(DISCONNECTED)
+    _save_store(c["profile_id"], c["id"], store)
+
+
 def forget_store(pid, cid):
     with contextlib.suppress(FileNotFoundError):
         os.remove(store_path(pid, cid))
@@ -191,6 +210,8 @@ def pull(db, cid, who=None, ip=None):
         if first:
             return _first(db, c, got, who, ip)
         return _later(db, c, got, who, ip)
+    except Disconnected as e:
+        return {"ok": False, "error": str(e), "kind": "other"}
     except Exception as e:   # noqa: BLE001
         log.exception("saving the pull of connection %s", cid)
         return _failed(db, c, e, "other")
@@ -484,9 +505,10 @@ def _report(got, extra=None):
 def _first(db, c, got, who, ip):
     """Everything, through the job flow: an upload, then an import job previewed like any other."""
     cid, pid = c["id"], c["profile_id"]
-    _save_store(pid, cid, _merge_store(c, got))
+    store = _merge_store(c, got)
     if len(got["resources"]) <= 1:   # the patient, nothing else: no import to preview; later pulls bring what comes
         with dbm.transaction(db):
+            _keep_store(db, c, store)
             db.execute("""UPDATE connections SET cursor=?, pending_cursor=NULL, last_sync=?, next_sync=?, failures=0,
                           error_kind=NULL, last_error=NULL, report=?, warned=NULL WHERE id=? AND state='active'""",
                        (json.dumps(got["cursor"]), dbm.now(), dbm.now() + config.SYNC_HOURS * 3600,
@@ -494,9 +516,12 @@ def _first(db, c, got, who, ip):
             _note_attachments(db, c, got)
         return {"ok": True, "first": True, "job": None}
     up = _upload(db, c, got)
-    if db.execute("SELECT state FROM connections WHERE id=?", (cid,)).fetchone()["state"] != "active":
+    try:
+        with dbm.transaction(db):
+            _keep_store(db, c, store)
+    except Disconnected:
         uploads.discard(db, pid, up)
-        return {"ok": False, "error": "This source was disconnected during the pull.", "kind": "other"}
+        raise
     # committed before the worker can see it (submit queues the job at once)
     jid = jobs.submit(db, pid, up, (who or {}).get("id") or c["created_by"], "fhir", ip)
     with dbm.transaction(db):
@@ -628,8 +653,8 @@ def _later(db, c, got, who, ip):
 def _save(db, c, up, delta, full, got, store, names, report, who, ip):
     cid, pid = c["id"], c["profile_id"]
     if delta is None:
-        _save_store(pid, cid, store)
         with dbm.transaction(db):
+            _keep_store(db, c, store)
             _done(db, c, got, report)
         return {"ok": True, "import": None, "counts": None, "changed": 0}
     full = full or delta
@@ -687,16 +712,14 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
 
     meta_changes = _meta_changes(db, pid, delta)
     if not (preview.adds_anything(data) or updates or meta_changes):
-        _save_store(pid, cid, store)
         with dbm.transaction(db):
+            _keep_store(db, c, store)
             _done(db, c, got, report)
         return {"ok": True, "import": None, "counts": None, "changed": 0}
 
     summary = jobs.summarise(data)
-    _save_store(pid, cid, store)   # before the commit: if that fails, the next pull reads these again (harmless)
     with dbm.transaction(db):
-        if db.execute("SELECT state FROM connections WHERE id=?", (cid,)).fetchone()["state"] != "active":
-            raise jobs.Failed("This source was disconnected during the pull.")
+        _keep_store(db, c, store)   # before the commit: if that fails, the next pull reads these again (harmless)
         keepdocs, n_docs = prof.index_documents(db, pid, data["details"], stored)
         iid = records.store(db, pid, data, "sync", fmt="fhir")
         prof.link_documents(db, iid, keepdocs)

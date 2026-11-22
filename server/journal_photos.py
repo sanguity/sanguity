@@ -3,7 +3,9 @@
 A photo is sent on its own first (PUT /api/profiles/{pid}/journal/photos, the request body is the picture), then named
 by the entry it belongs to when that entry is saved (journal.py, "photos": [{"id", "alt"}]). Until then it is
 "pending": a pending photo older than PENDING_SECONDS was abandoned (the form was closed) and is removed the next time
-someone sends one. A photo goes with its entry: deleting the entry, or saving it without the photo, deletes it.
+someone sends one or saves an entry, and when the app starts (sweep_all, #591, with any file no photo names). A photo
+goes with its entry: deleting the entry, or saving it without the photo, deletes it, its file once that's saved (never
+before: a save that fails keeps the photo whole, #591).
 
 Kept like the profile's documents: in profiles/<id>/journal/, sealed (crypto.write_file) under a random name, so the
 folder says nothing about whose pictures these are; the journal_photos table (schema version 32) holds only that name,
@@ -263,8 +265,33 @@ def _sweep(db, pid):
     """Remove the profile's pending photos older than PENDING_SECONDS: their form was closed without saving."""
     for r in db.execute("SELECT id, file FROM journal_photos WHERE profile_id=? AND entry_id IS NULL AND created < ?",
                         (pid, dbm.now() - PENDING_SECONDS)).fetchall():
-        _unlink(pid, r["file"])
-        db.execute("DELETE FROM journal_photos WHERE id=?", (r["id"],))
+        _delete(db, pid, r["id"], r["file"])
+
+
+def sweep_all(db):
+    """At start-up (#591): every profile's pending photos older than PENDING_SECONDS, however long since one was last
+    sent, and any file in a journal folder no photo names (a stop between saving a change and removing its file, or
+    between writing a photo and recording it). Nothing else runs then. Returns how many files went."""
+    base, n = os.path.join(config.DATA_DIR, "profiles"), 0
+    for r in db.execute("SELECT id, profile_id, file FROM journal_photos WHERE entry_id IS NULL AND created < ?",
+                        (dbm.now() - PENDING_SECONDS,)).fetchall():
+        _delete(db, r["profile_id"], r["id"], r["file"])
+        n += 1
+    named = {(r["profile_id"], r["file"]) for r in db.execute("SELECT profile_id, file FROM journal_photos")}
+    for p in os.listdir(base) if os.path.isdir(base) else ():
+        d = folder(p) if p.isdigit() else None
+        for f in os.listdir(d) if d and os.path.isdir(d) else ():
+            if (int(p), f) not in named and os.path.isfile(os.path.join(d, f)):
+                _unlink(p, f)
+                n += 1
+    return n
+
+
+def _delete(db, pid, photo_id, file):
+    """A photo's row, and its file once that's committed (dbm.after_commit; inside another kind of transaction, left
+    for sweep_all to find)."""
+    db.execute("DELETE FROM journal_photos WHERE id=?", (photo_id,))
+    dbm.after_commit(db, lambda: _unlink(pid, file))
 
 
 def _unlink(pid, file):
@@ -324,12 +351,12 @@ def check(db, pid, photos, jid=None):
 
 def attach(db, pid, jid, photos):
     """Make the entry's photos exactly these (call inside a transaction, after check()); the ones it no longer lists
-    are deleted."""
+    are deleted, their files once it commits (#591: a save that fails keeps them); and abandoned ones are swept."""
     keep = [p["id"] for p in photos]
     for r in db.execute("SELECT id, file FROM journal_photos WHERE profile_id=? AND entry_id=?", (pid, jid)).fetchall():
         if r["id"] not in keep:
-            _unlink(pid, r["file"])
-            db.execute("DELETE FROM journal_photos WHERE id=?", (r["id"],))
+            _delete(db, pid, r["id"], r["file"])
+    _sweep(db, pid)
     db.executemany("UPDATE journal_photos SET entry_id=? WHERE id=? AND profile_id=?", [(jid, i, pid) for i in keep])
 
 

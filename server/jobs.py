@@ -83,6 +83,11 @@ def recover(db):
     stopped = db.execute("SELECT id, profile_id, upload_id FROM jobs WHERE state IN ('queued', 'running')").fetchall()
     n = db.execute("UPDATE jobs SET state='failed', stage=NULL, message=?, finished=? WHERE state IN ('queued', 'running')",
                    (crypto.enc(INTERRUPTED), dbm.now())).rowcount
+    # a job over without an import keeps only its counts (#591): those failed now, and any from before that kept more
+    for r in db.execute("SELECT id, summary FROM jobs WHERE state IN ('failed', 'discarded') AND summary IS NOT NULL").fetchall():
+        kept = counts_only(r["summary"])
+        if kept != r["summary"]:
+            db.execute("UPDATE jobs SET summary=? WHERE id=?", (kept, r["id"]))
     for r in stopped:
         _drop_upload(db, r["profile_id"], r["upload_id"], r["id"])
     waiting = {(r[0], r[1]) for r in db.execute("SELECT profile_id, id FROM jobs WHERE state='preview'")}
@@ -149,8 +154,8 @@ def run(jid):
         except Exception as e:
             stage = (db.execute("SELECT stage FROM jobs WHERE id=?", (jid,)).fetchone() or {"stage": None})["stage"]
             log.exception("import job %s (profile %s, upload %s) failed while %s", jid, j["profile_id"], j["upload_id"], stage)
-            db.execute("UPDATE jobs SET state='failed', message=?, finished=? WHERE id=?",
-                       (crypto.enc(_explain(e, stage)), dbm.now(), jid))
+            db.execute("UPDATE jobs SET state='failed', message=?, finished=?, summary=? WHERE id=?",
+                       (crypto.enc(_explain(e, stage)), dbm.now(), counts_only(_summary_of(db, jid)), jid))
             _remove(preview_path(j["profile_id"], jid))
             _drop_upload(db, j["profile_id"], j["upload_id"], jid)   # nothing can start it again (#547)
     finally:
@@ -569,11 +574,33 @@ def _cancelled(db, pid, jid, who, ip, state, message=None):
     r = db.execute("SELECT * FROM jobs WHERE id=? AND profile_id=?", (jid, pid)).fetchone()
     if not r or r["state"] != state:
         return None
-    db.execute("UPDATE jobs SET state='discarded', stage=NULL, finished=?, confirmed_by=?, message=? WHERE id=?",
-               (dbm.now(), who["id"] if who else None, crypto.enc(message) if message else None, jid))
+    db.execute("UPDATE jobs SET state='discarded', stage=NULL, finished=?, confirmed_by=?, message=?, summary=? WHERE id=?",
+               (dbm.now(), who["id"] if who else None, crypto.enc(message) if message else None, counts_only(r["summary"]), jid))
     activity.log(db, "discard", who, pid, {"importer": r["importer"], "job": jid, "upload": r["upload_id"]}, ip,
                  actor=None if who else "removed account")
     return r["upload_id"], _used_elsewhere(db, r["upload_id"], jid)
+
+
+def counts_only(sealed):
+    """A job's sealed summary once it's over without an import (cancelled, or failed): how many records it held, and
+    nothing else (#591). What the review showed (sample records, lab names, possible matches, the dates it covered)
+    was for whoever chose whether to save it, and goes with the choice. None when there's nothing to keep, or it
+    can't be read."""
+    if not sealed:
+        return None
+    try:
+        was = json.loads(crypto.dec(sealed))
+    except Exception:   # unreadable: kept as nothing, never as it was
+        return None
+    counts = was.get("counts") if isinstance(was, dict) else None
+    if not isinstance(counts, dict):
+        return None
+    return sealed if was == {"counts": counts} else crypto.enc(json.dumps({"counts": counts}))   # already only that: as it is
+
+
+def _summary_of(db, jid):
+    r = db.execute("SELECT summary FROM jobs WHERE id=?", (jid,)).fetchone()
+    return r["summary"] if r else None
 
 
 def _used_elsewhere(db, upload_id, jid):
@@ -668,6 +695,8 @@ def describe(r, stamp=None, uid=None):
     on the profile (#223)."""
     mod = registry.get(r["importer"]) if r["importer"] else None
     summary = json.loads(crypto.dec(r["summary"])) if r["summary"] else {}
+    if r["state"] in ("failed", "discarded"):   # only its counts (#591), whatever an older row kept
+        summary = {"counts": summary.get("counts")}
     out = {"id": r["id"], "profile_id": r["profile_id"], "upload_id": r["upload_id"], "state": r["state"], "stage": r["stage"],
             "importer": r["importer"], "label": mod.LABEL if mod else r["importer"],
             "counts": summary.get("counts"), "samples": summary.get("samples"), "range": summary.get("range"), "total": summary.get("total"),

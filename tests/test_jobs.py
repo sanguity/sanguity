@@ -393,6 +393,64 @@ class Jobs(unittest.TestCase):
         self.assertTrue(os.path.isdir(uploads.folder(self.pid, first)))   # held by its import
         self.assertEqual(self.upload_state(first), "ready")
 
+    def test_an_import_ended_without_saving_keeps_only_its_counts(self):   # #591
+        """A review cancelled, or a save that failed, keeps only how many records it held: never the samples, lab
+        names, possible matches or dates the review showed, for anyone who opens the job afterwards, nor sealed in its
+        row; and one from before keeps only its counts once the app starts."""
+        csv = ("Date,Test,Result,Units,Reference Range,Flag,Panel,LOINC\n"
+               "2026-03-05,Fictional marker quant,40,copies/mL,<20,H,Fictional panel,\n")
+
+        def sealed(jid):
+            db = dbm.connect()
+            try:
+                s = db.execute("SELECT summary FROM jobs WHERE id=?", (jid,)).fetchone()[0]
+                return json.loads(crypto.dec(s)) if s else None
+            finally:
+                db.close()
+
+        def nothing_shown(j):
+            for k in ("samples", "labs", "lab_targets", "lab_names", "range", "duplicates", "skipped", "total", "new", "linked"):
+                self.assertIsNone(j[k], k)
+            self.assertEqual(j["possible"], [])
+            self.assertNotIn("Fictional marker", json.dumps(j))
+
+        jid = self.start(self.upload({"labs.csv": csv}))
+        j = self.wait(jid, confirm=False)
+        self.assertEqual(j["state"], "preview")
+        self.assertIn("Fictional marker", json.dumps(j))   # the review shows it, while it waits
+        counts = j["counts"]
+        self.assertEqual(self.robin.post(f"/api/profiles/{self.pid}/jobs/{jid}/discard", headers=H).status_code, 200)
+        j = self.robin.get(f"/api/profiles/{self.pid}/jobs/{jid}").json()
+        self.assertEqual((j["state"], j["counts"]), ("discarded", counts))
+        nothing_shown(j)
+        self.assertEqual(sealed(jid), {"counts": counts})
+        listed = next(x for x in self.robin.get(f"/api/profiles/{self.pid}/jobs").json() if x["id"] == jid)
+        nothing_shown(listed)
+        # a save that failed (its preview gone): the same
+        jid = self.start(self.upload({"labs.csv": csv.replace("40", "41")}))
+        self.assertEqual(self.wait(jid, confirm=False)["state"], "preview")
+        os.remove(jobs.preview_path(self.pid, jid))
+        j = self.wait(jid)
+        self.assertEqual(j["state"], "failed")
+        nothing_shown(j)
+        self.assertEqual(set(sealed(jid)), {"counts"})
+        # one cancelled before this kept everything: not shown, and only its counts once the app starts (recover)
+        db = dbm.connect()
+        try:
+            old = db.execute("INSERT INTO jobs(profile_id, upload_id, state, summary, created) VALUES(?, ?, 'discarded', ?, ?)",
+                             (self.pid, j["upload_id"], crypto.enc(json.dumps({"counts": counts, "samples": [{"name": "Fictional marker"}],
+                                                                                 "labs": [{"name": "Fictional marker quant"}]})),
+                              dbm.now())).lastrowid
+        finally:
+            db.close()
+        nothing_shown(self.robin.get(f"/api/profiles/{self.pid}/jobs/{old}").json())
+        db = dbm.connect()
+        try:
+            jobs.recover(db)
+        finally:
+            db.close()
+        self.assertEqual(sealed(old), {"counts": counts})
+
     def test_importer_override(self):
         up = self.upload({"holiday.jpg": b"\xff\xd8"})
         r = self.robin.post(f"/api/profiles/{self.pid}/uploads/{up}/import", json={"importer": "nope"}, headers=H)

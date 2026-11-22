@@ -21330,6 +21330,62 @@ def main():
             check("offline, past the sign-in's end: no records, and the copy is deleted",
                   "Records aren't available offline" in ph.inner_text("#offlineBanner") and ph.evaluate(NO_COPY))
             ctx.set_offline(False)
+            # (#591) a viewer's copy goes once the profile isn't theirs: removed by an owner (the next load hears it from
+            # "me"), and after Leave on Sharing; not kept until the sign-in ends
+            db = sg_db.connect()
+            vid591 = db.execute("INSERT INTO users(username, pw_hash, is_admin, created) VALUES('viewer591', ?, 0, ?)",
+                                (sg_sec.hash_password("a fictional viewer's long passphrase"), now)).lastrowid
+            db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, 1, 'viewer')", (vid591,))
+            token591 = sg_sec.new_token()
+            db.execute("INSERT INTO sessions(token_hash, user_id, created, last_seen, expires, ip, agent, verified_at) VALUES(?,?,?,?,?,?,?,?)",
+                       (sg_sec.token_hash(token591), vid591, now, now, now + 3600, "127.0.0.1", "browser check", now))
+            db.close()
+            vc591 = browser.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
+            vc591.add_cookies([{"name": sg_config.COOKIE, "value": token591, "url": base, "httpOnly": True, "sameSite": "Strict"}])
+            vp = vc591.new_page()
+            vp.on("pageerror", lambda e: problems.append(f"script error (viewer, #591): {e}"))
+
+            def v_until(expr, ms):
+                for _ in range(ms // 100):
+                    try:
+                        if vp.evaluate(expr):
+                            return True
+                    except Exception as e:
+                        if "context was destroyed" not in str(e) and "navigat" not in str(e):
+                            raise
+                    vp.wait_for_timeout(100)
+                return False
+
+            def v_kept():   # the viewer's records page, with its copy written
+                vp.goto(base + "/?profile=1")
+                v_until(LOADED, 20000)
+                return v_until(f"{COPY}.then(c => !!c && c.profile.id === 1)", 10000)
+
+            vp.goto(base + "/")
+            vp.evaluate("localStorage.setItem('sg-offline-records', '1')")
+            kept591 = v_kept()
+            gone591 = ph.evaluate(f"fetch('api/profiles/1/members/{vid591}', {{method: 'DELETE', headers: {{'X-Sanguity': '1'}}}}).then(r => r.status)")
+            vp.reload()
+            removed591 = v_until(NO_COPY, 10000)
+            check("offline records (#591): a viewer's copy goes once an owner removes them, at the next load (not at the sign-in's end)",
+                  kept591 and gone591 == 200 and removed591, [kept591, gone591, removed591])
+            db = sg_db.connect()
+            db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, 1, 'viewer')", (vid591,))
+            db.close()
+            kept591 = v_kept()
+            vp.goto(base + "/sharing.html?profile=1")
+            vp.wait_for_selector("#memberList button:text-is('Leave')", timeout=10000)
+            vp.locator("#memberList button", has_text="Leave").click()
+            vp.wait_for_selector("dialog.sg-ask[open]", timeout=10000)
+            vp.locator("dialog.sg-ask .sg-ask-acts button", has_text="Leave profile").click()
+            left591 = v_until(NO_COPY, 10000)
+            check("offline records (#591): …and once they Leave the profile on Sharing", kept591 and left591, [kept591, left591])
+            vc591.close()
+            db = sg_db.connect()
+            db.execute("DELETE FROM memberships WHERE user_id=?", (vid591,))
+            db.execute("DELETE FROM sessions WHERE user_id=?", (vid591,))
+            db.execute("DELETE FROM users WHERE id=?", (vid591,))
+            db.close()
             # signing out deletes the copy and the choice; the app's own files stay
             ph.goto(base + "/")
             until(LOADED, 20000)

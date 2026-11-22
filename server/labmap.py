@@ -24,7 +24,8 @@ doesn't ask again. Remembered choices are applied as soon as an import is parsed
 and to results typed in (routes_manual.py); the preview shows them as "matched as before", and changing one there
 changes that import only. They affect every profile, so only admins change or remove them (routes_labmaps.py), but
 for one way: undoing the import whose review made a choice forgets it, unless another import has been saved with it
-since or an admin has changed it (labmaps.import_id and used, schema version 36; history.undo, #500).
+since or an admin has changed it (labmaps.import_id and used, schema version 36; history.undo, #500); and deleting a
+profile forgets those its reviews made, unless another profile has been saved with one since (forget_profile, #591).
 
 The name, unit and code (source) and the target are health details, so encrypted (crypto.enc); rows are found by
 lookup, a keyed hash of the normalised identity (security.pepper_mac), never by decrypting them all.
@@ -362,6 +363,25 @@ def forgettable(db, import_id):
 def forget(db, import_id):
     """Forget them, inside the Undo's transaction, so the next import of those names asks again. Returns how many."""
     n = db.execute("DELETE " + _OWN, (import_id,)).rowcount
+    if n:
+        _changed(db)
+    return n
+
+
+# what deleting a profile forgets (#591): the choices its own reviews made, as an Undo of each of its imports would,
+# and also one another import has been saved with since, if that was only one of the profile's own (none of another
+# profile's was saved between the choice being made and its last use, imports.at; used holds the last). One an admin
+# has kept or changed is the admin's; one another profile's review made is that profile's.
+_PROFILE_OWN = """FROM labmaps WHERE changed IS NULL AND import_id IN (SELECT id FROM imports WHERE profile_id=:pid)
+                  AND (used IS NULL OR NOT EXISTS (SELECT 1 FROM imports o WHERE o.profile_id != :pid
+                                                   AND o.at BETWEEN labmaps.created AND labmaps.used))"""
+
+
+def forget_profile(db, pid):
+    """Forget the choices a profile's reviews made, inside its delete's transaction (before its imports go, which sets
+    labmaps.import_id null), so they're no longer listed on Admin with the name as reported and who confirmed it, nor
+    applied to another profile's imports. Returns how many."""
+    n = db.execute("DELETE " + _PROFILE_OWN, {"pid": pid}).rowcount
     if n:
         _changed(db)
     return n

@@ -5,7 +5,8 @@
    (js/offline.js) keeps one copy of the last profile it loaded: its records (each record's details once it was opened
    on this device, #217), settings and watch data, never documents (PDFs, pictures) and never another profile's. That copy is outside the server's encryption at rest, so it's
    deleted on sign-out, when the sign-in page is reached (a sign-in that ended), when the sign-in's own end time passes
-   (even with no connection), and when the option is turned off. The lab names picked on Labs go on sign-out and on
+   (even with no connection), when the option is turned off, and once the person no longer has the profile (#591:
+   removed from it, left it or deleted it; still(), whichever page hears it from the server). The lab names picked on Labs go on sign-out and on
    reaching the sign-in page too (#220).
 
    Why it isn't encrypted on the device: to open offline, the page needs the key without the server, so the key would
@@ -40,6 +41,13 @@ const SgOffline = (() => {
     await drop();
     return null;
   }
+  /* the copy, while its profile is among the person's (profiles: /api/me's, as the server says now); one whose
+     profile isn't is deleted (#591: removed from it, left, or deleted) */
+  async function still(profiles) {
+    const c = await load();
+    if (c && !(Array.isArray(profiles) && profiles.some(p => p && p.id === c.profile.id))) { await drop(); return null; }
+    return c;
+  }
   /* the person's own settings (theme, dates, units: settings/user, the flat {key: value} its saves answer with), into
      a copy's settings, nested as GET .../settings has them (#424); a copy without settings is left as it is */
   function withUser(copy, flat) {
@@ -65,7 +73,7 @@ const SgOffline = (() => {
     }
     return flat;
   }
-  return {base, works, on, set, save, load, drop, forget, withUser, mine};
+  return {base, works, on, set, save, load, drop, forget, still, withUser, mine};
 })();
 
 if (SgOffline.works()) navigator.serviceWorker.register(new URL("sw.js", SgOffline.base), {scope: SgOffline.base.pathname})
