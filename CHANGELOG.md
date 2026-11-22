@@ -2284,6 +2284,16 @@ Everything on `main` so far; it becomes the first tagged release.
   "its https:// name", which could refuse again; it names where its passkeys were made, a name as a link and
   localhost as "(on the computer it runs on)", and so does the server's refusal, which no longer points a page on
   another device to https://localhost.
+- **Settings and Admin: the chosen option readable in forced colours, the sidebar within a short window, toasts off
+  the sidebar, and whole toasts in the stack** (#550): the chosen option of a pick-one (Settings' theme and units,
+  About this person's sex and height unit, Backups' How often) took the account pages' look for labels, the second
+  ink at 500, and in forced colours 2.06:1 on the highlight; it's the ink at 600 as on the records pages, and the
+  highlight's own text colour. The sidebar stuck to a window shorter than itself (Admin's 419 px at 844×390), so
+  Lab name matches, focused, was below the screen; it scrolls within itself there, focus brought into view in it.
+  With no changes bar the toasts sat at the screen's left, over the sidebar's lower links; they sit in the content's
+  column, as they do with a bar, and on Sources the page now keeps what takes focus clear of them. The stack, cut at
+  its top, showed an older toast's Undo alone; it's as tall as the newest toasts that fit whole, the older scrolling
+  into it.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
