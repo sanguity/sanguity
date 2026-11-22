@@ -2339,6 +2339,14 @@ Everything on `main` so far; it becomes the first tagged release.
   panel, names and trend, the journal's severity and mood. Each line now names every column and detail its page shows.
   Procedures, whose page shows a date, kind and title, was also sent each one's clinician, status and hospital; it's
   sent only those three. A server test ties each section's sent fields to the words of its line.
+- **Share links: each section's line says what its columns hold, a reading's device and app among them** (#581): the
+  lines named each column but not all it can hold. Blood pressure's, temperature's and blood oxygen's now say each
+  reading's device and app (or "Typed in"), blood oxygen's that readings a device sent one at a time are listed with
+  their time; ECGs' the device that made each one; the medication log's a phone dose's app and the dose taken;
+  glucose's each day's count of readings and a CGM's hours worn. Visits' names a transfer to or from another hospital
+  and a stay found from inpatient results' last result; Costs' says the service or medicine a claim was for (a
+  pharmacy claim's is the medicine). A server test checks each kind of content against its line on a profile with a
+  device, an app, a transfer and a pharmacy claim, and that every measure's line says where its readings came from.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

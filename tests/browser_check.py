@@ -2671,7 +2671,7 @@ def main():
             "journal": {"kind": "notes, symptoms, side effects and moods", "when": "date and time", "note": "what it says", "severity": "severity",
                         "mood": "mood and energy", "med": "the medication an entry is linked to", "where": "where on the body",
                         "group": "the symptom group it was logged with", "pic": "the photos attached"},
-            "costs": {"Date": "date", "Service": "the service it was for", "Provider": "the provider", "Billed": "what was billed",
+            "costs": {"Date": "date", "Service": "the service or medicine it was for", "Provider": "the provider", "Billed": "what was billed",
                       "Insurance paid": "what insurance paid", "Your share": "your share"},
             "about": {"Birth date": "the birth date", "Sex used for reference ranges": "the sex labs base reference ranges on",
                       "Date": "with its date", "Height": "each height"},
@@ -2679,7 +2679,7 @@ def main():
             "glucose": {"Date": "each day", "Readings": "each reading", "Low–high": "lowest and highest", "Average": "the average",
                         "#–#": "the standard published ranges", "Below #": "the standard published ranges", "Above #": "the standard published ranges"},
             "temperature": {"Date and time": "the date and time", "Temperature": "the temperature", "Device": "the device"},
-            "oxygen": {"Date": "each day", "Readings": "each reading typed in", "Average": "average", "Lowest": "lowest"},
+            "oxygen": {"Date": "each day", "Readings": "each reading sent one at a time or typed in", "Average": "average", "Lowest": "lowest"},
             "respiratory": {"Date": "each day", "Rate": "rate"},
             "vo2max": {"Date": "its date", "VO2 max": "each estimate"},
             "immunizations": {"Date": "the date", "Vaccine": "the vaccine", "Dose": "the dose", "Where or by whom": "where or by whom"},
@@ -2688,7 +2688,7 @@ def main():
             "targets": {"Measure": "each target", "Your target": "each target", "Set by": "who set it", "Set on": "and when",
                         "In this period": "how many readings at home were above or below it"},
             "medlog": {"Date and time": "the date and time", "Medication": "the medication", "What happened": "taken, taken late or skipped",
-                       "Note": "its note", "From": "typed in or sent by a phone"},
+                       "Note": "its note", "From": "where it came from"},
         }
         strict.goto(base + "/sharing.html?profile=1#links")   # (the form opened, read and cancelled: Sharing as it was)
         strict.locator("#links .share-links button", has_text="New share link").click()
@@ -2724,6 +2724,76 @@ def main():
               "Procedures, showing a date, kind and title, is sent only those (it was sent each one's clinician and place too)",
               len(shown576) >= 8 and set(shown576) <= set(lines576) and not miss576 and sent498.get("procedures")
               and all(set(r) == {"t", "kind", "title"} for r in sent498["procedures"]), [miss576[:8], sorted(shown576), (sent498.get("procedures") or [None])[0]])
+        # #581: and what a column holds, not only its heading. A link with every section of a profile with each kind of
+        # source (a device's blood oxygen one reading at a time, an ECG's and a notification's device, a phone's dose with
+        # its app and amount, a CGM's day; stays transferred between hospitals and one told from inpatient results; a
+        # pharmacy claim, its service the medicine): each section's "Shows …" line on the page names each
+        from datetime import date as date581, timedelta as td581
+        from server import db as dbm581, medications as meds581, profiles as prof581, records as rec581
+        D581 = lambda n: (date581.today() - td581(days=n)).isoformat()
+        U581 = lambda n, h: f"{D581(n)}T{h:02d}:00:00+00:00"
+        wf581 = os.path.join(TMP, "watch581", "daily.json")
+        os.makedirs(os.path.dirname(wf581), exist_ok=True)
+        with open(wf581, "w") as f:
+            json.dump({"tz": "UTC", "exercise": [], "metrics": [
+                {"key": "spo2_avg", "unit": "%", "pts": [[D581(10), 97.2]]}, {"key": "spo2_min", "unit": "%", "pts": [[D581(10), 92.0]]},
+                *({"key": "glucose_" + k, "unit": "", "pts": [[D581(5), v]]} for k, v in (("avg", 131.0), ("min", 62.0), ("max", 212.0), ("n", 288),
+                    ("hours", 23.5), ("lt54", 0.0), ("lt70", 4.0), ("in", 78.0), ("gt180", 18.0)))],
+                "bp_readings": [[U581(9, 8), 132, 84, 68, "Fictional cuff", "Health Connect"]],
+                "spo2_readings": [[U581(4, 8), 95, "FICTIONAL-OXIMETER-X1", "Health Connect"]],
+                "ecg": [{"key": "ecg:0123456789abcdef", "type": "ecg", "start": U581(6, 10), "classification": "Sinus Rhythm", "avg_hr": 72,
+                         "device": "FICTIONAL-WATCH-DEVICE"},
+                        {"key": "rhythm:0123456789abcdee", "type": "irregular_rhythm", "start": U581(7, 3), "end": U581(7, 4), "device": "FICTIONAL-WATCH-DEVICE"}],
+                "med_doses": [[U581(5, 9), "Fictionalol 10 mg tablet", "taken", 2, "FICTIONAL-UNITS", "FICTIONAL-APP"]]}, f)
+        db581 = dbm581.connect()
+        pid581 = prof581.create_profile(db581, "Every source (fictional)", watch_file=wf581,
+                                        owner_id=db581.execute("SELECT id FROM users WHERE username=?", (USER,)).fetchone()["id"])
+        with dbm581.transaction(db581):
+            rec581.store(db581, pid581, {"events": [
+                {"id": 1, "t": D581(15) + "T00:00:00", "end": D581(12) + "T23:59:00", "k": "stay", "title": "Hospital stay · Fictional General",
+                 "sub": "Ward 5 · 3 nights · transferred to Other Fictional Hospital"},
+                {"id": 2, "t": D581(50) + "T00:00:00", "end": D581(48) + "T23:59:00", "k": "stay", "title": "Hospital stay",
+                 "sub": f"Admitted {D581(50)} · last inpatient result {D581(48)}"},
+                {"id": 3, "t": D581(25) + "T09:00:00", "k": "med", "title": "Fictionalol 10 mg tablet"}],
+                "labs": [], "details": {"3": {"instructions": "Once daily", "status": "Active"}},
+                "costs": [{"id": 4, "d": D581(25), "billed": 40.0, "paid": 30.0, "owe": 10.0, "kind": "pharmacy", "cat": "Pharmacy",
+                           "title": "Fictionalol 10 mg tablet", "prov": "Fictional Corner Pharmacy"}]}, "dataset")
+        db581.close()
+        try:
+            made581 = strict.evaluate("""async ([pid, med, t]) => { const h = {'X-Sanguity': '1', 'Content-Type': 'application/json'};
+              await fetch(`api/profiles/${pid}/medications/doses`, {method: 'POST', headers: h, body: JSON.stringify({med, t, status: 'late'})});
+              const secs = (await (await fetch(`api/profiles/${pid}/links`, {headers: h})).json()).sections.map(s => s.id);
+              return (await fetch(`api/profiles/${pid}/links`, {method: 'POST', headers: h,
+                body: JSON.stringify({sections: secs, label: 'Every source (browser check)', hours: 1})})).json(); }""",
+                [pid581, meds581.med_key("Fictionalol 10 mg tablet"), D581(4) + "T08:00"])
+            hp581 = holder.new_page()
+            hp581.goto(base + "/" + made581["path"])
+            hp581.wait_for_selector("#share-medlog tbody td", timeout=10000)
+            page581 = hp581.evaluate("""() => Object.fromEntries([...document.querySelectorAll('#shareBody > section')].map(s => [s.id.slice(6),
+              [s.querySelector('h2 + .hint')?.textContent || '', [...s.querySelectorAll(s.id === 'share-visits' ? 'tbody td:nth-child(3)'
+                : s.id === 'share-costs' ? 'tbody td:nth-child(2)' : 'tbody td')].map(td => td.textContent.trim())]]))""")
+            hp581.close()
+        finally:
+            db581 = dbm581.connect()
+            prof581.delete_profile(db581, pid581)
+            db581.close()
+        KINDS581 = [   # (section, a cell its page shows, the words of its line that name it)
+            ("home_bp", r"^Fictional cuff \(Health Connect\)$", ["the device and app that sent it"]),
+            ("oxygen", r"^FICTIONAL-OXIMETER-X1 \(Health Connect\), \d\d:\d\d$", ["sent one at a time", "its time", "the device and app that sent it"]),
+            ("glucose", r"^CGM: 288 in 23\.5 h$", ["how many readings there were", "hours worn"]),
+            ("ecg", r"^72 bpm average · FICTIONAL-WATCH-DEVICE$", ["average heart rate", "the device that made it"]),
+            ("ecg", r"^FICTIONAL-WATCH-DEVICE$", ["notification", "the device that made it"]),
+            ("medlog", r"^FICTIONAL-APP, 2 FICTIONAL-UNITS$", ["the app that sent it", "the dose taken"]),
+            ("medlog", r"^Typed in$", ["“Typed in”"]),
+            ("visits", r"transferred to Other Fictional Hospital", ["a transfer to or from another hospital"]),
+            ("visits", r"last inpatient result", ["the date of its last inpatient result"]),
+            ("costs", r"^Fictionalol 10 mg tablet$", ["the service or medicine it was for"])]
+        miss581 = [[s, rx, w, page581.get(s, ["", []])[0][:90]] for s, rx, words in KINDS581 for w in words
+                   if not any(re.search(rx, c) for c in page581.get(s, ["", []])[1]) or w not in page581[s][0]]
+        check("share links (#581): on a link with every section, each column's kinds of content are named by its section's line on the "
+              "page: a device's blood oxygen, one reading at a time, with its device and app; an ECG's and a notification's device; a "
+              "phone's dose with its app and the dose taken; a CGM day's readings and hours worn; a stay's transfer and an inferred "
+              "stay's last inpatient result; a pharmacy claim's medicine", page581 and not miss581, miss581[:8])
         # a mouse reaches each chip, the bar scrolled sideways to it where its two rows are wider than the page (#498)
         reach491 = hp.evaluate("""() => { const bar = document.getElementById('shareBar');
           const out = [...bar.querySelectorAll('.chip')].map(c => { const b = bar.getBoundingClientRect(); let r = c.getBoundingClientRect();
