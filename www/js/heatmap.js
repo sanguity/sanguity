@@ -53,7 +53,9 @@ function renderHeatmap(live) {   // live: a frame of a drag (charts.js), at the 
   // laid out in its box's own width (#476: not a floor of 320 px, which a phone's 270 px box cut the right of), 320 while
   // it isn't shown
   const avail = (live && svg._avail) || (svg._avail = svg.parentElement.clientWidth || 320);
-  const k = 1, LW = avail < 600 ? 120 : 190, top = 34 * k, rowH = 14 * k, gap = 2, GH = 16 * k;   // (k: the labels' size)
+  // its fixed sizes grow with the labels (chartkit.js ckK, #633: at 200% text the names and the axis fell outside):
+  // the names' column, kept to under half the box, the rows and the lines over them
+  const k = ckK(), LW = Math.min(Math.round((avail < 600 ? 120 : 190) * k), Math.floor(avail * .45)), top = 34 * k, rowH = 14 * k, gap = 2, GH = 16 * k;
   if (!rows.length || !cols.length) {   // a plot kept to drag back to where the draws are, and double-click (#382)
     svg.replaceChildren(el("svg:rect", {width: avail, height: 96, fill: "transparent"}),
       el("svg:text", {x: avail / 2, y: 52, "text-anchor": "middle", text: !rows.length && state.labQ ? "No lab names match the filter." : "No lab draws in this date range."}));

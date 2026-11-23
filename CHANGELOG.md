@@ -1662,6 +1662,9 @@ Everything on `main` so far; it becomes the first tagged release.
   same, as a column). Its time axis is the kit's, months over their years, each tick at the first draw on or after it.
   Where ten years leave its columns under a pixel (a phone), each row is one shape per colour, the pointer's pixel
   finding its result: a frame of a drag there is about a third of what it was, and its budget is back to 250 ms.
+- **Larger text: the Labs heatmap's labels fit** (#633): with text at 200% at 360 px its lab names and its axis
+  ("Draw date", the months) fell outside it. Its names' column, rows and the lines over them now grow with the text,
+  the names cut to fit as measured, and its labels stay inside it (WCAG 1.4.4).
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
