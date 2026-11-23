@@ -319,7 +319,8 @@ const inRange = e => e.te >= state.from && e.ts <= state.to;
 const matchQ = e => !state.q || e._q.includes(state.q);
 const visible = e => !e.hidden && state.cats.has(CAT_OF[e.k]?.k) && inRange(e) && matchQ(e);
 
-/* tooltip */
+/* a chart's readout: .sg-follow (index.html), so it goes into a modal dialog with the rest (util.js liveFollow), painted
+   over the drawer or a phone's sheet, not under it (#755: a lab panel's strip rang a point and showed no value) */
 const tip = $("#tip");
 /* beside the pointer, right and below, else left or above; kept 8 px inside the screen (#476: a phone's 270 px tip ran
    off its left), and where it fits on neither side, over the pointer's column, above or below it */

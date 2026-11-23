@@ -1797,6 +1797,15 @@ Everything on `main` so far; it becomes the first tagged release.
   too). Wherever it's over the page it's now modal, as a phone's sheet is: Tab and a screen reader stay in it, the page
   behind is dimmed and out of reach, and Escape closes it with focus back on what opened it. Docked beside the page at
   1200 px and wider, it's as before. A click on the page beside it closes it, focus back where it was opened.
+- **The drawer over the page shows a lab panel's readout, keeps what's typed in it, and charts its lab** (#755): since
+  it became modal (#725) a lab panel's strip, by hover or by the arrow keys, rang a point and showed no value, the
+  readout left under the drawer (at 768 to 1199 px, the wider panel at any width, and a phone's sheet, where it never
+  showed); it now shows over the drawer and the sheet. Selecting words in the drawer with the mouse let go past its
+  edge closed it, a half-written journal note or a new title gone with it, nothing asked, and so did a plain click
+  beside it with a note typed: a click beside it now closes it only when the press started there too, and never while
+  a form in it holds words typed and not saved (✕ and Escape still do). And the panel left out Chart these results
+  on Labs, the chart being beside it, though under the drawer it's out of reach: it's left out only where the drawer
+  is docked beside the page.
 - **The visit summary says where a flag is judged against a range from Settings, when later results have the
   report's** (#717): Folate 4 typed with no range and 5–20 in Settings, then 6 and 7 with the report's 3–17, showed
   Then "4 ▼ Low" beside the row's only range, 3–17, which 4 is inside; the chart labelled only its end's 3–17, its ▼

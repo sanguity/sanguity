@@ -47,9 +47,11 @@ function closeDrawer() {
 $("#dclose").onclick = closeDrawer;
 drawer.addEventListener("close", () => { if (drawer.classList.contains("open") && !drawer.open) closeDrawer(); });   // swiped away
 const drawerPhone = matchMedia("(max-width: 700px)");
+// docked beside the page, which stays usable; else over it, modal (app.css's widths)
+const drawerDocks = () => !drawerPhone.matches && !drawer.classList.contains("wide") && innerWidth >= 1200;
 function drawerFit() {
   if (!drawer.classList.contains("open")) return;
-  const dock = !drawerPhone.matches && !drawer.classList.contains("wide") && innerWidth >= 1200;   // app.css's widths
+  const dock = drawerDocks();
   openDialog(drawer, {as: drawerPhone.matches ? "sheet" : "side", modal: !dock});
   drawerDock(dock);
 }
@@ -145,11 +147,19 @@ addEventListener("keydown", e => {
 // modal, the browser would close it on any Escape: only that listener does, so a form in it (renaming) keeps its own
 drawer.addEventListener("cancel", e => e.preventDefault());
 // over the page (not docked, not a phone's sheet), a click on the dimmed page beside it closes it, focus back where it
-// was opened (#725: modal there, the page under it took no clicks, where it had opened the record clicked)
+// was opened (#725: modal there, the page under it took no clicks, where it had opened the record clicked). Only a
+// press that started there too, focus left where it was (#755: words in it selected with the mouse let go past its
+// edge closed it), and never while a form in it holds words typed and not saved (a journal note, a new title, which
+// would be gone, nothing asked): that click does nothing. ✕ and Escape still close it.
+const drawerBeside = e => e.target === drawer && drawer.matches(":modal") && !drawerPhone.matches
+  && (r => e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)(drawer.getBoundingClientRect());
+const drawerWords = new WeakSet();   // its fields typed in (a text box or a textarea), until drawn again
+let drawerPress = false;
+drawer.addEventListener("input", e => { if (["text", "textarea"].includes(e.target.type)) drawerWords.add(e.target); });
+drawer.addEventListener("mousedown", e => { if ((drawerPress = drawerBeside(e))) e.preventDefault(); });
 drawer.addEventListener("click", e => {
-  if (e.target !== drawer || !drawer.matches(":modal") || drawerPhone.matches) return;
-  const r = drawer.getBoundingClientRect();
-  if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) closeDrawer();
+  if (drawerPress && drawerBeside(e) && ![...drawer.querySelectorAll("input, textarea")].some(f => drawerWords.has(f) && f.value.trim())) closeDrawer();
+  drawerPress = false;
 });
 
 /* ---------------------------------------------------------------- one layout for every record (#270)
