@@ -1466,6 +1466,41 @@ NAV659_JS = r"""async () => {
   return out;
 }"""
 
+# Body and activity's controls that draw the tab again (#720): each card's Chart | Table and its options (toggle chips),
+# each pressed from the middle of the window as Enter or Space does (a click with focus on it), and pressed back. Its
+# charts are drawn a frame after the tab: keepFocus (store.js) measured them as placeholders 150 px tall, and as they
+# took their heights the control went down past the window's foot, or under the phone's tab bar. After both frames, the
+# control has focus and is wholly in sight, clear of the top bar and the tab bar (html's scroll-padding, its box read).
+# {n: presses, problems}. Async. test_performance.py reads it to check the ten years the same way
+FOCUS720_JS = r"""async () => {
+  const frames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))), out = {n: 0, problems: []};
+  const seen = e => { const r = e.getBoundingClientRect(), cs = getComputedStyle(document.documentElement);
+    return r.top >= (parseFloat(cs.scrollPaddingTop) || 0) - 1 && r.bottom <= innerHeight - (parseFloat(cs.scrollPaddingBottom) || 0) + 1; };
+  const seg = k => document.querySelector(`#view-health .view-seg[data-key="${k}"]`);
+  const chip = t => [...document.querySelectorAll('#view-health .card label.toggle')].find(l => l.textContent.trim() === t);
+  const all = [...[...document.querySelectorAll('#view-health .view-seg')].map(s => ['seg', s.dataset.key]),
+    ...[...document.querySelectorAll('#view-health .card label.toggle')].map(l => ['chip', l.textContent.trim()])];
+  for (const [k, n] of all) for (const back of ['', ', back']) {
+    const c = k === 'seg' ? seg(n)?.querySelector('button:not([aria-pressed=true])') : chip(n)?.querySelector('input');
+    if (!c) { out.problems.push(`${n}${back}: not there`); break; }
+    c.scrollIntoView({block: 'center'}); await frames();
+    c.focus(); c.click(); await frames(); await frames();
+    const a = document.activeElement, r = a.getBoundingClientRect();
+    out.n++;
+    if (!(k === 'seg' ? a.closest('.view-seg') === seg(n) && a.getAttribute('aria-pressed') === 'true' : a.closest('label') === chip(n)))
+      out.problems.push(`${n}${back}: focus on ${a === document.body ? 'the page' : a.tagName + ' ' + a.textContent.trim().slice(0, 30)}`);
+    else if (!seen(a)) out.problems.push(`${n}${back}: at ${Math.round(r.top)} to ${Math.round(r.bottom)} in a window ${innerHeight} px tall, not wholly in sight`);
+  }
+  return out;
+}"""
+# what has focus (#720): [its name, wholly in sight clear of the top bar and the tab bar, its top, its foot]
+FOCUSED720_JS = r"""() => { const a = document.activeElement, r = a.getBoundingClientRect(), cs = getComputedStyle(document.documentElement);
+  return [a === document.body ? 'the page' : `${a.tagName} ${(a.getAttribute('aria-label') || a.textContent).split(':')[0].trim().slice(0, 40)}`,
+    r.top >= (parseFloat(cs.scrollPaddingTop) || 0) - 1 && r.bottom <= innerHeight - (parseFloat(cs.scrollPaddingBottom) || 0) + 1, Math.round(r.top), Math.round(r.bottom)]; }"""
+# every chart on Body and activity, in turn, given focus in the middle of the window (#720)
+BODY_CHART720_JS = r"""i => { const s = [...document.querySelectorAll('#view-health svg[role=application]')].filter(s => s.checkVisibility())[i];
+  if (s) { s.scrollIntoView({block: 'center'}); s.focus({preventScroll: true}); } return !!s; }"""
+
 # Labs' event track (#294, event-track.js): {items: the events it marks, named: its names, folded: how many a "+N" counts,
 # marks, rows: rows of names, layers: rows under them, stuck: under the top bar, inCharts: any event, name or layer's mark
 # drawn in a chart, problems: a name past the plot, on another or with a leader through it, an event neither named nor
@@ -4636,6 +4671,53 @@ def main():
             check("…a chart with focus keeps it as it's drawn anew, on Labs, Compare (both), Body and Costs (both), at 1400→1200 and 412→360 px and with the "
                   "records loaded again (#652: it fell to the page)", len(keep652) == 18 and all(a == b and a != "the page" and a.startswith("svg") for a, b in keep652.values()),
                   {k: v for k, v in keep652.items() if v[0] != v[1]} or keep652)
+            # #720: and wholly in sight once the tab's charts are drawn, a frame after it: every chart on Body and activity,
+            # stepped to a point in the middle of the window, at 1400→1200 px, 412→360 px and with the records loaded again
+            # at 360 px with text at 200% (Heart rate, HRV, Sleep and Steps and the cards under them went below the window:
+            # keepFocus measured the charts above as placeholders). And each of its controls that draws the tab again,
+            # Chart | Table and the options, at 1400×800, 412×860 and 360×800 (FOCUS720_JS; test_performance.py the ten years)
+            far720, n720, ctl720 = {}, {}, {}
+            js("state.tables.clear(); applyPreset('2y'); switchTab('health')")
+            for how720, w0, w1, big720 in (("1400→1200 px", 1400, 1200, ""), ("412→360 px", 412, 360, ""), ("the records loaded again, 360 px, text at 200%", 360, 360,
+                                           ":root{--fs-1:23px;--fs-2:25px;--fs-3:28px;--fs-4:31px;--fs-5:36px;--fs-6:44px;--fs-7:56px} html{font-size:200%}")):
+                page.set_viewport_size({"width": w0, "height": 900})
+                js("css => { const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = css ? [s] : []; }", big720)
+                settle(500)
+                n720[how720] = 0
+                while True:
+                    if w0 != w1:
+                        page.set_viewport_size({"width": w0, "height": 900})
+                        settle(400)
+                    if not js(BODY_CHART720_JS, n720[how720]):
+                        break
+                    n720[how720] += 1
+                    page.keyboard.press("ArrowRight")
+                    settle(100)
+                    was720 = js(FOCUSED720_JS)
+                    if w0 != w1:
+                        page.set_viewport_size({"width": w1, "height": 900})
+                    else:
+                        js("api('profiles/1/data').then(r => r.json()).then(d => { storeRecords(d); return true; })")
+                    settle(600)
+                    got720 = js(FOCUSED720_JS)
+                    if not (got720[1] and got720[0] == was720[0]):
+                        far720[f"{was720[0]}, {how720}"] = [was720[2:], got720]
+                    page.keyboard.press("Escape")
+            js("document.adoptedStyleSheets = []")
+            for w, h in ((1400, 800), (412, 860), (360, 800)):
+                page.set_viewport_size({"width": w, "height": h})
+                settle(400)
+                got720 = js(FOCUS720_JS)
+                ctl720[f"{w}×{h}"] = got720["n"]
+                if got720["problems"]:
+                    far720[f"{w}×{h}"] = got720["problems"]
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("state.tables.clear(); applyPreset('all'); switchTab('labs', 'chart')")
+            settle(300)
+            check("…and wholly in sight once Body and activity's charts are drawn, a frame after it (#720): every chart there, at 1400→1200 and 412→360 px and "
+                  "with the records loaded again at 360 px with text at 200%; and each of its controls that draws the tab again, Chart | Table and the options, "
+                  "pressed and pressed back at 1400×800, 412×860 and 360×800",
+                  not far720 and all(v >= 12 for v in n720.values()) and all(v >= 20 for v in ctl720.values()), far720 or [n720, ctl720])
             # #300: the heatmap on the kit. Each row's count of results outside their range, at its end, is its ▲s and ▼s
             # and the table's; a panel with one row is in Other; the hint says the columns are draw days, not even time
             hm300 = js("""(() => { const t = document.querySelector('#hmTable table'), rows = [...t.querySelectorAll('tbody tr:not(.grp)')];

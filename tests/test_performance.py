@@ -679,6 +679,51 @@ class PageBudgets(unittest.TestCase):
         for per, g in got.items():
             self.assertTrue(not g["problems"] and len(g["charts"]) >= 9 and "Body fat" in dict(g["charts"]), (per, g))
 
+    def test_body_focus(self):
+        """Body and activity on the ten years, with All, as it's drawn again (#720): each control that draws it again
+        (Chart | Table, the options), pressed and pressed back at 1400×800, 412×860 and 360×800, keeps focus wholly in
+        sight once the charts are drawn a frame later (browser_check.py's FOCUS720_JS: it checks the demo the same way);
+        and so does every chart given focus, at 1400→1200 px and with the records loaded again. Heart rate's and the
+        glucose option went down out of sight, the charts above them placeholders when keepFocus looked"""
+        from playwright.sync_api import sync_playwright
+        focus_js, focused_js, chart_js = browser_check_js("FOCUS720_JS", "FOCUSED720_JS", "BODY_CHART720_JS")
+        errors, bad, n = [], {}, {}
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = records_page(browser, errors, "health")
+            page.evaluate("() => applyPreset('all')")
+            for w, h in ((1400, 800), (412, 860), (360, 800)):
+                page.set_viewport_size({"width": w, "height": h})
+                page.wait_for_timeout(500)
+                got = page.evaluate(focus_js)
+                n[f"{w}×{h}"] = got["n"]
+                if got["problems"]:
+                    bad[f"{w}×{h}"] = got["problems"]
+            for how in ("1400→1200 px", "the records loaded again"):
+                n[how] = 0
+                while True:
+                    page.set_viewport_size({"width": 1400, "height": 900})
+                    page.wait_for_timeout(500)
+                    if not page.evaluate(chart_js, n[how]):
+                        break
+                    n[how] += 1
+                    page.keyboard.press("ArrowRight")
+                    page.wait_for_timeout(100)
+                    was = page.evaluate(focused_js)
+                    if how.startswith("1400"):
+                        page.set_viewport_size({"width": 1200, "height": 900})
+                    else:
+                        page.evaluate("() => api('profiles/1/data').then(r => r.json()).then(d => { storeRecords(d); return true; })")
+                    page.wait_for_timeout(800)
+                    got = page.evaluate(focused_js)
+                    if not (got[1] and got[0] == was[0]):
+                        bad[f"{was[0]}, {how}"] = [was[2:], got]
+                    page.keyboard.press("Escape")
+            browser.close()
+        measure("body_focus", n)
+        self.assertEqual(errors, [])
+        self.assertTrue(not bad and all(v >= 9 for v in n.values()), bad or n)
+
     def test_share_page(self):
         """a share link with every section the big profile offers, of any date (#491): at 1400 px its page is within
         share_page_px, each long table (2,000 claims, 1,000 readings a home measure) showing its latest 20 and saying

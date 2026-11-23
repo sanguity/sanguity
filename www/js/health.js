@@ -27,7 +27,7 @@ function hTable(key, heads, rows) {
   const n = Math.max(H_PAGE, hShown[key] || 0);
   return [chartTable(heads, rows.slice(0, n)), rows.length > n ? el("button", {class: "btn h-more", type: "button", text: `Show ${Math.min(H_PAGE, rows.length - n).toLocaleString("en-US")} more`,
     onclick: () => { hShown[key] = n + H_PAGE; renderHealth();
-      const r = $(`${key} tbody`)?.rows[n]; if (r) { r.tabIndex = -1; r.focus(); } }}) : null].filter(Boolean);   // the first one added
+      const r = $(`${key} tbody`)?.rows[n]; if (r) { r.tabIndex = -1; r.focus(); keepSight(r, r.getBoundingClientRect().top); } }}) : null].filter(Boolean);   // the first one added, in sight once the charts are drawn (#720)
 }
 function openHealth(a, b) { closeDrawer(); state.from = a; state.to = b; state.preset = "custom"; pickTab("health"); }
 function hData() {
@@ -1231,8 +1231,9 @@ function growthCard(box, head) {
   if (!sets.includes(grState.set)) grState.set = D.meas.at(-1).set;
   const set = grState.set;
   if (sets.length > 1) card.append(el("div", {class: "seg wrap growth-set", role: "group", "aria-label": "Growth charts for"},
-    ...sets.map(s => el("button", {type: "button", "aria-pressed": s === set, text: G_SET[s][0], onclick: () => {
-      if (grState.set === s) return; grState.set = s; hideTip(); renderHealth(); $("#h-growth .growth-set [aria-pressed=true]")?.focus(); }}))));
+    ...sets.map(s => el("button", {type: "button", "aria-pressed": s === set, text: G_SET[s][0], onclick: ev => {
+      if (grState.set === s) return; const top = ev.currentTarget.getBoundingClientRect().top; grState.set = s; hideTip(); renderHealth();
+      const b = $("#h-growth .growth-set [aria-pressed=true]"); if (b) { b.focus(); keepSight(b, top); } }}))));   // in sight once the charts are drawn (#720)
   else card.append(el("p", {class: "growth-one", text: `${G_SET[set][0].replace(/ \(.*/, "")}: ${G_SET[set][1]}`}));
   const keys = set === "who" ? ["weight", "height", "head"] : ["weight", "height", "bmi"];
   const grid = el("div", {class: "growth-grid"});
