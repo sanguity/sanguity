@@ -125,10 +125,10 @@ panZoom($("#hmWrap"), {...mainWindow,
 // the Timeline (#631): its lanes drawn again once a frame, and the overview strip's window with them; its list once let go
 panZoom(tlSvg, {...mainWindow, plot: () => tlSvg._geom ? tlSvg : null, span: svgSpan, data: () => [state.min, Math.max(state.max, state.last)],
   draw: () => { renderTimeline(true); stripDraw(); }, end: () => renderAll()});
-// Body and activity: all its charts share the records bar's period too ("All" there is the watch and scale data's span)
+// Body and activity: all its charts share the records bar's period too ("All" there is the span of what it draws, health.js hSpan)
 panZoom($("#view-health"), {...mainWindow, minSpan: 3 * DAY,
   plot: ev => { const s = ev.target.closest?.("svg"); return s && s._draw && s._geom ? s : null; }, span: svgSpan,
-  get: () => hRange(), data: () => WATCH ? (H = H || hData(), [H.first, H.last]) : null,
+  get: () => hRange(), data: () => WATCH ? hSpan() : null,
   draw: () => { const [a, b] = hRange(); $("#view-health").querySelectorAll("svg").forEach(s => s._draw && s._draw(a, b, true)); stripDraw(); },
   end: () => { renderFilters(); renderHealth(); save(); }});
 /* ---- the overview strip (#295): under the period bar on Labs, Body and activity and the Timeline (on a phone, in the
@@ -142,7 +142,7 @@ const strip = $("#strip"), stripSvg = strip.querySelector("svg"), stripIn = [...
 let stripAt = null, stripMemo = null, stripRaf = 0;   // the strip as last drawn: its scale, bins and window
 // (Labs': each result its charts hold, not each report, #656)
 const stripItems = tab => tab === "timeline" ? EV.filter(e => !e.hidden).map(e => [e.ts, 1]) : SERIES.filter(s => !s.watch === (tab === "labs")).flatMap(s => s.pts.map(p => [p.ts, 1]));
-const stripWin = () => state.tab === "health" ? hRange() : [state.from, state.to];   // Body's All: the phone's data's span (health.js)
+const stripWin = () => state.tab === "health" ? hRange() : [state.from, state.to];   // Body's All: the span of what it draws (health.js)
 // a stretch in words: "March 2025", "Week of Mar 3, 2025", "Jan ’25 – Mar ’25"
 function stripStretch({edges, step: [n, u]}, i) {
   const t = edges[i];

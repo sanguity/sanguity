@@ -663,9 +663,10 @@ class PageBudgets(unittest.TestCase):
         """Body and activity's charts on the ten years against their tables (#659): each chart's name counts as many
         readings as its table lists, from the same first one, and Home, the right arrow and End reach every one, at 90
         days and All (browser_check.py's NAV659_JS: it checks the demo the same way). Body fat's and lean mass's took
-        their 14-day averages' points: 1,624 of 1,633 readings, 9 out of reach"""
+        their 14-day averages' points: 1,624 of 1,633 readings, 9 out of reach. A chart of weeks counts its weeks and
+        the readings its table lists (#721); and All holds every row and tile count 2 years does (ALL721_JS)"""
         from playwright.sync_api import sync_playwright
-        nav_js, = browser_check_js("NAV659_JS")
+        nav_js, all_js = browser_check_js("NAV659_JS", "ALL721_JS")
         errors, got = [], {}
         with sync_playwright() as p:
             browser = p.chromium.launch()
@@ -673,11 +674,14 @@ class PageBudgets(unittest.TestCase):
             for per in ("90d", "all"):
                 page.evaluate("p => applyPreset(p)", per)
                 got[per] = page.evaluate(nav_js)
+            all721 = page.evaluate(all_js)
             browser.close()
         measure("body_readings", {k: dict(v["charts"]) for k, v in got.items()})
+        measure("body_all_rows", all721["rows"])
         self.assertEqual(errors, [])
         for per, g in got.items():
             self.assertTrue(not g["problems"] and len(g["charts"]) >= 9 and "Body fat" in dict(g["charts"]), (per, g))
+        self.assertTrue(not all721["problems"] and len(all721["rows"]) >= 8, all721)
 
     def test_body_focus(self):
         """Body and activity on the ten years, with All, as it's drawn again (#720): each control that draws it again
