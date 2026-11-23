@@ -8689,27 +8689,61 @@ def main():
             check("milestones and cursors (#334): no chart mark, label, milestone or cursor on the Timeline, Labs or Body and activity is in the accent, in light and dark",
                   not accented and all(r > 0 and l > 0 for r, l, _ in seen.values()) and seen["labs"][2] > 0 and seen["health"][2] > 0,
                   accented[:8] or seen)
-            # …and in forced colours with the app's theme the opposite of the system's, milestones and cursors are in system
-            # colours (#341): forced colours don't reach SVG strokes and fills, so the tokens would show, faint
-            theme341 = js("document.documentElement.dataset.theme || null")
-            js("document.documentElement.dataset.theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'light' : 'dark'; switchTab('labs', 'chart')")
-            page.emulate_media(forced_colors="active")
-            settle(400)
-            fc = js("""(() => { const probe = c => { const s = document.createElement('span'); s.style.forcedColorAdjust = 'none'; s.style.color = c;
-                  document.body.append(s); const v = getComputedStyle(s).color; s.remove(); return v; };
-                const uniq = (q, p) => [...new Set([...document.querySelectorAll(q)].map(m => getComputedStyle(m)[p]))];
-                return {text: probe('CanvasText'), hi: probe('Highlight'), rules: uniq('#charts .msmark', 'stroke'),
-                        labels: uniq('#charts .mslabel', 'fill'), cursors: uniq('#charts .cross', 'stroke'),
-                        events: uniq('#charts .evlabel', 'fill'), axis: uniq('#charts svg text:not([class])', 'fill'),
-                        flags: uniq('#charts :is(.msflag, .evlead)', 'stroke'), heads: uniq('#charts .msflag-head', 'fill')}; })()""")
-            page.emulate_media(forced_colors="none")
-            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme341)
+            # …and in forced colours with the app's theme the opposite of the system's, both ways (the system dark and the
+            # app light, the system light and the app dark, #657), milestones and cursors are in system colours (#341):
+            # forced colours don't reach SVG strokes and fills, so the tokens would show, faint. And every chart's text is
+            # CanvasText on Canvas, its halo (if any) Canvas: Labs' charts (#346), and since #657 the event track, the strip,
+            # the heatmap and its sticky axis, Compare, Costs' two charts, the Timeline and its lanes and the Medications tab
+            # (the heatmap's names, the running totals' ends, the medications' names and Compare's were the light theme's
+            # ink on black, about 2.3:1 and 1.2:1, and the heatmap's axis a white bar under white text)
+            was657 = js("[document.documentElement.dataset.theme || null, matchMedia('(prefers-color-scheme: dark)').matches, state.tab, state.labsView, costState.view, state.marks]")
+            FC657 = r"""sel => { const probe = c => { const s = document.createElement('span'); s.style.forcedColorAdjust = 'none'; s.style.color = c;
+                document.body.append(s); const v = getComputedStyle(s).color; s.remove(); return v; };
+              const canvas = probe('Canvas'), text = probe('CanvasText'), out = {n: 0, bad: []};
+              const under = t => { for (let e = t.closest('svg'); e; e = e.parentElement) { const b = getComputedStyle(e).backgroundColor;
+                if (!/^(transparent|rgba\(.*, 0\))$/.test(b)) return b; } return canvas; };   // the first background behind it that shows
+              for (const t of document.querySelectorAll(sel)) {
+                if (!t.checkVisibility() || !t.textContent.trim()) continue;
+                const c = getComputedStyle(t), bg = under(t); out.n++;
+                if (c.fill !== text || bg !== canvas || ![canvas, 'none'].includes(c.stroke))
+                  out.bad.push(`${t.getAttribute('class') || 'text'} “${t.textContent.slice(0, 20)}”: ${c.fill} on ${bg}${c.stroke === 'none' ? '' : ', halo ' + c.stroke}`);
+              }
+              out.bad = [...new Set(out.bad)].slice(0, 6); return out; }"""
+            AREAS657 = [("Labs' charts, the event track and the strip", "state.marks = true; switchTab('labs', 'chart')", "#view-labs svg text, #strip svg text"),
+                        ("the heatmap and its axis", "switchTab('labs', 'heatmap')", "#view-labs svg text, #strip svg text"),
+                        ("Compare", "switchTab('labs', 'compare')", "#view-labs svg text"),
+                        ("Costs' claims", "costState.view = 'claims'; switchTab('costs')", "#view-costs svg text"),
+                        ("Costs' running totals", "costState.view = 'paid'; switchTab('costs')", "#view-costs svg text"),
+                        ("the Timeline", "switchTab('timeline')", "#view-timeline svg text, #strip svg text"),
+                        ("the Medications tab", "switchTab('medications')", "#view-medications svg text")]
+            fcs, text657 = {}, {}
+            for system in ("dark", "light"):
+                page.emulate_media(color_scheme=system, forced_colors="active")
+                js("t => { document.documentElement.dataset.theme = t; state.marks = true; switchTab('labs', 'chart'); }", "light" if system == "dark" else "dark")
+                settle(400)
+                fcs[system] = js("""(() => { const probe = c => { const s = document.createElement('span'); s.style.forcedColorAdjust = 'none'; s.style.color = c;
+                      document.body.append(s); const v = getComputedStyle(s).color; s.remove(); return v; };
+                    const uniq = (q, p) => [...new Set([...document.querySelectorAll(q)].map(m => getComputedStyle(m)[p]))];
+                    return {text: probe('CanvasText'), hi: probe('Highlight'), rules: uniq('#charts .msmark', 'stroke'),
+                            labels: uniq('#charts .mslabel', 'fill'), cursors: uniq('#charts .cross', 'stroke'),
+                            events: uniq('#charts .evlabel', 'fill'), axis: uniq('#charts svg text:not([class])', 'fill'),
+                            flags: uniq('#charts :is(.msflag, .evlead)', 'stroke'), heads: uniq('#charts .msflag-head', 'fill')}; })()""")
+                for area, go, sel in AREAS657:
+                    js(go)
+                    settle(400)
+                    text657[f"the system {system}, the app {'light' if system == 'dark' else 'dark'}: {area}"] = js(FC657, sel)
+            page.emulate_media(forced_colors="none", color_scheme="dark" if was657[1] else "light")
+            js("""([t, , tab, view, cost, marks]) => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+              costState.view = cost; state.marks = marks; switchTab(tab, tab === 'labs' ? view : undefined); }""", was657)
             settle(200)
-            check("…and in forced colours, against a contrast theme opposite to the app's, milestones are CanvasText and cursors Highlight (#341), "
-                  "and so are event labels and axis text (#346), and the event track's flags and leaders (#294)",
-                  fc["rules"] == [fc["text"]] and fc["labels"] == [fc["text"]] and fc["cursors"] == [fc["hi"]]
-                  and fc["events"] in ([], [fc["text"]]) and fc["axis"] == [fc["text"]]
-                  and fc["flags"] == [fc["text"]] and fc["heads"] == [fc["text"]], fc)
+            check("…and in forced colours, against a contrast theme opposite to the app's both ways (#657), milestones are CanvasText and cursors "
+                  "Highlight (#341), and so are event labels and axis text (#346), and the event track's flags and leaders (#294)",
+                  all(fc["rules"] == [fc["text"]] and fc["labels"] == [fc["text"]] and fc["cursors"] == [fc["hi"]]
+                      and fc["events"] in ([], [fc["text"]]) and fc["axis"] == [fc["text"]]
+                      and fc["flags"] == [fc["text"]] and fc["heads"] == [fc["text"]] for fc in fcs.values()), fcs)
+            check("…and there every chart's text is CanvasText on Canvas, both ways (#346, #657): Labs' charts, the event track, the strip, the "
+                  "heatmap's names and its sticky axis, Compare, Costs' claims and running totals, the Timeline's lanes and the Medications tab",
+                  all(v["n"] > 0 and not v["bad"] for v in text657.values()), {k: v for k, v in text657.items() if not v["n"] or v["bad"]})
             # their labels (#312): at 1400, 375 and 320 px each one on the Timeline and Body and activity is inside its plot
             # with no mark on it; one shortened to fit ends in "…" and keeps the full names in its title; a Body and
             # activity chart's aria-label names them (Labs names them on its event track, #294: TRACK_JS). Body names them

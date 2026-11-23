@@ -1709,6 +1709,11 @@ Everything on `main` so far; it becomes the first tagged release.
   sent each day's count from the phone in "Your targets for home readings", whose line on the share form named only
   readings at home. The line now names the days of steps counted by the phone, as the visit summary's targets block
   does, and the Lab results line no longer ends "(#302)".
+- **Chart labels readable in forced colours against the opposite theme** (#657): with the system on a dark contrast
+  theme and the app on light (or the reverse), the Labs heatmap's lab and panel names, Costs' running totals' end
+  labels, the medication names on the Timeline and the Medications tab, and Compare's names kept the app's ink, about
+  2.3:1 or less against the system's background, and the heatmap's date axis kept the app's background under the
+  system's text, a blank bar. They're in the system's text colour on its background now, both ways.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
