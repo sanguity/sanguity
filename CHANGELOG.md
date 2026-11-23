@@ -1752,6 +1752,10 @@ Everything on `main` so far; it becomes the first tagged release.
   the row's end (one picked there is named on More…). And on a phone a scroll that started on the strip beside its
   window moved the period there: the window now goes where it's pressed as it's let go or dragged, and a scroll the
   browser takes leaves the period as it was.
+- **A phone's period pill fits the screen** (#658): it never shrank, so a long milestone's name ("Since end of
+  treatment" with 200% text, or a name over about 30 characters as usual) made the page wider than the screen, its
+  caret off it and the tab bar's last tabs with it. The pill now shrinks to its row, its words wrapping to two lines
+  and then cut with "…", its name the whole period (WCAG 1.4.10).
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

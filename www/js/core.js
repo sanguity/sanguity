@@ -161,7 +161,7 @@ function renderPeriod(fit = true) {
   $("#dates").hidden = p !== "custom" && !PHONE.matches;   // in the phone's sheet they're always there
   $("#periodReset").hidden = p !== "custom";
   // on a phone (#269): the pill names the period, and its sheet lists every one
-  pill.replaceChildren(el("span", {class: "vh", text: "Period: "}), pm ? "Since " + lcLabel(pm.label) : periodWords(),
+  pill.replaceChildren(el("span", {class: "vh", text: "Period: "}), el("span", {class: "pill-l", text: pm ? "Since " + lcLabel(pm.label) : periodWords()}),   // (its name, whole however it's cut, #658)
     el("span", {class: "menu-caret", "aria-hidden": "true"}, icon("chevron-down")));
   pillList.replaceChildren(...present(
     ...PRESETS.map(([k]) => item(k, k === "all" ? "Everything on file" : PRESET_TEXT[k].replace(/^the l/, "L"))),
