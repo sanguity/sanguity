@@ -5173,6 +5173,37 @@ def main():
                   "steps stay), the line under the chart naming the kinds chosen with nothing (#300)",
                   "Labs" in q300["lanes"] and len(q300["lanes"]) < len(tl300["lanes"]) and not set(q300["lanes"]) & set(want_q) and q300["n"] == q300["want"] > 0
                   and want_q and q300["none"] == f"Nothing in these dates: {', '.join(want_q)}.", [q300, want_q])
+            # ---- the Timeline's drag through panZoom (#631): while it's dragged the lanes and the overview strip's window
+            # move each frame, the list waiting until it's let go; a wheel zooms around the pointer; a double-click is All
+            js("applyPreset('1y'); scrollTo(0, 0)")
+            settle(800)
+            WIN631 = "() => { const w = document.querySelector('#strip .sb-win'); return [state.from, state.to, w && +w.getAttribute('x'), tlList && tlList.key, document.querySelector('#tl text:not([class])')?.getAttribute('x')]; }"
+            b631 = js(WIN631)
+            box631 = page.locator("#tl").bounding_box()
+            y631 = box631["y"] + box631["height"] - 8   # on its axis, clear of any mark
+            page.mouse.move(box631["x"] + box631["width"] / 2, y631)
+            page.mouse.down()
+            page.mouse.move(box631["x"] + box631["width"] / 2 + 160, y631, steps=8)
+            settle(100)
+            mid631 = js(WIN631)
+            page.mouse.up()
+            settle(500)
+            end631 = js(WIN631)
+            page.mouse.move(box631["x"] + box631["width"] / 2, y631)
+            page.mouse.wheel(0, -300)
+            settle(600)
+            zoom631 = js("[state.to - state.from, state.preset]")
+            box631 = page.locator("#tl").bounding_box()   # (its lanes, those with something in the dates zoomed to)
+            page.mouse.dblclick(box631["x"] + box631["width"] / 2, box631["y"] + box631["height"] - 8)
+            settle(400)
+            all631 = js("state.preset")
+            check("Timeline dragged (#631, through panZoom): mid-gesture its period earlier, its lanes and the strip's window moved, the list not yet "
+                  "drawn again; let go, the list follows; a wheel zooms in, a double-click shows All",
+                  mid631[0] < b631[0] - 20 * 864e5 and mid631[2] < b631[2] and mid631[4] != b631[4] and mid631[3] == b631[3]
+                  and end631[3] != b631[3] and abs(end631[0] - mid631[0]) < 864e5 * 40 and zoom631[0] < b631[1] - b631[0] - 864e5 and zoom631[1] == "custom" and all631 == "all",
+                  [b631, mid631, end631, zoom631, all631])
+            js("w => { [state.preset, state.from, state.to] = w; renderAll(); }", was300)
+            settle(300)
             # ---- the Events list (#277): grouped by day under month headings, a day's date once (its number over its
             # weekday) and each row's whole date for screen readers; the kind small beside the title; workouts left out of it
             # (their lane stays), said in the line over the list and listed with List workouts, a day's several folded into one

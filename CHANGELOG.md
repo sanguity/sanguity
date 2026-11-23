@@ -1681,6 +1681,10 @@ Everything on `main` so far; it becomes the first tagged release.
   day out of range, draws no lane for a kind with nothing in the dates (a line under the chart names them), and names
   its milestones once over the lanes with a faint line at each, as Labs and Body do. Ten years on the Timeline went
   from 10,903 elements to 5,551. The Medications tab's lane uses the same axis.
+- **The Timeline's drag moves the overview strip as it goes** (#631): dragging, pinching or scrolling the Timeline
+  moved the strip's window only when the gesture ended, and redrew ten years at about 20 frames a second. It now moves
+  through the same code as Labs and Body (with their rubber band at the records' ends), the lanes and the strip's
+  window following each frame (17 ms on ten years) and the list once it's let go.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
