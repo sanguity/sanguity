@@ -232,7 +232,8 @@ button.tile{cursor:pointer}
 .tile>svg:not(.icon):last-child{margin-top:auto}
 .tile>:has(+svg:last-child){margin-bottom:var(--sp-1)}
 .tile-tq{display:grid;grid-template-columns:minmax(0,1fr) auto}
-.tile-tq>.tile{border:0;background:none;padding-right:2px}
+.tile-tq>.tile{border:0;background:none;padding-right:2px;grid-template-columns:minmax(0,1fr)}
+.tile-tq .lbl>:first-child{overflow-wrap:anywhere}   /* with larger text, the name in the tile's room (not the value's, wider), a word too long for it broken: never under the ? (#655) */
 .tile-tq>.test-page{align-self:start;margin:var(--sp-2) var(--sp-2) 0 0}
 :is(.tiles,.stats)>:is(.tile,.tile-tq){grid-row:span 5;display:grid;grid-template-rows:subgrid;row-gap:0;margin-bottom:var(--sp-3)}
 :is(.tiles,.stats) .tile-tq>.tile{grid-area:1 / 1 / -1;display:grid;grid-template-rows:subgrid;row-gap:0}

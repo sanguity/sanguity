@@ -5802,6 +5802,15 @@ def main():
             lab_row = js("[...document.querySelectorAll('#h-glucose > .tablewrap table.data tbody tr')].map(r => [...r.cells].map(c => c.textContent)).find(r => r[0] === 'Nov 3, 2026')")
             check("…lab glucose stays a lab series, drawn alongside only when asked (remembered), its result said high in the table",
                   off == [True, 0] and on[0] == 2 and on[1] and on[2] == '{"labs":true}' and lab_row and lab_row[-1] == "104 (Glucose, Fasting) ▲ High", [off, on, lab_row])
+            # #655: Space on it draws the tab again with focus kept on it, off and on (it fell to the top of the page)
+            page.focus("#h-glucose .toggle input")
+            foc655 = []
+            for _ in range(2):
+                page.keyboard.press("Space")
+                settle(300)
+                foc655.append(js("(a => [a.matches('#h-glucose .toggle input'), a.closest('label')?.textContent, gOpt.labs])(document.activeElement)"))
+            check("…Space on its option keeps focus there, off and on again (#655)",
+                  foc655 == [[True, "Show lab glucose results alongside", False], [True, "Show lab glucose results alongside", True]], foc655)
             bad, serious = [], []
             for width in (1400, 375):
                 page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
@@ -6396,6 +6405,13 @@ def main():
             page.click("#h-body .view-seg button:text-is('Chart')")
             health195()
             check("…the choice is remembered for this profile", js("hState.bmiWho") and js("document.getElementById('bmiWho').checked"))
+            page.focus("#bmiWho")   # #655: Space draws the tab again with focus kept on the option (it fell to the top of the page)
+            foc655 = []
+            for _ in range(2):
+                page.keyboard.press("Space")
+                settle(300)
+                foc655.append(js("[document.activeElement.id, hState.bmiWho]"))
+            check("…Space on its option keeps focus there, off and on again (#655)", foc655 == [["bmiWho", False], ["bmiWho", True]], foc655)
             bad, axe195 = [], []
             theme_before = js("document.documentElement.dataset.theme || null")
             for width in (1400, 375):
@@ -11167,6 +11183,37 @@ def main():
             check("With text at 200% at 360 and 412 px, light and dark, and at the usual size (#303, #622, 1.4.4): the glucose card's 24-hour profile "
                   "and its days' chart keep every label inside, none over another; the profile's hours fewer with the larger text",
                   not bad303 and all(hours303[f"{w} {m} 200%"] < hours303[f"{w} {m}"] for w in (360, 412) for m in ("light", "dark")), [bad303, hours303])
+            # ---- #655: #622's check for the workouts' calendar on Steps and workouts, at 360 and 412 px, light and dark, with
+            # text at 200% and as usual, in 90 days and All: its months' and days' names inside it, none over another, a month
+            # named at least, and every day's square inside it too (All's 87 weeks ran past its right edge on a phone)
+            CAL655 = r"""() => { const s = document.querySelector('#h-activity svg:not(.ck):not(.icon)'), out = [];
+              if (!s?.checkVisibility()) return ['no calendar'];
+              const R = s.getBoundingClientRect(), days = [...s.querySelectorAll('rect')], months = [...s.querySelectorAll('text')].filter(t => !/^(Mon|Wed|Fri)$/.test(t.textContent));
+              const past = days.filter(d => { const b = d.getBoundingClientRect(); return b.left < R.left - .5 || b.right > R.right + .5 || b.top < R.top - .5 || b.bottom > R.bottom + .5; }).length;
+              if (past) out.push(`${past} of ${days.length} days outside it`);
+              if (!months.length) out.push('no month named');
+              return out; }"""
+            was655 = js("[state.preset, state.from, state.to, document.documentElement.dataset.theme || null]")
+            js("state.tables.clear(); switchTab('health')")
+            bad655 = {}
+            for w in (360, 412):
+                page.set_viewport_size({"width": w, "height": 800})
+                for mode in ("light", "dark"):
+                    for big in (False, True):
+                        for per in ("90d", "all"):
+                            js("([t, css, p]) => { document.documentElement.dataset.theme = t; const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = css ? [s] : []; applyPreset(p); }",
+                               [mode, BIG622 if big else "", per])
+                            settle(400)
+                            got = js(L633, "#h-activity svg:not(.ck):not(.icon)") + js(CAL655)
+                            if got:
+                                bad655[f"{w} {mode} {per}{' 200%' if big else ''}"] = got[:8]
+                            if big and per == "all" and os.environ.get("SANGUITY_SHOTS"):
+                                page.locator("#h-activity svg:not(.ck):not(.icon)").screenshot(path=os.path.join(os.environ["SANGUITY_SHOTS"], f"655-workouts-{w}-{mode}-200.png"))
+            js("w => { document.adoptedStyleSheets = []; [state.preset, state.from, state.to] = w; if (w[3]) document.documentElement.dataset.theme = w[3]; else delete document.documentElement.dataset.theme; renderHealth(); }", was655)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(300)
+            check("…and the workouts' calendar's (#655, #622): at 360 and 412 px, light and dark, as usual and with text at 200%, in 90 days and All, "
+                  "its months' and days' names inside it, none over another, and every day inside it", not bad655, bad655)
             page.set_viewport_size({"width": 1400, "height": 900})
             open_tab("overview")
             settle(300)
@@ -11344,6 +11391,32 @@ def main():
                   and not tp_bad(js(TP_LINKS, "#view-overview a.test-page"), "Overview"), ov_tp)
             went = js(follow, "#view-overview .tile-tq a.test-page")
             check("…following it stays on the Overview (the tile's own click isn't made)", went and js("state.tab") == "overview", [went, js("state.tab")])
+            # #655: with larger text on a phone, 150% and 200% (the font tokens and the page's size) at 360 and 412 px, no key
+            # lab's name runs under its ? or out of its tile: a word too long for its room breaks (at 200% "Lymphocytes"
+            # and five others ran under it)
+            TQ655 = r"""() => { const out = [];
+              for (const q of document.querySelectorAll('#view-overview .tile-tq > .test-page')) {
+                const t = q.previousElementSibling, n = t.querySelector('.lbl > span'), r = document.createRange();
+                r.selectNodeContents(n);
+                const a = [...r.getClientRects()], b = q.getBoundingClientRect(), T = t.getBoundingClientRect();
+                if (a.some(x => x.right > b.left + 1 && x.left < b.right - 1 && x.bottom > b.top + 1 && x.top < b.bottom - 1)) out.push(n.textContent + ' under its ?');
+                if (a.some(x => x.left < T.left - 1 || x.right > T.right + 1)) out.push(n.textContent + ' out of its tile');
+              }
+              return {out, n: document.querySelectorAll('#view-overview .tile-tq').length}; }"""
+            fs655, bad655 = [11.5, 12.5, 14, 15.5, 18, 22, 28], {}
+            for w in (360, 412):
+                page.set_viewport_size({"width": w, "height": 800})
+                for k in (1.5, 2):
+                    js("css => { const t = new CSSStyleSheet(); t.replaceSync(css); document.adoptedStyleSheets = [t]; renderAll(); }",
+                       ":root{" + ";".join(f"--fs-{i + 1}:{f * k:g}px" for i, f in enumerate(fs655)) + f"}} html{{font-size:{k * 100:g}%}}")
+                    settle(400)
+                    got = js(TQ655)
+                    if got["out"] or got["n"] < 3:
+                        bad655[f"{w} {k:.0%}"] = got
+            js("document.adoptedStyleSheets = []; renderAll()")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(300)
+            check("…with text at 150% and 200% at 360 and 412 px no key lab's name runs under its ? or out of its tile (#655)", not bad655, bad655)
             js("openEvent(EV.filter(e => e.k === 'lab' && DATA.details[e.id]).pop())")
             settle(400)
             dr = js(TP_LINKS, "#dbody table.data a.test-page")
