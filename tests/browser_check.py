@@ -1322,7 +1322,7 @@ def focus_walk(page, label, back=False, stops=60):
 CHART_LABELS_JS = r"""sel => {
   const out = {charts: [], ev: 0, problems: []};
   for (const svg of document.querySelectorAll(sel)) {
-    const g = svg._geom || (svg.id === 'tl' ? tlScale(svg.viewBox.baseVal.width) : null);
+    const g = svg._geom;
     if (!g || !svg.checkVisibility() || !svg.getBoundingClientRect().width) continue;
     const said = svg.getAttribute('aria-label') || '', name = said.split(/[:,]/)[0], heads = [...svg.querySelectorAll('.evhead')].map(h => h.getBBox());
     const c = {said, marked: !!svg.querySelector('.msmark'), faint: svg.querySelectorAll('.msmark.faint').length, ms: []}; out.charts.push(c);
@@ -4620,11 +4620,52 @@ def main():
                 for per in ("1y", "all"):
                     js("([v, p]) => { costState.view = v; applyPreset(p); renderCosts(); }", [view, per])
                     settle(300)
-                    months561[f"{view} {per}"] = js("[...document.querySelectorAll('#view-costs svg text')].map(t => t.textContent).filter(t => /^[A-Z][a-z]{2} [’']?\\d{1,2}$/.test(t))")
+                    months561[f"{view} {per}"] = js("[...document.querySelectorAll('#view-costs svg text')].map(t => [t.textContent, t.getAttribute('class') || ''])")
             js("w => { [state.preset, state.from, state.to, costState.view] = w; renderAll(); }", was561)
             settle(300)
-            check("Costs (#561): the charts' months are written “Sep ’26”, none as “Sep 26”, which reads as a day, on 1y and All",
-                  any(months561.values()) and all(re.match(r"^[A-Z][a-z]{2} ’\d\d$", m) for v in months561.values() for m in v), months561)
+            # (on the kit's time axis since #300: a month alone with its year in the row under it, or days under "Dec 2025")
+            day561 = [t for v in months561.values() for t, _ in v if re.match(r"^[A-Z][a-z]{2} '?\d{1,2}$", t)]
+            check("Costs (#561): the charts' months are written “Sep” over “2026”, “Dec 2025” over its days, or “Sep ’26”, none as “Sep 26”, which reads as a day, on 1y and All",
+                  not day561 and all(any(c == "ck-yr" and re.match(r"^([A-Z][a-z]{2} )?\d{4}$", t) for t, c in v) for v in months561.values()), day561 or months561)
+            # ---- Costs on the chart kit (#300): the claims by month as two plots over one time axis, your share on a scale
+            # of its own in --measure and what insurance paid under it in grey, each titled; the running totals on the
+            # kit's time axis; both stepped through from the keyboard, the readout pinned over the plot; the ranked bars'
+            # notes in ink, not muted
+            was300c = js("[state.preset, state.from, state.to, costState.view]")
+            js("state.tables.clear(); costState.view = 'claims'; applyPreset('all'); switchTab('costs')")
+            settle(500)
+            COST300 = r"""() => { const svg = document.getElementById('costChart'), tok = v => { const s = document.createElement('span'); s.style.color = `var(${v})`; document.body.append(s); const c = getComputedStyle(s).color; s.remove(); return c; };
+              const bars = [...svg.querySelectorAll('rect[rx]')], mid = +svg.querySelectorAll('text.ck-unit')[1].getAttribute('y');   // the second plot's title
+              return {units: [...svg.querySelectorAll('text.ck-unit')].map(t => t.textContent), yr: svg.querySelectorAll('text.ck-yr').length,
+                share: bars.filter(b => getComputedStyle(b).fill === tok('--measure')).every(b => +b.getAttribute('y') + +b.getAttribute('height') < mid),
+                paid: bars.filter(b => getComputedStyle(b).fill === tok('--muted')).every(b => +b.getAttribute('y') > mid),
+                n: [tok('--measure'), tok('--muted')].map(c => bars.filter(b => getComputedStyle(b).fill === c).length),
+                want: [...costBuckets(costRows(), costState.by || 'month').values()].reduce((a, m) => [a[0] + (m.owe > 0), a[1] + (m.paid > 0)], [0, 0]),
+                legend: [...svg.parentElement.querySelectorAll('.legend > span')].map(s => s.textContent),
+                notes: [...document.querySelectorAll('#view-costs .cost-bar-note')].every(n => getComputedStyle(n).color === tok('--ink2')) && !!document.querySelector('#view-costs .cost-bar-note')}; }"""
+            c300 = js(COST300)
+            page.focus("#costChart")
+            page.keyboard.press("ArrowRight")
+            settle(150)
+            k300 = js("[document.getElementById('tip').checkVisibility() && document.getElementById('tip').textContent, document.getElementById('costChart').getAttribute('role')]")
+            page.keyboard.press("Escape")
+            js("costState.view = 'paid'; renderCosts()")
+            settle(500)
+            page.focus("#paidChart")
+            page.keyboard.press("End")
+            settle(150)
+            p300 = js("""[document.getElementById('tip').textContent, document.querySelectorAll('#paidChart text.ck-yr').length,
+              [...document.querySelectorAll('#paidRun .legend i')].map(i => i.className)]""")
+            page.keyboard.press("Escape")
+            js("w => { [state.preset, state.from, state.to, costState.view] = w; renderAll(); }", was300c)
+            settle(300)
+            check("Costs on the kit (#300): the claims by month as two plots, “Your share” in its colour on a scale of its own over “Paid by insurance” in "
+                  "grey, a bar for each month with any, months over their years; the ranked bars' notes in ink; the arrow keys step the months, saying each",
+                  c300["units"] == ["Your share", "Paid by insurance"] and c300["yr"] > 0 and c300["share"] and c300["paid"] and c300["n"] == c300["want"]
+                  and c300["legend"][:2] == ["Your share", "Paid by insurance"] and c300["notes"]
+                  and k300[1] == "application" and bool(k300[0]) and "Your share $" in k300[0] and "Insurance paid $" in k300[0], [c300, k300])
+            check("…the running totals on the kit's time axis, stepped through from the keyboard to the last date, its legend's keys lines",
+                  "Your share so far $" in p300[0] and "Bills paid so far $" in p300[0] and p300[1] > 0 and p300[2] == ["line", "line"], p300)
             # ---- Costs (#278): Claims | What you paid, a pick-one pair, each view with three figures to read first and the
             # rest under More figures, open or shut as left; at 1400 px the claims' chart on the first screen; money
             # right-aligned in tabular figures, a status only when it isn't the usual "processed"; at 375 px each claim a
@@ -4638,7 +4679,7 @@ def main():
             seg278 = js("(s => s && [s.getAttribute('role'), [...s.children].map(b => [b.textContent, b.getAttribute('aria-pressed')])])(document.getElementById('costView'))")
             claims278 = [seg278, js(figs), js(more), js("document.activeElement.textContent")]
             js("window.scrollTo(0, 0)")
-            chart278 = js("""(() => { const s = document.querySelector('#view-costs svg[aria-label$="insurance costs"]'), r = s && s.getBoundingClientRect();
+            chart278 = js("""(() => { const s = document.getElementById('costChart'), r = s && s.getBoundingClientRect();
                 return r && [Math.round(r.top), Math.round(r.bottom), innerHeight]; })()""")
             money278 = js("""(() => { const t = document.querySelector('#costTable table'), money = [...t.querySelectorAll('th.num, td.num')];
                 return [[...t.tHead.rows[0].cells].filter(c => c.classList.contains('num')).map(c => c.textContent.trim()), money.length,
@@ -5076,14 +5117,62 @@ def main():
             settle(200)
             check("…and on a short screen (667×375), where the bar scrolls away, a month heading sticks at the top of the screen (#308)",
                   bool(short_month) and isinstance(short_month[0], str) and short_month[1] is True, short_month)
-            tl_abn = js("""(() => { const days = [...document.querySelectorAll('#tl circle.ev')].filter(m => { const e = byId.get(+m.dataset.id); return e?.k === 'lab' && e.abn; });
+            tl_abn = js("""(() => { const days = [...document.querySelectorAll('#tl circle.ev')].filter(m => (m.dataset.g ? tlSvg._groups[+m.dataset.g].items : [byId.get(+m.dataset.id)]).some(e => e?.k === 'lab' && e.abn));
                 const tri = [...document.querySelectorAll('#tl path.tl-abn')];
                 return {days: days.length, badges: tri.length, shapes: tri.every(p => (p.getAttribute('d').match(/L/g) || []).length === 2 && getComputedStyle(p).pointerEvents === 'none'),
                   above: days.every(m => tri.some(p => { const a = m.getBBox(), b = p.getBBox(); return Math.abs(b.x + b.width / 2 - (a.x + a.width / 2)) < .5 && b.y + b.height <= a.y; })),
                   dots: document.querySelectorAll('#tl circle[fill="var(--crit)"]').length,
                   said: [...document.querySelectorAll('#list .badge.abn')].every(b => / out of range$/.test(b.textContent)) && !!document.querySelector('#list .badge.abn')}; })()""")
-            check("Timeline (#250): a lab day with a result out of range has a ▲ over it (not a red dot), and the list says out of range in words",
+            check("Timeline (#250): a lab day with a result out of range has a ▲ over it (not a red dot), a merged mark's when any of its days has (#300), and the list says out of range in words",
                   tl_abn["days"] > 0 and tl_abn["badges"] == tl_abn["days"] and tl_abn["shapes"] and tl_abn["above"] and not tl_abn["dots"] and tl_abn["said"], tl_abn)
+            # ---- the Timeline on the chart kit (#300): the kit's time axis (months over their year) with a hairline at each
+            # tick; every record in the period drawn once, those within 6 px of a mark's first in one mark saying how many
+            # (data-n; its readout says the lane, the count and their dates); a lane with nothing in the period not drawn, and a
+            # line under the chart naming the kinds chosen that have nothing; the watch's steps one path, its day's steps
+            # read by pointer; the lanes' names inside their gutter
+            was300 = js("[state.preset, state.from, state.to, state.q, [...state.cats]]")
+            open_tab("timeline")
+            js("CATS.forEach(c => c.k !== 'claim' && state.cats.add(c.k)); applyPreset('all')")
+            settle(400)
+            TL300 = r"""() => { const svg = document.getElementById('tl'), own = ['med', 'rx', 'mood', 'cycle'];
+              const marks = [...svg.querySelectorAll('circle.ev, .jmark')], n = marks.reduce((a, m) => a + +(m.dataset.n || 1), 0);
+              const want = EV.filter(e => visible(e) && CAT_OF[e.k].k !== 'stay' && !own.includes(e.k)).length;
+              const groups = [...svg.querySelectorAll('circle[data-g]')].map(m => tlSvg._groups[+m.dataset.g].items);
+              const lanes = [...svg.querySelectorAll('.lane-label')].map(t => t.textContent), g = svg._geom;
+              const xOf = ckScale(state.from, state.to, g.L, g.R);
+              return {n, want, groups: groups.length, close: groups.every(its => xOf(its.at(-1).ts) - xOf(its[0].ts) < 6),
+                said: [...svg.querySelectorAll('circle[data-g]')].every(m => +m.dataset.n === tlSvg._groups[+m.dataset.g].items.length),
+                lanes, yr: svg.querySelectorAll('text.ck-yr').length, grid: svg.querySelectorAll('line.gridline').length,
+                steps: svg.querySelectorAll('path.tl-steps').length, stepRects: svg.querySelectorAll('rect[data-steps]').length,
+                inside: [...svg.querySelectorAll('.lane-label')].every(t => t.getBBox().x >= 0 && t.getBBox().x + t.getBBox().width <= g.L),
+                none: (p => p && !p.hidden ? p.textContent : '')(document.getElementById('tlNone'))}; }"""
+            tl300 = js(TL300)
+            # the readout of a mark of several, and of the watch's steps on its lane
+            tip300 = js("""(() => { const m = document.querySelector('#tl circle[data-g]'), r = m.getBoundingClientRect(), its = tlSvg._groups[+m.dataset.g].items;
+              m.dispatchEvent(new PointerEvent('pointermove', {bubbles: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2}));
+              const t = document.getElementById('tip').textContent; hideTip();
+              return [t.includes(`: ${its.length} records`), t.includes(its[0].title)]; })()""")
+            steps300 = js("""(() => { const st = tlSvg._steps; if (!st) return null; const svg = document.getElementById('tl'), r = svg.getBoundingClientRect(), k = r.width / svg._geom.w;
+              const [t, v] = st.list[Math.floor(st.list.length / 2)], x = ckScale(state.from, state.to, svg._geom.L, svg._geom.R)(t + DAY / 2);
+              svg.dispatchEvent(new PointerEvent('pointermove', {bubbles: true, clientX: r.left + x * k, clientY: r.top + (st.y1 - 4) * k}));
+              const s = document.getElementById('tip').textContent; hideTip(); return s.startsWith(`${v.toLocaleString('en-US')} steps`) && s.includes(fmtD(t)); })()""")
+            # a search that only lab draws match: the other lanes go, and the line under the chart names them
+            js("state.q = 'cbc'; renderAll()")
+            settle(300)
+            q300 = js(TL300)
+            want_q = js("CATS.filter(c => c.k !== 'stay' && state.cats.has(c.k) && hasLane(c) && !(TL_LANES[c.k]?.shows?.() ?? (EV.some(e => visible(e) && CAT_OF[e.k] === c) || c.k === 'watch' && tlStepsIn().length > 0))).map(c => c.label)")
+            js("w => { [state.preset, state.from, state.to, state.q] = w; state.cats = new Set(w[4]); document.getElementById('q').value = w[3] || ''; renderAll(); }", was300)
+            settle(300)
+            check("Timeline on the kit (#300): months over their year, a hairline at each tick; every record in the period drawn once, those within 6 px of "
+                  "a mark's first one mark saying how many, its readout the lane, the count and the records; the steps one path, read by pointer; the "
+                  "lanes' names inside their gutter",
+                  tl300["n"] == tl300["want"] > 0 and tl300["groups"] > 0 and tl300["close"] and tl300["said"] and tl300["yr"] > 0 and tl300["grid"] > 2
+                  and tl300["steps"] == 1 and tl300["stepRects"] == 0 and tl300["inside"] and tip300 == [True, True] and steps300 is True,
+                  [tl300, tip300, steps300])
+            check("…a lane with nothing in the period isn't drawn: under a search only lab draws match, Labs' lane and none of the others' (the watch's "
+                  "steps stay), the line under the chart naming the kinds chosen with nothing (#300)",
+                  "Labs" in q300["lanes"] and len(q300["lanes"]) < len(tl300["lanes"]) and not set(q300["lanes"]) & set(want_q) and q300["n"] == q300["want"] > 0
+                  and want_q and q300["none"] == f"Nothing in these dates: {', '.join(want_q)}.", [q300, want_q])
             # ---- the Events list (#277): grouped by day under month headings, a day's date once (its number over its
             # weekday) and each row's whole date for screen readers; the kind small beside the title; workouts left out of it
             # (their lane stays), said in the line over the list and listed with List workouts, a day's several folded into one
@@ -5159,7 +5248,9 @@ def main():
                 const rows = [...document.querySelectorAll('#list .tl-row[data-id]')].map(r => [byId.get(+r.dataset.id), r.querySelector('.badge.abn')?.textContent || null]).filter(([e]) => e.k === 'lab');
                 const draws = EV.filter(visible).filter(e => e.k === 'lab'), n = e => want.get(isoDay(e.ts)) || 0;
                 return {rows: rows.length, badges: rows.filter(([, b]) => b).length, bad: rows.filter(([e, b]) => b !== (n(e) ? `${n(e)} out of range` : null)).map(([e, b]) => [e.id, b, n(e)]),
-                  marks: document.querySelectorAll('#tl path.tl-abn').length, want: draws.filter(n).length, others: draws.filter(e => e.abn && !n(e)).length}; })(document.getElementById('q').value.trim().toLowerCase())"""
+                  marks: document.querySelectorAll('#tl path.tl-abn').length, want: draws.filter(n).length, others: draws.filter(e => e.abn && !n(e)).length,
+                  wantMarks: [...document.querySelectorAll('#tl circle.ev')].map(m => m.dataset.g ? tlSvg._groups[+m.dataset.g].items : [byId.get(+m.dataset.id)])
+                    .filter(its => its[0]?.k === 'lab' && its.some(n)).length}; })(document.getElementById('q').value.trim().toLowerCase())"""   # (a mark of several draws, #300: its ▲ when any has)
             tl464 = {}
             for q in ("hemoglobin", "creatinine"):
                 page.fill("#q", q)
@@ -5169,9 +5260,9 @@ def main():
             settle(400)
             hb4, cr4 = tl464["hemoglobin"], tl464["creatinine"]
             check("…and each draw's out-of-range badge and ▲ count that test's (“hemoglobin”: a draw's out-of-range Hemoglobin), not the draw's other tests' (#464)",
-                  hb4["rows"] > 0 and hb4["badges"] > 0 and not hb4["bad"] and hb4["marks"] == hb4["want"] > 0 and hb4["others"] > 0, hb4)
+                  hb4["rows"] > 0 and hb4["badges"] > 0 and not hb4["bad"] and hb4["marks"] == hb4["wantMarks"] > 0 and hb4["want"] > 0 and hb4["others"] > 0, hb4)
             check("…“creatinine”, out of range on few draws, shows a badge and a ▲ on those only, none on its draws with other tests out of range (#464)",
-                  cr4["rows"] > 0 and not cr4["bad"] and cr4["badges"] == cr4["marks"] == cr4["want"] < cr4["others"], cr4)
+                  cr4["rows"] > 0 and not cr4["bad"] and cr4["badges"] == cr4["want"] < cr4["others"] and cr4["marks"] == cr4["wantMarks"] > 0, cr4)
             # #470: a draw's search words, badge and ▲ come from its own results, not its day's: with an outside lab's
             # Creatinine 1.6 H typed in on the day of a clinic draw with a Creatinine and a WBC, none out of range,
             # "creatinine" badged both draws "1 out of range" with a ▲, and "wbc" listed the outside lab's creatinine-only
@@ -6682,13 +6773,14 @@ def main():
             js("applyPreset('all'); state.cats.add('ecg'); renderAll()")
             settle(300)
             lane = js("""(() => { const chip = document.querySelector('#chips .toggle[data-k=ecg]');
+              const its = m => m.dataset.g ? tlSvg._groups[+m.dataset.g].items : [byId.get(+m.dataset.id)];   // a mark of several (#300): each of them
               const marks = [...document.querySelectorAll('#tl circle.ev')].filter(m => ['ecg', 'rhythm'].includes(byId.get(+m.dataset.id)?.k));
               return {chip: chip && chip.getAttribute('aria-label'), label: [...document.querySelectorAll('#tl .lane-label')].map(t => t.textContent).includes('ECG & rhythm'),
-                      filled: marks.filter(m => byId.get(+m.dataset.id).k === 'ecg').map(m => getComputedStyle(m).fill),
-                      hollow: marks.filter(m => byId.get(+m.dataset.id).k === 'rhythm').map(m => getComputedStyle(m).stroke),
+                      filled: marks.filter(m => its(m).some(e => e.k === 'ecg')).flatMap(m => its(m).filter(e => e.k === 'ecg').map(() => getComputedStyle(m).fill)),
+                      hollow: marks.filter(m => its(m).every(e => e.k === 'rhythm')).flatMap(m => its(m).map(() => getComputedStyle(m).stroke)),
                       key: chip && getComputedStyle(chip.querySelector('.key')).color,
                       samples: /"samples":\\[/.test(JSON.stringify(WATCH)), n: (WATCH.ecg || []).length}; })()""")
-            check("ECG (#182): the Timeline has an ECG & rhythm lane, three recordings as dots and two notifications as rings in its colour, and a chip",
+            check("ECG (#182): the Timeline has an ECG & rhythm lane, three recordings as dots and two notifications as rings in its colour (counted through a mark of several, #300), and a chip",
                   lane["chip"] == "ECG & rhythm, 5, shown" and lane["label"] and len(lane["filled"]) == 3 and len(lane["hollow"]) == 2
                   and set(lane["filled"]) == set(lane["hollow"]) == {lane["key"]}, lane)
             check("…the page's watch data lists the five events (phone and export merged by key) and holds none of the samples",
@@ -7082,7 +7174,7 @@ def main():
                 for how in ("Escape", "close"):
                     js("window.scrollTo(0, 0)")
                     settle(200)
-                    mark = page.locator("#tl circle.ev").nth(3)
+                    mark = page.locator("#tl circle.ev:not([data-g])").nth(3)   # one record's: a merged mark zooms in (#300)
                     mark.scroll_into_view_if_needed()
                     y421 = js("scrollY")
                     mark.click()
@@ -7789,8 +7881,9 @@ def main():
                 narrow = js(f"""(() => {{ const svg = document.getElementById('tl'), r = svg.getBoundingClientRect();
                     const bars = [...svg.querySelectorAll('.medbar[data-med="{med["i"]}"]')].map(b => b.getBoundingClientRect());
                     return {{fits: document.documentElement.scrollWidth <= 375 && r.right <= 375, bars: bars.length, inside: bars.every(b => b.left >= r.left - 1 && b.right <= r.right + 1),
-                      names: [...svg.querySelectorAll('text.medname')].every(t => t.firstChild.textContent.length <= 13)}}; }})()""")
-                check("the Medications lane fits 375 px, names shortened", narrow["fits"] and narrow["bars"] == 2 and narrow["inside"] and narrow["names"], narrow)
+                      names: [...svg.querySelectorAll('text.medname')].every(t => t.getBBox().x + t.getBBox().width <= svg._geom.L - 4)
+                        && [...svg.querySelectorAll('text.medname')].some(t => t.firstChild.textContent.endsWith('…'))}}; }})()""")
+                check("the Medications lane fits 375 px, names shortened to the gutter's width (#300)", narrow["fits"] and narrow["bars"] == 2 and narrow["inside"] and narrow["names"], narrow)
                 page.set_viewport_size({"width": 1400, "height": 900})
                 settle(200)
                 tab_click(page, "#tab-labs")
@@ -8492,7 +8585,7 @@ def main():
                     got = js(CHART_LABELS_JS, sel)
                     names = sorted(js("(([a, b]) => MILESTONES.filter(m => dayTs(m.date) >= a && dayTs(m.date) <= b).map(m => m.label))(state.tab === 'health' ? hRange() : [state.from, state.to])"))
                     wrong = list(got["problems"])
-                    if tab == "health":
+                    if tab in ("health", "timeline"):   # the Timeline's as Body's since #300
                         firsts = [i for i, c in enumerate(got["charts"]) if c["ms"]]
                         titled = sorted(n.rsplit(" · ", 1)[0] for c in got["charts"] for _, title in c["ms"] for n in title.split("\n"))
                         wrong += [f"named over chart {firsts}, not over the first only"] if firsts != [0] else []
@@ -8501,7 +8594,7 @@ def main():
                                   if t != title.split(" · ")[0] and not (t.endswith("…") and title.startswith(t[:-1].rstrip()))]
                         wrong += [f"{c['said'][:30]}: no faint line at each milestone, or not named in its aria-label" for c in got["charts"]
                                   if c["faint"] != len(names) or not all(n in c["said"] for n in names)]
-                    for c in (c for c in got["charts"] if c["marked"] and tab != "health"):
+                    for c in (c for c in got["charts"] if c["marked"] and tab not in ("health", "timeline")):
                         full = [" · ".join(n.rsplit(" · ", 1)[0] for n in title.split("\n")) for _, title in c["ms"]]
                         wrong += [f"{c['said'][:30]}: \"{t}\" is neither \"{f}\" nor its start" for (t, _), f in zip(c["ms"], full)
                                   if t != f and not (t.endswith("…") and f.startswith(t[:-1].rstrip()))]
@@ -8510,7 +8603,7 @@ def main():
                         if tab != "timeline" and not all(n in c["said"] for n in names):
                             wrong.append(f"{c['said'][:30]}: its aria-label doesn't name every milestone")
                     check(f"{tab} ({width} px, #312{', #298' if tab == 'health' else ''}): milestone labels inside every chart, no mark on them, their full names kept"
-                          + (", named once over the first chart, a faint line at each in every chart" if tab == "health" else ""),
+                          + (", named once over the first chart, a faint line at each in every chart" if tab != "labs" else ""),
                           bool(names) and any(c["marked"] for c in got["charts"]) and not wrong, wrong or got)
             js("switchTab('labs', 'chart')")   # still 320 px, marks on: an event under a "+N" on the event track (#294) still opens its drawer
             settle(500)
@@ -9222,7 +9315,7 @@ def main():
             js("applyPreset('all')")
             page.click("#costBy button:text-is('By year')")
             settle(300)
-            labels = js("[...document.querySelectorAll('#view-costs svg[aria-label=\"Yearly insurance costs\"] text')].map(t => t.textContent).filter(t => !t.startsWith('$'))")
+            labels = js("[...document.querySelectorAll('#costChart[aria-label^=\"Yearly insurance costs\"] text:not(.ck-unit)')].map(t => t.textContent).filter(t => !t.startsWith('$'))")
             check("…and groups them by year when asked", labels and all(re.fullmatch(r"\d{4}", x) for x in labels)
                   and "Insurance claims by year" in page.inner_text("#view-costs"), labels)
             page.click("#costBy button:text-is('By month')")
@@ -17705,8 +17798,8 @@ def main():
                 pg.goto(base + "/")
                 pg.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.id === 1", timeout=20000)
             late = "Date.parse('2026-03-10T23:30:00Z')"   # 4:30 pm in Los Angeles, 12:30 pm the next day in Auckland
-            # the timeline's day ticks at each person's midnight: 07:00 UTC in Los Angeles (PDT), 11:00 UTC in Auckland (NZDT)
-            first_tick = "new Date(ticks(Date.parse('2026-03-09T12:00:00Z'), Date.parse('2026-03-13T12:00:00Z'), 1000)[0][0]).toISOString()"
+            # the time axis's day ticks at each person's midnight: 07:00 UTC in Los Angeles (PDT), 11:00 UTC in Auckland (NZDT)
+            first_tick = "new Date(ckStepTicks(Date.parse('2026-03-09T12:00:00Z'), Date.parse('2026-03-13T12:00:00Z'), 1, 'd')[0].t).toISOString()"   # the kit's (#300)
             got = {u: (pg.evaluate(f"isoDay({late})"), pg.evaluate(first_tick), pg.evaluate(f"fmtD({late})"))
                    for u, pg in ((USER, za), (USER2, zb))}
             check("two people in different time zones each see days split at their own midnight",

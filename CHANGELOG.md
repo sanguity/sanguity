@@ -1673,6 +1673,14 @@ Everything on `main` so far; it becomes the first tagged release.
   a history's chart sits beside its table's first rows, in the light theme whatever the screen's, ink on white, never
   colour alone. They show only what the link
   or summary already holds, and the summary leaves its charts out rather than push a section off its two pages.
+- **The Timeline and Costs on the chart kit** (#300): Costs stacked your share on top of what insurance paid, so a
+  month's share of $50 was a sliver on a $30K bar. The claims chart is now two plots over one time axis: your share by
+  month on a scale of its own, and under it what insurance paid in grey, for context; the running totals use the same
+  axis (months over their years), both step from the keyboard, and the ranked bars' notes are in ink. The Timeline
+  draws marks within 6 px as one with how many it holds (its tip lists them, a click zooms in), keeps the ▲ for a lab
+  day out of range, draws no lane for a kind with nothing in the dates (a line under the chart names them), and names
+  its milestones once over the lanes with a faint line at each, as Labs and Body do. Ten years on the Timeline went
+  from 10,903 elements to 5,551. The Medications tab's lane uses the same axis.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

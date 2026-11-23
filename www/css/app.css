@@ -1754,7 +1754,7 @@ details.more.cost-more>:not(summary){max-width:none;color:var(--ink);font-size:v
    beside them, each row's bars had what its note left, and a smaller cost could get a longer bar) */
 .cost-bars{display:grid;gap:2px}
 .cost-bar-run{display:flex;gap:2px;min-width:0}
-.cost-bar-note{color:var(--muted)}
+svg text.cum-end{fill:var(--ink);font-weight:var(--fw-semibold)}   /* the running totals' ends, in ink (#250, #300); the bars' notes too (.ov-row .s) */
 @media (forced-colors:active){ .ov-row[aria-pressed=true]{outline:2px solid Highlight;outline-offset:-2px} .cost-bar{forced-color-adjust:none;background:CanvasText!important} }
 .cost-figs>.set-hd{flex-wrap:nowrap}   /* What you paid's ⓘ beside its heading at 320 px, the heading wrapping */
 @container (width < 560px){

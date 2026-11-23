@@ -65,18 +65,19 @@ function medRow(g, m, x, y, L, R, color, opts = {}) {
       "data-id": opts.selectable ? f.id : null, "data-med": m.i, "data-fill": f.id}));
   }
 }
-/* the Timeline's Medications lane (timeline.js asks TL_LANES for its height and drawing) */
+/* the Timeline's Medications lane (timeline.js asks TL_LANES for its height and drawing): a row a medication, its name in
+   the gutter under the lane's, or over its bars where the lanes' names are over them (larger text, #633) */
+const medLaneRow = S => S.over ? 12 * S.k + 14 : MED_ROW * S.k;
 TL_LANES.med = {
-  height: () => MEDS.length ? 20 + Math.max(1, medsShown(state.from, state.to).length) * MED_ROW : 0,
-  draw(g, S, top, h, c, w) {
-    const rows = medsShown(state.from, state.to), narrow = w < 600;
-    g.push(el("svg:text", {class: "lane-label", x: 0, y: top + 15, text: c.label}));
-    g.push(el("svg:line", {class: "gridline", x1: S.L, x2: S.R, y1: top + h, y2: top + h, "stroke-opacity": .5}));
-    if (!rows.length) { g.push(el("svg:text", {class: "medname", x: S.L + 4, y: top + 20 + MED_ROW / 2 + 4, text: "No medications in this date range"})); return; }
-    rows.forEach((m, n) => {
-      const y = top + 20 + n * MED_ROW + MED_ROW / 2 - 2;
-      g.push(el("svg:text", {class: "medname", x: 8, y: y + 4, text: medShort(m.name, narrow ? 13 : 22)}, el("svg:title", {text: m.name})));
-      medRow(g, m, S.x, y, S.L, S.R, c.color, {selectable: true});
+  shows: () => medsShown(state.from, state.to).length > 0,
+  labelY: S => 11 * S.k,
+  height: (w, S) => MEDS.length ? (S.over ? 0 : 20 * S.k) + Math.max(1, medsShown(state.from, state.to).length) * medLaneRow(S) : 0,
+  draw(g, S, top, h, c) {
+    const {L, R, x, k, over} = S, rh = medLaneRow(S);
+    medsShown(state.from, state.to).forEach((m, n) => {
+      const y0 = top + (over ? 0 : 20 * k) + n * rh, name = ckFit(m.name, "medname", over ? R - L : L - 14), y = over ? y0 + rh - 7 : y0 + rh / 2;
+      g.push(el("svg:text", {class: "medname", x: over ? Math.max(L, Math.min(x(medFrom(m)), R - labelW(name, "medname"))) : 8, y: over ? y0 + 11 * k : y + 4 * k, text: name}, el("svg:title", {text: m.name})));
+      medRow(g, m, x, y, L, R, c.color, {selectable: true});
     });
   },
 };
