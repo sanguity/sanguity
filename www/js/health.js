@@ -33,19 +33,9 @@ function openHealth(a, b) { closeDrawer(); state.from = a; state.to = b; state.p
 function hData() {
   const M = Object.fromEntries(((WATCH || {}).metrics || []).map(m => [m.key, m]));
   const ser = k => (M[k] ? M[k].pts : []).map(([d, v]) => [dayTs(d), v]);
-  // drop readings that sit >12% away from the median of the other weights within 90 days (e.g. a profile weight typed into another app)
-  const rawW = ser("weight"), cwRaw = (DATA.clinicWeights || []).map(([t, v]) => [dayTs(t.slice(0, 10)), v]);
-  // the others within 90 days are found in the readings put in time order, not by looking through every reading for
-  // each one (ten years of a daily scale took seconds, #201)
-  const ref = [...rawW, ...cwRaw].sort((x, y) => x[0] - y[0]);
-  const scale = rawW.filter(p => {
-    let lo = 0, hi = ref.length;   // the first reading less than 90 days before
-    while (lo < hi) { const m = (lo + hi) >> 1; if (ref[m][0] <= p[0] - 90 * DAY) lo = m + 1; else hi = m; }
-    const near = [];
-    for (let i = lo; i < ref.length && ref[i][0] < p[0] + 90 * DAY; i++) if (ref[i] !== p) near.push(ref[i][1]);
-    near.sort((x, y) => x - y);
-    return near.length < 3 || Math.abs(p[1] - near[near.length >> 1]) / near[near.length >> 1] <= 0.12; });
-  const scaleDays = new Set(scale.map(p => isoDay(p[0])));
+  // less the scale's weights the series leaves out (store.js weightsOut, #754), as the Overview's and the server's
+  const gone = new Set((SERIES.find(s => s.key === "weight")?.out || []).map(p => p.day));
+  const scale = ser("weight").filter(p => !gone.has(isoDay(p[0]))), scaleDays = new Set(scale.map(p => isoDay(p[0])));
   const clinic = (DATA.clinicWeights || []).map(([t, v, org]) => [dayTs(t.slice(0, 10)), v, org]).filter(p => !scaleDays.has(isoDay(p[0])));
   const byDay = k => M[k] ? Object.fromEntries(M[k].pts) : {};   // once per metric, not once per night (#201)
   const parts = ["sleep_deep_min", "sleep_rem_min", "sleep_light_min"].map(byDay);
@@ -70,7 +60,7 @@ function hData() {
   }
   ex.sort((p, q) => p.t - q.t);
   const bmi = bmiSeries([...scale, ...clinic].sort((p, q) => p[0] - q[0]), "lb");   // #195: each weight with the height of its day
-  const out = {scale, clinic, bmi, sleep, hr, ex, rest: ser("hr_rest"), steps: ser("steps"), fat: ser("body_fat"), lean: ser("lean_mass"), bmr: ser("bmr"),
+  const out = {scale, clinic, bmi, sleep, hr, ex, wOut: ser("weight").filter(p => gone.has(isoDay(p[0]))), rest: ser("hr_rest"), steps: ser("steps"), fat: ser("body_fat"), lean: ser("lean_mass"), bmr: ser("bmr"),
     hrv: ser("hrv"), vit: hVitals(), fit: hFitness()};
   // All's span (hSpan): from the first reading a card draws to the last, the visits' among them (#721: a weight or the
   // vitals taken at a visit before the phone's first day were on 2 years and not on All), the CGM's and meter's
@@ -353,7 +343,7 @@ function renderHealth() {
   // Body: weight and body composition, with BMI; then a child's growth
   if (wAll.length || H.fat.length || H.lean.length) {
     const body = el("div", {class: "card", id: "h-body"}, head("Weight & body composition", "#h-body"),
-      el("p", {class: "hint", text: "Scale readings, with weights taken at clinic visits filling the gaps. Each line is a 14-day average."}));
+      el("p", {class: "hint", text: "Scale readings, with weights taken at clinic visits filling the gaps. Each line is a 14-day average."}), wOutWords(a, b));
     S.body.append(body);
     const wT = tgtIn("weight", "lb"), wSide = p => wT && !p[2] ? tgtSide(p[1], ...wT, 1) : "";   // a target of the person's own (#234): the scale's weights
     tgtLine(body, "weight", "lb", wT ? inR(H.scale, a, b).map(wSide) : null);
@@ -1134,6 +1124,13 @@ const bmiNum = r => bmiRound(r.v).toFixed(1);
 const bmiWords = r => { const p = r.child ? bmiChildPct(r) : null; return bmiNum(r) + (p == null ? "" : ` (${pctText(p)} percentile for age)`); };   // #196
 const whoWords = v => { const c = whoBmi(v); return c ? `${c.range} (“${c.name}”)` : ""; };
 const bmiHeight = h => heightText(h.cm, heightUnit((CFG.units || {}).height, h.unit));
+/* the scale's readings in the period left out (store.js weightsOut, #754): how many and why, three of them named, in
+   Chart and Table alike, as neither draws or lists them. Or nothing */
+function wOutWords(a, b) {
+  const o = inR(H.wOut, a, b), n = o.length, w = o.slice(0, 3).map(p => `${p[1] > 0 ? p[1].toFixed(1) + " lb" : "no weight"} on ${fmtD(p[0])}`);
+  return n ? el("p", {class: "hint h-wout"}, ...keepDates(n === 1 ? `1 scale reading left out: ${w[0]}, ${W_OUT.why}.`
+    : `${n} scale readings left out, each ${W_OUT.why}: ${listOf([...w, n > 3 && `${n - 3} more`])}.`)) : null;
+}
 function bmiTile(tile, a, b) {
   if (!H.bmi.length) return;
   if (H.bmi.some(r => r.child)) growthLoad();   // a child's percentile for age (#196)
