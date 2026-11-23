@@ -57,17 +57,28 @@ function inSight(x, whole) {
   return whole ? r.top >= t - 1 && r.bottom <= b + 1 : r.bottom > t && r.top < b;
 }
 function keepFocus(draw) {
-  const a = document.activeElement, key = a && a !== document.body ? focusKey(a) : null, open = aboutOpen(), seen = key && inSight(a);
+  const a = document.activeElement, key = a && a !== document.body ? focusKey(a) : null, open = aboutOpen(), seen = key && inSight(a), top = seen ? a.getBoundingClientRect().top : 0;
   draw();
   aboutWire();   // the ⓘ drawn with it, there now to be found (util.js, #280)
   // one shown: a tab not shown keeps its controls, and a twin of the same name there can't take focus (#455)
   if (key && !a.isConnected) [...document.querySelectorAll(a.tagName)].find(x => focusKey(x) === key && x.checkVisibility())?.focus({preventScroll: true});
   // in sight before, wholly in sight after: a page that grew shorter, scrolled up by the browser, can't leave it above
-  // the top, or half over it (#469, 2.4.11)
+  // the top, or half over it (#469, 2.4.11); and again once the charts are drawn (#720)
   const f = document.activeElement;
-  if (seen && f !== document.body && !inSight(f, true)) f.scrollIntoView({block: "nearest"});
+  if (seen && f !== document.body) { if (!inSight(f, true)) f.scrollIntoView({block: "nearest"}); keepSight(f, top); }
   aboutKeep(open);   // and one left open, open still (#447)
   drawerBack();   // and what opened the drawer, found again (drawer.js, #404)
+}
+/* charts are drawn a frame after the page around them (health.js hChart, the workouts' calendar…), placeholders till
+   then: as they take their heights, f, in sight as it's drawn, goes down, past the window's foot or under the phone's
+   tab bar (#720, 2.4.11). Once they're drawn (this frame's callbacks run in turn, theirs first), if it isn't wholly in
+   sight it goes back to where it was (top, its box's top before), or into sight */
+function keepSight(f, top) {
+  requestAnimationFrame(() => {
+    if (document.activeElement !== f || inSight(f, true)) return;
+    scrollBy(0, f.getBoundingClientRect().top - top);
+    if (!inSight(f, true)) f.scrollIntoView({block: "nearest"});
+  });
 }
 
 /* ---------------------------------------------------------------- the records */

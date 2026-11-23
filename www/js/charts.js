@@ -300,9 +300,11 @@ function viewSeg(key, what, redraw, graphic = "Chart") {
   const table = state.tables.has(key);
   const pick = want => {
     if (want === table) return;
+    const top = seg.getBoundingClientRect().top;   // where it was, for once the charts are drawn (store.js keepSight, #720)
     if (want) state.tables.add(key); else state.tables.delete(key);
     hideTip(); redraw();
-    [...document.querySelectorAll(".view-seg")].find(s => s.dataset.key === key)?.querySelector("[aria-pressed=true]")?.focus();
+    const b = [...document.querySelectorAll(".view-seg")].find(s => s.dataset.key === key)?.querySelector("[aria-pressed=true]");
+    if (b) { b.focus(); keepSight(b, top); }
   };
   const seg = el("div", {class: "seg view-seg", role: "group", "aria-label": `Show ${what} as`},
     el("button", {type: "button", "aria-pressed": !table, text: graphic, onclick: () => pick(false)}),

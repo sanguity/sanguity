@@ -1813,6 +1813,13 @@ Everything on `main` so far; it becomes the first tagged release.
   ticked, a CGM target sent the share of its readings in, below and above the person's own range and, beside it, the
   share in the standard published range (70–180 mg/dL), while the section's line on the share form and the link's page
   named only how many readings at home or days of steps were above or below a target. The line now names both.
+- **What has focus on Body and activity stays in sight as its charts are drawn** (#720): its charts are drawn a frame
+  after the tab, and the page looked at what had focus while they were still placeholders 150 px tall. As they took
+  their heights, a chart with focus when the window was resized or the records changed (Heart rate, HRV, Sleep and
+  Steps on the demo, and every card under them) went down out of the window, and "Show the day's average and
+  low–high" or "Show lab glucose results alongside", pressed, went under the window's foot or the phone's tab bar.
+  Once the charts are drawn it goes back where it was, wholly in sight; Chart | Table and Show more do the same (WCAG
+  2.4.11).
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
