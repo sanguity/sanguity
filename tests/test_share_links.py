@@ -81,7 +81,9 @@ SOURCES = {"tz": "UTC", "exercise": [], "metrics": [
     {"key": "glucose_meter", "unit": "mg/dL", "pts": [[D(-4) + "T07:12", 104.0]]},
     *({"key": "glucose_" + k, "unit": "", "pts": [[D(-5), v]]} for k, v in (("avg", 131.0), ("min", 62.0), ("max", 212.0), ("n", 288),
                                                                           ("hours", 23.5), ("lt54", 0.0), ("lt70", 4.0), ("in", 78.0), ("gt180", 18.0))),
-    {"key": "steps", "unit": "count", "pts": [[D(-6), 9400], [D(-5), 4100]]}],   # each day's count from the phone (#298)
+    {"key": "steps", "unit": "count", "pts": [[D(-6), 9400], [D(-5), 4100]]},   # each day's count from the phone (#298)
+    # #719: the CGM day's readings by whole mg/dL (glucose.py): 12 at 62, 200 at 120, 76 at 190, for a CGM target
+    {"key": "glucose_dist", "unit": "readings", "pts": [[D(-5), [62, 12, *[0] * 57, 200, *[0] * 69, 76]]]}],
     "bp_readings": [[U(-9, 8), 132, 84, 68, "Fictional cuff", "Health Connect"], [D(-2) + "T20:00:00", 126, 80, None, None, "Typed in"]],
     "temp_readings": [[U(-8, 7), 37.4, "Fictional thermometer", "Health Connect"]],
     "spo2_readings": [[U(-4, 8), 95, "FICTIONAL-OXIMETER-X1", "Health Connect"], [D(-3) + "T09:00:00", 97, None, "Typed in"]],
@@ -90,8 +92,10 @@ SOURCES = {"tz": "UTC", "exercise": [], "metrics": [
              "device": "FICTIONAL-WATCH-DEVICE"},
             {"key": "rhythm:0123456789abcdee", "type": "irregular_rhythm", "start": U(-7, 3), "end": U(-7, 4), "device": "FICTIONAL-WATCH-DEVICE"}],
     "med_doses": [[U(-5, 9), "Fictionalol 10 mg tablet", "taken", 2, "FICTIONAL-UNITS", "FICTIONAL-APP"]]}
-# #650: its targets, a steps target among them (#298), against each day's count from the phone (SOURCES' steps)
-SOURCES_TARGETS = {"bp": {"sysHigh": 130, "diaHigh": 80, "by": "Dr. Fictional Example"}, "steps": {"low": 8000, "by": "Dr. Fictional Example"}}
+# #650: its targets, a steps target among them (#298), against each day's count from the phone (SOURCES' steps); and a
+# CGM target (#719), against its CGM day
+SOURCES_TARGETS = {"bp": {"sysHigh": 130, "diaHigh": 80, "by": "Dr. Fictional Example"}, "steps": {"low": 8000, "by": "Dr. Fictional Example"},
+                   "cgm": {"low": 70, "high": 140, "unit": "mg/dL", "by": "Dr. Fictional Example"}}
 SOURCES_DATA = {"events": [
     {"id": 1, "t": D(-15) + "T00:00:00", "end": D(-12) + "T23:59:00", "k": "stay", "title": "Hospital stay · Fictional General",
      "sub": "Ward 5 · 3 nights · transferred to Other Fictional Hospital"},
@@ -318,6 +322,15 @@ class ShareLinks(unittest.TestCase):
         ("targets", "1 of 2 readings above it", ["how many readings at home", "were above or below it"]),
         ("targets", "Steps a day", ["days of steps counted by the phone"]),   # a steps target (#298) and its days (#650)
         ("targets", "1 of 2 days below it", ["how many", "days of steps counted by the phone", "were above or below it"]),
+        ("targets", "69% in it, 1 CGM day", ["for a CGM target", "the share of the CGM readings in it", "over how many days"]),   # (#719)
+    ]
+    # #719: and the lines a block leads with: every one of the targets' (a CGM target's sent the time in the standard
+    # published range, which the line didn't name), each by what it holds and the words of the line that name that
+    LEADS = [
+        ("targets", "Each target as the person's care team gave it", ["each target typed in as the care team gave it"]),
+        ("targets", "CGM time in your own range (70–140 mg/dL, your target): 69% of readings over 1 CGM day, 4.2% below it and 26% above it",
+         ["for a CGM target", "the share of the CGM readings in it, below it and above it, over how many days"]),
+        ("targets", "in the standard published range (70–180 mg/dL): 78%", ["their share in the standard published range"]),
     ]
     # and where each measure's readings came from, in its line
     SOURCE = {"home_bp": "the device and app that sent it", "temperature": "the device and app that sent it",
@@ -354,6 +367,13 @@ class ShareLinks(unittest.TestCase):
             got = ([v for r in j[s]["rows"] for v in r] if s in measures.IDS else
                    [r["sub"] for r in j[s]] if s == "visits" else [r["title"] for r in j[s]])
             self.assertTrue(any(shown == v or s == "visits" and shown in v for v in got), f"{s} shows “{shown}”: {got}")
+            for w in words:
+                self.assertIn(w, lines[s], f"{s}: “{shown}” is said in its line as “{w}”")
+        for s in {s for s, _, _ in self.LEADS}:   # (#719) each line the block leads with is one of these
+            for lead in j[s]["lead"]:
+                self.assertTrue(any(shown in lead for t, shown, _ in self.LEADS if t == s), f"{s} leads with “{lead}”, which its line should name")
+        for s, shown, words in self.LEADS:
+            self.assertTrue(any(shown in lead for lead in j[s]["lead"]), f"{s} leads with “{shown}”: {j[s]['lead']}")
             for w in words:
                 self.assertIn(w, lines[s], f"{s}: “{shown}” is said in its line as “{w}”")
 

@@ -1809,6 +1809,10 @@ Everything on `main` so far; it becomes the first tagged release.
   the Overview worked out its change the same way ("↑ 1"). The chart's marks now say the value as given ("<5 mg/L"),
   and no change is worked out from or to a value given as a bound: the summary says "not worked out" (the PDF says why
   under its table) and the tile "change not worked out", as a lab's panel does.
+- **A share link's targets line names what a CGM target sends** (#719): with only "Your targets for home readings"
+  ticked, a CGM target sent the share of its readings in, below and above the person's own range and, beside it, the
+  share in the standard published range (70–180 mg/dL), while the section's line on the share form and the link's page
+  named only how many readings at home or days of steps were above or below a target. The line now names both.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
