@@ -1745,6 +1745,13 @@ Everything on `main` so far; it becomes the first tagged release.
   alongside" ran past their cards (to 549 px at 360 px with 200% text), and Labs' "Procedures & imaging" past the
   screen, so the page scrolled sideways and took the tab bar's last tabs off it. An on/off chip's words now wrap inside
   it, its corners rounded where they do rather than a pill's ends (WCAG 1.4.4, 1.4.10).
+- **The overview strip counts Labs' results, keeps every Since button in reach, and lets a phone scroll** (#656): on
+  Labs the strip counted each draw's reports, not its results (the demo's busiest week said 12 lab results for 43; All
+  100 for 442), in its bars and its tip; it now counts the results Labs charts. The "Since" buttons that don't fit the
+  period's row beside More… go into More… under "Since a milestone" again, rather than being cut off or hidden past
+  the row's end (one picked there is named on More…). And on a phone a scroll that started on the strip beside its
+  window moved the period there: the window now goes where it's pressed as it's let go or dragged, and a scroll the
+  browser takes leaves the period as it was.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

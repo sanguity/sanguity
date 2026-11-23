@@ -9775,6 +9775,42 @@ def main():
             check("…and the Reset chip after the date boxes goes back to the period before, the boxes and the chip gone (#295)",
                   reset == ["Reset", "Back to " + yr, "dates", True] and js(period)["chosen"] == ["More: " + yr] and not js(period)["dates"]
                   and js("document.activeElement.id") == "periodMoreBtn" and page.is_hidden("#periodReset"), [reset, js(period), js("document.activeElement.id")])
+            # ---- #656: each milestone's "Since" button whole on the presets' row with More… beside them, or else in More…'s
+            # "Since a milestone" (the row cut them off, Tab reaching one hidden): at 768, 1100 and 1400 px, with the demo's
+            # milestones and three more (put in for the check, taken out again); one picked from More… named on it
+            SINCE656 = r"""() => { const p = document.getElementById('presets'), pr = p.getBoundingClientRect(), more = document.getElementById('periodMoreBtn');
+              const shown = [...p.children].filter(b => { const r = b.getBoundingClientRect(); return b.checkVisibility() && r.left >= pr.left - 0.5 && r.right <= Math.min(pr.right, innerWidth) + 0.5; }).map(b => b.textContent);
+              const listed = [...document.querySelectorAll('#periodMoreList [data-period^=m]')].map(b => b.dataset.period);
+              return {n: MILESTONES.length, more: listed.length, row: more.getBoundingClientRect().top < pr.bottom, presets: PRESETS.every(([, l]) => shown.includes(l)),
+                lost: MILESTONES.filter(m => shown.includes('Since ' + lcLabel(m.label)) === listed.includes(msKey(m))).map(m => m.label)}; }"""
+            open_tab("labs")
+            n656, bad656, more656 = js("MILESTONES.length"), {}, 0
+            for extra in (False, True):
+                if extra:
+                    js("MILESTONES.push({date: '2025-11-03', label: 'Scan clear'}, {date: '2026-02-16', label: 'Port removed'}, {date: '2026-06-01', label: 'Back to work'})")
+                for w in (1400, 1100, 768):   # (then picked from More… at 768)
+                    page.set_viewport_size({"width": w, "height": 900})
+                    js("applyPreset('1y')")
+                    settle(300)
+                    got = js(SINCE656)
+                    more656 += got["more"]
+                    if got["lost"] or not got["row"] or not got["presets"] or got["n"] != n656 + 3 * extra:
+                        bad656[f"{got['n']} milestones at {w} px"] = got
+            page.click("#periodMoreBtn")
+            last656 = js("[...document.querySelectorAll('#periodMoreList [data-period^=m]')].map(b => b.dataset.period).pop() || null")
+            if last656:
+                page.click(f"#periodMoreList [data-period={last656}]")
+            else:
+                page.keyboard.press("Escape")
+            settle(300)
+            picked656 = [js("state.preset") == last656, js("k => !!k && document.getElementById('periodMoreBtn').textContent.startsWith('Since ' + lcLabel(msOf(k).label))", last656),
+                      js("document.getElementById('periodMoreBtn').classList.contains('on')"), js(SINCE656)]
+            js("n => { MILESTONES.splice(n); applyPreset('2y'); }", n656)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(300)
+            check("…each milestone's “Since” button whole on the presets' row with More… beside them, or in More… (#656), at 768, 1100 and 1400 px "
+                  "with the demo's milestones and three more; one picked from More… named on it",
+                  not bad656 and more656 > 0 and picked656[:3] == [True] * 3 and not picked656[3]["lost"] and picked656[3]["row"], [bad656, more656, picked656])
             # ---- the overview strip (#295): under the period bar on Labs, Body and activity and the Timeline (not on Costs or
             # Medications), 40 px: the tab's records per stretch across every year, the milestones as flags and the period
             # a window. Dragged by its middle it moves the shared period, as wide; by an edge, that edge; a press beside it
@@ -9798,6 +9834,15 @@ def main():
                   all(seen295[t]["shown"] and seen295[t]["h"] == 40 and seen295[t]["in"] == "filters" and seen295[t]["counted"] == seen295[t]["items"] > 0
                       for t in ("labs", "health", "timeline")) and not seen295["costs"]["shown"] and not seen295["medications"]["shown"],
                   {t: {k: v[k] for k in ("shown", "h", "in", "counted", "items")} for t, v in seen295.items()})
+            # …Labs' counting its results, not its reports (#656: a draw's e.n, its reports, was counted): each stretch's count
+            # the lab results in it, counted here from the results themselves (SERIES), not from the strip's own stripItems
+            open_tab("labs")
+            js("applyPreset('all')")
+            settle(300)
+            n656 = js("""() => { const b = stripMemo.bins, pts = SERIES.filter(s => !s.watch).flatMap(s => s.pts.map(p => p.ts)), N = b.n.length;
+              return {sum: b.n.reduce((a, v) => a + v, 0), results: pts.filter(t => t >= b.edges[0] && t < b.edges[N]).length, reports: EV.filter(e => e.k === 'lab').reduce((a, e) => a + (e.n || 1), 0),
+                wrong: b.n.map((v, i) => [stripStretch(b, i), v, pts.filter(t => t >= b.edges[i] && t < b.edges[i + 1]).length]).filter(([, v, w]) => v !== w).slice(0, 4)}; }""")
+            check("…on Labs, each stretch's count the lab results in it, not the reports (#656)", not n656["wrong"] and n656["sum"] == n656["results"] > 0, n656)
             drag295 = {}
             for t in ("labs", "health", "timeline"):
                 open_tab(t)
@@ -9885,6 +9930,40 @@ def main():
             check("…on a phone it's in the charts' header (Labs, Body), the Timeline's in its bar, sharing a row wherever one has room for it, nothing "
                   "sticking out at 412, 375, 360 and 320 px (#295)",
                   all(v["shown"] and not v["fits"] and v["in"] == ("filters" if k.startswith("timeline") else "toolbar chart-bar") and v["shares"] for k, v in phone295.items()), phone295)
+            # ---- #656: on a phone's touch screen (412 px), a finger's scroll that starts on the strip beside its window scrolls
+            # the page and leaves the period as it was (the window went there as the finger landed, and stayed when the
+            # browser took the scroll); a tap there still brings the window there. On Labs, Body and activity and the Timeline
+            pctx = browser.new_context(viewport={"width": 412, "height": 860}, is_mobile=True, has_touch=True, bypass_csp=True)
+            pctx.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
+            ppg = pctx.new_page()
+            ppg.goto(base + "/?profile=1#labs")
+            ppg.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted", timeout=20000)
+            cdp656 = pctx.new_cdp_session(ppg)
+            finger = lambda kind, at: cdp656.send("Input.dispatchTouchEvent", {"type": kind, "touchPoints": [{"x": px, "y": py} for px, py in at]})
+            touch656 = {}
+            for tab656 in ("labs", "health", "timeline"):
+                ppg.evaluate("t => { switchTab(t, t === 'labs' ? 'chart' : t === 'timeline' ? 'timeline' : undefined); applyPreset('90d'); scrollTo(0, 0); }", tab656)
+                ppg.wait_for_timeout(800)
+                sb656 = ppg.locator("#strip svg").bounding_box()
+                x656, y656, was656 = sb656["x"] + 20, sb656["y"] + sb656["height"] / 2, ppg.evaluate("[state.preset, state.from, state.to]")   # (the window's at the strip's end)
+                finger("touchStart", [(x656, y656)])
+                for i in range(1, 25):   # up the screen, a finger's few pixels sideways on the way
+                    finger("touchMove", [(x656 + i % 3, y656 - 12 * i)])
+                    ppg.wait_for_timeout(16)
+                finger("touchEnd", [])
+                ppg.wait_for_timeout(600)
+                scrolled = ppg.evaluate("[state.preset, state.from, state.to, scrollY]")
+                ppg.evaluate("scrollTo(0, 0)")
+                ppg.wait_for_timeout(300)
+                finger("touchStart", [(x656, y656)])
+                ppg.wait_for_timeout(50)
+                finger("touchEnd", [])
+                ppg.wait_for_timeout(600)
+                tapped = ppg.evaluate("w => [state.preset, state.to < w - 200 * DAY]", was656[2])
+                touch656[tab656] = {"kept": scrolled[:3] == was656, "scrolled": scrolled[3] > 100, "tap": tapped == ["custom", True]}
+            pctx.close()
+            check("…on a touch screen, a scroll that starts on the strip beside its window leaves the period as it was, the page scrolled; a tap there "
+                  "brings the window there (#656), on Labs, Body and activity and the Timeline", all(all(v.values()) for v in touch656.values()), touch656)
             js("applyPreset('2y')")
             settle(200)
             menu_state = "[document.getElementById('periodMoreBtn').getAttribute('aria-expanded'), !document.getElementById('periodMoreList').matches(':popover-open'), document.activeElement.id || document.activeElement.textContent]"

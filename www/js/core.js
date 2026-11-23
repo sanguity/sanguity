@@ -127,9 +127,10 @@ function periodYears() {
   return YEARS;
 }
 /* ---- the period's controls (#191): preset buttons (All, 5y ... 30d, and "Since <milestone>" for each milestone, #295),
-   one More… menu (the calendar years, Custom dates…), the period in words beside them, and the date boxes only for
-   custom dates (typed in, or a chart or the overview strip dragged), with a Reset chip back to the period before (#295).
-   One control shows as chosen: a preset button, or More… naming what it picked. */
+   one More… menu (the milestones whose buttons don't fit, #656; the calendar years, Custom dates…), the period in words
+   beside them, and the date boxes only for custom dates (typed in, or a chart or the overview strip dragged), with a
+   Reset chip back to the period before (#295). One control shows as chosen: a preset button, or More… naming what it
+   picked. */
 /* the period in words, beside the controls: "Last 2 years", "Apr 14, 2025 – today" (since a milestone), "2025" (a year) */
 function periodWords() {
   const p = state.preset, m = msOf(p);
@@ -139,17 +140,19 @@ function periodWords() {
   return p === "all" ? "Everything on file" : (PRESET_TEXT[p] || "").replace(/^the l/, "L");
 }
 const moreBtn = $("#periodMoreBtn"), moreList = $("#periodMoreList");
-function renderPeriod() {
-  const p = state.preset;   // each milestone has a button: "Since diagnosis" (#295)
-  $("#presets").replaceChildren(...[...PRESETS, ...MILESTONES.map(m => [msKey(m), "Since " + lcLabel(m.label), "Since " + fmtD(dayTs(m.date))])].map(([k, l, tip]) =>
+let presetsCut = 0, presetsFor = "";   // how many Since buttons, from the last, are in More… instead, and for what row (#656)
+function renderPeriod(fit = true) {
+  const p = state.preset, n = MILESTONES.length - presetsCut;   // each milestone has a button: "Since diagnosis" (#295), as many as fit
+  $("#presets").replaceChildren(...[...PRESETS, ...MILESTONES.slice(0, n).map(m => [msKey(m), "Since " + lcLabel(m.label), "Since " + fmtD(dayTs(m.date))])].map(([k, l, tip]) =>
     el("button", {type: "button", "aria-pressed": p === k, text: l, "data-tip": tip || null, onclick: () => applyPreset(k)})));
   const item = (k, text, note) => el("button", {type: "button", class: "menu-item", role: "menuitemradio", tabindex: "-1", "aria-checked": p === k, "data-period": k},
     icon("check"), text, note ? el("span", {class: "menu-note", text: note}) : null);
   const group = (label, items) => items.length ? el("div", {role: "group", "aria-label": label}, el("div", {class: "menu-head", "aria-hidden": "true", text: label}), ...items) : null;
   moreList.replaceChildren(...present(   // a group with nothing in it is left out
+    group("Since a milestone", MILESTONES.slice(n).map(m => item(msKey(m), "Since " + lcLabel(m.label), fmtD(dayTs(m.date))))),
     group("Calendar year", periodYears().map(y => item(y, y))),
     el("div", {class: "menu-sep", role: "separator"}), item("custom", "Custom dates…")));
-  const picked = isYearKey(p) ? p : p === "custom" ? "Custom dates" : "";
+  const pm = msOf(p), picked = pm && MILESTONES.indexOf(pm) >= n ? "Since " + lcLabel(pm.label) : isYearKey(p) ? p : p === "custom" ? "Custom dates" : "";
   moreBtn.replaceChildren(picked || "More…", el("span", {class: "menu-caret", "aria-hidden": "true"}, icon("chevron-down")));
   moreBtn.classList.toggle("on", !!picked);
   moreBtn.setAttribute("aria-label", picked ? `Period: ${picked}. More periods` : "More periods");
@@ -158,8 +161,7 @@ function renderPeriod() {
   $("#dates").hidden = p !== "custom" && !PHONE.matches;   // in the phone's sheet they're always there
   $("#periodReset").hidden = p !== "custom";
   // on a phone (#269): the pill names the period, and its sheet lists every one
-  const pm2 = msOf(p);
-  pill.replaceChildren(el("span", {class: "vh", text: "Period: "}), pm2 ? "Since " + lcLabel(pm2.label) : periodWords(),
+  pill.replaceChildren(el("span", {class: "vh", text: "Period: "}), pm ? "Since " + lcLabel(pm.label) : periodWords(),
     el("span", {class: "menu-caret", "aria-hidden": "true"}, icon("chevron-down")));
   pillList.replaceChildren(...present(
     ...PRESETS.map(([k]) => item(k, k === "all" ? "Everything on file" : PRESET_TEXT[k].replace(/^the l/, "L"))),
@@ -167,7 +169,22 @@ function renderPeriod() {
     group("Calendar year", periodYears().map(y => item(y, y)))));
   $("#from").value = isoDay(state.from); $("#to").value = isoDay(state.to);
   $("#periodReset").dataset.tip = backWords();
+  if (fit) presetsFit();
 }
+/* the Since buttons that don't fit the row with More… beside them, from the last, go in More… instead (#656: the row
+   cut them off, Tab reaching one hidden). Measured as drawn, again when the row, its text or the period changes; not on
+   a phone, whose pill's sheet lists every milestone */
+function presetsFit() {
+  const ps = $("#presets");
+  if (PHONE.matches || !ps.checkVisibility()) return;
+  const key = [$(".filters").clientWidth, getComputedStyle(ps).fontSize, state.preset, MILESTONES.map(m => m.label)].join();
+  if (key === presetsFor) return;
+  const over = () => ps.scrollWidth > ps.clientWidth + 1 || moreBtn.getBoundingClientRect().top >= ps.getBoundingClientRect().bottom - 1;
+  presetsCut = 0; renderPeriod(false);
+  while (presetsCut < MILESTONES.length && over()) { presetsCut++; renderPeriod(false); }
+  presetsFor = key;
+}
+document.fonts.addEventListener("loadingdone", () => { presetsFor = ""; if (typeof booted !== "undefined" && booted) presetsFit(); });   // (Inter's widths, once it's in)
 /* back from custom dates to the period before (lastPeriod), or to p: Reset, and a chart's way back (#382). Focus
    goes to the period's control, which says which it is */
 const backWords = () => { const lp = lastPeriod, lm = msOf(lp); return "Back to " + (lp === "all" ? "everything on file" : lm ? "since " + lcLabel(lm.label) : PRESET_TEXT[lp] || lp); };

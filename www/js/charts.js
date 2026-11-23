@@ -140,8 +140,8 @@ panZoom($("#view-health"), {...mainWindow, minSpan: 3 * DAY,
 const STRIP_SAYS = {labs: "lab results", health: "readings", timeline: "records"};
 const strip = $("#strip"), stripSvg = strip.querySelector("svg"), stripIn = [...strip.querySelectorAll("input")];
 let stripAt = null, stripMemo = null, stripRaf = 0;   // the strip as last drawn: its scale, bins and window
-const stripItems = tab => tab === "labs" ? EV.filter(e => e.k === "lab").map(e => [e.ts, e.n || 1])
-  : tab === "health" ? SERIES.filter(s => s.watch).flatMap(s => s.pts.map(p => [p.ts, 1])) : EV.filter(e => !e.hidden).map(e => [e.ts, 1]);
+// (Labs': each result its charts hold, not each report, #656)
+const stripItems = tab => tab === "timeline" ? EV.filter(e => !e.hidden).map(e => [e.ts, 1]) : SERIES.filter(s => !s.watch === (tab === "labs")).flatMap(s => s.pts.map(p => [p.ts, 1]));
 const stripWin = () => state.tab === "health" ? hRange() : [state.from, state.to];   // Body's All: the phone's data's span (health.js)
 // a stretch in words: "March 2025", "Week of Mar 3, 2025", "Jan ’25 – Mar ’25"
 function stripStretch({edges, step: [n, u]}, i) {
@@ -196,11 +196,12 @@ const stripMs = (px, py) => py < 9 ? MILESTONES.find(m => Math.abs(stripAt.x(day
 strip.addEventListener("pointerdown", ev => {
   if (!stripAt || ev.button || ev.target.matches("input")) return;
   const [px, py] = stripPx(ev), t = stripAt.x.inv(px), ms = stripMs(px, py);
-  let grab = stripGrab(px);
-  if (!grab && !ms) { const half = (stripAt.wb - stripAt.wa) / 2; stripSet(t - half, t + half); grab = "mid"; }   // beside it: brought there
-  stripDrag = {grab, t, wa: stripAt.wa, wb: stripAt.wb, ms, moved: false, id: ev.pointerId};
+  // beside it: brought there as it's let go or dragged, not as a finger lands, which may be the page's scroll (#656)
+  const grab = stripGrab(px) || (ms ? null : "beside");
+  stripDrag = {grab, t, wa: stripAt.wa, wb: stripAt.wb, was: [state.from, state.to, state.preset], ms, moved: false, id: ev.pointerId};
   strip.setPointerCapture(ev.pointerId); hideTip(); ev.preventDefault();
 });
+const stripThere = (d, t) => { const half = (d.wb - d.wa) / 2; stripSet(t - half, t + half); d.wa = stripAt.wa; d.wb = stripAt.wb; d.grab = "mid"; };
 strip.addEventListener("pointermove", ev => {
   if (!stripAt) return;
   const [px, py] = stripPx(ev), t = stripAt.x.inv(px), d = stripDrag;
@@ -212,6 +213,7 @@ strip.addEventListener("pointermove", ev => {
   }
   if (d.id !== ev.pointerId || (!d.moved && Math.abs(t - d.t) < Math.abs(stripAt.x.inv(4) - stripAt.x.inv(0)))) return;
   d.moved = true;
+  if (d.grab === "beside") stripThere(d, d.t);
   const dt = t - d.t;
   const at = Math.max(stripAt.a, Math.min(stripAt.b, t));
   if (d.grab === "a") stripSet(Math.min(at, d.wb - 2 * DAY), d.wb);
@@ -221,8 +223,13 @@ strip.addEventListener("pointermove", ev => {
 const stripUp = ev => {
   const d = stripDrag; if (!d || d.id !== ev.pointerId) return;
   stripDrag = null;
-  if (!d.moved && d.ms && ev.type === "pointerup") return applyPreset(msKey(d.ms));   // a milestone's flag: since it
-  if (d.moved || !d.ms) { cancelAnimationFrame(stripRaf); renderAll(); }
+  if (ev.type === "pointercancel") {   // the browser took the gesture (a finger's scroll): the period as it was (#656)
+    if (d.moved) { [state.from, state.to, state.preset] = d.was; cancelAnimationFrame(stripRaf); renderAll(); }
+    return;
+  }
+  if (!d.moved && d.ms) return applyPreset(msKey(d.ms));   // a milestone's flag: since it
+  if (!d.moved && d.grab === "beside") stripThere(d, d.t);
+  cancelAnimationFrame(stripRaf); renderAll();
 };
 strip.addEventListener("pointerup", stripUp); strip.addEventListener("pointercancel", stripUp);
 strip.addEventListener("pointerleave", () => { if (!stripDrag) hideTip(); });
