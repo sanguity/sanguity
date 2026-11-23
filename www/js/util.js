@@ -667,9 +667,10 @@ function openDialog(d, {as = "center", modal = true} = {}) {
   if (d.contains(was) && was !== document.activeElement) was.focus({preventScroll: true});
   liveFollow();
 }
-/* what every page shares (.sg-follow: the status line of announce(), #sgStatus and #sgAlert, the toasts and the
-   tooltip) goes into the modal dialog on top while one is open, and back to the page after: what's behind a modal
-   dialog is inert, so a screen reader would hear nothing said there, and a toast's Undo couldn't be pressed. The
+/* what every page shares (.sg-follow: the status line of announce(), #sgStatus and #sgAlert, the toasts, the
+   tooltip and a chart's readout, #tip, #755) goes into the modal dialog on top while one is open, and back to the
+   page after: what's behind a modal dialog is inert, and under it (a screen reader would hear nothing said there, a
+   toast's Undo couldn't be pressed, a readout wouldn't be seen). The
    toasts (#362) go into a dialog's flow, at its foot, so they're never over what's in it (its buttons, what has
    focus): the modal one on top, or else the drawer open beside the page, which they'd cover; out of one they're a
    popover over the page again. A question (ask()) leaves them where they were, inert behind it (#369): asked from a

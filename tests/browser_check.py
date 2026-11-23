@@ -4481,6 +4481,40 @@ def main():
                   and follows[0] == follows[1] and follows[0] != opened[6] and "last year" in follows[2] and follows[3] == "dclose"
                   and strip[0] == "block" and strip[2] in strip[1] and "Hemoglobin: " in (strip[3] or "") and back == [False, True],
                   [opened, follows, strip, back])
+            # #755: its strip's readout (#tip) painted wherever the drawer is: modal over the page (768, 1100 and 1199 px;
+            # the wider panel at 1270 and 1400) and a phone's sheet (412), as docked (1400). It rang the point stepped to
+            # or hovered and showed no value, the readout left on the page under the dialog in the top layer (#725).
+            # Painted: what's hit at five points across its box is the readout itself, from the keys and by hover
+            PAINT755 = r"""() => { const t = document.getElementById('tip'), r = t.getBoundingClientRect();
+              if (getComputedStyle(t).display === 'none' || !r.width) return 'not shown';
+              t.style.pointerEvents = 'auto';
+              const n = [[.1, .2], [.5, .5], [.9, .8], [.1, .8], [.9, .2]].filter(([fx, fy]) => !t.contains(document.elementFromPoint(r.left + r.width * fx, r.top + r.height * fy))).length;
+              t.style.pointerEvents = ''; return n ? `under the ${t.parentElement === document.body ? 'page' : t.parentElement.id} at ${n} of 5` : 'painted'; }"""
+            tip755 = {}
+            for w755, wide755 in ((412, False), (768, False), (1100, False), (1199, False), (1400, False), (1270, True), (1400, True)):
+                page.set_viewport_size({"width": w755, "height": 860})
+                js("on => { if (drawer.classList.contains('wide') !== on) setWide(on); }", wide755)
+                js("document.querySelector('#charts .chart .hd .lab-open').click()")
+                settle(500)
+                page.focus("#dbody svg.lab-strip")
+                page.keyboard.press("End")
+                settle(150)
+                keys755, at755 = js(PAINT755), js("(r => [r.left + r.width / 2, r.top + r.height / 2])(document.querySelector('#dbody svg.lab-strip circle[fill=none]').getBoundingClientRect())")
+                page.keyboard.press("Escape")
+                page.mouse.move(at755[0] - 3, at755[1])
+                page.mouse.move(*at755)
+                settle(150)
+                tip755[f"{w755}{' wider' if wide755 else ''}"] = [js("document.getElementById('drawer').matches(':modal')"), keys755, js(PAINT755)]
+                page.mouse.move(at755[0], 5)
+                js("closeDrawer()")
+                settle(300)
+            js("setWide(false)")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(300)
+            check("…its strip's readout is painted over the drawer, from the keys and by hover, at 412, 768, 1100, 1199 and 1400 px and with the wider "
+                  "panel at 1270 and 1400 (#755: under the modal drawer, a point rang and no value showed)",
+                  len(tip755) == 7 and all(v[1:] == ["painted", "painted"] for v in tip755.values())
+                  and [k for k, v in tip755.items() if not v[0]] == ["1400"], tip755)
             js("state.tables.add('#hm'); switchTab('labs', 'heatmap')")
             settle(400)
             page.click("#hmTable tbody th .lab-open")
@@ -4536,6 +4570,31 @@ def main():
                   "said, from the panel opened by the heatmap's table and by a chart, at 1400 and 360 px (#652: focus fell to the page)",
                   len(go652) == 8 and all(len(v) == 5 and v[0] == ("its name" if "table" in k else "its chart") and v[1] and not v[2]
                                           and v[3] == f"{v[4]} {'shown as a table' if 'table' in k else 'charted'} on Labs." for k, v in go652.items()), go652)
+            # #755: opened from a chart's name, its Chart these results was left out as the chart is beside the panel;
+            # over the page (768 and 1100 px) that chart is under the scrim, out of reach: there it's shown, and puts
+            # focus on the chart, the drawer closed. Docked (1400 px), the chart beside it in reach, it's left out
+            js("window._was755 = [new Set(state.sel), new Set(state.tables)]")
+            go755 = {}
+            for w755 in (768, 1100, 1400):
+                page.set_viewport_size({"width": w755, "height": 900})
+                js("closeDrawer(); state.tables.clear(); state.sel = new Set(['Hemoglobin', 'WBC']); switchTab('labs', 'chart')")
+                settle(400)
+                page.focus('#charts .chart[data-lab="WBC"] .hd .lab-open')
+                page.keyboard.press("Enter")
+                settle(500)
+                go755[w755] = [js("[...document.querySelectorAll('#dbody .dgo button')].map(b => b.textContent)")]
+                if "Chart these results" in go755[w755][0]:
+                    js("[...document.querySelectorAll('#dbody .dgo button')].find(b => b.textContent === 'Chart these results').focus()")
+                    page.keyboard.press("Enter")
+                    settle(700)
+                    go755[w755].append(js(AT652, "WBC")[:3])
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("closeDrawer(); [state.sel, state.tables] = window._was755; switchTab('labs', 'chart')")
+            settle(300)
+            check("…over the page (768 and 1100 px) its Chart these results is there, the chart beside it under the scrim, and puts focus on the "
+                  "chart; docked (1400 px) it's left out, the chart in reach (#755)",
+                  all(v == [["Chart these results", "Show them as a table"], ["its chart", True, False]] for k, v in go755.items() if k != 1400)
+                  and go755.get(1400) == [["Show them as a table"]], go755)
             # #723: the first time Labs' charts are drawn in a page (opened on Heatmap or Compare), the axis's height was
             # set only once the browser had observed it, after Chart these results had brought the chart into view with the
             # usual 42 px: with 200% text the chart went under the 78 px axis. Each in a page of its own, with 200% text,
@@ -10121,6 +10180,53 @@ def main():
                     settle(300)
             check("…a click on the page beside the drawer over it (1100 px) closes it, focus back on the row; a click in it doesn't; docked (1400 px) "
                   "the drawer stays (#725)", click725.get(1100) == [True, False, True] and click725.get(1400, [None, None])[:2] == [True, True], click725)
+            # #755: …but only a press that starts beside it too: words selected in it with the mouse let go past its edge
+            # (its title's; a journal note's being written) closed it, the note gone, nothing asked. And not while a form
+            # in it holds words typed and not saved: a plain click beside it then does nothing, focus staying in the
+            # note. At 768 and 1100 px, and the wider panel at 1270
+            typed755 = "Felt dizzy after the morning dose"
+            NOTE755 = "() => [drawer.classList.contains('open'), document.querySelector('#drawer textarea')?.value ?? null, document.activeElement.matches('#drawer textarea')]"
+
+            def open755(note):   # a row whose record takes a journal note (not a journal entry's own), and a note typed
+                js("closeDrawer()")
+                js("""() => [...document.querySelectorAll('#list .tl-row')].find(r => (e => e && !['journal', 'mood', 'cycle'].includes(e.k))(byId.get(+r.dataset.id))).focus()""")
+                page.keyboard.press("Enter")
+                page.wait_for_selector("#drawer.open", timeout=5000)
+                settle(300)
+                if note:
+                    page.click("#dbody .jadd button")
+                    settle(400)
+                    page.locator("#drawer textarea").first.click()
+                    page.keyboard.type(typed755)
+
+            def drag755_out(sel, dx, dy):   # pressed on it, let go past the drawer's left edge
+                b, edge = page.locator(sel).first.bounding_box(), js("document.getElementById('drawer').getBoundingClientRect().left")
+                page.mouse.move(b["x"] + 5, b["y"] + 12)
+                page.mouse.down()
+                page.mouse.move(edge - dx, b["y"] + dy, steps=8)
+                page.mouse.up()
+                settle(200)
+            drag755 = {}
+            for w755, wide755 in ((768, False), (1100, False), (1270, True)):
+                page.set_viewport_size({"width": w755, "height": 800})
+                js("on => { if (drawer.classList.contains('wide') !== on) setWide(on); }", wide755)
+                settle(200)
+                open755(False)
+                drag755_out("#dtitle", 60, 40)
+                got755 = [js("document.getElementById('drawer').classList.contains('open')")]
+                open755(True)
+                drag755_out("#drawer textarea", 30, 14)
+                got755.append(js(NOTE755))
+                open755(True)
+                page.mouse.click(20, 400)
+                settle(300)
+                drag755[f"{w755}{' wider' if wide755 else ''}"] = got755 + [js(NOTE755)]
+                js("closeDrawer()")
+                settle(300)
+            js("setWide(false)")
+            check("…a drag from its title or from a note being typed, let go beside it, keeps it, and so does a click beside it with a note typed, "
+                  "the note kept and focus in it, at 768 and 1100 px and the wider panel at 1270 (#755: the note was gone, nothing asked)",
+                  len(drag755) == 3 and all(v == [True, [True, typed755, True], [True, typed755, True]] for v in drag755.values()), drag755)
             page.set_viewport_size({"width": 1400, "height": 900})
             page.focus("#list .tl-row")
             page.keyboard.press("Enter")
