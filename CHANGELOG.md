@@ -1655,6 +1655,13 @@ Everything on `main` so far; it becomes the first tagged release.
   (its name still its link's), a profile name with too little room on the top bar's row goes to a row of its own under
   it, and Labs' charts, their time axis and the event track make their gutters, rows and offsets as large as the text
   (WCAG 1.4.4). The usual size is as it was, the profile's caret 4 px nearer its name.
+- **The Labs heatmap on the chart kit** (#300): "in range" was a grey (#f0efec) so near the card's white that it read
+  as no result; it's now a grey that reads as a result in both themes, the out-of-range steps further from it. A panel
+  with one row on the heatmap goes under Other, the hint says the columns are draw days side by side however far apart
+  in time, and each row ends with how many of its results in the period are outside their range (its table has the
+  same, as a column). Its time axis is the kit's, months over their years, each tick at the first draw on or after it.
+  Where ten years leave its columns under a pixel (a phone), each row is one shape per colour, the pointer's pixel
+  finding its result: a frame of a drag there is about a third of what it was, and its budget is back to 250 ms.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

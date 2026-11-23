@@ -61,7 +61,8 @@
   --measure:light-dark(#06899d,#0b9db3);
   --stay:light-dark(rgb(26 25 21 / .07),rgb(238 236 230 / .07)); --stay-line:light-dark(#8a867c,#77736a);
   --range:light-dark(rgba(42,120,214,.10),rgba(57,135,229,.16));
-  --div-lo:light-dark(#2a78d6,#3987e5); --div-mid:light-dark(#f0efec,#383835); --div-hi:light-dark(#e34948,#e66767);
+  /* the heatmap's: below its range, in it (a grey that reads as a result, #300), above */
+  --div-lo:light-dark(#2a78d6,#3987e5); --div-mid:light-dark(#cfccc4,#4a4844); --div-hi:light-dark(#e34948,#e66767);
   --seq1:light-dark(#184f95,#9ec5f4); --seq2:light-dark(#3987e5,#5598e7); --seq3:light-dark(#86b6ef,#1c5cab);
   /* heart rate zones (#197): one hue, light to dark in light, dark to light in dark */
   --zone1:light-dark(#86b6ef,#1d4f91); --zone2:light-dark(#5598e7,#2d6fc4); --zone3:light-dark(#2f78d4,#4b8fe6);

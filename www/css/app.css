@@ -697,7 +697,7 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
    (over a phone's tabs, #268) */
 .hm-wrap{overflow-x:clip}
 #hm{display:block}
-#hmAxis{display:block;position:sticky;bottom:var(--tabbar,0px);background:var(--surface);border-top:1px solid var(--axis);z-index:1}
+#hmAxis{display:block;position:sticky;bottom:var(--tabbar,0px);background:var(--surface);z-index:1}
 #hm text.row{fill:var(--ink2);font-size:var(--fs-1)}
 #hm text.grp{fill:var(--ink2);font-size:var(--fs-1);font-weight:var(--fw-semibold)}
 #hm .hm-proc{fill:var(--c-procedure)}   /* a procedure's shape over its column (#301) */

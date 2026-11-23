@@ -4141,8 +4141,8 @@ def main():
                 return t && [document.getElementById('hmWrap').hidden, document.getElementById('hmTable').hidden, t.querySelectorAll('tbody th[scope=row]').length,
                   t.querySelectorAll('thead th[scope=col]').length, [...t.querySelectorAll('td.abn .vh:not(.hm-ref)')].map(v => v.textContent.trim()),
                   t.querySelectorAll('tbody th[scope=rowgroup]').length]; })()""")
-            check("…Table: a real table, a header for each lab and each draw day, out-of-range results said high or low",
-                  ht and ht[0] and not ht[1] and ht[2] == nrows and ht[3] == ncols + 1 and len(ht[4]) == cells[0]
+            check("…Table: a real table, a header for each lab, its count outside the range (#300) and each draw day, out-of-range results said high or low",
+                  ht and ht[0] and not ht[1] and ht[2] == nrows and ht[3] == ncols + 2 and len(ht[4]) == cells[0]
                   and set(ht[4]) <= {"high", "low"} and ht[5] > 0, ht and ht[:4] + [len(ht[4]), ht[5]] + [nrows, ncols])
             # ---- labs compared (#297, compare.js): Labs' third view, at #labs-compare. Up to three labs on one axis, each
             # result's place in its own range (0% its low limit, 100% its high), every value label a percentage (no second
@@ -4252,6 +4252,33 @@ def main():
             settle(300)
             check("…axe-core and a phone's width find nothing in it at 1400, 375 and 320 px, light and dark, charts and tables; with text at 200% at 360 "
                   "and 412 px its labels stay inside its charts, none over another, and the view switch whole", not seen297 and not big297, [seen297[:6], big297[:6]])
+            # #300: the heatmap on the kit. Each row's count of results outside their range, at its end, is its ▲s and ▼s
+            # and the table's; a panel with one row is in Other; the hint says the columns are draw days, not even time
+            hm300 = js("""(() => { const t = document.querySelector('#hmTable table'), rows = [...t.querySelectorAll('tbody tr:not(.grp)')];
+                const table = rows.map(r => [+r.children[1].textContent, r.querySelectorAll('.abn .vh:not(.hm-ref)').length]);
+                const groups = [...t.querySelectorAll('tbody')].map(b => [b.querySelector('th[scope=rowgroup]').textContent, b.querySelectorAll('th[scope=row]').length]);
+                state.tables.delete('#hm'); renderHeatmap();
+                const svg = document.getElementById('hm'), ends = [...svg.querySelectorAll('text')].filter(x => +x.getAttribute('x') === svg._geom.w - 4).map(x => x.firstChild.textContent);
+                return {table, groups, ends, hint: document.querySelector('#labsHeatmap > .hint').textContent}; })()""")
+            check("heatmap (#300): each row's count of results outside their range, under “Outside” at its end, is its ▲s and ▼s, and the table's",
+                  hm300["ends"][0] == "Outside" and hm300["ends"][1:] == [str(a) for a, _ in hm300["table"]] and all(a == b for a, b in hm300["table"])
+                  and sum(a for a, _ in hm300["table"]) == cells[0], hm300)
+            check("…a panel with one row on it is in Other, the table's too; and its hint says the columns are draw days side by side, not even time",
+                  hm300["groups"] and all(n > 1 or g == "Other" for g, n in hm300["groups"]) and "however far apart in time" in hm300["hint"], [hm300["groups"], hm300["hint"]])
+            # "in range" a grey that reads as a result on the card (it was #f0efec, as the card nearly), in light and dark;
+            # the legend's in-range key is it
+            HM300C = r"""() => { const lum = c => { const [r, g, b] = c.match(/[\d.]+/g).slice(0, 3).map(v => +v / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4); return .2126 * r + .7152 * g + .0722 * b; };
+                const cr = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + .05) / (y + .05); };
+                const card = getComputedStyle(document.getElementById('labsHeatmap')).backgroundColor, key = getComputedStyle(document.querySelectorAll('#hmLegend i')[4]).backgroundColor;
+                const mid = getComputedStyle([...document.querySelectorAll('#hm rect.cell')].find(c => /--div-mid/.test(c.style.fill))).fill;
+                return {mid: Math.round(cr(mid, card) * 100) / 100, key: key === mid}; }"""
+            theme300, c300 = js("document.documentElement.dataset.theme || null"), {}
+            for t in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; renderHeatmap(); }", t)
+                c300[t] = js(HM300C)
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; renderHeatmap(); }", theme300)
+            check("…“in range” a grey that reads as a result against the card, 1.5:1 at least, the legend's key the same, in light and dark (#300)",
+                  all(v["mid"] >= 1.5 and v["key"] for v in c300.values()), c300)
             # Body and activity: each card's charts, or one table; a chart steps from the keyboard
             js("state.tables.clear(); switchTab('health')")
             settle(500)
@@ -5167,17 +5194,36 @@ def main():
                 const cr2 = c.getBoundingClientRect(), hit = document.elementFromPoint(l.getBoundingClientRect().left + .5, cr2.top + cr2.height / 2);
                 return [hit && hit.tagName, getComputedStyle(l).pointerEvents]; })()""")
             check("the heatmap's month lines don't take a tap or a hover: the cell under one's pixel does (#479)", line479 == ["rect", "none"], line479)
+            # #300: columns under a pixel wide (the box narrowed to 100 px, All) are drawn as one path per colour a row, not
+            # a rect a pixel: as many colours as the pixels' cells, each row's out of range in its own colour; hovered,
+            # the pointer's pixel finds its result, said as a cell's is, and clicked, it opens its draw
+            sub300 = js("""(() => { const w = document.getElementById('hmWrap'); w.style.width = '100px'; renderHeatmap();
+                const svg = document.getElementById('hm'), runs = [...svg.querySelectorAll('path.cell-run')], out = {cw: (svg._geom.R - svg._geom.L) / new Set(Object.keys(Object.fromEntries(
+                  hmLabs().flatMap(s => s.pts).filter(p => p.ts >= state.from && p.ts <= state.to).map(p => [isoDay(p.ts), 1])))).size,
+                  rects: svg.querySelectorAll('rect.cell').length, names: svg.querySelectorAll('text.row').length, runs: runs.length, rows: new Set(runs.map(r => r.dataset.run)).size, hi: runs.filter(r => /--div-hi/.test(r.getAttribute('fill'))).length};
+                const r = runs.find(r => /--div-hi/.test(r.getAttribute('fill'))), m = r && r.getAttribute('d').match(/^M([\\d.]+),([\\d.]+)/), b = svg.getBoundingClientRect(), k = b.width / svg._geom.w;
+                if (m) { svg.scrollIntoView({block: 'center'}); const b2 = svg.getBoundingClientRect(), x = b2.left + (+m[1] + .5) * k, y = b2.top + (+m[2] + 2) * k, hit = document.elementFromPoint(x, y);
+                  hit.dispatchEvent(new PointerEvent('pointermove', {bubbles: true, clientX: x, clientY: y})); out.tip = document.getElementById('tip').innerText; hideTip();
+                  state.selEv = null; hit.dispatchEvent(new MouseEvent('click', {bubbles: true, clientX: x, clientY: y})); out.opened = byId.get(state.selEv)?.k; out.hit = hit === r; }
+                w.style.width = ''; renderHeatmap(); return out; })()""")
+            page.keyboard.press("Escape")
+            check("…columns under a pixel wide (#300): one path a colour a row, no rect a pixel; hovered, the pointer's pixel says its result, ▲ high; clicked, it opens its draw",
+                  sub300["cw"] < 1 and sub300["rects"] == 0 and sub300["rows"] == sub300["names"] and sub300["runs"] >= sub300["rows"] and sub300["hi"] > 0
+                  and sub300.get("hit") and "High" in sub300.get("tip", "") and sub300.get("opened") == "lab", sub300)
+            # (#300: the axis is the kit's, ticks at two levels, months over years; the latest draw's year is named on it,
+            # and its last label is the latest draw's step, at its column or before it, never past the grid's end)
             under479 = js("""(() => { const c = document.querySelector('#hm rect.cell'), ls = [...document.querySelectorAll('#hm line')].filter(l => l.getAttribute('stroke') === 'var(--grid)');
-                const last = [...document.querySelectorAll('#hm rect.cell')].map(c => c.dataset.k).sort().at(-1), ms = [0, 1].map(b => { const d = new Date(dayTs(last.slice(0, 7) + '-15')); d.setMonth(d.getMonth() - b);
-                  return ckMonth(d.getTime()); });
-                const labels = [...document.querySelectorAll('#hmAxis text')].map(t => t.textContent);
-                return [ls.length > 0 && ls.every(l => l.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING), labels.includes(ms[0]), ms, labels.slice(-3)]; })()""")
-            check("…drawn under the cells, so a month's first draw keeps its colour; and the latest month is named on the axis (#479, #481)",
-                  under479[0] and under479[1], under479)
+                const cs = [...document.querySelectorAll('#hm rect.cell')], last = cs.map(c => c.dataset.k).sort().at(-1), lastX = Math.max(...cs.map(c => c.getBoundingClientRect().right));
+                const labels = [...document.querySelectorAll('#hmAxis text')], fine = labels.filter(t => !t.matches('.ck-yr') && t.textContent !== 'Draw date').sort((a, b) => a.getBoundingClientRect().x - b.getBoundingClientRect().x);
+                return [ls.length > 0 && ls.every(l => l.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING), labels.some(t => t.textContent.endsWith(last.slice(0, 4))),
+                  fine.length > 0 && fine.at(-1).getBoundingClientRect().left < lastX, last, labels.map(t => t.textContent)]; })()""")
+            check("…drawn under the cells, so a month's first draw keeps its colour; and the latest draw's year is named on the axis, its last label at the grid's end (#479, #481)",
+                  under479[0] and under479[1] and under479[2], under479)
             # #485: in a period with one draw day (90 days) the latest month was pulled back over "Draw date"; no two of the
             # axis's labels meet, and every one is inside the strip, in 90 days and All
             OVER485 = """() => { const ax = document.getElementById('hmAxis').getBoundingClientRect(), ls = [...document.querySelectorAll('#hmAxis text')].map(t => [t.textContent, t.getBoundingClientRect()]);
-              const meet = []; for (let i = 0; i < ls.length; i++) for (let j = i + 1; j < ls.length; j++) if (ls[i][1].left < ls[j][1].right + 2 && ls[j][1].left < ls[i][1].right + 2) meet.push(ls[i][0] + '|' + ls[j][0]);
+              const meet = []; for (let i = 0; i < ls.length; i++) for (let j = i + 1; j < ls.length; j++) if (ls[i][1].left < ls[j][1].right + 2 && ls[j][1].left < ls[i][1].right + 2
+                && ls[i][1].top < ls[j][1].bottom - 1 && ls[j][1].top < ls[i][1].bottom - 1) meet.push(ls[i][0] + '|' + ls[j][0]);   // (in one row: since #300 the kit's two)
               return [meet, ls.filter(([, r]) => r.right > ax.right + 1 || r.left < ax.left - 1).map(([t]) => t)]; }"""
             over485 = {}
             for per in ("90d", "all"):
@@ -5186,9 +5232,10 @@ def main():
                 over485[per] = js(OVER485)
             check("…in 90 days (one draw day) and All, no two axis labels meet and each is inside the strip: the latest month isn't drawn over “Draw date” (#485)",
                   all(v == [[], []] for v in over485.values()), over485)
-            hm561 = js("[...document.querySelectorAll('#hmAxis text')].map(t => t.textContent).filter(t => /\\d/.test(t))")   # (on All, as left above)
-            check("…and its months are written “Sep ’26”, never “Sep 26”, which reads as a day (#561)",
-                  hm561 and all(re.match(r"^[A-Z][a-z]{2} ’\d\d$", t) for t in hm561), hm561)
+            hm561 = js("[...document.querySelectorAll('#hmAxis text')].map(t => [t.textContent, t.classList.contains('ck-yr')])")   # (on All, as left above)
+            check("…and its months are never written “Sep 26”, which reads as a day: the kit's months over their years (#561, #300)",
+                  any(y for _, y in hm561) and not any(re.match(r"^[A-Z][a-z]{2} \d\d$", t) for t, _ in hm561)
+                  and all(re.match(r"^(\d{4}|[A-Z][a-z]{2}( \d{4})?|\d{1,2}|Draw date)$", t) for t, _ in hm561), hm561)
             for w476 in (320, 375):
                 page.set_viewport_size({"width": w476, "height": 800})
                 settle(400)
