@@ -23,7 +23,7 @@ import collections, hashlib, json, os, re, subprocess, sys
 from datetime import datetime
 
 from . import pdf_layouts
-from .common import canonical_lab, lab_day_sub, lab_day_title, loinc_of
+from .common import canonical_lab, comparator, lab_day_sub, lab_day_title, loinc_of, range_flag
 from .pdf_layouts import bounds
 
 NAME = "pdf-labs"
@@ -202,18 +202,12 @@ _FLAG_DIR = {"h": "H", "hh": "H", "high": "H", "critical high": "H", "panic high
              "l": "L", "ll": "L", "low": "L", "critical low": "L", "panic low": "L"}
 
 
-def _direction(flag, x, lo, hi):
-    """H, L or "" for the charts: from the printed flag, or for "A"/"Abnormal" from the range."""
+def _direction(flag, x, lo, hi, value=""):
+    """H, L or "" for the charts: from the printed flag, or for "A"/"Abnormal" from the range by the one rule
+    (server/ranges.py flag, #752: "<0.5" against a low of 0.5 is low)."""
     if not flag:
         return ""
-    d = _FLAG_DIR.get(flag.lower())
-    if d:
-        return d
-    if x is not None and hi is not None and x > hi:
-        return "H"
-    if x is not None and lo is not None and x < lo:
-        return "L"
-    return ""
+    return _FLAG_DIR.get(flag.lower()) or range_flag(x, lo, hi, comparator(value))
 
 
 def _number(value):
@@ -392,7 +386,7 @@ def _build(reports, warnings):
             seen.add(ident)
             x = _number(r["value"])
             lo, hi = bounds(r["range"])
-            rows.append({**r, "rep": rep, "x": x, "lo": lo, "hi": hi, "dir": _direction(r["flag"], x, lo, hi)})
+            rows.append({**r, "rep": rep, "x": x, "lo": lo, "hi": hi, "dir": _direction(r["flag"], x, lo, hi, r["value"])})
     if dupes:
         warnings.append(f"Left out {dupes} result{'s' if dupes != 1 else ''} that appeared twice (same test, time and value).")
 

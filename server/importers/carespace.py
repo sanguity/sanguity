@@ -24,7 +24,7 @@ export. Series: "loinc:<code>" or "carespace:name|<name lower-cased>", with "|<u
 import collections, hashlib, json, posixpath, re
 import xml.etree.ElementTree as ET
 
-from .common import canonical_lab, iso, lab_day_sub, lab_day_title, loinc_of, num, unit_key, ymd
+from .common import canonical_lab, comparator, iso, lab_day_sub, lab_day_title, loinc_of, num, range_flag, unit_key, ymd
 
 NAME = "carespace"
 LABEL = "CareSpace / OncoEMR portal export"
@@ -216,8 +216,8 @@ def parse(files, org=None, tag=None):
         lo, hi = ref.get("lowerLimit"), ref.get("upperLimit")
         x = num(v.get("value"))
         flag = FLAGS.get((r.get("interpretationCode") or "").upper(), "")
-        if not flag and x is not None:
-            flag = "L" if lo is not None and x < lo else "H" if hi is not None and x > hi else ""
+        if not flag and x is not None:   # by the one rule (server/ranges.py flag, #752: "<0.5" against a low of 0.5 is low)
+            flag = range_flag(x, lo, hi, comparator(v.get("value")))
         unit = v.get("unit") or ref.get("unit") or ""
         pan = (panels.get(r.get("labPanelRecordId")) or {}).get("testName") or "Lab panel"
         by_day[t[:10]][pan].append([r["name"], v.get("value"), unit, r.get("referenceRangeDisplay") or "", flag])

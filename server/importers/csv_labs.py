@@ -27,7 +27,7 @@ import os
 import re
 from datetime import datetime
 
-from .common import canonical_lab, lab_day_sub, lab_day_title, loinc_of
+from .common import canonical_lab, lab_day_sub, lab_day_title, loinc_of, range_flag
 
 NAME = "csv"
 LABEL = "Lab results spreadsheet (CSV)"
@@ -266,17 +266,12 @@ _FLAGS = {"h": "H", "hh": "H", "high": "H", "hi": "H", "a h": "H", ">": "H", "ab
 
 
 def _flag(text, x, cmp, lo, hi):
-    """H, L or "" from a flag column, falling back to the range."""
+    """H, L or "" from a flag column, falling back to the range by the one rule (server/ranges.py flag, #752: "<15"
+    against a low of 15 is low)."""
     t = _norm(text) or (text or "").strip()
     if t in _FLAGS:
         return _FLAGS[t]
-    direction = ""
-    if x is not None:
-        if cmp in (">", ">=") and hi is not None and x >= hi or not cmp.startswith("<") and hi is not None and x > hi:
-            direction = "H"
-        elif cmp in ("<", "<=") and lo is not None and x <= lo or not cmp.startswith(">") and lo is not None and x < lo:
-            direction = "L"
-    return direction   # "A", "Abnormal", "N", "Normal" and the like: the range says which way
+    return range_flag(x, lo, hi, cmp)   # "A", "Abnormal", "N", "Normal" and the like: the range says which way
 
 
 # ------------------------------------------------------------------ dates

@@ -206,7 +206,7 @@ function chartCard(s) {
   if (showTable) {
     card.append(scrollBox({class: "tablewrap", "aria-label": `${nice(s.name)}, as a table`}, el("table", {class: "data"}, el("thead", {}, el("tr", {}, ["Date", "Value", s.watch ? "Detail" : "Ref range"].map(h => el("th", {scope: "col", text: h})), el("th", {scope: "col"}, el("span", {class: "vh", text: "Flag"})))),
       el("tbody", {}, [...pts].reverse().map(p => { const [a, b] = readText(s, p); return el("tr", {}, el("td", {text: s.watch ? fmtD(p.ts) : fmtDT(p.ts)}), el("td", {class: p[4] ? "abn" : "", text: a + (!s.watch && b ? ` (reported ${ucOrig(s, p)})` : "")}),
-        el("td", {text: (s.watch ? b : p[2] != null || p[3] != null ? `${p[2] ?? ""} – ${p[3] ?? ""}${p.rs === "settings" ? " (" + RANGE_FROM_SETTINGS + ")" : ""}` : "") + (p[6] ? ` · ${p[6] === "Clinic" ? "clinic visit" + (p.org ? " (" + p.org + ")" : "") : srcName(p[6])}` : "") + (p.same ? " · same result from " + p.same.length + " more source" + (p.same.length > 1 ? "s" : "") : "")}), el("td", {class: p[4] ? "abn" : ""}, ...flagNodes(p[4]))); })))));   // the mark and the word, not colour alone (#60)
+        el("td", {text: (s.watch ? b : refWords(p) || "") + (p[6] ? ` · ${p[6] === "Clinic" ? "clinic visit" + (p.org ? " (" + p.org + ")" : "") : srcName(p[6])}` : "") + (p.same ? " · same result from " + p.same.length + " more source" + (p.same.length > 1 ? "s" : "") : "")}), el("td", {class: p[4] ? "abn" : ""}, ...flagNodes(p[4]))); })))));   // the mark and the word, not colour alone (#60)
     const src = seriesSource(s); if (src) card.append(src);
     { const t = tagLine(pts); if (t) card.append(t); }   // its results' source tags, renamed here (#38)
     return card;
@@ -253,8 +253,8 @@ function drawChart(svg, s, pts, read, live) {   // live: a frame of a drag, at t
   ckGrid(g, y, niceTicks(lo, hi, 5), L, R, v => s.kind === "bars" && v >= 1000 ? ckNum(v / 1000) + "k" : ckNum(v));   // "137.5", not "138" (#654)
   ckUnit(g, s.unit, T - 10 * k);
   ckBand(g, steps, x, y, L, R, T, B);
-  { const st = steps[steps.length - 1];   // the numbers of the range at the right end, as printed (#293)
-    if (st) ckBandLabel(g, `${st.key} ${st.rs === "settings" ? "from settings" : "on report"}`, st, y, R, T, B, pts.map(p => [x(p.ts), y(p[1])]), L); }
+  // each step's numbers as printed, with its source, the end's at the right (#293, #752)
+  ckBandLabels(g, steps, x, y, L, R, T, B, pts.map(p => [x(p.ts), y(p[1])]));
   // a faint line at each milestone, named once on the event track over the charts (#294), and in the chart's words;
   // procedures and imaging, the medications and the rest are on the track only
   const msAt = g.length; msMarks(g, x, state.from, state.to, T, B, R, null);

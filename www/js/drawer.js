@@ -233,11 +233,22 @@ function docFrame(html, h = 420, title = "The record as it was sent") {   // tit
   f.onload = () => { try { f.style.height = Math.min(1600, f.contentDocument.body.scrollHeight + 30) + "px"; } catch (e) {} };
   return f;
 }
-function resultTable(rows) {
+/* a result row's flag (#752): its report's, else the one Labs shows for that result (the same lab, day and value),
+   worked out against its report's range by the one rule (ranges.js); not one against a range from settings, as the
+   row's range is its report's */
+function rowFlag(row, ts) {
+  if (row[4]) return row[4];
+  const s = ts != null && SERIES.find(x => x.name === row[0] && !x.watch); if (!s) return "";
+  const day = isoDay(ts), v = Number(row[1]), on = s.pts.filter(p => isoDay(p.ts) === day && p.rs !== "settings");
+  const p = on.find(p => p[1] === v) || (on.length === 1 ? on[0] : null);
+  return p?.[4] || "";
+}
+function resultTable(rows, ts) {
   if (!rows || !rows.length) return null;
+  const fl = rows.map(r => rowFlag(r, ts));
   return scrollBox({class: "tablewrap", "aria-label": "Results", style: {maxHeight: "none"}}, el("table", {class: "data"},
     el("thead", {}, el("tr", {}, ["Component", "Value", "Ref range"].map(h => el("th", {scope: "col", text: h})), el("th", {scope: "col"}, el("span", {class: "vh", text: "Flag"})))),
-    el("tbody", {}, rows.map(([n, v, u, rr, f], i) => el("tr", {class: SERIES.some(s => s.name === n && s.n) ? "link" : "", onclick: () => { if (SERIES.some(s => s.name === n && s.n)) showSeries(n); }},
+    el("tbody", {}, rows.map(([n, v, u, rr], i, _, f = fl[i]) => el("tr", {class: SERIES.some(s => s.name === n && s.n) ? "link" : "", onclick: () => { if (SERIES.some(s => s.name === n && s.n)) showSeries(n); }},
       el("td", {}, SERIES.some(s => s.name === n && s.n) ? el("button", {class: "cell-btn", type: "button", text: nice(n)}) : nice(n), nice(n) !== n ? el("small", {class: "muted", text: ` (${n})`}) : null,   // #38
         SERIES.some(s => s.name === n && s.n) ? renameButton("lab", n) : null, testLink(n, true)), el("td", {class: f ? "abn" : "", text: `${v ?? ""} ${u || ""}`.trim()}, ...rowOrig(rows[i])), el("td", {text: rr || ""}), el("td", {class: f ? "abn" : ""}, ...flagNodes(f)))))));   // the mark and the word (#60); "What is this test?" (#163); a value kept with its unit (#270)
 }
@@ -250,7 +261,7 @@ function resultBody(d, eid, top) {
   const out = [], key = [["Ordered by", d.provider], ["Status", d.status], ["Lab", d.lab], ["Specimen", d.specimen]];
   if (top) out.push(drawerFacts(key, "facts"));
   out.push(drawerFacts([["Order", d.order && panelName(d.order)], ["Collected", recordDate(d.collected)], ["Resulted", recordDate(d.resulted)], ...(top ? [] : key), ["Diagnosis", (d.dx || []).join("; ")]]));
-  const t = resultTable(d.rows); if (t) out.push(el("div", {class: "sect", text: "Results"}), t);
+  const t = resultTable(d.rows, byId.get(eid)?.ts); if (t) out.push(el("div", {class: "sect", text: "Results"}), t);
   const same = sameNotes(eid, d); if (same) out.push(same);   // the same result from another source (same.js)
   for (const [k, h, isHtml] of d.report || []) out.push(el("div", {class: "sect", text: k === "combinedRTFNarrativeImpression" ? "Report" : k}),
     isHtml ? docFrame(h, 420, k === "combinedRTFNarrativeImpression" ? "Report" : k) : el("pre", {class: "report", text: h.replace(/\r\n/g, "\n").trim()}));
@@ -278,13 +289,13 @@ function openEvent(e) {
   const main = [], go = [], facts = rows => main.push(drawerFacts(rows, "facts")), kv = rows => main.push(drawerFacts(rows));
   if (d.type === "result") main.push(...resultBody(d, e.id, true));
   else if (d.type === "labday") {
-    const rs = d.ids.map(id => DATA.details[id]).filter(Boolean), abn = rs.reduce((a, r) => a + (r.rows || []).filter(x => x[4]).length, 0);
+    const rs = d.ids.map(id => DATA.details[id]).filter(Boolean), abn = d.ids.reduce((a, id) => a + (DATA.details[id]?.rows || []).filter(x => rowFlag(x, byId.get(id)?.ts)).length, 0);
     facts([["Results", String(rs.reduce((a, r) => a + (r.rows || []).length, 0))], ["Out of range", abn ? String(abn) : "None"],
       ["Ordered by", uniq(rs.map(r => r.provider))], ["Lab", uniq(rs.map(r => r.lab))]]);
     go.push(goBtn("Show this day in Labs", () => { setRange(e.ts - 45*DAY, e.ts + 45*DAY); pickTab("labs"); }));
     for (const id of d.ids) {
       const r = DATA.details[id], ev2 = byId.get(id); if (!r) continue;
-      const abn = (r.rows || []).filter(x => x[4]).length;
+      const abn = (r.rows || []).filter(x => rowFlag(x, ev2.ts)).length;
       const det = el("details", {class: "res", open: d.ids.length <= 3 || null}, el("summary", {}, el("span", {text: panelName(r.order || ev2.title)}), el("span", {class: "spacer"}), el("span", {class: "res-t", text: fmtDT(ev2.ts).split(", ").pop()}), abn ? el("span", {class: "badge abn", "data-tip": `${abn} outside reference range`, text: abn}, el("span", {class: "vh", text: " outside reference range"})) : null), el("div", {}, ...resultBody({...r, order: null}, id), eventSource(ev2)));
       main.push(det);
     }

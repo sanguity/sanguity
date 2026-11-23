@@ -49,7 +49,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
 from . import common
-from .common import canonical_lab, unit_key
+from .common import canonical_lab, range_flag, unit_key
 
 NAME = "fhir"
 LABEL = "FHIR records (Apple Health, Blue Button, patient portals)"
@@ -421,11 +421,8 @@ def _flag(interp, v, lo, hi):
         return "H"
     if code in ("L", "LL", "LU", "<", "LOW", "CRITICAL LOW", "BELOW LOW NORMAL"):
         return "L"
-    if isinstance(v, (int, float)):
-        if lo is not None and v < lo:
-            return "L"
-        if hi is not None and v > hi:
-            return "H"
+    if isinstance(v, (int, float)) and not isinstance(v, bool):   # by the one rule (server/ranges.py flag, #752)
+        return range_flag(v, lo, hi)   # (a value with a comparator is kept as text, so it has none here)
     return ""   # "A" (abnormal, no direction) has no slot in data.json's H/L flags
 
 

@@ -104,11 +104,13 @@ const cell = (text, cls) => el("td", {class: cls}, ...keepDates(text ?? ""));   
    (#492: "14.3 ·" was left over its date) */
 const atCell = (value, day, cls) => el("td", {class: cls}, value,
   el("span", {class: "sum-at"}, el("span", {class: "sum-dot", text: " · "}), el("span", {class: "nw", text: fmtDay(day)})));
-/* a trend's Then or Now, with its flag in words when it's out of range, not red alone (#60), and the range from settings
-   it's against where it's one (#717: "4 ▼ Low" sat beside the row's only range, the report's 3–17), under it in the
-   pane as its day is, its numbers kept whole */
-const flagCell = x => atCell(x.flag ? [`${x.value} ${sumFlag(x.flag)}`, x.settings ? el("span", {class: "sum-at"}, " (settings range ", el("span", {class: "nw", text: x.settings}), ")") : null]
-  : x.value, x.date, x.flag ? "flag" : null);
+/* a trend's Then or Now, with its flag in words when it's out of range, not red alone (#60), and the range it's judged
+   against where that isn't the row's (the server's own: #717, "4 ▼ Low" sat beside the row's only range, the report's
+   3–17; #752, "1.6 ▼ Low" beside 1.5–2.5 from settings, its report's 1.7–2.4 said nowhere), under it in the pane as its
+   day is, its numbers kept whole: "(report range 1.7–2.4)", "(settings range 5–20)", "(no range given)" */
+const flagCell = x => atCell([x.flag ? `${x.value} ${sumFlag(x.flag)}` : x.value,
+  x.own ? el("span", {class: "sum-at"}, ` (${x.own[0]}`, x.own[1] ? [" ", el("span", {class: "nw", text: x.own[1]})] : null, ")") : null],
+  x.date, x.flag ? "flag" : null);
 /* a range kept whole, never broken at its dash (#514: "13.5– / 17.5" in the pane; summary.css makes room for it) */
 const rangeCell = t => el("td", {}, el("span", {class: "nw", text: t || ""}));
 function table(heads, rows, cls = "") {   // a region that can be scrolled from the keyboard on a narrow screen (#225's wider tables)
@@ -146,21 +148,23 @@ function renderPreview(s) {
     s.fits ? null : el("p", {class: "fitwarn", text: "Not everything fits on two pages; left out: " +
       Object.entries(s.left_out).map(([k, n]) => `${labels[k] || k}${n ? ` (${n})` : ""}`).join(", ") + ". Untick a section or shorten the questions."}))];
   const none = t => el("p", {class: "muted", text: t});
+  // under a table and the charts, what their flags are judged against, as the PDF says it (the server's notes, #752)
+  const said = k => s.notes?.[k] ? el("p", {class: "hint sum-said", text: s.notes[k]}) : null;
   for (const id of s.sections) {
     if (id === "out_of_range") {
       parts.push(el("h3", {text: `Out of range since ${since} (${s.out_of_range.length})`}));
       parts.push(s.out_of_range.length ? table(["Test", "Result", "Flag", "Range", "Date", "Source"], s.out_of_range.map(r => el("tr", {},
         cell(r.label + (r.of > 1 ? ` (${r.out} of ${r.of})` : "")), cell(`${r.value} ${r.unit}`.trim()), cell(r.flag, "flag"),
-        rangeCell(r.range || "not given"), cell(fmtDay(r.date)), cell(r.source)))) : none("No results since then are outside the reference range on their own report."));
+        rangeCell(r.range || "not given"), cell(fmtDay(r.date)), cell(r.source)))) : none("No results since then are outside the reference range on their own report."), said("out_of_range"));
     } else if (id === "trends") {
       parts.push(el("h3", {text: `Trends since ${since} (${s.trends.length})`}));
       parts.push(s.trends.length ? table(["Test", "Then", "Now", "Change", "Since", "", "Now's range"], s.trends.map(r => el("tr", {},
         cell(r.label + (r.unit ? ` (${r.unit})` : "")), r.then ? flagCell(r.then) : cell("none before"),   // flagged as on its chart (#649)
         r.now ? flagCell(r.now) : cell("no new result"),
-        cell(r.change || ""), cell(String(r.since)), el("td", {}, spark(r.spark)), rangeCell(r.now && r.now.range)))) : none("None of the key labs has results."));
+        cell(r.change || ""), cell(String(r.since)), el("td", {}, spark(r.spark)), rangeCell(r.now && r.now.range)))) : none("None of the key labs has results."), said("trends"));
       // their charts (#302), where the PDF has room for them (s.charts: else it's made without them)
       const drawn = s.charts ? s.trends.filter(r => r.spark.filter(p => p[1] != null).length > 1) : [];
-      if (drawn.length) parts.push(el("div", {class: "sum-charts"}, ...drawn.map(sumChart)));
+      if (drawn.length) parts.push(el("div", {class: "sum-charts"}, ...drawn.map(sumChart)), said("charts"));
     } else if (id === "medications") {
       parts.push(el("h3", {text: `Current medications (${s.medications.length})`}));
       parts.push(s.medications.length ? table(["Medication", "Instructions", "Since", "Source"], s.medications.map(r => el("tr", {},
@@ -189,7 +193,7 @@ function renderPreview(s) {
   if (s.settings_note) parts.push(el("p", {class: "hint", id: "sumSettingsNote", text: s.settings_note}));   // #44
   parts.push(el("p", {class: "hint sum-notice", text: s.notice}));
   for (const c of $("#prevBody").querySelectorAll(".ck-solo")) ckSoloRO.unobserve(c);   // (the charts drawn before)
-  $("#prevBody").replaceChildren(...parts); box.removeAttribute("data-stale"); box.hidden = false;
+  $("#prevBody").replaceChildren(...present(...parts)); box.removeAttribute("data-stale"); box.hidden = false;
   pvSight();
 }
 /* a preview that couldn't be drawn (#492): the pane is shown with what went wrong, the first time too (its message is

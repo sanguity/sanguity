@@ -40,8 +40,8 @@ import re
 import zipfile
 
 from . import ccda
-from .common import (canonical_lab, ext_alias, inferred_stays, iso, lab_alias, lab_day_sub, lab_day_title, lab_defs,
-                     resolve_name, stay, strip_html, unit_key)
+from .common import (canonical_lab, comparator, ext_alias, inferred_stays, iso, lab_alias, lab_day_sub, lab_day_title,
+                     lab_defs, range_flag, resolve_name, stay, strip_html, unit_key)
 
 NAME = "epic-mychart"
 LABEL = "Epic MyChart export"
@@ -209,11 +209,8 @@ def _results(out, tr, rel, org, tag, infer_stays):
                 v = cr.get("numericValue")
                 lo, hi = rr.get("low"), rr.get("high")
                 flag = ""
-                if isinstance(v, (int, float)) and not isinstance(v, bool):
-                    if lo is not None and v < lo:
-                        flag = "L"
-                    elif hi is not None and v > hi:
-                        flag = "H"
+                if isinstance(v, (int, float)) and not isinstance(v, bool):   # by the one rule (server/ranges.py flag, #752)
+                    flag = range_flag(v, lo, hi, comparator(cr.get("value")))
                 if flag:
                     abn_here += 1
                 rows.append([name, cr.get("value"), unit, rr.get("formattedReferenceRange") or "", flag])

@@ -1,4 +1,6 @@
-"""Reference ranges from settings (#44): the person's own ranges for results whose report gives none.
+"""Reference ranges from settings (#44): the person's own ranges for results whose report gives none; and the one rule
+for a result's range, flag and where its range came from (#752), which every page, the visit summary, its PDF, share
+links and the importers use.
 
 A lab report usually prints a reference range beside each result, and Sanguity colours a result against that
 range only. Some results come without one (a typed-in result, a CSV, some portals). For those, the profile's
@@ -18,18 +20,24 @@ they agree):
 - Age: a row with an age band ("from" and "to" in whole years, both included, either may be left open) applies
   only when the profile has a birth date, by the person's age on the day of the result. Rows for the same lab,
   unit and sex may not have overlapping age bands, so at most one row fits.
-- The result is "H" above the high, "L" below the low, else in range.
+- The result is "H" above the high, "L" below the low, else in range: by flag(), the one rule for a flag worked out
+  from a range (#752), which a result whose report gives a range and no flag is judged by too (the importers, judge()).
+  A value given as a bound is flagged where every value it stands for is past the range: "<15" against a low of 15 is
+  "L", ">90" against a high of 90 "H".
+- A chart's band (steps()) has a step for each result with a range, none beside a result without one (#752).
 
 The ranges are a profile setting (server/settings.py, section "ranges"), encrypted: ranges.overrides. The birth date
 and sex are About this person's (#194, server/person.py: person.birthDate and person.sex; before #194 they were
 ranges.birthDate and ranges.sex, renamed in place by schema step 30). config() puts the three together for find().
 """
+from .importers import common
 from .person import age_on   # noqa: F401  (whole years on a day; here since #44)
 
 ROW_SEXES = ("any", "female", "male")
 MOST = 200
 AGE_MAX = 130
 SOURCE = "settings"   # what a point's range source is called when it came from here
+REPORT = "report"     # and when it's its report's own
 
 
 class RangeError(ValueError):
@@ -145,9 +153,41 @@ def has_own(lo, hi, flag):
     return lo is not None or hi is not None or bool(str(flag or "").strip())
 
 
-def flag_for(v, row):
-    if row.get("high") is not None and v > row["high"]:
-        return "H"
-    if row.get("low") is not None and v < row["low"]:
-        return "L"
-    return ""
+# ---------------------------------------------------------------- the one rule for a result's flag (#752)
+# flag(v, lo, hi, cmp): "H" above the high, "L" below the low, whatever value a bound stands for ("<15" against a low of
+# 15 is low), comparator(text) a value's "<", "<=", ">" or ">=". Their code is the importers' common.py's (build.py may
+# load only that), so the importers, a range from settings, the visit summary and share links use one rule.
+comparator, flag = common.comparator, common.range_flag
+
+
+def judge(v, lo, hi, flag_, text, row=None):
+    """A result's range, flag and where its range came from, by the one rule (#752; ranges.js applyRangeOverrides):
+    its report's own range and flag where it gives them; where it gives a range and no flag, the flag worked out
+    against it; where it gives neither (a number), row's range, a range from settings (find()), its flag worked out
+    against that. -> (lo, hi, flag, source): source REPORT or SOURCE"""
+    f = str(flag_ or "").strip()
+    if f or v is None or (lo is None and hi is None and not row):
+        return lo, hi, f, REPORT
+    if lo is None and hi is None:
+        lo, hi = row.get("low"), row.get("high")
+        return lo, hi, flag(v, lo, hi, comparator(text)), SOURCE
+    return lo, hi, flag(v, lo, hi, comparator(text)), REPORT
+
+
+def steps(pts, start, end):
+    """The reference band as steps in time (www/js/ranges.js rangeSteps; the PDF's charts and sparklines, #299, #302):
+    pts [(t, lo, hi, source)] in time order. Each result with a range its step, from halfway after the result before it
+    to halfway to the next (start and end at the ends); a result with none has none, so no band is drawn beside a result
+    whose report gave no range (#752); neighbours with the same range from the same source one step.
+    -> [[a, b, lo, hi, source]]"""
+    out = []
+    for i, (t, lo, hi, src) in enumerate(pts):
+        if lo is None and hi is None:
+            continue
+        a = (pts[i - 1][0] + t) / 2 if i else start
+        b = (t + pts[i + 1][0]) / 2 if i < len(pts) - 1 else end
+        if out and out[-1][1] == a and out[-1][2:] == [lo, hi, src]:
+            out[-1][1] = b
+        else:
+            out.append([a, b, lo, hi, src])
+    return out

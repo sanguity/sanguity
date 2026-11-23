@@ -2135,7 +2135,7 @@ def main():
             body: JSON.stringify({appointment: 0, since: null, labs: [], questions: document.getElementById('questions').value, sections: [...document.querySelectorAll('#sections input:checked')].map(i => i.value)})})).json();
           return {charts: s.charts, want: s.trends.filter(r => r.spark.filter(p => p[1] != null).length > 1).map(r => r.label + (r.unit ? ` (${r.unit})` : '')),
             names: [...document.querySelectorAll('#prevBody .sum-chart > figcaption')].map(f => f.textContent),
-            after: document.querySelector('#prevBody .sum-charts')?.previousElementSibling?.querySelector('table') != null}; }""")
+            after: (p => p?.matches('.sum-said') ? p.previousElementSibling : p)(document.querySelector('#prevBody .sum-charts')?.previousElementSibling)?.querySelector('table') != null}; }""")   # (under its note, #752)
         solo302s = strict.evaluate(SOLO302_JS, "#prevBody")
         check("…and under the trends' table a chart of each trend of two results or more (#302, the kit's ckSolo): its name over it, a picture "
               "named in words, as wide as its box, its band, line and marks each titled, nothing past its edges, as the PDF has them",
@@ -4407,8 +4407,8 @@ def main():
                 def where(r):
                     f = r[3].strip()
                     if f: return "above" if f.endswith("High") else "below" if f.endswith("Low") else "flagged"
-                    m = re.match(r"^(-?[\d.]*) – (-?[\d.]*)", r[2])
-                    lo, hi = (float(m.group(1)) if m and m.group(1) else None), (float(m.group(2)) if m and m.group(2) else None)
+                    m = re.match(r"^(?:(-?[\d.]+)–(-?[\d.]+)|≤ (-?[\d.]+)|≥ (-?[\d.]+))", r[2])   # "13.5–17.5", "≤ 5", "≥ 60" (refWords, #752)
+                    lo, hi = [float(v) if v else None for v in ((m.group(1) or m.group(4)), (m.group(2) or m.group(3)))] if m else (None, None)
                     if lo is None and hi is None: return ""
                     return "above" if hi is not None and num(r) > hi else "below" if lo is not None and num(r) < lo else "in"
                 def ext(pick):
@@ -7146,13 +7146,13 @@ def main():
             rows = js(f"""[...{cr_card}.querySelectorAll('table.data tbody tr')].map(r => [...r.cells].map(c => c.textContent))""")
             outside = [r for r in rows if r[0].startswith(("Jul 15, 2026", "Sep 10, 2026"))]
             check("…its table gives each row its own range, and the note says so",
-                  len(outside) == 2 and all(r[2].startswith("0.6 – 1.2") for r in outside)
-                  and all(r[2].startswith("0.7 – 1.3") for r in rows if r not in outside) and "▲ High" in [r[3] for r in outside]
+                  len(outside) == 2 and all(r[2].startswith("0.6–1.2") for r in outside)
+                  and all(r[2].startswith("0.7–1.3") for r in rows if r not in outside) and "▲ High" in [r[3] for r in outside]
                   and js(f"{cr_card}.querySelector('.rdiff').textContent").endswith("Each row gives its own."), outside)
             js("state.tables.clear(); switchTab('labs', 'heatmap')")
             settle(400)
             hm = js("""(() => { const s = SERIES.find(s => s.name === 'Creatinine'), p = s.pts.find(p => p[0].startsWith('2026-09-10'));
-                return [hmLevel(p[1], p[2], p[3]), [...document.querySelectorAll('#hm text.row')].find(t => t.firstChild.textContent === 'Creatinine')?.querySelector('title').textContent]; })()""")
+                return [hmLevel(p), [...document.querySelectorAll('#hm text.row')].find(t => t.firstChild.textContent === 'Creatinine')?.querySelector('title').textContent]; })()""")
             check("heatmap (#58): the outside lab's 1.25 is coloured high against its own range; the row's name says the ranges differ",
                   hm[0] > 0 and "Reference range differs between results: 0.7–1.3 and 0.6–1.2 mg/dL" in (hm[1] or ""), hm)
             js("openEvent(EV.find(e => e.k === 'lab' && e.t.startsWith('2026-09-10')))")   # its id is the database's
@@ -17288,7 +17288,7 @@ def main():
             settle(200)
             pn[1200] = panes()
             check("…the options on the left and the preview beside them at 1400 and 1200 px (#288)", pn[1400]["beside"] and pn[1200]["beside"]
-                  and js("!document.getElementById('previewBtn')") and js("document.getElementById('prevMsg').textContent") == "1 page", pn)
+                  and js("!document.getElementById('previewBtn')") and re.fullmatch(r"[12] pages?", js("document.getElementById('prevMsg').textContent")), [pn, js("document.getElementById('prevMsg').textContent")])   # (one or two: a Then naming its own range, #752, and the notes can take a page's last lines)
             page.uncheck("#sections input[value=medications]")
             busy288 = js("document.getElementById('preview').getAttribute('aria-busy')")
             page.wait_for_selector("#preview:not([hidden]):not([aria-busy]) h3", timeout=10000)
@@ -17404,13 +17404,14 @@ def main():
                     return [[...pv.querySelectorAll('.scroll')].filter(s => s.scrollWidth > s.clientWidth + 1).length,
                       [...pv.querySelectorAll('td, th')].filter(c => c.getBoundingClientRect().right > right + 0.5).length,
                       pv.querySelectorAll('.sum-at').length > 0 && [...pv.querySelectorAll('.sum-at')].every(d => getComputedStyle(d).display === 'block'
-                        && getComputedStyle(d.querySelector('.sum-dot')).display === 'none'),
+                        && (!d.querySelector('.sum-dot') || getComputedStyle(d.querySelector('.sum-dot')).display === 'none')),   // (#752: a Then's own range, under it too, has no dot)
                       wide <= a.clientWidth - 24,
                       [...document.querySelectorAll('.sum-notice')].filter(n => n.checkVisibility()).length]; })()""")
-                # #514: no range in it split at its dash ("13.5– / 17.5" at 1200 px)
-                fit492[w].append(js("""[...document.querySelectorAll('#preview td')].filter(td => /\\d–\\d/.test(td.textContent)).map(td => {
-                    const rg = document.createRange(); rg.selectNodeContents(td);
-                    return new Set([...rg.getClientRects()].map(r => Math.round(r.top))).size > 1 ? td.textContent : ''; })"""))
+                # #514: no range in it split at its dash ("13.5– / 17.5" at 1200 px): each range kept whole, in a cell of its
+                # own or a Then's own range under its value (#752)
+                fit492[w].append(js("""[...document.querySelectorAll('#preview td .nw')].filter(n => /\\d–\\d/.test(n.textContent)).map(n => {
+                    const rg = document.createRange(); rg.selectNodeContents(n);
+                    return new Set([...rg.getClientRects()].map(r => Math.round(r.top))).size > 1 ? n.textContent : ''; })"""))
             page.set_viewport_size({"width": 1400, "height": 900})
             check("visit summary: at 1400 and 1200 px nothing in the preview is cut, a table wider than its box or a cell past its edge, a trend's "
                   "day under its value, the visit chosen shown whole; and the notice once, at the preview's foot (#492)",
@@ -19842,7 +19843,7 @@ def main():
                 for q in pts:
                     hit = None if rng.has_own(q[2], q[3], q[4]) else rng.find(cfg, "Ferritin", unit, q[0])
                     want.append(["Ferritin", unit, q[0], hit["low"] if hit else q[2], hit["high"] if hit else q[3],
-                                 rng.flag_for(q[1], hit) if hit else q[4], "settings" if hit else ""])
+                                 rng.flag(q[1], hit["low"], hit["high"], rng.comparator(q[5])) if hit else q[4], "settings" if hit else ""])
             check("…the page applies them as the server does (ranges.js and server/ranges.py agree)", sorted(got) == sorted(want),
                   [g for g in got if g not in want][:3])
             check("…by the age on each result's day: the female 36+ row from 2026-03-01, the row for anyone before",
@@ -19859,7 +19860,7 @@ def main():
             js(f"{card}.querySelector('.hd .view-seg button:last-child').click()")   # its table: Chart | Table (#60)
             settle(200)
             table = js("document.querySelector('#charts .tablewrap').textContent")
-            check("…its table labels each such range, and keeps the report's own", "(range from settings)" in table and "30 – 400" in table, table[:200])
+            check("…its table labels each such range, and keeps the report's own", "(range from settings)" in table and "30–400" in table, table[:200])
             check("…and the caption says so", "range from settings" in page.inner_text("#view-labs .range-note")
                   and "reference ranges in your own lab reports" in page.inner_text("#view-labs .range-note"))
             js("state.tables.clear(); renderCharts()")
@@ -19957,11 +19958,11 @@ def main():
                   "“4 ▼ Low (settings range 5–20)” beside the row's 3–17, the chart's earlier step said to be from settings over its own stretch "
                   "as well as the end's 3–17, its ▼ titled so; in the PDF the Then cell, the chart's step and both notes",
                   got717["then"][0].startswith("4 ▼ Low (settings range 5–20)") and got717["then"][1] and got717["now"][0].startswith("7") and not got717["now"][1]
-                  and got717["range"] == "3–17" and len(got717["ref"]) == 2 and got717["ref"][0] == "3–17" and got717["over"] and got717["apart"]
+                  and got717["range"] == "3–17" and len(got717["ref"]) == 2 and got717["ref"][0] == "3–17 on report" and got717["over"] and got717["apart"]
                   and got717["low"].endswith("4 ng/mL ▼ Low (range from settings)")
                   and re.search(r"Folate \(ng/mL\) 4 Low .{1,16}? \(settings range 5–20\) 7", pdf649) and "from settings" in chart717 and "Then:" not in chart717
                   and "Each is judged against the range printed on its own report, or, where its report gives none, the range from settings" in pdf649
-                  and "or, where its report gives none, outside the range from settings, which its cell then gives" in pdf649,
+                  and "or, where its report gives none, outside the range from settings. A Then judged against a range other than its row" in pdf649,
                   [got717, re.findall(r"Folate \(ng/mL\) .{0,60}|Each is judged.{0,120}|High or Low \(in red\).{0,160}", pdf649), chart717[:120]])
             # #718: a value given as "<5", then 6: the chart's titles say "<5" as the table does (it said 5), and no change is
             # worked out from it (it was "+1"), said as the lab panel says it, in the preview, the PDF and the Overview's tile
@@ -19998,6 +19999,151 @@ def main():
                   [got718, re.findall(r"C-Reactive Protein \(mg/L\) .{0,60}|Change: .{0,60}", pdf718)])
             db = dbm.connect()
             prof_r.delete_profile(db, rpid)
+            db.close()
+            # ---- #752: one rule for a result's range, flag and source, said the same way everywhere. The matrix
+            # (tests/ranges_matrix.py, which tests/test_ranges.py runs through the server): a report's range then none;
+            # none then a report's; Settings then a report's; a report's then Settings; a range that changes; "<" and ">"
+            # values at and past each edge of a report's range and of one from Settings. Through Labs (its points, charts,
+            # tables and heatmap), the Overview, Compare, a share link's page, the summary's preview and its PDF: the same
+            # flags, ranges and sources in every one; a band step only under results with that range, each said with its
+            # source; a Then judged against another range than its row's naming it; a value given as a bound placed as one
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import ranges_matrix as M752
+            db = dbm.connect()
+            mpid = prof_r.create_profile(db, "Matrix (fictional)", owner_id=owner)
+            with dbm.transaction(db):
+                rec_r.store(db, mpid, M752.records(), "upload", fmt="csv")
+            db.close()
+            tok752 = js("""async ([pid, ov, keys]) => { const h = {'X-Sanguity': '1', 'Content-Type': 'application/json'};
+              for (const [k, value] of [['ranges.overrides', ov], ['overview.keyLabs', keys]])
+                await fetch(`api/profiles/${pid}/settings/${k}`, {method: 'PUT', headers: h, body: JSON.stringify({value})});
+              const r = await fetch(`api/profiles/${pid}/links`, {method: 'POST', headers: h, body: JSON.stringify({sections: ['results']})});
+              return (await r.json()).path.split('#')[1]; }""", [mpid, M752.OVERRIDES, list(M752.CASES)])
+            num752 = lambda v: f"{v:g}"
+            words752 = lambda lo, hi: f"{num752(lo)}–{num752(hi)}" if lo is not None and hi is not None else ""
+            FLAG752 = {"H": "▲ High", "L": "▼ Low", "": ""}
+            # a chart's marks in order, each [x, flagged, under a band step], and its band's words (Labs, the share page, the summary)
+            CHART752 = r"""s => { const bands = [...s.querySelectorAll('rect.refband')].map(r => [+r.getAttribute('x'), +r.getAttribute('x') + +r.getAttribute('width')]);
+              return {marks: [...s.querySelectorAll('circle.pt, path.pt.abn')].map(m => { const x = m.tagName === 'circle' ? +m.getAttribute('cx') : +/^M(-?[\d.]+)/.exec(m.getAttribute('d'))[1];
+                return [m.matches('.abn'), bands.some(([a, b]) => a - .5 <= x && x <= b + .5)]; }), ref: [...s.querySelectorAll('text.ck-ref')].map(t => t.textContent)}; }"""
+            def chart752(got, judged, steps, idx=None):
+                """what's wrong with a chart (CHART752's) of the results idx (all by default) judged so, its band's steps so"""
+                idx = list(range(len(judged))) if idx is None else idx
+                want = [[bool(judged[i][0]), judged[i][1] is not None or judged[i][2] is not None] for i in idx]
+                said = {w for cover, w in steps if any(i in idx for i in cover)}
+                bad = [] if got["marks"] == want else [f"marks {got['marks']} not {want}"]
+                if not got["ref"] or any(t not in said and t not in ("on report", "from settings") for t in got["ref"]) \
+                        or {t.endswith("from settings") for t in got["ref"]} != {w.endswith("from settings") for w in said}:
+                    bad.append(f"band said {got['ref']}, its steps {sorted(said)}")
+                return bad
+            bad752 = []
+            page.goto(base + f"/?profile={mpid}")
+            page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {mpid}", timeout=20000)
+            got752 = js("Object.fromEntries(SERIES.filter(s => !s.watch).map(s => [s.name, s.pts.map(p => [p[4] || '', p[2], p[3], p.rs || 'report'])]))")
+            bad752 += [f"Labs' {n}: {got752.get(n)} not {j}" for n, j in M752.JUDGED.items() if got752.get(n) != j]
+            js("labs => { state.tables.clear(); state.sel = new Set(labs); applyPreset('all'); switchTab('labs', 'chart'); renderLabs(); }", list(M752.CASES))
+            settle(600)
+            for n, j in M752.JUDGED.items():
+                bad752 += [f"Labs' {n} chart: {b}" for b in chart752(js(f"({CHART752})(document.querySelector('#charts .chart[data-lab=\"{n}\"] svg.ck'))"), j, M752.STEPS[n])]
+            js("labs => { for (const n of labs) state.tables.add(n); renderCharts(); }", list(M752.CASES))
+            settle(400)
+            for n, j in M752.JUDGED.items():   # each row its own range and source, and its flag, newest first
+                rows = js(f"[...document.querySelectorAll('#charts .chart[data-lab=\"{n}\"] table.data tbody tr')].map(r => [r.cells[2].textContent, r.cells[3].textContent])")
+                want = [[words752(lo, hi) + (" (range from settings)" if src == "settings" and lo is not None else ""), FLAG752[f]] for f, lo, hi, src in j][::-1]
+                if [[r[0].split(" · ")[0], r[1]] for r in rows] != want:
+                    bad752.append(f"Labs' {n} table: {rows} not {want}")
+            js("labs => { for (const n of labs) state.tables.delete(n); switchTab('labs', 'heatmap'); }", list(M752.CASES))
+            settle(400)
+            hm752 = js("Object.fromEntries(SERIES.filter(s => !s.watch).map(s => [s.name, s.pts.map(p => Math.sign(hmLevel(p) || 0))]))")
+            bad752 += [f"the heatmap's {n}: {hm752.get(n)}" for n, j in M752.JUDGED.items()
+                       if hm752.get(n) != [{"H": 1, "L": -1}.get(f, 0) for f, *_ in j]]
+            # Compare: a value given as a bound placed as one ("<0%", ">113%"), and left out of its medians, said so
+            js("""() => { cmpSel = ['Amylase', 'Hemoglobin'].map(n => cmpKey(SERIES.find(s => s.name === n))).concat(''); state.tables.add('#cmp'); switchTab('labs', 'compare'); renderCompare(); }""")
+            settle(400)
+            cmp752 = js("""[[...document.querySelectorAll('#cmpBody tbody tr')].filter(r => r.cells[1].textContent === 'Amylase').map(r => r.cells[4].textContent).reverse(),
+              (s => cmpMedWords(cmpSides(s.pts, zParse(isoDay(Date.now() - %d * DAY) + 'T00:00:00')).after, s.unit))(SERIES.find(s => s.name === 'Amylase'))]""" % M752.SINCE)
+            jr752 = lambda v: int((v + .5) // 1)
+            want_cmp = [("<" if t[0] == "<" else ">") + ("−" if jr752((v - lo) / (hi - lo) * 100) < 0 else "") + f"{abs(jr752((v - lo) / (hi - lo) * 100))}%"
+                        for _, v, lo, hi, _, t in M752.CASES["Amylase"]]
+            if cmp752[0] != want_cmp or not cmp752[1].startswith("no median: 4 given as a bound"):
+                bad752.append(f"Compare: {cmp752} not {want_cmp}")
+            js("openLab(SERIES.find(s => s.name === 'Lipase'))")   # the lab panel: its counts by the same flags, no median of bounds
+            settle(400)
+            panel752 = js("Object.fromEntries([...document.querySelectorAll('#drawer dd[data-k]')].map(d => [d.dataset.k, d.textContent]))")
+            js("closeDrawer()")
+            if [panel752.get(k) for k in ("in", "out", "median")] != ["2 of 6 (33%)", "▲ 2 above · ▼ 2 below", "None: all 6 given as a bound"]:
+                bad752.append(f"the lab panel: {panel752}")
+            js("state.tables.delete('#cmp'); cmpSel = null; switchTab('overview')")
+            settle(400)
+            ov752 = js("""[Object.fromEntries([...document.querySelectorAll('#view-overview .tile:not(.home-tile)')].map(t => [t.querySelector('.lbl > span').textContent,
+              [t.querySelector('.st')?.textContent || '', t.querySelector('.st')?.dataset.tip || '']])),
+              Object.fromEntries([...document.querySelectorAll('#ovOut .ov-row')].map(r => [r.querySelector('.n').textContent, r.querySelector('.r').textContent]))]""")
+            for n, j in M752.JUDGED.items():
+                f, lo, hi, src = j[-1]
+                if ov752[0].get(n) != [FLAG752[f], "Against a range from settings" if f and src == "settings" else ""]:
+                    bad752.append(f"the Overview's {n} tile: {ov752[0].get(n)}")
+                if (n in ov752[1]) != bool(f) or f and ov752[1][n] != f"ref {words752(lo, hi)}" + (" (range from settings)" if src == "settings" else ""):
+                    bad752.append(f"the Overview's out-of-range {n}: {ov752[1].get(n)}")
+            # a share link's page: its reports' ranges and flags only (it sends no range from Settings), each band step said "on report"
+            page.goto(base + f"/share.html#{tok752}")
+            page.wait_for_selector("#share-results .share-latest", timeout=10000)
+            js("[...document.querySelectorAll('#share-results .share-tools button')].find(b => b.textContent.startsWith('Open every')).click()")
+            settle(600)
+            for n in M752.CASES:
+                j = M752.share_judged(n)
+                hist = js(f"""(() => {{ const b = [...document.querySelectorAll('#share-results .share-open')].find(b => b.textContent === {json.dumps(n)}), h = document.getElementById(b.getAttribute('aria-controls'));
+                  return [[...h.querySelector('table').tBodies[0].rows].map(r => [r.cells[1].querySelector('.share-flag')?.textContent || '', r.cells[2].textContent]).reverse(), h.querySelector('svg.ck-solo') && ({CHART752})(h.querySelector('svg.ck-solo'))]; }})()""")
+                if hist[0] != [[FLAG752[f], words752(lo, hi)] for f, lo, hi, _ in j]:
+                    bad752.append(f"the share page's {n}: {hist[0]}")
+                steps = [s for s in M752.STEPS[n] if s[1].endswith("on report")]
+                if not hist[1]:
+                    bad752.append(f"the share page's {n}: no chart")
+                elif steps:
+                    bad752 += [f"the share page's {n} chart: {b}" for b in chart752(hist[1], j, steps)]
+                elif hist[1]["ref"] or hist[1]["marks"] != [[False, False]] * len(j):   # (Lipase: its only range is from Settings)
+                    bad752.append(f"the share page's {n} chart: a band or a flag {hist[1]}")
+            # the summary's preview (the last visit SINCE days back), and its PDF
+            page.goto(base + f"/sharing.html?profile={mpid}#summary")
+            page.wait_for_selector("#preview:not([hidden]):not([aria-busy]) #prevBody .sum-chart", timeout=15000)
+            sum752 = js(r"""async () => { const chart = """ + CHART752 + r""", t = [...document.querySelectorAll('#prevBody h3')].find(h => h.textContent.startsWith('Trends')).nextElementSibling;
+              const at = c => c.childNodes[0].textContent + (c.querySelector('.sum-at:not(:last-child)')?.textContent || '');
+              const rows = Object.fromEntries([...t.querySelectorAll('tbody tr')].map(r => [r.cells[0].textContent.split(' (')[0], [at(r.cells[1]), at(r.cells[2]), r.cells[6].textContent]]));
+              const charts = Object.fromEntries([...document.querySelectorAll('#prevBody .sum-chart')].map(f => [f.querySelector('figcaption').textContent.split(' (')[0], chart(f.querySelector('svg'))]));
+              const o = [...document.querySelectorAll('#prevBody h3')].find(h => h.textContent.startsWith('Out of range')).nextElementSibling;
+              const oor = Object.fromEntries([...o.querySelectorAll('tbody tr')].map(r => [r.cells[0].textContent.split('  (')[0].split(' (')[0], [...r.cells].slice(1, 4).map(c => c.textContent)]));
+              const r = await fetch(`api/profiles/${PID}/summary/pdf`, {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, body: JSON.stringify(chosen())});
+              const a = new Uint8Array(await r.arrayBuffer()); let b = ''; for (const x of a) b += String.fromCharCode(x);
+              return {rows, charts, oor, notes: [...document.querySelectorAll('#prevBody .sum-said')].map(p => p.textContent), pdf: btoa(b)}; }""")
+            try:
+                pdf752 = " ".join("\n".join(p_.extract_text() for p_ in PdfReader(io.BytesIO(base64.b64decode(sum752.pop("pdf")))).pages).split())
+            except Exception as e:
+                pdf752 = f"no PDF: {e}"
+            for n, (then, now, rng752) in M752.TRENDS.items():
+                cell = lambda c: f"{c[0]}{' ' + FLAG752[c[1][0]] if c[1] else ''}" + (f" ({' '.join(w for w in c[2] if w)})" if c[2] else "")
+                if sum752["rows"].get(n) != [cell(then), cell(now), rng752]:
+                    bad752.append(f"the summary's {n} row: {sum752['rows'].get(n)} not {[cell(then), cell(now), rng752]}")
+                pdf_then = f"{then[0]}{' ' + then[1] if then[1] else ''} .{{1,16}}?" + (re.escape(f" ({' '.join(w for w in then[2] if w)})") if then[2] else "")
+                if not re.search(re.escape(n) + r" \(" + re.escape(M752.UNITS[n]) + r"\) " + re.escape(then[0]) + pdf_then[len(then[0]):], pdf752):
+                    bad752.append(f"the PDF's {n} Then: {re.findall(re.escape(n) + ' .{0,60}', pdf752)[:1]}")
+                line = [i for i, p in enumerate(M752.CASES[n]) if p[0] > M752.SINCE][-1:] + [i for i, p in enumerate(M752.CASES[n]) if p[0] < M752.SINCE]
+                bad752 += [f"the summary's {n} chart: {b}" for b in chart752(sum752["charts"].get(n) or {"marks": [], "ref": []}, M752.JUDGED[n], M752.STEPS[n], line)]
+            want_oor = {n: [v, f, r] for n, (v, f, r, *_) in M752.OUT_OF_RANGE.items()}
+            got_oor = {n: [v.split(" ")[0], f, r] for n, (v, f, r) in sum752["oor"].items()}
+            if got_oor != want_oor:
+                bad752.append(f"the summary's out of range: {got_oor} not {want_oor}")
+            notes752 = " ".join(sum752["notes"])
+            for w in ("A Then judged against a range other than its row's (its Now's) gives it in its cell",
+                      "A value given as a bound (“<15”) is out of range only where every value it stands for is.",
+                      "each step marked “on report” or “from settings”, none beside a result with neither"):
+                if w not in notes752 or w not in pdf752:
+                    bad752.append(f"a note not said in the preview and the PDF: {w}")
+            check("#752: one rule for a result's range and flag, said the same way: the matrix (a report's range then none, none then a report's, "
+                  "Settings then a report's and the reverse, a range that changes, “<” and “>” at and past each edge) gives the same flags, ranges "
+                  "and sources in Labs (points, charts, tables, heatmap), Compare, the Overview, a share link, the summary's preview and its PDF; "
+                  "a band step only under results with that range, each said with its source; a Then judged against another range naming it",
+                  not bad752, bad752)
+            db = dbm.connect()
+            prof_r.delete_profile(db, mpid)
             db.close()
             js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
             # ---- About this person (#194): on Sharing, a group of its own under Profiles: the birth date and the sex

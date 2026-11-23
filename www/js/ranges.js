@@ -1,9 +1,11 @@
-/* Sanguity · reference ranges from settings (#44): the person's own ranges, for results whose report gives none.
-   The same rules as server/ranges.py (the visit summary PDF uses that one; tests/browser_check.py checks they agree):
-   only a numeric result with no low, no high and no flag on its report; the same lab (ignoring case and extra spaces)
-   and the same unit (ignoring spaces; nothing converted); a row for the profile's sex wins over one for anyone; a row
-   with an age band needs the birth date, by the age on the result's day. The birth date and sex are those in About this
-   person (#194, person.js). Plain script; all files share one scope. */
+/* Sanguity · a lab result's reference range and flag, worked out by one rule (#44, #752), and said one way: the person's
+   own ranges, for results whose report gives none, and the flag of a result whose report gives a range and no flag.
+   The same rules as server/ranges.py (the visit summary, its PDF and share links use that one, and the importers' flags;
+   tests/test_ranges.py and tests/browser_check.py check they agree): a range from settings only for a numeric result
+   with no low, no high and no flag on its report; the same lab (ignoring case and extra spaces) and the same unit
+   (ignoring spaces; nothing converted); a row for the profile's sex wins over one for anyone; a row with an age band
+   needs the birth date, by the age on the result's day. The birth date and sex are those in About this person (#194,
+   person.js). Plain script; all files share one scope. */
 "use strict";
 const RANGE_FROM_SETTINGS = "range from settings";
 const rNorm = n => String(n || "").split(/\s+/).filter(Boolean).join(" ").toLowerCase();
@@ -26,43 +28,57 @@ function rangeRowFor(cfg, lab, unit, day) {
   }
   return best;
 }
-/* fill in the range (p[2], p[3]) and flag (p[4]) of each lab result that has none, marking it p.rs = "settings";
-   returns how many results took a range from settings */
+/* a value given as a bound ("<15", "≤ 0.5", ">90"): its comparator, "<", "<=", ">" or ">=", else "" (#718;
+   server/ranges.py comparator) */
+const RANGE_CMP = {"=<": "<=", "≤": "<=", "=>": ">=", "≥": ">="};
+const rangeCmp = t => { const m = /^\s*(<=|>=|=<|=>|<|>|≤|≥)/.exec(t ?? ""); return m ? RANGE_CMP[m[1]] || m[1] : ""; };
+/* the one flag rule (#752; server/ranges.py flag, which the importers use too): "H" above the high, "L" below the low,
+   whatever value a bound (its comparator c) stands for, else "": "<15" against a low of 15 is low (every value under 15
+   is), ">90" against a high of 90 high; "<15" against a low of 10 is neither (it may be 12 or 9) */
+const rangeFlag = (v, lo, hi, c = "") => hi != null && (c === ">" ? v >= hi : c[0] !== "<" && v > hi) ? "H"
+  : lo != null && (c === "<" ? v <= lo : c[0] !== ">" && v < lo) ? "L" : "";
+/* each lab result's range (p[2], p[3]), flag (p[4]) and its range's source (p.rs "settings", else its report): the
+   report's own range and flag where it gives them; where it gives a range and no flag, the flag rangeFlag works out
+   against it; where it gives neither, a range from settings that fits, p.rs = "settings", its flag worked out against
+   that. Every page reads a result's flag from here (Labs, the heatmap, the Overview, Compare, the lab panel).
+   -> how many results took a range from settings */
 function applyRangeOverrides(series, cfg) {
   let n = 0;
-  if (!cfg || !Array.isArray(cfg.overrides) || !cfg.overrides.length) return n;
   for (const s of series) {
     if (s.watch) continue;
     for (const p of s.pts) {
-      if (typeof p[1] !== "number" || !isFinite(p[1]) || p[2] != null || p[3] != null || String(p[4] || "").trim()) continue;
-      const r = rangeRowFor(cfg, s.name, s.unit, String(p[0] || "").slice(0, 10));
-      if (!r) continue;
-      p[2] = r.low ?? null; p[3] = r.high ?? null;
-      p[4] = r.high != null && p[1] > r.high ? "H" : r.low != null && p[1] < r.low ? "L" : "";
-      p.rs = "settings"; n++;
+      if (typeof p[1] !== "number" || !isFinite(p[1]) || String(p[4] || "").trim()) continue;
+      if (p[2] == null && p[3] == null) {
+        const r = rangeRowFor(cfg, s.name, s.unit, String(p[0] || "").slice(0, 10));
+        if (!r) continue;
+        p[2] = r.low ?? null; p[3] = r.high ?? null; p.rs = "settings"; n++;
+      }
+      p[4] = rangeFlag(p[1], p[2], p[3], rangeCmp(p[5]));
     }
   }
   return n;
 }
 let RANGES_USED = 0;   // how many results took a range from settings (app.js)
 const RANGE_NOTE_SETTINGS = " Results whose report gives no range are coloured against a range you set in Settings, marked “range from settings”.";
-/* "ref 70–99" for a result, said as from settings when it is */
-const refText = p => `ref ${p[2] ?? ""}–${p[3] ?? ""}` + (p.rs === "settings" ? ` (${RANGE_FROM_SETTINGS})` : "");
 /* ---- each result against its own range on a chart (#58): never one range across results or labs.
    A result's range (p[2], p[3]) is already in the units shown (units.js converts it with the value, #41), so ranges
    from two labs are compared after conversion. rangeWords(p): "0.7–1.3", "≤ 5" or "≥ 60" (null: it has none).
-   rangeSteps(pts, from, to): the reference band as steps in time, [{a, b, lo, hi, key (its words), rs}], each result's range from halfway
-   after the result before it to halfway to the next (from and to at the ends); results with no range take no part,
-   and neighbours with the same range are one step, so a series whose results all agree is one band (from the same
-   source: a report's range and the same one from settings are two, each said as what it is, #649).
+   rangeSteps(pts, from, to): the reference band as steps in time, [{a, b, lo, hi, key (its words), rs: "report" or
+   "settings"}]: each result with a range its step, from halfway after the result before it to halfway to the next (from
+   and to at the ends); a result with none has none, so no band is drawn beside a result whose report gave no range
+   (#752: a report's 3.5–5.1 ran on under the 3.4 and 5.3 after it, which had none); neighbours with the same range from
+   the same source are one step, so a series whose results all agree is one band (a report's range and the same one from
+   settings are two, each said as what it is, #649). server/ranges.py steps() is the same rule, for the PDF.
    rangesDiffer(pts): the different ranges of these results, in order ("0.7–1.3 and 0.6–1.2"), or null if they agree. */
 const rangeWords = p => p[2] != null && p[3] != null ? `${p[2]}–${p[3]}` : p[3] != null ? `≤ ${p[3]}` : p[2] != null ? `≥ ${p[2]}` : null;
 const rangeKey = rangeWords;
 function rangeSteps(pts, from, to) {
-  const rp = pts.filter(p => rangeKey(p) != null), out = [];
-  rp.forEach((p, i) => {
-    const a = i ? (rp[i - 1].ts + p.ts) / 2 : from, b = i < rp.length - 1 ? (p.ts + rp[i + 1].ts) / 2 : to, last = out[out.length - 1];
-    if (last && last.key === rangeKey(p) && last.rs === p.rs) last.b = b; else out.push({a, b, lo: p[2], hi: p[3], key: rangeKey(p), rs: p.rs});
+  const out = [];
+  pts.forEach((p, i) => {
+    const key = rangeKey(p); if (key == null) return;
+    const a = i ? (pts[i - 1].ts + p.ts) / 2 : from, b = i < pts.length - 1 ? (p.ts + pts[i + 1].ts) / 2 : to, last = out.at(-1);
+    const rs = p.rs === "settings" ? "settings" : "report";
+    if (last && last.key === key && last.rs === rs && last.b === a) last.b = b; else out.push({a, b, lo: p[2], hi: p[3], key, rs});
   });
   return out;
 }
@@ -72,3 +88,11 @@ function rangesDiffer(pts) {
   return w.length > 4 ? w.slice(0, 3).join(", ") + ` and ${w.length - 3} more` : w.slice(0, -1).join(", ") + " and " + w[w.length - 1];
 }
 const RANGE_DIFFERS = "Reference range differs between results";
+/* ---- said one way (#752), in every cell, band label and tooltip: a result's range, with where it came from.
+   refWords(p): "13.5–17.5", or "70–99 (range from settings)"; refText(p): "ref " and those (null for no range).
+   rangeSrc(st): a band step's source in words, "on report" or "from settings"; rangeSaid(st): its range and that,
+   "3.5–5.1 on report", "5–20 from settings" */
+const refWords = p => rangeWords(p) && rangeWords(p) + (p.rs === "settings" ? ` (${RANGE_FROM_SETTINGS})` : "");
+const refText = p => rangeWords(p) && "ref " + refWords(p);
+const rangeSrc = st => st.rs === "settings" ? "from settings" : "on report";
+const rangeSaid = st => `${st.key} ${rangeSrc(st)}`;
