@@ -536,10 +536,12 @@ dialog.sheet[open]{display:flex;flex-direction:column;padding-bottom:env(safe-ar
 .kind-check>.n{margin-left:auto;color:var(--ink2)}
 .period-pick{display:none}
 .period-pill{display:inline-flex;align-items:center;gap:var(--sp-2);max-width:100%;min-height:44px;margin:0;padding:var(--sp-1) var(--sp-4);border:1px solid var(--axis);
-  border-radius:var(--r-pill);background:var(--raised);color:var(--ink);font:inherit;font-weight:var(--fw-medium);cursor:pointer}
+  border-radius:var(--r-chip);background:var(--raised);color:var(--ink);font:inherit;font-weight:var(--fw-medium);cursor:pointer}
+/* its words two lines at most, then "…", the pill shrinking to its row on a phone (#658) */
+.period-pill>.pill-l{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere;text-align:left}
 .period-pill[aria-expanded="true"]{background:var(--hover)}
 @media (max-width:700px){
-  .period-pick{display:block;min-width:0}
+  .period-pick{display:block;flex:0 1 auto;min-width:0}
   #presets,#periodMore,#periodWords{display:none}
 }
 .filters{display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap;padding:var(--sp-3) var(--sp-5);border-bottom:1px solid var(--grid);background:var(--surface)}

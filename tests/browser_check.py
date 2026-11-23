@@ -11083,6 +11083,33 @@ def main():
             check("Body's and Labs' top on a phone (#615), at 360 and 412 px, light and dark, and with text at 200%: the period beside Show in one row, "
                   "none alone pushed right, the first chart in the first screen, the sections one row, the lab list folded, titles not squeezed, charts their card's width, "
                   "no ▲ / ▼ in a tile's change; Show opens and closes by keyboard; nothing sticking out, Show open or shut, with 200% text too (#647)", not bad615, bad615)
+            # ---- #658: the period's pill shrinks to its row on a phone, its words wrapping to two lines and then "…", named by
+            # the whole period (.menu's flex:none kept it as wide as its words): with a 60-character milestone chosen (put in
+            # for the check, taken out again), at 320, 360 and 412 px, as usual and with text at 200% (#615's), on Labs, Body
+            # and activity and the Timeline, the page no wider than the screen, the pill's caret on it, its name whole
+            L658 = "Second course of maintenance therapy at Riverside Cancer Ctr"   # (60 characters, as Settings allow)
+            was658 = js("[state.preset, state.from, state.to, state.tab, state.labsView, lastPeriod]")
+            k658 = js("l => { MILESTONES.push({date: '2026-03-02', label: l}); applyPreset(msKey(MILESTONES.at(-1))); return [state.preset, 'Period: Since ' + lcLabel(l)]; }", L658)
+            bad658 = {}
+            for w in (320, 360, 412):
+                page.set_viewport_size({"width": w, "height": 800})
+                for big in (False, True):
+                    js("css => { const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = css ? [s] : []; }",
+                       ":root{--fs-1:23px;--fs-2:25px;--fs-3:28px;--fs-4:31px;--fs-5:36px;--fs-6:44px;--fs-7:56px} html{font-size:200%}" if big else "")
+                    for t in ("labs", "health", "timeline"):
+                        js("t => { switchTab(t, t === 'labs' ? 'chart' : t === 'timeline' ? 'timeline' : undefined); scrollTo(0, 0); }", t)
+                        settle(300)
+                        got = js("""() => { const p = document.getElementById('periodPill'), c = p.querySelector('.menu-caret').getBoundingClientRect(), vw = document.documentElement.clientWidth;
+                          return {doc: document.documentElement.scrollWidth, vw, caret: c.width > 0 && c.left >= 0 && c.right <= vw, pill: Math.round(p.getBoundingClientRect().right)}; }""")
+                        got["named"] = page.get_by_role("button", name=k658[1], exact=True).count() == 1
+                        if got["doc"] > got["vw"] or not got["caret"] or not got["named"] or js("state.preset") != k658[0]:
+                            bad658[f"{t} {w}{' 200%' if big else ''}"] = got
+                        if big and w == 360 and t == "labs" and os.environ.get("SANGUITY_SHOTS"):
+                            page.screenshot(path=os.path.join(os.environ["SANGUITY_SHOTS"], "658-labs-360-200.png"))
+            js("""w => { document.adoptedStyleSheets = []; MILESTONES.pop(); [state.preset, state.from, state.to] = w; lastPeriod = w[5];
+              switchTab(w[3], w[4]); renderAll(); }""", was658)
+            check("With a 60-character milestone chosen, at 320, 360 and 412 px, as usual and with text at 200%, on Labs, Body and activity and the "
+                  "Timeline (#658): the page no wider than the screen, the period's pill's caret on it, the pill named by the whole period", not bad658, bad658)
             # …and the Overview's tiles (#623): a key lab's change since the result before, the weight's since the first
             # milestone, the watch's against the 4 weeks before, as ↑ or ↓ and its size, or "no change"; none ▲ / ▼ or a sign
             open_tab("overview")
