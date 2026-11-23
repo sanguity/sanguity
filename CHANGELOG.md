@@ -1740,6 +1740,11 @@ Everything on `main` so far; it becomes the first tagged release.
   "Body fat: 267 readings from Apr 3, 2025" for the demo's 271 from Mar 29, and the arrow keys never reached the
   first readings or the first two after a gap (9 of 1,633 on ten years), while the tile and the table counted them
   all. They count and step through their readings again, and every Body chart now names the points it steps through.
+- **Larger text: chips wrap inside their cards** (#647): with text at 130% or more on a phone, Body and activity's
+  "Show the day's average and low–high", "Show the WHO's categories for adults" and "Show lab glucose results
+  alongside" ran past their cards (to 549 px at 360 px with 200% text), and Labs' "Procedures & imaging" past the
+  screen, so the page scrolled sideways and took the tab bar's last tabs off it. An on/off chip's words now wrap inside
+  it, its corners rounded where they do rather than a pill's ends (WCAG 1.4.4, 1.4.10).
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

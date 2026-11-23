@@ -10947,7 +10947,7 @@ def main():
             # switch, no row of them with one control alone pushed right; the first chart within the first screen (its
             # card's top with larger text); Body's sections one row, the source line under them; Labs' list folded under
             # Choose labs, the charts first; no card's title wrapping beside its Chart | Table; a chart as wide as its card
-            # less its 8 px padding; tiles' changes without ▲ / ▼. Show opens and closes its box, which fits, and keeps focus
+            # less its 8 px padding; tiles' changes without ▲ / ▼. Show opens and closes its box, which fits (with text at 200% too, #647), and keeps focus
             TOP615 = r"""(big) => { const r = e => e.getBoundingClientRect(), v = document.querySelector('main > section:not([hidden])');
               const tabs = document.querySelector('.tabs'), bottom = tabs && r(tabs).top > innerHeight / 2 ? r(tabs).top : innerHeight;
               const bar = v.querySelector('.chart-bar'), ctl = [...bar.querySelectorAll(':scope > :is(.period-pick, .seg, .show-btn)')].filter(e => e.checkVisibility());
@@ -10982,16 +10982,14 @@ def main():
                                 page.click("#labsPick")   # (opened by the checks above): folded, as a page starts
                             js("window.scrollTo(0, 0)")
                             got = js(TOP615, big)
-                            if not big:
-                                got["fits"] = phone_fits(page, f"{t} at {w} px")
+                            got["fits"] = phone_fits(page, f"{t} at {w} px{' 200%' if big else ''}")   # (with text at 200% too, #647)
                             show = "#hShowBtn" if t == "health" else "#showBtn"
                             page.focus(show)
                             page.keyboard.press("Enter")
                             settle(150)
                             got["open"] = js("b => [b.getAttribute('aria-expanded'), document.getElementById(b.getAttribute('aria-controls')).checkVisibility(), document.activeElement === b]",
                                              page.query_selector(show))
-                            if not big:
-                                got["fits"] += phone_fits(page, f"{t} at {w} px, Show open")
+                            got["fits"] += phone_fits(page, f"{t} at {w} px{' 200%' if big else ''}, Show open")
                             page.keyboard.press("Enter")
                             settle(150)
                             got["shut"] = js("b => [b.getAttribute('aria-expanded'), document.getElementById(b.getAttribute('aria-controls')).checkVisibility()]", page.query_selector(show))
@@ -11005,7 +11003,7 @@ def main():
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme615)
             check("Body's and Labs' top on a phone (#615), at 360 and 412 px, light and dark, and with text at 200%: the period beside Show in one row, "
                   "none alone pushed right, the first chart in the first screen, the sections one row, the lab list folded, titles not squeezed, charts their card's width, "
-                  "no ▲ / ▼ in a tile's change; Show opens and closes by keyboard", not bad615, bad615)
+                  "no ▲ / ▼ in a tile's change; Show opens and closes by keyboard; nothing sticking out, Show open or shut, with 200% text too (#647)", not bad615, bad615)
             # …and the Overview's tiles (#623): a key lab's change since the result before, the weight's since the first
             # milestone, the watch's against the 4 weeks before, as ↑ or ↓ and its size, or "no change"; none ▲ / ▼ or a sign
             open_tab("overview")
@@ -11281,6 +11279,41 @@ def main():
             settle(300)
             check("…and the workouts' calendar's (#655, #622): at 360 and 412 px, light and dark, as usual and with text at 200%, in 90 days and All, "
                   "its months' and days' names inside it, none over another, and every day inside it", not bad655, bad655)
+            # ---- #647: larger text on a phone, as Android's 130%, 150% and 200% (the font tokens and the root's size scaled, as
+            # #622's): at 360 and 412 px every tab's page no wider than the screen, and Body's three chips (the day's heart rate,
+            # the WHO's categories with a height on file, lab glucose alongside: a height and two lab results put in for the
+            # check and taken out again) inside their cards, their words wrapping (app.css .toggle)
+            big647 = lambda f: BIG622 if f == 2 else ":root{%s} html{font-size:%d%%}" % (
+                ";".join(f"--fs-{i}:{round(v * f, 2)}px" for i, v in enumerate((11.5, 12.5, 14, 15.5, 18, 22, 28), 1)), round(f * 100))
+            W647 = r"""() => { const r = e => e.getBoundingClientRect(), vw = document.documentElement.clientWidth, doc = document.documentElement.scrollWidth;
+              const free = e => { for (let a = e.parentElement; a && a !== document.body; a = a.parentElement) if (getComputedStyle(a).overflowX !== 'visible') return false; return true; };
+              const wide = doc <= vw ? [] : [...document.querySelectorAll('body *')].filter(e => r(e).right > vw + 0.5 && !e.closest('svg *') && free(e));
+              return {doc, vw, wide: wide.filter(e => !wide.some(p => p !== e && p.contains(e))).slice(0, 3).map(e => `${e.tagName} ${e.textContent.trim().slice(0, 30)} to ${Math.round(r(e).right)}`),
+                chips: [...document.querySelectorAll('#view-health label.toggle')].filter(t => t.checkVisibility() && t.closest('.card')).map(t => {
+                  const c = r(t.closest('.card')), b = r(t); return [t.textContent.trim().slice(0, 24), b.left >= c.left && b.right <= c.right]; })}; }"""
+            was647 = js("[state.preset, state.from, state.to, state.tab, state.labsView, CFG.person.heights]")
+            js("""() => { CFG.person.heights = [{date: '2015-01-10', cm: 175, unit: 'cm'}]; H = null; G = undefined;
+              SERIES.push({name: 'Glucose, Fasting', unit: 'mg/dL', watch: false, n: 2, txt: [], key: 'browser-check-647', pts: [['2026-11-03T08:10:00', 104, 70, 99, 'H', '104'],
+                ['2026-10-20T08:05:00', 92, 70, 99, '', '92']].map(p => Object.assign(p, {ts: zParse(p[0])}))}); applyPreset('30d'); }""")
+            bad647, chips647 = {}, set()
+            for w in (360, 412):
+                page.set_viewport_size({"width": w, "height": 800})
+                for f647 in (1.3, 1.5, 2):
+                    js("css => { const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = [s]; }", big647(f647))
+                    for t in ("overview", "health", "medications", "timeline", "labs", "heatmap", "costs"):
+                        js("t => { switchTab(t, t === 'labs' ? 'chart' : undefined); scrollTo(0, 0); }", t)   # ("heatmap": Labs' heatmap)
+                        settle(300)
+                        got = js(W647)
+                        chips647.update(c for c, _ in got["chips"])
+                        if got["doc"] > got["vw"] or not all(ok for _, ok in got["chips"]) or (t == "health" and len(got["chips"]) != 3):
+                            bad647[f"{t} {w} {round(f647 * 100)}%"] = got
+                        if t == "health" and f647 == 2 and os.environ.get("SANGUITY_SHOTS"):
+                            page.locator("#h-heart .toolbar").screenshot(path=os.path.join(os.environ["SANGUITY_SHOTS"], f"647-heart-chip-{w}-200.png"))
+            js("""w => { document.adoptedStyleSheets = []; SERIES.splice(SERIES.findIndex(s => s.key === 'browser-check-647'), 1); CFG.person.heights = w[5]; H = null; G = undefined;
+              [state.preset, state.from, state.to] = w; switchTab(w[3], w[4]); renderAll(); }""", was647)
+            check("With text at 130%, 150% and 200% at 360 and 412 px (#647, 1.4.4, 1.4.10): every tab's page no wider than the screen, and Body's three "
+                  "chips (the day's heart rate, the WHO's categories, lab glucose alongside) inside their cards, their words wrapping",
+                  not bad647 and len(chips647) == 3, [bad647, sorted(chips647)])
             page.set_viewport_size({"width": 1400, "height": 900})
             open_tab("overview")
             settle(300)
