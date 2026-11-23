@@ -67,7 +67,9 @@ SECTIONS = [   # (id, label, what a share link shows: said on the owner's form a
                               "measurement falls on the WHO's or the CDC's growth charts"),
     ("targets", "Your targets for home readings", "each target typed in as the care team gave it, who set it and when, and how many "
                                                   "readings at home, or days of steps counted by the phone, were above or "
-                                                  "below it"),   # #234; a steps target's days (#298, #650)
+                                                  "below it; for a CGM target, the share of the CGM readings in it, below it "
+                                                  "and above it, over how many days, beside their share in the standard "
+                                                  "published range"),   # #234; a steps target's days (#298, #650); a CGM target's lead (#719)
 
     ("medlog", "Medication log", "each dose logged as taken, taken late or skipped: the date and time, the medication, its "
                                  "note, and where it came from: “Typed in”, or the app that sent it and the dose taken"),   # (#235)
