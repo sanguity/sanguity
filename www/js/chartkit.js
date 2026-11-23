@@ -228,7 +228,8 @@ function ckSpark(pts, {band = true, r = 3, color = "var(--ink)", cls = ""} = {})
 /* ---- a lab's chart on its own (#302): a share link's histories and the visit summary's trends, where there's no
    period, event track or hover state, and a table beside it says each result in full. Drawn at its box's width, and
    again as that changes (ckSoloRO; not while hidden, so a closed history isn't drawn till it's opened): the band
-   (each result's own range, ckBand) with its numbers at the right and ref after them ("on report"), the value axis
+   (each result's own range, ckBand) with its numbers at the right and ref after them ("on report"; "from settings"
+   for a range from settings, #649), the value axis
    (ckGrid, ckUnit), the line through the results and a dot each, ▲/▼/◆ for one out of range (only those past 120
    results, as Labs'), and the time axis (ckAxis). Each mark's <title> is say(p), for a mouse. h: the plot's height,
    taller as the text is larger (ckK). print {w, h}: its width and plot's height as it's printed, drawn so as printing
@@ -260,7 +261,10 @@ function ckSolo(pts, {h = 120, print = null, unit = "", ref = "", label = "", sa
     ckGrid(g, y, ticks, L, R, fmt);
     ckUnit(g, unit, T - 10 * k);
     ckBand(g, steps, x, y, L, R, T, B);
-    if (st) ckBandLabel(g, ref ? `${st.key} ${ref}` : st.key, st, y, R, T, B, pts.map(p => [x(p.ts), y(p[1])]), L);
+    if (st) {   // a range from settings (a point's .rs) said so, as Labs' (#649): with too little room for its numbers too, that alone
+      const src = st.rs === "settings" ? "from settings" : ref, words = src ? `${st.key} ${src}` : st.key;
+      ckBandLabel(g, st.rs === "settings" && R - 4 - labelW(words, "ck-ref") < L ? src : words, st, y, R, T, B, pts.map(p => [x(p.ts), y(p[1])]), L);
+    }
     if (pts.length > 1) g.push(el("svg:path", {class: "line", d: ckDecimate(pts.map(p => [x(p.ts), y(p[1])]), q => q[0], 1, {ends: true}).map((q, i) => (i ? "L" : "M") + q[0].toFixed(1) + "," + q[1].toFixed(1)).join("")}));
     for (const p of pts) if (pts.length <= 120 || p[4]) {
       const m = p[4] ? abnMark(x(p.ts), y(p[1]), p[4]) : el("svg:circle", {class: "pt", cx: x(p.ts), cy: y(p[1]), r: 3});

@@ -104,6 +104,8 @@ const cell = (text, cls) => el("td", {class: cls}, ...keepDates(text ?? ""));   
    (#492: "14.3 ·" was left over its date) */
 const atCell = (value, day, cls) => el("td", {class: cls}, value,
   el("span", {class: "sum-at"}, el("span", {class: "sum-dot", text: " · "}), el("span", {class: "nw", text: fmtDay(day)})));
+/* a trend's Then or Now, with its flag in words when it's out of range, not red alone (#60) */
+const flagCell = x => atCell(x.flag ? `${x.value} ${sumFlag(x.flag)}` : x.value, x.date, x.flag ? "flag" : null);
 /* a range kept whole, never broken at its dash (#514: "13.5– / 17.5" in the pane; summary.css makes room for it) */
 const rangeCell = t => el("td", {}, el("span", {class: "nw", text: t || ""}));
 function table(heads, rows, cls = "") {   // a region that can be scrolled from the keyboard on a narrow screen (#225's wider tables)
@@ -114,13 +116,17 @@ function table(heads, rows, cls = "") {   // a region that can be scrolled from 
 const spark = pts => ckSpark(pts.map(([d, v, f, lo, hi]) => ckPt(zParse(d), v, lo, hi, f)), {r: 2});
 /* a trend's chart (chartkit.js ckSolo, #302), as the PDF draws it under the trends' table, its name over it: of its
    spark's points (the last result on or before the "since" day and each after, or with none after the last few), two
-   or more */
+   or more. A result's range from settings (its report gave none, #44) is said so (#649): the band's end "from
+   settings", a mark flagged against it and the chart's name, as the table says "(settings)" */
 const SUM_FLAG = {High: "▲ High", Low: "▼ Low"};
+const sumFlag = f => SUM_FLAG[f] || "◆ " + f;
 function sumChart(r) {
-  const pts = r.spark.map(([d, v, f, lo, hi]) => Object.assign(ckPt(zParse(d), v, lo, hi, f), {d})), name = r.label + (r.unit ? ` (${r.unit})` : "");
+  const pts = r.spark.map(([d, v, f, lo, hi, rs]) => Object.assign(ckPt(zParse(d), v, lo, hi, f), {d, rs: rs || undefined})), name = r.label + (r.unit ? ` (${r.unit})` : "");
+  const out = pts.filter(p => p[4]), set = out.filter(p => p.rs).length;
   return el("figure", {class: "sum-chart"}, el("figcaption", {text: name}), ckSolo(pts, {h: 64,
-    label: `${name}: a chart of ${pts.length} results, ${fmtDay(pts[0].d)} to ${fmtDay(pts.at(-1).d)}. The table above lists the first and the latest.`,
-    say: p => `${fmtDay(p.d)}: ${p[1]}${r.unit ? " " + r.unit : ""}${p[4] ? " " + (SUM_FLAG[p[4]] || "◆ " + p[4]) : ""}`}));
+    label: `${name}: a chart of ${pts.length} results, ${fmtDay(pts[0].d)} to ${fmtDay(pts.at(-1).d)}${out.length ? `, ${out.length} outside their range` +
+      (set ? ` (${set === out.length ? "" : set + " of them "}against a ${RANGE_FROM_SETTINGS})` : "") : ""}. The table above lists the first and the latest.`,
+    say: p => `${fmtDay(p.d)}: ${p[1]}${r.unit ? " " + r.unit : ""}${p[4] ? " " + sumFlag(p[4]) + (p.rs ? ` (${RANGE_FROM_SETTINGS})` : "") : ""}`}));
 }
 /* a measures block's cell (#225): a day, or a local wall time, in this person's format; else its text */
 const measureCell = (kind, v) => !v ? v : kind === "day" ? fmtDay(v) : kind === "time" ? fmtDT(zParse(v)) : v;
@@ -145,9 +151,8 @@ function renderPreview(s) {
     } else if (id === "trends") {
       parts.push(el("h3", {text: `Trends since ${since} (${s.trends.length})`}));
       parts.push(s.trends.length ? table(["Test", "Then", "Now", "Change", "Since", "", "Now's range"], s.trends.map(r => el("tr", {},
-        cell(r.label + (r.unit ? ` (${r.unit})` : "")), r.then ? atCell(r.then.value, r.then.date) : cell("none before"),
-        r.now ? atCell(`${r.now.value}${r.now.flag ? ` ${{High: "▲", Low: "▼"}[r.now.flag] || "◆"} ${r.now.flag}` : ""}`, r.now.date, r.now.flag ? "flag" : null)   // in words, not red alone (#60)
-          : cell("no new result"),
+        cell(r.label + (r.unit ? ` (${r.unit})` : "")), r.then ? flagCell(r.then) : cell("none before"),   // flagged as on its chart (#649)
+        r.now ? flagCell(r.now) : cell("no new result"),
         cell(r.change || ""), cell(String(r.since)), el("td", {}, spark(r.spark)), rangeCell(r.now && r.now.range)))) : none("None of the key labs has results."));
       // their charts (#302), where the PDF has room for them (s.charts: else it's made without them)
       const drawn = s.charts ? s.trends.filter(r => r.spark.filter(p => p[1] != null).length > 1) : [];

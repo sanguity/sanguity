@@ -1705,6 +1705,14 @@ Everything on `main` so far; it becomes the first tagged release.
   a receiver from before writes its summary again once, on start; an Apple Health export's CGM days have them too. The
   page works the period's out from the days', within 3 mg/dL of every reading's on the test's fortnight. Days
   summarised before this say so. Share links, the visit summary and the FHIR export leave them out.
+- **The visit summary's charts say where a range from Settings is one** (#649): a result whose report gives no range
+  is judged against a range set in Settings, and the trends' charts and sparklines drew that band and flagged results
+  against it as if it were the report's own: the band read "30–100", the PDF's note "each result's own reference
+  range", and the table's Then carried no flag while its chart had ▼. Now the band's end says "30–100 from settings"
+  in the preview and the PDF (just "from settings" where there's no room for both), the PDF's note says so, each mark
+  flagged against it says "(range from settings)", and Then is flagged in words as Now is, so the chart, the
+  sparkline, the tables and the PDF flag the same results. A report's range and the same numbers from Settings are
+  two steps of the band, each said as what it is.
 - **A share link's targets say they hold steps, and no line holds an issue number** (#650): since #298 a steps target
   sent each day's count from the phone in "Your targets for home readings", whose line on the share form named only
   readings at home. The line now names the days of steps counted by the phone, as the visit summary's targets block
