@@ -1665,6 +1665,14 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Larger text: the Labs heatmap's labels fit** (#633): with text at 200% at 360 px its lab names and its axis
   ("Draw date", the months) fell outside it. Its names' column, rows and the lines over them now grow with the text,
   the names cut to fit as measured, and its labels stay inside it (WCAG 1.4.4).
+- **Charts on share links and in the visit summary** (#302): a clinician opening a share link got tables only, up to
+  226 rows a test over ten years. Now each test's history opens with a chart over its table, drawn by the chart kit:
+  each result's own reference range as the band, with its numbers, a dot a result and ▲/▼/◆ for one out of range,
+  the time axis, and a mouse's tooltip on each mark. The visit summary's trends have a chart each under their table,
+  in the preview and the PDF (where a triangle up or down stands in for ▲/▼, and a line under them says so). Printed,
+  a history's chart sits beside its table's first rows, in the light theme whatever the screen's, ink on white, never
+  colour alone. They show only what the link
+  or summary already holds, and the summary leaves its charts out rather than push a section off its two pages.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

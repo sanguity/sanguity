@@ -8,7 +8,7 @@ today so the "upcoming" appointments stay upcoming.
 
   python3 tests/test_summary.py
 """
-import datetime, io, json, os, shutil, sys, tempfile, unittest
+import datetime, io, json, os, re, shutil, sys, tempfile, unittest, zlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-summary-test-")
@@ -420,6 +420,33 @@ class Summary(unittest.TestCase):
         self.assertEqual(len(reader.pages), 2)
         self.assertIn("Page 2 of 2", text)
         self.assertIn("isn't medical advice", reader.pages[1].extract_text(), "the notice is on every page")
+
+    def test_trends_charts(self):   # #302: a chart per trend of two results or more, under the table, only where it all fits
+        s = self.preview()
+        self.assertIs(s["charts"], True)
+        pdf, fit = summary.render(s)
+        reader, text = text_of(pdf)
+        self.assertIn("Charts: the last result on or before that day", text)
+        hb = next(t for t in s["trends"] if t["name"] == "Hemoglobin")
+        self.assertIn(summary._short(hb["spark"][0][0]), text, "a chart's first day under it")
+        ops = b"".join(zlib.decompress(re.search(rb"stream\n(.*?)\nendstream", o, re.S)[1]) for o in pdf.split(b" obj")
+                       if b"/FlateDecode" in o)
+        self.assertGreaterEqual(ops.count(b" h f"), sum(1 for t in s["trends"] if len(t["spark"]) > 1 for p in t["spark"] if p[2]),
+                                "each flagged result a triangle (the fonts have no ▲ ▼)")
+        # a summary that fits only without its charts is made without them, the preview told so; one that doesn't fit
+        # either way is too, its sections left out as before
+        made = None
+        for n in range(0, 80, 2):
+            big = {**s, "medications": [{"name": f"Fictional medication {i}", "instructions": "Take 1 daily", "since": d(-i),
+                                         "source": "Maple Street Clinic"} for i in range(n)]}
+            with_charts = summary._render(big, True)[1]
+            if not with_charts["fits"]:
+                made = summary.render(big)[1]
+                break
+        self.assertIsNotNone(made)
+        self.assertEqual((made["charts"], made["fits"]), (False, True), "made again without the charts, it fits")
+        self.assertNotIn("Charts:", text_of(summary.render(big)[0])[1])
+        self.assertEqual(summary._ticks(11.2, 16.3, 3), [12.0, 14.0, 16.0])
 
     def test_cells_wrap_whole(self):   # #535: a table's cells wrap, a row as tall as its tallest cell, never cut
         s = self.preview(labs=["Ferritin"])

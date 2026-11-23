@@ -13,6 +13,7 @@
    - ckFlagRows: names over marks in up to three rows, with leader lines and "+N" (Labs' event track, event-track.js);
    - abnMark: an out-of-range result's ▲, ▼ or ◆;
    - ckSpark: the one sparkline, scaled to the reference band (the Overview, the visit summary, a share link's page);
+   - ckSolo: a lab's chart on its own, at its box's width (a share link's histories, the visit summary's trends, #302);
    - ckFlagNames: milestones named so over a chart, flags on its top edge (Body and activity's first chart, #298);
    - ckStripBins, ckStripBars, ckStripDates, ckStripWindow: the overview strip, every year's records with the period a
      window on them (#295, charts.js stripDraw);
@@ -211,6 +212,58 @@ function ckSpark(pts, {band = true, r = 3, color = "var(--ink)", cls = ""} = {})
   svg.append(el("svg:svg", {viewBox: "0 0 100 100", preserveAspectRatio: "none", width: "100%", height: "100%"}, ...g),
     last[4] ? el("svg:svg", {...at, overflow: "visible"}, abnMark(0, 0, last[4], r * 1.15, "spark-abn"))   // ▲ or ▼, not only red (#60)
       : el("svg:circle", {cx: at.x, cy: at.y, r, fill: color}));
+  return svg;
+}
+
+/* ---- a lab's chart on its own (#302): a share link's histories and the visit summary's trends, where there's no
+   period, event track or hover state, and a table beside it says each result in full. Drawn at its box's width, and
+   again as that changes (ckSoloRO; not while hidden, so a closed history isn't drawn till it's opened): the band
+   (each result's own range, ckBand) with its numbers at the right and ref after them ("on report"), the value axis
+   (ckGrid, ckUnit), the line through the results and a dot each, ▲/▼/◆ for one out of range (only those past 120
+   results, as Labs'), and the time axis (ckAxis). Each mark's <title> is say(p), for a mouse. h: the plot's height,
+   taller as the text is larger (ckK). print {w, h}: its width and plot's height as it's printed, drawn so as printing
+   starts and as it was after (the page's print rules size its box: the share page's beside its table's first rows, as
+   one over them left pages a third empty). pts: ckPt points in time order. -> the svg, its words label (role img) */
+const ckSoloRO = new ResizeObserver(es => { for (const e of es) e.target._draw?.(); });
+let ckPrint = false;
+for (const t of ["beforeprint", "afterprint"]) addEventListener(t, () => {
+  ckPrint = t === "beforeprint";
+  for (const s of document.querySelectorAll("svg.ck-solo.drawn")) { s._w = 0; s._draw(); }
+});
+function ckSolo(pts, {h = 120, print = null, unit = "", ref = "", label = "", say = () => ""} = {}) {
+  const svg = el("svg:svg", {class: "ck-solo", role: "img", "aria-label": label});
+  pts = pts.filter(p => Number.isFinite(p[1]));
+  const fmt = v => v.toLocaleString("en-US", {maximumFractionDigits: 4});
+  svg._draw = () => {
+    const w = ckPrint && print ? print.w : Math.round(svg.getBoundingClientRect().width), k = ckK();
+    if (!w || !pts.length || (w === svg._w && k === svg._k)) return;
+    svg._w = w; svg._k = k;
+    const ph = ckPrint && print ? print.h : h;
+    const a0 = pts[0].ts, b0 = pts.at(-1).ts, pad = Math.max((b0 - a0) * .03, a0 === b0 ? 15 * DAY : DAY), a = a0 - pad, b = b0 + pad;
+    const steps = rangeSteps(pts, a, b), vals = pts.map(p => p[1]);
+    let lo = Math.min(...vals, ...steps.map(st => st.lo).filter(v => v != null)), hi = Math.max(...vals, ...steps.map(st => st.hi).filter(v => v != null));
+    if (lo === hi) { lo -= Math.abs(lo) * .1 || 1; hi += Math.abs(hi) * .1 || 1; }
+    const p8 = (hi - lo) * .08; lo -= p8; hi += p8;
+    const ticks = niceTicks(lo, hi, ph < 90 ? 3 : 5);
+    const L = Math.max(...ticks.map(v => labelW(fmt(v), ""))) + 10, R = w - 6, T = (unit ? 22 : 8) * k, B = T + ph * k;
+    const x = ckScale(a, b, L, R), y = ckScale(lo, hi, B, T), g = [], st = steps.at(-1);
+    ckGrid(g, y, ticks, L, R, fmt);
+    ckUnit(g, unit, T - 10 * k);
+    ckBand(g, steps, x, y, L, R, T, B);
+    if (st) ckBandLabel(g, ref ? `${st.key} ${ref}` : st.key, st, y, R, T, B, pts.map(p => [x(p.ts), y(p[1])]), L);
+    if (pts.length > 1) g.push(el("svg:path", {class: "line", d: ckDecimate(pts.map(p => [x(p.ts), y(p[1])]), q => q[0], 1, {ends: true}).map((q, i) => (i ? "L" : "M") + q[0].toFixed(1) + "," + q[1].toFixed(1)).join("")}));
+    for (const p of pts) if (pts.length <= 120 || p[4]) {
+      const m = p[4] ? abnMark(x(p.ts), y(p[1]), p[4]) : el("svg:circle", {class: "pt", cx: x(p.ts), cy: y(p[1]), r: 3});
+      m.append(el("svg:title", {text: say(p)}));
+      g.push(m);
+    }
+    const tk = ckTimeTicks(a, b, x, w);
+    ckAxis(g, tk, L, R, B, B + 15);
+    svg.setAttribute("viewBox", `0 0 ${w} ${B + ckAxisH(tk.rows)}`);
+    svg.classList.add("drawn");   // (app.css: no height till it's drawn)
+    svg.replaceChildren(...g);
+  };
+  ckSoloRO.observe(svg);
   return svg;
 }
 

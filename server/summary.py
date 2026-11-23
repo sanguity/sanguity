@@ -34,7 +34,7 @@ one draft per profile, the settings key QUESTIONS_KEY; schema step 31 moved each
 Sanguity shows what the records say. The summary doesn't interpret anything, and carries the "not medical advice"
 notice on every page.
 """
-import contextvars, datetime, json, re
+import contextvars, datetime, json, math, re
 
 from . import crypto, db as dbm, measures, pdfdoc, ranges, records, settings
 
@@ -529,6 +529,98 @@ def _spark(page, row, x, y, w, h=10):
     page.dot(X(days[-1]), Y(use[-1][1]), 1.5, CRIT if use[-1][2] else INK)
 
 
+# the trends' charts (#302), under their table: four a row, each plot 34 pt tall, in the data blue (app.css --c-lab), the
+# band the table's light shade with its edges (a band filling most of the plot, as each does, in BAND was a grey box)
+CHART_COLS, CHART_H, LAB = 4, 34, (0.165, 0.471, 0.839)
+
+
+def _ticks(lo, hi, n):
+    """About n round numbers from lo to hi (chartkit.js niceTicks): steps of 1, 2, 2.5 or 5 times a power of ten."""
+    span = hi - lo
+    mag = 10 ** math.floor(math.log10(span / n))
+    step = next((m * mag for m in (1, 2, 2.5, 5) if span / (m * mag) <= n), 10 * mag)
+    out, v = [], math.ceil(lo / step) * step
+    while v <= hi + 1e-9:
+        out.append(round(v, 10))
+        v += step
+    return out
+
+
+def _chart(page, row, names, x, top, w):
+    """A trend's chart (#302), as the preview's (chartkit.js ckSolo): its name over it (names, its lines); the value axis
+    (round numbers, a hairline each); each result's own range shaded as steps, with its edges; the line through its
+    results (row["spark"]: the last one on or before the "since" day and each after) and a dot each, a red triangle
+    pointing up or down for one above or below its range and a diamond for another flag (the fonts have no ▲ ▼); its
+    first and last days under it. top: its box's top; it takes _chart_h(names)."""
+    pts = [p for p in row["spark"] if p[1] is not None]
+    for n, line in enumerate(names):
+        page.text(x, top - 8 - 9 * n, line, 8, True, INK)
+    T = top - 8 - 9 * (len(names) - 1) - 7
+    B = T - CHART_H
+    days = [datetime.date.fromisoformat(p[0]).toordinal() for p in pts]
+    pad = max((days[-1] - days[0]) * 0.03, 15 if days[0] == days[-1] else 1)
+    t0, t1 = days[0] - pad, days[-1] + pad
+    bounds = [v for p in pts for v in (p[1], p[3], p[4]) if v is not None]
+    lo, hi = min(bounds), max(bounds)
+    if lo == hi:
+        lo, hi = lo - (abs(lo) * 0.1 or 1), hi + (abs(hi) * 0.1 or 1)
+    lo, hi = lo - (hi - lo) * 0.08, hi + (hi - lo) * 0.08
+    ticks = _ticks(lo, hi, 3)
+    L = x + max(pdfdoc.width(fmt_num(v), 6.5) for v in ticks) + 3
+    R = x + w
+    X = lambda t: L + (t - t0) / (t1 - t0) * (R - L)
+    Y = lambda v: B + (v - lo) / (hi - lo) * CHART_H
+    for v in ticks:
+        page.line(L, Y(v), R, Y(v), 0.3, RULE)
+        page.text_right(L - 2, Y(v) - 2.2, fmt_num(v), 6.5, False, MUTED)
+    ranged = [(t, p[3], p[4]) for t, p in zip(days, pts) if p[3] is not None or p[4] is not None]
+    for i, (t, rlo, rhi) in enumerate(ranged):   # each step from halfway after the result before to halfway to the next
+        a = L if i == 0 else X((ranged[i - 1][0] + t) / 2)
+        b = R if i == len(ranged) - 1 else X((t + ranged[i + 1][0]) / 2)
+        bot, tp = Y(rlo) if rlo is not None else B, Y(rhi) if rhi is not None else T
+        page.rect(a, bot, b - a, tp - bot, SHADE)
+        for e in (rlo, rhi):
+            if e is not None:
+                page.line(a, Y(e), b, Y(e), 0.4, MUTED)
+    page.line(L, B, R, B, 0.5, MUTED)
+    page.polyline([(X(t), Y(p[1])) for t, p in zip(days, pts)], 0.9, LAB)
+    for t, p in zip(days, pts):
+        cx, cy, f, s = X(t), Y(p[1]), p[2] or "", 2.8
+        if f[:1].lower() == "h":
+            page.shape([(cx, cy + s * 1.1), (cx + s, cy - s * 0.7), (cx - s, cy - s * 0.7)], CRIT)
+        elif f[:1].lower() == "l":
+            page.shape([(cx, cy - s * 1.1), (cx + s, cy + s * 0.7), (cx - s, cy + s * 0.7)], CRIT)
+        elif f:
+            page.shape([(cx, cy + s), (cx + s, cy), (cx, cy - s), (cx - s, cy)], CRIT)
+        else:
+            page.dot(cx, cy, 1.4, LAB)
+    page.text(L, B - 9, _short(pts[0][0]), 6.5, False, MUTED)
+    page.text_right(R, B - 9, _short(pts[-1][0]), 6.5, False, MUTED)
+
+
+def _chart_h(names):
+    return 8 + 9 * (len(names) - 1) + 7 + CHART_H + 16
+
+
+def _charts(lay, rows):
+    """The trends' charts (#302), CHART_COLS a row, each row kept whole on a page: those of two results or more."""
+    rows = [r for r in rows if sum(1 for p in r["spark"] if p[1] is not None) > 1]
+    gap = 12
+    lay.y -= 4
+    cw = (pdfdoc.WIDTH - 2 * MARGIN - gap * (CHART_COLS - 1)) / CHART_COLS
+    for i in range(0, len(rows), CHART_COLS):
+        part = rows[i:i + CHART_COLS]
+        names = [pdfdoc.wrap(r["label"] + (f" ({r['unit']})" if r["unit"] else ""), 8, cw, True)[:2] for r in part]
+        h = max(_chart_h(n) for n in names)
+        lay.need(h)
+        for j, (r, n) in enumerate(zip(part, names)):
+            _chart(lay.page, r, n, MARGIN + j * (cw + gap), lay.y + 6, cw)
+        lay.y -= h
+    if rows:
+        lay.note("Charts: the last result on or before that day and each since (with none since, the last few), the shaded "
+                 "band each result's own reference range; a red triangle pointing up or down, a result above or below it.", 7.5)
+
+
 # the trends table's columns: Now is wide enough for a value with its flag in words and a date from an earlier year,
 # "123.4 High  Sep 30, 2024", so a black-and-white print still shows which results were out of range (#213). The
 # PDF's standard fonts have no ▲ ▼ (Windows-1252 lacks them), so the flag is said in words.
@@ -549,15 +641,18 @@ def _when(d):
 
 
 def render(s):
-    """The summary object as a PDF: (bytes, {"pages", "fits", "left_out": {section: rows not shown}})."""
+    """The summary object as a PDF: (bytes, {"pages", "fits", "left_out": {section: rows not shown}, "charts"}). The
+    trends' charts (#302) only where everything fits with them: else it's made again without them (charts false), so
+    they never push the medications or the questions off the pages; the preview follows."""
     token = _DATES.set((s.get("date_format") or "", int(str(s.get("prepared") or "0")[:4] or 0) or None))
     try:
-        return _render(s)
+        out = _render(s, True)
+        return out if out[1]["fits"] else _render(s, False)
     finally:
         _DATES.reset(token)
 
 
-def _render(s):
+def _render(s, charts):
     doc = pdfdoc.Document(title=f"Visit summary for {s['profile']}")
     lay = _Layout(doc, s)
     p, W = lay.page, pdfdoc.WIDTH
@@ -613,6 +708,8 @@ def _render(s):
                          "red): outside the range on that result's own report.", 7.5)
                 if any(((r["now"] or {}).get("range") or "").endswith("(settings)") for r in rows):
                     lay.note(SETTINGS_NOTE, 7.5)
+                if charts:
+                    _charts(lay, rows)
             elif sid == "medications":
                 rows = s["medications"]
                 lay.heading("Current medications", len(rows))
@@ -700,7 +797,7 @@ def _render(s):
             pg.text(MARGIN, y, line, 7.5, False, MUTED)
             y -= 9.5
         pg.text_right(W - MARGIN, FOOT - 17, f"Page {i} of {n}", 7.5, False, MUTED)
-    return doc.output(), {"pages": n, "fits": not lay.left_out, "left_out": lay.left_out}
+    return doc.output(), {"pages": n, "fits": not lay.left_out, "left_out": lay.left_out, "charts": charts}
 
 
 def _count(s, sid):
