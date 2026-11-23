@@ -1791,6 +1791,12 @@ Everything on `main` so far; it becomes the first tagged release.
   Enter or Space on Labs, Body and activity, the Timeline or Costs, drew the period's row again and dropped focus to
   the page, so the next Tab started again at All. Focus stays on the button pressed, or goes to More… where its
   milestone has gone in there.
+- **The drawer over the page keeps focus in it** (#725): from 700 to 1200 px wide, and with the wider panel at any
+  width, the drawer sat over the page without being modal, so Tab from its last control went on to the top bar's
+  tabs, Search and Add, the period's buttons, Labs' options and more, all hidden under it (a lab's panel opens there
+  too). Wherever it's over the page it's now modal, as a phone's sheet is: Tab and a screen reader stay in it, the page
+  behind is dimmed and out of reach, and Escape closes it with focus back on what opened it. Docked beside the page at
+  1200 px and wider, it's as before. A click on the page beside it closes it, focus back where it was opened.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

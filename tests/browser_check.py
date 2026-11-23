@@ -6932,7 +6932,7 @@ def main():
             js("openEvent(EV.find(e => e.k === 'visit' && !e.hidden))")
             settle(300)
             narrow = js(dock_js)
-            check("…at 1100 px it covers the page's side as before, not docked", not narrow["docked"] and narrow["over"] > 0, narrow)
+            check("…at 1100 px it covers the page's side as before, not docked, and modal there (#725)", not narrow["docked"] and narrow["over"] > 0 and narrow["modal"], narrow)
             page.keyboard.press("Escape")
             page.set_viewport_size({"width": 1400, "height": 900})
             settle(300)
@@ -9594,8 +9594,8 @@ def main():
                 return {modal: d.matches(':modal'), inDrawer: document.getElementById('sgToasts').parentElement === d,
                         over: [...document.querySelectorAll('.sg-toast')].filter(t => { const r = t.getBoundingClientRect();
                           return r.left < dr.left || r.right > dr.right + 1 || r.top < body.bottom - 1 || r.bottom > dr.bottom + 1; }).length}; })()""")
-            check("…at 800 px with the drawer open beside the page, the toasts are in the drawer, under its content, over none of it",
-                  placed == {"modal": False, "inDrawer": True, "over": 0}, placed)
+            check("…at 800 px with the drawer open over the page (modal there, #725), the toasts are in the drawer, under its content, over none of it",
+                  placed == {"modal": True, "inDrawer": True, "over": 0}, placed)
             page.keyboard.press("Escape")
             settle(300)
             check("…and over the page again once it's closed", js("document.getElementById('sgToasts').parentElement === document.body && document.getElementById('sgToasts').matches(':popover-open')"))
@@ -9704,7 +9704,7 @@ def main():
                     sbp.keyboard.press("Escape")
                     sbp.wait_for_timeout(300)
                     steps["ask closed"] = sbp.evaluate(laid)
-                    if w == 375:   # the drawer is modal only on a phone (beside the page at 1400 px it doesn't hold the scroll)
+                    if w == 375:   # the drawer is modal over the page (#725), not docked beside it at 1400 px, where it doesn't hold the scroll
                         sbp.evaluate("(r => { r.scrollIntoView({block: 'center'}); r.focus({preventScroll: true}); })(document.querySelectorAll('#list .tl-row')[6])")
                         steps["row"] = sbp.evaluate(laid)
                         sbp.keyboard.press("Enter")
@@ -9734,9 +9734,11 @@ def main():
             page.keyboard.press("Escape")
             page.emulate_media(forced_colors="none")
             check("…its grab handle shows in forced colours, in the text's colour on the sheet's (#364)", handle[0] == handle[2] and handle[0] != handle[1], handle)
-            # #364: a phone turned with a question open over the drawer: the drawer becomes a modal sheet only once it's
-            # answered, the question staying on top and answerable meanwhile (showModal() would have put the drawer over it)
-            page.set_viewport_size({"width": 800, "height": 420})
+            # #364: a tablet turned with a question open over the drawer docked beside the page: the drawer becomes modal,
+            # over the page (#725), only once it's answered, the question staying on top and answerable meanwhile
+            # (showModal() would have put the drawer over it). (A phone turned was the case before #725; the drawer is modal
+            # there already, as it is at any width where it's over the page.)
+            page.set_viewport_size({"width": 1280, "height": 800})
             settle(200)
             page.focus("#list .tl-row")
             page.keyboard.press("Enter")
@@ -9745,17 +9747,71 @@ def main():
             side = js("document.getElementById('drawer').matches(':modal')")
             js("window.sgAnswer = null; ask({title: 'Turned (browser check)?', action: 'Yes', danger: true}).then(v => window.sgAnswer = v); 0")
             page.wait_for_selector("dialog.sg-ask[open]", timeout=5000)
-            page.set_viewport_size({"width": 375, "height": 740})
+            page.set_viewport_size({"width": 800, "height": 1280})
             settle(500)
             turned = js("""(() => { const a = document.querySelector('dialog.sg-ask'), c = a.querySelector('button'), r = c.getBoundingClientRect();
                 return [a.matches(':modal'), document.elementFromPoint(r.left + 5, r.top + 5) === c, document.activeElement === c, document.getElementById('drawer').matches(':modal')]; })()""")
             page.click("dialog.sg-ask button:text-is('Yes')")
             settle(400)
             after_turn = js("[window.sgAnswer, document.getElementById('drawer').matches(':modal'), document.getElementById('drawer').classList.contains('sg-dlg-sheet'), document.getElementById('drawer').contains(document.activeElement)]")
-            check("…a phone turned with a question open over the drawer (#364): the question stays on top, focused and answerable; then the drawer is a modal sheet",
-                  side is False and turned == [True, True, True, False] and after_turn == [True, True, True, True], [side, turned, after_turn])
+            check("…a tablet turned with a question open over the drawer docked beside the page (#364): the question stays on top, focused and answerable; "
+                  "then the drawer is modal over the page (#725)",
+                  side is False and turned == [True, True, True, False] and after_turn == [True, True, False, True], [side, turned, after_turn])
             page.keyboard.press("Escape")
             settle(300)
+            # #725: over the page (at 768 and 1100 px, and at 1270 px the wider panel, which never docks; the usual one
+            # docks there) the drawer is modal: Tab and Shift+Tab from it stay in it (they went on to the controls hidden
+            # under it), and Escape closes it, focus back on the record's row; docked beside the page (1270 and 1400 px)
+            # they reach the page, as before
+            STOP725 = "(a => document.getElementById('drawer').contains(a) ? 'drawer' : a === document.body ? 'body' : 'page')(document.activeElement)"
+            tab725 = {}
+            for w725, wide725 in ((768, False), (1100, False), (1270, True), (1270, False), (1400, False)):
+                page.set_viewport_size({"width": w725, "height": 800})
+                settle(200)
+                js("on => { if (drawer.classList.contains('wide') !== on) setWide(on); }", wide725)
+                page.focus("#list .tl-row")
+                page.keyboard.press("Enter")
+                page.wait_for_selector("#drawer.open", timeout=5000)
+                settle(300)
+                stops725 = []
+                for key725 in ("Tab", "Shift+Tab"):
+                    page.focus("#dclose")
+                    for _ in range(25):
+                        page.keyboard.press(key725)
+                        stops725.append(js(STOP725))
+                modal725 = js("document.getElementById('drawer').matches(':modal')")
+                page.focus("#dclose")
+                page.keyboard.press("Escape")
+                settle(300)
+                tab725[f"{w725}{' wider' if wide725 else ''}"] = [modal725, sorted(set(stops725)), stops725.count("drawer"),
+                                                                  js("[document.getElementById('drawer').open, document.activeElement.matches('#list .tl-row')]")]
+            js("setWide(false)")
+            check("…over the page (768 and 1100 px, the wider panel at 1270) the drawer is modal, Tab and Shift+Tab staying in it, Escape giving focus back "
+                  "to the row; docked (1270 and 1400 px) they reach the page (#725: Tab went on to the controls under it)",
+                  all(v[0] and set(v[1]) <= {"drawer", "body"} and v[2] > 40 and v[3] == [False, True] for k, v in tab725.items() if k in ("768", "1100", "1270 wider"))
+                  and all(not v[0] and "page" in v[1] and v[3] == [False, True] for k, v in tab725.items() if k in ("1270", "1400")), tab725)
+            # …and a click on the dimmed page beside it closes it, focus back on the row (modal there, the page under it took
+            # no clicks; at 1400 px, docked, the page takes the click and the drawer stays)
+            click725 = {}
+            for w725 in (1100, 1400):
+                page.set_viewport_size({"width": w725, "height": 800})
+                settle(200)
+                page.focus("#list .tl-row")
+                page.keyboard.press("Enter")
+                page.wait_for_selector("#drawer.open", timeout=5000)
+                settle(300)
+                inside725 = js("(r => [r.left + 20, r.top + 20])(document.getElementById('drawer').getBoundingClientRect())")
+                page.mouse.click(*inside725)   # inside it: stays open
+                settle(200)
+                still725 = js("document.getElementById('drawer').classList.contains('open')")
+                page.mouse.click(20, 400)
+                settle(400)
+                click725[w725] = [still725, js("document.getElementById('drawer').classList.contains('open')"), js("document.activeElement.matches('#list .tl-row')")]
+                if click725[w725][1]:
+                    js("closeDrawer()")
+                    settle(300)
+            check("…a click on the page beside the drawer over it (1100 px) closes it, focus back on the row; a click in it doesn't; docked (1400 px) "
+                  "the drawer stays (#725)", click725.get(1100) == [True, False, True] and click725.get(1400, [None, None])[:2] == [True, True], click725)
             page.set_viewport_size({"width": 1400, "height": 900})
             page.focus("#list .tl-row")
             page.keyboard.press("Enter")

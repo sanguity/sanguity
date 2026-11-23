@@ -2,14 +2,14 @@
    Plain script, loaded in order by index.html; all files share one global scope. */
 "use strict";
 /* ---------------------------------------------------------------- detail drawer */
-/* The drawer is a <dialog> (#262), shown by openDialog (util.js) as a side panel beside the records, which stay usable
-   (another record clicked opens in it, which stays open: not modal); as a modal one when it covers the whole page
-   (wide on a screen 1200 px or narrower, or 640 px or narrower), so Tab and a screen reader stay in it (#209); and on
-   a phone (700 px or narrower) as a bottom sheet, modal, swiped down by its handle or its header to close. On a screen
-   1200 px or wider it's docked (#270): the page moves over for it (html.sg-docked, app.css) instead of being covered,
-   and is drawn again for its new width. Escape closes it wherever focus is, and focus goes back to what opened it,
-   found again if the page was drawn again meanwhile (drawerBack), or to what's nearest it in sight (drawerTo). .open
-   says it's open (or opening). */
+/* The drawer is a <dialog> (#262), shown by openDialog (util.js). On a screen 1200 px or wider it's docked (#270): a
+   side panel beside the records, which stay usable (another record clicked opens in it, which stays open: not modal),
+   the page moving over for it (html.sg-docked, app.css) instead of being covered, and drawn again for its new width.
+   Anywhere else it's over the page, and modal, so Tab and a screen reader stay in it (#209; #725: Tab went on to the
+   controls under it): a side panel down the right edge (the wider one too, which never docks), and on a phone (700 px
+   or narrower) a bottom sheet, swiped down by its handle or its header to close. Escape closes it wherever focus is,
+   and focus goes back to what opened it, found again if the page was drawn again meanwhile (drawerBack), or to what's
+   nearest it in sight (drawerTo). .open says it's open (or opening). */
 const drawer = $("#drawer");
 let drawerReturn = null, drawerFrom = null;   // what opened it, and where that was on the page (drawerSpot)
 /* whether what the drawer shows is still in the records, for what isn't a record of its own (an upcoming appointment,
@@ -49,9 +49,9 @@ drawer.addEventListener("close", () => { if (drawer.classList.contains("open") &
 const drawerPhone = matchMedia("(max-width: 700px)");
 function drawerFit() {
   if (!drawer.classList.contains("open")) return;
-  const covers = drawerPhone.matches || document.documentElement.clientWidth <= (drawer.classList.contains("wide") ? 1200 : 640);   // app.css's widths
-  openDialog(drawer, {as: drawerPhone.matches ? "sheet" : "side", modal: covers});
-  drawerDock(!covers && !drawer.classList.contains("wide") && innerWidth >= 1200);
+  const dock = !drawerPhone.matches && !drawer.classList.contains("wide") && innerWidth >= 1200;   // app.css's widths
+  openDialog(drawer, {as: drawerPhone.matches ? "sheet" : "side", modal: !dock});
+  drawerDock(dock);
 }
 /* where a control is, to find it again once what holds it is drawn again (a change saved, a dose logged, a resize, the
    drawer docking: #404): what holds it (its view on the page, or the drawer's body), and its place among the controls
@@ -144,6 +144,13 @@ addEventListener("keydown", e => {
 });
 // modal, the browser would close it on any Escape: only that listener does, so a form in it (renaming) keeps its own
 drawer.addEventListener("cancel", e => e.preventDefault());
+// over the page (not docked, not a phone's sheet), a click on the dimmed page beside it closes it, focus back where it
+// was opened (#725: modal there, the page under it took no clicks, where it had opened the record clicked)
+drawer.addEventListener("click", e => {
+  if (e.target !== drawer || !drawer.matches(":modal") || drawerPhone.matches) return;
+  const r = drawer.getBoundingClientRect();
+  if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) closeDrawer();
+});
 
 /* ---------------------------------------------------------------- one layout for every record (#270)
    The head: the kind's icon in its colour, the title, one line of what kind it is and when, and a ⋯ menu of the
