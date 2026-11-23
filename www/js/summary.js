@@ -104,8 +104,11 @@ const cell = (text, cls) => el("td", {class: cls}, ...keepDates(text ?? ""));   
    (#492: "14.3 ·" was left over its date) */
 const atCell = (value, day, cls) => el("td", {class: cls}, value,
   el("span", {class: "sum-at"}, el("span", {class: "sum-dot", text: " · "}), el("span", {class: "nw", text: fmtDay(day)})));
-/* a trend's Then or Now, with its flag in words when it's out of range, not red alone (#60) */
-const flagCell = x => atCell(x.flag ? `${x.value} ${sumFlag(x.flag)}` : x.value, x.date, x.flag ? "flag" : null);
+/* a trend's Then or Now, with its flag in words when it's out of range, not red alone (#60), and the range from settings
+   it's against where it's one (#717: "4 ▼ Low" sat beside the row's only range, the report's 3–17), under it in the
+   pane as its day is, its numbers kept whole */
+const flagCell = x => atCell(x.flag ? [`${x.value} ${sumFlag(x.flag)}`, x.settings ? el("span", {class: "sum-at"}, " (settings range ", el("span", {class: "nw", text: x.settings}), ")") : null]
+  : x.value, x.date, x.flag ? "flag" : null);
 /* a range kept whole, never broken at its dash (#514: "13.5– / 17.5" in the pane; summary.css makes room for it) */
 const rangeCell = t => el("td", {}, el("span", {class: "nw", text: t || ""}));
 function table(heads, rows, cls = "") {   // a region that can be scrolled from the keyboard on a narrow screen (#225's wider tables)

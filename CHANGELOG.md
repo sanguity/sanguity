@@ -1797,6 +1797,13 @@ Everything on `main` so far; it becomes the first tagged release.
   too). Wherever it's over the page it's now modal, as a phone's sheet is: Tab and a screen reader stay in it, the page
   behind is dimmed and out of reach, and Escape closes it with focus back on what opened it. Docked beside the page at
   1200 px and wider, it's as before. A click on the page beside it closes it, focus back where it was opened.
+- **The visit summary says where a flag is judged against a range from Settings, when later results have the
+  report's** (#717): Folate 4 typed with no range and 5–20 in Settings, then 6 and 7 with the report's 3–17, showed
+  Then "4 ▼ Low" beside the row's only range, 3–17, which 4 is inside; the chart labelled only its end's 3–17, its ▼
+  under an unlabelled step; and the PDF's notes said the flags were against each report's range. A Then or Now flagged
+  against a range from Settings now says so in its cell ("4 ▼ Low (settings range 5–20)"), every step of a chart's band
+  that's from Settings is labelled, not only its end's, and both of the PDF's notes say a flag may be against a range
+  from Settings.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
