@@ -2,7 +2,7 @@
 
 Enough for a printed page of text, tables and sparklines: US Letter pages, the two standard Helvetica fonts (every
 PDF reader has them, so nothing is embedded), text in Windows-1252 (WinAnsiEncoding; other characters are put as
-their closest plain letter, or "?"), lines, filled rectangles, polylines and dots, in grey or a colour, each page's
+their closest plain letter, or "?"), lines, filled rectangles and shapes, polylines and dots, in grey or a colour, each page's
 drawing compressed with zlib. Text widths come from the fonts' published metrics, so lines can be wrapped and
 columns cut to fit. The output is bytes, built in memory: nothing is written to disk.
 
@@ -139,6 +139,11 @@ class Page:
         if len(pts) >= 2:
             path = " ".join(f"{x:.2f} {y:.2f} {'m' if i == 0 else 'l'}" for i, (x, y) in enumerate(pts))
             self.ops.append(f"1 J 1 j {_rgb(color)} RG {w:g} w {path} S")
+
+    def shape(self, pts, color=0):
+        """A filled polygon through pts (a chart's ▲, ▼ or ◆, which the fonts lack, #302)."""
+        path = " ".join(f"{x:.2f} {y:.2f} {'m' if i == 0 else 'l'}" for i, (x, y) in enumerate(pts))
+        self.ops.append(f"{_rgb(color)} rg {path} h f")
 
     def dot(self, x, y, r=1.4, color=0):
         k = r * 0.5523   # a circle from four Bézier curves

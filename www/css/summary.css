@@ -35,6 +35,9 @@
 .sum-preview .flag{color:var(--crit);font-weight:var(--fw-semibold)}
 .sum-preview ol{margin:var(--sp-1) 0;padding-left:var(--sp-5);font-size:var(--fs-3)}
 .sum-preview .spark{width:70px;height:16px;vertical-align:middle}
+.sum-charts{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,180px),1fr));gap:var(--sp-2) var(--sp-4);margin-top:var(--sp-3)}   /* the trends' charts (#302) */
+.sum-chart{margin:0;min-width:0}
+.sum-chart figcaption{font-size:var(--fs-2);font-weight:var(--fw-semibold)}
 .sum-preview .fitwarn{color:var(--crit);font-size:var(--fs-3);font-weight:var(--fw-medium);margin:var(--sp-2) 0 0}
 /* on a phone each row is a card (app.css, #320): its cells wrap, so a long name and a date fit inside it (#324) */
 @media (max-width:640px){ .sum-preview .tbl td{white-space:normal;overflow-wrap:anywhere} }

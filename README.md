@@ -101,8 +101,8 @@ Switching the **profile** in the top bar switches it on every page.
   be shared with several accounts (a caregiver), each as **owner**, **editor** or **viewer**.
 - **Share links**: a read-only, expiring link to chosen parts of a profile for a clinician or relative, revocable
   any time, every view logged ([Share links](#share-links)).
-- A printable **visit summary** (PDF) to bring to an appointment: what's out of range since the last visit, trends,
-  current medications, upcoming appointments and your own questions.
+- A printable **visit summary** (PDF) to bring to an appointment: what's out of range since the last visit, trends
+  with a chart each, current medications, upcoming appointments and your own questions.
 - **Calendar reminders**: upcoming appointments and expected lab draws in your own calendar app.
 - **Install as a phone app** from the browser, with offline reading if you turn it on.
 
@@ -487,7 +487,8 @@ account, such as a clinician or a relative. You choose the sections (visits and 
 procedures and imaging, upcoming appointments, the journal and, ticked on its own, its photos, costs), which labs, and a date range, and the form says
 plainly what anyone holding the link will see: the profile's name and those records, nothing else (no documents,
 report text, settings or other profiles, and nothing can be changed). Its page lists each lab's latest result,
-by the names you give labs, with its history a click away, has a bar to go to each section, and prints cleanly.
+by the names you give labs, with its history (a chart of it over a table) a click away, has a bar to go to each
+section, and prints cleanly.
 A link stops working when it expires (an hour to 90 days), when any owner revokes it, or when the owner who made it stops being one (for good: it doesn't open again if they're made an owner again). Every time it's opened is
 logged in the profile's activity, with the address it came from. The link is shown once; Sanguity keeps only a hash
 of its token, which sits after the `#` so it never reaches a server log. The person you send it to needs to reach

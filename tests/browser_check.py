@@ -1480,6 +1480,22 @@ spark299_ok = lambda v: v["sparks"] and not v["old"] and all(
     for s in v["sparks"])
 
 
+# a lab's chart on its own under root (#302, chartkit.js ckSolo: a share link's histories, the visit summary's trends):
+# each one's role and words, whether it's drawn (a viewBox), its width against its box's, its dots and ▲/▼/◆ (each with
+# a <title>), its band's steps, its line, and any of its labels past its edges
+SOLO302_JS = r"""root => [...document.querySelectorAll(root + ' svg.ck-solo')].map(s => {
+  const b = s.getBoundingClientRect(), box = s.parentElement.getBoundingClientRect();
+  return {drawn: s.hasAttribute('viewBox'), role: s.getAttribute('role'), label: s.getAttribute('aria-label') || '', shown: s.checkVisibility(),
+    w: Math.round(b.width), box: Math.round(box.width), dots: s.querySelectorAll('circle.pt').length, abn: s.querySelectorAll('path.pt.abn').length,
+    titled: s.querySelectorAll(':is(circle.pt, path.pt.abn) > title').length, band: s.querySelectorAll('.refband').length, line: s.querySelectorAll('path.line').length,
+    out: [...s.querySelectorAll('text')].filter(t => { const r = t.getBoundingClientRect();
+      return r.width && (r.left < b.left - 0.5 || r.right > b.right + 0.5 || r.top < b.top - 0.5 || r.bottom > b.bottom + 0.5); }).map(t => t.textContent)};
+})"""
+# … and whether each is drawn whole: a picture named in words, as wide as its box, every mark titled, nothing past it
+solo302_ok = lambda v: v and all(c["drawn"] and c["role"] == "img" and c["label"] and abs(c["w"] - c["box"]) <= 1 and c["line"] == 1
+                                 and c["titled"] == c["dots"] + c["abn"] > 0 and not c["out"] for c in v)
+
+
 # a tile's change line (Costs' figures' notes too, #260), as laid out (#330): each one that wraps, as its lines, when it ends in a short
 # fragment (its last line under 40% of its longest, such as "▼ −0.03 since Aug 18," over "2026"), breaks a date, or has
 # only the change on its first line ("▼ −0.03" over "since Aug 18, 2026", #374), or a line that starts with its "·"
@@ -1873,6 +1889,19 @@ def main():
         check("the visit summary's trends (#299): each sparkline the kit's, its band the middle 60% at most, a line only of three results or more, "
               "with one mark, not stretched; this visit's date in ink, not red", spark299_ok(sum299)
               and appt299["this"] == 1 and len(appt299["colors"]) == 1 and appt299["crit"] not in appt299["colors"], [sum299, appt299])
+        # #302: under the trends' table a chart of each trend of two results or more (the kit's, ckSolo), its name over it, as
+        # the PDF has (the preview says it has room for them: it's made without them where they'd push a section out)
+        sum302 = strict.evaluate("""async () => { const o = await (await fetch('api/profiles/1/summary')).json();
+          const s = await (await fetch('api/profiles/1/summary/preview', {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'},
+            body: JSON.stringify({appointment: 0, since: null, labs: [], questions: document.getElementById('questions').value, sections: [...document.querySelectorAll('#sections input:checked')].map(i => i.value)})})).json();
+          return {charts: s.charts, want: s.trends.filter(r => r.spark.filter(p => p[1] != null).length > 1).map(r => r.label + (r.unit ? ` (${r.unit})` : '')),
+            names: [...document.querySelectorAll('#prevBody .sum-chart > figcaption')].map(f => f.textContent),
+            after: document.querySelector('#prevBody .sum-charts')?.previousElementSibling?.querySelector('table') != null}; }""")
+        solo302s = strict.evaluate(SOLO302_JS, "#prevBody")
+        check("…and under the trends' table a chart of each trend of two results or more (#302, the kit's ckSolo): its name over it, a picture "
+              "named in words, as wide as its box, its band, line and marks each titled, nothing past its edges, as the PDF has them",
+              sum302["charts"] is True and sum302["want"] and sum302["names"] == sum302["want"] and sum302["after"]
+              and len(solo302s) == len(sum302["want"]) and solo302_ok(solo302s) and all(c["band"] for c in solo302s), [sum302, solo302s[:3]])
         strict.wait_for_selector("#calendar:not([hidden])", state="attached", timeout=10000)   # in its own group, so not visible
         strict.wait_for_selector("#memberList tbody tr", state="attached", timeout=10000)
         strict.click("#shrNav a[data-group=activity]")   # drawn when its group is opened
@@ -2721,6 +2750,7 @@ def main():
         sh299 = hp.evaluate(SPARK299_JS, "#share-results")
         check("…its trends the kit's one sparkline (#299), scaled to each result's own range (its band the middle 60% at most), a line only of "
               "three results or more, with one mark, not stretched", spark299_ok(sh299) and len(sh299["sparks"]) == len(l289["tests"]), sh299)
+        undrawn302 = hp.evaluate("[...document.querySelectorAll('#share-results svg.ck-solo')].map(s => s.hasAttribute('viewBox'))")
         HIST289 = """name => { const b = [...document.querySelectorAll('#share-results .share-open')].find(b => b.textContent === name),
           h = document.getElementById(b.getAttribute('aria-controls')), row = b.closest('tr');
           return {expanded: b.getAttribute('aria-expanded'), shown: h.checkVisibility(), next: row.nextElementSibling === h,
@@ -2728,8 +2758,23 @@ def main():
         nbtn = hp.locator("#share-results .share-open", has_text="Neutrophils (absolute)")
         nbtn.click()
         opened = hp.evaluate(HIST289, "Neutrophils (absolute)")
+        # #302: a chart over its history's table (the kit's ckSolo), from what the link sends: a dot or ▲/▼/◆ a result, the
+        # flagged ones as many as its table's flags, drawn as it's opened (none while closed)
+        hp.wait_for_timeout(100)   # (drawn as its size is seen, a frame on)
+        nsolo302 = hp.evaluate("""name => { const b = [...document.querySelectorAll('#share-results .share-open')].find(b => b.textContent === name),
+          h = document.getElementById(b.getAttribute('aria-controls')), rows = [...h.querySelector('table').tBodies[0].rows];
+          return {charts: h.querySelectorAll('.share-chart > svg.ck-solo').length, first: h.querySelector('.share-chart + .share-scroll table') != null,
+            rows: rows.length, flags: rows.filter(r => r.querySelector('.share-flag')).length}; }""", "Neutrophils (absolute)")
+        nsolo302["solo"] = hp.evaluate(SOLO302_JS, "#share-results .share-hist:not([hidden])")
         nbtn.click()
         closed = hp.evaluate(HIST289, "Neutrophils (absolute)")
+        check("…a test's history has a chart over its table (#302, the kit's ckSolo), drawn as it's opened (none while closed): a picture named "
+              "in words, as wide as its box, its band and line, a dot or ▲/▼/◆ each result, as many flagged as its table's flags, each titled, "
+              "nothing past its edges",
+              undrawn302 and not any(undrawn302) and nsolo302["charts"] == 1 and nsolo302["first"] and len(nsolo302["solo"]) == 1
+              and solo302_ok(nsolo302["solo"]) and nsolo302["solo"][0]["band"] >= 1
+              and nsolo302["solo"][0]["dots"] + nsolo302["solo"][0]["abn"] == nsolo302["rows"] and nsolo302["solo"][0]["abn"] == nsolo302["flags"]
+              and nsolo302["solo"][0]["label"].startswith("Neutrophils (absolute): a chart of"), [undrawn302[:4], nsolo302])
         every = hp.locator("#share-results .share-tools button", has_text="Open every history")
         every.click()
         all_open = hp.evaluate("[...document.querySelectorAll('#share-results .share-hist')].every(h => !h.hidden) && [...document.querySelectorAll('#share-results .share-open')].every(b => b.getAttribute('aria-expanded') === 'true')")
@@ -2777,10 +2822,14 @@ def main():
         printed = hp.evaluate("""() => ({gone: ['#shareBar', '#theme', '#shareHead .btn', '#share-results .share-tools .btn', '#share-results .share-open .icon']
             .map(s => getComputedStyle(document.querySelector(s)).display), header: getComputedStyle(document.querySelector('body>header')).position,
           ink: getComputedStyle(document.querySelector('#share-results h2')).color, fits: document.documentElement.scrollWidth <= innerWidth,
-          hist: document.querySelector('#share-results .share-hist').checkVisibility()})""")
+          hist: document.querySelector('#share-results .share-hist').checkVisibility(),
+          line: getComputedStyle(document.querySelector('#share-results .share-chart path.line')).stroke,
+          charts: [...document.querySelectorAll('#share-results .share-chart > svg')].filter(s => s.checkVisibility() && s.getBoundingClientRect().width <= innerWidth).length})""")
         hp.emulate_media(media="screen", color_scheme=None)
-        check("…printed (in a dark theme too): light ink, the header not sticky, no bar or buttons, the open histories printed, nothing wider than the page",
-              printed["gone"] == ["none"] * 5 and printed["header"] == "static" and printed["ink"] == "rgb(26, 25, 21)" and printed["fits"] and printed["hist"], printed)
+        check("…printed (in a dark theme too): light ink, the header not sticky, no bar or buttons, the open histories printed with their charts "
+              "(#302, the line the light theme's blue), nothing wider than the page",
+              printed["gone"] == ["none"] * 5 and printed["header"] == "static" and printed["ink"] == "rgb(26, 25, 21)" and printed["fits"] and printed["hist"]
+              and printed["line"] == "rgb(42, 120, 214)" and printed["charts"] >= len(l289["tests"]) - 2, printed)
         a289, f289 = [], []
         for width in (1400, 375, 320):
             hp.set_viewport_size({"width": width, "height": 900 if width > 400 else 740})
@@ -3028,6 +3077,17 @@ def main():
                 && f.getBoundingClientRect().right <= b.right + 0.5 && new Set([...rg.getClientRects()].map(x => Math.round(x.top))).size === 1;
               td.replaceChildren(...was);
               return ok; })""")
+            # #302: …each history's chart drawn whole, as wide as its box, nothing past its edges; and so with text at 200%
+            # (the font tokens doubled, as #622's), the histories closed and opened again
+            hp.wait_for_timeout(100)
+            solo302 = {"320": hp.evaluate(SOLO302_JS, "#share-results .share-hist:not([hidden])")}
+            hp.evaluate("""() => { const s = new CSSStyleSheet(); s.replaceSync(':root{--fs-1:23px;--fs-2:25px;--fs-3:28px;--fs-4:31px;--fs-5:36px;--fs-6:44px;--fs-7:56px} html{font-size:200%}');
+              document.adoptedStyleSheets = [s]; }""")
+            for _ in range(2):
+                hp.locator("#share-results .share-tools button", has_text="Open every history").click()
+            hp.wait_for_timeout(200)
+            solo302["320, 200%"] = hp.evaluate(SOLO302_JS, "#share-results .share-hist:not([hidden])")
+            hp.evaluate("document.adoptedStyleSheets = []")
             # #518: …and no flag, in a history or a test's row, on two lines ("▲" above "High")
             flag518 = hp.evaluate("""() => { const fl = [...document.querySelectorAll('#share-results .share-flag')].filter(f => f.getClientRects().length);
               return [fl.length, fl.filter(f => { const rg = document.createRange(); rg.selectNodeContents(f);
@@ -3228,6 +3288,9 @@ def main():
               len(wide523) >= 8 and all(wide523), wide523)
         check("…and no flag in Lab results on two lines at 320 px, every history open (#518: “▲” above “High”)",
               flag518[0] >= 1 and not flag518[1], flag518)
+        check("…at 320 px, every history open, each one's chart drawn whole: as wide as its box, every mark titled, nothing past its edges; "
+              "and so with text at 200%, opened again (#302)",
+              all(len(v) >= 8 and solo302_ok(v) for v in solo302.values()), {k: [c for c in v if not solo302_ok([c])][:3] or len(v) for k, v in solo302.items()})
         check("…at 600 and 640 px its tables (but a measure's) tables, as they fit: their heads shown, no word broken, none scrolling (#514: a cell a line)",
               tables514 == {600: [], 640: []}, tables514)
         check("…no visit's title repeats its kind (#514: “Hospital stay: Hospital stay · …”)", not kinds514 and stays514 >= 1, [kinds514, stays514])

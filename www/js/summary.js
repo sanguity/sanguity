@@ -7,6 +7,7 @@
    into innerHTML. Follows the page's profile picker (#profile, filled by sharing.js); call() is sharing.js's. */
 "use strict";   // $, el and api come from util.js
 let PID = null, OPTS = null, PICKED = [];
+const DAY = 864e5;   // (core.js's, which this page doesn't load: the kit's time axis counts in it, #302)
 
 const fmtDay = d => d ? fmtD(dayTs(d)) : "";   // a day, in this person's date format (dates.js, #42)
 
@@ -111,6 +112,16 @@ function table(heads, rows, cls = "") {   // a region that can be scrolled from 
 }
 /* a trend's sparkline (chartkit.js ckSpark, #299): the server's [day, value, flag, low, high], oldest first */
 const spark = pts => ckSpark(pts.map(([d, v, f, lo, hi]) => ckPt(zParse(d), v, lo, hi, f)), {r: 2});
+/* a trend's chart (chartkit.js ckSolo, #302), as the PDF draws it under the trends' table, its name over it: of its
+   spark's points (the last result on or before the "since" day and each after, or with none after the last few), two
+   or more */
+const SUM_FLAG = {High: "▲ High", Low: "▼ Low"};
+function sumChart(r) {
+  const pts = r.spark.map(([d, v, f, lo, hi]) => Object.assign(ckPt(zParse(d), v, lo, hi, f), {d})), name = r.label + (r.unit ? ` (${r.unit})` : "");
+  return el("figure", {class: "sum-chart"}, el("figcaption", {text: name}), ckSolo(pts, {h: 64,
+    label: `${name}: a chart of ${pts.length} results, ${fmtDay(pts[0].d)} to ${fmtDay(pts.at(-1).d)}. The table above lists the first and the latest.`,
+    say: p => `${fmtDay(p.d)}: ${p[1]}${r.unit ? " " + r.unit : ""}${p[4] ? " " + (SUM_FLAG[p[4]] || "◆ " + p[4]) : ""}`}));
+}
 /* a measures block's cell (#225): a day, or a local wall time, in this person's format; else its text */
 const measureCell = (kind, v) => !v ? v : kind === "day" ? fmtDay(v) : kind === "time" ? fmtDT(zParse(v)) : v;
 function renderPreview(s) {
@@ -138,6 +149,9 @@ function renderPreview(s) {
         r.now ? atCell(`${r.now.value}${r.now.flag ? ` ${{High: "▲", Low: "▼"}[r.now.flag] || "◆"} ${r.now.flag}` : ""}`, r.now.date, r.now.flag ? "flag" : null)   // in words, not red alone (#60)
           : cell("no new result"),
         cell(r.change || ""), cell(String(r.since)), el("td", {}, spark(r.spark)), rangeCell(r.now && r.now.range)))) : none("None of the key labs has results."));
+      // their charts (#302), where the PDF has room for them (s.charts: else it's made without them)
+      const drawn = s.charts ? s.trends.filter(r => r.spark.filter(p => p[1] != null).length > 1) : [];
+      if (drawn.length) parts.push(el("div", {class: "sum-charts"}, ...drawn.map(sumChart)));
     } else if (id === "medications") {
       parts.push(el("h3", {text: `Current medications (${s.medications.length})`}));
       parts.push(s.medications.length ? table(["Medication", "Instructions", "Since", "Source"], s.medications.map(r => el("tr", {},
@@ -165,6 +179,7 @@ function renderPreview(s) {
   }
   if (s.settings_note) parts.push(el("p", {class: "hint", id: "sumSettingsNote", text: s.settings_note}));   // #44
   parts.push(el("p", {class: "hint sum-notice", text: s.notice}));
+  for (const c of $("#prevBody").querySelectorAll(".ck-solo")) ckSoloRO.unobserve(c);   // (the charts drawn before)
   $("#prevBody").replaceChildren(...parts); box.removeAttribute("data-stale"); box.hidden = false;
   pvSight();
 }

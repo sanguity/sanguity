@@ -13,6 +13,7 @@ const SH_KIND = {visit: "Visit", stay: "Hospital stay", procedure: "Procedure", 
   note: "Note", symptom: "Symptom", side_effect: "Side effect", mood: "Mood"};
 const shDay = t => t ? fmtD(zParse(String(t).slice(0, 10))) : "";
 const shWhen = t => !t ? "" : /T\d\d:\d\d/.test(t) ? fmtDT(zParse(String(t).slice(0, 19))) : shDay(t);
+const DAY = 864e5;   // (core.js's, which this page doesn't load: the kit's time axis counts in it, #302)
 const shUsd = v => v == null ? "" : v.toLocaleString("en-US", {style: "currency", currency: "USD"});   // "$22.06", as the app writes it (#543)
 
 $("#theme").onclick = () => {
@@ -118,12 +119,27 @@ const SH_DRAW = {
 
 /* Lab results (#289): one Latest results table, a row per test (by the profile's name for it, under its panel, labGroups
    in util.js), with its latest result and date, the range and flag printed on that result's report, a sparkline of
-   the results in the link's dates and how many there are. A test's name opens its history under it, newest first;
+   the results in the link's dates and how many there are. A test's name opens its history under it: a chart of them
+   (#302) over a table, newest first;
    Open every history opens them all (to print them). A flag is said in words beside ▲/▼, never in red alone. */
 const SH_FLAG = {High: "▲ High", Low: "▼ Low"};
 const shFlag = f => f ? el("span", {class: "share-flag", text: SH_FLAG[f] || "◆ " + f}) : "";
-/* a test's sparkline (chartkit.js ckSpark, #299): its results newest first, as the server sends them */
-const shSpark = pts => ckSpark(pts.map(p => ckPt(zParse(String(p.t).slice(0, 19)), p.v, p.lo, p.hi, p.flag)).reverse(), {r: 2.2, cls: "share-spark"});
+/* a test's results, newest first as the server sends them, as the kit's points, oldest first */
+const shPts = pts => pts.map(p => Object.assign(ckPt(zParse(String(p.t).slice(0, 19)), p.v, p.lo, p.hi, p.flag), {p})).reverse();
+/* its sparkline (chartkit.js ckSpark, #299) */
+const shSpark = pts => ckSpark(shPts(pts), {r: 2.2, cls: "share-spark"});
+/* its chart above its history's table (chartkit.js ckSolo, #302), of two numbers or more: from what the link sends
+   (each result's value, range and flag; nothing more is asked for), drawn as the history's opened. Printed, it's
+   beside its table's first rows, drawn 320 wide (app.css): over them, the history's start was too tall to break, and
+   left pages a third empty (#501, #505) */
+function shChart(s) {
+  const pts = shPts(s.results).filter(q => Number.isFinite(q[1]));
+  if (pts.length < 2) return null;
+  const out = pts.filter(q => q[4]).length;
+  return el("div", {class: "share-chart"}, ckSolo(pts, {unit: s.unit, ref: "on report", print: {w: 320, h: 80},
+    label: `${s.label}: a chart of ${pts.length} results, ${shDay(pts[0].p.t)} to ${shDay(pts.at(-1).p.t)}${out ? `, ${out} outside the range on their report` : ""}. The table under it lists each.`,
+    say: q => `${shWhen(q.p.t)}: ${q.p.value}${s.unit ? " " + s.unit : ""}${q[4] ? " " + (SH_FLAG[q[4]] || "◆ " + q[4]) : ""}`}));
+}
 let SH_HIST = 0;
 function shLatest(list) {
   const groups = labGroups(list, list), heads = ["Test", "Latest", "Range", "Flag", "Trend", "Results"], hists = [];
@@ -133,7 +149,7 @@ function shLatest(list) {
     const open = el("button", {class: "cell-btn share-open", type: "button", "aria-expanded": false, "aria-controls": id,
       onclick: () => { shOpen(open, hist, open.getAttribute("aria-expanded") !== "true"); follow(); }}, icon("chevron-down"), s.label);
     const hist = el("tr", {class: "share-hist", id, hidden: ""}, el("td", {colspan: heads.length},
-      s.label !== s.name ? el("p", {class: "hint", text: `Named “${s.name}” on its reports.`}) : null,
+      s.label !== s.name ? el("p", {class: "hint", text: `Named “${s.name}” on its reports.`}) : null, shChart(s),
       // a result's flag beside its value, under it where there's no room (#523: at 320 px "◆ Abnormal" in a column of
       // its own put the history 23 px past its box)
       shTable(["Date", "Result", "Reference range"], s.results.map(p => [days.size < s.results.length ? shWhen(p.t) : shDay(p.t),
