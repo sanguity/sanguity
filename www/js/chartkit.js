@@ -18,7 +18,9 @@
    - ckStripBins, ckStripBars, ckStripH, ckStripDates, ckStripWindow: the overview strip, every year's records with the
      period a window on them (#295, charts.js stripDraw), its dates' row as tall as the text (#641);
    - ckPos, ckPosSpan, ckPosTicks, CK_SERIES, ckSeriesKey, ckDumbbell: labs compared on one scale, each result's place
-     in its own range, and a lab's medians before and after a date (#297, compare.js).
+     in its own range, and a lab's medians before and after a date (#297, compare.js);
+   - ckHour, ckHourTicks, ckSpread: a day's hours as an axis, and a value's spread at each point, its median and
+     percentile bands (#303, the glucose card's 24-hour profile, health.js).
    CHART_LAYERS (trends.js) and TL_LANES (timeline.js) stay the plug-ins of Labs' event track and the Timeline.
    Plain script, loaded in order by index.html; all files share one global scope. */
 "use strict";
@@ -479,4 +481,37 @@ function ckDumbbell(g, x, lo, hi, y, i, a, b) {
   if (x0 != null && x1 != null) g.push(el("svg:line", {class: "db-bar", x1: x0, x2: x1, y1: y, y2: y, stroke: c}));
   if (x0 != null) g.push(shapeMark("ring", x0, y, 5.5, {class: "db-a", stroke: c}));
   if (x1 != null) g.push(shapeMark("circle", x1, y, 5.5, {class: "db-b", fill: c}));
+}
+
+/* ---- a day's hours (#303, the glucose card's 24-hour profile): x from 0 (midnight) to 24 (the next). ckHour(h): an
+   hour as the app writes a time, en-US, "12 AM" to "11 PM", its AM or PM kept with it (a no-break space, as fmtTime's) */
+const ckHour = h => `${h % 12 || 12} ${h % 24 < 12 ? "AM" : "PM"}`;
+/* the hours' ticks for ckAxis, one row: every 3, 6 or 12 hours, the most whose labels fit side by side inside W (as
+   ckTimeTicks tries its steps; larger text, fewer) */
+function ckHourTicks(x, W) {
+  ckK();
+  let ticks = [];
+  for (const n of [3, 6, 12]) {
+    ticks = [];
+    for (let h = 0; h <= 24; h += n) { const label = ckHour(h), w = labelW(label, ""); ticks.push({t: h, label, x: Math.max(w / 2, Math.min(W - w / 2, x(h)))}); }
+    if (ticks.every((k, i) => !i || k.x - ticks[i - 1].x >= (labelW(k.label, "") + labelW(ticks[i - 1].label, "")) / 2 + 12)) break;
+  }
+  return {rows: 1, ticks};
+}
+/* a value's spread at each point, in color: runs of rows [x, p5, p25, p50, p75, p95] (a run's points joined, nothing
+   drawn between runs): the 5th to 95th percentile a wash with hairline edges, the 25th to 75th a deeper wash over it,
+   the median a 2 px line, so the bands read in one hue, lighter the wider (validated light and dark: each step 0.06
+   of lightness at least from the next; the wash's edges 2:1 on the card, the median 3.5:1). A run of one point is a
+   short flat stretch, lone either side of it */
+function ckSpread(g, runs, x, y, color, lone = .25) {
+  const at = (r, i) => r.map(p => `${x(p[0]).toFixed(1)},${y(p[i]).toFixed(1)}`), line = (r, i) => "M" + at(r, i).join("L");
+  const area = (r, i, j) => line(r, j) + "L" + at(r, i).reverse().join("L") + "Z";
+  let out = "", edge = "", mid = "", med = "";
+  for (let r of runs) {
+    if (r.length === 1) r = [[r[0][0] - lone, ...r[0].slice(1)], [r[0][0] + lone, ...r[0].slice(1)]];
+    out += area(r, 1, 5); edge += line(r, 1) + line(r, 5); mid += area(r, 2, 4); med += line(r, 3);
+  }
+  g.push(el("svg:path", {d: out, fill: color, "fill-opacity": .15}), el("svg:path", {d: edge, fill: "none", stroke: color, "stroke-opacity": .6}),
+    el("svg:path", {d: mid, fill: color, "fill-opacity": .35}),
+    el("svg:path", {d: med, fill: "none", stroke: color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round"}));
 }

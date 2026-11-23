@@ -3,7 +3,9 @@
 The summary is the shape watch/receiver.py writes as daily.json: {"metrics": [{key, name, unit, group,
 pts: [[day, value]]}], "exercise": [{start, end, name, kind, minutes, key?}], ...}. A daily point is identified by
 (metric key, day) and a workout by its `key` (when it has one) or else its start time, so a later import that
-overlaps an earlier one replaces those days and workouts instead of adding to them.
+overlaps an earlier one replaces those days and workouts instead of adding to them. A value may be a list: a CGM
+day's readings by whole mg/dL (glucose_dist, #234) and by hour of the day (glucose_hourly, #303, the page's 24-hour
+profile) are its points like any other, a day's replaced whole.
 
 Where it is kept, in the profile's own folder (so encryption at rest, deletion and backups cover it):
   <profile_dir>/watch/imports/<import id>.json   each Apple Health import's own summary, as it came in (issue #24),

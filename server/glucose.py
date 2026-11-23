@@ -37,8 +37,17 @@ A CGM day is one source's: the one with the most readings that day, so two apps 
 sensors worn across a change, don't count twice.
   glucose_dist           (#234) the same day's readings counted by whole mg/dL, compared as the ranges above are:
                          [lowest, how many at it, at lowest + 1, ...], for time in a person's own range
-                         (server/targets.py). The server gives the page only the shares in that range, never this. On a day Health Connect sent any glucose, its readings are the day's
-and Health Auto Export's are left out, as for the other metrics. Not one five-minute reading reaches the page.
+                         (server/targets.py). The server gives the page only the shares in that range, never this.
+  glucose_hourly         (#303) the same day's readings by the hour of the day they were taken (their local time), for
+                         the page's 24-hour profile: one flat list, each hour from midnight its count of readings and,
+                         when it has any, their 5th, 25th, 50th, 75th and 95th percentiles, [n, p5, p25, p50, p75, p95,
+                         n, ...]; an hour without readings (a sensor gap) is its 0 alone. Each reading as whole mg/dL, as
+                         the ranges are compared; each percentile between its two nearest readings (linear, as numpy's
+                         default), as whole mg/dL. About 600 bytes a day; the page works the period's profile out
+                         from its days' (health.js gProfile). It is made from the readings kept here, so a summary
+                         written again gives every day kept its hours (the receiver does so once, #303).
+On a day Health Connect sent any glucose, its readings are the day's and Health Auto Export's are left out, as for the
+other metrics. Not one five-minute reading reaches the page.
 
 Meal and insulin entries (Health Connect's meal type and relation to meal, HealthKit's insulin delivery and meal
 time) aren't read: what a CGM app writes there differs from app to app, and they would be the person's own notes
@@ -46,6 +55,7 @@ rather than measurements. The uploads keep them in raw/, so a later version can 
 
 Standard library only (with server/units.py).
 """
+import math
 from datetime import datetime, timezone
 
 from . import units
@@ -56,6 +66,7 @@ NEAR = 20 * 60                      # readings this close together, mostly, are 
 CGM_MIN = 12                        # ...and a sensor sends at least this many
 SLOT = 15 * 60                      # hours with readings are counted in quarter hours
 PLAUSIBLE = (5, 1500)               # mg/dL; anything outside is a typing or unit mistake, not a reading
+HOURLY = (5, 25, 50, 75, 95)        # the percentiles each CGM day's hours keep (#303)
 
 TABLE = """CREATE TABLE IF NOT EXISTS glucose(app TEXT, src TEXT, id TEXT, t INTEGER, wall TEXT, v REAL, kind TEXT,
     PRIMARY KEY(app, src, id)) WITHOUT ROWID;"""
@@ -78,6 +89,8 @@ META = {   # key: (name, unit, group), in the order the summary lists them
     "glucose_in": ("CGM readings 70–180 mg/dL", "%", "Glucose"),
     "glucose_gt180": ("CGM readings above 180 mg/dL", "%", "Glucose"),
     "glucose_dist": ("CGM readings by whole mg/dL", "readings", "Glucose"),   # #234, see below
+    "glucose_hourly": ("CGM readings by hour of the day: how many, and their 5th, 25th, 50th, 75th and 95th percentiles",
+                       "mg/dL", "Glucose"),   # #303
 }
 IN_MGDL = ("glucose_meter", "glucose_avg", "glucose_min", "glucose_max")   # the ones shown in mmol/L when chosen (#41)
 
@@ -175,6 +188,28 @@ WITH gaps AS (SELECT app, src, t - LAG(t) OVER (PARTITION BY app, src ORDER BY t
 """
 
 
+def percentile(vs, p):
+    """The p-th percentile (0 to 100) of the sorted values vs, between the two nearest (linear interpolation, numpy's
+    default and statistics.quantiles' "inclusive"); None for none."""
+    if not vs:
+        return None
+    h = (len(vs) - 1) * p / 100
+    i = int(h)
+    return vs[i] + (vs[min(i + 1, len(vs) - 1)] - vs[i]) * (h - i)
+
+
+def hourly(hours):
+    """A day's 24 hours of readings (each a list of whole mg/dL) as glucose_hourly keeps them: each hour its count,
+    then its HOURLY percentiles as whole mg/dL when it has any (see the docstring)."""
+    out = []
+    for vs in hours:
+        vs = sorted(vs)
+        out.append(len(vs))
+        if vs:
+            out += [int(math.floor(percentile(vs, p) + 0.5)) for p in HOURLY]
+    return out
+
+
 def summary(con):
     """The glucose metrics for daily.json (see the docstring), from a database with the glucose table; [] when it
     holds no readings."""
@@ -194,11 +229,17 @@ def summary(con):
     for app, src, day, w, k in q(_KINDS + "SELECT app, src, day, CAST(ROUND(v) AS INTEGER), COUNT(*) FROM r WHERE kind = 'cgm' "
                                            "GROUP BY app, src, day, CAST(ROUND(v) AS INTEGER)"):
         dist.setdefault((app, src, day), {})[w] = k
+    hours = {(b[9], b[1], day): [[] for _ in range(24)] for day, b in best.items()}   # the day's own source's (#303)
+    for app, src, day, h, w in q(_KINDS + "SELECT app, src, day, CAST(substr(wall, 12, 2) AS INTEGER), CAST(ROUND(v) AS INTEGER) "
+                                           "FROM r WHERE kind = 'cgm'"):
+        if (got := hours.get((app, src, day))) is not None and 0 <= h < 24:
+            got[h].append(w)
     for day, (n, src, avg, mn, mx, lt54, lt70, gt180, slots, app) in best.items():
         c = dist.get((app, src, day)) or {}
         if c:
             lo = min(c)
             out["glucose_dist"][day] = [lo] + [c.get(v, 0) for v in range(lo, max(c) + 1)]
+        out["glucose_hourly"][day] = hourly(hours[(app, src, day)])
         pct = lambda k: round(100 * k / n, 1)
         for key, v in (("glucose_avg", round(avg, 1)), ("glucose_min", round(mn, 2)), ("glucose_max", round(mx, 2)),
                        ("glucose_n", n), ("glucose_hours", slots * SLOT / 3600), ("glucose_lt54", pct(lt54)),

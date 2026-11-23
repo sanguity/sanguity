@@ -801,8 +801,10 @@ because:
 
 What that costs, measured for a year of one sensor (`tests/test_glucose.py`): about **10 MB** in `watch.db` with
 Health Connect's ids (7 MB from Health Auto Export), and about **3 MB** of gzipped uploads in `raw/`; the summary takes
-0.1 s to make. The page gets the days only, about 70 KB a year in `daily.json`. Both `watch.db` and `raw/` are in the
-app's backups since #227 (above), so a CGM adds about 13 MB a year to each backup; the per-day summaries it hands the
+0.1 s to make. The page gets the days only, about 70 KB a year in `daily.json`, and each day's hours for its
+24-hour profile (#303: each hour's count of readings and their 5th to 95th percentiles), about 210 KB a year more,
+made again from the readings with every summary (about a third more of its time). Both `watch.db` and `raw/` are in the app's
+backups since #227 (above), so a CGM adds about 13 MB a year to each backup; the per-day summaries it hands the
 app aren't stored in `sanguity.db`. If years of readings ever outgrow memory, readings older than a few months could
 be folded into per-day rows (nothing older is sent again); that isn't needed yet.
 

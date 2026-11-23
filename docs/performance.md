@@ -22,14 +22,16 @@ same taken at the clinic's visits. It is fictional and the same on every run, li
 | Documents (a small PDF each) | 1 | 1,001 |
 | Payments | 96 | 1,333 |
 | Watch and scale days | 20 months | 10 years |
-| Blood glucose (#181) | none | 3 years of meter readings, 336 CGM days |
+| Blood glucose (#181) | none | 3 years of meter readings, 336 CGM days with their hours (#303) |
 | Workouts | 115 | 1,026 |
 | Home blood pressure and temperature readings | – | 1,381 and 180 |
 
 Blood glucose (#181) reaches the page as days, never as a CGM's five-minute readings, so the fixture has the days and
-the meter's readings, in the receiver's shape: 77 KB of the watch data and about 800 elements on Body and activity (a
-dot a meter reading, two paths a sensor's run of days). The readings themselves stay in the receiver's own database;
-what a year of them costs there is in [docs/database.md](database.md#the-watch-receivers-own-database).
+the meter's readings, in the receiver's shape: 77 KB of the watch data, 178 KB more for each CGM day's hours (#303:
+each hour's count of readings and their percentiles, for the 24-hour profile), and about 850 elements on Body and
+activity (a dot a meter reading, two paths a sensor's run of days, the profile's chart). The readings themselves stay
+in the receiver's own database; what a year of them costs there is in
+[docs/database.md](database.md#the-watch-receivers-own-database).
 
 The test loads it as the setup build into a temporary data folder of its own and serves it with the real backend,
 as `tests/browser_check.py` does with the demo. It also makes two more large inputs: a ten-year Apple Health
@@ -54,7 +56,7 @@ regression like the one fixed below (seconds instead of a tenth of one) still fa
 | `records_cold_s` | That request right after the records changed, put together from the database | 0.29 s | 2.5 s |
 | `records_s` | That request again with nothing changed (the server keeps the answer) | 0.002 s | 0.25 s |
 | `details_s` | A lab day's results as the drawer opens it, `GET /api/profiles/{id}/details?ids=…` (3.8 KB, #217) | 0.002 s | 0.25 s |
-| `watch_bytes`, `watch_s` | `GET /api/profiles/{id}/watch`: ten years of watch and scale days, with the glucose and the home readings | 1.28 MB, 0.03 s | 1.5 MB, 0.5 s |
+| `watch_bytes`, `watch_s` | `GET /api/profiles/{id}/watch`: ten years of watch and scale days, with the glucose and the home readings | 1.46 MB, 0.02 s | 1.5 MB, 0.5 s |
 | `build_load_s` | The big build loaded into a profile (the first start, `setup rebuild`) | 0.19 s | 5 s |
 | `export_s` | **Export everything** of the big profile: a 1.4 MB zip with its 1,000 documents | 0.55 s | 6 s |
 | `fhir_export_s` | The same **as FHIR R4** (#205): a 3.7 MB zip, every record a resource, ten years of daily measures an Observation a day each | 1.6 s | 16 s |
@@ -63,7 +65,7 @@ regression like the one fixed below (seconds instead of a tenth of one) still fa
 | `sync_s` | A connected source's first pull of the big FHIR patient (186 requests), its preview saved | 1.7 s | 15 s |
 | `page_ready_ms` | The records page, loaded on each tab, from the request to its `sanguity:ready` mark (`www/js/app.js`) | 132 ms (Body and activity) | 1,500 ms |
 | `tab_draw_ms` | A tab's first draw with the period **All**, the page loaded on another tab, to the next frame; and each **Show more** of the Timeline's list (#277, below) | 110 ms (Body and activity) | 1,000 ms |
-| `tab_elements` | Elements in a tab with the period **All** | 10,815 (Body and activity) | 12,000 |
+| `tab_elements` | Elements in a tab with the period **All** | 10,861 (Body and activity) | 12,000 |
 | `phone_page_ready_ms` | `page_ready_ms` at 375 px with the CPU four times slower, like a phone's | 437 ms | 5,000 ms |
 | `phone_tab_draw_ms` | `tab_draw_ms` the same way | 453 ms (Body and activity) | 3,000 ms |
 | `pan_frame_ms` | A frame of dragging a tab's charts with the period **All** (Body and activity, Labs' charts and its heatmap, the Timeline), from the pointer's move to the frame after it, every chart drawn again (#292, #631, below) | 41 ms (Body and activity, the heatmap) | 150 ms |

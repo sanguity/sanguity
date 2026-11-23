@@ -16,7 +16,8 @@ and Health Auto Export (Apple Health, iPhone) REST API automations (#148).
   Health importer's own mapping and aggregation (server/importers/apple_health.py), so an iPhone gives the same
   Health tab as an uploaded export.xml, HRV as SDNN. On a day both apps sent one metric, Health Connect's value wins.
 - Blood glucose from both apps (#181, server/glucose.py): every reading kept, meter readings passed on as they are,
-  a continuous glucose monitor's summarised per day (average, low, high, hours with readings, time in ranges).
+  a continuous glucose monitor's summarised per day (average, low, high, hours with readings, time in ranges, and
+  each hour of the day's count and percentiles for the 24-hour profile, #303).
 - Home blood pressure (#180) and body temperature (#184) are kept reading by reading from both apps, a reading sent
   again (or by both) counted once, and summed up by day; the summary lists the readings too.
 - ECG recordings and irregular rhythm notifications from Health Auto Export (#182, server/ecg.py): each one kept by its
@@ -382,6 +383,7 @@ class Store:
         """Fold in the uploads archived since the last snapshot (all of raw/ for a new database). Returns how many
         were new. Those already in it are recognised by their digest and skipped."""
         n = self._glucose_backfill()   # an existing database's glucose, once (#181)
+        n += self._glucose_hourly_backfill()   # and its CGM days' hours, once (#303)
         n += self._ecg_backfill()   # and its ECGs, once (#182)
         n += self._workout_hr_backfill()   # and its Health Auto Export workouts' heart rate, once (#197)
         n += self._meds_backfill()   # and its medication doses, once (#235)
@@ -608,6 +610,7 @@ class Store:
         self.db.executescript(glucose.TABLE)
         if not self.loaded:
             self.meta("glucose", 1)   # a new database: every upload's glucose is folded in as it comes
+            self.meta("glucose_hourly", 1)   # and its summaries have each CGM day's hours from the first (#303)
 
     def _glucose_hc(self, c, p, tz):
         n, skipped = glucose.from_health_connect(c, p, tz)
@@ -645,6 +648,19 @@ class Store:
         if n:
             log(f"read the blood glucose of {n} earlier uploads")
         return n
+
+    def _glucose_hourly_backfill(self):
+        """A database from before the summary kept each CGM day's hours (#303): their readings are here already, so its
+        summary is written again once, on start, for the days it has to get them (catch_up's count says so). Returns 1
+        then, else 0."""
+        if not self.loaded or self.meta("glucose_hourly") is not None:
+            return 0
+        self.meta("glucose_hourly", 1)
+        self.db.commit()
+        if self.db.execute("SELECT 1 FROM glucose LIMIT 1").fetchone() is None:
+            return 0
+        log("each CGM day's hours of readings: the summary is written again with them")
+        return 1
 
     # ------------------------------------------------------------ ECGs and irregular rhythm notifications (#182, server/ecg.py)
     def _ecg_init(self):
