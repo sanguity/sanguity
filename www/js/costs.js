@@ -125,7 +125,7 @@ function drawCosts() {
   else {
     const leg = ckLegend([["var(--measure)", "Your share"], ["var(--muted)", "Paid by insurance"], ["var(--stay)", "Hospital stay", "stay-key"]]);   // a stay's edge too (#450)
     leg.classList.add("mb-2"); mc.append(leg);
-    const svg = el("svg:svg", {id: "costChart", role: "img", "aria-label": by === "year" ? "Yearly insurance costs" : "Monthly insurance costs"}); mc.append(svg);
+    const svg = chartSvg(by === "year" ? "Yearly insurance costs" : "Monthly insurance costs", {id: "costChart"}); mc.append(svg);   // a tab stop as it's made (#652)
     requestAnimationFrame(() => drawCostBars(svg, rows, by));
   }
   // category + provider breakdowns
@@ -358,7 +358,7 @@ function renderPaid(box, claimRows, periodLabel) {
       });
       cum.append(stacked(chartTable(["Month", "Your share listed", "Bills paid", "Share so far", "Paid so far", settled ? "Reduced so far" : "Difference"], out.reverse())));
     } else {
-      const svg = el("svg:svg", {id: "paidChart", role: "img", height: 210, "aria-label": "Your share and the bills you paid, running totals. Table lists them by month."});   // its height from the start, so what's under it doesn't move when it's drawn a frame later (#473)
+      const svg = chartSvg("Your share and the bills you paid, running totals. Table lists them by month.", {id: "paidChart", height: 210});   // its height from the start, so what's under it doesn't move when it's drawn a frame later (#473); a tab stop (#652)
       const leg = ckLegend([["var(--measure)", "Your share per insurers, running total", "line"], ["var(--ink2)", "Medical bills you paid, running total", "line"]]);
       leg.classList.add("mb-2"); cum.append(leg, svg);
       requestAnimationFrame(() => drawPaidCum(svg, claimRows, bills, settled));
@@ -437,7 +437,7 @@ const usdAxis = v => v >= 1e6 ? `$${ckNum(v / 1e6)}M` : v >= 1e3 ? `$${ckNum(v /
 const costGutter = vals => Math.max(...vals.map(v => labelW(usdAxis(v), ""))) + 12;
 function drawPaidCum(svg, claimRows, payRows, settled) {
   const pts = [...claimRows.filter(r => r.owe).map(r => ({d: r.d, a: r.owe, s: 0})), ...payRows.map(r => ({d: r.d, a: r.amount, s: 1}))].sort((a, b) => a.d.localeCompare(b.d));
-  if (!pts.length) { svg.replaceChildren(); return; }
+  if (!pts.length) { svg.replaceChildren(); svg.removeAttribute("tabindex"); return; }   // nothing to step through: no tab stop (#652)
   const t0 = dayTs(pts[0].d), t1 = Math.max(dayTs(pts.at(-1).d), t0 + 30 * DAY);
   const series = [[], []], acc = [0, 0];
   for (const p of pts) { acc[p.s] += p.a; series[p.s].push([dayTs(p.d), acc[p.s]]); }
@@ -532,7 +532,7 @@ function costBuckets(rows, by = "month") {
    what insurance paid, grey, for context. A hospital stay's months shaded in both; a month's figures by pointer or the
    arrow keys, its slot marked in both */
 function drawCostBars(svg, rows, by = "month") {
-  if (!rows.length) { svg.replaceChildren(); return; }
+  if (!rows.length) { svg.replaceChildren(); svg.removeAttribute("tabindex"); return; }   // nothing to step through: no tab stop (#652)
   const months = costBuckets(rows, by), yearly = by === "year", keys = [...months.keys()], k = ckK();
   const start = key => dayTs(key + (yearly ? "-01-01" : "-01")), ts = keys.map(start);
   { const d = zdate(ts.at(-1)); if (yearly) d.setFullYear(d.getFullYear() + 1); else d.setMonth(d.getMonth() + 1); ts.push(d.getTime()); }

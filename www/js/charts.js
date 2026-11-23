@@ -239,18 +239,22 @@ strip.addEventListener("pointerleave", () => { if (!stripDrag) hideTip(); });
    right edge, against that edge, or shortened with "…" to the room there is; its <title> has the full names and dates.
    Returns the milestones shown, in words for the chart's aria-label ("" when none). */
 const msInRange = (a, b) => MILESTONES.some(m => { const t = dayTs(m.date); return t >= a && t <= b; });
+/* the milestones from a to b in words, as a chart's aria-label says them ("" when none): "Milestones: Diagnosis, Mar 3, 2025; …." */
+function msSay(a, b) {
+  const shown = MILESTONES.map(m => [m.label, dayTs(m.date)]).filter(([, t]) => t >= a && t <= b).map(([l, t]) => `${l}, ${fmtD(t)}`);
+  return shown.length ? `Milestone${shown.length > 1 ? "s" : ""}: ${shown.join("; ")}.` : "";
+}
 function msMarks(g, x, a, b, y0, y1, R, labelY) {
   const L = x(a), tw = s => labelW(s, "mslabel"), names = items => items.map(([m]) => m.label).join(" · ");
-  const groups = [], shown = [];   // a milestone whose label would run into the previous label joins it: "Diagnosis · Treatment start"
+  const groups = [];   // a milestone whose label would run into the previous label joins it: "Diagnosis · Treatment start"
   for (const m of MILESTONES) {
     const t = dayTs(m.date); if (t < a || t > b) continue;
     const mx = x(t);
-    shown.push(`${m.label}, ${fmtD(t)}`);
     g.push(el("svg:line", {class: "msmark", x1: mx, x2: mx, y1: y0, y2: y1}));
     const last = groups[groups.length - 1];
     if (last && mx < last.x + tw(names(last.items)) + 12) last.items.push([m, t]); else groups.push({x: mx, items: [[m, t]]});
   }
-  const words = shown.length ? `Milestone${shown.length > 1 ? "s" : ""}: ${shown.join("; ")}.` : "";
+  const words = msSay(a, b);
   if (labelY == null) return words;
   const shorten = (s, room) => { for (let n = s.length - 1; n > 2; n--) { const t = s.slice(0, n).trimEnd() + "…"; if (tw(t) <= room) return t; } return null; };
   const place = (items, mx, left) => {   // where a group's label goes, starting no further left than left; null: no room
@@ -306,6 +310,10 @@ function chartTable(heads, rows, cls = "") {
     el("thead", {}, el("tr", {}, heads.map(h => el("th", {scope: "col", text: h})))),
     el("tbody", {}, rows.map(r => el("tr", {}, r.map(td))))));
 }
+/* a chart's svg as it's made, a tab stop already, with the name chartKeys gives it once it's drawn (label): so focus on
+   a chart drawn anew (a resize, the records changed) goes to its twin, found by its id or its name (store.js keepFocus),
+   not to the page (#652) */
+const chartSvg = (label, attrs) => el("svg:svg", {tabindex: 0, role: "application", "aria-roledescription": "chart", "aria-label": label, ...attrs});
 /* the keyboard on a chart: it takes focus (role application, said as a chart, label summing it up); ← and → step
    between its points, Home and End go to the first and last, Escape lets go. times() -> the points' times shown now,
    in order; show(t) shows that point's readout (the hover's) and returns its words, said to screen readers; clear()
@@ -353,5 +361,16 @@ function renderLabs() {
   save();
 }
 $("#labsView").onclick = ev => { const b = ev.target.closest("button[data-view]"); if (!b || b.dataset.view === state.labsView) return; hideTip(); state.labsView = b.dataset.view; renderLabs(); tabAddress(true); };   // #labs, #labs-heatmap or #labs-compare (#208, #297), Back returning to the view before (#442)
-function showSeries(name) { state.sel.add(name); state.labsView = "chart"; closeDrawer(); pickTab("labs"); }
+/* a lab on Labs as a chart, or as its table, from the drawer (a lab's panel's Chart these results or Show them as a
+   table, a result's row): the drawer closes, taking with it what had focus, so focus goes to its chart once it's drawn,
+   or to its name over its table, and that's said (#652: it fell to the page, and nothing said the lab was charted) */
+function showSeries(name) {
+  state.sel.add(name); state.labsView = "chart"; closeDrawer(); pickTab("labs");
+  requestAnimationFrame(() => {
+    const t = state.tables.has(name), x = [...$("#charts").querySelectorAll(".chart")].find(c => c.dataset.lab === name)?.querySelector(t ? ".hd .lab-open" : "svg.ck");
+    if (!x) return;
+    x.focus();
+    announce(`${nice(name)} ${t ? "shown as a table" : "charted"} on Labs.`);
+  });
+}
 

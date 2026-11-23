@@ -104,7 +104,10 @@ let hNamed = false;
    which leaves some out, #659); h: its height with one row of time labels; fmtY: a gridline's label, its number as
    it is (ckNum, #654) with a unit's letter */
 function hChart(host, a, b, {h = 190, layers, fmtY = ckNum, unit = "", zero = false, tip, label = "Chart", noun = "day", nav}) {
-  const svg = el("svg:svg", {role: "img", class: "pz ck", "aria-label": label}); host.append(svg);
+  // its words from a to b, its name (chartKeys): a tab stop with them as it's made (#652)
+  const say = (a, b, n = nav.filter(p => p[0] >= a && p[0] <= b)) => { const ms = msSay(a, b);
+    return `${label}: ${n.length} ${noun}${n.length === 1 ? "" : "s"}${n.length ? ` from ${fmtD(n[0][0])} to ${fmtD(n.at(-1)[0])}` : " in this period"}. Left and right arrow keys step through them.${ms ? " " + ms : ""}`; };
+  const svg = chartSvg(say(a, b), {class: "pz ck"}); host.append(svg);
   const named = !hNamed && (hNamed = true), SH = layers.some(l => l.type === "strip") ? 18 : 0;   // the strip's room, under the plot
   svg._draw = (a, b, live) => {   // also called live while dragging, with the new window: at the width it had, so the
     svg._hover = null;             // charts drawn before it aren't laid out again to measure it (#292)
@@ -130,8 +133,7 @@ function hChart(host, a, b, {h = 190, layers, fmtY = ckNum, unit = "", zero = fa
     const tk = ckTimeTicks(a, b, x, w), AX = ckAxisH(tk.rows), hh = h - 22 + AX + SH + Math.max(0, T - 22), B = hh - AX - SH;   // (a second row of names taller)
     svg.setAttribute("viewBox", `0 0 ${w} ${hh}`); svg.setAttribute("height", hh); svg.style.width = "100%"; svg._geom = {L, R, T, B, w};
     const navIn = nav.filter(p => p[0] >= a && p[0] <= b);   // the keyboard's points (#60)
-    chartKeys(svg, `${label}: ${navIn.length} ${noun}${navIn.length === 1 ? "" : "s"}${navIn.length ? ` from ${fmtD(navIn[0][0])} to ${fmtD(navIn[navIn.length - 1][0])}` : " in this period"}. Left and right arrow keys step through them.`,
-      () => navIn.map(p => p[0]), () => "", () => {});   // until it's drawn (below)
+    chartKeys(svg, say(a, b, navIn), () => navIn.map(p => p[0]), () => "", () => {});   // until it's drawn (below)
     if (!some) {   // nothing in the window: its plot and time axis kept, to drag back and double-click (#382)
       const g = [el("svg:rect", {x: L, y: T, width: R - L, height: B - T, fill: "transparent"}), el("svg:text", {x: (L + R) / 2, y: (T + B) / 2, "text-anchor": "middle", text: "No data in this period"}), ...names];
       ckAxis(g, tk, L, R, B, B + SH / ckK() + 16); svg.replaceChildren(...g); return;
@@ -139,9 +141,9 @@ function hChart(host, a, b, {h = 190, layers, fmtY = ckNum, unit = "", zero = fa
     const y = ckScale(lo, hi, B, T), g = [];
     if (hState.stays) for (const s of STAYS) if (s.te >= a && s.ts <= b) g.push(el("svg:rect", {x: x(Math.max(a, s.ts)), y: T, width: Math.max(2, x(Math.min(b, s.te)) - x(Math.max(a, s.ts))), height: B - T, fill: "var(--stay)"}));
     ckGrid(g, y, ticks, L, R, fmtY);
-    { const at = g.length, ms = msMarks(g, x, a, b, T, B, R, null);   // a faint line at each (#298), their names in words (#312)
+    { const at = g.length; msMarks(g, x, a, b, T, B, R, null);   // a faint line at each (#298), their names in its words (say, #312)
       for (const m of g.slice(at)) m.classList.add("faint");
-      g.push(...names); if (ms) svg.setAttribute("aria-label", svg.getAttribute("aria-label") + " " + ms); }
+      g.push(...names); }
     ckAxis(g, tk, L, R, B, B + SH / ckK() + 16);
     const slot = l => (R - L) / ((b - a) / (l.every || DAY));   // a bar's room: a day's or a week's
     for (const l of layers) {
@@ -761,7 +763,7 @@ function gDay(card, P, table, legend) {
    at its middle, apart where hours have no readings. Hovered or stepped through from the keyboard, an hour's readout:
    its median, the two bands' ends and how many readings on how many days. Not dragged: its x is no period */
 function gDayChart(box, rows, label) {
-  const svg = el("svg:svg", {class: "glu-prof", role: "img", "aria-label": label, width: "100%"});
+  const svg = chartSvg(label, {class: "glu-prof", width: "100%"});   // a tab stop as it's made (#652)
   box.append(svg);
   const have = rows.filter(Boolean), u = G.unit, fmt = G.fmt, [, s1, s2] = G.std;
   requestAnimationFrame(() => {
@@ -1254,8 +1256,9 @@ function growthChart(host, sex, set, key, pts) {
   const from = set === "who" ? 0 : 24 * MONTH_DAYS, last = Math.max(...pts.map(m => m.age.days));
   const to = set === "who" ? WHO_TO : Math.min(CDC_TO, Math.max(6 * Y, (Math.ceil(last / Y) + 2) * Y));
   const lines = curves.map(c => [c, growthCurve(GT, key, sex, c, from, to).map(([d, x]) => [d, x * f])]);
-  const name = `${gName(key, set)} for age`;
-  const svg = el("svg:svg", {class: "growth-chart"});
+  const name = `${gName(key, set)} for age`, said = `${name}, ${set === "who" ? "the WHO's chart, birth to 2 years" : "the CDC's chart, 2 to 20 years"}: ${pts.length} measurement${pts.length === 1 ? "" : "s"}, the latest ${gVal(pts.at(-1))}`
+    + `${pts.at(-1).p == null ? "" : `, ${pctText(pts.at(-1).p)} percentile`}. Left and right arrow keys step through them.`;
+  const svg = chartSvg(said, {class: "growth-chart"});   // a tab stop with its words as it's made (#652)
   host.append(svg);
   const at = d => pts.find(m => m.age.days === d);
   const rows = m => [el("div", {class: "v", text: `${gVal(m)} · ${m.p == null ? "no percentile" : pctText(m.p) + " percentile"}`}),
@@ -1297,9 +1300,7 @@ function growthChart(host, sex, set, key, pts) {
     hit.addEventListener("pointerleave", () => { hideTip(); cross.setAttribute("visibility", "hidden"); });
     g.push(cross, hit);
     svg.replaceChildren(...g);
-    chartKeys(svg, `${name}, ${set === "who" ? "the WHO's chart, birth to 2 years" : "the CDC's chart, 2 to 20 years"}: ${pts.length} measurement${pts.length === 1 ? "" : "s"}, the latest ${gVal(pts.at(-1))}`
-      + `${pts.at(-1).p == null ? "" : `, ${pctText(pts.at(-1).p)} percentile`}. Left and right arrow keys step through them.`,
-      () => [...new Set(pts.map(m => m.age.days))], d => { const m = at(d); if (!m) return ""; const r = rows(m); show(m, svgPoint(svg, x(d), T)); return tipWords(r); },
+    chartKeys(svg, said, () => [...new Set(pts.map(m => m.age.days))], d => { const m = at(d); if (!m) return ""; const r = rows(m); show(m, svgPoint(svg, x(d), T)); return tipWords(r); },
       () => { hideTip(); cross.setAttribute("visibility", "hidden"); });
   };
   requestAnimationFrame(draw);
