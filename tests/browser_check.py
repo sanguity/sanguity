@@ -1328,6 +1328,42 @@ def focus_walk(page, label, back=False, stops=60):
     return out
 
 
+# #651: what has focus on Labs, after the browser has brought it into view, against Labs' two pinned parts: the event
+# track while it's stuck and the stack's time axis. "out" once focus has left Labs; else the control's name and which of
+# them is over any of its middle and corners, or null. One taller than the room between them, filling it, can't be clear
+UNDER_PINNED_JS = r"""() => {
+  const a = document.activeElement; if (!a || a === document.body || !a.closest('#view-labs')) return 'out';
+  const r = a.getBoundingClientRect(); if (!r.width || !r.height) return null;
+  const track = document.getElementById('evTrack'), foot = document.querySelector('#charts > .ck-foot');
+  const t = track?.classList.contains('stuck') && !track.contains(a) ? track.getBoundingClientRect() : null, f = foot?.getBoundingClientRect();
+  const top = t && t.bottom > 0 ? t.bottom : 0, bot = f && f.top < innerHeight ? f.top : innerHeight;
+  if (r.height > bot - top && r.top <= top + 1 && r.bottom >= bot - 1) return null;
+  const under = [[(r.left + r.right) / 2, (r.top + r.bottom) / 2], [r.left + 2, r.top + 2], [r.right - 2, r.top + 2], [r.left + 2, r.bottom - 2], [r.right - 2, r.bottom - 2]].map(([x, y]) => {
+    const e = y >= 0 && y < innerHeight && x >= 0 && x < innerWidth && document.elementFromPoint(x, y);
+    return !e || a === e || a.contains(e) || e.contains(a) ? '' : e.closest('#evTrack') ? 'the track' : e.closest('.ck-foot') ? 'the axis' : ''; }).filter(Boolean);
+  return under.length ? `${a.tagName.toLowerCase()} "${(a.getAttribute('aria-label') || a.textContent).trim().slice(0, 30)}" under ${[...new Set(under)].join(' and ')}, ${Math.round(r.top)}–${Math.round(r.bottom)} of ${innerHeight}` : null; }"""
+
+
+def labs_walk(pg, back=False, limit=160):
+    """#651: Tab (or Shift+Tab from its last control) through Labs, as a keyboard user would, until focus leaves it or
+    comes round again: (how many took focus, [each wholly or partly under the event track or the stack's axis])"""
+    pg.evaluate("""b => { window.__lw = new Set(); if (!b) { scrollTo(0, 0); return document.querySelector('#labsView button').focus(); }
+      [...document.querySelectorAll('#view-labs :is(button, input, select, a[href], [tabindex]:not([tabindex="-1"]))')].filter(e => e.checkVisibility() && !e.disabled).at(-1).focus(); }""", back)
+    n, bad = 0, []
+    for _ in range(limit):
+        pg.keyboard.press("Shift+Tab" if back else "Tab")
+        pg.wait_for_timeout(40)
+        if pg.evaluate("(() => { const a = document.activeElement; if (__lw.has(a)) return true; __lw.add(a); return false; })()"):
+            break
+        got = pg.evaluate(UNDER_PINNED_JS)
+        if got == "out":
+            break
+        n += 1
+        if got:
+            bad.append(got)
+    return n, bad
+
+
 # the labels on a time chart (#312): of each chart matching the selector (an argument) that is drawn, its aria-label,
 # whether it has milestones, how many as a faint line (#298), and its milestone labels ([text, the full names and dates in its title]); how many
 # procedures are named; and what's wrong: a label running past its plot's left or right edge, or a procedure's or
@@ -4084,6 +4120,39 @@ def main():
                   and js("document.activeElement === document.querySelector('#charts .chart svg:not(.icon)')"))
             ring = js("(s => [getComputedStyle(s).outlineStyle, s.matches(':focus-visible')])(document.querySelector('#charts .chart svg:not(.icon)'))")
             check("…a ring shows the focus", ring == ["solid", True], ring)
+            # #651: what has focus on Labs is clear of the event track and the stack's axis, both pinned (2.4.11). The
+            # track is pinned at the top where the bar scrolls away, and only where a chart still fits whole under it (at
+            # 844×390 it was pinned 55 px down, over the ✕, Chart, Table and names it should clear); the page's scroll
+            # padding is as tall as the axis is (78 px with 200% text, not 48: focus went under it). A keyboard walk
+            # forward and back at 844×390 on a touch screen, the overlays off and on, at 1400×500, and at 360, 412 and
+            # 1400 px with 200% text
+            js("window._was651 = [new Set(state.sel), new Set(state.tables), state.preset, state.from, state.to]; state.tables.clear(); state.sel = startLabs(); applyPreset('2y')")
+            walk651 = {}
+            tctx = browser.new_context(viewport={"width": 844, "height": 390}, bypass_csp=True, has_touch=True, is_mobile=True)
+            tctx.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
+            tpg = tctx.new_page()
+            tpg.goto(base + "/?profile=1#labs")
+            tpg.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted", timeout=20000)
+            for on651 in (False, True):
+                tpg.evaluate("on => { state.tables.clear(); applyPreset('2y'); state.marks = on; medsOnTrends = on; renderAll(); }", on651)
+                tpg.wait_for_timeout(600)
+                for back651 in (False, True):
+                    walk651[f"844×390 touch, overlays {'on' if on651 else 'off'}{', back' if back651 else ''}"] = labs_walk(tpg, back651)
+            tctx.close()
+            for w651, h651, k651 in ((1400, 500, False), (360, 800, True), (412, 900, True), (1400, 900, True)):
+                page.set_viewport_size({"width": w651, "height": h651})
+                js("css => { if (css) { const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = [s]; } renderAll(); }",
+                   ":root{--fs-1:23px;--fs-2:25px;--fs-3:28px;--fs-4:31px;--fs-5:36px;--fs-6:44px;--fs-7:56px} html{font-size:200%}" if k651 else "")
+                settle(600)
+                for back651 in (False, True):
+                    walk651[f"{w651}×{h651}{' at 200%' if k651 else ''}{', back' if back651 else ''}"] = labs_walk(page, back651)
+                js("document.adoptedStyleSheets = []")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("[state.sel, state.tables, state.preset, state.from, state.to] = window._was651; renderAll(); scrollTo(0, 0)")
+            settle(300)
+            check("Labs (#651): a keyboard walk forward and back leaves nothing that has focus under the pinned event track or the stack's axis, "
+                  "at 844×390 on a touch screen with the overlays off and on, at 1400×500, and at 360, 412 and 1400 px with 200% text",
+                  all(n > 20 and not bad for n, bad in walk651.values()), {k: v for k, v in walk651.items() if v[1] or v[0] <= 20} or walk651)
             # #291: Labs' charts draw with the kit (chartkit.js): the time axis's labels in two rows, months over their
             # years, on All and zoomed in to a month, at 1400 and 320 px: none overlapping or out of its chart, none a
             # month that reads as a day, more than one year named on All, and a month's days over its name when zoomed

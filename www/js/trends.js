@@ -107,12 +107,16 @@ const labW = card => { const cs = getComputedStyle(card); return Math.max(260, c
 /* the plot's left and right edges in a lab chart and the stack's axis, the same in both: a narrower gutter for the
    values on a phone (#615: the plot was three quarters of the card); wider with larger text (ckK, #622) */
 const labLR = w => w < 480 ? [40 * ckK(), w - 8] : [52 * ckK(), w - 12];
+/* the stack's axis's height (as tall as larger text makes it, ckK): the page's scroll padding at its foot (--foot-h,
+   app.css), so what takes focus scrolls clear of it (#651, 2.4.11); not while it's hidden */
+const footSeen = new ResizeObserver(es => { for (const {target: f} of es) if (!f.isConnected) footSeen.unobserve(f);
+  else if (f.offsetHeight) { placeAt(document.documentElement, {"--foot-h": f.offsetHeight}); trackStick(); } });   // (the event track pinned where a chart fits beside it)
 /* the stack's one time axis (#293): the kit's (chartkit.js ckAxis), drawn once under the charts on their time scale,
    and kept in view at the foot of the window while they scroll, as the heatmap's is. In a box padded as a card is,
    so it's as wide as every chart and lines up with them */
 function labAxis(box) {
-  const svg = el("svg:svg", {class: "ck-axis", "aria-hidden": "true"});
-  box.append(el("div", {class: "card ck-foot"}, svg));
+  const svg = el("svg:svg", {class: "ck-axis", "aria-hidden": "true"}), foot = el("div", {class: "card ck-foot"}, svg);
+  box.append(foot); footSeen.observe(foot);
   requestAnimationFrame(() => labAxisDraw(svg));
 }
 function labAxisDraw(svg = $("#charts .ck-axis")) {
