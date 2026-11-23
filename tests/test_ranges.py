@@ -9,7 +9,7 @@ only.
 
   python3 tests/test_ranges.py
 """
-import datetime, io, json, os, shutil, sys, tempfile, unittest
+import datetime, io, json, os, re, shutil, sys, tempfile, unittest, zlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-ranges-test-")
@@ -103,7 +103,11 @@ DATA = {"built": day(0), "source": "fictional",
                           [day(-20), 260, 30, 400, "", "260"], [day(-10), 15, None, None, "", "15"]]},
                  {"name": "Ferritin", "unit": "ug/L", "panel": "Iron", "n": 1, "txt": [], "pts": [[day(-50), 900, None, None, "", "900"]]},
                  {"name": "Vitamin D, 25-OH", "unit": "ng/mL", "panel": "", "n": 2, "txt": [],
-                  "pts": [[day(-25), 12, None, None, "", "12"], [day(-5), 18, None, None, "L", "18"]]}]}
+                  "pts": [[day(-25), 12, None, None, "", "12"], [day(-5), 18, None, None, "L", "18"]]},
+                 # #649: typed in with no range, the first before the visit
+                 {"name": "Vitamin D", "unit": "ng/mL", "panel": "", "n": 4, "txt": [],
+                  "pts": [[day(-70), 22, None, None, "", "22"], [day(-40), 26, None, None, "", "26"],
+                          [day(-20), 34, None, None, "", "34"], [day(-5), 41, None, None, "", "41"]]}]}
 
 
 class Api(unittest.TestCase):
@@ -176,8 +180,9 @@ class Api(unittest.TestCase):
         vd = oor["Vitamin D, 25-OH"]   # 12 low by the range from settings; 18 flagged L by its own lab, with no range
         self.assertEqual((vd["value"], vd["flag"], vd["range"], vd["out"]), ("18", "Low", "", 2))
         tr = {t["name"]: t for t in s["trends"]}
-        self.assertEqual([x[2:] for x in tr["Ferritin"]["spark"]], [["High", 20, 200], [None, 20, 200], [None, 30, 400], ["Low", 20, 200]],
-                         "each with its flag and its own range, from settings where its report gives none (#299)")
+        self.assertEqual([x[2:] for x in tr["Ferritin"]["spark"]], [["High", 20, 200, "settings"], [None, 20, 200, "settings"],
+                                                                    [None, 30, 400, None], ["Low", 20, 200, "settings"]],
+                         "each with its flag and its own range, from settings where its report gives none, and said so (#299, #649)")
         self.assertEqual(tr["Ferritin"]["now"]["range"], "20–200 (settings)")
         self.assertIn("range from settings", s["settings_note"])
         self.assertIn("a range set in Settings", s["notice"])
@@ -190,6 +195,37 @@ class Api(unittest.TestCase):
         # a ferritin in ug/L (900) gets no range: it isn't the unit the range was set in, and nothing is converted
         pts = summary._series({"labs": [DATA["labs"][1]]}, {"overrides": [row()]})["Ferritin"]["pts"]
         self.assertEqual((pts[0]["lo"], pts[0]["hi"], pts[0]["rs"]), (None, None, "report"))
+
+    def test_2_summary_charts(self):
+        """#649: Vitamin D 22, 26, 34 and 41 typed with no range, a range from settings of 30–100: the trends' chart, its
+        sparkline, the table and the PDF agree. The band is said to be from settings (the chart's end, its note), and
+        the same results are flagged in all: 22 and 26 Low (22 the table's Then), 34 and 41 not (41 its Now)."""
+        rows = [row(), row(lab="Vitamin D, 25-OH", low=30, high=100), row(lab="Vitamin D", low=30, high=100)]
+        self.assertEqual(self.put("ranges.overrides", rows).status_code, 200)
+        body = {"appointment": None, "since": day(-45)[:10], "sections": ["trends"], "labs": ["Vitamin D"]}
+        r = self.c["kim"].post(f"/api/profiles/{self.pid}/summary/preview", headers=H, json=body)
+        self.assertEqual(r.status_code, 200, r.text)
+        s = r.json()
+        vd = next(t for t in s["trends"] if t["name"] == "Vitamin D")
+        self.assertEqual([p[1:] for p in vd["spark"]],
+                         [[22, "Low", 30, 100, "settings"], [26, "Low", 30, 100, "settings"], [34, None, 30, 100, "settings"],
+                          [41, None, 30, 100, "settings"]], "the chart's and sparkline's points: each flag, and its range from settings")
+        self.assertEqual((vd["then"], vd["now"]["flag"], vd["now"]["range"]),
+                         ({"value": "22", "date": day(-70)[:10], "flag": "Low"}, None, "30–100 (settings)"),
+                         "the table's Then flagged as its chart is, Now in range, its range from settings")
+        self.assertIn("range from settings", s["settings_note"])
+        self.assertTrue(summary.uses_settings({**vd, "now": {**vd["now"], "range": "30–100"}}), "its chart's band alone is enough for the note")
+        r = self.c["kim"].post(f"/api/profiles/{self.pid}/summary/pdf", headers=H, json=body)
+        self.assertEqual(r.status_code, 200, r.text[:200])
+        text = "\n".join(p.extract_text() for p in PdfReader(io.BytesIO(r.content)).pages)
+        self.assertIn(f"22 Low  {summary._short(day(-70)[:10])}", text, "Then, flagged in words")
+        self.assertIn(f"41  {summary._short(day(-5)[:10])}", text, "Now, in range")
+        self.assertIn("30–100 from settings", text, "the chart's band, said to be from settings at its end")
+        self.assertIn("or, for a result whose report gives none, the range from settings", " ".join(text.split()), "the charts' note")
+        self.assertIn("a range from settings, set by you", text)
+        ops = b"".join(zlib.decompress(re.search(rb"stream\n(.*?)\nendstream", o, re.S)[1]) for o in r.content.split(b" obj")
+                       if b"/FlateDecode" in o)
+        self.assertEqual(ops.count(b" h f"), 2, "two triangles on the chart: 22 and 26, below their range; the sparkline's 41 a dot")
 
     def test_3_without_settings(self):
         self.assertEqual(self.c["robin"].post(f"/api/profiles/{self.pid}/settings/reset", json={"section": "ranges"}, headers=H).status_code, 200)

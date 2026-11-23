@@ -267,9 +267,9 @@ class Summary(unittest.TestCase):
         self.assertEqual(s["out_of_range"][0]["name"], "Hemoglobin", "the key labs first")
         hb = next(t for t in s["trends"] if t["name"] == "Hemoglobin")
         self.assertEqual((hb["then"], hb["now"]["value"], hb["now"]["flag"], hb["change"], hb["since"]),
-                         ({"value": "12.1", "date": d(-60)}, "11.8", "Low", "-0.3", 2))
-        self.assertEqual([p[2:] for p in hb["spark"]], [[None, 12.0, 15.5], ["Low", 12.0, 15.5], ["Low", 12.0, 15.5]],
-                         "each with its flag and its own range, for the sparkline (#299)")
+                         ({"value": "12.1", "date": d(-60), "flag": None}, "11.8", "Low", "-0.3", 2))
+        self.assertEqual([p[2:] for p in hb["spark"]], [[None, 12.0, 15.5, None], ["Low", 12.0, 15.5, None], ["Low", 12.0, 15.5, None]],
+                         "each with its flag and its own range, for the sparkline (#299), from its report (#649)")
         # both sources' ferritin are one trend, each result with its own range
         s = self.preview(labs=["Ferritin", "Not a lab"])
         fe = next(t for t in s["trends"] if t["name"] == "Ferritin")
@@ -427,6 +427,7 @@ class Summary(unittest.TestCase):
         pdf, fit = summary.render(s)
         reader, text = text_of(pdf)
         self.assertIn("Charts: the last result on or before that day", text)
+        self.assertNotIn("from settings", text, "each band a report's own range, none said to be from settings (#649)")
         hb = next(t for t in s["trends"] if t["name"] == "Hemoglobin")
         self.assertIn(summary._short(hb["spark"][0][0]), text, "a chart's first day under it")
         ops = b"".join(zlib.decompress(re.search(rb"stream\n(.*?)\nendstream", o, re.S)[1]) for o in pdf.split(b" obj")

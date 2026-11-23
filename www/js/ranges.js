@@ -53,7 +53,8 @@ const refText = p => `ref ${p[2] ?? ""}–${p[3] ?? ""}` + (p.rs === "settings" 
    from two labs are compared after conversion. rangeWords(p): "0.7–1.3", "≤ 5" or "≥ 60" (null: it has none).
    rangeSteps(pts, from, to): the reference band as steps in time, [{a, b, lo, hi, key (its words), rs}], each result's range from halfway
    after the result before it to halfway to the next (from and to at the ends); results with no range take no part,
-   and neighbours with the same range are one step, so a series whose results all agree is one band.
+   and neighbours with the same range are one step, so a series whose results all agree is one band (from the same
+   source: a report's range and the same one from settings are two, each said as what it is, #649).
    rangesDiffer(pts): the different ranges of these results, in order ("0.7–1.3 and 0.6–1.2"), or null if they agree. */
 const rangeWords = p => p[2] != null && p[3] != null ? `${p[2]}–${p[3]}` : p[3] != null ? `≤ ${p[3]}` : p[2] != null ? `≥ ${p[2]}` : null;
 const rangeKey = rangeWords;
@@ -61,7 +62,7 @@ function rangeSteps(pts, from, to) {
   const rp = pts.filter(p => rangeKey(p) != null), out = [];
   rp.forEach((p, i) => {
     const a = i ? (rp[i - 1].ts + p.ts) / 2 : from, b = i < rp.length - 1 ? (p.ts + rp[i + 1].ts) / 2 : to, last = out[out.length - 1];
-    if (last && last.key === rangeKey(p)) last.b = b; else out.push({a, b, lo: p[2], hi: p[3], key: rangeKey(p), rs: p.rs});
+    if (last && last.key === rangeKey(p) && last.rs === p.rs) last.b = b; else out.push({a, b, lo: p[2], hi: p[3], key: rangeKey(p), rs: p.rs});
   });
   return out;
 }

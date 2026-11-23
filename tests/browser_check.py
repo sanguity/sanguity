@@ -18731,6 +18731,53 @@ def main():
             check("visit summary: a result without a range is judged against the range from settings, marked so",
                   "(settings)" in js("document.getElementById('preview').textContent")
                   and "range from settings" in js("document.getElementById('sumSettingsNote')?.textContent || ''"))
+            # #649: Vitamin D 22, 26, 34 and 41 typed with no range, a range from settings of 30–100, trended: its chart,
+            # sparkline, the tables and the PDF agree. The band is said to be from settings (it read "30–100", the PDF's
+            # note "each result's own reference range"), and the same results are flagged in all: 22 and 26 ▼ Low (22 the
+            # table's Then, which had no flag), 34 and 41 not (41 its Now and its sparkline's mark)
+            import base64, datetime as dt649, io
+            from pypdf import PdfReader
+            d649 = lambda n: (dt649.date.today() - dt649.timedelta(days=n)).isoformat()
+            db = dbm.connect()
+            with dbm.transaction(db):
+                rec_r.store(db, rpid, {"built": "2026-11-15", "source": "fictional", "events": [], "details": {}, "costs": [], "upcoming": [],
+                                       "labs": [{"name": "Vitamin D", "unit": "ng/mL", "panel": "", "n": 4, "txt": [],
+                                                 "pts": [[f"{d649(n)}T08:00:00", v, None, None, "", str(v)] for n, v in ((120, 22), (60, 26), (30, 34), (10, 41))]}]},
+                            "upload", fmt="csv")
+            db.close()
+            js("""async pid => { const h = {'X-Sanguity': '1', 'Content-Type': 'application/json'}, s = await (await fetch(`api/profiles/${pid}/settings`, {headers: h})).json();
+              const value = [...s.ranges.overrides, {lab: 'Vitamin D', unit: 'ng/mL', sex: 'any', low: 30, high: 100}];
+              await fetch(`api/profiles/${pid}/settings/ranges.overrides`, {method: 'PUT', headers: h, body: JSON.stringify({value})}); }""", rpid)
+            page.reload()
+            page.wait_for_selector("#preview:not([hidden]):not([aria-busy]) h3", timeout=10000)
+            page.fill("#labIn", "Vitamin D")
+            page.click("#labAdd")
+            page.wait_for_function("[...document.querySelectorAll('#preview:not([aria-busy]) #prevBody .sum-chart > figcaption')].some(f => f.textContent.startsWith('Vitamin D'))", timeout=10000)
+            got649 = js(r"""async () => { const fig = [...document.querySelectorAll('#prevBody .sum-chart')].find(f => f.querySelector('figcaption').textContent.startsWith('Vitamin D'));
+              const svg = fig.querySelector('svg.ck-solo'), table = w => [...document.querySelectorAll('#prevBody h3')].find(h => h.textContent.startsWith(w))?.nextElementSibling;
+              const row = w => [...(table(w)?.querySelectorAll('tbody tr') || [])].find(r => r.cells[0].textContent.startsWith('Vitamin D')), tr = row('Trends'), oor = row('Out of range');
+              const r = await fetch(`api/profiles/${PID}/summary/pdf`, {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, body: JSON.stringify(chosen())});
+              const a = new Uint8Array(await r.arrayBuffer()); let b = ''; for (const x of a) b += String.fromCharCode(x);
+              return {ref: [...svg.querySelectorAll('text.ck-ref')].map(t => t.textContent), label: svg.getAttribute('aria-label'),
+                flagged: [...svg.querySelectorAll('path.pt.abn > title')].map(t => t.textContent), dots: [...svg.querySelectorAll('circle.pt > title')].map(t => t.textContent),
+                then: [tr.cells[1].textContent, tr.cells[1].classList.contains('flag')], now: [tr.cells[2].textContent, tr.cells[2].classList.contains('flag')],
+                range: tr.cells[6].textContent, spark: [tr.querySelectorAll('svg.spark .refband').length > 0, !!tr.querySelector('svg.spark .spark-abn')],
+                oor: oor && [...oor.cells].slice(1, 4).map(c => c.textContent), note: document.getElementById('sumSettingsNote')?.textContent || '', pdf: btoa(b)}; }""")
+            try:
+                pdf649 = " ".join("\n".join(p_.extract_text() for p_ in PdfReader(io.BytesIO(base64.b64decode(got649.pop("pdf")))).pages).split())
+            except Exception as e:   # (no PDF: said in the check's detail)
+                pdf649 = f"no PDF: {e}"
+            check("visit summary (#649): with a range from settings, the trend's chart, sparkline, tables and PDF agree: the band said to be "
+                  "from settings in the preview and the PDF (its note too), 22 and 26 ▼ Low on the chart and nowhere a flag the others haven't "
+                  "(22 the table's Then, 26 out of range since, 41 in range on the table, the chart and the sparkline)",
+                  got649["ref"] == ["30–100 from settings"] and "2 outside their range (against a range from settings)" in got649["label"]
+                  and [t.split(": ", 1)[1] for t in got649["flagged"]] == ["22 ng/mL ▼ Low (range from settings)", "26 ng/mL ▼ Low (range from settings)"]
+                  and [t.split(": ", 1)[1] for t in got649["dots"]] == ["34 ng/mL", "41 ng/mL"]
+                  and got649["then"][0].startswith("22 ▼ Low") and got649["then"][1] and got649["now"][0].startswith("41") and not got649["now"][1]
+                  and got649["range"] == "30–100 (settings)" and got649["spark"] == [True, False] and got649["oor"] == ["26 ng/mL", "Low", "30–100 (settings)"]
+                  and "range from settings" in got649["note"] and "Vitamin D (ng/mL) 22 Low" in pdf649 and "30–100 from settings" in pdf649
+                  and "or, for a result whose report gives none, the range from settings" in pdf649,
+                  [got649, re.findall(r"Vitamin D \(ng/mL\) .{0,40}|.{0,30}from settings.{0,30}", pdf649)])
             db = dbm.connect()
             prof_r.delete_profile(db, rpid)
             db.close()
