@@ -1773,14 +1773,17 @@ TILE_FIT_JS = r"""() => {
   return out;
 }"""
 
-# every word of every tile shown in a tab (#722): its label, value, unit, change line and dates, each line of text as
-# drawn (not its box, which a grid or flex item keeps inside) within its tile's edges, the "?" beside a key lab's with
-# it. {n: tiles, past: each text past its tile, and by how much}
+# every word of every tile shown in a page's grids (#722; the figures' .stats too, #753): its label, value, unit, change
+# line and dates, each line of text as drawn (not its box, which a grid or flex item keeps inside) within its tile's
+# edges, the "?" beside a key lab's with it; and each tile within its grid's edges, but in a row that scrolls sideways
+# (#753: a grid's columns no wider than it). {n: tiles, past: each text or tile past its box, and by how much}
 TILE_TEXT722_JS = r"""() => { const out = {n: 0, past: []};
-  for (const t of document.querySelectorAll('main .tiles > :is(.tile, .tile-tq)')) {
+  for (const t of document.querySelectorAll('main :is(.tiles, .stats) > :is(.tile, .tile-tq)')) {
     if (!t.checkVisibility()) continue;
     out.n++;
     const T = t.getBoundingClientRect(), name = (t.querySelector('.lbl')?.textContent || '').trim().slice(0, 30), w = document.createTreeWalker(t, NodeFilter.SHOW_TEXT);
+    const G = t.parentElement.getBoundingClientRect(), g = Math.max(G.left - T.left, T.right - G.right);
+    if (g > 1 && !/auto|scroll/.test(getComputedStyle(t.parentElement).overflowX)) out.past.push(`${name}: its tile ${Math.round(g)} px past its grid`);
     for (let n; (n = w.nextNode());) {
       if (!n.data.trim() || n.parentElement.closest('.vh')) continue;   // (said to screen readers, clipped)
       const r = document.createRange(); r.selectNodeContents(n);
@@ -1789,6 +1792,31 @@ TILE_TEXT722_JS = r"""() => { const out = {n: 0, past: []};
     }
   }
   return out; }"""
+# the sizes every grid of tiles is checked at with text at 200% (#753): phones, the widths between a phone and a laptop
+# where a column's floor in px left a value no room, a laptop's, and a phone held sideways; and that text, #622's
+# (the --fs-* tokens and the root's size doubled), as a stylesheet the page adopts ("" for none)
+TILE_SIZES753 = [(320, 800), (360, 800), (375, 800), (412, 800), (700, 800), (768, 800), (900, 800), (1100, 900), (1400, 900), (844, 390)]
+BIG_TEXT_CSS = ":root{--fs-1:23px;--fs-2:25px;--fs-3:28px;--fs-4:31px;--fs-5:36px;--fs-6:44px;--fs-7:56px} html{font-size:200%}"
+ADOPT_CSS_JS = "css => { const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = css ? [s] : []; }"
+
+
+def tiles_big753(page, settle, show):
+    """Every tile grid shown, at each of #753's sizes with text at 200%: the words or tiles past their box
+    (TILE_TEXT722_JS) and the tiles over another (TILE_FIT_JS), as [where and size: what], and {where and size: tiles
+    measured}. show(width) puts up each thing to measure at that width in turn, yielding its name; the page is left at
+    1400 px, its text as usual"""
+    bad, n = [], {}
+    page.evaluate(ADOPT_CSS_JS, BIG_TEXT_CSS)
+    for width, height in TILE_SIZES753:
+        page.set_viewport_size({"width": width, "height": height})
+        for where in show(width):
+            settle(300)
+            got, fit = page.evaluate(TILE_TEXT722_JS), page.evaluate(TILE_FIT_JS)
+            n[f"{where} {width}×{height}"] = got["n"]
+            bad += [f"{where} {width}×{height}: {x}" for x in got["past"] + fit["overlap"]]
+    page.evaluate(ADOPT_CSS_JS, "")
+    page.set_viewport_size({"width": 1400, "height": 900})
+    return bad, n
 
 # a button beside a field (#352): each button shown on one line with a field of its row (the button's parent holds the
 # field, or the label around it, and their middles are within a few px), as {pairs found, those whose heights differ}
@@ -4058,28 +4086,22 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 900})
             check("tiles at 1400, 375 and 320 px (#351): no value or label wider than its tile, none overlapping another, and the "
                   "values in each row of tiles on one baseline", not fit351 and all(n > 0 and r > 0 for n, r in rows351.values()), fit351[:8] or rows351)
-            # #722: with text at 200% on a phone, at 320, 360, 375 and 412 px, every word of every tile on the Overview and
-            # Body and activity inside its tile (TILE_TEXT722_JS), and none overlapping another (TILE_FIT_JS): a value and
-            # its unit had no break between them, so the tile's column took their width ("126/77 mmHg" 59 px past its tile
-            # at 360 px, its label and change line with it), and two tiles a row left a date kept whole no room (a key
-            # lab's "Sep 10, 2026" 25 px past at 320 px). The unit goes under the value, and a tile takes a row of its own
-            # where two would be narrower than its words
-            text722, n722 = [], {}
-            for width in (320, 360, 375, 412):
-                page.set_viewport_size({"width": width, "height": 800})
-                js("css => { const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = [s]; }",
-                   ":root{--fs-1:23px;--fs-2:25px;--fs-3:28px;--fs-4:31px;--fs-5:36px;--fs-6:44px;--fs-7:56px} html{font-size:200%}")
-                for tab, preset in (("overview", None), ("health", "2y")):
+            # #722, #753: with text at 200%, at 320 to 1400 px and on a phone held sideways (TILE_SIZES753), every word of
+            # every tile and figure on the records tabs inside its tile (TILE_TEXT722_JS), and none overlapping another
+            # (TILE_FIT_JS): the Overview's key labs, Readings and insurance figures, Body and activity's, and Costs' with
+            # their More figures. A value and its unit had no break between them, so the tile's column took their width
+            # ("126/77 mmHg" 59 px past its tile at 360 px), and two tiles a row left a date kept whole no room (#722); a
+            # grid's columns had a floor in px, so "$85,758" ran 18 px under Costs' Claims at 360 px, "126/77" under Body's
+            # Glucose at 768 to 1100 px and "$4,681" past What you paid's at 700 to 900 px and sideways (#753). The unit
+            # goes under the value, and every grid takes fewer columns as text grows (app.css, --tile-em)
+            def records753(width):
+                for tab, preset in (("overview", None), ("health", "2y"), ("costs", "all"), ("costs-paid", "all")):
                     js(TILE_TAB_JS, [tab, preset])
-                    settle(300)
-                    got, fit = js(TILE_TEXT722_JS), js(TILE_FIT_JS)
-                    n722[f"{tab} {width}"] = got["n"]
-                    text722 += [f"{tab} {width} px: {x}" for x in got["past"] + fit["overlap"]]
-            js("document.adoptedStyleSheets = []")
-            page.set_viewport_size({"width": 1400, "height": 900})
-            check("…and with text at 200% at 320, 360, 375 and 412 px, every word of every tile on the Overview and Body and activity inside its tile, "
-                  "none overlapping another (#722, 1.4.4): a unit under its value, a tile a row of its own where two don't fit", not text722 and all(n >= 6 for n in n722.values()),
-                  text722[:10] or n722)
+                    yield tab
+            text722, n722 = tiles_big753(page, settle, records753)
+            check("…and with text at 200% at 320 to 1400 px and on a phone held sideways, every word of every tile and figure on the Overview, Body and activity "
+                  "and Costs inside its tile, none overlapping another (#722, #753, 1.4.4): a unit under its value, fewer tiles a row as text grows",
+                  not text722 and all(n >= 6 for n in n722.values()), text722[:10] or n722)
             js("[state.preset, state.from, state.to] = window._was330.slice(1); Object.assign(costState, {view: 'claims', more: false}); switchTab(window._was330[0]); renderAll()")
             js("window._was330 = [state.tab, state.preset, state.from, state.to]")
             # #339: and in the other two date formats (keepDates keeps only the date together, "as of" with it), with no
@@ -12602,6 +12624,10 @@ def main():
                 page.set_viewport_size({"width": w, "height": 800})
                 settle(200)
                 check(f"the review fits {w} px", js("document.documentElement.scrollWidth") <= w, js("document.documentElement.scrollWidth"))
+            # #753: with text at 200%, at 320 to 1400 px and sideways, every word of its tiles inside them, as every grid's
+            text753, n753 = tiles_big753(page, settle, lambda width: ["the review"])
+            check("…and with text at 200% at 320 to 1400 px and sideways, every word of its tiles inside them, none overlapping (#753)",
+                  not text753 and all(n >= 4 for n in n753.values()), text753[:10] or n753)
             page.set_viewport_size({"width": 1400, "height": 900})
             theme_before, axe282 = js("document.documentElement.dataset.theme || null"), []
             for theme in ("light", "dark"):
@@ -15841,6 +15867,12 @@ def main():
               return out; })()""")
             check("Panels (#441): the preset's preview groups its tiles under their panels' names, as the Overview does",
                   pre441 and all(want279.get(n) == g for n, g in pre441) and list(dict.fromkeys(g for _, g in pre441)) == want441, pre441)
+            # #753: and with text at 200%, at 320 to 1400 px and sideways, every word of the key-lab tiles' preview and the
+            # preset's inside its tile ("▲ High" ran 68 px out of Magnesium's at 1100 px: a column 150 px, not in em).
+            # (Under 700 px the preset's row isn't shown)
+            text753, n753 = tiles_big753(page, settle, lambda width: ["Settings"])
+            check("…and with text at 200% at 320 to 1400 px and sideways, every word of the preview's and the preset's tiles inside them, none overlapping (#753)",
+                  not text753 and all(n >= 12 for n in n753.values()) and n753["Settings 1400×900"] >= 24, text753[:10] or n753)
             # ---- A fuller list of conditions (#187): the long list is searched by synonym, accents and apostrophes aside,
             # and by a group's name; with two conditions chosen, each previewed tile and each lab with no results says
             # which it's from, and each condition's own list is behind "Its list" (kept open as the preview redraws).
