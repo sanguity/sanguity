@@ -67,7 +67,7 @@ regression like the one fixed below (seconds instead of a tenth of one) still fa
 | `phone_page_ready_ms` | `page_ready_ms` at 375 px with the CPU four times slower, like a phone's | 437 ms | 5,000 ms |
 | `phone_tab_draw_ms` | `tab_draw_ms` the same way | 453 ms (Body and activity) | 3,000 ms |
 | `pan_frame_ms` | A frame of dragging a tab's charts with the period **All** (Body and activity, Labs' charts and its heatmap), from the pointer's move to the frame after it, every chart drawn again (#292, below) | 41 ms (Body and activity, the heatmap) | 150 ms |
-| `phone_pan_frame_ms` | `pan_frame_ms` at 375 px with the CPU four times slower | 154 ms (the heatmap; 332 ms on CI's runner, about 2.2 times slower) | 450 ms |
+| `phone_pan_frame_ms` | `pan_frame_ms` at 375 px with the CPU four times slower | 117 ms (Body and activity; the heatmap 51 ms since #300, below) | 250 ms |
 | `share_page_px` | A share link's page with every section, of any date, at 1400 px (#491, below) | 9,812 px | 20,000 px |
 | `static_bytes` | The app's stylesheets, fonts and SVG icons in `www/`, as nginx sends them (#253, below) | 281.9 KB | 310 KB |
 
@@ -278,13 +278,24 @@ and `phone_pan_frame_ms` are the median frame of the slowest tab.
 | Labs' charts, a frame of a drag | 17 ms | 17 ms |
 | Body and activity, first draw | 153 ms | 126 ms |
 | …on a phone | 711 ms | 410 ms |
-
-The phone's budget is set for CI's runner, which takes about 2.2 times as long as the machine above (the heatmap's
-phone frame was 332 ms there). The heatmap is still the slowest frame: on a phone at ten years most of it is the
-browser making and drawing about 10,000 one-pixel cells, which #300 draws as one shape per colour.
 | Elements on Body and activity | 16,408 | 9,417 |
 
 Before and after were measured on one machine, a slower one than the desktop above. Frames are counted to the next one the browser paints, so a desktop's are steps of about 17 ms. On a phone the heatmap
-is the slowest: its ten years are 5,012 cells, each one a result to hover and open, and only on a phone are its
+was the slowest: its ten years are 5,012 cells, each one a result to hover and open, and only on a phone are its
 columns narrower than a pixel. The Timeline's lanes still draw a mark a record (10,903 elements on **All**), within
 `tab_elements`; the Timeline zooms by its own controls, not by dragging.
+
+The phone's budget was set for CI's runner, which takes about 2.2 times as long as the machine above (the heatmap's
+phone frame was 332 ms there, so the budget was 450 ms for a while). On a phone at ten years most of the heatmap's
+frame was the browser making and drawing about 10,000 one-pixel cells, each with its own style and four `data-*`.
+Since #300 a row whose columns are under a pixel wide is one path per colour, a run of pixels of one colour one
+rectangle in it, and the pointer's x finds the result under it; cells a pixel wide or more are each a rectangle as
+before. The budget is back to 250 ms.
+
+| The big fixture, period **All**, on a phone (CPU ×4) | Before #300 | After |
+|---|---:|---:|
+| Labs' heatmap, a frame of a drag | 170 ms | 51 ms |
+| Labs' heatmap, first draw | 351 ms | 176 ms |
+
+Measured on one machine, the slower one, with three other test runs on it; Body and activity's frame (117–128 ms
+there) is now the slowest.
