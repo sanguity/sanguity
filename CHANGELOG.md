@@ -1769,6 +1769,11 @@ Everything on `main` so far; it becomes the first tagged release.
   to the new one. A lab's panel's **Chart these results** and **Show them as a table** closed the drawer and left
   focus nowhere; focus now goes to the lab's chart, or to its name over its table, and a screen reader is told
   ("Hemoglobin charted on Labs.").
+- **Compare's before and after no longer pair a median value with a place it doesn't have** (#653): each side's
+  median value and median place were worked out apart and said as one ("12.85 g/dL, −14% of its range"); where a
+  lab's range changed within that side, the value wasn't at that place in either range (12.85 is −16% of 12–16 and
+  +21% of 13.5–17.5). They're said as one only where the side's results have one range, and otherwise as two figures
+  ("12.85 g/dL; median place −14% of each result's own range"), in the table and the tooltip.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

@@ -4457,7 +4457,7 @@ def main():
                 d = jround(med297(b) - med297(a)) if a and b else None
                 want_db.append([n, str(len(a)), pct297(med297(a)) if a else None, str(len(b)), pct297(med297(b)) if b else None,
                                 "—" if d is None else "no change" if d == 0 else ("↑ " if d > 0 else "↓ ") + f"{abs(d)} points"])
-            got_db = [[r[0], r[1], (re.search(r"(−?\d+%) of its range", r[2]) or [None, None])[1], r[3], (re.search(r"(−?\d+%) of its range", r[4]) or [None, None])[1], r[5]] for r in dtab[1]]
+            got_db = [[r[0], r[1], (re.search(r"(−?\d+%) of (?:its|each result's own) range", r[2]) or [None, None])[1], r[3], (re.search(r"(−?\d+%) of (?:its|each result's own) range", r[4]) or [None, None])[1], r[5]] for r in dtab[1]]   # (two figures where a side's range changed, #653)
             words297 = js("document.getElementById('labsCompare').innerText + ' ' + document.getElementById('cmpSvg')?.getAttribute('aria-label')")
             check("…before and after a milestone: its table gives each lab's results and median place before the milestone's day and from it on, and the "
                   "difference in points, as worked out here; no correlation and no verdict words anywhere in the view",
@@ -4473,6 +4473,56 @@ def main():
             page.keyboard.press("Escape")
             check("…a dumbbell's row stepped to is marked, the tooltip saying its medians before and from the milestone on",
                   db_key[0] == "block" and db_key[1].startswith(recs297[0][0]) and "Before " in db_key[1] and db_key[2] == "visible", db_key)
+            # #653: a side's median value is said with its median place, as one ("12.85 g/dL, −14% of its range"), only where
+            # that side's results have one range: worked out apart, the two disagree where the range changed (12.85 was
+            # −16% of one range and +21% of the other). Here Hemoglobin's results before June 2025 are given 12–16, the rest
+            # keeping 13.5–17.5 (as the review's inject.js did), and the milestone is one with results between it and June:
+            # its side before has one range, its side from it on two. In the table and in each row's tooltip, a side with two ranges gives
+            # its median value and its median place as two figures; one with one range its value with that value's own
+            # place in it (within a point: the median is as printed), as before
+            SIDES653 = r"""() => { const t = zParse(cmpMsDate + 'T00:00:00');
+              return cmpSeries().filter(Boolean).map(s => { const pts = cmpPlaced(s);
+                return [nice(s.name), s.unit, [pts.filter(p => p.ts < t), pts.filter(p => p.ts >= t)].map(a => [...new Set(a.map(p => p[2] + ' ' + p[3]))])]; }); }"""
+            js("""() => { const s = SERIES.find(s => !s.watch && s.name === 'Hemoglobin'), cut = zParse('2025-06-01T00:00:00');
+                window._was653 = [state.preset, state.from, state.to, s.pts.map(p => [p[2], p[3], p[4]])];
+                for (const p of s.pts) if (p.ts < cut) { p[2] = 12; p[3] = 16; p[4] = p[1] < 12 ? 'L' : p[1] > 16 ? 'H' : ''; }
+                setPeriod('all'); cmpSel = ['Hemoglobin', 'WBC', 'Creatinine'].map(n => cmpKey(SERIES.find(s => !s.watch && s.name === n)));
+                cmpMsDate = MILESTONES.map(m => [m.date, zParse(m.date + 'T00:00:00')]).find(([, t]) => t > state.from + DAY && s.pts.some(p => p.ts < t) && s.pts.some(p => p.ts >= t && p.ts < cut))?.[0];
+                state.tables.add('#cmpms'); renderLabs(); }""")
+            settle(400)
+            sides653 = js(SIDES653)
+            cells653 = js("[...document.querySelectorAll('#cmpMsBody tbody tr')].map(tr => [tr.cells[2].textContent, tr.cells[4].textContent])")
+            js("state.tables.delete('#cmpms'); renderLabs()")
+            settle(400)
+            tips653 = []
+            page.focus("#cmpMsSvg")
+            for i653 in range(len(sides653)):
+                page.keyboard.press("ArrowRight" if i653 else "Home")
+                settle(150)
+                tips653.append(re.findall(r"^(?:Before|From) [^:]+: (?:median (.+), of \d+ results?|no results)$", js("tip.innerText"), re.M))
+            page.keyboard.press("Escape")
+            js("""() => { const [p, a, b, was] = window._was653, s = SERIES.find(s => !s.watch && s.name === 'Hemoglobin');
+                s.pts.forEach((q, i) => { [q[2], q[3], q[4]] = was[i]; }); [state.preset, state.from, state.to] = [p, a, b]; cmpSel = null; cmpMsDate = null; renderLabs(); }""")
+            settle(300)
+            def said653(words, ranges):
+                """what's wrong with a side's words for its results' ranges (["lo hi", …]), or None"""
+                if len(ranges) > 1:
+                    return None if re.fullmatch(r"-?[\d.]+ \S+; median place −?\d+% of each result's own range", words) else "two ranges, said as one"
+                m, (lo, hi) = re.fullmatch(r"(-?[\d.]+) \S+, (−?\d+)% of its range", words), map(float, ranges[0].split())
+                return None if m and abs((float(m[1]) - lo) / (hi - lo) * 100 - int(m[2].replace("−", "-"))) <= 1 else "its value not at its place"
+            bad653, two653 = [], 0
+            for (lab653, unit653, ranges653), row653, tip653 in zip(sides653, cells653, tips653):   # (not "cells": the heatmap checks after read theirs)
+                for side653, rs653, cell653, said653w in zip(("before", "from it on"), ranges653, row653, tip653 or [None, None]):
+                    if not rs653:
+                        continue
+                    two653 += len(rs653) > 1
+                    for where653, words653 in (("table", cell653), ("tooltip", said653w)):
+                        why653 = said653(words653 or "", rs653)
+                        if why653:
+                            bad653.append(f"{lab653} {side653}, {where653}: {why653}: {words653!r} ({len(rs653)} range{'s' if len(rs653) > 1 else ''})")
+            check("…a side's median value and median place are one figure only where its results have one range; where the range changed (Hemoglobin's, "
+                  "given 12–16 before June 2025) they're two, in the table and the tooltips (#653)",
+                  len(sides653) == 3 and len(tips653) == 3 and two653 >= 1 and not bad653, [bad653, sides653, cells653, tips653])
             # axe-core and a phone's width, light and dark, chart and table; at 200% text on a phone, every label inside its chart
             seen297, theme297 = [], js("document.documentElement.dataset.theme || null")
             for mode in ("light", "dark"):
