@@ -848,6 +848,15 @@ def open_group(page, g, nav=".set-nav"):
         page.click(f"#srcList .src-way-t a[href='#{g}']")
 
 
+def shot_of(loc, path):
+    """A screenshot of an element for SANGUITY_SHOTS: a picture, never a check, so one that can't be taken (the element
+    not shown just then) is said and skipped, not the end of the run (#635)."""
+    try:
+        loc.screenshot(path=path, timeout=5000)
+    except Exception as e:
+        print(f"(screenshot skipped: {os.path.basename(path)}: {str(e).splitlines()[0][:120]})")
+
+
 def answer_ask(page, yes=True, fill=None, timeout=10000):
     """Answer the app's own dialog (ask() in util.js, #210) as a person would, after the click that opens it: wait for
     it, type fill into its box if given, then click its action button (yes) or Cancel, and wait until it's gone.
@@ -14828,7 +14837,7 @@ def main():
                         fit = phone_fits(page, f"presets 187 {theme}")
                         check(f"…and it fits 375 px ({theme})", not fit, "; ".join(fit)[:400])
                     if os.environ.get("SANGUITY_SHOTS"):
-                        page.locator("#presets").screenshot(path=os.path.join(os.environ["SANGUITY_SHOTS"], f"187-preview-{width}-{theme}.png"))
+                        shot_of(page.locator("#presets"), os.path.join(os.environ["SANGUITY_SHOTS"], f"187-preview-{width}-{theme}.png"))
             page.emulate_media(color_scheme=None)
             page.set_viewport_size({"width": 1400, "height": 900})
             page.click("#preChosen button[aria-label='Remove Cancer, during treatment']")
@@ -14849,7 +14858,7 @@ def main():
                         fit = phone_fits(page, f"presets {theme}")
                         check(f"…and it fits 375 px ({theme})", not fit, "; ".join(fit)[:400])
                     if os.environ.get("SANGUITY_SHOTS"):
-                        page.locator("#presets").screenshot(path=os.path.join(os.environ["SANGUITY_SHOTS"], f"186-picker-{width}-{theme}.png"))
+                        shot_of(page.locator("#presets"), os.path.join(os.environ["SANGUITY_SHOTS"], f"186-picker-{width}-{theme}.png"))
             page.emulate_media(color_scheme=None)
             page.set_viewport_size({"width": 1400, "height": 900})
             page.click("#preFill")
