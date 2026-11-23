@@ -129,15 +129,17 @@ function drawTrack() {
   trackStick();
 }
 /* under the top bar while the charts scroll (at the top where the bar scrolls away), unless it would take too much of
-   the window, or a chart wouldn't fit whole between it and the stack's axis, clear of both by the page's scroll padding
-   (#651: at 844×390 it hid the top of a chart given focus), or the window is a phone's (#615: with the top bar, the tab
-   bar and the stack's axis it left half the screen for the charts); what has focus in a chart scrolls clear of it
-   (app.css, 2.4.11). Asked again as the axis changes height (trends.js footSeen) */
+   the window, or the tallest that takes focus in the stack (a chart, or a lab's table: #723, a table under it) wouldn't
+   fit whole between it and the stack's axis, clear of both by the page's scroll padding (#651: at 844×390 it hid the
+   top of a chart given focus), or the window is a phone's (#615: with the top bar, the tab bar and the stack's axis it
+   left half the screen for the charts); what has focus in a chart scrolls clear of it (app.css, 2.4.11). Asked again
+   as the axis changes height (trends.js footH) */
 function trackStick() {
-  const card = $("#evTrack svg.ev-svg")?.closest(".ev-track"), chart = $("#charts .chart svg.ck"); if (!card) return;   // (its drawing, not its table)
+  const card = $("#evTrack svg.ev-svg")?.closest(".ev-track"); if (!card) return;   // (its drawing, not its table)
+  const tall = Math.max(0, ...[...document.querySelectorAll("#charts .chart :is(svg.ck, .tablewrap)")].map(x => x.getBoundingClientRect().height));
   const h = card.offsetHeight, pad = getComputedStyle(document.documentElement);
   const stuck = !matchMedia("(max-width:640px)").matches && h <= innerHeight * .35
-    && (!chart || innerHeight - parseFloat(pad.scrollPaddingTop) - parseFloat(pad.scrollPaddingBottom) - h >= chart.getBoundingClientRect().height);
+    && innerHeight - parseFloat(pad.scrollPaddingTop) - parseFloat(pad.scrollPaddingBottom) - h >= tall;
   card.classList.toggle("stuck", stuck);
   trackRoom(stuck ? h : 0);
 }

@@ -4125,8 +4125,12 @@ def main():
             # 844×390 it was pinned 55 px down, over the ✕, Chart, Table and names it should clear); the page's scroll
             # padding is as tall as the axis is (78 px with 200% text, not 48: focus went under it). A keyboard walk
             # forward and back at 844×390 on a touch screen, the overlays off and on, at 1400×500, and at 360, 412 and
-            # 1400 px with 200% text
-            js("window._was651 = [new Set(state.sel), new Set(state.tables), state.preset, state.from, state.to]; state.tables.clear(); state.sel = startLabs(); applyPreset('2y')")
+            # 1400 px with 200% text. #723: and with labs shown as tables, taller than a chart (the track stayed pinned
+            # over a table given focus, and it went under the axis): every lab a table with the overlays off, and the
+            # first one a table with them on, at 844×390 on a touch screen, 1400×450 and 720×450 (a 1440×900 laptop at 200%)
+            js("window._was651 = [new Set(state.sel), new Set(state.tables), state.preset, state.from, state.to, state.marks, medsOnTrends]; state.tables.clear(); state.sel = startLabs(); applyPreset('2y')")
+            TABLES723 = (("every lab a table, overlays off", "() => { state.marks = false; medsOnTrends = false; state.tables.clear(); state.sel.forEach(n => state.tables.add(n)); renderAll(); }"),
+                         ("the first lab a table, overlays on", "() => { state.marks = true; medsOnTrends = true; state.tables.clear(); renderAll(); state.tables.add(document.querySelector('#charts .chart').dataset.lab); renderAll(); }"))
             walk651 = {}
             tctx = browser.new_context(viewport={"width": 844, "height": 390}, bypass_csp=True, has_touch=True, is_mobile=True)
             tctx.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
@@ -4138,6 +4142,11 @@ def main():
                 tpg.wait_for_timeout(600)
                 for back651 in (False, True):
                     walk651[f"844×390 touch, overlays {'on' if on651 else 'off'}{', back' if back651 else ''}"] = labs_walk(tpg, back651)
+            for name723, set723 in TABLES723:
+                tpg.evaluate(set723)
+                tpg.wait_for_timeout(600)
+                for back651 in (False, True):
+                    walk651[f"844×390 touch, {name723}{', back' if back651 else ''}"] = labs_walk(tpg, back651)
             tctx.close()
             for w651, h651, k651 in ((1400, 500, False), (360, 800, True), (412, 900, True), (1400, 900, True)):
                 page.set_viewport_size({"width": w651, "height": h651})
@@ -4147,11 +4156,19 @@ def main():
                 for back651 in (False, True):
                     walk651[f"{w651}×{h651}{' at 200%' if k651 else ''}{', back' if back651 else ''}"] = labs_walk(page, back651)
                 js("document.adoptedStyleSheets = []")
+            for w723 in (1400, 720):
+                page.set_viewport_size({"width": w723, "height": 450})
+                for name723, set723 in TABLES723:
+                    js(set723)
+                    settle(600)
+                    for back651 in (False, True):
+                        walk651[f"{w723}×450, {name723}{', back' if back651 else ''}"] = labs_walk(page, back651)
             page.set_viewport_size({"width": 1400, "height": 900})
-            js("[state.sel, state.tables, state.preset, state.from, state.to] = window._was651; renderAll(); scrollTo(0, 0)")
+            js("[state.sel, state.tables, state.preset, state.from, state.to, state.marks, medsOnTrends] = window._was651; renderAll(); scrollTo(0, 0)")
             settle(300)
             check("Labs (#651): a keyboard walk forward and back leaves nothing that has focus under the pinned event track or the stack's axis, "
-                  "at 844×390 on a touch screen with the overlays off and on, at 1400×500, and at 360, 412 and 1400 px with 200% text",
+                  "at 844×390 on a touch screen with the overlays off and on, at 1400×500, and at 360, 412 and 1400 px with 200% text; "
+                  "and with labs shown as tables, at 844×390 on a touch screen, 1400×450 and 720×450 (#723)",
                   all(n > 20 and not bad for n, bad in walk651.values()), {k: v for k, v in walk651.items() if v[1] or v[0] <= 20} or walk651)
             # #291: Labs' charts draw with the kit (chartkit.js): the time axis's labels in two rows, months over their
             # years, on All and zoomed in to a month, at 1400 and 320 px: none overlapping or out of its chart, none a
@@ -4382,6 +4399,39 @@ def main():
                   "said, from the panel opened by the heatmap's table and by a chart, at 1400 and 360 px (#652: focus fell to the page)",
                   len(go652) == 8 and all(len(v) == 5 and v[0] == ("its name" if "table" in k else "its chart") and v[1] and not v[2]
                                           and v[3] == f"{v[4]} {'shown as a table' if 'table' in k else 'charted'} on Labs." for k, v in go652.items()), go652)
+            # #723: the first time Labs' charts are drawn in a page (opened on Heatmap or Compare), the axis's height was
+            # set only once the browser had observed it, after Chart these results had brought the chart into view with the
+            # usual 42 px: with 200% text the chart went under the 78 px axis. Each in a page of its own, with 200% text,
+            # at 1400×900 and 360×800: the chart wholly clear of the axis, and of the event track where it's pinned
+            CLEAR723 = r"""() => { const a = document.activeElement, r = a.getBoundingClientRect(), f = document.querySelector('#charts > .ck-foot')?.getBoundingClientRect(),
+              t = document.getElementById('evTrack'), tr = t?.classList.contains('stuck') ? t.getBoundingClientRect() : null;
+              return [a.matches('#charts .chart svg.ck') ? a.closest('.chart').dataset.lab : a.tagName, Math.round(r.top), Math.round(r.bottom), f && Math.round(f.top),
+                !!f && r.bottom <= f.top + 0.5 && r.top >= (tr ? tr.bottom - 0.5 : 0)]; }"""
+            go723 = {}
+            for w723, h723 in ((1400, 900), (360, 800)):
+                for view723 in ("heatmap", "compare"):
+                    ctx723 = browser.new_context(viewport={"width": w723, "height": h723}, bypass_csp=True)
+                    ctx723.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
+                    ctx723.add_init_script("(() => { const s = new CSSStyleSheet(); s.replaceSync(%s); document.adoptedStyleSheets = [s]; })()"
+                                           % json.dumps(":root{--fs-1:23px;--fs-2:25px;--fs-3:28px;--fs-4:31px;--fs-5:36px;--fs-6:44px;--fs-7:56px} html{font-size:200%}"))
+                    p723 = ctx723.new_page()
+                    p723.goto(base + f"/?profile=1#labs-{view723}")
+                    p723.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted", timeout=20000)
+                    p723.wait_for_timeout(400)
+                    # from the heatmap's table by its name; from Compare, which names no lab that opens it, as the palette does
+                    p723.evaluate("""v => { state.sel = new Set(['Hemoglobin', 'WBC', 'Platelets', 'Creatinine', 'ALT']);
+                      if (v === 'heatmap') { state.tables.add('#hm'); renderLabs(); [...document.querySelectorAll('#hmTable tbody th .lab-open')].find(b => b.textContent.startsWith(nice('Hemoglobin') + ' (')).focus(); }
+                      else openLab(SERIES.find(s => s.name === 'Hemoglobin')); }""", view723)
+                    if view723 == "heatmap":
+                        p723.keyboard.press("Enter")
+                    p723.wait_for_timeout(500)
+                    p723.evaluate("() => [...document.querySelectorAll('#dbody .dgo button')].find(b => b.textContent === 'Chart these results').focus()")
+                    p723.keyboard.press("Enter")
+                    p723.wait_for_timeout(800)
+                    go723[f"{w723}×{h723} from {view723}"] = p723.evaluate(CLEAR723)
+                    ctx723.close()
+            check("…charted from its panel in a page opened on Heatmap or Compare, with 200% text at 1400×900 and 360×800, its chart is wholly clear of the "
+                  "stack's axis (#723: the axis's height wasn't set yet, the chart under it)", all(v[0] == "Hemoglobin" and v[4] for v in go723.values()), go723)
             # the heatmap: a mark on every out-of-range cell, and a table with a header per lab and per draw day
             js("state.tables.clear(); switchTab('labs', 'heatmap')")
             settle(400)

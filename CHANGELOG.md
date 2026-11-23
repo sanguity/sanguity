@@ -1780,6 +1780,13 @@ Everything on `main` so far; it becomes the first tagged release.
   Show, Body and activity opened Show, the Timeline opened the period's sheet or Reset undid the move, and a
   milestone's flag the same (83 of 108 taps in the new check, at 360 and 412 px with the usual text and 200%). The
   strip now takes that click itself, the first within 600 ms unless another press comes first (WCAG 3.2.2).
+- **A lab's table on Labs, and a chart from a lab's panel, stay clear of the event track and the time axis** (#723):
+  the event track stayed pinned wherever a chart fitted under it, though a lab shown as a table is taller (320 px to a
+  chart's 212): at 1400×450, 720×450 (a 1440×900 laptop at 200% zoom) or a phone on its side, a table given focus
+  was partly under the track or the stack's axis. The track is now pinned only where the tallest that takes focus in
+  the stack, a table too, fits whole between them. And the first time Labs' charts were drawn in a page, after opening
+  Labs on Heatmap or Compare, the axis's height was set only after Chart these results had brought the chart into
+  view, so with text at 200% the chart went under the axis; it's set as the axis is drawn (WCAG 2.4.11).
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
