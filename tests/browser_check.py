@@ -10145,9 +10145,60 @@ def main():
                 ppg.wait_for_timeout(600)
                 tapped = ppg.evaluate("w => [state.preset, state.to < w - 200 * DAY]", was656[2])
                 touch656[tab656] = {"kept": scrolled[:3] == was656, "scrolled": scrolled[3] > 100, "tap": tapped == ["custom", True]}
-            pctx.close()
             check("…on a touch screen, a scroll that starts on the strip beside its window leaves the period as it was, the page scrolled; a tap there "
                   "brings the window there (#656), on Labs, Body and activity and the Timeline", all(all(v.values()) for v in touch656.values()), touch656)
+            # ---- #726: a finger's tap on the strip moves the window and nothing else. Its click came once the window had
+            # moved, and the pill's words and Reset with it, on whatever was under the finger then (Labs' Heatmap, Compare
+            # or Show, Body's Show, the Timeline's period sheet, Reset undoing the move). Eight points beside the window and
+            # a milestone's flag, on Labs, Body and activity and the Timeline, at 360 and 412 px with the usual text and
+            # 200%: each moves the period (custom, or since the flag's milestone), the view, the sheets and Show as they
+            # were, and no click reaches anything but the strip
+            GEO726 = """() => { const b = document.querySelector('#strip svg').getBoundingClientRect(), k = b.width / stripAt.w, X = t => b.left + stripAt.x(t) * k;
+              const f = MILESTONES.map(m => dayTs(m.date)).filter(t => t > stripAt.a && X(t) < X(stripAt.wa) - 30)
+                .find(t => MILESTONES.every(o => dayTs(o.date) === t || Math.abs(X(dayTs(o.date)) - X(t)) > 12));   // a flag on its own
+              return {x: b.left, y: b.top, w: b.width, h: b.height, xa: X(stripAt.wa), xb: X(stripAt.wb), flag: f === undefined ? null : X(f) + k, k}; }"""
+            SEEN726 = """() => [state.tab, state.labsView, state.tlView, [...document.querySelectorAll('dialog[open], :popover-open:not(#sgToasts)')].map(d => d.id || d.className),
+              [...document.querySelectorAll('.show-btn, #labsPick')].filter(b => b.getAttribute('aria-expanded') === 'true').map(b => b.id), state.preset, state.from, state.to, CL726.splice(0)]"""
+            ppg.evaluate("""() => { window.CL726 = []; document.addEventListener('click', e => { if (!e.target.closest('#strip'))
+              CL726.push((e.target.closest('button, a, input, [id]') || e.target).id || e.target.textContent.trim().slice(0, 24)); }, true); }""")
+            bad726, n726 = {}, 0
+            for w726 in (360, 412):
+                for big726 in (False, True):
+                    ppg.set_viewport_size({"width": w726, "height": 800})
+                    ppg.evaluate("css => { const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = css ? [s] : []; }",
+                                 ":root{--fs-1:23px;--fs-2:25px;--fs-3:28px;--fs-4:31px;--fs-5:36px;--fs-6:44px;--fs-7:56px} html{font-size:200%}" if big726 else "")
+                    for tab726, view726 in (("labs", "chart"), ("health", None), ("timeline", "timeline")):
+                        for at726 in (0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, "flag"):
+                            ppg.evaluate("""([t, v]) => { switchTab(t, v); applyPreset('90d'); scrollTo(0, 0);
+                              for (const b of document.querySelectorAll('.show-btn, #labsPick')) if (b.getAttribute('aria-expanded') === 'true') b.click(); CL726.length = 0; }""", [tab726, view726])
+                            ppg.wait_for_timeout(250)
+                            g726, name726 = ppg.evaluate(GEO726), f"{tab726} {w726}{' 200%' if big726 else ''} {at726}"
+                            if at726 == "flag":
+                                if g726["flag"] is None:
+                                    bad726[name726] = "no milestone's flag on its own beside the window"
+                                    continue
+                                x726, y726 = g726["flag"], g726["y"] + 4 * g726["k"]   # its head
+                            else:
+                                x726, y726 = g726["x"] + g726["w"] * at726, g726["y"] + g726["h"] * 0.6
+                                if g726["xa"] - 10 < x726 < g726["xb"] + 10:   # (90 days: the window's at the strip's end)
+                                    continue
+                            was726 = ppg.evaluate(SEEN726)
+                            finger("touchStart", [(x726, y726)])
+                            ppg.wait_for_timeout(50)
+                            finger("touchEnd", [])
+                            ppg.wait_for_timeout(450)
+                            now726 = ppg.evaluate(SEEN726)
+                            n726 += 1
+                            if not (now726[:3] == was726[:3] and not now726[3] and not now726[4] and not now726[8] and now726[6:8] != was726[6:8]
+                                    and (ppg.evaluate("isMsKey(state.preset)") if at726 == "flag" else now726[5] == "custom")):
+                                bad726[name726] = {"view": now726[:3], "open": now726[3], "show": now726[4], "period": now726[5], "clicked": now726[8]}
+                            if now726[3]:
+                                ppg.keyboard.press("Escape")
+                                ppg.wait_for_timeout(200)
+            pctx.close()
+            check("…a tap on the strip on a touch screen moves the window and nothing else: 8 points beside it and a milestone's flag on Labs, Body "
+                  "and activity and the Timeline, at 360 and 412 px, usual and 200% text, the view, sheets, Show and the period as the tap left them, "
+                  "no click on what moved under the finger (#726)", n726 == 108 and not bad726, [n726, len(bad726), dict(list(bad726.items())[:8])])
             js("applyPreset('2y')")
             settle(200)
             menu_state = "[document.getElementById('periodMoreBtn').getAttribute('aria-expanded'), !document.getElementById('periodMoreList').matches(':popover-open'), document.activeElement.id || document.activeElement.textContent]"

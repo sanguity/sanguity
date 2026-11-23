@@ -220,6 +220,15 @@ strip.addEventListener("pointermove", ev => {
   else if (d.grab === "b") stripSet(d.wa, Math.max(at, d.wa + 2 * DAY));
   else if (d.grab === "mid") stripSet(d.wa + dt, d.wb + dt);
 });
+/* a finger's (or a pen's) tap sends its click after it's let go, where it was let go: by then the period has moved, and
+   the pill's words and Reset with it, so the click lands on whatever control is under the finger now (#726; no
+   preventDefault() on pointerdown or touchend stops it). The first click in the next 600 ms is eaten, before anything
+   else hears it, unless another press comes first */
+function stripNoClick() {
+  const eat = ev => { ev.preventDefault(); ev.stopImmediatePropagation(); off(); };
+  const off = () => { clearTimeout(t); removeEventListener("click", eat, true); removeEventListener("pointerdown", off, true); }, t = setTimeout(off, 600);
+  addEventListener("click", eat, true); addEventListener("pointerdown", off, true);
+}
 const stripUp = ev => {
   const d = stripDrag; if (!d || d.id !== ev.pointerId) return;
   stripDrag = null;
@@ -227,6 +236,7 @@ const stripUp = ev => {
     if (d.moved) { [state.from, state.to, state.preset] = d.was; cancelAnimationFrame(stripRaf); renderAll(); }
     return;
   }
+  if (ev.pointerType !== "mouse") stripNoClick();
   if (!d.moved && d.ms) return applyPreset(msKey(d.ms));   // a milestone's flag: since it
   if (!d.moved && d.grab === "beside") stripThere(d, d.t);
   cancelAnimationFrame(stripRaf); renderAll();
