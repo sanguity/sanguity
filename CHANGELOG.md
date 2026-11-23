@@ -1763,6 +1763,12 @@ Everything on `main` so far; it becomes the first tagged release.
   bar scrolls away, and only where a chart still fits whole between it and the axis; the page keeps what has focus
   clear of the axis by the axis's own height (WCAG 2.4.11). With text at 200% the lab list's Clear and Defaults wrap
   inside it rather than run under the track.
+- **Focus stays on a chart as it's drawn anew, and goes to the lab a panel charts** (#652): a chart that had focus
+  lost it to the page when it was drawn again, on a resize, a phone turned or the records changing, on Labs, Compare,
+  Body and activity and Costs: each chart is now a tab stop with its name from the moment it's made, so focus is given
+  to the new one. A lab's panel's **Chart these results** and **Show them as a table** closed the drawer and left
+  focus nowhere; focus now goes to the lab's chart, or to its name over its table, and a screen reader is told
+  ("Hemoglobin charted on Labs.").
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

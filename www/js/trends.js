@@ -208,11 +208,18 @@ function chartCard(s) {
     { const t = tagLine(pts); if (t) card.append(t); }   // its results' source tags, renamed here (#38)
     return card;
   }
-  const svg = el("svg:svg", {role: "img", class: "pz ck", "aria-label": `${nice(s.name)} over time`});
+  const svg = chartSvg(labSays(s, pts), {class: "pz ck"});   // named as it's drawn (#652)
   svg._s = s; svg._read = read;
   card.append(svg);
   requestAnimationFrame(() => drawChart(svg, s, pts, read));
   return card;
+}
+/* a lab chart's words, its name (chartKeys): its results in the period from first to latest, how many outside their
+   range, the ranges where they differ, and the milestones */
+function labSays(s, pts) {
+  const unit = s.watch ? (s.kind === "stack" ? "night" : "day") : "result", nAbn = pts.filter(p => p[4]).length, lastP = pts.at(-1), ms = msSay(state.from, state.to);
+  return `${nice(s.name)}: ${pts.length} ${unit}${pts.length === 1 ? "" : "s"}${pts.length ? ` from ${fmtD(pts[0].ts)} to ${fmtD(lastP.ts)}, latest ${readText(s, lastP)[0]}` : " in this period"}`
+    + `${nAbn ? `, ${nAbn} outside reference range` : ""}${rangesDiffer(pts) ? `. ${RANGE_DIFFERS}: ${rangesDiffer(pts)} ${s.unit}` : ""}. Left and right arrow keys step through them.${ms ? " " + ms : ""}`;
 }
 function drawChart(svg, s, pts, read, live) {   // live: a frame of a drag, at the width it had (#292)
   if (!svg.isConnected) return;
@@ -247,7 +254,7 @@ function drawChart(svg, s, pts, read, live) {   // live: a frame of a drag, at t
     if (st) ckBandLabel(g, `${st.key} ${st.rs === "settings" ? "from settings" : "on report"}`, st, y, R, T, B, pts.map(p => [x(p.ts), y(p[1])]), L); }
   // a faint line at each milestone, named once on the event track over the charts (#294), and in the chart's words;
   // procedures and imaging, the medications and the rest are on the track only
-  const msAt = g.length, msWords = msMarks(g, x, state.from, state.to, T, B, R, null);
+  const msAt = g.length; msMarks(g, x, state.from, state.to, T, B, R, null);
   for (const m of g.slice(msAt)) m.classList.add("faint");
   ckFoot(g, L, R, B);
   const dayW = Math.max(1, x(state.from + DAY) - x(state.from));
@@ -326,10 +333,7 @@ function drawChart(svg, s, pts, read, live) {   // live: a frame of a drag, at t
     showAt(x.inv(px), px);
   });
   // the keyboard (#60): ← and → step through the results shown, with the same readout and tooltip as hovering
-  const unit = s.watch ? (s.kind === "stack" ? "night" : "day") : "result", nAbn = pts.filter(p => p[4]).length;
-  chartKeys(svg, `${nice(s.name)}: ${pts.length} ${unit}${pts.length === 1 ? "" : "s"}${pts.length ? ` from ${fmtD(pts[0].ts)} to ${fmtD(lastP.ts)}, latest ${readText(s, lastP)[0]}` : " in this period"}`
-    + `${nAbn ? `, ${nAbn} outside reference range` : ""}${rangesDiffer(pts) ? `. ${RANGE_DIFFERS}: ${rangesDiffer(pts)} ${s.unit}` : ""}. Left and right arrow keys step through them.${msWords ? " " + msWords : ""}`,
-    () => pts.map(p => p.ts),
+  chartKeys(svg, labSays(s, pts), () => pts.map(p => p.ts),
     t => showAt(t, x(t)), () => { ckSync(svg, null); hideTip(); });
   hit.addEventListener("pointerleave", () => { if (!chartsBox.classList.contains("dragging")) { ckSync(svg, null); hideTip(); } });
 }

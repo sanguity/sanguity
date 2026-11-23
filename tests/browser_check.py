@@ -4347,6 +4347,41 @@ def main():
             settle(300)
             check("…a name in the heatmap's table opens it too, and axe-core and a phone's width find nothing in it at 1400, 375 and 320 px, light and dark",
                   hm296[0] and hm296[1] and not panel_seen, [hm296, panel_seen[:6]])
+            # #652: the panel's Chart these results and Show them as a table close the drawer, and the control that opened
+            # it goes with it (the heatmap's table) or is drawn anew (a chart's name): focus fell to the page, and nothing
+            # said the lab was charted. Focus goes to the lab's chart once it's drawn, or to its name over its table, and
+            # that's said; from the panel opened by a name in the heatmap's table and by a chart's, at 1400 and 360 px
+            GO652 = r"""([how, act]) => { closeDrawer(); state.tables.clear(); state.sel = new Set(['Hemoglobin', 'WBC']);
+              if (how === 'heatmap') { state.tables.add('#hm'); switchTab('labs', 'heatmap'); document.querySelector('#hmTable tbody th .lab-open').focus(); }
+              else { if (act === 'Chart these results') state.tables.add('WBC'); switchTab('labs', 'chart'); document.querySelector('#charts .chart[data-lab="WBC"] .hd .lab-open').focus(); } }"""
+            AT652 = r"""name => { const a = document.activeElement, card = a.closest?.('#charts .chart');
+              return [a === document.body ? 'the page' : a.matches('svg.ck') ? 'its chart' : a.matches('.hd .lab-open') ? 'its name' : a.tagName + ' ' + (a.id || a.textContent.slice(0, 20)),
+                card?.dataset.lab === name, drawer.classList.contains('open'), document.getElementById('sgStatus').textContent]; }"""
+            js("window._was652 = [new Set(state.sel), new Set(state.tables)]")
+            go652 = {}
+            for w652 in (1400, 360):
+                page.set_viewport_size({"width": w652, "height": 900 if w652 > 400 else 800})
+                for how652, act652 in (("heatmap", "Chart these results"), ("heatmap", "Show them as a table"), ("chart", "Chart these results"), ("chart", "Show them as a table")):
+                    js(GO652, [how652, act652])
+                    settle(400)
+                    page.keyboard.press("Enter")
+                    settle(500)
+                    lab652, btns652 = js("[labShown()?.name, [...document.querySelectorAll('#dbody .dgo button')].map(b => b.textContent)]")
+                    key652 = f"{w652} px, {act652} from {'the heatmap' if how652 == 'heatmap' else 'a chart'}"
+                    if act652 not in btns652:
+                        go652[key652] = ["no such button", btns652]
+                        continue
+                    js("t => [...document.querySelectorAll('#dbody .dgo button')].find(b => b.textContent === t).focus()", act652)
+                    page.keyboard.press("Enter")
+                    settle(700)
+                    go652[key652] = js(AT652, lab652) + [lab652]
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("closeDrawer(); [state.sel, state.tables] = window._was652; switchTab('labs', 'chart')")
+            settle(300)
+            check("…its Chart these results puts focus on the lab's chart, and Show them as a table on its name over its table, the drawer closed and that "
+                  "said, from the panel opened by the heatmap's table and by a chart, at 1400 and 360 px (#652: focus fell to the page)",
+                  len(go652) == 8 and all(len(v) == 5 and v[0] == ("its name" if "table" in k else "its chart") and v[1] and not v[2]
+                                          and v[3] == f"{v[4]} {'shown as a table' if 'table' in k else 'charted'} on Labs." for k, v in go652.items()), go652)
             # the heatmap: a mark on every out-of-range cell, and a table with a header per lab and per draw day
             js("state.tables.clear(); switchTab('labs', 'heatmap')")
             settle(400)
@@ -4471,6 +4506,36 @@ def main():
             settle(300)
             check("…axe-core and a phone's width find nothing in it at 1400, 375 and 320 px, light and dark, charts and tables; with text at 200% at 360 "
                   "and 412 px its labels stay inside its charts, none over another, and the view switch whole", not seen297 and not big297, [seen297[:6], big297[:6]])
+            # #652: a chart with focus keeps it as it's drawn anew: on a resize, a phone turned, or the records changing.
+            # Its svg was made with no tab stop and its name a frame later (chartKeys), so keepFocus (store.js) found no
+            # twin to give focus to and it fell to the page. Labs' charts, Compare's two, Body's and Costs' two, each
+            # stepped to a point first, at 1400→1200 px, 412→360 px and with the records loaded again
+            FOCUS652 = "(() => { const a = document.activeElement; return a === document.body ? 'the page' : `${a.tagName} ${a.id} ${(a.getAttribute('aria-label') || a.textContent.trim()).slice(0, 60)}`; })()"
+            keep652, cv652 = {}, js("costState.view")
+            for chart652, run652, sel652 in (("Labs", "switchTab('labs', 'chart')", "#charts .chart svg.ck"), ("Compare", "switchTab('labs', 'compare')", "#cmpSvg"),
+                                  ("Compare's before and after", "switchTab('labs', 'compare')", "#cmpMsSvg"), ("Body", "switchTab('health')", "#view-health svg.ck"),
+                                  ("Costs", "costState.view = 'claims'; switchTab('costs')", "#costChart"), ("Costs' What you paid", "costState.view = 'paid'; switchTab('costs')", "#paidChart")):
+                js(f"state.tables.clear(); applyPreset('2y'); {run652}")
+                for how652, w0, w1 in (("1400→1200 px", 1400, 1200), ("412→360 px", 412, 360), ("the records loaded again", 1400, 1400)):
+                    page.set_viewport_size({"width": w0, "height": 900})
+                    settle(500)
+                    page.focus(sel652)
+                    page.keyboard.press("ArrowRight")
+                    settle(150)
+                    was652 = js(FOCUS652)
+                    if w0 != w1:
+                        page.set_viewport_size({"width": w1, "height": 900})
+                    else:
+                        js("api('profiles/1/data').then(r => r.json()).then(d => { storeRecords(d); return true; })")
+                    settle(600)
+                    keep652[f"{chart652}, {how652}"] = [was652, js(FOCUS652)]
+                    page.keyboard.press("Escape")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("v => { costState.view = v; state.tables.clear(); applyPreset('all'); switchTab('labs', 'chart'); }", cv652)
+            settle(300)
+            check("…a chart with focus keeps it as it's drawn anew, on Labs, Compare (both), Body and Costs (both), at 1400→1200 and 412→360 px and with the "
+                  "records loaded again (#652: it fell to the page)", len(keep652) == 18 and all(a == b and a != "the page" and a.startswith("svg") for a, b in keep652.values()),
+                  {k: v for k, v in keep652.items() if v[0] != v[1]} or keep652)
             # #300: the heatmap on the kit. Each row's count of results outside their range, at its end, is its ▲s and ▼s
             # and the table's; a panel with one row is in Other; the hint says the columns are draw days, not even time
             hm300 = js("""(() => { const t = document.querySelector('#hmTable table'), rows = [...t.querySelectorAll('tbody tr:not(.grp)')];

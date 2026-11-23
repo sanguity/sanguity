@@ -49,7 +49,7 @@ function renderCompare() {
   if (!placed.some(r => r.pts.length)) kids.push(wayBack("results of the labs compared"));   // #382
   if (state.tables.has("#cmp")) kids.push(cmpTable(slots));
   else {
-    const svg = el("svg:svg", {id: "cmpSvg", class: "pz", role: "img"});
+    const svg = chartSvg(cmpSays(placed), {id: "cmpSvg", class: "pz"});   // named as it's drawn (#652)
     svg._slots = slots;
     kids.push(svg);
     requestAnimationFrame(() => cmpDraw(svg));
@@ -86,7 +86,7 @@ function cmpDraw(svg, live) {
   for (const st of STAYS) { if (st.te < state.from || st.ts > state.to) continue; const a = Math.max(L, x(st.ts)), b = Math.min(R, x(st.te)); g.push(el("svg:rect", {class: "stayband", x: a, y: T, width: Math.max(2, b - a), height: B - T})); }
   ckGrid(g, y, ckPosTicks(lo, hi), L, R, cmpPct);
   ckBand(g, [{a: state.from, b: state.to, lo: 0, hi: 100}], x, y, L, R, T, B);
-  const msAt = g.length, msWords = msMarks(g, x, state.from, state.to, T, B, R, null);
+  const msAt = g.length; msMarks(g, x, state.from, state.to, T, B, R, null);
   for (const m of g.slice(msAt)) m.classList.add("faint");
   ckBandLabel(g, "0–100%: each result's own range", {lo: 0, hi: 100}, y, R, T, B, on.flatMap(r => r.pts.map(p => [x(p.ts), at(p)])), L);
   ckAxis(g, tk, L, R, B, B + 15);
@@ -126,11 +126,13 @@ function cmpDraw(svg, live) {
   };
   hit.addEventListener("pointermove", ev => { const b = svg.getBoundingClientRect(), px = (ev.clientX - b.left) * (w / b.width); showAt(x.inv(px), px); });
   hit.addEventListener("pointerleave", () => { if (!$("#labsCompare").classList.contains("dragging")) { svg._hover(null); hideTip(); } });
-  chartKeys(svg, `Labs compared within their own ranges, ${fmtD(state.from)} to ${fmtD(state.to)}, 0% at each result's low limit and 100% at its high: `
-    + on.map(r => `${nice(r.s.name)}, ${r.pts.length} result${r.pts.length === 1 ? "" : "s"}${r.pts.length ? `, latest ${cmpPct(ckPos(r.pts.at(-1)))} of its range` : ""}`).join("; ")
-    + `. Left and right arrow keys step through the dates.${msWords ? " " + msWords : ""}`,
-    () => times, t => showAt(t, x(t)), () => { svg._hover(null); hideTip(); });
+  chartKeys(svg, cmpSays(on), () => times, t => showAt(t, x(t)), () => { svg._hover(null); hideTip(); });
 }
+/* the chart's words, its name (chartKeys): each lab's results placed in the period and the latest's place, and the
+   milestones. on: the slots' labs with their results placed ({s, pts}) */
+const cmpSays = on => `Labs compared within their own ranges, ${fmtD(state.from)} to ${fmtD(state.to)}, 0% at each result's low limit and 100% at its high: `
+  + on.map(r => `${nice(r.s.name)}, ${r.pts.length} result${r.pts.length === 1 ? "" : "s"}${r.pts.length ? `, latest ${cmpPct(ckPos(r.pts.at(-1)))} of its range` : ""}`).join("; ")
+  + `. Left and right arrow keys step through the dates.${msSay(state.from, state.to) ? " " + msSay(state.from, state.to) : ""}`;
 /* the chart as a table: every result of the labs compared in the period, newest first, with its place in its range (or
    why it has none) */
 function cmpTable(slots) {
@@ -173,7 +175,7 @@ function renderCmpMs(placed) {
       rows.map(r => [nice(r.s.name), ...side(r, r.before), ...side(r, r.after), cmpDiff(r)])));
     return;
   }
-  const svg = el("svg:svg", {id: "cmpMsSvg", role: "img"});
+  const svg = chartSvg(cmpMsSays(rows, m), {id: "cmpMsSvg"});   // named as it's drawn (#652)
   body.replaceChildren(svg);
   requestAnimationFrame(() => cmpMsDraw(svg, rows, m));
 }
@@ -227,10 +229,11 @@ function cmpMsDraw(svg, rows, m) {
   };
   svg.onpointermove = ev => { const b = svg.getBoundingClientRect(), py = (ev.clientY - b.top) * (w / b.width); show(lay.findIndex(l => py >= l.top && py <= l.cy + 10 * k)); };
   svg.onpointerleave = () => show(null);
-  chartKeys(svg, `Each lab's median place in its own range before ${lcLabel(m.label)} (${fmtD(dayTs(m.date))}) and from it on, in this period: `
-    + rows.map(r => cmpMsWords(r).replace("→", "then")).join("; ") + ". Left and right arrow keys step through the labs.",
-    () => lay.map((_, i) => i), show, () => show(null));
+  chartKeys(svg, cmpMsSays(rows, m), () => lay.map((_, i) => i), show, () => show(null));
 }
+/* the dumbbells' words, their name (chartKeys): each lab's median place before the milestone m and from it on */
+const cmpMsSays = (rows, m) => `Each lab's median place in its own range before ${lcLabel(m.label)} (${fmtD(dayTs(m.date))}) and from it on, in this period: `
+  + rows.map(r => cmpMsWords(r).replace("→", "then")).join("; ") + ". Left and right arrow keys step through the labs.";
 /* drag to pan, wheel or pinch to zoom, as Labs' charts (charts.js panZoom): the same period */
 panZoom($("#labsCompare"), {...mainWindow,
   plot: ev => { const s = ev.target.closest?.("#cmpSvg"); return s && s._geom ? s : null; }, span: svgSpan,
