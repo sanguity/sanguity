@@ -2922,7 +2922,7 @@ def main():
             "ecg": {"Date": "the date", "What the watch said": "what the watch said", "Details": "average heart rate"},
             "bmi": {"Date": "on its day", "Measure": "each weight", "Value": "the BMI", "Percentile": "growth charts", "From": "where each weight came from"},
             "targets": {"Measure": "each target", "Your target": "each target", "Set by": "who set it", "Set on": "and when",
-                        "In this period": "how many readings at home were above or below it"},
+                        "In this period": "were above or below it"},   # readings at home, or days of steps (#650)
             "medlog": {"Date and time": "the date and time", "Medication": "the medication", "What happened": "taken, taken late or skipped",
                        "Note": "its note", "From": "where it came from"},
         }
@@ -2931,6 +2931,7 @@ def main():
         strict.wait_for_selector("#links .share-form .share-sections label", timeout=10000)
         lines576 = strict.evaluate("""Object.fromEntries([...document.querySelectorAll('#links .share-form .share-sections label')]
           .map(l => [l.querySelector('input').value, l.querySelector('.muted').textContent.trim()]))""")
+        form650 = strict.inner_text("#links .share-form")
         strict.locator("#links .share-form button", has_text="Cancel").click()
         shown576 = hp.evaluate("""() => Object.fromEntries([...document.querySelectorAll('#shareBody > section')].map(s => {
           const got = new Set([...s.querySelectorAll('thead tr:not(.share-printed) th')].map(h => h.textContent.trim()));
@@ -2960,6 +2961,10 @@ def main():
               "Procedures, showing a date, kind and title, is sent only those (it was sent each one's clinician and place too)",
               len(shown576) >= 8 and set(shown576) <= set(lines576) and not miss576 and sent498.get("procedures")
               and all(set(r) == {"t", "kind", "title"} for r in sent498["procedures"]), [miss576[:8], sorted(shown576), (sent498.get("procedures") or [None])[0]])
+        # #650: no issue number in the words of the form (every section's line) or of a link's page with every section
+        num650 = {w: re.findall(r".{0,30}#\d+\)?", t) for w, t in (("form", form650), ("page", hp.inner_text("body")))}
+        check("share links (#650): no issue number in the form's words, every section's line among them, nor on a link's page with every "
+              "section (Lab results' line ended “(#302)”)", "Lab results" in form650 and not any(num650.values()), num650)
         # #581: and what a column holds, not only its heading. A link with every section of a profile with each kind of
         # source (a device's blood oxygen one reading at a time, an ECG's and a notification's device, a phone's dose with
         # its app and amount, a CGM's day; stays transferred between hospitals and one told from inpatient results; a

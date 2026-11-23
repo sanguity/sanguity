@@ -66,7 +66,8 @@ SECTIONS = [   # (id, label, what a share link shows: said on the owner's form a
                               "weight came from (the smart scale, or a clinic visit and its clinic); for a child, where each "
                               "measurement falls on the WHO's or the CDC's growth charts"),
     ("targets", "Your targets for home readings", "each target typed in as the care team gave it, who set it and when, and how many "
-                                                  "readings at home were above or below it"),   # #234
+                                                  "readings at home, or days of steps counted by the phone, were above or "
+                                                  "below it"),   # #234; a steps target's days (#298, #650)
 
     ("medlog", "Medication log", "each dose logged as taken, taken late or skipped: the date and time, the medication, its "
                                  "note, and where it came from: “Typed in”, or the app that sent it and the dose taken"),   # (#235)
@@ -513,7 +514,8 @@ def targets_block(c, keep, most):
             when = _outside(sides([conv(v * to_kg) for d, v in c.pts("weight") if v > 0 and keep(d)]), "weights")
         rows.append([T_NAMES[k], text, t.get("by") or "", t.get("on") or "", when])
     lead.insert(0, "Each target as the person's care team gave it, typed in by them or their family: Sanguity doesn't suggest targets. "
-                   "The readings taken at home in this period are compared with each, as they're shown here." if rows else "")
+                   "The readings taken at home in this period" + (", and each day's steps counted by the phone," if T.get("steps") else "") +
+                   " are compared with each, as they're shown here." if rows else "")   # as the section's line says (#650)
     return _block([("Measure", "text", 92), ("Your target", "text", 100), ("Set by", "text", 104), ("Set on", "day", 54),
                    ("In this period", "text", None)], rows, lead,
                   "A blood pressure reading is above its target when its systolic or diastolic is; blood oxygen is each day's average "
