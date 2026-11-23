@@ -236,7 +236,7 @@ function drawChart(svg, s, pts, read, live) {   // live: a frame of a drag, at t
   const y = ckScale(lo, hi, B, T);
   const g = [];
   for (const st of STAYS) { if (st.te < state.from || st.ts > state.to) continue; const a = Math.max(L, x(st.ts)), b = Math.min(R, x(st.te)); g.push(el("svg:rect", {class: "stayband", x: a, y: T, width: Math.max(2, b - a), height: B - T})); }
-  ckGrid(g, y, niceTicks(lo, hi, 5), L, R, v => s.kind === "bars" && v >= 1000 ? (v / 1000) + "k" : fmtNum(v));
+  ckGrid(g, y, niceTicks(lo, hi, 5), L, R, v => s.kind === "bars" && v >= 1000 ? ckNum(v / 1000) + "k" : ckNum(v));   // "137.5", not "138" (#654)
   ckUnit(g, s.unit, T - 10 * k);
   ckBand(g, steps, x, y, L, R, T, B);
   { const st = steps[steps.length - 1];   // the numbers of the range at the right end, as printed (#293)

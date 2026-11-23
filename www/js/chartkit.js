@@ -1,7 +1,8 @@
 /* Sanguity · the chart kit (#291): the parts every time chart is drawn with, so they read as one: Labs (trends.js
    drawChart) and Body and activity (health.js hChart) draw through it. Each part is its own small function, for the
    rest of the kit to plug in beside (the event track, the overview strip, sparklines):
-   - ckScale, niceTicks: the scales, and a value axis's round numbers; ckFit, a label cut to its room;
+   - ckScale, niceTicks, ckNum: the scales, and a value axis's round numbers, written as they are; ckFit, a label cut
+     to its room;
    - ckTimeTicks, ckAxis, ckFoot: the time axis, its ticks at two levels (days over months, months over years), and
      the plot's foot alone, for a chart in a stack under one axis;
    - ckGrid, ckUnit: the value axis, a hairline and a label at each round number, and its unit as its title;
@@ -33,6 +34,9 @@ function ckScale(d0, d1, r0, r1) {
 }
 /* about n round numbers from lo to hi: steps of 1, 2, 2.5 or 5 times a power of ten */
 function niceTicks(lo, hi, n) { const span = hi - lo, step0 = span / n, mag = Math.pow(10, Math.floor(Math.log10(step0))), step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => span / s <= n) || 10 * mag; const out = []; for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(10)); return out; }
+/* a value axis's number as it is, with the decimals its step gives it ("176.5" between "176" and "177"): never
+   rounded, so no gridline says another's number or its neighbour's (#654). Never "-0", which a step's sum can be */
+const ckNum = v => (v || 0).toLocaleString("en-US", {maximumFractionDigits: 10, useGrouping: false});
 /* how wide a chart label is, in the chart's own units: laid out in a hidden <text> of its class, so in the font and
    weight the chart draws it in. app.css lays these labels out at their own size (geometricPrecision), so the width
    doesn't change with the chart's scale, as a canvas's or a hinted font's would (#253). Kept per class and text until a
@@ -134,8 +138,9 @@ function ckAxis(g, tk, L, R, B, y1) {
     if (k.major) g.push(el("svg:text", {class: "ck-yr", x: k.mx, y: y1 + 14 * ck, text: k.major}));
   }
 }
-/* the value axis: a hairline across the plot at each of vals, labelled left of it with fmt(v) */
-function ckGrid(g, y, vals, L, R, fmt) {
+/* the value axis: a hairline across the plot at each of vals, labelled left of it with fmt(v), the number as it is
+   (ckNum) in whatever words fmt puts round it */
+function ckGrid(g, y, vals, L, R, fmt = ckNum) {
   const k = ckK();
   for (const v of vals) g.push(el("svg:line", {class: "gridline", x1: L, x2: R, y1: y(v), y2: y(v)}), el("svg:text", {x: L - 6, y: y(v) + 4 * k, "text-anchor": "end", text: fmt(v)}));
 }
