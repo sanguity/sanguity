@@ -1846,6 +1846,13 @@ Everything on `main` so far; it becomes the first tagged release.
   the same rule to what the summary and share links send, so every place has the same weights. Body's weight card says
   how many were left out in the period, which and why, and the summary's and a link's BMI and target sections how many
   and why.
+- **Larger text: every grid of tiles keeps its words inside, at every width** (#753): #722's floor held only on a
+  phone's tiles, so with text at 200% Costs' More figures ran "$85,758" under the Claims tile at 360 px (they stayed
+  two a row) and cut What you paid's "$4,681" at 700 to 900 px and on a phone held sideways, Body and activity's
+  "126/77" ran under the Glucose tile at 768 to 1100 px, and Settings' key-lab preview ran Magnesium's "▲ High" 68 px
+  out of its tile. Every grid of tiles, the Overview's, Body's, Costs', Settings' previews and an import's review,
+  now has one rule: its columns never narrower than its words in em, so it takes fewer as text grows, and never wider
+  than the grid (an import's tiles no longer widen its card at 320 px). At the usual size nothing moves (WCAG 1.4.4).
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

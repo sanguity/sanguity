@@ -210,9 +210,12 @@ button.toggle,label.toggle{--tone:var(--accent);position:relative;display:inline
    sit on one line, the sparklines at the foot. The space between rows of tiles is each tile's margin, not the grid's
    gap, which would come between a tile's own rows too. */
 .card{--card-pad:var(--sp-4);background:var(--surface);border:1px solid var(--ring);border-radius:var(--r-lg);padding:var(--card-pad);margin-bottom:var(--sp-5)}   /* --card-pad: for a card whose rows reach its edges (Labs' list) */
-.tiles,.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:0 var(--sp-3);margin-bottom:var(--sp-3)}   /* and each tile's margin (below) */
-.tiles.compact{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}
-.stats{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+/* every tile grid, one rule (#753): columns --tile wide (the grid's own), never narrower than --tile-em, so fewer as text
+   grows ("$173,467" or a date kept whole fits at 200%; at the usual size --tile wins), nor wider than the grid */
+.tiles,.stats{--tile:210px;--tile-em:9.5em;--tile-fill:auto-fill;display:grid;grid-template-columns:repeat(var(--tile-fill),minmax(min(100%,max(var(--tile),var(--tile-em))),1fr));
+  gap:0 var(--sp-3);margin-bottom:var(--sp-3)}   /* and each tile's margin (below) */
+.tiles.compact{--tile:160px}
+.stats{--tile:140px;--tile-fill:auto-fit}
 .stats.three{grid-template-columns:repeat(auto-fit,minmax(clamp((100% - 2 * var(--sp-3)) / 3 - 1px,(480px - 100%) * 999,100%),1fr))}   /* the claims'
    three figures, Costs' and the Overview's alike (#448): in a row where a third is wide enough, else one under another,
    never two and one */
@@ -249,8 +252,7 @@ button.tile{cursor:pointer}
 .card .tile-tq>.tile{background:none}
 @media (max-width:700px){ .card{--card-pad:var(--sp-3);border-radius:var(--r-md);margin-bottom:var(--sp-4)} }
 @media (max-width:600px){
-  .tiles,.tiles.compact{grid-template-columns:repeat(auto-fill,minmax(max(calc(50% - var(--sp-3)),6.25em),1fr))}   /* two a row, or one where two would be narrower than a tile's words (larger text, #722) */
-  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .tiles,.tiles.compact,.stats{--tile:calc(50% - var(--sp-3));--tile-em:7.5em;--tile-fill:auto-fill}   /* two a row, or one where two would be narrower than a tile's words (larger text, #722, #753) */
   .tile .val{font-size:var(--fs-6)}
   .tile .lbl{flex-wrap:wrap}
   .tile .lbl .st{margin-left:0}
@@ -685,7 +687,7 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .ov-out{margin-bottom:var(--sp-4)}
 .ov-out .ov-row{display:flex;flex-wrap:wrap}   /* a flag on one line, wrapping on a phone */
 .lab-panel{font-size:var(--fs-2);font-weight:var(--fw-semibold);color:var(--ink2);margin:0 0 var(--sp-2)}   /* a panel's name over its labs, as everywhere they're grouped (labGroups, #279, #441) */
-.tiles.ov-read{grid-template-columns:repeat(auto-fill,minmax(max(min(150px,calc(50% - var(--sp-3))),6.25em),1fr))}   /* one row at 1400 px (and as .tiles on a phone, #722) */
+.tiles.ov-read{--tile:min(150px,calc(50% - var(--sp-3)))}   /* one row at 1400 px (and as .tiles on a phone, #722) */
 .st{display:inline-flex;align-items:center;gap:3px;font-size:var(--fs-1);font-weight:var(--fw-semibold);white-space:nowrap}
 .st.hi,.st.lo{color:var(--crit)}
 .ov-cols{display:grid;grid-template-columns:1.2fr 1fr;gap:0 var(--sp-5);align-items:start}
@@ -1029,7 +1031,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .import-job .imp-title{margin:0 0 var(--sp-1);font-size:var(--fs-5)}
 .import-job .d,.imp-tiles .more,.imp-labs .loinc{color:var(--muted);font-variant-numeric:tabular-nums}
 .imp-k{flex:none;box-sizing:content-box;padding:var(--sp-1);border-radius:var(--r-sm);background:color-mix(in srgb,currentColor 14%,transparent)}
-.imp-tiles{grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.imp-tiles{--tile:250px}
 .imp-tiles>.tile{grid-row:auto;display:flex}   /* each its own height: a few of each, under its count */
 .imp-tiles .tile>ul{list-style:none;margin:var(--sp-1) 0 0;padding:0;font-size:var(--fs-2);color:var(--ink2);overflow-wrap:anywhere}
 .imp-split{margin:var(--sp-1) 0 var(--sp-4)}
@@ -1220,7 +1222,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .sets .set-check{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
 .sets .set-sugg{display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap;margin-top:var(--sp-2);max-width:720px}
 .sets .set-ph{margin:var(--sp-3) 0 var(--sp-2);font-size:var(--fs-3);font-weight:var(--fw-semibold);color:var(--ink2)}   /* an h4 under a setting's h3, at its weight (#331) */
-.sets .set-preview{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-bottom:calc(var(--sp-2) - var(--sp-3));max-width:720px}   /* 8 px under the tiles' own (#351) */
+.sets .set-preview{--tile:150px;margin-bottom:calc(var(--sp-2) - var(--sp-3));max-width:720px}   /* 8 px under the tiles' own (#351) */
 .sets .set-preview .set-wide,.sets .set-preview>p{grid-column:1 / -1;margin:0 0 var(--sp-3)}
 .sets .set-radios{border:0;padding:0;margin:var(--sp-1) 0;display:flex;gap:var(--sp-4);flex-wrap:wrap}
 .sets .set-radios>label{display:flex;align-items:center;gap:var(--sp-1)}
@@ -1519,8 +1521,8 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
   .h-secbar>.chip{flex:none}
   #view-health .h-sync{font-size:var(--fs-2);color:var(--muted);margin:0}
   /* a section's tiles: one row that scrolls sideways where they don't fit (more of them, or larger text), the next one's edge showing,
-     each as wide as its words need (6.25em, as .tiles', #722) */
-  #view-health .tiles.compact{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(min(max(45%,9.75em),max(calc(100% - 6em),6.25em)),1fr);overflow-x:auto;scrollbar-width:none;
+     each as wide as its words need (--tile-em, as every grid's, #722, #753) */
+  #view-health .tiles.compact{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(min(max(45%,9.75em),max(calc(100% - 6em),var(--tile-em))),1fr);overflow-x:auto;scrollbar-width:none;
     margin-inline:calc(-1 * var(--sp-3));padding-inline:var(--sp-3);scroll-padding-inline:var(--sp-3)}
   main>[id^=view-] .card>.list-hd>:has(+.spacer+.view-seg:last-child){flex:1 1 auto;max-width:100%}
   :is(#view-health .card,#view-labs :is(.chart,#series,.ck-foot,.ev-track)){--card-pad:var(--sp-2)}   /* a chart's card (and the lab list, the stack's axis and the event track, lined up with them): its plot wider by the padding */
@@ -2328,7 +2330,7 @@ svg text.growth-pct{font-size:var(--fs-1)}
 .sets .pre-src{margin:0;padding-left:var(--sp-4);font-size:var(--fs-3);line-height:1.45}
 .sets .pre-src li{margin:3px 0}
 .sets .pre-mode{margin:var(--sp-3) 0 0}
-.sets .pre-tiles{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-bottom:calc(var(--sp-2) - var(--sp-3))}   /* as the preview's, above */
+.sets .pre-tiles{--tile:150px;margin-bottom:calc(var(--sp-2) - var(--sp-3))}   /* as the preview's, above */
 .sets .pre-tiles>p{grid-column:1 / -1;margin:0 0 var(--sp-3)}
 .sets .pre-tiles .pre-new{margin-left:auto}
 .sets .pre-offer{margin:var(--sp-2) 0}
