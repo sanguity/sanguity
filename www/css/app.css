@@ -545,7 +545,7 @@ dialog.sheet[open]{display:flex;flex-direction:column;padding-bottom:env(safe-ar
 .period-pill[aria-expanded="true"]{background:var(--hover)}
 @media (max-width:700px){
   .period-pick{display:block;flex:0 1 auto;min-width:0}
-  #presets,#periodMore,#periodWords{display:none}
+  #presets.seg,#periodMore,#periodWords{display:none}   /* the records bar's, not Settings' condition presets (presets.js, the same id) */
 }
 .filters{display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap;padding:var(--sp-3) var(--sp-5);border-bottom:1px solid var(--grid);background:var(--surface)}
 .dates{display:flex;gap:var(--sp-2);align-items:center;color:var(--muted);font-size:var(--fs-3)}

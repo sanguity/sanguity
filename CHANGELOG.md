@@ -1846,6 +1846,8 @@ Everything on `main` so far; it becomes the first tagged release.
   the same rule to what the summary and share links send, so every place has the same weights. Body's weight card says
   how many were left out in the period, which and why, and the summary's and a link's BMI and target sections how many
   and why.
+- **Settings' Start from a condition shown on a phone**: the records bar's rule hiding its period buttons on a phone (#277)
+  hid Settings' condition presets too, which share their id; it's now for the bar's alone.
 - **Larger text: every grid of tiles keeps its words inside, at every width** (#753): #722's floor held only on a
   phone's tiles, so with text at 200% Costs' More figures ran "$85,758" under the Claims tile at 360 px (they stayed
   two a row) and cut What you paid's "$4,681" at 700 to 900 px and on a phone held sideways, Body and activity's
