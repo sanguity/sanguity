@@ -10888,6 +10888,46 @@ def main():
             check("With text at 200% at 360 and 412 px, light and dark, and at the usual size (#633, 1.4.4): Costs' charts, the Timeline, the Medications "
                   "lane and the event track's rows (journal, mood, cycle, doses, medications) keep every label inside their chart, none over another",
                   not bad633 and layers633 == ["Journal", "Mood", "Cycle tracking", "Medications", "Doses logged"], [layers633, bad633])
+            # ---- #641: #622's check for the overview strip (#295) on Labs, Body and activity and the Timeline, at 360 and
+            # 412 px, light and dark, at the usual size and with text at 200% (1.4.4), in All and in a year (the window then
+            # inside the strip, its grips with it): its dates inside it, none over another, under the bars' foot, clear of
+            # the milestones' flags and the window's grips, and inside the window's top and bottom; 40 px tall as usual,
+            # taller with the text (chartkit.js ckStripH)
+            S641 = r"""() => { const s = document.querySelector('#strip svg'), r = e => e.getBoundingClientRect(), out = [];
+              if (!s?.checkVisibility()) return {out: ['no strip']};
+              const R = r(s), win = r(s.querySelector('.sb-win')), bars = r(s.querySelector('.sb-bar')), ov = (a, b) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+              const bs = [...s.querySelectorAll('text')].filter(t => t.textContent.trim()).map(t => [t.textContent, r(t)]), marks = [...s.querySelectorAll('.sb-grip, .msflag, .msflag-head')];
+              for (const [t, b] of bs) {
+                if (b.left < R.left - 1 || b.right > R.right + 1 || b.top < R.top - 1 || b.bottom > R.bottom + 1) out.push(t + ' outside');
+                if (b.top < bars.bottom - 1) out.push(t + ' over the bars');
+                if (b.left < win.right && b.right > win.left && (b.top < win.top - 1 || b.bottom > win.bottom + 1)) out.push(t + ' across the window');
+                for (const m of marks) if (ov(b, r(m))) out.push(t + ' over ' + m.getAttribute('class'));
+              }
+              bs.forEach(([t, a], i) => bs.slice(i + 1).forEach(([u, b]) => { if (ov(a, b)) out.push(t + ' over ' + u); }));
+              if (!bs.length) out.push('no dates');
+              return {out, h: Math.round(R.height), dates: bs.map(([t]) => t).join(' ')}; }"""
+            was641 = js("[state.preset, state.from, state.to, document.documentElement.dataset.theme || null]")
+            bad641 = {}
+            for w in (360, 412):
+                page.set_viewport_size({"width": w, "height": 800})
+                for mode in ("light", "dark"):
+                    for big in (False, True):
+                        js("([t, css]) => { document.documentElement.dataset.theme = t; const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = css ? [s] : []; }",
+                           [mode, BIG622 if big else ""])
+                        for tab in ("labs", "health", "timeline"):
+                            for per in ("all", "1y"):
+                                js("([t, p]) => { switchTab(t, t === 'labs' ? 'chart' : t === 'timeline' ? 'timeline' : undefined); applyPreset(p); scrollTo(0, 0); }", [tab, per])
+                                settle(300)
+                                got = js(S641)
+                                if got["out"] or (got["h"] <= 40 if big else got["h"] != 40):
+                                    bad641[f"{tab} {per} {w} {mode}{' 200%' if big else ''}"] = got
+                                if big and per == "1y" and os.environ.get("SANGUITY_SHOTS"):
+                                    page.screenshot(path=os.path.join(os.environ["SANGUITY_SHOTS"], f"641-{tab}-{w}-{mode}-200.png"))
+            js("""w => { document.adoptedStyleSheets = []; [state.preset, state.from, state.to] = w; if (w[3]) document.documentElement.dataset.theme = w[3];
+              else delete document.documentElement.dataset.theme; switchTab('labs', 'chart'); renderAll(); }""", was641)
+            check("…and the overview strip's (#641): on Labs, Body and activity and the Timeline, in All and in a year, at 360 and 412 px, light and dark, "
+                  "as usual and with text at 200%: its dates inside it, none over another, under its bars, clear of the flags and the window's grips and "
+                  "inside the window's edges; 40 px tall, taller with the text", not bad641, bad641)
             page.set_viewport_size({"width": 1400, "height": 900})
             open_tab("overview")
             settle(300)

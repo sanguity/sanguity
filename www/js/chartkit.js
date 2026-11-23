@@ -15,8 +15,8 @@
    - ckSpark: the one sparkline, scaled to the reference band (the Overview, the visit summary, a share link's page);
    - ckSolo: a lab's chart on its own, at its box's width (a share link's histories, the visit summary's trends, #302);
    - ckFlagNames: milestones named so over a chart, flags on its top edge (Body and activity's first chart, #298);
-   - ckStripBins, ckStripBars, ckStripDates, ckStripWindow: the overview strip, every year's records with the period a
-     window on them (#295, charts.js stripDraw);
+   - ckStripBins, ckStripBars, ckStripH, ckStripDates, ckStripWindow: the overview strip, every year's records with the
+     period a window on them (#295, charts.js stripDraw), its dates' row as tall as the text (#641);
    - ckPos, ckPosSpan, ckPosTicks, CK_SERIES, ckSeriesKey, ckDumbbell: labs compared on one scale, each result's place
      in its own range, and a lab's medians before and after a date (#297, compare.js).
    CHART_LAYERS (trends.js) and TL_LANES (timeline.js) stay the plug-ins of Labs' event track and the Timeline.
@@ -330,10 +330,10 @@ function ckTip(svg, px, nodes) {
   showTip(nodes, {clientX: p.clientX, clientY: p.clientY - 14});   // showTip sets it 14 px below the point it's given
 }
 
-/* ---- the overview strip (#295): a tab's records across every year in 40 px, under the period bar, the period a window
-   on it (charts.js stripDraw). ckStripBins: the stretch, the shortest of a day, a week, a month, a quarter or a year
-   that's 3 px wide at least on x, and how many records each holds; items [[time, how many]], a to b ->
-   {edges: [each stretch's start, then b], n: [its count], step: [n, unit]} */
+/* ---- the overview strip (#295): a tab's records across every year in 40 px (more with larger text, #641), under the
+   period bar, the period a window on it (charts.js stripDraw). ckStripBins: the stretch, the shortest of a day, a week,
+   a month, a quarter or a year that's 3 px wide at least on x, and how many records each holds; items [[time, how
+   many]], a to b -> {edges: [each stretch's start, then b], n: [its count], step: [n, unit]} */
 function ckStripBins(items, a, b, x) {
   const perDay = Math.abs(x(a + DAY) - x(a)), step = [[1, "d"], [7, "d"], [1, "m"], [3, "m"], [1, "y"]].find(([n, u]) => n * CK_DAYS[u] * perDay >= 3) || [1, "y"];
   const edges = [a, ...ckStepTicks(a, b, ...step).map(k => k.t).filter(t => t > a && t < b), b], n = new Array(edges.length - 1).fill(0);
@@ -357,27 +357,33 @@ function ckStripBars(g, {edges, n}, x, T, B) {
   ckFoot(g, x(edges[0]), x(edges.at(-1)), B);
   if (d) g.push(el("svg:path", {class: "sb-bar", d}));
 }
-/* its dates under the foot B, baselines at y: the years (each, or every 2, 5 or 10), or for two years or less the months,
-   each at a short tick, as many as fit side by side inside W */
-function ckStripDates(g, a, b, x, B, y, W) {
-  const years = b - a > 730 * DAY;
+/* its height, for bars whose foot is at B: a row of dates under them as tall as the text (ckK: 40 px in all for bars
+   from 5 to 23, 55 with text at 200%), so the dates stay clear of the bars and inside the window's edges (#641) */
+const ckStripH = B => Math.round(B + 2 + 15 * ckK());
+/* its dates under the foot B, their baselines 12 px under it and their room growing with the text (ckK, #641): the years
+   (each, or every 2, 5 or 10), or for two years or less the months, each at a short tick, as many as fit side by side
+   inside W; one too near W's end goes back over its tick, centred on it at most, if it's clear of the one before
+   (larger text on a phone, ten years: "2020 2025", not "2020" alone) */
+function ckStripDates(g, a, b, x, B, W) {
+  const years = b - a > 730 * DAY, k = ckK(), y = B + 12 * k, off = 3 * k;
   for (const [n, u] of CK_STEPS) {
     if (u === "d" || (years && u === "m")) continue;
-    const ticks = ckStepTicks(a, b, n, u), say = k => u === "y" ? k.label : ckMonth(k.t);
-    if (ticks.some((k, i) => i && x(k.t) - x(ticks[i - 1].t) < labelW(say(ticks[i - 1]), "") + 10)) continue;
-    for (const k of ticks) {
-      const kx = x(k.t);
-      g.push(el("svg:line", {class: "gridline", x1: kx, x2: kx, y1: B, y2: B + 4}));
-      if (kx + 3 + labelW(say(k), "") <= W) g.push(el("svg:text", {x: kx + 3, y, text: say(k)}));
+    const ticks = ckStepTicks(a, b, n, u), say = t => u === "y" ? t.label : ckMonth(t.t);
+    if (ticks.some((t, i) => i && x(t.t) - x(ticks[i - 1].t) < off + labelW(say(ticks[i - 1]), "") + 7)) continue;
+    let end = -7;   // the last label's right (none yet: the strip's left)
+    for (const t of ticks) {
+      const tx = x(t.t), lw = labelW(say(t), ""), lx = Math.min(tx + off, W - lw);
+      g.push(el("svg:line", {class: "gridline", x1: tx, x2: tx, y1: B, y2: B + 4}));
+      if (lx >= end + 7 && lx >= tx - lw / 2) { g.push(el("svg:text", {x: lx, y, text: say(t)})); end = lx + lw; }
     }
     return;
   }
 }
-/* the window: the period, xa to xb, the strip's height h, with a grip at each edge; sb-a and sb-b name the grips, for
-   each one's range input to show its focus on it (app.css) */
-function ckStripWindow(g, xa, xb, h) {
+/* the window: the period, xa to xb, the strip's height h, with a grip at each edge over the bars (their foot B, so never
+   on the dates); sb-a and sb-b name the grips, for each one's range input to show its focus on it (app.css) */
+function ckStripWindow(g, xa, xb, h, B) {
   g.push(el("svg:rect", {class: "sb-win", x: xa, y: 1, width: Math.max(1, xb - xa), height: h - 2, rx: 3}));
-  for (const [px, k] of [[xa, "sb-a"], [xb, "sb-b"]]) g.push(el("svg:rect", {class: "sb-grip " + k, x: px - 3.5, y: h / 2 - 10, width: 7, height: 16, rx: 2}));
+  for (const [px, k] of [[xa, "sb-a"], [xb, "sb-b"]]) g.push(el("svg:rect", {class: "sb-grip " + k, x: px - 3.5, y: B - 16, width: 7, height: 16, rx: 2}));
 }
 
 /* ---- names over marks (#294, the event track): items [{x, text, cls, rank}] in time order, each mark named in one of

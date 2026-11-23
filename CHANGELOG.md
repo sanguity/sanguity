@@ -1690,6 +1690,12 @@ Everything on `main` so far; it becomes the first tagged release.
   rows under Labs' event track (journal, mood, cycle, doses, medications) kept fixed heights. Their gutters, rows and
   offsets now grow with the text; the Timeline's lane names go over their lanes where a gutter would take too much of
   a phone's width, and the event track's row names over their rows where they don't fit beside them (WCAG 1.4.4).
+- **Larger text: the overview strip's dates fit** (#641): with text at 200% on a phone the strip's years ran over its
+  bars, its milestone flags and its window's grips, and out past its foot. Its row of dates now grows with the text,
+  the strip with it (40 px as usual, 55 at 200%), the grips stay over the bars, and its dates keep inside the window's
+  edges on Labs, Body and activity and the Timeline (WCAG 1.4.4). A year too near the strip's end to fit after its
+  tick is set back over it rather than left out (ten years at 200%: "2020 2025", not "2020" alone). As usual its bars
+  are 3 px shorter, so a month's "p" no longer touches the window's edge.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

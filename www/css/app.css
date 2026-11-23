@@ -1801,7 +1801,7 @@ select option,select optgroup{background:var(--raised);color:var(--ink)}
 /* the overview strip (#295, charts.js): its own line under the period bar; on a phone the charts' header's last. The
    window and its grips in the accent (a control's, not the data's); the grip whose range input has focus filled */
 .ck-strip{position:relative;flex:1 1 100%;min-width:0;touch-action:pan-y;cursor:grab}
-.ck-strip>svg{display:block;width:100%;height:40px}
+.ck-strip>svg{display:block;width:100%}
 @media (max-width:700px){ .ck-strip{flex-basis:160px} }   /* beside the pill or Show where there's room */
 .ck-strip:is([data-grab=a],[data-grab=b]){cursor:ew-resize}
 .ck-strip[data-grab=ms]{cursor:pointer}
