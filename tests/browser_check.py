@@ -10045,6 +10045,39 @@ def main():
             check("…each milestone's “Since” button whole on the presets' row with More… beside them, or in More… (#656), at 768, 1100 and 1400 px "
                   "with the demo's milestones and three more; one picked from More… named on it",
                   not bad656 and more656 > 0 and picked656[:3] == [True] * 3 and not picked656[3]["lost"] and picked656[3]["row"], [bad656, more656, picked656])
+            # #724: each preset and Since button, pressed by keyboard, keeps focus on itself drawn again, chosen (the row was
+            # drawn anew without keepFocus: focus fell to the page, the next Tab starting again at All), on Labs, Body and
+            # activity, the Timeline and Costs, at 1400×900 and at 844×390 on a touch screen (a phone on its side)
+            HAS724 = r"""() => { const a = document.activeElement;
+              return a.closest('#presets') ? a.textContent + (a.getAttribute('aria-pressed') === 'true' ? '' : ' (not chosen)') : a === document.body ? 'the page' : a.id || a.tagName; }"""
+
+            def presets724(pg, where):
+                """each button in the presets' row focused and pressed by Enter, All last: {where it is, what has focus after} where that isn't it"""
+                lost = {}
+                for t724 in ("labs", "health", "timeline", "costs"):
+                    pg.evaluate("t => { switchTab(t); scrollTo(0, 0); }", t724)
+                    pg.wait_for_timeout(300)
+                    for i in [*range(1, pg.evaluate("document.querySelectorAll('#presets button').length")), 0]:
+                        words = pg.evaluate("i => (b => { b.focus(); return b.textContent; })(document.querySelectorAll('#presets button')[i])", i)
+                        pg.keyboard.press("Enter")
+                        pg.wait_for_timeout(200)
+                        got = pg.evaluate(HAS724)
+                        if got != words:
+                            lost[f"{where}, {t724}, {words}"] = got
+                return lost
+            lost724 = presets724(page, "1400×900")
+            tctx = browser.new_context(viewport={"width": 844, "height": 390}, bypass_csp=True, has_touch=True, is_mobile=True)
+            tctx.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
+            tpg = tctx.new_page()
+            tpg.goto(base + "/?profile=1#labs")
+            tpg.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted", timeout=20000)
+            lost724.update(presets724(tpg, "844×390 touch"))
+            tctx.close()
+            open_tab("labs")
+            js("applyPreset('2y')")
+            settle(300)
+            check("…each preset and Since button pressed by keyboard keeps focus on itself, chosen, on Labs, Body and activity, the Timeline and Costs, "
+                  "at 1400×900 and 844×390 on a touch screen (#724: focus fell to the page)", not lost724, lost724)
             # ---- the overview strip (#295): under the period bar on Labs, Body and activity and the Timeline (not on Costs or
             # Medications), 40 px: the tab's records per stretch across every year, the milestones as flags and the period
             # a window. Dragged by its middle it moves the shared period, as wide; by an edge, that edge; a press beside it

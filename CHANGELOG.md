@@ -1787,6 +1787,10 @@ Everything on `main` so far; it becomes the first tagged release.
   the stack, a table too, fits whole between them. And the first time Labs' charts were drawn in a page, after opening
   Labs on Heatmap or Compare, the axis's height was set only after Chart these results had brought the chart into
   view, so with text at 200% the chart went under the axis; it's set as the axis is drawn (WCAG 2.4.11).
+- **A period's button pressed by keyboard keeps focus** (#724): All, 5y to 30d and each Since button, pressed by
+  Enter or Space on Labs, Body and activity, the Timeline or Costs, drew the period's row again and dropped focus to
+  the page, so the next Tab started again at All. Focus stays on the button pressed, or goes to More… where its
+  milestone has gone in there.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

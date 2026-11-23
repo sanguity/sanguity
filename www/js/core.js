@@ -91,6 +91,13 @@ function setPeriod(p) {
   else { state.to = end; state.from = end - PRESET_DAYS[p] * DAY; }
 }
 function applyPreset(p) { periodKept = null; setPeriod(p); renderAll(); }
+/* a preset or Since button pressed: focus stays on it as the row is drawn again (store.js keepFocus; #724: it fell to
+   the page, the next Tab starting again at All), or goes to More… where it's gone in there */
+function presetPick(p) {
+  const had = !!document.activeElement?.closest("#presets");
+  keepFocus(() => applyPreset(p));
+  if (had && document.activeElement === document.body) moreBtn.focus();
+}
 /* period p for this visit only (the palette's search of everything on file from another page, #472): the person's
    own stays the one saved, until they pick another */
 function periodVisit(p) { const kept = periodKept || {preset: state.preset, from: state.from, to: state.to}; setPeriod(p); periodKept = kept; }
@@ -144,7 +151,7 @@ let presetsCut = 0, presetsFor = "";   // how many Since buttons, from the last,
 function renderPeriod(fit = true) {
   const p = state.preset, n = MILESTONES.length - presetsCut;   // each milestone has a button: "Since diagnosis" (#295), as many as fit
   $("#presets").replaceChildren(...[...PRESETS, ...MILESTONES.slice(0, n).map(m => [msKey(m), "Since " + lcLabel(m.label), "Since " + fmtD(dayTs(m.date))])].map(([k, l, tip]) =>
-    el("button", {type: "button", "aria-pressed": p === k, text: l, "data-tip": tip || null, onclick: () => applyPreset(k)})));
+    el("button", {type: "button", "aria-pressed": p === k, text: l, "data-tip": tip || null, onclick: () => presetPick(k)})));
   const item = (k, text, note) => el("button", {type: "button", class: "menu-item", role: "menuitemradio", tabindex: "-1", "aria-checked": p === k, "data-period": k},
     icon("check"), text, note ? el("span", {class: "menu-note", text: note}) : null);
   const group = (label, items) => items.length ? el("div", {role: "group", "aria-label": label}, el("div", {class: "menu-head", "aria-hidden": "true", text: label}), ...items) : null;
