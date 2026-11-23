@@ -54,13 +54,17 @@ function ckFit(t, cls, room) { if (labelW(t, cls) <= room) return t; for (let n 
 /* the labels' size against the 11.5 px the charts are laid out for, 1 or more: with larger text (200%, a phone's font
    size, #622) a chart's gutters, rows of labels and their offsets grow by it, so its labels stay inside it (1.4.4).
    The sizes labelW kept go when it changes */
-let ckFs = 0;
+let ckFs = 0, ckKv = 0;
 const ckK = () => {
+  // read once for a whole draw: kept until the drawing code running now is done (a microtask), as each read after the
+  // page has changed made the browser work its styles out again, a quarter of a phone's frame of a drag (#300)
+  if (ckKv) return ckKv;
   if (!labelText?.isConnected) labelW("0", "");
   labelText.setAttribute("class", "");   // a chart label's size, not that of the class labelW measured last (a lane's name is larger)
   const fs = parseFloat(getComputedStyle(labelText).fontSize);
   if (fs !== ckFs) { ckFs = fs; labelSizes.clear(); }
-  return Math.max(1, fs / 11.5);
+  ckKv = Math.max(1, fs / 11.5); queueMicrotask(() => { ckKv = 0; });
+  return ckKv;
 };
 
 /* ---- the time axis: ticks at two levels, the finer over the coarser: days over "Sep 2026", months over "2026"; years
