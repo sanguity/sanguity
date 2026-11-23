@@ -23,6 +23,9 @@ function labWhere(p) {
 }
 /* the decimals a result is printed with, so a median or a change is said to the same places ("14.8", "0.91") */
 const labDec = p => (/\.(\d+)/.exec(String(p[5] || p[1]))?.[1].length) || 0;
+/* a result given as the value measured, not as a bound ("<0.5", ">90"): a change is worked out only between two such,
+   here and on the Overview's tiles (#718) */
+const labSure = p => !/[<>≤≥]/.test(p[5] || "");
 /* the results' counts and positions, from the results the lab's table lists for the period (pts, oldest first) */
 function labStats(pts) {
   if (!pts.length) return null;
@@ -36,10 +39,9 @@ function labStats(pts) {
   const where = {in: 0, above: 0, below: 0, flagged: 0, "": 0};
   for (const p of pts) where[labWhere(p)]++;
   // the change from the first to the latest, as printed; not worked out from a value given as "<0.5" or ">90"
-  const sure = p => !/[<>≤≥]/.test(p[5] || "");
   const d = last[1] - first[1], pct = first[1] ? Math.round(d / Math.abs(first[1]) * 100) : null;
   const signed = (v, t) => (v > 0 ? "+" : v < 0 ? "−" : "") + t;   // a minus sign, not a hyphen
-  const change = n < 2 || !sure(first) || !sure(last) ? null
+  const change = n < 2 || !labSure(first) || !labSure(last) ? null
     : {text: signed(d, Math.abs(d).toFixed(Math.max(labDec(first), labDec(last)))), pct: pct == null ? "" : ` (${signed(pct, Math.abs(pct))}%)`};
   return {n, first, last, low: ext(Math.min), high: ext(Math.max), median, where, ranged: n - where[""], change,
     lastIn: [...pts].reverse().find(p => labWhere(p) === "in") || null, fromSettings: pts.filter(p => p.rs === "settings").length};

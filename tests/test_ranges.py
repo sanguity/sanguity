@@ -201,7 +201,7 @@ class Api(unittest.TestCase):
         vd = oor["Vitamin D, 25-OH"]   # 12 low by the range from settings; 18 flagged L by its own lab, with no range
         self.assertEqual((vd["value"], vd["flag"], vd["range"], vd["out"]), ("18", "Low", "", 2))
         tr = {t["name"]: t for t in s["trends"]}
-        self.assertEqual([x[2:] for x in tr["Ferritin"]["spark"]], [["High", 20, 200, "settings"], [None, 20, 200, "settings"],
+        self.assertEqual([x[2:6] for x in tr["Ferritin"]["spark"]], [["High", 20, 200, "settings"], [None, 20, 200, "settings"],
                                                                     [None, 30, 400, None], ["Low", 20, 200, "settings"]],
                          "each with its flag and its own range, from settings where its report gives none, and said so (#299, #649)")
         self.assertEqual(tr["Ferritin"]["now"]["range"], "20–200 (settings)")
@@ -228,7 +228,7 @@ class Api(unittest.TestCase):
         self.assertEqual(r.status_code, 200, r.text)
         s = r.json()
         vd = next(t for t in s["trends"] if t["name"] == "Vitamin D")
-        self.assertEqual([p[1:] for p in vd["spark"]],
+        self.assertEqual([p[1:6] for p in vd["spark"]],
                          [[22, "Low", 30, 100, "settings"], [26, "Low", 30, 100, "settings"], [34, None, 30, 100, "settings"],
                           [41, None, 30, 100, "settings"]], "the chart's and sparkline's points: each flag, and its range from settings")
         self.assertEqual((vd["then"], vd["now"]["flag"], vd["now"]["range"]),

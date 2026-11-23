@@ -19469,7 +19469,9 @@ def main():
                                        "labs": [{"name": "Vitamin D", "unit": "ng/mL", "panel": "", "n": 4, "txt": [],
                                                  "pts": [[f"{d649(n)}T08:00:00", v, None, None, "", str(v)] for n, v in ((120, 22), (60, 26), (30, 34), (10, 41))]},
                                                 {"name": "Folate", "unit": "ng/mL", "panel": "", "n": 3, "txt": [],   # (#717)
-                                                 "pts": [[f"{d649(n)}T08:00:00", v, lo, hi, "", str(v)] for n, v, lo, hi in ((100, 4, None, None), (40, 6, 3, 17), (10, 7, 3, 17))]}]},
+                                                 "pts": [[f"{d649(n)}T08:00:00", v, lo, hi, "", str(v)] for n, v, lo, hi in ((100, 4, None, None), (40, 6, 3, 17), (10, 7, 3, 17))]},
+                                                {"name": "C-Reactive Protein", "unit": "mg/L", "panel": "", "n": 2, "txt": [],   # (#718)
+                                                 "pts": [[f"{d649(100)}T08:00:00", 5, 0, 5, "", "<5"], [f"{d649(10)}T08:00:00", 6, 0, 5, "H", "6"]]}]},
                             "upload", fmt="csv")
             db.close()
             js("""async pid => { const h = {'X-Sanguity': '1', 'Content-Type': 'application/json'}, s = await (await fetch(`api/profiles/${pid}/settings`, {headers: h})).json();
@@ -19528,6 +19530,39 @@ def main():
                   and "Each is judged against the range printed on its own report, or, where its report gives none, the range from settings" in pdf649
                   and "or, where its report gives none, outside the range from settings, which its cell then gives" in pdf649,
                   [got717, re.findall(r"Folate \(ng/mL\) .{0,60}|Each is judged.{0,120}|High or Low \(in red\).{0,160}", pdf649), chart717[:120]])
+            # #718: a value given as "<5", then 6: the chart's titles say "<5" as the table does (it said 5), and no change is
+            # worked out from it (it was "+1"), said as the lab panel says it, in the preview, the PDF and the Overview's tile
+            page.fill("#labIn", "C-Reactive Protein")
+            page.click("#labAdd")
+            page.wait_for_function("[...document.querySelectorAll('#preview:not([aria-busy]) #prevBody .sum-chart > figcaption')].some(f => f.textContent.startsWith('C-Reactive'))", timeout=10000)
+            got718 = js(r"""async () => { const fig = [...document.querySelectorAll('#prevBody .sum-chart')].find(f => f.querySelector('figcaption').textContent.startsWith('C-Reactive'));
+              const tr = [...[...document.querySelectorAll('#prevBody h3')].find(h => h.textContent.startsWith('Trends')).nextElementSibling.querySelectorAll('tbody tr')]
+                .find(r => r.cells[0].textContent.startsWith('C-Reactive'));
+              const r = await fetch(`api/profiles/${PID}/summary/pdf`, {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, body: JSON.stringify(chosen())});
+              const a = new Uint8Array(await r.arrayBuffer()); let b = ''; for (const x of a) b += String.fromCharCode(x);
+              return {titles: [...fig.querySelectorAll(':is(circle.pt, path.pt.abn) > title')].map(t => t.textContent.split(': ').slice(1).join(': ')),
+                then: tr.cells[1].textContent, change: tr.cells[3].textContent, pdf: btoa(b)}; }""")
+            try:
+                pdf718 = " ".join("\n".join(p_.extract_text() for p_ in PdfReader(io.BytesIO(base64.b64decode(got718.pop("pdf")))).pages).split())
+            except Exception as e:
+                pdf718 = f"no PDF: {e}"
+            js("""async pid => { await fetch(`api/profiles/${pid}/settings/overview.keyLabs`, {method: 'PUT', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'},
+              body: JSON.stringify({value: ['C-Reactive Protein']})}); }""", rpid)
+            page.goto(base + f"/?profile={rpid}")
+            page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {rpid}", timeout=20000)
+            js("switchTab('overview')")
+            settle(300)
+            got718["tile"] = js("""[...document.querySelectorAll('#view-overview .tile')].filter(t => t.querySelector('.lbl').textContent.startsWith('C-Reactive'))
+              .map(t => [t.querySelector('.val').textContent, t.querySelector('.delta').textContent])""")
+            page.goto(base + f"/sharing.html?profile={rpid}#summary")   # (as it was: the profile is deleted next)
+            page.wait_for_selector("#preview:not([hidden]):not([aria-busy]) h3", timeout=10000)
+            check("visit summary (#718): a value given as “<5” then 6: the chart's titles say “<5 mg/L” (they said “5 mg/L”), its Change “not worked "
+                  "out” in the preview and the PDF (with why under the table) rather than “+1”, and the Overview's tile “change not worked out”, not “↑ 1”",
+                  got718["titles"] == ["<5 mg/L", "6 mg/L ▲ High"] and got718["then"].startswith("<5") and got718["change"] == "not worked out"
+                  and re.search(r"C-Reactive Protein \(mg/L\) <5 .{1,16}? 6 High .{1,16}? not worked out 1", pdf718)
+                  and "Change: not worked out from a value given as “<5” or “>90”." in pdf718
+                  and got718["tile"] == [["6mg/L", "change not worked out"]],
+                  [got718, re.findall(r"C-Reactive Protein \(mg/L\) .{0,60}|Change: .{0,60}", pdf718)])
             db = dbm.connect()
             prof_r.delete_profile(db, rpid)
             db.close()

@@ -12,8 +12,9 @@ Sections, each optional (SECTIONS):
                  range the person set in Settings for that lab and unit (#44, server/ranges.py), if one fits; the
                  range is then printed with "(settings)" after it, and the note under the table says what that is
   trends         the key labs (overview.keyLabs) and any the person picked: the last result on or before the
-                 "since" date, the latest, the change, and a sparkline of the results between (each [day, value,
-                 flag, low, high, "settings" for a range from settings], drawn against their ranges, #299), and a
+                 "since" date, the latest, the change (none from a value given as "<5", #718), and a sparkline of
+                 the results between (each [day, value, flag, low, high, "settings" for a range from settings, the
+                 value as given], drawn against their ranges, #299), and a
                  chart of them (#302) whose band says where it's a range from settings (#649), on each of its steps;
                  a Then or Now flagged against one says so in its cell, with its numbers (#717)
   medications    current medications (status active, or no status and no end date)
@@ -223,6 +224,14 @@ def value_text(p):
     return p["text"] or fmt_num(p["v"])
 
 
+NOT_WORKED_OUT = "not worked out"   # a trend's change from or to a value given as a bound (#718; lab-panel.js labStats)
+
+
+def bound(p):
+    """A result given as a bound, "<5" or ">90", not as the value measured: no change is worked out from it."""
+    return bool(re.search(r"[<>≤≥]", p["text"]))
+
+
 def at_cell(p):
     """A trend's Then or Now: its value, day and flag in words (#649); and where it's flagged against a range from
     settings (its report gave none, #44), that range's numbers, which its cell says (#717: a Then of 4 Low against 5–20
@@ -379,19 +388,21 @@ def build(db, pid, uid, profile_name, opts):
             last = after[-1] if after else None
             change = None
             if then and last and then["v"] is not None and last["v"] is not None:
-                change = last["v"] - then["v"]
+                # never from a value given as "<5" or ">90" (#718: "<5" then 6 was "+1"), said as the lab panel says it
+                change = NOT_WORKED_OUT if bound(then) or bound(last) else last["v"] - then["v"]
             line = ([then] if then else []) + after
             if len(line) < 2:   # too few since: the last few results, for some shape
                 line = s["pts"][-6:]
             # Then flagged as Now is, so the table and the chart agree on it (#649), each saying the range from settings
-            # it's flagged against (#717); each spark point [day, value, flag, low, high, "settings" or None]: its range
-            # from settings where its report gave none (#44), the chart's band marked so
+            # it's flagged against (#717); each spark point [day, value, flag, low, high, "settings" or None, its value
+            # as given]: its range from settings where its report gave none (#44), the chart's band marked so; its value
+            # as the table says it, "<5" (#718)
             rows.append({"name": name, "label": nick.get(name, name), "unit": s["unit"],
                          "then": then and at_cell(then), "now": last and {**at_cell(last), "range": range_text(last)},
-                         "change": None if change is None else ("+" if change > 0 else "") + fmt_num(0 if abs(change) < 1e-9 else change),
+                         "change": change if change in (None, NOT_WORKED_OUT) else ("+" if change > 0 else "") + fmt_num(0 if abs(change) < 1e-9 else change),
                          "since": len(after),
-                         "spark": [[p["d"], p["v"], out_of_range(p), p["lo"], p["hi"], ranges.SOURCE if p["rs"] == ranges.SOURCE else None]
-                                   for p in line if p["v"] is not None]})
+                         "spark": [[p["d"], p["v"], out_of_range(p), p["lo"], p["hi"], ranges.SOURCE if p["rs"] == ranges.SOURCE else None,
+                                    value_text(p)] for p in line if p["v"] is not None]})
         out["trends"] = rows
     if "medications" in wanted:
         out["medications"] = _medications(data, now)
@@ -776,7 +787,9 @@ def _render(s, charts):
                 lay.note("Then: the last result on or before that day. Since: how many results since. High or Low (in "
                          "red): outside the range on that result's own report" + (", or, where its report gives none, "
                          "outside the range from settings, which its cell then gives (“settings range” and its numbers)"
-                         if settings else "") + ".", 7.5)   # what each flag is judged against (#717: "marked so", and none was)
+                         if settings else "") + "." + (" Change: not worked out from a value given as “<5” or “>90”."
+                                                       if any(r["change"] == NOT_WORKED_OUT for r in rows) else ""), 7.5)
+                # (what each flag is judged against, #717: "marked so", and none was; and why a change isn't given, #718)
                 if settings:
                     lay.note(SETTINGS_NOTE, 7.5)
                 if charts:

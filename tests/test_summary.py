@@ -268,8 +268,8 @@ class Summary(unittest.TestCase):
         hb = next(t for t in s["trends"] if t["name"] == "Hemoglobin")
         self.assertEqual((hb["then"], hb["now"]["value"], hb["now"]["flag"], hb["change"], hb["since"]),
                          ({"value": "12.1", "date": d(-60), "flag": None}, "11.8", "Low", "-0.3", 2))
-        self.assertEqual([p[2:] for p in hb["spark"]], [[None, 12.0, 15.5, None], ["Low", 12.0, 15.5, None], ["Low", 12.0, 15.5, None]],
-                         "each with its flag and its own range, for the sparkline (#299), from its report (#649)")
+        self.assertEqual([p[2:] for p in hb["spark"]], [[None, 12.0, 15.5, None, "12.1"], ["Low", 12.0, 15.5, None, "11.4"], ["Low", 12.0, 15.5, None, "11.8"]],
+                         "each with its flag and its own range, for the sparkline (#299), from its report (#649), and its value as given (#718)")
         # both sources' ferritin are one trend, each result with its own range
         s = self.preview(labs=["Ferritin", "Not a lab"])
         fe = next(t for t in s["trends"] if t["name"] == "Ferritin")
@@ -304,6 +304,43 @@ class Summary(unittest.TestCase):
             big = {**s, "trends": [{**hb, "now": worst}]}
             self.assertIn(cell, text_of(summary.render(big)[0])[1], "not cut short")
         self.assertEqual(sum(w for _, w in summary.TREND_COLS if w), 432, "the columns still fit the page")
+
+    def test_no_change_from_a_bound(self):
+        """#718: a value given as "<5" isn't 5. C-Reactive Protein "<5" then 6 showed Change "+1" in the preview and the PDF,
+        and its chart's mark was titled "5 mg/L": the change isn't worked out from a value given as a bound, either way
+        (Troponin 0.04 then "<0.01"), said as the lab panel says it, and each chart point carries its value as given."""
+        db = dbm.connect()
+        pid = prof.create_profile(db, "Bounds (fictional)", owner_id=self.uid["robin"])
+        with dbm.transaction(db):
+            records.store(db, pid, {"built": day(0), "source": "fictional", "events": [], "details": {}, "costs": [], "upcoming": [], "labs": [
+                {"name": "C-Reactive Protein", "unit": "mg/L", "panel": "", "n": 2, "txt": [],
+                 "pts": [[day(-60), 5, 0, 5, "", "<5"], [day(-10), 6, 0, 5, "H", "6"]]},
+                {"name": "Troponin I", "unit": "ng/mL", "panel": "", "n": 2, "txt": [],
+                 "pts": [[day(-60), 0.04, None, 0.04, "", "0.04"], [day(-10), 0.01, None, 0.04, "", "<0.01"]]},
+                {"name": "Albumin", "unit": "g/dL", "panel": "", "n": 2, "txt": [],
+                 "pts": [[day(-60), 4.1, 3.5, 5.0, "", "4.1"], [day(-10), 4.3, 3.5, 5.0, "", "4.3"]]}]}, "upload", fmt="csv")
+        db.close()
+        try:
+            body = {**self.opts(appointment=None, since=d(-30), sections=["trends"], labs=["C-Reactive Protein", "Troponin I", "Albumin"])}
+            r = self.c["robin"].post(f"/api/profiles/{pid}/summary/preview", json=body, headers=H)
+            self.assertEqual(r.status_code, 200, r.text)
+            t = {x["name"]: x for x in r.json()["trends"]}
+            crp = t["C-Reactive Protein"]
+            self.assertEqual((crp["then"]["value"], crp["now"]["value"], crp["change"]), ("<5", "6", "not worked out"), "not +1")
+            self.assertEqual(t["Troponin I"]["change"], "not worked out", "nor to one")
+            self.assertEqual(t["Albumin"]["change"], "+0.2", "between two values as measured, as before")
+            self.assertEqual([p[6] for p in crp["spark"]], ["<5", "6"], "each chart point's value as given, for its title")
+            r = self.c["robin"].post(f"/api/profiles/{pid}/summary/pdf", json=body, headers=H)
+            self.assertEqual(r.status_code, 200, r.text[:300])
+            text = " ".join(text_of(r.content)[1].split())
+            self.assertIn(f"C-Reactive Protein (mg/L) <5 {summary._short(d(-60))} 6 High {summary._short(d(-10))} not worked out 1", text)
+            self.assertIn("Change: not worked out from a value given as “<5” or “>90”.", text, "why, under the table")
+            self.assertNotIn("+1", text)
+        finally:
+            db = dbm.connect()
+            prof.delete_profile(db, pid)
+            db.close()
+        self.assertNotIn("Change: not worked out", " ".join(text_of(self.pdf().content)[1].split()), "said only where a change isn't given")
 
     def test_questions_draft(self):
         url = f"/api/profiles/{self.pid}/summary/questions"
