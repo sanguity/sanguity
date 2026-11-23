@@ -10614,6 +10614,40 @@ def main():
             check("With text at 200% at 360 and 412 px, light and dark (#622, 1.4.4): the phone's tabs inside their places, icons alone, still named, the bar "
                   "as tall as the page leaves it; the profile's name whole, on a row of its own at 360; Labs' chart, axis and event-track labels inside their "
                   "charts, none over another. At the usual size the tabs keep their words and the profile its place", not bad622, bad622)
+            # ---- #633: the heatmap's own labels too (its names' column, rows and axis grow with the text, chartkit.js ckK):
+            # with text at 200% and as usual, at 360 and 412 px, light and dark, every row's and panel's name, count and the
+            # axis's labels inside the grid's or the axis's SVG, none over another
+            T633 = r"""() => { const r = e => e.getBoundingClientRect(), labels = [];
+              for (const s of document.querySelectorAll('#hm, #hmAxis')) {
+                const R = r(s), bs = [...s.querySelectorAll('text')].filter(t => t.textContent.trim()).map(t => [t.textContent.slice(0, 20), r(t)]);
+                for (const [t, b] of bs) if (b.left < R.left - 1 || b.right > R.right + 1 || b.top < R.top - 1 || b.bottom > R.bottom + 1) labels.push(t + ' outside');
+                bs.forEach(([t, a], i) => bs.slice(i + 1).forEach(([u, b]) => { if (a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1) labels.push(t + ' over ' + u); }));
+              }
+              return {labels, rows: document.querySelectorAll('#hm text.row').length, axis: document.querySelectorAll('#hmAxis text').length}; }"""
+            bad633 = {}
+            open_tab("heatmap")
+            for w in (360, 412):
+                page.set_viewport_size({"width": w, "height": 800})
+                for mode in ("light", "dark"):
+                    for big in (False, True):
+                        js("([t, css]) => { document.documentElement.dataset.theme = t; const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = css ? [s] : []; renderHeatmap(); }",
+                           [mode, BIG622 if big else ""])
+                        settle(400)
+                        got = js(T633)
+                        if got["labels"] or got["rows"] < 5 or got["axis"] < 2:
+                            bad633[f"{w} {mode}{' 200%' if big else ''}"] = got
+                        if big:   # and in 90 days, one draw day: its grid narrower than its heading and its month
+                            js("window._was633 = [state.preset, state.from, state.to]; setPeriod('90d'); renderHeatmap()")
+                            got = js(T633)
+                            js("[state.preset, state.from, state.to] = window._was633; renderAll()")
+                            if got["labels"] or got["axis"] < 2:
+                                bad633[f"{w} {mode} 200% 90 days"] = got
+                        if big and os.environ.get("SANGUITY_SHOTS"):
+                            page.screenshot(path=os.path.join(os.environ["SANGUITY_SHOTS"], f"633-heatmap-{w}-{mode}-200.png"))
+            js("t => { document.adoptedStyleSheets = []; if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; renderHeatmap(); }", theme622)
+            settle(300)
+            check("…and the heatmap's (#633): its names, counts and axis labels inside its grid and axis, none over another, with text at 200% and as usual, "
+                  "at 360 and 412 px, light and dark, and at 200% in 90 days too", not bad633, bad633)
             page.set_viewport_size({"width": 1400, "height": 900})
             open_tab("overview")
             settle(300)
