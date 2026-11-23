@@ -327,4 +327,4 @@ const msOf = k => k === "dx" ? primaryMs() : isMsKey(k) ? MILESTONES[+k.slice(1)
 const lcLabel = s => /^[A-Z][a-z]/.test(s) ? s[0].toLowerCase() + s.slice(1) : s;   // "Treatment start" -> "treatment start", "CAR-T" stays
 /* the old tab ids (#172): Trends and Lab heatmap are the Labs tab's chart and heatmap. -> [tab, labsView] */
 const TAB_ALIAS = {trends: ["labs", "chart"], heatmap: ["labs", "heatmap"]};
-const tabAlias = (t, view) => TAB_ALIAS[t] || [t, view === "heatmap" ? "heatmap" : "chart"];
+const tabAlias = (t, view) => TAB_ALIAS[t] || [t, view === "heatmap" || view === "compare" ? view : "chart"];

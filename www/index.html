@@ -78,7 +78,7 @@
          mean) and an ⓘ behind buttons, then the caption beside the out-of-range flags (#57) -->
     <div class="labs-head">
       <div class="toolbar chart-bar">
-        <div class="seg" id="labsView" role="group" aria-label="Show the lab results as"><button type="button" data-view="chart" aria-pressed="true">Chart</button><button type="button" data-view="heatmap" aria-pressed="false">Heatmap</button></div>
+        <div class="seg wrap" id="labsView" role="group" aria-label="Show the lab results as"><button type="button" data-view="chart" aria-pressed="true">Chart</button><button type="button" data-view="heatmap" aria-pressed="false">Heatmap</button><button type="button" data-view="compare" aria-pressed="false">Compare</button></div>
         <!-- on a phone (#615, core.js): Show, one button opening the overlays, the legend and the ⓘ under the row -->
         <button class="btn show-btn chart-only" id="showBtn" type="button" aria-expanded="false" aria-controls="showBox">Show<svg class="icon i-chevron-down" aria-hidden="true" focusable="false"><use href="icons/sprite.svg#i-chevron-down"/></svg></button>
         <div class="show-box chart-only" id="showBox">
@@ -131,6 +131,22 @@
       <div class="hm-wrap" id="hmWrap"><svg id="hm" class="pz" role="img" aria-label="Heatmap of lab values against reference ranges"></svg><svg id="hmAxis" class="pz" aria-hidden="true"></svg></div>
       <div id="hmTable" hidden></div>
     </div>
+    <!-- up to three labs on one scale, each result within its own range, and their medians before and after a milestone (#297, compare.js) -->
+    <div class="cmp" id="labsCompare" hidden>
+      <div class="card" id="cmpCard">
+        <div class="list-hd" id="cmpHd"><h2>Compare labs</h2><span class="spacer"></span></div>
+        <p class="hint">Up to three labs on one scale: each result placed within its own reference range, 0% at its low limit and 100% at its high.</p>
+        <div class="about-words" hidden><p>Each result is placed against the range printed on its own report (or one you set in Settings, where the report gives none), so labs in different units share one axis: 50% is the middle of a result's range, 120% above its high limit by a fifth of the range's width. A result whose report gives only one limit, or none, can't be placed, and is listed in the table only.</p><p>Hover the chart, or step through it with the arrow keys, to see each lab's result nearest that date.</p></div>
+        <div class="cmp-pick" id="cmpPick"></div>
+        <div id="cmpBody"></div>
+      </div>
+      <div class="card" id="cmpMsCard">
+        <div class="list-hd" id="cmpMsHd"><h2>Before and after a milestone</h2><span class="spacer"></span></div>
+        <p class="hint">Each lab's median place in its own range before the milestone and from it on, from the results in this period. It shows what the records hold, not what caused a difference.</p>
+        <div class="cmp-pick" id="cmpMsPick"></div>
+        <div id="cmpMsBody"></div>
+      </div>
+    </div>
   </section>
 </main>
 <footer class="notice" id="notice"><strong>Not medical advice.</strong> Sanguity shows what your records say. It doesn't diagnose, interpret results or recommend treatment; your care team interprets them in context.</footer>
@@ -179,6 +195,7 @@
 <script src="js/medications.js"></script>
 <script src="js/overview.js"></script>
 <script src="js/heatmap.js"></script>
+<script src="js/compare.js"></script>
 <script src="js/costs.js"></script>
 <script src="js/health.js"></script>
 <script src="js/app.js"></script>

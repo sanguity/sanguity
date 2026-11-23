@@ -4144,6 +4144,114 @@ def main():
             check("…Table: a real table, a header for each lab and each draw day, out-of-range results said high or low",
                   ht and ht[0] and not ht[1] and ht[2] == nrows and ht[3] == ncols + 1 and len(ht[4]) == cells[0]
                   and set(ht[4]) <= {"high", "low"} and ht[5] > 0, ht and ht[:4] + [len(ht[4]), ht[5]] + [nrows, ncols])
+            # ---- labs compared (#297, compare.js): Labs' third view, at #labs-compare. Up to three labs on one axis, each
+            # result's place in its own range (0% its low limit, 100% its high), every value label a percentage (no second
+            # y-scale); each lab its own dash and mark. Worked out here from the records (SERIES) and held against the
+            # table: each result's place, and each lab's median place before a milestone and from its day on. Then the
+            # keyboard, no correlation or verdict words, and axe-core and a phone's width, light and dark, chart and table
+            js("state.tables.clear(); applyPreset('2y'); state.sel = new Set(['Hemoglobin', 'WBC', 'Creatinine']); cmpSel = null; cmpMsDate = null; switchTab('labs', 'compare')")
+            settle(600)
+            cmp_draw = js("""(() => { const s = document.getElementById('cmpSvg');
+                return {hash: location.hash, pressed: document.querySelector('#labsView [aria-pressed=true]').dataset.view, picks: [0, 1, 2].map(i => document.getElementById('cmpLab' + i).value),
+                  lines: [...s.querySelectorAll('.cmp-line')].map(l => l.getAttribute('stroke') + ' ' + l.getAttribute('stroke-dasharray')),
+                  values: [...s.querySelectorAll(':scope > text:not([class])')].filter(t => +t.getAttribute('x') < s._geom.L).map(t => t.textContent),
+                  unit: s.querySelector('.ck-unit')?.textContent, label: s.getAttribute('aria-label'), role: s.getAttribute('role'),
+                  hidden: ['labsChart', 'labsHeatmap'].map(id => document.getElementById(id).hidden)}; })()""")
+            page.focus("#cmpSvg")
+            page.keyboard.press("End")
+            settle(200)
+            cmp_key = js("[getComputedStyle(tip).display, tip.innerText, [0, 1, 2].map(i => document.getElementById('cmpRead' + i).textContent)]")
+            page.keyboard.press("Escape")
+            # the records' own: each compared lab's results in the period, [ts, value, low, high], and the milestones
+            recs297 = js("""cmpSeries().filter(Boolean).map(s => [nice(s.name), s.pts.filter(p => p.ts >= state.from && p.ts <= state.to).map(p => [p.ts, p[1], p[2], p[3]])])""")
+            page.click("#cmpHd .view-seg button:text-is('Table')")
+            settle(300)
+            ctab = js("""[document.activeElement.textContent, [...document.querySelectorAll('#cmpBody thead th')].map(t => t.textContent),
+                [...document.querySelectorAll('#cmpBody tbody tr')].map(tr => [...tr.cells].map(c => c.textContent)), !!document.getElementById('cmpSvg')]""")
+            jround = lambda v: int((v + .5) // 1)   # as JavaScript's Math.round, not Python's round half to even
+            pct297 = lambda v: ("−" if jround(v) < 0 else "") + f"{abs(jround(v))}%"
+            want_rows = sorted(((ts, n, pct297((v - lo) / (hi - lo) * 100) if lo is not None and hi is not None and hi > lo else "Not placed: one limit or none")
+                                for n, pts in recs297 for ts, v, lo, hi in pts), key=lambda r: -r[0])
+            got_rows = [(r[1], r[4]) for r in ctab[2]]
+            check("Labs compared (#297): a third view, Compare, at #labs-compare; up to three labs on one axis, every value label a percentage of the "
+                  "results' own ranges (no second scale), each lab its own ink and dash; its table lists each result with its place, "
+                  "as worked out here from the records, focus staying on Table",
+                  cmp_draw["hash"] == "#labs-compare" and cmp_draw["pressed"] == "compare" and cmp_draw["hidden"] == [True, True]
+                  and len(cmp_draw["picks"]) == 3 and all(cmp_draw["picks"]) and len(set(cmp_draw["lines"])) == len(cmp_draw["lines"]) == 3
+                  and cmp_draw["values"] and all(re.fullmatch(r"−?\d+%", v) for v in cmp_draw["values"]) and "0%" in cmp_draw["values"] and "100%" in cmp_draw["values"]
+                  and cmp_draw["unit"] == "% of its own range" and ctab[0] == "Table" and not ctab[3]
+                  and ctab[1] == ["Date", "Lab", "Value", "Reference range", "Place in its range"] and got_rows == [(n, p) for _, n, p in want_rows],
+                  [cmp_draw, ctab[:2], got_rows[:4], want_rows[:4]])
+            check("…it steps from the keyboard: End the latest date, every lab's result there in the tooltip and the slots' readouts; its label names each lab",
+                  cmp_draw["role"] == "application" and all(n in cmp_draw["label"] for n, _ in recs297) and cmp_key[0] == "block"
+                  and all(n + ":" in cmp_key[1] for n, _ in recs297) and all(re.search(r"−?\d+% · ", r) for r in cmp_key[2]), [cmp_key, cmp_draw["label"]])
+            page.click("#cmpHd .view-seg button:text-is('Chart')")
+            settle(300)
+            # before and after a milestone: each lab's median place before the picked milestone's day and from it on
+            ms297 = js("""[...document.querySelectorAll('#cmpMs option')].map(o => [o.value, o.selected, zParse(o.value + 'T00:00:00')])""")
+            page.click("#cmpMsHd .view-seg button:text-is('Table')")
+            settle(300)
+            dtab = js("""[[...document.querySelectorAll('#cmpMsBody thead th')].map(t => t.textContent), [...document.querySelectorAll('#cmpMsBody tbody tr')].map(tr => [...tr.cells].map(c => c.textContent))]""")
+            t297 = next((t for _, on, t in ms297 if on), None)
+            def med297(vs):
+                vs = sorted(vs); n = len(vs)
+                return vs[n // 2] if n % 2 else (vs[n // 2 - 1] + vs[n // 2]) / 2
+            want_db = []
+            for n, pts in recs297:
+                pl = [(ts, (v - lo) / (hi - lo) * 100) for ts, v, lo, hi in pts if lo is not None and hi is not None and hi > lo]
+                a, b = [p for ts, p in pl if ts < t297], [p for ts, p in pl if ts >= t297]
+                d = jround(med297(b) - med297(a)) if a and b else None
+                want_db.append([n, str(len(a)), pct297(med297(a)) if a else None, str(len(b)), pct297(med297(b)) if b else None,
+                                "—" if d is None else "no change" if d == 0 else ("↑ " if d > 0 else "↓ ") + f"{abs(d)} points"])
+            got_db = [[r[0], r[1], (re.search(r"(−?\d+%) of its range", r[2]) or [None, None])[1], r[3], (re.search(r"(−?\d+%) of its range", r[4]) or [None, None])[1], r[5]] for r in dtab[1]]
+            words297 = js("document.getElementById('labsCompare').innerText + ' ' + document.getElementById('cmpSvg')?.getAttribute('aria-label')")
+            check("…before and after a milestone: its table gives each lab's results and median place before the milestone's day and from it on, and the "
+                  "difference in points, as worked out here; no correlation and no verdict words anywhere in the view",
+                  len(ms297) >= 2 and t297 is not None and dtab[0] == ["Lab", "Results before", "Median before", "Results from it on", "Median from it on", "Difference in median place"]
+                  and got_db == want_db and not re.search(r"correlat|\br ?=|improv|better|worse|healthy|good|normal", words297, re.I),
+                  [ms297, got_db, want_db])
+            page.click("#cmpMsHd .view-seg button:text-is('Chart')")
+            settle(300)
+            page.focus("#cmpMsSvg")
+            page.keyboard.press("Home")
+            settle(150)
+            db_key = js("[getComputedStyle(tip).display, tip.innerText, document.querySelector('#cmpMsSvg .db-hl').getAttribute('visibility')]")
+            page.keyboard.press("Escape")
+            check("…a dumbbell's row stepped to is marked, the tooltip saying its medians before and from the milestone on",
+                  db_key[0] == "block" and db_key[1].startswith(recs297[0][0]) and "Before " in db_key[1] and db_key[2] == "visible", db_key)
+            # axe-core and a phone's width, light and dark, chart and table; at 200% text on a phone, every label inside its chart
+            seen297, theme297 = [], js("document.documentElement.dataset.theme || null")
+            for mode in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", mode)
+                for width in (1400, 375, 320):
+                    page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                    for table in (False, True):
+                        js("t => { for (const k of ['#cmp', '#cmpms']) t ? state.tables.add(k) : state.tables.delete(k); renderLabs(); scrollTo(0, 0); }", table)
+                        settle(500)
+                        seen297 += axe_check(page, f"Labs compared, {'tables' if table else 'charts'}, {width} px, {mode}")[0]
+                        if width < 400:
+                            seen297 += phone_fits(page, f"Labs compared, {'tables' if table else 'charts'}, {width} px ({mode})")
+            big297 = []
+            for width in (360, 412):
+                page.set_viewport_size({"width": width, "height": 800})
+                js("css => { const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = [s]; state.tables.clear(); renderLabs(); }",
+                   ":root{--fs-1:23px;--fs-2:25px;--fs-3:28px;--fs-4:31px;--fs-5:36px;--fs-6:44px;--fs-7:56px} html{font-size:200%}")
+                settle(600)
+                big297 += js("""(() => { const out = [], r = e => e.getBoundingClientRect();
+                  for (const s of document.querySelectorAll('#labsCompare svg[role]')) {
+                    const R = r(s), bs = [...s.querySelectorAll('text')].filter(t => t.textContent.trim()).map(t => [t.textContent.slice(0, 20), r(t)]);
+                    for (const [t, b] of bs) if (b.left < R.left - 1 || b.right > R.right + 1 || b.top < R.top - 1 || b.bottom > R.bottom + 1) out.push(t + ' outside');
+                    bs.forEach(([t, a], i) => bs.slice(i + 1).forEach(([u, b]) => { if (a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1) out.push(t + ' over ' + u); }));
+                  }
+                  if (document.querySelector('#labsView').scrollWidth > document.querySelector('#labsView').clientWidth + 1) out.push('the view switch cut');
+                  return out; })()""") + phone_fits(page, f"Labs compared at 200% text, {width} px")
+                js("document.adoptedStyleSheets = []")
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme297)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("state.tables.clear(); applyPreset('all'); switchTab('labs', 'chart')")
+            settle(300)
+            check("…axe-core and a phone's width find nothing in it at 1400, 375 and 320 px, light and dark, charts and tables; with text at 200% at 360 "
+                  "and 412 px its labels stay inside its charts, none over another, and the view switch whole", not seen297 and not big297, [seen297[:6], big297[:6]])
             # Body and activity: each card's charts, or one table; a chart steps from the keyboard
             js("state.tables.clear(); switchTab('health')")
             settle(500)
@@ -16312,9 +16420,9 @@ def main():
                   and words403["medication"][0] == ["Records tabs", "Medications"] and "Log a dose" in words403["medication"][1] and words403["kg"][0] == ["Pages and settings", "Units"], words403)
             # (#452) each view with an address is its own entry, and Enter opens it there: "heatmap" Labs › Heatmap, "what
             # you paid" and "out of pocket" Costs › What you paid, "journal" Timeline › Journal (before Add's Journal entry);
-            # "labs" opens Labs as charts, whichever view it was left in
+            # "labs" opens Labs as charts, whichever view it was left in; "compare" Labs › Compare (#297)
             views452 = {}
-            for q in ("heatmap", "what you paid", "out of pocket", "journal", "labs"):
+            for q in ("heatmap", "what you paid", "out of pocket", "journal", "compare", "labs"):
                 js("switchTab('overview')")
                 pal(q)
                 first = js(marked)
@@ -16324,11 +16432,12 @@ def main():
                 views452[q] = [first, ctx452, js("[location.hash, state.tab]")]
             js("costState.view = 'claims'; state.tlView = 'timeline'; switchTab('overview')")   # (the views as the checks after expect them)
             check("…views with an address are found by name, Enter opening them: “heatmap”, “what you paid”, “out of pocket”, “journal” (before Add's "
-                  "Journal entry), and “labs” Labs as charts, whichever view it was left in (#452)",
+                  "Journal entry), “compare” (#297), and “labs” Labs as charts, whichever view it was left in (#452)",
                   views452 == {"heatmap": [["Records tabs", "Heatmap"], ", Records tab › Labs", ["#labs-heatmap", "labs"]],
                                "what you paid": [["Records tabs", "What you paid"], ", Records tab › Costs", ["#costs-paid", "costs"]],
                                "out of pocket": [["Records tabs", "What you paid"], ", Records tab › Costs", ["#costs-paid", "costs"]],
                                "journal": [["Records tabs", "Journal"], ", Records tab › Timeline", ["#timeline-journal", "timeline"]],
+                               "compare": [["Records tabs", "Compare"], ", Records tab › Labs", ["#labs-compare", "labs"]],
                                "labs": [["Records tabs", "Labs"], ", Records tab", ["#labs", "labs"]]}, views452)
             # opened from inside a menu, its item gone with the menu: Escape puts focus on the menu's button
             back403 = []

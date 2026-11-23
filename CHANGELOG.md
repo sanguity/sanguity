@@ -1568,6 +1568,13 @@ Everything on `main` so far; it becomes the first tagged release.
   those outside it by ▲/▼, and the change from the first to the latest; with a strip of every result against its own
   stepped band, stepped through from the keyboard. Counts and positions only: no trend line and no word for whether
   it's good. The figures are those of the lab's table, and follow the period as it changes.
+- **Labs compared within their own ranges, and before and after a milestone** (#297): Labs has a third view beside
+  Chart and Heatmap, **Compare** (`#labs-compare`). Up to three labs share one axis, each result placed within its
+  own printed range, 0% at its low limit and 100% at its high, so labs in different units need no second scale;
+  each lab is its own line, dash and mark, with its latest (or the hovered date's) under its pick. Under it, each
+  lab's median place before a milestone and from its day on, as a ring and a dot joined, with how many results each
+  is of and the difference in points of the range: what the records hold, with no correlation figure and no word
+  for whether it's good. Both have tables, step from the keyboard, follow the period and fit a phone.
 - **A neutral reference band with its numbers, and lab charts that share one time axis** (#293): the band was the
   "good" green at 9% with dashed edges, which read as "healthy" and as a threshold, and the same green marks
   procedures and money elsewhere. It's now a wash of ink at 6% with solid hairline edges, on the Labs charts, a lab's

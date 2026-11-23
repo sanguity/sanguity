@@ -151,7 +151,10 @@ that meet on a Labs chart (the lab's line, procedures, imaging, the journal) as 
 table beside them. Cycle tracking's lane stays 3:1 against the page in both (#183). Chart activity, immunizations, letters and ECGs are in neutral ink
 with their icons. A measure that isn't a kind of record (weight, heart rate, money) is in `--measure`, a teal apart
 from all eight, never in a kind's colour. A mark in a colour is never the only way to tell what it is, and text about
-it is in ink.
+it is in ink. Labs compared (#297) are all lab results, so only the first is the Labs blue: the second is
+`--ink2`, dashed, with squares, and the third `--field-line`, dotted, with rings (chartkit.js `CK_SERIES`). Each is
+3:1 or more on the card in both themes and the three are 16 or more apart (OKLab ×100) for every pair, with and
+without colour-blindness simulated; the dash and the mark tell them apart where colour doesn't.
 
 ## Still open
 

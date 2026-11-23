@@ -15,7 +15,9 @@
    - ckSpark: the one sparkline, scaled to the reference band (the Overview, the visit summary, a share link's page);
    - ckFlagNames: milestones named so over a chart, flags on its top edge (Body and activity's first chart, #298);
    - ckStripBins, ckStripBars, ckStripDates, ckStripWindow: the overview strip, every year's records with the period a
-     window on them (#295, charts.js stripDraw).
+     window on them (#295, charts.js stripDraw);
+   - ckPos, ckPosSpan, ckPosTicks, CK_SERIES, ckSeriesKey, ckDumbbell: labs compared on one scale, each result's place
+     in its own range, and a lab's medians before and after a date (#297, compare.js).
    CHART_LAYERS (trends.js) and TL_LANES (timeline.js) stay the plug-ins of Labs' event track and the Timeline.
    Plain script, loaded in order by index.html; all files share one global scope. */
 "use strict";
@@ -375,4 +377,40 @@ function ckFlagNames(g, items, L, R, top) {
   }
   for (const i of items) g.push(el("svg:path", {class: "msflag-head", d: `M${i.x},${T - 7}L${i.x + 7},${T - 4.5}L${i.x},${T - 2}Z`}));
   return T;
+}
+
+/* ---- labs compared (#297, compare.js): each result placed within its own printed range, 0 at its low limit and 100
+   at its high, so labs of any units share one axis (never a second y-scale). ckPos(p): that place, or null for a
+   result whose report gives no low and high (a one-sided "≤ 5", or none) */
+const ckPos = p => p[2] != null && p[3] != null && p[3] > p[2] ? (p[1] - p[2]) / (p[3] - p[2]) * 100 : null;
+/* the axis's ends for places ps: the range, 0 to 100, always in it; a far value widens it to -100 or 300 at most (one
+   past that is drawn at the edge, its mark saying which way), with room at either end */
+function ckPosSpan(ps) {
+  const a = Math.max(-100, Math.min(0, ...ps)), b = Math.min(300, Math.max(100, ...ps)), pad = (b - a) * .06;
+  return [a - pad, b + pad];
+}
+/* its round numbers: steps of 25, 50 or 100, so 0 and 100 are always two of them */
+function ckPosTicks(lo, hi) {
+  const s = [25, 50, 100].find(s => (hi - lo) / s <= 6) || 100, out = [];
+  for (let v = Math.ceil(lo / s) * s; v <= hi; v += s) out.push(v);
+  return out;
+}
+/* the labs compared, in order: each a line in its own ink and dash and a mark of its own shape, so none is told by its
+   colour alone: the Labs blue, solid, dots; the secondary ink, dashed, squares; a lighter grey, dotted, rings (each 3:1
+   or more on the card, light and dark) */
+const CK_SERIES = [{color: "var(--c-lab)", dash: null, shape: "circle"}, {color: "var(--ink2)", dash: "7 4", shape: "square"},
+  {color: "var(--field-line)", dash: "1.5 3.5", shape: "ring"}];
+/* series i's mark at x, y, in its shape and ink, a ring of the card round it where it's filled */
+const ckSeriesMark = (i, x, y, r) => { const k = CK_SERIES[i], ring = k.shape === "ring";
+  return shapeMark(k.shape, x, y, r, {fill: ring ? "var(--surface)" : k.color, stroke: ring ? k.color : "var(--surface)", "stroke-width": ring ? 2 : 1.5}); };
+/* its key, as it's drawn: a short stretch of its line with its mark on it; hidden from screen readers (its name says it) */
+const ckSeriesKey = i => el("svg:svg", {class: "cmp-k", viewBox: "0 0 28 14", width: 28, height: 14, "aria-hidden": "true"},
+  el("svg:line", {x1: 1, x2: 27, y1: 7, y2: 7, stroke: CK_SERIES[i].color, "stroke-dasharray": CK_SERIES[i].dash, "stroke-width": 2}), ckSeriesMark(i, 14, 7, 3.5));
+/* a dumbbell: a row's two places at y on the value scale x (over lo..hi), before (a ring) and after (a dot) in series
+   i's ink, joined; either may be null (no results on that side). A place past the scale is drawn at its end */
+function ckDumbbell(g, x, lo, hi, y, i, a, b) {
+  const c = CK_SERIES[i].color, [x0, x1] = [a, b].map(v => v == null ? null : x(Math.max(lo, Math.min(hi, v))));
+  if (x0 != null && x1 != null) g.push(el("svg:line", {class: "db-bar", x1: x0, x2: x1, y1: y, y2: y, stroke: c}));
+  if (x0 != null) g.push(shapeMark("ring", x0, y, 5.5, {class: "db-a", stroke: c}));
+  if (x1 != null) g.push(shapeMark("circle", x1, y, 5.5, {class: "db-b", fill: c}));
 }
