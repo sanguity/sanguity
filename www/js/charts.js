@@ -154,20 +154,20 @@ function stripDraw() {
   if (says && (stripMemo?.key !== key || stripMemo.ev !== EV)) stripMemo = {key, ev: EV, bins: ckStripBins(stripItems(state.tab), a, b, x)};
   strip.hidden = !says || !stripMemo.bins.n.some(Boolean);
   if (strip.hidden || !w) return;
-  const h = 40, B = 26, [wa, wb] = stripWin(), clip = t => Math.max(a, Math.min(b, t)), g = [];
+  const B = 23, h = ckStripH(B), [wa, wb] = stripWin(), clip = t => Math.max(a, Math.min(b, t)), g = [];   // taller with larger text (#641)
   ckStripBars(g, stripMemo.bins, x, 5, B);
-  ckStripDates(g, a, b, x, B, 38, w - 6);
+  ckStripDates(g, a, b, x, B, w - 6);
   for (const m of MILESTONES) {
     const t = dayTs(m.date); if (t < a || t > b) continue;
     const mx = x(t);
     g.push(el("svg:line", {class: "msflag", x1: mx, x2: mx, y1: 1, y2: B}), el("svg:path", {class: "msflag-head", d: `M${mx},1L${mx + 6},3.5L${mx},6Z`}));
   }
-  ckStripWindow(g, x(clip(wa)), x(clip(wb)), h);
-  stripSvg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  ckStripWindow(g, x(clip(wa)), x(clip(wb)), h, B);
+  stripSvg.setAttribute("viewBox", `0 0 ${w} ${h}`); stripSvg.setAttribute("height", h);
   stripSvg.replaceChildren(...g);
   const step = stripStretch(stripMemo.bins, 0).startsWith("Week") ? "week" : {d: "day", m: stripMemo.bins.step[0] === 3 ? "quarter" : "month", y: "year"}[stripMemo.bins.step[1]];
   stripSvg.setAttribute("aria-label", `${says[0].toUpperCase() + says.slice(1)} per ${step}, ${fmtD(a + DAY)} to ${fmtD(b - DAY)}, the period shown as a window on them: ${fmtD(clip(wa))} to ${fmtD(clip(wb))}.`);
-  stripAt = {x, a, b, wa, wb, w};
+  stripAt = {x, a, b, wa, wb, w, h};
   const day = t => Math.round((clip(t) - a) / DAY);
   stripIn.forEach((inp, i) => { inp.min = 0; inp.max = day(b); inp.value = day(i ? wb : wa); inp.setAttribute("aria-valuetext", fmtD(clip(i ? wb : wa))); });
 }
@@ -184,7 +184,7 @@ stripIn.forEach((inp, i) => inp.oninput = () => {
   stripSet(i ? Math.min(wa, t - 2 * DAY) : t, i ? t : Math.max(wb, t + 2 * DAY), true);
 });
 let stripDrag = null;
-const stripPx = ev => { const r = stripSvg.getBoundingClientRect(); return [(ev.clientX - r.left) * stripAt.w / r.width, (ev.clientY - r.top) * 40 / r.height]; };
+const stripPx = ev => { const r = stripSvg.getBoundingClientRect(); return [(ev.clientX - r.left) * stripAt.w / r.width, (ev.clientY - r.top) * stripAt.h / r.height]; };
 // what a press at px takes: an edge ("a", "b"; within 8 px outside the window, or 6 inside one 16 px wide or more), the window to move ("mid"), or null beside it
 function stripGrab(px) {
   const xa = stripAt.x(stripAt.wa), xb = stripAt.x(stripAt.wb), wide = xb - xa >= 16;
