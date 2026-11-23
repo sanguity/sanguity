@@ -10835,6 +10835,59 @@ def main():
             settle(300)
             check("…and the heatmap's (#633): its names, counts and axis labels inside its grid and axis, none over another, with text at 200% and as usual, "
                   "at 360 and 412 px, light and dark, and at 200% in 90 days too", not bad633, bad633)
+            # ---- #633: #622's check for the charts with geometry of their own, at 360 and 412 px, light and dark, at the usual
+            # size and with text at 200% (1.4.4): Costs' two charts, the Timeline, the Medications tab's lane and the event
+            # track over Labs' charts with every layer's row (a journal entry, a mood, a cycle mark, a dose and the
+            # medications, put in for the check and taken out again): each label inside its chart, none over another
+            L633 = r"""sel => { const r = e => e.getBoundingClientRect(), out = [];
+              for (const s of document.querySelectorAll(sel)) {
+                if (!s.checkVisibility()) continue;
+                const R = r(s), name = s.id || s.getAttribute('class'), bs = [...s.querySelectorAll('text')].filter(t => t.textContent.trim() && t.checkVisibility()).map(t => [t.textContent.slice(0, 20), r(t)]);
+                for (const [t, b] of bs) if (b.left < R.left - 1 || b.right > R.right + 1 || b.top < R.top - 1 || b.bottom > R.bottom + 1) out.push(`${name}: ${t} outside`);
+                bs.forEach(([t, a], i) => bs.slice(i + 1).forEach(([u, b]) => { if (a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1) out.push(`${name}: ${t} over ${u}`); }));
+              }
+              return out; }"""
+            was633 = js("[[...state.sel], state.preset, state.from, state.to, [...state.cats], costState.view, document.documentElement.dataset.theme || null]")
+            js("""(() => { const day = isoDay(state.to - 40 * DAY), m = MEDS.find(m => m.spans.length);
+              window._was633 = [DATA.journal, DATA.doses, CYCLE, medsOnTrends, dosesOnCharts, jOnTrends, cycleOnCharts];
+              DATA.journal = [{id: 963301, kind: 'symptom', t: day + 'T09:00', title: 'Headache (#633)', severity: 5}, {id: 963302, kind: 'mood', t: day + 'T20:00', mood: 7, energy: 5}];
+              DATA.doses = m ? [{id: 963303, med: m.key, name: m.name, t: day + 'T08:00', status: 'taken'}] : [];
+              journalLoad(); medLogLoad();
+              CYCLE = [{id: -963304, k: 'cycle', t: day + 'T12:00:00', ts: zParse(day + 'T12:00:00'), te: zParse(day + 'T12:00:00'), title: 'Ovulation test', sub: '', _q: 'cycle', cy: {kind: 'ovulation', day}}];
+              medsOnTrends = dosesOnCharts = jOnTrends = cycleOnCharts = true;
+              ['med', 'journal', 'mood', 'cycle'].forEach(k => state.cats.add(k));
+              state.tables.clear(); state.sel = new Set(SERIES.filter(s => !s.watch && s.n >= 2).slice(0, 2).map(s => s.name)); applyPreset('1y'); })()""")
+            layers633 = js("CHART_LAYERS.filter(l => l.space() > 0).map(l => l.name)")
+            bad633 = {}
+            for w in (360, 412):
+                page.set_viewport_size({"width": w, "height": 800})
+                for mode in ("light", "dark"):
+                    for big in (False, True):
+                        js("([t, css]) => { document.documentElement.dataset.theme = t; const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = css ? [s] : []; }",
+                           [mode, BIG622 if big else ""])
+                        got = []
+                        for tab, sel in (("costs", "#view-costs svg:not(.icon)"), ("costs-paid", "#view-costs svg:not(.icon)"), ("timeline", "#tl"),
+                                         ("medications", "#view-medications svg.med-lane"), ("labs", "#evTrack svg.ev-svg")):
+                            js("t => { if (t.startsWith('costs')) costState.view = t === 'costs' ? 'claims' : 'paid'; switchTab(t.split('-')[0], t === 'labs' ? 'chart' : t === 'timeline' ? 'timeline' : undefined); renderAll(); }", tab)
+                            settle(400)
+                            got += [f"{tab}: {p}" for p in js(L633, sel)]
+                            if not js("s => [...document.querySelectorAll(s)].some(e => e.checkVisibility())", sel):
+                                got.append(f"{tab}: no chart")
+                        if got:
+                            bad633[f"{w} {mode}{' 200%' if big else ''}"] = got[:12]
+                        if big and os.environ.get("SANGUITY_SHOTS"):
+                            for tab in ("timeline", "costs"):
+                                js("t => { switchTab(t); renderAll(); }", tab)
+                                settle(300)
+                                page.screenshot(path=os.path.join(os.environ["SANGUITY_SHOTS"], f"633-{tab}-{w}-{mode}-200.png"), full_page=True)
+            js("""w => { [DATA.journal, DATA.doses, CYCLE, medsOnTrends, dosesOnCharts, jOnTrends, cycleOnCharts] = window._was633; journalLoad(); medLogLoad();
+              document.adoptedStyleSheets = []; [state.sel, state.preset, state.from, state.to, state.cats, costState.view] = [new Set(w[0]), w[1], w[2], w[3], new Set(w[4]), w[5]];
+              if (w[6]) document.documentElement.dataset.theme = w[6]; else delete document.documentElement.dataset.theme; switchTab('labs', 'chart'); renderAll(); }""", was633)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(300)
+            check("With text at 200% at 360 and 412 px, light and dark, and at the usual size (#633, 1.4.4): Costs' charts, the Timeline, the Medications "
+                  "lane and the event track's rows (journal, mood, cycle, doses, medications) keep every label inside their chart, none over another",
+                  not bad633 and layers633 == ["Journal", "Mood", "Cycle tracking", "Medications", "Doses logged"], [layers633, bad633])
             page.set_viewport_size({"width": 1400, "height": 900})
             open_tab("overview")
             settle(300)

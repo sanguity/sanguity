@@ -67,10 +67,11 @@ function drawTrack() {
   const items = trackItems(), shown = trackLayers(), layers = shown.map(l => [l, l.space()]), geo = $("#charts .chart svg.ck")?._geom;
   const w = labW(svg.parentElement), L = geo?.L ?? 52, R = geo ? w - (geo.w - geo.R) : w - 12, x = ckScale(state.from, state.to, L, R);
   const flags = ckFlagRows(items.map(i => ({x: x(i.t), text: i.k === "milestone" ? i.words : shortTitle(i.words), cls: i.k === "milestone" ? "mslabel" : "evlabel", rank: i.k === "milestone" ? 0 : 1, i})), L, R);
-  const RH = 15 * ckK(), nRows = flags.length ? Math.max(...flags.map(f => f.row)) + 1 : 0, yM = items.length ? 6 + nRows * RH + 8 : 0;   // (rows as tall as larger text, #622)
+  const k = ckK(), RH = 15 * k, nRows = flags.length ? Math.max(...flags.map(f => f.row)) + 1 : 0, yM = items.length ? 6 + nRows * RH + 8 : 0;   // (rows as tall as larger text, #622)
   let h = items.length ? yM + 10 : 2;
-  const g = [], layersTop = h;
-  h += layers.reduce((a, [, n]) => a + n, 0) + 4;
+  // the rows' names (a layer's short) in the gutter, or over each row where one is wider than it (larger text, #633)
+  const g = [], layersTop = h, over = layers.some(([l]) => l.short && labelW(l.short, "jrow-label") > L - 8), LH = l => over && l.short ? 14 * k : 0;
+  h += layers.reduce((a, [l, n]) => a + n + LH(l), 0) + 4;
   svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("height", h); svg._geom = {L, R, T: 0, B: h, w};
   if (items.length) {
     g.push(el("svg:line", {class: "gridline", x1: L, x2: R, y1: yM, y2: yM}));
@@ -89,7 +90,9 @@ function drawTrack() {
   }
   const cross = el("svg:line", {class: "cross", y1: 0, y2: h, visibility: "hidden"});
   g.push(cross);
-  { let top = layersTop; for (const [l, n] of layers) { l.draw(g, x, top, R); top += n; } }
+  { let top = layersTop; for (const [l, n] of layers) {
+    if (l.short) g.push(el("svg:text", {class: "jrow-label", x: over ? L : L - 6, y: over ? top + 11 * k : top + n / 2 + 3.5 * k, "text-anchor": over ? null : "end", text: l.short}));
+    top += LH(l); l.draw(g, x, top, R, L); top += n; } }
   svg.replaceChildren(...g);
   // a chart's crosshair puts the track's at the same date (chartkit.js ckSync)
   svg._hover = t => { ckCrossAt(cross, t == null ? null : x(t)); return null; };

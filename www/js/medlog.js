@@ -236,14 +236,13 @@ let dosesOnCharts = false;
 try { dosesOnCharts = localStorage.getItem("sg-doses-charts") === "1"; } catch (e) {}
 const dosesInWindow = () => dosesOnCharts && state.cats.has("med") ? DOSES.filter(d => d.ts >= state.from && d.ts <= state.to) : [];
 CHART_LAYERS.push({
-  name: "Doses logged",
-  space: () => dosesInWindow().length ? 18 : 0,
+  name: "Doses logged", short: "Doses",
+  space: () => dosesInWindow().length ? 18 * ckK() : 0,
   rows: () => dosesInWindow().map(d => { const m = MEDS.find(m => m.key === d.key); return [d.ts, "Dose logged", doseSay(d), m && (() => openMedication(m)), "med"]; }),
-  draw(g, x, top, R) {
-    const y = top + 9;
-    g.push(el("svg:text", {class: "jrow-label", x: 46, y: y + 3.5, "text-anchor": "end", text: "Doses"}));
+  draw(g, x, top, R, L) {
+    const y = top + 9 * ckK();
     for (const d of dosesInWindow()) {
-      const dx = x(d.ts); if (dx < 50 || dx > R + 3) continue;
+      const dx = x(d.ts); if (dx < L - 2 || dx > R + 3) continue;
       const m = MEDS.find(m => m.key === d.key);
       const node = doseShape(d.status, dx, y, {tabindex: 0, role: "button", "aria-label": doseSay(d)}, 3.4);
       node.addEventListener("pointermove", ev => { ev.stopPropagation(); if (m) doseTip(m, DOSES.indexOf(d), ev); });

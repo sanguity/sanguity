@@ -81,9 +81,10 @@ function otherSays() {
   d.querySelector(".grp-n").textContent = ` · ${n} lab${n === 1 ? "" : "s"}${on ? `, ${on} charted` : ""}`;
 }
 let hoverT = null;
-/* the rows of the event track over the charts (event-track.js, #294), one per layer: {name, space() -> its height in px
-   (0: nothing to show), draw(g, x, top, R)} draws it from y = top, x(t) being the charts' time scale, and rows() -> [[t,
-   kind, words, open(), its kind's key for an icon]] gives its table's. meds.js, medlog.js, journal.js and cycle.js add
+/* the rows of the event track over the charts (event-track.js, #294), one per layer: {name, short (its name on the
+   track, which draws it), space() -> its height in px (0: nothing to show; growing with larger text, ckK, #633),
+   draw(g, x, top, R, L) draws it from y = top, x(t) being the charts' time scale from L to R, and rows() -> [[t, kind,
+   words, open(), its kind's key for an icon]] gives its table's. meds.js, medlog.js, journal.js and cycle.js add
    theirs. */
 const CHART_LAYERS = [];
 function renderCharts() {
