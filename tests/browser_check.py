@@ -19458,7 +19458,8 @@ def main():
             # #649: Vitamin D 22, 26, 34 and 41 typed with no range, a range from settings of 30–100, trended: its chart,
             # sparkline, the tables and the PDF agree. The band is said to be from settings (it read "30–100", the PDF's
             # note "each result's own reference range"), and the same results are flagged in all: 22 and 26 ▼ Low (22 the
-            # table's Then, which had no flag), 34 and 41 not (41 its Now and its sparkline's mark)
+            # table's Then, which had no flag), 34 and 41 not (41 its Now and its sparkline's mark). And #717's mixed case:
+            # Folate 4 typed with no range before the visit, 5–20 from settings, then 6 and 7 with their report's 3–17
             import base64, datetime as dt649, io
             from pypdf import PdfReader
             d649 = lambda n: (dt649.date.today() - dt649.timedelta(days=n)).isoformat()
@@ -19466,17 +19467,20 @@ def main():
             with dbm.transaction(db):
                 rec_r.store(db, rpid, {"built": "2026-11-15", "source": "fictional", "events": [], "details": {}, "costs": [], "upcoming": [],
                                        "labs": [{"name": "Vitamin D", "unit": "ng/mL", "panel": "", "n": 4, "txt": [],
-                                                 "pts": [[f"{d649(n)}T08:00:00", v, None, None, "", str(v)] for n, v in ((120, 22), (60, 26), (30, 34), (10, 41))]}]},
+                                                 "pts": [[f"{d649(n)}T08:00:00", v, None, None, "", str(v)] for n, v in ((120, 22), (60, 26), (30, 34), (10, 41))]},
+                                                {"name": "Folate", "unit": "ng/mL", "panel": "", "n": 3, "txt": [],   # (#717)
+                                                 "pts": [[f"{d649(n)}T08:00:00", v, lo, hi, "", str(v)] for n, v, lo, hi in ((100, 4, None, None), (40, 6, 3, 17), (10, 7, 3, 17))]}]},
                             "upload", fmt="csv")
             db.close()
             js("""async pid => { const h = {'X-Sanguity': '1', 'Content-Type': 'application/json'}, s = await (await fetch(`api/profiles/${pid}/settings`, {headers: h})).json();
-              const value = [...s.ranges.overrides, {lab: 'Vitamin D', unit: 'ng/mL', sex: 'any', low: 30, high: 100}];
+              const value = [...s.ranges.overrides, {lab: 'Vitamin D', unit: 'ng/mL', sex: 'any', low: 30, high: 100}, {lab: 'Folate', unit: 'ng/mL', sex: 'any', low: 5, high: 20}];
               await fetch(`api/profiles/${pid}/settings/ranges.overrides`, {method: 'PUT', headers: h, body: JSON.stringify({value})}); }""", rpid)
             page.reload()
             page.wait_for_selector("#preview:not([hidden]):not([aria-busy]) h3", timeout=10000)
-            page.fill("#labIn", "Vitamin D")
-            page.click("#labAdd")
-            page.wait_for_function("[...document.querySelectorAll('#preview:not([aria-busy]) #prevBody .sum-chart > figcaption')].some(f => f.textContent.startsWith('Vitamin D'))", timeout=10000)
+            for lab in ("Vitamin D", "Folate"):
+                page.fill("#labIn", lab)
+                page.click("#labAdd")
+            page.wait_for_function("(c => ['Vitamin D', 'Folate'].every(n => c.some(f => f.textContent.startsWith(n))))([...document.querySelectorAll('#preview:not([aria-busy]) #prevBody .sum-chart > figcaption')])", timeout=10000)
             got649 = js(r"""async () => { const fig = [...document.querySelectorAll('#prevBody .sum-chart')].find(f => f.querySelector('figcaption').textContent.startsWith('Vitamin D'));
               const svg = fig.querySelector('svg.ck-solo'), table = w => [...document.querySelectorAll('#prevBody h3')].find(h => h.textContent.startsWith(w))?.nextElementSibling;
               const row = w => [...(table(w)?.querySelectorAll('tbody tr') || [])].find(r => r.cells[0].textContent.startsWith('Vitamin D')), tr = row('Trends'), oor = row('Out of range');
@@ -19502,6 +19506,28 @@ def main():
                   and "range from settings" in got649["note"] and "Vitamin D (ng/mL) 22 Low" in pdf649 and "30–100 from settings" in pdf649
                   and "or, for a result whose report gives none, the range from settings" in pdf649,
                   [got649, re.findall(r"Vitamin D \(ng/mL\) .{0,40}|.{0,30}from settings.{0,30}", pdf649)])
+            # #717: the mixed case: Folate's Then (4) flagged against 5–20 from settings said so in its cell, beside a row
+            # whose only range is the report's 3–17 (4 inside it); the chart's earlier step marked "from settings" over its
+            # own stretch, not only the end's 3–17; the PDF's cell, chart and both notes saying what each flag is judged against
+            got717 = js(r"""() => { const fig = [...document.querySelectorAll('#prevBody .sum-chart')].find(f => f.querySelector('figcaption').textContent.startsWith('Folate'));
+              const svg = fig.querySelector('svg.ck-solo'), tr = [...[...document.querySelectorAll('#prevBody h3')].find(h => h.textContent.startsWith('Trends')).nextElementSibling.querySelectorAll('tbody tr')]
+                .find(r => r.cells[0].textContent.startsWith('Folate')), refs = [...svg.querySelectorAll('text.ck-ref')], b = e => e.getBoundingClientRect();
+              const set = refs.find(t => t.textContent.endsWith('from settings')), low = svg.querySelector('path.pt.abn'), six = svg.querySelector('circle.pt');
+              return {ref: refs.map(t => t.textContent), over: !!set && b(set).left + b(set).width / 2 < (b(low).left + b(low).width / 2 + b(six).left + b(six).width / 2) / 2,
+                apart: refs.every((t, i) => refs.slice(i + 1).every(u => b(t).right <= b(u).left || b(u).right <= b(t).left || b(t).bottom <= b(u).top || b(u).bottom <= b(t).top)),
+                low: low.querySelector('title').textContent,
+                then: [tr.cells[1].textContent, tr.cells[1].classList.contains('flag')], now: [tr.cells[2].textContent, tr.cells[2].classList.contains('flag')], range: tr.cells[6].textContent}; }""")
+            chart717 = pdf649.rsplit("Folate (ng/mL)", 1)[-1].split("Charts:")[0] if "Charts:" in pdf649 else ""
+            check("visit summary (#717): an earlier result flagged against a range from settings, the later ones the report's: the Then cell says "
+                  "“4 ▼ Low (settings range 5–20)” beside the row's 3–17, the chart's earlier step said to be from settings over its own stretch "
+                  "as well as the end's 3–17, its ▼ titled so; in the PDF the Then cell, the chart's step and both notes",
+                  got717["then"][0].startswith("4 ▼ Low (settings range 5–20)") and got717["then"][1] and got717["now"][0].startswith("7") and not got717["now"][1]
+                  and got717["range"] == "3–17" and len(got717["ref"]) == 2 and got717["ref"][0] == "3–17" and got717["over"] and got717["apart"]
+                  and got717["low"].endswith("4 ng/mL ▼ Low (range from settings)")
+                  and re.search(r"Folate \(ng/mL\) 4 Low .{1,16}? \(settings range 5–20\) 7", pdf649) and "from settings" in chart717 and "Then:" not in chart717
+                  and "Each is judged against the range printed on its own report, or, where its report gives none, the range from settings" in pdf649
+                  and "or, where its report gives none, outside the range from settings, which its cell then gives" in pdf649,
+                  [got717, re.findall(r"Folate \(ng/mL\) .{0,60}|Each is judged.{0,120}|High or Low \(in red\).{0,160}", pdf649), chart717[:120]])
             db = dbm.connect()
             prof_r.delete_profile(db, rpid)
             db.close()

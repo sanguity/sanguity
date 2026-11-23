@@ -107,7 +107,28 @@ DATA = {"built": day(0), "source": "fictional",
                  # #649: typed in with no range, the first before the visit
                  {"name": "Vitamin D", "unit": "ng/mL", "panel": "", "n": 4, "txt": [],
                   "pts": [[day(-70), 22, None, None, "", "22"], [day(-40), 26, None, None, "", "26"],
-                          [day(-20), 34, None, None, "", "34"], [day(-5), 41, None, None, "", "41"]]}]}
+                          [day(-20), 34, None, None, "", "34"], [day(-5), 41, None, None, "", "41"]]},
+                 # #717: the first typed in with no range, before the visit; the two since with their report's 3-17
+                 {"name": "Folate", "unit": "ng/mL", "panel": "", "n": 3, "txt": [],
+                  "pts": [[day(-70), 4, None, None, "", "4"], [day(-30), 6, 3, 17, "", "6"], [day(-10), 7, 3, 17, "", "7"]]}]}
+
+
+class _Drawn:
+    """A PDF page that keeps what's drawn on it: each text as (x0, x1, baseline, text), each polyline's points."""
+    def __init__(self):
+        self.texts, self.lines = [], []
+
+    def text(self, x, y, s, size=10, bold=False, color=0):
+        self.texts.append((x, x + summary.pdfdoc.width(s, size, bold), y, s))
+
+    def text_right(self, x, y, s, size=10, bold=False, color=0):
+        self.text(x - summary.pdfdoc.width(s, size, bold), y, s, size, bold, color)
+
+    def polyline(self, pts, *a):
+        self.lines.append(pts)
+
+    def __getattr__(self, name):
+        return lambda *a, **k: None
 
 
 class Api(unittest.TestCase):
@@ -211,8 +232,9 @@ class Api(unittest.TestCase):
                          [[22, "Low", 30, 100, "settings"], [26, "Low", 30, 100, "settings"], [34, None, 30, 100, "settings"],
                           [41, None, 30, 100, "settings"]], "the chart's and sparkline's points: each flag, and its range from settings")
         self.assertEqual((vd["then"], vd["now"]["flag"], vd["now"]["range"]),
-                         ({"value": "22", "date": day(-70)[:10], "flag": "Low"}, None, "30–100 (settings)"),
-                         "the table's Then flagged as its chart is, Now in range, its range from settings")
+                         ({"value": "22", "date": day(-70)[:10], "flag": "Low", "settings": "30–100"}, None, "30–100 (settings)"),
+                         "the table's Then flagged as its chart is, against its range from settings (#717), Now in range, its range from settings")
+        self.assertNotIn("settings", vd["now"], "Now in range: no range it's flagged against")
         self.assertIn("range from settings", s["settings_note"])
         self.assertTrue(summary.uses_settings({**vd, "now": {**vd["now"], "range": "30–100"}}), "its chart's band alone is enough for the note")
         r = self.c["kim"].post(f"/api/profiles/{self.pid}/summary/pdf", headers=H, json=body)
@@ -226,6 +248,45 @@ class Api(unittest.TestCase):
         ops = b"".join(zlib.decompress(re.search(rb"stream\n(.*?)\nendstream", o, re.S)[1]) for o in r.content.split(b" obj")
                        if b"/FlateDecode" in o)
         self.assertEqual(ops.count(b" h f"), 2, "two triangles on the chart: 22 and 26, below their range; the sparkline's 41 a dot")
+
+    def test_2_summary_mixed(self):
+        """#717: #649's case mixed: Folate 4 typed with no range before the visit, 5–20 from settings, then 6 and 7 with
+        their report's 3–17. The Then flagged against the range from settings says so in its cell, beside a row whose only
+        range is the report's 3–17 (4 is inside it); the chart's earlier step, from settings, is marked so, not only its
+        end; and the PDF's two notes say what each flag is judged against, a range from settings among them."""
+        rows = [row(), row(lab="Vitamin D", low=30, high=100), row(lab="Folate", low=5, high=20)]
+        self.assertEqual(self.put("ranges.overrides", rows).status_code, 200)
+        body = {"appointment": None, "since": day(-45)[:10], "sections": ["out_of_range", "trends"], "labs": ["Folate", "Vitamin D"]}
+        r = self.c["kim"].post(f"/api/profiles/{self.pid}/summary/preview", headers=H, json=body)
+        self.assertEqual(r.status_code, 200, r.text)
+        s = r.json()
+        fo = next(t for t in s["trends"] if t["name"] == "Folate")
+        self.assertEqual(fo["then"], {"value": "4", "date": day(-70)[:10], "flag": "Low", "settings": "5–20"},
+                         "Then flagged against the range from settings, which it carries")
+        self.assertEqual((fo["now"], [p[1:6] for p in fo["spark"]]),
+                         ({"value": "7", "date": day(-10)[:10], "flag": None, "range": "3–17"},
+                          [[4, "Low", 5, 20, "settings"], [6, None, 3, 17, None], [7, None, 3, 17, None]]),
+                         "Now in range by its report's 3–17; the chart's points each with its range and its source")
+        r = self.c["kim"].post(f"/api/profiles/{self.pid}/summary/pdf", headers=H, json=body)
+        self.assertEqual(r.status_code, 200, r.text[:200])
+        text = " ".join("\n".join(p.extract_text() for p in PdfReader(io.BytesIO(r.content)).pages).split())
+        self.assertIn(f"Folate (ng/mL) 4 Low {summary._short(day(-70)[:10])} (settings range 5–20) 7", text, "the Then cell says what it's flagged against")
+        self.assertIn("Each is judged against the range printed on its own report, or, where its report gives none, the range from "
+                      "settings, its Range marked “(settings)”.", text, "the out-of-range note: Vitamin D's 26 is judged against one")
+        self.assertIn("High or Low (in red): outside the range on that result's own report, or, where its report gives none, outside "
+                      "the range from settings, which its cell then gives (“settings range” and its numbers).", text, "the trends' note")
+        # the chart: "from settings" over its first step (4's, from settings), the end the report's
+        page, vpage, vd = _Drawn(), _Drawn(), next(t for t in s["trends"] if t["name"] == "Vitamin D")
+        token = summary._DATES.set(("", TODAY.year))
+        try:
+            summary._chart(page, fo, ["Folate (ng/mL)"], 0, 200, 120)
+            summary._chart(vpage, vd, ["Vitamin D (ng/mL)"], 0, 200, 120)
+        finally:
+            summary._DATES.reset(token)
+        (a, b), = [(x0, x1) for x0, x1, _, t in page.texts if t.endswith("from settings")]
+        (p4, p6, _), = page.lines
+        self.assertLess((a + b) / 2, (p4[0] + p6[0]) / 2, "said over the first step, which ends halfway from 4 to 6")
+        self.assertEqual([t for *_, t in vpage.texts if "settings" in t], ["30–100 from settings"], "one step, its end said as before (#649)")
 
     def test_3_without_settings(self):
         self.assertEqual(self.c["robin"].post(f"/api/profiles/{self.pid}/settings/reset", json={"section": "ranges"}, headers=H).status_code, 200)

@@ -168,17 +168,24 @@ function ckBand(g, steps, x, y, L, R, T, B) {
 /* the band's numbers at the right of the plot, in ink: words ("13.5–17.5 on report") for the step st at the right end,
    set right-aligned at R, inside the band under its top edge, else over its foot, else just outside it, whichever is
    the first clear of every point (pts: [px, py]) and inside the plot, T to B; L to R too, its numbers alone where the
-   words are wider (larger text, #622). Its offsets grow with the text (ckK) */
+   words are wider (larger text, #622). Its offsets grow with the text (ckK). -> its box [x0, x1, baseline], or null */
 function ckBandLabel(g, words, st, y, R, T, B, pts, L = 0) {
-  const k = ckK(), x1 = R - 4;
+  const x1 = R - 4;
   if (x1 - labelW(words, "ck-ref") < L) words = words.split(" ")[0];
-  const w = labelW(words, "ck-ref"), x0 = x1 - w;
-  const hi = st.hi != null ? Math.max(T, y(st.hi)) : T, lo = st.lo != null ? Math.min(B, y(st.lo)) : B;
+  return ckRefAt(g, words, st, y, x1 - labelW(words, "ck-ref"), x1, T, B, pts);
+}
+/* a band's words from x0 to x1 at the first of those places clear of every point and of the labels placed already
+   (taken: their boxes, never overlapped), or at the first such place; none where there's no such place */
+function ckRefAt(g, words, st, y, x0, x1, T, B, pts, taken = []) {
+  const k = ckK(), hi = st.hi != null ? Math.max(T, y(st.hi)) : T, lo = st.lo != null ? Math.min(B, y(st.lo)) : B;
   const inside = lo - hi >= 16 * k ? (st.hi != null ? [hi + 12 * k, lo - 4] : [lo - 4, hi + 12 * k]) : [];   // by its printed edge first
-  const at = [...inside, hi - 4, lo + 12 * k].filter(yb => yb - 10 * k >= T && yb + 2 <= B);   // baselines, 10 px of text over each
+  const at = [...inside, hi - 4, lo + 12 * k].filter(yb => yb - 10 * k >= T && yb + 2 <= B   // baselines, 10 px of text over each
+    && !taken.some(([a, b, tb]) => a < x1 + 6 && x0 < b + 6 && Math.abs(tb - yb) < 14 * k));
   const clear = yb => !pts.some(([px, py]) => px > x0 - 5 && px < x1 + 5 && py > yb - 15 * k && py < yb + 6);
   const yb = at.find(clear) ?? at[0];
-  if (yb != null) g.push(el("svg:text", {class: "ck-ref", x: x1, y: yb, "text-anchor": "end", text: words}));
+  if (yb == null) return null;
+  g.push(el("svg:text", {class: "ck-ref", x: x1, y: yb, "text-anchor": "end", text: words}));
+  return [x0, x1, yb];
 }
 
 /* ---- marks (#60): an out-of-range result's mark on a chart: a triangle pointing up (above its range) or down (below),
@@ -234,7 +241,7 @@ function ckSpark(pts, {band = true, r = 3, color = "var(--ink)", cls = ""} = {})
    period, event track or hover state, and a table beside it says each result in full. Drawn at its box's width, and
    again as that changes (ckSoloRO; not while hidden, so a closed history isn't drawn till it's opened): the band
    (each result's own range, ckBand) with its numbers at the right and ref after them ("on report"; "from settings"
-   for a range from settings, #649), the value axis
+   for a range from settings, #649, as each step before the end that's one says over its own stretch, #717), the value axis
    (ckGrid, ckUnit), the line through the results and a dot each, ▲/▼/◆ for one out of range (only those past 120
    results, as Labs'), and the time axis (ckAxis). Each mark's <title> is say(p), for a mouse. h: the plot's height,
    taller as the text is larger (ckK). print {w, h}: its width and plot's height as it's printed, drawn so as printing
@@ -267,8 +274,19 @@ function ckSolo(pts, {h = 120, print = null, unit = "", ref = "", label = "", sa
     ckUnit(g, unit, T - 10 * k);
     ckBand(g, steps, x, y, L, R, T, B);
     if (st) {   // a range from settings (a point's .rs) said so, as Labs' (#649): with too little room for its numbers too, that alone
-      const src = st.rs === "settings" ? "from settings" : ref, words = src ? `${st.key} ${src}` : st.key;
-      ckBandLabel(g, st.rs === "settings" && R - 4 - labelW(words, "ck-ref") < L ? src : words, st, y, R, T, B, pts.map(p => [x(p.ts), y(p[1])]), L);
+      const src = st.rs === "settings" ? "from settings" : ref, words = src ? `${st.key} ${src}` : st.key, at = pts.map(p => [x(p.ts), y(p[1])]);
+      const taken = [ckBandLabel(g, st.rs === "settings" && R - 4 - labelW(words, "ck-ref") < L ? src : words, st, y, R, T, B, at, L)].filter(Boolean);
+      // and each step before the end that's a range from settings, over its own stretch (#717: a ▼ under an unlabelled
+      // 5–20 from settings, the band's end the report's 3–17): its numbers too where they fit there, centred on it
+      // inside the plot, clear of the labels placed already
+      for (const s of steps.slice(0, -1)) {
+        if (s.rs !== "settings") continue;
+        const a = Math.max(L, x(s.a)), b = Math.min(R, x(s.b)), all = `${s.key} from settings`;
+        const words = labelW(all, "ck-ref") <= b - a - 8 ? all : "from settings", w = labelW(words, "ck-ref");
+        if (w > R - L - 8) continue;   // (wider than the plot: its marks' titles and the table say it)
+        const x0 =Math.max(L + 4, Math.min(R - 4 - w, (a + b - w) / 2)), box = ckRefAt(g, words, s, y, x0, x0 + w, T, B, at, taken);
+        if (box) taken.push(box);
+      }
     }
     if (pts.length > 1) g.push(el("svg:path", {class: "line", d: ckDecimate(pts.map(p => [x(p.ts), y(p[1])]), q => q[0], 1, {ends: true}).map((q, i) => (i ? "L" : "M") + q[0].toFixed(1) + "," + q[1].toFixed(1)).join("")}));
     for (const p of pts) if (pts.length <= 120 || p[4]) {
