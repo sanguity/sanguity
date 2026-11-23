@@ -15869,10 +15869,18 @@ def main():
                   pre441 and all(want279.get(n) == g for n, g in pre441) and list(dict.fromkeys(g for _, g in pre441)) == want441, pre441)
             # #753: and with text at 200%, at 320 to 1400 px and sideways, every word of the key-lab tiles' preview and the
             # preset's inside its tile ("▲ High" ran 68 px out of Magnesium's at 1100 px: a column 150 px, not in em).
-            # (Under 700 px the preset's row isn't shown)
             text753, n753 = tiles_big753(page, settle, lambda width: ["Settings"])
             check("…and with text at 200% at 320 to 1400 px and sideways, every word of the preview's and the preset's tiles inside them, none overlapping (#753)",
                   not text753 and all(n >= 12 for n in n753.values()) and n753["Settings 1400×900"] >= 24, text753[:10] or n753)
+            # the condition presets shown on a phone too: the records bar's phone rule hid every #presets, Settings' as well
+            # (presets.js gives it that id), since #277
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(300)
+            shown753 = js("(e => !!e && e.getClientRects().length > 0 && getComputedStyle(e).display !== 'none')(document.querySelector('.set-presets'))")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(200)
+            check("…and Settings' \"Start from a condition\" is shown on a phone (375 px), not hidden by the records bar's rule for its period buttons",
+                  shown753 is True, shown753)
             # ---- A fuller list of conditions (#187): the long list is searched by synonym, accents and apostrophes aside,
             # and by a group's name; with two conditions chosen, each previewed tile and each lab with no results says
             # which it's from, and each condition's own list is behind "Its list" (kept open as the preview redraws).
