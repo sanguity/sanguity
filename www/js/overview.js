@@ -136,7 +136,9 @@ function openUpcoming(u) {
 function labTile(s, since, lastDraw) {
   const n = s.name, last = s.pts.at(-1), prev = s.pts.at(-2);
   const st0 = statusOf(last), st = st0 && st0.cls !== "ok" ? st0 : null;
-  const d = prev ? last[1] - prev[1] : null;
+  // the change, never from a value given as "<5" or ">90" (#718: "<5" then 6 was "↑ 1"): said not worked out, as the
+  // lab panel says it (labSure)
+  const d = prev ? last[1] - prev[1] : null, sure = !prev || labSure(prev) && labSure(last);
   const recent = s.pts.filter(p => p.ts >= last.ts - 182 * DAY);
   // a nickname's name in the records and "Against a range from settings": the name's and the status's tips, said in
   // the tile's name for screen readers, and the tile's own tip, shown when it has focus (#358)
@@ -151,7 +153,7 @@ function labTile(s, since, lastDraw) {
     // date of its own for the change ("since Sep 10, 2026": not the header's) on the next line, in either font, so the
     // tile is as tall in the fallback as in Inter
     // the change as ↑ / ↓ or "no change" (util.js chgWords), never ▲ / ▼, a result's own flags (#623)
-    el("span", {class: "delta"}, ...(d == null ? [] : [...keepDates(chgWords(d, fmtNum(Math.abs(d) < 1e-9 ? 0 : Math.abs(d)))
+    el("span", {class: "delta"}, ...(d == null ? [] : !sure ? ["change not worked out"] : [...keepDates(chgWords(d, fmtNum(Math.abs(d) < 1e-9 ? 0 : Math.abs(d)))
       + (isoDay(prev.ts) === since ? "" : "\u00a0since")), ...(isoDay(prev.ts) === since ? [] : [" ", el("br"), ...keepDates(fmtD(prev.ts))])]),
       ...(last.ts < (lastDraw || 0) - 2 * DAY ? [...(d == null ? [] : [" ", el("br")]), ...keepDates(`as of ${fmtD(last.ts)}`)] : [])),
     spark(s, recent));

@@ -1804,6 +1804,11 @@ Everything on `main` so far; it becomes the first tagged release.
   against a range from Settings now says so in its cell ("4 ▼ Low (settings range 5–20)"), every step of a chart's band
   that's from Settings is labelled, not only its end's, and both of the PDF's notes say a flag may be against a range
   from Settings.
+- **A value given as "<5" isn't treated as 5** (#718): in the visit summary a C-Reactive Protein result of "<5" was
+  titled "5 mg/L" on its chart, and "<5" then 6 gave a change of "+1" in the preview and the PDF; a key lab's tile on
+  the Overview worked out its change the same way ("↑ 1"). The chart's marks now say the value as given ("<5 mg/L"),
+  and no change is worked out from or to a value given as a bound: the summary says "not worked out" (the PDF says why
+  under its table) and the tile "change not worked out", as a lab's panel does.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

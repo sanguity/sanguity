@@ -120,16 +120,17 @@ const spark = pts => ckSpark(pts.map(([d, v, f, lo, hi]) => ckPt(zParse(d), v, l
 /* a trend's chart (chartkit.js ckSolo, #302), as the PDF draws it under the trends' table, its name over it: of its
    spark's points (the last result on or before the "since" day and each after, or with none after the last few), two
    or more. A result's range from settings (its report gave none, #44) is said so (#649): the band's end "from
-   settings", a mark flagged against it and the chart's name, as the table says "(settings)" */
+   settings", a mark flagged against it and the chart's name, as the table says "(settings)". Each mark's title says
+   its value as given, as the table does ("<5", not 5: #718) */
 const SUM_FLAG = {High: "▲ High", Low: "▼ Low"};
 const sumFlag = f => SUM_FLAG[f] || "◆ " + f;
 function sumChart(r) {
-  const pts = r.spark.map(([d, v, f, lo, hi, rs]) => Object.assign(ckPt(zParse(d), v, lo, hi, f), {d, rs: rs || undefined})), name = r.label + (r.unit ? ` (${r.unit})` : "");
+  const pts = r.spark.map(([d, v, f, lo, hi, rs, t]) => Object.assign(ckPt(zParse(d), v, lo, hi, f), {d, rs: rs || undefined, t})), name = r.label + (r.unit ? ` (${r.unit})` : "");
   const out = pts.filter(p => p[4]), set = out.filter(p => p.rs).length;
   return el("figure", {class: "sum-chart"}, el("figcaption", {text: name}), ckSolo(pts, {h: 64,
     label: `${name}: a chart of ${pts.length} results, ${fmtDay(pts[0].d)} to ${fmtDay(pts.at(-1).d)}${out.length ? `, ${out.length} outside their range` +
       (set ? ` (${set === out.length ? "" : set + " of them "}against a ${RANGE_FROM_SETTINGS})` : "") : ""}. The table above lists the first and the latest.`,
-    say: p => `${fmtDay(p.d)}: ${p[1]}${r.unit ? " " + r.unit : ""}${p[4] ? " " + sumFlag(p[4]) + (p.rs ? ` (${RANGE_FROM_SETTINGS})` : "") : ""}`}));
+    say: p => `${fmtDay(p.d)}: ${p.t ?? p[1]}${r.unit ? " " + r.unit : ""}${p[4] ? " " + sumFlag(p[4]) + (p.rs ? ` (${RANGE_FROM_SETTINGS})` : "") : ""}`}));
 }
 /* a measures block's cell (#225): a day, or a local wall time, in this person's format; else its text */
 const measureCell = (kind, v) => !v ? v : kind === "day" ? fmtDay(v) : kind === "time" ? fmtDT(zParse(v)) : v;
