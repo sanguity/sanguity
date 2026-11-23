@@ -51,7 +51,7 @@ SECTIONS = [   # #576: each line names everything its page shows, and _build sen
                "results, the date of its last inpatient result"),   # #581
     ("results", "Lab results", "each test by the profile's name for it and its reports' name, under its panel: each result's "
                 "date, value and unit, with the reference range and flag printed on its own report, how many there are and "
-                "a trend line of them, and a chart of them over each test's history (#302)"),
+                "a trend line of them, and a chart of them over each test's history"),   # (#302; no issue number in the words, #650)
     ("medications", "Medications", "the name and its status in the records, the instructions, and the dates it was started "
                     "and stopped; each one taken in the dates chosen, so one started before them is listed too"),
     ("procedures", "Procedures, imaging and reports", "the date, the kind (procedure, imaging or report) and the title only: "

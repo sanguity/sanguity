@@ -1705,6 +1705,10 @@ Everything on `main` so far; it becomes the first tagged release.
   a receiver from before writes its summary again once, on start; an Apple Health export's CGM days have them too. The
   page works the period's out from the days', within 3 mg/dL of every reading's on the test's fortnight. Days
   summarised before this say so. Share links, the visit summary and the FHIR export leave them out.
+- **A share link's targets say they hold steps, and no line holds an issue number** (#650): since #298 a steps target
+  sent each day's count from the phone in "Your targets for home readings", whose line on the share form named only
+  readings at home. The line now names the days of steps counted by the phone, as the visit summary's targets block
+  does, and the Lab results line no longer ends "(#302)".
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

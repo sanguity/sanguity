@@ -80,7 +80,8 @@ SOURCES = {"tz": "UTC", "exercise": [], "metrics": [
     {"key": "spo2_avg", "unit": "%", "pts": [[D(-10), 97.2]]}, {"key": "spo2_min", "unit": "%", "pts": [[D(-10), 92.0]]},
     {"key": "glucose_meter", "unit": "mg/dL", "pts": [[D(-4) + "T07:12", 104.0]]},
     *({"key": "glucose_" + k, "unit": "", "pts": [[D(-5), v]]} for k, v in (("avg", 131.0), ("min", 62.0), ("max", 212.0), ("n", 288),
-                                                                          ("hours", 23.5), ("lt54", 0.0), ("lt70", 4.0), ("in", 78.0), ("gt180", 18.0)))],
+                                                                          ("hours", 23.5), ("lt54", 0.0), ("lt70", 4.0), ("in", 78.0), ("gt180", 18.0))),
+    {"key": "steps", "unit": "count", "pts": [[D(-6), 9400], [D(-5), 4100]]}],   # each day's count from the phone (#298)
     "bp_readings": [[U(-9, 8), 132, 84, 68, "Fictional cuff", "Health Connect"], [D(-2) + "T20:00:00", 126, 80, None, None, "Typed in"]],
     "temp_readings": [[U(-8, 7), 37.4, "Fictional thermometer", "Health Connect"]],
     "spo2_readings": [[U(-4, 8), 95, "FICTIONAL-OXIMETER-X1", "Health Connect"], [D(-3) + "T09:00:00", 97, None, "Typed in"]],
@@ -89,6 +90,8 @@ SOURCES = {"tz": "UTC", "exercise": [], "metrics": [
              "device": "FICTIONAL-WATCH-DEVICE"},
             {"key": "rhythm:0123456789abcdee", "type": "irregular_rhythm", "start": U(-7, 3), "end": U(-7, 4), "device": "FICTIONAL-WATCH-DEVICE"}],
     "med_doses": [[U(-5, 9), "Fictionalol 10 mg tablet", "taken", 2, "FICTIONAL-UNITS", "FICTIONAL-APP"]]}
+# #650: its targets, a steps target among them (#298), against each day's count from the phone (SOURCES' steps)
+SOURCES_TARGETS = {"bp": {"sysHigh": 130, "diaHigh": 80, "by": "Dr. Fictional Example"}, "steps": {"low": 8000, "by": "Dr. Fictional Example"}}
 SOURCES_DATA = {"events": [
     {"id": 1, "t": D(-15) + "T00:00:00", "end": D(-12) + "T23:59:00", "k": "stay", "title": "Hospital stay · Fictional General",
      "sub": "Ward 5 · 3 nights · transferred to Other Fictional Hospital"},
@@ -245,7 +248,7 @@ class ShareLinks(unittest.TestCase):
         "bmi": {"Date": ["on its day"], "Measure": ["each weight", "the BMI", "each measurement"], "Value": ["each weight", "the BMI"],
                 "Percentile": ["growth charts"], "From": ["where each weight came from"]},
         "targets": {"Measure": ["each target"], "Your target": ["each target"], "Set by": ["who set it"], "Set on": ["and when"],
-                    "In this period": ["how many readings at home were above or below it"]},
+                    "In this period": ["how many readings at home", "or days of steps counted by the phone", "were above or below it"]},
         "medlog": {"Date and time": ["the date and time"], "Medication": ["the medication"], "What happened": ["taken, taken late or skipped"],
                    "Note": ["its note"], "From": ["where it came from"]},
     }
@@ -312,6 +315,9 @@ class ShareLinks(unittest.TestCase):
         ("visits", "transferred from Fictional General", ["a transfer to or from another hospital"]),
         ("visits", "last inpatient result", ["the date of its last inpatient result"]),
         ("costs", "Fictionalol 10 mg tablet", ["the service or medicine it was for"]),   # a pharmacy claim's: the medicine
+        ("targets", "1 of 2 readings above it", ["how many readings at home", "were above or below it"]),
+        ("targets", "Steps a day", ["days of steps counted by the phone"]),   # a steps target (#298) and its days (#650)
+        ("targets", "1 of 2 days below it", ["how many", "days of steps counted by the phone", "were above or below it"]),
     ]
     # and where each measure's readings came from, in its line
     SOURCE = {"home_bp": "the device and app that sent it", "temperature": "the device and app that sent it",
@@ -332,7 +338,9 @@ class ShareLinks(unittest.TestCase):
         with dbm.transaction(db):
             records.store(db, pid, SOURCES_DATA, "dataset")
         db.close()
-        try:   # and a dose typed in
+        try:   # and a dose typed in, and the targets
+            r = self.c["robin"].put(f"/api/profiles/{pid}/person", json={"targets": SOURCES_TARGETS}, headers=H)
+            self.assertEqual(r.status_code, 200, r.text)
             r = self.c["robin"].post(f"/api/profiles/{pid}/medications/doses", headers=H,
                                      json={"med": medications.med_key("Fictionalol 10 mg tablet"), "t": D(-4) + "T08:00", "status": "late"})
             self.assertEqual(r.status_code, 201, r.text)
@@ -348,6 +356,10 @@ class ShareLinks(unittest.TestCase):
             self.assertTrue(any(shown == v or s == "visits" and shown in v for v in got), f"{s} shows “{shown}”: {got}")
             for w in words:
                 self.assertIn(w, lines[s], f"{s}: “{shown}” is said in its line as “{w}”")
+
+    def test_no_issue_number_in_any_sections_words(self):   # #650: the Lab results line ended "(#302)"
+        for s, label, line in share_links.SECTIONS:
+            self.assertNotRegex(f"{label} {line}", r"#\d", f"{s}: its label and line, on the owner's form and the link's page")
 
     def test_labs_by_the_profiles_names_with_their_panels(self):   # #289: the clinician's page
         r = self.c["robin"].put(f"/api/profiles/{self.pid}/settings/labNicknames/name", json={"name": "SodiumSECRET", "to": "Sodium"}, headers=H)

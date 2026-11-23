@@ -592,6 +592,8 @@ class Summary(unittest.TestCase):
             self.assertEqual(rows["Steps a day"][0::3], ["at least 8,000 steps", "No days"], "#298: no steps on file")
             self.assertIn("Sanguity doesn't suggest targets", b["lead"][0])
             self.assertIn("as the person's care team gave it", b["lead"][0])
+            self.assertIn("The readings taken at home in this period, and each day's steps counted by the phone, are compared", b["lead"][0],
+                          "a steps target's days, as the section's line says (#650)")
             self.assertIn("Not medical advice", b["note"])
             c.put("/api/settings/user/units", json={"value": {"lab": "si", "weight": "kg"}}, headers=H)
             b = self.mpreview(sections=["targets"])["measures"]["targets"]
