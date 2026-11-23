@@ -740,8 +740,8 @@ svg text.ck-yr{fill:var(--ink2);font-weight:var(--fw-medium)}   /* the time axis
 /* Forced colours don't reach SVG strokes and fills: milestones and cursors in system colours there, so a contrast theme
    opposite to the app's own doesn't leave them faint (#341; the ECG maps its cursor the same way) */
 @media (forced-colors:active){.msmark,.msflag,.evlead{stroke:CanvasText}.mslabel,.msflag-head,.ev-more{fill:CanvasText}.cross{stroke:Highlight}
-  svg text:not([class]),.evlabel,.lane-label,svg text.medname,svg text:is(.ck-yr,.ck-unit,.ck-ref){fill:CanvasText}
-  .refedge{stroke:CanvasText}svg text.ck-ref{stroke:Canvas}}   /* a chart's own text too (#346); the band's edges (#293); the event track (#294) */
+  svg text:not([class]),.evlabel,.lane-label,svg text:is(.ck-yr,.ck-unit,.ck-ref){fill:CanvasText}
+  .refedge{stroke:CanvasText}svg text.ck-ref{stroke:Canvas}}   /* a chart's own text too (#346, and #657 below); the band's edges (#293); the event track (#294) */
 table.data{border-collapse:collapse;width:100%;font-size:var(--fs-2);font-variant-numeric:tabular-nums}
 table.data th{text-align:left;color:var(--muted);font-weight:var(--fw-semibold);border-bottom:1px solid var(--axis);padding:var(--sp-1) var(--sp-2);position:sticky;top:0;background:var(--surface)}
 table.data td{border-bottom:1px solid var(--grid);padding:var(--sp-1) var(--sp-2);vertical-align:top}
@@ -1756,6 +1756,9 @@ details.more.cost-more>:not(summary){max-width:none;color:var(--ink);font-size:v
 .cost-bar-run{display:flex;gap:2px;min-width:0}
 svg text.cum-end{fill:var(--ink);font-weight:var(--fw-semibold)}   /* the running totals' ends, in ink (#250, #300); the bars' notes too (.ov-row .s) */
 @media (forced-colors:active){ .ov-row[aria-pressed=true]{outline:2px solid Highlight;outline-offset:-2px} .cost-bar{forced-color-adjust:none;background:CanvasText!important} }
+/* chart text #346's rule doesn't reach (its own rule later or more specific), and the heatmap's axis, an SVG that
+   keeps its theme's background: in the system's colours (#657) */
+@media (forced-colors:active){ #hm text:is(.row,.grp),#hm text.row.renamable:is(:hover,:focus),svg text:is(.medname,.cum-end,.db-name){fill:CanvasText} #hmAxis{background:Canvas} }
 .cost-figs>.set-hd{flex-wrap:nowrap}   /* What you paid's ⓘ beside its heading at 320 px, the heading wrapping */
 @container (width < 560px){
   table.stack,.stack tbody{display:block}
