@@ -1820,6 +1820,16 @@ Everything on `main` so far; it becomes the first tagged release.
   low–high" or "Show lab glucose results alongside", pressed, went under the window's foot or the phone's tab bar.
   Once the charts are drawn it goes back where it was, wholly in sight; Chart | Table and Show more do the same (WCAG
   2.4.11).
+- **Body and activity's All holds every reading, and its weekly charts count weeks** (#721): All began at the phone's
+  or scale's first day, so a weight or vitals taken at a visit before it were on 2 years and not on All: on the demo
+  the Nov 2024 clinic weight (Weight 271 readings for 272, its change ↓ 6.3 lb for 5.3) and the Jan 2025 visit's blood
+  pressure, temperature, oxygen and breathing rate (the blood pressure tile 164 for 165), and the overview strip drew
+  that weight outside the window. All now spans every reading Body draws, the visits', the glucose meter's and
+  workouts among them, with the first and last weeks' averages (a week of Sleep or Steps was missing where the phone
+  began on a weekend), and lab glucose when it's shown. A chart of weekly averages named its points "readings"
+  ("Blood pressure, home readings by week: 24 readings" beside the tile's 165; ten years 601 for 1,477): it now says
+  "20 weeks of home readings (161 readings) and 4 readings at visits", as its table and tile count them (Blood
+  oxygen's weekly chart said "20 week or readings").
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

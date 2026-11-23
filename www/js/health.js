@@ -69,14 +69,30 @@ function hData() {
     }
   }
   ex.sort((p, q) => p.t - q.t);
-  const all = [...scale, ...ser("steps"), ...ser("hr_rest"), ...sleep, ...hr].map(p => p[0]);
   const bmi = bmiSeries([...scale, ...clinic].sort((p, q) => p[0] - q[0]), "lb");   // #195: each weight with the height of its day
-  return {scale, clinic, bmi, sleep, hr, ex, rest: ser("hr_rest"), steps: ser("steps"), fat: ser("body_fat"), lean: ser("lean_mass"), bmr: ser("bmr"),
-    hrv: ser("hrv"), first: all.length ? Math.min(...all) : Date.now(), last: all.length ? Math.max(...all) : Date.now()};
+  const out = {scale, clinic, bmi, sleep, hr, ex, rest: ser("hr_rest"), steps: ser("steps"), fat: ser("body_fat"), lean: ser("lean_mass"), bmr: ser("bmr"),
+    hrv: ser("hrv"), vit: hVitals(), fit: hFitness()};
+  // All's span (hSpan): from the first reading a card draws to the last, the visits' among them (#721: a weight or the
+  // vitals taken at a visit before the phone's first day were on 2 years and not on All), the CGM's and meter's
+  if (G === undefined) G = gData();
+  let first = Infinity, last = -Infinity;
+  const span = t => { if (t < first) first = t; if (t > last) last = t; };
+  for (const k of ["scale", "clinic", "sleep", "hr", "rest", "steps", "fat", "lean", "hrv"]) for (const p of out[k]) span(p[0]);
+  const {bp, temp, spo2} = out.vit, {resp, vo2} = out.fit;
+  for (const r of [ex, bp.home, bp.clinic, temp.home, temp.clinic, spo2.home, spo2.typed, spo2.clinic, resp.home, resp.clinic, vo2.home].flat()) span(r.t);
+  if (G && G.first <= G.last) { span(G.first); span(G.last); }
+  if (first <= last) for (const t of [first, last]) span(hMonday(t) + 3 * DAY);   // and the first and last weeks' averages, on their Thursdays (weekly)
+  return Object.assign(out, first <= last ? {first, last} : {first: Date.now(), last: Date.now()});
 }
 let H = null;
-/* the charts' window: the records bar's period; with "All", from the first watch or scale day to the last */
-function hRange() { H = H || hData(); return periodWindow([H.first, H.last]); }
+/* the charts' window: the records bar's period; with "All", everything Body draws (hData), the lab glucose results
+   beside the CGM's when they're shown (#721) */
+function hSpan() {
+  H = H || hData();
+  const l = gOpt.labs && G ? G.lab : [];
+  return l.length ? [Math.min(H.first, l[0][0]), Math.max(H.last, l.at(-1)[0])] : [H.first, H.last];
+}
+function hRange() { return periodWindow(hSpan()); }
 const inR = (pts, a, b) => pts.filter(p => p[0] >= a && p[0] <= b);
 const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
 function rolling(pts, days = 7) {  // trailing mean over the last `days` calendar days with data
@@ -88,10 +104,19 @@ function rolling(pts, days = 7) {  // trailing mean over the last `days` calenda
   }
   return out;
 }
-function weekly(pts, fn = mean) {  // [[t, v...]] -> weekly buckets (Monday), averaging each column
+const hMonday = t => { const d = zdate(t); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return d.getTime(); };   // t's week's Monday, noon
+function weekly(pts, fn = mean) {  // [[t, v...]] -> weekly buckets (Monday), averaging each column, each at its Thursday
   const m = new Map();
-  for (const p of pts) { const d = zdate(p[0]); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - (d.getDay() + 6) % 7); const k = d.getTime(); if (!m.has(k)) m.set(k, []); m.get(k).push(p); }
+  for (const p of pts) { const k = hMonday(p[0]); if (!m.has(k)) m.set(k, []); m.get(k).push(p); }
   return [...m.entries()].sort((a, b) => a[0] - b[0]).map(([k, ps]) => [k + 3 * DAY, ...ps[0].slice(1).map((_, i) => fn(ps.map(p => p[i + 1] || 0)))]);
+}
+/* a chart of weekly averages names its weeks (#721: it said "24 readings" beside its tile's 165): "20 weeks of home
+   readings (161 readings) and 4 readings at visits". n: its points in the period, the keys' steps: a week's average
+   (no reading of its own, p[5]) or a reading drawn on its own, at home or at a visit; of: what the weeks average, of
+   which days are in the period (in unit), as its table and tile count them */
+function hWeeks(n, of, days, unit) {
+  const w = n.filter(p => !p[5]).length, home = n.filter(p => p[5]?.home).length, many = (k, u) => `${k.toLocaleString("en-US")} ${u}${k === 1 ? "" : "s"}`;
+  return listOf([`${many(w, "week")} of ${of} (${many(days, unit)})`, home && `${many(home, "reading")} at home`, n.length - w - home && `${many(n.length - w - home, "reading")} at visits`]);
 }
 
 /* one chart: x = time [a, b]; layers: bars (stacked), band, line, dots, strip (a stack's shares under the plot, #298);
@@ -102,11 +127,12 @@ let hNamed = false;
 /* label, noun, nav (#60): what the chart shows ("Weight"), what each point is ("reading"), and the points the
    keyboard steps through and its name counts ([[t, …]], the ones its tip reads: its readings, never an average's,
    which leaves some out, #659); h: its height with one row of time labels; fmtY: a gridline's label, its number as
-   it is (ckNum, #654) with a unit's letter */
-function hChart(host, a, b, {h = 190, layers, fmtY = ckNum, unit = "", zero = false, tip, label = "Chart", noun = "day", nav}) {
+   it is (ckNum, #654) with a unit's letter; count(points, a, b): what its name counts them as, in place of the noun
+   (a chart of weeks, hWeeks) */
+function hChart(host, a, b, {h = 190, layers, fmtY = ckNum, unit = "", zero = false, tip, label = "Chart", noun = "day", nav, count}) {
   // its words from a to b, its name (chartKeys): a tab stop with them as it's made (#652)
   const say = (a, b, n = nav.filter(p => p[0] >= a && p[0] <= b)) => { const ms = msSay(a, b);
-    return `${label}: ${n.length} ${noun}${n.length === 1 ? "" : "s"}${n.length ? ` from ${fmtD(n[0][0])} to ${fmtD(n.at(-1)[0])}` : " in this period"}. Left and right arrow keys step through them.${ms ? " " + ms : ""}`; };
+    return `${label}: ${n.length && count ? count(n, a, b) : `${n.length} ${noun}${n.length === 1 ? "" : "s"}`}${n.length ? ` from ${fmtD(n[0][0])} to ${fmtD(n.at(-1)[0])}` : " in this period"}. Left and right arrow keys step through them.${ms ? " " + ms : ""}`; };
   const svg = chartSvg(say(a, b), {class: "pz ck"}); host.append(svg);
   const named = !hNamed && (hNamed = true), SH = layers.some(l => l.type === "strip") ? 18 : 0;   // the strip's room, under the plot
   svg._draw = (a, b, live) => {   // also called live while dragging, with the new window: at the width it had, so the
@@ -598,7 +624,8 @@ function bpCard(box, a, b, long, legend, head, home, clinic) {
   const homePts = home.map(r => [r.t, r.v[0], r.v[1], (r.tf || [])[0] || "", (r.tf || [])[1] || "", r]), clinicPts = clinic.map(r => [r.t, r.v[0], r.v[1], r.f[0], r.f[1], r]);
   const nav = [...(long ? wk : homePts), ...clinicPts].sort((p, q) => p[0] - q[0]);
   const bL = [tgtLayer(bT[0], "Your systolic target"), tgtLayer(bT[1], "Your diastolic target")].filter(Boolean);
-  hChart(card, a, b, {h: 220, label: long ? "Blood pressure, home readings by week" : "Blood pressure", noun: "reading", nav, layers: long ? [...bL,
+  hChart(card, a, b, {h: 220, label: long ? "Blood pressure, home readings by week" : "Blood pressure", noun: "reading", nav,
+    count: long && ((n, a, b) => hWeeks(n, "home readings", home.filter(r => r.t >= a && r.t <= b).length, "reading")), layers: long ? [...bL,
     {type: "band", data: wk, color: C.home},
     {type: "line", data: wk.map(p => [p[0], p[1]]), color: C.home, width: 1.6},
     {type: "line", data: wk.map(p => [p[0], p[2]]), color: C.home, width: 1.6},
@@ -945,7 +972,8 @@ function oxygenCard(box, a, b, long, legend, head, {home, typed = [], clinic}) {
   const dayPts = home.map(r => [r.t, r.v[0], r.v[1] ?? r.v[0], r]), pts = long ? weekly(dayPts.map(p => p.slice(0, 3))) : dayPts;
   const clinicPts = clinic.map(r => [r.t, r.v[0], null, r.f[0], "", r]), typedPts = typed.map(r => [r.t, r.v[0], null, (r.tf || [])[0] || "", "", r]);
   const nav = [...(long ? pts : home.map(r => [r.t, r.v[0], r.v[1], "", "", r])), ...typedPts, ...clinicPts].sort((p, q) => p[0] - q[0]);
-  hChart(card, a, b, {h: 160, fmtY: v => ckNum(v) + "%", label: long ? "Blood oxygen, weekly" : "Blood oxygen", noun: long ? "week or reading" : "day or reading", nav, layers: [
+  hChart(card, a, b, {h: 160, fmtY: v => ckNum(v) + "%", label: long ? "Blood oxygen, weekly" : "Blood oxygen", noun: long ? "week or reading" : "day or reading", nav,
+    count: long && ((n, a, b) => hWeeks(n, "the phone's daily averages", home.filter(r => r.t >= a && r.t <= b).length, "day")), layers: [
     ...(oT ? [tgtLayer(oT)] : []),
     {type: "band", data: pts, color: C.home}, {type: "line", data: pts, color: C.home, width: 1.6, gap: long ? 21 : 3},
     ...(long ? [] : [{type: "dots", data: pts, color: C.home, r: pts.length > 200 ? 1.5 : 2.4, flag: p => p[3] && p[3].tf ? p[3].tf[0] : ""}]),
@@ -973,12 +1001,12 @@ function hFitness() {
 /* respiratory rate in Vitals, VO2 max in Activity and fitness (#276) */
 function respCard(box, vx) {
   const {resp} = H.fit = H.fit || hFitness();
-  if (resp.home.length || resp.clinic.length) phoneDayCard(box, vx, {...resp, id: "h-resp", title: "Respiratory rate", name: "Respiratory rate", color: "var(--measure)", near: .6,
+  if (resp.home.length || resp.clinic.length) phoneDayCard(box, vx, {...resp, id: "h-resp", title: "Respiratory rate", name: "Respiratory rate", of: "the phone's daily averages", color: "var(--measure)", near: .6,
     hint: long => `${long ? "The phone's daily average by week" : "The phone's daily average"} of breaths a minute (most watches measure it asleep); visits' rates one by one.`});
 }
 function vo2Card(box, vx) {
   const {vo2} = H.fit = H.fit || hFitness();
-  if (vo2.home.length) phoneDayCard(box, vx, {...vo2, id: "h-vo2", title: "Cardio fitness (VO2 max)", name: "VO2 max", color: "var(--measure)", near: 4,
+  if (vo2.home.length) phoneDayCard(box, vx, {...vo2, id: "h-vo2", title: "Cardio fitness (VO2 max)", name: "VO2 max", of: "the watch's daily estimates", color: "var(--measure)", near: 4,
     hint: long => `The watch's estimate of VO2 max, the most oxygen the body uses in hard exercise, in ${vo2.unit}${long ? ", by week" : ""}: as the device gives it, without fitness levels.`});
 }
 /* one card: the phone's days (weekly averages over a long period) as a line with dots, the visits' readings hollow */
@@ -1001,7 +1029,7 @@ function phoneDayCard(box, {a, b, long, legend, head}, o) {
   const clinicPts = o.clinic.map(r => [r.t, r.v[0], null, r.f[0], "", r]);
   const nav = [...pts, ...clinicPts].sort((p, q) => p[0] - q[0]);
   hChart(card, a, b, {h: 150, label: long ? `${o.title}, weekly` : o.title,
-    noun: visits ? "reading" : long ? "week" : "day", nav, layers: [   // "readings": the phone's days and the visits'
+    noun: visits ? "reading" : long ? "week" : "day", nav, count: long && ((n, a, b) => hWeeks(n, o.of, o.home.filter(r => r.t >= a && r.t <= b).length, "day")), layers: [   // "readings": the phone's days and the visits'
     {type: "line", data: pts, color: C.home, width: 1.6, gap: long ? 21 : 10},
     {type: "dots", data: pts, color: C.home, r: pts.length > 200 ? 1.5 : 2.6},
     {type: "pairs", data: clinicPts, color: C.clinic, hollow: true, r: 3.5}],

@@ -1431,13 +1431,15 @@ FORMS298_JS = r"""() => {
 # its name says, and the points Home, the right arrow and End reach, against the rows of its card's table with a value
 # in its column, the table drawn whole for this (H_PAGE), oldest first: as many, each row's date the point's (a day, a
 # time, or "Week of" its Monday). A chart of home readings by week whose table lists each one (blood pressure, oxygen,
-# respiratory rate, VO2 max over 150 days) isn't compared. {charts: [name, its table's rows], problems}. Async: the
+# respiratory rate, VO2 max over 150 days) counts weeks (#721: its weeks were "readings"): "20 weeks of home readings
+# (161 readings) and 4 readings at visits", the weeks and the readings drawn one by one the points the keys reach, what
+# the weeks average and those readings its table's rows. {charts: [name, its table's rows], problems}. Async: the
 # charts are drawn in a frame. test_performance.py reads it to check the ten years the same way
 NAV659_JS = r"""async () => {
   const frames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))), had = [...state.tables], page = H_PAGE, out = {charts: [], problems: []};
   state.tables.clear(); renderHealth(); await frames();
-  const charts = [...document.querySelectorAll('#view-health svg.ck')].map(svg => ({svg, card: '#' + svg.closest('.card').id, said: svg.getAttribute('aria-label'), ts: []}))
-    .filter(c => !/^[^:]*(, weekly|by week):/.test(c.said));   // home readings by week, each listed in the table
+  const charts = [...document.querySelectorAll('#view-health svg.ck')].map(svg => ({svg, card: '#' + svg.closest('.card').id, said: svg.getAttribute('aria-label'), ts: [],
+    weekly: /^[^:]*(, weekly|by week):/.test(svg.getAttribute('aria-label'))}));   // home readings by week, each listed in the table
   for (const c of charts) {
     const key = k => c.svg.onkeydown({key: k, preventDefault() {}, stopPropagation() {}});
     for (key('Home'); c.svg._kt != null && c.ts.at(-1) !== c.svg._kt; key('ArrowRight')) c.ts.push(c.svg._kt);
@@ -1453,9 +1455,19 @@ NAV659_JS = r"""async () => {
   H_PAGE = page; state.tables.clear(); had.forEach(k => state.tables.add(k)); renderHealth(); await frames();
   const COL = [[/^Weight/, /^Weight/], [/^Body fat/, /^Body fat/], [/^Lean mass/, /^Lean mass/], [/^BMI/, /^BMI/], [/^Heart rate variability/, /variability/],
     [/^Heart rate zones/, null], [/^Heart rate/, hState.hrDay ? /^Average/ : /^Resting/], [/^Steps/, /^Steps/]];
-  const says = t => [fmtD(t), fmtDT(t), 'Week of ' + fmtD(t - 3 * DAY)];
+  const says = t => [fmtD(t), fmtDT(t), 'Week of ' + fmtD(t - 3 * DAY)], num = v => +(v || '0').replace(/,/g, '');
   for (const c of charts) {
     const name = c.said.split(':')[0], tb = tables[c.card], col = (COL.find(([n]) => n.test(name)) || [])[1], ci = col ? tb?.heads.findIndex(h => col.test(h)) : 0;
+    if (c.weekly) {   // weeks, what they average and the readings one by one (#721)
+      const rows = tb ? tb.rows.length : 0, w = /: ([\d,]+) weeks? of [^(]+ \(([\d,]+) \w+\)(?:(?:,| and) ([\d,]+) readings? at home)?(?: and ([\d,]+) readings? at visits)? from (.+?) to .+?\. /.exec(c.said);
+      out.charts.push([name, rows]);
+      if (!w) { if (rows || c.ts.length) out.problems.push(`${name}: "${c.said.split('. ')[0]}" counts no weeks, its table ${rows} rows`); continue; }
+      const [weeks, days, home, visits] = w.slice(1, 5).map(num);
+      if (days + home + visits !== rows) out.problems.push(`${name}: "${c.said.split('. ')[0]}", its table ${rows} rows`);
+      if (weeks + home + visits !== c.ts.length || w[5] !== fmtD(c.ts[0]) || c.end !== c.ts.at(-1))
+        out.problems.push(`${name}: "${c.said.split('. ')[0]}", the keys reach ${c.ts.length}${c.ts.length ? ' from ' + fmtD(c.ts[0]) : ''}, End ${c.end === c.ts.at(-1) ? 'the last' : 'another'}`);
+      continue;
+    }
     if (!tb || ci < 0) { out.problems.push(`${name}: no table to compare`); continue; }
     const rows = tb.rows.filter(r => !col || r[ci].trim()).map(r => r[0]).reverse(), m = /: (\d+) .+? (?:from (.+?) to .+?|in this period)\. /.exec(c.said);
     out.charts.push([name, rows.length]);
@@ -1463,6 +1475,35 @@ NAV659_JS = r"""async () => {
     if (c.ts.length !== rows.length || rows.some((r, i) => !says(c.ts[i]).includes(r)) || c.end !== c.ts.at(-1))
       out.problems.push(`${name}: the keys reach ${c.ts.length}${c.ts.length ? ' from ' + fmtD(c.ts[0]) : ''}, End ${c.end === c.ts.at(-1) ? 'the last' : 'another'}, of its table's ${rows.length} from ${rows[0]}`);
   }
+  return out;
+}"""
+
+# Body and activity's All against 2 years (#721): every card on Table, drawn whole (H_PAGE), at "2y" and then "All": each
+# row of a table by date (its first two cells) on 2 years is on All too, and a tile's count (readings, sessions, nights) is
+# no smaller. All spanned the phone's and the scale's days only, so a weight or the vitals taken at a visit before the
+# watch's first day were on 2 years and not on All. {rows: {card: [2 years' rows, All's]}, problems}. Async; the period
+# and the cards' views put back. test_performance.py reads it to check the ten years the same way
+ALL721_JS = r"""async () => {
+  const frames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))), had = [...state.tables], page = H_PAGE, was = [state.preset, state.from, state.to];
+  const out = {rows: {}, problems: []}, count = t => { const m = /([\d,]+) (?:meter )?(reading|session|night)s?\b/.exec(t); return m ? [m[2], +m[1].replace(/,/g, '')] : null; };
+  const read = async p => {
+    applyPreset(p); H_PAGE = 1e6;
+    for (const s of document.querySelectorAll('#view-health .view-seg')) state.tables.add(s.dataset.key);
+    renderHealth(); await frames();
+    const t = {};
+    for (const s of document.querySelectorAll('#view-health .view-seg')) t[s.dataset.key] = [...document.querySelectorAll(s.dataset.key + ' table.data')]
+      .filter(x => /^(Date|Week|Night)/.test(x.tHead.rows[0].cells[0].textContent)).flatMap(x => [...x.tBodies[0].rows].map(r => [...r.cells].slice(0, 2).map(c => c.textContent).join(' | ')));
+    const words = x => [x.querySelector('.val')?.firstChild?.textContent, x.querySelector('.val small')?.textContent, x.querySelector('.delta')?.textContent].join(' ');
+    return {t, tiles: Object.fromEntries([...document.querySelectorAll('#view-health .tile')].map(x => [x.querySelector('.lbl').textContent, count(words(x))]))};
+  };
+  const lp = lastPeriod, two = await read('2y'), all = await read('all');
+  for (const [k, rows] of Object.entries(two.t)) {
+    const have = new Set(all.t[k] || []), miss = rows.filter(r => !have.has(r));
+    out.rows[k] = [rows.length, (all.t[k] || []).length];
+    if (miss.length) out.problems.push(`${k}: ${miss.length} of 2 years' rows not on All, as "${miss[0]}"`);
+  }
+  for (const [n, c] of Object.entries(two.tiles)) if (c && !(all.tiles[n] && all.tiles[n][1] >= c[1])) out.problems.push(`the ${n} tile: ${c[1]} ${c[0]}s on 2 years, ${all.tiles[n] ? all.tiles[n][1] : 'none'} on All`);
+  H_PAGE = page; state.tables.clear(); had.forEach(k => state.tables.add(k)); [state.preset, state.from, state.to] = was; lastPeriod = lp; renderAll(); await frames();
   return out;
 }"""
 
@@ -4853,8 +4894,10 @@ def main():
             # #659: every chart's name counts its readings from the first, as its table lists them, and Home, the right arrow
             # and End reach each one, at 30 days, 90 days and All (NAV659_JS): body fat and lean mass took their 14-day
             # averages' points, which leave out the first readings and two after a gap (267 from Apr 3 for 271 from Mar 29).
-            # Then from the keyboard itself, Home and End on body fat's chart: its first and latest readings. The ten
-            # years: test_performance.py
+            # Then from the keyboard itself, Home and End on body fat's chart: its first and latest readings. A chart of
+            # weeks (blood pressure, oxygen, respiratory rate and VO2 max on All) counts its weeks (#721: "24 readings"
+            # beside its tile's 165), and what they average with the readings drawn one by one as its table lists them.
+            # The ten years: test_performance.py
             was659 = js("[state.preset, state.from, state.to]")
             nav659 = {}
             for per in ("30d", "90d", "all"):
@@ -4873,11 +4916,18 @@ def main():
             js("w => { [state.preset, state.from, state.to] = w; renderAll(); }", was659)
             settle(300)
             check("Each of Body and activity's charts names as many readings as its table lists, from the same first one, and Home, the arrows and "
-                  "End reach every one, at 30 days, 90 days and All (#659)",
-                  all(not v["problems"] and len(v["charts"]) >= 9 for v in nav659.values()) and any(n == "Body fat" for n, _ in nav659["all"]["charts"]),
-                  {k: v["problems"] or len(v["charts"]) for k, v in nav659.items()})
+                  "End reach every one, at 30 days, 90 days and All (#659); a chart of weeks names its weeks, the keys' steps, and the readings its table lists (#721)",
+                  all(not v["problems"] and len(v["charts"]) >= 9 for v in nav659.values()) and any(n == "Body fat" for n, _ in nav659["all"]["charts"])
+                  and sum(n.endswith((", weekly", "by week")) for n, _ in nav659["all"]["charts"]) == 4,
+                  {k: v["problems"] or v["charts"] for k, v in nav659.items()})
             check("…body fat's chart, on All, from the keyboard: its name the readings' count from the first, Home the first and End the latest",
                   keys659[0] == f"Body fat: {fat659[0]} readings from {fat659[1]} to {fat659[2]}" and keys659[1][1] == fat659[1] and keys659[2][1] == fat659[2], [keys659, fat659])
+            # #721: All holds every reading 2 years holds, each card's table and each tile's count (ALL721_JS): Body's All
+            # began at the phone's first day, so the demo's Nov 2024 clinic weight and the Jan 2025 visit's blood pressure,
+            # temperature, oxygen and breathing rate were on 2 years and not on All (the blood pressure tile 165 and 164)
+            all721 = js(ALL721_JS)
+            check("…All holds every reading 2 years holds, each card's table row and each tile's count, the visits' before the phone's first day too (#721)",
+                  not all721["problems"] and len(all721["rows"]) >= 9 and all(a > 0 for a, _ in all721["rows"].values()), all721["problems"] or all721["rows"])
             # #291: Body and activity draws with the kit (chartkit.js). On All (20 months of the demo's watch) its time
             # axes are months over their years, not one "2026" under them all, none overlapping or out of its chart, at
             # 1400 and 320 px; hovering one chart puts the crosshair at that date on every chart of the tab, the tooltip
