@@ -1830,6 +1830,13 @@ Everything on `main` so far; it becomes the first tagged release.
   ("Blood pressure, home readings by week: 24 readings" beside the tile's 165; ten years 601 for 1,477): it now says
   "20 weeks of home readings (161 readings) and 4 readings at visits", as its table and tile count them (Blood
   oxygen's weekly chart said "20 week or readings").
+- **Larger text: a tile's words stay inside it** (#722): with text at 200% on a phone a tile's value and its unit had
+  no break between them, so the tile laid its words out at their width: Body and activity's "126/77 mmHg" ran 59 px
+  past its tile at 360 px, under the next one, its "Blood pressure" and "165 readings · latest at…" cut with it, and
+  Workouts' "sessions"; on the Overview a key lab's "mmol/L" ran past the screen's edge, and at 320 px eight tiles'
+  units and dates ran out of them. The unit now goes under its value where both don't fit, and a tile takes a row of
+  its own where two would be narrower than its words (one at 320 to 375 px with text at 200%; two as before at the
+  usual size, and at 412 px). Body's sideways row of tiles keeps each as wide as its words (WCAG 1.4.4).
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

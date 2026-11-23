@@ -224,8 +224,8 @@ button.tile{cursor:pointer}
 :is(button.tile,.tile-tq):hover{border-color:var(--axis)}
 .tile .lbl{font-size:var(--fs-2);color:var(--ink2);display:flex;gap:var(--sp-2);align-items:center}
 .tile .lbl .st{margin-left:auto}
-.tile .val{font-size:var(--fs-7);font-weight:var(--fw-semibold);letter-spacing:-.01em}
-.tile .val small{font-size:var(--fs-2);font-weight:var(--fw-medium);color:var(--muted);margin-left:var(--sp-1)}
+.tile .val{font-size:var(--fs-7);font-weight:var(--fw-semibold);letter-spacing:-.01em;display:flex;flex-wrap:wrap;align-items:baseline;column-gap:var(--sp-1)}   /* the unit under the value where both don't fit (larger text, #722) */
+.tile .val small{font-size:var(--fs-2);font-weight:var(--fw-medium);color:var(--muted)}
 .tile .orig{font-size:var(--fs-1);color:var(--muted)}   /* the value as reported, beside a converted one (#41) */
 .tile .delta{font-size:var(--fs-2);color:var(--ink2);text-wrap:balance}
 .nw{white-space:nowrap}   /* a date kept whole (keepDates, util.js, #330) */
@@ -249,7 +249,8 @@ button.tile{cursor:pointer}
 .card .tile-tq>.tile{background:none}
 @media (max-width:700px){ .card{--card-pad:var(--sp-3);border-radius:var(--r-md);margin-bottom:var(--sp-4)} }
 @media (max-width:600px){
-  .tiles,.tiles.compact,.stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .tiles,.tiles.compact{grid-template-columns:repeat(auto-fill,minmax(max(calc(50% - var(--sp-3)),6.25em),1fr))}   /* two a row, or one where two would be narrower than a tile's words (larger text, #722) */
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
   .tile .val{font-size:var(--fs-6)}
   .tile .lbl{flex-wrap:wrap}
   .tile .lbl .st{margin-left:0}
@@ -684,7 +685,7 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .ov-out{margin-bottom:var(--sp-4)}
 .ov-out .ov-row{display:flex;flex-wrap:wrap}   /* a flag on one line, wrapping on a phone */
 .lab-panel{font-size:var(--fs-2);font-weight:var(--fw-semibold);color:var(--ink2);margin:0 0 var(--sp-2)}   /* a panel's name over its labs, as everywhere they're grouped (labGroups, #279, #441) */
-.tiles.ov-read{grid-template-columns:repeat(auto-fill,minmax(min(150px,calc(50% - var(--sp-3))),1fr))}   /* one row at 1400 px */
+.tiles.ov-read{grid-template-columns:repeat(auto-fill,minmax(max(min(150px,calc(50% - var(--sp-3))),6.25em),1fr))}   /* one row at 1400 px (and as .tiles on a phone, #722) */
 .st{display:inline-flex;align-items:center;gap:3px;font-size:var(--fs-1);font-weight:var(--fw-semibold);white-space:nowrap}
 .st.hi,.st.lo{color:var(--crit)}
 .ov-cols{display:grid;grid-template-columns:1.2fr 1fr;gap:0 var(--sp-5);align-items:start}
@@ -1517,8 +1518,9 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
   #view-health .h-secbar{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:var(--sp-3) calc(-1 * var(--sp-3)) var(--sp-1);padding:0 var(--sp-3)}
   .h-secbar>.chip{flex:none}
   #view-health .h-sync{font-size:var(--fs-2);color:var(--muted);margin:0}
-  /* a section's tiles: one row that scrolls sideways where they don't fit (more of them, or larger text), the next one's edge showing */
-  #view-health .tiles.compact{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(min(max(45%,9.75em),calc(100% - 6em)),1fr);overflow-x:auto;scrollbar-width:none;
+  /* a section's tiles: one row that scrolls sideways where they don't fit (more of them, or larger text), the next one's edge showing,
+     each as wide as its words need (6.25em, as .tiles', #722) */
+  #view-health .tiles.compact{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(min(max(45%,9.75em),max(calc(100% - 6em),6.25em)),1fr);overflow-x:auto;scrollbar-width:none;
     margin-inline:calc(-1 * var(--sp-3));padding-inline:var(--sp-3);scroll-padding-inline:var(--sp-3)}
   main>[id^=view-] .card>.list-hd>:has(+.spacer+.view-seg:last-child){flex:1 1 auto;max-width:100%}
   :is(#view-health .card,#view-labs :is(.chart,#series,.ck-foot,.ev-track)){--card-pad:var(--sp-2)}   /* a chart's card (and the lab list, the stack's axis and the event track, lined up with them): its plot wider by the padding */

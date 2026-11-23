@@ -1773,6 +1773,23 @@ TILE_FIT_JS = r"""() => {
   return out;
 }"""
 
+# every word of every tile shown in a tab (#722): its label, value, unit, change line and dates, each line of text as
+# drawn (not its box, which a grid or flex item keeps inside) within its tile's edges, the "?" beside a key lab's with
+# it. {n: tiles, past: each text past its tile, and by how much}
+TILE_TEXT722_JS = r"""() => { const out = {n: 0, past: []};
+  for (const t of document.querySelectorAll('main .tiles > :is(.tile, .tile-tq)')) {
+    if (!t.checkVisibility()) continue;
+    out.n++;
+    const T = t.getBoundingClientRect(), name = (t.querySelector('.lbl')?.textContent || '').trim().slice(0, 30), w = document.createTreeWalker(t, NodeFilter.SHOW_TEXT);
+    for (let n; (n = w.nextNode());) {
+      if (!n.data.trim() || n.parentElement.closest('.vh')) continue;   // (said to screen readers, clipped)
+      const r = document.createRange(); r.selectNodeContents(n);
+      const d = Math.max(0, ...[...r.getClientRects()].filter(x => x.width).map(x => Math.max(T.left - x.left, x.right - T.right, T.top - x.top, x.bottom - T.bottom)));
+      if (d > 1) out.past.push(`${name}: “${n.data.trim().slice(0, 24)}” ${Math.round(d)} px past its tile`);
+    }
+  }
+  return out; }"""
+
 # a button beside a field (#352): each button shown on one line with a field of its row (the button's parent holds the
 # field, or the label around it, and their middles are within a few px), as {pairs found, those whose heights differ}
 FIELD_ROWS_JS = r"""() => { const out = {n: 0, bad: []};
@@ -4041,6 +4058,28 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 900})
             check("tiles at 1400, 375 and 320 px (#351): no value or label wider than its tile, none overlapping another, and the "
                   "values in each row of tiles on one baseline", not fit351 and all(n > 0 and r > 0 for n, r in rows351.values()), fit351[:8] or rows351)
+            # #722: with text at 200% on a phone, at 320, 360, 375 and 412 px, every word of every tile on the Overview and
+            # Body and activity inside its tile (TILE_TEXT722_JS), and none overlapping another (TILE_FIT_JS): a value and
+            # its unit had no break between them, so the tile's column took their width ("126/77 mmHg" 59 px past its tile
+            # at 360 px, its label and change line with it), and two tiles a row left a date kept whole no room (a key
+            # lab's "Sep 10, 2026" 25 px past at 320 px). The unit goes under the value, and a tile takes a row of its own
+            # where two would be narrower than its words
+            text722, n722 = [], {}
+            for width in (320, 360, 375, 412):
+                page.set_viewport_size({"width": width, "height": 800})
+                js("css => { const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = [s]; }",
+                   ":root{--fs-1:23px;--fs-2:25px;--fs-3:28px;--fs-4:31px;--fs-5:36px;--fs-6:44px;--fs-7:56px} html{font-size:200%}")
+                for tab, preset in (("overview", None), ("health", "2y")):
+                    js(TILE_TAB_JS, [tab, preset])
+                    settle(300)
+                    got, fit = js(TILE_TEXT722_JS), js(TILE_FIT_JS)
+                    n722[f"{tab} {width}"] = got["n"]
+                    text722 += [f"{tab} {width} px: {x}" for x in got["past"] + fit["overlap"]]
+            js("document.adoptedStyleSheets = []")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…and with text at 200% at 320, 360, 375 and 412 px, every word of every tile on the Overview and Body and activity inside its tile, "
+                  "none overlapping another (#722, 1.4.4): a unit under its value, a tile a row of its own where two don't fit", not text722 and all(n >= 6 for n in n722.values()),
+                  text722[:10] or n722)
             js("[state.preset, state.from, state.to] = window._was330.slice(1); Object.assign(costState, {view: 'claims', more: false}); switchTab(window._was330[0]); renderAll()")
             js("window._was330 = [state.tab, state.preset, state.from, state.to]")
             # #339: and in the other two date formats (keepDates keeps only the date together, "as of" with it), with no
