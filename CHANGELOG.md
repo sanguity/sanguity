@@ -1774,6 +1774,12 @@ Everything on `main` so far; it becomes the first tagged release.
   lab's range changed within that side, the value wasn't at that place in either range (12.85 is −16% of 12–16 and
   +21% of 13.5–17.5). They're said as one only where the side's results have one range, and otherwise as two figures
   ("12.85 g/dL; median place −14% of each result's own range"), in the table and the tooltip.
+- **A tap on the overview strip on a phone moves the window and nothing else** (#726): a finger's tap moved the period
+  as it was let go, so the pill's words and Reset changed and the rows under the strip moved, and the browser then
+  sent the tap's click to the same point, on whatever was there now: Labs switched to its heatmap or Compare or opened
+  Show, Body and activity opened Show, the Timeline opened the period's sheet or Reset undid the move, and a
+  milestone's flag the same (83 of 108 taps in the new check, at 360 and 412 px with the usual text and 200%). The
+  strip now takes that click itself, the first within 600 ms unless another press comes first (WCAG 3.2.2).
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
