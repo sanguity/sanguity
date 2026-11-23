@@ -1696,6 +1696,15 @@ Everything on `main` so far; it becomes the first tagged release.
   edges on Labs, Body and activity and the Timeline (WCAG 1.4.4). A year too near the strip's end to fit after its
   tick is set back over it rather than left out (ten years at 200%: "2020 2025", not "2020" alone). As usual its bars
   are 3 px shorter, so a month's "p" no longer touches the window's edge.
+- **Glucose by time of day: a 24-hour profile** (#303): over ten years the daily glucose chart was noise. The glucose
+  card on Body and activity now shows, under time in ranges, where the period's CGM readings were at each hour of the
+  day: their median as a line in the 25th–75th and 5th–95th percentile bands, over the standard 70–180 mg/dL range as
+  the neutral band, with its table an hour a row, an hour's readout from the keyboard, mmol/L with the SI choice, and
+  its labels inside it with larger text on a phone. The watch receiver keeps each CGM day's hours (each hour's count of
+  readings and their percentiles, about 600 bytes a day) beside its days, made from the readings it already keeps, so
+  a receiver from before writes its summary again once, on start; an Apple Health export's CGM days have them too. The
+  page works the period's out from the days', within 3 mg/dL of every reading's on the test's fortnight. Days
+  summarised before this say so. Share links, the visit summary and the FHIR export leave them out.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

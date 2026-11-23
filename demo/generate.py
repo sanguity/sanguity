@@ -477,11 +477,28 @@ if BIG:   # blood glucose (#181), in the shape server/glucose.py writes: a meter
             glu["n"][k], glu["hours"][k] = (216, 18) if gap else (288, 24)
             glu["lt54"][k], glu["lt70"][k], glu["gt180"][k] = round(lt70 * GR.uniform(0, 0.2), 1), round(lt70, 1), round(gt180, 1)
             glu["in"][k] = round(100 - glu["lt70"][k] - glu["gt180"][k], 1)
+    # each CGM day's hours (#303), as glucose.summary keeps them: a count and five percentiles an hour, meals bringing
+    # peaks, inside the day's low and high; a day with a gap none from 1 to 7 AM. A generator of their own, so the
+    # days above are unchanged
+    GH, peak = random.Random(END.toordinal() + 303), lambda h: sum(k * math.exp(-((h - m) / 1.1) ** 2) for m, k in ((8.2, 50), (13, 38), (19.4, 62)))
+    curve = [peak(h + .5) for h in range(24)]
+    glu["hourly"] = {}
+    for k, avg in glu["avg"].items():
+        flat = []
+        for h in range(24):
+            if glu["hours"][k] == 18 and 1 <= h < 7:
+                flat.append(0)
+                continue
+            med, a, b = avg + curve[h] - sum(curve) / 24 + GH.gauss(0, 4), GH.uniform(6, 12), GH.uniform(18, 32)
+            ps = [med - b, med - a, med, med + a * GH.uniform(1, 1.4), med + b * GH.uniform(1, 1.5)]
+            flat += [12, *sorted(round(min(glu["max"][k], max(glu["min"][k], v))) for v in ps)]
+        glu["hourly"][k] = flat
     GMETA = {"meter": ("Blood glucose, meter readings", "mg/dL"), "avg": ("Blood glucose, daily average (CGM)", "mg/dL"),
              "min": ("Blood glucose, daily low (CGM)", "mg/dL"), "max": ("Blood glucose, daily high (CGM)", "mg/dL"),
              "n": ("CGM readings", "readings"), "hours": ("CGM hours with readings", "hours"),
              "lt54": ("CGM readings below 54 mg/dL", "%"), "lt70": ("CGM readings below 70 mg/dL (below 54 included)", "%"),
-             "in": ("CGM readings 70–180 mg/dL", "%"), "gt180": ("CGM readings above 180 mg/dL", "%")}
+             "in": ("CGM readings 70–180 mg/dL", "%"), "gt180": ("CGM readings above 180 mg/dL", "%"),
+             "hourly": ("CGM readings by hour of the day: how many, and their 5th, 25th, 50th, 75th and 95th percentiles", "mg/dL")}
     watch["metrics"] += [{"key": "glucose_" + k, "name": GMETA[k][0], "unit": GMETA[k][1], "group": "Glucose", "pts": sorted(glu[k].items())} for k in GMETA]
 
 VITALS = []   # --big: the vitals taken at visits, as lab series (below)

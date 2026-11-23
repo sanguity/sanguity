@@ -4,7 +4,7 @@ summarises a CGM's days. All data here is fictional, written for these tests.
 
   python tests/test_glucose.py
 """
-import hashlib, importlib.util, json, math, os, shutil, sqlite3, sys, tempfile, time, unittest
+import hashlib, importlib.util, json, math, os, shutil, sqlite3, statistics, sys, tempfile, time, unittest
 from datetime import datetime, timedelta, timezone
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -73,6 +73,30 @@ def gpts(summary, key):
 
 def gkeys(summary):
     return [m["key"] for m in summary["metrics"] if m["key"].startswith("glucose_")]
+
+
+def hours_of(flat):
+    """glucose_hourly's flat list (#303) -> its 24 hours, each [readings, p5, p25, p50, p75, p95], or None for none."""
+    out, i = [], 0
+    while i < len(flat):
+        n = flat[i]
+        out.append([n, *flat[i + 1:i + 6]] if n else None)
+        i += 6 if n else 1
+    return out
+
+
+def want_hours(rows, day):
+    """The same from the fixture's readings, worked out apart: each local hour's CGM readings, their percentiles by
+    statistics.quantiles ("inclusive": linear between the two nearest, as numpy's default), rounded half up."""
+    by = [[] for _ in range(24)]
+    for at, v, kind in rows:
+        if kind == "cgm" and at.day == day:
+            by[at.hour].append(v)
+    out = []
+    for vs in by:
+        q = statistics.quantiles(vs, n=20, method="inclusive") if vs else None   # the 5th, 10th, ... 95th
+        out.append([len(vs), *(int(math.floor(q[i] + 0.5)) for i in (0, 4, 9, 14, 18))] if q else None)
+    return out
 
 
 class Base(unittest.TestCase):
@@ -252,6 +276,98 @@ class MeterOrCgm(Base):
         self.assertAlmostEqual(gpts(s, "glucose_avg")["2024-06-09"], sum(v for _, v, _ in cgm) / 288, delta=0.051)
 
 
+class Hourly(Base):
+    """Each CGM day's hours (#303): how many readings each hour of the day held, and their 5th, 25th, 50th, 75th and
+    95th percentiles, for the page's 24-hour profile."""
+
+    def test_each_hour_of_the_fixtures_days(self):
+        self.ingest(hc_payload())
+        other = rx.Store("2")
+        self.ingest(hae_payload(), other)
+        got = gpts(self.store.summary(), "glucose_hourly")
+        self.assertEqual(sorted(got), ["2024-06-09", "2024-06-10"], "a CGM's days only: none for the meter's 8th")
+        self.assertEqual(hours_of(got["2024-06-09"]), want_hours(readings(), 9), "every hour's percentiles, worked out apart")
+        self.assertEqual([h[0] for h in hours_of(got["2024-06-09"])], [12] * 24, "a reading every five minutes")
+        self.assertTrue(all(h[1] <= h[2] <= h[3] <= h[4] <= h[5] for h in hours_of(got["2024-06-09"])))
+        self.assertEqual(gpts(other.summary(), "glucose_hourly"), got, "the same from both apps (mmol/L and mg/dL)")
+
+    def test_a_day_with_a_gap(self):
+        self.ingest(hc_payload())
+        s = self.store.summary()
+        day = hours_of(gpts(s, "glucose_hourly")["2024-06-10"])
+        self.assertEqual(len(day), 24)
+        self.assertEqual([h is None for h in day], [2 <= h < 8 for h in range(24)], "the sensor's gap, 02:00 to 08:00: no readings, a 0 alone")
+        self.assertEqual(day, want_hours(readings(), 10))
+        self.assertEqual(sum(h[0] for h in day if h), gpts(s, "glucose_n")["2024-06-10"])
+        self.assertEqual(len(gpts(s, "glucose_hourly")["2024-06-10"]), 18 * 6 + 6)
+
+    def test_the_days_own_source_only_and_no_meter_reading(self):
+        cgm = [r for r in readings() if r[2] == "cgm" and r[0].day == 9]
+        p = hae_payload(cgm)
+        p["data"]["metrics"][0]["data"] += [{"date": at.strftime("%Y-%m-%d %H:%M:%S %z"), "qty": v + 40, "source": "Another Fictional App"}
+                                             for at, v, _ in cgm[:100]]   # the same sensor passed on by a second app, in part
+        p["data"]["metrics"][0]["data"].append({"date": "2024-06-09 07:31:00 -0400", "qty": 117, "source": METER_SRC})   # a finger-stick
+        self.ingest(p)
+        self.assertEqual(hours_of(gpts(self.store.summary(), "glucose_hourly")["2024-06-09"]), want_hours(readings(), 9))
+
+    def test_size(self):
+        self.ingest(hc_payload())
+        flat = json.dumps(gpts(self.store.summary(), "glucose_hourly")["2024-06-09"], separators=(",", ":"))
+        self.assertLess(len(flat), 700, "a few hundred bytes a day")
+
+    def test_an_existing_receiver_writes_them_once(self):
+        """A receiver whose summaries came before #303 has its CGM's readings: on its first start after the update its
+        summary is written again (catch_up counts it), with every day's hours, and only that once."""
+        self.ingest(hc_payload())
+        self.store.db.execute("DELETE FROM meta WHERE k='glucose_hourly'")   # as it was before the update
+        self.store.save()
+        old = rx.Store()
+        self.assertTrue(old.loaded)
+        self.assertEqual(old.catch_up(), 1)
+        old.save()
+        old.write_summary()
+        written = json.loads(crypto.read_file(rx.summary_file("")))
+        self.assertEqual(sorted(gpts(written, "glucose_hourly")), ["2024-06-09", "2024-06-10"])
+        self.assertEqual(rx.Store().catch_up(), 0, "once only")
+        empty = rx.Store("4")   # one with no glucose at all: nothing to write again
+        empty.save()
+        empty.db.execute("DELETE FROM meta WHERE k='glucose_hourly'")
+        empty.save()
+        again = rx.Store("4")
+        self.assertEqual((again.catch_up(), again.meta("glucose_hourly")), (0, "1"))
+        self.assertEqual(rx.Store("5").catch_up(), 0, "a new database has them from its first summary")
+
+    def test_they_go_with_a_deleted_profiles_slot(self):
+        """Kept only in the slot's summary, sealed, beside its days: deleting the slot (#588) takes them with it."""
+        store = rx.Store("7")
+        self.ingest(hc_payload(), store)
+        store.save()
+        store.write_summary()
+        path = rx.summary_file("7")
+        self.assertTrue(crypto.file_is_encrypted(path))
+        self.assertEqual(sorted(gpts(json.loads(crypto.read_file(path)), "glucose_hourly")), ["2024-06-09", "2024-06-10"])
+        self.assertTrue(rx._delete_slot({}, "7"))
+        self.assertFalse(any(os.path.lexists(p) for p in rx.slot_paths("7") + [path]))
+
+    def test_kept_with_the_days_and_sent_to_the_page(self):
+        """An import's days laid over the receiver's day by day (watch_store.merge), the hours with them; GET …/watch
+        sends them (targets.annotate takes out only the counts by mg/dL); no FHIR Observation is made of them."""
+        from server import fhir_export, targets, watch_store
+        self.ingest(hc_payload())
+        mine = self.store.summary()
+        other = rx.Store("2")
+        self.ingest(hae_payload([(at, v + 30, k) for at, v, k in readings() if at.day == 10]), other)
+        theirs = other.summary()
+        merged = watch_store.merge(mine, theirs)
+        self.assertEqual(gpts(merged, "glucose_hourly"), {"2024-06-09": gpts(mine, "glucose_hourly")["2024-06-09"],
+                                                          "2024-06-10": gpts(theirs, "glucose_hourly")["2024-06-10"]})
+        page = targets.annotate(json.loads(json.dumps(merged)), {})
+        self.assertEqual(gpts(page, "glucose_hourly"), gpts(merged, "glucose_hourly"))
+        self.assertNotIn("glucose_dist", gkeys(page))
+        b = fhir_export.Bundle({"pid": 1, "created": 0}, None)
+        self.assertFalse([o for o in fhir_export._home(b, merged) if '"glucose_hourly"' in json.dumps(o.get("code"))])
+
+
 class Uploads(Base):
     def test_repeated_and_overlapping_uploads_count_once(self):
         self.ingest(hae_payload())
@@ -341,8 +457,10 @@ class Volume(Base):
         t = time.perf_counter()
         s = self.store.summary()
         took = time.perf_counter() - t
+        hourly = len(json.dumps(gpts(s, "glucose_hourly"), separators=(",", ":")))
         print(f"\n  a year of CGM readings: watch.db {size / 1e6:.1f} MB sealed; summary {took:.2f} s, "
-              f"daily.json {len(json.dumps(s, separators=(',', ':'))) / 1e3:.0f} KB", file=sys.stderr)
+              f"daily.json {len(json.dumps(s, separators=(',', ':'))) / 1e3:.0f} KB, its days' hours {hourly / 1e3:.0f} KB (#303)", file=sys.stderr)
+        self.assertLess(hourly / 365, 700)   # a few hundred bytes a day
         self.assertLess(size, 12_000_000)   # about 10 MB (docs/database.md)
         self.assertLess(took, 3)
         self.assertEqual(len(gpts(s, "glucose_n")), 365)

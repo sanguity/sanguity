@@ -218,10 +218,11 @@ class FhirExport(unittest.TestCase):
         offered on About this person to add to the history: an import never changes a setting)."""
         db = self.db
         want = project(records.assemble(db, a), watch_store.load(db, a))
-        # a CGM day's readings counted by whole mg/dL (#234's glucose_dist) aren't exported: the daily summaries are
-        # (docs/fhir-export.md), so the day's time in a person's own range isn't known after loading it back
+        # a CGM day's readings counted by whole mg/dL (#234's glucose_dist) and by hour (#303's glucose_hourly) aren't
+        # exported: the daily summaries are (docs/fhir-export.md), so the day's time in a person's own range and its
+        # place in the 24-hour profile aren't known after loading it back
         if want.get("measure"):
-            want["measure"] = [m for m in want["measure"] if m[0] != "glucose_dist"] or None
+            want["measure"] = [m for m in want["measure"] if m[0] not in ("glucose_dist", "glucose_hourly")] or None
             if not want["measure"]:
                 del want["measure"]
         have = project(records.assemble(db, b), watch_store.load(db, b))

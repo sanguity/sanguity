@@ -647,9 +647,9 @@ function gData() {
   try { gOpt.labs = JSON.parse(localStorage.getItem(gKey()) || "{}").labs === true; } catch (e) {}
   const uc = ucChoose(base ? base.conv : WATCH.glucose_conv), mmol = !!uc && /mmol/i.test(uc.to), cv = v => v == null ? null : uc ? v * uc.a + uc.b : v;
   const col = k => M[k] ? Object.fromEntries(M[k].pts) : {};
-  const [lo, hi, n, hours, lt54, lt70, inr, gt180, olt, oin, ogt] = ["min", "max", "n", "hours", "lt54", "lt70", "in", "gt180", "own_lt", "own_in", "own_gt"].map(k => col("glucose_" + k));
+  const [lo, hi, n, hours, lt54, lt70, inr, gt180, olt, oin, ogt, byHr] = ["min", "max", "n", "hours", "lt54", "lt70", "in", "gt180", "own_lt", "own_in", "own_gt", "hourly"].map(k => col("glucose_" + k));
   const days = (M.glucose_avg ? M.glucose_avg.pts : []).map(([d, v]) => ({t: dayTs(d), d, avg: cv(v), lo: cv(lo[d]), hi: cv(hi[d]), n: n[d] || 0,
-    hours: hours[d], lt54: lt54[d], lt70: lt70[d], in: inr[d], gt180: gt180[d], olt: olt[d], oin: oin[d], ogt: ogt[d]}));   // own: time in the person's own range (#234)
+    hours: hours[d], lt54: lt54[d], lt70: lt70[d], in: inr[d], gt180: gt180[d], olt: olt[d], oin: oin[d], ogt: ogt[d], hrs: gHrs(byHr[d], cv)}));   // own: time in the person's own range (#234); hrs: its hours (#303)
   const phone = (M.glucose_meter ? M.glucose_meter.pts : []).map(([w, v]) => [zParse(w), cv(v)]).filter(p => isFinite(p[0]));
   // readings typed in at home (#224), [t, value, source, meal note]: one the phone sent too (within a minute) once
   const near = (p, q) => Math.abs(p[0] - q[0]) <= 6e4 && Math.abs(p[1] - q[1]) < (mmol ? .05 : .5);
@@ -681,6 +681,108 @@ function gPeriod(a, b) {
 }
 const gPct = v => v == null ? "–" : v > 0 && v < 0.05 ? "under 0.1%" : (v > 0 && v < 9.95 ? v.toFixed(1) : String(Math.round(v))) + "%";
 const gHours = h => h == null ? "" : `${Number.isInteger(h) ? h : h.toFixed(1)} h`;
+/* ---- the 24-hour profile (#303): where the period's CGM readings were at each hour of the day (their local time),
+   from each day's hours as the receiver keeps them (server/glucose.py glucose_hourly), no reading itself */
+/* a day's hours: its flat list, each hour its count of readings and, with any, their 5th, 25th, 50th, 75th and 95th
+   percentiles -> 24 hours, each [n, p5, p25, p50, p75, p95] in the chart's unit (cv) or null; null for a day without
+   them (summarised before Sanguity kept them) */
+function gHrs(v, cv) {
+  if (!Array.isArray(v)) return null;
+  const out = [];
+  for (let i = 0; i < v.length && out.length < 24;) { const n = v[i++]; out.push(n > 0 ? [n, ...v.slice(i, i += 5).map(cv)] : null); }
+  return out.length === 24 ? out : null;
+}
+/* the period's: each hour, the percentiles of all its days' readings in it together, worked out from the days' own.
+   A day's readings in an hour are taken as spread evenly between its percentiles (and past its 5th and 95th as far as
+   a quarter of the way to its 25th and 75th); the period's 25th percentile, say, is where a quarter of all of them are
+   below, each day weighed by its readings. One day's are its own. -> 24 × {h, n readings, d days, p: [5]} or null */
+const G_Q = [.05, .25, .5, .75, .95], G_F = [0, ...G_Q, 1];
+function gProfile(ds) {
+  const out = [];
+  for (let h = 0; h < 24; h++) {
+    const hs = ds.map(d => d.hrs[h]).filter(Boolean), N = hs.reduce((s, x) => s + x[0], 0);
+    if (!hs.length) { out.push(null); continue; }
+    let p = hs[0].slice(1);
+    if (hs.length > 1) {   // each day's knots, at G_F, seven a day; the share below x of them all
+      const K = new Float64Array(hs.length * 7);
+      hs.forEach(([, a, b, c, d, e], j) => K.set([a - (b - a) / 4, a, b, c, d, e, e + (e - d) / 4], j * 7));
+      const below = x => { let s = 0;
+        for (let j = 0, o = 0; j < hs.length; j++, o += 7) {
+          if (x >= K[o + 6]) s += hs[j][0];
+          else if (x >= K[o]) { let i = o; while (x >= K[i + 1]) i++; const f = i - o; s += hs[j][0] * (G_F[f] + (G_F[f + 1] - G_F[f]) * (x - K[i]) / (K[i + 1] - K[i])); }
+        }
+        return s / N; };
+      let lo = Infinity, top = -Infinity;
+      for (let o = 0; o < K.length; o += 7) { lo = Math.min(lo, K[o]); top = Math.max(top, K[o + 6]); }
+      p = G_Q.map(q => { let hi = top; for (let j = 0; j < 18; j++) { const m = (lo + hi) / 2; if (below(m) >= q) hi = m; else lo = m; } return hi; });   // (the next is above this one)
+    }
+    out.push({h, n: N, d: hs.length, p});
+  }
+  return out;
+}
+/* on the card, under time in ranges: the profile as a chart (gDayChart) or, with Table, an hour a row; a period whose
+   CGM days came before Sanguity kept their hours says so. The days are worked out once a period */
+function gDay(card, P, table, legend) {
+  const ds = P.ds.filter(d => d.hrs), u = G.unit, fmt = G.fmt, [, s1, s2] = G.std, lack = P.ds.length - ds.length, s = ds.length === 1 ? "" : "s";
+  const box = el("div", {class: "glu-day"});
+  card.append(box);
+  box.append(el("h4", {class: "sub", text: `By time of day · ${ds.length && lack ? `${ds.length} of ${P.ds.length}` : P.ds.length} CGM day${P.ds.length === 1 ? "" : "s"}`}));
+  if (!ds.length) return box.append(el("p", {class: "muted", text: "Not known for these CGM days: they came before Sanguity kept what this needs."}));
+  box.append(aboutWords(`Each hour of the day, these days' CGM readings in it together, by their own local time: the line is their median, half of them are inside the darker band (the 25th to 75th percentile) and nine in ten inside the lighter one (the 5th to 95th). ` +
+    `Each day's hours are kept as their percentiles; over more days the period's are worked out from those, each day weighed by its readings. The neutral band is the standard published range, ${s1}–${s2} ${u}: not advice, and not anyone's own target.`),
+    ...present(lack ? el("p", {class: "hint", text: `The other ${lack} came before Sanguity kept each day's hours.`}) : null));
+  const key = `${P.ds[0].d} ${P.ds.at(-1).d} ${P.ds.length} ${u}`, rows = G.prof?.key === key ? G.prof.rows : (G.prof = {key, rows: gProfile(ds)}).rows;
+  if (table) return box.append(chartTable(["Hour", "Readings", `Median (${u})`, `25th–75th percentile (${u})`, `5th–95th percentile (${u})`],
+    rows.map((r, h) => [`${ckHour(h)}–${ckHour(h + 1)}`, r ? `${r.n.toLocaleString("en-US")} on ${r.d} day${r.d === 1 ? "" : "s"}` : "No readings",
+      r ? fmt(r.p[2]) : "", r ? `${fmt(r.p[1])}–${fmt(r.p[3])}` : "", r ? `${fmt(r.p[0])}–${fmt(r.p[4])}` : ""])));
+  box.append(legend([[G_C.cgm, "Median", "line"], [`color-mix(in srgb, ${G_C.cgm} 45%, transparent)`, "25th–75th percentile"],
+    [`color-mix(in srgb, ${G_C.cgm} 15%, transparent)`, "5th–95th percentile"], [null, `${s1}–${s2} ${u}, the standard range`, "refband"]]));
+  const have = rows.filter(Boolean), n = have.reduce((t, r) => t + r.n, 0);
+  gDayChart(box, rows, `Blood glucose by time of day: ${n.toLocaleString("en-US")} CGM readings on ${ds.length} day${s}, ${have.length === 24 ? "in every hour of the day"
+    : `in ${have.length} hour${have.length === 1 ? "" : "s"} of the day, from ${ckHour(have[0].h)} to ${ckHour(have.at(-1).h + 1)}`}. Left and right arrow keys step through the hours.`);
+}
+/* the chart, at its box's width: x the day's hours (ckHourTicks), y the unit; the standard range as the neutral band
+   (ckBand), its numbers at the right; the median in its 25th–75th and 5th–95th percentile bands (ckSpread), each hour's
+   at its middle, apart where hours have no readings. Hovered or stepped through from the keyboard, an hour's readout:
+   its median, the two bands' ends and how many readings on how many days. Not dragged: its x is no period */
+function gDayChart(box, rows, label) {
+  const svg = el("svg:svg", {class: "glu-prof", role: "img", "aria-label": label, width: "100%"});
+  box.append(svg);
+  const have = rows.filter(Boolean), u = G.unit, fmt = G.fmt, [, s1, s2] = G.std;
+  requestAnimationFrame(() => {
+    if (!svg.isConnected) return;
+    const k = ckK(), w = Math.max(260, box.clientWidth), L = (w < 480 ? 36 : 44) * k, R = w - 8, T = 8 * k, B = T + 180, x = ckScale(0, 24, L, R);
+    let lo = Math.min(G.inStd[0], ...have.map(r => r.p[0])), hi = Math.max(G.inStd[1], ...have.map(r => r.p[4]));
+    const pad = (hi - lo) * .08; lo = Math.max(0, lo - pad); hi += pad;
+    const y = ckScale(lo, hi, B, T), g = [], tk = ckHourTicks(x, w), st = {a: 0, b: 24, lo: G.inStd[0], hi: G.inStd[1]};
+    svg.setAttribute("viewBox", `0 0 ${w} ${B + ckAxisH(tk.rows)}`); svg.setAttribute("height", B + ckAxisH(tk.rows)); svg._geom = {L, R, T, B, w};
+    ckGrid(g, y, niceTicks(lo, hi, 5), L, R, fmt);
+    ckBand(g, [st], x, y, L, R, T, B);
+    const runs = [];   // the hours with readings, in runs of neighbours
+    rows.forEach((r, h) => { if (!r) return; const p = [h + .5, ...r.p]; if (rows[h - 1]) runs.at(-1).push(p); else runs.push([p]); });
+    ckSpread(g, runs, x, y, G_C.cgm);
+    ckBandLabel(g, `${s1}–${s2} standard range`, st, y, R, T, B, have.flatMap(r => r.p.map(v => [x(r.h + .5), y(v)])), L);
+    ckAxis(g, tk, L, R, B, B + 16);
+    const cross = ckCross(T, B), hit = el("svg:rect", {x: L, y: T, width: R - L, height: B - T, fill: "transparent"});
+    const show = h => {
+      const r = rows[h]; if (!r) return "";
+      ckCrossAt(cross, x(h + .5));
+      const nodes = [el("div", {class: "v", text: `${ckHour(h)}–${ckHour(h + 1)}`}), tipRow(G_C.cgm, `Median ${fmt(r.p[2])} ${u}`),
+        el("div", {class: "s", text: `25th–75th percentile ${fmt(r.p[1])}–${fmt(r.p[3])} · 5th–95th ${fmt(r.p[0])}–${fmt(r.p[4])}`}),
+        el("div", {class: "s", text: `${r.n.toLocaleString("en-US")} reading${r.n === 1 ? "" : "s"} on ${r.d} day${r.d === 1 ? "" : "s"}`})];
+      ckTip(svg, x(h + .5), nodes);
+      return tipWords(nodes);
+    };
+    const clear = () => { ckCrossAt(cross, null); hideTip(); };
+    hit.addEventListener("pointermove", ev => { const b = svg.getBoundingClientRect(), at = x.inv((ev.clientX - b.left) * (w / b.width)) - .5;
+      const r = have.reduce((m, r) => !m || Math.abs(r.h - at) < Math.abs(m.h - at) ? r : m, null);
+      if (r && Math.abs(r.h - at) <= 1.5) show(r.h); else clear(); });
+    hit.addEventListener("pointerleave", clear);
+    g.push(cross, hit);
+    svg.replaceChildren(...g);
+    chartKeys(svg, label, () => have.map(r => r.h), show, clear);
+  });
+}
 /* the tile, among Body and activity's */
 function gTile(tile, a, b) {
   if (G === undefined) G = gData();
@@ -723,6 +825,8 @@ function hGlucose(box, a, b, {head, legend, byDay}) {
           : el("p", {class: "muted", text: "Not known for these CGM days: they came before Sanguity kept what this needs."}),
         el("p", {class: "hint", text: `${P.od.length ? `Over ${P.od.length} CGM day${P.od.length === 1 ? "" : "s"} in this period` : ""}${part && P.od.length ? ` (${part} came before Sanguity kept what this needs)` : ""}${P.od.length ? "; t" : "T"}he standard published ranges are above, labelled as the publisher's.`})));
     }
+    gDay(card, P, table, legend);   // the 24-hour profile (#303), then the days
+    card.append(el("h4", {class: "sub", text: "Day by day"}));
   }
   // the days in the period, each with its meter readings and (when shown) lab results
   const meterBy = new Map(), labBy = new Map(), dayBy = new Map(G.days.map(d => [d.d, d]));

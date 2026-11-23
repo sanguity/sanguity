@@ -136,6 +136,7 @@ What comes back differently, as FHIR or the importer have it:
 - A letter comes back as the HTML file it was written to, shown under the letter's kind.
 - A CGM day's readings counted by whole mg/dL aren't exported (only each day's summary is), so after loading the export
   back, the time in a person's own glucose range (#234) isn't known for those days; the standard ranges' times are.
+  Nor are each day's hours (#303: each hour's count and percentiles), so those days aren't in the 24-hour profile.
 - About this person's heights come back as a body height series, offered on About this person to add, as a clinic's
   are: an import never changes a setting. The birth date and the sex for reference ranges are on the Patient for other
   apps; an import into Sanguity doesn't set them either.
