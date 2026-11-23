@@ -199,6 +199,7 @@ const SgPalette = (() => {
   /* the views with an address of their own (#452, app.js HASH_TABS), each listed as well, once something's typed: [tab,
      view, its # after the tab's, title, words]; a tab itself opens its first view, as its address does */
   const TAB_VIEWS = [["labs", "heatmap", "-heatmap", "Heatmap", "grid colors colours every result table"],
+    ["labs", "compare", "-compare", "Compare", "side by side within ranges milestone before after"],
     ["timeline", "journal", "-journal", "Journal", "notes diary entries photos symptoms"],
     ["costs", "paid", "-paid", "What you paid", "out of pocket spent spending payments total hsa fsa premiums"]];
   const FIRST_VIEW = {labs: "chart", timeline: "timeline", costs: "claims"};

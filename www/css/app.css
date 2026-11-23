@@ -705,6 +705,19 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .hm-legend{display:flex;gap:2px;align-items:center;font-size:var(--fs-2);color:var(--ink2);flex-wrap:wrap}
 .hm-legend i{display:inline-block;width:22px;height:12px;border-radius:2px}
 .hm-legend span{margin:0 var(--sp-2) 0 var(--sp-1)}
+/* labs compared (#297, compare.js): a slot per lab, its key (chartkit.js ckSeriesKey) beside its pick and its readout
+   under it; each line in its slot's ink and dash; a dumbbell's row marked while it's hovered or stepped to */
+.cmp-pick{display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-4);align-items:center;margin:var(--sp-3) 0}
+.cmp-slot{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--sp-1) var(--sp-2);align-items:center;flex:1 1 14em;max-width:24em}
+.cmp-slot>.read{grid-column:2;font-size:var(--fs-2);color:var(--ink2)}
+#labsCompare svg:not(.icon,.cmp-k){width:100%;display:block}
+.cmp-line,.db-bar{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.db-a{stroke-width:2}
+.db-hl{fill:var(--hover)}
+svg text.db-name{fill:var(--ink);font-size:var(--fs-2)}
+.db-lab{font-weight:var(--fw-semibold)}
+.tip .cmp-k{vertical-align:-2px;margin-right:var(--sp-1)}
+@media (max-width:700px){#labsCompare>.card{--card-pad:var(--sp-2)}}   /* a chart's card's padding on a phone, as Labs' charts' (#615) */
 @media (max-width:900px){.ov-cols{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:600px){ .ov-h{flex-wrap:wrap} }
 .line{fill:none;stroke:var(--c-lab);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}

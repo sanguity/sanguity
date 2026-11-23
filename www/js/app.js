@@ -12,18 +12,18 @@ let TAB_ORDER = [...TABS], TAB_HIDDEN = new Set();
 const shownTabs = () => TAB_ORDER.filter(t => !TAB_HIDDEN.has(t));
 function applyTabs(cfg) { ({order: TAB_ORDER, hidden: TAB_HIDDEN} = SgNav.layout(cfg)); }
 /* the tab in the address (#208), with its view (#442): index.html#overview, #health, #medications (#275), #timeline,
-   #timeline-journal (the Timeline as the journal, #277), #labs (Labs as charts), #labs-heatmap (Labs as the heatmap),
+   #timeline-journal (the Timeline as the journal, #277), #labs (Labs as charts), #labs-heatmap (Labs as the heatmap), #labs-compare (labs compared, #297),
    #costs (Costs' claims) or #costs-paid (what you paid, #278); the old #trends and #heatmap still open Labs as charts or
    the heatmap. What follows a ? is for the tab: #costs?drug=metformin, the drug's claims (medications.js, #452). An
    address with no # opens the tab last used (save(), core.js). tabOfHash: the address's [tab, its
    view], or null; setView: a view, by its name, on the tab it belongs to */
-const HASH_TABS = {...TAB_ALIAS, labs: ["labs", "chart"], "labs-heatmap": ["labs", "heatmap"], timeline: ["timeline", "timeline"], "timeline-journal": ["timeline", "journal"],
+const HASH_TABS = {...TAB_ALIAS, labs: ["labs", "chart"], "labs-heatmap": ["labs", "heatmap"], "labs-compare": ["labs", "compare"], timeline: ["timeline", "timeline"], "timeline-journal": ["timeline", "journal"],
   costs: ["costs", "claims"], "costs-paid": ["costs", "paid"]};
 const tabOfHash = () => { const h = decodeURIComponent(location.hash.slice(1)).toLowerCase().replace(/\?.*/s, ""); return HASH_TABS[h] || (TABS.includes(h) ? [h] : null); };
-const tabHash = () => "#" + state.tab + (state.tab === "labs" && state.labsView === "heatmap" ? "-heatmap" : state.tab === "timeline" && state.tlView === "journal" ? "-journal"
+const tabHash = () => "#" + state.tab + (state.tab === "labs" && state.labsView !== "chart" ? "-" + state.labsView : state.tab === "timeline" && state.tlView === "journal" ? "-journal"
   : state.tab === "costs" && costState.view === "paid" ? "-paid" : "");
 function setView(v) {
-  if (v === "chart" || v === "heatmap") state.labsView = v;
+  if (v === "chart" || v === "heatmap" || v === "compare") state.labsView = v;
   else if (v === "timeline" || v === "journal") state.tlView = v;
   else if (v === "claims" || v === "paid") costState.view = v;
 }

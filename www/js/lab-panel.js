@@ -81,7 +81,7 @@ function openLab(s) {
       ...row("In the records", nice(s.name) !== s.name ? s.name : "", "name")));
   }
   // to the lab's chart or table on Labs, unless that's what's beside the panel already
-  const onLabs = state.tab === "labs" && state.labsView !== "heatmap" && state.sel.has(s.name), table = state.tables.has(s.name);
+  const onLabs = state.tab === "labs" && state.labsView === "chart" && state.sel.has(s.name), table = state.tables.has(s.name);
   const go = (asTable) => { if (asTable) state.tables.add(s.name); else state.tables.delete(s.name); showSeries(s.name); };
   body.append(el("div", {class: "btns dgo"}, onLabs && !table ? null : goBtn("Chart these results", () => go(false)),
     onLabs && table ? null : goBtn("Show them as a table", () => go(true))),
