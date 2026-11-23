@@ -201,7 +201,7 @@ FIX = {
     "colours": "use a colour token from www/css/tokens.css (var(--ink), var(--accent)...); if none fits, add one there, "
                "light and dark",
     "px font sizes": "use a size token from www/css/tokens.css, var(--fs-1) (11.5 px) to var(--fs-7) (28 px), or em",
-    "radii": "use a radius token: var(--r-sm), var(--r-md), var(--r-lg) or var(--r-pill)",
+    "radii": "use a radius token: var(--r-sm), var(--r-md), var(--r-lg), var(--r-pill) or var(--r-chip)",
     "shadows": "use an elevation token: var(--shadow-1) (raised a little) or var(--shadow-2) (floating: menus, dialogs)",
     "px spacing": "use a spacing token, var(--sp-1) (4 px) to var(--sp-7) (48 px), or a nudge of 3 px or less; in a "
                   "script, give the element a class and space it in www/css/app.css",
