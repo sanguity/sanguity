@@ -147,9 +147,13 @@ function cmpTable(slots) {
    in points of the range. The milestone: one in the period, picked here (at first the one most labs have results on
    both sides of) */
 function cmpSides(pts, t) {
-  const side = a => a.length ? {n: a.length, pos: cmpMed(a.map(ckPos)), val: labStats(a).median} : null;
+  const side = a => a.length ? {n: a.length, pos: cmpMed(a.map(ckPos)), val: labStats(a).median, one: !rangesDiffer(a)} : null;
   return {before: side(pts.filter(p => p.ts < t)), after: side(pts.filter(p => p.ts >= t))};
 }
+/* a side's median value and median place: as one ("12.85 g/dL, −14% of its range") only where its results have one
+   range; where it changed, two figures, the median value not where the median place is in either range (#653: 12.85
+   was −16% of 12–16 and +21% of 13.5–17.5, said as −14%) */
+const cmpMedWords = (d, u) => `${d.val} ${u}${d.one ? `, ${cmpPct(d.pos)} of its range` : `; median place ${cmpPct(d.pos)} of each result's own range`}`;
 function renderCmpMs(placed) {
   const card = $("#cmpMsCard"), pick = $("#cmpMsPick"), body = $("#cmpMsBody");
   card.hidden = !placed.length;
@@ -170,7 +174,7 @@ function renderCmpMs(placed) {
     ckLegend([["var(--ink2)", `Median before ${lcLabel(m.label)}`, "ring"], ["var(--ink2)", "From it on", 1]]));
   const t = day(m), rows = placed.map(r => ({...r, ...cmpSides(r.pts, t)}));
   if (state.tables.has("#cmpms")) {
-    const side = (r, d) => d ? [String(d.n), `${d.val} ${r.s.unit}, ${cmpPct(d.pos)} of its range`] : ["0", "No results"];
+    const side = (r, d) => d ? [String(d.n), cmpMedWords(d, r.s.unit)] : ["0", "No results"];
     body.replaceChildren(chartTable(["Lab", "Results before", "Median before", "Results from it on", "Median from it on", "Difference in median place"],
       rows.map(r => [nice(r.s.name), ...side(r, r.before), ...side(r, r.after), cmpDiff(r)])));
     return;
@@ -217,7 +221,7 @@ function cmpMsDraw(svg, rows, m) {
   svg.replaceChildren(...g);
   // a row hovered, or stepped to with the arrow keys: it's marked, and the tooltip says its figures
   const said = r => [el("div", {class: "v", text: nice(r.s.name)}), ...[["Before " + lcLabel(m.label), r.before], [`From ${lcLabel(m.label)} on`, r.after]].map(([k2, d]) =>
-    el("div", {class: "s", text: `${k2}: ${d ? `median ${d.val} ${r.s.unit}, ${cmpPct(d.pos)} of its range, of ${d.n} result${d.n > 1 ? "s" : ""}` : "no results"}`})),
+    el("div", {class: "s", text: `${k2}: ${d ? `median ${cmpMedWords(d, r.s.unit)}, of ${d.n} result${d.n > 1 ? "s" : ""}` : "no results"}`})),
     r.before && r.after ? el("div", {class: "s", text: "Difference: " + cmpDiff(r)}) : null];
   const show = i => {
     if (i == null || !lay[i]) { hl.setAttribute("visibility", "hidden"); hideTip(); return ""; }
