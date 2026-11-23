@@ -1735,6 +1735,11 @@ Everything on `main` so far; it becomes the first tagged release.
   names and their room grow with the text, and a month is named every 2, 3, 6 or 12 months as the names fit (WCAG
   1.4.4). On the Overview a key lab's "?" covered part of its name with larger text (six names at 360 px and 200%);
   a name keeps to its tile's room, a word too long for it broken.
+- **Body fat's and lean mass's charts reach every reading** (#659): since #298 their charts counted and stepped
+  through the points of their 14-day average, which needs three readings in 14 days, so a screen reader heard
+  "Body fat: 267 readings from Apr 3, 2025" for the demo's 271 from Mar 29, and the arrow keys never reached the
+  first readings or the first two after a gap (9 of 1,633 on ten years), while the tile and the table counted them
+  all. They count and step through their readings again, and every Body chart now names the points it steps through.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

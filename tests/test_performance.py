@@ -659,6 +659,26 @@ class PageBudgets(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertTrue(not bad and len(lines) == 4 and all(lines.values()), [bad[:12], lines])
 
+    def test_body_readings(self):
+        """Body and activity's charts on the ten years against their tables (#659): each chart's name counts as many
+        readings as its table lists, from the same first one, and Home, the right arrow and End reach every one, at 90
+        days and All (browser_check.py's NAV659_JS: it checks the demo the same way). Body fat's and lean mass's took
+        their 14-day averages' points: 1,624 of 1,633 readings, 9 out of reach"""
+        from playwright.sync_api import sync_playwright
+        nav_js, = browser_check_js("NAV659_JS")
+        errors, got = [], {}
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = records_page(browser, errors, "health")
+            for per in ("90d", "all"):
+                page.evaluate("p => applyPreset(p)", per)
+                got[per] = page.evaluate(nav_js)
+            browser.close()
+        measure("body_readings", {k: dict(v["charts"]) for k, v in got.items()})
+        self.assertEqual(errors, [])
+        for per, g in got.items():
+            self.assertTrue(not g["problems"] and len(g["charts"]) >= 9 and "Body fat" in dict(g["charts"]), (per, g))
+
     def test_share_page(self):
         """a share link with every section the big profile offers, of any date (#491): at 1400 px its page is within
         share_page_px, each long table (2,000 claims, 1,000 readings a home measure) showing its latest 20 and saying

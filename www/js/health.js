@@ -100,9 +100,10 @@ function weekly(pts, fn = mean) {  // [[t, v...]] -> weekly buckets (Monday), av
    tab's first (hNamed, #298), as Labs' are on its event track (#294) */
 let hNamed = false;
 /* label, noun, nav (#60): what the chart shows ("Weight"), what each point is ("reading"), and the points the
-   keyboard steps through ([[t, …]], the ones its tip reads); h: its height with one row of time labels; fmtY: a
-   gridline's label, its number as it is (ckNum, #654) with a unit's letter */
-function hChart(host, a, b, {h = 190, layers, fmtY = ckNum, unit = "", zero = false, tip, label = "Chart", noun = "day", nav = layers[0].data}) {
+   keyboard steps through and its name counts ([[t, …]], the ones its tip reads: its readings, never an average's,
+   which leaves some out, #659); h: its height with one row of time labels; fmtY: a gridline's label, its number as
+   it is (ckNum, #654) with a unit's letter */
+function hChart(host, a, b, {h = 190, layers, fmtY = ckNum, unit = "", zero = false, tip, label = "Chart", noun = "day", nav}) {
   const svg = el("svg:svg", {role: "img", class: "pz ck", "aria-label": label}); host.append(svg);
   const named = !hNamed && (hNamed = true), SH = layers.some(l => l.type === "strip") ? 18 : 0;   // the strip's room, under the plot
   svg._draw = (a, b, live) => {   // also called live while dragging, with the new window: at the width it had, so the
@@ -352,10 +353,11 @@ function renderHealth() {
       const two = el("div", {class: "ov-cols mt-3", style: {gridTemplateColumns: "1fr 1fr"}});
       const c1 = el("div", {}, el("h4", {class: "sub", text: "Body fat (%)"})), c2 = el("div", {}, el("h4", {class: "sub", text: "Lean mass (lb)"}));
       two.append(c1, c2); body.append(two);
-      // each reading a dot under its 14-day average, as weight's: not joined into a sawtooth (#298)
-      hChart(c1, a, b, {h: 150, label: "Body fat", noun: "reading", layers: [{type: "line", data: rolling(H.fat, 14), color: C.fat, width: 2, gap: 45}, {type: "dots", data: H.fat, color: C.fat, opacity: .55}],
+      // each reading a dot under its 14-day average, as weight's: not joined into a sawtooth (#298). Its name and the
+      // keyboard take the readings, every one: the average leaves out the first and two after a gap (#659)
+      hChart(c1, a, b, {h: 150, label: "Body fat", noun: "reading", nav: H.fat, layers: [{type: "line", data: rolling(H.fat, 14), color: C.fat, width: 2, gap: 45}, {type: "dots", data: H.fat, color: C.fat, opacity: .55}],
         tip: t => { const p = nearest(H.fat, t, 10); return p && {t: p[0], rows: [el("div", {class: "v", text: `${p[1].toFixed(1)}%`}), el("div", {class: "s", text: fmtD(p[0])})]}; }});
-      hChart(c2, a, b, {h: 150, label: "Lean mass", noun: "reading", layers: [{type: "line", data: rolling(H.lean, 14), color: C.lean, width: 2, gap: 45}, {type: "dots", data: H.lean, color: C.lean, opacity: .55}],
+      hChart(c2, a, b, {h: 150, label: "Lean mass", noun: "reading", nav: H.lean, layers: [{type: "line", data: rolling(H.lean, 14), color: C.lean, width: 2, gap: 45}, {type: "dots", data: H.lean, color: C.lean, opacity: .55}],
         tip: t => { const p = nearest(H.lean, t, 10); return p && {t: p[0], rows: [el("div", {class: "v", text: `${p[1].toFixed(1)} lb`}), el("div", {class: "s", text: fmtD(p[0])})]}; }});
     }
   }
