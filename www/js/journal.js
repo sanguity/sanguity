@@ -68,11 +68,10 @@ function journalMark(e, x, y, selected) {
 }
 /* the Timeline's Mood and energy lane (#161): a day's mood and energy as bars, 0 at the lane's floor, 10 at its top */
 TL_LANES.mood = {
-  height: () => JOURNAL.some(e => e.k === "mood") ? 44 : 0,
-  draw(g, S, top, h, c, w) {
-    const base = top + h - 6, tall = h - 14;
-    g.push(el("svg:text", {class: "lane-label", x: 0, y: top + h / 2 + 4, text: w < 600 ? "Mood" : c.label}));
-    g.push(el("svg:line", {class: "gridline", x1: S.L, x2: S.R, y1: top + h, y2: top + h, "stroke-opacity": .5}));
+  shows: () => EV.some(e => e.k === "mood" && !e.hidden && inRange(e) && matchQ(e)),
+  height: (w, S) => JOURNAL.some(e => e.k === "mood") ? (S.over ? 40 : Math.max(44, 30 * S.k)) : 0,
+  draw(g, S, top, h) {
+    const base = top + h - 6, tall = Math.min(30, h - 14);
     g.push(el("svg:line", {class: "gridline", x1: S.L, x2: S.R, y1: base - tall - 1.5, y2: base - tall - 1.5, "stroke-opacity": .3, "stroke-dasharray": "2 3"}));
     for (const e of EV.filter(e => e.k === "mood" && inRange(e) && matchQ(e))) {
       const x = S.x(e.ts);

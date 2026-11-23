@@ -121,21 +121,18 @@ function renderMedications() {
   if (rows.length) drawMedLane(svg, rows, a, b);
 }
 
-/* a row per medication, from a to b, the names in a column of their own */
+/* a row per medication, from a to b, the names in a column of their own as wide as they need, a third of the lane at
+   most (cut to it), on the kit's time axis (chartkit.js, #300); its rows and axis growing with larger text (#633) */
 function drawMedLane(svg, rows, a, b) {
-  const w = Math.max(280, Math.round(svg.getBoundingClientRect().width) || 600), narrow = w < 600, ROW = 24;
-  const L = narrow ? 100 : 200, R = w - 8, top = 4, plotB = top + rows.length * ROW, h = plotB + 22;
-  const x = t => L + (t - a) / (b - a) * (R - L);
-  svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("height", h);
-  const g = [];
-  for (const [t, label] of ticks(a, b, R - L)) {
-    g.push(el("svg:line", {class: "gridline", x1: x(t), x2: x(t), y1: top, y2: plotB}));
-    g.push(el("svg:text", {x: x(t), y: plotB + 16, "text-anchor": "middle", text: label}));
-  }
-  g.push(el("svg:line", {x1: L, x2: R, y1: plotB, y2: plotB, stroke: "var(--axis)"}));
+  const w = Math.max(280, Math.round(svg.getBoundingClientRect().width) || 600), k = ckK(), ROW = 24 * k;
+  const L = Math.min(Math.max(...rows.map(m => labelW(m.name, "medname"))) + 12, w * (w < 600 ? .34 : .25)), R = w - 8, top = 4, plotB = top + rows.length * ROW;
+  const x = ckScale(a, b, L, R), tk = ckTimeTicks(a, b, x, w), g = [];
+  svg.setAttribute("viewBox", `0 0 ${w} ${plotB + ckAxisH(tk.rows)}`); svg.setAttribute("height", plotB + ckAxisH(tk.rows));
+  for (const t of tk.ticks) g.push(el("svg:line", {class: "gridline", x1: x(t.t), x2: x(t.t), y1: top, y2: plotB}));
+  ckAxis(g, tk, L, R, plotB, plotB + 16);
   rows.forEach((m, n) => {
     const y = top + n * ROW + ROW / 2;
-    g.push(el("svg:text", {class: "medname", x: 0, y: y + 4, text: medShort(m.name, narrow ? 14 : 30)}, el("svg:title", {text: m.name})));
+    g.push(el("svg:text", {class: "medname", x: 0, y: y + 4 * k, text: ckFit(m.name, "medname", L - 8)}, el("svg:title", {text: m.name})));
     medRow(g, m, x, y, L, R, CAT_OF.med.color, {selectable: true});
   });
   svg.replaceChildren(...g);

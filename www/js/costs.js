@@ -123,11 +123,9 @@ function drawCosts() {
     [...costBuckets(rows, by)].reverse().map(([k, m]) => [by === "year" ? k : zdate(dayTs(k + "-15")).toLocaleDateString(undefined, {month: "long", year: "numeric"}),
       usd(m.paid), usd(m.owe), usd(m.billed), m.n.toLocaleString("en-US")]))));
   else {
-    mc.append(el("div", {class: "legend mb-2"},
-      el("span", {}, el("i", {style: {background: "var(--muted)"}}), "Paid by insurance"),
-      el("span", {}, el("i", {style: {background: "var(--measure)"}}), "Your share"),
-      el("span", {}, el("i", {class: "stay-key"}), "Hospital stay")));   // its edge too (#450)
-    const svg = el("svg:svg", {role: "img", "aria-label": by === "year" ? "Yearly insurance costs" : "Monthly insurance costs"}); mc.append(svg);
+    const leg = ckLegend([["var(--measure)", "Your share"], ["var(--muted)", "Paid by insurance"], ["var(--stay)", "Hospital stay", "stay-key"]]);   // a stay's edge too (#450)
+    leg.classList.add("mb-2"); mc.append(leg);
+    const svg = el("svg:svg", {id: "costChart", role: "img", "aria-label": by === "year" ? "Yearly insurance costs" : "Monthly insurance costs"}); mc.append(svg);
     requestAnimationFrame(() => drawCostBars(svg, rows, by));
   }
   // category + provider breakdowns
@@ -360,10 +358,9 @@ function renderPaid(box, claimRows, periodLabel) {
       });
       cum.append(stacked(chartTable(["Month", "Your share listed", "Bills paid", "Share so far", "Paid so far", settled ? "Reduced so far" : "Difference"], out.reverse())));
     } else {
-      const svg = el("svg:svg", {role: "img", height: 210, "aria-label": "Your share and the bills you paid, running totals. Table lists them by month."});   // its height from the start, so what's under it doesn't move when it's drawn a frame later (#473)
-      cum.append(el("div", {class: "legend mb-2"},
-        el("span", {}, el("i", {style: {background: "var(--measure)"}}), "Your share per insurers, running total"),
-        el("span", {}, el("i", {style: {background: "var(--ink2)"}}), "Medical bills you paid, running total")), svg);
+      const svg = el("svg:svg", {id: "paidChart", role: "img", height: 210, "aria-label": "Your share and the bills you paid, running totals. Table lists them by month."});   // its height from the start, so what's under it doesn't move when it's drawn a frame later (#473)
+      const leg = ckLegend([["var(--measure)", "Your share per insurers, running total", "line"], ["var(--ink2)", "Medical bills you paid, running total", "line"]]);
+      leg.classList.add("mb-2"); cum.append(leg, svg);
       requestAnimationFrame(() => drawPaidCum(svg, claimRows, bills, settled));
     }
   }
@@ -432,51 +429,58 @@ function renderPaid(box, claimRows, periodLabel) {
   card.append(tw);
   box.append(card);
 }
+/* ---- the charts (#300), on the chart kit (chartkit.js): its scales, value grid, time axis, crosshair and pinned
+   readout; their gutters, rows and offsets grow with larger text (ckK, #633). Money on a value axis: "$30K" */
+const usdAxis = v => v >= 1e6 ? `$${(v / 1e6).toFixed(v % 1e6 ? 1 : 0)}M` : v >= 1e3 ? `$${Math.round(v / 1e3)}K` : `$${v}`;
+/* the value gutter: as wide as the widest of these numbers */
+const costGutter = vals => Math.max(...vals.map(v => labelW(usdAxis(v), ""))) + 12;
 function drawPaidCum(svg, claimRows, payRows, settled) {
   const pts = [...claimRows.filter(r => r.owe).map(r => ({d: r.d, a: r.owe, s: 0})), ...payRows.map(r => ({d: r.d, a: r.amount, s: 1}))].sort((a, b) => a.d.localeCompare(b.d));
   if (!pts.length) { svg.replaceChildren(); return; }
-  const day = d => dayTs(d);
-  const t0 = day(pts[0].d), t1 = Math.max(day(pts[pts.length - 1].d), t0 + 864e5 * 30);
+  const t0 = dayTs(pts[0].d), t1 = Math.max(dayTs(pts.at(-1).d), t0 + 30 * DAY);
   const series = [[], []], acc = [0, 0];
-  for (const p of pts) { acc[p.s] += p.a; series[p.s].push([day(p.d), acc[p.s]]); }
-  const w = Math.max(240, svg.parentElement.clientWidth - 32), narrow = w < 560;   // 240: fits 320 px (#202)
-  const h = 210, L = 56, R = w - (narrow ? 10 : 150), T = narrow ? 34 : 10, B = h - 24;
-  svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("height", h);
-  const max = Math.max(1, acc[0], acc[1]) * 1.08;
-  const x = t => L + (t - t0) / (t1 - t0) * (R - L), y = v => B - v / max * (B - T);
-  const g = [];
-  for (const v of niceTicks(0, max, 4)) { g.push(el("svg:line", {class: "gridline", x1: L, x2: R, y1: y(v), y2: y(v)})); g.push(el("svg:text", {x: L - 6, y: y(v) + 4, "text-anchor": "end", text: v >= 1e3 ? `$${Math.round(v / 1e3)}K` : `$${v}`})); }
-  g.push(el("svg:line", {x1: L, x2: R, y1: B, y2: B, stroke: "var(--axis)"}));
-  const months = Math.max(1, Math.round((t1 - t0) / 2.63e9)), step = Math.max(1, Math.ceil(months / Math.max(2, Math.floor((R - L) / 60))));
-  for (let d = zdate(t0), i = (d.setDate(1), d.setHours(0, 0, 0, 0), d.setMonth(d.getMonth() + 1), 0); d.getTime() <= t1; d.setMonth(d.getMonth() + 1), i++)
-    if (i % step === 0) g.push(el("svg:text", {x: x(d.getTime()), y: h - 6, "text-anchor": "middle", text: ckMonth(d.getTime())}));
-  // money is a measure, not a kind of record (#301): your share in --measure, what was paid in ink, what insurers paid muted
-  const color = ["var(--measure)", "var(--ink2)"], label = ["Your share", "Bills paid"];
+  for (const p of pts) { acc[p.s] += p.a; series[p.s].push([dayTs(p.d), acc[p.s]]); }
+  // money is a measure, not a kind of record (#301): your share in --measure, what was paid in ink
+  const color = ["var(--measure)", "var(--ink2)"], label = ["Your share", "Bills paid"], ends = label.map((l, i) => `${l} ${usd(acc[i])}`);
+  const max = Math.max(1, acc[0], acc[1]) * 1.08, vals = niceTicks(0, max, 4), k = ckK();
+  const w = Math.max(240, svg.parentElement.clientWidth - 32), endW = Math.max(...ends.map(t => labelW(t, "cum-end"))) + 25;
+  const narrow = w < 560 || w - endW < 360, L = costGutter(vals), R = w - (narrow ? 10 : endW + 8);   // 240: fits 320 px (#202)
+  const T = narrow ? 34 * k : 10 * k, B = T + (narrow ? 140 : 164), h = B + ckAxisH(2);   // 210 at the usual size, as made (#473)
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("height", h); svg._geom = {L, R, T, B, w};
+  const x = ckScale(t0, t1, L, R), y = ckScale(0, max, B, T), g = [];
+  ckGrid(g, y, vals, L, R, usdAxis);
+  ckAxis(g, ckTimeTicks(t0, t1, x, w), L, R, B, B + 16);
   series.forEach((s, i) => {
     if (!s.length) return;
     let dp = `M${x(t0)},${y(0)}`;
     for (const [t, v] of s) dp += `H${x(t)}V${y(v)}`;
-    dp += `H${x(t1)}`;
-    g.push(el("svg:path", {d: dp, fill: "none", stroke: color[i], "stroke-width": 2, "stroke-linejoin": "round"}));
+    g.push(el("svg:path", {d: dp + `H${x(t1)}`, fill: "none", stroke: color[i], "stroke-width": 2, "stroke-linejoin": "round"}));
     // its end label: the text in ink and a short line key in the series' colour before it, so the colour is on the
     // mark, not the text (#250: orange and green text were under 4.5:1). Narrow, the two stack above the chart.
-    const lx = narrow ? 4 : R + 8, ly = narrow ? 11 + i * 14 : y(acc[i]) + 4 + (i && Math.abs(y(acc[0]) - y(acc[1])) < 14 ? 14 : 0);
-    g.push(el("svg:line", {class: "cum-key", x1: lx, x2: lx + 12, y1: ly - 4, y2: ly - 4, stroke: color[i], "stroke-width": 2.5, "stroke-linecap": "round"}),
-      el("svg:text", {class: "cum-end", x: lx + 17, y: ly, style: "fill:var(--ink);font-weight:600", text: `${label[i]} ${usd(acc[i])}`}));
+    const lx = narrow ? 4 : R + 8, ly = narrow ? (11 + i * 14) * k : y(acc[i]) + 4 * k + (i && Math.abs(y(acc[0]) - y(acc[1])) < 14 * k ? 14 * k : 0);
+    g.push(el("svg:line", {class: "cum-key", x1: lx, x2: lx + 12, y1: ly - 4 * k, y2: ly - 4 * k, stroke: color[i], "stroke-width": 2.5, "stroke-linecap": "round"}),
+      el("svg:text", {class: "cum-end", x: lx + 17, y: ly, text: ends[i]}));
   });
+  // the crosshair and the readout pinned over it (ckTip), by pointer, or stepped through each change from the keyboard
   const at = (s, t) => { let v = 0; for (const [tt, vv] of s) { if (tt <= t) v = vv; else break; } return v; };
-  const hit = el("svg:rect", {x: L, y: T, width: R - L, height: B - T, fill: "transparent"});
-  hit.addEventListener("pointermove", ev => {
-    const r = svg.getBoundingClientRect(), t = t0 + ((ev.clientX - r.left) * (w / r.width) - L) / (R - L) * (t1 - t0);
-    const a = at(series[0], t), b = at(series[1], t);
-    showTip([el("div", {class: "v", text: fmtD(t)}),
+  const cross = ckCross(T, B), hit = el("svg:rect", {x: L, y: T, width: R - L, height: B - T, fill: "transparent"});
+  const show = t => {
+    if (t == null) { ckCrossAt(cross, null); return hideTip(); }
+    t = Math.max(t0, Math.min(t1, t)); ckCrossAt(cross, x(t));
+    const a = at(series[0], t), b = at(series[1], t), rows = [el("div", {class: "v", text: fmtD(t)}),
       el("div", {class: "s"}, el("span", {class: "k", style: {background: color[0]}}), `Your share so far ${usd(a)}`),
       el("div", {class: "s"}, el("span", {class: "k", style: {background: color[1]}}), `Bills paid so far ${usd(b)}`),
-      el("div", {class: "s", text: `${settled ? "Reduced so far" : "Difference"} ${usd(a - b)}`})], ev);
-  });
-  hit.addEventListener("pointerleave", hideTip);
-  g.push(hit);
+      el("div", {class: "s", text: `${settled ? "Reduced so far" : "Difference"} ${usd(a - b)}`})];
+    ckTip(svg, x(t), rows);
+    return tipWords(rows);
+  };
+  hit.addEventListener("pointermove", ev => { const r = svg.getBoundingClientRect(); show(x.inv((ev.clientX - r.left) * (w / r.width))); });
+  hit.addEventListener("pointerleave", () => show(null));
+  g.push(cross, hit);
   svg.replaceChildren(...g);
+  const days = [...new Set(series.flat().map(p => p[0]))].sort((p, q) => p - q);
+  chartKeys(svg, `Your share and the bills you paid, running totals: ${days.length} dates from ${fmtD(days[0])} to ${fmtD(days.at(-1))}. Left and right arrow keys step through them. The table lists them by month.`,
+    () => days, show, () => show(null));
 }
 function groupCosts(rows, keyFn) {
   const m = new Map();
@@ -511,7 +515,6 @@ function barList(card, groups, onPick, active) {
         el("span", {class: "cost-bar-note", text: `${g.n} claim${g.n === 1 ? "" : "s"}${g.owe >= 1 ? ` · your share ${usd(g.owe)}` : ""}`}))));
   }
 }
-/* the claims' costs as bars, one per month or per year (by), every one from the first shown to the last */
 /* the claims' totals by month ("2025-03") or year ("2025"), every one from the first to the last, in order: the
    chart's bars and its table's rows (#60) */
 function costBuckets(rows, by = "month") {
@@ -523,36 +526,54 @@ function costBuckets(rows, by = "month") {
   for (const r of rows) { const m = months.get(r.d.slice(0, cut)); if (m) { m.paid += r.paid || 0; m.owe += r.owe || 0; m.billed += r.billed || 0; m.n++; } }
   return months;
 }
+/* the claims by month or year (by), every one from the first shown to the last, as two plots over one time axis (#300):
+   your share on a scale of its own, in --measure, so a month's share reads even beside insurance's thousands; under it
+   what insurance paid, grey, for context. A hospital stay's months shaded in both; a month's figures by pointer or the
+   arrow keys, its slot marked in both */
 function drawCostBars(svg, rows, by = "month") {
   if (!rows.length) { svg.replaceChildren(); return; }
-  const months = costBuckets(rows, by), yearly = by === "year";
-  const keys = [...months.keys()];
-  const w = Math.max(240, svg.parentElement.clientWidth - 32), h = 220, L = 64, R = w - 10, T = 10, B = h - 24;   // 240: fits 320 px (#202)
-  svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("height", h);
-  const max = Math.max(1, ...[...months.values()].map(m => m.paid + m.owe)) * 1.08;
-  const slot = (R - L) / keys.length, bw = Math.max(2, Math.min(24, slot * .7));
-  const x = i => L + slot * i + slot / 2, y = v => B - v / max * (B - T);
-  const g = [];
-  // hospital stays as shaded month slots
-  keys.forEach((k, i) => { const a = k + (yearly ? "-01-01" : "-01"), b = k + (yearly ? "-12-31" : "-31"); if (STAYS.some(s => isoDay(s.ts) <= b && isoDay(s.te) >= a)) g.push(el("svg:rect", {x: L + slot * i, y: T, width: slot, height: B - T, fill: "var(--stay)"})); });
-  for (const v of niceTicks(0, max, 4)) { g.push(el("svg:line", {class: "gridline", x1: L, x2: R, y1: y(v), y2: y(v)})); g.push(el("svg:text", {x: L - 6, y: y(v) + 4, "text-anchor": "end", text: v >= 1e6 ? `$${(v / 1e6).toFixed(v % 1e6 ? 1 : 0)}M` : v >= 1e3 ? `$${Math.round(v / 1e3)}K` : `$${v}`})); }
-  g.push(el("svg:line", {x1: L, x2: R, y1: B, y2: B, stroke: "var(--axis)"}));
-  const every = Math.ceil(keys.length / Math.max(2, Math.floor((R - L) / 56)));
-  keys.forEach((k, i) => {
-    const m = months.get(k), cx = x(i);
-    const yp = y(m.paid), yo = y(m.paid + m.owe);
-    if (m.paid > 0) g.push(el("svg:rect", {x: cx - bw / 2, y: yp, width: bw, height: Math.max(0, B - yp), fill: "var(--muted)", rx: m.owe > 0 && B - yo > 3 ? 0 : 2}));
-    if (m.owe > 0) g.push(el("svg:rect", {x: cx - bw / 2, y: yo, width: bw, height: Math.max(1, yp - yo - (m.paid > 0 ? 1 : 0)), fill: "var(--measure)", rx: 2}));
-    if (i % every === 0) g.push(el("svg:text", {x: cx, y: h - 6, "text-anchor": "middle", text: yearly ? k : ckMonth(dayTs(k + "-15"))}));
-    const hit = el("svg:rect", {x: L + slot * i, y: T, width: slot, height: B - T, fill: "transparent", style: "cursor:pointer"});
-    hit.addEventListener("pointermove", ev => showTip([el("div", {class: "v", text: usd(m.paid + m.owe)}), el("div", {class: "s", text: yearly ? k : zdate(dayTs(k + "-15")).toLocaleDateString(undefined, {month: "long", year: "numeric"})}),
-      el("div", {class: "s"}, el("span", {class: "k", style: {background: "var(--muted)"}}), `Insurance paid ${usd(m.paid)}`),
-      el("div", {class: "s"}, el("span", {class: "k", style: {background: "var(--measure)"}}), `Your share ${usd(m.owe)}`),
-      el("div", {class: "s", text: `${m.n} claims · billed ${usd(m.billed)}`})], ev));
-    hit.addEventListener("pointerleave", hideTip);
-    g.push(hit);
+  const months = costBuckets(rows, by), yearly = by === "year", keys = [...months.keys()], k = ckK();
+  const start = key => dayTs(key + (yearly ? "-01-01" : "-01")), ts = keys.map(start);
+  { const d = zdate(ts.at(-1)); if (yearly) d.setFullYear(d.getFullYear() + 1); else d.setMonth(d.getMonth() + 1); ts.push(d.getTime()); }
+  const val = (i, f) => months.get(keys[i])[f], top = f => Math.max(1, ...keys.map((_, i) => val(i, f))) * 1.08;
+  const vO = niceTicks(0, top("owe"), 4), vP = niceTicks(0, top("paid"), 2);
+  const w = Math.max(240, svg.parentElement.clientWidth - 32), L = costGutter([...vO, ...vP]), R = w - 10;   // 240: fits 320 px (#202)
+  const T1 = 24 * k, B1 = T1 + 110, T2 = B1 + 32 * k, B2 = T2 + 56;
+  const x = ckScale(ts[0], ts.at(-1), L, R), half = (ts[1] - ts[0]) / 2;
+  const tk = ckTimeTicks(ts[0] - DAY, ts.at(-1) - half, t => x(t + half), w, yearly ? 365 : 28), h = B2 + ckAxisH(tk.rows);   // a label under its bar, mid-slot
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("height", h); svg._geom = {L, R, T: T1, B: B2, w};
+  const yO = ckScale(0, top("owe"), B1, T1), yP = ckScale(0, top("paid"), B2, T2), g = [];
+  keys.forEach((key, i) => {   // hospital stays as shaded slots
+    const a = isoDay(ts[i]), b = isoDay(ts[i + 1] - DAY);
+    if (STAYS.some(s => isoDay(s.ts) <= b && isoDay(s.te) >= a)) for (const [t, b] of [[T1, B1], [T2, B2]]) g.push(el("svg:rect", {x: x(ts[i]), y: t, width: x(ts[i + 1]) - x(ts[i]), height: b - t, fill: "var(--stay)"}));
   });
+  ckUnit(g, "Your share", T1 - 10 * k); ckGrid(g, yO, vO, L, R, usdAxis); ckFoot(g, L, R, B1);
+  ckUnit(g, "Paid by insurance", T2 - 10 * k); ckGrid(g, yP, vP, L, R, usdAxis);
+  ckAxis(g, tk, L, R, B2, B2 + 16);
+  const mid = i => (x(ts[i]) + x(ts[i + 1])) / 2;
+  keys.forEach((key, i) => {   // a bar a slot, 24 px at most, rounded at its end (2 px), from its plot's foot
+    const bw = Math.max(2, Math.min(24, (x(ts[i + 1]) - x(ts[i])) * .7));
+    for (const [f, y, B, fill] of [["owe", yO, B1, "var(--measure)"], ["paid", yP, B2, "var(--muted)"]]) {
+      const v = val(i, f); if (v > 0) g.push(el("svg:rect", {x: mid(i) - bw / 2, y: Math.min(B - 1, y(v)), width: bw, height: Math.max(1, B - y(v)), rx: Math.min(2, bw / 2), fill}));
+    }
+  });
+  const say = i => yearly ? keys[i] : zdate(ts[i] + 14 * DAY).toLocaleDateString(undefined, {month: "long", year: "numeric"});
+  const cross = ckCross(T1, B2), hit = el("svg:rect", {x: L, y: T1, width: R - L, height: B2 - T1, fill: "transparent"});
+  const show = t => {
+    const i = t == null ? -1 : ts.findLastIndex(s => s <= t);
+    if (i < 0 || i >= keys.length) { ckCrossAt(cross, null); return hideTip(); }
+    ckCrossAt(cross, mid(i));
+    const m = months.get(keys[i]), rows = [el("div", {class: "v", text: say(i)}),
+      el("div", {class: "s"}, el("span", {class: "k", style: {background: "var(--measure)"}}), `Your share ${usd(m.owe)}`),
+      el("div", {class: "s"}, el("span", {class: "k", style: {background: "var(--muted)"}}), `Insurance paid ${usd(m.paid)}`),
+      el("div", {class: "s", text: `${m.n} claims · billed ${usd(m.billed)}`})];
+    ckTip(svg, mid(i), rows);
+    return tipWords(rows);
+  };
+  hit.addEventListener("pointermove", ev => { const r = svg.getBoundingClientRect(); show(x.inv((ev.clientX - r.left) * (w / r.width))); });
+  hit.addEventListener("pointerleave", () => show(null));
+  g.push(cross, hit);
   svg.replaceChildren(...g);
+  chartKeys(svg, `${yearly ? "Yearly" : "Monthly"} insurance costs: your share, and what insurance paid, for ${keys.length} ${yearly ? "years" : "months"} from ${say(0)} to ${say(keys.length - 1)}. Left and right arrow keys step through them. The table lists them.`,
+    () => ts.slice(0, -1), show, () => show(null));
 }
-
-

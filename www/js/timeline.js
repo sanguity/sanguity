@@ -1,92 +1,180 @@
 /* Sanguity · Timeline tab: lane chart with zoom and pan, its events by day, and the switch to the journal (#277).
    Plain script, loaded in order by index.html; all files share one global scope. */
 "use strict";
-/* ---------------------------------------------------------------- timeline */
+/* ---------------------------------------------------------------- timeline
+   The lanes on the chart kit (#300, chartkit.js): its time scale and axis (ckScale, ckTimeTicks, ckAxis), a hairline
+   at each tick; the milestones named once over the lanes (ckFlagNames) and a faint line at each, as Labs' and Body's
+   have them. A lane's marks within 6 px of a mark's first are one mark, with how many it holds beside it where there's
+   room (its first record's data-id, and data-g, its place in tlSvg._groups: its readout lists them, a press zooms in
+   to them), a lab day's ▲ when any of its draws has a value out of range (#250); a lane with nothing in the period isn't drawn, and a
+   line under the chart names the kinds chosen that have nothing in it. The watch's steps are one path, a pixel's
+   tallest day. The lanes' names are in a gutter as wide as they need, or over each lane where that would take too
+   much of a phone's width (larger text, #633), every size and row growing with the labels' (ckK). Dragged, pinched
+   or scrolled, the period follows */
 const tlSvg = $("#tl");
-function tlScale(w) { const L = w < 600 ? 96 : 150, R = w - (w < 600 ? 6 : 16); return {L, R, x: t => L + (t - state.from) / (state.to - state.from) * (R - L), t: x => state.from + (x - L) / (R - L) * (state.to - state.from)}; }
-function ticks(a, b, w) {
-  const span = b - a, out = [], target = Math.max(3, Math.floor(w / 110));
-  const steps = [[DAY,"d"],[7*DAY,"w"],[30.44*DAY,"m"],[91.3*DAY,"q"],[182.6*DAY,"h"],[365.25*DAY,"y"],[730.5*DAY,"2y"]];
-  let st = steps.find(s => span / s[0] <= target) || steps[steps.length - 1];
-  const d = zdate(a);
-  if (st[1] === "d" || st[1] === "w") { d.setHours(0,0,0,0); const inc = st[1] === "d" ? 1 : 7; while (d.getTime() < b) { if (d.getTime() >= a) out.push([d.getTime(), d.toLocaleDateString(undefined,{month:"short",day:"numeric"})]); d.setDate(d.getDate() + inc); } }
-  else { const mStep = {m:1,q:3,h:6,y:12,"2y":24}[st[1]]; d.setDate(1); d.setHours(0,0,0,0); d.setMonth(Math.floor(d.getMonth()/mStep)*mStep);
-    while (d.getTime() < b) { if (d.getTime() >= a) out.push([d.getTime(), mStep >= 12 ? String(d.getFullYear()) : (d.getMonth() === 0 ? d.toLocaleDateString(undefined,{month:"short",year:"numeric"}) : d.toLocaleDateString(undefined,{month:"short"}))]); d.setMonth(d.getMonth() + mStep); } }
+/* lanes that draw themselves: {k: {height(w, S) -> px (0: draw the lane's events as dots), draw(g, S, top, h, c, w),
+   shows() -> anything to draw in the period, labelY(S): where its name goes in the gutter (px under its top; its
+   middle without one)}}. S: {L, R, x, k, over (the names over the lanes)}. meds.js adds the Medications lane (#50): one row of
+   spans per medication; cycle.js and journal.js theirs */
+const TL_LANES = {};
+/* each lane's events in the period, in time order, from one pass over the records: Map(lane -> [event]) */
+function tlLaneEvents() {
+  const by = new Map();
+  for (const e of EV) {
+    const c = CAT_OF[e.k];
+    if (!c || e.hidden || !state.cats.has(c.k) || !inRange(e) || !matchQ(e)) continue;
+    if (!by.has(c)) by.set(c, []);
+    by.get(c).push(e);
+  }
+  for (const l of by.values()) l.sort((a, b) => a.ts - b.ts);
+  return by;
+}
+const tlStepsIn = () => STEPS.filter(([ts]) => ts + DAY >= state.from && ts <= state.to);
+const tlName = (c, narrow) => narrow ? c.label.replace(" & studies", "").replace(" & docs", "") : c.label;
+/* a notification, a ring beside the recordings' dots (#182) */
+const tlHollow = e => e.k === "appt_msg" || e.k === "auto_msg" || e.k === "rhythm";
+/* marks within 6 px of a group's first, and drawn alike (a notification's ring isn't merged into a recording's dot):
+   one group, at its middle -> [{x, items}] */
+function tlGroups(evs, x) {
+  const out = [];
+  for (const e of evs) {
+    const px = x(e.ts), g = out.at(-1);
+    if (g && px - g.x0 < 6 && tlHollow(e) === tlHollow(g.items[0])) { g.items.push(e); g.x = (g.x0 + px) / 2; } else out.push({x0: px, x: px, items: [e]});
+  }
   return out;
 }
-/* lanes that draw themselves: {k: {height(w) -> px (0: draw the lane's events as dots), draw(g, S, top, h, cat, w)}}.
-   meds.js adds the Medications lane (#50): one row of spans per medication */
-const TL_LANES = {};
-function renderTimeline() {
-  tlAbnDays();
-  const w = Math.max(320, tlSvg.parentElement.clientWidth - 32);
-  const lanes = CATS.filter(c => c.k !== "stay" && state.cats.has(c.k) && hasLane(c));
-  const laneH = 34, top = msInRange(state.from, state.to) ? 22 : 8, axisH = 26;
-  const own = lanes.map(c => TL_LANES[c.k]?.height(w) || 0), laneHs = own.map(n => n || laneH), laneTop = laneHs.map((_, i) => laneHs.slice(0, i).reduce((a, b) => a + b, 0));
-  const h = top + (laneHs.reduce((a, b) => a + b, 0) || laneH) + axisH;
-  tlSvg.setAttribute("viewBox", `0 0 ${w} ${h}`); tlSvg.setAttribute("height", h);
-  const S = tlScale(w), g = [];
-  const plotB = top + laneHs.reduce((a, b) => a + b, 0);
-  for (const [t, label] of ticks(state.from, state.to, S.R - S.L)) {
-    const x = S.x(t);
-    g.push(el("svg:line", {class: "gridline", x1: x, x2: x, y1: top, y2: plotB}));
-    g.push(el("svg:text", {x, y: plotB + 16, "text-anchor": "middle", text: label}));
-  }
-  g.push(el("svg:line", {x1: S.L, x2: S.R, y1: plotB, y2: plotB, stroke: "var(--axis)"}));
-  msMarks(g, S.x, state.from, state.to, top > 8 ? 17 : top, plotB, S.R, 13);
+function renderTimeline(live) {   // live: a frame of a gesture, at the width it had (#631)
+  if (!live) tlAbnDays();
+  const w = live && tlSvg._geom ? tlSvg._geom.w : Math.max(300, tlSvg.parentElement.clientWidth - 32), narrow = w < 600, k = ckK();
+  // drawn again with nothing changed but the record picked (the drawer opening or closing): the marks' selection only,
+  // so nothing moves on the page behind it (#370); a gesture's frame is never the drawing to keep
+  const key = [state.from, state.to, w, k, [...state.cats].join(), state.q, EV, EV.length, MEDS, CYCLE, DOSES, STEPS, STAYS, MILESTONES];
+  if (!live && tlSvg._key?.every((v, i) => v === key[i])) return tlSel();
+  tlSvg._key = live ? null : key;
+  const evs = tlLaneEvents(), steps = state.cats.has("watch") ? tlStepsIn() : [];
+  const chosen = CATS.filter(c => c.k !== "stay" && state.cats.has(c.k) && hasLane(c));
+  const shows = c => TL_LANES[c.k]?.shows ? TL_LANES[c.k].shows() : evs.has(c) || (c.k === "watch" && steps.length > 0);
+  // (a gesture's frames keep the lanes it began with, so the chart doesn't change height under the pointer)
+  const lanes = live && tlSvg._lanes ? tlSvg._lanes : tlSvg._lanes = chosen.filter(shows), empty = chosen.filter(c => !lanes.includes(c));
+  // the gutter: as wide as the widest name, or the names over their lanes where that's more than a third of the chart
+  const base = narrow ? 96 : 150, need = Math.max(0, ...lanes.map(c => labelW(tlName(c, narrow), "lane-label"))) + 10;
+  const over = need > Math.max(base, w * .36), L = over ? 8 : Math.max(base, need), R = w - (narrow ? 6 : 16);
+  const x = ckScale(state.from, state.to, L, R), S = {L, R, x, k, over}, LH = over ? 15 * k : 0, g = [], groups = [];
+  const ms = MILESTONES.map(m => [dayTs(m.date), m.label]).filter(([t]) => t >= state.from && t <= state.to);
+  const top = ms.length ? ckFlagNames(g, ms.map(([t, n]) => ({x: x(t), text: n, title: `${n} · ${fmtD(t)}`})), L, R, 0) : 8;
+  const own = lanes.map(c => TL_LANES[c.k]?.height(w, S) || 0), laneH = over ? 32 : Math.max(34, 26 * k);
+  const laneHs = own.map(n => LH + (n || laneH)), laneTop = [];
+  let plotB = top;
+  for (const h of laneHs) { laneTop.push(plotB); plotB += h; }
+  if (!lanes.length) plotB += laneH;
+  const tk = ckTimeTicks(state.from, state.to, x, w), h = plotB + ckAxisH(tk.rows);
+  tlSvg.setAttribute("viewBox", `0 0 ${w} ${h}`); tlSvg.setAttribute("height", h); tlSvg._geom = {L, R, T: top, B: plotB, w};
+  for (const t of tk.ticks) g.push(el("svg:line", {class: "gridline", x1: x(t.t), x2: x(t.t), y1: top, y2: plotB}));
+  ckAxis(g, tk, L, R, plotB, plotB + 16);
+  const msAt = g.length, msWords = msMarks(g, x, state.from, state.to, top, plotB, R, null);
+  for (const m of g.slice(msAt)) m.classList.add("faint");
   if (state.cats.has("stay")) for (const s of STAYS) {
     if (s.te < state.from || s.ts > state.to) continue;
-    const x1 = Math.max(S.L, S.x(s.ts)), x2 = Math.min(S.R, S.x(s.te));
+    const x1 = Math.max(L, x(s.ts)), x2 = Math.min(R, x(s.te));
     g.push(el("svg:rect", {class: "ev", x: x1, y: top, width: Math.max(3, x2 - x1), height: plotB - top, fill: "var(--stay)", "data-id": s.id, rx: 2}));
   }
+  tlSvg._steps = null;
   lanes.forEach((c, i) => {
-    if (own[i]) { TL_LANES[c.k].draw(g, S, top + laneTop[i], laneHs[i], c, w); return; }
-    const y = top + laneTop[i] + laneH / 2;
-    g.push(el("svg:text", {class: "lane-label", x: 0, y: y + 4, text: w < 600 ? c.label.replace(" & studies", "").replace(" & docs", "") : c.label}));
-    g.push(el("svg:line", {class: "gridline", x1: S.L, x2: S.R, y1: y + laneH/2, y2: y + laneH/2, "stroke-opacity": .5}));
-    if (c.k === "watch" && STEPS.length) {
-      const max = Math.max(...STEPS.map(s => s[1])) || 1, base = y + laneH / 2 - 3;
-      for (const [ts, v] of STEPS) {
-        if (ts + DAY < state.from || ts > state.to) continue;
-        const x0 = S.x(ts), x1 = S.x(ts + DAY), hh = Math.max(1, (laneH - 10) * v / max);
-        if (x1 < S.L || x0 > S.R) continue;
-        g.push(el("svg:rect", {x: Math.max(S.L, x0), y: base - hh, width: Math.max(1, Math.min(S.R, x1) - Math.max(S.L, x0) - (x1 - x0 > 4 ? 1 : 0)), height: hh,
-          fill: "var(--muted)", "fill-opacity": .45, "data-steps": v, "data-day": ts}));
+    const t0 = laneTop[i] + LH, lh = laneHs[i] - LH, lane = TL_LANES[c.k], name = tlName(c, narrow);
+    // its name: over it, or in the gutter, cut to the gutter's width with its whole name as its title
+    const ly = over ? laneTop[i] + 12 * k : t0 + (lane?.labelY ? lane.labelY(S) : lh / 2) + 4 * k, fit = over ? name : ckFit(name, "lane-label", L - 8);
+    g.push(el("svg:text", {class: "lane-label", x: 0, y: ly, text: fit}, fit !== name ? el("svg:title", {text: name}) : null));
+    g.push(el("svg:line", {class: "gridline", x1: L, x2: R, y1: t0 + lh, y2: t0 + lh, "stroke-opacity": .5}));
+    if (own[i]) return lane.draw(g, S, t0, lh, c, w);
+    const y = t0 + lh / 2;
+    if (c.k === "watch" && steps.length) {   // a day's steps a bar, the tallest of each pixel (#292), one path
+      const max = steps.reduce((m, s) => Math.max(m, s[1]), 1), base = t0 + lh - 3, dw = x(state.from + DAY) - x(state.from), bw = Math.max(1, dw - (dw > 4 ? 1 : 0));
+      let d = "";
+      for (const [ts, v] of ckDecimate(steps, p => x(p[0]), 1, {lo: null})) {
+        const x0 = Math.max(L, x(ts)), x1 = Math.min(R, x(ts) + bw); if (x1 <= x0) continue;
+        d += `M${x0.toFixed(1)},${base}h${(x1 - x0).toFixed(1)}v${(-Math.max(1, (lh - 10) * v / max)).toFixed(1)}h${(x0 - x1).toFixed(1)}Z`;
       }
+      if (d) g.push(el("svg:path", {class: "tl-steps", d, fill: "var(--muted)", "fill-opacity": .45}));
+      tlSvg._steps = {list: steps, y0: t0, y1: t0 + lh};
     }
-    const evs = EV.filter(e => !e.hidden && CAT_OF[e.k] === c && inRange(e) && matchQ(e));
-    for (const e of evs) {
-      const x = S.x(e.ts);
-      if (e.k === "journal") { g.push(journalMark(e, x, y, state.selEv === e.id)); continue; }   // shape by kind, size by severity (journal.js)
-      if (e.end && e.te - e.ts > DAY && S.x(e.te) - x > 4) {
-        g.push(el("svg:line", {x1: x, x2: Math.min(S.R, S.x(e.te)), y1: y, y2: y, stroke: c.color, "stroke-width": 2, "stroke-opacity": .45, "stroke-linecap": "round", "pointer-events": "none"}));
+    const gs = tlGroups(evs.get(c) || [], x);
+    gs.forEach((gr, n) => {
+      const its = gr.items, e = its[0], one = its.length === 1, px = gr.x;
+      if (gr.x < L - 9 || gr.x > R + 9) return;
+      for (const s of its) if (s.end && s.te - s.ts > DAY && x(s.te) - x(s.ts) > 4)
+        g.push(el("svg:line", {x1: x(s.ts), x2: Math.min(R, x(s.te)), y1: y, y2: y, stroke: c.color, "stroke-width": 2, "stroke-opacity": .45, "stroke-linecap": "round", "pointer-events": "none"}));
+      const sel = its.some(s => s.id === state.selEv);
+      if (one && e.k === "journal") return g.push(journalMark(e, px, y, sel));   // shape by kind, size by severity (journal.js)
+      const r = c.k === "lab" ? Math.min(9, 3.5 + Math.sqrt(its.reduce((a, s) => a + (s.n || 1), 0)) * .9) : one ? (e.k === "auto_msg" || e.k === "appt_msg" ? 3.5 : 5) : Math.min(7, 4.5 + its.length / 4);
+      const hollow = tlHollow(e);
+      g.push(el("svg:circle", {class: "ev" + (sel ? " sel" : ""), cx: px, cy: y, r, fill: hollow ? "var(--surface)" : c.color, stroke: hollow ? c.color : "var(--surface)",
+        "stroke-width": e.k === "rhythm" ? 2 : 1.5, "data-id": e.id, ...(one ? {} : {"data-g": groups.length, "data-n": its.length})}));
+      if (!one) {   // how many, beside it where it's clear of the next mark
+        groups.push({c, items: its});
+        const say = its.length.toLocaleString("en-US"), next = gs[n + 1];
+        if ((next ? next.x - 8 : w) - px > r + 4 + labelW(say, "")) g.push(el("svg:text", {x: px + r + 2, y: y + 4 * k, text: say}));
       }
-      const r = e.k === "lab" ? Math.min(9, 3.5 + Math.sqrt(e.n || 1) * .9) : e.k === "auto_msg" || e.k === "appt_msg" ? 3.5 : 5;
-      const hollow = e.k === "appt_msg" || e.k === "auto_msg" || e.k === "rhythm";   // #182: a notification, beside the recordings' dots
-      const fill = hollow ? "var(--surface)" : c.color;
-      g.push(el("svg:circle", {class: "ev" + (state.selEv === e.id ? " sel" : ""), cx: x, cy: y, r, fill, stroke: hollow ? c.color : "var(--surface)", "stroke-width": e.k === "rhythm" ? 2 : 1.5, "data-id": e.id}));
-      if (e.k === "lab" && tlAbn(e)) {   // a ▲ above the day, known by its shape and not only its red (#250); a search's tests' (#464)
-        const m = abnMark(x, y - r - 4.4, "H", 3.4, "tl-abn"); m.setAttribute("fill", "var(--crit)"); m.setAttribute("pointer-events", "none"); g.push(m);
+      if (c.k === "lab" && its.some(tlAbn)) {   // a ▲ above the day, known by its shape and not only its red (#250); a search's tests' (#464)
+        const m = abnMark(px, y - r - 4.4, "H", 3.4, "tl-abn"); m.setAttribute("fill", "var(--crit)"); m.setAttribute("pointer-events", "none"); g.push(m);
       }
-    }
+    });
   });
-  if (!lanes.length) g.push(el("svg:text", {x: w/2, y: top + 20, "text-anchor": "middle", text: "No categories selected"}));
+  tlSvg._groups = groups;
+  if (!lanes.length) g.push(el("svg:text", {x: w / 2, y: top + 20, "text-anchor": "middle", text: chosen.length ? "Nothing in these dates" : "No categories selected"}));
   tlSvg.replaceChildren(...g);
+  // the kinds chosen with nothing in these dates, said once under the chart, not drawn as empty lanes
+  const none = $("#tlNone") || tlSvg.after(el("p", {class: "hint", id: "tlNone"})) || $("#tlNone");
+  none.hidden = !lanes.length || !empty.length;
+  none.textContent = empty.length ? `Nothing in these dates: ${empty.map(c => c.label).join(", ")}.` : "";
   // its table alternative is the list under it (#60): the same events, filters and period, each with its date, kind and title
-  tlSvg.setAttribute("aria-label", `Timeline of medical events, ${fmtD(state.from)} to ${fmtD(state.to)}. The events it shows are listed under Events, below (its workouts with List workouts).`);
+  tlSvg.setAttribute("aria-label", `Timeline of medical events, ${fmtD(state.from)} to ${fmtD(state.to)}.${msWords ? " " + msWords : ""} The events it shows are listed under Events, below (its workouts with List workouts).`);
 }
-/* zoom & pan */
+/* the record picked, marked on the lanes as they're drawn: its mark (a merged one holding it), or its medication's bars */
+function tlSel() {
+  const med = medShown();
+  for (const n of tlSvg.querySelectorAll(".ev")) {
+    const ds = n.dataset;
+    n.classList.toggle("sel", n.matches(".medbar") ? MEDS[+ds.med] === med : ds.g != null ? tlSvg._groups[+ds.g].items.some(e => e.id === state.selEv)
+      : ds.id != null && !n.matches("rect:not(.cymark)") && +ds.id === state.selEv);   // (a stay's shading isn't marked)
+  }
+}
+/* a group's readout: its lane, how many and their dates, the first five, and what a click does */
+function tlGroupTip(gr, ev) {
+  const its = gr.items, a = its[0].ts, b = its.at(-1).ts, same = isoDay(a) === isoDay(b);
+  showTip([el("div", {class: "v", text: `${gr.c.label}: ${its.length.toLocaleString("en-US")} records`}),
+    el("div", {class: "s", text: same ? fmtD(a) : `${fmtD(a)} – ${fmtD(b)}`}),
+    ...its.slice(0, 5).map(e => el("div", {class: "s", text: e.title})), its.length > 5 ? el("div", {class: "s", text: `and ${its.length - 5} more`}) : null,
+    el("div", {class: "s", text: a === b ? "Click or tap for the first" : "Click or tap to zoom in"})], ev);
+}
+/* a group pressed: the dates around it, so its marks come apart; one moment's records, the first opened */
+function tlGroupOpen(gr) {
+  const a = gr.items[0].ts, b = gr.items.at(-1).ts;
+  if (a === b) return openEvent(gr.items[0]);
+  const m = (a + b) / 2, half = Math.max(DAY, (b - a) * 1.5);
+  setRange(m - half, m + half);
+}
+/* the watch's day under the pointer, on its lane: [time, steps] */
+function tlStepAt(ev) {
+  const st = tlSvg._steps; if (!st) return null;
+  const r = tlSvg.getBoundingClientRect(), k = tlSvg._geom.w / r.width, py = (ev.clientY - r.top) * k;
+  if (py < st.y0 || py > st.y1) return null;
+  const t = ckScale(state.from, state.to, tlSvg._geom.L, tlSvg._geom.R).inv((ev.clientX - r.left) * k), l = st.list;
+  let lo = 0, hi = l.length - 1;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (l[m][0] <= t) lo = m; else hi = m - 1; }
+  return l[lo] && t >= l[lo][0] && t < l[lo][0] + DAY ? l[lo] : null;
+}
+/* zoom & pan; hovering: a mark's readout, or the watch's day's steps; a press opens its record, or zooms in to a group */
+const tlT = (r, cx) => { const g = tlSvg._geom; return ckScale(state.from, state.to, g.L, g.R).inv((cx - r.left) * g.w / r.width); };
 let drag = null;
 tlSvg.addEventListener("wheel", ev => {
   ev.preventDefault();
-  const r = tlSvg.getBoundingClientRect(), S = tlScale(r.width), t = S.t(ev.clientX - r.left);
-  const k = Math.exp((ev.deltaY || ev.deltaX) * 0.0015);
+  const t = tlT(tlSvg.getBoundingClientRect(), ev.clientX), k = Math.exp((ev.deltaY || ev.deltaX) * 0.0015);
   setRange(t - (t - state.from) * k, t + (state.to - t) * k);
 }, {passive: false});
 const ptrs = new Map(); let pinch = null;
 tlSvg.addEventListener("pointerdown", ev => {
   ptrs.set(ev.pointerId, ev.clientX);
-  if (ptrs.size === 2) { const [a, b] = [...ptrs.values()], r = tlSvg.getBoundingClientRect(), S = tlScale(r.width); pinch = {d: Math.abs(a - b) || 1, t: S.t((a + b) / 2 - r.left), from: state.from, to: state.to}; drag = null; return; }
+  if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = {d: Math.abs(a - b) || 1, t: tlT(tlSvg.getBoundingClientRect(), (a + b) / 2), from: state.from, to: state.to}; drag = null; return; }
   // on: the mark pressed, since with the pointer captured pointerup's target is the svg itself
   drag = {x: ev.clientX, from: state.from, to: state.to, moved: false, on: ev.target}; tlSvg.setPointerCapture(ev.pointerId);
 });
@@ -99,13 +187,16 @@ tlSvg.addEventListener("pointermove", ev => {
   }
   if (drag) {
     const dx = ev.clientX - drag.x; if (Math.abs(dx) > 3) { drag.moved = true; tlSvg.classList.add("dragging"); hideTip(); }
-    if (drag.moved) { const r = tlSvg.getBoundingClientRect(), S = tlScale(r.width), dxv = 0, dt = dx / (S.R - S.L) * (drag.to - drag.from); state.from = drag.from - dt; state.to = drag.to - dt; state.preset = "custom"; renderTimeline(); }
+    if (drag.moved) { const r = tlSvg.getBoundingClientRect(), g = tlSvg._geom, dt = dx * g.w / r.width / (g.R - g.L) * (drag.to - drag.from); state.from = drag.from - dt; state.to = drag.to - dt; state.preset = "custom"; renderTimeline(); }
     return;
   }
   const ds = ev.target?.dataset || {};
-  if (ds.steps) { showTip([el("div", {class: "v", text: `${(+ds.steps).toLocaleString("en-US")} steps`}), el("div", {class: "s", text: fmtD(+ds.day) + " · from watch"})], ev); return; }
-  if (ds.med != null) { medTip(MEDS[+ds.med], ds, ev); return; }   // a medication's span or fill (meds.js)
-  const id = +ds.id; if (id) showEvTip(byId.get(id), ev); else hideTip();
+  if (ds.g != null) return tlGroupTip(tlSvg._groups[+ds.g], ev);
+  if (ds.med != null) return medTip(MEDS[+ds.med], ds, ev);   // a medication's span or fill (meds.js)
+  const id = +ds.id; if (id) return showEvTip(byId.get(id), ev);
+  const st = tlStepAt(ev);
+  if (st) return showTip([el("div", {class: "v", text: `${st[1].toLocaleString("en-US")} steps`}), el("div", {class: "s", text: fmtD(st[0]) + " · from watch"})], ev);
+  hideTip();
 });
 tlSvg.addEventListener("pointerup", ev => {
   ptrs.delete(ev.pointerId);
@@ -113,6 +204,7 @@ tlSvg.addEventListener("pointerup", ev => {
   tlSvg.classList.remove("dragging");
   if (drag && drag.moved) { drag = null; renderAll(); return; }
   const ds = (drag && drag.on || ev.target)?.dataset || {}; drag = null;
+  if (ds.g != null) { hideTip(); return tlGroupOpen(tlSvg._groups[+ds.g]); }
   const id = +ds.id; if (id) openEvent(byId.get(id));
   else if (ds.med != null) openMedication(MEDS[+ds.med]);   // a medication's span (meds.js)
 });

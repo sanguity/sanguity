@@ -1,7 +1,7 @@
 /* Sanguity · the chart kit (#291): the parts every time chart is drawn with, so they read as one: Labs (trends.js
    drawChart) and Body and activity (health.js hChart) draw through it. Each part is its own small function, for the
    rest of the kit to plug in beside (the event track, the overview strip, sparklines):
-   - ckScale, niceTicks: the scales, and a value axis's round numbers;
+   - ckScale, niceTicks: the scales, and a value axis's round numbers; ckFit, a label cut to its room;
    - ckTimeTicks, ckAxis, ckFoot: the time axis, its ticks at two levels (days over months, months over years), and
      the plot's foot alone, for a chart in a stack under one axis;
    - ckGrid, ckUnit: the value axis, a hairline and a label at each round number, and its unit as its title;
@@ -41,7 +41,7 @@ let labelText = null;
 function labelW(text, cls) {
   const key = cls + "\n" + text;
   if (!labelSizes.has(key)) {
-    if (!labelText || !labelText.isConnected) labelText = document.body.appendChild(el("svg:svg", {class: "vh", "aria-hidden": "true"}, el("svg:text", {}))).firstChild;
+    if (!labelText || !labelText.isConnected) labelText = document.body.appendChild(el("svg:svg", {class: "vh", "aria-hidden": "true"}, el("svg:text", {y: -40}))).firstChild;   // (over its 1 px box, not past the page's end)
     labelText.setAttribute("class", cls);
     labelText.textContent = text;
     labelSizes.set(key, labelText.getComputedTextLength());
@@ -49,12 +49,15 @@ function labelW(text, cls) {
   return labelSizes.get(key);
 }
 document.fonts.addEventListener("loadingdone", () => labelSizes.clear());
+/* text cut with "…" to the room there is, in a label of class cls (a lane's or a medication's name, #633) */
+function ckFit(t, cls, room) { if (labelW(t, cls) <= room) return t; for (let n = t.length - 1; n > 1; n--) { const s = t.slice(0, n).trimEnd() + "…"; if (labelW(s, cls) <= room) return s; } return "…"; }
 /* the labels' size against the 11.5 px the charts are laid out for, 1 or more: with larger text (200%, a phone's font
    size, #622) a chart's gutters, rows of labels and their offsets grow by it, so its labels stay inside it (1.4.4).
    The sizes labelW kept go when it changes */
 let ckFs = 0;
 const ckK = () => {
   if (!labelText?.isConnected) labelW("0", "");
+  labelText.setAttribute("class", "");   // a chart label's size, not that of the class labelW measured last (a lane's name is larger)
   const fs = parseFloat(getComputedStyle(labelText).fontSize);
   if (fs !== ckFs) { ckFs = fs; labelSizes.clear(); }
   return Math.max(1, fs / 11.5);
@@ -87,13 +90,14 @@ function ckStepTicks(a, b, n, u) {
   return out;
 }
 /* -> {rows: 1 or 2, ticks: [{t, x, label, major (the coarser level's words, on a unit's first tick; null), mx}]}; x the
-   time scale, W the chart's width (a label kept inside it) */
-function ckTimeTicks(a, b, x, W) {
+   time scale, W the chart's width (a label kept inside it); least: the shortest step, in days (a chart of months' bars
+   has no days to tick, Costs', #300) */
+function ckTimeTicks(a, b, x, W, least = 0) {
   ckK();
   const perDay = Math.abs(x(a + DAY) - x(a));
   let ticks = [], u = "y";
   for (const [n, unit] of CK_STEPS) {
-    if (n * CK_DAYS[unit] * perDay < 36) continue;   // too close to try (36 px: on a phone six months of All is about 43, #615); the labels then tested below
+    if (n * CK_DAYS[unit] * perDay < 36 || n * CK_DAYS[unit] < least) continue;   // too close to try (36 px: on a phone six months of All is about 43, #615); the labels then tested below
     ticks = ckStepTicks(a, b, n, unit); u = unit;
     if (ticks.every((k, i) => !i || x(k.t) - x(ticks[i - 1].t) >= (labelW(k.label, "") + labelW(ticks[i - 1].label, "")) / 2 + 12)) break;
   }
@@ -386,13 +390,12 @@ function ckFlagRows(items, L, R, rows = 3) {
   return [false, true].map(byRank => ckFlagLay(start, L, R, rows, byRank)).reduce((a, b) => score(b) > score(a) ? b : a);
 }
 function ckFlagLay(groups, L, R, rows, byRank) {
-  const fit = (t, cls, room) => { if (labelW(t, cls) <= room) return t; for (let n = t.length - 1; n > 1; n--) { const s = t.slice(0, n).trimEnd() + "…"; if (labelW(s, cls) <= room) return s; } return "…"; };
   const box = (a, w) => Math.max(L, Math.min(R - w, a));
   for (;;) {
     const placed = [], failed = new Set(), heads = groups.map(g => g.reduce((h, it) => (it.rank ?? 9) < (h.rank ?? 9) ? it : h));
     for (const i of groups.map((_, i) => i).sort((i, j) => (byRank ? (heads[i].rank ?? 9) - (heads[j].rank ?? 9) : 0) || j - i)) {
       const g = groups[i], head = heads[i], x = head.x;
-      const more = g.length > 1 ? ` +${g.length - 1}` : "", text = fit(head.text, head.cls, Math.min(220, R - L) - 4 - (more ? labelW(more, head.cls) : 0)) + more;
+      const more = g.length > 1 ? ` +${g.length - 1}` : "", text = ckFit(head.text, head.cls, Math.min(220, R - L) - 4 - (more ? labelW(more, head.cls) : 0)) + more;
       const w = labelW(text, head.cls) + 4;
       let at = null;
       // after its leader in the lowest row with room, else before it (one before it in a lower row would stop any

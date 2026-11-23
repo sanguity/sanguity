@@ -66,12 +66,10 @@ const cycleVisible = e => state.cats.has("cycle") && inRange(e) && matchQ(e);
 
 /* the Timeline's lane: bars and marks on one row, each opening the drawer (timeline.js picks them up by data-id) */
 TL_LANES.cycle = {
-  height: () => 34,
-  draw(g, S, top, h, c, w) {
-    const y = top + h / 2;
-    g.push(el("svg:text", {class: "lane-label", x: 0, y: y + 4, text: w < 600 ? "Cycle" : c.label}));
-    g.push(el("svg:line", {class: "gridline", x1: S.L, x2: S.R, y1: top + h, y2: top + h, "stroke-opacity": .5}));
-    cycleDraw(g, S.x, y, S.L, S.R, CYCLE.filter(cycleVisible), e => ({class: "ev cymark" + (state.selEv === e.id ? " sel" : ""), "data-id": e.id}));
+  shows: () => CYCLE.some(cycleVisible),
+  height: (w, S) => S.over ? 32 : Math.max(34, 26 * S.k),
+  draw(g, S, top, h) {
+    cycleDraw(g, S.x, top + h / 2, S.L, S.R, CYCLE.filter(cycleVisible), e => ({class: "ev cymark" + (state.selEv === e.id ? " sel" : ""), "data-id": e.id}));
   },
 };
 
