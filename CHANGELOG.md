@@ -1685,6 +1685,11 @@ Everything on `main` so far; it becomes the first tagged release.
   moved the strip's window only when the gesture ended, and redrew ten years at about 20 frames a second. It now moves
   through the same code as Labs and Body (with their rubber band at the records' ends), the lanes and the strip's
   window following each frame (17 ms on ten years) and the list once it's let go.
+- **Larger text: the Timeline's, Costs' and the event track's labels fit** (#633): with text at 200% on a phone the
+  Timeline's lane and medication names ran into each other, Costs' "$10K"–"$30K" fell outside its chart, and the
+  rows under Labs' event track (journal, mood, cycle, doses, medications) kept fixed heights. Their gutters, rows and
+  offsets now grow with the text; the Timeline's lane names go over their lanes where a gutter would take too much of
+  a phone's width, and the event track's row names over their rows where they don't fit beside them (WCAG 1.4.4).
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

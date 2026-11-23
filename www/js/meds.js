@@ -103,14 +103,15 @@ const medsInWindow = () => medsOnTrends && state.cats.has("med") ? medsShown(sta
 const MED_TRACK = 30;
 CHART_LAYERS.push({
   name: "Medications",
-  space: () => { const n = medsInWindow().length; return n ? 4 + n * MED_TRACK : 0; },
+  space: () => { const n = medsInWindow().length; return n ? 4 + n * MED_TRACK * ckK() : 0; },
   rows: () => medsInWindow().flatMap(m => m.spans.filter(s => medEnd(s) >= state.from && s.ts <= state.to).map(s => [s.ts, "Medication", `${m.name} · ${medSpanWhen(s)}`, () => openMedication(m), "med"])),
-  draw(g, x, top, R) {
+  draw(g, x, top, R, L) {   // each name over its row's spans, as tall as the text (#633)
+    const k = ckK();
     medsInWindow().forEach((m, n) => {
-      const y = top + 4 + n * MED_TRACK + 20, name = medShort(m.name, 40);
-      g.push(el("svg:text", {class: "medname", x: Math.max(54, Math.min(x(medFrom(m)), R - labelW(name, "medname"))), y: y - 8, text: name}));
+      const y = top + 4 + (n + 1) * MED_TRACK * k - 10, name = ckFit(medShort(m.name, 40), "medname", R - L - 2);
+      g.push(el("svg:text", {class: "medname", x: Math.max(L + 2, Math.min(x(medFrom(m)), R - labelW(name, "medname"))), y: y - 8, text: name}));
       const before = g.length;
-      medRow(g, m, x, y, 52, R, CAT_OF.med.color);
+      medRow(g, m, x, y, L, R, CAT_OF.med.color);
       for (const node of g.slice(before)) if (node.dataset?.med != null) {
         node.addEventListener("pointermove", ev => { ev.stopPropagation(); medTip(m, node.dataset, ev); });
         node.addEventListener("pointerleave", hideTip);

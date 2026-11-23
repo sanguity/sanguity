@@ -95,27 +95,25 @@ function jTrendsMark(m, e) {
   return m;
 }
 CHART_LAYERS.push({
-  name: "Journal",
-  space: () => jInWindow().length ? 18 : 0,
+  name: "Journal", short: "Journal",
+  space: () => jInWindow().length ? 18 * ckK() : 0,
   rows: () => jInWindow().map(e => [e.ts, "Journal", jSay(e.j), () => openEvent(e), "journal"]),
-  draw(g, x, top, R) {
-    const y = top + 9;
-    g.push(el("svg:text", {class: "jrow-label", x: 46, y: y + 3.5, "text-anchor": "end", text: "Journal"}));
+  draw(g, x, top, R, L) {
+    const y = top + 9 * ckK();
     for (const e of jInWindow()) {
-      const mx = x(e.ts); if (mx < 40 || mx > R + 4) continue;
+      const mx = x(e.ts); if (mx < L - 6 || mx > R + 4) continue;
       g.push(jTrendsMark(jShape(e.j, mx, y, {class: "jmark", fill: "var(--c-journal)", "fill-opacity": jRated(e.j) ? .25 + e.j.severity * .065 : .85,
         stroke: "var(--c-journal)", "stroke-width": 1.5, tabindex: 0, role: "button", "aria-label": jSay(e.j), "data-jid": e.id}), e));
     }
   },
 }, {
-  name: "Mood",
-  space: () => jInWindow("mood").length ? 20 : 0,
+  name: "Mood", short: "Mood",
+  space: () => jInWindow("mood").length ? 20 * ckK() : 0,
   rows: () => jInWindow("mood").map(e => [e.ts, "Mood and energy", jSay(e.j), () => openEvent(e), "mood"]),
-  draw(g, x, top, R) {
-    g.push(el("svg:text", {class: "jrow-label", x: 46, y: top + 13, "text-anchor": "end", text: "Mood"}));
+  draw(g, x, top, R, L) {
     for (const e of jInWindow("mood")) {
-      const mx = x(e.ts); if (mx < 40 || mx > R + 4) continue;
-      g.push(jTrendsMark(jMoodBars(e.j, mx, top + 18, 13, {class: "jmood", tabindex: 0, role: "button", "aria-label": jSay(e.j), "data-jid": e.id}), e));
+      const mx = x(e.ts); if (mx < L - 6 || mx > R + 4) continue;
+      g.push(jTrendsMark(jMoodBars(e.j, mx, top + 20 * ckK() - 2, 13, {class: "jmood", tabindex: 0, role: "button", "aria-label": jSay(e.j), "data-jid": e.id}), e));
     }
   },
 });

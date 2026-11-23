@@ -77,13 +77,11 @@ TL_LANES.cycle = {
 const cycleInWindow = () => cycleOnCharts ? CYCLE.filter(e => e.te >= state.from && e.ts <= state.to && state.cats.has("cycle")) : [];
 LEGEND_HAS.cycle = () => cycleInWindow().length > 0;   // its Legend key (trends.js legendSync, #301)
 CHART_LAYERS.push({
-  name: "Cycle tracking",
-  space: () => cycleInWindow().length ? 18 : 0,
+  name: "Cycle tracking", short: "Cycle",
+  space: () => cycleInWindow().length ? 18 * ckK() : 0,
   rows: () => cycleInWindow().map(e => [e.ts, "Cycle tracking", `${e.title}, ${cycleWhen(e)}`, () => openEvent(e), "cycle"]),
-  draw(g, x, top, R) {
-    const y = top + 9;
-    g.push(el("svg:text", {class: "jrow-label", x: 46, y: y + 3.5, "text-anchor": "end", text: "Cycle"}));
-    cycleDraw(g, x, y, 52, R, cycleInWindow(), e => ({class: "cymark", tabindex: 0, role: "button", "aria-label": `${e.title}, ${cycleWhen(e)}`}), (m, e) => {
+  draw(g, x, top, R, L) {
+    cycleDraw(g, x, top + 9 * ckK(), L, R, cycleInWindow(), e => ({class: "cymark", tabindex: 0, role: "button", "aria-label": `${e.title}, ${cycleWhen(e)}`}), (m, e) => {
       m.addEventListener("pointermove", ev => { ev.stopPropagation(); showEvTip(e, ev); });
       m.addEventListener("pointerleave", hideTip);
       m.addEventListener("click", ev => { ev.stopPropagation(); hideTip(); openEvent(e); });
