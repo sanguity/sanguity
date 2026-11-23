@@ -440,11 +440,12 @@ TL_ALL_JS = """async () => { const frame = () => new Promise(r => requestAnimati
   return {want, first, rows: rows(), presses: times.length, ms: Math.round(Math.max(0, ...times)), focused: !times.length || document.activeElement.matches("#list .tl-row"),
     elements: document.getElementById("view-timeline").getElementsByTagName("*").length}; }"""
 # a drag across a tab's charts with the period "All" (#292): pointer events as the mouse sends them, 8 px a frame, left
-# then back; each frame timed from the move to the frame after it (panZoom draws every chart again in it), the median
-PAN_TABS = ("health", "labs", "labs-heatmap")
+# then back; each frame timed from the move to the frame after it (panZoom draws every chart again in it), the median.
+# The Timeline's lanes too, and the overview strip's window with them (#631)
+PAN_TABS = ("health", "labs", "labs-heatmap", "timeline")
 PAN_JS = """async t => { const [tab, view] = t.split("-"), frame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r)));
-  switchTab(tab, view === "heatmap" ? "heatmap" : "chart", true); await frame(); await frame();
-  const svg = document.querySelector(tab === "health" ? "#view-health svg.ck" : view === "heatmap" ? "#hm" : "#charts .chart svg");
+  switchTab(tab, tab === "timeline" ? "timeline" : view === "heatmap" ? "heatmap" : "chart", true); await frame(); await frame();
+  const svg = document.querySelector(tab === "health" ? "#view-health svg.ck" : tab === "timeline" ? "#tl" : view === "heatmap" ? "#hm" : "#charts .chart svg");
   svg.scrollIntoView({block: "center"}); await frame();
   const r = svg.getBoundingClientRect(), y = r.top + r.height / 2, times = [];
   const at = (type, x) => svg.dispatchEvent(new PointerEvent(type, {bubbles: true, pointerId: 7, pointerType: "mouse", button: 0, buttons: 1, isPrimary: true, clientX: x, clientY: y}));

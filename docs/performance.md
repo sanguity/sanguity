@@ -63,10 +63,10 @@ regression like the one fixed below (seconds instead of a tenth of one) still fa
 | `sync_s` | A connected source's first pull of the big FHIR patient (186 requests), its preview saved | 1.7 s | 15 s |
 | `page_ready_ms` | The records page, loaded on each tab, from the request to its `sanguity:ready` mark (`www/js/app.js`) | 132 ms (Body and activity) | 1,500 ms |
 | `tab_draw_ms` | A tab's first draw with the period **All**, the page loaded on another tab, to the next frame; and each **Show more** of the Timeline's list (#277, below) | 110 ms (Body and activity) | 1,000 ms |
-| `tab_elements` | Elements in a tab with the period **All** | 10,903 (the Timeline) | 12,000 |
+| `tab_elements` | Elements in a tab with the period **All** | 10,815 (Body and activity) | 12,000 |
 | `phone_page_ready_ms` | `page_ready_ms` at 375 px with the CPU four times slower, like a phone's | 437 ms | 5,000 ms |
 | `phone_tab_draw_ms` | `tab_draw_ms` the same way | 453 ms (Body and activity) | 3,000 ms |
-| `pan_frame_ms` | A frame of dragging a tab's charts with the period **All** (Body and activity, Labs' charts and its heatmap), from the pointer's move to the frame after it, every chart drawn again (#292, below) | 41 ms (Body and activity, the heatmap) | 150 ms |
+| `pan_frame_ms` | A frame of dragging a tab's charts with the period **All** (Body and activity, Labs' charts and its heatmap, the Timeline), from the pointer's move to the frame after it, every chart drawn again (#292, #631, below) | 41 ms (Body and activity, the heatmap) | 150 ms |
 | `phone_pan_frame_ms` | `pan_frame_ms` at 375 px with the CPU four times slower | 117 ms (Body and activity; the heatmap 51 ms since #300, below) | 250 ms |
 | `share_page_px` | A share link's page with every section, of any date, at 1400 px (#491, below) | 9,812 px | 20,000 px |
 | `static_bytes` | The app's stylesheets, fonts and SVG icons in `www/`, as nginx sends them (#253, below) | 281.9 KB | 310 KB |
@@ -167,6 +167,22 @@ so it isn't preloaded; it arrives about 0.4 s after the page is ready, and the h
 No index was needed: every query the records page and the imports make on a profile already uses one, and the
 server's time is mostly decrypting rows (each is encrypted on its own), which grows with the records and nothing
 else.
+
+## The Timeline, dragged (#300, #631)
+
+The Timeline's lanes drew a mark for every record, 10,903 elements on **All** with ten years (the most of any tab),
+and its own drag drew them again at about 50 ms a frame, moving the overview strip's window only when let go. On the
+chart kit (`www/js/timeline.js`) a lane's marks within 6 px of a mark's first are one mark with how many it holds,
+the watch's steps are one path of each pixel's tallest day (`ckDecimate`), and each lane's records come from one pass
+over them. Its drag, pinch and wheel go through `panZoom` (`www/js/charts.js`), drawing the lanes and the strip's
+window once a frame and its list once let go; it is in `PAN_TABS`, within `pan_frame_ms` and `phone_pan_frame_ms`.
+
+| The big fixture, period **All** | Before | After |
+|---|---:|---:|
+| Elements on the Timeline (its lanes and its list's first page) | 10,903 | 5,551 |
+| …in its chart | 6,908 | 1,562 |
+| Timeline, a frame of a drag | 50 ms | 17 ms |
+| …on a phone (CPU ×4) | | 46 ms |
 
 ## The Timeline's list, all of it (#277)
 
@@ -282,8 +298,8 @@ and `phone_pan_frame_ms` are the median frame of the slowest tab.
 
 Before and after were measured on one machine, a slower one than the desktop above. Frames are counted to the next one the browser paints, so a desktop's are steps of about 17 ms. On a phone the heatmap
 was the slowest: its ten years are 5,012 cells, each one a result to hover and open, and only on a phone are its
-columns narrower than a pixel. The Timeline's lanes still draw a mark a record (10,903 elements on **All**), within
-`tab_elements`; the Timeline zooms by its own controls, not by dragging.
+columns narrower than a pixel. The Timeline's lanes drew a mark a record (10,903 elements on **All**) until #300,
+below.
 
 The phone's budget was set for CI's runner, which takes about 2.2 times as long as the machine above (the heatmap's
 phone frame was 332 ms there, so the budget was 450 ms for a while). On a phone at ten years most of the heatmap's

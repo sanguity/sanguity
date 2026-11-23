@@ -1,8 +1,8 @@
-/* Sanguity · shared chart behaviour: drag/pinch/scroll pan-zoom (Labs' charts and heatmap, Body and activity), milestone
+/* Sanguity · shared chart behaviour: drag/pinch/scroll pan-zoom (Labs' charts and heatmap, the Timeline, Body and activity), milestone
    markers, and the Labs tab's Chart / Heatmap switch.
    Plain script, loaded in order by index.html; all files share one global scope. */
 "use strict";
-/* drag to pan, scroll wheel or pinch to zoom, double-click to reset — shared by Labs (both views) and Body and activity.
+/* drag to pan, scroll wheel or pinch to zoom, double-click to reset — shared by Labs (both views), the Timeline and Body and activity.
    plot(ev) -> the chart under the pointer (or null); span(plot) -> [left, width] of its time axis in client px;
    get() -> [a, b]; set(a, b) updates state; draw() redraws live; end() does the full render once the gesture stops;
    data() -> [first, last] of what the view draws (null: none).
@@ -122,6 +122,9 @@ panZoom(chartsBox, {...mainWindow,
 panZoom($("#hmWrap"), {...mainWindow,
   plot: ev => ev.target.closest?.("#hm, #hmAxis") && $("#hm")._geom ? $("#hm") : null, span: svgSpan, data: () => seriesSpan(hmLabs().filter(labMatch)),
   draw: () => { renderHeatmap(true); stripDraw(); }, end: () => { renderFilters(); renderHeatmap(); save(); }});   // renderHeatmap lives in a later file: call it, do not reference it at load
+// the Timeline (#631): its lanes drawn again once a frame, and the overview strip's window with them; its list once let go
+panZoom(tlSvg, {...mainWindow, plot: () => tlSvg._geom ? tlSvg : null, span: svgSpan, data: () => [state.min, Math.max(state.max, state.last)],
+  draw: () => { renderTimeline(true); stripDraw(); }, end: () => renderAll()});
 // Body and activity: all its charts share the records bar's period too ("All" there is the watch and scale data's span)
 panZoom($("#view-health"), {...mainWindow, minSpan: 3 * DAY,
   plot: ev => { const s = ev.target.closest?.("svg"); return s && s._draw && s._geom ? s : null; }, span: svgSpan,

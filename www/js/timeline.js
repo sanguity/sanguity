@@ -9,8 +9,8 @@
    to them), a lab day's ▲ when any of its draws has a value out of range (#250); a lane with nothing in the period isn't drawn, and a
    line under the chart names the kinds chosen that have nothing in it. The watch's steps are one path, a pixel's
    tallest day. The lanes' names are in a gutter as wide as they need, or over each lane where that would take too
-   much of a phone's width (larger text, #633), every size and row growing with the labels' (ckK). Dragged, pinched
-   or scrolled, the period follows */
+   much of a phone's width (larger text, #633), every size and row growing with the labels' (ckK). Dragged, pinched or
+   scrolled through panZoom (charts.js, #631), drawn again once a frame with the overview strip's window */
 const tlSvg = $("#tl");
 /* lanes that draw themselves: {k: {height(w, S) -> px (0: draw the lane's events as dots), draw(g, S, top, h, c, w),
    shows() -> anything to draw in the period, labelY(S): where its name goes in the gutter (px under its top; its
@@ -163,33 +163,10 @@ function tlStepAt(ev) {
   while (lo < hi) { const m = (lo + hi + 1) >> 1; if (l[m][0] <= t) lo = m; else hi = m - 1; }
   return l[lo] && t >= l[lo][0] && t < l[lo][0] + DAY ? l[lo] : null;
 }
-/* zoom & pan; hovering: a mark's readout, or the watch's day's steps; a press opens its record, or zooms in to a group */
-const tlT = (r, cx) => { const g = tlSvg._geom; return ckScale(state.from, state.to, g.L, g.R).inv((cx - r.left) * g.w / r.width); };
-let drag = null;
-tlSvg.addEventListener("wheel", ev => {
-  ev.preventDefault();
-  const t = tlT(tlSvg.getBoundingClientRect(), ev.clientX), k = Math.exp((ev.deltaY || ev.deltaX) * 0.0015);
-  setRange(t - (t - state.from) * k, t + (state.to - t) * k);
-}, {passive: false});
-const ptrs = new Map(); let pinch = null;
-tlSvg.addEventListener("pointerdown", ev => {
-  ptrs.set(ev.pointerId, ev.clientX);
-  if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = {d: Math.abs(a - b) || 1, t: tlT(tlSvg.getBoundingClientRect(), (a + b) / 2), from: state.from, to: state.to}; drag = null; return; }
-  // on: the mark pressed, since with the pointer captured pointerup's target is the svg itself
-  drag = {x: ev.clientX, from: state.from, to: state.to, moved: false, on: ev.target}; tlSvg.setPointerCapture(ev.pointerId);
-});
-tlSvg.addEventListener("pointercancel", ev => { ptrs.delete(ev.pointerId); pinch = null; drag = null; tlSvg.classList.remove("dragging"); });
+/* hovering and pressing: a mark's readout, or the watch's day's steps; a press opens its record (the drag and the zoom
+   are panZoom's, charts.js; a click after a drag doesn't reach here) */
 tlSvg.addEventListener("pointermove", ev => {
-  if (ptrs.has(ev.pointerId)) ptrs.set(ev.pointerId, ev.clientX);
-  if (pinch && ptrs.size === 2) {
-    const [a, b] = [...ptrs.values()], k = pinch.d / (Math.abs(a - b) || 1);
-    state.from = pinch.t - (pinch.t - pinch.from) * k; state.to = pinch.t + (pinch.to - pinch.t) * k; state.preset = "custom"; hideTip(); renderTimeline(); return;
-  }
-  if (drag) {
-    const dx = ev.clientX - drag.x; if (Math.abs(dx) > 3) { drag.moved = true; tlSvg.classList.add("dragging"); hideTip(); }
-    if (drag.moved) { const r = tlSvg.getBoundingClientRect(), g = tlSvg._geom, dt = dx * g.w / r.width / (g.R - g.L) * (drag.to - drag.from); state.from = drag.from - dt; state.to = drag.to - dt; state.preset = "custom"; renderTimeline(); }
-    return;
-  }
+  if (tlSvg.classList.contains("dragging")) return;
   const ds = ev.target?.dataset || {};
   if (ds.g != null) return tlGroupTip(tlSvg._groups[+ds.g], ev);
   if (ds.med != null) return medTip(MEDS[+ds.med], ds, ev);   // a medication's span or fill (meds.js)
@@ -198,18 +175,13 @@ tlSvg.addEventListener("pointermove", ev => {
   if (st) return showTip([el("div", {class: "v", text: `${st[1].toLocaleString("en-US")} steps`}), el("div", {class: "s", text: fmtD(st[0]) + " · from watch"})], ev);
   hideTip();
 });
-tlSvg.addEventListener("pointerup", ev => {
-  ptrs.delete(ev.pointerId);
-  if (pinch) { if (ptrs.size < 2) { pinch = null; drag = null; renderAll(); } return; }
-  tlSvg.classList.remove("dragging");
-  if (drag && drag.moved) { drag = null; renderAll(); return; }
-  const ds = (drag && drag.on || ev.target)?.dataset || {}; drag = null;
+tlSvg.addEventListener("click", ev => {
+  const ds = ev.target?.dataset || {};
   if (ds.g != null) { hideTip(); return tlGroupOpen(tlSvg._groups[+ds.g]); }
   const id = +ds.id; if (id) openEvent(byId.get(id));
   else if (ds.med != null) openMedication(MEDS[+ds.med]);   // a medication's span (meds.js)
 });
 tlSvg.addEventListener("pointerleave", hideTip);
-tlSvg.addEventListener("dblclick", () => applyPreset("all"));
 let lastW = innerWidth;
 addEventListener("resize", () => { if (innerWidth === lastW) return; lastW = innerWidth; clearTimeout(window._rz); window._rz = setTimeout(() => keepFocus(renderAll), 120); });   // focus kept (store.js, #271)
 
