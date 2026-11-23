@@ -455,6 +455,32 @@ PAN_JS = """async t => { const [tab, view] = t.split("-"), frame = () => new Pro
   return Math.round(times.sort((p, q) => p - q)[12]); }"""
 
 
+def browser_check_js(*names):
+    """what browser_check.py keeps at its top level (GRID654_JS, NAV659_JS…), read from that file: the ten years are
+    checked as it checks the demo"""
+    import ast
+    with open(os.path.join(ROOT, "tests", "browser_check.py"), encoding="utf-8") as f:
+        got = {n.targets[0].id: n.value.value for n in ast.parse(f.read()).body if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") in names}
+    return [got[n] for n in names]
+
+
+def records_page(browser, errors, tab):
+    """a page of the big profile's records at 1400 px, signed in and ready, on tab; its script errors into errors"""
+    page = browser.new_page(viewport={"width": 1400, "height": 900})
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(BASE + "/login.html")
+    page.fill("#u", USER)
+    page.fill("#p", PW)
+    page.click("#b")
+    page.wait_for_url(lambda u: "login" not in u)
+    page.goto(f"{BASE}/index.html?profile=1#{tab}")
+    page.wait_for_function(READY_JS, timeout=60000)
+    return page
+
+
+FRAMES_JS = "() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))"
+
+
 def page_times(viewport, throttle=1):
     """{tab: median ms to the page ready, loaded on that tab}, {tab: median ms of its first draw with the period
     "All"}, {tab: its elements}, {tab: the median frame of a drag across its charts (PAN_JS, #292)}, any script or console errors, what Costs' out-of-pocket list shows before and
@@ -596,6 +622,42 @@ class PageBudgets(unittest.TestCase):
         self.assertEqual(errors, [])
         for width, t in got.items():
             self.assertTrue(t["items"] > 0 and t["layers"] > 0 and t["inCharts"] == 0 and t["rows"] <= 3 and not t["problems"], (width, t))
+
+    def test_value_axes(self):
+        """every chart's value axis on the ten years (#654): each gridline's label its number as it is, never rounded to
+        another ("92.5%" and "$2.5K", not "93%" and "$3K"), no axis saying one number twice; Body and activity at 30 days,
+        6 months and All, Costs' two charts in every period, the claims by month and by year, Labs' with every lab
+        (browser_check.py's GRID654_JS and AXIS654_JS: it checks the demo the same way)"""
+        from playwright.sync_api import sync_playwright
+        grid_js, axis_js = browser_check_js("GRID654_JS", "AXIS654_JS")
+        errors, bad, lines = [], [], {}
+
+        def read(where, sel):
+            page.evaluate(FRAMES_JS)
+            page.wait_for_timeout(200)
+            got = page.evaluate(axis_js, sel)
+            bad.extend(f"{where}: {x}" for x in got["problems"])
+            lines[where.split(" ")[0]] = lines.get(where.split(" ")[0], 0) + got["lines"]
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = records_page(browser, errors, "health")
+            page.evaluate(grid_js, True)
+            for per in ("30d", "6m", "all"):
+                page.evaluate("p => applyPreset(p)", per)
+                read(f"health {per}", "#view-health svg")
+            page.evaluate("() => switchTab('costs')")
+            for per in page.evaluate("() => [...PRESETS.map(p => p[0]), ...MILESTONES.map(msKey), ...periodYears()]"):
+                for view, by in (("claims", "month"), ("claims", "year"), ("paid", "")):
+                    page.evaluate("([p, v, by]) => { costState.view = v; costState.by = by; applyPreset(p); }", [per, view, by])
+                    read(f"costs-{view} {per} {by}", "#view-costs svg")
+            page.evaluate("() => { switchTab('labs', 'chart'); state.sel = new Set(SERIES.filter(s => s.pts.length).map(s => s.name)); }")
+            for per in ("all", "2y", "1y", "90d"):
+                page.evaluate("p => applyPreset(p)", per)
+                read(f"labs {per}", "#view-labs svg")
+            browser.close()
+        measure("value_axes_gridlines", lines)
+        self.assertEqual(errors, [])
+        self.assertTrue(not bad and len(lines) == 4 and all(lines.values()), [bad[:12], lines])
 
     def test_share_page(self):
         """a share link with every section the big profile offers, of any date (#491): at 1400 px its page is within

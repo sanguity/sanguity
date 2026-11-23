@@ -430,8 +430,9 @@ function renderPaid(box, claimRows, periodLabel) {
   box.append(card);
 }
 /* ---- the charts (#300), on the chart kit (chartkit.js): its scales, value grid, time axis, crosshair and pinned
-   readout; their gutters, rows and offsets grow with larger text (ckK, #633). Money on a value axis: "$30K" */
-const usdAxis = v => v >= 1e6 ? `$${(v / 1e6).toFixed(v % 1e6 ? 1 : 0)}M` : v >= 1e3 ? `$${Math.round(v / 1e3)}K` : `$${v}`;
+   readout; their gutters, rows and offsets grow with larger text (ckK, #633). Money on a value axis: "$30K", "$2.5K",
+   never rounded to another gridline's (#654) */
+const usdAxis = v => v >= 1e6 ? `$${ckNum(v / 1e6)}M` : v >= 1e3 ? `$${ckNum(v / 1e3)}K` : `$${ckNum(v)}`;
 /* the value gutter: as wide as the widest of these numbers */
 const costGutter = vals => Math.max(...vals.map(v => labelW(usdAxis(v), ""))) + 12;
 function drawPaidCum(svg, claimRows, payRows, settled) {

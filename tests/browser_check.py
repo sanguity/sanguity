@@ -1450,6 +1450,36 @@ CHART_AXIS_JS = r"""sel => {
   return out;
 }"""
 
+# the value axes' numbers (#654): GRID654_JS(true) has the kit's ckGrid (chartkit.js) mark each gridline it draws with its
+# value (data-v) and its axis (data-axis, one a call), and GRID654_JS(false) puts ckGrid back as it was. AXIS654_JS(sel)
+# then reads each marked gridline's label (the text drawn after it) in the charts matching sel as a number ("$2.5K",
+# "92.5%", "7.5k", "8h", "−25%"): {lines: how many, problems: a label that isn't its gridline's value as it is, an axis
+# saying one number twice}. test_performance.py reads both to check the ten years the same way
+GRID654_JS = r"""on => {
+  if (!on) { if (window._grid654) { ckGrid = window._grid654; delete window._grid654; } return; }
+  if (window._grid654) return;
+  const was = window._grid654 = ckGrid; let n = 0;
+  ckGrid = (g, y, vals, ...rest) => { const at = g.length; was(g, y, vals, ...rest); n++;
+    g.slice(at).filter(e => e.matches('line.gridline')).forEach((e, i) => { e.dataset.v = vals[i]; e.dataset.axis = n; }); };
+}"""
+AXIS654_JS = r"""sel => {
+  const out = {lines: 0, problems: []}, num = s => { const m = /^\$?([−-]?)([\d,]*\.?\d+)([kKM]?)[%hm]?$/.exec(s.trim());
+    return m ? (m[1] ? -1 : 1) * parseFloat(m[2].replace(/,/g, '')) * ({k: 1e3, K: 1e3, M: 1e6}[m[3]] || 1) : NaN; };
+  for (const svg of document.querySelectorAll(sel)) {
+    if (!svg.checkVisibility()) continue;
+    const name = `${svg.closest('[id]')?.id} ${(svg.getAttribute('aria-label') || '').split(/[:.]/)[0]}`, axes = new Map();
+    for (const l of svg.querySelectorAll('line.gridline[data-v]')) {
+      const said = l.nextElementSibling?.textContent || '', v = +l.dataset.v;
+      out.lines++;
+      if (!(Math.abs(num(said) - v) <= 1e-9 * Math.max(1, Math.abs(v)))) out.problems.push(`${name}: the gridline at ${v} says "${said}"`);
+      if (!axes.has(l.dataset.axis)) axes.set(l.dataset.axis, []);
+      axes.get(l.dataset.axis).push(said);
+    }
+    for (const a of axes.values()) if (new Set(a).size < a.length) out.problems.push(`${name}: an axis says ${a.join(', ')}`);
+  }
+  return out;
+}"""
+
 # what a chart draws in the accent (#334): of each drawn chart matching the selector (an argument), every element whose
 # computed fill or stroke is the accent's colour (read from an element that uses --accent), and how many milestone rules,
 # milestone labels and cursors were looked at, so the check can't pass on charts with none. A cursor is hidden until a
@@ -4594,6 +4624,47 @@ def main():
             check("…each table its latest rows a page at a time, Show more adding the next with the first of them focused (#460)",
                   got460[0][:2] == [3, "Show 3 more"] and got460[1][0] == 6 and got460[1][2] == got460[0][2] and got460[2]
                   and js(pg460)[0] == ht[4], [got460, ht[4]])
+            # ---- #654: each chart's value axis says each gridline's number as it is, never rounded (2,500 was "3k", 176.5 and
+            # 177 both "177"), and no axis one number twice: Body and activity's charts at 30 days, 6 months and All; Costs'
+            # two in every period, the claims by month and by year; Labs' with every lab charted, and Compare. ckGrid marks
+            # its gridlines with their values for the check, and is put back after. The ten years: test_performance.py
+            was654 = js("[state.preset, state.from, state.to, [...state.sel], state.labsView, costState.view, costState.by]")
+            js(GRID654_JS, True)
+            bad654, n654 = [], {}
+            js("state.tables.clear(); switchTab('health')")
+            for per in ("30d", "6m", "all"):
+                js("p => applyPreset(p)", per)
+                settle(500)
+                a654 = js(AXIS654_JS, "#view-health svg")
+                bad654 += [f"health {per}: {x}" for x in a654["problems"]]
+                n654[f"health {per}"] = a654["lines"]
+            js("switchTab('costs')")
+            for per in js("[...PRESETS.map(p => p[0]), ...MILESTONES.map(msKey), ...periodYears()]"):
+                for view, by in (("claims", "month"), ("claims", "year"), ("paid", "")):
+                    js("([p, v, by]) => { costState.view = v; costState.by = by; applyPreset(p); }", [per, view, by])
+                    settle(250)
+                    a654 = js(AXIS654_JS, "#view-costs svg")
+                    bad654 += [f"costs {per} {view} {by}: {x}" for x in a654["problems"]]
+                    n654[f"costs {view}"] = n654.get(f"costs {view}", 0) + a654["lines"]
+            js("switchTab('labs', 'chart'); state.sel = new Set(SERIES.filter(s => s.pts.length).map(s => s.name))")
+            for per in ("all", "1y", "90d"):
+                js("p => applyPreset(p)", per)
+                settle(800)
+                a654 = js(AXIS654_JS, "#view-labs svg")
+                bad654 += [f"labs {per}: {x}" for x in a654["problems"]]
+                n654[f"labs {per}"] = a654["lines"]
+            js("state.labsView = 'compare'; renderLabs()")
+            settle(400)
+            a654 = js(AXIS654_JS, "#view-labs svg")
+            bad654 += [f"compare: {x}" for x in a654["problems"]]
+            n654["compare"] = a654["lines"]
+            js(GRID654_JS, False)
+            js("""w => { [state.preset, state.from, state.to] = w; state.sel = new Set(w[3]); [state.labsView, costState.view, costState.by] = w.slice(4);
+              switchTab('health'); renderAll(); }""", was654)
+            settle(300)
+            check("Every chart's value axis says each gridline's number as it is, never rounded to another (#654): Body and activity at 30 days, "
+                  "6 months and All, Costs' charts in every period, Labs' with every lab and Compare; no axis says one number twice",
+                  not bad654 and all(n > 0 for n in n654.values()) and js("!window._grid654"), [bad654[:12], n654])
             # Costs: both charts, the claims by month under Claims and the running totals under What you paid (#278)
             js("state.tables.clear(); costState.view = 'claims'; switchTab('costs')")
             settle(500)

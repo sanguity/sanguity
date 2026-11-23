@@ -100,14 +100,30 @@ function weekly(pts, fn = mean) {  // [[t, v...]] -> weekly buckets (Monday), av
    tab's first (hNamed, #298), as Labs' are on its event track (#294) */
 let hNamed = false;
 /* label, noun, nav (#60): what the chart shows ("Weight"), what each point is ("reading"), and the points the
-   keyboard steps through ([[t, …]], the ones its tip reads); h: its height with one row of time labels */
-function hChart(host, a, b, {h = 190, layers, fmtY = v => v, unit = "", zero = false, tip, label = "Chart", noun = "day", nav = layers[0].data}) {
+   keyboard steps through ([[t, …]], the ones its tip reads); h: its height with one row of time labels; fmtY: a
+   gridline's label, its number as it is (ckNum, #654) with a unit's letter */
+function hChart(host, a, b, {h = 190, layers, fmtY = ckNum, unit = "", zero = false, tip, label = "Chart", noun = "day", nav = layers[0].data}) {
   const svg = el("svg:svg", {role: "img", class: "pz ck", "aria-label": label}); host.append(svg);
   const named = !hNamed && (hNamed = true), SH = layers.some(l => l.type === "strip") ? 18 : 0;   // the strip's room, under the plot
   svg._draw = (a, b, live) => {   // also called live while dragging, with the new window: at the width it had, so the
     svg._hover = null;             // charts drawn before it aren't laid out again to measure it (#292)
     if (!svg.isConnected) return;   // re-rendered before this frame came round
-    const cs = live && svg._geom ? null : getComputedStyle(host), w = cs ? Math.max(260, host.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) : svg._geom.w, L = (w < 480 ? 36 : 44) * ckK(), R = w - 8, x = ckScale(a, b, L, R);   // the values' gutter as wide as their text (#622)
+    let lo = Infinity, hi = -Infinity;   // the values in the window, then the value axis's ends
+    for (const l of layers) for (const p of l.type === "strip" ? [] : l.data || []) {
+      if (p[0] < a || p[0] > b) continue;
+      const vs = l.type === "bars" ? [l.keys.reduce((s, _, i) => s + (p[i + 1] || 0), 0)] : l.type === "band" || l.type === "pairs" ? [p[1], p[2]] : [p[1]];
+      for (const v of vs) if (v != null && isFinite(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+    }
+    const some = isFinite(lo);
+    if (some) {
+      for (const l of layers) if (l.type === "target") for (const v of [l.low, l.high]) if (v != null && isFinite(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); }   // #234: in sight
+      if (zero || layers.some(l => l.type === "bars")) lo = 0;
+      const pad = (hi - lo) * 0.08 || Math.abs(hi) * 0.05 || 1; hi += pad; if (!zero && lo !== 0) lo -= pad;
+    }
+    const ticks = some ? niceTicks(lo, hi, 4) : [];
+    // the values' gutter as wide as their text (#622), and as their numbers written in full ("92.5%", #654)
+    const cs = live && svg._geom ? null : getComputedStyle(host), w = cs ? Math.max(260, host.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) : svg._geom.w;
+    const L = Math.max((w < 480 ? 36 : 44) * ckK(), ...ticks.map(v => labelW(String(fmtY(v)), "") + 10)), R = w - 8, x = ckScale(a, b, L, R);
     const names = [], ms = named ? MILESTONES.map(m => [dayTs(m.date), m.label]).filter(([t]) => t >= a && t <= b) : [];
     const T = ms.length ? ckFlagNames(names, ms.map(([t, n]) => ({x: x(t), text: n, title: `${n} · ${fmtD(t)}`})), L, R, 0) : 8 * ckK();
     const tk = ckTimeTicks(a, b, x, w), AX = ckAxisH(tk.rows), hh = h - 22 + AX + SH + Math.max(0, T - 22), B = hh - AX - SH;   // (a second row of names taller)
@@ -115,22 +131,13 @@ function hChart(host, a, b, {h = 190, layers, fmtY = v => v, unit = "", zero = f
     const navIn = nav.filter(p => p[0] >= a && p[0] <= b);   // the keyboard's points (#60)
     chartKeys(svg, `${label}: ${navIn.length} ${noun}${navIn.length === 1 ? "" : "s"}${navIn.length ? ` from ${fmtD(navIn[0][0])} to ${fmtD(navIn[navIn.length - 1][0])}` : " in this period"}. Left and right arrow keys step through them.`,
       () => navIn.map(p => p[0]), () => "", () => {});   // until it's drawn (below)
-    let lo = Infinity, hi = -Infinity;
-    for (const l of layers) for (const p of l.type === "strip" ? [] : l.data || []) {
-      if (p[0] < a || p[0] > b) continue;
-      const vs = l.type === "bars" ? [l.keys.reduce((s, _, i) => s + (p[i + 1] || 0), 0)] : l.type === "band" || l.type === "pairs" ? [p[1], p[2]] : [p[1]];
-      for (const v of vs) if (v != null && isFinite(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
-    }
-    if (!isFinite(lo)) {   // nothing in the window: its plot and time axis kept, to drag back and double-click (#382)
+    if (!some) {   // nothing in the window: its plot and time axis kept, to drag back and double-click (#382)
       const g = [el("svg:rect", {x: L, y: T, width: R - L, height: B - T, fill: "transparent"}), el("svg:text", {x: (L + R) / 2, y: (T + B) / 2, "text-anchor": "middle", text: "No data in this period"}), ...names];
       ckAxis(g, tk, L, R, B, B + SH / ckK() + 16); svg.replaceChildren(...g); return;
     }
-    for (const l of layers) if (l.type === "target") for (const v of [l.low, l.high]) if (v != null && isFinite(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); }   // #234: in sight
-    if (zero || layers.some(l => l.type === "bars")) lo = 0;
-    const pad = (hi - lo) * 0.08 || Math.abs(hi) * 0.05 || 1; hi += pad; if (!zero && lo !== 0) lo -= pad;
     const y = ckScale(lo, hi, B, T), g = [];
     if (hState.stays) for (const s of STAYS) if (s.te >= a && s.ts <= b) g.push(el("svg:rect", {x: x(Math.max(a, s.ts)), y: T, width: Math.max(2, x(Math.min(b, s.te)) - x(Math.max(a, s.ts))), height: B - T, fill: "var(--stay)"}));
-    ckGrid(g, y, niceTicks(lo, hi, 4), L, R, fmtY);
+    ckGrid(g, y, ticks, L, R, fmtY);
     { const at = g.length, ms = msMarks(g, x, a, b, T, B, R, null);   // a faint line at each (#298), their names in words (#312)
       for (const m of g.slice(at)) m.classList.add("faint");
       g.push(...names); if (ms) svg.setAttribute("aria-label", svg.getAttribute("aria-label") + " " + ms); }
@@ -329,7 +336,7 @@ function renderHealth() {
           ...(bm ? [bp ? bmiWords(bp[2]) : ""] : []), ...(who ? [bp && !bp[2].child ? whoWords(bp[2].v) : ""] : []), ...(comp ? [f1(fat), f1(lean)] : [])])));
     } else { body.append(legend([[C.w, "Smart scale", 1], [C.clinic, "Clinic visit", "ring"], [C.w, "14-day average", "line"]])); if (wT) body.lastChild.append(tgtKey()); }
     const wTrend = rolling(wAll, 14);
-    if (!state.tables.has("#h-body")) hChart(body, a, b, {h: 220, fmtY: v => Math.round(v), label: "Weight", noun: "reading", nav: wAll, layers: [
+    if (!state.tables.has("#h-body")) hChart(body, a, b, {h: 220, label: "Weight", noun: "reading", nav: wAll, layers: [
       ...(wT ? [tgtLayer(wT)] : []),
       {type: "line", data: wTrend, color: C.w, width: 2, gap: 45},
       {type: "dots", data: H.clinic, color: C.clinic, hollow: true, r: 3},
@@ -346,9 +353,9 @@ function renderHealth() {
       const c1 = el("div", {}, el("h4", {class: "sub", text: "Body fat (%)"})), c2 = el("div", {}, el("h4", {class: "sub", text: "Lean mass (lb)"}));
       two.append(c1, c2); body.append(two);
       // each reading a dot under its 14-day average, as weight's: not joined into a sawtooth (#298)
-      hChart(c1, a, b, {h: 150, fmtY: v => v.toFixed(0), label: "Body fat", noun: "reading", layers: [{type: "line", data: rolling(H.fat, 14), color: C.fat, width: 2, gap: 45}, {type: "dots", data: H.fat, color: C.fat, opacity: .55}],
+      hChart(c1, a, b, {h: 150, label: "Body fat", noun: "reading", layers: [{type: "line", data: rolling(H.fat, 14), color: C.fat, width: 2, gap: 45}, {type: "dots", data: H.fat, color: C.fat, opacity: .55}],
         tip: t => { const p = nearest(H.fat, t, 10); return p && {t: p[0], rows: [el("div", {class: "v", text: `${p[1].toFixed(1)}%`}), el("div", {class: "s", text: fmtD(p[0])})]}; }});
-      hChart(c2, a, b, {h: 150, fmtY: v => v.toFixed(0), label: "Lean mass", noun: "reading", layers: [{type: "line", data: rolling(H.lean, 14), color: C.lean, width: 2, gap: 45}, {type: "dots", data: H.lean, color: C.lean, opacity: .55}],
+      hChart(c2, a, b, {h: 150, label: "Lean mass", noun: "reading", layers: [{type: "line", data: rolling(H.lean, 14), color: C.lean, width: 2, gap: 45}, {type: "dots", data: H.lean, color: C.lean, opacity: .55}],
         tip: t => { const p = nearest(H.lean, t, 10); return p && {t: p[0], rows: [el("div", {class: "v", text: `${p[1].toFixed(1)} lb`}), el("div", {class: "s", text: fmtD(p[0])})]}; }});
     }
   }
@@ -372,7 +379,7 @@ function renderHealth() {
         "Show the day's average and low–high")));
       ht.append(legend([[C.rest, "Resting", 1], [C.rest, long ? "14-day average" : "5-day average", "line"],
         ...(day ? [[C.hr, "Daily average", "line"], ["color-mix(in srgb, " + C.hr + " 10%, transparent)", "Daily low–high"]] : [])]));
-      hChart(ht, a, b, {h: 210, fmtY: v => Math.round(v), label: "Heart rate", noun: "day", nav: day ? H.hr : rest, layers: [
+      hChart(ht, a, b, {h: 210, label: "Heart rate", noun: "day", nav: day ? H.hr : rest, layers: [
         ...(day ? [{type: "band", data: H.hr.map(p => [p[0], p[2], p[3]]), color: C.hr, opacity: .1},
           {type: "line", data: H.hr, color: C.hr, width: 1.4, opacity: .8, gap: 4}] : []),
         {type: "line", data: restT, color: C.rest, width: 2, gap: 10},
@@ -400,7 +407,7 @@ function renderHealth() {
     if (state.tables.has("#h-sleep")) sl.append(...hTable("#h-sleep", [long ? "Week" : "Night", long ? "Asleep (h, average a night)" : "Asleep (h)", "Deep (min)", "REM (min)", "Light (min)"],
       byDay(sBars).map(({t, v: [p]}) => [long ? weekOf(t) : fmtD(t), (p[1] + p[2] + p[3] + p[4]).toFixed(1), mins(p[1]), mins(p[2]), mins(p[3])])));
     else sl.append(legend(long ? [[C.w, "Asleep, a night", "line"], [C.deep, "Deep"], [C.rem, "REM"], [C.light, "Light"]] : [[C.deep, "Deep"], [C.rem, "REM"], [C.light, "Light"], ["var(--muted)", "Asleep, no stages"]]));
-    if (!state.tables.has("#h-sleep")) hChart(sl, a, b, {h: 200, zero: true, fmtY: v => +v.toFixed(1) + "h", label: long ? "Sleep, weekly averages" : "Sleep", noun: long ? "week" : "night", nav: sBars, layers: long ? [
+    if (!state.tables.has("#h-sleep")) hChart(sl, a, b, {h: 200, zero: true, fmtY: v => ckNum(v) + "h", label: long ? "Sleep, weekly averages" : "Sleep", noun: long ? "week" : "night", nav: sBars, layers: long ? [
       {type: "line", data: sBars.map(p => [p[0], p[1] + p[2] + p[3] + p[4]]), color: C.w, width: 2, gap: 21},
       {type: "strip", data: sBars, colors: [C.deep, C.rem, C.light], every: 7 * DAY}]
       : [{type: "bars", data: sBars, keys: ["deep", "rem", "light", "other"], colors: [C.deep, C.rem, C.light, "var(--muted)"]}],
@@ -428,7 +435,7 @@ function renderHealth() {
       act.append(legend([[`color-mix(in srgb, ${C.steps} 30%, transparent)`, long ? "Steps / day (weekly avg)" : "Steps"], [C.avg, long ? "30-day average" : "7-day average", "line"]]));
       if (sT) act.lastChild.append(tgtKey());
     }
-    if (!state.tables.has("#h-activity")) hChart(act, a, b, {h: 190, fmtY: v => v >= 1000 ? Math.round(v / 1000) + "k" : v, label: long ? "Steps, weekly averages" : "Steps", noun: long ? "week" : "day", nav: stBars, layers: [
+    if (!state.tables.has("#h-activity")) hChart(act, a, b, {h: 190, fmtY: v => v >= 1000 ? ckNum(v / 1000) + "k" : ckNum(v), label: long ? "Steps, weekly averages" : "Steps", noun: long ? "week" : "day", nav: stBars, layers: [
       ...(sT ? [tgtLayer(sT)] : []),
       {type: "bars", data: stBars.map(p => [p[0], p[1]]), keys: ["steps"], colors: [C.steps], opacity: .3, every: long ? 7 * DAY : DAY},
       {type: "line", data: rolling(H.steps, long ? 30 : 7), color: C.avg, width: 2, gap: 10}],
@@ -581,7 +588,7 @@ function bpCard(box, a, b, long, legend, head, home, clinic) {
   const homePts = home.map(r => [r.t, r.v[0], r.v[1], (r.tf || [])[0] || "", (r.tf || [])[1] || "", r]), clinicPts = clinic.map(r => [r.t, r.v[0], r.v[1], r.f[0], r.f[1], r]);
   const nav = [...(long ? wk : homePts), ...clinicPts].sort((p, q) => p[0] - q[0]);
   const bL = [tgtLayer(bT[0], "Your systolic target"), tgtLayer(bT[1], "Your diastolic target")].filter(Boolean);
-  hChart(card, a, b, {h: 220, fmtY: v => Math.round(v), label: long ? "Blood pressure, home readings by week" : "Blood pressure", noun: "reading", nav, layers: long ? [...bL,
+  hChart(card, a, b, {h: 220, label: long ? "Blood pressure, home readings by week" : "Blood pressure", noun: "reading", nav, layers: long ? [...bL,
     {type: "band", data: wk, color: C.home},
     {type: "line", data: wk.map(p => [p[0], p[1]]), color: C.home, width: 1.6},
     {type: "line", data: wk.map(p => [p[0], p[2]]), color: C.home, width: 1.6},
@@ -751,12 +758,13 @@ function gDayChart(box, rows, label) {
   const have = rows.filter(Boolean), u = G.unit, fmt = G.fmt, [, s1, s2] = G.std;
   requestAnimationFrame(() => {
     if (!svg.isConnected) return;
-    const k = ckK(), w = Math.max(260, box.clientWidth), L = (w < 480 ? 36 : 44) * k, R = w - 8, T = 8 * k, B = T + 180, x = ckScale(0, 24, L, R);
     let lo = Math.min(G.inStd[0], ...have.map(r => r.p[0])), hi = Math.max(G.inStd[1], ...have.map(r => r.p[4]));
     const pad = (hi - lo) * .08; lo = Math.max(0, lo - pad); hi += pad;
+    const ticks = niceTicks(lo, hi, 5), k = ckK(), w = Math.max(260, box.clientWidth), L = Math.max((w < 480 ? 36 : 44) * k, ...ticks.map(v => labelW(ckNum(v), "") + 10));   // (as wide as its numbers, #654)
+    const R = w - 8, T = 8 * k, B = T + 180, x = ckScale(0, 24, L, R);
     const y = ckScale(lo, hi, B, T), g = [], tk = ckHourTicks(x, w), st = {a: 0, b: 24, lo: G.inStd[0], hi: G.inStd[1]};
     svg.setAttribute("viewBox", `0 0 ${w} ${B + ckAxisH(tk.rows)}`); svg.setAttribute("height", B + ckAxisH(tk.rows)); svg._geom = {L, R, T, B, w};
-    ckGrid(g, y, niceTicks(lo, hi, 5), L, R, fmt);
+    ckGrid(g, y, ticks, L, R);
     ckBand(g, [st], x, y, L, R, T, B);
     const runs = [];   // the hours with readings, in runs of neighbours
     rows.forEach((r, h) => { if (!r) return; const p = [h + .5, ...r.p]; if (rows[h - 1]) runs.at(-1).push(p); else runs.push([p]); });
@@ -850,7 +858,7 @@ function hGlucose(box, a, b, {head, legend, byDay}) {
   const runs = [];   // the CGM's days in runs, so a band never bridges the weeks between two sensors
   for (const d of G.days) { const r = runs[runs.length - 1]; if (r && d.t - r[r.length - 1].t <= 1.5 * DAY) r.push(d); else runs.push([d]); }
   const long = b - a > 200 * DAY;
-  hChart(card, a, b, {h: 220, fmtY: v => fmt(v), label: "Blood glucose", noun: "day", nav: dayPts, layers: [
+  hChart(card, a, b, {h: 220, label: "Blood glucose", noun: "day", nav: dayPts, layers: [
     {type: "band", data: std, color: "var(--muted)"}, ...(G.mT ? [tgtLayer(G.mT, "Your target, meter readings")] : []),
     ...runs.flatMap(r => r.length > 1 ? [{type: "band", data: r.map(d => [d.t, d.lo, d.hi]), color: G_C.cgm}, {type: "line", data: r.map(d => [d.t, d.avg]), color: G_C.cgm, width: 1.8, gap: 2}]
       : [{type: "dots", data: [[r[0].t, r[0].avg]], color: G_C.cgm}]),
@@ -895,7 +903,7 @@ function tempCard(box, a, b, legend, head, {unit, chosen, home, clinic}) {
   if (tT) card.lastChild.append(tgtKey());
   const homePts = home.map(r => [r.t, r.v[0], null, (r.tf || [])[0] || "", "", r]), clinicPts = clinic.map(r => [r.t, r.v[0], null, r.f[0], "", r]);
   const nav = [...homePts, ...clinicPts].sort((p, q) => p[0] - q[0]);
-  hChart(card, a, b, {h: 160, fmtY: v => String(+v.toFixed(1)), label: "Body temperature", noun: "reading", nav, layers: [...(tT ? [tgtLayer(tT)] : []),
+  hChart(card, a, b, {h: 160, label: "Body temperature", noun: "reading", nav, layers: [...(tT ? [tgtLayer(tT)] : []),
     {type: "pairs", data: homePts, color: C.home}, {type: "pairs", data: clinicPts, color: C.clinic, hollow: true, r: 3.5}],
     tip: t => { const p = nearest(nav, t, 2); if (!p) return null; const r = p[5];
       return {t: p[0], rows: [el("div", {class: "v", text: val(r)}), el("div", {class: "s", text: where(r)}), flags(r) ? el("div", {class: "s", text: flags(r)}) : null]}; }});
@@ -927,7 +935,7 @@ function oxygenCard(box, a, b, long, legend, head, {home, typed = [], clinic}) {
   const dayPts = home.map(r => [r.t, r.v[0], r.v[1] ?? r.v[0], r]), pts = long ? weekly(dayPts.map(p => p.slice(0, 3))) : dayPts;
   const clinicPts = clinic.map(r => [r.t, r.v[0], null, r.f[0], "", r]), typedPts = typed.map(r => [r.t, r.v[0], null, (r.tf || [])[0] || "", "", r]);
   const nav = [...(long ? pts : home.map(r => [r.t, r.v[0], r.v[1], "", "", r])), ...typedPts, ...clinicPts].sort((p, q) => p[0] - q[0]);
-  hChart(card, a, b, {h: 160, fmtY: v => Math.round(v) + "%", label: long ? "Blood oxygen, weekly" : "Blood oxygen", noun: long ? "week or reading" : "day or reading", nav, layers: [
+  hChart(card, a, b, {h: 160, fmtY: v => ckNum(v) + "%", label: long ? "Blood oxygen, weekly" : "Blood oxygen", noun: long ? "week or reading" : "day or reading", nav, layers: [
     ...(oT ? [tgtLayer(oT)] : []),
     {type: "band", data: pts, color: C.home}, {type: "line", data: pts, color: C.home, width: 1.6, gap: long ? 21 : 3},
     ...(long ? [] : [{type: "dots", data: pts, color: C.home, r: pts.length > 200 ? 1.5 : 2.4, flag: p => p[3] && p[3].tf ? p[3].tf[0] : ""}]),
@@ -982,7 +990,7 @@ function phoneDayCard(box, {a, b, long, legend, head}, o) {
   const dayPts = o.home.map(r => [r.t, r.v[0], null, "", "", r]), pts = long ? weekly(o.home.map(r => [r.t, r.v[0]])) : dayPts;
   const clinicPts = o.clinic.map(r => [r.t, r.v[0], null, r.f[0], "", r]);
   const nav = [...pts, ...clinicPts].sort((p, q) => p[0] - q[0]);
-  hChart(card, a, b, {h: 150, fmtY: v => String(+v.toFixed(1)), label: long ? `${o.title}, weekly` : o.title,
+  hChart(card, a, b, {h: 150, label: long ? `${o.title}, weekly` : o.title,
     noun: visits ? "reading" : long ? "week" : "day", nav, layers: [   // "readings": the phone's days and the visits'
     {type: "line", data: pts, color: C.home, width: 1.6, gap: long ? 21 : 10},
     {type: "dots", data: pts, color: C.home, r: pts.length > 200 ? 1.5 : 2.6},
@@ -1057,7 +1065,7 @@ function hZones(box, a, b, {long, legend, head, byDay}) {
       byDay(pts).map(({t, v: [p]}) => ["Week of " + fmtD(t - 3 * DAY), ...p.slice(1, 6).map(m => String(Math.round(m))), String(zMin(p[6].z[0])), String(p[6].n)])));
   } else {
     card.append(legend(Z_PCT.map((p, i) => [Z_C[i], `Zone ${i + 1} · ${p}${i < 4 ? `–${Z_PCT[i + 1]}` : "% and above"}${i < 4 ? "%" : ""}`])));
-    hChart(card, a, b, {h: 180, fmtY: v => Math.round(v) + "m", label: "Heart rate zones, minutes a week", noun: "week", nav: pts, layers: [
+    hChart(card, a, b, {h: 180, fmtY: v => ckNum(v) + "m", label: "Heart rate zones, minutes a week", noun: "week", nav: pts, layers: [
       {type: "bars", data: pts, keys: ["z1", "z2", "z3", "z4", "z5"], colors: Z_C, every: 7 * DAY}],
       tip: t => { const p = nearest(pts, t, 4); if (!p) return null;
         return {t: p[0], rows: [el("div", {class: "v", text: `Week of ${fmtD(p[0] - 3 * DAY)}`}), el("div", {class: "s", text: `${p[6].n} workout${p[6].n === 1 ? "" : "s"} with readings`}),
@@ -1118,7 +1126,7 @@ function bmiChart(card, a, b, {long}) {
   card.append(box);
   const C = {bmi: "var(--measure)", clinic: "var(--muted)"};
   const pts = all.map(r => [r.t, r.v, r]), clinic = pts.filter(p => p[2].w[2]), scale = pts.filter(p => !p[2].w[2]);
-  hChart(box, a, b, {h: 150, fmtY: v => String(+v.toFixed(1)), label: "BMI", noun: "weight", nav: pts, layers: [
+  hChart(box, a, b, {h: 150, label: "BMI", noun: "weight", nav: pts, layers: [
     ...(who ? [{type: "ybands", data: [], bands: WHO_BMI.map(([lo, hi, range]) => [lo, hi, "WHO " + range])}] : []),
     {type: "line", data: rolling(pts, 14), color: C.bmi, width: 2, gap: 45},
     {type: "dots", data: clinic, color: C.clinic, hollow: true, r: 3},
@@ -1254,7 +1262,7 @@ function growthChart(host, sex, set, key, pts) {
     const pad = (hi - lo) * 0.05 || 1; lo -= pad; hi += pad;
     const x = ckScale(from, to, L, R), y = ckScale(lo, hi, B, T);
     const g = [];
-    ckGrid(g, y, niceTicks(lo, hi, 5), L, R, v => String(+v.toFixed(1)));
+    ckGrid(g, y, niceTicks(lo, hi, 5), L, R);
     g.push(el("svg:line", {x1: L, x2: R, y1: B, y2: B, stroke: "var(--axis)"}));
     const yrs = (to - from) / Y, step = set === "who" ? (w < 420 ? 6 : 3) * MONTH_DAYS : (yrs > 9 || w < 420 ? 2 : 1) * Y;
     for (let d = from; d <= to + 1; d += step) g.push(el("svg:text", {x: x(d), y: B + 15, "text-anchor": "middle", text: String(Math.round(set === "who" ? d / MONTH_DAYS : d / Y))}));
