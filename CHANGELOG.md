@@ -1727,6 +1727,14 @@ Everything on `main` so far; it becomes the first tagged release.
   "177" for both 176.5 and 177 lb, and blood oxygen "93%" for 92.5%; Costs' running totals said "$3K" for $2,500, and
   a Labs chart "138" for 137.5 mmol/L of sodium. Each label is now its number with the decimals its step needs
   ("2.5k", "176.5", "$2.5K", "92.5%"), and Body's charts make room for them beside the plot.
+- **Body's two options keep focus, and larger text fits the workouts' calendar and the Overview's lab names** (#655):
+  Space on "Show lab glucose results alongside" or "Show the WHO's categories for adults" drew Body and activity
+  again with focus dropped to the top of the page; it stays on the option now. With text at 200% on a phone the
+  workouts' calendar's months fell outside it and into each other, and on All its weeks ran past its right edge (a
+  phone's last months cut off, and ten years' last four at 1400 px); its weeks now share the room there is, its
+  names and their room grow with the text, and a month is named every 2, 3, 6 or 12 months as the names fit (WCAG
+  1.4.4). On the Overview a key lab's "?" covered part of its name with larger text (six names at 360 px and 200%);
+  a name keeps to its tile's room, a word too long for it broken.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

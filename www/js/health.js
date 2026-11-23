@@ -445,22 +445,28 @@ function renderHealth() {
     const cal = el("div", {class: "mt-3"}, el("h4", {class: "sub", text: `Workouts · ${exIn.length} in this period${exIn.some(x => x.pt) ? ` (${listOf([...new Set(exIn.filter(x => x.pt).map(x => x.rule))].map(r => { const xs = exIn.filter(x => x.pt && x.rule === r); return `${xs.length} ${r.toLowerCase()} appointment${xs.length === 1 ? "" : "s"}, counted as ${xs[0].min} min each`; }))})` : ""}`}));
     if (!state.tables.has("#h-activity")) act.append(cal);
     if (!state.tables.has("#h-activity")) requestAnimationFrame(() => {
-      const start = zdate(a); start.setHours(12, 0, 0, 0); start.setDate(start.getDate() - (start.getDay() + 6) % 7);
-      const weeks = Math.ceil((b - start.getTime()) / (7 * DAY)), w = Math.max(300, cal.clientWidth), L = 28;
-      const cs = Math.max(3, Math.min(20, Math.floor((w - L) / weeks) - 2)), gap = cs > 6 ? 2 : 1, hh = 7 * (cs + gap) + 16;
+      // a week a column as wide as the room allows (on a phone, All's 87 weeks ran past the right edge), a day a row, 4 px
+      // at least; the days' and months' names, and the room they take, grow with the text (ckK, #655)
+      const K = ckK(), start = zdate(a); start.setHours(12, 0, 0, 0); start.setDate(start.getDate() - (start.getDay() + 6) % 7);
+      const weeks = Math.ceil((b - start.getTime()) / (7 * DAY)), w = Math.max(300, cal.clientWidth), L = 28 * K, top = 16 * K;
+      const col = Math.min(22, (w - L) / weeks), row = Math.max(4, col), gap = col > 8 ? 2 : 1, cs = Math.max(.5, col - gap), hh = top + 7 * row;
       const byDay = new Map(); for (const x of exIn) { const k = isoDay(x.t); const v = byDay.get(k) || {min: 0, list: []}; v.min += x.min; v.list.push(x); byDay.set(k, v); }
-      const svg = el("svg:svg", {viewBox: `0 0 ${w} ${hh}`, height: hh, style: "width:100%"}), g = [];
-      ["Mon", "", "Wed", "", "Fri", "", ""].forEach((d, i) => d && cs >= 8 && g.push(el("svg:text", {x: 0, y: 14 + i * (cs + gap) + cs - 2, text: d})));
+      const svg = el("svg:svg", {viewBox: `0 0 ${w} ${hh}`, height: hh, style: "width:100%"}), g = [], months = [];
+      ["Mon", "", "Wed", "", "Fri", "", ""].forEach((d, i) => d && row >= 10 * K && g.push(el("svg:text", {x: 0, y: top + i * row + row - gap - 2, text: d})));
       let lastM = -1;
       for (let wk = 0; wk < weeks; wk++) for (let dd = 0; dd < 7; dd++) {
         const t = start.getTime() + (wk * 7 + dd) * DAY; if (t < a - DAY || t > b) continue;
-        const k = isoDay(t), v = byDay.get(k), cx = L + wk * (cs + gap), cy = 14 + dd * (cs + gap);
-        const m = zdate(t).getMonth(); if (dd === 0 && m !== lastM && (weeks < 60 || m % 3 === 0)) { lastM = m; g.push(el("svg:text", {x: cx, y: 10, text: weeks > 60 ? ckMonth(t) : zdate(t).toLocaleDateString(undefined, {month: "short"})})); }
+        const k = isoDay(t), v = byDay.get(k), cx = L + wk * col, cy = top + dd * row;
+        const m = zdate(t).getMonth(); if (dd === 0 && m !== lastM) { lastM = m; months.push({x: cx, m, text: weeks > 60 ? ckMonth(t) : zdate(t).toLocaleDateString(undefined, {month: "short"})}); }
         const fill = !v ? "var(--grid)" : v.min >= 60 ? "var(--seq1)" : v.min >= 30 ? "var(--seq2)" : "var(--seq3)";
-        const r = el("svg:rect", {x: cx, y: cy, width: cs, height: cs, rx: cs > 6 ? 2 : 0, fill});
+        const r = el("svg:rect", {x: cx, y: cy, width: cs, height: row - gap, rx: cs > 6 ? 2 : 0, fill});
         if (v) { r.style.cursor = "default"; r.addEventListener("pointermove", ev => showTip([el("div", {class: "v", text: fmtD(t)}), ...v.list.map(x => el("div", {class: "s", text: x.pt ? `${x.rule} appointment${x.who ? " with " + x.who : ""} · counted as ${x.min} min` : `${x.name} · ${x.min} min`}))], ev)); r.addEventListener("pointerleave", hideTip); }
         g.push(r);
       }
+      // each month named over its first week, or every 2, 3, 6 or 12 months as the names' width needs; none past the edge
+      const mw = Math.max(0, ...months.map(c => labelW(c.text, ""))) + 8 * K, step = [1, 2, 3, 6, 12].find(s => (weeks <= 60 || s >= 3) && s * 4.35 * col >= mw) || 12;
+      let right = -Infinity;
+      for (const c of months) if (c.m % step === 0 && c.x >= right && c.x + labelW(c.text, "") <= w) { g.push(el("svg:text", {x: c.x, y: 12 * K, text: c.text})); right = c.x + mw; }
       svg.replaceChildren(...g); cal.append(svg,
         el("div", {class: "legend"}, el("span", {}, el("i", {style: {background: "var(--grid)"}}), "None"), el("span", {}, el("i", {style: {background: "var(--seq3)"}}), "Under 30 min"),
           el("span", {}, el("i", {style: {background: "var(--seq2)"}}), "30–60 min"), el("span", {}, el("i", {style: {background: "var(--seq1)"}}), "60+ min")));
@@ -814,7 +820,7 @@ function hGlucose(box, a, b, {head, legend, byDay}) {
   box.append(card);
   tgtLine(card, "glucose", u, G.mT ? P.meter.map(p => p[4]) : null);   // targets of the person's own (#234)
   if (G.lab.length) card.append(el("div", {class: "toolbar"}, el("label", {class: "toggle"},   // on or off: a toggle chip (#353)
-    el("input", {type: "checkbox", checked: gOpt.labs || null, onchange: e => { gOpt.labs = e.target.checked; try { localStorage.setItem(gKey(), JSON.stringify({labs: gOpt.labs})); } catch (x) {} renderHealth(); }}),
+    el("input", {type: "checkbox", checked: gOpt.labs || null, onchange: e => { gOpt.labs = e.target.checked; try { localStorage.setItem(gKey(), JSON.stringify({labs: gOpt.labs})); } catch (x) {} keepFocus(renderHealth); }}),   // focus kept on it (#655)
     "Show lab glucose results alongside")));
   if (P.n) {   // time in ranges, the period's CGM days together
     const parts = [["lt54", P.lt54], ["lt70", Math.max(0, P.lt70 - P.lt54)], ["in", P.in], ["gt180", P.gt180]];
@@ -1119,7 +1125,7 @@ function bmiChart(card, a, b, {long}) {
   box.append(el("h4", {class: "sub", text: "BMI (kg/m²)"}), el("p", {class: "hint", text: "Body mass index: the weight in kilograms divided by the square of the height in metres, each weight with the height in effect on its day (About this person)."
     + (all.some(r => r.child) ? " Under 20, it's shown without the adult categories" + (SEX_CODE[personOf().sex] ? ", with its percentile for age and sex on the CDC's chart (Growth charts, below)." : ".") : "")}));
   if (adult) box.append(el("div", {class: "toolbar"}, el("label", {class: "toggle"},   // on or off: a toggle chip (#353)
-    el("input", {type: "checkbox", id: "bmiWho", checked: hState.bmiWho || null, onchange: e => { hState.bmiWho = e.target.checked; hSave(); renderHealth(); }}),
+    el("input", {type: "checkbox", id: "bmiWho", checked: hState.bmiWho || null, onchange: e => { hState.bmiWho = e.target.checked; hSave(); keepFocus(renderHealth); }}),   // (#655)
     "Show the WHO's categories for adults")));
   if (who) box.append(el("p", {class: "hint", text: "The World Health Organization's categories of BMI for adults (20 and over): under 18.5, 18.5–24.9, 25–29.9, and 30 and over. "
     + "Shown because they were turned on; they're the WHO's, not advice."}));
