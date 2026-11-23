@@ -6,7 +6,8 @@
    - ckTimeTicks, ckAxis, ckFoot: the time axis, its ticks at two levels (days over months, months over years), and
      the plot's foot alone, for a chart in a stack under one axis;
    - ckGrid, ckUnit: the value axis, a hairline and a label at each round number, and its unit as its title;
-   - ckBand, ckBandLabel: the reference band, each result's own range, neutral, and its numbers at the right;
+   - ckBand, ckBandLabel, ckBandLabels: the reference band, each result's own range, neutral, and its numbers at the
+     right; a lab's every step said with its source (#752);
    - ckDecimate: a series with more points than pixels, drawn with what each pixel shows (#292);
    - ckLegend: a chart's key, each mark keyed as it's drawn (a line for a line);
    - ckCross, ckSync, ckTip: the crosshair, at one time on every time chart of a view, and the hover's readout pinned to
@@ -167,12 +168,33 @@ function ckBand(g, steps, x, y, L, R, T, B) {
 }
 /* the band's numbers at the right of the plot, in ink: words ("13.5–17.5 on report") for the step st at the right end,
    set right-aligned at R, inside the band under its top edge, else over its foot, else just outside it, whichever is
-   the first clear of every point (pts: [px, py]) and inside the plot, T to B; L to R too, its numbers alone where the
-   words are wider (larger text, #622). Its offsets grow with the text (ckK). -> its box [x0, x1, baseline], or null */
-function ckBandLabel(g, words, st, y, R, T, B, pts, L = 0) {
+   the first clear of every point (pts: [px, py]) and of the labels placed already (taken), inside the plot, T to B; L
+   to R too, its first word alone where the words are wider (larger text, #622). Its offsets grow with the text (ckK).
+   -> its box [x0, x1, baseline], or null */
+function ckBandLabel(g, words, st, y, R, T, B, pts, L = 0, taken = []) {
   const x1 = R - 4;
   if (x1 - labelW(words, "ck-ref") < L) words = words.split(" ")[0];
-  return ckRefAt(g, words, st, y, x1 - labelW(words, "ck-ref"), x1, T, B, pts);
+  return ckRefAt(g, words, st, y, x1 - labelW(words, "ck-ref"), x1, T, B, pts, taken);
+}
+/* a lab's band said step by step, with where each range came from (#752; ranges.js rangeSaid): "3.5–5.1 on report",
+   "5–20 from settings". The latest step at the plot's right where it reaches it (ckBandLabel), else over its own
+   stretch, centred; each before it over its own (#717). Where its numbers don't fit there, its source alone ("on
+   report", "from settings"), which may run past its stretch (centred on it) for the latest and for one whose source
+   isn't the next step's, so a report's range beside one from settings is said either way; else nothing (its marks'
+   titles and the table say it: a long chart's many narrow steps aren't each named). The latest first, none over a
+   label placed already. at: the points, [px, py] */
+function ckBandLabels(g, steps, x, y, L, R, T, B, at) {
+  const taken = [], fits = (t, room) => labelW(t, "ck-ref") <= room;
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const st = steps[i], a = Math.max(L, x(st.a)), b = Math.min(R, x(st.b)), end = b >= R - .5, last = i === steps.length - 1;
+    if (b - a < 1) continue;
+    const room = end ? R - 4 - L : b - a - 8, spill = last || st.rs !== steps[i + 1].rs;
+    const words = fits(rangeSaid(st), room) ? rangeSaid(st) : fits(rangeSrc(st), spill ? R - L - 8 : room) ? rangeSrc(st) : null;
+    if (!words) continue;
+    const w = labelW(words, "ck-ref"), x0 = Math.max(L + 4, Math.min(R - 4 - w, (a + b - w) / 2));
+    const box = end ? ckBandLabel(g, words, st, y, R, T, B, at, L, taken) : ckRefAt(g, words, st, y, x0, x0 + w, T, B, at, taken);
+    if (box) taken.push(box);
+  }
 }
 /* a band's words from x0 to x1 at the first of those places clear of every point and of the labels placed already
    (taken: their boxes, never overlapped), or at the first such place; none where there's no such place */
@@ -240,8 +262,8 @@ function ckSpark(pts, {band = true, r = 3, color = "var(--ink)", cls = ""} = {})
 /* ---- a lab's chart on its own (#302): a share link's histories and the visit summary's trends, where there's no
    period, event track or hover state, and a table beside it says each result in full. Drawn at its box's width, and
    again as that changes (ckSoloRO; not while hidden, so a closed history isn't drawn till it's opened): the band
-   (each result's own range, ckBand) with its numbers at the right and ref after them ("on report"; "from settings"
-   for a range from settings, #649, as each step before the end that's one says over its own stretch, #717), the value axis
+   (each result's own range, ckBand) with each step said, its source too (ckBandLabels: "3.5–5.1 on report", "5–20 from
+   settings", #649, #717, #752), the value axis
    (ckGrid, ckUnit), the line through the results and a dot each, ▲/▼/◆ for one out of range (only those past 120
    results, as Labs'), and the time axis (ckAxis). Each mark's <title> is say(p), for a mouse. h: the plot's height,
    taller as the text is larger (ckK). print {w, h}: its width and plot's height as it's printed, drawn so as printing
@@ -253,7 +275,7 @@ for (const t of ["beforeprint", "afterprint"]) addEventListener(t, () => {
   ckPrint = t === "beforeprint";
   for (const s of document.querySelectorAll("svg.ck-solo.drawn")) { s._w = 0; s._draw(); }
 });
-function ckSolo(pts, {h = 120, print = null, unit = "", ref = "", label = "", say = () => ""} = {}) {
+function ckSolo(pts, {h = 120, print = null, unit = "", label = "", say = () => ""} = {}) {
   const svg = el("svg:svg", {class: "ck-solo", role: "img", "aria-label": label});
   pts = pts.filter(p => Number.isFinite(p[1]));
   const fmt = v => v.toLocaleString("en-US", {maximumFractionDigits: 4});
@@ -269,25 +291,11 @@ function ckSolo(pts, {h = 120, print = null, unit = "", ref = "", label = "", sa
     const p8 = (hi - lo) * .08; lo -= p8; hi += p8;
     const ticks = niceTicks(lo, hi, ph < 90 ? 3 : 5);
     const L = Math.max(...ticks.map(v => labelW(fmt(v), ""))) + 10, R = w - 6, T = (unit ? 22 : 8) * k, B = T + ph * k;
-    const x = ckScale(a, b, L, R), y = ckScale(lo, hi, B, T), g = [], st = steps.at(-1);
+    const x = ckScale(a, b, L, R), y = ckScale(lo, hi, B, T), g = [];
     ckGrid(g, y, ticks, L, R, fmt);
     ckUnit(g, unit, T - 10 * k);
     ckBand(g, steps, x, y, L, R, T, B);
-    if (st) {   // a range from settings (a point's .rs) said so, as Labs' (#649): with too little room for its numbers too, that alone
-      const src = st.rs === "settings" ? "from settings" : ref, words = src ? `${st.key} ${src}` : st.key, at = pts.map(p => [x(p.ts), y(p[1])]);
-      const taken = [ckBandLabel(g, st.rs === "settings" && R - 4 - labelW(words, "ck-ref") < L ? src : words, st, y, R, T, B, at, L)].filter(Boolean);
-      // and each step before the end that's a range from settings, over its own stretch (#717: a ▼ under an unlabelled
-      // 5–20 from settings, the band's end the report's 3–17): its numbers too where they fit there, centred on it
-      // inside the plot, clear of the labels placed already
-      for (const s of steps.slice(0, -1)) {
-        if (s.rs !== "settings") continue;
-        const a = Math.max(L, x(s.a)), b = Math.min(R, x(s.b)), all = `${s.key} from settings`;
-        const words = labelW(all, "ck-ref") <= b - a - 8 ? all : "from settings", w = labelW(words, "ck-ref");
-        if (w > R - L - 8) continue;   // (wider than the plot: its marks' titles and the table say it)
-        const x0 =Math.max(L + 4, Math.min(R - 4 - w, (a + b - w) / 2)), box = ckRefAt(g, words, s, y, x0, x0 + w, T, B, at, taken);
-        if (box) taken.push(box);
-      }
-    }
+    ckBandLabels(g, steps, x, y, L, R, T, B, pts.map(p => [x(p.ts), y(p[1])]));   // each step said with its source (#649, #717, #752)
     if (pts.length > 1) g.push(el("svg:path", {class: "line", d: ckDecimate(pts.map(p => [x(p.ts), y(p[1])]), q => q[0], 1, {ends: true}).map((q, i) => (i ? "L" : "M") + q[0].toFixed(1) + "," + q[1].toFixed(1)).join("")}));
     for (const p of pts) if (pts.length <= 120 || p[4]) {
       const m = p[4] ? abnMark(x(p.ts), y(p[1]), p[4]) : el("svg:circle", {class: "pt", cx: x(p.ts), cy: y(p[1]), r: 3});

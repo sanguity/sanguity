@@ -12,6 +12,9 @@ const cmpPlaced = (s, a = state.from, b = state.to) => s.pts.filter(p => p.ts >=
 const cmpLabs = () => SERIES.filter(s => !s.watch && cmpPlaced(s, -Infinity, Infinity).length >= 2);
 /* a place in words, a minus sign for one under the low limit: "62%", "−15%" */
 const cmpPct = v => (Math.round(v) < 0 ? "−" : "") + Math.abs(Math.round(v)) + "%";
+/* a result's place in words, said as a bound where its value is one (#752): "<5" against 0–5 is "<100%", not 100% */
+const CMP_BOUND = {"<": "<", "<=": "≤", ">": ">", ">=": "≥"};
+const cmpPlace = p => (CMP_BOUND[rangeCmp(p[5])] || "") + cmpPct(ckPos(p));
 const cmpMed = a => { const s = [...a].sort((x, y) => x - y), n = s.length; return n % 2 ? s[n >> 1] : (s[n / 2 - 1] + s[n / 2]) / 2; };
 const CMP_SLOT = ["Lab 1 of 3: a solid line, dots", "Lab 2 of 3: a dashed line, squares", "Lab 3 of 3: a dotted line, rings"];
 let cmpSel = null, cmpMsDate = null;   // the slots' labs (cmpKey, "" for none); the milestone picked, by its date
@@ -67,7 +70,7 @@ function cmpRead(got) {
   list.forEach((s, i) => {
     const r = $("#cmpRead" + i); if (!r) return;
     const pts = s ? cmpPlaced(s) : [], p = got ? got[i] : pts.at(-1);
-    r.textContent = !s ? "" : p ? `${got ? "" : "Latest "}${readText(s, p)[0]} · ${cmpPct(ckPos(p))} · ${fmtD(p.ts)}` : got ? "No result near this date" : "No results in this period";
+    r.textContent = !s ? "" : p ? `${got ? "" : "Latest "}${readText(s, p)[0]} · ${cmpPlace(p)} · ${fmtD(p.ts)}` : got ? "No result near this date" : "No results in this period";
   });
 }
 /* the chart: the period's time scale, the place in each result's own range up the side, the range itself the band from
@@ -120,7 +123,7 @@ function cmpDraw(svg, live) {
   const showAt = (t, px) => {
     const h = svg._hover(t); if (!h) { hideTip(); return ""; }
     const [t0, got] = h, nodes = [el("div", {class: "v", text: fmtD(t0)}), ...on.map(r => { const p = got[r.i]; return p ? el("div", {class: "s"}, ckSeriesKey(r.i),
-      `${nice(r.s.name)}: ${readText(r.s, p)[0]}, ${cmpPct(ckPos(p))} of its range (${rangeWords(p)})${p[4] ? " · " + cmpFlag(p[4]) : ""}${isoDay(p.ts) !== isoDay(t0) ? " · " + fmtD(p.ts) : ""}`) : null; })];
+      `${nice(r.s.name)}: ${readText(r.s, p)[0]}, ${cmpPlace(p)} of its range (${refWords(p)})${p[4] ? " · " + cmpFlag(p[4]) : ""}${isoDay(p.ts) !== isoDay(t0) ? " · " + fmtD(p.ts) : ""}`) : null; })];
     ckTip(svg, x(t0) ?? px, nodes);
     return tipWords(nodes);
   };
@@ -131,15 +134,14 @@ function cmpDraw(svg, live) {
 /* the chart's words, its name (chartKeys): each lab's results placed in the period and the latest's place, and the
    milestones. on: the slots' labs with their results placed ({s, pts}) */
 const cmpSays = on => `Labs compared within their own ranges, ${fmtD(state.from)} to ${fmtD(state.to)}, 0% at each result's low limit and 100% at its high: `
-  + on.map(r => `${nice(r.s.name)}, ${r.pts.length} result${r.pts.length === 1 ? "" : "s"}${r.pts.length ? `, latest ${cmpPct(ckPos(r.pts.at(-1)))} of its range` : ""}`).join("; ")
+  + on.map(r => `${nice(r.s.name)}, ${r.pts.length} result${r.pts.length === 1 ? "" : "s"}${r.pts.length ? `, latest ${cmpPlace(r.pts.at(-1))} of its range` : ""}`).join("; ")
   + `. Left and right arrow keys step through the dates.${msSay(state.from, state.to) ? " " + msSay(state.from, state.to) : ""}`;
 /* the chart as a table: every result of the labs compared in the period, newest first, with its place in its range (or
    why it has none) */
 function cmpTable(slots) {
   const rows = slots.flatMap(({s}) => s.pts.filter(p => p.ts >= state.from && p.ts <= state.to).map(p => [s, p])).sort((a, b) => b[1].ts - a[1].ts);
   return chartTable(["Date", "Lab", "Value", "Reference range", "Place in its range"], rows.map(([s, p]) => [fmtDT(p.ts), nice(s.name), [readText(s, p)[0], p[4]],
-    (rangeWords(p) ?? "None on the report") + (p.rs === "settings" ? ` (${RANGE_FROM_SETTINGS})` : ""),
-    ckPos(p) != null ? cmpPct(ckPos(p)) : "Not placed: one limit or none"]));
+    refWords(p) ?? "None on the report", ckPos(p) != null ? cmpPlace(p) : "Not placed: one limit or none"]));
 }
 
 /* ---- before and after a milestone: for each lab compared, the median place of its results in the period before the
@@ -147,13 +149,20 @@ function cmpTable(slots) {
    in points of the range. The milestone: one in the period, picked here (at first the one most labs have results on
    both sides of) */
 function cmpSides(pts, t) {
-  const side = a => a.length ? {n: a.length, pos: cmpMed(a.map(ckPos)), val: labStats(a).median, one: !rangesDiffer(a)} : null;
+  // a result given as a bound ("<5", #752) has no one place: left out of the medians, and said (bound: their values)
+  const side = a => { if (!a.length) return null; const m = a.filter(labSure);
+    return {n: a.length, bound: a.filter(p => !labSure(p)).map(p => p[5]), pos: m.length ? cmpMed(m.map(ckPos)) : null,
+      val: m.length ? labStats(m).median : null, one: !rangesDiffer(m)}; };
   return {before: side(pts.filter(p => p.ts < t)), after: side(pts.filter(p => p.ts >= t))};
 }
 /* a side's median value and median place: as one ("12.85 g/dL, −14% of its range") only where its results have one
    range; where it changed, two figures, the median value not where the median place is in either range (#653: 12.85
-   was −16% of 12–16 and +21% of 13.5–17.5, said as −14%) */
-const cmpMedWords = (d, u) => `${d.val} ${u}${d.one ? `, ${cmpPct(d.pos)} of its range` : `; median place ${cmpPct(d.pos)} of each result's own range`}`;
+   was −16% of 12–16 and +21% of 13.5–17.5, said as −14%). Results given as a bound said as left out (#752) */
+const cmpBound = d => `${d.bound.length} given as a bound (${listOf(d.bound.map(t => `“${t}”`), ", ")})`;
+const cmpMedWords = (d, u) => d.pos == null ? `no median: ${cmpBound(d)}` : `${d.val} ${u}${d.one ? `, ${cmpPct(d.pos)} of its range` : `; median place ${cmpPct(d.pos)} of each result's own range`}`
+  + (d.bound.length ? `; ${cmpBound(d)} left out` : "");
+/* a side's median place in words: "62%", "none before", or "bounds only" where every result of it was given as one */
+const cmpSidePct = (d, none) => !d ? none : d.pos == null ? "bounds only" : cmpPct(d.pos);
 function renderCmpMs(placed) {
   const card = $("#cmpMsCard"), pick = $("#cmpMsPick"), body = $("#cmpMsBody");
   card.hidden = !placed.length;
@@ -184,9 +193,10 @@ function renderCmpMs(placed) {
   requestAnimationFrame(() => cmpMsDraw(svg, rows, m));
 }
 /* the difference after less before, in points of the range: "↓ 32 points", "no change"; "—" with a side empty */
-const cmpDiff = r => r.before && r.after ? chgWords(r.after.pos - r.before.pos, Math.abs(Math.round(r.after.pos - r.before.pos)), " points") : "—";
+const cmpBoth = r => r.before?.pos != null && r.after?.pos != null;
+const cmpDiff = r => cmpBoth(r) ? chgWords(r.after.pos - r.before.pos, Math.abs(Math.round(r.after.pos - r.before.pos)), " points") : "—";
 /* a row's words: "Hemoglobin: 62% → 30%, ↓ 32 points" */
-const cmpMsWords = r => `${nice(r.s.name)}: ${r.before ? cmpPct(r.before.pos) : "none before"} → ${r.after ? cmpPct(r.after.pos) : "none from it on"}${r.before && r.after ? ", " + cmpDiff(r) : ""}`;
+const cmpMsWords = r => `${nice(r.s.name)}: ${cmpSidePct(r.before, "none before")} → ${cmpSidePct(r.after, "none from it on")}${cmpBoth(r) ? ", " + cmpDiff(r) : ""}`;
 /* the dumbbells: a row per lab, its words over its line, on one scale of places across (the band 0–100% under them) */
 function cmpMsDraw(svg, rows, m) {
   if (!svg.isConnected) return;
@@ -222,12 +232,12 @@ function cmpMsDraw(svg, rows, m) {
   // a row hovered, or stepped to with the arrow keys: it's marked, and the tooltip says its figures
   const said = r => [el("div", {class: "v", text: nice(r.s.name)}), ...[["Before " + lcLabel(m.label), r.before], [`From ${lcLabel(m.label)} on`, r.after]].map(([k2, d]) =>
     el("div", {class: "s", text: `${k2}: ${d ? `median ${cmpMedWords(d, r.s.unit)}, of ${d.n} result${d.n > 1 ? "s" : ""}` : "no results"}`})),
-    r.before && r.after ? el("div", {class: "s", text: "Difference: " + cmpDiff(r)}) : null];
+    cmpBoth(r) ? el("div", {class: "s", text: "Difference: " + cmpDiff(r)}) : null];
   const show = i => {
     if (i == null || !lay[i]) { hl.setAttribute("visibility", "hidden"); hideTip(); return ""; }
     const {r, top, cy} = lay[i], nodes = said(r);
     hl.setAttribute("y", top); hl.setAttribute("height", cy + 10 * k - top); hl.setAttribute("visibility", "visible");
-    const v = r.after?.pos ?? r.before.pos;
+    const v = r.after?.pos ?? r.before?.pos ?? 0;
     showTip(nodes, svgPoint(svg, x(Math.max(lo, Math.min(hi, v))), cy + 6));
     return tipWords(nodes);
   };

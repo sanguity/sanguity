@@ -14,28 +14,28 @@ const labShown = () => drawer.classList.contains("open") && drawer.dataset.lab !
 const labOpener = (s, cls, text = nice(s.name)) => el("button", {class: `cell-btn lab-open ${cls}`.trim(), type: "button", text,
   "aria-haspopup": "dialog", onclick: () => openLab(s)});
 /* where a result sits against its own range: "in", "above", "below", "flagged" (another flag), or "" (no range and no
-   flag). The report's flag first, as the table and the chart's ▲/▼ show it; then the value against the range */
+   flag). By its flag, as the table and the chart's ▲/▼ show it: its report's, else the one ranges.js works out against
+   its range (applyRangeOverrides, #752), so a result with a range and no flag is inside it */
 function labWhere(p) {
   const f = FLAG_OF(p[4]);
-  if (f) return f[1] === "High" ? "above" : f[1] === "Low" ? "below" : "flagged";
-  if (p[2] == null && p[3] == null) return "";
-  return p[3] != null && p[1] > p[3] ? "above" : p[2] != null && p[1] < p[2] ? "below" : "in";
+  return f ? (f[1] === "High" ? "above" : f[1] === "Low" ? "below" : "flagged") : p[2] == null && p[3] == null ? "" : "in";
 }
 /* the decimals a result is printed with, so a median or a change is said to the same places ("14.8", "0.91") */
 const labDec = p => (/\.(\d+)/.exec(String(p[5] || p[1]))?.[1].length) || 0;
-/* a result given as the value measured, not as a bound ("<0.5", ">90"): a change is worked out only between two such,
-   here and on the Overview's tiles (#718) */
-const labSure = p => !/[<>≤≥]/.test(p[5] || "");
+/* a result given as the value measured, not as a bound ("<0.5", ">90", ranges.js rangeCmp): a change is worked out only
+   between two such, here and on the Overview's tiles (#718), and Compare's medians are of these (#752) */
+const labSure = p => !rangeCmp(p[5]);
 /* the results' counts and positions, from the results the lab's table lists for the period (pts, oldest first) */
 function labStats(pts) {
   if (!pts.length) return null;
   const n = pts.length, first = pts[0], last = pts[n - 1], dec = Math.max(...pts.map(labDec));
   // the lowest and highest: the first day each was reached, and how many more times it was
   const ext = pick => { const v = pick(...pts.map(p => p[1])), at = pts.filter(p => p[1] === v); return {p: at[0], more: at.length - 1}; };
-  // the median: the middle result as printed; between two, their mean to one more place where it needs it
-  const by = [...pts].sort((a, b) => a[1] - b[1]), mid = by[(n - 1) >> 1];
-  let median = mid[5] || fmtNum(mid[1]);
-  if (n % 2 === 0) { const v = (mid[1] + by[n >> 1][1]) / 2, t = v.toFixed(dec + 1); median = t.endsWith("0") ? v.toFixed(dec) : t; }
+  // the median: the middle result as printed; between two, their mean to one more place where it needs it. A value given
+  // as a bound ("<0.5") stands for no one value: left out of it, and counted (bounds; #752, as Compare's medians)
+  const ex = pts.filter(labSure), m = ex.length, by = [...ex].sort((a, b) => a[1] - b[1]), mid = by[(m - 1) >> 1];
+  let median = mid ? mid[5] || fmtNum(mid[1]) : null;
+  if (m && m % 2 === 0) { const v = (mid[1] + by[m >> 1][1]) / 2, t = v.toFixed(dec + 1); median = t.endsWith("0") ? v.toFixed(dec) : t; }
   const where = {in: 0, above: 0, below: 0, flagged: 0, "": 0};
   for (const p of pts) where[labWhere(p)]++;
   // the change from the first to the latest, as printed; not worked out from a value given as "<0.5" or ">90"
@@ -43,7 +43,7 @@ function labStats(pts) {
   const signed = (v, t) => (v > 0 ? "+" : v < 0 ? "−" : "") + t;   // a minus sign, not a hyphen
   const change = n < 2 || !labSure(first) || !labSure(last) ? null
     : {text: signed(d, Math.abs(d).toFixed(Math.max(labDec(first), labDec(last)))), pct: pct == null ? "" : ` (${signed(pct, Math.abs(pct))}%)`};
-  return {n, first, last, low: ext(Math.min), high: ext(Math.max), median, where, ranged: n - where[""], change,
+  return {n, first, last, low: ext(Math.min), high: ext(Math.max), median, bounds: n - m, where, ranged: n - where[""], change,
     lastIn: [...pts].reverse().find(p => labWhere(p) === "in") || null, fromSettings: pts.filter(p => p.rs === "settings").length};
 }
 const labPct = (a, b) => b ? ` (${Math.round(a / b * 100)}%)` : "";
@@ -66,7 +66,8 @@ function openLab(s) {
   else {
     const w = st.where, out = [["above", "▲", "above"], ["below", "▼", "below"], ["flagged", "◆", "flagged"]].filter(([k]) => w[k]);
     body.append(el("dl", {class: "facts lab-facts"}, ...[
-      ["Results", String(st.n), "n"], ["Median", `${st.median} ${u}`, "median"],
+      ["Results", String(st.n), "n"],
+      ["Median", st.median == null ? `None: ${st.n > 1 ? `all ${st.n}` : "its one"} given as a bound` : `${st.median} ${u}` + (st.bounds ? ` (${st.bounds} given as a bound left out)` : ""), "median"],
       ["Inside own range", st.ranged ? `${w.in} of ${st.ranged}${labPct(w.in, st.ranged)}` : "None has a range", "in"],
       ["First to latest", st.change ? `${st.change.text} ${u}${st.change.pct}` : st.n < 2 ? "One result" : "Not worked out", "change"],
     ].map(([k, v, key]) => el("div", {}, el("dt", {text: k}), el("dd", {"data-k": key, text: v})))));
@@ -90,7 +91,7 @@ function openLab(s) {
     onLabs && table ? null : goBtn("Show them as a table", () => go(true))),
     el("p", {class: "hint dnote", text: "Counts and positions from the lab's table for this period. This isn't medical advice."}),
     aboutWords({title: "How these are counted"}, "Every result the lab's table lists for the period, against each result's own reference range on its report (or one you set in Settings, where the report gives none), the range the chart's band steps with.",
-      "A result counts as outside its range when its report flags it, or when its value is past the range; the median is the middle result, or the mean of the two in the middle. The change is the latest result less the first, as printed; it doesn't say how the results in between went."));
+      "A result counts as outside its range when its report flags it, or when its value is past the range (one given as “<15”, when every value it stands for is); the median is the middle result, or the mean of the two in the middle, of those given as the value measured (one given as “<15” left out). The change is the latest result less the first, as printed; it doesn't say how the results in between went."));
   showDrawer();
 }
 /* the panel drawn again as the period or the records change (app.js renderAll), in place: its scroll and focus kept */

@@ -2,11 +2,18 @@
    Plain script, loaded in order by index.html; all files share one global scope. */
 "use strict";
 /* ---------------------------------------------------------------- heatmap */
-function hmLevel(v, lo, hi) {
+/* a result's level against its own range, its cell's colour: 0 inside it, −1 to −4 below it and 1 to 4 above by how far;
+   null with no range. Whether and which way by its flag, as its ▲/▼ (ranges.js applyRangeOverrides, #752: "<15"
+   against a low of 15 is low, though it's on the edge, at least one step; "<120" against a high of 110 is inside it, as
+   it may be); how far by its value */
+function hmLevel(p) {
+  const v = p[1], lo = p[2], hi = p[3], fl = String(p[4] || "").trim(), f = /^h/i.test(fl) ? 1 : /^l/i.test(fl) ? -1 : 0;
   if (lo == null && hi == null) return null;
+  if (!fl) return 0;
   const span = lo != null && hi != null && hi > lo ? hi - lo : Math.abs(hi ?? lo) || 1;
   let z = 0;
   if (lo != null && v < lo) z = -(lo - v) / span; else if (hi != null && v > hi) z = (v - hi) / span;
+  if (f && Math.sign(z) !== f) z = f * 1e-9;
   if (z === 0) return 0;
   const a = Math.abs(z), step = a <= .1 ? 1 : a <= .3 ? 2 : a <= .6 ? 3 : 4;
   return Math.sign(z) * step;
@@ -64,14 +71,14 @@ function renderHeatmap(live) {   // live: a frame of a drag (charts.js), at the 
   }
   const cellPts = rows.map(hmDays);   // each row's results by day (#471)
   // each row's results outside their own range in the period, counted at its end (#300), as many as it has ▲ and ▼
-  const outN = cellPts.map(m => { let n = 0; for (const ps of m.values()) for (const p of ps) if (hmLevel(p[1], p[2], p[3])) n++; return n; });
+  const outN = cellPts.map(m => { let n = 0; for (const ps of m.values()) for (const p of ps) if (hmLevel(p)) n++; return n; });
   const RW = Math.ceil(labelW(String(Math.max(...outN)), "")) + 10;   // their column, right of the grid
   // columns always fit the width (fractional widths are fine, under 1 px too: #476, ten years on a phone); zoom in to
   // get wider cells. On the kit's scale (chartkit.js ckScale): a column's index to its left edge
   const cw = Math.min(22, (avail - LW - RW) / cols.length), colX = ckScale(0, 1, LW, LW + cw), R = colX(cols.length);
   // the colours, and the marks that say the same without them (#60): ▲ above the range, ▼ below, on cells wide enough
   // (3 px), and where some aren't, a word on it: a cell under 3 px, or a part of one split between a day's draws (#476)
-  const thin = cw < 3 || cellPts.some(m => [...m.values()].some(ps => ps.length > 1 && cw / ps.length < 3 && ps.some(p => hmLevel(p[1], p[2], p[3]))));
+  const thin = cw < 3 || cellPts.some(m => [...m.values()].some(ps => ps.length > 1 && cw / ps.length < 3 && ps.some(p => hmLevel(p))));
   $("#hmLegend").replaceChildren(...[-4, -3, -2, -1, 0, 1, 2, 3, 4].map(lv => el("i", {style: {background: hmFill(lv)}})),
     el("span", {text: "← far below · below · in range · above · far above →"}), el("span", {style: {color: "var(--muted)"}, text: "(distance outside the range, as a share of the range's width)"}),
     el("span", {class: "hm-key"}, el("b", {"aria-hidden": "true", text: "▲"}), " above the range, ", el("b", {"aria-hidden": "true", text: "▼"}), " below",
@@ -115,7 +122,7 @@ function renderHeatmap(live) {   // live: a frame of a drag (charts.js), at the 
       el("svg:title", {text: renamedTitle("lab", s.name) + unit + (edit ? " · click to rename" : "") + rowRanges(s)})));
     g.push(el("svg:text", {x: W - 4, y: ry + rowH - 4 * k, "text-anchor": "end", text: outN[i].toLocaleString("en-US")}));
     // a day's results side by side in its cell, each its own colour and mark (#471)
-    const cells = [...cellPts[i]].flatMap(([d, ps]) => ps.map((p, j) => ({k: d, ps, p, j, lv: hmLevel(p[1], p[2], p[3]), x: colX(colOf.get(d)) + j * cw / ps.length})));
+    const cells = [...cellPts[i]].flatMap(([d, ps]) => ps.map((p, j) => ({k: d, ps, p, j, lv: hmLevel(p), x: colX(colOf.get(d)) + j * cw / ps.length})));
     const fill = lv => lv == null ? "var(--grid)" : hmFill(lv);
     if (cw < 1) {
       // columns under a pixel wide (ten years on a phone): a pixel's cell each, the result furthest outside its range in
@@ -175,7 +182,7 @@ function renderHeatmap(live) {   // live: a frame of a drag (charts.js), at the 
     if (!at) { hideTip(); return; }
     const s = rows[at.i], ps = cellPts[at.i].get(at.k) || [], p = ps[at.j]; if (!p) return;
     const st = statusOf(p);
-    showTip([el("div", {class: "v", text: `${p[5] || fmtNum(p[1])} ${s.unit}`}), el("div", {class: "s", text: nice(s.name) + (nice(s.name) !== s.name ? ` (${s.name})` : "")}), el("div", {class: "s", text: `${fmtDT(p.ts)} · ${refText(p)}`}),
+    showTip([el("div", {class: "v", text: `${p[5] || fmtNum(p[1])} ${s.unit}`}), el("div", {class: "s", text: nice(s.name) + (nice(s.name) !== s.name ? ` (${s.name})` : "")}), el("div", {class: "s", text: [fmtDT(p.ts), refText(p)].filter(Boolean).join(" · ")}),
       ucOrig(s, p) ? el("div", {class: "s", text: "Reported as " + ucOrig(s, p)}) : null,   // #41
       st ? el("div", {class: "s", style: {color: st.cls === "ok" ? "var(--good-text)" : "var(--crit)"}}, st.icon ? [icon(st.icon), " "] : null, st.text) : null,
       pointSources(s, p) ? el("div", {class: "s", text: "From " + pointSources(s, p)}) : null,   // with any linked as the same (#96)
@@ -266,19 +273,19 @@ function hmTable(rows, cols, grp) {
     const byDay = hmDays(s);
     const differ = rowRanges(s), ranged = [...byDay.values()].flat().find(p => p[2] != null || p[3] != null);
     const about = [nice(s.name) !== s.name ? renamedTitle("lab", s.name) : null,
-      differ ? differ.trim() : ranged ? `ref ${ranged[2] ?? ""}–${ranged[3] ?? ""}${s.unit ? " " + s.unit : ""}${ranged.rs === "settings" ? ` (${RANGE_FROM_SETTINGS})` : ""}` : null].filter(Boolean).join("; ");
+      differ ? differ.trim() : ranged ? `ref ${rangeWords(ranged)}${s.unit ? " " + s.unit : ""}${ranged.rs === "settings" ? ` (${RANGE_FROM_SETTINGS})` : ""}` : null].filter(Boolean).join("; ");
     const aboutId = about ? "hmAbout" + (++hmAbout) : null, edit = renameButton("lab", s.name), tq = testLink(s.name, true);   // #163
     const name = labOpener(s, "", `${nice(s.name)}${s.unit ? ` (${s.unit})` : ""}`);   // its name opens its panel (lab-panel.js, #296)
     for (const b of [name, edit, tq]) if (b && aboutId) b.setAttribute("aria-describedby", aboutId);
     tb.append(el("tr", {}, el("th", {scope: "row", "data-tip": renamedTitle("lab", s.name) + differ}, name,
       about ? el("span", {class: "vh"}, ", ", el("span", {id: aboutId, text: about})) : null,
       edit || tq ? el("span", {class: "hm-acts"}, edit, tq) : null),   // the ✎ and ? kept together, a phone's name wrapping (#469)
-      el("td", {text: [...byDay.values()].flat().filter(p => hmLevel(p[1], p[2], p[3])).length.toLocaleString("en-US")}),
+      el("td", {text: [...byDay.values()].flat().filter(p => hmLevel(p)).length.toLocaleString("en-US")}),
       ...cols.map(([k]) => {
         const ps = byDay.get(k); if (!ps) return el("td", {});
         const one = p => {
-          const lv = hmLevel(p[1], p[2], p[3]), w = lv ? FLAG_OF(lv > 0 ? "H" : "L") : null;   // as the heatmap colours it
-          const ref = p[2] != null || p[3] != null ? refText(p) : null;
+          const lv = hmLevel(p), w = lv ? FLAG_OF(lv > 0 ? "H" : "L") : null;   // as the heatmap colours it
+          const ref = refText(p);
           return [w, ref, [p[5] || fmtNum(p[1]), w ? el("span", {"aria-hidden": "true", text: " " + w[0]}) : null, w ? el("span", {class: "vh", text: " " + w[1].toLowerCase()}) : null,
             ref && differ ? el("span", {class: "vh hm-ref", text: ", " + ref}) : null]];
         };

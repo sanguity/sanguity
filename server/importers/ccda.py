@@ -19,7 +19,7 @@ import xml.etree.ElementTree as ET
 from datetime import date
 
 from . import common
-from .common import canonical_lab
+from .common import canonical_lab, comparator, range_flag
 
 NAME = "ccda"
 LABEL = "C-CDA health summary (XML)"
@@ -348,8 +348,9 @@ def _range(doc, obs):
     return None, None, ""
 
 
-def _flag(obs, x, lo, hi):
-    """H or L as the lab flagged it (or, unflagged, against the range); A for abnormal without a direction."""
+def _flag(obs, x, lo, hi, raw=""):
+    """H or L as the lab flagged it (or, unflagged, against the range by the one rule, server/ranges.py flag: "<0.5"
+    against a low of 0.5 is low, #752); A for abnormal without a direction."""
     abnormal = False
     for ic in _all(obs, "h:interpretationCode"):
         c = (ic.get("code") or "").upper()
@@ -358,12 +359,7 @@ def _flag(obs, x, lo, hi):
         if c in ("L", "LL", "LU", "<"):
             return "L"
         abnormal = abnormal or c in ("A", "AA")
-    if x is not None:
-        if lo is not None and x < lo:
-            return "L"
-        if hi is not None and x > hi:
-            return "H"
-    return "A" if abnormal else ""
+    return range_flag(x, lo, hi, comparator(raw)) or ("A" if abnormal else "")
 
 
 def _results(doc, out):
@@ -386,7 +382,7 @@ def _results(doc, out):
                 if not unit and x is not None:      # a string value: the unit may only be written in the range
                     m = re.match(r"^\s*-?[\d.]+\s*[-–]\s*-?[\d.]+\s+(\S+)\s*$", rng)
                     unit = m.group(1) if m else ""
-                flag = _flag(obs, x, lo, hi)
+                flag = _flag(obs, x, lo, hi, raw)
                 if not t:
                     out.warnings.append(f"{doc.rel}: skipped result {name!r} with no date.")
                     continue

@@ -27,6 +27,9 @@ from pypdf import PdfReader   # noqa: E402
 from server import accounts, db as dbm, main, profiles as prof, ranges, records, settings, summary   # noqa: E402
 import logging   # noqa: E402
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import ranges_matrix as M   # noqa: E402  (#752's matrix, shared with tests/browser_check.py)
+
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
 H = {"X-Sanguity": "1"}
 PW = {"robin": "harbour lantern pebble crow", "kim": "seventeen quiet orange kites", "lee": "maple tunnel brisk saddle"}
@@ -87,10 +90,10 @@ class Rules(unittest.TestCase):
         self.assertEqual(find({**cfg, "birthDate": ""})["high"], 100, "no birth date: no row with an age band")
         self.assertIsNone(find({**cfg, "birthDate": "", "overrides": rows[1:3]}))
         self.assertIsNone(find({}))
-        self.assertEqual(ranges.flag_for(201, rows[2]), "H")
-        self.assertEqual(ranges.flag_for(19.9, rows[2]), "L")
-        self.assertEqual(ranges.flag_for(20, rows[2]), "")
-        self.assertEqual(ranges.flag_for(5, {"low": None, "high": 4}), "H")
+        self.assertEqual(ranges.flag(201, 20, 200), "H")
+        self.assertEqual(ranges.flag(19.9, 20, 200), "L")
+        self.assertEqual(ranges.flag(20, 20, 200), "")
+        self.assertEqual(ranges.flag(5, None, 4), "H")
 
 
 # a portal export: ferritin with no range (twice), one with its own range, one flagged by the lab with no range,
@@ -114,9 +117,10 @@ DATA = {"built": day(0), "source": "fictional",
 
 
 class _Drawn:
-    """A PDF page that keeps what's drawn on it: each text as (x0, x1, baseline, text), each polyline's points."""
+    """A PDF page that keeps what's drawn on it: each text as (x0, x1, baseline, text), each polyline's points, each
+    rectangle's (x0, x1), and each result's mark's x (a dot's, or a triangle's or diamond's middle)."""
     def __init__(self):
-        self.texts, self.lines = [], []
+        self.texts, self.lines, self.rects, self.marks = [], [], [], []
 
     def text(self, x, y, s, size=10, bold=False, color=0):
         self.texts.append((x, x + summary.pdfdoc.width(s, size, bold), y, s))
@@ -126,6 +130,15 @@ class _Drawn:
 
     def polyline(self, pts, *a):
         self.lines.append(pts)
+
+    def rect(self, x, y, w, h, *a):
+        self.rects.append((x, x + w))
+
+    def dot(self, x, y, *a):
+        self.marks.append(x)
+
+    def shape(self, pts, *a):
+        self.marks.append(pts[0][0])
 
     def __getattr__(self, name):
         return lambda *a, **k: None
@@ -232,9 +245,10 @@ class Api(unittest.TestCase):
                          [[22, "Low", 30, 100, "settings"], [26, "Low", 30, 100, "settings"], [34, None, 30, 100, "settings"],
                           [41, None, 30, 100, "settings"]], "the chart's and sparkline's points: each flag, and its range from settings")
         self.assertEqual((vd["then"], vd["now"]["flag"], vd["now"]["range"]),
-                         ({"value": "22", "date": day(-70)[:10], "flag": "Low", "settings": "30–100"}, None, "30–100 (settings)"),
-                         "the table's Then flagged as its chart is, against its range from settings (#717), Now in range, its range from settings")
-        self.assertNotIn("settings", vd["now"], "Now in range: no range it's flagged against")
+                         ({"value": "22", "date": day(-70)[:10], "flag": "Low"}, None, "30–100 (settings)"),
+                         "the table's Then flagged as its chart is, against the row's range from settings (so its cell needn't "
+                         "say it, #752), Now in range, its range from settings")
+        self.assertNotIn("own", vd["now"], "Now: its range is the row's")
         self.assertIn("range from settings", s["settings_note"])
         self.assertTrue(summary.uses_settings({**vd, "now": {**vd["now"], "range": "30–100"}}), "its chart's band alone is enough for the note")
         r = self.c["kim"].post(f"/api/profiles/{self.pid}/summary/pdf", headers=H, json=body)
@@ -261,7 +275,7 @@ class Api(unittest.TestCase):
         self.assertEqual(r.status_code, 200, r.text)
         s = r.json()
         fo = next(t for t in s["trends"] if t["name"] == "Folate")
-        self.assertEqual(fo["then"], {"value": "4", "date": day(-70)[:10], "flag": "Low", "settings": "5–20"},
+        self.assertEqual(fo["then"], {"value": "4", "date": day(-70)[:10], "flag": "Low", "own": ["settings range", "5–20"]},
                          "Then flagged against the range from settings, which it carries")
         self.assertEqual((fo["now"], [p[1:6] for p in fo["spark"]]),
                          ({"value": "7", "date": day(-10)[:10], "flag": None, "range": "3–17"},
@@ -274,7 +288,8 @@ class Api(unittest.TestCase):
         self.assertIn("Each is judged against the range printed on its own report, or, where its report gives none, the range from "
                       "settings, its Range marked “(settings)”.", text, "the out-of-range note: Vitamin D's 26 is judged against one")
         self.assertIn("High or Low (in red): outside the range on that result's own report, or, where its report gives none, outside "
-                      "the range from settings, which its cell then gives (“settings range” and its numbers).", text, "the trends' note")
+                      "the range from settings. A Then judged against a range other than its row's (its Now's) gives it in its cell "
+                      "(“report range” or “settings range” and its numbers).", text, "the trends' note")
         # the chart: "from settings" over its first step (4's, from settings), the end the report's
         page, vpage, vd = _Drawn(), _Drawn(), next(t for t in s["trends"] if t["name"] == "Vitamin D")
         token = summary._DATES.set(("", TODAY.year))
@@ -287,6 +302,109 @@ class Api(unittest.TestCase):
         (p4, p6, _), = page.lines
         self.assertLess((a + b) / 2, (p4[0] + p6[0]) / 2, "said over the first step, which ends halfway from 4 to 6")
         self.assertEqual([t for *_, t in vpage.texts if "settings" in t], ["30–100 from settings"], "one step, its end said as before (#649)")
+
+    def test_2_summary_matrix(self):
+        """#752: one rule for a result's range, flag and source, through the server. The matrix (tests/ranges_matrix.py): a
+        report's range then none; none then a report's; Settings then a report's; a report's then Settings; a range that
+        changes; "<" and ">" values at and past each edge of a report's range and of one from Settings. The same flags,
+        ranges and sources in the summary's points, its cells (each Then judged against a range other than its row's
+        names it), its out-of-range rows, its notes, the PDF's cells and charts (a band step for each result with a
+        range, none beside one without, each said with its source) and a share link (its report's ranges only); the
+        importers' flag the same rule."""
+        db = dbm.connect()
+        try:
+            owner = db.execute("SELECT id FROM users WHERE username='robin'").fetchone()["id"]
+            pid = prof.create_profile(db, "Matrix (fictional)", owner_id=owner)
+            with dbm.transaction(db):
+                records.store(db, pid, M.records(TODAY), "upload", fmt="csv")
+        finally:
+            db.close()
+        c, labs = self.c["robin"], list(M.CASES)
+        for key, value in (("ranges.overrides", M.OVERRIDES), ("overview.keyLabs", labs)):
+            self.assertEqual(c.put(f"/api/profiles/{pid}/settings/{key}", json={"value": value}, headers=H).status_code, 200)
+        db = dbm.connect()
+        try:
+            data = records.assemble(db, pid)
+            cfg = ranges.config(settings.merged(db, pid, owner))
+        finally:
+            db.close()
+        series = summary._series(data, cfg)
+        judged = {n: [[p["flag"], p["lo"], p["hi"], p["rs"]] for p in series[n]["pts"]] for n in labs}
+        self.assertEqual(judged, M.JUDGED, "each result judged by the one rule: its report's, worked out against its report's "
+                                           "range, or a range from settings (\"<15\" against a low of 15 is low)")
+        # the band's steps: each covers the results with its range, none beside a result without one, each said with its source
+        for n in labs:
+            ts = [datetime.date.fromisoformat(p["d"]).toordinal() for p in series[n]["pts"]]
+            got = [[[i for i, t in enumerate(ts) if a < t < b], f"{summary.range_words(lo, hi)} {summary.band_source(rs)}"]
+                   for a, b, lo, hi, rs in ranges.steps([(t, p["lo"], p["hi"], p["rs"]) for t, p in zip(ts, series[n]["pts"])],
+                                                        -float("inf"), float("inf"))]
+            self.assertEqual(got, M.STEPS[n], n)
+        # the importers' flag is the rule's: a CSV's "<30" against its own 30–110 is low, as Labs and the summary say
+        from server.importers import csv_labs
+        for d, v, lo, hi, f, t in M.CASES["Amylase"]:
+            self.assertEqual(csv_labs._flag("", v, ranges.comparator(t), lo, hi), ranges.flag(v, lo, hi, ranges.comparator(t)), t)
+        self.assertEqual([ranges.flag(30, 30, 110, ranges.comparator(t)) for t in ("<30", "<=30", "≤30", "30", ">=30")], ["L", "", "", "", ""])
+        self.assertEqual([ranges.flag(110, 30, 110, ranges.comparator(t)) for t in (">110", ">=110", "≥110", "110", "<=110")], ["H", "", "", "", ""])
+
+        body = {"appointment": None, "since": M.day(M.SINCE, TODAY)[:10], "sections": ["out_of_range", "trends"], "labs": labs}
+        r = c.post(f"/api/profiles/{pid}/summary/preview", headers=H, json=body)
+        self.assertEqual(r.status_code, 200, r.text)
+        s = r.json()
+        tr = {t["name"]: t for t in s["trends"]}
+        for n, (then, now, rng) in M.TRENDS.items():
+            cell = lambda x: (x["value"], x["flag"], x.get("own"))
+            self.assertEqual((cell(tr[n]["then"]), cell(tr[n]["now"]), tr[n]["now"]["range"]), (then, now, rng), n)
+            line = [p for p in series[n]["pts"] if p["d"] <= body["since"]][-1:] + [p for p in series[n]["pts"] if p["d"] > body["since"]]
+            want = [[{"L": "Low", "H": "High"}.get(j[0]), j[1], j[2], ranges.SOURCE if j[3] == ranges.SOURCE else None]
+                    for p, j in zip(series[n]["pts"], M.JUDGED[n]) if p in line]
+            self.assertEqual([q[2:6] for q in tr[n]["spark"]], want, f"{n}: the chart's and sparkline's points")
+        oor = {o["name"]: [o["value"], o["flag"], o["range"], o["out"], o["of"]] for o in s["out_of_range"]}
+        self.assertEqual(oor, M.OUT_OF_RANGE, "out of range since then: \"<30\", \"<25\", \">110\" and \">120\" among them")
+        notes = s["notes"]
+        self.assertIn("A Then judged against a range other than its row's (its Now's) gives it in its cell", notes["trends"])
+        self.assertIn(summary.BOUND_NOTE.strip(), notes["trends"])
+        self.assertIn(summary.BOUND_NOTE.strip(), notes["out_of_range"])
+        self.assertIn("or, where its report gives none, the range from settings", notes["out_of_range"])
+        self.assertIn("each step marked “on report” or “from settings”, none beside a result with neither", notes["charts"])
+
+        r = c.post(f"/api/profiles/{pid}/summary/pdf", headers=H, json=body)
+        self.assertEqual(r.status_code, 200, r.text[:200])
+        text = " ".join("\n".join(p.extract_text() for p in PdfReader(io.BytesIO(r.content)).pages).split())
+        for n, (then, _, _) in M.TRENDS.items():
+            words = f"{then[0]}{' ' + then[1] if then[1] else ''} {summary._short(tr[n]['then']['date'])}"
+            self.assertIn(words + (f" ({' '.join(w for w in then[2] if w)})" if then[2] else ""), text, f"{n}: the PDF's Then cell")
+        for note in (notes["trends"], notes["out_of_range"], notes["charts"]):
+            self.assertIn(note, text)
+        token = summary._DATES.set(("", TODAY.year))
+        try:
+            for n in labs:
+                page, row = _Drawn(), tr[n]
+                summary._chart(page, row, [n], 0, 200, 120)
+                covered = [any(a <= x <= b for a, b in page.rects) for x in page.marks]
+                spark = [p for p in series[n]["pts"] if p["d"] <= body["since"]][-1:] + [p for p in series[n]["pts"] if p["d"] > body["since"]]
+                self.assertEqual(covered, [p["lo"] is not None or p["hi"] is not None for p in spark], f"{n}: a band under each result with a range only")
+                said = [t for *_, t in page.texts if t.endswith(("on report", "from settings"))]
+                steps = {w for idx, w in M.STEPS[n] if any(series[n]["pts"][i] in spark for i in idx)}
+                self.assertTrue(said and all(t in steps or t in ("on report", "from settings") for t in said),
+                                f"{n}: each band label a step's words, or its source alone: {said}")
+                self.assertEqual({t.endswith("from settings") for t in said}, {w.endswith("from settings") for w in steps},
+                                 f"{n}: each source the band has said on it: {said}")
+        finally:
+            summary._DATES.reset(token)
+
+        # a share link: its report's ranges and flags only, the same as the summary's for those
+        r = c.post(f"/api/profiles/{pid}/links", json={"sections": ["results"]}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        view = TestClient(main.app, base_url="http://testserver").post("/api/share/view", json={"token": r.json()["path"].split("#", 1)[1]}, headers=H)
+        self.assertEqual(view.status_code, 200, view.text)
+        got = {x["name"]: [[q["flag"], q["lo"], q["hi"], q["range"]] for q in x["results"][::-1]] for x in view.json()["results"]}
+        want = {n: [[{"L": "Low", "H": "High"}.get(f), lo, hi, summary.range_words(lo, hi)] for f, lo, hi, _ in M.share_judged(n)] for n in labs}
+        self.assertEqual(got, want, "a share link's flags and ranges: its reports' (none from Settings), each worked out by the one rule")
+        db = dbm.connect()
+        try:
+            prof.delete_profile(db, pid)
+        finally:
+            db.close()
 
     def test_3_without_settings(self):
         self.assertEqual(self.c["robin"].post(f"/api/profiles/{self.pid}/settings/reset", json={"section": "ranges"}, headers=H).status_code, 200)

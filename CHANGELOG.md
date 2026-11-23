@@ -1864,6 +1864,19 @@ Everything on `main` so far; it becomes the first tagged release.
   out of its tile. Every grid of tiles, the Overview's, Body's, Costs', Settings' previews and an import's review,
   now has one rule: its columns never narrower than its words in em, so it takes fewer as text grows, and never wider
   than the grid (an import's tiles no longer widen its card at 320 px). At the usual size nothing moves (WCAG 1.4.4).
+- **One rule for a result's range and flag, said the same way in every chart, table and PDF** (#752): how a flag was
+  worked out from a range, how a band was drawn and what a cell said differed from page to page. Lipase typed "<15"
+  against 15–60 from Settings was unflagged everywhere and missing from Out of range (every "<15" is below 15); a
+  report's 3.5–5.1 ran on as a band under the later 3.4 and 5.3, which had no range, labelled "on report"; and
+  Magnesium's Then "1.6 ▼ Low", flagged against its report's 1.7–2.4, sat beside the row's only range, 1.5–2.5 from
+  Settings, which 1.6 is inside, its report's range said nowhere. Now one rule works out every flag from a range (the
+  importers', a range from Settings, and a report's range with no flag on it, on Labs, the heatmap, the Overview,
+  Compare, the lab panel, share links and the visit summary): a value given as a bound is flagged where every value it
+  stands for is past the range. A band has a step only under the results with that range, each said with its source
+  ("3.5–5.1 on report", "5–20 from settings"), in Labs' charts, share links and the summary's preview and PDF. A Then
+  judged against a range other than its row's says it ("1.6 ▼ Low (report range 1.7–2.4)", "150 (no range given)"),
+  and the summary's notes, now under its tables in the preview as in the PDF, say what flags are judged against.
+  Compare places a value given as a bound as one ("<0%") and leaves it out of a median, saying so.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

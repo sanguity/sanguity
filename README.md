@@ -586,7 +586,11 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
   settings), never one range across labs. When the results on a Labs chart have different ranges (two labs, or a lab
   that changed its range), the chart's shaded band steps with each result's range and a line under its name says so
   ("Reference range differs between results: 0.7–1.3 and 0.6–1.2 mg/dL"), compared in the units shown; its table
-  gives each row its own range.
+  gives each row its own range. The band is drawn only beside results that have a range, each step said with where it
+  came from ("3.5–5.1 on report", "5–20 from settings"), on Labs, share links and the visit summary alike. A value
+  given as a bound is flagged only where every value it stands for is outside the range: "<15" against a low of 15 is
+  low, "<15" against a low of 10 isn't. One rule works a flag out everywhere: the importers, Labs, the Overview,
+  Compare, share links and the visit summary (#752).
 - **Visit summary:** one or two printable pages to bring to an appointment (**Sharing → Visit summary**, from the profile menu, top left):
   results out of range since the last visit, each against the range on its own report (or a range from settings
   when the report gives none), trends of the key labs and

@@ -465,7 +465,7 @@ function rangesEditor(value, changed, ro) {
     const rows = read(), cfg = {...RANGE_CFG, overrides: rows}, without = unranged();
     const total = without.reduce((a, s) => a + s.pts.length, 0);
     let hit = 0, out = 0;
-    for (const s of without) for (const p of s.pts) { const r = rangeRowFor(cfg, s.name, s.unit, String(p[0]).slice(0, 10)); if (r) { hit++; if ((r.high != null && p[1] > r.high) || (r.low != null && p[1] < r.low)) out++; } }
+    for (const s of without) for (const p of s.pts) { const r = rangeRowFor(cfg, s.name, s.unit, String(p[0]).slice(0, 10)); if (r) { hit++; if (rangeFlag(p[1], r.low, r.high, rangeCmp(p[5]))) out++; } }   // the one flag rule (#752)
     preview.textContent = !total ? "Every lab result here has a range or flag from its report, so none of these would be used yet."
       : `${total} result${total === 1 ? "" : "s"} here ha${total === 1 ? "s" : "ve"} no range on ${total === 1 ? "its" : "their"} report; these ranges fit ${hit}` +
         (hit ? `, ${out} of them outside.` : ".");

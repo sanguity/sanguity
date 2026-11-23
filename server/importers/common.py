@@ -30,6 +30,31 @@ def num(s):
     return float(m.group(2)) if m else None
 
 
+_BOUND = re.compile(r"\s*(<=|>=|=<|=>|<|>|≤|≥)")
+_CMP = {"=<": "<=", "≤": "<=", "=>": ">=", "≥": ">="}
+
+
+def comparator(text):
+    """A value given as a bound ("<15", "≤ 0.5", ">90"): its comparator, "<", "<=", ">" or ">=", else "" (#718)."""
+    m = _BOUND.match(str(text or ""))
+    return _CMP.get(m.group(1), m.group(1)) if m else ""
+
+
+def range_flag(v, lo, hi, cmp=""):
+    """The one rule for a flag worked out from a range (#752; server/ranges.py flag is this, kept here for build.py):
+    "H" above the high, "L" below the low, whatever value a bound (cmp, comparator()) stands for, else "": "<15"
+    against a low of 15 is low (every value under 15 is), ">90" against a high of 90 high; "<15" against a low of 10 is
+    neither (it may be 12 or 9). The importers' (a report's range and no flag), a range from settings (#44), the visit
+    summary and share links all use it; www/js/ranges.js rangeFlag is the same."""
+    if v is None:
+        return ""
+    if hi is not None and (v >= hi if cmp == ">" else not cmp.startswith("<") and v > hi):
+        return "H"
+    if lo is not None and (v <= lo if cmp == "<" else not cmp.startswith(">") and v < lo):
+        return "L"
+    return ""
+
+
 TAG_RE = re.compile(r"<[^>]+>")
 
 

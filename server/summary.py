@@ -10,13 +10,17 @@ Sections, each optional (SECTIONS):
                  printed on its own report (the result's own low and high, or the lab's own flag): never one range
                  across results or labs. A result whose report gives no range and no flag is judged against the
                  range the person set in Settings for that lab and unit (#44, server/ranges.py), if one fits; the
-                 range is then printed with "(settings)" after it, and the note under the table says what that is
+                 range is then printed with "(settings)" after it, and the note under the table says what that is.
+                 Every flag worked out from a range is by ranges.judge, the one rule (#752: "<15" against a low of 15 is
+                 low)
   trends         the key labs (overview.keyLabs) and any the person picked: the last result on or before the
                  "since" date, the latest, the change (none from a value given as "<5", #718), and a sparkline of
                  the results between (each [day, value, flag, low, high, "settings" for a range from settings, the
                  value as given], drawn against their ranges, #299), and a
-                 chart of them (#302) whose band says where it's a range from settings (#649), on each of its steps;
-                 a Then or Now flagged against one says so in its cell, with its numbers (#717)
+                 chart of them (#302) whose band has a step for each result with a range (none beside one without,
+                 ranges.steps, #752), each said with its source ("on report", "from settings": #649, #717, #752); a
+                 Then judged against a range other than its row's (its Now's) says so in its cell (#717, #752); under
+                 each table and the charts, what their flags are judged against (notes(), the preview's and the PDF's)
   medications    current medications (status active, or no status and no end date)
   appointments   upcoming appointments
   questions      the person's own questions, typed before generating
@@ -177,18 +181,18 @@ def _pt(p):
             "flag": str(p[4] or "").strip(), "text": str(p[5] or "").strip(), "rs": "report"}
 
 
-def _from_settings(p, name, unit, rcfg):
-    """A result with no range and no flag on its report takes the range set in Settings that fits it (#44)."""
-    if p["v"] is None or ranges.has_own(p["lo"], p["hi"], p["flag"]):
-        return p
-    row = ranges.find(rcfg, name, unit, p["d"])
-    if row is None:
-        return p
-    return {**p, "lo": row["low"], "hi": row["high"], "flag": ranges.flag_for(p["v"], row), "rs": ranges.SOURCE}
+def _judged(p, name, unit, rcfg):
+    """A result's range, flag and its range's source by the one rule (#752, server/ranges.py judge): its report's range and
+    flag; where it gives a range and no flag, the flag worked out against it; where it gives neither, the range set in
+    Settings that fits it (#44, rcfg: ranges.config()), its flag worked out against that."""
+    own = p["v"] is None or ranges.has_own(p["lo"], p["hi"], p["flag"])
+    lo, hi, f, rs = ranges.judge(p["v"], p["lo"], p["hi"], p["flag"], p["text"], None if own else ranges.find(rcfg, name, unit, p["d"]))
+    return {**p, "lo": lo, "hi": hi, "flag": f, "rs": rs}
 
 
 def out_of_range(p):
-    """"High", "Low" or "Abnormal" by the result's own report (its flag, else its own low and high), or None."""
+    """"High", "Low" or "Abnormal" by the result's flag (its report's, else the one worked out against its range,
+    _judged), or None."""
     f = p["flag"].upper()
     if f in ("H", "HH", "HI", "HIGH", ">", "H*", "A>"):
         return "High"
@@ -196,14 +200,7 @@ def out_of_range(p):
         return "Low"
     if f in ("N", "NORMAL", "NEG", "NEGATIVE"):
         return None
-    if f:
-        return "Abnormal"
-    if p["v"] is not None:
-        if p["hi"] is not None and p["v"] > p["hi"]:
-            return "High"
-        if p["lo"] is not None and p["v"] < p["lo"]:
-            return "Low"
-    return None
+    return "Abnormal" if f else None
 
 
 def range_words(lo, hi):
@@ -229,16 +226,26 @@ NOT_WORKED_OUT = "not worked out"   # a trend's change from or to a value given 
 
 def bound(p):
     """A result given as a bound, "<5" or ">90", not as the value measured: no change is worked out from it."""
-    return bool(re.search(r"[<>≤≥]", p["text"]))
+    return bool(ranges.comparator(p["text"]))
 
 
-def at_cell(p):
-    """A trend's Then or Now: its value, day and flag in words (#649); and where it's flagged against a range from
-    settings (its report gave none, #44), that range's numbers, which its cell says (#717: a Then of 4 Low against 5–20
-    from settings sat beside the row's only range, the report's 3–17 of the results since)."""
-    f = out_of_range(p)
-    return {"value": value_text(p), "date": p["d"], "flag": f,
-            **({"settings": range_words(p["lo"], p["hi"])} if f and p["rs"] == ranges.SOURCE else {})}
+def own_range(p):
+    """The range a result is judged against, in words with its source (#752): ["report range", "1.7–2.4"], ["settings
+    range", "5–20"]; with none, ["flagged on its report", ""] or ["no range given", ""]."""
+    w = range_words(p["lo"], p["hi"])
+    if w:
+        return ["settings range" if p["rs"] == ranges.SOURCE else "report range", w]
+    return ["flagged on its report" if p["flag"] else "no range given", ""]
+
+
+def at_cell(p, row=False):
+    """A trend's Then or Now: its value, day and flag in words (#649); and where the range it's judged against isn't the
+    row's (row: its Now, whose range is the row's Now's range; None with none since, the row's range then blank), that
+    range and its source, which its cell says ("own", #717, #752: a Then of 4 Low against 5–20 from settings sat beside
+    the row's only range, the report's 3–17; a Then of 1.6 Low against its report's 1.7–2.4 beside 1.5–2.5 from settings)."""
+    mine = own_range(p)
+    other = row is not False and mine != (own_range(row) if row else ["no range given", ""])
+    return {"value": value_text(p), "date": p["d"], "flag": out_of_range(p), **({"own": mine} if other else {})}
 
 
 def _series(data, rcfg=None):
@@ -254,7 +261,7 @@ def _series(data, rcfg=None):
         for raw in s.get("pts") or []:
             p = _pt(raw)
             if p["d"]:
-                p = _from_settings(p, s["name"], s.get("unit") or "", rcfg)
+                p = _judged(p, s["name"], s.get("unit") or "", rcfg)
                 by.setdefault(s["name"], []).append({**p, "unit": s.get("unit") or "", "src": src})
     out = {}
     for name, pts in by.items():
@@ -393,12 +400,12 @@ def build(db, pid, uid, profile_name, opts):
             line = ([then] if then else []) + after
             if len(line) < 2:   # too few since: the last few results, for some shape
                 line = s["pts"][-6:]
-            # Then flagged as Now is, so the table and the chart agree on it (#649), each saying the range from settings
-            # it's flagged against (#717); each spark point [day, value, flag, low, high, "settings" or None, its value
-            # as given]: its range from settings where its report gave none (#44), the chart's band marked so; its value
-            # as the table says it, "<5" (#718)
+            # Then flagged as Now is, so the table and the chart agree on it (#649), saying the range it's judged against
+            # where that isn't the row's (#717, #752); each spark point [day, value, flag, low, high, "settings" or None,
+            # its value as given]: its range from settings where its report gave none (#44), the chart's band marked so;
+            # its value as the table says it, "<5" (#718)
             rows.append({"name": name, "label": nick.get(name, name), "unit": s["unit"],
-                         "then": then and at_cell(then), "now": last and {**at_cell(last), "range": range_text(last)},
+                         "then": then and at_cell(then, last), "now": last and {**at_cell(last), "range": range_text(last)},
                          "change": change if change in (None, NOT_WORKED_OUT) else ("+" if change > 0 else "") + fmt_num(0 if abs(change) < 1e-9 else change),
                          "since": len(after),
                          "spark": [[p["d"], p["v"], out_of_range(p), p["lo"], p["hi"], ranges.SOURCE if p["rs"] == ranges.SOURCE else None,
@@ -421,12 +428,47 @@ def build(db, pid, uid, profile_name, opts):
     out["extra"] = extra
     if any(r["range"].endswith("(settings)") for r in out.get("out_of_range") or []) or any(map(uses_settings, out.get("trends") or [])):
         out["settings_note"] = SETTINGS_NOTE   # the page shows it under the tables, as the PDF does
+    out["notes"] = notes(out)
     return out
 
 
 def uses_settings(r):
     """A trend whose Now's range, or its chart's and sparkline's band, is a range from settings somewhere (#44, #649)."""
     return ((r["now"] or {}).get("range") or "").endswith("(settings)") or any(p[5] == ranges.SOURCE for p in r["spark"])
+
+
+BOUND_NOTE = " A value given as a bound (“<15”) is out of range only where every value it stands for is."
+
+
+def notes(s):
+    """What the tables' and the charts' flags are judged against, said under each (#717, #752), in the preview and the
+    PDF alike: {"out_of_range", "trends", "charts"} (each only with its section). A range from settings, a cell judged
+    against a range other than its row's, and a value given as a bound are said only where there's one."""
+    out, oor, tr = {}, s.get("out_of_range"), s.get("trends")
+    if oor:
+        out["out_of_range"] = ("(2 of 3): how many of the results since then were out of range. Each is judged against the "
+                               "range printed on its own report" + (", or, where its report gives none, the range from settings, "
+                                                                     "its Range marked “(settings)”" if any(r["range"].endswith("(settings)") for r in oor) else "")
+                               + "." + (BOUND_NOTE if any(ranges.comparator(r["value"]) for r in oor) else ""))
+    if tr:
+        sets = any(map(uses_settings, tr))   # its Now's range, or its sparkline's and chart's band (#649)
+        out["trends"] = ("Then: the last result on or before that day. Since: how many results since. High or Low (in red): "
+                         "outside the range on that result's own report" + (", or, where its report gives none, outside the "
+                                                                            "range from settings" if sets else "") + "."
+                         + (" A Then judged against a range other than its row's (its Now's) gives it in its cell (“report "
+                            "range” or “settings range” and its numbers)." if any((r["then"] or {}).get("own") for r in tr) else "")
+                         + (BOUND_NOTE if any(p[2] and ranges.comparator(p[6]) for r in tr for p in r["spark"]) else "")
+                         + (" Change: not worked out from a value given as “<5” or “>90”." if any(r["change"] == NOT_WORKED_OUT for r in tr) else ""))
+        drawn = [r for r in tr if sum(1 for p in r["spark"] if p[1] is not None) > 1]   # (_charts': two results or more)
+        if drawn:
+            sets = any(p[5] == ranges.SOURCE for r in drawn for p in r["spark"])
+            out["charts"] = ("Charts: the last result on or before that day and each since (with none since, the last few), the "
+                             "shaded band each result's own reference range" + (" or, for a result whose report gives none, the "
+                                                                                "range from settings" if sets else "")
+                             + ", each step marked “on report”" + (" or “from settings”, none beside a result with neither" if sets
+                                                                   else ", none beside a result whose report gives none")
+                             + "; a red triangle pointing up or down, a result above or below it.")
+    return out
 
 
 # ---------------------------------------------------------------- the PDF
@@ -540,17 +582,16 @@ def _spark(page, row, x, y, w, h=10):
     line = len(pts) > 2
     use = pts if line else pts[-1:]
     days = [datetime.date.fromisoformat(p[0]).toordinal() for p in use]
-    ranged = [(t, p[3], p[4]) for t, p in zip(days, use) if p[3] is not None or p[4] is not None]
-    if not line and not ranged:
+    band = ranges.steps([(t, p[3], p[4], p[5]) for t, p in zip(days, use)], -math.inf, math.inf)   # (#752: none beside a result without one)
+    if not line and not band:
         return
-    los, his = [r[1] for r in ranged if r[1] is not None], [r[2] for r in ranged if r[2] is not None]
+    los, his = [r[2] for r in band if r[2] is not None], [r[3] for r in band if r[3] is not None]
     v0, v1 = spark_span([p[1] for p in use], min(los) if los else None, max(his) if his else None)
     t0, t1 = (days[0], days[-1]) if line else (days[0] - 1, days[0])
     X = lambda t: x + 2 + (t - t0) / ((t1 - t0) or 1) * (w - 4)   # the latest dot over the band's end, not past it
     Y = lambda v: y + (v - v0) / (v1 - v0) * h
-    for i, (t, lo, hi) in enumerate(ranged):   # each step from halfway after the result before to halfway to the next
-        a = x if i == 0 else max(x, X((ranged[i - 1][0] + t) / 2))
-        b = x + w if i == len(ranged) - 1 else min(x + w, X((t + ranged[i + 1][0]) / 2))
+    for ta, tb, lo, hi, _ in band:   # each result's step from halfway after the result before to halfway to the next
+        a, b = max(x, X(ta)), min(x + w, X(tb))
         bot, top = Y(lo) if lo is not None else y, Y(hi) if hi is not None else y + h
         if b > a and top > bot:
             page.rect(a, bot, b - a, top - bot, BAND)
@@ -603,10 +644,11 @@ def _chart(page, row, names, x, top, w):
     for v in ticks:
         page.line(L, Y(v), R, Y(v), 0.3, RULE)
         page.text_right(L - 2, Y(v) - 2.2, fmt_num(v), 6.5, False, MUTED)
-    ranged = [(t, p[3], p[4]) for t, p in zip(days, pts) if p[3] is not None or p[4] is not None]
-    for i, (t, rlo, rhi) in enumerate(ranged):   # each step from halfway after the result before to halfway to the next
-        a = L if i == 0 else X((ranged[i - 1][0] + t) / 2)
-        b = R if i == len(ranged) - 1 else X((t + ranged[i + 1][0]) / 2)
+    # the band's steps (server/ranges.py steps, as ranges.js rangeSteps): each result's range from halfway after the
+    # result before it to halfway to the next, none beside a result whose report gave none (#752); neighbours with the
+    # same range from the same source one
+    steps = [[X(a), X(b), rlo, rhi, rs] for a, b, rlo, rhi, rs in ranges.steps([(t, p[3], p[4], p[5]) for t, p in zip(days, pts)], t0, t1)]
+    for a, b, rlo, rhi, _ in steps:
         bot, tp = Y(rlo) if rlo is not None else B, Y(rhi) if rhi is not None else T
         page.rect(a, bot, b - a, tp - bot, SHADE)
         for e in (rlo, rhi):
@@ -624,42 +666,44 @@ def _chart(page, row, names, x, top, w):
             page.shape([(cx, cy + s), (cx + s, cy), (cx, cy - s), (cx - s, cy)], CRIT)
         else:
             page.dot(cx, cy, 1.4, LAB)
-    # the band's steps (ranges.js rangeSteps): neighbours with the same range from the same source one. Each from
-    # settings said so, as the preview's: the end's at the plot's right (#649), each before it over its own stretch (#717)
-    steps = []
-    for i, ((t, rlo, rhi), rs) in enumerate(zip(ranged, [p[5] for p in pts if p[3] is not None or p[4] is not None])):
-        b = R if i == len(ranged) - 1 else X((t + ranged[i + 1][0]) / 2)
-        if steps and steps[-1][2:] == [rlo, rhi, rs]:
-            steps[-1][1] = b
-        else:
-            steps.append([L if i == 0 else X((ranged[i - 1][0] + t) / 2), b, rlo, rhi, rs])
+    # each step said with its source, as the preview's (chartkit.js ckBandLabels, #649, #717, #752): the latest at the
+    # plot's right where it reaches it, else over its own stretch, each before it over its own; then the rest clear of it
     marks, taken = [(X(t), Y(p[1])) for t, p in zip(days, pts)], []
-    for n, (a, b, rlo, rhi, rs) in [*enumerate(steps)][::-1]:   # the end's first, at its place; then the rest clear of it
-        if rs == ranges.SOURCE:
-            box = _band_label(page, f"{range_words(rlo, rhi)} from settings", rlo, rhi, marks, L, R, T, B, Y,
-                              span=None if n == len(steps) - 1 else (a, b), taken=taken)
-            taken += [box] if box else []
+    for n, (a, b, rlo, rhi, rs) in [*enumerate(steps)][::-1]:
+        last = n == len(steps) - 1
+        box = _band_label(page, f"{range_words(rlo, rhi)} {band_source(rs)}", rlo, rhi, marks, L, R, T, B, Y,
+                          span=None if b >= R - 0.5 else (a, b), taken=taken, alone=last or rs != steps[n + 1][4], src=band_source(rs))
+        taken += [box] if box else []
     page.text(L, B - 9, _short(pts[0][0]), 6.5, False, MUTED)
     page.text_right(R, B - 9, _short(pts[-1][0]), 6.5, False, MUTED)
 
 
-def _band_label(page, words, lo, hi, marks, L, R, T, B, Y, size=6.5, span=None, taken=()):
-    """The band's words at the right of a chart's plot (chartkit.js ckBandLabel): inside the band under its top edge,
-    else over its foot, else just over or under it, whichever is first clear of every result (marks) and inside the
-    plot, B to T (y up); where the words are wider than the plot, "from settings" alone (as the preview's). span (a, b):
-    a step before the band's end instead (#717, chartkit.js ckSolo's): centred on its stretch inside the plot, "from
-    settings" alone where the numbers don't fit in it too. Never over a label placed already (taken: their boxes).
-    -> its box (x0, x1, baseline), or None"""
+def band_source(rs):
+    """A band step's source in words (#752; ranges.js rangeSrc): "on report" or "from settings"."""
+    return "from settings" if rs == ranges.SOURCE else "on report"
+
+
+def _band_label(page, words, lo, hi, marks, L, R, T, B, Y, size=6.5, span=None, taken=(), alone=True, src=None):
+    """A band step's words, its numbers and source (chartkit.js ckBandLabel, ckBandLabels): at the right of a chart's
+    plot, inside the band under its top edge, else over its foot, else just over or under it, whichever is first clear
+    of every result (marks) and inside the plot, B to T (y up); where the words are wider than the plot, its source (src)
+    alone (as the preview's). span (a, b): a step that doesn't reach the plot's right end instead (#717, #752): centred
+    on its stretch inside the plot; where its numbers don't fit there, its source alone ("on report", "from settings"),
+    which may run past it if alone (the latest step, or one whose source isn't the next's), else only where it fits
+    there. Never over a label placed already (taken: their boxes). -> its box (x0, x1, baseline), or None"""
+    src = src or words
     if span:
         a, b = span
         if pdfdoc.width(words, size) > b - a - 4:
-            words = words.split(" ", 1)[-1]
+            words = src
         w = pdfdoc.width(words, size)
+        if w > (R - L - 4 if alone else b - a - 4):
+            return None
         x1 = max(L + 2, min(R - 2 - w, (a + b - w) / 2)) + w
     else:
         x1 = R - 2
         if x1 - pdfdoc.width(words, size) < L:
-            words = words.split(" ", 1)[-1]
+            words = src
     x0, cap = x1 - pdfdoc.width(words, size), size * 0.72
     top, foot = min(T, Y(hi)) if hi is not None else T, max(B, Y(lo)) if lo is not None else B
     at = [yb for yb in ([top - cap - 1.5, foot + 1.5] if top - foot >= cap + 4 else []) + [top + 1.5, foot - cap - 1.5]
@@ -675,8 +719,9 @@ def _chart_h(names):
     return 8 + 9 * (len(names) - 1) + 7 + CHART_H + 16
 
 
-def _charts(lay, rows):
-    """The trends' charts (#302), CHART_COLS a row, each row kept whole on a page: those of two results or more."""
+def _charts(lay, rows, note):
+    """The trends' charts (#302), CHART_COLS a row, each row kept whole on a page: those of two results or more; note
+    under them (notes()'s "charts")."""
     rows = [r for r in rows if sum(1 for p in r["spark"] if p[1] is not None) > 1]
     gap = 12
     lay.y -= 4
@@ -689,12 +734,8 @@ def _charts(lay, rows):
         for j, (r, n) in enumerate(zip(part, names)):
             _chart(lay.page, r, n, MARGIN + j * (cw + gap), lay.y + 6, cw)
         lay.y -= h
-    if rows:   # a range from settings said as such (#649): the band isn't the report's there
-        sets = any(p[5] == ranges.SOURCE for r in rows for p in r["spark"])
-        lay.note("Charts: the last result on or before that day and each since (with none since, the last few), the shaded "
-                 "band each result's own reference range" + (" or, for a result whose report gives none, the range from "
-                                                             "settings (“from settings” on the band where it is one)" if sets else "") +
-                 "; a red triangle pointing up or down, a result above or below it.", 7.5)
+    if rows and note:   # what the band is (#649, #752): a range from settings said as such, the band isn't the report's there
+        lay.note(note, 7.5)
 
 
 # the trends table's columns: Now is wide enough for a value with its flag in words and a date from an earlier year,
@@ -705,12 +746,14 @@ TREND_COLS = [("TEST", 114), ("THEN", 88), ("NOW", 112), ("CHANGE", 38), ("SINCE
 
 def now_cell(now, none="no new result"):
     """The trends table's Now cell, and its Then cell (#649): the value, its flag in words when out of range (bold and
-    red: a tuple) and the range from settings it's against where it's one (#717), the date."""
+    red: a tuple), the date, and the range it's judged against where that isn't the row's (#717, #752: at_cell's own,
+    on a line of its own, "4 Low  Aug 15" over "(settings range 5–20)", so the date isn't broken)."""
     if not now:
         return none
-    if now.get("flag"):   # (the range from settings on a line of its own: "4 Low (settings range 5–20) Aug" over "15")
-        return (f"{now['value']} {now['flag']}  {_short(now['date'])}" + (f"\n(settings range {now['settings']})" if now.get("settings") else ""),)
-    return f"{now['value']}  {_short(now['date'])}"
+    own = f"\n({' '.join(w for w in now['own'] if w)})" if now.get("own") else ""
+    if now.get("flag"):
+        return (f"{now['value']} {now['flag']}  {_short(now['date'])}{own}",)
+    return f"{now['value']}  {_short(now['date'])}{own}"
 
 
 def _when(d):
@@ -752,7 +795,7 @@ def _render(s, charts):
         lay.y -= 13
     lay.y += 5
 
-    labels = dict(sections())
+    labels, said = dict(sections()), s.get("notes") or notes(s)
     for sid in s["sections"]:
         try:
             if sid == "out_of_range":
@@ -765,11 +808,8 @@ def _render(s, charts):
                           rows, lambda r: [r["label"] + (f"  ({r['out']} of {r['of']})" if r["of"] > 1 else ""),
                                            f"{r['value']} {r['unit']}".strip(), (r["flag"],), r["range"] or "not given",
                                            _when(r["date"]), r["source"]])
-                settings = any(r["range"].endswith("(settings)") for r in rows)   # what each is judged against (#717)
-                lay.note("(2 of 3): how many of the results since then were out of range. Each is judged against the "
-                         "range printed on its own report" + (", or, where its report gives none, the range from settings, "
-                                                               "its Range marked “(settings)”" if settings else "") + ".", 7.5)
-                if settings:
+                lay.note(said["out_of_range"], 7.5)   # what each is judged against (#717, #752), as the preview says it
+                if any(r["range"].endswith("(settings)") for r in rows):
                     lay.note(SETTINGS_NOTE, 7.5)
             elif sid == "trends":
                 rows = s["trends"]
@@ -783,17 +823,12 @@ def _render(s, charts):
                                            now_cell(r["now"]), r["change"] or "", str(r["since"]), None,
                                            (r["now"] or {}).get("range") or ""],
                           _spark)
-                settings = any(map(uses_settings, rows))   # its Now's range, or its sparkline's and chart's band (#649)
-                lay.note("Then: the last result on or before that day. Since: how many results since. High or Low (in "
-                         "red): outside the range on that result's own report" + (", or, where its report gives none, "
-                         "outside the range from settings, which its cell then gives (“settings range” and its numbers)"
-                         if settings else "") + "." + (" Change: not worked out from a value given as “<5” or “>90”."
-                                                       if any(r["change"] == NOT_WORKED_OUT for r in rows) else ""), 7.5)
-                # (what each flag is judged against, #717: "marked so", and none was; and why a change isn't given, #718)
-                if settings:
+                # what each flag is judged against (#717: "marked so", and none was; #752), and why a change isn't given (#718)
+                lay.note(said["trends"], 7.5)
+                if any(map(uses_settings, rows)):   # its Now's range, or its sparkline's and chart's band (#649)
                     lay.note(SETTINGS_NOTE, 7.5)
                 if charts:
-                    _charts(lay, rows)
+                    _charts(lay, rows, said.get("charts"))
             elif sid == "medications":
                 rows = s["medications"]
                 lay.heading("Current medications", len(rows))
