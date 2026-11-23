@@ -39,6 +39,7 @@ way. Only the fields named here leave the server. Values are in the units of the
 A table's columns can follow what it has (#232): glucose without CGM days has no time-in-ranges columns, and blood
 oxygen has a Readings column only when some were typed in.
 """
+from bisect import bisect_left, insort
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -63,8 +64,9 @@ SECTIONS = [   # (id, label, what a share link shows: said on the owner's form a
                                                        "recording's average heart rate, and the device that made it; not the "
                                                        "traces themselves"),
     ("bmi", "BMI and growth", "each weight with the height in effect on its day and the BMI from them, and where each "
-                              "weight came from (the smart scale, or a clinic visit and its clinic); for a child, where each "
-                              "measurement falls on the WHO's or the CDC's growth charts"),
+                              "weight came from (the smart scale, or a clinic visit and its clinic), and how many of the "
+                              "scale's were left out; for a child, where each measurement falls on the WHO's or the CDC's "
+                              "growth charts"),   # (#754: the scale's left out, how many and why)
     ("targets", "Your targets for home readings", "each target typed in as the care team gave it, who set it and when, and how many "
                                                   "readings at home, or days of steps counted by the phone, were above or "
                                                   "below it; for a CGM target, the share of the CGM readings in it, below it "
@@ -378,11 +380,61 @@ def ecg_block(c, keep, most):
                   "No ECGs or irregular rhythm notifications in this period.", most, of="ECGs and notifications")
 
 
+W_OUT_DAYS, W_OUT_SHARE = 90, 0.12
+W_OUT_WHY = "more than 12% from the median of the weights within 90 days of it"
+
+
+def scale_left_out(scale, clinic):
+    """The smart scale's days whose weight is left out (#754), as the page leaves them out (store.js weightsOut): one
+    more than 12% from the median of the other weights, the scale's and the visits', less than 90 days either side,
+    where there are 3 or more (a profile's weight typed into another app, someone else on the scale), and one not
+    above 0. scale, clinic: [(day, weight)] in the same unit -> a set of the scale's days. Step for step as the page's:
+    one pass in time order, the weights within 90 days kept in order of weight as it goes."""
+    day = lambda d: datetime.fromisoformat(d[:10]).toordinal()
+    ref = sorted(((day(d), v) for d, v in [*scale, *clinic] if v > 0), key=lambda r: r[0])
+    win, out, i, j = [], set(), 0, 0   # ref[i:j]: the weights within 90 days of this one, their values in win, in order
+    for d, v in sorted(scale, key=lambda p: day(p[0])):
+        if not v > 0:
+            out.add(d)
+            continue
+        t = day(d)
+        while j < len(ref) and ref[j][0] < t + W_OUT_DAYS:
+            insort(win, ref[j][1])
+            j += 1
+        while i < j and ref[i][0] <= t - W_OUT_DAYS:
+            del win[bisect_left(win, ref[i][1])]
+            i += 1
+        n = len(win) - 1   # the others: win less this one; of an even count, the upper of the two middles
+        mid = (win[n >> 1] if n >> 1 < bisect_left(win, v) else win[(n >> 1) + 1]) if n >= 3 else None
+        if mid and abs(v - mid) / mid > W_OUT_SHARE:
+            out.add(d)
+    return out
+
+
+def _scale(c):
+    """The smart scale's [(day, weight)] kept, and those left out (scale_left_out), as sent (lb): worked out once."""
+    if "_scale" not in c.__dict__:
+        clinic = [(_day(w[0]), w[1]) for w in c.data.get("clinicWeights") or []
+                  if isinstance(w, list) and len(w) >= 2 and _day(w[0]) and _num(w[1]) and w[1] > 0]
+        pts = c.pts("weight")
+        gone = scale_left_out(pts, clinic)
+        c._scale = ([p for p in pts if p[0] not in gone], [p for p in pts if p[0] in gone])
+    return c._scale
+
+
+def _left_out(c, keep):
+    """"1 weight from the smart scale left out: more than 12% …", for the period's, or ""."""
+    n = sum(1 for d, _ in _scale(c)[1] if keep(d))
+    return f"1 weight from the smart scale left out: {W_OUT_WHY}." if n == 1 else \
+        f"{n:,} weights from the smart scale left out: each {W_OUT_WHY}." if n else ""
+
+
 def _weights(c):
-    """[(day, kg, where)] oldest first: the smart scale's days, and the clinic visits' weights on other days."""
+    """[(day, kg, where)] oldest first: the smart scale's days, less those left out (#754), and the clinic visits'
+    weights on other days."""
     m = c.metrics.get("weight") or {}
     kg = person.LB_KG if str(m.get("unit") or "lb") == "lb" else 1
-    out = {d: (v * kg, "smart scale") for d, v in c.pts("weight") if v > 0}
+    out = {d: (v * kg, "smart scale") for d, v in _scale(c)[0]}
     for w in c.data.get("clinicWeights") or []:
         if isinstance(w, list) and len(w) >= 2 and _day(w[0]) and _num(w[1]) and w[1] > 0 and _day(w[0]) not in out:
             out[_day(w[0])] = (w[1] * person.LB_KG, f"clinic visit ({w[2]})" if len(w) > 2 and w[2] else "clinic visit")
@@ -433,7 +485,7 @@ def bmi(c, keep, most):
                              f"About this person; {'WHO' if growth.chart(a['days']) == 'who' else 'CDC'} chart"])
     rows.sort(key=lambda r: (r[0], r[1]), reverse=True)
     bmis = [r for r in rows if r[1] == "BMI"]
-    lead = [f"{_s(len(bmis), 'BMI')} from the weights and heights · latest {bmis[0][2]}" if bmis else ""]
+    lead = [f"{_s(len(bmis), 'BMI')} from the weights and heights · latest {bmis[0][2]}" if bmis else "", _left_out(c, keep)]   # (#754)
     note = ("BMI: each weight with the height in effect on its day (About this person); the number only. Percentiles: where a "
             "child's measurement falls, for age and sex, on the WHO Child Growth Standards (to 2 years) or the CDC growth charts "
             "(2 to 20); not what that means." if child else
@@ -510,10 +562,13 @@ def targets_block(c, keep, most):
         elif k == "spo2":
             when = _outside(sides([v for d, v in c.pts("spo2_avg") if keep(d)] +
                                   [_num(r[1]) for _, r in _home(c, "spo2_readings", keep, (1,), 3)]))
-        else:   # weight: the smart scale's days, in the unit shown
+        else:   # weight: the smart scale's days, in the unit shown, less those left out, said (#754)
             m = c.metrics.get("weight") or {}
             to_kg = person.LB_KG if str(m.get("unit") or "lb") == "lb" else 1
-            when = _outside(sides([conv(v * to_kg) for d, v in c.pts("weight") if v > 0 and keep(d)]), "weights")
+            when = _outside(sides([conv(v * to_kg) for d, v in _scale(c)[0] if keep(d)]), "weights")
+            gone = sum(1 for d, _ in _scale(c)[1] if keep(d))
+            when += f"; {gone:,} left out" if gone else ""
+            lead.append(_left_out(c, keep))
         rows.append([T_NAMES[k], text, t.get("by") or "", t.get("on") or "", when])
     lead.insert(0, "Each target as the person's care team gave it, typed in by them or their family: Sanguity doesn't suggest targets. "
                    "The readings taken at home in this period" + (", and each day's steps counted by the phone," if T.get("steps") else "") +

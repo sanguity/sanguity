@@ -763,6 +763,51 @@ class Summary(unittest.TestCase):
         self.assertAlmostEqual(growth.pct(growth.tables(), "weight", "male", 100, 8.1), 96.711, 2)   # the page's own number
         self.assertEqual([growth.pct_text(p) for p in (0.2, 1, 2.4, 22.6, 99.7)], ["below the 1st", "1st", "2nd", "23rd", "above the 99th"])
 
+    def test_scale_weights_left_out(self):
+        """#754: a scale's weight more than 12% from the median of the other weights (the scale's and the visits'),
+        less than 90 days either side, where there are 3 or more, is left out of BMI and a weight target's count, as
+        Body, the Overview and the overview strip leave it out (store.js weightsOut, the same rule: the browser check
+        compares them at these edges), and each section says how many were left out and why; a visit's weight fills
+        the day of one left out, as it fills any day without a scale's."""
+        out = lambda scale, clinic=(): measures.scale_left_out(list(scale), list(clinic))
+        flat = [("2026-01-01", 100), ("2026-01-02", 100), ("2026-01-03", 100)]
+        self.assertEqual(out(flat + [("2026-01-04", 112), ("2026-01-05", 112.1)]), {"2026-01-05"}, "12% from the median kept, past it not")
+        self.assertEqual(out(flat + [("2026-01-04", 88)]), set(), "below it too")
+        self.assertEqual(out(flat + [("2026-01-04", 87.9)]), {"2026-01-04"})
+        visits = lambda *days: [(x, 100) for x in days]
+        self.assertEqual(out([("2026-01-01", 150)], visits("2025-10-03", "2025-10-04", "2025-10-05")), set(), "90 days before isn't near: 2 others")
+        self.assertEqual(out([("2026-01-01", 150)], visits("2025-10-04", "2025-10-05", "2025-10-06")), {"2026-01-01"}, "89 days is")
+        self.assertEqual(out([("2026-01-01", 150)], visits("2026-04-01", "2026-03-31", "2026-03-30")), set(), "nor 90 days after")
+        self.assertEqual(out([("2026-01-01", 150)], visits("2026-03-31", "2026-03-30", "2026-03-29")), {"2026-01-01"})
+        self.assertEqual(out([("2026-01-01", 100), ("2026-01-10", 300)]), set(), "fewer than 3 others: kept")
+        self.assertEqual(out([("2026-01-01", 100), ("2026-01-02", 100), ("2026-01-03", 130), ("2026-01-04", 130), ("2026-01-05", 0)],
+                             [("2026-01-06", 130)]), {"2026-01-01", "2026-01-02", "2026-01-05"}, "of an even count, the upper middle; none above 0")
+        self.assertEqual(out([("2026-03-01", 180), ("2026-03-02", 181), ("2026-03-03", 140)], [("2026-03-03", 180.5), ("2026-02-01", 179)]),
+                         {"2026-03-03"}, "the visits' weights are among the others")
+        self.assertEqual(out([("2026-03-01", 180), ("2026-03-02", 181), ("2026-03-03", 140)]), set())
+        # the sections: 60 days of a scale's weights, two left out (one high, the latest low), a visit's weight that day
+        pts = [[d(i), {-30: 212.0, -1: 141.0}.get(i, 176.5 + i % 3 / 10)] for i in range(-60, 0)]
+        c = lambda: measures.Ctx({"metrics": [{"key": "weight", "unit": "lb", "pts": pts}]},
+                                 {"clinicWeights": [[d(-1) + "T09:30:00", 176.0, "Lakeside Clinic (fictional)"]]},
+                                 {"person": {"heights": [{"date": d(-400), "cm": 178.0, "unit": "cm"}], "targets": {"weight": {"high": 90.0, "unit": "lb"}}}})
+        b = measures.blocks(c(), ["bmi", "targets"], lambda x: True)
+        rows = {r[0]: r for r in b["bmi"]["rows"]}
+        self.assertEqual((len(rows), b["bmi"]["total"]), (59, 59), "58 of the scale's weights and the visit's")
+        self.assertNotIn(d(-30), rows)
+        self.assertIn("weight 176 lb (clinic visit (Lakeside Clinic (fictional)))", rows[d(-1)][4], "the visit's weight on the day left out")
+        self.assertNotIn("141", json.dumps(b))
+        why = "2 weights from the smart scale left out: each more than 12% from the median of the weights within 90 days of it."
+        self.assertEqual(b["bmi"]["lead"][1:], [why])
+        weight = next(r for r in b["targets"]["rows"] if r[0] == "Weight")
+        self.assertEqual(weight[1::3], ["up to 198.4 lb", "None of 58 outside it; 2 left out"], "212 lb, above it, isn't counted")
+        self.assertIn(why, b["targets"]["lead"])
+        b = measures.blocks(c(), ["bmi", "targets"], lambda x: x >= d(-10))
+        self.assertEqual(b["bmi"]["lead"][1:], ["1 weight from the smart scale left out: more than 12% from the median of the weights within 90 days of it."],
+                         "the period's only")
+        self.assertEqual(next(r for r in b["targets"]["rows"] if r[0] == "Weight")[4], "None of 9 outside it; 1 left out")
+        b = measures.blocks(c(), ["bmi", "targets"], lambda x: x < d(-40))
+        self.assertEqual((b["bmi"]["lead"][1:], next(r for r in b["targets"]["rows"] if r[0] == "Weight")[4]), ([], "None of 20 outside it"), "none in the period: nothing said")
+
 
 class SharedDraftMoves(unittest.TestCase):
     """(#219) Schema step 31 moves each profile's shared draft (the settings key summary.questions) once: to whoever

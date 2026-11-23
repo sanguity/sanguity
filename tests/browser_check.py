@@ -6918,6 +6918,122 @@ def main():
             settle(300)
             check("…and put back as it was (no height, no birth date)", st195 == [200, 200, 200] and js("!personOf().heights.length && !personOf().birthDate"), st195)
 
+            # ---- one set of weights (#754): a scale's weight more than 12% from the median of the weights within 90
+            # days of it is left out where the weight series is made (store.js weightsOut), so the Overview's tile and
+            # sparkline, Body's tile, chart, table and strip, the visit summary and a share link have the same weights,
+            # and Body's card and the summary's and the link's sections say how many were left out, and why. The page's
+            # rule is the server's (measures.scale_left_out) at its edges. A profile of its own: a scale's daily weights
+            # with two left out (one high, and the latest, low), a visit's weight on a day the scale has none, a height
+            # and a weight target. 1400 and 320 px, light and dark, axe-core
+            from datetime import date as date754, timedelta as td754
+            from server import db as dbm, measures as meas754, profiles as prof754, records as rec754
+            edges754 = [   # [scale, clinic]: [[day, weight]]
+                [[["2026-01-01", 100], ["2026-01-02", 100], ["2026-01-03", 100], ["2026-01-04", 112], ["2026-01-05", 112.1]], []],   # 12% kept, past it not
+                [[["2026-01-01", 150]], [["2025-10-03T09:00:00", 100], ["2025-10-04T09:00:00", 100], ["2025-10-05T09:00:00", 100]]],   # 90 days before: not near; 89: near
+                [[["2026-01-01", 100], ["2026-01-10", 300]], []],   # fewer than 3 others: kept
+                [[["2026-01-01", 100], ["2026-01-02", 100], ["2026-01-03", 130], ["2026-01-04", 130], ["2026-01-05", 0]], [["2026-01-06T10:00:00", 130]]],   # the upper of two middles; 0
+                [[["2026-03-01", 180], ["2026-03-02", 181], ["2026-03-03", 140]], [["2026-03-03T08:00:00", 180.5], ["2026-02-01T08:00:00", 179]]]]   # a visit's weight counts
+            page754 = js("cases => typeof weightsOut === 'function' && cases.map(([s, c]) => [...weightsOut(s, c)].sort())", edges754)
+            want754 = [sorted(meas754.scale_left_out([tuple(x) for x in s], [(x[0][:10], x[1]) for x in c])) for s, c in edges754]
+            check("one set of weights (#754): the page leaves out the scale's weights the server does, at the rule's edges (12%, 90 days, 3 others, the median, a visit's)",
+                  page754 == want754 and want754 == [["2026-01-05"], [], [], ["2026-01-01", "2026-01-02", "2026-01-05"], ["2026-03-03"]], [page754, want754])
+            days754 = [(date754(2026, 8, 1) + td754(days=i)).isoformat() for i in range(107)]   # to Nov 15
+            odd754 = {"2026-10-10": 212.0, "2026-11-15": 141.0}
+            wf754 = os.path.join(TMP, "watch754", "daily.json")
+            os.makedirs(os.path.dirname(wf754), exist_ok=True)
+            with open(wf754, "w") as f:
+                json.dump({"last_payload": "2026-11-15T07:00:00Z", "exercise": [], "metrics": [
+                    {"key": "weight", "name": "Weight", "unit": "lb", "group": "Body",
+                     "pts": [[d, odd754.get(d, round(176.5 + i * 7 % 11 / 10, 1))] for i, d in enumerate(days754) if d != "2026-09-02"]},
+                    {"key": "steps", "name": "Steps", "unit": "steps", "group": "Activity", "pts": [[d, 6000 + i * 37 % 3000] for i, d in enumerate(days754)]}]}, f)
+            db = dbm.connect()
+            pid754 = prof754.create_profile(db, "Scale (fictional)", owner_id=db.execute("SELECT id FROM users WHERE username=?", (USER,)).fetchone()["id"], watch_file=wf754)
+            with dbm.transaction(db):
+                rec754.store(db, pid754, {"built": "2026-11-15", "source": "fictional", "details": {}, "costs": [], "upcoming": [], "labs": [],
+                                          "events": [{"id": 1, "t": "2026-09-02T09:30:00", "k": "visit", "title": "Office visit", "sub": "Lakeside Clinic (fictional)"}],
+                                          "clinicWeights": [["2026-09-02T09:30:00", 176.0, "Lakeside Clinic (fictional)"]]}, "upload", fmt="ccda")
+            db.close()
+            api754 = lambda m, path, body=None: js("([m, p, b]) => fetch('api/' + p, {method: m, headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, "
+                                                   "body: b == null ? undefined : JSON.stringify(b)}).then(async r => [r.status, await r.json().catch(() => null)])", [m, path, body])
+            was754 = js("localStorage.getItem('ht-profile')")
+            st754 = [api754("POST", f"profiles/{pid754}/person/heights", {"date": "2019-01-10", "unit": "cm", "cm": 178})[0],
+                     api754("PUT", f"profiles/{pid754}/person", {"targets": {"weight": {"high": 180, "unit": "lb"}}})[0]]
+            page.goto(base + f"/?profile={pid754}")
+            page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {pid754}", timeout=20000)
+            js("switchTab('overview')")
+            settle(400)
+            ov754 = js("""(() => { const t = [...document.querySelectorAll('#view-overview .tile')].find(t => t.querySelector('.lbl')?.textContent === 'Weight');
+                return t && [t.querySelector('.val').firstChild.textContent, t.querySelector('.delta').textContent, (t.querySelector('svg.spark path')?.getAttribute('d').match(/[ML]/g) || []).length]; })()""")
+            js("state.tables.clear(); setRange(dayTs('2026-08-01'), dayTs('2026-11-15')); switchTab('health')")
+            settle(500)
+            body754 = js("""(() => { const w = [...H.scale, ...H.clinic].filter(p => p[0] >= state.from && p[0] <= state.to).sort((p, q) => p[0] - q[0]);
+                return {tile: [...document.querySelectorAll('#view-health .tile')].find(t => t.querySelector('.lbl').textContent === 'Weight')?.querySelector('.val').firstChild.textContent,
+                  chart: document.querySelector('#h-body svg.ck').getAttribute('aria-label'), said: document.querySelector('#h-body .h-wout')?.textContent || '',
+                  w: w.map(p => [isoDay(p[0]), +p[1].toFixed(1)]), scale: H.scale.filter(p => p[0] >= state.from && p[0] <= state.to).length,
+                  latest: fmtD(w.at(-1)[0]), from: fmtD(w[0][0]), oct10: fmtD(dayTs('2026-10-10')), nov15: fmtD(dayTs('2026-11-15')),
+                  strip: stripMemo && stripMemo.key.startsWith('health') ? stripMemo.bins.n.reduce((a, b) => a + b, 0) : null,
+                  inStrip: (([a, b]) => [...H.scale, ...H.clinic, ...H.steps].filter(p => p[0] >= a && p[0] <= b).length)(allSpan())}; })()""")
+            js("state.tables.add('#h-body'); renderHealth()")
+            settle(300)
+            tb754 = js("""[[...document.querySelectorAll('#h-body table.data tbody tr')].map(r => [r.cells[0].textContent, r.cells[1].textContent]),
+                [...H.scale, ...H.clinic].filter(p => p[0] >= state.from && p[0] <= state.to).sort((p, q) => q[0] - p[0]).map(p => [fmtD(p[0]), p[1].toFixed(1)]),
+                document.querySelector('#h-body .h-wout')?.textContent || '']""")
+            js("state.tables.clear(); renderHealth()")
+            settle(200)
+            n754 = len(body754["w"])
+            check("…the Overview's Weight tile and its sparkline have the weights Body has: the latest kept, its day, a point for each over the year (the latest left out)",
+                  ov754 and ov754[0] == body754["tile"] == f"{body754['w'][-1][1]:.1f}" and ov754[1].endswith(body754["latest"]) and ov754[2] == n754
+                  and [d for d, _ in body754["w"]][-1] == "2026-11-14" and not {"2026-10-10", "2026-11-15"} & {d for d, _ in body754["w"]}, [ov754, body754["tile"], n754])
+            check("…Body's chart names them, its table lists them, the overview strip counts them with the phone's steps, and none left out",
+                  body754["chart"].startswith(f"Weight: {n754} readings from {body754['from']} to {body754['latest']}.") and [r[1].split(" ")[0] for r in tb754[0]] == [v for _, v in tb754[1]]
+                  and [r[0] for r in tb754[0]] == [d for d, _ in tb754[1]] and body754["strip"] == body754["inStrip"], [body754["chart"], len(tb754[0]), body754["strip"], body754["inStrip"]])
+            said754 = (f"2 scale readings left out, each more than 12% from the median of the weights within 90 days of it: 212.0 lb on {body754['oct10']} "
+                       f"and 141.0 lb on {body754['nov15']}.")
+            check("…Body's card says how many it left out, which and why, in Chart and in Table", body754["said"] == said754 and tb754[2] == said754, [body754["said"], tb754[2]])
+            sm754 = api754("POST", f"profiles/{pid754}/summary/preview", {"appointment": None, "since": "2026-07-31", "sections": ["bmi", "targets"], "labs": [], "questions": ""})
+            lk754 = api754("POST", f"profiles/{pid754}/links", {"sections": ["bmi", "targets"], "from": "2026-08-01", "label": "Weights (browser check)", "hours": 1})
+            sh754 = js("t => fetch('api/share/view', {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, body: JSON.stringify({token: t})}).then(r => r.json())",
+                       lk754[1]["path"].split("#", 1)[1]) if lk754[0] == 200 else {}
+            why754 = "2 weights from the smart scale left out: each more than 12% from the median of the weights within 90 days of it."
+
+            def weights754(b):   # a BMI block's weights, oldest first, and its leads
+                return [[r[0], float(re.search(r"weight ([\d.]+) lb", r[4]).group(1))] for r in reversed(b["rows"]) if r[1] == "BMI"], b["total"], b["lead"]
+            got754 = {k: weights754(m["bmi"]) for k, m in (("summary", (sm754[1] or {}).get("measures") or {}), ("link", sh754)) if m.get("bmi")}
+            tg754 = {k: next((r[4] for r in m["targets"]["rows"] if r[0] == "Weight"), "") for k, m in (("summary", (sm754[1] or {}).get("measures") or {}), ("link", sh754)) if m.get("targets")}
+            check("…the visit summary and a share link list the same weights in their BMI section, and say how many were left out and why",
+                  st754 == [200, 200] and set(got754) == {"summary", "link"} and all(len(g[0]) >= 12 and g[0] == body754["w"][-len(g[0]):] and g[1] == n754 and why754 in g[2] for g in got754.values()),
+                  [st754, {k: [[x for x in g[0] if x not in body754["w"]], len(g[0]), g[1], g[2]] for k, g in got754.items()}])
+            check("…and a weight target counts the weights Body compares with it, saying how many were left out",
+                  tg754 == {"summary": f"None of {body754['scale']} outside it; 2 left out", "link": f"None of {body754['scale']} outside it; 2 left out"}, tg754)
+            page.goto(base + "/" + lk754[1]["path"])
+            page.wait_for_selector("#share-bmi", timeout=10000)
+            shown754 = page.inner_text("#share-bmi")
+            check("…the share link's page says it in its BMI section", why754 in shown754, shown754[:300])
+            api754("DELETE", f"profiles/{pid754}/links/{lk754[1]['link']['id']}")
+            page.goto(base + f"/?profile={pid754}")
+            page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {pid754}", timeout=20000)
+            js("state.tables.clear(); setRange(dayTs('2026-08-01'), dayTs('2026-11-15')); switchTab('health')")
+            bad, axe754 = [], []
+            for width in (1400, 320):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 640})
+                for theme in ("light", "dark"):
+                    js("t => { document.documentElement.dataset.theme = t; }", theme)
+                    settle(300)
+                    js("document.querySelector('#h-body .h-wout')?.scrollIntoView({block: 'center'})")
+                    if width == 320:
+                        bad += phone_fits(page, f"weights left out ({theme})")
+                    axe754 += axe_check(page, f"weights left out, {width} px, {theme}")[0]
+            js("delete document.documentElement.dataset.theme")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…the card fits 320 px, and axe-core finds nothing serious at 1400 and 320 px, light and dark", not bad and not axe754, (bad + axe754)[:6])
+            js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was754)
+            db = dbm.connect()
+            prof754.delete_profile(db, pid754)
+            db.close()
+            page.goto(base + "/?profile=1")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
+            settle(300)
+
             # ---- each result against its own range (#58): the demo's creatinine (0.7–1.3 mg/dL) with two results from
             # an outside lab (0.6–1.2, add_range_records): the chart's band steps with each result's range and its
             # header says the ranges differ; its table gives each row its own; 1.25 is high by its own lab's range though

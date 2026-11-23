@@ -1837,6 +1837,15 @@ Everything on `main` so far; it becomes the first tagged release.
   units and dates ran out of them. The unit now goes under its value where both don't fit, and a tile takes a row of
   its own where two would be narrower than its words (one at 320 to 375 px with text at 200%; two as before at the
   usual size, and at 412 px). Body's sideways row of tiles keeps each as wide as its words (WCAG 1.4.4).
+- **One set of weights: a scale's reading Body leaves out is left out everywhere, and said** (#754): Body and activity
+  left out a scale's weight more than 12% from the median of the weights within 90 days of it (a profile's weight typed
+  into another app), but the Overview's Weight tile and sparkline, the overview strip, and the visit summary's and share
+  links' BMI and weight target read every one: with 141.0 lb on Nov 15 after 177.4 on Nov 12, the Overview said "141.0
+  lb, ↓ 40.7 lb since diagnosis · Nov 15" and its sparkline dived while Body said 177.4 lb to Nov 12, and the BMI
+  section listed a BMI of 20.2 from it. The rule is now applied where the weight series is made, and the server applies
+  the same rule to what the summary and share links send, so every place has the same weights. Body's weight card says
+  how many were left out in the period, which and why, and the summary's and a link's BMI and target sections how many
+  and why.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
