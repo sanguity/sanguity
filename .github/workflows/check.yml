@@ -74,7 +74,7 @@ jobs:
         run: for f in *.example.json lab-aliases.json condition-presets.json lab-test-pages.json; do python -m json.tool "$f" > /dev/null || exit 1; done
 
 
-      - uses: astral-sh/setup-uv@v10.3.3
+      - uses: astral-sh/setup-uv@v10.4.0
         with:
           version: "0.13.8"
 
