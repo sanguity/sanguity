@@ -2186,6 +2186,11 @@ Everything on `main` so far; it becomes the first tagged release.
   date: a C-CDA's lab day of the same date said "1 out of range" on the Timeline, with no such row in its drawer. Now a
   result is the lab day's that lists the lab event holding its row, whichever import made either; its search words,
   its badge and its ▲ under a search follow, as its drawer does. A result with no row anywhere counts as before.
+- **Undoing in any order leaves a lab day listing what's there** (#908): with an upload's lab day joined by two pulls
+  (#899), undoing the upload, then the later pull, wrote the lab day back as the first pull had left it, still listing
+  the upload's results, gone: "5 lab results" on the Timeline over the one ALT row in its drawer. The same with the
+  connection's own first pull in the upload's place. Now a lab day put back lists only what's still there, titled for
+  it ("1 lab result"), and goes once nothing of it is left, whichever order the three are undone in.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

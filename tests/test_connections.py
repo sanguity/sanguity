@@ -670,6 +670,53 @@ class Connections(unittest.TestCase):
         self.undo(ggt["import"])
         self.assertEqual({k: v for k, v in self.counts().items() if k != "imports"}, {"events": 0, "series": 0, "results": 0}, "nothing left")
 
+    def test_every_order_of_undoing_a_joined_lab_day_leaves_it_listing_what_there_is(self):   # #908
+        """The draw's lab day, the upload's (U: the portal's export uploaded first) or the connection's own (P0: its first
+        pull), joined by two pulls (P1 an ALT, P2 a GGT, each its own lab event), undone in each of the six orders: after
+        each undo the lab day lists only lab events there are, titled for the rows they hold, each result with its row and
+        each row with its result, and there's no lab day once nothing of that day is left. Undoing U (or P0), then P2,
+        handed the lab day to P1, but P2's undo then wrote it back as P1 had left it, listing U's lab events, gone: "5 lab
+        results" over the one ALT row."""
+        import itertools
+        from server.importers import common
+        test = lambda oid, code, name, v: {"resourceType": "Observation", "id": oid, "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],   # noqa: E731
+                                           "code": {"coding": [{"system": "http://loinc.org", "code": code}], "text": name},
+                                           "effectiveDateTime": "2025-03-04T09:45:00-06:00", "valueQuantity": {"value": v, "unit": "U/L"},
+                                           "interpretation": [{"coding": [{"system": INTERP, "code": "H"}]}]}
+        for first in ("U", "P0"):
+            for order in itertools.permutations((first, "P1", "P2")):
+                with self.subTest(first=first, order=order):
+                    self.fake = FakeFHIR(patients=["robin-example"]).start()   # (a source and a profile of its own each time)
+                    self.addCleanup(self.fake.stop)
+                    db = dbm.connect()
+                    self.pid = prof.create_profile(db, f"Undone {first} {' '.join(order)} (fictional)", owner_id=self.uids["robin"])
+                    db.close()
+                    imps = {"U": self.upload_bundle([json.loads(json.dumps(r)) for r in self.fake.resources(patient="pat-1")])["import_id"]} if first == "U" else {}
+                    cid = self.connect(self.source())
+                    imps["P0"] = self.first_pull(cid)["import_id"]
+                    self.fake.add(test("obs-alt-908", "1742-6", "ALT", 60), patient="pat-1")
+                    imps["P1"] = self.pull(cid)["import"]
+                    self.fake.add(test("obs-ggt-908", "2324-2", "GGT", 70), patient="pat-1")
+                    imps["P2"] = self.pull(cid)["import"]
+                    self.assertTrue(all(imps[k] for k in (first, "P1", "P2")), imps)
+                    undone = []
+                    for k in order:
+                        self.undo(imps[k])
+                        undone.append(k)
+                        if len(undone) == 3:
+                            self.assertEqual(self.counts()["events"], 0, f"after {undone}: nothing left")
+                            break
+                        data = self.data()
+                        days = [e for e in data["events"] if e["k"] == "lab" and e["t"][:10] == "2025-03-04"]
+                        have = {e["id"] for e in data["events"]}
+                        listed = [i for e in days for i in data["details"][str(e["id"])]["ids"]]
+                        rows = sum(len(data["details"][str(i)]["rows"]) for i in listed if i in have)
+                        tests = {s["name"] for s in data["labs"] if any(p[0][:10] == "2025-03-04" for p in s["pts"]) and s.get("panel") != "Vitals"}
+                        self.assertEqual((len(days), [i for i in listed if i not in have], [e["title"] for e in days], unpaired(data, "2025-03-04")),
+                                         (1, [], [common.lab_day_title(rows)], ([], [])), f"after {undone}: one lab day, listing what there is, titled for it")
+                        self.assertEqual(("ALT" in tests, "GGT" in tests, "Hemoglobin" in tests),
+                                         ("P1" not in undone, "P2" not in undone, first not in undone), f"after {undone}: {tests}")
+
     def test_connected_again_a_pull_updates_the_first_connections_rows(self):   # #899
         """Connected and pulled, disconnected keeping its records, connected again (a new connection, whose first pull
         finds them already here). LDL corrected at the source updated the result, but its row, in the first connection's
