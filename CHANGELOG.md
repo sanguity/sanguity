@@ -1911,6 +1911,12 @@ Everything on `main` so far; it becomes the first tagged release.
   its whole length), its role, the brand's word and More's name for the tab shown make way in turn, each still said to
   a screen reader, and given back where there's room; if that's not enough the name takes a row of its own under the
   bar, as on a phone (#622). Nothing on the bar overlaps (WCAG 1.4.4).
+- **A click beside the drawer keeps a removal too: a reminder's time, a journal photo** (#811): #784's guard compared
+  only the fields still in the drawer's forms, so after Remove on a reminder's second time or a journal entry's photo
+  (the other photo drawn again in its place, its words alike) a click on the dimmed page beside the drawer closed it,
+  nothing asked, and the reminder kept both times and the entry its photo. And a photo added and removed again kept the
+  drawer open, though nothing was left to save. Each form is now compared whole with how it was drawn, which photos it
+  has included, so a field or row removed is a change and a change undone isn't; a photo still being sent counts.
 - **A range printed "<5" leaves 5 out of it** (#780): the CSV, PDF and FHIR importers read "<5" as a high of 5, the
   same as "<=5", so a C-Reactive Protein of 5 against its report's "<5", an LDL of 100 against "<100" and an eGFR of
   60 against ">60" were shown in range, said "≤ 5", "≤ 100" and "≥ 60" on Labs, the Overview, share links and the
