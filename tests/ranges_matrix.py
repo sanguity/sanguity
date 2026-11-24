@@ -1,6 +1,7 @@
 """The matrix of #752: one profile's fictional results that every page judges, draws and says the same way, for
 tests/test_ranges.py (the server: the visit summary, its PDF, share links) and tests/browser_check.py (the page: Labs,
-the Overview, Compare, a share link's page, the summary's preview and its PDF).
+the Overview, Compare, a share link's page, the summary's preview and its PDF; #782: the Timeline's counts, the drawer's
+rows, the heatmap and a converted value's "Reported … ref").
 
 Each case is a lab whose results [days back, value, low, high, flag, as given] go through one of the ways a result's
 range and flag were said differently: a report's range then none; none then a report's; a range from Settings then a
@@ -10,16 +11,20 @@ keep it ("<=5", ">=60"), at and past it, through the importers that read them to
 judged as, by the one rule (server/ranges.py judge, www/js/ranges.js applyRangeOverrides): [flag, low, high, source],
 and EDGES its edge where its range has one; STEPS the band's steps, each the results it covers, with its words (a result
 whose report gave no range is under none). The summary's "since" day is SINCE days back, so each case has a Then and a
-Now. COPIES (#781, at the end) is a second profile's: one result twice (from two imports) and a lab in two units, before
-and after "Same result". Fictional data only.
+Now. Each draw day is a lab day with one result listing that day's results as a report prints them (#782): its row named
+as the report names the test (ROW_NAMES: "CHLORIDE" for the series "Chloride, Blood", "CREAT" for "Creatinine"), the
+value as given, the range as printed (a one-sided one with its edge, "<5" or "<=5") and the report's own flag, and the
+count of flags its importer stored. COPIES (#781, at the end) is a second profile's: one result twice (from two
+imports) and a lab in two units, before and after "Same result". Fictional data only.
 """
 import datetime
 
 UNITS = {"Potassium": "mmol/L", "Sodium": "mmol/L", "Folate": "ng/mL", "Magnesium": "mg/dL", "Hemoglobin": "g/dL",
-         "Amylase": "U/L", "Lipase": "U/L"}
+         "Amylase": "U/L", "Lipase": "U/L", "Chloride, Blood": "mmol/L", "Creatinine": "mg/dL"}
 OVERRIDES = [{"lab": "Folate", "unit": "ng/mL", "sex": "any", "low": 5, "high": 20},
              {"lab": "Magnesium", "unit": "mg/dL", "sex": "any", "low": 1.5, "high": 2.5},
-             {"lab": "Lipase", "unit": "U/L", "sex": "any", "low": 15, "high": 60}]
+             {"lab": "Lipase", "unit": "U/L", "sex": "any", "low": 15, "high": 60},
+             {"lab": "Creatinine", "unit": "mg/dL", "sex": "any", "low": 0.6, "high": 1.2}]
 SINCE = 45
 R, S = "report", "settings"
 CASES = {   # lab: [(days back, value, low, high, flag, as given)]
@@ -42,7 +47,18 @@ CASES = {   # lab: [(days back, value, low, high, flag, as given)]
     # the same against a range from Settings, 15–60 (#752's Lipase "<15": unflagged, on the band's edge)
     "Lipase": [(100, 60, None, None, "", "<60"), (80, 15, None, None, "", ">15"), (40, 15, None, None, "", "<15"),
                (30, 10, None, None, "", "<10"), (20, 60, None, None, "", ">60"), (10, 70, None, None, "", ">70")],
+    # #782: twenty results (a row on Labs' heatmap) in a report's 98–107, two flagged by their report with no range
+    # printed: the heatmap's cell, mark and count by the flag (it was a grey "no range" cell, counted 0); its rows
+    # printed "CHLORIDE"
+    "Chloride, Blood": [(200 - 10 * i, v, None if i in (14, 17) else 98, None if i in (14, 17) else 107,
+                         {14: "H", 17: "L"}.get(i, ""), str(v)) for i in range(20) for v in [{14: 112, 17: 92}.get(i, 100 + i % 5)]],
+    # #782: a range from Settings, a report's with no flag and a report's one-sided, its rows printed "CREAT": the drawer
+    # flags each as Labs does (a Settings flag naming its range), the Timeline's badge counts them; in SI units
+    # "Reported … ref" says the report's range only, as Labs says it ("≤ 1.3", not "–1.3"; none from Settings)
+    "Creatinine": [(100, 1.5, None, None, "", "1.5"), (70, 0.5, None, None, "", "0.5"), (40, 1.4, 0.7, 1.3, "", "1.4"),
+                   (20, 1.0, None, 1.3, "", "1.0"), (10, 1.4, None, 1.3, "", "1.4")],
 }
+ROW_NAMES = {"Chloride, Blood": "CHLORIDE", "Creatinine": "CREAT"}   # a row as its report names the test (#782)
 JUDGED = {   # lab: each result's [flag, low, high, source], as Labs, the summary and its PDF judge it
     "Potassium": [["L", 3.5, 5.1, R], ["", None, None, R], ["", None, None, R]],
     "Sodium": [["", None, None, R], ["L", 135, 145, R]],
@@ -52,6 +68,9 @@ JUDGED = {   # lab: each result's [flag, low, high, source], as Labs, the summar
     "Amylase": [["", 30, 110, R], ["", 30, 110, R], ["", 30, 110, R], ["", 30, 110, R],
                 ["L", 30, 110, R], ["L", 30, 110, R], ["H", 30, 110, R], ["H", 30, 110, R]],
     "Lipase": [["", 15, 60, S], ["", 15, 60, S], ["L", 15, 60, S], ["L", 15, 60, S], ["H", 15, 60, S], ["H", 15, 60, S]],
+    "Chloride, Blood": [["", 98, 107, R]] * 14 + [["H", None, None, R]] + [["", 98, 107, R]] * 2 + [["L", None, None, R]]
+                       + [["", 98, 107, R]] * 2,
+    "Creatinine": [["H", 0.6, 1.2, S], ["L", 0.6, 1.2, S], ["H", 0.7, 1.3, R], ["", None, 1.3, R], ["H", None, 1.3, R]],
 }
 STEPS = {   # lab: the band's steps, each [the results it covers (their indexes), its words]
     "Potassium": [[[0], "3.5–5.1 on report"]],
@@ -61,6 +80,8 @@ STEPS = {   # lab: the band's steps, each [the results it covers (their indexes)
     "Hemoglobin": [[[0], "13.5–17.5 on report"], [[1], "12–16 on report"]],
     "Amylase": [[list(range(8)), "30–110 on report"]],
     "Lipase": [[list(range(6)), "15–60 from settings"]],
+    "Chloride, Blood": [[list(range(14)), "98–107 on report"], [[15, 16], "98–107 on report"], [[18, 19], "98–107 on report"]],
+    "Creatinine": [[[0, 1], "0.6–1.2 from settings"], [[2], "0.7–1.3 on report"], [[3, 4], "≤ 1.3 on report"]],
 }
 # the summary's trends since SINCE days back: each Then's and Now's cell (value, flag in words, the range it's judged
 # against where that isn't the row's, else None) and the row's Now's range
@@ -72,10 +93,13 @@ TRENDS = {
     "Hemoglobin": [("13.0", "Low", ["report range", "13.5–17.5"]), ("13.0", None, None), "12–16"],
     "Amylase": [(">25", None, None), (">120", "High", None), "30–110"],
     "Lipase": [(">15", None, None), (">70", "High", None), "15–60 (settings)"],
+    "Chloride, Blood": [("100", None, None), ("104", None, None), "98–107"],
+    "Creatinine": [("0.5", "Low", ["settings range", "0.6–1.2"]), ("1.4", "High", None), "≤ 1.3"],
 }
 # the summary's out-of-range rows since then: [value, flag, range, out, of]
 OUT_OF_RANGE = {"Sodium": ["133", "Low", "135–145", 1, 1], "Amylase": [">120", "High", "30–110", 4, 4],
-                "Lipase": [">70", "High", "15–60 (settings)", 4, 4]}
+                "Lipase": [">70", "High", "15–60 (settings)", 4, 4], "Chloride, Blood": ["92", "Low", "", 1, 4],
+                "Creatinine": ["1.4", "High", "≤ 1.3", 2, 3]}
 
 # ---- one-sided ranges (#780): whether a limit includes its edge, kept from each importer that reads it (CSV, PDF,
 # FHIR) through storage, the FHIR export and every view. "<5" leaves 5 out of it, "<=5" keeps it; ">60" leaves 60 out,
@@ -125,15 +149,45 @@ def day(n, today=None):
     return ((today or datetime.date.today()) - datetime.timedelta(days=n)).isoformat() + "T08:00:00"
 
 
+def printed_range(lo, hi, edge=""):
+    """A range as a report prints it: "3.5 - 5.1", "<=1.3", ">=60", or ""; a limit that leaves its edge out (edge, #780)
+    "<5", ">60", as PRINTED has them (printed())."""
+    if lo is not None and hi is not None:
+        return f"{lo:g} - {hi:g}"
+    if hi is not None:
+        return f"{'<' if '<' in edge else '<='}{hi:g}"
+    return f"{'>' if '>' in edge else '>='}{lo:g}" if lo is not None else ""
+
+
+def draw_days():
+    """The days back with a lab draw, the oldest first."""
+    return sorted({d for pts in CASES.values() for d, *_ in pts}, reverse=True)
+
+
+def day_results(d):
+    """A draw day's results: [(lab, its index in CASES[lab])], in CASES' order."""
+    return [(n, i) for n, pts in CASES.items() for i, p in enumerate(pts) if p[0] == d]
+
+
 def records(today=None):
-    """The profile's records, as an import stores them (records.store): a point with an edge keeps it as pts[7]."""
+    """The profile's records, as an import stores them (records.store): a point with an edge keeps it as pts[7]; a lab
+    day each draw day, its one result listing that day's rows as the report prints them, and the count of flags its
+    importer stored (abn: the report's own)."""
     labs = [{"name": n, "unit": UNITS[n], "panel": "", "n": len(pts), "txt": [],
              "pts": [[day(d, today), v, lo, hi, f, t] + ([None, e] if e else []) for (d, v, lo, hi, f, t), e in zip(pts, edges(n))]}
             for n, pts in CASES.items()]
-    draws = sorted({d for pts in CASES.values() for d, *_ in pts}, reverse=True)   # a lab draw each day
+    draws, details = draw_days(), {}
     events = [{"id": i + 1, "t": day(d, today), "k": "lab", "title": "Lab results (fictional)"} for i, d in enumerate(draws)]
     events.append({"id": len(events) + 1, "t": day(SINCE, today), "k": "visit", "title": "Office visit (fictional)"})   # the summary's "since"
-    return {"built": day(0, today)[:10], "source": "fictional", "events": events, "details": {}, "costs": [], "upcoming": [], "labs": labs}
+    for i, d in enumerate(draws):
+        rows = [[ROW_NAMES.get(n, n), CASES[n][j][5], UNITS[n], printed_range(*CASES[n][j][2:4], edges(n)[j]), CASES[n][j][4]]
+                for n, j in day_results(d)]
+        abn = {"abn": n} if (n := sum(1 for r in rows if r[4])) else {}
+        events[i].update(abn)
+        events.append({"id": len(events) + 1, "t": day(d, today), "k": "labitem", "title": "Lab results (fictional)", "hidden": 1, **abn})
+        details[str(len(events))] = {"type": "result", "order": "Lab results (fictional)", "rows": rows}
+        details[str(i + 1)] = {"type": "labday", "ids": [len(events)]}
+    return {"built": day(0, today)[:10], "source": "fictional", "events": events, "details": details, "costs": [], "upcoming": [], "labs": labs}
 
 
 def share_judged(lab):

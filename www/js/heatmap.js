@@ -3,12 +3,13 @@
 "use strict";
 /* ---------------------------------------------------------------- heatmap */
 /* a result's level against its own range, its cell's colour: 0 inside it, −1 to −4 below it and 1 to 4 above by how far;
-   null with no range. Whether and which way by its flag, as its ▲/▼ (ranges.js applyRangeOverrides, #752: "<15"
-   against a low of 15 is low, though it's on the edge, at least one step; "<120" against a high of 110 is inside it, as
-   it may be); how far by its value */
+   null with neither a range nor a flag that says which way. Whether and which way by its flag, as its ▲/▼, read
+   first (ranges.js applyRangeOverrides, #752: "<15" against a low of 15 is low, though it's on the edge, at least one
+   step; "<120" against a high of 110 is inside it, as it may be; #782: a report's Low with no range printed is one step
+   below, as Labs marks it); how far by its value */
 function hmLevel(p) {
   const v = p[1], lo = p[2], hi = p[3], fl = String(p[4] || "").trim(), f = /^h/i.test(fl) ? 1 : /^l/i.test(fl) ? -1 : 0;
-  if (lo == null && hi == null) return null;
+  if (lo == null && hi == null) return f || null;
   if (!fl) return 0;
   const span = lo != null && hi != null && hi > lo ? hi - lo : Math.abs(hi ?? lo) || 1;
   let z = 0;

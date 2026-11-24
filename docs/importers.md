@@ -108,12 +108,13 @@ The same object build.py and `demo/generate.py` write as data.json. Required key
 
 An object keyed by event id (as a string in JSON). The records page loads an event's details when it's opened
 (#217), so what it should list, count or search without opening one belongs in the event (`title`, `sub`, `abn`); a
-lab day's `ids` are the exception, sent with the records. Each has a `type`:
+lab day's `ids` are the exception, sent with the records. (A lab day's out-of-range count is worked out from its
+results in `labs` by the one flag rule, #782; its `abn` counts only where none of its results is a number.) Each has a `type`:
 
 | `type` | Fields |
 |---|---|
 | `file` | **A document.** `url`: its path **inside the upload** (a key of `files`, optionally with `#page=2`); `ext`: `pdf`, `png`, `html`, ... |
-| `result` | `order`, `name`, `collected`, `resulted`, `provider`, `status`, `specimen`, `lab`, `dx` (list), `rows` (`[name, value, unit, range, flag]`), `report` (`[part, text, isHtml]`), `comments` |
+| `result` | `order`, `name`, `collected`, `resulted`, `provider`, `status`, `specimen`, `lab`, `dx` (list), `rows` (`[name, value, unit, range, flag]`), `report` (`[part, text, isHtml]`), `comments`. The server adds `series` when it puts the records together, never an importer: each row's lab series by name, or `null` (#782, `records._row_series`), so the page reads a row's flag from that result as Labs shows it |
 | `labday` | `ids`: the `labitem` events of that draw |
 | `visit` | `who`, `where`, `dx`, `procs` (list), `note`, `src` |
 | `stay` | `admit`, `discharge`, `where`, `how` (where the dates came from) |

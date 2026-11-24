@@ -5759,7 +5759,7 @@ def main():
             settle(200)
             check("…and on a short screen (667×375), where the bar scrolls away, a month heading sticks at the top of the screen (#308)",
                   bool(short_month) and isinstance(short_month[0], str) and short_month[1] is True, short_month)
-            tl_abn = js("""(() => { const days = [...document.querySelectorAll('#tl circle.ev')].filter(m => (m.dataset.g ? tlSvg._groups[+m.dataset.g].items : [byId.get(+m.dataset.id)]).some(e => e?.k === 'lab' && e.abn));
+            tl_abn = js("""(() => { const days = [...document.querySelectorAll('#tl circle.ev')].filter(m => (m.dataset.g ? tlSvg._groups[+m.dataset.g].items : [byId.get(+m.dataset.id)]).some(e => e?.k === 'lab' && tlAbn(e)));   // (by the one rule, #782: the outside lab's 1.25 H stored no count)
                 const tri = [...document.querySelectorAll('#tl path.tl-abn')];
                 return {days: days.length, badges: tri.length, shapes: tri.every(p => (p.getAttribute('d').match(/L/g) || []).length === 2 && getComputedStyle(p).pointerEvents === 'none'),
                   above: days.every(m => tri.some(p => { const a = m.getBBox(), b = p.getBBox(); return Math.abs(b.x + b.width / 2 - (a.x + a.width / 2)) < .5 && b.y + b.height <= a.y; })),
@@ -20338,6 +20338,7 @@ def main():
             bad752 += [f"Labs' {n}: {got752.get(n)} not {j}" for n, j in M752.JUDGED.items() if got752.get(n) != j]
             edge752 = js("Object.fromEntries(SERIES.filter(s => !s.watch).map(s => [s.name, s.pts.map(p => p[7] || '')]))")
             bad752 += [f"Labs' {n}: its edges {edge752.get(n)}" for n in M752.CASES if edge752.get(n) != M752.edges(n)]   # (#780)
+            said782 = js("Object.fromEntries(SERIES.filter(s => !s.watch).map(s => [s.name, [s.unit, s.pts.map(p => [p[5] || fmtNum(p[1]), p.rs === 'settings' ? null : rangeWords(p)])]]))")
             js("labs => { state.tables.clear(); state.sel = new Set(labs); applyPreset('all'); switchTab('labs', 'chart'); renderLabs(); }", list(M752.CASES))
             settle(600)
             for n, j in M752.JUDGED.items():
@@ -20355,6 +20356,24 @@ def main():
             hm752 = js("Object.fromEntries(SERIES.filter(s => !s.watch).map(s => [s.name, s.pts.map(p => Math.sign(hmLevel(p) || 0))]))")
             bad752 += [f"the heatmap's {n}: {hm752.get(n)}" for n, j in M752.JUDGED.items()
                        if hm752.get(n) != [{"H": 1, "L": -1}.get(f, 0) for f, *_ in j]]
+            # #782: the heatmap reads a flag before a range. Its one row, Chloride, Blood (twenty results), has two its report
+            # flagged with no range printed (a grey "no range" cell each, counted 0, no word in its table, while Labs said 1
+            # outside): each its way's colour with its ▲ or ▼, counted, said in the table, the rest as Labs flags them
+            bad782 = []
+            hm782 = js("""() => { const cells = [...document.querySelectorAll('#hm rect.cell[data-s="Chloride, Blood"]')].sort((a, b) => a.dataset.k < b.dataset.k ? -1 : 1);
+              return [cells.map(c => { const f = c.style.fill; return f.includes('--div-lo') ? -1 : f.includes('--div-hi') ? 1 : f.includes('--div-mid') ? 0 : null; }),
+                document.querySelectorAll('#hm .hm-mark').length, [...document.querySelectorAll('#hm text')].map(t => t.textContent).filter(t => /^\\d+$/.test(t))]; }""")
+            cl782 = M752.JUDGED["Chloride, Blood"]
+            want782 = [[{"H": 1, "L": -1}.get(f, 0) for f, *_ in cl782], sum(1 for f, *_ in cl782 if f), [str(sum(1 for f, *_ in cl782 if f))]]
+            if hm782 != want782:
+                bad782.append(f"the heatmap's Chloride, Blood: {hm782} not {want782}")
+            js("() => { state.tables.add('#hm'); renderHeatmap(); }")
+            settle(300)
+            hmt782 = js("""[...document.querySelectorAll('#hmTable tbody tr')].filter(r => r.cells[0]?.textContent.startsWith('Chloride, Blood')).map(r => [...r.cells].slice(1).map(c => c.textContent))[0]""")
+            want782 = [str(want782[1])] + [f"{v:g}" + {"H": " ▲ high", "L": " ▼ low"}.get(f, "") for (_, v, *_), (f, *_) in zip(M752.CASES["Chloride, Blood"], cl782)]
+            if hmt782 != want782:
+                bad782.append(f"the heatmap's table: {hmt782} not {want782}")
+            js("() => { state.tables.delete('#hm'); renderHeatmap(); }")
             # Compare: a value given as a bound placed as one ("<0%", ">113%"), and left out of its medians, said so
             js("""() => { cmpSel = ['Amylase', 'Hemoglobin'].map(n => cmpKey(SERIES.find(s => s.name === n))).concat(''); state.tables.add('#cmp'); switchTab('labs', 'compare'); renderCompare(); }""")
             settle(400)
@@ -20382,6 +20401,79 @@ def main():
                     bad752.append(f"the Overview's {n} tile: {ov752[0].get(n)}")
                 if (n in ov752[1]) != bool(f) or f and ov752[1][n] != f"ref {words752(lo, hi, M752.edges(n)[-1])}" + (" (range from settings)" if src == "settings" else ""):
                     bad752.append(f"the Overview's out-of-range {n}: {ov752[1].get(n)}")
+            # #782: one out-of-range count from the one rule. Each lab day's badge on the Timeline and the line over its list,
+            # under a search naming a test too, and in the drawer each day's Out of range, its result's badge and each row's
+            # flag as Labs shows it, a value flagged against a range from settings naming it (the badge was the importer's
+            # stored count, the drawer's the rows' own flags or Labs' by the row's name, leaving out Settings' flags, and a
+            # row the report names otherwise, "CHLORIDE" and "CREAT", found no series); each row a link to its series' chart
+            out782 = {M752.day(d)[:10]: [(n, j) for n, j in M752.day_results(d) if M752.JUDGED[n][j][0]] for d in M752.draw_days()}
+            TL782 = """() => [document.getElementById('tlSum').textContent, Object.fromEntries([...document.querySelectorAll('#list .tl-row[data-id]')]
+              .map(r => [byId.get(+r.dataset.id), r.querySelector('.badge.abn')?.textContent || null]).filter(([e]) => e.k === 'lab').map(([e, b]) => [e.t.slice(0, 10), b]))]"""
+            js("() => { state.q = ''; setPeriod('all'); pickTab('timeline'); }")
+            settle(600)
+            tl782, n782 = js(TL782), sum(map(len, out782.values()))
+            if tl782[1] != {k: f"{len(v)} out of range" if v else None for k, v in out782.items()} \
+                    or f"{len(out782)} lab draws, {sum(map(len, M752.CASES.values()))} results, {n782} out of range" not in tl782[0]:
+                bad782.append(f"the Timeline: {tl782}")
+            page.fill("#q", "creatinine")   # under a search naming a test, that test's
+            settle(500)
+            tl782 = js(TL782)
+            cr782 = {M752.day(d)[:10]: int(bool(M752.JUDGED["Creatinine"][i][0])) for i, (d, *_) in enumerate(M752.CASES["Creatinine"])}
+            if tl782[1] != {k: f"{v} out of range" if v else None for k, v in cr782.items()} \
+                    or f"{len(cr782)} lab draws, {len(cr782)} Creatinine results, {sum(cr782.values())} out of range" not in tl782[0]:
+                bad782.append(f"the Timeline under “creatinine”: {tl782}")
+            page.fill("#q", "")
+            settle(400)
+            DRAWER782 = """async () => { const out = {};
+              for (const e of DATA.events.filter(e => e.k === 'lab')) {
+                await openEvent(e);
+                const facts = Object.fromEntries([...document.querySelectorAll('#drawer dl.facts dt')].map(t => [t.textContent, t.nextElementSibling.textContent]));
+                out[e.t.slice(0, 10)] = [facts['Out of range'], document.querySelector('#drawer details.res .badge.abn')?.firstChild.textContent || null,
+                  [...document.querySelectorAll('#drawer table.data tbody tr')].map(r => [r.cells[0].firstChild.textContent, r.cells[1].textContent, r.cells[3].textContent,
+                    [...r.cells[1].querySelectorAll('.orig')].map(o => o.textContent).filter(t => t.startsWith('(settings')).join(''), r.classList.contains('link')])];
+              }
+              closeDrawer(); return out; }"""
+            dr782 = js(DRAWER782)
+            for d in M752.draw_days():
+                k, got = M752.day(d)[:10], dr782.get(M752.day(d)[:10])
+                rows = [[M752.ROW_NAMES.get(n, n), FLAG752[f], f"(settings range {words752(lo, hi)})" if f and src == "settings" else "", True]
+                        for n, j in M752.day_results(d) for f, lo, hi, src in [M752.JUDGED[n][j]]]
+                want = [str(len(out782[k])) if out782[k] else "None", str(len(out782[k])) if out782[k] else None, rows]
+                if not got or [got[0], got[1], [[r[0], *r[2:]] for r in got[2]]] != want:
+                    bad782.append(f"the drawer's {k}: {got} not {want}")
+            # "Reported … ref" (units.js ucOrig) says its report's range only, as Labs says it: in SI units each converted
+            # value's as reported, Labs' words for its report's range ("≤ 1.3", not "–1.3"), none for a range from settings
+            # (it said "1.5 mg/dL, ref 0.6–1.2"); the same on Labs' table and the Overview's tile, and the drawer's "CREAT"
+            # rows converted with their series
+            units782 = js("fetch('api/settings/user').then(r => r.json())")["units"]
+            put782 = "u => fetch('api/settings/user/units', {method: 'PUT', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, body: JSON.stringify({value: u})}).then(r => r.status)"
+            js(put782, {**units782, "lab": "si"})
+            try:
+                page.goto(base + f"/?profile={mpid}")
+                page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {mpid}", timeout=20000)
+                si782 = js("Object.fromEntries(SERIES.filter(s => s.uc).map(s => [s.name, s.pts.map(p => ucOrig(s, p))]))")
+                want782 = {n: [f"{v} {u}" + (f", ref {w}" if w else "") for v, w in pts] for n, (u, pts) in said782.items() if n in si782}
+                if si782 != want782 or "Creatinine" not in si782:
+                    bad782.append(f"“Reported … ref” in SI units: {si782} not {want782}")
+                js("labs => { state.tables.clear(); state.sel = new Set(labs); state.tables.add('Creatinine'); applyPreset('all'); switchTab('labs', 'chart'); renderLabs(); }", ["Creatinine"])
+                settle(400)
+                got = js("[...document.querySelectorAll('#charts .chart[data-lab=\"Creatinine\"] table.data tbody tr')].map(r => r.cells[1].textContent.split(' (reported ')[1])")
+                if got != [w + ")" for w in want782.get("Creatinine", [])][::-1]:
+                    bad782.append(f"Labs' Creatinine table in SI units: {got}")
+                js("state.tables.delete('Creatinine'); pickTab('overview')")
+                settle(400)
+                got = js("[...document.querySelectorAll('#view-overview .tile:not(.home-tile)')].find(t => t.querySelector('.lbl > span').textContent === 'Creatinine')?.querySelector('.orig')?.textContent")
+                if got != "Reported " + want782.get("Creatinine", [""])[-1]:
+                    bad782.append(f"the Overview's Creatinine tile in SI units: {got}")
+                got = js(DRAWER782)[M752.day(100)[:10]][2]
+                if not any(r[0] == "CREAT" and "mol/L" in r[1] and "Reported 1.5 mg/dL" in r[1] and r[2] == "▲ High" and r[3].startswith("(settings range ") for r in got):
+                    bad782.append(f"the drawer's CREAT row in SI units: {got}")
+            finally:
+                js(put782, units782)   # (the units as they were)
+            check("#782: one out-of-range count and one flag from the one rule in every view: each lab day's Timeline badge and its list's "
+                  "line (under a search too) and the drawer's count and rows, a row the report names otherwise found by its series, a flag "
+                  "against a range from settings naming it; the heatmap's cells, marks, counts and table reading a flag before a range; "
+                  "“Reported … ref” saying its report's range only, as Labs says it", not bad782, bad782)
             # a share link's page: its reports' ranges and flags only (it sends no range from Settings), each band step said "on report"
             page.goto(base + f"/share.html#{tok752}")
             page.wait_for_selector("#share-results .share-latest", timeout=10000)
@@ -20425,7 +20517,7 @@ def main():
                     bad752.append(f"the PDF's {n} Then: {re.findall(re.escape(n) + ' .{0,60}', pdf752)[:1]}")
                 line = [i for i, p in enumerate(M752.CASES[n]) if p[0] > M752.SINCE][-1:] + [i for i, p in enumerate(M752.CASES[n]) if p[0] < M752.SINCE]
                 bad752 += [f"the summary's {n} chart: {b}" for b in chart752(sum752["charts"].get(n) or {"marks": [], "ref": []}, M752.JUDGED[n], M752.STEPS[n], line)]
-            want_oor = {n: [v, f, r] for n, (v, f, r, *_) in M752.OUT_OF_RANGE.items()}
+            want_oor = {n: [v, f, r or "not given"] for n, (v, f, r, *_) in M752.OUT_OF_RANGE.items()}   # (a flag with no range, #782)
             got_oor = {n: [v.split(" ")[0], f, r] for n, (v, f, r) in sum752["oor"].items()}
             if got_oor != want_oor:
                 bad752.append(f"the summary's out of range: {got_oor} not {want_oor}")

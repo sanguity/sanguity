@@ -110,8 +110,8 @@ KEYS = {}   # name -> SoftKey, for accounts whose sign-in finishes with a passke
 def same_records(data):
     """Records without the event ids the database gave them, which a re-import changes: the details, costs and
     lab-day lists in event order instead. Without the import each record came from (#100), which a re-import
-    changes too. Without the conversions the page may show values in (#41, units.annotate) and the out-of-pocket costs worked out
-    (#55, oop.annotate), added as they're served."""
+    changes too. Without the conversions the page may show values in (#41, units.annotate), the out-of-pocket costs worked out
+    (#55, oop.annotate) and each result row's series (#782, records._row_series), added as they're served."""
     data = json.loads(json.dumps(data))
     data.pop("imports", None)
     data.pop("unitConv", None)
@@ -124,6 +124,8 @@ def same_records(data):
     pos = lambda i: order.get(i, -1)
     details = [data["details"].get(str(e["id"])) for e in data["events"]]
     for d in details:
+        if d:
+            d.pop("series", None)
         if d and isinstance(d.get("ids"), list):
             d["ids"] = [pos(i) for i in d["ids"]]
     return {**data, "events": [{k: v for k, v in e.items() if k != "id"} for e in data["events"]], "details": details,
