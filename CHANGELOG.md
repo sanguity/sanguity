@@ -2095,6 +2095,14 @@ Everything on `main` so far; it becomes the first tagged release.
   pointer at some widths (Compare 18 to 36 px at 520, 712, 792, 920, 1060 and 1352 px among others, with text as usual
   to 200%; Labs 20 to 41 px at 320 to 332 px). The room is now built by the same words, in the same order, as what's
   shown, and no chart moves at any width from 320 to 1400 px.
+- **A readout's room holds whatever it says at the width it's shown, so with two results at one time the chart never
+  moves** (#900): the room held the widest three things a readout can say, as one line, but wrapped, a narrower one
+  could take a line more; on profiles with many times of two results the chart still dropped 18 to 41 px at some
+  sizes (Compare at 803 to 818 px with text as usual and 461 to 467 px at 200%, Labs at 362 to 378 px at 200%, and a
+  finger on a phone moved Labs' plot as much). Each readout is now as tall as the most lines anything it can say takes
+  at the width it has, every word measured by the page as it's drawn, and set again as the window's resized, a font
+  loads or the text's size changes, so no chart moves at any width from 320 to 1400 px, 1 px apart, with text from
+  100% to 200%. Nothing more is laid out at a hover.
 - **A result already here typed or uploaded again is kept only with its own row, and said for what it brings** (#868):
   Potassium 5.3 typed in with no range, then again with "3.5-5.1": its check line said "already in this profile: it
   won't be saved again" and the save "Saved nothing new" with no Undo, yet its result was saved, with no row of its

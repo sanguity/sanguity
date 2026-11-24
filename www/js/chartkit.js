@@ -13,7 +13,7 @@
    - ckCross, ckSync, ckTip: the crosshair, at one time on every time chart of a view, and the hover's readout pinned to
      the top of the plot beside it; ckAt, ckNearest, ckEach, ckOne: every result at the time hovered or stepped to, each
      said (#848), ckTimes every time's; ckRead, ckReadAt: a chart's readout in its header, as big whatever it says
-     (#865, #894);
+     (#865, #894), at the width it's shown (ckWords, ckWrap, ckReadFit: its room, #900);
    - ckFlagRows: names over marks in up to three rows, with leader lines and "+N" (Labs' event track, event-track.js);
    - abnMark: an out-of-range result's ▲, ▼ or ◆;
    - ckSpark: the one sparkline, scaled to the reference band (the Overview, the visit summary, a share link's page);
@@ -403,21 +403,118 @@ const ckOne = (p, value) => [value, flagWord(p[4]), rangeWords(p) && `(${rangeWo
    700–1000 px or with larger text) wrapped the header, the plot dropped, the pointer hovered nothing, the readout said
    "Latest" again and the plot jumped back: the ▲ under the mouse said nothing. So what it says is in one cell of a grid
    (app.css .ck-read) with the widest three of all it can say there too, unseen, and its header is laid out for the
-   longest; on a phone it wraps to its words, uncut (#862). ckRead(box, says): box the readout; says each thing it can
-   say, [text or element, ...] (an element's words in bold); -> say(parts), showing those. Ranked by their widths in
-   the box's font, every digit as 0 (they're tabular), one each of those alike */
-let ckPen = null;
+   longest; on a phone it wraps to its words, uncut (#862). And it's as tall as the most lines any of them takes at the
+   width it has (#900: wrapped, a narrower one could take a line more than the widest three, and the chart moved
+   still): each broken where the page breaks it (ckWords, ckWrap), its words measured by the page as it's drawn
+   (ckReadFit; a canvas can't draw Inter's tabular figures, and its widths were a pixel off a glyph), and its room set
+   again as the window is resized, a font loads or its width or its text's size changes otherwise (ckRooms, watching
+   the room, its unseen probe), with nothing laid out at a hover. ckRead(box, says): box the readout; says each thing
+   it can say, [text or element, ...]; -> say(parts), showing those. One each of those alike, every digit as 0 where
+   they're tabular (each as wide), the widest three as one line in a canvas's measure */
+let ckPen = null, ckFonts = 0;
+/* txt's words, [[kind, text], ...] (kind 0 the box's own text, n its nth element's): [what's before each (the kind of
+   the space, -1 nothing: a line's start, -2 a dash it can break after), its pieces [[kind, text], ...], ...], broken
+   where the page breaks it: at a space, and after a range's dash ("(13.5–" "18.4)"; not at a hyphen or a slash) */
+function ckWords(txt) {
+  const out = [];
+  let word = null, gap = -1;
+  for (const [k, t] of txt) for (const s of t.split(/( +)/)) {
+    if (s[0] === " ") { if (word) out.push(gap, word), word = null, gap = -1; if (out.length && gap < 0) gap = k; }   // spaces as one; none at a line's start
+    else if (s) s.split(/(?<=–)/).forEach((d, i) => { if (i) out.push(gap, word), word = null, gap = -2; (word ??= []).push([k, d]); });
+  }
+  if (word) out.push(gap, word);
+  return out;
+}
+/* how many lines a thing takes in a line room wide, broken as the page breaks it (ckWords). ws its widths (ckReadFit):
+   [what's kept spare in each line, then for each word the space before it, what the two words beside it are wider by
+   (Inter's x after a figure and a space is a ×: "356 ×10^3/uL"; at a line's start it's an x again), and the word]. A
+   word wider than the line, broken by the page where it can be, is taken as the lines it fills, and the next word on a
+   line of its own */
+function ckWrap(ws, room) {
+  room -= ws[0];
+  let n = 0, x = room;   // x: the line so far, room when full
+  for (let i = 1; i < ws.length; i += 3) {
+    const g = ws[i] + ws[i + 1], w = ws[i + 2];
+    if (x + g + w > room) n += Math.ceil(w / room) || 1, x = w > room ? room : w; else x += g + w;
+  }
+  return n || 1;
+}
+/* boxes' rooms (ckRead) fitted to their probes' width, all read at one layout, then written: their words measured by
+   the page, in their own style (app.css .ck-sizer), when drawn, their font, size or spacing changes or a font has
+   loaded, each piece alone, as it starts or ends a line, each two words of a kind side by side, and each thing whole,
+   in one line (box._ckWide, each thing's widths for ckWrap); and each box's probe as many lines as the most anything it
+   says takes (lines of the box's own, not a min-height: one in lh set from a ResizeObserver was worked out from the
+   line of the box's parent). One hidden (no width) is left till it's shown */
+function ckReadFit(boxes) {
+  boxes = boxes.filter(b => b._ckProbe?.isConnected);
+  const keys = boxes.map(b => { const cs = getComputedStyle(b); return [cs.fontWeight, cs.fontSize, cs.fontFamily, cs.letterSpacing, cs.wordSpacing, cs.fontVariantNumeric, ckFonts].join(); });
+  const two = (ws, i) => {   // a word and the one before it, of one kind, the space's if there's one: [their kind, them side by side]
+    const a = ws[i - 1], b = ws[i + 1], g = ws[i];
+    return i && a.length === 1 && b.length === 1 && a[0][0] === b[0][0] && (g === -2 || g === a[0][0]) ? [a[0][0], a[0][1] + (g < 0 ? "" : " ") + b[0][1]] : null;
+  };
+  const jobs = boxes.map((box, j) => {
+    if (box._ckKey === keys[j]) return [box, null, null, null];
+    const at = new Map(), sizer = el("span", {class: "ck-sizer"});
+    const piece = (kind, t) => { const key = kind + "\t" + t; if (!at.has(key)) { const e = kind ? box._ckKinds[kind - 1].cloneNode(false) : el("span"); e.textContent = t; at.set(key, sizer.appendChild(e)); } };
+    for (const ws of box._ckToks) for (let i = 0; i < ws.length; i += 2) {
+      if (ws[i] >= 0) piece(ws[i], " ");
+      for (const [kind, t] of ws[i + 1]) piece(kind, t);
+      if (two(ws, i)) piece(...two(ws, i));
+    }
+    const whole = box._ckParts.map(parts => sizer.appendChild(el("span", {class: "w"}, ...parts.map(p => p.nodeType === 1 ? p.cloneNode(true) : p))));
+    box.append(sizer);
+    return [box, at, whole, sizer];
+  });
+  const wide = e => e.getBoundingClientRect().width;
+  for (const job of jobs) job.push(wide(job[0]._ckProbe)), job[1] &&= new Map([...job[1]].map(([key, e]) => [key, wide(e)])), job[2] &&= job[2].map(wide);
+  jobs.forEach(([box, w, whole, sizer, p], j) => {
+    sizer?.remove();
+    if (!p) return;
+    if (w) {
+      box._ckKey = keys[j];
+      box._ckWide = box._ckToks.map((ws, t) => {
+        const out = [0];
+        for (let i = 0; i < ws.length; i += 2) {
+          const g = ws[i] < 0 ? 0 : w.get(ws[i] + "\t "), wd = ws[i + 1].reduce((a, [kind, s]) => a + w.get(kind + "\t" + s), 0), pair = two(ws, i);
+          out.push(g, pair ? w.get(pair.join("\t")) - w.get(pair[0] + "\t" + ws[i - 1][0][1]) - g - wd : 0, wd);
+        }
+        // spare: what it's wider by in one line than its words side by side, and where the page lays it out in fractions
+        // of a pixel, a quarter of one, for the page's rounding of each run (in whole pixels a line that fits exactly fits)
+        out[0] = Math.max(0, whole[t] - out.reduce((a, b) => a + b, 0)) + (out.every(Number.isInteger) && Number.isInteger(whole[t]) ? 0 : .25);
+        return out;
+      });
+    }
+    let n = 1;
+    for (const ws of box._ckWide) n = Math.max(n, ckWrap(ws, p));
+    if (n !== box._ckProbe.childElementCount + 1) box._ckProbe.replaceChildren("\u200b", ...Array.from({length: n - 1}, () => [el("br"), "\u200b"]).flat());   // (each line the box's)
+  });
+}
+/* fitted again as the window's resized (before it's laid out, so it's drawn so), as a font loads, and in the next frame
+   as a probe's size changes otherwise (a scroll bar shown, the text's size): never inside the observer's own, which
+   would change the page under the page's other observers (util.js sgFoot) */
+const ckReadAll = () => ckReadFit([...document.querySelectorAll(".ck-read")]);
+const ckRooms = new ResizeObserver(es => {
+  const bs = es.filter(e => e.target.isConnected || ckRooms.unobserve(e.target)).map(e => e.target.parentElement);   // (one taken out: no longer watched)
+  if (bs.length) requestAnimationFrame(() => ckReadFit(bs));
+});
+addEventListener("resize", ckReadAll);
+document.fonts.addEventListener("loadingdone", () => { ckFonts++; ckReadAll(); });
 function ckRead(box, says) {
-  const cs = getComputedStyle(box), font = ` ${cs.fontSize} ${cs.fontFamily}`, seen = new Map();
+  const cs = getComputedStyle(box), tab = cs.fontVariantNumeric.includes("tabular"), font = ` ${cs.fontSize} ${cs.fontFamily}`, seen = new Map(), kinds = new Map();
+  const kind = p => { if (p.nodeType !== 1) return 0; const k = p.tagName + p.style.cssText; if (!kinds.has(k)) kinds.set(k, [kinds.size + 1, p]); return kinds.get(k)[0]; };
   ckPen ??= document.createElement("canvas").getContext("2d");
   for (const ps of says) {
-    const parts = present(ps).filter(p => p !== ""), txt = parts.map(p => [p.nodeType === 1, String(p.textContent ?? p).replace(/\d/g, "0")]);
-    const key = txt.map(([b, t]) => (b ? "\n" : "\t") + t).join("");
-    if (!seen.has(key)) seen.set(key, [txt.reduce((w, [b, t]) => { ckPen.font = (b ? "bold" : "normal") + font; return w + ckPen.measureText(t).width; }, 0), parts]);
+    const parts = present(ps).filter(p => p !== ""), txt = parts.map(p => { const t = String(p.textContent ?? p); return [kind(p), tab ? t.replace(/\d/g, "0") : t]; });
+    const key = txt.join("\n");
+    if (!seen.has(key)) seen.set(key, [txt.reduce((w, [k, t]) => { ckPen.font = (k ? "bold" : "normal") + font; return w + ckPen.measureText(t).width; }, 0), parts, txt]);
   }
-  const said = el("span"), room = [...seen.values()].sort((a, b) => b[0] - a[0]).slice(0, 3);
+  const all = [...seen.values()], said = el("span"), probe = el("span", {class: "ck-room ck-probe", "aria-hidden": "true", text: "\u200b"}), room = [...all].sort((a, b) => b[0] - a[0]).slice(0, 3);
+  box._ckToks = all.map(([, , txt]) => ckWords(txt)); box._ckParts = all.map(([, parts]) => parts); box._ckKinds = [...kinds.values()].map(([, p]) => p); box._ckKey = null;
   box.classList.add("ck-read");
-  box.replaceChildren(said, ...room.map(([, parts]) => el("span", {class: "ck-room", "aria-hidden": "true"}, ...parts)));
+  if (box._ckProbe) ckRooms.unobserve(box._ckProbe);
+  box.replaceChildren(said, ...room.map(([, parts]) => el("span", {class: "ck-room", "aria-hidden": "true"}, ...parts)), box._ckProbe = probe);
+  ckRooms.observe(probe);
+  ckReadFit([box]);
   return ps => said.replaceChildren(...present(ps));
 }
 /* a time chart's readout for its results pts (ckRead): say(at, last) its words, for at, the results at the time hovered

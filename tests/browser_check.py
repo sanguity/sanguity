@@ -21428,6 +21428,112 @@ def main():
             db = dbm.connect()
             prof_r.delete_profile(db, apid)
             db.close()
+            # …#900: and whatever it says, at the width it's shown. The room held the widest three it says as one line, and
+            # wrapped, a narrower one could take a line more: on profiles of many times with two results (the review's 20,
+            # ranges_matrix.many) Compare dropped 18 px at 803–818 px and 36 px at 461–467 px with 200% text, Labs 40.6 px at
+            # 362–378 px, a finger on a phone moving Labs' plot as much. Two of them (MANY_SEEDS), Labs' six charts and Compare's
+            # three labs side by side, each in a page of its own, at each width from 320 to 1400 px, 1 px apart, with text from
+            # 100% to 200% (one at 125%, 175% and 200%, the other as usual, at 150% and 200%), each width as the window's
+            # resize leaves it (the page's redraw held back): everything each readout says (every time hovered once, at the
+            # start) laid out at the readout's width (in it, unseen, all at one layout) and none taller than its room at rest;
+            # the time of what's nearest to taller than its room and of what's nearest to wider than its readout hovered, and
+            # no chart moves, no readout's cut; every 50 px the page drawn again, and every readout's room at rest as the
+            # resize left it. No error (a ResizeObserver's undelivered loop among them)
+            SAYS900 = r"""labs => {
+              const sw = window.__sw = {};
+              sw.find = () => { sw.svgs = [...document.querySelectorAll(labs ? '#charts .chart svg.ck' : '#cmpSvg')]; sw.reads = [...document.querySelectorAll(labs ? '#charts .chart .read' : '.cmp-slot > .read')].filter(r => r.childElementCount); };
+              sw.hover = t => labs ? ckSync(sw.svgs[0], t) : sw.svgs[0]._hover(t);
+              sw.find();
+              if (!sw.svgs.length || !sw.svgs.every(s => s._hover)) return null;
+              const says = sw.reads.map(() => new Map());
+              for (const t of [null, ...new Set(labs ? sw.svgs.flatMap(s => s._s.pts.map(p => p.ts)) : sw.svgs[0]._slots.flatMap(r => cmpPlaced(r.s).map(p => p.ts)))]) {
+                sw.hover(t); sw.reads.forEach((r, i) => { const h = r.firstElementChild.innerHTML; if (!says[i].has(h)) says[i].set(h, t); }); }
+              sw.hover(null);
+              sw.said = says.map(m => [...m]);   // each readout's [[what it says, the time it's said at], ...], each laid out wrapped and in one line in sw.tests
+              sw.tests = sw.said.map(said => el('div', {style: {position: 'absolute', left: 0, top: 0, visibility: 'hidden'}},
+                ...said.flatMap(([h]) => [el('div'), el('div', {style: {width: 'max-content', whiteSpace: 'nowrap'}})].map(d => (d.innerHTML = h, d)))));
+              if (!window.__rw900) { window.__rw900 = 1; addEventListener('resize', () => { clearTimeout(window._rz); window.__rw = innerWidth; }); addEventListener('error', e => (window.__err900 ??= []).push(e.message)); }
+              return sw.said.map(s => s.length); }"""
+            STEP900 = r"""async ([labs, w, again]) => {
+              const frame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r)));
+              for (let i = 0; window.__rw !== w && i < 30; i++) await frame();   // the frame of the resize, its readouts' rooms set
+              const sw = window.__sw, out = [], words = h => { const d = el('div'); d.innerHTML = h; return d.textContent; };
+              const tops = () => sw.svgs.map(s => s.getBoundingClientRect().top), cut = () => sw.reads.some(r => r.scrollWidth > r.clientWidth + 1 || r.scrollHeight > r.clientHeight + 1);
+              const rest = tops(), box = sw.reads.map(r => r.getBoundingClientRect());
+              sw.tests.forEach((d, i) => { d.style.width = box[i].width + 'px'; sw.reads[i].append(d); });   // (in it, its style, out of its flow)
+              const got = sw.tests.map(d => [...d.children].map(c => c.getBoundingClientRect()));
+              sw.tests.forEach(d => d.remove());
+              let tall = [-Infinity], wide = [-Infinity];   // what's said nearest to taller than its room, and to wider than its readout
+              got.forEach((rs, i) => {
+                let over = [-Infinity];
+                for (let j = 0; j < rs.length; j += 2) {
+                  const said = sw.said[i][j / 2], o = rs[j].height - box[i].height, p = rs[j + 1].width - box[i].width;
+                  if (o > over[0]) over = [o, said, rs[j].height];
+                  if (o > tall[0]) tall = [o, said[1]];
+                  if (p > wide[0]) wide = [p, said[1]]; }
+                if (over[0] > .5) out.push(`“${words(over[1][0])}” takes ${over[2].toFixed(1)} px, its room ${box[i].height.toFixed(1)}`); });
+              for (const t of new Set([tall[1], wide[1]])) {
+                sw.hover(t); const d = Math.max(...tops().map((y, i) => Math.abs(y - rest[i])));
+                if (d > .5 || cut()) out.push(`${t == null ? 'at rest' : isoDay(t)}: the charts moved ${d.toFixed(1)} px${cut() ? ', a readout cut' : ''} (“${sw.reads.map(r => r.innerText).join('” “')}”)`); }
+              sw.hover(null);
+              if (again) {   // the page's redraw at this width: each readout's room as the resize left it
+                (labs ? renderLabs : renderCompare)(); await frame(); await frame();
+                sw.find(); sw.hover(null);
+                const d = Math.max(...sw.reads.map((r, i) => Math.abs(r.getBoundingClientRect().height - box[i].height)));
+                if (d > .5) out.push(`drawn again, a readout's room at rest changed ${d.toFixed(1)} px`); }
+              return out.concat((window.__err900 || []).splice(0)); }"""
+            SETUP900 = {True: "() => { state.tables.clear(); state.sel = new Set(SERIES.map(s => s.name)); applyPreset('all'); switchTab('labs', 'chart'); renderLabs(); }",
+                        False: "() => { cmpSel = ['Potassium', 'Creatinine', 'Platelet Count'].map(n => cmpKey(SERIES.find(s => s.name === n))); state.tables.delete('#cmp'); "
+                               "applyPreset('all'); switchTab('labs', 'compare'); renderCompare(); }"}
+            big900 = lambda k: "" if k == 1 else ":root{" + ";".join(f"--fs-{i + 1}:{v * k:g}px" for i, v in enumerate((11.5, 12.5, 14, 15.5, 18, 22, 28))) + "} html{font-size:" + f"{k:.0%}" + "}"
+            db = dbm.connect()
+            pids900 = [prof_r.create_profile(db, f"Many at one time {s} (fictional)", owner_id=owner) for s in M752.MANY_SEEDS]
+            for pid900, seed900 in zip(pids900, M752.MANY_SEEDS):
+                for fmt900, data900 in M752.many(seed900):
+                    with dbm.transaction(db):
+                        rec_r.store(db, pid900, data900, "upload", fmt=fmt900)
+            db.close()
+            ctx900 = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
+            ctx900.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
+            pages900, bad900, seen900 = {True: ctx900.new_page(), False: ctx900.new_page()}, [], {}
+            for pg900 in pages900.values():
+                pg900.on("pageerror", lambda e: bad900.append(f"script error: {e}"))
+                pg900.on("console", lambda m: m.type == "error" and bad900.append(f"console error: {m.text}"))
+            for pid900, seed900 in zip(pids900, M752.MANY_SEEDS):
+                for pg900 in pages900.values():
+                    pg900.goto(base + f"/?profile={pid900}")
+                    pg900.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {pid900}", timeout=20000)
+                for k900 in {41: (1.25, 1.75, 2), 51: (1, 1.5, 2)}[seed900]:
+                    for labs900, pg900 in pages900.items():
+                        pg900.set_viewport_size({"width": 1400, "height": 900})
+                        pg900.evaluate(ADOPT_CSS_JS, big900(k900))
+                        pg900.evaluate(SETUP900[labs900])
+                    settle(500)
+                    for labs900, pg900 in pages900.items():
+                        seen900[(pid900, k900, labs900)] = pg900.evaluate(SAYS900, labs900)
+
+                    def step900(labs, w):
+                        got = pages900[labs].evaluate(STEP900, [labs, w, w % 50 == 0]) if seen900[(pid900, k900, labs)] else ["the charts not drawn"]
+                        if got:
+                            bad900.append(f"{'Labs' if labs else 'Compare'} of profile {seed900} at {w} px, text at {k900:.0%}: "
+                                          f"{got[0]}{f' (and {len(got) - 1} more)' if len(got) > 1 else ''}")
+                    for w900 in range(320, 1401):   # each page resized while the other's looked at, so neither waits long for its frame
+                        pages900[True].set_viewport_size({"width": w900, "height": 900})
+                        if w900 > 320:
+                            step900(False, w900 - 1)
+                        pages900[False].set_viewport_size({"width": w900, "height": 900})
+                        step900(True, w900)
+                    step900(False, 1400)
+            ctx900.close()
+            db = dbm.connect()
+            for pid900 in pids900:
+                prof_r.delete_profile(db, pid900)
+            db.close()
+            check("#900: …and whatever it says, at the width it's shown: on two profiles of many times with two results, Labs' charts and Compare at "
+                  "each width from 320 to 1400 px, 1 px apart, with text from 100% to 200%, as the window's resize leaves it: nothing each readout "
+                  "says is taller than its room (a narrower one wrapped to a line more than the widest three), the tallest and the widest hovered "
+                  "move no chart, and drawn again each room at rest is the same",
+                  not bad900 and all(n and all(n) for n in seen900.values()), bad900[:20] or seen900)
             # ---- #780: a one-sided range keeps whether its limit includes its edge ("<5" leaves 5 out, "<=5" keeps it;
             # ">60", ">=60"). The page's rule and words against the server's over a grid of values, ranges, bounds and
             # edges; then the matrix's one-sided cases through the real CSV importer (ranges_matrix printed(), each range
