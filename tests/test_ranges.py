@@ -625,14 +625,15 @@ class Api(unittest.TestCase):
         storage and the FHIR export, and the one rule honours it. The edge as printed and the rule on their own (5
         against "<5" is high, against "<=5" neither; 60 against ">60" low; ">=5" against "<5" high); then the matrix's
         one-sided cases (ranges_matrix PRINTED: "<5" then "<=5", ">60" then ">=60", at and past the edge) as a CSV, as
-        Quest-like PDF reports ("< OR = 5") and as a FHIR bundle (a source's own high beside its printed "<5", a printed
-        range alone): each importer's points have the matrix's range and edge, each judged as JUDGED; and the FHIR
+        Quest-like PDF reports ("< OR = 5"), as a FHIR bundle (a source's own high beside its printed "<5", a printed
+        range alone) and as a C-CDA document (each range its text alone, no IVL, #827: it was dropped): each importer's
+        points have the matrix's range and edge, each judged as JUDGED; and the FHIR
         export says a limit that leaves its edge out in its text alone (FHIR's low and high include theirs), which the
         FHIR importer reads back as it was, with each report's own flag (#817: a report's "A" inside its range came back
         with none)."""
         import types, zipfile
         from server import fhir_export
-        from server.importers import common, csv_labs, fhir, pdf_labs
+        from server.importers import ccda, common, csv_labs, fhir, pdf_labs
         self.assertEqual([common.range_edge(t, lo, hi) for t, lo, hi in [
             ("<5", None, 5), ("< 5 mg/L", None, 5), ("less than 5", None, 5), ("under 5", None, 5), ("<=5", None, 5),
             ("≤5", None, 5), ("=<5", None, 5), ("< OR = 5", None, 5), ("less than or equal to 5", None, 5), ("up to 5", None, 5),
@@ -685,6 +686,9 @@ class Api(unittest.TestCase):
         with open(os.path.join(tmp, "one-sided.json"), "w", encoding="utf-8") as f:
             json.dump({"resourceType": "Bundle", "type": "collection", "entry": [obs(i, *r[:5]) for i, r in enumerate(rows)]}, f)
         same(fhir.parse({"one-sided.json": os.path.join(tmp, "one-sided.json")})["data"], "a FHIR bundle", plain=True)
+        with open(os.path.join(tmp, "one-sided.xml"), "w", encoding="utf-8") as f:
+            f.write(M.ccda([r[:5] for r in rows]))
+        same(ccda.parse({"one-sided.xml": os.path.join(tmp, "one-sided.xml")})["data"], "a C-CDA document, its ranges as text (#827)")
 
         db = dbm.connect()
         try:   # the FHIR export of the matrix's records, and read back

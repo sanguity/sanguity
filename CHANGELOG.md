@@ -1997,6 +1997,11 @@ Everything on `main` so far; it becomes the first tagged release.
   and the FHIR export's interpretation "A" was lost when it was read back in. Now every importer reads a printed flag
   by one rule, as the PDF importer did: H or L as printed, a flag that says neither way placed by the range where it
   can be, else kept and shown as ◆ Flagged (Abnormal in the summary and share links).
+- **A C-CDA's range given as text alone is read, its edge kept** (#827): a reference range with no low and high of
+  its own, only its text ("<5", "<=5", ">60"), was read only where it said "a - b", so the rest were dropped: Labs, the
+  Overview, the summary and share links showed no range and no flag while the drawer showed "<5" beside the value. It's
+  now read by one parser of a range as text, which the FHIR importer uses too ("≤ 5", "less than 5", "up to 5" and a
+  unit after it as well), keeping whether its limit is in it: 5 is High against "<5", in range against "<=5".
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

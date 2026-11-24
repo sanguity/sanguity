@@ -221,6 +221,21 @@ class Common(unittest.TestCase):
         self.assertEqual([f("A", 15, 15, 60, "<"), f("A", 5, None, 5, "", "<"), f("A", 5, None, 5), f("A", 5, None, 5, "", "")],
                          ["L", "H", "A", "A"])
 
+    def test_a_range_as_text(self):
+        """#827: one parser for a reference range given as text: (low, high, edge), a one-sided limit's edge by
+        range_edge ("<5" leaves 5 out, "<=5" keeps it, #780), a unit or words after it allowed; nothing it can't read."""
+        r = common.range_text
+        self.assertEqual([r(t) for t in ("3.5-5.1", "3.5 - 5.1 mmol/L", "70–99", "10 to 40", "-2 - 2", "0.5-1.5mg/dL")],
+                         [(3.5, 5.1, ""), (3.5, 5.1, ""), (70, 99, ""), (10, 40, ""), (-2, 2, ""), (0.5, 1.5, "")])
+        self.assertEqual([r(t) for t in ("<5", "< 5 mg/L", "less than 5", "under 5", "below 5")], [(None, 5, "<")] * 5)
+        self.assertEqual([r(t) for t in ("<=5", "≤ 5", "=<5", "< OR = 5", "<= 5.0", "up to 5", "less than or equal to 5")],
+                         [(None, 5, "")] * 4 + [(None, 5.0, "")] + [(None, 5, "")] * 2)
+        self.assertEqual([r(t) for t in (">60", "> 60 mL/min/1.73m2", "greater than 60", "more than 60", "over 60", "above 60")],
+                         [(60, None, ">")] * 6)
+        self.assertEqual([r(t) for t in (">=60", "≥ 60", "=>60", "> OR = 60", "greater than or equal to 60")], [(60, None, "")] * 5)
+        self.assertEqual([r(t) for t in ("", None, "Negative", "See note", "5-3", "1,000-2,000", "3,5-5,1", "Not Estab.", "5")],
+                         [(None, None, "")] * 9)
+
     def test_stays(self):
         st = common.inferred_stays({"Mar 02, 2026": ["2026-03-02T06:00:00", "2026-03-04T06:00:00"]},
                                    ["2026-05-01T05:00:00", "2026-05-03T05:00:00", "2026-06-20T05:00:00"], "Other Clinic")

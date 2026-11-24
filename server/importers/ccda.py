@@ -19,7 +19,7 @@ import xml.etree.ElementTree as ET
 from datetime import date
 
 from . import common
-from .common import canonical_lab, comparator, range_edge, report_flag
+from .common import canonical_lab, comparator, range_edge, range_text, report_flag
 
 NAME = "ccda"
 LABEL = "C-CDA health summary (XML)"
@@ -332,7 +332,8 @@ def _value(obs):
 def _range(doc, obs):
     """(low, high, as displayed, edge) from an observation's referenceRange. edge: "<" where a one-sided range leaves
     its limit's edge out (#780), as a high with inclusive="false" does, or a range displayed "<5" beside a high of 5;
-    ">" the same for a low (common.range_edge)."""
+    ">" the same for a low (common.range_edge). With no IVL, its text alone ("<5", "<=5", ">60", "3.5-5.1 mmol/L") read
+    by common.range_text, the one parser of a range as text (#827)."""
     for rr in _all(obs, "h:referenceRange/h:observationRange"):
         v = _f(rr, "h:value")
         if v is not None:
@@ -347,9 +348,9 @@ def _range(doc, obs):
                 shown = doc.ref(_f(rr, "h:text")) or txt
                 return lo, hi, shown, range_edge(txt if out else shown, lo, hi)
         txt = doc.ref(_f(rr, "h:text"))
-        if txt:
-            m = re.match(r"^\s*(-?\d+(?:\.\d+)?)\s*[-–]\s*(-?\d+(?:\.\d+)?)", txt)
-            return (float(m.group(1)), float(m.group(2)), txt, "") if m else (None, None, txt, "")
+        if txt:   # a range given as its text alone: through the one parser, its edge kept (#827: only "a - b" was read)
+            lo, hi, edge = range_text(txt)
+            return lo, hi, txt, edge
     return None, None, "", ""
 
 

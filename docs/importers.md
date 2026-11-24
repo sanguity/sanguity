@@ -143,10 +143,11 @@ the range doesn't place it, a report's own flag first (#752); none printed (or "
 is for a one-sided range whose limit leaves its edge out, as printed: `"<"` for `"<5"` (5 is above it), `">"` for
 `">60"` (60 is below it); leave it off (or `""`) for a range that keeps it (`"<=5"`, `"< OR = 5"`, `">=60"`) or one
 with a low and a high, and put `null` in the tag's place when there's no tag. `common.range_edge(printed, low, high)`
-works it out, and the flag rule honours it (#780). `txt` holds results that aren't numbers. Name series with
-`common.canonical_lab(name, loinc)` so the same test from two sources lands on one chart (it returns None for labs it
-doesn't know: keep the source's name then), and add a LOINC code when you have one. A series may carry a `key` too,
-such as `"loinc:718-7"` (see below).
+works it out, and the flag rule honours it (#780); a range given as text alone ("<5", "<=5", ">60", "3.5-5.1 mmol/L")
+is read by `common.range_text(text)`, the one parser of a range as text: `(low, high, edge)` (#827). `txt` holds
+results that aren't numbers. Name series with `common.canonical_lab(name, loinc)` so the same test from two sources
+lands on one chart (it returns None for labs it doesn't know: keep the source's name then), and add a LOINC code when
+you have one. A series may carry a `key` too, such as `"loinc:718-7"` (see below).
 
 ### Source keys
 

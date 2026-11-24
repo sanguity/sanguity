@@ -49,7 +49,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
 from . import common
-from .common import canonical_lab, range_edge, report_flag, unit_key
+from .common import canonical_lab, range_edge, range_text, report_flag, unit_key
 
 NAME = "fhir"
 LABEL = "FHIR records (Apple Health, Blue Button, patient portals)"
@@ -429,13 +429,8 @@ def _range(o):
     if not txt:
         txt = (f"{fmt(lo)} - {fmt(hi)}" if lo is not None and hi is not None else f">= {fmt(lo)}" if lo is not None
                else f"<= {fmt(hi)}" if hi is not None else "")
-    if lo is None and hi is None and txt:   # only a text range such as "3.5-5.1 mmol/L"
-        m = re.fullmatch(r"\s*(-?\d+(?:\.\d+)?)\s*[-–]\s*(-?\d+(?:\.\d+)?)\s*\S*\s*", txt)
-        if m:
-            lo, hi = num(m.group(1)), num(m.group(2))
-        m = re.fullmatch(r"\s*([<>])=?\s*(-?\d+(?:\.\d+)?)\s*\S*\s*", txt)   # "<130 mg/dL", ">=60"
-        if m:
-            lo, hi = (num(m.group(2)), None) if m.group(1) == ">" else (None, num(m.group(2)))
+    if lo is None and hi is None and txt:   # only a text range ("3.5-5.1 mmol/L", "<130 mg/dL", ">=60"): the one parser (#827)
+        lo, hi, _ = range_text(txt)
     return lo, hi, txt, range_edge(txt, lo, hi)
 
 
