@@ -1877,6 +1877,15 @@ Everything on `main` so far; it becomes the first tagged release.
   judged against a range other than its row's says it ("1.6 ▼ Low (report range 1.7–2.4)", "150 (no range given)"),
   and the summary's notes, now under its tables in the preview as in the PDF, say what flags are judged against.
   Compare places a value given as a bound as one ("<0%") and leaves it out of a median, saying so.
+- **The visit summary and share links keep every result: a copy's range and flag, and a lab's other unit** (#781):
+  where one result came twice (typed in with no range, then a portal's with 3.5–5.1 and Low), the summary and a share
+  link kept the first copy, so Potassium 3.2 had no Low and no out-of-range row there while Labs showed it; after Same
+  result every page showed only that copy. And of a lab in two units they kept only the latest result's unit: Glucose
+  3.1 mmol/L Low was in no out-of-range row or trend, and a share link sent only the 92 mg/dL. Now a result that came
+  twice is one with any range and flag either copy has (the kept copy's own first, a flag only beside the range it was
+  given against), naming both sources, in the summary, its PDF and share links and, once linked as the same result, on
+  every page and in the drawer's row, a range in another unit given in the kept copy's by the exact change of prefix.
+  A lab in two units is a row in each, as Labs keeps it (#438), never a result left out.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

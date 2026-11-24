@@ -114,6 +114,26 @@ class Rule(unittest.TestCase):
                 S("Platelet Count", "K/uL", imp=4) | {"pts": [P("2025-03-04", 121)]}]
         self.assertEqual(cm.candidates(labs), [((1, 0), (0, 0))], "older import first; another test never")
 
+    def test_the_kept_copy_carries_the_others_range_and_flag(self):
+        """#781: linked as the same result, the copy kept has any range and flag the other has where it says none
+        (ranges.copies), a range in the other's unit given in its own by the exact factor; its drawer row the same."""
+        t = "2025-03-04T09:45:00"
+        k, hgb = S("Potassium", "mmol/L"), S("Hemoglobin", "g/dL", "718-7")
+        self.assertEqual(cm._carry(P(t, 3.2), k, [t, 3.2, 3.5, 5.1, "L", "3.2"], S("Potassium", "mmol/L", imp=2)),
+                         [t, 3.2, 3.5, 5.1, "L", "3.2"], "none: the other's range and Low")
+        self.assertEqual(cm._carry(P(t, 11.0, "11.0"), hgb, [t, 110, 120, 160, "L", "110"], S("Hemoglobin", "g/L", "718-7", 2)),
+                         [t, 11.0, 12.0, 16.0, "L", "11.0"], "a range in g/L, given in g/dL")
+        own = [t, 3.2, 3.4, 5.0, "", "3.2"]
+        self.assertEqual(cm._carry(own, k, [t, 3.2, 3.5, 5.1, "L", "3.2"], k), own, "its own range kept, a Low against another not taken")
+        kept = cm._carry([t, 133, None, None, "L", "133"], k, [t, 133, 135, 145, "", "133"], k)
+        self.assertEqual(kept[2:5], [135, 145, "L"], "a flag in one, the range in the other")
+        self.assertEqual(cm._carry_row(["Hemoglobin", "11.0", "g/dL", "", ""], ["HGB", "110", "g/L", "120-160", "L"]),
+                         ["Hemoglobin", "11.0", "g/dL", "120-160 g/L", "L"], "the drawer's row: a range in another unit said with it")
+        row = ["Potassium", "3.2", "mmol/L", "3.5-5.1", ""]
+        self.assertIs(cm._carry_row(row, ["Potassium", "3.2", "mmol/L", "", ""]), row, "nothing to carry")
+        self.assertEqual(cm._carry_row(["Potassium", "3.2", "mmol/L"], ["K", "3.2", "mmol / L", "3.5-5.1", "L"]),
+                         ["Potassium", "3.2", "mmol/L", "3.5-5.1", "L"])
+
 
 class CrossSource(unittest.TestCase):
     """A file import and a connected source's sync bringing the same results."""

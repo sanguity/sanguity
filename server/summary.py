@@ -12,7 +12,8 @@ Sections, each optional (SECTIONS):
                  range the person set in Settings for that lab and unit (#44, server/ranges.py), if one fits; the
                  range is then printed with "(settings)" after it, and the note under the table says what that is.
                  Every flag worked out from a range is by ranges.judge, the one rule (#752: "<15" against a low of 15 is
-                 low)
+                 low). A result that came twice is one, with any range and flag either copy has; a lab in two units is a
+                 row in each, every result in one (_series, #781)
   trends         the key labs (overview.keyLabs) and any the person picked: the last result on or before the
                  "since" date, the latest, the change (none from a value given as "<5", #718), and a sparkline of
                  the results between (each [day, value, flag, low, high, "settings" for a range from settings, the
@@ -249,32 +250,53 @@ def at_cell(p, row=False):
 
 
 def _series(data, rcfg=None):
-    """{name: {"name", "unit", "pts": [point dict with its source]}}: every import's series of a name put together
-    (the same test from two sources is one trend), each result keeping its own range. With two units, the unit of
-    the latest result is kept. rcfg: ranges.config(), for results whose report gives no range (#44)."""
+    """{name: {"name", "unit", "pts": [point dict with its source], "also": [the name's series in other units]}}: every
+    import's series of a name and unit put together (the same test from two sources is one trend), each result keeping
+    its own range. Two copies of one result (the same time, value as given and unit: from two sources, or twice from
+    one) are one, with any range and flag either has, by ranges.copies (#781: a copy with no range beside one with its
+    report's range and Low kept the first, and the summary and a share link said 3.2 with neither), and the sources of
+    both (a "Same result" link's too: crossmatch.apply). Then each result is judged by the one rule (#752). A lab in two
+    units is a series in each, as the records page keeps it (#438), none left out (#781: only the latest result's unit
+    was kept, and a Low in the other went unsaid): the one with the latest result under its name, the others in its
+    "also", newest first (each() gives every one). rcfg: ranges.config(), for results whose report gives no range (#44)."""
     imports = data.get("imports") or {}
+    label = lambda imp: (imports.get(str(imp)) or {}).get("label") or ""
     by = {}
     for s in data.get("labs") or []:
         if not isinstance(s, dict) or not s.get("name") or s.get("watch"):
             continue
-        src = (imports.get(str(s.get("imp"))) or {}).get("label") or ""
-        for raw in s.get("pts") or []:
+        unit, same = s.get("unit") or "", s.get("same") if isinstance(s.get("same"), dict) else {}
+        for n, raw in enumerate(s.get("pts") or []):
             p = _pt(raw)
             if p["d"]:
-                p = _judged(p, s["name"], s.get("unit") or "", rcfg)
-                by.setdefault(s["name"], []).append({**p, "unit": s.get("unit") or "", "src": src})
+                srcs = [label(s.get("imp")), *(label(x.get("imp")) for x in same.get(str(n)) or () if isinstance(x, dict))]
+                by.setdefault((s["name"], unit), []).append({**p, "unit": unit, "src": srcs})
     out = {}
-    for name, pts in by.items():
+    for (name, unit), pts in by.items():
         pts.sort(key=lambda p: str(p["t"]))
-        unit = pts[-1]["unit"]
-        seen, kept = set(), []
+        kept, at = [], {}
         for p in pts:
             key = (p["t"], p["v"], p["text"])
-            if p["unit"] == unit and key not in seen:   # the same result from two sources once
-                seen.add(key)
+            k = at.get(key)
+            if k is None:
+                at[key] = p
                 kept.append(p)
-        out[name] = {"name": name, "unit": unit, "pts": kept}
+            else:   # the same result again: once, with what either says of its range and flag
+                k["lo"], k["hi"], k["flag"] = ranges.copies((k["lo"], k["hi"], k["flag"]), (p["lo"], p["hi"], p["flag"]))
+                k["src"] += p["src"]
+        pts = [{**_judged(p, name, unit, rcfg), "src": "; ".join(dict.fromkeys(x for x in p["src"] if x))} for p in kept]
+        out.setdefault(name, []).append({"name": name, "unit": unit, "pts": pts})
+    for name, ss in out.items():
+        ss.sort(key=lambda s: str(s["pts"][-1]["t"]), reverse=True)   # the latest result's unit first
+        out[name] = {**ss[0], "also": ss[1:]}
     return out
+
+
+def each(series):
+    """Every series of _series(): each name's, then its other units' (#781)."""
+    for s in series.values():
+        yield s
+        yield from s["also"]
 
 
 def _visits(data, now):
@@ -372,7 +394,8 @@ def build(db, pid, uid, profile_name, opts):
            "since": {"date": since, "label": label}, "sections": wanted, "notice": NOTICE}
     if "out_of_range" in wanted:
         rows = []
-        for name, s in series.items():
+        for s in each(series):   # a lab in two units: each its own row (#781)
+            name = s["name"]
             recent = [p for p in s["pts"] if p["d"] > since]
             flagged = [p for p in recent if out_of_range(p)]
             if not flagged:
@@ -387,8 +410,7 @@ def build(db, pid, uid, profile_name, opts):
         out["out_of_range"] = rows
     if "trends" in wanted:
         rows = []
-        for name in trend_names:
-            s = series[name]
+        for name, s in ((n, s) for n in trend_names for s in [series[n], *series[n]["also"]]):   # each unit its row (#781)
             before = [p for p in s["pts"] if p["d"] <= since]
             after = [p for p in s["pts"] if p["d"] > since]
             then = before[-1] if before else None

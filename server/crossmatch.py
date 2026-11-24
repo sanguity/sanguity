@@ -34,8 +34,11 @@ like edits.py's corrections.
 apply() runs last when the records are put together (records._assemble). For each "same result" whose both points
 are in the records, the point from the older import stays and the other is left out of its series (and the series,
 if nothing is left in it), so Trends and the heatmap show it once; the kept point's series lists the other source
-under "same" ({point index: [{imp, link}]}). In the drawer, the other source's row is left out of its result (and the
-result, and its lab day, when nothing else is left), and the kept row's result lists the other under "same". Three
+under "same" ({point index: [{imp, link}]}). The kept point carries any range and flag the other has where its own
+report gives none (ranges.copies, #781: a range in the kept point's unit, by the match's exact factor), so a copy with
+no range kept beside one with its report's range and Low isn't shown with neither. In the drawer, the other source's
+row is left out of its result (and the result, and its lab day, when nothing else is left), and the kept row's result
+lists the other under "same", the kept row given the other's range and flag in the same way. Three
 sources linked in pairs show once, with all three named. Removing the link shows both again; undoing one side's
 import leaves the link stored but unapplied (found: false), and the other side shows alone.
 
@@ -51,7 +54,7 @@ import collections, json, re
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
-from . import crypto, db as dbm, security as sec, units
+from . import crypto, db as dbm, ranges, security as sec, units
 from .importers import common
 
 LISTED = 500   # possible matches listed for the page, at most
@@ -358,6 +361,7 @@ def apply(db, pid, data):
     for x in list(groups.up):
         members[groups.find(x)].append(x)
     hidden, same = set(), collections.defaultdict(list)   # same: kept point -> [{imp, link}] of the others
+    merged = {}   # kept point -> it, with any range and flag the others have (#781)
     for pts in members.values():
         if len(pts) < 2:
             continue
@@ -370,6 +374,7 @@ def apply(db, pid, data):
             hidden.add(q)
             link = next((l for l in links[q] if l in links[keep]), links[q][0])
             same[keep].append({"imp": s.get("imp"), "link": link})
+            merged[keep] = _carry(merged.get(keep, kp), ks, p, s)
             row = _row_of(drawer, s, p)
             if row and krow and _fold_row(data, row, krow, s.get("imp"), link):
                 folded.add(row[0])
@@ -403,7 +408,7 @@ def apply(db, pid, data):
                     continue
                 if (i, n) in same:
                     marks[str(len(pts))] = same[(i, n)]
-                pts.append(p)
+                pts.append(merged.get((i, n), p))
             if not pts and not s.get("txt"):
                 continue   # every result in it shows in another series
             s = {**s, "pts": pts, "n": len(pts)}
@@ -431,9 +436,53 @@ def _fold_row(data, row, keep_row, imp, link):
     taken = rows[row[1]]
     rows[row[1]] = None   # kept as a gap until every link is folded, so later indexes still hold
     d = details[str(eid)] = {**d, "rows": rows}
-    k = details[str(keep_row[0])] = {**k, "same": (k.get("same") or []) + [{"row": keep_row[1], "imp": imp, "link": link,
-                                                                              "name": taken[0]}]}
+    krows = list(k.get("rows") or [])   # the kept row: with the range and flag of the one folded into it (#781)
+    if keep_row[1] < len(krows) and isinstance(krows[keep_row[1]], list):
+        krows[keep_row[1]] = _carry_row(krows[keep_row[1]], taken)
+    k = details[str(keep_row[0])] = {**k, "rows": krows, "same": (k.get("same") or []) + [{"row": keep_row[1], "imp": imp, "link": link,
+                                                                                            "name": taken[0]}]}
     return True
+
+
+def _num(v):
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def _carry(kp, ks, p, s):
+    """The kept point kp (of series ks), with what point p (of series s), the same result, says of its range and flag
+    where kp says nothing (ranges.copies, #781: a copy with no range kept beside one with its report's 3.5–5.1 and Low
+    showed 3.2 with neither everywhere): p's range in kp's unit, by the exact change of prefix the match allows. A new
+    list; the records' own are left as they are."""
+    kp, p = list(kp), list(p) + [None] * (5 - len(p))
+    lo, hi = _num(p[2]), _num(p[3])
+    if lo is not None or hi is not None:
+        f = factor(_canon_name(s), s.get("unit"), ks.get("unit"))
+        if f is None:   # (a chain of links: no exact factor between these two) nothing of p's is carried
+            return kp
+        if f != 1:
+            lo, hi = (None if x is None else float(Decimal(str(x)) * f) for x in (lo, hi))
+    have = (kp + [None] * 5)[2:5]
+    got = ranges.copies((_num(have[0]), _num(have[1]), have[2]), (lo, hi, p[4]))
+    if list(got) == [_num(have[0]), _num(have[1]), str(have[2] or "").strip()]:
+        return kp
+    kp += [None] * (5 - len(kp))
+    kp[2:5] = got
+    return kp
+
+
+def _carry_row(kept, taken):
+    """The kept drawer row [name, value, unit, range, flag], with the range and flag of the row folded into it where it
+    says none (#781, as _carry): a range in another unit said with its unit."""
+    k, t = list(kept) + [""] * (5 - len(kept)), list(taken) + [""] * (5 - len(taken))
+    rng = str(t[3] or "").strip()
+    if rng and common.unit_norm(t[2]) != common.unit_norm(k[2]):
+        rng = f"{rng} {t[2]}".strip()
+    r, f = str(k[3] or "").strip() or None, str(k[4] or "").strip()
+    got = ranges.copies((r, None, f), (rng or None, None, t[4]))
+    if (got[0], got[2]) == (r, f):
+        return kept
+    k[3], k[4] = got[0] or "", got[2]
+    return k
 
 
 def _tidy(data, folded):
