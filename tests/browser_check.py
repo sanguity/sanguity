@@ -21458,6 +21458,32 @@ def main():
             check("#850: a range typed in as reports print it (“=>60”, “> OR = 60”, “< OR = 5”, “less than or equal to 5”, “5,0 - 10,0”…) "
                   "is read by the one parser of a range as text: each row's check line says its range and flag as Labs will, with no "
                   "“couldn't be read” note, and saved, Labs has each range, edge and flag", not bad850, bad850[:6])
+            # ---- #875: #835's paste with values given as bounds (ranges_matrix BOUND_VALUES: "=<5", "≤ 5", "< 5", "≥60",
+            # "=>60", "> 10", ">= 60", "<0.5"). Each row's check line says its value as a bound, by the comparator the
+            # server read ("≤ 5 U/L", as Labs words a limit), and its flag (it said "5 U/L", an exact value); saved, Labs
+            # has each with its number, comparator and flag
+            bad875, unit875, word875 = [], M752.SPELLED_AS[1], {"<": "<", "<=": "≤", ">": ">", ">=": "≥"}   # (ranges.js BOUND_WORD)
+            page.goto(base + f"/sources.html?profile={ppid}#manual")
+            page.wait_for_selector("#typeIn .man-row [data-f=date]", state="visible", timeout=10000)
+            js("""text => { const dt = new DataTransfer(); dt.setData('text/plain', text);
+              document.querySelector('.man-row [data-f=date]').dispatchEvent(new ClipboardEvent('paste', {clipboardData: dt, bubbles: true, cancelable: true})); }""",
+               "Date\tTime\tTest\tValue\tUnit\tReference range\n" + "".join(f"{t[:10]}\t{t[11:16]}\t{n}\t{v}\t{u}\t{r}\n" for n, u, t, v, r in M752.bounded()))
+            page.wait_for_function(f"document.getElementById('manMsg').textContent === '{len(M752.BOUND_VALUES)} results ready to save.'", timeout=10000)
+            got875 = js("[...document.querySelectorAll('.man-row .man-check')].map(c => [c.textContent.split(' · ')[2], c.querySelector('.abn')?.textContent || ''])")
+            want875 = [[f"{word875[c]} {x} {unit875}", FLAG752[f]] for _, _, x, c, f in M752.BOUND_VALUES]
+            if got875 != want875:
+                bad875.append(f"the check lines: {[(b[0], g, w) for b, g, w in zip(M752.BOUND_VALUES, got875, want875) if g != w]}")
+            page.click("#manSave")
+            page.wait_for_function("document.getElementById('manMsg').textContent.startsWith('Saved')", timeout=10000)
+            page.goto(base + f"/?profile={ppid}")
+            page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {ppid}", timeout=20000)
+            labs875 = js("([n, k]) => (SERIES.find(s => s.name === n) || {pts: []}).pts.slice(-k).map(p => [p[1], rangeCmp(p[5]), p[4] || ''])",
+                         [M752.SPELLED_AS[0], len(M752.BOUND_VALUES)])
+            if labs875 != [[x, c, f] for _, _, x, c, f in M752.BOUND_VALUES]:
+                bad875.append(f"Labs' {M752.SPELLED_AS[0]}: {labs875}")
+            check("#875: a value typed in as a bound (“=<5”, “≤ 5”, “≥60”, “> 10”…) is said as one on its check line, by the comparator "
+                  "the server read (“≤ 5 U/L”, as Labs words a limit, not “5 U/L”), with its flag, and saved, Labs has each with its "
+                  "number, comparator and flag", not bad875, bad875)
             db = dbm.connect()
             prof_r.delete_profile(db, ppid)
             # ---- #870: one reader of a number, the FHIR export's too. A spreadsheet with semicolons ("4,5", "0,500", "=<5",

@@ -485,9 +485,10 @@ def read_row(get, decimal_comma=False, order=None, bounds=True):
     get(field) is the row's trimmed text for a field of FIELDS ("" when it has none). decimal_comma: read "4,5" as 4.5.
     order: numeric date order from date_order() over the rows read together. bounds: low and high are read
     (a spreadsheet only when it has those columns). why is a phrase after "Skipped N rows", like "with no date";
-    note is "" or the unreadable text, as " ('31/31/2025')". A result's "unread" lists [(part, as printed)] of what's
-    printed as a number but couldn't be read, kept as printed and said ("value", "range": "0,500" where the file's
-    commas group thousands, #859). Hand entry (routes_manual.py) reads rows with this too, so a typed result and the
+    note is "" or the unreadable text, as " ('31/31/2025')". A result's "cmp" is its value's comparator where it's
+    given as a bound ("<", "<=", ">", ">=": "=<5" is "<=" 5, common.comparator), as its flag is worked out (#875); its
+    "unread" lists [(part, as printed)] of what's printed as a number but couldn't be read, kept as printed and said
+    ("value", "range": "0,500" where the file's commas group thousands, #859). Hand entry (routes_manual.py) reads rows with this too, so a typed result and the
     same result in a spreadsheet are one and the same."""
     test, raw_date, reported = get("test"), get("date"), get("value")
     if not test:
@@ -527,7 +528,7 @@ def read_row(get, decimal_comma=False, order=None, bounds=True):
                        f">={_fmt(lo)}" if lo is not None else f"<={_fmt(hi)}" if hi is not None else "")
     edge = range_edge(printed, lo, hi, decimal_comma)   # "<" for "<5": 5 is outside it (#780)
     flag = report_flag(flag_text, x, lo, hi, cmp, edge)   # the one rule (#817): "A" in range kept, "Abnormal" past it placed
-    return {"t": t, "test": test, "x": x, "reported": reported, "unit": unit, "range": printed,
+    return {"t": t, "test": test, "x": x, "cmp": cmp if x is not None else "", "reported": reported, "unit": unit, "range": printed,
             "lo": lo, "hi": hi, "edge": edge, "flag": flag, "panel": get("panel"), "lab": get("lab"), "loinc": get("loinc"),
             "unread": unread}, None
 

@@ -148,13 +148,15 @@ def _matched(db, got):
 
 def _describe(n, r, problems, notes, matched=None, dup=False, copy=None):
     """A row as the page's check line says it. edge: whether its one-sided range leaves its limit out ("<" for "<5",
-    ">" for ">60", "" else: common.range_edge, #780), so the line says "< 5" or "≤ 5" as Labs will (#826). copy: what
-    its result, already here, brings, kept with its row (#868: "range", "flag" or "row"), which the line says."""
+    ">" for ">60", "" else: common.range_edge, #780), so the line says "< 5" or "≤ 5" as Labs will (#826). cmp: its
+    value's comparator where it's given as a bound ("=<5" is "<=" 5: csv_labs.read_row's, common.comparator), so the line
+    says "≤ 5 U/L", not "5 U/L" (#875). copy: what its result, already here, brings, kept with its row (#868: "range",
+    "flag" or "row"), which the line says."""
     d = {"row": n, "ok": not problems, "problems": problems, "notes": notes, "duplicate": dup, "copy": copy}
     if r:
         d.update(date=_display(r["t"]), name=(matched or {}).get(n) or common.canonical_lab(r["test"], r["loinc"]) or r["test"],
-                 value=r["x"], text=r["reported"] if r["x"] is None else None, unit=r["unit"], low=r["lo"], high=r["hi"],
-                 edge=r.get("edge") or "", flag=r["flag"])
+                 value=r["x"], cmp=r.get("cmp") or "", text=r["reported"] if r["x"] is None else None, unit=r["unit"], low=r["lo"],
+                 high=r["hi"], edge=r.get("edge") or "", flag=r["flag"])
     return d
 
 

@@ -130,9 +130,10 @@
       for (const [f, v] of [["date", x.date.slice(0, 10)], ["time", x.date.slice(11, 16)]])
         if (input(r, f).dataset.raw) put(input(r, f), v);
       // its range and flag as Labs will say them (#826): "3.5–5.1", "< 5" (5 left out of it, the edge the server read)
-      // or "≤ 5" (ranges.js rangeWords); ▲ High, ▼ Low, or ◆ Flagged for a flag that says neither (ranges.js flagWord)
+      // or "≤ 5" (ranges.js rangeWords); ▲ High, ▼ Low, or ◆ Flagged for a flag that says neither (ranges.js flagWord);
+      // a value given as a bound said as one, by the comparator the server read (#875: "=<5" is "≤ 5 U/L", not "5 U/L")
       const range = rangeWords([null, x.value, x.low, x.high, x.flag, null, null, x.edge]);
-      const value = x.value != null ? `${x.value}${x.unit ? " " + x.unit : ""}` : `“${x.text}”`;
+      const value = x.value != null ? boundWords(x.cmp, x.value) + (x.unit ? " " + x.unit : "") : `“${x.text}”`;
       out.replaceChildren(icon("check"), " ", el("b", {text: x.name}), ` · ${recordDate(x.date)} · ${value}` + (range ? ` · range ${range}` : ""),
         ...(x.flag ? [" · ", el("span", {class: "abn", text: flagWord(x.flag)})] : []),
         ...(x.duplicate ? [" · ", el("span", {class: "dup", text: "already in this profile: it won't be saved again"})] : []),

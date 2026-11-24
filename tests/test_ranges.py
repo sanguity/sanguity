@@ -1156,7 +1156,9 @@ class Api(unittest.TestCase):
         r = self.c["robin"].post(f"/api/profiles/{self.pid}/manual", headers=H, json={"rows": [
             {"date": t[:10], "time": t[11:16], "test": n, "value": v, "unit": u, "range": rng} for n, u, t, v, rng in rows]})
         self.assertEqual(r.status_code, 200, r.text)
-        self.assertEqual([[x["value"], x["flag"]] for x in r.json()["rows"]], [[x, f] for _, _, x, _, f in M.BOUND_VALUES], "Type them in's check")
+        # (#875: with its comparator as read, for its check line to say "≤ 5 U/L", not "5 U/L")
+        self.assertEqual([[x["value"], x["cmp"], x["flag"]] for x in r.json()["rows"]], [[x, c, f] for _, _, x, c, f in M.BOUND_VALUES],
+                         "Type them in's check")
 
     def test_2_commas_in_each_mode(self):
         """#859: no thousands follow a leading 0 (common.number_text). ranges_matrix COMMAS' numbers ("0,500", "0,05",

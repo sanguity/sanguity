@@ -13,8 +13,7 @@ const cmpLabs = () => SERIES.filter(s => !s.watch && cmpPlaced(s, -Infinity, Inf
 /* a place in words, a minus sign for one under the low limit: "62%", "−15%" */
 const cmpPct = v => (Math.round(v) < 0 ? "−" : "") + Math.abs(Math.round(v)) + "%";
 /* a result's place in words, said as a bound where its value is one (#752): "<5" against 0–5 is "<100%", not 100% */
-const CMP_BOUND = {"<": "<", "<=": "≤", ">": ">", ">=": "≥"};
-const cmpPlace = p => (CMP_BOUND[rangeCmp(p[5])] || "") + cmpPct(ckPos(p));
+const cmpPlace = p => (BOUND_WORD[rangeCmp(p[5])] || "") + cmpPct(ckPos(p));
 const cmpMed = a => { const s = [...a].sort((x, y) => x - y), n = s.length; return n % 2 ? s[n >> 1] : (s[n / 2 - 1] + s[n / 2]) / 2; };
 const CMP_SLOT = ["Lab 1 of 3: a solid line, dots", "Lab 2 of 3: a dashed line, squares", "Lab 3 of 3: a dotted line, rings"];
 let cmpSel = null, cmpMsDate = null;   // the slots' labs (cmpKey, "" for none); the milestone picked, by its date
