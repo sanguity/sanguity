@@ -9007,6 +9007,25 @@ def main():
                 page.set_viewport_size({"width": 1400, "height": 900})
                 page.click("#dbody button:text-is('Add another time')")
                 page.locator("#dbody .mr-time input >> nth=1").fill("20:00")
+                # #830: Remove time N pressed from the keyboard (Enter, then Space) leaves focus on the next time's field, or
+                # on the one before for the last (it went to the page); the times left named by their place, ids each once
+                FOC830 = """() => [(a => a.closest('#dbody .mr-time') ? a.getAttribute('aria-label') + ' ' + a.value : a.id || a.tagName)(document.activeElement),
+                  [...document.querySelectorAll('#dbody .mr-time input')].map(i => i.getAttribute('aria-label') + ' ' + i.value),
+                  [...document.querySelectorAll('#dbody .mr-time button')].map(b => b.getAttribute('aria-label')),
+                  new Set([...document.querySelectorAll('#dbody .mr-time input')].map(i => i.id)).size]"""
+                page.click("#dbody button:text-is('Add another time')")
+                page.locator("#dbody .mr-time input >> nth=2").fill("12:00")
+                page.focus("#dbody .mr-time:nth-child(2) button")
+                page.keyboard.press("Enter")
+                rm830 = [js(FOC830)]
+                page.focus("#dbody .mr-time:last-child button")
+                page.keyboard.press(" ")
+                rm830.append(js(FOC830))
+                check("…Remove time 2 by the keyboard leaves focus on the next time's field, and on the one before for the last, each time named by its "
+                      "place (#830: focus went to the page)", rm830 == [["Time 2 12:00", ["Time 1 08:00", "Time 2 12:00"], ["Remove time 1", "Remove time 2"], 2],
+                                                                           ["Time 1 08:00", ["Time 1 08:00"], ["Remove time 1"], 1]], rm830)
+                page.click("#dbody button:text-is('Add another time')")
+                page.locator("#dbody .mr-time input >> nth=1").fill("20:00")
                 page.click("#dbody .mr-days button[aria-label=Saturday]")
                 page.click("#dbody .mr-days button[aria-label=Sunday]")
                 until162 = js("isoDay(Date.now() + 90 * DAY)")
