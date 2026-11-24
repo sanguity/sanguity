@@ -22187,6 +22187,38 @@ def main():
                 kbad += focus_walk(page, f"{path.split('.')[0]}#{g}") + focus_walk(page, f"{path.split('.')[0]}#{g}", back=True)
             check("keyboard at 375 px: Tab and Shift+Tab through each records tab and a group of each page, every stop showing focus "
                   "and none hidden under the top bar or a sticky header (2.4.7, 2.4.11, #202)", not kbad, kbad[:8] or f"{time.time() - t_keys:.0f} s")
+            # #831: …and each date, time and date-and-time box in the drawer's forms, Shift+Tab from what follows it onto its
+            # last part (its picker's button, focused inside the box), shows focus: a dose's date and time, and Fix date's
+            # date and time (a datetime-local box, which #202's rule for that state left out), in light and dark
+            page.goto(base + "/?profile=1#timeline")   # (the walk ends on Admin)
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted && MEDS.length > 0", timeout=20000)
+            box831, bad831 = [], []
+
+            def back831(what):   # each date-like box in the drawer: what follows it focused, then Shift+Tab
+                for i in range(js("document.querySelectorAll('#dbody input:is([type=date], [type=time], [type=datetime-local])').length")):
+                    js("""i => { const b = document.querySelectorAll('#dbody input:is([type=date], [type=time], [type=datetime-local])')[i];
+                      const all = [...document.querySelectorAll('#drawer :is(input, select, textarea, button, a[href], [tabindex])')].filter(e => e.tabIndex >= 0 && !e.disabled && e.checkVisibility());
+                      window.__fw = new WeakSet(); all[all.indexOf(b) + 1].focus(); }""", i)
+                    page.keyboard.press("Shift+Tab")
+                    s = js(FOCUS_STOP_JS)
+                    on = js("i => document.activeElement === document.querySelectorAll('#dbody input:is([type=date], [type=time], [type=datetime-local])')[i] && document.activeElement.type", i)
+                    box831.append(f"{what} {on}")
+                    if not on or not s or not s["shown"]:
+                        bad831.append(f"{what}: box {i + 1} ({on}) {s and s['name']} shows no focus")
+            for theme in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", theme)
+                js("closeDrawer(); doseForm(MEDS[0], null, {})")
+                settle(300)
+                back831(f"{theme} dose")
+                js("id => { closeDrawer(); openEvent(byId.get(id)); }", js("EV.find(e => e.k === 'visit').id"))
+                page.wait_for_function("[...document.querySelectorAll('#dmoreList .menu-item')].some(b => b.textContent === 'Fix date')", timeout=5000)
+                js("[...document.querySelectorAll('#dmoreList .menu-item')].find(b => b.textContent === 'Fix date').click()")
+                settle(300)
+                back831(f"{theme} Fix date")
+            js("closeDrawer(); delete document.documentElement.dataset.theme")
+            settle(300)
+            check("…and each date, time and date-and-time box in the drawer's forms (a dose's, Fix date's datetime-local), Shift+Tab onto its picker's "
+                  "button, shows focus, in light and dark (#831, #202)", len(box831) == 6 and not bad831, bad831 or box831)
             # reflow at 320 px (1280 px at 400%), light; and WCAG's text spacing (1.4.12) at 375 px
             spacing = "* { line-height: 1.5 !important; letter-spacing: .12em !important; word-spacing: .16em !important } p { margin-bottom: 2em !important }"
             sizes320 = []

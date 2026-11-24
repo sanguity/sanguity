@@ -1920,6 +1920,8 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Removing a reminder's time leaves focus on the next one** (#830): Remove time 2 pressed from the keyboard took
   the row away and left focus on the page; it goes to the next time's field now, or the one before for the last. The
   times left are named by their place again ("Time 2" was said twice once a time after a removed one was added).
+- **Fix date's date-and-time box shows focus on its calendar button** (#831): Shift+Tab onto the button at the end
+  of Fix date's box showed no focus at all, as date and time boxes did before #202's ring; it has the ring now.
 - **A range printed "<5" leaves 5 out of it** (#780): the CSV, PDF and FHIR importers read "<5" as a high of 5, the
   same as "<=5", so a C-Reactive Protein of 5 against its report's "<5", an LDL of 100 against "<100" and an eGFR of
   60 against ">60" were shown in range, said "≤ 5", "≤ 100" and "≥ 60" on Labs, the Overview, share links and the

@@ -91,7 +91,7 @@ svg.qr{display:block;width:min(100%,200px);height:auto;color-scheme:light;color:
   min-height:32px;max-width:100%;min-width:0;padding:var(--sp-1) var(--sp-2);border:1px solid var(--field-line);border-radius:var(--r-sm);
   background:var(--raised);color:var(--ink);font:inherit;font-weight:var(--fw-regular)}
 :where(input,select,textarea)[aria-invalid="true"]{border-color:var(--crit)}
-:where(input:is([type=date],[type=time])):focus-within:not(:focus){outline:2px solid var(--accent);outline-offset:1px}   /* Shift+Tab reaches its calendar button, which shows no focus of its own (#202) */
+:where(input:is([type=date],[type=time],[type=datetime-local])):focus-within:not(:focus){outline:2px solid var(--accent);outline-offset:1px}   /* Shift+Tab reaches its calendar button, which shows no focus of its own (#202; date and time together too, #831) */
 @media (max-width:640px),(pointer:coarse){ :where(input:not([type=checkbox],[type=radio],[type=range],[type=file],[type=hidden],[type=color],[type=submit],[type=button],[type=reset],[type=image]),select){min-height:44px} }
 /* checkboxes and radios that stay the browser's own, in the accent (a switch below, a segment or a chip draw their own) */
 :where(input:is([type=checkbox],[type=radio],[type=range]),progress){accent-color:var(--accent)}
