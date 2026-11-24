@@ -9,17 +9,17 @@ report's; a report's then one from Settings; a range that changes; values given 
 each edge of a report's range and of one from Settings; and one-sided ranges that leave their edge out ("<5", ">60") or
 keep it ("<=5", ">=60"), at and past it, through the importers that read them too (#780); and a report's flags that
 say no way ("A", "Abnormal", "Critical"), inside its range, past it and with none printed, read through the CSV importer
-as an upload is (THROUGH_CSV: ALT, its flags in CASES as printed, #817); and ranges given as text alone, "a - b", "<40",
-"<=40", "less than 40", read through the C-CDA importer (THROUGH_CCDA: AST, its texts CCDA_TEXT, #827). JUDGED is what
-each result is judged as, by the one rule (server/ranges.py judge, www/js/ranges.js applyRangeOverrides): [flag, low,
-high, source], and EDGES its edge where its range has one; STEPS the band's steps, each the results it covers, with its
-words (a result whose report gave no range is under none). The summary's "since" day is SINCE days back, so each case
-has a Then and a Now. Each draw day is a lab day with one result listing that day's results as a report prints them
-(#782): its row named
-as the report names the test (ROW_NAMES: "CHLORIDE" for the series "Chloride, Blood", "CREAT" for "Creatinine"), the
-value as given, the range as printed (a one-sided one with its edge, "<5" or "<=5") and the report's own flag, and the
-count of flags its importer stored. COPIES (#781, at the end) is a second profile's: one result twice (from two
-imports) and a lab in two units, before and after "Same result". Fictional data only.
+as an upload is (THROUGH_CSV: ALT, its flags in CASES as printed, #817), and pasted into Type them in (PASTE_FLAGS,
+#835); and ranges given as text alone, "a - b", "<40", "<=40", "less than 40", read through the C-CDA importer
+(THROUGH_CCDA: AST, its texts RANGE_TEXT, #827), and through CareSpace and MyChart exports (#836). JUDGED is what each
+result is judged as, by the one rule (server/ranges.py judge, www/js/ranges.js applyRangeOverrides): [flag, low, high,
+source], and EDGES its edge where its range has one; STEPS the band's steps, each the results it covers, with its words
+(a result whose report gave no range is under none). The summary's "since" day is SINCE days back, so each case has a
+Then and a Now. Each draw day is a lab day with one result listing that day's results as a report prints them (#782):
+its row named as the report names the test (ROW_NAMES: "CHLORIDE" for the series "Chloride, Blood", "CREAT" for
+"Creatinine"), the value as given, the range as printed (a one-sided one with its edge, "<5" or "<=5") and the report's
+own flag, and the count of flags its importer stored. COPIES (#781, at the end) is a second profile's: one result
+twice (from two imports) and a lab in two units, before and after "Same result". Fictional data only.
 """
 import datetime
 
@@ -164,15 +164,18 @@ TRENDS["ALT"] = [("50", "Abnormal", None), ("20", "Abnormal", None), "7–56"]
 OUT_OF_RANGE["ALT"] = ["20", "Abnormal", "7–56", 3, 4]
 
 # ---- a range given as text alone (#827): AST's results come in a C-CDA document whose reference ranges are text with
-# no IVL (CCDA_TEXT), read by the C-CDA importer (THROUGH_CCDA: records() takes their series from ccda.parse, as an
+# no IVL (RANGE_TEXT), read by the C-CDA importer (THROUGH_CCDA: records() takes their series from ccda.parse, as an
 # upload would). It read a range from an IVL, or a text "a - b", so "<40" was dropped: no range and no flag on Labs while
 # the drawer showed "<40" beside the value. Now through the one range parser, its edge kept: 40 against "<40" (or "less
 # than 40") is High, against "<=40" in range
 UNITS["AST"] = "U/L"
 CASES["AST"] = [(100, 30, 10, 40, "", "30"), (90, 8, 10, 40, "", "8"), (80, 39, None, 40, "", "39"), (70, 40, None, 40, "", "40"),
                 (40, 40, None, 40, "", "40"), (30, 41, None, 40, "", "41"), (20, 40, None, 40, "", "40"), (10, 35, None, 40, "", "35")]
-CCDA_TEXT = {"AST": ["10 - 40", "10-40", "<40", "< 40", "<=40", "≤ 40", "<40 U/L", "less than 40"]}
+RANGE_TEXT = {"AST": ["10 - 40", "10-40", "<40", "< 40", "<=40", "≤ 40", "<40 U/L", "less than 40"]}
 THROUGH_CCDA = ["AST"]
+# the same results from a CareSpace export and an Epic MyChart export, each range its displayed text alone, no low or
+# high of its own (#836: carespace() and epic(), which tests/test_ranges.py reads through those importers): dropped, as
+# the C-CDA importer's were
 EDGES["AST"] = ["", "", "<", "<", "", "", "<", "<"]
 JUDGED["AST"] = [["", 10, 40, R], ["L", 10, 40, R], ["", None, 40, R], ["H", None, 40, R], ["", None, 40, R], ["H", None, 40, R],
                  ["H", None, 40, R], ["", None, 40, R]]
@@ -280,15 +283,53 @@ def ccda(rows):
             + "".join(obs) + '</organizer></entry></section></component></structuredBody></component></ClinicalDocument>\n')
 
 
+def text_ranged(lab, today=None):
+    """lab's results with their ranges as text alone (RANGE_TEXT): [(test, unit, time, value as given, range as text)]."""
+    return [(lab, UNITS[lab], day(d, today), t, r) for (d, *_, t), r in zip(CASES[lab], RANGE_TEXT[lab])]
+
+
+def carespace(rows, into):
+    """A fictional CareSpace export in the folder into, its lab results [(test, unit, time, value as given, range as
+    text)] each with its range as displayed alone, no lower or upper limit (#836). -> the importer's files"""
+    import json, os
+    os.makedirs(os.path.join(into, "api"), exist_ok=True)
+    docs = {"lab_results.json": [{"id": f"m{i}", "name": n, "value": {"value": v, "unit": u}, "referenceRange": {"unit": u},
+                                  "referenceRangeDisplay": r, "interpretationCode": None, "observationDateTz": t, "labPanelRecordId": "p1"}
+                                 for i, (n, u, t, v, r) in enumerate(rows)],
+            "lab_panels.json": [{"id": "p1", "testName": "Matrix panel (fictional)"}]}
+    for name, data in docs.items():
+        with open(os.path.join(into, "api", name), "w", encoding="utf-8") as f:
+            json.dump({"data": data}, f)
+    return {f"api/{name}": os.path.join(into, "api", name) for name in docs}
+
+
+def epic(rows, into):
+    """A fictional Epic MyChart export's test results in the folder into, each of rows [(test, unit, time, value as
+    given, range as text)] a result of its own with its range as formatted alone, no low or high (#836). -> the
+    importer's files"""
+    import json, os
+    os.makedirs(os.path.join(into, "test-results"), exist_ok=True)
+    num = lambda v: float(v.lstrip("<>="))
+    details = {f"r{i}": {"orderName": "Matrix panel (fictional)", "results": [{
+        "name": "Matrix panel (fictional)", "orderMetadata": {"prioritizedInstantISO": t, "resultType": "LAB"},
+        "resultComponents": [{"componentInfo": {"name": n, "units": u},
+                              "componentResultInfo": {"value": v, "numericValue": num(v), "referenceRange": {"formattedReferenceRange": r}}}]}]}
+               for i, (n, u, t, v, r) in enumerate(rows)}
+    path = os.path.join(into, "test-results", "matrix_test_results_raw.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"groups": [{"resultList": list(details)}], "details": details}, f)
+    return {"test-results/matrix_test_results_raw.json": path}
+
+
 def through_ccda(today=None):
     """THROUGH_CCDA's series as the C-CDA importer reads them (ccda.parse, #827), from a document of their results with
-    each reference range as its text alone (CCDA_TEXT)."""
+    each reference range as its text alone (RANGE_TEXT)."""
     import os, tempfile
     from server.importers import ccda as ccda_importer
     with tempfile.TemporaryDirectory() as tmp:
         path = os.path.join(tmp, "ranges.xml")
         with open(path, "w", encoding="utf-8") as f:
-            f.write(ccda([(n, UNITS[n], day(d, today), t, r) for n in THROUGH_CCDA for (d, *_, t), r in zip(CASES[n], CCDA_TEXT[n])]))
+            f.write(ccda([row for n in THROUGH_CCDA for row in text_ranged(n, today)]))
         return {s["name"]: s for s in ccda_importer.parse({"ranges.xml": path})["data"]["labs"]}
 
 

@@ -95,9 +95,10 @@ def _rnum(s):
 
 
 def range_text(text):
-    """The one parser of a reference range given as text (#827; the C-CDA and FHIR importers', where a source gives
-    no low and high of its own): (low, high, edge), edge as range_edge works it out from the text ("<" for "<5": 5
-    is above it, #780); (None, None, "") for text it can't read ("See note", "Negative", "3,5-5,1"), never a guess."""
+    """The one parser of a reference range given as text (#827, #836; the C-CDA, FHIR, CareSpace and MyChart importers',
+    where a source gives no low and high of its own): (low, high, edge), edge as range_edge works it out from the text
+    ("<" for "<5": 5 is above it, #780); (None, None, "") for text it can't read ("See note", "Negative", "3,5-5,1"),
+    never a guess."""
     t = str(text or "")
     m = _RSPAN.match(t)
     if m:

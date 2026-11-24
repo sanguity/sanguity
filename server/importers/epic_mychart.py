@@ -41,7 +41,7 @@ import zipfile
 
 from . import ccda
 from .common import (canonical_lab, comparator, ext_alias, inferred_stays, iso, lab_alias, lab_day_sub, lab_day_title,
-                     lab_defs, range_edge, report_flag, resolve_name, stay, strip_html, unit_key)
+                     lab_defs, range_edge, range_text, report_flag, resolve_name, stay, strip_html, unit_key)
 
 NAME = "epic-mychart"
 LABEL = "Epic MyChart export"
@@ -208,6 +208,8 @@ def _results(out, tr, rel, org, tag, infer_stays):
                 rr = cr.get("referenceRange") or {}
                 v = cr.get("numericValue")
                 lo, hi = rr.get("low"), rr.get("high")
+                if lo is None and hi is None:   # a range only formatted ("<5"): the one parser of a range as text (#836)
+                    lo, hi, _ = range_text(rr.get("formattedReferenceRange"))
                 edge = range_edge(rr.get("formattedReferenceRange"), lo, hi)   # as formatted: "<5" leaves 5 out (#780)
                 # by the one rule (common.report_flag, #817): the export prints no flag of its own, so the range's
                 flag = report_flag("", v if isinstance(v, (int, float)) and not isinstance(v, bool) else None, lo, hi,

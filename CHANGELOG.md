@@ -2009,6 +2009,10 @@ Everything on `main` so far; it becomes the first tagged release.
   "Abnormal" or "Out of range" column saying "Y" or "Yes" wasn't read. Each now goes through the one rule: the export
   writes each printed flag's code ("A", "AA", "H", "HH"...), which reads back as the same flag; a pasted flag is kept as
   printed and read as an upload's is, each row saying what it became; a yes in such a column is a flag, a no isn't.
+- **CareSpace and MyChart read a range given only as text, its edge kept** (#836): the gap #827 closed for C-CDA. A
+  result whose range came only as its displayed text ("<5", no low or high) was kept with none, so Labs showed no range
+  and no flag while the drawer showed "<5" beside the value. Both now read it by the one parser of a range as text: 5
+  is High against "<5", in range against "<=5".
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
