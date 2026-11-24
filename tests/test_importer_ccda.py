@@ -4,7 +4,7 @@ a truncated file and hostile entity files).
 
   python3 -m pytest tests/test_importer_ccda.py
 """
-import json, os, shutil, sys, tempfile, unittest
+import html, json, os, shutil, sys, tempfile, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FIX = os.path.join(ROOT, "tests", "fixtures", "ccda")
@@ -308,6 +308,32 @@ class Keys(unittest.TestCase):
             row = next(r for e in d["details"].values() if isinstance(e, dict) for r in e.get("rows") or [] if r[0] == "WBC")
             got.append([wbc[4], row[4]])
         self.assertEqual(got, [["A", "A"], ["A", "A"], ["H", "H"], ["L", "L"], ["", ""]])
+
+    def test_a_range_given_as_text_alone(self):
+        """#827: a referenceRange with no IVL, its text alone, is read through the one range parser (common.range_text),
+        its edge kept: only "a - b" was read, so "<11.0" was dropped (no range and no flag on Labs, while the drawer
+        showed "<11.0" beside the value). The row keeps the text as given."""
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        with open(os.path.join(FIX, "maple-grove-ccd.xml"), encoding="utf-8") as f:
+            s = f.read()
+        old = ('<value xsi:type="PQ" value="7.1" unit="10*3/uL"/>\n                  <interpretationCode code="N" codeSystem="2.16.840.1.113883.5.83"/>\n'
+               '                  <referenceRange><observationRange>\n                    <value xsi:type="IVL_PQ"><low value="4.0" unit="10*3/uL"/><high value="11.0" unit="10*3/uL"/></value>')
+        self.assertIn(old, s)
+        got = []
+        for value, text in (("11.0", "<11.0"), ("11.0", "< 11.0 10*3/uL"), ("11.0", "less than 11.0"), ("11.0", "≤ 11.0"),
+                            ("11.2", "<=11.0"), ("4.0", ">4.0"), ("4.0", ">=4.0"), ("3.0", "4.0 - 11.0 10*3/uL"), ("7.1", "See note")):
+            p = os.path.join(tmp, "x.xml")
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(s.replace(old, f'<value xsi:type="PQ" value="{value}" unit="10*3/uL"/>\n                  <referenceRange><observationRange>'
+                                       f'<text>{html.escape(text)}</text>'))
+            d = ccda.parse({"x.xml": p})["data"]
+            wbc = next(x for x in d["labs"] if x["name"] == "WBC")["pts"][0]
+            row = next(r for e in d["details"].values() if isinstance(e, dict) for r in e.get("rows") or [] if r[0] == "WBC")
+            got.append([wbc[2], wbc[3], wbc[4], (wbc[7:] or [""])[0], row[3]])
+        self.assertEqual(got, [[None, 11, "H", "<", "<11.0"], [None, 11, "H", "<", "< 11.0 10*3/uL"], [None, 11, "H", "<", "less than 11.0"],
+                               [None, 11, "", "", "≤ 11.0"], [None, 11, "H", "", "<=11.0"], [4, None, "L", ">", ">4.0"], [4, None, "", "", ">=4.0"],
+                               [4, 11, "L", "", "4.0 - 11.0 10*3/uL"], [None, None, "", "", "See note"]])
 
     def test_a_childs_vitals(self):
         """#196: a child's weight (under 50 lb, once left out) and head circumference (in cm, or in inches) are kept."""

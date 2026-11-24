@@ -9,11 +9,13 @@ report's; a report's then one from Settings; a range that changes; values given 
 each edge of a report's range and of one from Settings; and one-sided ranges that leave their edge out ("<5", ">60") or
 keep it ("<=5", ">=60"), at and past it, through the importers that read them too (#780); and a report's flags that
 say no way ("A", "Abnormal", "Critical"), inside its range, past it and with none printed, read through the CSV importer
-as an upload is (THROUGH_CSV: ALT, its flags in CASES as printed, #817). JUDGED is what each result is
-judged as, by the one rule (server/ranges.py judge, www/js/ranges.js applyRangeOverrides): [flag, low, high, source],
-and EDGES its edge where its range has one; STEPS the band's steps, each the results it covers, with its words (a result
-whose report gave no range is under none). The summary's "since" day is SINCE days back, so each case has a Then and a
-Now. Each draw day is a lab day with one result listing that day's results as a report prints them (#782): its row named
+as an upload is (THROUGH_CSV: ALT, its flags in CASES as printed, #817); and ranges given as text alone, "a - b", "<40",
+"<=40", "less than 40", read through the C-CDA importer (THROUGH_CCDA: AST, its texts CCDA_TEXT, #827). JUDGED is what
+each result is judged as, by the one rule (server/ranges.py judge, www/js/ranges.js applyRangeOverrides): [flag, low,
+high, source], and EDGES its edge where its range has one; STEPS the band's steps, each the results it covers, with its
+words (a result whose report gave no range is under none). The summary's "since" day is SINCE days back, so each case
+has a Then and a Now. Each draw day is a lab day with one result listing that day's results as a report prints them
+(#782): its row named
 as the report names the test (ROW_NAMES: "CHLORIDE" for the series "Chloride, Blood", "CREAT" for "Creatinine"), the
 value as given, the range as printed (a one-sided one with its edge, "<5" or "<=5") and the report's own flag, and the
 count of flags its importer stored. COPIES (#781, at the end) is a second profile's: one result twice (from two
@@ -158,6 +160,23 @@ STEPS["ALT"] = [[[0, 1, 2, 3, 4], "7–56 on report"], [[6, 7, 8], "7–56 on re
 TRENDS["ALT"] = [("50", "Abnormal", None), ("20", "Abnormal", None), "7–56"]
 OUT_OF_RANGE["ALT"] = ["20", "Abnormal", "7–56", 3, 4]
 
+# ---- a range given as text alone (#827): AST's results come in a C-CDA document whose reference ranges are text with
+# no IVL (CCDA_TEXT), read by the C-CDA importer (THROUGH_CCDA: records() takes their series from ccda.parse, as an
+# upload would). It read a range from an IVL, or a text "a - b", so "<40" was dropped: no range and no flag on Labs while
+# the drawer showed "<40" beside the value. Now through the one range parser, its edge kept: 40 against "<40" (or "less
+# than 40") is High, against "<=40" in range
+UNITS["AST"] = "U/L"
+CASES["AST"] = [(100, 30, 10, 40, "", "30"), (90, 8, 10, 40, "", "8"), (80, 39, None, 40, "", "39"), (70, 40, None, 40, "", "40"),
+                (40, 40, None, 40, "", "40"), (30, 41, None, 40, "", "41"), (20, 40, None, 40, "", "40"), (10, 35, None, 40, "", "35")]
+CCDA_TEXT = {"AST": ["10 - 40", "10-40", "<40", "< 40", "<=40", "≤ 40", "<40 U/L", "less than 40"]}
+THROUGH_CCDA = ["AST"]
+EDGES["AST"] = ["", "", "<", "<", "", "", "<", "<"]
+JUDGED["AST"] = [["", 10, 40, R], ["L", 10, 40, R], ["", None, 40, R], ["H", None, 40, R], ["", None, 40, R], ["H", None, 40, R],
+                 ["H", None, 40, R], ["", None, 40, R]]
+STEPS["AST"] = [[[0, 1], "10–40 on report"], [[2, 3], "< 40 on report"], [[4, 5], "≤ 40 on report"], [[6, 7], "< 40 on report"]]
+TRENDS["AST"] = [("40", "High", None), ("35", None, None), "< 40"]
+OUT_OF_RANGE["AST"] = ["40", "High", "< 40", 2, 4]
+
 
 def edges(lab):
     """Each result's edge as kept (EDGES; "" for every result of the other cases)."""
@@ -228,12 +247,47 @@ def through_csv(today=None):
         return {s["name"]: s for s in csv_labs.parse({"flags.csv": path})["data"]["labs"]}
 
 
+def ccda(rows):
+    """A fictional C-CDA document of lab results, each [(test, unit, time, value as given, range as text)] an
+    observation of its own, its reference range its text alone (no IVL, #827); a value given as a bound ("<5") as text."""
+    from html import escape
+    from server.importers import common
+    obs = []
+    for n, u, t, v, r in rows:
+        loinc = common.loinc_of(common.canonical_lab(n))
+        code = f'code="{loinc}" codeSystem="2.16.840.1.113883.6.1" ' if loinc else ""
+        value = (f'<value xsi:type="ST">{escape(v)}</value>' if v[:1] in "<>" else f'<value xsi:type="PQ" value="{v}" unit="{escape(u)}"/>')
+        obs.append(f'<component><observation classCode="OBS" moodCode="EVN"><code {code}displayName="{escape(n)}"/>'
+                   f'<statusCode code="completed"/><effectiveTime value="{t[:19].replace("-", "").replace("T", "").replace(":", "")}"/>{value}'
+                   f'<referenceRange><observationRange><text>{escape(r)}</text></observationRange></referenceRange></observation></component>')
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n<!-- Fictional test data. -->\n'
+            '<ClinicalDocument xmlns="urn:hl7-org:v3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
+            '<templateId root="2.16.840.1.113883.10.20.22.1.1"/><code code="34133-9" codeSystem="2.16.840.1.113883.6.1"/>'
+            '<title>Health Summary (fictional)</title><component><structuredBody><component><section>'
+            '<templateId root="2.16.840.1.113883.10.20.22.2.3.1"/><code code="30954-2" codeSystem="2.16.840.1.113883.6.1"/>'
+            '<entry><organizer classCode="BATTERY" moodCode="EVN"><code displayName="Lab results (fictional)"/>'
+            + "".join(obs) + '</organizer></entry></section></component></structuredBody></component></ClinicalDocument>\n')
+
+
+def through_ccda(today=None):
+    """THROUGH_CCDA's series as the C-CDA importer reads them (ccda.parse, #827), from a document of their results with
+    each reference range as its text alone (CCDA_TEXT)."""
+    import os, tempfile
+    from server.importers import ccda as ccda_importer
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "ranges.xml")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(ccda([(n, UNITS[n], day(d, today), t, r) for n in THROUGH_CCDA for (d, *_, t), r in zip(CASES[n], CCDA_TEXT[n])]))
+        return {s["name"]: s for s in ccda_importer.parse({"ranges.xml": path})["data"]["labs"]}
+
+
 def records(today=None):
-    """The profile's records, as an import stores them (records.store): a point with an edge keeps it as pts[7], and
-    THROUGH_CSV's series as the CSV importer reads them (through_csv()); a lab day each draw day, its one result listing
-    that day's rows as the report prints them, each with the flag its importer stored, and the count of those (abn)."""
-    csv = through_csv(today)
-    labs = [csv[n] if n in THROUGH_CSV else {"name": n, "unit": UNITS[n], "panel": "", "n": len(pts), "txt": [],
+    """The profile's records, as an import stores them (records.store): a point with an edge keeps it as pts[7],
+    THROUGH_CSV's series as the CSV importer reads them (through_csv()) and THROUGH_CCDA's as the C-CDA importer does
+    (through_ccda()); a lab day each draw day, its one result listing that day's rows as the report prints them, each
+    with the flag its importer stored, and the count of those (abn)."""
+    read = {**through_csv(today), **through_ccda(today)}
+    labs = [read[n] if n in THROUGH_CSV + THROUGH_CCDA else {"name": n, "unit": UNITS[n], "panel": "", "n": len(pts), "txt": [],
              "pts": [[day(d, today), v, lo, hi, f, t] + ([None, e] if e else []) for (d, v, lo, hi, f, t), e in zip(pts, edges(n))]}
             for n, pts in CASES.items()]
     stored = {s["name"]: [p[4] for p in s["pts"]] for s in labs}

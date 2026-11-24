@@ -80,6 +80,37 @@ def range_edge(text, lo, hi):
     return "<" if m.group(1) and hi == x else ">" if m.group(2) and lo == x else ""
 
 
+# a reference range as text (range_text): "3.5 - 5.1", "70–99", "10 to 40"; "<5", "<=5", "≤ 5", "< OR = 5", "less
+# than 5", "up to 5", ">60", ">= 60", "over 60" and the like; a unit or words may follow ("<130 mg/dL"). A number runs
+# to its end ("1,000" and "3,5" are not 1 and 3)
+_RNUM = r"(-?\d+(?:\.\d+)?)(?![\d.,])"
+_RSPAN = re.compile(rf"\s*{_RNUM}\s*(?:-|–|—|to\b)\s*{_RNUM}", re.I)
+_RBOUND = re.compile(rf"\s*(<\s*or\s*=|>\s*or\s*=|<=|>=|=<|=>|≤|≥|less than or equal to|greater than or equal to|up to|"
+                     rf"less than|greater than|more than|under|below|over|above|<|>)\s*{_RNUM}", re.I)
+
+
+def _rnum(s):
+    x = float(s)
+    return int(x) if x.is_integer() and "." not in s else x
+
+
+def range_text(text):
+    """The one parser of a reference range given as text (#827; the C-CDA and FHIR importers', where a source gives
+    no low and high of its own): (low, high, edge), edge as range_edge works it out from the text ("<" for "<5": 5
+    is above it, #780); (None, None, "") for text it can't read ("See note", "Negative", "3,5-5,1"), never a guess."""
+    t = str(text or "")
+    m = _RSPAN.match(t)
+    if m:
+        lo, hi = _rnum(m.group(1)), _rnum(m.group(2))
+        return (lo, hi, "") if lo <= hi else (None, None, "")
+    m = _RBOUND.match(t)
+    if not m:
+        return None, None, ""
+    x, op = _rnum(m.group(2)), m.group(1).lower()
+    lo, hi = (None, x) if "<" in op or "≤" in op or op.startswith(("less", "up", "under", "below")) else (x, None)
+    return lo, hi, range_edge(t, lo, hi)
+
+
 # a flag as reports print it (flag_word(): lower case, punctuation as spaces): one that says which way, as Quest, Labcorp,
 # a spreadsheet's Flag column, C-CDA and FHIR interpretation codes (HL7's ObservationInterpretation) and CareSpace give
 # it; and one that marks a result abnormal without saying which way (#817)
