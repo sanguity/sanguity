@@ -134,10 +134,14 @@ function openUpcoming(u) {
   showDrawer();
 }
 
+/* the result before a series' latest (#833): the latest at an earlier time, never another result at its time (two the
+   person said aren't the same), so no change is worked out between them. Of those, the latest is the flagged one
+   (same.js joinSeries) */
+const ovPrev = s => s.pts.findLast(p => p.ts < s.pts.at(-1).ts);
 /* a key lab's tile: its latest value, the status only when it's outside its range, the change since the result before
    (its date only when it isn't the one the header says), and the last 6 months */
 function labTile(s, since, lastDraw) {
-  const n = s.name, last = s.pts.at(-1), prev = s.pts.at(-2);
+  const n = s.name, last = s.pts.at(-1), prev = ovPrev(s);
   const st0 = statusOf(last), st = st0 && st0.cls !== "ok" ? st0 : null;
   // the change, never from a value given as "<5" or ">90" (#718: "<5" then 6 was "↑ 1"): said not worked out, as the
   // lab panel says it (labSure)
@@ -173,7 +177,7 @@ function ovKeyLabs(lastDraw) {
   const latestOf = n => SERIES.filter(s => s.name === n && !s.watch && s.pts.length).reduce((a, s) => !a || s.pts.at(-1).ts > a.pts.at(-1).ts ? s : a, null);
   const shown = keyLabs.map(latestOf).filter(Boolean);
   const tally = new Map();
-  for (const s of shown) if (s.pts.length > 1) { const d = isoDay(s.pts.at(-2).ts); tally.set(d, (tally.get(d) || 0) + 1); }
+  for (const s of shown) { const p = ovPrev(s); if (p) { const d = isoDay(p.ts); tally.set(d, (tally.get(d) || 0) + 1); } }
   const since = [...tally].sort((a, b) => b[1] - a[1] || b[0].localeCompare(a[0]))[0]?.[0] || null;   // the date most tiles compare with
   const out = [];
   for (const s of SERIES) {

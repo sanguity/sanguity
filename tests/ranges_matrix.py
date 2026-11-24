@@ -364,3 +364,18 @@ LATEST_JUDGED = {"Potassium": [["", 3.5, 5.1]] * 19 + [["H", 3.5, 5.1]], "Sodium
 LATEST_TILES = {"Potassium": ["▲ High", "5.2", "↑ 0.8"], "Sodium": ["▲ High", "150", "↑ 9"]}
 LATEST_OUT = {"Potassium": ["5.2 mmol/L ▲ High", "ref 3.5–5.1"], "Sodium": ["150 mmol/L ▲ High", "ref 135–145"]}
 LATEST_DAYS = {(1, 2): [("Potassium", "H"), ("Sodium", "H")], (2, 2): [("Potassium", "H"), ("Sodium", "H")]}
+
+# ---- #833: the same profile once each latest pair is marked "Not the same" (POST .../same, same false): two results,
+# each with its own range and flag, everywhere. Labs shows both (at one time the unflagged first, the flagged after it,
+# so its ▲ is never under a dot and what reads the latest reads it); the Overview's tile the flagged one, its change from
+# the result before that time (never from the other at it), and its list it; the heatmap two cells that day, counted
+# once; each import's lab day its own row's flag; the summary (since NOT_SAME_SINCE days back) and a share link both, a
+# trend's Now the flagged one. NOT_SAME_JUDGED: Labs' [flag, low, high]; NOT_SAME_DAYS: each import's lab day of the
+# latest; NOT_SAME_OUT: the summary's out-of-range rows [value, flag, range, out, of]; NOT_SAME_TRENDS: each trend's
+# [Then, Now, Now's flag]. The Overview's tiles and list are LATEST_TILES and LATEST_OUT
+NOT_SAME_JUDGED = {"Potassium": [["", 3.5, 5.1]] * 19 + [["", None, None], ["H", 3.5, 5.1]],
+                   "Sodium": [["", 135, 145]] * 19 + [["", None, None], ["H", 135, 145]]}
+NOT_SAME_DAYS = {(1, 2): [("Potassium", "H"), ("Sodium", "")], (2, 2): [("Potassium", ""), ("Sodium", "H")]}
+NOT_SAME_SINCE = 15
+NOT_SAME_OUT = {"Potassium": ["5.2", "High", "3.5–5.1", 1, 2], "Sodium": ["150", "High", "135–145", 1, 2]}
+NOT_SAME_TRENDS = {"Potassium": ["4.4", "5.2", "High"], "Sodium": ["141", "150", "High"]}
