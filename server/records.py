@@ -47,7 +47,7 @@ is key_hash (schema version 13) on events and series: a keyed hash of the source
 itself stays inside the encrypted body), so an import preview finds records it has seen before without decrypting
 every row. '' means the record has no key; NULL, not worked out yet (backfill_key_hashes, at start-up).
 """
-import hashlib, hmac, json, re, threading
+import collections, hashlib, hmac, json, re, threading
 from contextlib import contextmanager
 
 from . import crossmatch, crypto, edits, encounters, journal, medications, oop, units
@@ -341,6 +341,7 @@ def _assemble(db, pid, raw=False):
         for e in out.get("events") or []:
             e.pop("orig", None)            # what tidy() changed, kept only for the corrections to find their events
         out = crossmatch.apply(db, pid, out)
+        _row_series(out)   # each result row's series, for the drawer to read its flag from (#782)
         out = oop.annotate(db, pid, out, pay_imps)   # out-of-pocket: sources, HSA/FSA, matched to claims, counted once (#55)
     if (entries := journal.listing(db, pid)):   # only when there are some, like edits
         out["journal"] = entries
@@ -353,6 +354,31 @@ def _assemble(db, pid, raw=False):
     if (doses := med_log.listing(db, pid)):   # #235: the medication log, only when there's something in it
         out["doses"] = doses
     return out if raw else units.annotate(out)   # which series can be shown in other units, exactly (#41)
+
+
+def _row_series(data):
+    """Each result row the drawer lists named with the lab series its result is in (#782): a result's details get
+    "series", one series name (or None) for each of its rows, by the match the same results use (crossmatch._row_of:
+    the same import and day, the same value, the row's name or its canonical one, else the one row in the series'
+    unit). The page reads a row's flag from that result, as Labs shows it, whatever the report called the test: a
+    report's "Glucose" is the series "Glucose, Blood". A row two series' results both match is no series'."""
+    drawer = crossmatch._rows(data)
+    if not drawer:
+        return
+    found = {}   # (event id, row index) -> series name, or None where two series claim it
+    for s in data.get("labs") or []:
+        if not isinstance(s, dict) or s.get("watch"):
+            continue
+        for p in s.get("pts") or []:
+            if isinstance(p, list) and p and (at := crossmatch._row_of(drawer, s, p)):
+                found[at] = s.get("name") if found.get(at, s.get("name")) == s.get("name") else None
+    details, by = data.get("details") or {}, collections.defaultdict(dict)
+    for (eid, r), name in found.items():
+        by[eid][r] = name
+    for eid, names in by.items():
+        d = details.get(str(eid))
+        if isinstance(d, dict) and isinstance(d.get("rows"), list):
+            details[str(eid)] = {**d, "series": [names.get(r) for r in range(len(d["rows"]))]}
 
 
 # the page asks for a profile's records on every load; putting them together decrypts every row, so the result

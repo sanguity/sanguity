@@ -1921,6 +1921,18 @@ Everything on `main` so far; it becomes the first tagged release.
   rule honours it: 5 is high against "<5" and in range against "<=5", 60 low against ">60". The range is said as
   printed, "< 5" and "≤ 5", and "<5" and "≤ 5" are two steps of a chart's band. Results imported before this keep
   their ranges as they were read.
+- **Every view reads a result's flag and range from one place: the Timeline's counts, the drawer, the heatmap,
+  "Reported … ref"** (#782): places #752's rule didn't reach. A lab day's Timeline badge gave the count its importer
+  stored ("3 out of range" under a line saying 4), and the drawer flagged a row only by the report or by the result
+  with the row's own name, so a value flagged against a range from Settings ("Glucose <3.0", ▼ Low on Labs) went
+  unflagged and uncounted, and a report's "Glucose" (Labs' "Glucose, Blood") 120 against its own 70 - 99 was never
+  flagged. Now the badge, the line over the list, a search's counts and the drawer all count the flags Labs shows;
+  each drawer row is matched to the result it is (the server names its series, as the same results are matched), so
+  it shows Labs' flag, links to its chart and is converted with it, and a value flagged against a range from Settings
+  says that range under it ("(settings range 3.9–5.5)"). The heatmap reads a flag before a range: a report's Low with
+  no range printed was a grey "no range" cell counted 0, it's now a cell below the range with its ▼, counted.
+  "Reported … ref" beside a converted value says its report's range only, as Labs says it ("ref ≤ 100", not "ref –100";
+  no longer a range from Settings as if the report gave it).
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

@@ -58,7 +58,8 @@ function applyUnits(list) {
     for (const p of s.pts) {
       const has = p[5] != null && p[5] !== "", shown = has ? String(p[5]) : p[1] == null ? "" : fmtNum(p[1]);
       // a reported text with its own unit ("37 Cel", from an importer that converted it) is kept whole
-      p.orig = {v: shown, lo: p[2], hi: p[3], own: has && ucNum(shown) == null && !/^\s*([<>]=?|≤|≥)\s*[\d.-]+\s*$/.test(shown)};
+      // its report's range said as Labs says one (ranges.js rangeWords, #782), not one from settings, which isn't the report's
+      p.orig = {v: shown, ref: p.rs === "settings" ? null : rangeWords(p), own: has && ucNum(shown) == null && !/^\s*([<>]=?|≤|≥)\s*[\d.-]+\s*$/.test(shown)};
       if (typeof p[1] === "number") p[1] = p[1] * uc.a + uc.b;
       for (const i of [2, 3]) { const n = ucNum(p[i]); if (n != null) p[i] = +ucFmt(n * uc.a + uc.b, ucSig(p[i])); }
       if (has) p[5] = !p.orig.own ? ucText(uc, shown) : typeof p[1] === "number" ? ucFmt(p[1], ucSig(shown)) : shown;
@@ -66,22 +67,24 @@ function applyUnits(list) {
     }
   }
 }
-/* "95 mg/dL, ref 70–99" as reported, for a point of a converted series; "" otherwise */
+/* "95 mg/dL, ref 70–99" as reported, for a point of a converted series, with its report's range only ("≤ 100"; none
+   for one whose range is from settings, #782); "" otherwise */
 function ucOrig(s, p) {
   if (!s || !s.uc || !p || !p.orig) return "";
-  const o = p.orig, r = o.lo != null || o.hi != null ? `, ref ${o.lo ?? ""}–${o.hi ?? ""}` : "";
-  return `${o.v}${o.own ? "" : " " + s.uc.from}${r}`;
+  const o = p.orig;
+  return `${o.v}${o.own ? "" : " " + s.uc.from}${o.ref ? ", ref " + o.ref : ""}`;
 }
 /* the drawer's result rows ([name, value, unit, ref range, flag]) in the chosen units, by the conversion of the
-   series with that name and unit; each converted row keeps what was reported as row.orig = [value, unit, range] */
+   series with that unit and the row's series' name (d.series, #782: a report's "Glucose" is "Glucose, Blood"), else
+   its own; each converted row keeps what was reported as row.orig = [value, unit, range] */
 function applyUnitsToRows(labs, details) {
   const by = new Map();
   for (const s of labs) if (s.uc) by.set(s.name + "\u001f" + s.uc.from, s.uc);
   if (!by.size) return;
   for (const d of Object.values(details || {})) {
     if (!d || !Array.isArray(d.rows)) continue;
-    for (const row of d.rows) {
-      const uc = by.get(row[0] + "\u001f" + (row[2] || "")); if (!uc || row.orig) continue;
+    for (const [i, row] of d.rows.entries()) {
+      const uc = by.get((d.series?.[i] ?? row[0]) + "\u001f" + (row[2] || "")); if (!uc || row.orig) continue;
       const v = ucText(uc, row[1]);
       if (v === row[1] && ucNum(row[1]) == null && !/^\s*[<>≤≥]/.test(String(row[1] ?? ""))) continue;   // text: nothing to convert
       row.orig = [row[1], row[2], row[3]];

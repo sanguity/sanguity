@@ -241,16 +241,18 @@ function tlLabValues(labs, tests = null) {
    as a lab day's search words do (store.js labDayWords); none with no search */
 const tlTestsHit = () => !state.q ? [] : SERIES.filter(s => !s.watch && s.panel !== "Vitals"
   && [s.name, nice(s.name), s.panel || "", panelName(s.panel || "")].some(t => t.toLowerCase().includes(state.q)));
-/* a lab draw's out-of-range count: under a search that names tests, those tests' among its own results (#464: "psa"
-   showed "2 out of range" and a ▲ on draws whose PSA was in range, from their other tests; #470: "creatinine" on a
-   clinic draw for an outside lab's result typed in that day, store.js labDayWords' e.res); else all its values'.
-   tlAbnDays works out the tests for a redraw (null: no search names tests) */
+/* a lab draw's out-of-range count: its own results flagged, as Labs flags them (store.js labDayWords' e.res; #782: by
+   the one rule, a range from settings too, as the line over the list and the drawer count them, not the count its
+   importer stored, e.abn); under a search that names tests, those tests' (#464: "psa" showed "2 out of range" and a ▲
+   on draws whose PSA was in range, from their other tests; #470: "creatinine" on a clinic draw for an outside lab's
+   result typed in that day). A draw with no results in a series (text only) keeps its importer's count. tlAbnDays
+   works out the tests for a redraw (null: no search names tests) */
 let tlAbnDay = null;
 function tlAbnDays() {
   const tests = tlTestsHit();
   tlAbnDay = tests.length ? new Set(tests) : null;
 }
-const tlAbn = e => e.k === "lab" && tlAbnDay ? (e.res || []).filter(([s, p]) => p[4] && tlAbnDay.has(s)).length : e.abn;
+const tlAbn = e => e.k === "lab" && (tlAbnDay || e.res?.length) ? (e.res || []).filter(([s, p]) => p[4] && (!tlAbnDay || tlAbnDay.has(s))).length : e.abn;
 /* the line over the list: "The last year: 9 lab draws, 31 results, 3 out of range · 97 workouts, not listed". Under a
    search that names tests, the draws' results are those tests' only ("23 lab draws, 23 PSA results": not the 598 values
    of the draws that have a PSA, 8 of them out of range, read as PSA's), and it says which */

@@ -118,7 +118,7 @@ function storeRecords(data) {
    records spell them) and its tests' names, as the records and Labs name them ("ferritin" finds the draws with a
    Ferritin result, not only "iron studies"). Its tests are its own results, not its day's (util.js labDraws, #470:
    an outside lab's creatinine typed in on a clinic draw's day isn't the clinic draw's), kept as e.res [[series,
-   point]] for its badge under a search (timeline.js tlAbn), a visit's Vitals aside. Made again when the settings
+   point]] for its badge (timeline.js tlAbn, #782), a visit's Vitals aside. Made again when the settings
    change (applySettings): a lab renamed is found by its new name at once, and no longer by the old (#463) */
 function labDayWords() {
   const draws = DATA.events.filter(e => e.k === "lab"), at = e => (DATA.details[e.id]?.ids || []).map(i => byId.get(i)?.ts).filter(isFinite);

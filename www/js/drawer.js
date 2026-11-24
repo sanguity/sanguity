@@ -247,24 +247,42 @@ function docFrame(html, h = 420, title = "The record as it was sent") {   // tit
   f.onload = () => { try { f.style.height = Math.min(1600, f.contentDocument.body.scrollHeight + 30) + "px"; } catch (e) {} };
   return f;
 }
-/* a result row's flag (#752): its report's, else the one Labs shows for that result (the same lab, day and value),
-   worked out against its report's range by the one rule (ranges.js); not one against a range from settings, as the
-   row's range is its report's */
-function rowFlag(row, ts) {
-  if (row[4]) return row[4];
-  const s = ts != null && SERIES.find(x => x.name === row[0] && !x.watch); if (!s) return "";
-  const day = isoDay(ts), v = Number(row[1]), on = s.pts.filter(p => isoDay(p.ts) === day && p.rs !== "settings");
-  const p = on.find(p => p[1] === v) || (on.length === 1 ? on[0] : null);
-  return p?.[4] || "";
+/* the result a drawer row shows, {s, p}, or null (a text result): of the series the server matched the row to (d.series,
+   server/records.py _row_series: by the row's name or its canonical one, so a report's "Glucose" is Labs' "Glucose,
+   Blood", #782), else the one with the row's name; in the row's import, on its day, with its value as reported (or
+   its one result that day) */
+const rowSaid = t => { const m = /^\s*([<>]=?|=<|=>|≤|≥)?\s*(-?\d+(?:\.\d+)?)\s*$/.exec(t ?? ""); return m ? rangeCmp(m[1] || "") + +m[2] : String(t ?? "").trim(); };
+function rowPoint(d, i, ev) {
+  if (!ev) return null;
+  const row = d.rows[i], name = d.series?.[i] ?? row[0], v = rowSaid(row.orig ? row.orig[0] : row[1]), day = isoDay(ev.ts);
+  for (const s of DATA.labs) {
+    if (s.watch || s.name !== name || (ev.imp != null && s.imp != null && s.imp !== ev.imp)) continue;
+    const on = s.pts.filter(p => isoDay(p.ts) === day), p = on.find(p => rowSaid(p.orig ? p.orig.v : p[5] || p[1]) === v) || (on.length === 1 ? on[0] : null);
+    if (p) return {s, p};
+  }
+  return null;
 }
-function resultTable(rows, ts) {
+/* a result row's flag (#752, #782): the one Labs shows for its result (rowPoint), by the one rule (ranges.js) against its
+   report's range or, where the report gives none, a range from settings; a row with no result, its report's */
+const rowFlag = (d, i, ev, at = rowPoint(d, i, ev)) => at ? at.p[4] || "" : d.rows[i][4] || "";
+/* how many of a result's rows are flagged, as its table marks them */
+const rowsOut = (d, ev) => (d?.rows || []).filter((_, i) => rowFlag(d, i, ev)).length;
+function resultTable(d, ev) {
+  const rows = d.rows;
   if (!rows || !rows.length) return null;
-  const fl = rows.map(r => rowFlag(r, ts));
+  const at = rows.map((_, i) => rowPoint(d, i, ev));
   return scrollBox({class: "tablewrap", "aria-label": "Results", style: {maxHeight: "none"}}, el("table", {class: "data"},
     el("thead", {}, el("tr", {}, ["Component", "Value", "Ref range"].map(h => el("th", {scope: "col", text: h})), el("th", {scope: "col"}, el("span", {class: "vh", text: "Flag"})))),
-    el("tbody", {}, rows.map(([n, v, u, rr], i, _, f = fl[i]) => el("tr", {class: SERIES.some(s => s.name === n && s.n) ? "link" : "", onclick: () => { if (SERIES.some(s => s.name === n && s.n)) showSeries(n); }},
-      el("td", {}, SERIES.some(s => s.name === n && s.n) ? el("button", {class: "cell-btn", type: "button", text: nice(n)}) : nice(n), nice(n) !== n ? el("small", {class: "muted", text: ` (${n})`}) : null,   // #38
-        SERIES.some(s => s.name === n && s.n) ? renameButton("lab", n) : null, testLink(n, true)), el("td", {class: f ? "abn" : "", text: `${v ?? ""} ${u || ""}`.trim()}, ...rowOrig(rows[i])), el("td", {text: rr || ""}), el("td", {class: f ? "abn" : ""}, ...flagNodes(f)))))));   // the mark and the word (#60); "What is this test?" (#163); a value kept with its unit (#270)
+    el("tbody", {}, rows.map(([n, v, u, rr], i) => {
+      // its series' chart (the series it's a result of, #782); a value flagged against a range from settings names that
+      // range on a line under it, as the row's range is its report's: "<3.0 mmol/L (settings range 3.9–5.5)", as the visit
+      // summary says it (under the value, so the flag's column stays as narrow as "▼ Low" on a phone)
+      const f = rowFlag(d, i, ev, at[i]), sn = at[i]?.s.name ?? n, chart = SERIES.some(s => s.name === sn && s.n), own = f && at[i]?.p.rs === "settings";
+      return el("tr", {class: chart ? "link" : "", onclick: () => { if (chart) showSeries(sn); }},
+        el("td", {}, chart ? el("button", {class: "cell-btn", type: "button", text: nice(n)}) : nice(n), nice(n) !== n ? el("small", {class: "muted", text: ` (${n})`}) : null,   // #38
+          SERIES.some(s => s.name === n && s.n) ? renameButton("lab", n) : null, testLink(n, true)), el("td", {class: f ? "abn" : "", text: `${v ?? ""} ${u || ""}`.trim()}, ...rowOrig(rows[i]),
+          own ? el("small", {class: "orig", text: `(settings range ${rangeWords(at[i].p)})`}) : null), el("td", {text: rr || ""}), el("td", {class: f ? "abn" : ""}, ...flagNodes(f)));   // the mark and the word (#60); "What is this test?" (#163); a value kept with its unit (#270)
+    }))));
 }
 /* #41: a converted row's value and range as reported (units.js), on its own line under the value */
 function rowOrig(row) {
@@ -275,7 +293,7 @@ function resultBody(d, eid, top) {
   const out = [], key = [["Ordered by", d.provider], ["Status", d.status], ["Lab", d.lab], ["Specimen", d.specimen]];
   if (top) out.push(drawerFacts(key, "facts"));
   out.push(drawerFacts([["Order", d.order && panelName(d.order)], ["Collected", recordDate(d.collected)], ["Resulted", recordDate(d.resulted)], ...(top ? [] : key), ["Diagnosis", (d.dx || []).join("; ")]]));
-  const t = resultTable(d.rows, byId.get(eid)?.ts); if (t) out.push(el("div", {class: "sect", text: "Results"}), t);
+  const t = resultTable(d, byId.get(eid)); if (t) out.push(el("div", {class: "sect", text: "Results"}), t);
   const same = sameNotes(eid, d); if (same) out.push(same);   // the same result from another source (same.js)
   for (const [k, h, isHtml] of d.report || []) out.push(el("div", {class: "sect", text: k === "combinedRTFNarrativeImpression" ? "Report" : k}),
     isHtml ? docFrame(h, 420, k === "combinedRTFNarrativeImpression" ? "Report" : k) : el("pre", {class: "report", text: h.replace(/\r\n/g, "\n").trim()}));
@@ -303,13 +321,13 @@ function openEvent(e) {
   const main = [], go = [], facts = rows => main.push(drawerFacts(rows, "facts")), kv = rows => main.push(drawerFacts(rows));
   if (d.type === "result") main.push(...resultBody(d, e.id, true));
   else if (d.type === "labday") {
-    const rs = d.ids.map(id => DATA.details[id]).filter(Boolean), abn = d.ids.reduce((a, id) => a + (DATA.details[id]?.rows || []).filter(x => rowFlag(x, byId.get(id)?.ts)).length, 0);
+    const rs = d.ids.map(id => DATA.details[id]).filter(Boolean), abn = d.ids.reduce((a, id) => a + rowsOut(DATA.details[id], byId.get(id)), 0);
     facts([["Results", String(rs.reduce((a, r) => a + (r.rows || []).length, 0))], ["Out of range", abn ? String(abn) : "None"],
       ["Ordered by", uniq(rs.map(r => r.provider))], ["Lab", uniq(rs.map(r => r.lab))]]);
     go.push(goBtn("Show this day in Labs", () => { setRange(e.ts - 45*DAY, e.ts + 45*DAY); pickTab("labs"); }));
     for (const id of d.ids) {
       const r = DATA.details[id], ev2 = byId.get(id); if (!r) continue;
-      const abn = (r.rows || []).filter(x => rowFlag(x, ev2.ts)).length;
+      const abn = rowsOut(r, ev2);
       const det = el("details", {class: "res", open: d.ids.length <= 3 || null}, el("summary", {}, el("span", {text: panelName(r.order || ev2.title)}), el("span", {class: "spacer"}), el("span", {class: "res-t", text: fmtDT(ev2.ts).split(", ").pop()}), abn ? el("span", {class: "badge abn", "data-tip": `${abn} outside reference range`, text: abn}, el("span", {class: "vh", text: " outside reference range"})) : null), el("div", {}, ...resultBody({...r, order: null}, id), eventSource(ev2)));
       main.push(det);
     }

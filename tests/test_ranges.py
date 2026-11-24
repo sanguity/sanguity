@@ -68,6 +68,27 @@ class Rules(unittest.TestCase):
                                                      row(unit="ug/L")])), 5)
         # the birth date and sex are About this person's since #194 (their checks: tests/test_person.py)
 
+    def test_row_series(self):
+        """#782: each drawer row named with the series its result is in (records._row_series), by the same results' match:
+        the same import and day and value, the row's name or its canonical one ("Glucose" is "Glucose, Blood"), else the
+        one row in the series' unit; none for a text row, a row of another import, or one two series both claim."""
+        t = day(-3)
+        data = {"events": [{"id": 1, "t": t, "k": "labitem", "imp": 1}, {"id": 2, "t": t, "k": "labitem", "imp": 2}],
+                "details": {"1": {"type": "result", "rows": [["Glucose", "95", "mg/dL", "70 - 99", ""], ["Chol LDL", "120", "mg/dL", "<100", ""],
+                                                             ["Comment", "see note", "", "", ""], ["Trig", "88", "mg/dL", "", ""], ["TG", "88", "mg/dL", "", ""],
+                                                             ["Chol", "200", "mg/dL", "", ""]]},
+                            "2": {"type": "result", "rows": [["Glucose", "95", "mg/dL", "70 - 99", ""]]}},
+                "labs": [{"name": "Glucose, Blood", "unit": "mg/dL", "imp": 1, "pts": [[t, 95, 70, 99, "", "95"]]},
+                         {"name": "LDL Cholesterol", "unit": "mg/dL", "imp": 1, "pts": [[t, 120, None, 100, "H", "120"]]},
+                         {"name": "Triglycerides", "unit": "mg/dL", "imp": 1, "pts": [[t, 88, None, None, "", "88"]]},
+                         {"name": "Cholesterol, Total", "unit": "mg/dL", "imp": 1, "pts": [[t, 200, None, None, "", "200"]]},
+                         {"name": "Non-HDL Cholesterol", "unit": "mg/dL", "imp": 1, "pts": [[t, 200, None, None, "", "200"]]}]}
+        records._row_series(data)
+        self.assertEqual(data["details"]["1"]["series"], ["Glucose, Blood", "LDL Cholesterol", None, None, None, None],
+                         "a canonical name, the one row in its unit with its value, a text row, two rows alike (\"Trig\", \"TG\") and a row "
+                         "two series claim (\"Chol\")")
+        self.assertNotIn("series", data["details"]["2"], "another import's row is none of these series'")
+
     def test_age_on(self):
         self.assertEqual(ranges.age_on("1980-04-30", "2026-04-29"), 45)
         self.assertEqual(ranges.age_on("1980-04-30", "2026-04-30T08:00:00"), 46)
@@ -478,9 +499,9 @@ class Api(unittest.TestCase):
             if r["resourceType"] == "Observation" and r["code"].get("text") in M.PRINTED:
                 rr = (r.get("referenceRange") or [{}])[0]
                 said.setdefault(r["code"]["text"], []).append((r["effectiveDateTime"][:10], rr.get("low", {}).get("value"), rr.get("high", {}).get("value"), rr.get("text")))
-        for n in M.PRINTED:   # "<5" as its text alone, "<=5" as a high of 5
-            want = [(None, None, f"{'<' if hi is not None else '>'}{lo if hi is None else hi}") if e else (lo, hi, None)
-                    for (_, _, lo, hi, *_), e in zip(M.CASES[n], M.EDGES[n])]
+        for n in M.PRINTED:   # "<5" as its text alone, "<=5" as a high of 5 with its lab day's row's text as printed (#782)
+            want = [(None, None, f"{'<' if hi is not None else '>'}{lo if hi is None else hi}") if e else (lo, hi, r)
+                    for (_, _, lo, hi, *_), e, r in zip(M.CASES[n], M.EDGES[n], M.PRINTED[n])]
             self.assertEqual([x[1:] for x in sorted(said.get(n, []))], want, f"the FHIR export's {n}")
         same(fhir.parse({"bundle.json": os.path.join(tmp, "bundle.json")})["data"], "the FHIR export, read back", plain=True)
 
@@ -509,6 +530,11 @@ class Api(unittest.TestCase):
             cfg = ranges.config(settings.merged(db, pid, owner))
         finally:
             db.close()
+        # #782: each lab day's rows named with their series, as the page reads their flags: "CHLORIDE" is Chloride,
+        # Blood's, "CREAT" Creatinine's
+        rows = {e["t"]: data["details"][str(e["id"])] for e in data["events"] if e["k"] == "labitem"}
+        self.assertEqual({t: r.get("series") for t, r in rows.items()}, {M.day(d, TODAY): [n for n, _ in M.day_results(d)] for d in M.draw_days()})
+        self.assertEqual({r[0] for d in rows.values() for r in d["rows"]} - set(labs), {"CHLORIDE", "CREAT"})
         series = summary._series(data, cfg)
         judged = {n: [[p["flag"], p["lo"], p["hi"], p["rs"]] for p in series[n]["pts"]] for n in labs}
         self.assertEqual(judged, M.JUDGED, "each result judged by the one rule: its report's, worked out against its report's "
