@@ -49,9 +49,10 @@ CASES = {   # lab: [(days back, value, low, high, flag, as given)]
                (30, 10, None, None, "", "<10"), (20, 60, None, None, "", ">60"), (10, 70, None, None, "", ">70")],
     # #782: twenty results (a row on Labs' heatmap) in a report's 98–107, two flagged by their report with no range
     # printed: the heatmap's cell, mark and count by the flag (it was a grey "no range" cell, counted 0); its rows
-    # printed "CHLORIDE"
+    # printed "CHLORIDE". The latest its report flags "A" inside its range, as the PDF importer keeps it: a report's own
+    # flag first, ◆ in every view (it was kept with none, and said only by the drawer's row)
     "Chloride, Blood": [(200 - 10 * i, v, None if i in (14, 17) else 98, None if i in (14, 17) else 107,
-                         {14: "H", 17: "L"}.get(i, ""), str(v)) for i in range(20) for v in [{14: 112, 17: 92}.get(i, 100 + i % 5)]],
+                         {14: "H", 17: "L", 19: "A"}.get(i, ""), str(v)) for i in range(20) for v in [{14: 112, 17: 92}.get(i, 100 + i % 5)]],
     # #782: a range from Settings, a report's with no flag and a report's one-sided, its rows printed "CREAT": the drawer
     # flags each as Labs does (a Settings flag naming its range), the Timeline's badge counts them; in SI units
     # "Reported … ref" says the report's range only, as Labs says it ("≤ 1.3", not "–1.3"; none from Settings)
@@ -69,7 +70,7 @@ JUDGED = {   # lab: each result's [flag, low, high, source], as Labs, the summar
                 ["L", 30, 110, R], ["L", 30, 110, R], ["H", 30, 110, R], ["H", 30, 110, R]],
     "Lipase": [["", 15, 60, S], ["", 15, 60, S], ["L", 15, 60, S], ["L", 15, 60, S], ["H", 15, 60, S], ["H", 15, 60, S]],
     "Chloride, Blood": [["", 98, 107, R]] * 14 + [["H", None, None, R]] + [["", 98, 107, R]] * 2 + [["L", None, None, R]]
-                       + [["", 98, 107, R]] * 2,
+                       + [["", 98, 107, R], ["A", 98, 107, R]],
     "Creatinine": [["H", 0.6, 1.2, S], ["L", 0.6, 1.2, S], ["H", 0.7, 1.3, R], ["", None, 1.3, R], ["H", None, 1.3, R]],
 }
 STEPS = {   # lab: the band's steps, each [the results it covers (their indexes), its words]
@@ -93,12 +94,12 @@ TRENDS = {
     "Hemoglobin": [("13.0", "Low", ["report range", "13.5–17.5"]), ("13.0", None, None), "12–16"],
     "Amylase": [(">25", None, None), (">120", "High", None), "30–110"],
     "Lipase": [(">15", None, None), (">70", "High", None), "15–60 (settings)"],
-    "Chloride, Blood": [("100", None, None), ("104", None, None), "98–107"],
+    "Chloride, Blood": [("100", None, None), ("104", "Abnormal", None), "98–107"],
     "Creatinine": [("0.5", "Low", ["settings range", "0.6–1.2"]), ("1.4", "High", None), "≤ 1.3"],
 }
 # the summary's out-of-range rows since then: [value, flag, range, out, of]
 OUT_OF_RANGE = {"Sodium": ["133", "Low", "135–145", 1, 1], "Amylase": [">120", "High", "30–110", 4, 4],
-                "Lipase": [">70", "High", "15–60 (settings)", 4, 4], "Chloride, Blood": ["92", "Low", "", 1, 4],
+                "Lipase": [">70", "High", "15–60 (settings)", 4, 4], "Chloride, Blood": ["104", "Abnormal", "98–107", 2, 4],
                 "Creatinine": ["1.4", "High", "≤ 1.3", 2, 3]}
 
 # ---- one-sided ranges (#780): whether a limit includes its edge, kept from each importer that reads it (CSV, PDF,
@@ -128,11 +129,23 @@ STEPS.update({"C-Reactive Protein": [[[0, 1, 2, 3], "< 5 on report"], [[4, 5, 6,
 TRENDS.update({"C-Reactive Protein": [("<5", None, ["report range", "< 5"]), (">5", "High", None), "≤ 5"],
                "eGFR": [(">60", None, ["report range", "> 60"]), ("<60", "Low", None), "≥ 60"]})
 OUT_OF_RANGE.update({"C-Reactive Protein": [">5", "High", "≤ 5", 2, 4], "eGFR": ["<60", "Low", "≥ 60", 2, 4]})
+# and in a unit Labs converts (#780 with #782): in SI units "Reported … ref" says its report's range as printed, "< 100"
+# then "≤ 100", the drawer's row converted with its series. Not printed for the importers (PRINTED): stored as read
+UNITS["Glucose, Blood"] = "mg/dL"
+CASES["Glucose, Blood"] = [(100, 99, None, 100, "", "99"), (40, 100, None, 100, "", "100"), (10, 100, None, 100, "", "100")]
+EDGES["Glucose, Blood"] = ["<", "<", ""]
+JUDGED["Glucose, Blood"] = [["", None, 100, R], ["H", None, 100, R], ["", None, 100, R]]
+STEPS["Glucose, Blood"] = [[[0, 1], "< 100 on report"], [[2], "≤ 100 on report"]]
+TRENDS["Glucose, Blood"] = [("99", None, ["report range", "< 100"]), ("100", None, None), "≤ 100"]
+OUT_OF_RANGE["Glucose, Blood"] = ["100", "High", "< 100", 1, 2]
 
 
 def edges(lab):
     """Each result's edge as kept (EDGES; "" for every result of the other cases)."""
     return EDGES.get(lab) or [""] * len(CASES[lab])
+
+
+SAID = {"H": "High", "L": "Low", "A": "Abnormal"}   # a flag as the summary, its PDF and a share link say it (summary.out_of_range)
 
 
 def words(lo, hi, edge=""):
@@ -261,15 +274,62 @@ COPIES_OUT = {("Potassium", "mmol/L"): ["3.2", "Low", "3.5–5.1", 1, 2], ("Calc
 COPIES_OUT_SAME = {**{k: v for k, v in COPIES_OUT.items() if k != ("Hemoglobin", "g/L")},
                    ("Hemoglobin", "g/dL"): ["11.0", "Low", "12–16", 1, 1]}
 
+# ---- copies and one-sided ranges together (#780 with #781): a result's edge goes with its range. Two copies that differ
+# in it, a report's "<5" in one and no range in the other: once, with the "<5", 5 left out of it (High; it was "≤ 5" and
+# in range). And a one-sided range in another unit, a report's "<40" ng/L: Same result gives the kept 0.04 ng/mL
+# "< 0.04" (High), its edge with it. A result with an edge has it as its seventh, and [flag, low, high, edge] in the
+# tables; its row in the drawer prints its range as its report did ("<5")
+COPIES.update({
+    ("C-Reactive Protein", "mg/L"): {1: [(25, 5, None, None, "", "5")], 2: [(25, 5, None, 5, "", "5", "<")]},
+    ("Troponin I", "ng/mL"): {1: [(12, 0.04, None, None, "", "0.04")]},
+    ("Troponin I", "ng/L"): {2: [(12, 40, None, 40, "", "40", "<")]},
+})
+COPIES_SEEN.update({("C-Reactive Protein", "mg/L"): [["", None, None], ["H", None, 5, "<"]],
+                    ("Troponin I", "ng/mL"): [["", None, None]], ("Troponin I", "ng/L"): [["H", None, 40, "<"]]})
+COPIES_ONCE.update({("C-Reactive Protein", "mg/L"): [["H", None, 5, "<"]],
+                    ("Troponin I", "ng/mL"): [["", None, None]], ("Troponin I", "ng/L"): [["H", None, 40, "<"]]})
+COPIES_SAME.update({("C-Reactive Protein", "mg/L"): [["H", None, 5, "<"]], ("Troponin I", "ng/mL"): [["H", None, 0.04, "<"]]})
+COPIES_LABS += ["C-Reactive Protein", "Troponin I"]
+COPIES_TRENDS.update({("C-Reactive Protein", "mg/L"): [None, ["5", "High"], "< 5"], ("Troponin I", "ng/mL"): [None, ["0.04", None], ""],
+                      ("Troponin I", "ng/L"): [None, ["40", "High"], "< 40"]})
+COPIES_TRENDS_SAME.update({("C-Reactive Protein", "mg/L"): [None, ["5", "High"], "< 5"],
+                           ("Troponin I", "ng/mL"): [None, ["0.04", "High"], "< 0.04"]})
+COPIES_OUT.update({("C-Reactive Protein", "mg/L"): ["5", "High", "< 5", 1, 1], ("Troponin I", "ng/L"): ["40", "High", "< 40", 1, 1]})
+COPIES_OUT_SAME.update({("C-Reactive Protein", "mg/L"): ["5", "High", "< 5", 1, 1], ("Troponin I", "ng/mL"): ["0.04", "High", "< 0.04", 1, 1]})
+COPIES_LINKED = ["C-Reactive Protein", "Calcium", "Hemoglobin", "Potassium", "Sodium", "Troponin I"]   # what Same result links
+# each import's lab days (#782: a lab day each draw day, its rows as its report prints them), by (import, days back):
+# each row's lab and its flag as Labs shows its result, which the drawer says and the Timeline's badge counts. Before
+# Same result each copy's own; after it the kept one's, the other's rows folded into it and its lab day gone with them
+COPIES_DAYS = {
+    (1, 100): [("Glucose, Blood", "")], (1, 60): [("Sodium", "L")], (1, 30): [("Potassium", ""), ("Glucose, Blood", "L")],
+    (1, 25): [("C-Reactive Protein", "")], (1, 20): [("Calcium", "L")], (1, 15): [("Hemoglobin", "")], (1, 12): [("Troponin I", "")],
+    (1, 10): [("Sodium", "")], (1, 5): [("Potassium", "")],
+    (2, 60): [("Sodium", "L")], (2, 30): [("Potassium", "L")], (2, 25): [("C-Reactive Protein", "H")], (2, 20): [("Calcium", "")],
+    (2, 15): [("Hemoglobin", "L")], (2, 12): [("Troponin I", "H")], (2, 10): [("Glucose, Blood", "")],
+}
+COPIES_DAYS_SAME = {**{k: v for k, v in COPIES_DAYS.items() if k[0] == 1}, (1, 30): [("Potassium", "L"), ("Glucose, Blood", "L")],
+                    (1, 25): [("C-Reactive Protein", "H")], (1, 15): [("Hemoglobin", "L")], (1, 12): [("Troponin I", "H")],
+                    (2, 10): [("Glucose, Blood", "")]}
+
 
 def copies(imp, today=None):
     """Import imp's records (1 or 2), as an import stores them (records.store): its labs, each with its source's key (a
-    spreadsheet's, a portal's: what tells a result's copies apart, crossmatch.point_key), their draws, and in the first
-    the summary's "since" visit."""
+    spreadsheet's, a portal's: what tells a result's copies apart, crossmatch.point_key), a point with an edge keeping it
+    as pts[7]; their draws, each a lab day whose one result lists that day's rows as the report prints them (#782); and
+    in the first the summary's "since" visit."""
+    edge = lambda e: [None, e[0]] if e and e[0] else []
     labs = [{"name": n, "key": f"{('csv', 'fhir')[imp - 1]}:{n.lower()}|{u}", "unit": u, "panel": "", "n": len(by[imp]), "txt": [],
-             "pts": [[day(d, today), v, lo, hi, f, t] for d, v, lo, hi, f, t in by[imp]]} for (n, u), by in COPIES.items() if imp in by]
+             "pts": [[day(d, today), v, lo, hi, f, t, *edge(e)] for d, v, lo, hi, f, t, *e in by[imp]]} for (n, u), by in COPIES.items() if imp in by]
     draws = sorted({d for by in COPIES.values() for d, *_ in by.get(imp, ())}, reverse=True)
     events = [{"id": i + 1, "t": day(d, today), "k": "lab", "title": f"Lab results (fictional, {imp})"} for i, d in enumerate(draws)]
     if imp == 1:
         events.append({"id": len(events) + 1, "t": day(COPIES_SINCE, today), "k": "visit", "title": "Office visit (fictional)"})
-    return {"built": day(0, today)[:10], "source": "fictional", "events": events, "details": {}, "costs": [], "upcoming": [], "labs": labs}
+    details = {}
+    for i, d in enumerate(draws):
+        rows = [[n, t, u, printed_range(lo, hi, (e or [""])[0]), f] for (n, u), by in COPIES.items() for dd, v, lo, hi, f, t, *e in by.get(imp, ()) if dd == d]
+        abn = {"abn": n} if (n := sum(1 for r in rows if r[4])) else {}
+        events[i].update(abn)
+        events.append({"id": len(events) + 1, "t": day(d, today), "k": "labitem", "title": f"Lab results (fictional, {imp})", "hidden": 1, **abn})
+        details[str(len(events))] = {"type": "result", "order": f"Lab results (fictional, {imp})", "rows": rows}
+        details[str(i + 1)] = {"type": "labday", "ids": [len(events)]}
+    return {"built": day(0, today)[:10], "source": "fictional", "events": events, "details": details, "costs": [], "upcoming": [], "labs": labs}

@@ -203,11 +203,14 @@ _FLAG_DIR = {"h": "H", "hh": "H", "high": "H", "critical high": "H", "panic high
 
 
 def _direction(flag, x, lo, hi, value="", edge=""):
-    """H, L or "" for the charts: from the printed flag, or for "A"/"Abnormal" from the range by the one rule
-    (server/ranges.py flag, #752: "<0.5" against a low of 0.5 is low; 5 against "<5" high, #780)."""
+    """The point's flag from the printed one: H or L where it says which way, else (an "A", "Abnormal", "Critical") by
+    the range, the one rule (server/ranges.py flag, #752: "<0.5" against a low of 0.5 is low; 5 against "<5" high, #780),
+    and "A" where the range doesn't place it (a value its report flags inside its printed range, or with none printed):
+    a report's own flag comes first, so Labs, the drawer, the heatmap, the summary and share links say it (it was kept
+    with none, and said only in the drawer's row until #782's drawer read Labs' flag). "" for none printed."""
     if not flag:
         return ""
-    return _FLAG_DIR.get(flag.lower()) or range_flag(x, lo, hi, comparator(value), edge)
+    return _FLAG_DIR.get(flag.lower()) or range_flag(x, lo, hi, comparator(value), edge) or "A"
 
 
 def _number(value):

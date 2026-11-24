@@ -144,6 +144,28 @@ class Reports(Base):
         hgb = next(s for s in out["data"]["labs"] if s["name"] == "Hemoglobin")
         self.assertEqual([p[6] for p in hgb["pts"]], ["Quest", "Labcorp"])
 
+    def test_a_flag_that_says_no_way_is_kept(self):
+        """A report's own flag comes first (#752): a printed "A", "AA", "Abnormal" or "Critical" that doesn't say which way
+        is placed by the range (the one rule) where it can be, and kept on the point as "A" where it can't (a value inside
+        its printed range, or with none printed), as the drawer's row says it; before, it was kept with no flag, so Labs,
+        the heatmap, the summary and share links never said it, and since #782 the drawer, which reads Labs' flag, didn't
+        either."""
+        quest = self.pdf("quest.pdf", gen.quest([("FLAGS PANEL (FICTIONAL)", None), ("RDW", "13.1", "A", "11.0-15.0", "%"),
+                                                 ("MCH", "35.0", "A", "27.0-33.0", "pg"), ("FIBRINOGEN", "300", "AA", "", "mg/dL"),
+                                                 ("MPV", "9.9", "", "7.5-12.5", "fL"), ("UREA NITROGEN (BUN)", "30", "H", "7-25", "mg/dL")]))
+        out = self.run_files(**{"quest.pdf": quest})
+        self.assertEqual(out["warnings"], [])
+        labs = {s["name"]: s["pts"][0][1:5] for s in out["data"]["labs"]}
+        self.assertEqual(labs, {"RDW": [13.1, 11.0, 15.0, "A"], "MCH": [35.0, 27.0, 33.0, "H"], "Fibrinogen": [300, None, None, "A"],
+                                "MPV": [9.9, 7.5, 12.5, ""], "BUN": [30, 7, 25, "H"]})
+        self.assertEqual({r[0]: r[4] for r in rows_of(out).values()}, {"RDW": "A", "MCH": "A", "FIBRINOGEN": "AA", "MPV": "", "UREA NITROGEN (BUN)": "H"},
+                         "the rows keep the flags as printed")
+        pdf_labs._cache.clear()
+        lab = self.pdf("labcorp.pdf", gen.labcorp([("Flags Panel (Fictional)", None), ("Neutrophils", "58", "Abnormal", "%", "40-74"),
+                                                   ("Basophils", "3", "Abnormal", "%", "0-2"), ("Eosinophils", "2", "Critical", "%", "Not Estab.")]))
+        labs = {s["name"]: s["pts"][0][1:5] for s in self.run_files(**{"labcorp.pdf": lab})["data"]["labs"]}
+        self.assertEqual(labs, {"Neutrophils": [58, 40, 74, "A"], "Basophils": [3, 0, 2, "H"], "Eosinophils": [2, None, None, "A"]})
+
 
 class NeverGuess(Base):
     def test_lines_the_layout_doesnt_read_are_warnings(self):

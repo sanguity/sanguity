@@ -35,12 +35,13 @@ apply() runs last when the records are put together (records._assemble). For eac
 are in the records, the point from the older import stays and the other is left out of its series (and the series,
 if nothing is left in it), so Trends and the heatmap show it once; the kept point's series lists the other source
 under "same" ({point index: [{imp, link}]}). The kept point carries any range and flag the other has where its own
-report gives none (ranges.copies, #781: a range in the kept point's unit, by the match's exact factor), so a copy with
-no range kept beside one with its report's range and Low isn't shown with neither. In the drawer, the other source's
-row is left out of its result (and the result, and its lab day, when nothing else is left), and the kept row's result
-lists the other under "same", the kept row given the other's range and flag in the same way. Three
-sources linked in pairs show once, with all three named. Removing the link shows both again; undoing one side's
-import leaves the link stored but unapplied (found: false), and the other side shows alone.
+report gives none (ranges.copies, #781: a range in the kept point's unit, by the match's exact factor, and whether its
+limit includes its edge, #780), so a copy with no range kept beside one with its report's range and Low isn't shown
+with neither. In the drawer, the other source's row is left out of its result (and the result, and its lab day, when
+nothing else is left), and the kept row's result lists the other under "same", the kept row given the other's range
+and flag in the same way. Three sources linked in pairs show once, with all three named. Removing the link shows
+both again; undoing one side's import leaves the link stored but unapplied (found: false), and the other side shows
+alone.
 
 Visits and claims, later. A visit from a C-CDA and the same visit from a FHIR sync could match on the same
 organisation, the same day and the same encounter type, and a claim could match a visit by date of service and
@@ -451,9 +452,10 @@ def _num(v):
 def _carry(kp, ks, p, s):
     """The kept point kp (of series ks), with what point p (of series s), the same result, says of its range and flag
     where kp says nothing (ranges.copies, #781: a copy with no range kept beside one with its report's 3.5–5.1 and Low
-    showed 3.2 with neither everywhere): p's range in kp's unit, by the exact change of prefix the match allows. A new
-    list; the records' own are left as they are."""
-    kp, p = list(kp), list(p) + [None] * (5 - len(p))
+    showed 3.2 with neither everywhere): p's range in kp's unit, by the exact change of prefix the match allows, and its
+    edge with it (pts[7], #780: a report's "<5" mg/L is "<0.5" mg/dL, 0.5 left out of it). A new list; the records' own
+    are left as they are."""
+    kp, p = list(kp), list(p) + [None] * (8 - len(p))
     lo, hi = _num(p[2]), _num(p[3])
     if lo is not None or hi is not None:
         f = factor(_canon_name(s), s.get("unit"), ks.get("unit"))
@@ -461,12 +463,16 @@ def _carry(kp, ks, p, s):
             return kp
         if f != 1:
             lo, hi = (None if x is None else float(Decimal(str(x)) * f) for x in (lo, hi))
-    have = (kp + [None] * 5)[2:5]
-    got = ranges.copies((_num(have[0]), _num(have[1]), have[2]), (lo, hi, p[4]))
-    if list(got) == [_num(have[0]), _num(have[1]), str(have[2] or "").strip()]:
+    have = (kp + [None] * 8)[2:8]
+    was = (_num(have[0]), _num(have[1]), str(have[2] or "").strip(), str(have[5] or ""))
+    got = ranges.copies(was, (lo, hi, p[4], p[7]))
+    if got == was:
         return kp
     kp += [None] * (5 - len(kp))
-    kp[2:5] = got
+    kp[2:5] = got[:3]
+    if got[3] or len(kp) > 7:   # its edge after the source tag (null in its place where there's none)
+        kp += [None] * (8 - len(kp))
+        kp[7] = got[3] or None
     return kp
 
 

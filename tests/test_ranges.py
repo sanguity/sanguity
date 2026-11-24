@@ -118,7 +118,8 @@ class Rules(unittest.TestCase):
 
     def test_copies(self):
         """#781: one result twice, kept as one: the kept copy's range and flag, what it lacks from the other's, as
-        edits.py's merge fills an event; a flag only where it was given against the range kept."""
+        edits.py's merge fills an event; a flag only where it was given against the range kept; the range's edge with it
+        (#780)."""
         for a, b, want in [((None, None, ""), (3.5, 5.1, "L"), (3.5, 5.1, "L")),   # the issue's: none, then the report's
                            ((8.5, 10.5, ""), (None, None, ""), (8.5, 10.5, "")),   # the kept's own, the flag worked out later
                            ((None, None, "L"), (135, 145, ""), (135, 145, "L")),   # a flag in one, the range in the other
@@ -126,7 +127,14 @@ class Rules(unittest.TestCase):
                            ((3.5, 5.1, "H"), (3.4, 5.0, "L"), (3.5, 5.1, "H")),   # the kept's own wins
                            ((3.5, 5.1, ""), (3.4, 5.0, "L"), (3.5, 5.1, "")),   # a Low against another range isn't taken
                            ((None, 5, ""), (1, 5, "H"), (None, 5, "")),   # a range is its low and high together
-                           ((None, None, None), (None, None, None), (None, None, ""))]:
+                           ((None, None, None), (None, None, None), (None, None, "")),
+                           # #780: the edge goes with its range ("<5": 5 left out of it), given where either copy has one
+                           ((None, None, "", ""), (None, 5, "", "<"), (None, 5, "", "<")),   # none, then the report's "<5"
+                           ((None, None, ""), (None, 5, "", "<"), (None, 5, "", "<")),
+                           ((None, 5, "", "<"), (None, None, "", ""), (None, 5, "", "<")),   # the kept's own
+                           ((None, 5, "", ""), (None, 5, "", "<"), (None, 5, "", "")),   # "≤ 5" kept: the kept's own range
+                           ((None, 5, "", ""), (None, 5, "H", "<"), (None, 5, "", "")),   # a High against "<5" isn't "≤ 5"'s
+                           ((None, 5, "", "<"), (None, 5, "H", "<"), (None, 5, "H", "<"))]:
             self.assertEqual(ranges.copies(a, b), want, (a, b))
 
 
@@ -347,7 +355,10 @@ class Api(unittest.TestCase):
         share link: every result, a result twice once with any range and flag either copy has (ranges.copies), a lab in
         two units a row in each (none dropped: the latest's unit alone was kept, and a copy's Low lost). Then each pair
         linked as the same result: everywhere once, the older import's copy kept with the other's range and flag (a
-        range in g/L given in g/dL, the kept copy's unit)."""
+        range in g/L given in g/dL, the kept copy's unit). A one-sided range's edge goes with its range (#780: "<5" kept
+        with 5 left out, the copy High), and each import's lab days (#782) name their rows' series, each row's result
+        flagged as COPIES_DAYS has it (the drawer's flags, the Timeline's counts), the other's rows folded into the kept
+        one's after Same result."""
         db = dbm.connect()
         try:
             owner = db.execute("SELECT id FROM users WHERE username='robin'").fetchone()["id"]
@@ -364,7 +375,7 @@ class Api(unittest.TestCase):
         token = r.json()["path"].split("#", 1)[1]
         body = {"appointment": None, "since": M.day(M.COPIES_SINCE, TODAY)[:10], "sections": ["out_of_range", "trends"], "labs": []}
 
-        def check(when, seen, once, trends, out):
+        def check(when, seen, once, trends, out, days):
             db = dbm.connect()
             try:
                 data = records.assemble(db, pid)
@@ -373,11 +384,12 @@ class Api(unittest.TestCase):
             page = {}   # the records page's series (same.js joinSeries: by name and unit), each result by the one rule
             for s in data["labs"]:
                 page.setdefault((s["name"], s["unit"]), []).extend(s["pts"])
-            page = {k: [[ranges.judge(p[1], p[2], p[3], p[4], p[5])[2], p[2], p[3]] for p in sorted(pts, key=lambda p: p[0])]
-                    for k, pts in page.items()}
+            edge = lambda p: p[7] if len(p) > 7 and p[7] else ""   # (#780: a one-sided range's edge, pts[7])
+            page = {k: [[ranges.judge(p[1], p[2], p[3], p[4], p[5], None, edge(p))[2], p[2], p[3], *filter(None, [edge(p)])]
+                        for p in sorted(pts, key=lambda p: p[0])] for k, pts in page.items()}
             self.assertEqual(page, seen, f"{when}: the records page's results")
             series = list(summary.each(summary._series(data)))
-            self.assertEqual({(s["name"], s["unit"]): [[p["flag"], p["lo"], p["hi"]] for p in s["pts"]] for s in series}, once,
+            self.assertEqual({(s["name"], s["unit"]): [[p["flag"], p["lo"], p["hi"], *filter(None, [p["edge"]])] for p in s["pts"]] for s in series}, once,
                              f"{when}: the summary's results: a result twice once, with any range and flag either copy has")
             labels = [data["imports"][k]["label"] for k in sorted(data["imports"], key=int)]
             s = c.post(f"/api/profiles/{pid}/summary/preview", headers=H, json=body).json()
@@ -399,16 +411,34 @@ class Api(unittest.TestCase):
             for n, u in trends:
                 self.assertIn(f"{n} ({u})", text, f"{when}: the PDF's trend of {n} in {u}")
             view = TestClient(main.app, base_url="http://testserver").post("/api/share/view", json={"token": token}, headers=H).json()
-            self.assertEqual({(x["name"], x["unit"]): [[q["flag"], q["lo"], q["hi"], q["range"]] for q in x["results"][::-1]] for x in view["results"]},
-                             {k: [[word.get(f), lo, hi, summary.range_words(lo, hi)] for f, lo, hi in v] for k, v in once.items()},
+            self.assertEqual({(x["name"], x["unit"]): [[q["flag"], q["lo"], q["hi"], q["range"], *filter(None, [q.get("edge")])] for q in x["results"][::-1]]
+                              for x in view["results"]},
+                             {k: [[word.get(f), lo, hi, summary.range_words(lo, hi, *e), *e] for f, lo, hi, *e in v] for k, v in once.items()},
                              f"{when}: a share link's results")
+            # each import's lab days (#782): its rows named with their series (records._row_series), each flagged as its
+            # result is judged (the drawer's flag, the Timeline's count): the kept copy's with the other's range, flag and
+            # edge after Same result (crossmatch._carry), the other's rows folded into it and its lab day left out
+            imps = sorted(data["imports"], key=int)
+            got = {}
+            for e in data["events"]:
+                if e["k"] != "lab":
+                    continue
+                rows = []
+                for i in data["details"][str(e["id"])]["ids"]:
+                    d = data["details"][str(i)]
+                    for r, n in zip(d["rows"], d.get("series") or [None] * len(d["rows"])):
+                        p = next((p for s in data["labs"] if s["name"] == n and s.get("imp") == e.get("imp") for p in s["pts"]
+                                  if p[0][:10] == e["t"][:10] and p[5] == r[1]), None)
+                        rows.append((n, p and ranges.judge(p[1], p[2], p[3], p[4], p[5], None, edge(p))[2]))
+                got[(imps.index(str(e["imp"])) + 1, (TODAY - datetime.date.fromisoformat(e["t"][:10])).days)] = rows
+            self.assertEqual(got, days, f"{when}: each import's lab days, their rows' series and flags")
             return data
 
-        data = check("before", M.COPIES_SEEN, M.COPIES_ONCE, M.COPIES_TRENDS, M.COPIES_OUT)
-        self.assertEqual(sorted(x["a"]["name"] for x in data["possible"]), ["Calcium", "Hemoglobin", "Potassium", "Sodium"])
+        data = check("before", M.COPIES_SEEN, M.COPIES_ONCE, M.COPIES_TRENDS, M.COPIES_OUT, M.COPIES_DAYS)
+        self.assertEqual(sorted(x["a"]["name"] for x in data["possible"]), M.COPIES_LINKED)
         for x in data["possible"]:
             self.assertEqual(c.post(f"/api/profiles/{pid}/same", json={"ref": x["ref"]}, headers=H).status_code, 201)
-        check("after Same result", M.COPIES_SAME, M.COPIES_SAME, M.COPIES_TRENDS_SAME, M.COPIES_OUT_SAME)
+        check("after Same result", M.COPIES_SAME, M.COPIES_SAME, M.COPIES_TRENDS_SAME, M.COPIES_OUT_SAME, M.COPIES_DAYS_SAME)
         db = dbm.connect()
         try:
             prof.delete_profile(db, pid)
@@ -564,7 +594,7 @@ class Api(unittest.TestCase):
             cell = lambda x: (x["value"], x["flag"], x.get("own"))
             self.assertEqual((cell(tr[n]["then"]), cell(tr[n]["now"]), tr[n]["now"]["range"]), (then, now, rng), n)
             line = [p for p in series[n]["pts"] if p["d"] <= body["since"]][-1:] + [p for p in series[n]["pts"] if p["d"] > body["since"]]
-            want = [[{"L": "Low", "H": "High"}.get(j[0]), j[1], j[2], ranges.SOURCE if j[3] == ranges.SOURCE else None]
+            want = [[M.SAID.get(j[0]), j[1], j[2], ranges.SOURCE if j[3] == ranges.SOURCE else None]
                     for p, j in zip(series[n]["pts"], M.JUDGED[n]) if p in line]
             self.assertEqual([q[2:6] for q in tr[n]["spark"]], want, f"{n}: the chart's and sparkline's points")
             self.assertEqual([q[7] for q in tr[n]["spark"]], [e for p, e in zip(series[n]["pts"], M.edges(n)) if p in line],
@@ -609,7 +639,7 @@ class Api(unittest.TestCase):
         view = TestClient(main.app, base_url="http://testserver").post("/api/share/view", json={"token": r.json()["path"].split("#", 1)[1]}, headers=H)
         self.assertEqual(view.status_code, 200, view.text)
         got = {x["name"]: [[q["flag"], q["lo"], q["hi"], q["range"], q.get("edge", "")] for q in x["results"][::-1]] for x in view.json()["results"]}
-        want = {n: [[{"L": "Low", "H": "High"}.get(f), lo, hi, M.words(lo, hi, e), e] for (f, lo, hi, _), e in zip(M.share_judged(n), M.edges(n))]
+        want = {n: [[M.SAID.get(f), lo, hi, M.words(lo, hi, e), e] for (f, lo, hi, _), e in zip(M.share_judged(n), M.edges(n))]
                 for n in labs}
         self.assertEqual(got, want, "a share link's flags and ranges: its reports' (none from Settings), each worked out by the one rule")
         db = dbm.connect()

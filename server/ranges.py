@@ -30,7 +30,7 @@ they agree):
 - A chart's band (steps()) has a step for each result with a range, none beside a result without one (#752); "<5" and
   "≤ 5" are two ranges.
 - One result that came twice (two sources, then "Same result"; copies()) is one result with any range and flag
-  either copy has (#781), judged by the same rule.
+  either copy has (#781), the range's edge with it (#780), judged by the same rule.
 
 The ranges are a profile setting (server/settings.py, section "ranges"), encrypted: ranges.overrides. The birth date
 and sex are About this person's (#194, server/person.py: person.birthDate and person.sex; before #194 they were
@@ -185,17 +185,18 @@ def copies(a, b):
     """The range and flag of one result that came twice (#781: from two sources, or twice from one; summary._series,
     and a "Same result" link, crossmatch.apply): the copy kept, a, keeps what its report says, and what it lacks comes
     from the other, b, as edits.py's merge fills an event from the one merged into it. Its range a's, else b's (the
-    low and the high together); its flag a's, else b's where b's was given against the range it now has (b's own, or b
-    gave none), so no flag sits beside a range it wasn't worked out against. a, b: (low, high, flag), b's range in a's
-    unit. -> (low, high, flag), to be judged by judge() like any result's"""
-    lo, hi, f = a
-    blo, bhi, bf = b
+    low, the high and the edge together, #780); its flag a's, else b's where b's was given against the range it now has
+    (b's own, its edge too, or b gave none), so no flag sits beside a range it wasn't worked out against. a, b: (low,
+    high, flag) or (low, high, flag, edge) (common.range_edge: "<" for "<5"), b's range in a's unit. -> (low, high,
+    flag), and its edge where either gave one, to be judged by judge() like any result's"""
+    (lo, hi, f, *e), (blo, bhi, bf, *be) = a, b
+    e, be = str((e or [""])[0] or ""), str((be or [""])[0] or "")
     f, bf = str(f or "").strip(), str(bf or "").strip()
     if lo is None and hi is None:
-        lo, hi = blo, bhi
-    if not f and bf and ((blo is None and bhi is None) or (blo, bhi) == (lo, hi)):
+        lo, hi, e = blo, bhi, be
+    if not f and bf and ((blo is None and bhi is None) or (blo, bhi, be) == (lo, hi, e)):
         f = bf
-    return lo, hi, f
+    return (lo, hi, f, e) if len(a) > 3 or len(b) > 3 else (lo, hi, f)
 
 
 def steps(pts, start, end):
