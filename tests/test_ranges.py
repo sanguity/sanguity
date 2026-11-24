@@ -782,10 +782,18 @@ class Api(unittest.TestCase):
         self.assertIn(summary.BOUND_NOTE.strip(), notes["out_of_range"])
         self.assertIn("or, where its report gives none, the range from settings", notes["out_of_range"])
         self.assertIn("each step marked “on report” or “from settings”, none beside a result with neither", notes["charts"])
+        # #819: Chloride, Blood's "A" (◆, inside its range) is "Flagged", and the notes and the heading say what that is
+        self.assertIn(f"how many of the results since then were {M.flagged(['A'], 'short')}.", notes["out_of_range"])
+        for k in ("out_of_range", "trends"):
+            self.assertIn(M.FLAGGED_NOTE, notes[k], f"#819: the {k} note says what Flagged is")
+        self.assertIn("; a red diamond, one flagged on its report.", notes["charts"])
+        for form, (plain, a) in M.FLAGGED_WORDS.items():
+            self.assertEqual([ranges.flagged_words(f, form) for f in ([], ["H", "Low"], ["High", "A"], ["Flagged"])], [plain, plain, a, a], form)
 
         r = c.post(f"/api/profiles/{pid}/summary/pdf", headers=H, json=body)
         self.assertEqual(r.status_code, 200, r.text[:200])
         text = " ".join("\n".join(p.extract_text() for p in PdfReader(io.BytesIO(r.content)).pages).split())
+        self.assertIn(f"{M.flagged(['A'], 'short').capitalize()} since", text, "#819: the PDF's heading says a ◆ is in it")
         for n, (then, _, _) in M.TRENDS.items():
             words = f"{then[0]}{' ' + then[1] if then[1] else ''} {summary._short(tr[n]['then']['date'])}"
             self.assertIn(words + (f" ({' '.join(w for w in then[2] if w)})" if then[2] else ""), text, f"{n}: the PDF's Then cell")

@@ -339,7 +339,7 @@ function showEvTip(e, ev) {
   showTip([el("div", {class: "v", text: e.title}),
     el("div", {class: "s"}, el("span", {class: "k", style: {background: c.color}}), `${KIND_LABEL[e.k]} · ${e.end && e.te - e.ts > DAY ? fmtD(e.ts) + " – " + fmtD(e.te) : fmtDT(e.ts)}`),
     e.sub ? el("div", {class: "s", text: e.sub}) : null,
-    abn ? el("div", {class: "s", style: {color: "var(--crit)"}, text: `▲ ${abn} value${abn > 1 ? "s" : ""} out of range`}) : null], ev);
+    abn ? el("div", {class: "s", style: {color: "var(--crit)"}, text: `▲ ${abn} value${abn > 1 ? "s" : ""} ${flaggedWords(tlAbnFlags(e) || [], "short")}`}) : null], ev);   // (#819)
 }
 
 /* milestones: named dates (diagnosis, surgery, treatment start...) from the settings (CFG.milestones), oldest first.

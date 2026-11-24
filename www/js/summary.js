@@ -130,7 +130,7 @@ function sumChart(r) {
   const pts = r.spark.map(([d, v, f, lo, hi, rs, t, e]) => Object.assign(ckPt(zParse(d), v, lo, hi, f, e), {d, rs: rs || undefined, t})), name = r.label + (r.unit ? ` (${r.unit})` : "");
   const out = pts.filter(p => p[4]), set = out.filter(p => p.rs).length;
   return el("figure", {class: "sum-chart"}, el("figcaption", {text: name}), ckSolo(pts, {h: 64,
-    label: `${name}: a chart of ${pts.length} results, ${fmtDay(pts[0].d)} to ${fmtDay(pts.at(-1).d)}${out.length ? `, ${out.length} outside their range` +
+    label: `${name}: a chart of ${pts.length} results, ${fmtDay(pts[0].d)} to ${fmtDay(pts.at(-1).d)}${out.length ? `, ${out.length} ${flaggedWords(out.map(p => p[4]))}` +
       (set ? ` (${set === out.length ? "" : set + " of them "}against a ${RANGE_FROM_SETTINGS})` : "") : ""}. The table above lists the first and the latest.`,
     say: p => `${fmtDay(p.d)}: ${p.t ?? p[1]}${r.unit ? " " + r.unit : ""}${p[4] ? " " + sumFlag(p[4]) + (p.rs ? ` (${RANGE_FROM_SETTINGS})` : "") : ""}`}));
 }
@@ -152,7 +152,7 @@ function renderPreview(s) {
   const said = k => s.notes?.[k] ? el("p", {class: "hint sum-said", text: s.notes[k]}) : null;
   for (const id of s.sections) {
     if (id === "out_of_range") {
-      parts.push(el("h3", {text: `Out of range since ${since} (${s.out_of_range.length})`}));
+      parts.push(el("h3", {text: `${capFirst(flaggedWords(s.out_of_range.map(r => r.flag), "short"))} since ${since} (${s.out_of_range.length})`}));   // (#819)
       parts.push(s.out_of_range.length ? table(["Test", "Result", "Flag", "Range", "Date", "Source"], s.out_of_range.map(r => el("tr", {},
         cell(r.label + (r.of > 1 ? ` (${r.out} of ${r.of})` : "")), cell(`${r.value} ${r.unit}`.trim()), cell(r.flag, "flag"),
         rangeCell(r.range || "not given"), cell(fmtDay(r.date)), cell(r.source)))) : none("No results since then are outside the reference range on their own report."), said("out_of_range"));

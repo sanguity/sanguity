@@ -189,7 +189,7 @@ function ovKeyLabs(lastDraw) {
   }
   out.sort((a, b) => (b.key - a.key) || b.s.n - a.s.n);
   const flags = el("div", {class: "ov-out", id: "ovOut"}, el("p", {class: "ov-out-say", text: out.length
-    ? `Outside its reference range at its latest result (${out.length}):` : "Nothing outside its reference range at its latest result."}));
+    ? `${capFirst(flaggedWords(out.map(o => o.last[4]), "its"))} at its latest result (${out.length}):` : "Nothing outside its reference range at its latest result."}));   // (#819)
   for (const o of out.slice(0, 14)) {
     const st = statusOf(o.last), word = {hi: "High", lo: "Low"}[st.cls] || "Flagged";
     flags.append(el("div", {class: "ov-row", ...pressable(() => goSeries(o.s.name))},

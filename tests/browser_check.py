@@ -3308,12 +3308,12 @@ def main():
             flag514 = hp.evaluate("""() => [...document.querySelectorAll('#share-results .share-hist:not([hidden]) table')].map(t => {
               const box = t.closest('.share-scroll').getBoundingClientRect(), hd = t.tHead.rows[t.tHead.rows.length - 1].cells, r = hd[hd.length - 1].getBoundingClientRect();
               return r.left >= box.left - 0.5 && r.right <= box.right + 0.5; })""")
-            # #523: …with the widest flag, "◆ Abnormal" (shFlag's word for a C-CDA A or AA), in each history's first
+            # #523: …with the widest flag, "◆ Flagged" (shFlag's word for a C-CDA A or AA, #819), in each history's first
             # result: its flag beside its value, under it if need be, no column past its box (in a column of its own it
             # put every history 15-23 px past its 262 px box)
             wide523 = hp.evaluate("""() => [...document.querySelectorAll('#share-results .share-hist:not([hidden]) table')].map(t => {
               const td = t.tBodies[0].rows[0].cells[1], was = [...td.childNodes];
-              td.replaceChildren(el('span', {}, td.textContent + ' ', shFlag('Abnormal')));
+              td.replaceChildren(el('span', {}, td.textContent + ' ', shFlag('Flagged')));
               const box = t.closest('.share-scroll'), hd = t.tHead.rows[t.tHead.rows.length - 1].cells, b = box.getBoundingClientRect(),
                 f = td.querySelector('.share-flag'), rg = document.createRange();
               rg.selectNodeContents(f);
@@ -3528,7 +3528,7 @@ def main():
               [ampm509s, cells509])
         check("…at 320 px each opened history's Flag column in view, without scrolling it sideways (#514: past its 262 px box)",
               len(flag514) >= 8 and all(flag514), flag514)
-        check("…and with “◆ Abnormal”, the widest flag, beside a result, every history's columns still in view, the flag on one line (#523: its own column was past the box)",
+        check("…and with “◆ Flagged”, the widest flag, beside a result, every history's columns still in view, the flag on one line (#523: its own column was past the box)",
               len(wide523) >= 8 and all(wide523), wide523)
         check("…and no flag in Lab results on two lines at 320 px, every history open (#518: “▲” above “High”)",
               flag518[0] >= 1 and not flag518[1], flag518)
@@ -20335,7 +20335,7 @@ def main():
             check("visit summary (#649): with a range from settings, the trend's chart, sparkline, tables and PDF agree: the band said to be "
                   "from settings in the preview and the PDF (its note too), 22 and 26 ▼ Low on the chart and nowhere a flag the others haven't "
                   "(22 the table's Then, 26 out of range since, 41 in range on the table, the chart and the sparkline)",
-                  got649["ref"] == ["30–100 from settings"] and "2 outside their range (against a range from settings)" in got649["label"]
+                  got649["ref"] == ["30–100 from settings"] and "2 outside reference range (against a range from settings)" in got649["label"]
                   and [t.split(": ", 1)[1] for t in got649["flagged"]] == ["22 ng/mL ▼ Low (range from settings)", "26 ng/mL ▼ Low (range from settings)"]
                   and [t.split(": ", 1)[1] for t in got649["dots"]] == ["34 ng/mL", "41 ng/mL"]
                   and got649["then"][0].startswith("22 ▼ Low") and got649["then"][1] and got649["now"][0].startswith("41") and not got649["now"][1]
@@ -20424,7 +20424,7 @@ def main():
             num752 = lambda v: f"{v:g}"
             words752 = M752.words   # "30–110", "< 5", "≤ 5", "> 60", "≥ 60" (#780)
             FLAG752 = {"H": "▲ High", "L": "▼ Low", "A": "◆ Flagged", "": ""}   # Labs', the drawer's, the Overview's
-            SAID752 = {**FLAG752, "A": "◆ Abnormal"}   # the summary's and a share link's (summary.out_of_range, M752.SAID)
+            SAID752 = FLAG752   # the summary's and a share link's too (summary.out_of_range, M752.SAID: one word for ◆, #819)
             # a chart's marks in order, each [x, flagged, under a band step], and its band's words (Labs, the share page, the summary)
             CHART752 = r"""s => { const bands = [...s.querySelectorAll('rect.refband')].map(r => [+r.getAttribute('x'), +r.getAttribute('x') + +r.getAttribute('width')]);
               return {marks: [...s.querySelectorAll('circle.pt, path.pt.abn')].map(m => { const x = m.tagName === 'circle' ? +m.getAttribute('cx') : +/^M(-?[\d.]+)/.exec(m.getAttribute('d'))[1];
@@ -20439,7 +20439,7 @@ def main():
                         or {t.endswith("from settings") for t in got["ref"]} != {w.endswith("from settings") for w in said}:
                     bad.append(f"band said {got['ref']}, its steps {sorted(said)}")
                 return bad
-            bad752 = []
+            bad752, bad819 = [], []   # (#819: flagged results said one way, checked with these and at the end)
             page.goto(base + f"/?profile={mpid}")
             page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {mpid}", timeout=20000)
             got752 = js("Object.fromEntries(SERIES.filter(s => !s.watch).map(s => [s.name, s.pts.map(p => [p[4] || '', p[2], p[3], p.rs || 'report'])]))")
@@ -20525,8 +20525,9 @@ def main():
             js("() => { state.q = ''; setPeriod('all'); pickTab('timeline'); }")
             settle(600)
             tl782, n782 = js(TL782), sum(map(len, out782.values()))
-            if tl782[1] != {k: f"{len(v)} out of range" if v else None for k, v in out782.items()} \
-                    or f"{len(out782)} lab draws, {sum(map(len, M752.CASES.values()))} results, {n782} out of range" not in tl782[0]:
+            fl782 = {k: [M752.JUDGED[n][j][0] for n, j in v] for k, v in out782.items()}   # each day's flags: "or flagged" with a ◆ (#819)
+            if tl782[1] != {k: f"{len(v)} {M752.flagged(fl782[k], 'short')}" if v else None for k, v in out782.items()} \
+                    or f"{len(out782)} lab draws, {sum(map(len, M752.CASES.values()))} results, {n782} {M752.flagged(sum(fl782.values(), []), 'short')}" not in tl782[0]:
                 bad782.append(f"the Timeline: {tl782}")
             page.fill("#q", "creatinine")   # under a search naming a test, that test's
             settle(500)
@@ -20540,10 +20541,11 @@ def main():
             DRAWER782 = """async () => { const out = {};
               for (const e of DATA.events.filter(e => e.k === 'lab')) {
                 await openEvent(e);
-                const facts = Object.fromEntries([...document.querySelectorAll('#drawer dl.facts dt')].map(t => [t.textContent, t.nextElementSibling.textContent]));
-                out[e.t.slice(0, 10)] = [facts['Out of range'], document.querySelector('#drawer details.res .badge.abn')?.firstChild.textContent || null,
+                const facts = [...document.querySelectorAll('#drawer dl.facts dt')].map(t => [t.textContent, t.nextElementSibling.textContent]), oor = facts.find(([k]) => k.startsWith('Out of range')) || [];
+                out[e.t.slice(0, 10)] = [oor[1], document.querySelector('#drawer details.res .badge.abn')?.firstChild.textContent || null,
                   [...document.querySelectorAll('#drawer table.data tbody tr')].map(r => [r.cells[0].firstChild.textContent, r.cells[1].textContent, r.cells[3].textContent,
-                    [...r.cells[1].querySelectorAll('.orig')].map(o => o.textContent).filter(t => t.startsWith('(settings')).join(''), r.classList.contains('link')])];
+                    [...r.cells[1].querySelectorAll('.orig')].map(o => o.textContent).filter(t => t.startsWith('(settings')).join(''), r.classList.contains('link')]),
+                  oor[0], document.querySelector('#drawer details.res .badge.abn .vh')?.textContent || null];   // (its words, #819)
               }
               closeDrawer(); return out; }"""
             dr782 = js(DRAWER782)
@@ -20554,6 +20556,9 @@ def main():
                 want = [str(len(out782[k])) if out782[k] else "None", str(len(out782[k])) if out782[k] else None, rows]
                 if not got or [got[0], got[1], [[r[0], *r[2:]] for r in got[2]]] != want:
                     bad782.append(f"the drawer's {k}: {got} not {want}")
+                # #819: its Out of range fact and its result's badge say a ◆ is among them where one is
+                if got and [got[3], got[4]] != [M752.flagged(fl782[k], "short").capitalize(), " " + M752.flagged(fl782[k]) if out782[k] else None]:
+                    bad819.append(f"the drawer's {k}: “{got[3]}”, its badge's “{got[4]}”")
             # "Reported … ref" (units.js ucOrig) says its report's range only, as Labs says it: in SI units each converted
             # value's as reported, Labs' words for its report's range ("≤ 1.3", not "–1.3"), none for a range from settings
             # (it said "1.5 mg/dL, ref 0.6–1.2"); the same on Labs' table and the Overview's tile, and the drawer's "CREAT"
@@ -20627,7 +20632,7 @@ def main():
             except Exception as e:
                 pdf752 = f"no PDF: {e}"
             for n, (then, now, rng752) in M752.TRENDS.items():
-                cell = lambda c: f"{c[0]}{' ' + SAID752[c[1][0]] if c[1] else ''}" + (f" ({' '.join(w for w in c[2] if w)})" if c[2] else "")
+                cell = lambda c: f"{c[0]}{' ' + SAID752[{v: k for k, v in M752.SAID.items()}[c[1]]] if c[1] else ''}" + (f" ({' '.join(w for w in c[2] if w)})" if c[2] else "")
                 if sum752["rows"].get(n) != [cell(then), cell(now), rng752]:
                     bad752.append(f"the summary's {n} row: {sum752['rows'].get(n)} not {[cell(then), cell(now), rng752]}")
                 pdf_then = f"{then[0]}{' ' + then[1] if then[1] else ''} .{{1,16}}?" + (re.escape(f" ({' '.join(w for w in then[2] if w)})") if then[2] else "")
@@ -20650,6 +20655,82 @@ def main():
                   "and sources in Labs (points, charts, tables, heatmap), Compare, the Overview, a share link, the summary's preview and its PDF; "
                   "a band step only under results with that range, each said with its source; a Then judged against another range naming it",
                   not bad752, bad752)
+            # ---- #819: flagged results said one way. A report's "A" (◆) inside its range was counted and headed "outside
+            # the range" (the Overview's list, Labs' chart header, a share chart's label, the summary's notes) and called
+            # "Flagged" in the app but "Abnormal" in the summary and share links. Every heading, count and note of flagged
+            # results now says them by one rule (ranges.js flaggedWords, server/ranges.py flagged_words): with a ◆ among
+            # them "… or flagged on its report" (tests/ranges_matrix.py FLAGGED_WORDS), and ◆ is "Flagged" everywhere
+            # (SAID752 above). The matrix's Chloride, Blood has one, its latest. The page's rule against the server's; then
+            # each view's words: the summary's preview (its heading, notes and a chart's label) and its PDF, a share link's
+            # chart label, the Overview's list, Labs' chart headers, words and Legend, the heatmap's headings and the lab
+            # panel (the Timeline's badges and line, and the drawer's fact and badge, with #782's above)
+            fl819 = {n: [f for f, *_ in j if f] for n, j in M752.JUDGED.items()}
+            grid819 = [[f, form] for form in M752.FLAGGED_WORDS for f in ([], ["H", "L"], ["High", "Low"], ["A"], ["H", "A"], ["Flagged"], ["HH"])]
+            page819 = js("g => g.map(([f, form]) => flaggedWords(f, form))", grid819)   # (on the summary's page)
+            bad819 += [f"flaggedWords{tuple(x)} “{got}”, the server's “{rng.flagged_words(*x)}”" for x, got in zip(grid819, page819)
+                       if got != rng.flagged_words(*x) or got != M752.flagged(["A" if any(f[:1] not in ("H", "L") for f in x[0]) else ""], x[1])]
+            sum819 = js("""() => [[...document.querySelectorAll('#prevBody h3')].map(h => h.textContent).find(t => t.startsWith('Out of range')),
+              Object.fromEntries([...document.querySelectorAll('#prevBody .sum-chart')].map(f => [f.querySelector('figcaption').textContent.split(' (')[0], f.querySelector('svg').getAttribute('aria-label')]))]""")
+            if not (sum819[0] or "").startswith(M752.flagged(["A"], "short").capitalize() + " since "):
+                bad819.append(f"the summary's heading “{sum819[0]}”")
+            line819 = [i for i, p in enumerate(M752.CASES["Chloride, Blood"]) if p[0] > M752.SINCE][-1:] + [i for i, p in enumerate(M752.CASES["Chloride, Blood"]) if p[0] < M752.SINCE]
+            fl = [M752.JUDGED["Chloride, Blood"][i][0] for i in line819 if M752.JUDGED["Chloride, Blood"][i][0]]
+            if f", {len(fl)} {M752.flagged(fl)}." not in (sum819[1].get("Chloride, Blood") or ""):
+                bad819.append(f"the summary's Chloride, Blood chart: “{sum819[1].get('Chloride, Blood')}”")
+            for w in (f"were {M752.flagged(['A'], 'short')}.", M752.FLAGGED_NOTE, "; a red diamond, one flagged on its report."):
+                if w not in notes752 or w not in pdf752:
+                    bad819.append(f"a note not said in the summary's preview and its PDF: {w}")
+            if M752.flagged(["A"], "short").capitalize() + " since" not in pdf752:
+                bad819.append("the PDF's heading says no ◆ is in it")
+            page.goto(base + f"/share.html#{tok752}")
+            page.wait_for_selector("#share-results .share-latest", timeout=10000)
+            js("[...document.querySelectorAll('#share-results .share-tools button')].find(b => b.textContent.startsWith('Open every')).click()")
+            settle(600)
+            share819 = js("""n => { const b = [...document.querySelectorAll('#share-results .share-open')].find(b => b.textContent === n);
+              return document.getElementById(b.getAttribute('aria-controls')).querySelector('svg.ck-solo')?.getAttribute('aria-label'); }""", "Chloride, Blood")
+            fl = [f for f, *_ in M752.share_judged("Chloride, Blood") if f]
+            if f", {len(fl)} {M752.flagged(fl)}." not in (share819 or ""):
+                bad819.append(f"a share link's Chloride, Blood chart: “{share819}”")
+            page.goto(base + f"/?profile={mpid}")
+            page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {mpid}", timeout=20000)
+            js("() => { setPeriod('all'); pickTab('overview'); }")
+            settle(400)
+            last819 = [j[-1][0] for j in M752.JUDGED.values() if j[-1][0]]
+            got = js("document.querySelector('#ovOut .ov-out-say').textContent")
+            if got != f"{M752.flagged(last819, 'its').capitalize()} at its latest result ({len(last819)}):":
+                bad819.append(f"the Overview's list: “{got}”")
+            js("labs => { state.tables.clear(); state.sel = new Set(labs); applyPreset('all'); switchTab('labs', 'chart'); renderLabs(); }", list(M752.CASES))
+            settle(600)
+            got = js("""[Object.fromEntries([...document.querySelectorAll('#charts .chart')].map(c => [c.dataset.lab, [c.querySelector('.hd-sub .unit').textContent, c.querySelector('svg.ck').getAttribute('aria-label')]])),
+              document.querySelector('#legendList [data-legend=flagged]')?.hidden === false]""")
+            for n, fl in fl819.items():   # its header's count and its chart's words, each with what a ◆ is where it has one
+                head, said = got[0].get(n, ["", ""])
+                if fl and (f" · {len(fl)} {M752.flagged(fl)}" not in head or f", {len(fl)} {M752.flagged(fl)}" not in said) or not fl and "outside" in head:
+                    bad819.append(f"Labs' {n} chart: “{head}”, “{said}”")
+            if not got[1]:
+                bad819.append("Labs' Legend names no ◆ though Chloride, Blood's chart has one")
+            js("() => { switchTab('labs', 'heatmap'); }")
+            settle(400)
+            got = js("""(() => { const t = [...document.querySelectorAll('#hm text')].find(t => t.textContent.startsWith('Outside')); return [t?.firstChild.textContent, t?.querySelector('title')?.textContent]; })()""")
+            if got != [M752.flagged(["A"], "head"), f"Results {M752.flagged(['A'])} in these dates"]:
+                bad819.append(f"the heatmap's heading: {got}")
+            js("() => { state.tables.add('#hm'); renderHeatmap(); }")
+            settle(300)
+            got = js("document.querySelector('#hmTable thead th:nth-child(2)').textContent")
+            js("() => { state.tables.delete('#hm'); renderHeatmap(); }")
+            if got != M752.flagged(["A"], "short").capitalize():
+                bad819.append(f"the heatmap's table's heading: “{got}”")
+            for n in ("Chloride, Blood", "Lipase"):   # the lab panel's row, with a ◆ and without
+                js(f"openLab(SERIES.find(s => s.name === {json.dumps(n)}))")
+                settle(300)
+                got = js("document.querySelector('#drawer dd[data-k=out]')?.previousElementSibling.textContent")
+                js("closeDrawer()")
+                if got != M752.flagged(fl819[n], "its").capitalize():
+                    bad819.append(f"the lab panel's {n}: “{got}”")
+            check("#819: flagged results said one way: with a report's “A” (◆) among them every heading, count and note says “… or flagged "
+                  "on its report” (the Overview's list, Labs' chart headers, words and Legend, the heatmap, the lab panel, the Timeline's badges "
+                  "and line, the drawer, a share link's chart, the summary's heading, charts and notes and its PDF), the page's rule the "
+                  "server's; ◆ “Flagged” in every one", not bad819, bad819)
             db = dbm.connect()
             prof_r.delete_profile(db, mpid)
             db.close()

@@ -93,7 +93,8 @@ function renderHeatmap(live) {   // live: a frame of a drag (charts.js), at the 
   const yOf = new Map();
   let lastPanel = null;
   for (const s of rows) { const p = grp.get(s); if (p !== lastPanel) { groups.push([p, gy]); gy += GH; lastPanel = p; } yOf.set(s, gy); gy += rowH; }
-  const W = Math.max(R + RW, LW + 8 + labelW("Outside", "")), H = gy + 4;   // (room for the counts' heading over a narrow grid)
+  const outHead = flaggedWords(dia ? ["A"] : [], "head");   // the counts' heading: "Outside", "Outside or flagged" with a ◆ (#819)
+  const W = Math.max(R + RW, LW + 8 + labelW(outHead, "")), H = gy + 4;   // (room for the counts' heading over a narrow grid)
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("width", W); svg.setAttribute("height", H);
   svg._geom = {L: LW, R, w: W};
   const g = [];
@@ -110,7 +111,7 @@ function renderHeatmap(live) {   // live: a frame of a drag (charts.js), at the 
   g.push(el("svg:text", {x: LW - 8, y: 28 * k, "text-anchor": "end", text: "Procedure"}));
   for (const [p, py] of groups) g.push(el("svg:text", {class: "grp", x: 0, y: py + 11 * k, text: p}));
   // the counts' heading, on the first panel's line, right of its name
-  g.push(el("svg:text", {x: W - 4, y: top + 11 * k, "text-anchor": "end", text: "Outside"}, el("svg:title", {text: "Results outside their reference range in these dates"})));
+  g.push(el("svg:text", {x: W - 4, y: top + 11 * k, "text-anchor": "end", text: outHead}, el("svg:title", {text: `Results ${flaggedWords(dia ? ["A"] : [])} in these dates`})));
   const pix = [];   // each row's cells by pixel, where columns are under one (below)
   rows.forEach((s, i) => {
     // a lab kept in two units says which row is which, its unit kept whole (#438)
@@ -305,6 +306,6 @@ function hmTable(rows, cols, grp) {
   const dia = rows.some(s => [...hmDays(s).values()].some(ps => ps.some(p => hmMark(p) === "A")));
   box.replaceChildren(el("p", {class: "hint", text: `${rows.length} lab${rows.length === 1 ? "" : "s"} on ${cols.length} draw day${cols.length === 1 ? "" : "s"}. ▲ above its reference range, ▼ below${dia ? ", ◆ flagged by its report" : ""}.`}),
     scrollBox({class: "tablewrap hm-table", "aria-label": "Lab results by draw day"}, el("table", {class: "data"},
-      el("thead", {}, el("tr", {}, el("th", {scope: "col", text: "Lab"}), el("th", {scope: "col", text: "Outside range"}), ...cols.map(([, ts]) => el("th", {scope: "col", text: fmtD(ts)})))), ...bodies)));
+      el("thead", {}, el("tr", {}, el("th", {scope: "col", text: "Lab"}), el("th", {scope: "col", text: capFirst(flaggedWords(dia ? ["A"] : [], "short"))}), ...cols.map(([, ts]) => el("th", {scope: "col", text: fmtD(ts)})))), ...bodies)));
 }
 
