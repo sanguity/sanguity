@@ -19,7 +19,7 @@ import xml.etree.ElementTree as ET
 from datetime import date
 
 from . import common
-from .common import canonical_lab, comparator, range_edge, range_flag
+from .common import canonical_lab, comparator, range_edge, report_flag
 
 NAME = "ccda"
 LABEL = "C-CDA health summary (XML)"
@@ -354,17 +354,10 @@ def _range(doc, obs):
 
 
 def _flag(obs, x, lo, hi, raw="", edge=""):
-    """H or L as the lab flagged it (or, unflagged, against the range by the one rule, server/ranges.py flag: "<0.5"
-    against a low of 0.5 is low, #752; 5 against "<5" high, #780); A for abnormal without a direction."""
-    abnormal = False
-    for ic in _all(obs, "h:interpretationCode"):
-        c = (ic.get("code") or "").upper()
-        if c in ("H", "HH", "HU", ">"):
-            return "H"
-        if c in ("L", "LL", "LU", "<"):
-            return "L"
-        abnormal = abnormal or c in ("A", "AA")
-    return range_flag(x, lo, hi, comparator(raw), edge) or ("A" if abnormal else "")
+    """The result's flag from its interpretation codes by the one rule (common.report_flag, #817): H or L as the lab
+    flagged it; "A" or "AA" (abnormal, no way) by the range, else kept "A"; unflagged, against the range ("<0.5"
+    against a low of 0.5 is low, #752; 5 against "<5" high, #780)."""
+    return report_flag([ic.get("code") for ic in _all(obs, "h:interpretationCode")], x, lo, hi, comparator(raw), edge)
 
 
 def _results(doc, out):
@@ -401,7 +394,7 @@ def _results(doc, out):
                 sname, s = out.series(name, unit, loinc, other)
                 out.panel_votes[sname][panel] += 1
                 if x is not None:
-                    s["pts"].append([t, _clean(x), _clean(lo), _clean(hi), flag if flag in ("H", "L") else "", raw, doc.src]
+                    s["pts"].append([t, _clean(x), _clean(lo), _clean(hi), flag, raw, doc.src]   # "A" too (#817)
                                     + ([edge] if edge else []))
                 elif raw:
                     s["txt"].append([t, raw])

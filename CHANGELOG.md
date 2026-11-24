@@ -1990,6 +1990,13 @@ Everything on `main` so far; it becomes the first tagged release.
   under 5" unflagged with the other, while Labs then said "< 5" and "≤ 5". The server now sends whether the range
   leaves its limit out, and the line says it as Labs will: "range < 5 · ▲ High", "range ≤ 5", "range ≥ 60",
   "range 3.5–5.1", a flag that says neither way "◆ Flagged".
+- **A report's "A" flag is kept from every importer, and comes back from a FHIR export** (#817): a flag that says
+  neither way ("A", "AA", "Abnormal", "Critical") in a spreadsheet's Flag column, a FHIR resource's interpretation, or
+  a C-CDA's or CareSpace's interpretation code was placed by the range alone, so on a value inside its range (or with
+  none printed) it was dropped and every view said it in range (the C-CDA importer kept it on the drawer's row only),
+  and the FHIR export's interpretation "A" was lost when it was read back in. Now every importer reads a printed flag
+  by one rule, as the PDF importer did: H or L as printed, a flag that says neither way placed by the range where it
+  can be, else kept and shown as ◆ Flagged (Abnormal in the summary and share links).
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

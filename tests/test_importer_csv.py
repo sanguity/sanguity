@@ -283,6 +283,28 @@ class Layouts(Written):
         d = csv_labs.parse(f)["data"]
         self.assertEqual([series(d, n)["pts"][0][4] for n in "ABCD"], ["H", "L", "", "H"])
 
+    def test_a_flag_that_says_no_way_is_kept(self):
+        """#817: a report's own flag comes first. A Flag column's "A", "AA", "Abnormal", "Critical" or "Alert", which
+        say no way, is placed by the range where it can be, and kept as "A" where it can't (a value inside its range, or
+        with none given), on the point, the row and the lab day's count; before, the range alone said it, so it was kept
+        with no flag. "N" and "Normal" say neither: the range alone. Hand entry reads rows the same way."""
+        f = self.write("a.csv", "Date,Test,Value,Unit,Range,Flag\n2025-01-01,RDW,13.1,%,11.0-15.0,A\n2025-01-01,MCH,35.0,pg,27.0-33.0,A\n"
+                                "2025-01-01,MCV,70,fL,80-100,Abnormal\n2025-01-01,Fibrinogen,300,mg/dL,,AA\n"
+                                "2025-01-01,Neutrophils,58,%,40-74,Critical\n2025-01-01,Basophils,1,%,0-2,Alert\n"
+                                "2025-01-01,MPV,9.9,fL,7.5-12.5,N\n2025-01-01,Eosinophils,9,%,0-6,Normal\n"
+                                "2025-01-01,Urine culture,Positive,,,A\n")
+        d = csv_labs.parse(f)["data"]
+        got = {s["name"]: s["pts"][0][4] for s in d["labs"] if s["pts"]}
+        self.assertEqual(got, {"RDW": "A", "MCH": "H", "MCV": "L", "Fibrinogen": "A", "Neutrophils": "A", "Basophils": "A",
+                               "MPV": "", "Eosinophils": "H"})
+        rows = {r[0]: r[4] for e in d["details"].values() if e.get("type") == "result" for r in e["rows"]}
+        self.assertEqual(rows, {"RDW": "A", "MCH": "H", "MCV": "L", "Fibrinogen": "A", "Neutrophils": "A", "Basophils": "A",
+                                "MPV": "", "Eosinophils": "H", "Urine culture": "A"})
+        self.assertEqual([e.get("abn") for e in d["events"] if e["k"] == "lab"], [8])
+        typed = {"test": "RDW", "date": "2025-01-01", "value": "13.1", "range": "11.0-15.0", "flag": "A"}
+        r, _ = csv_labs.read_row(lambda k: typed.get(k, ""))
+        self.assertEqual(r["flag"], "A", "a typed result's too")
+
     def test_one_test_in_two_units(self):
         f = self.write("u.csv", "Date,Test,Value,Unit\n2025-01-01,Glucose,95,mg/dL\n2025-02-01,Glucose,100,mg/dL\n"
                                 "2025-03-01,Glucose,5.4,mmol/L\n")

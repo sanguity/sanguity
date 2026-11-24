@@ -24,7 +24,7 @@ export. Series: "loinc:<code>" or "carespace:name|<name lower-cased>", with "|<u
 import collections, hashlib, json, posixpath, re
 import xml.etree.ElementTree as ET
 
-from .common import canonical_lab, comparator, iso, lab_day_sub, lab_day_title, loinc_of, num, range_edge, range_flag, unit_key, ymd
+from .common import canonical_lab, comparator, iso, lab_day_sub, lab_day_title, loinc_of, num, range_edge, report_flag, unit_key, ymd
 
 NAME = "carespace"
 LABEL = "CareSpace / OncoEMR portal export"
@@ -37,7 +37,6 @@ H = "{urn:hl7-org:v3}"
 NS = {"h": "urn:hl7-org:v3"}
 DECL = re.compile(rb"<!\s*(DOCTYPE|ENTITY)", re.I)
 
-FLAGS = {"H": "H", "HH": "H", "L": "L", "LL": "L"}
 VITALS = [("Body weight", "Weight", "lb"), ("Body height", "Height", "in"), ("Body temperature", "Temperature", "°F"),
           ("Heart rate", "Heart rate (clinic)", "bpm"), ("Systolic", "Blood pressure, systolic", "mmHg"),
           ("Diastolic", "Blood pressure, diastolic", "mmHg"),
@@ -216,9 +215,9 @@ def parse(files, org=None, tag=None):
         lo, hi = ref.get("lowerLimit"), ref.get("upperLimit")
         edge = range_edge(r.get("referenceRangeDisplay"), lo, hi)   # its limits as displayed: "<5" leaves 5 out (#780)
         x = num(v.get("value"))
-        flag = FLAGS.get((r.get("interpretationCode") or "").upper(), "")
-        if not flag and x is not None:   # by the one rule (server/ranges.py flag, #752: "<0.5" against a low of 0.5 is low)
-            flag = range_flag(x, lo, hi, comparator(v.get("value")), edge)
+        # by the one rule (common.report_flag, #817): H or L as coded; "A" or "AA" by the range, else kept "A"; uncoded,
+        # against the range ("<0.5" against a low of 0.5 is low, #752)
+        flag = report_flag(r.get("interpretationCode"), x, lo, hi, comparator(v.get("value")), edge)
         unit = v.get("unit") or ref.get("unit") or ""
         pan = (panels.get(r.get("labPanelRecordId")) or {}).get("testName") or "Lab panel"
         by_day[t[:10]][pan].append([r["name"], v.get("value"), unit, r.get("referenceRangeDisplay") or "", flag])

@@ -135,17 +135,18 @@ links. A document the export mentions but didn't include gets `"url": null` and 
  "txt": [["2026-03-02T08:30:00", "No growth"]]}
 ```
 
-`pts` are `[time, number, low, high, flag ("H", "L" or ""), value as reported, optional source tag, optional edge]`,
-sorted by time; `n` is how many. A flag the report prints without saying which way ("A", "Abnormal") is placed by the
-range (`common.range_flag`), and kept as `"A"` where the range doesn't place it: a report's own flag comes first (#752;
-the PDF and C-CDA importers). The edge is for a one-sided range whose limit leaves its edge out, as printed: `"<"`
-for `"<5"` (5 is above it), `">"` for `">60"` (60 is below it); leave it off (or `""`) for a range that keeps it
-(`"<=5"`, `"< OR = 5"`, `">=60"`) or one with a low and a high, and put `null` in the tag's place when there's no tag.
-`common.range_edge(printed, low, high)` works it out, and `common.range_flag(value, low, high, comparator, edge)` the
-flag (#780). `txt` holds results that aren't numbers. Name series with `common.canonical_lab(name,
-loinc)` so the same test from two sources lands on one chart (it returns None for labs it doesn't know: keep the
-source's name then), and add a LOINC code when you have one. A series may carry a `key` too, such as
-`"loinc:718-7"` (see below).
+`pts` are `[time, number, low, high, flag ("H", "L", "A" or ""), value as reported, optional source tag, optional
+edge]`, sorted by time; `n` is how many. Work the flag out with `common.report_flag(printed, value, low, high,
+comparator, edge)`, the one rule every importer uses (#817): "H" or "L" as printed; a flag the report prints without
+saying which way ("A", "AA", "Abnormal", "Critical") placed by the range (`common.range_flag`), and kept as `"A"` where
+the range doesn't place it, a report's own flag first (#752); none printed (or "N", "Normal"), the range's. The edge
+is for a one-sided range whose limit leaves its edge out, as printed: `"<"` for `"<5"` (5 is above it), `">"` for
+`">60"` (60 is below it); leave it off (or `""`) for a range that keeps it (`"<=5"`, `"< OR = 5"`, `">=60"`) or one
+with a low and a high, and put `null` in the tag's place when there's no tag. `common.range_edge(printed, low, high)`
+works it out, and the flag rule honours it (#780). `txt` holds results that aren't numbers. Name series with
+`common.canonical_lab(name, loinc)` so the same test from two sources lands on one chart (it returns None for labs it
+doesn't know: keep the source's name then), and add a LOINC code when you have one. A series may carry a `key` too,
+such as `"loinc:718-7"` (see below).
 
 ### Source keys
 

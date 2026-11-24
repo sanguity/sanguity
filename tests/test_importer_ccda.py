@@ -112,7 +112,7 @@ class Parse(unittest.TestCase):
             for p in s["pts"]:
                 self.assertEqual(len(p), 7)
                 self.assertIsInstance(p[1], (int, float))
-                self.assertIn(p[4], ("", "H", "L"))
+                self.assertIn(p[4], ("", "H", "L", "A"))
 
     def test_second_portal_style(self):
         na = self.labs["Sodium, Blood"]                # "SODIUM" as reported, under lab-aliases.json's name
@@ -287,6 +287,27 @@ class Keys(unittest.TestCase):
             row = next(r for e in d["details"].values() if isinstance(e, dict) for r in e.get("rows") or [] if r[0] == "WBC")
             got.append([wbc[3], wbc[4]] + wbc[7:] + [row[3]])
         self.assertEqual(got, [[11.0, "H", "<", "<11.0"], [11.0, "", "<=11.0"]])
+
+    def test_a_flag_that_says_no_way_is_kept(self):
+        """#817: a report's own flag comes first. An interpretationCode "A" or "AA" (abnormal, no way) is placed by the
+        range where it can be, and kept as "A" on the point where it can't (a value inside its range): the row kept it,
+        but the point was given none, so Labs, the heatmap, the summary and share links said it in range."""
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        with open(os.path.join(FIX, "maple-grove-ccd.xml"), encoding="utf-8") as f:
+            s = f.read()
+        old = '<value xsi:type="PQ" value="7.1" unit="10*3/uL"/>\n                  <interpretationCode code="N" codeSystem="2.16.840.1.113883.5.83"/>'
+        self.assertIn(old, s)
+        got = []
+        for value, code in (("7.1", "A"), ("7.1", "AA"), ("12.4", "A"), ("3.1", "AA"), ("7.1", "N")):
+            p = os.path.join(tmp, "x.xml")
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(s.replace(old, old.replace('value="7.1"', f'value="{value}"').replace('code="N"', f'code="{code}"')))
+            d = ccda.parse({"x.xml": p})["data"]
+            wbc = next(x for x in d["labs"] if x["name"] == "WBC")["pts"][0]
+            row = next(r for e in d["details"].values() if isinstance(e, dict) for r in e.get("rows") or [] if r[0] == "WBC")
+            got.append([wbc[4], row[4]])
+        self.assertEqual(got, [["A", "A"], ["A", "A"], ["H", "H"], ["L", "L"], ["", ""]])
 
     def test_a_childs_vitals(self):
         """#196: a child's weight (under 50 lb, once left out) and head circumference (in cm, or in inches) are kept."""

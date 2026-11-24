@@ -492,6 +492,43 @@ class Keys(unittest.TestCase):
         self.assertEqual(ks, ["fhir:https://one.example.org/fhir|Encounter/1", "fhir:https://two.example.org/fhir|Encounter/1"])
 
 
+class Flags(unittest.TestCase):
+    def test_a_flag_that_says_no_way_is_kept(self):
+        """#817: a report's own flag comes first. An interpretation that says no way (HL7's "A" or "AA", or only its
+        words, "Abnormal") is placed by the range where it can be, and kept as "A" where it can't (a value inside its
+        range, or with none, or a text result), on the point and the row; before, the range alone said it ("A" has no
+        slot in the H/L flags, it said), so it was kept with none, and a FHIR export's "A" was lost on its way back in.
+        "N" says neither: the range alone."""
+        v3 = "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation"
+
+        def obs(i, name, value, interp, lo=None, hi=None):
+            o = {"resourceType": "Observation", "id": f"f{i}", "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
+                 "code": {"text": name}, "effectiveDateTime": "2025-03-04T09:45:00-06:00"}
+            o.update({"valueQuantity": {"value": value, "unit": "%"}} if isinstance(value, (int, float)) else {"valueString": value})
+            if lo is not None:
+                o["referenceRange"] = [{"low": {"value": lo}, "high": {"value": hi}}]
+            if interp:
+                o["interpretation"] = [interp]
+            return {"resource": o}
+        code = lambda c, words=None: {"coding": [{"system": v3, "code": c, **({"display": words} if words else {})}]}
+        entries = [obs(0, "RDW", 13.1, code("A", "Abnormal"), 11, 15), obs(1, "MCH", 35, code("A"), 27, 33),
+                   obs(2, "MCV", 70, code("AA", "Critical abnormal"), 80, 100), obs(3, "Fibrinogen", 300, code("A")),
+                   obs(4, "Neutrophils", 58, {"text": "Abnormal"}, 40, 74), obs(5, "MPV", 9.9, code("N", "Normal"), 7.5, 12.5),
+                   obs(6, "Eosinophils", 9, code("N"), 0, 6), obs(7, "Basophils", 1, None, 0, 2),
+                   obs(8, "Urine culture", "Positive", code("A"))]
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        with open(os.path.join(tmp, "flags.json"), "w", encoding="utf-8") as f:
+            json.dump({"resourceType": "Bundle", "type": "collection", "entry": entries}, f)
+        d = fhir.parse({"flags.json": os.path.join(tmp, "flags.json")})["data"]
+        self.assertEqual({s["name"]: s["pts"][0][4] for s in d["labs"] if s["pts"]},
+                         {"RDW": "A", "MCH": "H", "MCV": "L", "Fibrinogen": "A", "Neutrophils": "A", "MPV": "", "Eosinophils": "H",
+                          "Basophils": ""})
+        self.assertEqual({r[0]: r[4] for e in d["details"].values() if e.get("type") == "result" for r in e.get("rows") or []},
+                         {"RDW": "A", "MCH": "H", "MCV": "L", "Fibrinogen": "A", "Neutrophils": "A", "MPV": "", "Eosinophils": "H",
+                          "Basophils": "", "Urine culture": "A"})
+
+
 class Malformed(unittest.TestCase):
     def test_broken_json_raises_plain_message(self):
         with self.assertRaises(ValueError) as cm:

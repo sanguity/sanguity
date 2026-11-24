@@ -20615,8 +20615,12 @@ def main():
                     bad752 += [f"the share page's {n} chart: {b}" for b in chart752(hist[1], j, steps)]
                 elif hist[1]["ref"] or hist[1]["marks"] != [[False, False]] * len(j):   # (Lipase: its only range is from Settings)
                     bad752.append(f"the share page's {n} chart: a band or a flag {hist[1]}")
-            # the summary's preview (the last visit SINCE days back), and its PDF
+            # the summary's preview (the last visit SINCE days back), and its PDF: its out-of-range and trends sections
+            # only, as tests/test_ranges.py asks for them (with every matrix lab trended, the empty medications,
+            # appointments and questions would leave its charts no room on its two pages, and it's made without them, #302)
             page.goto(base + f"/sharing.html?profile={mpid}#summary")
+            page.wait_for_selector("#build:not([hidden]) #sections input", timeout=10000)
+            js("[...document.querySelectorAll('#sections input:checked')].filter(i => !['out_of_range', 'trends'].includes(i.value)).forEach(i => i.click())")
             page.wait_for_selector("#preview:not([hidden]):not([aria-busy]) #prevBody .sum-chart", timeout=15000)
             sum752 = js(r"""async () => { const chart = """ + CHART752 + r""", t = [...document.querySelectorAll('#prevBody h3')].find(h => h.textContent.startsWith('Trends')).nextElementSibling;
               const at = c => c.childNodes[0].textContent + (c.querySelector('.sum-at:not(:last-child)')?.textContent || '');
