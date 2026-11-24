@@ -101,24 +101,30 @@ function savedCats(s) {
   const known = s?.cats ? new Set(s.known || CATS.filter(c => c.k !== "watch").map(c => c.k)) : new Set();
   return new Set([...(s?.cats || []), ...CATS.filter(c => !known.has(c.k) && c.k !== "claim").map(c => c.k)]);
 }
-/* each lab draw's own results (#470), by its import: a result typed in from an outside lab on a clinic draw's day is
-   its own draw's, not the clinic's too (its search words, and its badge and ▲ under a search: store.js labDayWords,
-   timeline.js tlAbn, palette.js). Of one import's draws on a day, a result is the one's with a report nearest it in
-   time; one whose import has no draw that day, every draw's that day, as before. draws: [{id, imp, ts, at: its
-   reports' times}]; series: lab series, a point's import p.imp where several are joined (same.js), else the series';
-   a result that came twice shown once (same.js joinSeries, #825) each of its imports' draws' (p.also). ts(p) a point's
-   time, day(t) its day. -> Map(draw id -> [[series, point]]) */
+/* each lab draw's own results (#470, #905): a result is the draw's that lists the lab event holding its row, by the
+   draw's own list, wherever either sits. A row is its result's where it's in a lab event of that result's own import and
+   day (drawer.js rowPoint), so the draws listing one of those are the result's: a pull's results whose lab event joins a
+   lab day another import made (#899) are that lab day's, not also a C-CDA's of the same date, whose badge counted them
+   and whose drawer didn't list them; and a result typed in from an outside lab on a clinic draw's day is its own draw's,
+   not the clinic's too (#470). Its search words, its badge and ▲ under a search read them (store.js labDayWords,
+   timeline.js tlAbn, palette.js). Of several, the one with a report nearest it in time. A result no draw lists a lab
+   event of its import for is its import's own draw's that day, else every draw's that day, as before. draws: [{id, imp,
+   ts, at: its reports' times, items: [[time, import]] of the lab events it lists}]; series: lab series, a point's
+   import p.imp where several are joined (same.js), else the series'; a result that came twice shown once (same.js
+   joinSeries, #825) each of its imports' draws' (p.also). ts(p) a point's time, day(t) its day. -> Map(draw id ->
+   [[series, point]]) */
 function labDraws(draws, series, ts, day) {
-  const out = new Map(), by = new Map(), add = (m, k, x) => (m.get(k) || m.set(k, []).get(k)).push(x);
-  for (const e of draws) { out.set(e.id, []); add(by, day(e.ts) + "\u001f" + e.imp, e); add(by, day(e.ts), e); }
+  const out = new Map(), by = new Map(), held = new Map(), add = (m, k, x) => (m.get(k) || m.set(k, []).get(k)).push(x);
+  for (const e of draws) {
+    out.set(e.id, []); add(by, day(e.ts) + "\u001f" + e.imp, e); add(by, day(e.ts), e);
+    for (const k of new Set((e.items || []).map(([t, i]) => day(t) + "\u001f" + i))) add(held, k, e);
+  }
   const near = (e, t) => Math.min(...(e.at?.length ? e.at : [e.ts]).map(a => Math.abs(a - t)));
   const pick = (mine, t) => mine.length > 1 ? mine.reduce((a, b) => near(b, t) < near(a, t) ? b : a) : mine[0];
   for (const s of series) for (const p of s.pts) {
-    const t = ts(p), d = day(t), imp = p.imp ?? s.imp, mine = by.get(d + "\u001f" + imp);
-    const also = p.also ? p.also.filter(i => i !== imp).map(i => by.get(d + "\u001f" + i)).filter(Boolean) : [];
-    if (also.length) for (const e of new Set([mine, ...also].filter(Boolean).map(m => pick(m, t)))) out.get(e.id).push([s, p]);
-    else if (mine) out.get(pick(mine, t).id).push([s, p]);
-    else for (const e of by.get(d) || []) out.get(e.id).push([s, p]);
+    const t = ts(p), d = day(t), imp = p.imp ?? s.imp;
+    const at = new Set([imp, ...(p.also || [])].map(i => held.get(d + "\u001f" + i) || by.get(d + "\u001f" + i)).filter(Boolean).map(m => pick(m, t)));
+    for (const e of at.size ? at : by.get(d) || []) out.get(e.id).push([s, p]);
   }
   return out;
 }

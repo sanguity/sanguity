@@ -22682,6 +22682,97 @@ def main():
             settle(200)
             check("the outside connections fit 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
             page.set_viewport_size({"width": 1400, "height": 900})
+            # ---- #905: a pull's new result whose lab event joins a lab day another import made (#899) is that lab day's alone.
+            # The portal's own export uploaded, the portal connected (its first pull finds it all here), then an ALT (High) new
+            # that day pulled, its lab event joining the upload's lab day, and a C-CDA of the same date (a Sodium in range) with
+            # a lab day of its own. util.js labDraws put the ALT, a result of an import with no lab day that day, in every lab day
+            # of its date: the C-CDA's badge said "1 out of range" with no such row in its drawer. Now each lab day's badge counts
+            # its own rows' results only (e.res), as its drawer does
+            db = dbm.connect()
+            jpid905 = prof_r.create_profile(db, "Joined lab day (fictional)", owner_id=owner)
+            db.close()
+            bad905, write905 = [], {"method": "POST", "headers": {"X-Sanguity": "1", "Content-Type": "application/json"}}
+            import_905 = """async ([pid, up, w]) => { let j = await (await fetch(`api/profiles/${pid}/uploads/${up}/import`, {...w, body: '{}'})).json(); const id = j.id;
+              for (let n = 0; n < 600; n++) { j = await (await fetch(`api/profiles/${pid}/jobs/${id}`)).json();
+                if (j.state === 'preview') await fetch(`api/profiles/${pid}/jobs/${id}/confirm`, {...w, body: '{}'});
+                else if (['done', 'failed', 'discarded'].includes(j.state)) return j.state;
+                await new Promise(r => setTimeout(r, 100)); } return j.state; }"""
+
+
+            def upload905(name, body):
+                from server import uploads as up_905
+                db = dbm.connect()
+                try:
+                    up = up_905.create(db, jpid905, None)
+                    up_905.add_file(db, jpid905, up, name, io.BytesIO(body.encode()))
+                    up_905.finish(db, jpid905, up)
+                finally:
+                    db.close()
+                return js(import_905, [jpid905, up, write905])
+
+
+            said905 = [upload905("portal-export.json", json.dumps({"resourceType": "Bundle", "type": "collection", "entry": [
+                {"fullUrl": f"{fake.fhir_base}/{r['resourceType']}/{r['id']}", "resource": r} for r in fake.resources(patient="pat-1")]}))]
+            src905 = js(f"fetch('api/profiles/{jpid905}/connections').then(r => r.json()).then(j => j.sources.find(s => s.issuer === {json.dumps(fake.fhir_base)}).id)")
+            url905 = js("([pid, s, w]) => fetch(`api/profiles/${pid}/connect/start`, {...w, body: JSON.stringify({source: s})}).then(r => r.json()).then(j => j.url)", [jpid905, src905, write905])
+            back905 = fake.authorize(url905, patient="pat-1")
+            cid905 = js("([b, w]) => fetch('api/connect/return', {...w, body: JSON.stringify(b)}).then(r => r.json()).then(j => j.connection)",
+                        [{"code": back905.code, "state": back905.state, "error": back905.error, "error_description": back905.error_description}, write905])
+            pulls905 = lambda: js(f"fetch('api/profiles/{jpid905}/connections').then(r => r.json()).then(j => j.connections.find(c => c.id === {cid905}))")   # noqa: E731
+            for _ in range(300):   # its first pull, made by the sync at once (sync.wake), its preview saved as the person would
+                c905 = pulls905()
+                db = dbm.connect()
+                job905 = db.execute("SELECT j.id, j.state FROM connections c JOIN jobs j ON j.id = c.first_job WHERE c.id=?", (cid905,)).fetchone()
+                db.close()
+                if job905 and job905["state"] == "preview":
+                    js("([pid, j, w]) => fetch(`api/profiles/${pid}/jobs/${j}/confirm`, {...w, body: '{}'})", [jpid905, job905["id"], write905])
+                elif job905 and job905["state"] in ("done", "failed", "discarded"):
+                    break
+                settle(100)
+            said905.append(job905 and job905["state"])
+            fake.add({"resourceType": "Observation", "id": "obs-alt-905", "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
+                      "code": {"coding": [{"system": "http://loinc.org", "code": "1742-6"}], "text": "ALT"}, "effectiveDateTime": "2025-03-04T09:45:00-06:00",
+                      "valueQuantity": {"value": 60, "unit": "U/L"}, "referenceRange": [{"low": {"value": 7}, "high": {"value": 56}, "text": "7-56"}],
+                      "interpretation": [{"coding": [{"system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation", "code": "H"}]}]}, patient="pat-1")
+            js("([pid, c, w]) => fetch(`api/profiles/${pid}/connections/${c}/sync`, {...w, body: '{}'})", [jpid905, cid905, write905])
+            for _ in range(300):
+                db = dbm.connect()
+                n905 = db.execute("SELECT COUNT(*) FROM imports WHERE connection_id=?", (cid905,)).fetchone()[0]
+                db.close()
+                if n905:
+                    break
+                settle(100)
+            said905.append(n905)
+            said905.append(upload905("clinic.xml", M752.ccda([("Sodium", "mmol/L", "2025-03-04T09:00:00", "140", "135-145")])))
+            if said905 != ["done", "done", 1, "done"]:
+                bad905.append(f"the upload, the first pull, the pull and the C-CDA: {said905}")
+            page.goto(base + f"/?profile={jpid905}")
+            page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {jpid905}", timeout=20000)
+            js("() => { setPeriod('all'); pickTab('timeline'); }")
+            settle(600)
+            got905 = js("""async day => { const out = [], rows = {};
+              const badge = Object.fromEntries([...document.querySelectorAll('#list .tl-row[data-id]')].map(r => [r.dataset.id, r.querySelector('.badge.abn')?.textContent || null]));
+              for (const e of DATA.events.filter(e => e.k === 'lab' && e.t.slice(0, 10) === day)) {
+                await openEvent(e);
+                out.push([parseInt(badge[e.id]) || 0, (e.res || []).map(([s, p]) => [s.name, p[4] || '']).sort(),
+                  [...document.querySelectorAll('#drawer table.data tbody tr')].map(r => [r.cells[0].firstChild.textContent, r.cells[3].textContent.trim()])]);
+              }
+              closeDrawer(); return out.sort((a, b) => b[2].length - a[2].length); }""", "2025-03-04")
+            tests905 = [sorted(r[0] for r in rows) for _, _, rows in got905]
+            if tests905 != [["ALT", "Color of Urine", "Hemoglobin", "LDL Cholesterol", "Platelets"], ["Sodium"]]:
+                bad905.append(f"the date's lab days hold {tests905}: not the upload's joined by the ALT, and the C-CDA's")
+            for n905, res905, rows905 in got905:
+                flagged905 = sum(1 for _, f in rows905 if f)
+                if n905 != flagged905 or n905 != sum(1 for _, f in res905 if f):
+                    bad905.append(f"the lab day of {sorted(r[0] for r in rows905)}: its badge {n905} out of range, its drawer {flagged905}, its results {res905}")
+            if len(got905) != 2 or [x[0] for x in got905[0][1]].count("ALT") != 1 or [x[0] for x in got905[1][1]] != ["Sodium, Blood"]:
+                bad905.append(f"the lab days' own results {[x[1] for x in got905]}: the ALT not the upload's alone, the Sodium not the C-CDA's")
+            db = dbm.connect()
+            prof_r.delete_profile(db, jpid905)
+            db.close()
+            check("#905: a pull's new result whose lab event joins a lab day another import made (#899: the portal's export uploaded, then its "
+                  "ALT pulled) is that lab day's alone: a C-CDA's lab day of the same date doesn't count it, and each lab day's Timeline badge "
+                  "counts its own rows' results, as its drawer does", not bad905, bad905 or got905)
             allowed.discard(origin(fake.fhir_base))
             fake.stop()
             js("(p => p == null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', p))", profile_before_96)   # as before #96's visit

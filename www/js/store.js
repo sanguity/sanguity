@@ -121,8 +121,9 @@ function storeRecords(data) {
    point]] for its badge (timeline.js tlAbn, #782), a visit's Vitals aside. Made again when the settings
    change (applySettings): a lab renamed is found by its new name at once, and no longer by the old (#463) */
 function labDayWords() {
-  const draws = DATA.events.filter(e => e.k === "lab"), at = e => (DATA.details[e.id]?.ids || []).map(i => byId.get(i)?.ts).filter(isFinite);
-  const own = labDraws(draws.map(e => ({id: e.id, imp: e.imp, ts: e.ts, at: at(e)})), SERIES.filter(s => !s.watch && s.panel !== "Vitals"), p => p.ts, isoDay);
+  const draws = DATA.events.filter(e => e.k === "lab"), listed = e => (DATA.details[e.id]?.ids || []).map(i => byId.get(i)).filter(x => isFinite(x?.ts));
+  const own = labDraws(draws.map(e => ({id: e.id, imp: e.imp, ts: e.ts, at: listed(e).map(x => x.ts), items: listed(e).map(x => [x.ts, x.imp])})),
+    SERIES.filter(s => !s.watch && s.panel !== "Vitals"), p => p.ts, isoDay);
   for (const e of draws) {
     const d = DATA.details[e.id], names = [...new Set((e.res = own.get(e.id)).map(([s]) => s.name))];
     e._q = e._q0 + " " + [...(d ? d.ids.map(i => byId.get(i)?.title || "") : []), ...names, ...names.map(nice)].join(" ").toLowerCase();
