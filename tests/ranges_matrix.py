@@ -859,6 +859,18 @@ TYPED_TRENDS = {("C-Reactive Protein", "mg/L"): [None, ["5", "High"], "< 5"], ("
                 ("Sodium, Blood", "mmol/L"): [None, ["150", "High"], "135–145"]}
 TYPED_OUT = {("C-Reactive Protein", "mg/L"): ["5", "High", "< 5", 1, 2], ("Potassium, Blood", "mmol/L"): ["5.3", "High", "3.5–5.1", 1, 1],
              ("Sodium, Blood", "mmol/L"): ["150", "High", "135–145", 1, 1]}
+# ---- where #868 meets #870 (round 7 together): a copy printed with a decimal comma, Albumin's "5,5" (5.5 typed in, by
+# the one reader of a number), typed with no range, then again with "3,5 - 5,2": kept with its range as Potassium's is,
+# one result High everywhere, its value said as printed
+TYPED[0].append(("Albumin", "g/dL", "5,5", ""))
+TYPED[1].append(("Albumin", "g/dL", "5,5", "3,5 - 5,2"))
+TYPED_SAID.append("range")
+TYPED_SAVED = "Saved 3 results. 1 was in this profile already and left out."
+TYPED_SEEN[("Albumin", "g/dL")] = [["H", 3.5, 5.2]]
+TYPED_DAYS = {k: [("Albumin", "H")] + v for k, v in TYPED_DAYS.items()}
+TYPED_LABS = ["Albumin"] + TYPED_LABS
+TYPED_TRENDS = {("Albumin", "g/dL"): [None, ["5,5", "High"], "3.5–5.2"], **TYPED_TRENDS}
+TYPED_OUT[("Albumin", "g/dL")] = ["5,5", "High", "3.5–5.2", 1, 1]
 
 
 # ---------------------------------------------------------------- #869: the same record sent again by its source
@@ -889,19 +901,33 @@ RESENT_TRENDS = {("ALT", "U/L"): [None, ["60", "Flagged"], ""], ("Hemoglobin", "
                  ("Potassium, Blood", "mmol/L"): [None, ["5.2", "High"], "3.5–5.1"], ("WBC", "10*3/uL"): [None, ["12.5", "High"], "4.5–11"]}
 RESENT_OUT = {("ALT", "U/L"): ["60", "Flagged", "", 1, 1], ("WBC", "10*3/uL"): ["12.5", "High", "4.5–11", 1, 1],
               ("Potassium, Blood", "mmol/L"): ["5.2", "High", "3.5–5.1", 1, 1]}
+# ---- where #869 meets #870 (round 7 together): a bound sent again, a CRP of ">10" (a FHIR Quantity's comparator: a
+# bound since #870, text before), on its own, its range corrected from "<10" (High: every value it may be is 10 or
+# more) to "<20" (neither: it may be inside or past it): updated in place, as the others are
+RESENT["CRP"] = ("1988-5", "mg/L", ">10", [("<10", None, 10, None), ("<20", None, 20, None)], None)
+RESENT_HERE = {**RESENT_HERE, "updates": 5}
+RESENT_SAID = RESENT_SAID.replace("4 lab results", "5 lab results")
+RESENT_SEEN[("CRP", "mg/L")] = [["", None, 20, "<"]]
+RESENT_DAYS = {k: v[:3] + [("CRP", "")] + v[3:] for k, v in RESENT_DAYS.items()}   # (its day's results by name, after ALT)
+RESENT_RANGES = RESENT_RANGES[:3] + ["<20"] + RESENT_RANGES[3:]
+RESENT_LABS = ["ALT", "CRP"] + RESENT_LABS[1:]
+RESENT_TRENDS = {("ALT", "U/L"): RESENT_TRENDS[("ALT", "U/L")], ("CRP", "mg/L"): [None, [">10", None], "< 20"],
+                 **{k: v for k, v in RESENT_TRENDS.items() if k[0] != "ALT"}}
 
 
 def resent(k, today=None):
     """RESENT as its source sends it the first time (k 0) or again, amended (k 1): (a file's name, a FHIR Bundle's text),
-    the report's results under a DiagnosticReport, the rest on their own (keyed by their day)."""
+    the report's results under a DiagnosticReport, the rest on their own (keyed by their day); a value given as a bound
+    (">10") a Quantity with its comparator."""
     import json
+    from server.importers import common
     t = day(RESENT_BACK, today)
     obs = []
     for name, (code, unit, v, sent, where) in RESENT.items():
         text, lo, hi, interp = sent[k]
         r = {"resourceType": "Observation", "id": "obs-" + code, "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
              "code": {"coding": [{"system": "http://loinc.org", "code": code}], "text": name}, "effectiveDateTime": t,
-             "valueQuantity": {"value": v, "unit": unit}}
+             "valueQuantity": {"value": common.value_number(v), "unit": unit, **({"comparator": common.comparator(v)} if common.comparator(v) else {})}}
         if text:
             r["referenceRange"] = [{"low": {"value": lo, "unit": unit}, "high": {"value": hi, "unit": unit}, "text": text}]
         if interp:

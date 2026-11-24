@@ -2105,8 +2105,8 @@ Everything on `main` so far; it becomes the first tagged release.
   did the same, and a flag changed with no range was lost. Now the same record from the same source (its row in the
   report or the day it came in, by its key) is updated in place, its range, flag and row as the source gives them now,
   in every view; an upload's review says so ("4 lab results already here from the same source are updated with the
-  range and flag this file gives now") and its button "Update 4 lab results", and undoing the sync or the upload
-  puts back what was there.
+  range and flag this file gives now"), its button "Update 4 lab results" and its hint "Nothing is saved until you
+  update the results", and undoing the sync or the upload puts back what was there.
 - **A number printed with a comma, as a bound or in scientific notation reads back from the FHIR export as it was
   imported** (#870): the FHIR export read each result's value as printed with a reader of its own, the number it was
   imported as only where none was printed, so "4,5", "12,5" and "0,500" from a spreadsheet with semicolons, "1,250"

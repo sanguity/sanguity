@@ -492,12 +492,12 @@ class Preview(unittest.TestCase):
         self.assertEqual({k: j["duplicates"].get(k, 0) for k in M.RESENT_HERE}, M.RESENT_HERE, j["duplicates"])
         self.assertEqual((j["new"], j["counts"]["results"], j["duplicates"]["kinds"], j["possible"]), (True, 0, {"lab": 1}, []), "nothing added: updated")
         done = self.save(pid, j)
-        self.assertEqual((done["state"], done["counts"].get("updated")), ("done", 4), done)
+        self.assertEqual((done["state"], done["counts"].get("updated")), ("done", M.RESENT_HERE["updates"]), done)
         self.assertEqual({k: v for k, v in count(pid).items() if k != "imports"}, {k: v for k, v in n.items() if k != "imports"}, "no rows added")
         got = assembled(pid)
         pts = {s["name"]: s["pts"] for s in got["labs"]}
-        self.assertEqual({k: [[p[4], p[2], p[3]] for p in v] for k, v in pts.items()},
-                         {n: [[f, lo, hi] for f, lo, hi in v] for (n, _), v in M.RESENT_SEEN.items()}, "one result each, as sent now")
+        self.assertEqual({k: [[p[4], p[2], p[3], *filter(None, p[7:8])] for p in v] for k, v in pts.items()},
+                         {n: v for (n, _), v in M.RESENT_SEEN.items()}, "one result each, as sent now (a bound's edge too)")
         drawer, printed = crossmatch._rows(got), [n for n, _ in M.RESENT_DAYS[(1, M.RESENT_BACK)]]
         for s in got["labs"]:
             for p in s["pts"]:
@@ -506,7 +506,7 @@ class Preview(unittest.TestCase):
                 self.assertEqual((ranges.read_flag(row[4], p[1], p[2], p[3], p[5]), row[3]), (p[4], M.RESENT_RANGES[printed.index(row[0])]),
                                  f"{s['name']}: its row and its result agree")
         j, _ = self.previewed(pid, second)   # the same again: nothing it says isn't here now
-        self.assertEqual((j["new"], j["duplicates"]["results"], j["duplicates"].get("updates")), (False, 4, 0), j["duplicates"])
+        self.assertEqual((j["new"], j["duplicates"]["results"], j["duplicates"].get("updates")), (False, M.RESENT_HERE["updates"], 0), j["duplicates"])
         r = self.robin.post(f"/api/profiles/{pid}/jobs/{j['id']}/discard", headers=H)
         self.assertEqual(r.status_code, 200, r.text)
         r = self.robin.post(f"/api/profiles/{pid}/imports/{done['import_id']}/undo", headers=H)

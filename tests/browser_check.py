@@ -21158,7 +21158,7 @@ def main():
                 js("""text => { const dt = new DataTransfer(); dt.setData('text/plain', text);
                   document.querySelector('.man-row [data-f=date]').dispatchEvent(new ClipboardEvent('paste', {clipboardData: dt, bubbles: true, cancelable: true})); }""",
                    M752.typed(k868)[1])
-                ready868 = "3 results ready to save." + (" 1 is already in this profile." if k868 else "")
+                ready868 = f"{len(M752.TYPED[k868])} results ready to save." + (" 1 is already in this profile." if k868 else "")
                 try:
                     page.wait_for_function("w => document.getElementById('manMsg').textContent === w", arg=ready868, timeout=10000)
                 except Exception:
@@ -21170,7 +21170,7 @@ def main():
                 page.click("#manSave")
                 page.wait_for_function("document.getElementById('manMsg').textContent.startsWith('Saved')", timeout=10000)
                 said868 = js("[document.getElementById('manMsg').textContent, (t => t && [...t.querySelectorAll('button')].map(b => b.textContent))(document.querySelector('#sgToasts .sg-toast:last-child'))]")
-                want868 = M752.TYPED_SAVED if k868 else "Saved 3 results."
+                want868 = M752.TYPED_SAVED if k868 else f"Saved {len(M752.TYPED[0])} results."
                 if not said868[0].startswith(want868) or "Undo…" not in (said868[1] or []):
                     bad868.append(f"save {k868 + 1} said {said868}, not {want868!r} with an Undo")
                 js("for (const t of document.querySelectorAll('#sgToasts .sg-toast')) t.sgGone()")
@@ -21206,9 +21206,11 @@ def main():
                 if k869:
                     got869 = js(f"""(c => [c.querySelector('.imp-state').textContent, [...c.querySelectorAll('.imp-split li')].map(li => li.textContent),
                       c.querySelector('.imp-copies')?.textContent ?? null, c.querySelector('.imp-updates')?.textContent ?? null,
-                      c.querySelector('.imp-actions .primary').textContent])({card846})""")
+                      c.querySelector('.imp-actions .primary').textContent, c.querySelector('.imp-title + .hint').textContent])({card846})""")
                     n869 = M752.RESENT_HERE["updates"]
-                    want869 = ["Ready to import", ["0 new", f"{n869} already here", "0 possibly the same"], None, M752.RESENT_SAID, f"Update {n869} lab results"]
+                    # (its hint in the button's words: it said "until you add it with the button" beside "Update 4 lab results")
+                    want869 = ["Ready to import", ["0 new", f"{n869} already here", "0 possibly the same"], None, M752.RESENT_SAID, f"Update {n869} lab results",
+                               "Nothing is saved until you update the results with the button at the foot."]
                     if got869 != want869:
                         bad869.append(f"the second's review {got869} not {want869}")
                 js(f"{card846}.querySelector('.imp-actions .primary').click()")
