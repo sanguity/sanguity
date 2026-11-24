@@ -20845,6 +20845,25 @@ def main():
                 return bad
             bad845 = views845(mpid, {(n, M752.UNITS[n]): j for n, j in M752.JUDGED.items()}, {(n, M752.UNITS[n]): c[-1][5] for n, c in M752.CASES.items()},
                               {n: (n, M752.UNITS[n]) for n in M752.CASES})
+            # ---- #866: Labs' list names each lab's checkbox with its latest result, and that result's mark was in the name as
+            # a symbol, so a screen reader said "black diamond 20 U/L" (▲ and ▼ alike). Now its flag's word, the mark hidden
+            # from it: what Chromium's accessibility tree gives a screen reader, for every lab of the matrix with a row
+            page.goto(base + f"/?profile={mpid}")
+            page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {mpid}", timeout=20000)
+            js("() => { state.tables.clear(); applyPreset('all'); switchTab('labs', 'chart'); renderLabs(); document.querySelectorAll('#seriesRows details').forEach(d => d.open = true); }")
+            settle(400)
+            ids866, bad866 = dict(js("[...document.querySelectorAll('#seriesRows input[data-lab]')].map(i => [i.dataset.lab, i.id])")), []
+            for n866, j866 in M752.JUDGED.items():
+                if len(j866) < 2:   # (a lab with two results or more has a row)
+                    continue
+                f866, u866 = j866[-1][0], M752.UNITS[n866]
+                want866 = f"{M752.CASES[n866][-1][5]} {u866}" + (f", {FLAG752[f866].split(' ', 1)[1]}" if f866 else "")
+                said866 = ax_said(page, "#" + ids866[n866]) if n866 in ids866 else None
+                if not said866 or not said866[0].endswith(want866) or re.search(r"[▲▼◆]", said866[0]):
+                    bad866.append(f"{n866}: named “{said866 and said866[0]}”, not ending “{want866}”")
+            js("document.querySelectorAll('#seriesRows details').forEach(d => d.open = false)")
+            check("#866: Labs' list names each lab's latest result with its flag's word (“20 U/L, Flagged”, “High”, “Low”), the ▲, ▼ or ◆ hidden from "
+                  "the name (a screen reader said “black diamond”), as the accessibility tree gives it", not bad866, bad866)
             db = dbm.connect()
             prof_r.delete_profile(db, mpid)
             db.close()
