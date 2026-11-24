@@ -156,6 +156,9 @@ CASES["ALT"] = [(100, 30, 7, 56, "", "30"), (90, 40, 7, 56, "A", "40"), (80, 60,
 THROUGH_CSV = ["ALT"]
 JUDGED["ALT"] = [["", 7, 56, R], ["A", 7, 56, R], ["H", 7, 56, R], ["L", 7, 56, R], ["A", 7, 56, R], ["A", None, None, R],
                  ["", 7, 56, R], ["A", 7, 56, R], ["A", 7, 56, R]]
+# and pasted into Type them in (#835: pasted() as a spreadsheet's copy, the flags in an "Abnormal" column, some as
+# yes or no), judged as JUDGED: the paste kept H and L only, so its "A", "Abnormal", "Critical" and "Yes" were none
+PASTE_FLAGS = {"ALT": ["", "Yes", "A", "Abnormal", "Y", "Critical", "No", "AA", "A"]}
 STEPS["ALT"] = [[[0, 1, 2, 3, 4], "7–56 on report"], [[6, 7, 8], "7–56 on report"]]
 TRENDS["ALT"] = [("50", "Abnormal", None), ("20", "Abnormal", None), "7–56"]
 OUT_OF_RANGE["ALT"] = ["20", "Abnormal", "7–56", 3, 4]
@@ -245,6 +248,14 @@ def through_csv(today=None):
                 f"{day(d, today)[:10]},{day(d, today)[11:16]},{n},{t},{UNITS[n]},{printed_range(lo, hi)},{flag}\n"
                 for n in THROUGH_CSV for d, v, lo, hi, flag, t in CASES[n]))
         return {s["name"]: s for s in csv_labs.parse({"flags.csv": path})["data"]["labs"]}
+
+
+def pasted(lab, today=None):
+    """lab's results as a spreadsheet's copy pasted into Type them in (#835): tab-separated, a header row, each flag as
+    PASTE_FLAGS has it in an "Abnormal" column."""
+    return "Date\tTime\tTest\tValue\tUnit\tReference range\tAbnormal\n" + "".join(
+        f"{day(d, today)[:10]}\t{day(d, today)[11:16]}\t{lab}\t{t}\t{UNITS[lab]}\t{printed_range(lo, hi)}\t{f}\n"
+        for (d, v, lo, hi, _, t), f in zip(CASES[lab], PASTE_FLAGS[lab]))
 
 
 def ccda(rows):

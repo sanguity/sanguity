@@ -2002,6 +2002,13 @@ Everything on `main` so far; it becomes the first tagged release.
   Overview, the summary and share links showed no range and no flag while the drawer showed "<5" beside the value. It's
   now read by one parser of a range as text, which the FHIR importer uses too ("≤ 5", "less than 5", "up to 5" and a
   unit after it as well), keeping whether its limit is in it: 5 is High against "<5", in range against "<=5".
+- **A report's printed flag is kept on the way out and when pasted** (#835): the FHIR export wrote an interpretation
+  only for H, L, HH, LL and A, so a PDF report's "Abnormal", "AA", "Critical", "Alert", "High" or "Low" went out with
+  none, and an in-range "Abnormal" was lost when read back; Type them in's paste kept only High and Low, so a pasted
+  "A" or "Abnormal" was saved with no flag though a spreadsheet upload of the same rows kept it; and a spreadsheet's
+  "Abnormal" or "Out of range" column saying "Y" or "Yes" wasn't read. Each now goes through the one rule: the export
+  writes each printed flag's code ("A", "AA", "H", "HH"...), which reads back as the same flag; a pasted flag is kept as
+  printed and read as an upload's is, each row saying what it became; a yes in such a column is a flag, a no isn't.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

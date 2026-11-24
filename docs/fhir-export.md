@@ -46,7 +46,7 @@ Patient needs an identifier from a health system and an administrative gender, w
 
 | Sanguity | FHIR |
 |---|---|
-| A lab report (a day's panel) | `DiagnosticReport` (category `LAB`), its `result`s `Observation`s (category `laboratory`): the value as reported (a `Quantity` for a number, with its comparator for `<0.5`; else a string), the unit, **each result's own reference range** (#58: the numbers and the text as printed) and its H/L flag as an `interpretation` |
+| A lab report (a day's panel) | `DiagnosticReport` (category `LAB`), its `result`s `Observation`s (category `laboratory`): the value as reported (a `Quantity` for a number, with its comparator for `<0.5`; else a string), the unit, **each result's own reference range** (#58: the numbers and the text as printed) and its flag as an `interpretation`, a row's as its report printed it read by the one rule (`common.flag_code`, #835: `H`, `L`, `HH`, `LL`, `A` or `AA`; a flag that says no way, "Abnormal", is `A`) |
 | A result in a lab series but in no report (typed in, or a source without reports) | an `Observation` on its own |
 | Vitals at visits | `Observation`s (category `vital-signs`); **blood pressure as one Observation** (`85354-9`) with systolic and diastolic components; clinic weights as body weight (`29463-7`, in lb) |
 | Visit | `Encounter` (class `AMB`): its type, who, where, the reasons; the visit's note and procedures in its narrative |

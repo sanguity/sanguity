@@ -227,6 +227,20 @@ class Manual(unittest.TestCase):
         self.assertEqual([[x["low"], x["high"], x["edge"], x["flag"]] for x in r.json()["rows"]],
                          [[None, 5, "<", "H"], [None, 5, "", ""], [60, None, ">", "L"], [60, None, "", ""], [3.5, 5.1, "", "H"]])
 
+    def test_a_pasted_flag_is_read_by_the_one_rule(self):
+        """#835: a flag as pasted ("Abnormal", "A", "AA", "Critical", "Yes", "Y", "No", "High", "Critical high", a
+        sentence the rule doesn't read) is sent as it is and read by the one rule (common.report_flag), as a spreadsheet's
+        Flag column is: kept "A" inside the range, placed by it past it, the rest by the range alone, and noted only
+        where it isn't a flag the rule reads. A flag up to 60 characters is taken, as a pasted cell may be."""
+        flags = ["Abnormal", "A", "AA", "Critical", "Yes", "Y", "No", "High", "Critical high", "Abnormal", "Yes", "see the comment below this"]
+        values = ["14"] * 9 + ["19", "12", "14"]
+        r = self.post([{"date": "2026-03-02", "time": f"08:{i:02d}", "test": "Vitamin Q (fictional)", "value": v, "unit": "ng/mL",
+                        "range": "13 - 17", "flag": f} for i, (f, v) in enumerate(zip(flags, values))], save=False)
+        self.assertEqual(r.status_code, 200, r.text)
+        got = [(x["flag"], [n for n in x["notes"] if "flag" in n]) for x in r.json()["rows"]]
+        self.assertEqual([f for f, _ in got], ["A", "A", "A", "A", "A", "A", "", "H", "H", "H", "L", ""])
+        self.assertEqual([bool(n) for _, n in got], [False] * 11 + [True], got)
+
     def test_roles_and_csrf(self):
         row = [{"date": "2026-04-01", "test": "WBC", "value": "7.0", "unit": "K/uL"}]
         before = count(self.pid)

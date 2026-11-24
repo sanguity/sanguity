@@ -113,12 +113,17 @@ def range_text(text):
 
 # a flag as reports print it (flag_word(): lower case, punctuation as spaces): one that says which way, as Quest, Labcorp,
 # a spreadsheet's Flag column, C-CDA and FHIR interpretation codes (HL7's ObservationInterpretation) and CareSpace give
-# it; and one that marks a result abnormal without saying which way (#817)
+# it; one that marks a result abnormal without saying which way (#817), a yes in an "Abnormal" or "Out of range" column
+# among them (#835); one that says neither, a no in such a column too; and which of them say it's critical, for its
+# HL7 code (flag_code)
 _FLAG_WAY = {**dict.fromkeys(("h", "hh", "hu", ">", "hi", "high", "a h", "above", "above high normal", "critical high",
                               "panic high", "significantly high", "off scale high"), "H"),
              **dict.fromkeys(("l", "ll", "lu", "<", "lo", "low", "below", "below low normal", "critical low", "panic low",
                               "significantly low", "off scale low"), "L")}
-_FLAG_NO_WAY = {"a", "aa", "abn", "abnormal", "critical", "critical abnormal", "panic", "alert"}
+_FLAG_NO_WAY = {"a", "aa", "abn", "abnormal", "critical", "critical abnormal", "panic", "alert", "y", "yes", "true"}
+_FLAG_NEITHER = {"", "n", "normal", "no", "false"}
+_FLAG_CRITICAL = {"hh", "critical high", "panic high", "ll", "critical low", "panic low", "aa", "critical", "critical abnormal",
+                  "panic"}
 
 
 def flag_word(text):
@@ -133,12 +138,30 @@ def report_flag(printed, v, lo, hi, cmp="", edge=""):
     result abnormal without a direction ("A", "AA", "Abnormal", "Critical", "Alert"), the way its range places it
     (range_flag: "A" on a value above it is "H"), else "A", a report's own flag first: a value it flags inside its
     printed range, or with none printed, is kept flagged (◆ on Labs, the heatmap, the summary and share links), never
-    dropped; where it prints none, or one that says neither ("N", "Normal"), by the range alone. printed: the flag as
+    dropped; where it prints none, or one that says neither ("N", "Normal"), by the range alone. A yes ("Y", "Yes",
+    "True") in a flag column says it's abnormal, a no ("No", "False") neither (#835). printed: the flag as
     printed, or several (a C-CDA's or a FHIR resource's interpretation codes and words; the first that says which way
     wins). v: the value as a number, or None (text); cmp and edge as for range_flag."""
     words = [flag_word(p) for p in (printed if isinstance(printed, (list, tuple)) else [printed])]
     way = next((_FLAG_WAY[w] for w in words if w in _FLAG_WAY), "")
     return way or range_flag(v, lo, hi, cmp, edge) or ("A" if any(w in _FLAG_NO_WAY for w in words) else "")
+
+
+def flag_code(printed):
+    """A printed flag as HL7's ObservationInterpretation code, by the same words as report_flag (#835: the FHIR export's,
+    which the FHIR importer reads back to the same flag): "H" or "L" where it says which way, "HH" or "LL" where it says
+    so critically ("Critical high", "Panic low"); "A" where it says no way, "AA" critically ("Critical", "Panic"); ""
+    for none, one that says neither, or one the rule doesn't read."""
+    w = flag_word(printed)
+    code = _FLAG_WAY.get(w) or ("A" if w in _FLAG_NO_WAY else "")
+    return code * 2 if code and w in _FLAG_CRITICAL else code
+
+
+def flag_known(printed):
+    """Whether report_flag reads a flag as printed: one that says which way, no way or neither (none printed too); a
+    flag it doesn't ("Final", "see note") leaves the range alone to say it, which Type them in notes (#835)."""
+    w = flag_word(printed)
+    return w in _FLAG_WAY or w in _FLAG_NO_WAY or w in _FLAG_NEITHER
 
 
 TAG_RE = re.compile(r"<[^>]+>")

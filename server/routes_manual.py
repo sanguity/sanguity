@@ -77,7 +77,7 @@ class Row(BaseModel):
     range: str = Field("", max_length=60)
     low: str = Field("", max_length=20)
     high: str = Field("", max_length=20)
-    flag: str = Field("", max_length=20)
+    flag: str = Field("", max_length=60)   # as printed, or as pasted (#835): read by the one rule
     lab: str = Field("", max_length=120)
 
 
@@ -130,8 +130,8 @@ def read(rows):
             notes.append("not a number: kept as a text result, not charted")
         if (c["range"] or c["low"] or c["high"]) and r["lo"] is None and r["hi"] is None:
             notes.append("the range couldn't be read, so it isn't used for the flag")
-        if c["flag"] and c["flag"].upper() not in ("H", "L") and not r["flag"]:
-            notes.append(f"flag {c['flag']!r} isn't high or low")
+        if not common.flag_known(c["flag"]):   # (#835: by the one rule's words, as a spreadsheet's Flag column is read)
+            notes.append(f"flag {c['flag']!r} isn't one that's read, so the range alone flags it")
         out.append((n, r, problems, notes))
     return out
 

@@ -20999,6 +20999,37 @@ def main():
                   not bad780, bad780[:12])
             db = dbm.connect()
             prof_r.delete_profile(db, epid)
+            # ---- #835: a report's printed flag through Type them in's paste, by the one rule (common.report_flag): the
+            # matrix's ALT pasted as a spreadsheet's copy (ranges_matrix pasted(): "A", "AA", "Abnormal", "Critical", "Y",
+            # "Yes" and "No" in an "Abnormal" column). Each row keeps its flag as pasted and its check line says it as Labs
+            # will; saved, Labs judges each as JUDGED (the paste kept only H and L, so the rest were saved with none)
+            ppid = prof_r.create_profile(db, "Pasted (fictional)", owner_id=owner)
+            db.close()
+            bad835 = []
+            page.goto(base + f"/sources.html?profile={ppid}#manual")
+            page.wait_for_selector("#typeIn .man-row [data-f=date]", state="visible", timeout=10000)
+            js("""text => { const dt = new DataTransfer(); dt.setData('text/plain', text);
+              document.querySelector('.man-row [data-f=date]').dispatchEvent(new ClipboardEvent('paste', {clipboardData: dt, bubbles: true, cancelable: true})); }""",
+               M752.pasted("ALT"))
+            n835 = len(M752.CASES["ALT"])
+            page.wait_for_function(f"document.getElementById('manMsg').textContent === '{n835} results ready to save.'", timeout=10000)
+            got835 = js("""[...document.querySelectorAll('.man-row')].map(r => { const s = r.querySelector('[data-f=flag]');
+              return [s.value, s.selectedOptions[0]?.textContent || '', r.querySelector('.man-check .abn')?.textContent || '']; })""")
+            want835 = [[p, p or "–", FLAG752[f]] for p, (f, *_) in zip(M752.PASTE_FLAGS["ALT"], M752.JUDGED["ALT"])]
+            if got835 != want835:
+                bad835.append(f"the pasted rows: {got835} not {want835}")
+            page.click("#manSave")
+            page.wait_for_function("document.getElementById('manMsg').textContent.startsWith('Saved')", timeout=10000)
+            page.goto(base + f"/?profile={ppid}")
+            page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {ppid}", timeout=20000)
+            labs835 = js("(SERIES.find(s => s.name === 'ALT') || {pts: []}).pts.map(p => [p[4] || '', p[2], p[3], p.rs || 'report'])")
+            if labs835 != M752.JUDGED["ALT"]:
+                bad835.append(f"Labs' ALT: {labs835} not {M752.JUDGED['ALT']}")
+            check("#835: a report's printed flags pasted into Type them in (“A”, “AA”, “Abnormal”, “Critical”, “Y”, “Yes”, “No” in an "
+                  "“Abnormal” column) are kept as pasted, each row says its flag by the one rule, and saved, Labs judges each as the matrix "
+                  "does (the paste kept only H and L)", not bad835, bad835)
+            db = dbm.connect()
+            prof_r.delete_profile(db, ppid)
             db.close()
             js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
             # ---- About this person (#194): on Sharing, a group of its own under Profiles: the birth date and the sex
