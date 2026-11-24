@@ -28,8 +28,6 @@ function cmpSeries(labs = cmpLabs()) {
   }
   return cmpSel.map(k => labs.find(s => cmpKey(s) === k) || null);
 }
-/* a result's flag in the tooltip's words */
-const cmpFlag = f => /^h/i.test(f) ? "▲ Above range" : /^l/i.test(f) ? "▼ Below range" : "◆ Flagged";
 function renderCompare() {
   const labs = cmpLabs(), body = $("#cmpBody"), pick = $("#cmpPick");
   if (labs.length < 2) {
@@ -123,7 +121,7 @@ function cmpDraw(svg, live) {
   const showAt = (t, px) => {
     const h = svg._hover(t); if (!h) { hideTip(); return ""; }
     const [t0, got] = h, nodes = [el("div", {class: "v", text: fmtD(t0)}), ...on.map(r => { const p = got[r.i]; return p ? el("div", {class: "s"}, ckSeriesKey(r.i),
-      `${nice(r.s.name)}: ${readText(r.s, p)[0]}, ${cmpPlace(p)} of its range (${refWords(p)})${p[4] ? " · " + cmpFlag(p[4]) : ""}${isoDay(p.ts) !== isoDay(t0) ? " · " + fmtD(p.ts) : ""}`) : null; })];
+      `${nice(r.s.name)}: ${readText(r.s, p)[0]}, ${cmpPlace(p)} of its range (${refWords(p)})${p[4] ? " · " + flagPast(p[4]) : ""}${isoDay(p.ts) !== isoDay(t0) ? " · " + fmtD(p.ts) : ""}`) : null; })];
     ckTip(svg, x(t0) ?? px, nodes);
     return tipWords(nodes);
   };

@@ -8,7 +8,7 @@
    step; "<120" against a high of 110 is inside it, as it may be; #782: a report's Low with no range printed is one step
    below, as Labs marks it); how far by its value */
 function hmLevel(p) {
-  const v = p[1], lo = p[2], hi = p[3], fl = String(p[4] || "").trim(), f = /^h/i.test(fl) ? 1 : /^l/i.test(fl) ? -1 : 0;
+  const v = p[1], lo = p[2], hi = p[3], fl = FLAG_OF(p[4]), f = fl?.way || 0;   // its way, ranges.js (#845)
   if (lo == null && hi == null) return f || null;
   if (!fl) return 0;
   const span = lo != null && hi != null && hi > lo ? hi - lo : Math.abs(hi ?? lo) || 1;
@@ -84,7 +84,7 @@ function renderHeatmap(live) {   // live: a frame of a drag (charts.js), at the 
   // there's one), on cells wide enough (3 px), and where some aren't, a word on it: a cell under 3 px, or a part of one
   // split between a day's draws (#476)
   const thin = cw < 3 || cellPts.some(m => [...m.values()].some(ps => ps.length > 1 && cw / ps.length < 3 && ps.some(hmMark)));
-  const dia = cellPts.some(m => [...m.values()].some(ps => ps.some(p => hmMark(p) === "A")));
+  const dia = cellPts.some(m => [...m.values()].some(ps => ps.some(p => flagSaysNeither(hmMark(p)))));
   $("#hmLegend").replaceChildren(...[-4, -3, -2, -1, 0, 1, 2, 3, 4].map(lv => el("i", {style: {background: hmFill(lv)}})),
     el("span", {text: "← far below · below · in range · above · far above →"}), el("span", {style: {color: "var(--muted)"}, text: "(distance outside the range, as a share of the range's width)"}),
     el("span", {class: "hm-key"}, el("b", {"aria-hidden": "true", text: "▲"}), " above the range, ", el("b", {"aria-hidden": "true", text: "▼"}), " below",
@@ -292,9 +292,9 @@ function hmTable(rows, cols, grp) {
       ...cols.map(([k]) => {
         const ps = byDay.get(k); if (!ps) return el("td", {});
         const one = p => {
-          const f = hmMark(p), w = f ? FLAG_OF(f) : null;   // as the heatmap marks it
+          const w = FLAG_OF(hmMark(p));   // as the heatmap marks it
           const ref = refText(p);
-          return [w, ref, [p[5] || fmtNum(p[1]), w ? el("span", {"aria-hidden": "true", text: " " + w[0]}) : null, w ? el("span", {class: "vh", text: " " + w[1].toLowerCase()}) : null,
+          return [w, ref, [p[5] || fmtNum(p[1]), w ? el("span", {"aria-hidden": "true", text: " " + w.mark}) : null, w ? el("span", {class: "vh", text: " " + w.word.toLowerCase()}) : null,
             ref && differ ? el("span", {class: "vh hm-ref", text: ", " + ref}) : null]];
         };
         if (ps.length === 1) { const [w, ref, kids] = one(ps[0]); return el("td", {class: w ? "abn" : null, "data-tip": ref}, ...kids); }
@@ -303,7 +303,7 @@ function hmTable(rows, cols, grp) {
           ...ps.flatMap((p, j) => { const [w, , kids] = one(p); return [j ? el("br") : null, el("span", {class: w ? "abn" : null}, ...kids, ` (${fmtTime(p.ts)})`)]; }));
       })));
   }
-  const dia = rows.some(s => [...hmDays(s).values()].some(ps => ps.some(p => hmMark(p) === "A")));
+  const dia = rows.some(s => [...hmDays(s).values()].some(ps => ps.some(p => flagSaysNeither(hmMark(p)))));
   box.replaceChildren(el("p", {class: "hint", text: `${rows.length} lab${rows.length === 1 ? "" : "s"} on ${cols.length} draw day${cols.length === 1 ? "" : "s"}. ▲ above its reference range, ▼ below${dia ? ", ◆ flagged by its report" : ""}.`}),
     scrollBox({class: "tablewrap hm-table", "aria-label": "Lab results by draw day"}, el("table", {class: "data"},
       el("thead", {}, el("tr", {}, el("th", {scope: "col", text: "Lab"}), el("th", {scope: "col", text: capFirst(flaggedWords(dia ? ["A"] : [], "short"))}), ...cols.map(([, ts]) => el("th", {scope: "col", text: fmtD(ts)})))), ...bodies)));

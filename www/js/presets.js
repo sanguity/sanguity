@@ -152,7 +152,7 @@ function presetsBlock(sec) {
     const fromText = names => "From " + presetText(names.map(presetShort));
     const gs = labGroups(keyLabTiles(plan.keyLabs, LABS, false), LABS);   // by panel, as the Overview shows them (#441)
     const tiles = gs.flatMap(g => [gs.length > 1 ? el("h5", {class: "lab-panel", text: g.panel}) : null, ...g.labs.map(n => {
-      const s = LABS.find(x => x.name === n), last = s.pts[s.pts.length - 1];
+      const s = labLatest(n), last = s.pts.at(-1);   // its latest as the Overview reads it (settings.js, #845)
       return el("div", {class: "tile", "data-lab": n},
         el("span", {class: "lbl"}, el("span", {text: nick(n), "data-tip": nick(n) !== n ? n : null}), nick(n) !== n ? el("span", {class: "vh", text: ` (${n})`}) : null, before.includes(n) ? null : el("span", {class: "tag pre-new", text: "new"})),
         el("span", {class: "val"}, last[5] || String(last[1]), el("small", {text: s.unit || ""})),

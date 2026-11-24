@@ -211,10 +211,10 @@ function ckRefAt(g, words, st, y, x0, x1, T, B, pts, taken = []) {
 }
 
 /* ---- marks (#60): an out-of-range result's mark on a chart: a triangle pointing up (above its range) or down (below),
-   a diamond for any other flag; s is its half-width */
+   a diamond for any other flag, by its way (ranges.js FLAG_OF); s is its half-width */
 function abnMark(cx, cy, f, s = 4.5, cls = "pt abn") {
-  const p = (dx, dy) => `${(cx + dx).toFixed(1)},${(cy + dy).toFixed(1)}`;
-  const d = /^h/i.test(f) ? `M${p(0, -s * 1.1)}L${p(s, s * .7)}L${p(-s, s * .7)}Z` : /^l/i.test(f) ? `M${p(0, s * 1.1)}L${p(s, -s * .7)}L${p(-s, -s * .7)}Z`
+  const p = (dx, dy) => `${(cx + dx).toFixed(1)},${(cy + dy).toFixed(1)}`, way = FLAG_OF(f)?.way;
+  const d = way === 1 ? `M${p(0, -s * 1.1)}L${p(s, s * .7)}L${p(-s, s * .7)}Z` : way === -1 ? `M${p(0, s * 1.1)}L${p(s, -s * .7)}L${p(-s, -s * .7)}Z`
     : `M${p(0, -s)}L${p(s, 0)}L${p(0, s)}L${p(-s, 0)}Z`;
   return el("svg:path", {class: cls, d});
 }

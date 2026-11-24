@@ -230,6 +230,29 @@ function orderList(items, opts) {
 }
 
 const labInfo = n => LABS.find(s => s.name === n);
+/* the profile's labs as the records page reads them (#845), for the key-lab tiles' preview to show what the Overview's
+   tiles do: each result's range and flag by the one rule (ranges.js applyRangeOverrides, with the ranges and About this
+   person as saved: a flag as its report's, an older import's "HH" High, a range from Settings where its report gave
+   none), a lab's imports joined in one series a unit, in time, at one time a flagged result after an unflagged one
+   (same.js joinSeries, #833). It read the latest of the lab's first series as sent, and only H and L: no ◆, no flag
+   from a range, a copy's in another import's series. LABS stays as sent (the ranges' preview, unranged, reads it).
+   labLatest(n): of n's series (one a unit, #438), the one whose latest result is the latest, as the Overview's tile */
+let labsMemo = null;
+function labsRead() {
+  if (labsMemo?.[0] === LABS && labsMemo[1] === RANGE_CFG) return labsMemo[2];
+  const by = new Map();
+  for (const s of LABS) {
+    if (s.watch) continue;
+    const k = s.name + "\u001f" + (s.unit || ""), pts = s.pts.map(p => Object.assign([...p], {ts: zParse(p[0])}));
+    if (by.has(k)) by.get(k).pts.push(...pts); else by.set(k, {...s, pts});
+  }
+  const out = [...by.values()];
+  applyRangeOverrides(out, RANGE_CFG);
+  for (const s of out) s.pts.sort((a, b) => a.ts - b.ts || !!a[4] - !!b[4]);
+  labsMemo = [LABS, RANGE_CFG, out];
+  return out;
+}
+const labLatest = n => labsRead().filter(s => s.name === n).reduce((a, s) => !a || s.pts.at(-1).ts > a.pts.at(-1).ts ? s : a, null);
 const nick = n => NICK[n] || n;
 /* the lab a name typed in means (#458): its name in the records or the one it's shown by, in any letter case; null
    when this profile has none by it, the name as typed when its labs aren't known here. #labShown suggests the names
@@ -257,10 +280,10 @@ function tilesEditor(value, changed, ro, setting) {
   function drawPreview() {
     const names = keyLabTiles(ol.get(), LABS, isDefault(ol.get())), gs = groups(names);
     preview.replaceChildren(...gs.flatMap(g => [gs.length > 1 ? el("h5", {class: "lab-panel", text: g.panel}) : null, ...g.labs.map(n => {
-      const s = labInfo(n), last = s.pts[s.pts.length - 1];
+      const s = labLatest(n), last = s.pts.at(-1), st = statusOf(last);   // its status as the Overview's tile says it (#845)
       return el("div", {class: "tile", "data-lab": n},
         el("span", {class: "lbl"}, el("span", {text: nick(n), "data-tip": nick(n) !== n ? n : null}), nick(n) !== n ? el("span", {class: "vh", text: ` (${n})`}) : null,   // #358
-          last[4] === "H" ? el("span", {class: "st hi", text: "▲ High"}) : last[4] === "L" ? el("span", {class: "st lo", text: "▼ Low"}) : null),
+          ...(st && st.cls !== "ok" ? [el("span", {class: "st " + st.cls, "data-tip": st.title}, st.text), st.title ? el("span", {class: "vh", text: `, ${st.title.toLowerCase()}`}) : null] : [])),
         el("span", {class: "val"}, last[5] || String(last[1]), el("small", {text: s.unit || ""})));
     })]).filter(Boolean));
     if (!names.length) preview.append(el("p", {class: "hint", text: LABS.length ? "None of these labs has results in this profile yet." : "This profile has no lab results yet."}));

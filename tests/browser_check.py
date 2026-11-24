@@ -4404,25 +4404,31 @@ def main():
                 num = lambda r: float(re.search(r"-?\d+(?:\.\d+)?", val(r)).group())
                 day = lambda r: re.sub(r",? \d{1,2}:\d{2}.*$", "", r[0])
                 at = lambda r: f"{val(r)} · {day(r)}"
-                def where(r):
+                def where(r):   # [its mark's place or "in" (or "" with neither a range nor a flag), whether it has a range]
                     f = r[3].strip()
-                    if f: return "above" if f.endswith("High") else "below" if f.endswith("Low") else "flagged"
                     m = re.match(r"^(?:(-?[\d.]+)–(-?[\d.]+)|[≤<] (-?[\d.]+)|[≥>] (-?[\d.]+))", r[2])   # "13.5–17.5", "≤ 5", "≥ 60" (refWords, #752), "< 5" (#780)
                     lo, hi = [float(v) if v else None for v in ((m.group(1) or m.group(4)), (m.group(2) or m.group(3)))] if m else (None, None)
-                    if lo is None and hi is None: return ""
-                    return "above" if hi is not None and num(r) > hi else "below" if lo is not None and num(r) < lo else "in"
+                    ranged = lo is not None or hi is not None
+                    if f: return ["above" if f.endswith("High") else "below" if f.endswith("Low") else "flagged", ranged]
+                    if not ranged: return ["", False]
+                    return ["above" if hi is not None and num(r) > hi else "below" if lo is not None and num(r) < lo else "in", True]
                 def ext(pick):
                     v = pick(num(r) for r in old); same = [r for r in old if num(r) == v]
                     return at(same[0]) + (f", and {len(same) - 1} more time{'s' if len(same) > 2 else ''}" if len(same) > 1 else "")
                 ws = [where(r) for r in old]
-                ranged, inside = sum(1 for w in ws if w), ws.count("in")
-                out = [f"{m} {ws.count(k)} {k}" for k, m in (("above", "▲"), ("below", "▼"), ("flagged", "◆")) if ws.count(k)]
+                # inside its range: with one, and no ▲ or ▼ (a ◆ is placed by its range where it can be, #845); a flagged
+                # result with no range has none
+                ins = [g and w in ("in", "flagged") for w, g in ws]
+                ranged, inside, kinds = sum(g for _, g in ws), sum(ins), [w for w, _ in ws]
+                out = [f"{m} {kinds.count(k)} {k}" for k, m in (("above", "▲"), ("below", "▼"), ("flagged", "◆")) if kinds.count(k)]
                 want = {"n": str(len(rows)), "first": at(old[0]), "latest": at(old[-1]), "low": ext(min), "high": ext(max),
                         "in": f"{inside} of {ranged} ({int(inside / ranged * 100 + .5)}%)" if ranged else "None has a range"}
                 if ranged:
-                    lin = [r for r, w in zip(old, ws) if w == "in"]
-                    want.update(lastin=at(lin[-1]) if lin else "None in this period", out=" · ".join(out) or "None")
-                if ws.count(""): want["norange"] = f"{ws.count('')} result{'s' if ws.count('') > 1 else ''}"
+                    lin = [r for r, i in zip(old, ins) if i]
+                    want.update(lastin=at(lin[-1]) if lin else "None in this period")
+                if ranged or out:
+                    want["out"] = " · ".join(out) or "None"
+                if len(ws) > ranged: want["norange"] = f"{len(ws) - ranged} result{'s' if len(ws) - ranged > 1 else ''}"
                 vs = sorted(num(r) for r in old); n = len(vs)
                 return want, (vs[n // 2] if n % 2 else (vs[n // 2 - 1] + vs[n // 2]) / 2), num(old[-1]) - num(old[0])
             PANEL_JS = """s => { state.sel = new Set([s.name]); state.tables.clear(); state.tables.add(s.name); renderLabs();
@@ -20747,6 +20753,46 @@ def main():
                   "on its report” (the Overview's list, Labs' chart headers, words and Legend, the heatmap, the lab panel, the Timeline's badges "
                   "and line, the drawer, a share link's chart, the summary's heading, charts and notes and its PDF), the page's rule the "
                   "server's; ◆ “Flagged” in every one", not bad819, bad819)
+            # ---- #845: no view reads a flag's letter itself (tests/test_ranges.py searches www/js for one). Labs' list of
+            # labs marked a ◆ with ▼ (ALT's "A" read as not "H"); Settings' preview of the key-lab tiles read the flags of
+            # the lab's first series as sent, H and L only: no ◆, no flag worked out against a range (its report's or one
+            # from Settings), an older import's "HH" or "N" not read by the one rule, a copy's latest in another import's
+            # series missed; and the lab panel counted a ◆ inside its range as outside it, and a flagged result with no
+            # range as one with a range. Through ranges.js now: the matrix's "A" (ALT, Chloride, Blood), Settings
+            # (Folate, Magnesium, Lipase, Creatinine, Calcium) and stored flags (Calcium) here, its copies in views781
+            # and views825 below. Settings' preview is the Overview's tiles, each lab's latest's status
+            def views845(pid, judged, given, tiles):
+                """what's wrong in Labs' list, the lab panel's counts and Settings' preview of the key-lab tiles, for results
+                judged so ({(lab, unit): [[flag, low, high, ...]]}), each latest's value as given ({(lab, unit): value})
+                and each key lab's tile ({lab: (lab, unit)})"""
+                bad = []
+                page.goto(base + f"/?profile={pid}")
+                page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {pid}", timeout=20000)
+                js("() => { state.tables.clear(); applyPreset('all'); switchTab('labs', 'chart'); renderLabs(); }")
+                settle(500)
+                rows = js("[...document.querySelectorAll('#seriesRows .srow')].map(r => [r.querySelector('input').dataset.lab, r.querySelector('.lv').textContent])")
+                for (n, u), j in judged.items():   # (a lab with two results or more has a row, each unit its own)
+                    want = M752.listed(j[-1][0], given[(n, u)], u)
+                    if len(j) > 1 and [n, want] not in rows:
+                        bad.append(f"Labs' list's {n}: {[r for r in rows if r[0] == n]} not “{want}”")
+                got = js("""async () => { const out = {}; for (const s of SERIES.filter(s => !s.watch)) { openLab(s);
+                  out[s.name + '|' + s.unit] = Object.fromEntries([...document.querySelectorAll('#drawer dd[data-k]')].filter(d => ['in', 'out', 'norange'].includes(d.dataset.k)).map(d => [d.dataset.k, d.textContent])); }
+                  closeDrawer(); return out; }""")
+                bad += [f"the lab panel's {n} ({u}): {got.get(n + '|' + u)} not {M752.panel(j)}" for (n, u), j in judged.items() if got.get(n + "|" + u) != M752.panel(j)]
+                js("() => { setPeriod('all'); pickTab('overview'); }")
+                settle(400)
+                TILES845 = """sel => Object.fromEntries([...document.querySelectorAll(sel)].map(t => [t.querySelector('.lbl > span').textContent,
+                  [t.querySelector('.st')?.textContent || '', t.querySelector('.st')?.dataset.tip || '']]))"""
+                ov = js(TILES845, "#view-overview .tile:not(.home-tile)")
+                page.goto(base + f"/settings.html?profile={pid}#overview")
+                page.wait_for_selector(".set-preview .tile", timeout=15000)
+                pv = js(TILES845, ".set-preview .tile")
+                want = {n: FLAG752[judged[k][-1][0]] for n, k in tiles.items()}
+                if {n: v[0] for n, v in pv.items()} != want or pv != ov:
+                    bad.append(f"Settings' preview of the key-lab tiles: {pv} not {want}, the Overview's {ov}")
+                return bad
+            bad845 = views845(mpid, {(n, M752.UNITS[n]): j for n, j in M752.JUDGED.items()}, {(n, M752.UNITS[n]): c[-1][5] for n, c in M752.CASES.items()},
+                              {n: (n, M752.UNITS[n]) for n in M752.CASES})
             db = dbm.connect()
             prof_r.delete_profile(db, mpid)
             db.close()
@@ -20844,6 +20890,8 @@ def main():
                 bad += [f"{when}: the PDF's {w}" for w in [f"{v} {u} {f} {r or 'not given'}" for (n, u), (v, f, r, *_) in out.items()]
                         + [f"{M752.SHOWN.get(n, n)} ({u})" for n, u in trends] if w not in pdf]
                 bad += [f"{when}: the PDF's {v} {u}, linked to another" for (n, u), (v, *_) in every.items() if (n, u) not in out and f"{v} {u}" in pdf]
+                if pid == cpid:   # the copies profile's cases (#845's check runs on M752.COPIES; COPIES3's uploads have their own)
+                    bad845.extend(f"{when}: {x}" for x in views845(cpid, seen, *M752.latest_of(M752.COPIES, seen)))   # (#845, its check below)
                 return bad
 
             bad781 = views781("before", M752.COPIES_SEEN, M752.COPIES_ONCE, M752.COPIES_TRENDS, M752.COPIES_OUT, M752.COPIES_DAYS)
@@ -20935,6 +20983,8 @@ def main():
                            for (i, d), rows in days.items()}
                 if dr825 != want825:
                     bad825.append(f"each import's lab day of the latest, its Timeline badge and drawer rows: {dr825} not {want825}")
+                k845 = {(n, u): judged[n] for n, u in M752.LATEST}   # (#845, its check below)
+                bad845.extend(f"{'apart' if not also else 'once'}: {x}" for x in views845(lpid, k845, *M752.latest_of(M752.LATEST, k845)))
                 return bad825
 
             bad825 = views825(M752.LATEST_JUDGED, M752.LATEST_DAYS, True, M752.LATEST_DAY_RANGES)
@@ -20956,6 +21006,10 @@ def main():
             check("#833: a pair marked “Not the same” is two results, each with its own range and flag: Labs' charts (both, the ▲ never under the "
                   "dot) and tables, the Overview's tile (the flagged one, its change from the result before) and list, the heatmap and each "
                   "import's lab day (its Timeline badge, the drawer's rows)", not bad833, bad833)
+            check("#845: no view reads a flag's letter itself: Labs' list (a ◆ was ▼), Settings' preview of the key-lab tiles (H and L as stored "
+                  "only, the lab's first series) and the lab panel's counts (a ◆ inside its range counted outside it, a flagged result with no range "
+                  "as one with a range) read each result's flag as Labs does, for the matrix's “A”, Settings, stored-flag and copies cases "
+                  "(before and after Same result, at one time and Not the same)", not bad845, bad845)
             db = dbm.connect()
             prof_r.delete_profile(db, lpid)
             db.close()

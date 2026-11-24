@@ -288,11 +288,9 @@ function msMarks(g, x, a, b, y0, y1, R, labelY) {
 }
 /* ---- chart accessibility (#60): every chart has a table to show instead, out-of-range results are marked by shape
    as well as colour, and a chart takes focus, its points stepped through from the keyboard.
-   flagWord(f): a result's flag in words, with its mark: "▲ High", "▼ Low", or "◆ Flagged" for any other flag;
-   flagNodes(f): the same, the mark hidden from screen readers (they say the word). */
-const FLAG_OF = f => !f ? null : /^h/i.test(f) ? ["▲", "High"] : /^l/i.test(f) ? ["▼", "Low"] : ["◆", "Flagged"];
-const flagWord = f => (FLAG_OF(f) || []).join(" ");
-const flagNodes = (f, words) => { const w = FLAG_OF(f); return w ? [el("span", {"aria-hidden": "true", text: w[0] + " "}), words || w[1]] : []; };   // words: another wording (#234)
+   flagNodes(f): a result's flag in words, with its mark (ranges.js flagWord: "▲ High", "▼ Low", or "◆ Flagged" for any
+   other flag), the mark hidden from screen readers (they say the word). */
+const flagNodes = (f, words) => { const w = FLAG_OF(f); return w ? [el("span", {"aria-hidden": "true", text: w.mark + " "}), words || w.word] : []; };   // words: another wording (#234)
 /* Chart | Table in a chart's header: a pick-one pair (#193). key: what state.tables remembers it by (a lab's name,
    or "#…" for the other charts); what: the chart, for its label ("Show Hemoglobin as"); redraw() draws it again;
    graphic: the word for the picture ("Heatmap"). Focus stays on the choice once it's redrawn. */

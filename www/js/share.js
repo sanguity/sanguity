@@ -122,8 +122,7 @@ const SH_DRAW = {
    the results in the link's dates and how many there are. A test's name opens its history under it: a chart of them
    (#302) over a table, newest first;
    Open every history opens them all (to print them). A flag is said in words beside ▲/▼, never in red alone. */
-const SH_FLAG = {High: "▲ High", Low: "▼ Low"};
-const shFlag = f => f ? el("span", {class: "share-flag", text: SH_FLAG[f] || "◆ " + f}) : "";
+const shFlag = f => f ? el("span", {class: "share-flag", text: flagWord(f)}) : "";   // (ranges.js, #845)
 /* a test's results, newest first as the server sends them, as the kit's points, oldest first */
 const shPts = pts => pts.map(p => Object.assign(ckPt(zParse(String(p.t).slice(0, 19)), p.v, p.lo, p.hi, p.flag, p.edge), {p})).reverse();
 /* its sparkline (chartkit.js ckSpark, #299) */
@@ -138,7 +137,7 @@ function shChart(s) {
   const out = pts.filter(q => q[4]).map(q => q[4]);   // (#819: an "A" inside its range was counted "outside the range")
   return el("div", {class: "share-chart"}, ckSolo(pts, {unit: s.unit, print: {w: 320, h: 80},
     label: `${s.label}: a chart of ${pts.length} results, ${shDay(pts[0].p.t)} to ${shDay(pts.at(-1).p.t)}${out.length ? `, ${out.length} ${flaggedWords(out)}` : ""}. The table under it lists each.`,
-    say: q => `${shWhen(q.p.t)}: ${q.p.value}${s.unit ? " " + s.unit : ""}${q[4] ? " " + (SH_FLAG[q[4]] || "◆ " + q[4]) : ""}`}));
+    say: q => `${shWhen(q.p.t)}: ${q.p.value}${s.unit ? " " + s.unit : ""}${q[4] ? " " + flagWord(q[4]) : ""}`}));
 }
 let SH_HIST = 0;
 function shLatest(list) {
