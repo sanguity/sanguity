@@ -1025,6 +1025,80 @@ class Api(unittest.TestCase):
         finally:
             db.close()
 
+    def test_2_commas_in_each_mode(self):
+        """#859: no thousands follow a leading 0 (common.number_text). ranges_matrix COMMAS' numbers ("0,500", "0,05",
+        "1,250", "12,500"), each as a value and in a range ("<0,500"), read as each mode reads them: where a file's commas
+        group thousands (a comma-delimited spreadsheet that writes decimal points, and Type them in) "0,500" is unread,
+        kept as printed and said so (the upload's warning, Type them in's notes), "1,250" 1250; where they're decimal (a
+        spreadsheet with semicolons, or with "0,500" among its values) "0,500" is 0.5 and "1,250" 1.25; where that isn't
+        known (C-CDA, FHIR, CareSpace, MyChart, a PDF report's range) "0,500" is 0.5 and "1,250" unread. "0,500" was
+        500 where commas group thousands."""
+        import csv, types
+        from server.importers import carespace, ccda, csv_labs, epic_mychart, fhir, pdf_labs
+        tmp, (lab, unit) = tempfile.mkdtemp(dir=TMP), M.SPELLED_AS
+        nums = list(M.COMMAS)
+        values = [(lab, unit, M.day(100 - i, TODAY), n, "") for i, n in enumerate(nums)]   # each a value, no range
+        ranged = [(lab, unit, M.day(50 - i, TODAY), "5", "<" + n) for i, n in enumerate(nums)]   # 5 beside "<0,500"...
+        want = lambda mode: ([M.COMMAS[n][mode] for n in nums], [M.COMMAS[n][mode] for n in nums])   # noqa: E731
+
+        def read(data):
+            """[each value as read (None: kept as text)], [each range's high as read]"""
+            s = next((s for s in data["labs"] if s["name"] == lab), {"pts": [], "txt": []})
+            at = {p[0][:16]: p for p in s["pts"]}
+            return ([(at.get(t[:16]) or [None, None])[1] for _, _, t, _, _ in values],
+                    [(at.get(t[:16]) or [None] * 4)[3] for _, _, t, _, _ in ranged])
+
+        def sheet(name, delim, extra):
+            path = os.path.join(tmp, name)
+            with open(path, "w", encoding="utf-8", newline="") as f:
+                w = csv.writer(f, delimiter=delim)
+                w.writerow(["Date", "Time", "Test", "Value", "Unit", "Reference range"])
+                w.writerows([t[:10], t[11:16], n, v, u, r] for n, u, t, v, r in values + ranged + extra)
+            return csv_labs.parse({name: path})
+        points = [("Potassium", "mmol/L", M.day(10, TODAY), "4.2", "3.5 - 5.1")]   # (writes decimal points)
+        commas = [("Potassium", "mmol/L", M.day(10, TODAY), "4,2", "3,5 - 5,1")]   # (writes decimal commas)
+        thousands = sheet("in-thousands.csv", ",", points)
+        self.assertEqual(read(thousands["data"]), want(M.IN_THOUSANDS), "a comma-delimited spreadsheet that writes decimal points")
+        self.assertIn("1 value couldn't be read as a number, so it was kept as text, not charted: in-thousands.csv line 2 ('0,500').",
+                      thousands["warnings"])
+        self.assertIn("1 range couldn't be read, so it isn't used for the flag: in-thousands.csv line 6 ('<0,500').", thousands["warnings"])
+        self.assertEqual(read(sheet("decimal.csv", ";", commas)["data"]), want(M.DECIMAL), "a spreadsheet with semicolons")
+        self.assertEqual(read(sheet("decimal-quoted.csv", ",", [])["data"]), want(M.DECIMAL), "a comma-delimited one with \"0,500\" among its values")
+
+        r = self.c["robin"].post(f"/api/profiles/{self.pid}/manual", headers=H, json={"rows": [
+            {"date": t[:10], "time": t[11:16], "test": n, "value": v, "unit": u, "range": rng} for n, u, t, v, rng in values + ranged]})
+        self.assertEqual(r.status_code, 200, r.text)
+        typed = r.json()["rows"]
+        self.assertEqual(([x["value"] for x in typed[:len(nums)]], [x["high"] for x in typed[len(nums):]]), want(M.IN_THOUSANDS), "Type them in")
+        self.assertEqual([[n for n in x["notes"] if "read" in n or "not a number" in n] for x in typed],
+                         [["not a number: kept as a text result, not charted"] if M.COMMAS[n][M.IN_THOUSANDS] is None else [] for n in nums]
+                         + [["the range couldn't be read, so it isn't used for the flag"] if M.COMMAS[n][M.IN_THOUSANDS] is None else []
+                            for n in nums], "Type them in's notes")
+
+        # where decimal commas aren't known: a range as text alone, and a PDF report's range cell
+        unknown = [None] * len(nums), [M.COMMAS[n][M.UNKNOWN] for n in nums]
+        got = lambda data: ([None] * len(nums), read(data)[1])   # noqa: E731  (their values are numbers of their own)
+        with open(os.path.join(tmp, "commas.xml"), "w", encoding="utf-8") as f:
+            f.write(M.ccda(ranged))
+        self.assertEqual(got(ccda.parse({"commas.xml": os.path.join(tmp, "commas.xml")})["data"]), unknown, "a C-CDA document")
+        with open(os.path.join(tmp, "commas.json"), "w", encoding="utf-8") as f:
+            json.dump({"resourceType": "Bundle", "type": "collection", "entry": [{"resource": {
+                "resourceType": "Observation", "id": f"c{i}", "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
+                "code": {"text": n}, "effectiveDateTime": t, "valueQuantity": {"value": 5, "unit": u}, "referenceRange": [{"text": rng}]}}
+                for i, (n, u, t, v, rng) in enumerate(ranged)]}, f)
+        self.assertEqual(got(fhir.parse({"commas.json": os.path.join(tmp, "commas.json")})["data"]), unknown, "a FHIR bundle")
+        self.assertEqual(got(carespace.parse(M.carespace(ranged, os.path.join(tmp, "carespace")))["data"]), unknown, "a CareSpace export")
+        self.assertEqual(got(epic_mychart.parse(M.epic(ranged, os.path.join(tmp, "mychart")))["data"]), unknown, "a MyChart export")
+        gen = types.ModuleType("pdf_fixture_generator")
+        gen.__file__ = os.path.join(ROOT, "tests", "fixtures", "importers", "pdf-labs", "generate.py")
+        with open(gen.__file__, encoding="utf-8") as f:
+            exec(compile(f.read(), gen.__file__, "exec"), gen.__dict__)
+        pdfs = {}
+        for n, u, t, v, rng in ranged:
+            pdfs[f"quest-{t[:10]}.pdf"] = path = os.path.join(tmp, f"quest-{t[:10]}.pdf")
+            gen.write(path, gen.quest([("COMMAS (FICTIONAL)", None), (n, v, "", rng, u)], collected=f"{t[5:7]}/{t[8:10]}/{t[:4]} / 08:00 EST"))
+        self.assertEqual(got(pdf_labs.parse(pdfs)["data"]), unknown, "PDF reports")
+
     def test_2_summary_matrix(self):
         """#752: one rule for a result's range, flag and source, through the server. The matrix (tests/ranges_matrix.py): a
         report's range then none; none then a report's; Settings then a report's; a report's then Settings; a range that

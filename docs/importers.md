@@ -151,12 +151,14 @@ works it out, and the flag rule honours it (#780); a range given as text ("<5", 
 or equal to 5", "3.5-5.1 mmol/L", "5,0 - 10,0") is read by `common.range_text(text, decimal_comma, whole)`, the one
 parser of a range as text, every importer's, Type them in's and the FHIR export's: `(low, high, edge)` (#827, #850).
 Pass `decimal_comma` where the file says whether it writes decimal commas (a spreadsheet's: `"1,250"` is 1.25 with
-them, 1250 without); left out, a comma that can't be a thousands separator is a decimal one (`"3,5"`) and one that can
-(`"1,250"`) isn't read. `whole=True` reads a cell that is the range and nothing else (a PDF report's); a layout's cell
-holding a range and a unit is split by `common.range_part`. Don't write a parser of your own. `txt` holds
-results that aren't numbers. Name series with `common.canonical_lab(name, loinc)` so the same test from two sources
-lands on one chart (it returns None for labs it doesn't know: keep the source's name then), and add a LOINC code when
-you have one. A series may carry a `key` too, such as `"loinc:718-7"` (see below).
+them, 1250 without); left out, a comma that can't be a thousands separator is a decimal one (`"3,5"`, `"0,500"`) and
+one that can (`"1,250"`) isn't read. No thousands follow a leading 0 (#859): where a file's commas group thousands,
+`"0,500"` isn't read, and the CSV importer keeps it as printed and says so in the upload's warnings. `whole=True`
+reads a cell that is the range and nothing else (a PDF report's); a layout's cell holding a range and a unit is split
+by `common.range_part`. Don't write a parser of your own. `txt` holds results that aren't numbers. Name series with
+`common.canonical_lab(name, loinc)` so the same test from two sources lands on one chart (it returns None for labs it
+doesn't know: keep the source's name then), and add a LOINC code when you have one. A series may carry a `key` too,
+such as `"loinc:718-7"` (see below).
 
 ### Source keys
 

@@ -28,7 +28,8 @@ import os
 import re
 from datetime import datetime
 
-from .common import canonical_lab, lab_day_sub, lab_day_title, loinc_of, number_text, range_edge, range_text, report_flag
+from .common import (canonical_lab, lab_day_sub, lab_day_title, loinc_of, number_text, range_edge, range_part, range_text,
+                     report_flag)
 
 NAME = "csv"
 LABEL = "Lab results spreadsheet (CSV)"
@@ -198,14 +199,16 @@ _TRAILING_FLAG = re.compile(r"^(?:(.*?)\s+)?(HH|LL|H|L|(?i:high|low))\s*\*?$")  
 
 
 def _value(s, decimal_comma):
-    """(number or None, comparator or "", trailing text) for a reported value like "<5", "4,5" or "18.1 H"."""
+    """(number or None, comparator or "", trailing text, unread) for a reported value like "<5", "4,5" or "18.1 H";
+    unread: it's printed as a number (with a unit, maybe) that can't be read, as "0,500" can't in a file whose commas
+    group thousands (#859), so it's kept as text and said so."""
     m = _VALUE_RE.match(s or "")
     if not m:
-        return None, "", ""
+        return None, "", "", False
     x = number_text(m.group(2), decimal_comma)
     if x is None:
-        return None, "", ""
-    return x, _CMP.get(m.group(1) or "", ""), m.group(3)
+        return None, "", "", not m.group(3) or bool(_UNIT_RE.fullmatch(m.group(3)))
+    return x, _CMP.get(m.group(1) or "", ""), m.group(3), False
 
 
 def _fmt(x):
@@ -338,8 +341,15 @@ class _Warnings:
     """Collects warnings, folding repeats of one kind into a count so a big file doesn't drown the list."""
     SHOW = 5
 
+    # a row kept with a part of it that couldn't be read (#859: "0,500" where the file's commas group thousands), said
+    # as Type them in's notes say it
+    KEPT = {"value": lambda n: f"{n} value{'s' if n != 1 else ''} couldn't be read as a number, so "
+                               f"{'they were' if n != 1 else 'it was'} kept as text, not charted",
+            "range": lambda n: f"{n} range{'s' if n != 1 else ''} couldn't be read, so {'they aren' if n != 1 else 'it isn'}'t "
+                               f"used for the flag"}
+
     def __init__(self):
-        self.plain, self.kinds = [], collections.OrderedDict()
+        self.plain, self.kinds, self.unread = [], collections.OrderedDict(), collections.OrderedDict()
 
     def add(self, text):
         self.plain.append(text)
@@ -347,11 +357,17 @@ class _Warnings:
     def row(self, kind, where):
         self.kinds.setdefault(kind, []).append(where)
 
+    def kept(self, part, where):
+        self.unread.setdefault(part, []).append(where)
+
+    def _shown(self, where):
+        return ", ".join(where[:self.SHOW]) + (f" and {len(where) - self.SHOW} more" if len(where) > self.SHOW else "")
+
     def list(self):
         out = list(self.plain)
         for kind, where in self.kinds.items():
-            shown = ", ".join(where[:self.SHOW]) + (f" and {len(where) - self.SHOW} more" if len(where) > self.SHOW else "")
-            out.append(f"Skipped {len(where)} row{'s' if len(where) != 1 else ''} {kind}: {shown}.")
+            out.append(f"Skipped {len(where)} row{'s' if len(where) != 1 else ''} {kind}: {self._shown(where)}.")
+        out += [f"{self.KEPT[part](len(where))}: {self._shown(where)}." for part, where in self.unread.items()]
         return out
 
 
@@ -431,9 +447,9 @@ def parse(files, mapping=None):
     results = []   # dicts per row, across files
     for rel, rows, cols, delim in found:
         decimal_comma = delim != ","
-        if delim == ",":   # a comma-delimited file with decimal commas has them quoted: "4,5"
-            vals = [c[cols["value"]] for _, c in rows if len(c) > cols["value"]]
-            decimal_comma = any(re.fullmatch(r"\s*[<>≤≥=]*\s*-?\d+,\d{1,2}\s*", v) for v in vals) and \
+        if delim == ",":   # a comma-delimited file with decimal commas has them quoted: "4,5", "0,500" (#859: no
+            vals = [c[cols["value"]] for _, c in rows if len(c) > cols["value"]]   # thousands follow a leading 0)
+            decimal_comma = any(re.fullmatch(r"\s*[<>≤≥=]*\s*-?(?:\d+,\d{1,2}|0,\d+)\s*", v) for v in vals) and \
                 not any(re.fullmatch(r"\s*[<>≤≥=]*\s*-?\d+\.\d+\s*", v) for v in vals)
         get = lambda cells, f: cells[cols[f]].strip() if f in cols and cols[f] < len(cells) else ""   # noqa: E731
         order, guessed = _date_order(get(c, "date") for _, c in rows)
@@ -453,6 +469,8 @@ def parse(files, mapping=None):
             if why:
                 warn.row(why[0], where + why[1])
                 continue
+            for part, said in r["unread"]:   # kept, and said (#859)
+                warn.kept(part, f"{where} ({said!r})")
             results.append({**r, "file": rel})
     results, dupes = dedupe(results)
     if dupes:
@@ -469,8 +487,10 @@ def read_row(get, decimal_comma=False, order=None, bounds=True):
     get(field) is the row's trimmed text for a field of FIELDS ("" when it has none). decimal_comma: read "4,5" as 4.5.
     order: numeric date order from date_order() over the rows read together. bounds: low and high are read
     (a spreadsheet only when it has those columns). why is a phrase after "Skipped N rows", like "with no date";
-    note is "" or the unreadable text, as " ('31/31/2025')". Hand entry (routes_manual.py) reads rows with this too,
-    so a typed result and the same result in a spreadsheet are one and the same."""
+    note is "" or the unreadable text, as " ('31/31/2025')". A result's "unread" lists [(part, as printed)] of what's
+    printed as a number but couldn't be read, kept as printed and said ("value", "range": "0,500" where the file's
+    commas group thousands, #859). Hand entry (routes_manual.py) reads rows with this too, so a typed result and the
+    same result in a spreadsheet are one and the same."""
     test, raw_date, reported = get("test"), get("date"), get("value")
     if not test:
         return None, ("with no test name", "")
@@ -482,7 +502,8 @@ def read_row(get, decimal_comma=False, order=None, bounds=True):
     if not reported:
         return None, ("with no value", "")
     unit = get("unit")
-    x, cmp, rest = _value(reported, decimal_comma)
+    x, cmp, rest, gone = _value(reported, decimal_comma)
+    unread = [("value", reported)] if gone else []   # printed as numbers but unread, each kept and said (#859)
     flag_text = get("flag")
     if x is not None and rest:
         fm = _TRAILING_FLAG.match(rest)
@@ -496,9 +517,12 @@ def read_row(get, decimal_comma=False, order=None, bounds=True):
     # by the one parser of a range as text (common.range_text, #850: "=>60" was read as a high, "< OR = 5" and "less than
     # or equal to 5" not at all), with the file's decimal commas
     lo, hi, _ = range_text(printed, decimal_comma)
+    if lo is None and hi is None and range_part(printed, decimal_comma)[0]:
+        unread.append(("range", printed))   # printed as a range, its numbers unread: "<0,500" in thousands
     if bounds:
         lo2 = number_text(get("low"), decimal_comma)
         hi2 = number_text(get("high"), decimal_comma)
+        unread += [("range", get(f)) for f, v in (("low", lo2), ("high", hi2)) if v is None and re.search(r"\d", get(f))]
         lo, hi = (lo2 if lo2 is not None else lo), (hi2 if hi2 is not None else hi)
         if not printed:
             printed = (f"{_fmt(lo)} - {_fmt(hi)}" if lo is not None and hi is not None else
@@ -506,7 +530,8 @@ def read_row(get, decimal_comma=False, order=None, bounds=True):
     edge = range_edge(printed, lo, hi, decimal_comma)   # "<" for "<5": 5 is outside it (#780)
     flag = report_flag(flag_text, x, lo, hi, cmp, edge)   # the one rule (#817): "A" in range kept, "Abnormal" past it placed
     return {"t": t, "test": test, "x": x, "reported": reported, "unit": unit, "range": printed,
-            "lo": lo, "hi": hi, "edge": edge, "flag": flag, "panel": get("panel"), "lab": get("lab"), "loinc": get("loinc")}, None
+            "lo": lo, "hi": hi, "edge": edge, "flag": flag, "panel": get("panel"), "lab": get("lab"), "loinc": get("loinc"),
+            "unread": unread}, None
 
 
 def date_order(values):

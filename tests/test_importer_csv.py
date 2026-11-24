@@ -277,6 +277,39 @@ class Layouts(Written):
         p = series(csv_labs.parse(f)["data"], "Potassium, Blood")["pts"][0]
         self.assertEqual(p[1:5], [3.2, 3.5, 5.1, "L"])
 
+    def test_no_thousands_after_a_leading_zero(self):
+        """#859: "0,500" was 500 in a comma-delimited file that writes decimal points (a leading 0 read as a thousands
+        group). Now, in each mode, values, ranges and Low and High columns alike: where the file's commas group thousands
+        "0,500" is unread, kept as printed (a text value, no range) and the upload says so, "0,05" 0.05, "1,250" 1250,
+        "12,500" 12500; where they're decimal (semicolons, or "0,500" or "4,5" among the values) 0.5, 0.05, 1.25, 12.5."""
+        nums = {"0,500": (None, 0.5), "0,05": (0.05, 0.05), "1,250": (1250, 1.25), "12,500": (12500, 12.5)}
+        rows = [(f"2025-02-{i + 1:02d}", "Lipase", n, "", "", "") for i, n in enumerate(nums)]   # each a value
+        rows += [(f"2025-03-{i + 1:02d}", "Lipase", "5", "<" + n, "", "") for i, n in enumerate(nums)]   # each a range's high
+        rows += [(f"2025-04-{i + 1:02d}", "Lipase", "5", "", "", n) for i, n in enumerate(nums)]   # each in a High column
+
+        def read(name, delim, extra):
+            q = (lambda c: f'"{c}"') if delim == "," else (lambda c: c)
+            lines = [delim.join(["Date", "Test", "Value", "Unit", "Range", "Low", "High"])] + [
+                delim.join([d, t, q(v), "U/L", q(r), q(lo), q(hi)]) for d, t, v, r, lo, hi in rows + extra]
+            out = csv_labs.parse(self.write(name, "\n".join(lines) + "\n"))
+            s = series(out["data"], "Lipase")
+            at = {p[0][:10]: p for p in s["pts"]}
+            got = [(at.get(d) or [None, None])[1] for d, *_ in rows[:4]], [(at.get(d) or [None] * 4)[3] for d, *_ in rows[4:]]
+            return got, [x[1] for x in s["txt"]], out["warnings"]
+
+        points = [("2025-05-01", "Potassium", "4.2", "3.5 - 5.1", "", "")]
+        got, txt, warnings = read("points.csv", ",", points)   # a file that writes decimal points: its commas group thousands
+        self.assertEqual(got, ([None, 0.05, 1250, 12500], [None, 0.05, 1250, 12500] * 2))
+        self.assertEqual(txt, ["0,500"], "kept as printed, a text value")
+        self.assertIn("1 value couldn't be read as a number, so it was kept as text, not charted: points.csv line 2 ('0,500').", warnings)
+        self.assertIn("2 ranges couldn't be read, so they aren't used for the flag: points.csv line 6 ('<0,500'), points.csv line 10 "
+                      "('0,500').", warnings)
+        for name, delim in (("semicolons.csv", ";"), ("quoted.csv", ",")):
+            got, txt, warnings = read(name, delim, [])   # its commas decimal: semicolons, or "0,500" among its values
+            self.assertEqual((got, txt), (([0.5, 0.05, 1.25, 12.5], [0.5, 0.05, 1.25, 12.5] * 2), []), name)
+            self.assertFalse([w for w in warnings if "couldn't be read" in w], name)
+        self.assertEqual([csv_labs.number(n) for n in nums], [None, 0.05, 1250, 12500], "Type them in's other records' numbers")
+
     def test_flag_column_wins_and_words(self):
         f = self.write("f.csv", "Date,Test,Value,Range,Flag\n2025-01-01,A,5,1-10,High\n2025-01-01,B,0.5,1-10,A\n"
                                 "2025-01-01,C,5,1-10,N\n2025-01-01,D,18.1 H,,\n")
