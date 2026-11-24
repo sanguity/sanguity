@@ -1886,6 +1886,13 @@ Everything on `main` so far; it becomes the first tagged release.
   given against), naming both sources, in the summary, its PDF and share links and, once linked as the same result, on
   every page and in the drawer's row, a range in another unit given in the kept copy's by the exact change of prefix.
   A lab in two units is a row in each, as Labs keeps it (#438), never a result left out.
+- **A click beside the drawer keeps a half-filled form, words typed or not** (#784): over the page (768 to 1199 px,
+  the wider panel at any width) a click on the dimmed page beside the drawer kept it open only while a text box or a
+  note held words typed, so it closed on a dose set to Skipped at 07:15, a new reminder's time or days, a journal
+  entry's mood, severity, date, medication, place on the body or photo, Fix date's new date and Change category's
+  choice or ticks, and they were gone, nothing asked. The drawer's forms are now read as they're drawn, and while any
+  field differs from that the click does nothing (✕ and Escape still close it); with nothing changed it closes it as
+  before.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
