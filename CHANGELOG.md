@@ -1957,6 +1957,15 @@ Everything on `main` so far; it becomes the first tagged release.
   its range was kept with none, so Labs, the heatmap, the summary and share links showed nothing and, since the drawer
   shows Labs' flag, it did too; it's now kept and shown as ◆ Flagged (Abnormal in the summary and share links),
   marked and counted on the heatmap and the Timeline, and the Overview no longer says it "In range".
+- **A result that came twice is one result everywhere, not only once linked** (#825): a Potassium 5.2 imported with
+  its report's 3.5–5.1, then again from a portal at the same time with no range, was High in Labs' table and the
+  summary, but the Overview's tile read the later copy alone (no ▲ High, "no change" from its own copy) and its list
+  of what's outside its range left it out, and Labs' chart drew the copy's dot over the ▲. Now copies of a result at
+  one time (the same lab, unit, value and value as given, from two imports or twice from one) each have any range and
+  flag either has, as the summary and share links give them (#781), and the page shows the result once: the
+  Overview's tile and list, Labs' chart (one mark, a ▲ never drawn under a dot) and table ("also from 1 more
+  source"), the heatmap (one cell) and the lab panel, and each import's lab day flags it in the drawer and counts it
+  on the Timeline. Same result still links them, to show the drawer's rows once too.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

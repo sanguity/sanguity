@@ -106,14 +106,18 @@ function savedCats(s) {
    timeline.js tlAbn, palette.js). Of one import's draws on a day, a result is the one's with a report nearest it in
    time; one whose import has no draw that day, every draw's that day, as before. draws: [{id, imp, ts, at: its
    reports' times}]; series: lab series, a point's import p.imp where several are joined (same.js), else the series';
-   ts(p) a point's time, day(t) its day. -> Map(draw id -> [[series, point]]) */
+   a result that came twice shown once (same.js joinSeries, #825) each of its imports' draws' (p.also). ts(p) a point's
+   time, day(t) its day. -> Map(draw id -> [[series, point]]) */
 function labDraws(draws, series, ts, day) {
   const out = new Map(), by = new Map(), add = (m, k, x) => (m.get(k) || m.set(k, []).get(k)).push(x);
   for (const e of draws) { out.set(e.id, []); add(by, day(e.ts) + "\u001f" + e.imp, e); add(by, day(e.ts), e); }
   const near = (e, t) => Math.min(...(e.at?.length ? e.at : [e.ts]).map(a => Math.abs(a - t)));
+  const pick = (mine, t) => mine.length > 1 ? mine.reduce((a, b) => near(b, t) < near(a, t) ? b : a) : mine[0];
   for (const s of series) for (const p of s.pts) {
-    const t = ts(p), d = day(t), mine = by.get(d + "\u001f" + (p.imp ?? s.imp));
-    if (mine) out.get((mine.length > 1 ? mine.reduce((a, b) => near(b, t) < near(a, t) ? b : a) : mine[0]).id).push([s, p]);
+    const t = ts(p), d = day(t), imp = p.imp ?? s.imp, mine = by.get(d + "\u001f" + imp);
+    const also = p.also ? p.also.filter(i => i !== imp).map(i => by.get(d + "\u001f" + i)).filter(Boolean) : [];
+    if (also.length) for (const e of new Set([mine, ...also].filter(Boolean).map(m => pick(m, t)))) out.get(e.id).push([s, p]);
+    else if (mine) out.get(pick(mine, t).id).push([s, p]);
     else for (const e of by.get(d) || []) out.get(e.id).push([s, p]);
   }
   return out;

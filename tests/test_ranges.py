@@ -24,7 +24,7 @@ sys.path.insert(0, ROOT)
 from fastapi.testclient import TestClient   # noqa: E402
 from pypdf import PdfReader   # noqa: E402
 
-from server import accounts, db as dbm, main, profiles as prof, ranges, records, settings, summary   # noqa: E402
+from server import accounts, crossmatch, db as dbm, main, profiles as prof, ranges, records, settings, summary   # noqa: E402
 import logging   # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -42,6 +42,19 @@ def day(n):
 
 def row(**kw):
     return {"lab": "Ferritin", "unit": "ng/mL", "sex": "any", "ageFrom": None, "ageTo": None, "low": 20, "high": 200, **kw}
+
+
+def page_once(pts):
+    """A series' results as the records page shows them (same.js joinSeries): in time order, a result's copies (each
+    given the one result's range and flag by crossmatch.copies, #825) once, the first."""
+    seen, out = set(), []
+    for p in sorted(pts, key=lambda p: p[0]):
+        q = list(p) + [None] * (8 - len(p))
+        k = (q[0], q[1], str(q[5] or "").strip(), q[2], q[3], str(q[4] or ""), q[7] or "")
+        if k not in seen:
+            seen.add(k)
+            out.append(p)
+    return out
 
 
 class Rules(unittest.TestCase):
@@ -136,6 +149,37 @@ class Rules(unittest.TestCase):
                            ((None, 5, "", ""), (None, 5, "H", "<"), (None, 5, "", "")),   # a High against "<5" isn't "≤ 5"'s
                            ((None, 5, "", "<"), (None, 5, "H", "<"), (None, 5, "H", "<"))]:
             self.assertEqual(ranges.copies(a, b), want, (a, b))
+
+    def test_copies_not_linked(self):
+        """#825: a result twice and not linked (two imports, or twice from one: the same lab, unit, time, value and value
+        as given) is given the one result's range and flag in each copy (crossmatch.copies, by ranges.copies: the first
+        copy's own, what it lacks from the others'), the range's edge with it, in either import order; a result at
+        another time, with another value as given, of another unit, or a watch's, is left as it is, and the records' own
+        lists aren't changed."""
+        t, u = day(-2), day(-1)
+        data = {"labs": [
+            {"name": "Potassium", "unit": "mmol/L", "imp": 1, "pts": [[t, 5.2, 3.5, 5.1, "", "5.2"], [u, 4.0, None, None, "", "4.0"]]},
+            {"name": "Sodium", "unit": "mmol/L", "imp": 1, "pts": [[t, 150, None, None, "", "150"]]},
+            {"name": "Potassium", "unit": "mmol/L", "imp": 2, "pts": [[t, 5.2, None, None, "", "5.2"], [u, 4.1, 3.5, 5.1, "", "4.1"]]},
+            {"name": "Sodium", "unit": "mmol/L", "imp": 2, "pts": [[t, 150, 135, 145, "H", "150", "Portal"]]},
+            {"name": "Potassium", "unit": "mg/dL", "imp": 2, "pts": [[t, 5.2, None, None, "", "5.2"]]},
+            {"name": "C-Reactive Protein", "unit": "mg/L", "imp": 1, "pts": [[t, 5, None, None, "", "5"], [t, 5, None, 5, "", "5", None, "<"]]},
+            {"name": "C-Reactive Protein", "unit": "mg/L", "imp": 2, "pts": [[t, 5, None, None, "", "5.0"]]},
+            {"name": "Potassium", "unit": "mmol/L", "imp": 3, "watch": True, "pts": [[t, 5.2, None, None, ""]]}]}
+        was = json.loads(json.dumps(data["labs"]))
+        own = [s["pts"] for s in data["labs"]]
+        got = [s["pts"] for s in crossmatch.copies(data)["labs"]]
+        self.assertEqual(got, [[[t, 5.2, 3.5, 5.1, "", "5.2"], [u, 4.0, None, None, "", "4.0"]],   # the first copy's own
+                               [[t, 150, 135, 145, "H", "150"]],   # the second's range and its report's H
+                               [[t, 5.2, 3.5, 5.1, "", "5.2"], [u, 4.1, 3.5, 5.1, "", "4.1"]],   # the first's range
+                               [[t, 150, 135, 145, "H", "150", "Portal"]],
+                               [[t, 5.2, None, None, "", "5.2"]],   # another unit
+                               [[t, 5, None, 5, "", "5", None, "<"], [t, 5, None, 5, "", "5", None, "<"]],   # twice from one, "<5" with it
+                               [[t, 5, None, None, "", "5.0"]],   # "5.0" given otherwise
+                               [[t, 5.2, None, None, ""]]])   # a watch's
+        self.assertEqual([ranges.judge(p[1], *p[2:6], None, (p + [None] * 8)[7] or "")[2] for p in (got[1][0], got[2][0], got[5][0])], ["H", "H", "H"],
+                         "each copy judged High: 150 against 135–145, 5.2 against 3.5–5.1, 5 against “<5”")
+        self.assertEqual(own, [s["pts"] for s in was], "the records' own lists as they were")
 
 
 # a portal export: ferritin with no range (twice), one with its own range, one flagged by the lab with no range,
@@ -386,7 +430,7 @@ class Api(unittest.TestCase):
                 page.setdefault((s["name"], s["unit"]), []).extend(s["pts"])
             edge = lambda p: p[7] if len(p) > 7 and p[7] else ""   # (#780: a one-sided range's edge, pts[7])
             page = {k: [[ranges.judge(p[1], p[2], p[3], p[4], p[5], None, edge(p))[2], p[2], p[3], *filter(None, [edge(p)])]
-                        for p in sorted(pts, key=lambda p: p[0])] for k, pts in page.items()}
+                        for p in page_once(pts)] for k, pts in page.items()}
             self.assertEqual(page, seen, f"{when}: the records page's results")
             series = list(summary.each(summary._series(data)))
             self.assertEqual({(s["name"], s["unit"]): [[p["flag"], p["lo"], p["hi"], *filter(None, [p["edge"]])] for p in s["pts"]] for s in series}, once,
@@ -439,6 +483,56 @@ class Api(unittest.TestCase):
         for x in data["possible"]:
             self.assertEqual(c.post(f"/api/profiles/{pid}/same", json={"ref": x["ref"]}, headers=H).status_code, 201)
         check("after Same result", M.COPIES_SAME, M.COPIES_SAME, M.COPIES_TRENDS_SAME, M.COPIES_OUT_SAME, M.COPIES_DAYS_SAME)
+        db = dbm.connect()
+        try:
+            prof.delete_profile(db, pid)
+        finally:
+            db.close()
+
+    def test_2_summary_latest_copies(self):
+        """#825: one result twice at one time, its latest, a range on one copy only, in each import order (tests/
+        ranges_matrix.py's LATEST), through the server: each copy is given the one result's range and flag
+        (crossmatch.copies), so the records page shows it once and flagged (Labs and the Overview read it from there),
+        each import's lab day flags its row (the drawer, the Timeline's badge), and the summary says it High."""
+        db = dbm.connect()
+        try:
+            owner = db.execute("SELECT id FROM users WHERE username='robin'").fetchone()["id"]
+            pid = prof.create_profile(db, "Latest copies (fictional)", owner_id=owner)
+            for imp, fmt in ((1, "csv"), (2, "fhir")):
+                with dbm.transaction(db):
+                    records.store(db, pid, M.copies(imp, TODAY, M.LATEST), "upload", fmt=fmt)
+            data = records.assemble(db, pid)
+        finally:
+            db.close()
+        flag = lambda p: ranges.judge(p[1], *p[2:6], None, (p + [None] * 8)[7] or "")[2]
+        page = {}
+        for s in data["labs"]:
+            page.setdefault(s["name"], []).extend(s["pts"])
+        self.assertEqual({n: [[flag(p), p[2], p[3]] for p in page_once(pts)] for n, pts in page.items()}, M.LATEST_JUDGED,
+                         "the records page's results: the latest once, flagged")
+        latest = M.day(2, TODAY)
+        self.assertEqual(sorted((s["name"], s["imp"], flag(p)) for s in data["labs"] for p in s["pts"] if p[0] == latest),
+                         sorted((n, i, "H") for n in M.LATEST_LABS for i in {s["imp"] for s in data["labs"]}), "each copy flagged")
+        imps, got = sorted(data["imports"], key=int), {}
+        for e in data["events"]:
+            if e["k"] == "lab" and e["t"] == latest:
+                rows = []
+                for i in data["details"][str(e["id"])]["ids"]:
+                    d = data["details"][str(i)]
+                    for r, n in zip(d["rows"], d.get("series") or [None] * len(d["rows"])):
+                        p = next((p for s in data["labs"] if s["name"] == n and s.get("imp") == e.get("imp") for p in s["pts"]
+                                  if p[0][:10] == e["t"][:10] and p[5] == r[1]), None)
+                        rows.append((n, p and flag(p)))
+                got[(imps.index(str(e["imp"])) + 1, 2)] = rows
+        self.assertEqual(got, M.LATEST_DAYS, "each import's lab day of the latest: its rows' series, each flagged")
+        c = self.c["robin"]
+        self.assertEqual(c.put(f"/api/profiles/{pid}/settings/overview.keyLabs", json={"value": M.LATEST_LABS}, headers=H).status_code, 200)
+        s = c.post(f"/api/profiles/{pid}/summary/preview", headers=H, json={"appointment": None, "since": M.day(15, TODAY)[:10],
+                                                                         "sections": ["out_of_range", "trends"], "labs": []}).json()
+        self.assertEqual({o["name"]: [o["value"], o["flag"], o["range"]] for o in s["out_of_range"]},
+                         {n: [v.split(" ")[0], "High", r.removeprefix("ref ")] for n, (v, r) in M.LATEST_OUT.items()}, "the summary's out of range")
+        self.assertEqual({t["name"]: [t["then"]["value"], t["now"]["value"], t["now"]["flag"]] for t in s["trends"]},
+                         {"Potassium": ["4.4", "5.2", "High"], "Sodium": ["141", "150", "High"]}, "the summary's trends: Then the result before")
         db = dbm.connect()
         try:
             prof.delete_profile(db, pid)

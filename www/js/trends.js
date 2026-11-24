@@ -206,7 +206,7 @@ function chartCard(s) {
   if (showTable) {
     card.append(scrollBox({class: "tablewrap", "aria-label": `${nice(s.name)}, as a table`}, el("table", {class: "data"}, el("thead", {}, el("tr", {}, ["Date", "Value", s.watch ? "Detail" : "Ref range"].map(h => el("th", {scope: "col", text: h})), el("th", {scope: "col"}, el("span", {class: "vh", text: "Flag"})))),
       el("tbody", {}, [...pts].reverse().map(p => { const [a, b] = readText(s, p); return el("tr", {}, el("td", {text: s.watch ? fmtD(p.ts) : fmtDT(p.ts)}), el("td", {class: p[4] ? "abn" : "", text: a + (!s.watch && b ? ` (reported ${ucOrig(s, p)})` : "")}),
-        el("td", {text: (s.watch ? b : refWords(p) || "") + (p[6] ? ` · ${p[6] === "Clinic" ? "clinic visit" + (p.org ? " (" + p.org + ")" : "") : srcName(p[6])}` : "") + (p.same ? " · same result from " + p.same.length + " more source" + (p.same.length > 1 ? "s" : "") : "")}), el("td", {class: p[4] ? "abn" : ""}, ...flagNodes(p[4]))); })))));   // the mark and the word, not colour alone (#60)
+        el("td", {text: (s.watch ? b : refWords(p) || "") + (p[6] ? ` · ${p[6] === "Clinic" ? "clinic visit" + (p.org ? " (" + p.org + ")" : "") : srcName(p[6])}` : "") + (p.same ? " · same result from " + p.same.length + " more source" + (p.same.length > 1 ? "s" : "") : "") + alsoWords(p)}), el("td", {class: p[4] ? "abn" : ""}, ...flagNodes(p[4]))); })))));   // the mark and the word, not colour alone (#60)
     const src = seriesSource(s); if (src) card.append(src);
     { const t = tagLine(pts); if (t) card.append(t); }   // its results' source tags, renamed here (#38)
     return card;
@@ -291,7 +291,7 @@ function drawChart(svg, s, pts, read, live) {   // live: a frame of a drag, at t
     if (smoothOn) { g.push(line(pts.map(p => [x(p.ts), y(p[1])]), "line", {"stroke-opacity": .3})); g.push(line(smooth7(pts).map((v, i) => [x(pts[i].ts), y(v)]), "line")); }
     else if (pts.length > 1) g.push(line(pts.map(p => [x(p.ts), y(p[1])]), "line"));
     const dense = pts.length > 120 || s.watch;
-    for (const p of pts) if (!dense || p[4]) g.push(p[4] ? abnMark(x(p.ts), y(p[1]), p[4]) : el("svg:circle", {class: "pt", cx: x(p.ts), cy: y(p[1]), r: 3}));   // ▲ above, ▼ below its range (#60)
+    for (const p of ckOnTop(pts)) if (!dense || p[4]) g.push(p[4] ? abnMark(x(p.ts), y(p[1]), p[4]) : el("svg:circle", {class: "pt", cx: x(p.ts), cy: y(p[1]), r: 3}));   // ▲ above, ▼ below its range (#60), never under a dot (#825)
   }
   if (!pts.length) g.push(el("svg:text", {x: (L + R) / 2, y: (T + B) / 2, "text-anchor": "middle", text: "No values in this date range"}));
   const cross = ckCross(T, B);

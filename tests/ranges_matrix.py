@@ -221,7 +221,8 @@ def printed(today=None):
 # after it; a lab in two units; and one result in two units (a change of prefix: 11.0 g/dL and 110 g/L), which "Same
 # result" can link (crossmatch.match). COPIES: (lab, unit): {import: [(days back, value, low, high, flag, as given)]}.
 # Each result's [flag, low, high] (no range from Settings here) as:
-#   COPIES_SEEN  Labs shows it before "Same result": both copies, a lab in two units two series (#438)
+#   COPIES_SEEN  Labs shows it before "Same result": a lab in two units two series (#438); a result twice once, as
+#                COPIES_ONCE (#825: it showed both copies, the later read alone as the latest, its flag lost)
 #   COPIES_ONCE  the summary, its PDF and a share link show it then: a result twice once, with any range and flag either
 #                copy has (ranges.copies), each unit its own row
 #   COPIES_SAME  every one shows it once each pair is linked as the same result (crossmatch.apply): the older import's
@@ -310,26 +311,56 @@ COPIES_DAYS = {
 COPIES_DAYS_SAME = {**{k: v for k, v in COPIES_DAYS.items() if k[0] == 1}, (1, 30): [("Potassium", "L"), ("Glucose, Blood", "L")],
                     (1, 25): [("C-Reactive Protein", "H")], (1, 15): [("Hemoglobin", "L")], (1, 12): [("Troponin I", "H")],
                     (2, 10): [("Glucose, Blood", "")]}
+# #825: before Same result too, a result twice is one result, each copy with any range and flag either has
+# (crossmatch.copies, as the summary's ranges.copies): Labs shows it once, and each import's lab day flags its row so
+COPIES_SEEN = COPIES_ONCE
+COPIES_DAYS.update({(1, 30): [("Potassium", "L"), ("Glucose, Blood", "L")], (1, 25): [("C-Reactive Protein", "H")],
+                    (2, 20): [("Calcium", "L")]})
 
 
-def copies(imp, today=None):
-    """Import imp's records (1 or 2), as an import stores them (records.store): its labs, each with its source's key (a
+def copies(imp, today=None, cases=None):
+    """Import imp's records (1 or 2) of cases (COPIES by default, or LATEST), as an import stores them (records.store): its labs, each with its source's key (a
     spreadsheet's, a portal's: what tells a result's copies apart, crossmatch.point_key), a point with an edge keeping it
     as pts[7]; their draws, each a lab day whose one result lists that day's rows as the report prints them (#782); and
     in the first the summary's "since" visit."""
-    edge = lambda e: [None, e[0]] if e and e[0] else []
+    edge, cases = (lambda e: [None, e[0]] if e and e[0] else []), cases or COPIES
     labs = [{"name": n, "key": f"{('csv', 'fhir')[imp - 1]}:{n.lower()}|{u}", "unit": u, "panel": "", "n": len(by[imp]), "txt": [],
-             "pts": [[day(d, today), v, lo, hi, f, t, *edge(e)] for d, v, lo, hi, f, t, *e in by[imp]]} for (n, u), by in COPIES.items() if imp in by]
-    draws = sorted({d for by in COPIES.values() for d, *_ in by.get(imp, ())}, reverse=True)
+             "pts": [[day(d, today), v, lo, hi, f, t, *edge(e)] for d, v, lo, hi, f, t, *e in by[imp]]} for (n, u), by in cases.items() if imp in by]
+    draws = sorted({d for by in cases.values() for d, *_ in by.get(imp, ())}, reverse=True)
     events = [{"id": i + 1, "t": day(d, today), "k": "lab", "title": f"Lab results (fictional, {imp})"} for i, d in enumerate(draws)]
     if imp == 1:
         events.append({"id": len(events) + 1, "t": day(COPIES_SINCE, today), "k": "visit", "title": "Office visit (fictional)"})
     details = {}
     for i, d in enumerate(draws):
-        rows = [[n, t, u, printed_range(lo, hi, (e or [""])[0]), f] for (n, u), by in COPIES.items() for dd, v, lo, hi, f, t, *e in by.get(imp, ()) if dd == d]
+        rows = [[n, t, u, printed_range(lo, hi, (e or [""])[0]), f] for (n, u), by in cases.items() for dd, v, lo, hi, f, t, *e in by.get(imp, ()) if dd == d]
         abn = {"abn": n} if (n := sum(1 for r in rows if r[4])) else {}
         events[i].update(abn)
         events.append({"id": len(events) + 1, "t": day(d, today), "k": "labitem", "title": f"Lab results (fictional, {imp})", "hidden": 1, **abn})
         details[str(len(events))] = {"type": "result", "order": f"Lab results (fictional, {imp})", "rows": rows}
         details[str(i + 1)] = {"type": "labday", "ids": [len(events)]}
     return {"built": day(0, today)[:10], "source": "fictional", "events": events, "details": details, "costs": [], "upcoming": [], "labs": labs}
+
+
+# ---------------------------------------------------------------- #825: one result twice at one time, its latest
+# A profile of two imports (copies(1, cases=LATEST), then copies(2, ...)): each lab's history in the first (nineteen
+# results inside its report's range: with its latest, a row of the heatmap) and its latest result in both, at one time,
+# a range on one copy only, in each import order: Potassium's on the first's copy (the second's, the later, was read
+# alone as the latest, and its High lost), Sodium's on the second's, with its report's H. Every view reads the latest
+# as one result with that range and flag (crossmatch.copies, as the summary's ranges.copies): the Overview's tile (▲
+# High, its change from the result before it, never "no change" from its own copy) and its list of what's outside its
+# range; Labs' chart (one mark at that time, a ▲, never under a dot) and its table (one row); the heatmap (one cell,
+# counted once); and the drawer (each import's lab day flags its row). LATEST: as COPIES; LATEST_JUDGED each result's
+# [flag, low, high] on Labs; LATEST_TILES the tile's [flag, value, change]; LATEST_OUT the Overview's list's [value
+# with its flag, range]; LATEST_DAYS each import's lab day of the latest, (import, days back): its rows' labs and flags
+LATEST = {
+    ("Potassium", "mmol/L"): {1: [(200 - 10 * i, v, 3.5, 5.1, "", f"{v:.1f}") for i in range(19) for v in [round(3.8 + i % 5 * .2, 1)]]
+                              + [(2, 5.2, 3.5, 5.1, "", "5.2")],
+                              2: [(2, 5.2, None, None, "", "5.2")]},
+    ("Sodium", "mmol/L"): {1: [(200 - 10 * i, 138 + i % 5, 135, 145, "", str(138 + i % 5)) for i in range(19)] + [(2, 150, None, None, "", "150")],
+                           2: [(2, 150, 135, 145, "H", "150")]},
+}
+LATEST_LABS = [n for n, _ in LATEST]
+LATEST_JUDGED = {"Potassium": [["", 3.5, 5.1]] * 19 + [["H", 3.5, 5.1]], "Sodium": [["", 135, 145]] * 19 + [["H", 135, 145]]}
+LATEST_TILES = {"Potassium": ["▲ High", "5.2", "↑ 0.8"], "Sodium": ["▲ High", "150", "↑ 9"]}
+LATEST_OUT = {"Potassium": ["5.2 mmol/L ▲ High", "ref 3.5–5.1"], "Sodium": ["150 mmol/L ▲ High", "ref 135–145"]}
+LATEST_DAYS = {(1, 2): [("Potassium", "H"), ("Sodium", "H")], (2, 2): [("Potassium", "H"), ("Sodium", "H")]}
