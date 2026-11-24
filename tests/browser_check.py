@@ -14296,10 +14296,29 @@ def main():
             page.fill(row(1, "range"), "13.5 - 17.5")
             page.wait_for_function("document.querySelector('.man-row .man-check').textContent.includes('Hemoglobin')", timeout=5000)
             first = js("document.querySelector('.man-row .man-check').textContent")
-            check("a typed row is checked as you go: its canonical name, range and flag", "Hemoglobin" in first and "13.5 – 17.5" in first
+            check("a typed row is checked as you go: its canonical name, range and flag", "Hemoglobin" in first and "range 13.5–17.5" in first
                   and "Low" in first, first)
             typed_at = js("recordDate('2026-11-02 08:10')")
             check("…and its date and time in the person's format, not as typed (#311)", f" · {typed_at} · " in first and "2026-11-02" not in typed_at, first)
+            # #826: a one-sided range said as Labs will say it (ranges.js rangeWords), by the edge the server read: "<5"
+            # leaves 5 out ("< 5", and 5 ▲ High), "<=5" keeps it ("≤ 5", in range), ">60" and ">=60" the same at 60. It said
+            # "range under 5" for "<5" and "<=5" alike, flagged only for one of them
+            said826 = []
+            for v826, r826, want826 in (("5", "<5", "range < 5 · ▲ High"), ("5", "<=5", "range ≤ 5"), ("60", ">60", "range > 60 · ▼ Low"),
+                                        ("60", ">=60", "range ≥ 60")):
+                page.fill(row(1, "value"), v826)
+                page.fill(row(1, "range"), r826)
+                tail826 = f" · {v826} g/dL · {want826}"
+                try:
+                    page.wait_for_function("w => document.querySelector('.man-row .man-check').textContent.endsWith(w)", arg=tail826, timeout=5000)
+                except Exception:
+                    pass
+                said826.append([js("document.querySelector('.man-row .man-check').textContent"), tail826])
+            check("Type them in: a one-sided range's check line says it as Labs does, “< 5” (5 ▲ High) for “<5”, “≤ 5” for “<=5”, "
+                  "“> 60” (60 ▼ Low) and “≥ 60” (#826)", all(s.endswith(w) for s, w in said826), said826)
+            page.fill(row(1, "value"), "12.4")
+            page.fill(row(1, "range"), "13.5 - 17.5")
+            page.wait_for_function("document.querySelector('.man-row .man-check').textContent.includes('range 13.5–17.5')", timeout=5000)
             page.click("#manAdd")
             check("a new row takes the last one's date and time", js(f"document.querySelector('{row(2, 'date')}').value") == "2026-11-02"
                   and js(f"document.querySelector('{row(2, 'time')}').value") == "08:10")

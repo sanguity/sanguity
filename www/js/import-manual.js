@@ -122,10 +122,12 @@
       // a date or time the pickers couldn't hold, read: shown in them now (x.date is "YYYY-MM-DD" or "YYYY-MM-DD HH:MM")
       for (const [f, v] of [["date", x.date.slice(0, 10)], ["time", x.date.slice(11, 16)]])
         if (input(r, f).dataset.raw) put(input(r, f), v);
-      const range = x.low != null && x.high != null ? `${x.low} – ${x.high}` : x.high != null ? `under ${x.high}` : x.low != null ? `over ${x.low}` : "";
+      // its range and flag as Labs will say them (#826): "3.5–5.1", "< 5" (5 left out of it, the edge the server read)
+      // or "≤ 5" (ranges.js rangeWords); ▲ High, ▼ Low, or ◆ Flagged for a flag that says neither (charts.js FLAG_OF)
+      const range = rangeWords([null, x.value, x.low, x.high, x.flag, null, null, x.edge]);
       const value = x.value != null ? `${x.value}${x.unit ? " " + x.unit : ""}` : `“${x.text}”`;
       out.replaceChildren(icon("check"), " ", el("b", {text: x.name}), ` · ${recordDate(x.date)} · ${value}` + (range ? ` · range ${range}` : ""),
-        ...(x.flag ? [" · ", el("span", {class: "abn", text: x.flag === "H" ? "▲ High" : "▼ Low"})] : []),
+        ...(x.flag ? [" · ", el("span", {class: "abn", text: /^h/i.test(x.flag) ? "▲ High" : /^l/i.test(x.flag) ? "▼ Low" : "◆ Flagged"})] : []),
         ...(x.duplicate ? [" · ", el("span", {class: "dup", text: "already in this profile: it won't be saved again"})] : []),
         ...(x.notes.length ? [` (${x.notes.join("; ")})`] : []));
     });

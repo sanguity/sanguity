@@ -215,6 +215,18 @@ class Manual(unittest.TestCase):
         self.assertEqual(r.json()["problems"], [])
         self.assertEqual(count(self.pid), before)
 
+    def test_a_one_sided_range_says_its_edge(self):
+        """#826: each row's range with its edge (common.range_edge, #780), for the page to say it as Labs does: "<5"
+        leaves 5 out of it (5 is High), "<=5" keeps it; ">60" leaves 60 out (60 is Low), ">=60" keeps it; a range of two
+        limits has none. The page said "under 5" for "<5" and "<=5" alike."""
+        rows = [{"date": "2026-03-02", "time": f"{8 + i:02d}:00", "test": t, "value": v, "unit": u, "range": rg}
+                for i, (t, v, u, rg) in enumerate([("CRP", "5", "mg/L", "<5"), ("CRP", "5", "mg/L", "<=5"), ("eGFR", "60", "mL/min", ">60"),
+                                                   ("eGFR", "60", "mL/min", ">=60"), ("Potassium", "5.2", "mmol/L", "3.5-5.1")])]
+        r = self.post(rows, save=False)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual([[x["low"], x["high"], x["edge"], x["flag"]] for x in r.json()["rows"]],
+                         [[None, 5, "<", "H"], [None, 5, "", ""], [60, None, ">", "L"], [60, None, "", ""], [3.5, 5.1, "", "H"]])
+
     def test_roles_and_csrf(self):
         row = [{"date": "2026-04-01", "test": "WBC", "value": "7.0", "unit": "K/uL"}]
         before = count(self.pid)
