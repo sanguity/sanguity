@@ -1922,6 +1922,11 @@ Everything on `main` so far; it becomes the first tagged release.
   times left are named by their place again ("Time 2" was said twice once a time after a removed one was added).
 - **Fix date's date-and-time box shows focus on its calendar button** (#831): Shift+Tab onto the button at the end
   of Fix date's box showed no focus at all, as date and time boxes did before #202's ring; it has the ring now.
+- **On a phone, the profile's name keeps its floor as the text size changes** (#832): at 360 px, with text made
+  larger from 130% to 150% while a page was open, "Sam Okafor-Lindqvist" read "Sam Oka…", 114 px of its 126 px floor,
+  and didn't move to a row of its own: the top bar is fitted again when something in it changes width, and nothing
+  did. It's fitted again as the name's own size changes too, so the name keeps 6 em on the bar's row or takes its own,
+  as #622 and #785 have it; at the usual text size nothing moves.
 - **A range printed "<5" leaves 5 out of it** (#780): the CSV, PDF and FHIR importers read "<5" as a high of 5, the
   same as "<=5", so a C-Reactive Protein of 5 against its report's "<5", an LDL of 100 against "<100" and an eGFR of
   60 against ">60" were shown in range, said "≤ 5", "≤ 100" and "≥ 60" on Labs, the Overview, share links and the

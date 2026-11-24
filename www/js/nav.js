@@ -239,6 +239,10 @@ const SgNav = (() => {
     try { history.replaceState(history.state, "", location.pathname + "?" + q + location.hash); } catch (e) {}
   }
   let known = [], locked = false;
+  // the bar fitted again as its name's box changes: its height follows the text size, which the bar's observers (below)
+  // can miss, nothing in the bar changing width with it (#832: at 360 px, text from 130% to 150% left the name cut
+  // short of its floor, never on its own row)
+  const nameSeen = new ResizeObserver(() => requestAnimationFrame(fit));
   /* the button and the menu for the profile chosen now (the select's value): its name and role; the others to switch
      to (not while the select is disabled: offline, or a save under way); its pages' and the tabs' addresses */
   function draw() {
@@ -250,8 +254,9 @@ const SgNav = (() => {
     if (!p) return;
     tabsOf(p.id);   // its tabs, whenever the profile changes (#415)
     const role = x => ROLE[x.role] || x.role;
-    prof.btn.replaceChildren(el("span", {class: "vh", text: "Profile: "}), el("span", {class: "profile-name", text: p.name}), " ",
-      el("span", {class: "profile-role", text: role(p)}), caret());
+    const name = el("span", {class: "profile-name", text: p.name});
+    prof.btn.replaceChildren(el("span", {class: "vh", text: "Profile: "}), name, " ", el("span", {class: "profile-role", text: role(p)}), caret());
+    nameSeen.disconnect(); nameSeen.observe(name);
     radios.replaceChildren(...(known.length < 2 ? [] : [head("Switch profile"), ...known.map(x => el("button", {class: "menu-item", role: "menuitemradio",
       type: "button", tabindex: "-1", "data-pid": x.id}, icon("check"), x.name, el("span", {class: "menu-note", text: role(x)})))]));
     rSep.hidden = known.length < 2;
