@@ -1148,19 +1148,27 @@ def unapply(db, iid):
     what this one found (its results' too, each the earliest). Call before the import's rows go. An import that
     removed a kind's records (remove_kind) puts them back. A lab day a pull joined (#899) lists none of its labitems
     once they go, and one of iid's own that a pull joined is handed to that pull, holding its labitems: they keep a
-    lab day (_hand_over)."""
+    lab day (_hand_over). A lab day put back lists only the lab events there are (#908: what it was may list those of
+    an import undone since, the upload whose lab day it was), titled for what it holds; one left holding nothing goes."""
     _put_back(db, iid)
     _hand_over(db, iid)
     changed = [r[0] for r in db.execute("SELECT DISTINCT event_id FROM sync_changes WHERE import_id=? AND event_id IS NOT NULL", (iid,))]
     _unapply(db, iid)
     gone = {r[0] for r in db.execute("SELECT id FROM events WHERE import_id=?", (iid,))}
-    for ch in records._chunks(changed) if gone else []:   # (a later pull's version kept: iid's labitems go from it)
-        for r in db.execute(f"SELECT id, body, detail FROM events WHERE id IN ({','.join('?' * len(ch))})", ch).fetchall():
+    for ch in records._chunks(changed):   # (a later pull's version kept, or what it was put back: iid's labitems go from it)
+        for r in db.execute(f"SELECT id, body, detail FROM events WHERE import_id != ? AND id IN ({','.join('?' * len(ch))})", (iid, *ch)).fetchall():
             d = records._dec(r["detail"])
-            if isinstance(d, dict) and d.get("type") == "labday" and gone & set(d.get("ids") or []):
-                ids = [i for i in d["ids"] if i not in gone]
+            if not (isinstance(d, dict) and d.get("type") == "labday" and isinstance(d.get("ids"), list)):
+                continue
+            there = {x[0] for x in db.execute(f"SELECT id FROM events WHERE id IN ({','.join('?' * len(d['ids']))})", d["ids"])} if d["ids"] else set()
+            ids = [i for i in d["ids"] if i in there and i not in gone]
+            if ids == d["ids"]:
+                continue
+            if ids:
                 db.execute("UPDATE events SET body=?, detail=? WHERE id=?",
                            (records._enc(_labday_body(db, records._dec(r["body"]), ids)), records._enc({**d, "ids": ids}), r["id"]))
+            else:
+                db.execute("DELETE FROM events WHERE id=?", (r["id"],))
 
 
 def _hand_over(db, iid):
