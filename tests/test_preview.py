@@ -9,7 +9,7 @@ Fictional data only.
 
   python3 tests/test_preview.py
 """
-import io, json, os, shutil, sys, tempfile, threading, time, unittest
+import io, json, os, re, shutil, sys, tempfile, threading, time, unittest
 from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -381,7 +381,12 @@ class Preview(unittest.TestCase):
             self.assertEqual([r["t"] for r in rows], sorted((r["t"] for r in rows), reverse=True), k)
             self.assertTrue(all(r["title"] for r in rows), rows)
         self.assertEqual(len(s["results"]), preview.SAMPLES)
-        self.assertTrue(all(preview.PLAIN.fullmatch(r["value"]) for r in s["results"]), s["results"])
+        self.assertTrue(all(not re.search(r"[A-Za-z\[]", r["value"]) for r in s["results"]), s["results"])
+        # a value as reported that's only its number, as the one reader of a number reads it (#874: a reader of its
+        # own, PLAIN, read "1.2E-3" as more than one), else its number
+        self.assertEqual([preview.samples({"labs": [{"name": "K", "unit": "mmol/L", "pts": [["2025-01-0%d" % (n + 1), x, None, None, "", v]]}]})["results"][0]["value"]
+                          for n, (x, v) in enumerate([(4.5, "4,5"), (5, "=<5"), (1250, "1,250"), (0.0012, "1.2E-3"), (82, "82 mm[Hg]"), (4.5, "")])],
+                         ["4,5", "=<5", "1,250", "1.2E-3", "82", "4.5"])
         self.assertEqual(len(s["allergies"]), j["counts"]["allergies"])
         self.assertTrue(s["allergies"][0]["title"].startswith("Allergy: "), s["allergies"])
         self.assertEqual(len(s["problems"]), j["counts"]["problems"])
@@ -558,6 +563,34 @@ class Preview(unittest.TestCase):
         self.assertEqual((j["duplicates"]["copies"], j["duplicates"]["brings"], j["duplicates"]["results"]), (2, {"flag": 1, "row": 1}, 0), j["duplicates"])
         self.assertEqual(self.save(pid, j)["state"], "done")
         self.assertEqual(rowless(assembled(pid)), [], "each copy with its row")
+
+    def test_a_file_read_again_after_its_reading_changed(self):   # #874
+        """A file imported before #870 changed how it reads (a FHIR Quantity's bound, "<=5" or ">60", kept as text; a
+        C-CDA document's "4,5", "=<5" or "1.2E-3" too), uploaded again: its review says each result is already here
+        and its save adds nothing. preview.find matched points only with points and text only with text, so each was
+        added again beside its older copy (Labs charted the one and listed the other as text)."""
+        from server.importers import ccda, fhir
+        t = lambda d: f"2025-08-0{d}T08:00:00"   # noqa: E731
+        rows = [("eGFR", "mL/min/1.73m2", t(1), ">60", ">=60"), ("C-Reactive Protein", "mg/L", t(2), "=<5", "<5"),
+                ("Potassium", "mmol/L", t(3), "4,5", "3.5-5.1"), ("Troponin I", "ng/mL", t(4), "0,500", "<0.04"),
+                ("AST", "U/L", t(5), "≥60", "10-40"), ("Bilirubin, Total", "mg/dL", t(6), "1.2E-3", "0.1-1.2")]
+        for fmt, name, text, parse in (("fhir", "labs.json", M.fhir(rows), fhir.parse), ("ccda", "labs.xml", M.ccda(rows), ccda.parse)):
+            with self.subTest(fmt=fmt):
+                pid, path = self.profile(f"Read again, {fmt}"), self.write_tmp(text)
+                data = parse({name: path})["data"]
+                db = dbm.connect()
+                try:
+                    with dbm.transaction(db):   # as an import before #870 kept it: each a text result
+                        records.store(db, pid, M.read_before(data), "upload", fmt=fmt)
+                finally:
+                    db.close()
+                n, pts = count(pid), sum(len(s["pts"]) for s in data["labs"])
+                self.assertEqual((n["results"], pts), (0, len(rows)), "kept as text, read as points now")
+                j, _ = self.previewed(pid, {name: text})
+                self.assertEqual((j["new"], j["counts"]["results"], j["duplicates"]["results"], j["duplicates"]["copies"], j["duplicates"]["updates"]),
+                                 (False, 0, pts, 0, 0), j["duplicates"])
+                self.assertEqual(self.save(pid, j)["state"], "discarded", "nothing to add")
+                self.assertEqual(count(pid), n, "nothing added")
 
     def write_tmp(self, text):
         path = os.path.join(TMP, f"tmp-{time.time_ns()}.csv")

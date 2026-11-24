@@ -31,8 +31,38 @@ function rangeRowFor(cfg, lab, unit, day) {
 /* a value given as a bound ("<15", "≤ 0.5", ">90", "> OR = 60"): its comparator, "<", "<=", ">" or ">=", else ""
    (#718, #870; server/ranges.py comparator) */
 const RANGE_CMP = {"=<": "<=", "≤": "<=", "=>": ">=", "≥": ">="};
-const rangeCmp = t => { const m = /^\s*(<\s*(?:or\s*)?=|>\s*(?:or\s*)?=|=\s*<|=\s*>|<|>|≤|≥)/i.exec(t ?? ""), c = m ? m[1].replace(/\s|or/gi, "") : "";
+const RANGE_BOUND = /^\s*(<\s*(?:or\s*)?=|>\s*(?:or\s*)?=|=\s*<|=\s*>|<|>|≤|≥)/i;   // a bound's spellings (common.BOUNDS)
+const rangeCmp = t => { const m = RANGE_BOUND.exec(t ?? ""), c = m ? m[1].replace(/\s|or/gi, "") : "";
   return RANGE_CMP[c] || c; };
+/* the page's one reader of a value as printed (#874; the server's common.value_number and comparator, where a file's
+   decimal mark isn't known): valueRead(t) -> {c, b, x, sig}, or null for text ("Negative", "82 mm[Hg]") and for "1,250"
+   (thousands, or a decimal comma? never a guess). c its comparator (rangeCmp: "=<5", "≤ 5" and "> OR = 60" are bounds),
+   b its bound as printed ("> OR = ", "" for none), x its number ("4,5" and "0,500" are 4.5 and 0.5, "1,234.5" 1234.5,
+   "1.2E-3" 0.0012), sig the significant figures it's written with ("0.50" 2, "120" 3: a converted value keeps them,
+   units.js). A number given as one is read as it is. units.js and drawer.js read a value by it, and nothing else on the
+   page reads one (tests/test_ranges.py test_numbers_read_in_one_place_on_the_page): their own patterns read "=<5",
+   "> OR = 60" and "4,5" as no number, so a converted unit said "=<5" as "0.500" and a drawer row "> OR = 60" as text. */
+function valueRead(t) {
+  const m = typeof t === "string" ? RANGE_BOUND.exec(t) : null, rest = m ? t.slice(m[0].length) : t, n = numberRead(rest);
+  return n && {c: m ? rangeCmp(t) : "", b: m ? m[1] + rest.slice(0, rest.length - rest.trimStart().length) : "", ...n};
+}
+/* {x, sig} of a number as printed (common.number_text, a file's decimal mark not known), else null: valueRead's */
+function numberRead(t) {
+  let s = String(t ?? "").trim().replace(/[\u00a0\u202f']/g, "");
+  if (!/^[-+]?(?:[\d.,]*\d(?:e[-+]?\d+)?|[\d.,]*[.,]\d+)$/i.test(s)) return null;
+  const thousands = sep => new RegExp(`^[-+]?[1-9]\\d{0,2}(?:\\${sep}\\d{3})+$`).test(s);   // "1,250", never "0,500"
+  if (s.includes(",") && s.includes(".")) {   // the last one the decimal mark, the other in thousands: "1,234.5", "1.234,5"
+    const point = s.lastIndexOf(".") > s.lastIndexOf(",") ? "." : ",", sep = point === "." ? "," : ".", at = s.lastIndexOf(point), frac = s.slice(at + 1);
+    s = s.slice(0, at);
+    if (!thousands(sep)) return null;
+    s = s.split(sep).join("") + "." + frac;
+  } else if (s.includes(",")) {   // "4,5" decimal; "1,250" in thousands, or 1.25? unread
+    if (thousands(",") || s.split(",").length > 2) return null;
+    s = s.replace(",", ".");
+  } else if (s.split(".").length > 2) return null;
+  const x = +s, [whole, frac = ""] = s.replace(/^[-+]/, "").split(/e/i)[0].split(".");
+  return Number.isFinite(x) ? {x, sig: Math.max(1, (whole + frac).replace(/^0+/, "").length)} : null;
+}
 /* the one flag rule (#752; server/ranges.py flag, which the importers use too): "H" above the high, "L" below the low,
    whatever value a bound (its comparator c) stands for, else "": "<15" against a low of 15 is low (every value under 15
    is), ">90" against a high of 90 high; "<15" against a low of 10 is neither (it may be 12 or 9). e, a point's edge

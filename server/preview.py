@@ -7,7 +7,11 @@ brought are compared as they are (importers give keys nowadays, so these are few
 
   events      the event's key, else its body (date, kind, title...) without the id
   lab results a point is its series' key (or, without one, the series name and unit) and its time and value as
-              reported; a series adds only the points the profile doesn't have
+              reported; a series adds only the points the profile doesn't have. A text result is a point already
+              here, and a point one, where it reads as that point (#874: _readings, its value read by the one reader
+              of a number, common.value_number, and its comparator): a file read again after a reading of it changed
+              between text and a number (#870's: a FHIR bound, a C-CDA's "4,5", the FHIR export's "=<5" and "1,250"
+              sent as text before, as Quantities now) added its results again beside their older copies
   the rest    entries of the profile-wide lists (problems, upcoming, clinicWeights, milestones, outOfPocket.payments)
               already there, by key or by content
 
@@ -45,11 +49,11 @@ One rule for a result already here (#868), an upload's, a sync's and Type them i
 import collections, copy, json, re
 
 from . import crossmatch, ranges, records
+from .importers import common
 
 ROWS = records.ROWS
 ITEMS_SHOWN = 500   # duplicates listed for the page, at most
 SAMPLES = 3         # what's new shown on the review screen, of each kind (#282)
-PLAIN = re.compile(r"[<>≤≥]?=?\s*-?[\d.,]+|[^\d]+")   # a value as reported that's only a value: "<5", "1,200", "Negative"
 
 
 def _canon(x):
@@ -70,6 +74,27 @@ def _point(p):
 
 def _text(t):
     return _canon(t[:2]) if isinstance(t, list) else _canon(t)
+
+
+def _readings(t, shown, x=None):
+    """A result's value as read (#874): {(its time, its comparator, its number)}, for a text result to match a point it
+    reads as. Its number as imported (x, a point's), else each reading of its value as reported (shown) by the one
+    reader of a number, common.value_number, whichever decimal mark its file writes ("1,250" is 1250 or 1.25, "0,500"
+    0.5, "=<5" "<=" 5); none for a value that isn't a number ("Negative"). A text result here and a point it reads as
+    are one result: the same file read again, its reading changed between text and a number (#870), added it again."""
+    cmp = common.comparator(shown)
+    xs = {x} if crossmatch._num(x) is not None else {common.value_number(shown, dc) for dc in (None, True, False)}
+    return {(str(t), cmp, n) for n in xs if n is not None}
+
+
+def _point_read(p):
+    """_readings of a point [time, number, low, high, flag, value as reported...]."""
+    return _readings(p[0], p[5] if len(p) > 5 else "", p[1] if len(p) > 1 else None) if isinstance(p, list) and p else set()
+
+
+def _text_read(t):
+    """_readings of a text result [time, value as reported]."""
+    return _readings(t[0], t[1]) if isinstance(t, list) and len(t) > 1 else set()
 
 
 def _entry(x):
@@ -172,10 +197,15 @@ def find(db, pid, fmt, data, whole=None):
         here = {n for n, p in enumerate(s.get("pts") or []) if _point(p) in have_p}
         said = {n: what for n in here if (what := _brings(have_p[_point(s["pts"][n])], s["pts"][n]))}
         copies[i], brings[i] = set(said), said   # (#846) kept with what it says
-        points[i] = here - copies[i]
+        # (#874) a text result here that a point reads as is that result (its reading changed, #870), and a text
+        # result a point here reads as
+        read_t = set().union(*map(_text_read, old_txt)) if old_txt else set()
+        read_p = set().union(*map(_point_read, old_pts)) if s.get("txt") else set()
+        points[i] = (here - copies[i]) | {n for n, p in enumerate(s.get("pts") or []) if n not in here and old_txt
+                                          and (_point(p) in have_t or _point_read(p) & read_t)}
         if i in olds:   # (#869) those saying something else of their range and flag than a copy here: sent again?
             olds[i] = (olds[i], {n for n in here if any(crossmatch.said(o) != crossmatch.said(s["pts"][n]) for o in have_p[_point(s["pts"][n])])})
-        txt[i] = {n for n, t in enumerate(s.get("txt") or []) if _text(t) in have_t}
+        txt[i] = {n for n, t in enumerate(s.get("txt") or []) if _text(t) in have_t or _text(t) in have_p or _text_read(t) & read_p}
         if not (s.get("pts") or s.get("txt")):
             empty.add(i)
 
@@ -394,6 +424,17 @@ def _latest(rows, n=SAMPLES):
     return sorted(rows, key=lambda r: r["t"], reverse=True)[:n]
 
 
+def _sample_value(p):
+    """A result point's value as the review's samples say it: as reported, else its number where the value as reported
+    has more in it than its number (its unit: "82 mm[Hg]"), as it reads by the one reader of a number ("4,5", "<5",
+    "1,200", "=<5" and "1.2E-3" are their numbers, #874: PLAIN, a reader of its own, said "=<5" as "5")."""
+    shown = str(p[5]) if len(p) > 5 and p[5] not in (None, "") else ""
+    x = crossmatch._num(p[1]) if len(p) > 1 else None
+    if x is not None and (not shown or re.search(r"\d", shown) and not any(r[2] == x for r in _readings(p[0], shown))):
+        return f"{x:g}"
+    return shown
+
+
 def samples(new):
     """A few of what's new for the review screen (#282), latest first, SAMPLES of each: {"events": {kind: [{"t",
     "title"}]} (visible events), "results": [{"t", "name", "value", "unit"}] (the value as reported), "allergies",
@@ -407,17 +448,15 @@ def samples(new):
         if not isinstance(s, dict):
             continue
         for p in s.get("pts") or []:
-            if isinstance(p, list) and p:
-                shown = str(p[5]) if len(p) > 5 and p[5] not in (None, "") else ""
-                if not PLAIN.fullmatch(shown) and len(p) > 1 and isinstance(p[1], (int, float)):
-                    shown = f"{p[1]:g}"   # the number, where the value as reported has more in it (its unit: "82 mm[Hg]")
-                results.append({"t": str(p[0])[:10], "name": str(s.get("name") or ""), "value": str(shown), "unit": str(s.get("unit") or "")})
+            if isinstance(p, list) and p:   # (its value said once it's among the few shown: _sample_value)
+                results.append({"t": str(p[0])[:10], "name": str(s.get("name") or ""), "value": p, "unit": str(s.get("unit") or "")})
         for t in s.get("txt") or []:
             if isinstance(t, list) and len(t) > 1:
                 results.append({"t": str(t[0])[:10], "name": str(s.get("name") or ""), "value": str(t[1]), "unit": ""})
     probs = [p for p in new.get("problems") or [] if isinstance(p, dict)]
     listed = lambda rows: _latest([{"t": str(p.get("date") or "")[:10], "title": str(p.get("name") or "")} for p in rows])
-    return {"events": {k: _latest(v) for k, v in sorted(by_kind.items())}, "results": _latest(results),
+    return {"events": {k: _latest(v) for k, v in sorted(by_kind.items())},
+            "results": [{**r, "value": _sample_value(r["value"]) if isinstance(r["value"], list) else r["value"]} for r in _latest(results)],
             "allergies": listed([p for p in probs if p.get("type") == "Allergy"]),
             "problems": listed([p for p in probs if p.get("type") != "Allergy"]),
             "upcoming": _latest([{"t": str(u.get("t") or "")[:10], "title": str(u.get("title") or "")}

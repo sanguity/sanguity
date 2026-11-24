@@ -14,7 +14,9 @@ The rule, match(): two results are possibly the same when all of these hold.
   value  the same value once units are made comparable: common.unit_for spellings, plus exact powers-of-ten changes
          of prefix (121 g/L is 12.1 g/dL; 5.0 mmol/L is 5000 umol/L; 10*9/L is 10*3/uL). Never a conversion that
          needs a molar mass or a factor that isn't exact (units.exact_factor, the table the page's unit preferences
-         share). Values compare as decimals, so 12.10 is 12.1; a comparator ("<0.5") must be the same on both sides.
+         share). Values compare as decimals, so 12.10 is 12.1, each read by the one reader of a number (_value,
+         common.value_number: "4,5" is 4.5, "1.2E-3" 0.0012); a comparator ("<0.5", "=<5" as "<=") must be the same on
+         both sides.
   source the two come from different imports (one import's own repeats are the preview's business, preview.py)
 
 A match is never acted on by itself. It is flagged: in the import preview (for_preview, "possibly the same result
@@ -55,13 +57,12 @@ encounter id carried by both sources, or a claim's link to its encounter, which 
 """
 import collections, json, re
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 
 from . import crypto, db as dbm, ranges, security as sec, units
 from .importers import common
 
 LISTED = 500   # possible matches listed for the page, at most
-_NUM = re.compile(r"^\s*([<>]=?)?\s*(-?\d+(?:\.\d+)?)\s*$")
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 # ---------------------------------------------------------------- the rule
@@ -131,14 +132,14 @@ def _shown(p):
 
 
 def _value(p):
-    """(comparator, Decimal) of a point's value, or None for one that isn't a number."""
-    m = _NUM.match(_shown(p))
-    if not m:
-        return None
-    try:
-        return m.group(1) or "", Decimal(m.group(2))
-    except InvalidOperation:
-        return None
+    """(comparator, Decimal) of a point's value, or None for one that isn't a number: its number as imported (read with
+    its file's decimal mark: "1,250" in a spreadsheet with semicolons is 1.25), else its value as reported (a drawer
+    row's), read by the one reader of a number, common.value_number; its comparator by common.comparator. (#874: a
+    reader of its own read "4,5", "=<5", "≤ 5" and "1.2E-3" as no number, so a copy printed so was never possibly the
+    same result, nor a drawer row printed so found by its result.)"""
+    shown = _shown(p)
+    x = common.value_number(p[1] if len(p) > 1 and _num(p[1]) is not None else shown)
+    return None if x is None else (common.comparator(shown), Decimal(str(x)))
 
 
 def same_value(sa, pa, sb, pb):

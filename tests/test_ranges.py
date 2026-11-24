@@ -300,6 +300,40 @@ class Rules(unittest.TestCase):
                         ('d: "M0,0L1,1"', 0), ('abnMark(x, y, "H")', 0), ('/^\\d+$/', 0), ('{Hospital: 1}', 0), ('{L: LW, R}', 0), ('/^hi/', 0)):
             self.assertEqual(len(self.FLAG_READS.findall(t)), want, t)   # (the search itself)
 
+    # #874: the page reads a value as printed, its number and its bound, by ranges.js valueRead (and rangeCmp) only.
+    # Every other pattern in www/js of a number's digits with a decimal mark (#870's, test_importers NUMBER_SHAPE) or of a
+    # bound ("[<>", "≤|≥", "<=|"), by (file, the piece found): how many, and why it reads no value
+    NUMBER_SHAPE = re.compile(r"\\d[+*]?\)?\(?(?:\?:)?(?:\\\.|\[[^\]]*[.,][^\]]*\])|\\d[+*]?,\\d|\[(?:\\d|0-9)[^\]]*[.,]|\\d\{1,3\}\(\?:[,.]"
+                              r"|\[<>|≤\|≥|<=\||=<\|")
+    PAGE_NUMBERS = {
+        ("drawer.js", r"\d+(?:[.,]"): (1, "factSays: a fact's one number as written, matched to a key fact's value as written"),
+        ("trends.js", "[<>"): (1, "rangeNote: a range as rangeWords writes it, kept on one line"),
+        ("trends.js", r"[\d."): (2, "rangeNote: a range as rangeWords writes it, kept on one line"),
+        ("util.js", r"[\d."): (3, "keepDates: a date kept on one line; ipHost: an address"),
+        ("util.js", r"\d+)\."): (2, "ip4: an IP address"),
+        ("util.js", r"\d+\."): (1, "ip4: an IP address"),
+        ("util.js", r"\d[\d,]"): (1, "a heading's count, \"(1,234)\", left off the name an ⓘ says"),
+    }
+
+    def test_numbers_read_in_one_place_on_the_page(self):
+        """#874: the page reads a value as printed by one reader, ranges.js valueRead (beside rangeCmp), as the server
+        reads one by common.value_number (#870). units.js (ucNum, ucText, ucRange, ucSig and its own test of a bound) and
+        drawer.js (rowSaid) had patterns of their own that read "=<5", "> OR = 60" and "4,5" as no number, so a converted
+        unit said "=<5" as "0.500" (its bound gone) and a drawer row "> OR = 60" as text. Every pattern of a number's
+        digits with a decimal mark, or of a bound, in www/js outside ranges.js is one PAGE_NUMBERS lists."""
+        js_dir, found = os.path.join(ROOT, "www", "js"), collections.Counter()
+        for n in sorted(os.listdir(js_dir)):
+            if not n.endswith(".js") or n == "ranges.js":
+                continue
+            with open(os.path.join(js_dir, n), encoding="utf-8") as f:
+                text = re.sub(r"/\*.*?\*/|(?<![:\"'`\\])//[^\n]*", lambda m: re.sub(r"[^\n]", " ", m.group()), f.read(), flags=re.S)
+            found.update((n, m.group()) for m in self.NUMBER_SHAPE.finditer(text))
+        self.assertEqual(dict(found), {k: c for k, (c, _) in self.PAGE_NUMBERS.items()},
+                         "a value read outside ranges.js: read it with valueRead (its number, bound and figures) or rangeCmp")
+        for t, want in ((r"/^\s*([<>]=?|≤|≥)?\s*(-?\d+(?:\.\d+)?)\s*$/", 3), (r"/^\s*-?\d+(\.\d+)?\s*$/", 1), (r"/[\d.-]+/", 1),
+                        (r"/^\s*[<>≤≥]/", 1), (r"/(<=|>=|=<|=>)/", 2), (r"/^\d{4}-\d{2}-\d{2}$/", 0), (r"/\d+/", 0), (r"/^(\d+)px$/", 0)):
+            self.assertEqual(len(self.NUMBER_SHAPE.findall(t)), want, t)   # (the search itself)
+
 
 # a portal export: ferritin with no range (twice), one with its own range, one flagged by the lab with no range,
 # one in another unit; vitamin D with no range at all
@@ -1031,7 +1065,7 @@ class Api(unittest.TestCase):
         export, each range its text alone; and the FHIR export read back, of the spreadsheet's import (each result's
         range as read) and of lab days whose rows have no result of their own (the export reading each row)."""
         import csv, types
-        from server.importers import carespace, ccda, common, csv_labs, epic_mychart, fhir, pdf_labs
+        from server.importers import carespace, ccda, csv_labs, epic_mychart, fhir, pdf_labs
         out = []
 
         def sheet(name, delim):
@@ -1061,11 +1095,7 @@ class Api(unittest.TestCase):
             f.write(M.ccda(rows))
         out.append(("a C-CDA document", ccda.parse({"rows.xml": os.path.join(tmp, "rows.xml")})["data"], None, None))
         with open(os.path.join(tmp, "rows.json"), "w", encoding="utf-8") as f:
-            json.dump({"resourceType": "Bundle", "type": "collection", "entry": [{"resource": {
-                "resourceType": "Observation", "id": f"r{i}", "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
-                "code": {"text": n}, "effectiveDateTime": t, "referenceRange": [{"text": rng}],
-                "valueQuantity": {"value": common.value_number(v), "unit": u, **({"comparator": c} if (c := common.comparator(v)) else {})}}}
-                for i, (n, u, t, v, rng) in enumerate(rows)]}, f)
+            f.write(M.fhir(rows))
         out.append(("a FHIR bundle", fhir.parse({"rows.json": os.path.join(tmp, "rows.json")})["data"], None, None))
         out.append(("a CareSpace export", carespace.parse(M.carespace(rows, os.path.join(tmp, "carespace")))["data"], None, None))
         out.append(("a MyChart export", epic_mychart.parse(M.epic(rows, os.path.join(tmp, "mychart")))["data"], None, None))
@@ -1234,6 +1264,48 @@ class Api(unittest.TestCase):
                  for _, _, t, v, _ in values if M.COMMAS[v][mode] is None]
                 + [f"quest-{t[:10]}.pdf: 1 range couldn't be read, so it isn't used for the flag: {lab} ('{r}')."
                    for _, _, t, _, r in ranged if M.COMMAS[r[1:]][mode] is None]), mode)
+
+    def test_2_read_again_adds_nothing(self):
+        """#874: a file read again after #870 changed its reading between text and a number adds nothing. #870's
+        spellings (ranges_matrix BOUND_VALUES' "=<5", "≤ 5", "≥60", "> 10"...; COMMAS' "0,500", "1,250", "1.2E-3",
+        "5,0E3"...; commas_back()'s two spreadsheets) through every importer (_every_importer) and the FHIR export of the
+        spreadsheets' import read back, each stored as an older reading kept it (ranges_matrix read_before(): each result
+        as text, as given or as printed, as the FHIR importer kept a bound, C-CDA "4,5" and the export sent "=<5" and
+        "1,250"; and each text result now a point, as a PDF report's "1,250" was), then read again as it reads now; and
+        the other way round. preview.find matched points only with points and text only with text, so each was added again beside
+        its older copy."""
+        import copy
+        from server import preview
+        from server.importers import csv_labs
+        tmp, (lab, unit) = tempfile.mkdtemp(dir=TMP), M.SPELLED_AS
+        rows = M.bounded(TODAY) + [(lab, unit, M.day(60 - i, TODAY), n, "") for i, n in enumerate(M.COMMAS)]
+        printed = {t[:10]: v for _, _, t, v, _ in rows}   # (a day each)
+        reads = [(how, data, lambda s, p: printed.get(str(p[0])[:10])) for how, data, *_ in self._every_importer(rows, tmp)]
+        for name, text in M.commas_back(TODAY):   # #870's two spreadsheets, and the FHIR export of each's import read back
+            with open(os.path.join(tmp, name), "w", encoding="utf-8") as f:
+                f.write(text)
+            data = csv_labs.parse({name: os.path.join(tmp, name)})["data"]
+            sent = {(s["name"], str(p[0])[:10]): p[5] for s in data["labs"] for p in s["pts"]}   # what the export sent as text
+            reads += [(name, data, None), (f"{name}'s FHIR export, read back", self._read_back(data, "Commas")[0],
+                                           lambda s, p, sent=sent: sent.get((s["name"], str(p[0])[:10])))]
+
+        db = dbm.connect()
+        try:
+            owner = db.execute("SELECT id FROM users WHERE username='robin'").fetchone()["id"]
+            for how, data, text in reads:
+                older = M.read_before(data, text)
+                self.assertTrue(any(s.get("txt") for s in older["labs"]), how)
+                for first, then, which in ((older, data, "read again as it reads now"), (data, older, "an older reading of it again")):
+                    pid = prof.create_profile(db, "Read again (fictional)", owner_id=owner)
+                    with dbm.transaction(db):
+                        records.store(db, pid, copy.deepcopy(first), "upload", fmt="csv")
+                    dups = preview.find(db, pid, "csv", then)
+                    new = preview.trim(then, dups)
+                    self.assertEqual(([(s["name"], [p[5] for p in s["pts"]], s.get("txt")) for s in new["labs"] if isinstance(s, dict)],
+                                      preview.adds_anything(new), preview.updates(dups)), ([], False, 0), f"{how}: {which}")
+                    prof.delete_profile(db, pid)
+        finally:
+            db.close()
 
     def test_2_summary_matrix(self):
         """#752: one rule for a result's range, flag and source, through the server. The matrix (tests/ranges_matrix.py): a

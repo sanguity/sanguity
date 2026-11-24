@@ -21,13 +21,10 @@ function ucChoose(conv) {
   }
   return null;
 }
-const ucNum = v => v == null || v === "" ? null : typeof v === "number" ? v : /^\s*-?\d+(\.\d+)?\s*$/.test(String(v)) ? +v : null;
-/* significant figures written in a number's text ("0.50" has 2, "95" has 2, "120" has 3) */
-function ucSig(text) {
-  const m = String(text).match(/-?(\d+)(?:\.(\d+))?/); if (!m) return 3;
-  const digits = (m[1] + (m[2] || "")).replace(/^0+/, "");
-  return Math.max(1, m[2] != null ? digits.length : digits.length || 1);
-}
+/* a number as given, not as a bound ("95", "4,5", 95), else null; the significant figures a value is written with ("0.50"
+   has 2, "95" 2, "120" 3; 3 where it isn't one). Each by ranges.js valueRead, the page's one reader of a value (#874) */
+const ucNum = v => { const r = v == null || v === "" ? null : valueRead(v); return r && !r.c ? r.x : null; };
+const ucSig = text => valueRead(text)?.sig ?? 3;
 /* a converted number, to as many significant figures as it was reported with (at least 3) */
 function ucFmt(x, sig) {
   if (!isFinite(x)) return "";
@@ -36,17 +33,19 @@ function ucFmt(x, sig) {
   return x.toFixed(dec);
 }
 function ucValue(uc, v) { const n = ucNum(v); return n == null || !uc ? v : n * uc.a + uc.b; }
-/* a value as text ("<0.5", "95", "Positive") in the chosen unit; text that isn't a number stays as it is */
+/* a value as text ("<0.5", "95", "=<5", "> OR = 60", "Positive") in the chosen unit, its bound as printed; text that
+   isn't a number stays as it is (ranges.js valueRead, #874) */
 function ucText(uc, text) {
-  const m = String(text ?? "").match(/^\s*([<>]=?|≤|≥)?\s*(-?\d+(?:\.\d+)?)\s*$/);
-  return m ? (m[1] || "") + ucFmt(+m[2] * uc.a + uc.b, ucSig(m[2])) : text;
+  const r = valueRead(text);
+  return r ? r.b + ucFmt(r.x * uc.a + uc.b, r.sig) : text;
 }
-/* a reference range as text ("70-99", "<5.7", "3.5 – 5.0"), or null when it isn't one that can be converted */
+/* a reference range as text ("70-99", "<5.7", "3.5 – 5.0", "≤ 100"), or null when it isn't one that can be converted:
+   a limit, or two numbers either side of "-", "–" or "to", each read by ranges.js valueRead (#874) */
 function ucRange(uc, text) {
-  const m = String(text ?? "").match(/^\s*([<>]=?|≤|≥)?\s*(-?\d+(?:\.\d+)?)\s*(?:(-|–|to)\s*(-?\d+(?:\.\d+)?))?\s*$/);
-  if (!m || (m[1] && m[4])) return null;
-  const f = n => ucFmt(+n * uc.a + uc.b, ucSig(n));
-  return (m[1] || "") + f(m[2]) + (m[4] != null ? `–${f(m[4])}` : "");
+  const f = r => ucFmt(r.x * uc.a + uc.b, r.sig), one = valueRead(text);
+  if (one) return one.b + f(one);
+  const m = /^\s*(-?[^\s–-][^–-]*?)\s*(?:-|–|\bto\b)\s*(\S.*?)\s*$/i.exec(String(text ?? "")), a = m && valueRead(m[1]), b = m && valueRead(m[2]);
+  return a && b && !a.c && !b.c ? `${f(a)}–${f(b)}` : null;
 }
 /* convert series in place (lab series from DATA.labs, or watch series), each with its own conv */
 function applyUnits(list) {
@@ -56,13 +55,15 @@ function applyUnits(list) {
     s.uc = {...uc, from: s.unit};
     s.unit = uc.to;
     for (const p of s.pts) {
-      const has = p[5] != null && p[5] !== "", shown = has ? String(p[5]) : p[1] == null ? "" : fmtNum(p[1]);
-      // a reported text with its own unit ("37 Cel", from an importer that converted it) is kept whole
+      const has = p[5] != null && p[5] !== "", shown = has ? String(p[5]) : p[1] == null ? "" : fmtNum(p[1]), read = has ? valueRead(shown) : null;
+      // a reported text with its own unit ("37 Cel", from an importer that converted it) is kept whole: text that isn't a
+      // value as ranges.js valueRead reads one ("4,5", "=<5" and "> OR = 60" are, #874: they were said as their number)
       // its report's range said as Labs says one (ranges.js rangeWords, #782), not one from settings, which isn't the report's
-      p.orig = {v: shown, ref: p.rs === "settings" ? null : rangeWords(p), own: has && ucNum(shown) == null && !/^\s*([<>]=?|≤|≥)\s*[\d.-]+\s*$/.test(shown)};
+      p.orig = {v: shown, ref: p.rs === "settings" ? null : rangeWords(p), own: has && !read};
       if (typeof p[1] === "number") p[1] = p[1] * uc.a + uc.b;
       for (const i of [2, 3]) { const n = ucNum(p[i]); if (n != null) p[i] = +ucFmt(n * uc.a + uc.b, ucSig(p[i])); }
-      if (has) p[5] = !p.orig.own ? ucText(uc, shown) : typeof p[1] === "number" ? ucFmt(p[1], ucSig(shown)) : shown;
+      // its number as imported, converted, with its bound as printed ("=<0.500")
+      if (has) p[5] = typeof p[1] === "number" ? (read ? read.b : "") + ucFmt(p[1], read ? read.sig : ucSig(shown)) : read ? ucText(uc, shown) : shown;
       for (const k of ["lo", "hi"]) if (typeof p[k] === "number") p[k] = p[k] * uc.a + uc.b;
     }
   }
@@ -85,8 +86,8 @@ function applyUnitsToRows(labs, details) {
     if (!d || !Array.isArray(d.rows)) continue;
     for (const [i, row] of d.rows.entries()) {
       const uc = by.get((d.series?.[i] ?? row[0]) + "\u001f" + (row[2] || "")); if (!uc || row.orig) continue;
+      if (!valueRead(row[1])) continue;   // text: nothing to convert (ranges.js valueRead, #874)
       const v = ucText(uc, row[1]);
-      if (v === row[1] && ucNum(row[1]) == null && !/^\s*[<>≤≥]/.test(String(row[1] ?? ""))) continue;   // text: nothing to convert
       row.orig = [row[1], row[2], row[3]];
       const rr = row[3] ? ucRange(uc, row[3]) : row[3];
       row[1] = v; row[2] = uc.to;

@@ -26,6 +26,7 @@ sys.path.insert(0, ROOT)
 from fastapi.testclient import TestClient   # noqa: E402
 
 from server import accounts, config, crossmatch as cm, crypto, db as dbm, main, profiles as prof, records, smart, sync, uploads   # noqa: E402
+from server.importers import common   # noqa: E402
 from tests.whole_records import whole   # noqa: E402  records with every record's details (#217)
 from tests.fakefhir import FakeFHIR   # noqa: E402
 import logging   # noqa: E402
@@ -48,7 +49,7 @@ def S(name, unit, loinc=None, imp=1, key=None):
 
 
 def P(t, v, shown=None):
-    return [t, float(v) if shown is None or cm._NUM.match(str(v)) else None, None, None, "", str(shown if shown is not None else v)]
+    return [t, float(v) if shown is None or common.value_number(str(v)) is not None else None, None, None, "", str(shown if shown is not None else v)]
 
 
 class Rule(unittest.TestCase):
@@ -87,6 +88,29 @@ class Rule(unittest.TestCase):
         self.assertFalse(self.m(a, P(t, 0.5, "<0.5"), b, P(t, 0.5)), "a comparator on one side only")
         self.assertTrue(self.m(a, P(t, 0.5, "<0.5"), b, P(t, 0.5, "< 0.50")))
         self.assertFalse(self.m(a, [t, None, None, None, "", "Yellow"], b, [t, None, None, None, "", "Yellow"]), "numbers only")
+
+    def test_a_value_read_by_the_one_reader_of_a_number(self):
+        """#874: each value read by common.value_number, its comparator by common.comparator, as every importer reads
+        it (#870): a copy printed "4,5", "=<5", "≤ 5", "≥60" or "1.2E-3" was "not a number" to crossmatch's own reader
+        (_NUM), so never possibly the same result as its copy printed "4.5", "<=5" or "0.0012", nor a drawer row printed
+        so found by its result. Its number as imported first: a spreadsheet with semicolons' "1,250" is its 1.25."""
+        t = "2025-03-04T09:45:00"
+        a, b = S("Potassium", "mmol/L", "2823-3"), S("Potassium", "mmol/L", "2823-3", imp=2)
+        pt = lambda x, shown: [t, x, None, None, "", shown]   # noqa: E731
+        for (x, shown), (y, other) in (((4.5, "4,5"), (4.5, "4.5")), ((5, "=<5"), (5, "<=5")), ((5, "≤ 5"), (5, "<=5")),
+                                       ((60, "≥60"), (60, ">= 60")), ((0.0012, "1.2E-3"), (0.0012, "0.0012")),
+                                       ((1.25, "1,250"), (1.25, "1.25")), ((None, "4,5"), (4.5, "4.5")), ((None, "=<5"), (5, "<=5"))):
+            with self.subTest(shown=shown, other=other):
+                self.assertTrue(self.m(a, pt(x, shown), b, pt(y, other)), "possibly the same result")
+        for (x, shown), (y, other) in (((5, "=<5"), (5, "<5")), ((5, "≤ 5"), (5, "5")), ((1.25, "1,250"), (1250, "1250")),
+                                       ((None, "1,250"), (1250, "1250"))):
+            with self.subTest(shown=shown, other=other):
+                self.assertFalse(self.m(a, pt(x, shown), b, pt(y, other)), "another comparator, another number, or unread")
+        # a drawer row printed "4,5" or "=<5" is found by its result, whose value as reported is written otherwise
+        rows = {(1, t[:10]): [(7, 0, ["Potassium", "4,5", "mmol/L", "3.5-5.1", ""]), (7, 1, ["Sodium", "=<5", "mmol/L", "", ""])]}
+        self.assertEqual(cm._row_of(rows, S("Potassium", "mmol/L"), pt(4.5, "4.5")), (7, 0))
+        self.assertEqual(cm._row_of(rows, S("Sodium, Blood", "mmol/L"), pt(5, "<=5")), (7, 1))
+        self.assertIsNone(cm._row_of(rows, S("Sodium, Blood", "mmol/L"), pt(5, "<5")), "another comparator: not its row")
 
     def test_time_to_the_minute_and_date_tolerance(self):
         a, b = S("Hemoglobin", "g/dL", "718-7"), S("Hemoglobin", "g/dL", "718-7", imp=2)

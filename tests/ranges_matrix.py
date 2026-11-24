@@ -449,6 +449,35 @@ def commas_back(today=None):
                               f"{b},08:00,Sodium,147.0,mmol/L,135-145\n")]
 
 
+def fhir(rows):
+    """A fictional FHIR bundle of lab results, each [(test, unit, time, value as given, range as text)] an Observation of
+    its own, its reference range its text alone; a value given as a bound ("=<5", "≥60") a Quantity with its comparator
+    (FHIR's "<", "<=", ">=", ">"), as the one reader of a number reads it (common.value_number)."""
+    import json
+    from server.importers import common
+    return json.dumps({"resourceType": "Bundle", "type": "collection", "entry": [{"resource": {
+        "resourceType": "Observation", "id": f"r{i}", "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
+        "code": {"text": n}, "effectiveDateTime": t, "referenceRange": [{"text": r}],
+        "valueQuantity": {"value": common.value_number(v), "unit": u, **({"comparator": c} if (c := common.comparator(v)) else {})}}}
+        for i, (n, u, t, v, r) in enumerate(rows)]})
+
+
+def read_before(data, printed=None):
+    """An importer's data as a reading before #870 kept it (#874): each result a text result, its value as given
+    (printed(series, point): as printed, where it says: the FHIR export sent "=<5" and "4,5" as text), as the FHIR
+    importer kept a bound and C-CDA a value printed "4,5"; and each text result that reads as a number a result, as a
+    PDF report's "1,250" was one. A copy; data's own left as it is."""
+    import copy
+    from server.importers import common
+    out = copy.deepcopy(data)
+    for s in out.get("labs") or []:
+        if isinstance(s, dict) and not s.get("watch"):
+            was = [[t[0], x, None, None, "", t[1]] for t in s.get("txt") or [] if (x := common.value_number(t[1], False)) is not None]
+            txt = [[p[0], (printed and printed(s, p)) or str(p[5] if len(p) > 5 and p[5] not in (None, "") else p[1])] for p in s.get("pts") or []]
+            s.update(pts=was, n=len(was), txt=txt + [t for t in s.get("txt") or [] if common.value_number(t[1], False) is None])
+    return out
+
+
 def carespace(rows, into):
     """A fictional CareSpace export in the folder into, its lab results [(test, unit, time, value as given, range as
     text)] each with its range as displayed alone, no lower or upper limit (#836). -> the importer's files"""
