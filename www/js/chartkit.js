@@ -228,7 +228,7 @@ function abnMark(cx, cy, f, s = 4.5, cls = "pt abn") {
    the box, so never stretched: a dot in color, or ▲/▼/◆ in red when it's out of range.
    pts: Labs' points ([, value, low, high, flag] with .ts; ckPt makes one), in time order; band false for a measure
    with no range (the watch's, the scale's); r the dot's radius. Decorative: the text beside it says what it shows */
-const ckPt = (ts, v, lo, hi, f) => Object.assign([null, v, lo ?? null, hi ?? null, f || ""], {ts});
+const ckPt = (ts, v, lo, hi, f, e) => Object.assign([null, v, lo ?? null, hi ?? null, f || ""], {ts}, e ? {7: e} : null);   // e: its edge (ranges.js rangeEdge, #780)
 /* the value scale's ends for values vs and the band's lowest low and highest high (null: none) */
 function ckSparkSpan(vs, lo, hi) {
   const v0 = Math.min(...vs), v1 = Math.max(...vs);

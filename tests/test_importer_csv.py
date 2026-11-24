@@ -137,9 +137,10 @@ class Shape(unittest.TestCase):
             self.assertEqual(set(s), {"name", "key", "unit", "panel", "n", "pts", "txt"})
             self.assertEqual(s["n"], len(s["pts"]))
             for p in s["pts"]:
-                self.assertEqual(len(p), 7)
+                self.assertEqual(len(p), 7 + bool(p[7:]))
                 self.assertIsInstance(p[1], (int, float))
                 self.assertEqual(p[6], "CSV")
+                self.assertIn(p[7:], ([], ["<"], [">"]))   # an edge left out of a one-sided range (#780)
         hb = series(self.data, "Hemoglobin")
         self.assertEqual(hb["unit"], "g/dL")
         self.assertEqual(hb["panel"], "CBC")
@@ -161,7 +162,7 @@ class Values(unittest.TestCase):
 
     def test_comparators(self):
         crp = series(self.us["data"], "CRP")["pts"][0]
-        self.assertEqual((crp[1], crp[5], crp[3], crp[4]), (5, "<5", 10, ""))
+        self.assertEqual((crp[1], crp[5], crp[3], crp[4], crp[7]), (5, "<5", 10, "", "<"))
         fer = series(self.eu["data"], "Ferritin")["pts"][0]
         self.assertEqual((fer[1], fer[5], fer[4]), (1000, ">1000", "H"))
         vit = series(self.tab["data"], "Vitamin D")["pts"][0]
@@ -169,9 +170,23 @@ class Values(unittest.TestCase):
 
     def test_one_sided_ranges(self):
         ldl = series(self.us["data"], "LDL Cholesterol")["pts"][0]
-        self.assertEqual(ldl[2:5], [None, 100, "H"])
+        self.assertEqual(ldl[2:5] + ldl[7:], [None, 100, "H", "<"])   # "<100": 100 itself is outside it (#780)
         hdl = series(self.us["data"], "HDL Cholesterol")["pts"][0]
-        self.assertEqual(hdl[2:5], [40, None, ""])
+        self.assertEqual(hdl[2:5] + hdl[7:], [40, None, "", ">"])   # ">40"
+        rows = [("Date", "Test", "Value", "Unit", "Reference range"), ("2025-03-14", "LDL Cholesterol", "100", "mg/dL", "<100"),
+                ("2025-03-15", "LDL Cholesterol", "100", "mg/dL", "<=100"), ("2025-03-16", "LDL Cholesterol", "100", "mg/dL", "up to 100"),
+                ("2025-03-17", "LDL Cholesterol", "100", "mg/dL", "less than 100"), ("2025-03-14", "eGFR", "60", "mL/min", ">60"),
+                ("2025-03-15", "eGFR", "60", "mL/min", ">= 60"), ("2025-03-16", "eGFR", "<=60", "mL/min", ">60")]
+        d = tempfile.mkdtemp()
+        try:
+            with open(os.path.join(d, "edges.csv"), "w", encoding="utf-8") as f:
+                f.write("".join(",".join(r) + "\n" for r in rows))
+            got = csv_labs.parse({"edges.csv": os.path.join(d, "edges.csv")})["data"]
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+        self.assertEqual([[p[3], p[4]] + p[7:] for p in series(got, "LDL Cholesterol")["pts"]],
+                         [[100, "H", "<"], [100, ""], [100, ""], [100, "H", "<"]], "at the edge: high where it's left out (#780)")
+        self.assertEqual([[p[2], p[4]] + p[7:] for p in series(got, "eGFR")["pts"]], [[60, "L", ">"], [60, ""], [60, "L", ">"]])
 
     def test_thousands_separator(self):
         self.assertEqual(series(self.us["data"], "Platelet Count")["pts"][0][1], 1200)

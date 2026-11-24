@@ -4407,7 +4407,7 @@ def main():
                 def where(r):
                     f = r[3].strip()
                     if f: return "above" if f.endswith("High") else "below" if f.endswith("Low") else "flagged"
-                    m = re.match(r"^(?:(-?[\d.]+)–(-?[\d.]+)|≤ (-?[\d.]+)|≥ (-?[\d.]+))", r[2])   # "13.5–17.5", "≤ 5", "≥ 60" (refWords, #752)
+                    m = re.match(r"^(?:(-?[\d.]+)–(-?[\d.]+)|[≤<] (-?[\d.]+)|[≥>] (-?[\d.]+))", r[2])   # "13.5–17.5", "≤ 5", "≥ 60" (refWords, #752), "< 5" (#780)
                     lo, hi = [float(v) if v else None for v in ((m.group(1) or m.group(4)), (m.group(2) or m.group(3)))] if m else (None, None)
                     if lo is None and hi is None: return ""
                     return "above" if hi is not None and num(r) > hi else "below" if lo is not None and num(r) < lo else "in"
@@ -20297,10 +20297,11 @@ def main():
             # ---- #752: one rule for a result's range, flag and source, said the same way everywhere. The matrix
             # (tests/ranges_matrix.py, which tests/test_ranges.py runs through the server): a report's range then none;
             # none then a report's; Settings then a report's; a report's then Settings; a range that changes; "<" and ">"
-            # values at and past each edge of a report's range and of one from Settings. Through Labs (its points, charts,
-            # tables and heatmap), the Overview, Compare, a share link's page, the summary's preview and its PDF: the same
-            # flags, ranges and sources in every one; a band step only under results with that range, each said with its
-            # source; a Then judged against another range than its row's naming it; a value given as a bound placed as one
+            # values at and past each edge of a report's range and of one from Settings; one-sided ranges that leave their
+            # edge out or keep it ("<5" then "<=5", ">60" then ">=60", #780). Through Labs (its points, charts, tables and
+            # heatmap), the Overview, Compare, a share link's page, the summary's preview and its PDF: the same flags,
+            # ranges and sources in every one; a band step only under results with that range, each said with its source;
+            # a Then judged against another range than its row's naming it; a value given as a bound placed as one
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
             import ranges_matrix as M752
             db = dbm.connect()
@@ -20314,7 +20315,7 @@ def main():
               const r = await fetch(`api/profiles/${pid}/links`, {method: 'POST', headers: h, body: JSON.stringify({sections: ['results']})});
               return (await r.json()).path.split('#')[1]; }""", [mpid, M752.OVERRIDES, list(M752.CASES)])
             num752 = lambda v: f"{v:g}"
-            words752 = lambda lo, hi: f"{num752(lo)}–{num752(hi)}" if lo is not None and hi is not None else ""
+            words752 = M752.words   # "30–110", "< 5", "≤ 5", "> 60", "≥ 60" (#780)
             FLAG752 = {"H": "▲ High", "L": "▼ Low", "": ""}
             # a chart's marks in order, each [x, flagged, under a band step], and its band's words (Labs, the share page, the summary)
             CHART752 = r"""s => { const bands = [...s.querySelectorAll('rect.refband')].map(r => [+r.getAttribute('x'), +r.getAttribute('x') + +r.getAttribute('width')]);
@@ -20335,6 +20336,8 @@ def main():
             page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {mpid}", timeout=20000)
             got752 = js("Object.fromEntries(SERIES.filter(s => !s.watch).map(s => [s.name, s.pts.map(p => [p[4] || '', p[2], p[3], p.rs || 'report'])]))")
             bad752 += [f"Labs' {n}: {got752.get(n)} not {j}" for n, j in M752.JUDGED.items() if got752.get(n) != j]
+            edge752 = js("Object.fromEntries(SERIES.filter(s => !s.watch).map(s => [s.name, s.pts.map(p => p[7] || '')]))")
+            bad752 += [f"Labs' {n}: its edges {edge752.get(n)}" for n in M752.CASES if edge752.get(n) != M752.edges(n)]   # (#780)
             js("labs => { state.tables.clear(); state.sel = new Set(labs); applyPreset('all'); switchTab('labs', 'chart'); renderLabs(); }", list(M752.CASES))
             settle(600)
             for n, j in M752.JUDGED.items():
@@ -20343,7 +20346,8 @@ def main():
             settle(400)
             for n, j in M752.JUDGED.items():   # each row its own range and source, and its flag, newest first
                 rows = js(f"[...document.querySelectorAll('#charts .chart[data-lab=\"{n}\"] table.data tbody tr')].map(r => [r.cells[2].textContent, r.cells[3].textContent])")
-                want = [[words752(lo, hi) + (" (range from settings)" if src == "settings" and lo is not None else ""), FLAG752[f]] for f, lo, hi, src in j][::-1]
+                want = [[words752(lo, hi, e) + (" (range from settings)" if src == "settings" and lo is not None else ""), FLAG752[f]]
+                        for (f, lo, hi, src), e in zip(j, M752.edges(n))][::-1]
                 if [[r[0].split(" · ")[0], r[1]] for r in rows] != want:
                     bad752.append(f"Labs' {n} table: {rows} not {want}")
             js("labs => { for (const n of labs) state.tables.delete(n); switchTab('labs', 'heatmap'); }", list(M752.CASES))
@@ -20376,7 +20380,7 @@ def main():
                 f, lo, hi, src = j[-1]
                 if ov752[0].get(n) != [FLAG752[f], "Against a range from settings" if f and src == "settings" else ""]:
                     bad752.append(f"the Overview's {n} tile: {ov752[0].get(n)}")
-                if (n in ov752[1]) != bool(f) or f and ov752[1][n] != f"ref {words752(lo, hi)}" + (" (range from settings)" if src == "settings" else ""):
+                if (n in ov752[1]) != bool(f) or f and ov752[1][n] != f"ref {words752(lo, hi, M752.edges(n)[-1])}" + (" (range from settings)" if src == "settings" else ""):
                     bad752.append(f"the Overview's out-of-range {n}: {ov752[1].get(n)}")
             # a share link's page: its reports' ranges and flags only (it sends no range from Settings), each band step said "on report"
             page.goto(base + f"/share.html#{tok752}")
@@ -20387,7 +20391,7 @@ def main():
                 j = M752.share_judged(n)
                 hist = js(f"""(() => {{ const b = [...document.querySelectorAll('#share-results .share-open')].find(b => b.textContent === {json.dumps(n)}), h = document.getElementById(b.getAttribute('aria-controls'));
                   return [[...h.querySelector('table').tBodies[0].rows].map(r => [r.cells[1].querySelector('.share-flag')?.textContent || '', r.cells[2].textContent]).reverse(), h.querySelector('svg.ck-solo') && ({CHART752})(h.querySelector('svg.ck-solo'))]; }})()""")
-                if hist[0] != [[FLAG752[f], words752(lo, hi)] for f, lo, hi, _ in j]:
+                if hist[0] != [[FLAG752[f], words752(lo, hi, e)] for (f, lo, hi, _), e in zip(j, M752.edges(n))]:
                     bad752.append(f"the share page's {n}: {hist[0]}")
                 steps = [s for s in M752.STEPS[n] if s[1].endswith("on report")]
                 if not hist[1]:
@@ -20521,6 +20525,66 @@ def main():
                   not bad781, bad781)
             db = dbm.connect()
             prof_r.delete_profile(db, cpid)
+            db.close()
+            # ---- #780: a one-sided range keeps whether its limit includes its edge ("<5" leaves 5 out, "<=5" keeps it;
+            # ">60", ">=60"). The page's rule and words against the server's over a grid of values, ranges, bounds and
+            # edges; then the matrix's one-sided cases through the real CSV importer (ranges_matrix printed()): each
+            # result's flag, range and edge on Labs, its table's words, its lab panel's counts and range, and each lab day's
+            # rows in the drawer, the range as its report printed it beside the same flag ("5" beside "<5" ▲ High)
+            from server import summary as sum780
+            from server.importers import csv_labs as csv780
+            grid780 = [[v, lo, hi, c, e] for v in (4, 5, 6) for lo, hi in ((None, 5), (5, None), (3, 5)) for c in ("", "<", "<=", ">", ">=")
+                       for e in ("", "<", ">")]
+            page780 = js("""g => g.map(([v, lo, hi, c, e]) => [rangeFlag(v, lo, hi, c, e), rangeWords(Object.assign([0, v, lo, hi], {7: e}))])""", grid780)
+            bad780 = [f"rangeFlag{tuple(x)} {got}, the server's {[rng.flag(*x), sum780.range_words(x[1], x[2], x[4])]}" for x, got in zip(grid780, page780)
+                      if got != [rng.flag(*x), sum780.range_words(x[1], x[2], x[4]) or None]]
+            tmp780 = tempfile.mkdtemp()
+            with open(os.path.join(tmp780, "one-sided.csv"), "w", encoding="utf-8") as f780:
+                f780.write("Date,Time,Test,Value,Unit,Reference range\n" + "".join(f"{t[:10]},{t[11:16]},{n},{v},{u},{r}\n" for n, u, t, v, r, _ in M752.printed()))
+            data780 = csv780.parse({"one-sided.csv": os.path.join(tmp780, "one-sided.csv")})["data"]
+            shutil.rmtree(tmp780, ignore_errors=True)
+            db = dbm.connect()
+            epid = prof_r.create_profile(db, "One-sided (fictional)", owner_id=owner)
+            with dbm.transaction(db):
+                rec_r.store(db, epid, data780, "upload", fmt="csv")
+            db.close()
+            page.goto(base + f"/?profile={epid}")
+            page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {epid}", timeout=20000)
+            got780 = js("Object.fromEntries(SERIES.filter(s => !s.watch).map(s => [s.name, s.pts.map(p => [p[4] || '', p[2], p[3], p[7] || ''])]))")
+            for n780 in M752.PRINTED:
+                want780 = [[f, lo, hi, e] for (f, lo, hi, _), e in zip(M752.JUDGED[n780], M752.edges(n780))]
+                if got780.get(n780) != want780:
+                    bad780.append(f"Labs' {n780}: {got780.get(n780)} not {want780}")
+            js("labs => { state.tables.clear(); state.sel = new Set(labs); applyPreset('all'); switchTab('labs', 'chart'); for (const n of labs) state.tables.add(n); renderLabs(); }", list(M752.PRINTED))
+            settle(400)
+            for n780 in M752.PRINTED:
+                rows780 = js(f"[...document.querySelectorAll('#charts .chart[data-lab=\"{n780}\"] table.data tbody tr')].map(r => [r.cells[2].textContent.split(' · ')[0], r.cells[3].textContent])")
+                want780 = [[words752(lo, hi, e), FLAG752[f]] for (f, lo, hi, _), e in zip(M752.JUDGED[n780], M752.edges(n780))][::-1]
+                if rows780 != want780:
+                    bad780.append(f"Labs' {n780} table: {rows780} not {want780}")
+            js("labs => { for (const n of labs) state.tables.delete(n); }", list(M752.PRINTED))
+            for n780, (out780, range780) in {"C-Reactive Protein": ("▲ 4 above", "< 5 and ≤ 5 mg/L"), "eGFR": ("▼ 4 below", "> 60 and ≥ 60 mL/min/1.73m2")}.items():
+                js("n => openLab(SERIES.find(s => s.name === n))", n780)   # its panel: counted by the same flags, each range said so
+                settle(300)
+                panel780 = js("Object.fromEntries([...document.querySelectorAll('#drawer dd[data-k]')].map(d => [d.dataset.k, d.textContent]))")
+                js("closeDrawer()")
+                if [panel780.get(k) for k in ("in", "out", "range")] != ["4 of 8 (50%)", out780, f"{range780}: each result's own"]:
+                    bad780.append(f"the lab panel's {n780}: {panel780}")
+            for d780 in sorted({r[2][:10] for r in M752.printed()}):   # each lab day's rows in the drawer: [value, range, flag]
+                js("d => { closeDrawer(); return openEvent(EV.find(e => e.k === 'lab' && isoDay(e.ts) === d)); }", d780)
+                page.wait_for_function("document.querySelectorAll('#dbody details.res table.data tbody tr').length > 1", timeout=5000)
+                rows780 = sorted([[c.replace(" ", " ") for c in r] for r in js(
+                    "[...document.querySelectorAll('#dbody details.res table.data tbody tr')].map(r => [r.cells[1].textContent, r.cells[2].textContent, r.cells[3].textContent])")])
+                want780 = sorted([f"{v} {u}", r, FLAG752[M752.JUDGED[n][i][0]]] for n, u, at, v, r, i in M752.printed() if at[:10] == d780)
+                if rows780 != want780:
+                    bad780.append(f"the drawer's {d780}: {rows780} not {want780}")
+            js("closeDrawer()")
+            check("#780: a one-sided range keeps whether its limit includes its edge: the page's rule and words are the server's (5 against "
+                  "“<5” ▲ High, against “<=5” in range; 60 against “>60” ▼ Low), and the matrix's “<5”, “<=5”, “>60” and “>=60” cases through "
+                  "the CSV importer are flagged and said the same on Labs, in its lab panel and in the drawer, beside the range as printed",
+                  not bad780, bad780[:12])
+            db = dbm.connect()
+            prof_r.delete_profile(db, epid)
             db.close()
             js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
             # ---- About this person (#194): on Sharing, a group of its own under Profiles: the birth date and the sex

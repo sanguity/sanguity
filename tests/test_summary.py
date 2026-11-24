@@ -268,8 +268,9 @@ class Summary(unittest.TestCase):
         hb = next(t for t in s["trends"] if t["name"] == "Hemoglobin")
         self.assertEqual((hb["then"], hb["now"]["value"], hb["now"]["flag"], hb["change"], hb["since"]),
                          ({"value": "12.1", "date": d(-60), "flag": None}, "11.8", "Low", "-0.3", 2))
-        self.assertEqual([p[2:] for p in hb["spark"]], [[None, 12.0, 15.5, None, "12.1"], ["Low", 12.0, 15.5, None, "11.4"], ["Low", 12.0, 15.5, None, "11.8"]],
-                         "each with its flag and its own range, for the sparkline (#299), from its report (#649), and its value as given (#718)")
+        self.assertEqual([p[2:] for p in hb["spark"]], [[None, 12.0, 15.5, None, "12.1", ""], ["Low", 12.0, 15.5, None, "11.4", ""], ["Low", 12.0, 15.5, None, "11.8", ""]],
+                         "each with its flag and its own range, for the sparkline (#299), from its report (#649), its value as given "
+                         "(#718) and its range's edge (none: a range of two limits keeps both, #780)")
         # both sources' ferritin are one trend, each result with its own range
         s = self.preview(labs=["Ferritin", "Not a lab"])
         fe = next(t for t in s["trends"] if t["name"] == "Ferritin")

@@ -19,7 +19,7 @@ import xml.etree.ElementTree as ET
 from datetime import date
 
 from . import common
-from .common import canonical_lab, comparator, range_flag
+from .common import canonical_lab, comparator, range_edge, range_flag
 
 NAME = "ccda"
 LABEL = "C-CDA health summary (XML)"
@@ -330,7 +330,9 @@ def _value(obs):
 
 
 def _range(doc, obs):
-    """(low, high, as displayed) from an observation's referenceRange."""
+    """(low, high, as displayed, edge) from an observation's referenceRange. edge: "<" where a one-sided range leaves
+    its limit's edge out (#780), as a high with inclusive="false" does, or a range displayed "<5" beside a high of 5;
+    ">" the same for a low (common.range_edge)."""
     for rr in _all(obs, "h:referenceRange/h:observationRange"):
         v = _f(rr, "h:value")
         if v is not None:
@@ -339,18 +341,21 @@ def _range(doc, obs):
             hi_s = hi_el.get("value") if hi_el is not None and hi_el.get("nullFlavor") is None else None
             lo, hi = _num(lo_s), _num(hi_s)
             if lo is not None or hi is not None:
-                txt = f"{lo_s} - {hi_s}" if lo is not None and hi is not None else f">={lo_s}" if lo is not None else f"<={hi_s}"
-                return lo, hi, doc.ref(_f(rr, "h:text")) or txt
+                out = (lo_el if lo is not None else hi_el).get("inclusive") == "false" and (lo is None or hi is None)
+                op = (">" if lo is not None else "<") + ("" if out else "=")
+                txt = f"{lo_s} - {hi_s}" if lo is not None and hi is not None else f"{op}{lo_s if lo is not None else hi_s}"
+                shown = doc.ref(_f(rr, "h:text")) or txt
+                return lo, hi, shown, range_edge(txt if out else shown, lo, hi)
         txt = doc.ref(_f(rr, "h:text"))
         if txt:
             m = re.match(r"^\s*(-?\d+(?:\.\d+)?)\s*[-–]\s*(-?\d+(?:\.\d+)?)", txt)
-            return (float(m.group(1)), float(m.group(2)), txt) if m else (None, None, txt)
-    return None, None, ""
+            return (float(m.group(1)), float(m.group(2)), txt, "") if m else (None, None, txt, "")
+    return None, None, "", ""
 
 
-def _flag(obs, x, lo, hi, raw=""):
+def _flag(obs, x, lo, hi, raw="", edge=""):
     """H or L as the lab flagged it (or, unflagged, against the range by the one rule, server/ranges.py flag: "<0.5"
-    against a low of 0.5 is low, #752); A for abnormal without a direction."""
+    against a low of 0.5 is low, #752; 5 against "<5" high, #780); A for abnormal without a direction."""
     abnormal = False
     for ic in _all(obs, "h:interpretationCode"):
         c = (ic.get("code") or "").upper()
@@ -359,7 +364,7 @@ def _flag(obs, x, lo, hi, raw=""):
         if c in ("L", "LL", "LU", "<"):
             return "L"
         abnormal = abnormal or c in ("A", "AA")
-    return range_flag(x, lo, hi, comparator(raw)) or ("A" if abnormal else "")
+    return range_flag(x, lo, hi, comparator(raw), edge) or ("A" if abnormal else "")
 
 
 def _results(doc, out):
@@ -378,11 +383,11 @@ def _results(doc, out):
                     and code.get("codeSystem") and code.get("code") else None
                 t = _when(obs) or t_org
                 x, raw, unit = _value(obs)
-                lo, hi, rng = _range(doc, obs)
+                lo, hi, rng, edge = _range(doc, obs)
                 if not unit and x is not None:      # a string value: the unit may only be written in the range
                     m = re.match(r"^\s*-?[\d.]+\s*[-–]\s*-?[\d.]+\s+(\S+)\s*$", rng)
                     unit = m.group(1) if m else ""
-                flag = _flag(obs, x, lo, hi, raw)
+                flag = _flag(obs, x, lo, hi, raw, edge)
                 if not t:
                     out.warnings.append(f"{doc.rel}: skipped result {name!r} with no date.")
                     continue
@@ -396,7 +401,8 @@ def _results(doc, out):
                 sname, s = out.series(name, unit, loinc, other)
                 out.panel_votes[sname][panel] += 1
                 if x is not None:
-                    s["pts"].append([t, _clean(x), _clean(lo), _clean(hi), flag if flag in ("H", "L") else "", raw, doc.src])
+                    s["pts"].append([t, _clean(x), _clean(lo), _clean(hi), flag if flag in ("H", "L") else "", raw, doc.src]
+                                    + ([edge] if edge else []))
                 elif raw:
                     s["txt"].append([t, raw])
             if not rows:

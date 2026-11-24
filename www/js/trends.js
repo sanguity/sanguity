@@ -176,7 +176,7 @@ function readText(s, p) {
    ones, and that the band (or each table row) follows each result's own (#58) */
 function rangeNote(s, pts, table) {
   const d = s.watch ? null : rangesDiffer(pts);
-  const parts = d ? d.split(/((?:[≤≥] )?-?[\d.]+(?:–-?[\d.]+)?)/).map((t, i) => i % 2 ? el("span", {class: "nw", text: t}) : t) : [];   // a range isn't broken across lines
+  const parts = d ? d.split(/((?:[<>≤≥] )?-?[\d.]+(?:–-?[\d.]+)?)/).map((t, i) => i % 2 ? el("span", {class: "nw", text: t}) : t) : [];   // a range isn't broken across lines
   return d ? el("p", {class: "rdiff"}, el("b", {text: RANGE_DIFFERS + ": "}), ...parts, ` ${s.unit}. `,
     table ? "Each row gives its own." : "The shaded band steps with each result's own range.") : null;
 }

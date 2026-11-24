@@ -27,7 +27,7 @@ import os
 import re
 from datetime import datetime
 
-from .common import canonical_lab, lab_day_sub, lab_day_title, loinc_of, range_flag
+from .common import canonical_lab, lab_day_sub, lab_day_title, loinc_of, range_edge, range_flag
 
 NAME = "csv"
 LABEL = "Lab results spreadsheet (CSV)"
@@ -238,7 +238,8 @@ _BOUND_RE = re.compile(r"\s*(<=|>=|=<|=>|<|>|≤|≥|up to|less than|greater tha
 
 
 def _range(s, decimal_comma):
-    """(low, high) from "13.5 - 17.5", "13,5-17,5", "<200", ">= 60" or "up to 5"; (None, None) when unreadable."""
+    """(low, high) from "13.5 - 17.5", "13,5-17,5", "<200", ">= 60" or "up to 5"; (None, None) when unreadable. Whether
+    a one-sided one leaves its edge out ("<200" does, "<=200" doesn't) is common.range_edge's (#780)."""
     s = (s or "").strip()
     if not s:
         return None, None
@@ -265,13 +266,13 @@ _FLAGS = {"h": "H", "hh": "H", "high": "H", "hi": "H", "a h": "H", ">": "H", "ab
           "below": "L", "below low normal": "L", "critical low": "L", "panic low": "L"}
 
 
-def _flag(text, x, cmp, lo, hi):
+def _flag(text, x, cmp, lo, hi, edge=""):
     """H, L or "" from a flag column, falling back to the range by the one rule (server/ranges.py flag, #752: "<15"
-    against a low of 15 is low)."""
+    against a low of 15 is low; 5 against "<5" high, #780)."""
     t = _norm(text) or (text or "").strip()
     if t in _FLAGS:
         return _FLAGS[t]
-    return range_flag(x, lo, hi, cmp)   # "A", "Abnormal", "N", "Normal" and the like: the range says which way
+    return range_flag(x, lo, hi, cmp, edge)   # "A", "Abnormal", "N", "Normal" and the like: the range says which way
 
 
 # ------------------------------------------------------------------ dates
@@ -563,9 +564,10 @@ def read_row(get, decimal_comma=False, order=None, bounds=True):
         if not range_text:
             range_text = (f"{_fmt(lo)} - {_fmt(hi)}" if lo is not None and hi is not None else
                           f">={_fmt(lo)}" if lo is not None else f"<={_fmt(hi)}" if hi is not None else "")
-    flag = _flag(flag_text, x, cmp, lo, hi)
+    edge = range_edge(range_text, lo, hi)   # "<" for "<5": 5 is outside it (#780)
+    flag = _flag(flag_text, x, cmp, lo, hi, edge)
     return {"t": t, "test": test, "x": x, "reported": reported, "unit": unit, "range": range_text,
-            "lo": lo, "hi": hi, "flag": flag, "panel": get("panel"), "lab": get("lab"), "loinc": get("loinc")}, None
+            "lo": lo, "hi": hi, "edge": edge, "flag": flag, "panel": get("panel"), "lab": get("lab"), "loinc": get("loinc")}, None
 
 
 def date_order(values):
@@ -677,7 +679,7 @@ def build(results, source=SOURCE, sub="Imported spreadsheet"):
             continue
         name = names[(r["test"], _unit_key(r["unit"]))]
         s = series.setdefault(name, {"unit": r["unit"], "pts": [], "txt": []})
-        s["pts"].append([r["t"], r["x"], r["lo"], r["hi"], r["flag"], r["reported"], source])
+        s["pts"].append([r["t"], r["x"], r["lo"], r["hi"], r["flag"], r["reported"], source] + ([r["edge"]] if r.get("edge") else []))
         panels[name][r["panel"]] += 1
     for r in results:   # text results go with the test's main series, or one of their own
         if r["x"] is not None:

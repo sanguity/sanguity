@@ -347,7 +347,8 @@ def _build(db, link, today, section):
             if pick and name not in pick:
                 continue
             pts = [{"t": _text(p["t"], 25), "value": summary.value_text(p), "v": p["v"], "range": summary.range_text(p),
-                    "lo": p["lo"], "hi": p["hi"], "flag": summary.out_of_range(p)} for p in s["pts"] if _in(p["d"], scope)]
+                    "lo": p["lo"], "hi": p["hi"], "flag": summary.out_of_range(p), **({"edge": p["edge"]} if p["edge"] else {})}
+                   for p in s["pts"] if _in(p["d"], scope)]   # (edge: "<" where its range is "<5", leaving 5 out, #780)
             if pts:
                 label = nick.get(name) if isinstance(nick.get(name), str) and nick[name].strip() else name
                 labs.append({"name": name, "label": _text(label, 200), "panel": panel.get(name, ""), "unit": s["unit"],

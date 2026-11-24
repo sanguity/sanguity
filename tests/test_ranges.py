@@ -394,6 +394,96 @@ class Api(unittest.TestCase):
         finally:
             db.close()
 
+    def test_2_one_sided_ranges(self):
+        """#780: a one-sided range keeps whether its limit includes its edge, from each importer that reads one through
+        storage and the FHIR export, and the one rule honours it. The edge as printed and the rule on their own (5
+        against "<5" is high, against "<=5" neither; 60 against ">60" low; ">=5" against "<5" high); then the matrix's
+        one-sided cases (ranges_matrix PRINTED: "<5" then "<=5", ">60" then ">=60", at and past the edge) as a CSV, as
+        Quest-like PDF reports ("< OR = 5") and as a FHIR bundle (a source's own high beside its printed "<5", a printed
+        range alone): each importer's points have the matrix's range and edge, each judged as JUDGED; and the FHIR
+        export says a limit that leaves its edge out in its text alone (FHIR's low and high include theirs), which the
+        FHIR importer reads back as it was."""
+        import types, zipfile
+        from server import fhir_export
+        from server.importers import common, csv_labs, fhir, pdf_labs
+        self.assertEqual([common.range_edge(t, lo, hi) for t, lo, hi in [
+            ("<5", None, 5), ("< 5 mg/L", None, 5), ("less than 5", None, 5), ("under 5", None, 5), ("<=5", None, 5),
+            ("≤5", None, 5), ("=<5", None, 5), ("< OR = 5", None, 5), ("less than or equal to 5", None, 5), ("up to 5", None, 5),
+            (">60", 60, None), ("> 60", 60, None), ("greater than 60", 60, None), (">=60", 60, None), ("≥ 60", 60, None),
+            ("> OR = 60", 60, None), ("<5", None, 6), ("<5", 1, 5), ("3.5-5.1", 3.5, 5.1), ("<5,5", None, 5.5), ("", None, 5)]],
+            ["<", "<", "<", "<", "", "", "", "", "", "", ">", ">", ">", "", "", "", "", "", "", "<", ""])
+        self.assertEqual([ranges.flag(v, None, 5, ranges.comparator(t), e) for v, t, e in [
+            (5, "5", "<"), (5, "5", ""), (4.9, "4.9", "<"), (5, ">=5", "<"), (5, ">=5", ""), (5, ">5", ""), (5, "<5", "<"), (5, "<=5", "<")]],
+            ["H", "", "", "H", "", "H", "", ""])
+        self.assertEqual([ranges.flag(v, 60, None, ranges.comparator(t), e) for v, t, e in [
+            (60, "60", ">"), (60, "60", ""), (60.1, "60.1", ">"), (60, "<=60", ">"), (60, "<=60", ""), (60, "<60", ""), (60, ">60", ">")]],
+            ["L", "", "", "L", "", "L", ""])
+
+        rows, tmp = M.printed(TODAY), tempfile.mkdtemp(dir=TMP)
+        edge = lambda p: p[7] if len(p) > 7 else ""
+
+        def same(data, how, stored=True, plain=False):
+            """each one-sided lab's points as the matrix has them: value, range, value as given and edge, the flag
+            stored (stored) and as judged; plain: only the results given as a number (FHIR keeps a bound as text)"""
+            by = {s["name"]: s["pts"] for s in data["labs"]}
+            for n in M.PRINTED:
+                want = [[v, lo, hi, t, e, f, f if stored else ""] for (_, v, lo, hi, _, t), e, (f, *_) in zip(M.CASES[n], M.EDGES[n], M.JUDGED[n])
+                        if not (plain and ranges.comparator(t))]
+                got = [[p[1], p[2], p[3], p[5], edge(p), ranges.judge(p[1], p[2], p[3], p[4], p[5], None, edge(p))[2], p[4]] for p in by.get(n, [])]
+                self.assertEqual(got, want, f"{how}: {n}")
+
+        with open(os.path.join(tmp, "one-sided.csv"), "w", encoding="utf-8") as f:
+            f.write("Date,Time,Test,Value,Unit,Reference range\n" + "".join(f"{t[:10]},{t[11:16]},{n},{v},{u},{r}\n" for n, u, t, v, r, _ in rows))
+        same(csv_labs.parse({"one-sided.csv": os.path.join(tmp, "one-sided.csv")})["data"], "a CSV")
+
+        gen = types.ModuleType("pdf_fixture_generator")
+        gen.__file__ = os.path.join(ROOT, "tests", "fixtures", "importers", "pdf-labs", "generate.py")
+        with open(gen.__file__, encoding="utf-8") as f:
+            exec(compile(f.read(), gen.__file__, "exec"), gen.__dict__)
+        pdfs = {}
+        for t in sorted({r[2] for r in rows}):   # a report a day, Quest's way of printing "<=5": "< OR = 5"
+            pdfs[f"quest-{t[:10]}.pdf"] = path = os.path.join(tmp, f"quest-{t[:10]}.pdf")
+            gen.write(path, gen.quest([("MATRIX PANEL (FICTIONAL)", None)] + [(n, v, "", r.replace("<=", "< OR = ").replace(">=", "> OR = "), u)
+                                                                             for n, u, at, v, r, _ in rows if at == t],
+                                      collected=f"{t[5:7]}/{t[8:10]}/{t[:4]} / 08:00 EST"))
+        same(pdf_labs.parse(pdfs)["data"], "PDF reports", stored=False)   # (a PDF's flag is the one printed: none here)
+
+        def obs(i, n, u, t, v, r):
+            c = ranges.comparator(v)
+            q = {"value": float(v[len(c):]) if "." in v else int(v[len(c):]), "unit": u, **({"comparator": c} if c else {})}
+            x = float(r.lstrip("<>=")) if "." in r else int(r.lstrip("<>="))
+            rr = {"text": r} if "=" in r else {("high" if r[0] == "<" else "low"): {"value": x}, "text": r}   # a source's own limit beside "<5"
+            return {"resource": {"resourceType": "Observation", "id": f"m{i}", "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
+                                 "code": {"text": n}, "effectiveDateTime": t, "valueQuantity": q, "referenceRange": [rr]}}
+        with open(os.path.join(tmp, "one-sided.json"), "w", encoding="utf-8") as f:
+            json.dump({"resourceType": "Bundle", "type": "collection", "entry": [obs(i, *r[:5]) for i, r in enumerate(rows)]}, f)
+        same(fhir.parse({"one-sided.json": os.path.join(tmp, "one-sided.json")})["data"], "a FHIR bundle", plain=True)
+
+        db = dbm.connect()
+        try:   # the FHIR export of the matrix's records, and read back
+            owner = db.execute("SELECT id FROM users WHERE username='robin'").fetchone()["id"]
+            pid = prof.create_profile(db, "One-sided (fictional)", owner_id=owner)
+            with dbm.transaction(db):
+                records.store(db, pid, M.records(TODAY), "upload", fmt="csv")
+            blob = b"".join(fhir_export.stream(fhir_export.plan(db, pid, {"labs"}), "robin", zone="America/New_York"))
+            prof.delete_profile(db, pid)
+        finally:
+            db.close()
+        with zipfile.ZipFile(io.BytesIO(blob)) as z:
+            z.extract("bundle.json", tmp)
+            bundle = json.loads(z.read("bundle.json"))
+        said = {}
+        for e in bundle["entry"]:
+            r = e["resource"]
+            if r["resourceType"] == "Observation" and r["code"].get("text") in M.PRINTED:
+                rr = (r.get("referenceRange") or [{}])[0]
+                said.setdefault(r["code"]["text"], []).append((r["effectiveDateTime"][:10], rr.get("low", {}).get("value"), rr.get("high", {}).get("value"), rr.get("text")))
+        for n in M.PRINTED:   # "<5" as its text alone, "<=5" as a high of 5
+            want = [(None, None, f"{'<' if hi is not None else '>'}{lo if hi is None else hi}") if e else (lo, hi, None)
+                    for (_, _, lo, hi, *_), e in zip(M.CASES[n], M.EDGES[n])]
+            self.assertEqual([x[1:] for x in sorted(said.get(n, []))], want, f"the FHIR export's {n}")
+        same(fhir.parse({"bundle.json": os.path.join(tmp, "bundle.json")})["data"], "the FHIR export, read back", plain=True)
+
     def test_2_summary_matrix(self):
         """#752: one rule for a result's range, flag and source, through the server. The matrix (tests/ranges_matrix.py): a
         report's range then none; none then a report's; Settings then a report's; a report's then Settings; a range that
@@ -423,12 +513,14 @@ class Api(unittest.TestCase):
         judged = {n: [[p["flag"], p["lo"], p["hi"], p["rs"]] for p in series[n]["pts"]] for n in labs}
         self.assertEqual(judged, M.JUDGED, "each result judged by the one rule: its report's, worked out against its report's "
                                            "range, or a range from settings (\"<15\" against a low of 15 is low)")
+        self.assertEqual({n: [p["edge"] for p in series[n]["pts"]] for n in labs}, {n: M.edges(n) for n in labs},
+                         "each one-sided range keeps whether its limit includes its edge (#780)")
         # the band's steps: each covers the results with its range, none beside a result without one, each said with its source
         for n in labs:
             ts = [datetime.date.fromisoformat(p["d"]).toordinal() for p in series[n]["pts"]]
-            got = [[[i for i, t in enumerate(ts) if a < t < b], f"{summary.range_words(lo, hi)} {summary.band_source(rs)}"]
-                   for a, b, lo, hi, rs in ranges.steps([(t, p["lo"], p["hi"], p["rs"]) for t, p in zip(ts, series[n]["pts"])],
-                                                        -float("inf"), float("inf"))]
+            got = [[[i for i, t in enumerate(ts) if a < t < b], f"{summary.range_words(lo, hi, e)} {summary.band_source(rs)}"]
+                   for a, b, lo, hi, rs, e in ranges.steps([(t, p["lo"], p["hi"], p["rs"], p["edge"]) for t, p in zip(ts, series[n]["pts"])],
+                                                           -float("inf"), float("inf"))]
             self.assertEqual(got, M.STEPS[n], n)
         # the importers' flag is the rule's: a CSV's "<30" against its own 30–110 is low, as Labs and the summary say
         from server.importers import csv_labs
@@ -449,6 +541,8 @@ class Api(unittest.TestCase):
             want = [[{"L": "Low", "H": "High"}.get(j[0]), j[1], j[2], ranges.SOURCE if j[3] == ranges.SOURCE else None]
                     for p, j in zip(series[n]["pts"], M.JUDGED[n]) if p in line]
             self.assertEqual([q[2:6] for q in tr[n]["spark"]], want, f"{n}: the chart's and sparkline's points")
+            self.assertEqual([q[7] for q in tr[n]["spark"]], [e for p, e in zip(series[n]["pts"], M.edges(n)) if p in line],
+                             f"{n}: the chart's points' edges (#780)")
         oor = {o["name"]: [o["value"], o["flag"], o["range"], o["out"], o["of"]] for o in s["out_of_range"]}
         self.assertEqual(oor, M.OUT_OF_RANGE, "out of range since then: \"<30\", \"<25\", \">110\" and \">120\" among them")
         notes = s["notes"]
@@ -488,8 +582,9 @@ class Api(unittest.TestCase):
         self.assertEqual(r.status_code, 200, r.text)
         view = TestClient(main.app, base_url="http://testserver").post("/api/share/view", json={"token": r.json()["path"].split("#", 1)[1]}, headers=H)
         self.assertEqual(view.status_code, 200, view.text)
-        got = {x["name"]: [[q["flag"], q["lo"], q["hi"], q["range"]] for q in x["results"][::-1]] for x in view.json()["results"]}
-        want = {n: [[{"L": "Low", "H": "High"}.get(f), lo, hi, summary.range_words(lo, hi)] for f, lo, hi, _ in M.share_judged(n)] for n in labs}
+        got = {x["name"]: [[q["flag"], q["lo"], q["hi"], q["range"], q.get("edge", "")] for q in x["results"][::-1]] for x in view.json()["results"]}
+        want = {n: [[{"L": "Low", "H": "High"}.get(f), lo, hi, M.words(lo, hi, e), e] for (f, lo, hi, _), e in zip(M.share_judged(n), M.edges(n))]
+                for n in labs}
         self.assertEqual(got, want, "a share link's flags and ranges: its reports' (none from Settings), each worked out by the one rule")
         db = dbm.connect()
         try:

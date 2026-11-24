@@ -266,6 +266,28 @@ class Keys(unittest.TestCase):
         self.assertEqual(labs["Hemoglobin (mmol/L)"], "loinc:718-7|mmol/L")
         self.assertEqual(labs["Glucose, Blood"], "loinc:2345-7")      # no split, no suffix
 
+    def test_one_sided_range_edges(self):
+        """#780: a one-sided range whose limit leaves its edge out (inclusive="false", shown "<11.0") flags a result at
+        its edge and keeps the edge with the point; one that includes it (the default) doesn't."""
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        with open(os.path.join(FIX, "maple-grove-ccd.xml"), encoding="utf-8") as f:
+            s = f.read()
+        old = ('<value xsi:type="PQ" value="7.1" unit="10*3/uL"/>\n                  <interpretationCode code="N" codeSystem="2.16.840.1.113883.5.83"/>\n'
+               '                  <referenceRange><observationRange>\n                    <value xsi:type="IVL_PQ"><low value="4.0" unit="10*3/uL"/><high value="11.0" unit="10*3/uL"/></value>')
+        self.assertIn(old, s)
+        got = []
+        for incl in (' inclusive="false"', ""):
+            p = os.path.join(tmp, "x.xml")
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(s.replace(old, '<value xsi:type="PQ" value="11.0" unit="10*3/uL"/>\n                  <referenceRange><observationRange>\n'
+                                       f'                    <value xsi:type="IVL_PQ"><high value="11.0" unit="10*3/uL"{incl}/></value>'))
+            d = ccda.parse({"x.xml": p})["data"]
+            wbc = next(x for x in d["labs"] if x["name"] == "WBC")["pts"][0]
+            row = next(r for e in d["details"].values() if isinstance(e, dict) for r in e.get("rows") or [] if r[0] == "WBC")
+            got.append([wbc[3], wbc[4]] + wbc[7:] + [row[3]])
+        self.assertEqual(got, [[11.0, "H", "<", "<11.0"], [11.0, "", "<=11.0"]])
+
     def test_a_childs_vitals(self):
         """#196: a child's weight (under 50 lb, once left out) and head circumference (in cm, or in inches) are kept."""
         tmp = tempfile.mkdtemp()

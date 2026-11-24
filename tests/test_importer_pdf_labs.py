@@ -92,7 +92,7 @@ class Reports(Base):
         self.assertEqual(labs["Creatinine"]["pts"], [["2026-03-14T08:32:00-04:00", 1.32, 0.5, 1.05, "H", "1.32", "Quest"]])
         self.assertEqual(labs["Creatinine"]["key"], "loinc:2160-0")
         self.assertEqual(labs["BUN"]["pts"][0][1:4], [14, 7, 25])       # "UREA NITROGEN (BUN)", by lab-aliases.json
-        self.assertEqual(labs["EGFR"]["pts"][0][1:5], [47, 60, None, "L"])   # "> OR = 60"
+        self.assertEqual(labs["EGFR"]["pts"][0][1:5] + labs["EGFR"]["pts"][0][7:], [47, 60, None, "L"])   # "> OR = 60", 60 kept in it
         self.assertEqual(labs["TSH"]["pts"][0][1:6], [0.01, 0.4, 4.5, "L", "<0.01"])
         self.assertEqual(labs["HEPATITIS C ANTIBODY"]["txt"], [["2026-03-14T08:32:00-04:00", "NON-REACTIVE"]])
         day = next(e for e in d["events"] if e["k"] == "lab")
@@ -275,8 +275,9 @@ class Layouts(unittest.TestCase):
 
     def test_helpers(self):
         from server.importers.pdf_layouts import bounds, is_range, is_unit, is_value, range_and_unit
-        self.assertEqual([bounds(s) for s in ("65-99", "<200", "> OR = 60", ">59", "NEGATIVE", "9-3")],
-                         [(65, 99), (None, 200), (60, None), (59, None), (None, None), (None, None)])
+        self.assertEqual([bounds(s) for s in ("65-99", "<200", "> OR = 60", ">59", "NEGATIVE", "9-3", "< OR = 5", "<=5")],
+                         [(65, 99, ""), (None, 200, "<"), (60, None, ""), (59, None, ">"), (None, None, ""), (None, None, ""),
+                          (None, 5, ""), (None, 5, "")])   # whether a one-sided limit leaves its edge out (#780)
         self.assertTrue(all(map(is_value, ("88", "<0.01", "1,250", "NON-REACTIVE", "2+", "1:40"))))
         self.assertFalse(any(map(is_value, ("SEE NOTE", "TNP", "", "88 H 4"))))
         self.assertTrue(all(map(is_unit, ("mg/dL", "x10E3/uL", "%", "fL", "mL/min/1.73m2"))))
