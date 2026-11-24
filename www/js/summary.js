@@ -108,7 +108,7 @@ const atCell = (value, day, cls) => el("td", {class: cls}, value,
    against where that isn't the row's (the server's own: #717, "4 ▼ Low" sat beside the row's only range, the report's
    3–17; #752, "1.6 ▼ Low" beside 1.5–2.5 from settings, its report's 1.7–2.4 said nowhere), under it in the pane as its
    day is, its numbers kept whole: "(report range 1.7–2.4)", "(settings range 5–20)", "(no range given)" */
-const flagCell = x => atCell([x.flag ? `${x.value} ${sumFlag(x.flag)}` : x.value,
+const flagCell = x => atCell([x.flag ? `${x.value} ${flagWord(x.flag)}` : x.value,
   x.own ? el("span", {class: "sum-at"}, ` (${x.own[0]}`, x.own[1] ? [" ", el("span", {class: "nw", text: x.own[1]})] : null, ")") : null],
   x.date, x.flag ? "flag" : null);
 /* a range kept whole, never broken at its dash (#514: "13.5– / 17.5" in the pane; summary.css makes room for it) */
@@ -124,15 +124,13 @@ const spark = pts => ckSpark(pts.map(([d, v, f, lo, hi, , , e]) => ckPt(zParse(d
    or more. A result's range from settings (its report gave none, #44) is said so (#649): the band's end "from
    settings", a mark flagged against it and the chart's name, as the table says "(settings)". Each mark's title says
    its value as given, as the table does ("<5", not 5: #718) */
-const SUM_FLAG = {High: "▲ High", Low: "▼ Low"};
-const sumFlag = f => SUM_FLAG[f] || "◆ " + f;
 function sumChart(r) {
   const pts = r.spark.map(([d, v, f, lo, hi, rs, t, e]) => Object.assign(ckPt(zParse(d), v, lo, hi, f, e), {d, rs: rs || undefined, t})), name = r.label + (r.unit ? ` (${r.unit})` : "");
   const out = pts.filter(p => p[4]), set = out.filter(p => p.rs).length;
   return el("figure", {class: "sum-chart"}, el("figcaption", {text: name}), ckSolo(pts, {h: 64,
     label: `${name}: a chart of ${pts.length} results, ${fmtDay(pts[0].d)} to ${fmtDay(pts.at(-1).d)}${out.length ? `, ${out.length} ${flaggedWords(out.map(p => p[4]))}` +
       (set ? ` (${set === out.length ? "" : set + " of them "}against a ${RANGE_FROM_SETTINGS})` : "") : ""}. The table above lists the first and the latest.`,
-    say: p => `${fmtDay(p.d)}: ${p.t ?? p[1]}${r.unit ? " " + r.unit : ""}${p[4] ? " " + sumFlag(p[4]) + (p.rs ? ` (${RANGE_FROM_SETTINGS})` : "") : ""}`}));
+    say: p => `${fmtDay(p.d)}: ${p.t ?? p[1]}${r.unit ? " " + r.unit : ""}${p[4] ? " " + flagWord(p[4]) + (p.rs ? ` (${RANGE_FROM_SETTINGS})` : "") : ""}`}));
 }
 /* a measures block's cell (#225): a day, or a local wall time, in this person's format; else its text */
 const measureCell = (kind, v) => !v ? v : kind === "day" ? fmtDay(v) : kind === "time" ? fmtDT(zParse(v)) : v;

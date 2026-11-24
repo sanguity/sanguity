@@ -2045,6 +2045,16 @@ Everything on `main` so far; it becomes the first tagged release.
   takes a decimal comma where it can't be a thousands separator, and a spreadsheet's own decimal commas: each spelling
   gives the same range, its edge and its flag from every one. Results imported before keep what they were read as;
   importing the file again reads them anew.
+- **No view reads a flag's letter itself: Labs' list, Settings' preview of the tiles, the lab panel's counts** (#845):
+  places that read a result's flag by its letter got a report's "A" (#817) wrong. Labs' list of labs marked anything
+  but "H" with ▼, so a Sodium 140 flagged "A" inside its 135–145 showed "▼ 140" in red, read as Low. Settings' preview
+  of the Overview's key-lab tiles read the flags of a lab's first series as sent, H and L only: no ◆, no ▲ or ▼ worked
+  out against a range (its report's or one from Settings), an older import's "HH" or "N" not read as #839 reads them,
+  and a lab's latest from another import missed. And the lab panel counted a ◆ inside its range as not inside it, and
+  a flagged result with no range as one with a range ("0 of 2" inside, of two with none). Every view now reads a flag
+  through one place, its mark, word and way (ranges.js), and a check keeps any other from reading its letter: the list
+  marks a ◆ as ◆, Settings' preview shows what the Overview's tiles do, ◆, a range from Settings and all, and the panel
+  counts a ◆ with a range as inside it and a result with no range as having none.
 - **Removing a reminder's time is said, and Enter in a time doesn't save the reminder** (#853): Remove time 2 said
   nothing, and focus went to the field that now has its name, so a screen reader heard "Time 2" again; since #830 that
   field had focus, and a second Enter there saved the reminder a time short and took the drawer back to the

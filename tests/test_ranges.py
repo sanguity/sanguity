@@ -274,6 +274,32 @@ class Rules(unittest.TestCase):
         self.assertEqual(crossmatch._carry([t, 4.0, None, None, "N", "4.0"], ks, [t, 4.0, None, None, "H", "4.0"], ks)[4], "H",
                          "Same result: the kept copy's “N” keeps no flag from the other's “H”")
 
+    # a flag read by its letter or word, in a script (comments left out): a regex on its first letter (/^h/i,
+    # /^\s*[hl]/i), a comparison with a flag's letter ("H", "L", "A", "HH", "LL", "AA", "N"), a case of one, a map or
+    # list keyed by them or by the summary's words ({H: ...}, {High: ...}, ["H", "L"])
+    FLAG_READS = re.compile(r"""/\^(?:\\s\*)?(?:\[[hlHL]{1,4}\]|[hlHL])/|[=!]==?\s*["'](?:[HLA]|HH|LL|AA|N)["']|["'](?:[HLA]|HH|LL|AA|N)["']\s*[=!]==?"""
+                            r"""|\bcase\s*["'][HLA]["']|[{,]\s*["']?(?:H|HH|High)["']?\s*:|\[\s*["'](?:H|High)["']\s*,\s*["'](?:L|Low)["']""")
+
+    def test_flags_read_in_one_place(self):
+        """#845: no view reads a flag's letter itself. Every script in www/js reads a result's flag through ranges.js
+        (readFlag for one as stored, FLAG_OF for its mark, word and way, flagWord, flagOut, flagSaysNeither, statusOf,
+        flaggedWords): Labs' list marked a ◆ with ▼ ("H" or else ▼), Settings' tile preview read H and L only, and the
+        lab panel counted a ◆ inside its range as outside it. ranges.js is the one file that may (FLAG_WAY, FLAG_OF)."""
+        js_dir, found = os.path.join(ROOT, "www", "js"), []
+        for n in sorted(os.listdir(js_dir)):
+            if not n.endswith(".js") or n == "ranges.js":
+                continue
+            with open(os.path.join(js_dir, n), encoding="utf-8") as f:
+                text = re.sub(r"/\*.*?\*/|(?<![:\"'`\\])//[^\n]*", lambda m: re.sub(r"[^\n]", " ", m.group()), f.read(), flags=re.S)
+            for m in self.FLAG_READS.finditer(text):
+                line = text.count("\n", 0, m.start()) + 1
+                found.append(f"www/js/{n}:{line}: {text.splitlines()[line - 1].strip()[:120]}")
+        self.assertEqual(found, [], "a flag read by its letter outside ranges.js: read it with FLAG_OF, flagWord, flagOut or statusOf")
+        for t, want in (('f === "H"', 1), ("/^h/i.test(f)", 1), ('/^\\s*[hl]/i.test(f)', 1), ('{H: "▲", L: "▼"}[f]', 1), ('{High: "▲ High"}', 1),
+                        ('["H", "L"].includes(f)', 1), ('case "A":', 1), ('"L" !== f', 1), ('/^https?:/', 0), ('{value: "H", text: "High"}', 0),
+                        ('d: "M0,0L1,1"', 0), ('abnMark(x, y, "H")', 0), ('/^\\d+$/', 0), ('{Hospital: 1}', 0), ('{L: LW, R}', 0), ('/^hi/', 0)):
+            self.assertEqual(len(self.FLAG_READS.findall(t)), want, t)   # (the search itself)
+
 
 # a portal export: ferritin with no range (twice), one with its own range, one flagged by the lab with no range,
 # one in another unit; vitamin D with no range at all

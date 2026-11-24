@@ -255,6 +255,45 @@ def flagged(flags, form="count"):
     return FLAGGED_WORDS[form]["A" in flags]
 
 
+# #845: what reads a flag reads it through ranges.js, none by its letter: Labs' list of labs (a ◆ was ▼), Settings'
+# preview of the key-lab tiles (H and L as stored only) and the lab panel's counts (a ◆ inside its range counted outside
+# it, a flagged result with no range as one with a range). Each case's results as judged (JUDGED, COPIES_SEEN, ...): the
+# list's latest value with its mark (listed), and the panel's counts (panel)
+MARK = {"H": "▲", "L": "▼", "A": "◆"}
+
+
+def listed(flag, given, unit):
+    """A lab's row in Labs' list: its latest value as given, its unit, its flag's mark before it: "◆ 20 U/L"."""
+    return (MARK[flag] + " " if flag else "") + f"{given} {unit}"
+
+
+def panel(judged):
+    """The lab panel's "Inside own range", its row of those flagged by mark and "No range on the report" (by their keys,
+    in, out and norange) for results judged so ([flag, low, high, ...] each): inside its range, one with a range and no ▲
+    or ▼ (a ◆ is placed by its range where it can be: inside it); a flagged result with no range has none."""
+    ranged = [lo is not None or hi is not None for _, lo, hi, *_ in judged]
+    inside = sum(1 for (f, *_), r in zip(judged, ranged) if r and f not in ("H", "L"))
+    out = [f"{MARK[k]} {n} {w}" for k, w in (("H", "above"), ("L", "below"), ("A", "flagged")) for n in [sum(1 for f, *_ in judged if f == k)] if n]
+    want = {"in": f"{inside} of {sum(ranged)} ({int(inside / sum(ranged) * 100 + .5)}%)" if any(ranged) else "None has a range"}
+    if any(ranged) or out:
+        want["out"] = " · ".join(out) or "None"
+    if not all(ranged):
+        want["norange"] = f"{ranged.count(False)} result{'s' if ranged.count(False) > 1 else ''}"
+    return want
+
+
+def latest_of(cases, keys):
+    """Of two imports' cases (COPIES, LATEST), each (lab, unit) of keys: its latest result's value as given; and each lab's
+    tile, the (lab, unit) whose latest is the latest (the first, in import order, of two at one time), as the Overview
+    and Settings' preview show it. -> ({(lab, unit): value}, {lab: (lab, unit)})"""
+    at = {k: min((d, imp, t) for imp, rows in cases[k].items() for d, _, _, _, _, t, *_ in rows) for k in keys}
+    tiles = {}
+    for k in keys:
+        if k[0] not in tiles or at[k][:2] < at[tiles[k[0]]][:2]:
+            tiles[k[0]] = k
+    return {k: v[2] for k, v in at.items()}, tiles
+
+
 def words(lo, hi, edge=""):
     """A range as every page, the summary, its PDF and a share link say it (ranges.js rangeWords, summary.range_words):
     "30–110", "< 5", "≤ 5", "> 60", "≥ 60"; "" for none."""

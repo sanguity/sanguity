@@ -117,8 +117,8 @@ const refText = p => rangeWords(p) && "ref " + refWords(p);
 const rangeSrc = st => st.rs === "settings" ? "from settings" : "on report";
 const rangeSaid = st => `${st.key} ${rangeSrc(st)}`;
 /* ---- flagged results, said one way (#819): a ▲ or ▼ is outside its range; a ◆, a report's flag that says neither way
-   (an "A"), is flagged on its report, its value inside its range or with none, and is "Flagged" everywhere (charts.js
-   FLAG_OF, the summary and share links: summary.out_of_range). Every heading, count and note of flagged results says
+   (an "A"), is flagged on its report, its value inside its range or with none, and is "Flagged" everywhere (FLAG_OF
+   below, the summary and share links: summary.out_of_range). Every heading, count and note of flagged results says
    them by flaggedWords(flags, form): flags, each result's (p[4], or the summary's "High", "Low", "Flagged"); form "its"
    for one result each ("outside its reference range": the Overview's list, the lab panel), "count" for a number of
    them ("7 outside reference range": Labs' chart, a share link's and the summary's charts, the heatmap), "short" for a
@@ -127,6 +127,32 @@ const rangeSaid = st => `${st.key} ${rangeSrc(st)}`;
    server/ranges.py flagged_words is the same, for the summary */
 const FLAGGED_FORMS = {its: ["outside its reference range", " or flagged on its report"], count: ["outside reference range", " or flagged on their report"],
   short: ["out of range", " or flagged"], head: ["Outside", " or flagged"]};
-const flagSaysNeither = f => !!String(f ?? "").trim() && !/^\s*[hl]/i.test(f);   // a ◆ (FLAG_OF)
+/* ---- a flag as every view reads it (#845), here and nowhere else: no view reads a flag's letter itself
+   (tests/test_ranges.py searches www/js for one), since a ◆ read as "not H" was ▼ on Labs' list. FLAG_OF(f): a
+   result's flag (p[4] as applyRangeOverrides reads it, or the summary's and share links' "High", "Low", "Flagged") as
+   {mark, word, way, cls, past, place}: ▲ "High" (way 1) for one that says high, ▼ "Low" (way -1) low, ◆ "Flagged"
+   (way 0) for any other, one that says neither way (an "A", #819); null for none. cls: a tile's status ("hi", "lo",
+   "flag"); past: a tooltip's "Above range", "Below range"; place: where the lab panel counts it ("above", "below",
+   "flagged"). flagWord(f): "▲ High", "▼ Low", "◆ Flagged" or ""; flagPast(f): "▲ Above range" and the like;
+   flagOut(f): a ▲ or ▼, outside its range (a ◆ is inside its range, where it has one, or has none); flagSaysNeither:
+   a ◆ */
+const FLAG_SAYS = {H: {mark: "▲", word: "High", way: 1, cls: "hi", past: "Above range", place: "above"},
+  L: {mark: "▼", word: "Low", way: -1, cls: "lo", past: "Below range", place: "below"},
+  A: {mark: "◆", word: "Flagged", way: 0, cls: "flag", past: "Flagged", place: "flagged"}};
+const FLAG_OF = f => !String(f ?? "").trim() ? null : FLAG_SAYS[/^\s*h/i.test(f) ? "H" : /^\s*l/i.test(f) ? "L" : "A"];
+const flagWord = f => (w => w ? `${w.mark} ${w.word}` : "")(FLAG_OF(f));
+const flagPast = f => (w => w ? `${w.mark} ${w.past}` : "")(FLAG_OF(f));
+const flagOut = f => !!FLAG_OF(f)?.way;
+const flagSaysNeither = f => FLAG_OF(f)?.way === 0;
+/* a result's status as a tile, a row or a tooltip says it, the Overview's and Settings' preview of it alike (#845):
+   its flag (FLAG_OF: ▲ and ▼ are text, the marks for out of range, ◆ a flag its report gives that says neither way,
+   an "A" inside its range, #782: it was said "In range"), else "In range" where it has a range, with the ✓ an icon
+   (#257); title "Against a range from settings" for one judged against one (#44). -> {cls, text, icon, title} or null */
+function statusOf(p) {
+  if (!p) return null;
+  const f = FLAG_OF(p[4]), st = f ? {cls: f.cls, text: flagWord(p[4])} : (p[2] != null || p[3] != null) ? {cls: "ok", text: "In range", icon: "check"} : null;
+  if (st && p.rs === "settings") st.title = "Against a " + RANGE_FROM_SETTINGS;
+  return st;
+}
 const flaggedWords = (flags, form = "count") => FLAGGED_FORMS[form][0] + ([...flags].some(flagSaysNeither) ? FLAGGED_FORMS[form][1] : "");
 const capFirst = t => t.charAt(0).toUpperCase() + t.slice(1);

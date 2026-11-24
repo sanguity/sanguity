@@ -16,15 +16,6 @@ function insurerHint(rows) {
   return "From " + listOf(s.map(([n, a, b], i) => `${n} (${monthYear(a)}${i === s.length - 1 ? " on" : " – " + monthYear(b)})`)) + " claims.";
 }
 const seriesBy = n => SERIES.find(s => s.name === n);
-function statusOf(p) {
-  if (!p) return null;
-  // its flag as Labs says it (charts.js flagWord): ▲ and ▼ are text, the marks for out of range, ◆ a flag its report
-  // gives that says neither way (an "A" inside its range, #782: it was said "In range"); the ✓ an icon (#257)
-  const f = p[4], st = f ? {cls: /^h/i.test(f) ? "hi" : /^l/i.test(f) ? "lo" : "flag", text: flagWord(f)}
-    : (p[2] != null || p[3] != null) ? {cls: "ok", text: "In range", icon: "check"} : null;
-  if (st && p.rs === "settings") st.title = "Against a " + RANGE_FROM_SETTINGS;   // #44
-  return st;
-}
 /* a tile's sparkline (chartkit.js ckSpark, #299): a lab's latest in its colour, the watch's and scale's a measure (#301) */
 const spark = (s, pts, {band = true} = {}) => ckSpark(pts, {band, color: s.watch ? "var(--measure)" : "var(--c-lab)"});
 /* a tile or row to its lab's chart on Labs, over the last 6 months (the records bar's "6m") */
@@ -191,7 +182,7 @@ function ovKeyLabs(lastDraw) {
   const flags = el("div", {class: "ov-out", id: "ovOut"}, el("p", {class: "ov-out-say", text: out.length
     ? `${capFirst(flaggedWords(out.map(o => o.last[4]), "its"))} at its latest result (${out.length}):` : "Nothing outside its reference range at its latest result."}));   // (#819)
   for (const o of out.slice(0, 14)) {
-    const st = statusOf(o.last), word = {hi: "High", lo: "Low"}[st.cls] || "Flagged";
+    const st = statusOf(o.last), word = FLAG_OF(o.last[4]).word;
     flags.append(el("div", {class: "ov-row", ...pressable(() => goSeries(o.s.name))},
       el("span", {class: "n", text: nice(o.s.name)}), el("span", {class: "v"}, `${o.last[5] || fmtNum(o.last[1])} ${o.s.unit} `, el("span", {class: "st " + st.cls, text: st.text}), ucOrig(o.s, o.last) ? el("span", {class: "orig", text: " reported " + ucOrig(o.s, o.last)}) : null),
       el("span", {class: "r", text: refText(o.last)}),

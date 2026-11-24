@@ -13,13 +13,13 @@ const labShown = () => drawer.classList.contains("open") && drawer.dataset.lab !
    words (the name, and the unit where the row gives it) */
 const labOpener = (s, cls, text = nice(s.name)) => el("button", {class: `cell-btn lab-open ${cls}`.trim(), type: "button", text,
   "aria-haspopup": "dialog", onclick: () => openLab(s)});
-/* where a result sits against its own range: "in", "above", "below", "flagged" (another flag), or "" (no range and no
-   flag). By its flag, as the table and the chart's ▲/▼ show it: its report's, else the one ranges.js works out against
-   its range (applyRangeOverrides, #752), so a result with a range and no flag is inside it */
-function labWhere(p) {
-  const f = FLAG_OF(p[4]);
-  return f ? (f[1] === "High" ? "above" : f[1] === "Low" ? "below" : "flagged") : p[2] == null && p[3] == null ? "" : "in";
-}
+/* a result with a range (its report's, or one from Settings), and one inside it: with a range, and no ▲ or ▼. By its
+   flag, as the table and the chart's marks show it (ranges.js FLAG_OF: its report's, else the one worked out against
+   its range, applyRangeOverrides, #752), so a result with a range and no flag is inside it, and so is a ◆, a flag its
+   report gives that says neither way, which is placed by its range where the range can place it (#817, #845: it was
+   counted as not inside; and a flagged result with no range as one with a range) */
+const labRanged = p => p[2] != null || p[3] != null;
+const labIn = p => labRanged(p) && !flagOut(p[4]);
 /* the decimals a result is printed with, so a median or a change is said to the same places ("14.8", "0.91") */
 const labDec = p => (/\.(\d+)/.exec(String(p[5] || p[1]))?.[1].length) || 0;
 /* a result given as the value measured, not as a bound ("<0.5", ">90", ranges.js rangeCmp): a change is worked out only
@@ -36,15 +36,16 @@ function labStats(pts) {
   const ex = pts.filter(labSure), m = ex.length, by = [...ex].sort((a, b) => a[1] - b[1]), mid = by[(m - 1) >> 1];
   let median = mid ? mid[5] || fmtNum(mid[1]) : null;
   if (m && m % 2 === 0) { const v = (mid[1] + by[m >> 1][1]) / 2, t = v.toFixed(dec + 1); median = t.endsWith("0") ? v.toFixed(dec) : t; }
-  const where = {in: 0, above: 0, below: 0, flagged: 0, "": 0};
-  for (const p of pts) where[labWhere(p)]++;
+  const where = {above: 0, below: 0, flagged: 0};   // by mark: ▲, ▼, ◆
+  for (const p of pts) if (FLAG_OF(p[4])) where[FLAG_OF(p[4]).place]++;
   // the change from the first to the latest, as printed; not worked out from a value given as "<0.5" or ">90"
   const d = last[1] - first[1], pct = first[1] ? Math.round(d / Math.abs(first[1]) * 100) : null;
   const signed = (v, t) => (v > 0 ? "+" : v < 0 ? "−" : "") + t;   // a minus sign, not a hyphen
   const change = n < 2 || !labSure(first) || !labSure(last) ? null
     : {text: signed(d, Math.abs(d).toFixed(Math.max(labDec(first), labDec(last)))), pct: pct == null ? "" : ` (${signed(pct, Math.abs(pct))}%)`};
-  return {n, first, last, low: ext(Math.min), high: ext(Math.max), median, bounds: n - m, where, ranged: n - where[""], change,
-    lastIn: [...pts].reverse().find(p => labWhere(p) === "in") || null, fromSettings: pts.filter(p => p.rs === "settings").length};
+  return {n, first, last, low: ext(Math.min), high: ext(Math.max), median, bounds: n - m, where, ranged: pts.filter(labRanged).length,
+    inside: pts.filter(labIn).length, flagged: pts.filter(p => FLAG_OF(p[4])).length, change,
+    lastIn: pts.findLast(labIn) || null, fromSettings: pts.filter(p => p.rs === "settings").length};
 }
 const labPct = (a, b) => b ? ` (${Math.round(a / b * 100)}%)` : "";
 /* the period in the panel's line: "Results in the last 2 years", "Results since diagnosis (…)", "Every result on file" */
@@ -68,7 +69,7 @@ function openLab(s) {
     body.append(el("dl", {class: "facts lab-facts"}, ...[
       ["Results", String(st.n), "n"],
       ["Median", st.median == null ? `None: ${st.n > 1 ? `all ${st.n}` : "its one"} given as a bound` : `${st.median} ${u}` + (st.bounds ? ` (${st.bounds} given as a bound left out)` : ""), "median"],
-      ["Inside own range", st.ranged ? `${w.in} of ${st.ranged}${labPct(w.in, st.ranged)}` : "None has a range", "in"],
+      ["Inside own range", st.ranged ? `${st.inside} of ${st.ranged}${labPct(st.inside, st.ranged)}` : "None has a range", "in"],
       ["First to latest", st.change ? `${st.change.text} ${u}${st.change.pct}` : st.n < 2 ? "One result" : "Not worked out", "change"],
     ].map(([k, v, key]) => el("div", {}, el("dt", {text: k}), el("dd", {"data-k": key, text: v})))));
     body.append(el("div", {class: "sect", text: "Every result against its range"}), labStrip(s, pts));
@@ -77,8 +78,8 @@ function openLab(s) {
       ...row("Lowest", at(st.low.p) + (st.low.more ? `, and ${st.low.more} more time${st.low.more > 1 ? "s" : ""}` : ""), "low"),
       ...row("Highest", at(st.high.p) + (st.high.more ? `, and ${st.high.more} more time${st.high.more > 1 ? "s" : ""}` : ""), "high"),
       ...row("Latest inside its range", st.ranged ? (st.lastIn ? at(st.lastIn) : "None in this period") : "", "lastin"),
-      ...row(capFirst(flaggedWords(pts.map(p => p[4]), "its")), st.ranged ? (out.length ? out.map(([k, m, word]) => `${m} ${w[k]} ${word}`).join(" · ") : "None") : "", "out"),   // (#819)
-      ...row("No range on the report", w[""] ? `${w[""]} result${w[""] > 1 ? "s" : ""}` : "", "norange"),
+      ...row(capFirst(flaggedWords(pts.map(p => p[4]), "its")), st.ranged || st.flagged ? (out.length ? out.map(([k, m, word]) => `${m} ${w[k]} ${word}`).join(" · ") : "None") : "", "out"),   // (#819)
+      ...row("No range on the report", st.n > st.ranged ? `${st.n - st.ranged} result${st.n - st.ranged > 1 ? "s" : ""}` : "", "norange"),
       ...row("Reference range", rangesDiffer(pts) ? `${rangesDiffer(pts)} ${u}: each result's own` : st.ranged && pts.some(rangeWords) ? `${rangeWords(pts.find(rangeWords))} ${u}` : "", "range"),
       ...row("Range from settings", st.fromSettings ? `${st.fromSettings} result${st.fromSettings > 1 ? "s" : ""}, whose report gives none` : "", "settings"),
       ...row("In the records", nice(s.name) !== s.name ? s.name : "", "name")));
@@ -91,7 +92,7 @@ function openLab(s) {
     onLabs && table ? null : goBtn("Show them as a table", () => go(true))),
     el("p", {class: "hint dnote", text: "Counts and positions from the lab's table for this period. This isn't medical advice."}),
     aboutWords({title: "How these are counted"}, "Every result the lab's table lists for the period, against each result's own reference range on its report (or one you set in Settings, where the report gives none), the range the chart's band steps with.",
-      "A result counts as outside its range when its report flags it high or low, or when its value is past the range (one given as “<15”, when every value it stands for is); one its report flags without saying which way (◆) is counted as flagged on its report; the median is the middle result, or the mean of the two in the middle, of those given as the value measured (one given as “<15” left out). The change is the latest result less the first, as printed; it doesn't say how the results in between went."));
+      "A result counts as outside its range when its report flags it high or low, or when its value is past the range (one given as “<15”, when every value it stands for is); one its report flags without saying which way (◆) is counted as flagged on its report, and as inside its range where it has one; the median is the middle result, or the mean of the two in the middle, of those given as the value measured (one given as “<15” left out). The change is the latest result less the first, as printed; it doesn't say how the results in between went."));
   showDrawer();
 }
 /* the panel drawn again as the period or the records change (app.js renderAll), in place: its scroll and focus kept */
@@ -141,7 +142,7 @@ function labStripDraw(svg, s, pts) {
     show(best && Math.abs(x(best.ts) - px) < 12 ? best : null, ev);
   };
   svg.onpointerleave = () => show(null);
-  const out = pts.filter(p => labWhere(p) && labWhere(p) !== "in").length;
-  chartKeys(svg, `${nice(s.name)}: ${pts.length} result${pts.length === 1 ? "" : "s"} against ${rangesDiffer(pts) ? "each one's own" : "its"} reference range, ${out} outside it. Left and right arrow keys step through them.`,
+  const out = pts.filter(p => FLAG_OF(p[4])).map(p => p[4]);   // (#819, #845: a ◆ was "outside it")
+  chartKeys(svg, `${nice(s.name)}: ${pts.length} result${pts.length === 1 ? "" : "s"} against ${rangesDiffer(pts) ? "each one's own" : "its"} reference range, ${out.length} ${flaggedWords(out)}. Left and right arrow keys step through them.`,
     () => pts.map(p => p.ts), t => show(pts.find(p => p.ts === t)), () => show(null));
 }

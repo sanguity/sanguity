@@ -68,7 +68,7 @@ function renderSeriesList() {
             for (const c of wrap.querySelectorAll("input[data-lab]")) if (c.dataset.lab === s.name) c.checked = ev.target.checked;   // its other unit's row too (#438)
             renderCharts(); save(); $("#seriesSel b").textContent =`${state.sel.size} selected`; otherSays(); tvRefresh(); }}),
         el("span", {class: "nm", "data-tip": nmTip, text: nice(s.name)}), tq,
-        el("span", {class: "lv" + (L && L[4] ? " abn" : ""), "data-tip": lvTip, text: L ? `${L[4] ? (L[4] === "H" ? "▲ " : "▼ ") : ""}${L[5] || fmtNum(L[1])} ${s.unit}` : ""}),
+        el("span", {class: "lv" + (L && L[4] ? " abn" : ""), "data-tip": lvTip, text: L ? `${FLAG_OF(L[4]) ? FLAG_OF(L[4]).mark + " " : ""}${L[5] || fmtNum(L[1])} ${s.unit}` : ""}),   // its mark as its chart's (ranges.js, #845: a ◆ was ▼)
         el("span", {id: id + "_about", hidden: "", text: [nmTip, lvTip].filter(Boolean).join(". ")})));
     }
   }
@@ -330,7 +330,7 @@ function drawChart(svg, s, pts, read, live) {   // live: a frame of a drag, at t
         el("div", {class: "s", text: (s.watch ? fmtD(mine.ts) : fmtDT(mine.ts)) + (mine[2] != null || mine[3] != null ? " · " + refText(mine) : "")}),
         mine[6] ? el("div", {class: "s", text: "Source: " + srcName(mine[6]) + (srcName(mine[6]) !== mine[6] ? ` (${mine[6]})` : "")}) : null,
         !s.watch && pointSources(s, mine) ? el("div", {class: "s", text: "From " + pointSources(s, mine)}) : null,
-        mine[4] ? el("div", {class: "s", style: {color: "var(--crit)"}, text: /^h/i.test(mine[4]) ? "▲ Above range" : /^l/i.test(mine[4]) ? "▼ Below range" : "◆ Flagged"}) : null);
+        mine[4] ? el("div", {class: "s", style: {color: "var(--crit)"}, text: flagPast(mine[4])}) : null);
     }
     ckTip(svg, mine ? x(mine.ts) : px, nodes);
     return tipWords(nodes);
