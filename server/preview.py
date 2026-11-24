@@ -17,7 +17,8 @@ brought are compared as they are (importers give keys nowadays, so these are few
 
 Duplicates are dropped, not replaced. A lab day is kept while any of its results is new (else they couldn't be
 opened) and dropped when all of them are duplicates; keeping one anyway keeps its results, and keeping a result
-keeps its day. jobs.py re-runs importers.check() on what's left before saving it.
+keeps its row and its day, holding only it (#887: not its report's other results). jobs.py re-runs importers.check()
+on what's left before saving it.
 
 A lab result already here (#846) is never dropped with what its copy here lacks: its copy in the upload is kept
 ("copies", not a duplicate) where it says anything of its range and flag that no copy here says (a range where there's
@@ -317,9 +318,13 @@ def _settle(data, dups, kept, anyway=None):
     out, a duplicate, so no point is kept without its lab day (one was, its row left out by key: Type them in's
     "won't be saved again" saved it, and util.js labDraws put it in every lab day of its date). anyway: {series index:
     {point index}}, results here kept anyway (keep()), whose rows are kept too, none left out. Then the lab days
-    (_settle_labdays, kept: events kept anyway), and the rows kept bring their results here as copies (_with_rows)."""
+    (_settle_labdays, kept: events kept anyway), and the rows kept bring their results here as copies (_with_rows).
+    A labitem the profile has already (a duplicate) is kept with those rows only (#887: "rows", {labitem id: {row
+    index}}, trim() leaving out the rest): ticking one result of a report uploaded again added its others too, each
+    kept for its row (_with_rows), and a second lab day of all of them."""
     labs, drawer = data.get("labs") or [], _drawer(data)
     at = dups["at"] = {}
+    rows = dups.setdefault("rows", {})
     dups.setdefault("copies", {}), dups.setdefault("brings", {})
     # (#869) a labitem whose rows are updated in place isn't added again for a copy's row: that copy is left out
     updated = {u["at"][0] for us in (dups.get("updates") or {}).values() for ul in us.values() for u in ul if u["at"]}
@@ -328,6 +333,8 @@ def _settle(data, dups, kept, anyway=None):
             row = _row(drawer, labs[i], labs[i]["pts"][n])
             if row and row[0] not in updated:
                 at.setdefault(i, {})[n] = row
+                if row[0] in dups["events"] or row[0] in rows:   # (#887) a duplicate, kept for this row
+                    rows.setdefault(row[0], set()).add(row[1])
                 dups["events"].discard(row[0])   # its row with it
             else:   # no row of its own here: left out
                 leave_out(dups, i, n)
@@ -348,12 +355,13 @@ def _with_rows(data, dups, drawer):
     """(#846) A result already here whose row in the upload's lab day is kept (the row's result new to the profile:
     another file's report of it) is kept with it, a copy ("brings" "row"), so the row reads its own result's flag as
     every row does (#782, drawer.js rowPoint; the row matched as crossmatch._row_of matches it): left out, the lab day of
-    a spreadsheet with no range said "Out of range: None" beside a C-CDA's copies with theirs and High."""
-    labs = data.get("labs") or []
+    a spreadsheet with no range said "Out of range: None" beside a C-CDA's copies with theirs and High. A row its
+    labitem isn't kept with (#887: _settle's "rows") isn't one."""
+    labs, rows = data.get("labs") or [], dups.get("rows") or {}
     for i, drop in dups["points"].items():
         for n in sorted(drop):
             row = _row(drawer, labs[i], labs[i]["pts"][n])
-            if row and row[0] not in dups["events"]:
+            if row and row[0] not in dups["events"] and row[1] in rows.get(row[0], (row[1],)):
                 drop.discard(n)
                 dups["copies"].setdefault(i, set()).add(n)
                 dups["brings"].setdefault(i, {})[n] = "row"
@@ -384,6 +392,8 @@ def keep(data, dups, refs):
         elif kept & set(ids):
             kept.add(day)                    # a result kept keeps its day
     dups["events"] -= kept
+    for e in kept:   # (#887) kept whole, every row
+        dups.get("rows", {}).pop(e, None)
     anyway = {}
     for r in refs:
         if r.startswith("s:") and r[2:].isdigit():
@@ -398,19 +408,31 @@ def keep(data, dups, refs):
 
 
 def trim(data, dups):
-    """A copy of data without the duplicates."""
-    skip = dups["events"]
+    """A copy of data without the duplicates: a labitem kept for some of its rows only (#887, find()'s "rows") with
+    those, and a lab day kept with less than it had titled for what it holds ("1 lab result", as util.js labDayTitle
+    counts it), not the 4 of the report it was."""
+    skip, part = dups["events"], dups.get("rows") or {}
     out = {k: copy.deepcopy(v) for k, v in data.items() if k not in ROWS}
     out["events"] = [copy.deepcopy(e) for e in data.get("events") or [] if not (isinstance(e, dict) and str(e.get("id")) in skip)]
-    details = {}
+    details, less = {}, set()
     for k, d in (data.get("details") or {}).items():
         if str(k) in skip:
             continue
         d = copy.deepcopy(d)
         if isinstance(d, dict) and d.get("type") == "labday" and isinstance(d.get("ids"), list):
             d["ids"] = [i for i in d["ids"] if str(i) not in skip]
+            if len(d["ids"]) < len(data["details"][k]["ids"]) or any(str(i) in part for i in d["ids"]):
+                less.add(str(k))
+        elif str(k) in part and isinstance(d, dict):   # (#887) its rows of what's kept
+            d.update({f: [x for r, x in enumerate(d[f]) if r in part[str(k)]] for f in ("rows", "keys") if isinstance(d.get(f), list)})
         details[k] = d
     out["details"] = details
+    held = {str(k): d for k, d in details.items()}
+    for e in out["events"]:
+        d = held.get(str(e.get("id"))) if isinstance(e, dict) else None
+        rs = [held.get(str(i)) for i in d["ids"]] if str(e.get("id")) in less else []
+        if rs and all(isinstance(r, dict) and isinstance(r.get("rows"), list) for r in rs) and isinstance(e.get("title"), str):
+            e["title"] = re.sub(r"^\d+ lab results?(?= · |$)", common.lab_day_title(sum(len(r["rows"]) for r in rs)), e["title"])
     out["costs"] = [copy.deepcopy(c) for c in data.get("costs") or []
                     if not (isinstance(c, dict) and c.get("id") is not None and str(c["id"]) in skip)]
     labs = []

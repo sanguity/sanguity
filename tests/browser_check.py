@@ -21240,6 +21240,58 @@ def main():
                   "given, a flag changed) is updated in place, never a copy: its review says so (“Update 4 lab results”), its card and toast too, "
                   "with an Undo, and Labs, the lab day (its Timeline badge, the drawer's rows with the ranges printed now beside their results' "
                   "flags), a share link's page and the summary's preview and PDF give one result each as the second file says", not bad869, bad869)
+            # ---- #887: one duplicate ticked to add anyway adds only that result. A C-CDA of four results at one time (ALT,
+            # CRP, Potassium, Sodium) uploaded on the import page, then again: ALT ticked in the second's review, its button
+            # says "Add 1 lab result", and its save adds that one ("1 lab result in 1 test"), with its own row in a lab day of
+            # its own ("1 lab result" on the Timeline, ALT alone in its drawer), the first's as it was. The report's other results
+            # came with it (preview._settle kept its labitem whole for ALT's row, and _with_rows its other rows' results): "4 lab
+            # results in 4 tests", and a second "4 lab results" lab day for the same draw
+            db = dbm.connect()
+            kpid887 = prof_r.create_profile(db, "One ticked (fictional)", owner_id=owner)
+            db.close()
+            t887, bad887 = M752.day(9), []
+            rows887 = [("ALT", "U/L", t887, "45", "10-40"), ("C-Reactive Protein", "mg/L", t887, "5", "<=5"), ("Potassium", "mmol/L", t887, "5.1", "3.5-5.0"),
+                       ("Sodium", "mmol/L", t887, "140", "135-145")]
+            for k887 in (0, 1):
+                page.goto(base + f"/import.html?profile={kpid887}")
+                page.wait_for_selector("#importer", state="visible", timeout=10000)
+                page.set_input_files("#pickFiles", files=[{"name": "portal.xml", "mimeType": "text/xml", "buffer": M752.ccda(rows887).encode()}])
+                page.wait_for_function(f"document.querySelectorAll('.import-job').length && /^(Ready to import|All duplicates|Not imported)/.test({card846}.textContent)", timeout=30000)
+                if k887:
+                    js(f"(c => {{ c.querySelector('.imp-dups').open = true; [...c.querySelectorAll('.imp-dups li')].find(li => /ALT/.test(li.textContent)).querySelector('input').click(); }})({card846})")
+                    settle(300)
+                    if (got887 := js(f"{card846}.querySelector('.imp-actions .primary').textContent")) != "Add 1 lab result":
+                        bad887.append(f"ALT ticked, the button says {got887!r}")
+                js(f"{card846}.querySelector('.imp-actions .primary').click()")
+                page.wait_for_function(f"/^(Imported|Not imported)/.test({card846}.textContent)", timeout=30000)
+                if k887:
+                    said887 = js(f"""[[...{card846}.querySelectorAll('ul > li')].map(li => li.textContent),
+                      (t => t && t.querySelector('.sg-toast-text').textContent)(document.querySelector('#sgToasts .sg-toast:last-child'))]""")
+                    if said887 != [["1 lab result in 1 test"], "Imported 1 lab result in 1 test."]:
+                        bad887.append(f"its card and toast say {said887}")
+                js("for (const t of document.querySelectorAll('#sgToasts .sg-toast')) t.sgGone()")
+            page.goto(base + f"/?profile={kpid887}")
+            page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {kpid887}", timeout=20000)
+            js("() => { setPeriod('all'); pickTab('timeline'); }")
+            settle(600)
+            # each lab day of that draw: its Timeline row's title, its drawer's title and rows (each test and value), its import
+            got887 = js("""async t => { const out = [], imps = Object.keys(DATA.imports || {}).map(Number).sort((a, b) => a - b);
+              for (const e of DATA.events.filter(e => e.k === 'lab' && e.t.slice(0, 16) === t.slice(0, 16))) {
+                const title = document.querySelector(`#list .tl-row[data-id="${e.id}"] .t`)?.textContent ?? null;
+                await openEvent(e);
+                out.push([imps.indexOf(e.imp) + 1, title, document.getElementById('dtitle').textContent,
+                  [...document.querySelectorAll('#drawer table.data tbody tr')].map(r => [r.cells[0].firstChild.textContent, r.cells[1].textContent.replace(/\\s+/g, ' ')])]);
+              }
+              closeDrawer(); return out.sort((a, b) => a[0] - b[0]); }""", t887)
+            want887 = [[1, "4 lab results", "4 lab results", [[n, f"{v} {u}"] for n, u, _, v, _ in rows887]], [2, "1 lab result", "1 lab result", [["ALT", "45 U/L"]]]]
+            if got887 != want887:
+                bad887.append(f"the draw's lab days {got887} not {want887}")
+            db = dbm.connect()
+            prof_r.delete_profile(db, kpid887)
+            db.close()
+            check("#887: one duplicate ticked to add anyway adds only that result (a C-CDA again, ALT ticked: “Add 1 lab result”, and its save "
+                  "“1 lab result in 1 test”), with its own row in a lab day of its own (“1 lab result”, ALT alone in its drawer), the first "
+                  "upload's lab day as it was", not bad887, bad887)
             # ---- #848: two results at one time (tests/ranges_matrix.py's AT_ONCE: Potassium 5.0 and 5.6 ▲ High at one time,
             # from two imports, not copies). Labs' chart and the lab panel's strip found the keyboard's stop by its time and
             # got the first of the two again, so → stayed there for good; what read the point nearest read the first, so

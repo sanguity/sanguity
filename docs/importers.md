@@ -219,7 +219,9 @@ ticks it to keep anyway; a series adds only the points (time and value as report
 point it has already, but whose copy in the upload says something of its range or flag that no copy there says, or
 whose row in the upload's lab day is new, is added as a copy, read as one result with the copy there (#846), always
 with its own row, whose labitem and lab day are kept with it even where their keys are known (#868: the same rule for
-Type them in and a sync; a copy the upload gives no row of its own is left out, never a result without its lab day).
+Type them in and a sync; a copy the upload gives no row of its own is left out, never a result without its lab day),
+a labitem the profile has by its key holding only the rows of the results kept, as one kept anyway (ticked on the
+review) holds only its own: never its report's others (#887).
 A point its source sends again saying something else of its range or flag (#869: the same series key, time and value,
 its row and its point's row here one record of one source, #885: each row's own key in its labitem's `keys` the same,
 else the labitem's key the same and one record's, a report's; never a `:h:` hash, which a copy typed or in a
