@@ -273,6 +273,9 @@
   const updatesHere = j => (j.duplicates || {}).updates || 0;
   const updatesLine = j => { const n = updatesHere(j); return n ? node("p", {class: "hint imp-updates", text: `${cap(plural(n, ["lab result", "lab results"]))} ` +
     `already here from the same source ${n === 1 ? "is" : "are"} updated with the range and flag this file gives now, not added again.`}) : null; };
+  // what saving it does, in the button's words: "update" where it updates results here and adds nothing ("Update 4 lab
+  // results", #869), else "add" (it said "until you add it with the button" beside "Update 4 lab results")
+  const saveVerb = j => !j.restores && !addWords(j.counts || {}) && updatesHere(j) ? "update the results" : "add it";
   // the duplicates of what the profile has (#22): skipped, each with a box to add it again anyway; a series' results
   // dated from the first to the last (#490), a lab draw not offered beside its own results
   function dupChoices(j) {
@@ -488,7 +491,7 @@
         fill(card,
           node("p", {class: "imp-state", text: stateWords(j)}),
           node("h3", {class: "imp-title"}, keepDates([j.label || j.importer, range].filter(Boolean).join(" · "))),
-          node("p", {class: "hint", text: j.new ? "Nothing is saved until you add it with the button at the foot."
+          node("p", {class: "hint", text: j.new ? `Nothing is saved until you ${saveVerb(j)} with the button at the foot.`
             : sgNothing(j) ? "Nothing in this upload is left to add to this profile. Cancel it to remove the upload."
             : "Everything in this upload is in this profile already. Tick a duplicate to add it again anyway, or cancel."}),
           j.new ? tiles(j) : null, restoredLine(j.restores, false), split(j), labs.part, same.part, dups.part, copiesLine(j), updatesLine(j), notes(j),
@@ -502,7 +505,7 @@
         f.step("review");
         f.text("");
         f.progress(false);
-        if (!f.focus() && !f.card.hidden) announce(`${stateWords(j)}: ${f.title}. Nothing is saved until you add it.`);
+        if (!f.focus() && !f.card.hidden) announce(`${stateWords(j)}: ${f.title}. Nothing is saved until you ${saveVerb(j)}.`);
       }
       f.fresh = async () => {
         let j = null;
