@@ -24,7 +24,7 @@ Standard library only.
 """
 import importlib, logging, pkgutil, re
 
-from ..common import range_part
+from ..common import BOUNDS, NUMBER, range_part
 
 log = logging.getLogger("sanguity.importers")
 
@@ -52,7 +52,7 @@ def layouts():
 
 
 # ------------------------------------------------------------------ shared pieces of a row
-_NUMERIC_VALUE = re.compile(r"(?:<=?|>=?)?\s*-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?")
+_NUMERIC_VALUE = re.compile(rf"(?:{BOUNDS})?\s*{NUMBER}")   # a number as printed, a bound's too: read by number_text (#870)
 _OTHER_VALUE = re.compile(r"\d+\+|1:\d+|[A-Za-z][A-Za-z ,'/-]{0,39}")   # "2+", "1:40", "NON-REACTIVE", "Yellow"
 NOT_VALUES = {"see note", "see below", "see comment", "tnp", "dnr", "qns", "cancelled", "canceled", "pending",
               "not performed", "test not performed", "comment", "note"}
@@ -61,13 +61,20 @@ _UNIT_WORDS = re.compile(r"(?i)fl|pg|sec|seconds|ratio|index|units?|copies|mm|cm
 NOT_ESTABLISHED = re.compile(r"(?i)not estab(?:lished|\.)?")
 
 
+def is_number(s):
+    """A result value printed as a number, or a bound's ("88", "<0.5", "=<5", "1,250", "4,5", "1.2E-3"), whether or not
+    common.value_number can read it ("1,250" where the decimal mark isn't known)."""
+    return bool(_NUMERIC_VALUE.fullmatch((s or "").strip()))
+
+
 def is_value(s):
-    """A result value as printed: a number ("88", "<0.5", "1,250") or a short text result ("NON-REACTIVE", "2+").
-    "SEE NOTE" and the like are not values."""
+    """A result value as printed: a number ("88", "<0.5", "1,250", "0,05", "1.2E-3": common.NUMBER, which pdf_labs reads
+    by common.value_number, #870: "0,05" and "4,5" weren't values, so their rows were left out) or a short text result
+    ("NON-REACTIVE", "2+"). "SEE NOTE" and the like are not values."""
     s = (s or "").strip()
     if not s or s.lower() in NOT_VALUES:
         return False
-    return bool(_NUMERIC_VALUE.fullmatch(s) or _OTHER_VALUE.fullmatch(s))
+    return is_number(s) or bool(_OTHER_VALUE.fullmatch(s))
 
 
 def is_text_value(s):

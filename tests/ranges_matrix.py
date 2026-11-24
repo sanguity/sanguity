@@ -10,7 +10,9 @@ each edge of a report's range and of one from Settings; and one-sided ranges tha
 keep it ("<=5", ">=60"), at and past it, through the importers that read them too (#780), each spelled as reports
 print it ("=>60", "< OR = 5", "less than or equal to 5") and read through the CSV importer as an upload is (#850; and
 SPELLINGS, the ways a report prints a range, through every importer, Type them in and the FHIR export; COMMAS, "0,500"
-and the like in each mode of decimal commas, #859); and a report's flags that say no way ("A", "Abnormal",
+and the like in each mode of decimal commas, #859, and in scientific notation, through every importer that reads a
+printed value and the FHIR export read back, #870; BOUND_VALUES, a value given as a bound, "=<5", "≥60", the same way,
+#870); and a report's flags that say no way ("A", "Abnormal",
 "Critical"), inside its range, past it and with none printed, read through the CSV importer as an upload is
 (THROUGH_CSV: ALT, its flags in CASES as printed, #817), and pasted into Type them in (PASTE_FLAGS, #835); and ranges
 given as text alone, "a - b", "<40", "<=40", "less than 40", read through the C-CDA importer (THROUGH_CCDA: AST, its
@@ -211,15 +213,32 @@ SPELLINGS = [
     ["over 60", "61", 60, None, ">", ""], [">=60", "60", 60, None, "", ""], ["=>60", "90", 60, None, "", ""],
     ["=>60", "59", 60, None, "", "L"], ["≥ 60", "59", 60, None, "", "L"], ["> OR = 60", "60", 60, None, "", ""],
     ["greater than or equal to 60", "59", 60, None, "", "L"], ["Negative", "5", None, None, "", ""],
+    # #870: in scientific notation, which common.range_text read no number of ("<1.0E4" was a high of 1)
+    ["5.0E3-1.0E4", "12000", 5000.0, 10000.0, "", "H"], ["1.0E-3 - 5.0E-3", "0.004", 0.001, 0.005, "", ""],
+    ["<1.0E4", "10000", None, 10000.0, "<", "H"],
 ]
 SPELLED_AS = ("AST", "U/L")   # a lab every importer charts (CareSpace only those it knows)
 # #859: no thousands follow a leading 0. COMMAS: a number as printed, as a value and in a range ("<0,500"), and what each
 # reads as (None: unread, kept as printed and said so) where the file's decimal commas aren't known (a C-CDA document,
 # FHIR, CareSpace, MyChart, a PDF report: a comma that can't group thousands is decimal), where its commas group
 # thousands (a comma-delimited spreadsheet that writes decimal points, Type them in) and where they're decimal (a
-# spreadsheet with semicolons, or with "0,500" or "4,5" among its values). "0,500" was 500 where commas group thousands
-COMMAS = {"0,500": (0.5, None, 0.5), "0,05": (0.05, 0.05, 0.05), "1,250": (None, 1250, 1.25), "12,500": (None, 12500, 12.5)}
+# spreadsheet with semicolons, or with "0,500" or "4,5" among its values). "0,500" was 500 where commas group thousands.
+# #870: and in scientific notation, read in every mode ("1.2E-3" was no number but in a spreadsheet's). Each read as a
+# value by every importer that reads a printed one (C-CDA, CareSpace and PDF reports where the decimal mark isn't
+# known), and the FHIR export of each import read back the same (the export sent "0,500" and "1,250" as text alone)
+COMMAS = {"0,500": (0.5, None, 0.5), "0,05": (0.05, 0.05, 0.05), "1,250": (None, 1250, 1.25), "12,500": (None, 12500, 12.5),
+          "1.2E-3": (0.0012, 0.0012, 0.0012), "5,0E3": (5000.0, 5000.0, 5000.0)}
 UNKNOWN, IN_THOUSANDS, DECIMAL = 0, 1, 2   # COMMAS' modes
+# #870: a value given as a bound, as reports print one, beside a range: BOUND_VALUES [value as printed, range as printed,
+# its number, comparator, flag] ("=<5" against 10–40 is Low: every value it may be is under 10; "≤ 5" against "<5" may be
+# inside it). Through a spreadsheet (comma-delimited, and with semicolons), Type them in, PDF reports (the ASCII ones), a
+# C-CDA document (as text), a FHIR bundle (a Quantity's comparator), CareSpace and MyChart, and the FHIR export read
+# back, of the spreadsheet's import and of rows alone, each gives that number, comparator and flag (bounded();
+# tests/test_ranges.py test_2_bound_values). The export sent "=<5", "≤ 5" and "≥60" as text alone, and the FHIR importer
+# kept every bound as text, so read back they had no number, range or flag
+BOUND_VALUES = [["=<5", "10 - 40", 5, "<=", "L"], ["≤ 5", "<5", 5, "<=", ""], ["< 5", "5 - 10", 5, "<", "L"],
+                ["<=5", "5 - 10", 5, "<=", ""], ["≥60", "<60", 60, ">=", "H"], ["=>60", ">=60", 60, ">=", ""],
+                ["> 10", "5 - 10", 10, ">", "H"], [">= 60", "10 - 40", 60, ">=", "H"], ["<0.5", "<0.5", 0.5, "<", ""]]
 
 # ---- a flag stored as its report printed it (#839): Calcium's results as an older import stored them, before #817's one
 # rule, each flag in CASES as printed ("N", ">", "<", "HH", "LL", "AA", "Normal"), stored as it is. Every view reads a
@@ -366,14 +385,15 @@ def pasted(lab, today=None):
 
 def ccda(rows):
     """A fictional C-CDA document of lab results, each [(test, unit, time, value as given, range as text)] an
-    observation of its own, its reference range its text alone (no IVL, #827); a value given as a bound ("<5") as text."""
+    observation of its own, its reference range its text alone (no IVL, #827); a value given as a bound ("<5", "=<5") or
+    with a comma ("0,500") as text, as a document gives one."""
     from html import escape
     from server.importers import common
     obs = []
     for n, u, t, v, r in rows:
         loinc = common.loinc_of(common.canonical_lab(n))
         code = f'code="{loinc}" codeSystem="2.16.840.1.113883.6.1" ' if loinc else ""
-        value = (f'<value xsi:type="ST">{escape(v)}</value>' if v[:1] in "<>" else f'<value xsi:type="PQ" value="{v}" unit="{escape(u)}"/>')
+        value = (f'<value xsi:type="ST">{escape(v)}</value>' if common.comparator(v) or "," in v else f'<value xsi:type="PQ" value="{v}" unit="{escape(u)}"/>')
         obs.append(f'<component><observation classCode="OBS" moodCode="EVN"><code {code}displayName="{escape(n)}"/>'
                    f'<statusCode code="completed"/><effectiveTime value="{t[:19].replace("-", "").replace("T", "").replace(":", "")}"/>{value}'
                    f'<referenceRange><observationRange><text>{escape(r)}</text></observationRange></referenceRange></observation></component>')
@@ -397,6 +417,25 @@ def spelled(today=None):
     return [(n, u, day(200 - i, today), v, r) for i, (r, v, *_) in enumerate(SPELLINGS)]
 
 
+def bounded(today=None):
+    """BOUND_VALUES' results, one a day, the oldest first: [(test, unit, time, value as given, range as printed)]."""
+    n, u = SPELLED_AS
+    return [(n, u, day(100 - i, today), v, r) for i, (v, r, *_) in enumerate(BOUND_VALUES)]
+
+
+def commas_back(today=None):
+    """#870's two spreadsheets, a day apart (tests/browser_check.py takes them through the FHIR export and back): one
+    with semicolons and decimal commas ("4,5", "0,500", "=<5", "12,5"), one comma-delimited that writes decimal points
+    ("1,250" in thousands, "≥60"); seven results, four outside their range. -> [(file name, its text)]"""
+    a, b = day(2, today)[:10], day(1, today)[:10]
+    return [("commas-eu.csv", "Date;Time;Test;Value;Unit;Reference range\n"
+                              f"{a};08:00;Potassium;4,5;mmol/L;3,5 - 5,1\n{a};08:00;Creatinine;0,500;mg/dL;0,6 - 1,3\n"
+                              f"{a};08:00;C-Reactive Protein;=<5;mg/L;<5\n{a};08:00;Hemoglobin;12,5;g/dL;13,5 - 17,5\n"),
+            ("commas-us.csv", "Date,Time,Test,Value,Unit,Reference range\n"
+                              f"{b},08:00,Platelet Count,\"1,250\",x10^3/uL,150 - 400\n{b},08:00,eGFR,≥60,mL/min/1.73m2,>=60\n"
+                              f"{b},08:00,Sodium,147.0,mmol/L,135-145\n")]
+
+
 def carespace(rows, into):
     """A fictional CareSpace export in the folder into, its lab results [(test, unit, time, value as given, range as
     text)] each with its range as displayed alone, no lower or upper limit (#836). -> the importer's files"""
@@ -418,7 +457,8 @@ def epic(rows, into):
     importer's files"""
     import json, os
     os.makedirs(os.path.join(into, "test-results"), exist_ok=True)
-    num = lambda v: float(v.lstrip("<>="))
+    from server.importers import common
+    num = common.value_number   # its numericValue
     details = {f"r{i}": {"orderName": "Matrix panel (fictional)", "results": [{
         "name": "Matrix panel (fictional)", "orderMetadata": {"prioritizedInstantISO": t, "resultType": "LAB"},
         "resultComponents": [{"componentInfo": {"name": n, "units": u},

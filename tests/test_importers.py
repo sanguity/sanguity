@@ -9,7 +9,7 @@ needs no change here: add its module and a fixture folder.
 
   python -m unittest discover -s tests -p "test_importer*.py" -v
 """
-import json, os, re, shutil, subprocess, sys, tempfile, types, unittest
+import glob, json, os, re, shutil, subprocess, sys, tempfile, types, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FIXTURES = os.path.join(ROOT, "tests", "fixtures")
@@ -281,11 +281,92 @@ class Common(unittest.TestCase):
                           "1.234.567": [None, None, 1234567]})
         self.assertEqual([r("<0,500 - 1", dc)[:2] for dc in modes] + [r("0,500 - 1,250", dc)[:2] for dc in modes],
                          [(None, 0.5), (None, None), (None, 0.5), (None, None), (None, None), (0.5, 1.25)])
+        # #870: scientific notation, a value's and a range's, in every mode ("<1.0E4" was a high of 1, "5.0E3-1.0E4" none)
+        self.assertEqual({t: [common.number_text(t, dc) for dc in modes] for t in ("1.2E-3", "5.0E3", "5,0E3", "1e4", "1E999")},
+                         {"1.2E-3": [0.0012] * 3, "5.0E3": [5000.0] * 3, "5,0E3": [5000.0] * 3, "1e4": [10000.0] * 3, "1E999": [None] * 3})
+        self.assertEqual([r(t, dc) for t in ("5.0E3-1.0E4", "<1.0E4", "1.0E-3 - 5.0E-3", ">=1.2E-3 mg/L", "5,0E3 - 1,0E4") for dc in (None, True)],
+                         [(5000.0, 10000.0, "")] * 2 + [(None, 10000.0, "<")] * 2 + [(0.001, 0.005, "")] * 2 + [(0.0012, None, "")] * 2
+                         + [(5000.0, 10000.0, "")] * 2)
+        self.assertEqual([common.range_part(t) for t in ("5.0E3-1.0E4 U/L", "3.4-10.8 x10E3/uL")],
+                         [("5.0E3-1.0E4", "U/L"), ("3.4-10.8", "x10E3/uL")])
+        # a result's value: a bound's number with its comparator aside, a number given as one as it is (#870)
+        v = common.value_number
+        self.assertEqual([v(t) for t in ("4.2", "=<5", "≤ 5", "< 5", "≥60", "=>60", ">= 60", "4,5", "0,500", "1.2E-3", "<1.0E4", " 7 ")],
+                         [4.2, 5, 5, 5, 60, 60, 60, 4.5, 0.5, 0.0012, 10000.0, 7])
+        self.assertEqual([v(t) for t in ("1,250", "> OR = 60", "Negative", "5 mg", "", None, True, float("nan"))], [None] * 8)
+        self.assertEqual([v("1,250", False), v("0,500", False), v(12.5), v(7)], [1250, None, 12.5, 7])
+        self.assertEqual([common.comparator(t) for t in ("=<5", "≤ 5", "< 5", "≥60", "=>60", ">= 60", "> 10", "5")],
+                         ["<=", "<=", "<", ">=", ">=", ">=", ">", ""])
         # the edge of a limit read from the text by the same parser, with a source's own low or high beside it (#780)
         self.assertEqual([common.range_edge(t, lo, hi, dc) for t, lo, hi, dc in (
             ("<5", None, 5, None), ("=>60", 60, None, None), (">60", 60, None, None), ("<1,000", None, 1000, None),
             ("<1,000", None, 1000, False), ("<5,5", None, 5.5, None), ("<5", 1, 5, None), ("<5", None, 6, None))],
             ["<", "", ">", "", "<", "<", "", ""])
+
+    # #870: every float() or Decimal() call in server/importers/ and server/fhir_export.py, and every pattern of a
+    # number's digits with a decimal mark, by (file, the function or name it's in, the call as written or the pattern's
+    # piece), with why it isn't a reader of a number as printed. Any other is one: read it by common.number_text
+    # (value_number for a result's value, range_text for a range, NUMBER for a number inside other text). Numbers a
+    # source writes as data (a JSON number, FHIR's decimals) aren't printed, so they're taken as they are
+    NUMBER_READS = {
+        ("importers/common.py", "number_text", "float(s)"): "the one reader of a number as printed",
+        ("importers/common.py", "number_text", "[\\d.,"): "the one reader: the shape of a number it reads",
+        ("importers/common.py", "number_text", "\\d+,\\d"): "the one reader: a comma before three digits",
+        ("importers/common.py", "NUMBER", "\\d+(?:[.,]"): "a number inside other text, whose match number_text reads",
+        ("importers/csv_labs.py", "parse", "\\d+,\\d"): "whether a spreadsheet writes decimal commas (\"4,5\" among its values): no number read",
+        ("importers/csv_labs.py", "parse", "\\d+\\."): "whether a spreadsheet writes decimal points (\"4.5\" among its values): no number read",
+        ("importers/claims_csv.py", "parse", "\\d,\\d"): "whether a claims file writes decimal commas (\"12,50\"): no number read",
+        ("importers/claims_csv.py", "parse", "\\d\\."): "whether a claims file writes decimal points (\"12.50\"): no number read",
+        ("importers/claims_csv.py", "_money", "float(x)"): "an amount number_text read, as a float",
+        ("importers/_claims.py", "money", "float(n)"): "an amount number_text read (or a JSON number), as a float",
+        ("importers/__init__.py", "scores", "float(m.detect(files) or 0.0)"): "an importer's detect() score, a number",
+        ("importers/apple_health.py", "record", 'float(el.get("value"))'): "HealthKit's own numbers in export.xml",
+        ("importers/apple_health.py", "workout", 'float(el.get("duration"))'): "HealthKit's own numbers in export.xml",
+        ("importers/apple_health.py", "_workout_hr", "float(st.get(a))"): "HealthKit's own numbers in export.xml",
+        ("importers/apple_health.py", "_number", "float(v)"): "HealthKit's own numbers in export.xml",
+        ("importers/apple_health.py", "_number", 'float("inf")'): "infinity, to leave it out",
+        ("fhir_export.py", "adj", "float(amount or 0)"): "a claim's amount as stored, a number (_claims.money)",
+        ("fhir_export.py", "_claims", "float(paid or 0)"): "a claim's amount as stored, a number (_claims.money)",
+    }
+    # a pattern of a number's digits with a decimal mark: \d+(?:\.\d+)?, \d+\.\d+, \d*[.,]\d+, \d+(?:[.,]\d+)*; \d+,\d{2};
+    # [\d.]+, [\d.,]*, [0-9.]+; \d{1,3}(?:,\d{3})+ (not a time's fraction of a second, "\d{2}(?:\.\d+)?")
+    NUMBER_SHAPE = re.compile(r"\\d[+*]?\)?\(?(?:\?:)?(?:\\\.|\[[^\]]*[.,][^\]]*\])|\\d[+*]?,\\d|\[(?:\\d|0-9)[^\]]*[.,]|\\d\{1,3\}\(\?:[,.]")
+
+    def test_numbers_read_in_one_place(self):
+        """#870: one reader of a number as printed, common.number_text, for every importer and the FHIR export. The PDF
+        reports had their own (pdf_labs._number: "0,500" was 500, Troponin I ▲ High; "0,05" and "4,5" weren't values, so
+        their rows were left out), and so did the C-CDA, CareSpace and FHIR importers and the export (_num, _value,
+        num: "4,5", "=<5" and "≥60" went out as text beside a range and a flag, read back with none). Every float() and
+        Decimal() call and every pattern of a number's digits with a decimal mark there is one NUMBER_READS lists."""
+        import ast
+        found = set()
+        for path in sorted(glob.glob(os.path.join(ROOT, "server", "importers", "**", "*.py"), recursive=True)) + [
+                os.path.join(ROOT, "server", "fhir_export.py")]:
+            rel = os.path.relpath(path, os.path.join(ROOT, "server")).replace(os.sep, "/")
+            with open(path, encoding="utf-8") as f:
+                src = f.read()
+            tree = ast.parse(src)
+            docs = {id(n.body[0].value) for n in ast.walk(tree) if isinstance(n, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+                    and n.body and isinstance(n.body[0], ast.Expr) and isinstance(n.body[0].value, ast.Constant)}
+
+            def visit(node, scope):
+                for child in ast.iter_child_nodes(node):
+                    s = child.name if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) else \
+                        child.targets[0].id if isinstance(child, ast.Assign) and scope == "<module>" and isinstance(child.targets[0], ast.Name) else scope
+                    if isinstance(child, ast.Call) and (isinstance(child.func, ast.Name) and child.func.id in ("float", "Decimal")
+                                                        or isinstance(child.func, ast.Attribute) and child.func.attr == "Decimal"):
+                        found.add((rel, s, ast.get_source_segment(src, child)))
+                    if isinstance(child, ast.Constant) and isinstance(child.value, str) and id(child) not in docs:
+                        found.update((rel, s, m.group()) for m in self.NUMBER_SHAPE.finditer(child.value))
+                    visit(child, s)
+            visit(tree, "<module>")
+        self.assertEqual(sorted(found - set(self.NUMBER_READS)), [],
+                         "a number read outside common.number_text: read it with number_text, value_number, range_text or NUMBER")
+        self.assertEqual(sorted(set(self.NUMBER_READS) - found), [], "listed in NUMBER_READS but gone: take it off")
+        for t, want in ((r"-?\d+(?:\.\d+)?", 1), (r"\d+(\.\d+)?", 1), (r"[\d.]+", 1), (r"[0-9.,]+", 1), (r"\d{1,3}(?:,\d{3})+", 1),
+                        (r"\d+\.\d+", 1), (r"\d*[.,]\d+", 1), (r"\d+,\d{1,2}", 1), (r"\d+(?:[.,]\d+)*", 1), (r"(\d+)-day supply", 0),
+                        (r"(\d{4})-(\d{2})-(\d{2})", 0), (r"(:\d{2}(?:\.\d+)?)?", 0), (r"[x×]?10\^?[Ee]?\d+/[A-Za-z]+", 0), (r"\s*(\S+)", 0)):
+            self.assertEqual(len(self.NUMBER_SHAPE.findall(t)), want, t)   # (the search itself)
 
     def test_stays(self):
         st = common.inferred_stays({"Mar 02, 2026": ["2026-03-02T06:00:00", "2026-03-04T06:00:00"]},

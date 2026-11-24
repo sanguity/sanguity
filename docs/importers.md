@@ -155,7 +155,15 @@ them, 1250 without); left out, a comma that can't be a thousands separator is a 
 one that can (`"1,250"`) isn't read. No thousands follow a leading 0 (#859): where a file's commas group thousands,
 `"0,500"` isn't read, and the CSV importer keeps it as printed and says so in the upload's warnings. `whole=True`
 reads a cell that is the range and nothing else (a PDF report's); a layout's cell holding a range and a unit is split
-by `common.range_part`. Don't write a parser of your own. `txt` holds results that aren't numbers. Name series with
+by `common.range_part`. Don't write a parser of your own. A value's number is read the same way, by
+`common.value_number(value, decimal_comma)`: a number given as one (a JSON number) as it is, a value as printed
+("4.2", "4,5", "0,500", "1.2E-3", a bound's "<0.5", "=<5", "≥ 60", its comparator by `common.comparator`) by
+`common.number_text`, the one reader of a number, which every range's numbers go through too; a number inside other
+text ("72 bpm", "30 tablets") is found by `common.NUMBER` and read by `number_text` (#870). Scientific notation is
+read everywhere ("5.0E3-1.0E4", "1.2E-3"). Don't write a reader of your own: `tests/test_importers.py`
+`test_numbers_read_in_one_place` lists every `float()` in the importers and the FHIR export, and why it isn't one.
+A FHIR `Quantity` with a comparator is a value given as a bound, its number kept with it. `txt` holds results that
+aren't numbers. Name series with
 `common.canonical_lab(name, loinc)` so the same test from two sources lands on one chart (it returns None for labs it
 doesn't know: keep the source's name then), and add a LOINC code when you have one. A series may carry a `key` too,
 such as `"loinc:718-7"` (see below).
@@ -285,8 +293,10 @@ headings (`HEADER`), the collection date, ordering provider and specimen number 
 skip; and `row(cells)` reads one table line, split into cells at gaps of two or more spaces, into its name, value,
 flag, unit and range, or returns None. **Never guess:** a line in the table that `row` doesn't read is a warning
 naming its page and line, and a PDF no layout recognises (or two do) is refused. The package's docstring has the
-contract, and its helpers (`is_value`, `is_unit`, `is_range`, `range_and_unit`) read the parts most layouts share; a
-row's range is read by `common.range_text(range, whole=True)`, the one parser of a range as text (#850).
+contract, and its helpers (`is_value`, `is_number`, `is_unit`, `is_range`, `range_and_unit`) read the parts most
+layouts share; a row's range is read by `common.range_text(range, whole=True)`, the one parser of a range as text
+(#850), and its value by `common.value_number(value)` (#870), as a source that doesn't say its decimal mark: "0,500"
+is 0.5, and "1,250" isn't read, but kept as text, which the upload's warnings say.
 
 To add a layout:
 

@@ -2107,6 +2107,20 @@ Everything on `main` so far; it becomes the first tagged release.
   in every view; an upload's review says so ("4 lab results already here from the same source are updated with the
   range and flag this file gives now") and its button "Update 4 lab results", and undoing the sync or the upload
   puts back what was there.
+- **A number printed with a comma, as a bound or in scientific notation reads back from the FHIR export as it was
+  imported** (#870): the FHIR export read each result's value as printed with a reader of its own, the number it was
+  imported as only where none was printed, so "4,5", "12,5" and "0,500" from a spreadsheet with semicolons, "1,250"
+  from a comma-delimited one, and "=<5" and "≥60" went out as text beside a range and a flag; read back (the FHIR
+  importer kept any value with a comparator as text too), they had no number, range or flag, and the Overview's
+  out-of-range list lost them. A PDF report read "0,500" as 500 (a Troponin I ▲ High) and "0,05", "4,5" and "=<5" not
+  at all (their rows left out); the C-CDA and CareSpace importers read no decimal comma in a value, nor "=<" or "≥";
+  and no range in scientific notation was read ("<1.0E4" was a high of 1). Every importer and the export now read a
+  number by one reader, with what each source says of its decimal mark: the export writes the number each result was
+  imported as, with its comparator for a bound, and a limit that leaves its edge out from its number where the text
+  as printed would read otherwise ("<1250" for a spreadsheet's "<1,250"); the FHIR importer reads a bound as one; a PDF
+  report reads "0,500" as 0.5, and keeps "1,250" as text and says so, as its range is read; and "5.0E3-1.0E4" and
+  "1.2E-3" are read everywhere. Results imported before keep what they were read as; importing the file again reads
+  them anew.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

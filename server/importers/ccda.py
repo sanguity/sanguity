@@ -19,7 +19,7 @@ import xml.etree.ElementTree as ET
 from datetime import date
 
 from . import common
-from .common import canonical_lab, comparator, range_edge, range_text, report_flag
+from .common import canonical_lab, comparator, number_text, range_edge, range_text, report_flag, value_number
 
 NAME = "ccda"
 LABEL = "C-CDA health summary (XML)"
@@ -167,11 +167,6 @@ def _when(el, which="low"):
     return None
 
 
-def _num(s):
-    m = re.match(r"^\s*([<>]=?)?\s*(-?\d+(?:\.\d+)?)\s*$", str(s if s is not None else ""))
-    return float(m.group(2)) if m else None
-
-
 def _idkey(el):
     """Source key from an entry's first usable <id>: "ccda:<root>^<extension>" (or "ccda:<root>"); None without one."""
     for i in _all(el, "h:id"):
@@ -314,7 +309,7 @@ def _value(obs):
     typ = v.get(XSI_TYPE, "").split(":")[-1]
     if typ in ("PQ", "INT", "REAL") or (not typ and v.get("value") is not None):
         raw = v.get("value") or ""
-        x = _num(raw)
+        x = value_number(raw)   # "4.5", "1.2E-3", by the one reader of a number (#870)
         unit = v.get("unit") or ""
         return x, raw, "" if unit == "1" else unit
     if typ == "IVL_PQ":
@@ -325,8 +320,8 @@ def _value(obs):
         return None, raw, unit
     if typ in ("CD", "CE", "CO", "CV"):
         return None, (v.get("displayName") or _txt(_f(v, "h:originalText")) or v.get("code") or ""), ""
-    raw = _txt(v)           # ST, ED and anything else: the text as written ("<0.5", "Negative")
-    return _num(raw), raw, ""
+    raw = _txt(v)           # ST, ED and anything else: the text as written ("<0.5", "=<5", "4,5", "Negative")
+    return value_number(raw), raw, ""
 
 
 def _range(doc, obs):
@@ -340,7 +335,7 @@ def _range(doc, obs):
             lo_el, hi_el = _f(v, "h:low"), _f(v, "h:high")
             lo_s = lo_el.get("value") if lo_el is not None and lo_el.get("nullFlavor") is None else None
             hi_s = hi_el.get("value") if hi_el is not None and hi_el.get("nullFlavor") is None else None
-            lo, hi = _num(lo_s), _num(hi_s)
+            lo, hi = number_text(lo_s), number_text(hi_s)
             if lo is not None or hi is not None:
                 out = (lo_el if lo is not None else hi_el).get("inclusive") == "false" and (lo is None or hi is None)
                 op = (">" if lo is not None else "<") + ("" if out else "=")
@@ -379,8 +374,8 @@ def _results(doc, out):
                 x, raw, unit = _value(obs)
                 lo, hi, rng, edge = _range(doc, obs)
                 if not unit and x is not None:      # a string value: the unit may only be written in the range
-                    m = re.match(r"^\s*-?[\d.]+\s*[-–]\s*-?[\d.]+\s+(\S+)\s*$", rng)
-                    unit = m.group(1) if m else ""
+                    shown, rest = common.range_part(rng)   # "3.5-5.1 mmol/L", "<5 mg/L": by the one parser (#850, #870)
+                    unit = rest if shown and re.fullmatch(r"\S+", rest) else ""
                 flag = _flag(obs, x, lo, hi, raw, edge)
                 if not t:
                     out.warnings.append(f"{doc.rel}: skipped result {name!r} with no date.")
