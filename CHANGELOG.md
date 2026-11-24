@@ -2022,6 +2022,14 @@ Everything on `main` so far; it becomes the first tagged release.
   one with (#817): ">" and "HH" High, "<" and "LL" Low, "AA" placed by the range where it can be, "N" and "Normal" no
   flag, so the range says it (a range from Settings where the report printed none). Nothing stored is changed and
   nothing needs importing again; a result's copies are put together with their flags read so.
+- **A result already here is never skipped with the range or flag an upload brings for it** (#846): a spreadsheet of
+  results with no range, then a C-CDA of the same results with its report's 135–145 and High: the C-CDA's copies were
+  counted as duplicates and left out with their range and flag, so Labs, the Overview, the summary and share links
+  said 150 unflagged while the C-CDA's lab day said "Out of range 3"; the other way round, the spreadsheet's lab day
+  said "Out of range: None". Now an upload's copy of a result already here is skipped only where it says nothing of
+  its range and flag that a copy there doesn't and its lab day's row is skipped too; otherwise it's added and read as
+  one result with the other (#825), and the review says so: "4 lab results already here are added again from this
+  file with its report's range and flag, so neither report's is lost."
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

@@ -212,6 +212,18 @@ def copies(a, b):
     return (lo, hi, f, e) if len(a) > 3 or len(b) > 3 else (lo, hi, f)
 
 
+def agree(a, b):
+    """Whether two copies of a result (the same lab, unit, time and value as given) are one result as their reports say
+    it (#847): their own ranges agree, the low, the high and the edge together (#780), or one has none, so copies()
+    gives it the other's. Two whose reports print different ranges ("<5" and "<=5", 3.5–5.1 and 3.5–5.3) are two
+    results, each with its own range and flag, so no flag is shown beside a range it wasn't worked out against. a, b:
+    as copies() takes them."""
+    (lo, hi, _, *e), (blo, bhi, _, *be) = a, b
+    if (lo is None and hi is None) or (blo is None and bhi is None):
+        return True
+    return (lo, hi, str((e or [""])[0] or "")) == (blo, bhi, str((be or [""])[0] or ""))
+
+
 # ---------------------------------------------------------------- flagged results, said one way (#819)
 # A ▲ or ▼ is outside its range; a ◆, a report's flag that says neither way (an "A"), is flagged on its report, its value
 # inside its range or with none, and is "Flagged" everywhere (summary.out_of_range; the page's charts.js FLAG_OF). Every

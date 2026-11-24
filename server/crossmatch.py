@@ -532,6 +532,15 @@ def not_same(db, pid):
     return {r["pair"] for r in db.execute("SELECT pair FROM same_results WHERE profile_id=? AND same=0", (pid,))}
 
 
+def said(p):
+    """What a copy of a result says of its range and flag, as ranges.copies takes it: (low, high, flag, edge), its flag
+    as stored read as its report's (#839: an older import's "N" is none, so it keeps no other copy's flag from it, as
+    the summary and the page read it). copies() puts a result's copies together by it, and the import's preview finds
+    a result already here by it (preview.find, #846)."""
+    p = list(p) + [None] * (8 - len(p))
+    return _num(p[2]), _num(p[3]), ranges.read_flag(p[4], _num(p[1]), _num(p[2]), _num(p[3]), p[5], p[7]), str(p[7] or "")
+
+
 def copies(data, apart=()):
     """Two copies of one result still shown apart (#825: from two imports not linked as the same result, or twice from
     one): the same lab and unit, time, value and value as given, as summary._series finds them. Each copy is given the
@@ -557,9 +566,6 @@ def copies(data, apart=()):
                 if isinstance(p, list) and p:
                     q = p + [None] * (6 - len(p))
                     at[(s.get("name"), s.get("unit") or "", str(q[0]), _num(q[1]), str(q[5] or "").strip())].append((i, n))
-    # a point's range, flag and edge, its flag as stored read as its report's (#839: an older import's "N" is none, so
-    # it keeps no other copy's flag from it, as the summary and the page read it)
-    own = lambda p: (_num(p[2]), _num(p[3]), ranges.read_flag(p[4], _num(p[1]), _num(p[2]), _num(p[3]), p[5], p[7]), str(p[7] or ""))
     touched = set()
 
     def mine(i):   # series i as a new dict with its own list of points, the records' own left as they are
@@ -590,16 +596,16 @@ def copies(data, apart=()):
             if len(result) < 2:
                 continue
             pts = [labs[i]["pts"][n] + [None] * (8 - len(labs[i]["pts"][n])) for i, n in result]
-            got = own(pts[0])
+            got = said(pts[0])
             for p in pts[1:]:
-                got = ranges.copies(got, own(p))
+                got = ranges.copies(got, said(p))
             # (#834) the import whose copy's report gave the range, for a copy whose own gave none
-            src = next((labs[i].get("imp") for (i, _), p in zip(result, pts) if own(p)[:2] != (None, None)), None)
+            src = next((labs[i].get("imp") for (i, _), p in zip(result, pts) if said(p)[:2] != (None, None)), None)
             for (i, n), p in zip(result, pts):
-                if own(p)[:2] == (None, None) and got[:2] != (None, None):
+                if said(p)[:2] == (None, None) and got[:2] != (None, None):
                     s = mine(i)
                     s["rangeFrom"] = {**(s.get("rangeFrom") or {}), str(n): src}
-                if own(p) == got:
+                if said(p) == got:
                     continue
                 kp = list(labs[i]["pts"][n])
                 kp += [None] * (5 - len(kp))
@@ -617,7 +623,8 @@ def for_preview(db, pid, data, dups):
     """The results in an import being previewed (data, less dups as preview.find found them) that are possibly the
     same as one already in the profile from another import: [{ref: "m:<series index>:<point index>", name, t, value,
     unit, other: {imp, label, name, t, value, unit}, key, other_key}]. key and other_key are for jobs._save; the page
-    gets the list without them (public())."""
+    gets the list without them (public()). Not a result already here that's added with its own report of it (#846,
+    dups' "copies"): the review says those apart, and the page reads each as one with its copy here (copies())."""
     from . import records
     have = records.assemble(db, pid)
     if not have:
@@ -639,7 +646,7 @@ def for_preview(db, pid, data, dups):
     for i, s in enumerate(data.get("labs") or []):
         if not isinstance(s, dict) or i in dups.get("series", ()):
             continue
-        drop = dups.get("points", {}).get(i, set())
+        drop = dups.get("points", {}).get(i, set()) | dups.get("copies", {}).get(i, set())
         for n, p in enumerate(s.get("pts") or []):
             if n in drop or not isinstance(p, list) or not p:
                 continue

@@ -9,7 +9,7 @@ only.
 
   python3 tests/test_ranges.py
 """
-import datetime, io, json, os, re, shutil, sys, tempfile, unittest, zlib
+import datetime, io, json, os, re, shutil, sys, tempfile, time, unittest, zlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-ranges-test-")
@@ -446,6 +446,70 @@ class Api(unittest.TestCase):
         self.assertLess((a + b) / 2, (p4[0] + p6[0]) / 2, "said over the first step, which ends halfway from 4 to 6")
         self.assertEqual([t for *_, t in vpage.texts if "settings" in t], ["30–100 from settings"], "one step, its end said as before (#649)")
 
+    def copies_views(self, pid, token, body, when, seen, once, trends, out, days, both="Potassium"):
+        """What the server gives of a profile's copies (tests/ranges_matrix.py's COPIES and UPLOADED): the records page's
+        results (seen); the summary's points (once), its trends, out-of-range rows (both: one whose source names each
+        import) and PDF (body: what's asked for); a share link's results (token); and each import's lab days (days:
+        each row's test as printed and its result's flag, #782). -> the records"""
+        c, word = self.c["robin"], M.SAID   # (a ◆ "Flagged", #819: ALT's and AST's "A", #817)
+        db = dbm.connect()
+        try:
+            data = records.assemble(db, pid)
+        finally:
+            db.close()
+        page = {}   # the records page's series (same.js joinSeries: by name and unit), each result by the one rule
+        for s in data["labs"]:
+            page.setdefault((s["name"], s["unit"]), []).extend(s["pts"])
+        edge = lambda p: p[7] if len(p) > 7 and p[7] else ""   # (#780: a one-sided range's edge, pts[7])
+        page = {k: [[ranges.judge(p[1], p[2], p[3], p[4], p[5], None, edge(p))[2], p[2], p[3], *filter(None, [edge(p)])]
+                    for p in page_once(pts)] for k, pts in page.items()}
+        self.assertEqual(page, seen, f"{when}: the records page's results")
+        series = list(summary.each(summary._series(data)))
+        self.assertEqual({(s["name"], s["unit"]): [[p["flag"], p["lo"], p["hi"], *filter(None, [p["edge"]])] for p in s["pts"]] for s in series}, once,
+                         f"{when}: the summary's results: a result twice once, with any range and flag either copy has")
+        labels = [data["imports"][k]["label"] for k in sorted(data["imports"], key=int)]
+        s = c.post(f"/api/profiles/{pid}/summary/preview", headers=H, json=body).json()
+        cell = lambda x: x and [x["value"], x["flag"]]
+        got = {(t["name"], t["unit"]): [cell(t["then"]), cell(t["now"]), (t["now"] or {}).get("range", "")] for t in s["trends"]}
+        self.assertEqual(list(got.items()), list(trends.items()), f"{when}: the trends, each unit its row, the latest result's first")
+        pts = {(x["name"], x["unit"], p["d"]): [summary.out_of_range(p), p["lo"], p["hi"]] for x in series for p in x["pts"]}
+        for t in s["trends"]:
+            self.assertEqual([q[2:5] for q in t["spark"]], [pts[(t["name"], t["unit"], q[0])] for q in t["spark"]], f"{when}: {t['name']}'s chart")
+        self.assertEqual({(o["name"], o["unit"]): [o["value"], o["flag"], o["range"], o["out"], o["of"]] for o in s["out_of_range"]},
+                         out, f"{when}: out of range since then")
+        k = next(o for o in s["out_of_range"] if o["name"] == both)
+        self.assertEqual(k["source"], "; ".join(labels), f"{when}: the sources of both copies")
+        r = c.post(f"/api/profiles/{pid}/summary/pdf", headers=H, json=body)
+        self.assertEqual(r.status_code, 200, r.text[:200])
+        text = " ".join("\n".join(p.extract_text() for p in PdfReader(io.BytesIO(r.content)).pages).split())
+        for (n, u), (v, f, rg, *_) in out.items():
+            self.assertIn(f"{v} {u} {f} {rg}", text, f"{when}: the PDF's out-of-range {n}")
+        for n, u in trends:
+            self.assertIn(f"{M.SHOWN.get(n, n)} ({u})", text, f"{when}: the PDF's trend of {n} in {u}")
+        view = TestClient(main.app, base_url="http://testserver").post("/api/share/view", json={"token": token}, headers=H).json()
+        self.assertEqual({(x["name"], x["unit"]): [[q["flag"], q["lo"], q["hi"], q["range"], *filter(None, [q.get("edge")])] for q in x["results"][::-1]]
+                          for x in view["results"]},
+                         {k: [[word.get(f), lo, hi, summary.range_words(lo, hi, *e), *e] for f, lo, hi, *e in v] for k, v in once.items()},
+                         f"{when}: a share link's results")
+        # each import's lab days (#782): its rows named with their series (records._row_series), each flagged as its
+        # result is judged (the drawer's flag, the Timeline's count): the kept copy's with the other's range, flag and
+        # edge after Same result (crossmatch._carry), the other's rows folded into it and its lab day left out
+        imps = sorted(data["imports"], key=int)
+        got = {}
+        for e in data["events"]:
+            if e["k"] != "lab":
+                continue
+            rows = []
+            for i in data["details"][str(e["id"])]["ids"]:
+                d = data["details"][str(i)]
+                for r, n in zip(d["rows"], d.get("series") or [None] * len(d["rows"])):
+                    p = next((p for s in data["labs"] if s["name"] == n and s.get("imp") == e.get("imp") for p in s["pts"]
+                              if p[0][:10] == e["t"][:10] and p[5] == r[1]), None)
+                    rows.append((r[0], p and ranges.judge(p[1], p[2], p[3], p[4], p[5], None, edge(p))[2]))
+            got[(imps.index(str(e["imp"])) + 1, (TODAY - datetime.date.fromisoformat(e["t"][:10])).days)] = rows
+        self.assertEqual(got, days, f"{when}: each import's lab days, their rows' tests and flags")
+        return data
+
     def test_2_summary_copies(self):
         """#781: one result twice (from two imports) and a lab in two units, through the server (tests/ranges_matrix.py's
         COPIES), before and after "Same result". The records page's results, each judged by the one rule (both copies, a
@@ -467,82 +531,87 @@ class Api(unittest.TestCase):
                     records.store(db, pid, M.copies(imp, TODAY), "upload", fmt=fmt)
         finally:
             db.close()
-        c, word = self.c["robin"], M.SAID   # (a ◆ "Flagged", #819: ALT's and AST's "A", #817)
+        c = self.c["robin"]
         self.assertEqual(c.put(f"/api/profiles/{pid}/settings/overview.keyLabs", json={"value": M.COPIES_LABS}, headers=H).status_code, 200)
         r = c.post(f"/api/profiles/{pid}/links", json={"sections": ["results"]}, headers=H)
         self.assertEqual(r.status_code, 200, r.text)
         token = r.json()["path"].split("#", 1)[1]
         body = {"appointment": None, "since": M.day(M.COPIES_SINCE, TODAY)[:10], "sections": ["out_of_range", "trends"], "labs": []}
 
-        def check(when, seen, once, trends, out, days):
-            db = dbm.connect()
-            try:
-                data = records.assemble(db, pid)
-            finally:
-                db.close()
-            page = {}   # the records page's series (same.js joinSeries: by name and unit), each result by the one rule
-            for s in data["labs"]:
-                page.setdefault((s["name"], s["unit"]), []).extend(s["pts"])
-            edge = lambda p: p[7] if len(p) > 7 and p[7] else ""   # (#780: a one-sided range's edge, pts[7])
-            page = {k: [[ranges.judge(p[1], p[2], p[3], p[4], p[5], None, edge(p))[2], p[2], p[3], *filter(None, [edge(p)])]
-                        for p in page_once(pts)] for k, pts in page.items()}
-            self.assertEqual(page, seen, f"{when}: the records page's results")
-            series = list(summary.each(summary._series(data)))
-            self.assertEqual({(s["name"], s["unit"]): [[p["flag"], p["lo"], p["hi"], *filter(None, [p["edge"]])] for p in s["pts"]] for s in series}, once,
-                             f"{when}: the summary's results: a result twice once, with any range and flag either copy has")
-            labels = [data["imports"][k]["label"] for k in sorted(data["imports"], key=int)]
-            s = c.post(f"/api/profiles/{pid}/summary/preview", headers=H, json=body).json()
-            cell = lambda x: x and [x["value"], x["flag"]]
-            got = {(t["name"], t["unit"]): [cell(t["then"]), cell(t["now"]), (t["now"] or {}).get("range", "")] for t in s["trends"]}
-            self.assertEqual(list(got.items()), list(trends.items()), f"{when}: the trends, each unit its row, the latest result's first")
-            pts = {(x["name"], x["unit"], p["d"]): [summary.out_of_range(p), p["lo"], p["hi"]] for x in series for p in x["pts"]}
-            for t in s["trends"]:
-                self.assertEqual([q[2:5] for q in t["spark"]], [pts[(t["name"], t["unit"], q[0])] for q in t["spark"]], f"{when}: {t['name']}'s chart")
-            self.assertEqual({(o["name"], o["unit"]): [o["value"], o["flag"], o["range"], o["out"], o["of"]] for o in s["out_of_range"]},
-                             out, f"{when}: out of range since then")
-            k = next(o for o in s["out_of_range"] if o["name"] == "Potassium")
-            self.assertEqual(k["source"], "; ".join(labels), f"{when}: the sources of both copies")
-            r = c.post(f"/api/profiles/{pid}/summary/pdf", headers=H, json=body)
-            self.assertEqual(r.status_code, 200, r.text[:200])
-            text = " ".join("\n".join(p.extract_text() for p in PdfReader(io.BytesIO(r.content)).pages).split())
-            for (n, u), (v, f, rg, *_) in out.items():
-                self.assertIn(f"{v} {u} {f} {rg}", text, f"{when}: the PDF's out-of-range {n}")
-            for n, u in trends:
-                self.assertIn(f"{n} ({u})", text, f"{when}: the PDF's trend of {n} in {u}")
-            view = TestClient(main.app, base_url="http://testserver").post("/api/share/view", json={"token": token}, headers=H).json()
-            self.assertEqual({(x["name"], x["unit"]): [[q["flag"], q["lo"], q["hi"], q["range"], *filter(None, [q.get("edge")])] for q in x["results"][::-1]]
-                              for x in view["results"]},
-                             {k: [[word.get(f), lo, hi, summary.range_words(lo, hi, *e), *e] for f, lo, hi, *e in v] for k, v in once.items()},
-                             f"{when}: a share link's results")
-            # each import's lab days (#782): its rows named with their series (records._row_series), each flagged as its
-            # result is judged (the drawer's flag, the Timeline's count): the kept copy's with the other's range, flag and
-            # edge after Same result (crossmatch._carry), the other's rows folded into it and its lab day left out
-            imps = sorted(data["imports"], key=int)
-            got = {}
-            for e in data["events"]:
-                if e["k"] != "lab":
-                    continue
-                rows = []
-                for i in data["details"][str(e["id"])]["ids"]:
-                    d = data["details"][str(i)]
-                    for r, n in zip(d["rows"], d.get("series") or [None] * len(d["rows"])):
-                        p = next((p for s in data["labs"] if s["name"] == n and s.get("imp") == e.get("imp") for p in s["pts"]
-                                  if p[0][:10] == e["t"][:10] and p[5] == r[1]), None)
-                        rows.append((n, p and ranges.judge(p[1], p[2], p[3], p[4], p[5], None, edge(p))[2]))
-                got[(imps.index(str(e["imp"])) + 1, (TODAY - datetime.date.fromisoformat(e["t"][:10])).days)] = rows
-            self.assertEqual(got, days, f"{when}: each import's lab days, their rows' series and flags")
-            return data
-
-        data = check("before", M.COPIES_SEEN, M.COPIES_ONCE, M.COPIES_TRENDS, M.COPIES_OUT, M.COPIES_DAYS)
+        data = self.copies_views(pid, token, body, "before", M.COPIES_SEEN, M.COPIES_ONCE, M.COPIES_TRENDS, M.COPIES_OUT, M.COPIES_DAYS)
         self.assertEqual(sorted(x["a"]["name"] for x in data["possible"]), M.COPIES_LINKED)
         for x in data["possible"]:
             self.assertEqual(c.post(f"/api/profiles/{pid}/same", json={"ref": x["ref"]}, headers=H).status_code, 201)
-        check("after Same result", M.COPIES_SAME, M.COPIES_SAME, M.COPIES_TRENDS_SAME, M.COPIES_OUT_SAME, M.COPIES_DAYS_SAME)
+        self.copies_views(pid, token, body, "after Same result", M.COPIES_SAME, M.COPIES_SAME, M.COPIES_TRENDS_SAME, M.COPIES_OUT_SAME,
+                          M.COPIES_DAYS_SAME)
         db = dbm.connect()
         try:
             prof.delete_profile(db, pid)
         finally:
             db.close()
+
+    def upload(self, pid, name, text):
+        """name and text uploaded to profile pid and imported as a person does (#846): through the import's preview, then
+        saved. -> (the job at its preview, the job done)"""
+        c = self.c["robin"]
+        up = c.post(f"/api/profiles/{pid}/uploads", headers=H).json()["id"]
+        self.assertEqual(c.put(f"/api/profiles/{pid}/uploads/{up}/files", params={"path": name}, content=text.encode(), headers=H).status_code, 200)
+        self.assertEqual(c.post(f"/api/profiles/{pid}/uploads/{up}/finish", headers=H).status_code, 200)
+        r = c.post(f"/api/profiles/{pid}/uploads/{up}/import", json={}, headers=H)
+        self.assertEqual(r.status_code, 202, r.text)
+        jid, seen = r.json()["id"], None
+
+        def until(states):
+            for _ in range(600):
+                j = c.get(f"/api/profiles/{pid}/jobs/{jid}").json()
+                if j["state"] in states:
+                    return j
+                time.sleep(0.05)
+            self.fail(f"{name}: never {states}: {j}")
+        seen = until(("preview", "failed"))
+        self.assertEqual(seen["state"], "preview", seen)
+        self.assertEqual(c.post(f"/api/profiles/{pid}/jobs/{jid}/confirm", json={}, headers=H).status_code, 202)
+        done = until(("done", "failed", "discarded"))
+        self.assertEqual(done["state"], "done", done)
+        return seen, done
+
+    def test_2_uploaded_copies(self):
+        """#846: one result twice through real uploads, in each order (tests/ranges_matrix.py's UPLOADED): a spreadsheet and
+        a C-CDA document of the same results at one time, a range or a flag in one file only, each put through the
+        import's preview and saved. The second's preview counted each result already here a duplicate by its test, time
+        and value, and left its copy out with its range and flag: the spreadsheet first, every view said each unflagged
+        and the C-CDA's lab day "Out of range"; the C-CDA first, the spreadsheet's lab day "None". Now its review says how
+        many it adds again with its report's range and flag and skips none, and every view gives each as one result
+        with them, each file's lab day flagging its rows."""
+        db = dbm.connect()
+        try:
+            owner = db.execute("SELECT id FROM users WHERE username='robin'").fetchone()["id"]
+        finally:
+            db.close()
+        c = self.c["robin"]
+        for order in M.UPLOAD_ORDERS:
+            when = " then ".join(order)
+            db = dbm.connect()
+            try:
+                pid = prof.create_profile(db, f"Uploaded copies, {when} (fictional)", owner_id=owner)
+            finally:
+                db.close()
+            first, _ = self.upload(pid, *M.uploaded(order[0], TODAY))
+            second, _ = self.upload(pid, *M.uploaded(order[1], TODAY))
+            self.assertEqual({k: first["duplicates"].get(k, 0) for k in M.UPLOADED_HERE}, {"copies": 0, "results": 0}, f"{when}: the first's review")
+            self.assertEqual({k: second["duplicates"].get(k, 0) for k in M.UPLOADED_HERE}, M.UPLOADED_HERE,
+                             f"{when}: the second's review: its results already here added again with its report's range and flag, none skipped")
+            self.assertEqual(c.put(f"/api/profiles/{pid}/settings/overview.keyLabs", json={"value": M.UPLOADED_LABS}, headers=H).status_code, 200)
+            r = c.post(f"/api/profiles/{pid}/links", json={"sections": ["results"]}, headers=H)
+            self.assertEqual(r.status_code, 200, r.text)
+            body = {"appointment": None, "since": M.day(M.UPLOADED_SINCE, TODAY)[:10], "sections": ["out_of_range", "trends"], "labs": []}
+            self.copies_views(pid, r.json()["path"].split("#", 1)[1], body, when, M.UPLOADED_SEEN, M.UPLOADED_SEEN, M.UPLOADED_TRENDS,
+                              M.UPLOADED_OUT, M.uploaded_days(order), both="Sodium, Blood")
+            db = dbm.connect()
+            try:
+                prof.delete_profile(db, pid)
+            finally:
+                db.close()
 
     def test_2_summary_latest_copies(self):
         """#825: one result twice at one time, its latest, a range on one copy only, in each import order (tests/

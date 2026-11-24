@@ -20764,17 +20764,18 @@ def main():
               return (await r.json()).path.split('#')[1]; }""", [cpid, M752.COPIES_LABS])
             SUM781 = {"Low": "▼ Low", "High": "▲ High", "Flagged": "◆ Flagged"}   # (#819: ALT's and AST's ◆, #825 with #817)
 
-            def views781(when, seen, once, trends, out, days):
-                """what's wrong in Labs (seen: its results), a share link's page, the summary's preview and its PDF (once),
-                and the Timeline and the drawer (days: each import's lab days, M752.COPIES_DAYS)"""
+            def views781(when, seen, once, trends, out, days, pid=cpid, tok=tok781, labs=M752.COPIES_LABS, every=M752.COPIES_OUT):
+                """what's wrong in Labs (seen: its results), a share link's page (tok), the summary's preview and its PDF
+                (once), and the Timeline and the drawer (days: each import's lab days, M752.COPIES_DAYS), of profile pid
+                (its key labs labs; every: each out-of-range row any of its views has)"""
                 bad = []
-                page.goto(base + f"/?profile={cpid}")
-                page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {cpid}", timeout=20000)
+                page.goto(base + f"/?profile={pid}")
+                page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {pid}", timeout=20000)
                 got = {(n, u): p for n, u, p in js("SERIES.filter(s => !s.watch).map(s => [s.name, s.unit, s.pts.map(p => [p[4] || '', p[2], p[3], ...(p[7] ? [p[7]] : [])])])")}
                 if got != seen:
                     bad.append(f"{when}: Labs' results {got}")
                 js("labs => { state.tables.clear(); for (const n of labs) state.tables.add(n); state.sel = new Set(labs); applyPreset('all'); switchTab('labs', 'chart'); renderLabs(); }",
-                   M752.COPIES_LABS)
+                   labs)
                 settle(600)
                 got = {(n, u): r for n, u, r in js("""[...document.querySelectorAll('#charts .chart')].map(c => [c.dataset.lab, c.querySelector('.hd-sub .unit').textContent.split(' ')[0],
                   [...c.querySelectorAll('table.data tbody tr')].map(r => [r.cells[2].textContent.split(' · ')[0], r.cells[3].textContent]).reverse()])""")}
@@ -20799,17 +20800,17 @@ def main():
                         for (i, d), rows in days.items() for k in [sum(1 for _, f in rows if f)]}
                 if got != want:
                     bad.append(f"{when}: the Timeline's and the drawer's lab days {got} not {want}")
-                page.goto(base + f"/share.html#{tok781}")
+                page.goto(base + f"/share.html#{tok}")
                 page.wait_for_selector("#share-results .share-latest", timeout=10000)
                 js("[...document.querySelectorAll('#share-results .share-tools button')].find(b => b.textContent.startsWith('Open every')).click()")
                 settle(400)
                 got = {(n, u): r for n, u, r in js("""[...document.querySelectorAll('#share-results .share-open')].map(b => [b.textContent, b.parentElement.querySelector('.share-unit')?.textContent || '',
                   [...document.getElementById(b.getAttribute('aria-controls')).querySelector('table').tBodies[0].rows]
                     .map(r => [r.cells[1].querySelector('.share-flag')?.textContent || '', r.cells[2].textContent]).reverse()])""")}
-                if got != {k: [[SAID752[f], words752(lo, hi, *e)] for f, lo, hi, *e in v] for k, v in once.items()}:
+                if got != {(M752.SHOWN.get(n, n), u): [[SAID752[f], words752(lo, hi, *e)] for f, lo, hi, *e in v] for (n, u), v in once.items()}:
                     bad.append(f"{when}: the share page's {got}")
-                page.goto(base + f"/sharing.html?profile={cpid}#summary")
-                page.wait_for_selector("#preview:not([hidden]):not([aria-busy]) #prevBody .sum-chart", timeout=15000)
+                page.goto(base + f"/sharing.html?profile={pid}#summary")
+                page.wait_for_selector("#preview:not([hidden]):not([aria-busy]) #prevBody h3", timeout=15000)
                 s = js(r"""async () => { const table = w => [...document.querySelectorAll('#prevBody h3')].find(h => h.textContent.startsWith(w)).nextElementSibling;
                   const at = c => c.childNodes[0].textContent, rows = w => [...table(w).querySelectorAll('tbody tr')];
                   const r = await fetch(`api/profiles/${PID}/summary/pdf`, {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, body: JSON.stringify(chosen())});
@@ -20817,19 +20818,20 @@ def main():
                   return {trends: rows('Trends').map(r => [r.cells[0].textContent, at(r.cells[1]), at(r.cells[2]), r.cells[6].textContent]),
                     out: rows('Out of range').map(r => [...r.cells].slice(0, 4).map(c => c.textContent)), pdf: btoa(b)}; }""")
                 cell = lambda x, none: f"{x[0]} {SUM781[x[1]]}" if x and x[1] else x[0] if x else none
-                want = [[f"{n} ({u})", cell(th, "none before"), cell(nw, "no new result"), r] for (n, u), (th, nw, r) in trends.items()]
+                want = [[f"{M752.SHOWN.get(n, n)} ({u})", cell(th, "none before"), cell(nw, "no new result"), r] for (n, u), (th, nw, r) in trends.items()]
                 if s["trends"] != want:
                     bad.append(f"{when}: the summary's trends {s['trends']} not {want}")
-                want = sorted([n + (f" ({o} of {of})" if of > 1 else ""), f"{v} {u}", f, r] for (n, u), (v, f, r, o, of) in out.items())
+                want = sorted([M752.SHOWN.get(n, n) + (f" ({o} of {of})" if of > 1 else ""), f"{v} {u}", f, r or "not given"]
+                              for (n, u), (v, f, r, o, of) in out.items())
                 if sorted(s["out"]) != want:
                     bad.append(f"{when}: the summary's out of range {s['out']} not {want}")
                 try:
                     pdf = " ".join("\n".join(p_.extract_text() for p_ in PdfReader(io.BytesIO(base64.b64decode(s["pdf"]))).pages).split())
                 except Exception as e:
                     pdf = f"no PDF: {e}"
-                bad += [f"{when}: the PDF's {w}" for w in [f"{v} {u} {f} {r}" for (n, u), (v, f, r, *_) in out.items()]
-                        + [f"{n} ({u})" for n, u in trends] if w not in pdf]
-                bad += [f"{when}: the PDF's {v} {u}, linked to another" for (n, u), (v, *_) in M752.COPIES_OUT.items() if (n, u) not in out and f"{v} {u}" in pdf]
+                bad += [f"{when}: the PDF's {w}" for w in [f"{v} {u} {f} {r or 'not given'}" for (n, u), (v, f, r, *_) in out.items()]
+                        + [f"{M752.SHOWN.get(n, n)} ({u})" for n, u in trends] if w not in pdf]
+                bad += [f"{when}: the PDF's {v} {u}, linked to another" for (n, u), (v, *_) in every.items() if (n, u) not in out and f"{v} {u}" in pdf]
                 return bad
 
             bad781 = views781("before", M752.COPIES_SEEN, M752.COPIES_ONCE, M752.COPIES_TRENDS, M752.COPIES_OUT, M752.COPIES_DAYS)
@@ -20945,6 +20947,59 @@ def main():
             db = dbm.connect()
             prof_r.delete_profile(db, lpid)
             db.close()
+            # ---- #846: one result twice through real uploads, in each order (tests/ranges_matrix.py's UPLOADED): a
+            # spreadsheet and a C-CDA document of the same results at one time, a range or a flag in one file only, each
+            # uploaded on the import page, reviewed and added. The second's review called each result already here a
+            # duplicate, and its import left it out with its range and flag: the spreadsheet first, Labs, the summary and
+            # share links said each unflagged while the C-CDA's lab day said "Out of range 3"; the C-CDA first, the
+            # spreadsheet's lab day "Out of range: None". Now its review says how many it adds again with its report's
+            # range and flag (in its bar as already here), and every view (views781) gives each as one result with them,
+            # each file's lab day flagging its rows
+            card846, bad846 = "[...document.querySelectorAll('.import-job')].pop()", []
+            for order846 in M752.UPLOAD_ORDERS:
+                when846 = " then ".join(order846)
+                db = dbm.connect()
+                upid846 = prof_r.create_profile(db, f"Uploaded copies, {when846} (fictional)", owner_id=owner)
+                db.close()
+                for k846 in order846:
+                    name846, text846 = M752.uploaded(k846)
+                    page.goto(base + f"/import.html?profile={upid846}")
+                    page.wait_for_selector("#importer", state="visible", timeout=10000)
+                    page.set_input_files("#pickFiles", files=[{"name": name846, "mimeType": "text/xml" if k846 == "ccda" else "text/csv", "buffer": text846.encode()}])
+                    page.wait_for_function(f"document.querySelectorAll('.import-job').length && "
+                                           f"/^(Ready to import|All duplicates|Not imported)/.test({card846}.textContent)", timeout=30000)
+                    got846 = js(f"""(c => [c.querySelector('.imp-state').textContent, [...c.querySelectorAll('.imp-split li')].map(li => li.textContent),
+                      c.querySelector('.imp-copies')?.textContent ?? null, c.querySelector('.imp-actions .primary').textContent])({card846})""")
+                    n846, all846 = (M752.UPLOADED_HERE["copies"] if k846 == order846[1] else 0), len(M752.UPLOADED)
+                    want846 = ["Ready to import", [f"{all846 - n846} new", f"{n846} already here", "0 possibly the same"],
+                               f"{n846} lab results already here are added again from this file with its report's range and flag, so neither "
+                               "report's is lost." if n846 else None, f"Add {all846} lab results"]
+                    if got846 != want846:
+                        bad846.append(f"{when846}: {name846}'s review {got846} not {want846}")
+                    js(f"{card846}.querySelector('.imp-actions .primary').click()")
+                    page.wait_for_function(f"/^(Imported|Not imported)/.test({card846}.textContent)", timeout=30000)
+                tok846 = js("""async ([pid, value]) => { const h = {'X-Sanguity': '1', 'Content-Type': 'application/json'};
+                  await fetch(`api/profiles/${pid}/settings/overview.keyLabs`, {method: 'PUT', headers: h, body: JSON.stringify({value})});
+                  const r = await fetch(`api/profiles/${pid}/links`, {method: 'POST', headers: h, body: JSON.stringify({sections: ['results']})});
+                  return (await r.json()).path.split('#')[1]; }""", [upid846, M752.UPLOADED_LABS])
+                bad846 += views781(when846, M752.UPLOADED_SEEN, M752.UPLOADED_SEEN, M752.UPLOADED_TRENDS, M752.UPLOADED_OUT, M752.uploaded_days(order846),
+                                   pid=upid846, tok=tok846, labs=M752.UPLOADED_LABS, every=M752.UPLOADED_OUT)
+                page.goto(base + f"/?profile={upid846}")   # the Overview's list of what's outside its range at its latest result
+                page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {upid846}", timeout=20000)
+                js("() => { setPeriod('all'); pickTab('overview'); }")
+                settle(500)
+                got846 = js("""Object.fromEntries([...document.querySelectorAll('#ovOut .ov-row')].map(r => [r.querySelector('.n').textContent,
+                  [r.querySelector('.v').textContent.trim(), r.querySelector('.r').textContent]]))""")
+                want846 = {M752.SHOWN.get(n, n): [f"{v} {u} {SUM781[f]}", f"ref {r}" if r else ""] for (n, u), (v, f, r, *_) in M752.UPLOADED_OUT.items()}
+                if got846 != want846:
+                    bad846.append(f"{when846}: the Overview's out-of-range list {got846} not {want846}")
+                db = dbm.connect()
+                prof_r.delete_profile(db, upid846)
+                db.close()
+            check("#846: a result already here comes again in another file with its range or flag (a spreadsheet's, then a C-CDA's, and the other "
+                  "way round, each uploaded, reviewed and added): its review says how many it adds again with its report's range and flag, none "
+                  "skipped, and Labs, the Overview's list, each file's lab day (its Timeline badge and drawer rows), a share link's page and the "
+                  "summary's preview and PDF give each as one result with them", not bad846, bad846)
             # ---- #780: a one-sided range keeps whether its limit includes its edge ("<5" leaves 5 out, "<=5" keeps it;
             # ">60", ">=60"). The page's rule and words against the server's over a grid of values, ranges, bounds and
             # edges; then the matrix's one-sided cases through the real CSV importer (ranges_matrix printed()): each
