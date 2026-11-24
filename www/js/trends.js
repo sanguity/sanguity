@@ -308,19 +308,16 @@ function drawChart(svg, s, pts, read, live) {   // live: a frame of a drag, at t
   svg.replaceChildren(...g.filter(Boolean));
   const lastP = pts[pts.length - 1], when = p => s.watch ? fmtD(p.ts) : fmtDT(p.ts);
   // the readout: the latest (last), or every result at the time hovered (#848: "2 results: 5.6 mmol/L ▲ High
-  // (3.5–5.3); 5.0 mmol/L (3.5–5.1)", each told apart by its range, chartkit.js ckEach). As big whatever it says (ckRead,
-  // #865): laid out for the longest the lab's results would say, latest or hovered, in any period, so the plot moves
-  // neither under the pointer nor while the period's dragged (its room kept through a drag's frames)
+  // (3.5–5.3); 5.0 mmol/L (3.5–5.1)", each told apart by its range, chartkit.js ckEach). As big whatever it says
+  // (ckReadAt, #865, #894): laid out for the longest the lab's results would say, latest or hovered, in any period, so
+  // the plot moves neither under the pointer nor while the period's dragged (its room kept through a drag's frames)
   const says = (at, last) => {
     if (!at) return last ? ["Latest ", el("b", {text: readText(s, last)[0].replace(` ${s.unit}`, "")}), ` · ${fmtD(last.ts)}`] : [];
     const p = at[0];
     if (at.length > 1) return [el("b", {text: `${at.length} results:`}), " " + at.map(q => ckOne(q, readText(s, q)[0])).join("; "), ` · ${when(p)}`];
     return [el("b", {text: readText(s, p)[0]}), p[4] ? el("span", {style: {color: "var(--crit)", fontWeight: "var(--fw-semibold)"}, text: " " + flagWord(p[4])}) : "", ` · ${when(p)}`];
   };
-  if (!live || !read._say) {
-    const at = new Map(); for (const p of s.pts) (at.get(p.ts) || at.set(p.ts, []).get(p.ts)).push(p);   // each time's results (as ckAt)
-    read._say = ckRead(read, [...s.pts.map(p => says(null, p)), ...[...at.values()].map(g => says(g))]);
-  }
+  if (!live || !read._say) read._say = ckReadAt(read, s.pts, says);
   const setRead = at => read._say(says(at, lastP));
   setRead(null);
   // every result at the time nearest t (within 3% of the period), the flagged one ringed: -> them, or null

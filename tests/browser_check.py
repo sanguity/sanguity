@@ -21338,6 +21338,41 @@ def main():
                   "at 700, 900, 1100 and 1400 px with text as usual and at 150%, and at 360 and 412 px as usual and at 200%: neither chart moves (the "
                   "readout wrapped the header and the ▲ High couldn't be hovered), and the readout and tooltip say both, the readout uncut on a phone",
                   not bad865, bad865)
+            # …#894: and at every width. The readout's room held the two in the file's order, the hover says the flagged one
+            # first, and wrapped, the one said took a line more than its room: Compare dropped 18–36 px at 712, 716, 792,
+            # 920, 1060, 1064 and 1352 px, Labs 40 px at 320–326 px with 200% text. Every time of Labs' Potassium and
+            # Sodium (every chart at once, ckSync) and of Compare hovered at each width from 320 to 1400 px, 4 px apart, with
+            # text as usual, at 150% and at 200%: no chart moves, no readout cut. Each width as the window's resize leaves
+            # it, the page's redraw after it held back (timeline.js window._rz): the header's room is what moves the plot
+            SWEEP894 = r"""async labs => { await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); clearTimeout(window._rz);
+              const svgs = [...document.querySelectorAll(labs ? '#charts .chart svg.ck' : '#cmpSvg')], reads = [...document.querySelectorAll(labs ? '#charts .chart .read' : '.cmp-slot > .read')];
+              const tops = () => svgs.map(s => s.getBoundingClientRect().top), hover = t => labs ? ckSync(svgs[0], t) : svgs[0]._hover(t), out = [];
+              if (svgs.length !== (labs ? 2 : 1) || !svgs.every(s => s._hover)) return ['the charts not drawn'];
+              hover(null); const rest = tops();
+              for (const t of new Set(labs ? svgs.flatMap(s => s._s.pts.map(p => p.ts)) : svgs[0]._slots.flatMap(r => cmpPlaced(r.s).map(p => p.ts)))) {
+                hover(t); const d = Math.max(...tops().map((y, i) => Math.abs(y - rest[i]))), cut = reads.some(r => r.scrollWidth > r.clientWidth + 1 || r.scrollHeight > r.clientHeight + 1);
+                if (d > .5 || cut) out.push(`${isoDay(t)}: moved ${d.toFixed(1)} px${cut ? ', a readout cut' : ''} (“${reads.map(r => r.innerText).join('” “')}”)`); }
+              hover(null); return out; }"""
+            bad894 = []
+            for k894 in (1, 1.5, 2):
+                js(ADOPT_CSS_JS, BIG865[k894])
+                for labs894 in (True, False):
+                    page.set_viewport_size({"width": 1400, "height": 900})
+                    js("() => { state.tables.clear(); state.sel = new Set(['Potassium', 'Sodium']); applyPreset('all'); switchTab('labs', 'chart'); renderLabs(); }" if labs894 else
+                       "() => { cmpSel = ['Potassium', 'Sodium'].map(n => cmpKey(SERIES.find(s => s.name === n))).concat(''); state.tables.delete('#cmp'); applyPreset('all'); "
+                       "switchTab('labs', 'compare'); renderCompare(); }")
+                    settle(500)
+                    for w894 in range(320, 1401, 4):
+                        page.set_viewport_size({"width": w894, "height": 900})
+                        got894 = js(SWEEP894, labs894)
+                        if got894:
+                            bad894.append(f"{'Labs' if labs894 else 'Compare'} at {w894} px, text at {k894:.0%}: {got894[0]}{f' (and {len(got894) - 1} more)' if len(got894) > 1 else ''}")
+            js("() => { document.adoptedStyleSheets = []; cmpSel = null; switchTab('labs', 'chart'); }")
+            page.set_viewport_size(size865)
+            settle(300)
+            check("#894: …and at every width: every time of Labs' charts and of Compare hovered at each width from 320 to 1400 px, 4 px apart, with text "
+                  "as usual, at 150% and at 200%: no chart moves (the readout's room held two at one time in another order than it says them), no "
+                  "readout cut", not bad894, bad894[:20])
             db = dbm.connect()
             prof_r.delete_profile(db, apid)
             db.close()

@@ -63,8 +63,8 @@ function renderCompare() {
 }
 /* the slots' readouts: each lab's latest in the period, or got[i], its results at the date hovered (null: none near),
    two at one time each said (#848: "2 results: 5.6 mmol/L · 117%; 5.0 mmol/L · 94%"). Each as tall whatever it says
-   (chartkit.js ckRead, #865: a second line moved the chart under the pointer, #863), laid out for the longest its lab's
-   results would say, latest or hovered, in any period */
+   (chartkit.js ckReadAt, #865: a second line moved the chart under the pointer, #863), laid out for the longest its
+   lab's results would say, latest or hovered, in any period, or that there's none */
 const cmpReadSays = (s, at, latest) => at?.length ? `${latest ? "Latest " : ""}${ckEach(at, q => `${readText(s, q)[0]} · ${cmpPlace(q)}`)} · ${fmtD(at[0].ts)}`
   : latest ? "No results in this period" : "No result near this date";
 function cmpRead(got) {
@@ -72,11 +72,7 @@ function cmpRead(got) {
   list.forEach((s, i) => {
     const r = $("#cmpRead" + i); if (!r) return;
     if (!s) return r.replaceChildren();
-    if (r._s !== s) {
-      const all = cmpPlaced(s, -Infinity, Infinity), at = new Map();
-      for (const p of all) (at.get(p.ts) || at.set(p.ts, []).get(p.ts)).push(p);
-      r._s = s; r._say = ckRead(r, [[cmpReadSays(s, null, true)], [cmpReadSays(s, null)], ...all.map(p => [cmpReadSays(s, [p], true)]), ...[...at.values()].map(g => [cmpReadSays(s, g)])]);
-    }
+    if (r._s !== s) { r._s = s; r._say = ckReadAt(r, cmpPlaced(s, -Infinity, Infinity), (at, last) => [cmpReadSays(s, at || [last], !at)], [[cmpReadSays(s, null, true)], [cmpReadSays(s, null)]]); }
     r._say([cmpReadSays(s, got ? got[i] : cmpPlaced(s).slice(-1), !got)]);
   });
 }

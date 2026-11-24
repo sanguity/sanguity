@@ -2089,6 +2089,12 @@ Everything on `main` so far; it becomes the first tagged release.
   and that result's mark was in the name as a symbol, so a screen reader said "black diamond 20 U/L" for ALT's ◆, and
   read ▲ and ▼ as symbols too. The name now says "20 U/L, Flagged" ("High", "Low"), the mark hidden from it and shown
   as before.
+- **A readout's room holds two results at one time as it says them, so the chart doesn't move at any width** (#894):
+  #865 laid each readout out for the longest it can say, but held two results at one time in the file's order while it
+  says the flagged one first; wrapped, what it said could take a line more, and the chart still dropped from under the
+  pointer at some widths (Compare 18 to 36 px at 520, 712, 792, 920, 1060 and 1352 px among others, with text as usual
+  to 200%; Labs 20 to 41 px at 320 to 332 px). The room is now built by the same words, in the same order, as what's
+  shown, and no chart moves at any width from 320 to 1400 px.
 - **A result already here typed or uploaded again is kept only with its own row, and said for what it brings** (#868):
   Potassium 5.3 typed in with no range, then again with "3.5-5.1": its check line said "already in this profile: it
   won't be saved again" and the save "Saved nothing new" with no Undo, yet its result was saved, with no row of its
