@@ -12334,6 +12334,44 @@ def main():
             check("Above 700 px (#785, #622, 1.4.4): at 701 to 1100 px and on a phone on its side (844×390, 915×412), text at 100–200%, on every page with "
                   "the top bar, the profile's name at its floor (6 em, or whole), on the bar's row or its own; nothing on the bar over anything else or "
                   "outside it", n785 == 168 and not bad785, [n785, dict(list(bad785.items())[:12]), len(bad785)])
+            # ---- #832: #622's on a phone with a long name, 20 characters ("Sam Okafor-Lindqvist", the second profile's for
+            # this and put back after), at 360 and 412 px on the records page and Settings, the text made larger as the page
+            # is shown (130%, then 150%, then 200%, as a phone's text size is changed with it open): the name at its floor
+            # (6 em) on the bar's row, or whole on its own, and nothing on the bar over anything else or outside it (the
+            # tabs, at the screen's foot, left out); as usual (100%) the bar one row. (At 360 px, 130% to 150% left it cut
+            # short of its floor, 114 px of 126, the bar not fitted again: nothing in it changed width.)
+            T832 = T785.replace("...[...document.querySelectorAll('header .tabs > a, #tabMoreBtn')].map(a => [a.id, a]), ", "")
+            name832 = js("fetch('api/me').then(r => r.json()).then(m => m.profiles.find(p => p.id === 2).name)")
+            rename832 = lambda n: js("n => fetch('api/profiles/2', {method: 'PATCH', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, "
+                                     "body: JSON.stringify({name: n})}).then(r => r.status)", n)
+            renamed832, bad832, n832 = rename832("Sam Okafor-Lindqvist"), {}, 0
+            c832 = browser.new_context(viewport={"width": 360, "height": 800}, bypass_csp=True, has_touch=True, is_mobile=True)
+            c832.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
+            p832 = c832.new_page()
+            for path832 in ("?profile=2#overview", "settings.html?profile=2"):
+                for w832 in (360, 412):
+                    p832.set_viewport_size({"width": w832, "height": 800})
+                    p832.goto(base + "/" + path832)
+                    p832.wait_for_function("(n => !!n && n.textContent === 'Sam Okafor-Lindqvist' && !document.getElementById('profilePick').hidden)"
+                                           "(document.querySelector('#profileMenuBtn .profile-name'))", timeout=20000)
+                    p832.wait_for_timeout(500)
+                    for f832 in (1, 1.3, 1.5, 2):
+                        p832.evaluate("css => { const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = css ? [s] : []; }", big785(f832))
+                        p832.wait_for_timeout(300)
+                        n832 += 1
+                        got832 = p832.evaluate(T832)
+                        if f832 == 1 and p832.evaluate("document.querySelector('header.topbar').classList.contains('prof-row')"):
+                            got832.append("its own row at the usual size")
+                        if got832:
+                            bad832[f"{path832.split('?')[0] or 'records'} {w832} {round(f832 * 100)}%"] = got832
+                        if f832 > 1 and os.environ.get("SANGUITY_SHOTS"):
+                            p832.screenshot(path=os.path.join(os.environ["SANGUITY_SHOTS"], f"832-{path832.split('?')[0] or 'records'}-{w832}-{round(f832 * 100)}.png"),
+                                            clip={"x": 0, "y": 0, "width": w832, "height": 160})
+            c832.close()
+            back832 = rename832(name832)
+            check("…and on a phone with a 20-character name (#832, #622): at 360 and 412 px, on the records page and Settings, text made larger as it's shown "
+                  "(130%, 150%, 200%), the name at its floor on the bar's row or whole on its own, nothing on the bar over anything else; as usual the bar "
+                  "one row", renamed832 == back832 == 200 and n832 == 16 and not bad832, [renamed832, name832, back832, n832, bad832])
             # ---- #633: the heatmap's own labels too (its names' column, rows and axis grow with the text, chartkit.js ckK):
             # with text at 200% and as usual, at 360 and 412 px, light and dark, every row's and panel's name, count and the
             # axis's labels inside the grid's or the axis's SVG, none over another
