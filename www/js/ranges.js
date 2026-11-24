@@ -63,6 +63,10 @@ function numberRead(t) {
   const x = +s, [whole, frac = ""] = s.replace(/^[-+]/, "").split(/e/i)[0].split(".");
   return Number.isFinite(x) ? {x, sig: Math.max(1, (whole + frac).replace(/^0+/, "").length)} : null;
 }
+/* a comparator as Labs words a limit (rangeWords: "≤ 5", "< 5"): "<", "≤", ">", "≥"; boundWords(c, v): a value given as a
+   bound said so ("≤ 5", "> 10"), else the value alone (#875: Type them in's check line said "=<5" as "5") */
+const BOUND_WORD = {"<": "<", "<=": "≤", ">": ">", ">=": "≥"};
+const boundWords = (c, v) => BOUND_WORD[c] ? `${BOUND_WORD[c]} ${v}` : `${v}`;
 /* the one flag rule (#752; server/ranges.py flag, which the importers use too): "H" above the high, "L" below the low,
    whatever value a bound (its comparator c) stands for, else "": "<15" against a low of 15 is low (every value under 15
    is), ">90" against a high of 90 high; "<15" against a low of 10 is neither (it may be 12 or 9). e, a point's edge

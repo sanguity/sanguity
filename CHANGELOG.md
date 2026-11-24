@@ -2135,6 +2135,9 @@ Everything on `main` so far; it becomes the first tagged release.
   the page, a value is read the same way, by one reader: in another unit (Settings' SI units) Labs said "=<5" and
   "> OR = 60" as a plain number, their bound gone ("0.500"), and the drawer's row of "> OR = 60" kept its 60 beside the
   other unit, its "=<5" left in its own.
+- **Type them in says a value typed as a bound as one** (#875): "=<5" typed in was saved as a bound, at most 5, and
+  flagged so, but its row's check line said "5 U/L", an exact value. It now says "≤ 5 U/L" ("< 0.5", "≥ 60", "> 10"),
+  as Labs words a limit, by the comparator the server read.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
