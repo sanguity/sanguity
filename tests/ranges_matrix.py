@@ -723,6 +723,15 @@ UPLOADED_TRENDS = {**{k: v for k, v in UPLOADED_TRENDS.items() if k[0] == "ALT"}
 UPLOADED_OUT.update({("CRP", "mg/L"): ["5", "High", "< 5", 1, 2], ("eGFR", "mL/min/1.73m2"): ["60", "Low", "> 60", 1, 2],
                      ("Hemoglobin", "g/dL"): ["13.0", "Low", "13.5–17.5", 1, 2]})
 UPLOADED_HERE, UPLOADED_POSSIBLE = {"copies": 6, "results": 0}, 1
+# ---- #868: what each copy brings, by the second file of each order: its report's range (the C-CDA's for Sodium,
+# Potassium and Glucose; either's own for CRP and Hemoglobin), its flag (the spreadsheet's "A" for ALT), or only its row
+# in the file's own lab day (a file that printed nothing more of it). The review said "with its report's range and
+# flag" of every copy, the spreadsheet's three that print neither too
+UPLOADED_BRINGS = {"ccda": {"range": 5, "row": 1}, "csv": {"flag": 1, "range": 2, "row": 3}}
+UPLOADED_COPIES_SAID = {"ccda": "6 lab results already here are added again from this file: 5 with its report's range, so neither report's is "
+                                "lost, and 1 to go with its own lab day.",
+                        "csv": "6 lab results already here are added again from this file: 2 with its report's range and 1 with its "
+                               "report's flag, so neither report's is lost, and 3 to go with its own lab day."}
 
 
 def uploaded(kind, today=None):
@@ -738,6 +747,44 @@ def uploaded(kind, today=None):
 def uploaded_days(order):
     """Each file's lab day's rows (UPLOADED_ROWS) by (import: 1 the first uploaded, in order; days back)."""
     return {(order.index(k) + 1, UPLOADED_BACK): rows for k, rows in UPLOADED_ROWS.items()}
+
+
+# ---------------------------------------------------------------- #868: a result already here, typed in again
+# One rule for a result already here, Type them in's as an upload's: kept as a copy only with its own row, and said by
+# what it brings. A profile's results typed in twice, a save each (TYPED: test, unit, value, range as typed, at
+# TYPED_BACK days back): the second with Potassium's range (it had none), Sodium as before, and CRP's "<=5" for "<5".
+# Each result's row is keyed by its test, time and value, so the second's were duplicates by key and left out, while
+# Potassium's and CRP's results were kept as copies: its check line said "already in this profile: it won't be saved
+# again", its save "Saved nothing new" with no Undo, and each typed lab day counted the copies with no row of their own
+# (util.js labDraws). Now each copy comes with its row in its own lab day, its line says what it brings (TYPED_SAID:
+# "range", or None for a duplicate, left out), and its save counts it (TYPED_SAVED, an Undo with it). TYPED_SEEN each
+# result as Labs, the summary and a share link show it; TYPED_DAYS each typed import's lab day (its rows' tests as
+# typed and the flags Labs shows); TYPED_TRENDS and TYPED_OUT the summary's since TYPED_SINCE days back
+TYPED_BACK, TYPED_SINCE = 4, 10
+TYPED = [[("C-Reactive Protein", "mg/L", "5", "<5"), ("Potassium", "mmol/L", "5.3", ""), ("Sodium", "mmol/L", "150", "135-145")],
+         [("C-Reactive Protein", "mg/L", "5", "<=5"), ("Potassium", "mmol/L", "5.3", "3.5-5.1"), ("Sodium", "mmol/L", "150", "135-145")]]
+TYPED_SAID = ["range", "range", None]
+COPY_SAID = {"range": "already in this profile: added again with its range, so neither is lost",
+             "flag": "already in this profile: added again with its flag, so neither is lost",
+             None: "already in this profile: it won't be saved again"}
+TYPED_SAVED = "Saved 2 results. 1 was in this profile already and left out."
+TYPED_SEEN = {("C-Reactive Protein", "mg/L"): [["", None, 5], ["H", None, 5, "<"]], ("Potassium, Blood", "mmol/L"): [["H", 3.5, 5.1]],
+              ("Sodium, Blood", "mmol/L"): [["H", 135, 145]]}
+TYPED_DAYS = {(1, TYPED_BACK): [("C-Reactive Protein", "H"), ("Potassium", "H"), ("Sodium", "H")],
+              (2, TYPED_BACK): [("C-Reactive Protein", ""), ("Potassium", "H")]}
+TYPED_LABS = ["C-Reactive Protein", "Potassium, Blood", "Sodium, Blood"]
+TYPED_TRENDS = {("C-Reactive Protein", "mg/L"): [None, ["5", "High"], "< 5"], ("Potassium, Blood", "mmol/L"): [None, ["5.3", "High"], "3.5–5.1"],
+                ("Sodium, Blood", "mmol/L"): [None, ["150", "High"], "135–145"]}
+TYPED_OUT = {("C-Reactive Protein", "mg/L"): ["5", "High", "< 5", 1, 2], ("Potassium, Blood", "mmol/L"): ["5.3", "High", "3.5–5.1", 1, 1],
+             ("Sodium, Blood", "mmol/L"): ["150", "High", "135–145", 1, 1]}
+
+
+def typed(k, today=None):
+    """TYPED's k-th save as Type them in's rows ({date, time, test, value, unit, range}), and as a spreadsheet's copy to
+    paste into it (a header, then a row each, tab-separated)."""
+    t = day(TYPED_BACK, today)
+    rows = [{"date": t[:10], "time": t[11:16], "test": n, "value": v, "unit": u, "range": r} for n, u, v, r in TYPED[k]]
+    return rows, "Date\tTime\tTest\tValue\tUnit\tReference range\n" + "".join("\t".join(r[f] for f in ("date", "time", "test", "value", "unit", "range")) + "\n" for r in rows)
 
 
 # ---------------------------------------------------------------- #848: two results at one time, each said

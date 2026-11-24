@@ -5,7 +5,8 @@
    the rows exactly as the CSV importer reads a spreadsheet's (POST profiles/{id}/manual, save false), and the row
    says what it became: the test it's charted as, the value, the range and the flag. Save stores them (save true).
    Test names are suggested from lab-aliases.json's canonical names (GET lab-names). Rows and records the profile
-   has already are pointed out, and left out of the save unless "Save again what's already there" is ticked.
+   has already are pointed out, and left out of the save unless "Save again what's already there" is ticked; a result
+   here typed again with what it lacks (its range, a flag) is saved, its row saying so (#868).
    The date and time are the browser's pickers (#285). What a picker can't hold (a date pasted as 11/02/2026) is kept
    on it (data-raw) and sent as it was, so the server reads it as it reads a spreadsheet's; once read, the picker shows it.
    Plain script after util.js, import-jobs.js (its Undo, #508) and import.js; its own names stay inside this function. */
@@ -15,6 +16,11 @@
     ["date", "Date"], ["time", "Time (optional)"], ["test", "Test"], ["value", "Value"],
     ["unit", "Unit"], ["range", "Range", "low - high"], ["flag", "Flag"], ["lab", "Lab", "optional"]];
   const MAX = 200;   // rows the server takes at once
+  // a typed result already here, kept with its own row, by what it brings (#868: the server's "copy"); a "row": the
+  // result here from another report of it, the two read as one
+  const COPY_SAID = {range: "already in this profile: added again with its range, so neither is lost",
+    flag: "already in this profile: added again with its flag, so neither is lost",
+    row: "already in this profile from another report: added again as typed, shown once on Labs"};
   // headers a pasted spreadsheet may have, as csv_labs.FIELDS spells them (the common ones)
   const HEADERS = {date: /^(date|collected|collection date|draw date|test date|result date|specimen date|date collected)$/,
     time: /^(time|collection time|draw time)$/, test: /^(test|test name|analyte|component|name|lab test|parameter|marker)$/,
@@ -130,6 +136,8 @@
       out.replaceChildren(icon("check"), " ", el("b", {text: x.name}), ` · ${recordDate(x.date)} · ${value}` + (range ? ` · range ${range}` : ""),
         ...(x.flag ? [" · ", el("span", {class: "abn", text: flagWord(x.flag)})] : []),
         ...(x.duplicate ? [" · ", el("span", {class: "dup", text: "already in this profile: it won't be saved again"})] : []),
+        // already here and kept, with its own row, by what it brings (#868: the server's preview.find, an upload's rule)
+        ...(x.copy ? [" · ", el("span", {class: "dup", text: COPY_SAID[x.copy] || COPY_SAID.row})] : []),
         ...(x.notes.length ? [` (${x.notes.join("; ")})`] : []));
     });
     $("#manKeepWrap").hidden = !dup;

@@ -54,6 +54,25 @@ def count(pid):
         db.close()
 
 
+def assembled(pid):
+    db = dbm.connect()
+    try:
+        return records.assemble(db, pid)
+    finally:
+        db.close()
+
+
+def rowless(data):
+    """The lab results with no row of their own (#868): [(series, time, import)] for each point no labitem of its own
+    import lists on its day, in a lab day (crossmatch._row_of, as the drawer finds a row's result, drawer.js rowPoint).
+    data: the records as assembled, every record's details with them."""
+    from server import crossmatch
+    listed = {str(i) for e in data["events"] if e["k"] == "lab" for i in (data["details"].get(str(e["id"])) or {}).get("ids") or []}
+    rows = crossmatch._rows({"events": [e for e in data["events"] if str(e["id"]) in listed], "details": data["details"]})
+    return [(s["name"], p[0], s.get("imp")) for s in data["labs"] if not s.get("watch") and s.get("panel") != "Vitals"
+            for p in s["pts"] if not crossmatch._row_of(rows, s, p)]
+
+
 def folder_files(path):
     out = {}
     for d, _, names in os.walk(path):
@@ -399,13 +418,15 @@ class Preview(unittest.TestCase):
         self.assertEqual(dups["events"], {"1", "2", "3"})   # every result there already: the day goes too
         self.assertEqual(preview.keep(data, dups, ["e:3"])["events"], {"2"})   # keeping a result keeps its day
 
-    def test_a_result_here_keeps_what_its_upload_says(self):   # #846
+    def test_a_result_here_keeps_what_its_upload_says(self):   # #846, #868
         """A lab result already here (its test, time and value) is a duplicate only where its copy in the upload says
         nothing of its range and flag that a copy here doesn't, and its row in the upload's lab day goes too: the same
-        file again is all duplicates; the same FHIR observation sent again with its reference range (its lab day there
-        already by key) adds its copy with it; a spreadsheet of it, its own lab day, adds its copy for that day's row; a
-        copy with another range than the one here is another result's. The review counts each ("copies"), and the
-        records read the copies as one result, High (crossmatch.copies: the copy with none given the other's range)."""
+        file again is all duplicates; the same FHIR observation sent again with its reference range adds its copy with
+        it, and with its own row (#868: its lab day kept with it, there already by key or not); a spreadsheet of it,
+        its own lab day, adds its copy for that day's row; a copy with another range than the one here is another
+        result's, kept with its row, and left out where the upload gives it none. The review counts each ("copies") by
+        what it brings, and the records read the copies as one result, High (crossmatch.copies: the copy with none
+        given the other's range)."""
         pid = self.profile("Copies with their own report")
         obs = lambda rng, value=5.2: {"resourceType": "Bundle", "type": "collection", "entry": [{"resource": {
             "resourceType": "Observation", "id": "k1", "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
@@ -417,9 +438,10 @@ class Preview(unittest.TestCase):
         self.assertEqual((j["new"], j["duplicates"]["results"], j["duplicates"].get("copies", 0)), (False, 1, 0), j["duplicates"])
         self.save(pid, j)
         ranged = {"potassium.json": json.dumps(obs({"low": {"value": 3.5}, "high": {"value": 5.1}, "text": "3.5-5.1"}))}
-        j, _ = self.previewed(pid, ranged)   # sent again with its range: its lab day there already, its result's copy kept with it
+        j, _ = self.previewed(pid, ranged)   # sent again with its range: its result's copy kept with it, and its row
         self.assertEqual((j["new"], j["duplicates"]["results"], j["duplicates"].get("copies", 0), j["counts"]["results"]), (True, 0, 1, 1), j["duplicates"])
-        self.assertEqual(j["duplicates"]["kinds"].get("lab"), 1, "its lab day, by key, is a duplicate")
+        self.assertEqual((j["duplicates"]["brings"], j["duplicates"]["kinds"], j["counts"]["kinds"]), ({"range": 1}, {}, {"lab": 1}),
+                         "its range said, and its lab day kept with it, there already by key (#868: it was left out, the copy kept)")
         self.assertEqual(j["possible"], [], "said as a copy, not as possibly the same")
         self.assertEqual(self.save(pid, j)["state"], "done")
         j, _ = self.previewed(pid, ranged)   # and again: nothing it says isn't here now
@@ -427,22 +449,76 @@ class Preview(unittest.TestCase):
         self.save(pid, j)
         sheet = {"labs.csv": "Date,Time,Test,Value,Unit\n2025-06-02,08:30,Potassium,5.2,mmol/L\n"}
         j, _ = self.previewed(pid, sheet)   # a spreadsheet of it, no range: kept with its own lab day's row
-        self.assertEqual((j["new"], j["duplicates"]["results"], j["duplicates"].get("copies", 0)), (True, 0, 1), j["duplicates"])
+        self.assertEqual((j["new"], j["duplicates"]["results"], j["duplicates"].get("copies", 0), j["duplicates"]["brings"]),
+                         (True, 0, 1, {"row": 1}), j["duplicates"])
         self.assertEqual(self.save(pid, j)["state"], "done")
         other = {"labs.csv": "Date,Time,Test,Value,Unit,Reference range\n2025-06-02,08:30,Potassium,5.2,mmol/L,3.5-5.3\n"}
         db = dbm.connect()
         try:
             data = reg.get("csv").parse({"labs.csv": self.write_tmp(other["labs.csv"])})["data"]
-            data["events"], data["details"] = [], {}   # (no lab day of its own: its range alone tells it apart)
             dups = preview.find(db, pid, "csv", data)
-            self.assertEqual((dups["points"], dups["copies"]), ({0: set()}, {0: {0}}), "another range: another result's copy, kept")
+            self.assertEqual((dups["points"], dups["copies"], dups["brings"]), ({0: set()}, {0: {0}}, {0: {0: "range"}}),
+                             "another range: another result's copy, kept with its row")
+            data["events"], data["details"] = [], {}   # (#868: no lab day of its own, its range alone telling it apart)
+            dups = preview.find(db, pid, "csv", data)
+            self.assertEqual((dups["points"], dups["copies"]), ({0: {0}}, {0: set()}), "left out: never a result without its row")
             got = records.assemble(db, pid)
         finally:
             db.close()
         pts = [p for s in got["labs"] if s["name"] == "Potassium, Blood" for p in s["pts"]]
         self.assertEqual([(p[2], p[3], p[4]) for p in pts], [(3.5, 5.1, "H")] * 3, "each copy the one result's range, High")
         rows = [got["details"][str(e["id"])]["rows"][0][4] for e in got["events"] if e["k"] == "labitem"]
-        self.assertEqual(len(rows), 2, "the FHIR file's lab day and the spreadsheet's")
+        self.assertEqual(len(rows), 3, "the FHIR files' lab days (the second's with its copy, #868) and the spreadsheet's")
+        self.assertEqual(rowless(got), [], "every result with its row in its own import's lab day")
+
+    def test_a_copy_only_with_its_own_row(self):   # #868
+        """One rule for a result already here, an upload's and Type them in's alike (preview.find): kept as a copy only
+        with its own row, its lab day with it, and said by what it brings. Potassium 5.3 typed with no range, then again
+        with 3.5–5.1: the second's labitem (keyed by its test, time and value, so by key a duplicate) was left out while
+        its result was kept, so the check said "won't be saved again", the save "nothing new" with no Undo, and every lab
+        day of that date counted it. Now its row says it's added again with its range, the save counts it with an
+        import to undo, and each typed import's lab day holds its own result; the same again is a duplicate."""
+        pid, c = self.profile("Typed again with its range"), self.robin
+        row = {"date": "2025-07-01", "time": "08:00", "test": "Potassium", "value": "5.3", "unit": "mmol/L"}
+        typed = lambda r, save=False: c.post(f"/api/profiles/{pid}/manual", json={"rows": [r], "save": save}, headers=H)
+        first = typed(row, True)
+        self.assertEqual(first.status_code, 200, first.text)
+        ranged = {**row, "range": "3.5-5.1"}
+        j = typed(ranged).json()
+        self.assertEqual([(x["duplicate"], x["copy"]) for x in j["rows"]], [(False, "range")], "already here, kept with its range")
+        self.assertEqual(j["duplicates"], 0)
+        r = typed(ranged, True)
+        self.assertEqual(r.status_code, 200, r.text)
+        saved = r.json()
+        self.assertEqual((saved["counts"]["typed"], saved["skipped"], saved["import_id"] is not None, saved["counts"]["results"]),
+                         ({"labs": 1}, 0, True, 1), "counted as saved, with an import to undo")
+        j = typed(ranged).json()
+        self.assertEqual([(x["duplicate"], x["copy"]) for x in j["rows"]], [(True, None)], "the same again: a duplicate")
+        got = assembled(pid)
+        days = [e for e in got["events"] if e["k"] == "lab"]
+        self.assertEqual(sorted(len(got["details"][str(e["id"])]["ids"]) for e in days), [1, 1], "each typed import's lab day, its own row")
+        self.assertEqual(rowless(got), [], "no result without its row in its own import's lab day")
+        pts = [p for s in got["labs"] if s["name"] == "Potassium, Blood" for p in s["pts"]]
+        self.assertEqual([(p[2], p[3], p[4]) for p in pts], [(3.5, 5.1, "H")] * 2, "read as one result, High (#825)")
+        r = c.post(f"/api/profiles/{pid}/imports/{saved['import_id']}/undo", headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        got = assembled(pid)
+        self.assertEqual([(p[2], p[3], p[4]) for s in got["labs"] for p in s["pts"]], [(None, None, "")], "undone: as typed first")
+        # an upload's alike: a C-CDA-like FHIR file with its range and a flag, then a spreadsheet of the same, one with a
+        # flag of its own ("A"), one with nothing more: each copy said by what it brings, each with its lab day's row
+        pid = self.profile("Uploaded again")
+        obs = lambda oid, code, name, v, unit, rng: {"resource": {"resourceType": "Observation", "id": oid, "status": "final",
+            "category": [{"coding": [{"code": "laboratory"}]}], "code": {"coding": [{"system": "http://loinc.org", "code": code}], "text": name},
+            "effectiveDateTime": "2025-07-02T08:30:00", "valueQuantity": {"value": v, "unit": unit}, **({"referenceRange": [rng]} if rng else {})}}
+        bundle = {"resourceType": "Bundle", "type": "collection", "entry": [obs("na", "2951-2", "Sodium", 150, "mmol/L", {"low": {"value": 135}, "high": {"value": 145}}),
+                                                                             obs("alt", "1742-6", "ALT", 60, "U/L", None)]}
+        self.assertEqual(self.save(pid, self.previewed(pid, {"labs.json": json.dumps(bundle)})[0])["state"], "done")
+        sheet = ("Date,Time,Test,Value,Unit,Reference range,Flag\n2025-07-02,08:30,Sodium,150,mmol/L,,\n"
+                 "2025-07-02,08:30,ALT,60,U/L,,A\n")
+        j, _ = self.previewed(pid, {"labs.csv": sheet})
+        self.assertEqual((j["duplicates"]["copies"], j["duplicates"]["brings"], j["duplicates"]["results"]), (2, {"flag": 1, "row": 1}, 0), j["duplicates"])
+        self.assertEqual(self.save(pid, j)["state"], "done")
+        self.assertEqual(rowless(assembled(pid)), [], "each copy with its row")
 
     def write_tmp(self, text):
         path = os.path.join(TMP, f"tmp-{time.time_ns()}.csv")

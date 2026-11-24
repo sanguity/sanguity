@@ -21110,9 +21110,10 @@ def main():
                     got846 = js(f"""(c => [c.querySelector('.imp-state').textContent, [...c.querySelectorAll('.imp-split li')].map(li => li.textContent),
                       c.querySelector('.imp-copies')?.textContent ?? null, c.querySelector('.imp-actions .primary').textContent])({card846})""")
                     (n846, p846), all846 = (M752.UPLOADED_HERE["copies"], M752.UPLOADED_POSSIBLE) if k846 == order846[1] else (0, 0), len(M752.UPLOADED)
+                    # (#868: the copies' line says what each brings, its report's range, its flag or only its row in the
+                    # file's own lab day: it said "with its report's range and flag" of every copy, of a file printing neither)
                     want846 = ["Ready to import", [f"{all846 - n846 - p846} new", f"{n846} already here", f"{p846} possibly the same"],
-                               f"{n846} lab results already here are added again from this file with its report's range and flag, so neither "
-                               "report's is lost." if n846 else None, f"Add {all846} lab results"]
+                               M752.UPLOADED_COPIES_SAID[k846] if n846 else None, f"Add {all846} lab results"]
                     if got846 != want846:
                         bad846.append(f"{when846}: {name846}'s review {got846} not {want846}")
                     js(f"{card846}.querySelector('.imp-actions .primary').click()")
@@ -21140,6 +21141,52 @@ def main():
                   "none skipped, and Labs, the Overview's list, each file's lab day (its Timeline badge and drawer rows), a share link's page and "
                   "the summary's preview and PDF give each as one result with them; two copies whose reports print different ranges (in the "
                   "edge, in the limits) are two results in each, each with its own range and flag", not bad846, bad846)
+            # ---- #868: a result already here typed in again (tests/ranges_matrix.py's TYPED), by Type them in's paste, a
+            # save each: Potassium again with the range it lacked, Sodium as before, CRP's "<=5" for "<5". The second's rows
+            # are duplicates by key (each keyed by its test, time and value), so their labitems were left out while the
+            # results bringing a range were kept: the check line said "it won't be saved again", the save "Saved nothing
+            # new" with no Undo, and both typed lab days counted the copies with no row of their own. Now one rule, an
+            # upload's: each copy kept with its own row and said by what it brings, the duplicate left out, the save counting
+            # what it adds, with an Undo; and every view (views781) gives each as TYPED_SEEN, each typed lab day its own rows
+            db = dbm.connect()
+            tpid868 = prof_r.create_profile(db, "Typed again (fictional)", owner_id=owner)
+            db.close()
+            bad868 = []
+            for k868 in (0, 1):
+                page.goto(base + f"/sources.html?profile={tpid868}#manual")
+                page.wait_for_selector("#typeIn .man-row [data-f=date]", state="visible", timeout=10000)
+                js("""text => { const dt = new DataTransfer(); dt.setData('text/plain', text);
+                  document.querySelector('.man-row [data-f=date]').dispatchEvent(new ClipboardEvent('paste', {clipboardData: dt, bubbles: true, cancelable: true})); }""",
+                   M752.typed(k868)[1])
+                ready868 = "3 results ready to save." + (" 1 is already in this profile." if k868 else "")
+                try:
+                    page.wait_for_function("w => document.getElementById('manMsg').textContent === w", arg=ready868, timeout=10000)
+                except Exception:
+                    bad868.append(f"save {k868 + 1}: {js('document.getElementById(`manMsg`).textContent')!r} not {ready868!r}")
+                if k868:
+                    got868 = js("[...document.querySelectorAll('.man-row .man-check')].map(c => c.querySelector('.dup')?.textContent ?? null)")
+                    if got868 != [M752.COPY_SAID[w] for w in M752.TYPED_SAID]:
+                        bad868.append(f"the check lines say {got868}")
+                page.click("#manSave")
+                page.wait_for_function("document.getElementById('manMsg').textContent.startsWith('Saved')", timeout=10000)
+                said868 = js("[document.getElementById('manMsg').textContent, (t => t && [...t.querySelectorAll('button')].map(b => b.textContent))(document.querySelector('#sgToasts .sg-toast:last-child'))]")
+                want868 = M752.TYPED_SAVED if k868 else "Saved 3 results."
+                if not said868[0].startswith(want868) or "Undo…" not in (said868[1] or []):
+                    bad868.append(f"save {k868 + 1} said {said868}, not {want868!r} with an Undo")
+                js("for (const t of document.querySelectorAll('#sgToasts .sg-toast')) t.sgGone()")
+            tok868 = js("""async ([pid, value]) => { const h = {'X-Sanguity': '1', 'Content-Type': 'application/json'};
+              await fetch(`api/profiles/${pid}/settings/overview.keyLabs`, {method: 'PUT', headers: h, body: JSON.stringify({value})});
+              const r = await fetch(`api/profiles/${pid}/links`, {method: 'POST', headers: h, body: JSON.stringify({sections: ['results']})});
+              return (await r.json()).path.split('#')[1]; }""", [tpid868, M752.TYPED_LABS])
+            bad868 += views781("typed again", M752.TYPED_SEEN, M752.TYPED_SEEN, M752.TYPED_TRENDS, M752.TYPED_OUT, M752.TYPED_DAYS,
+                               pid=tpid868, tok=tok868, labs=M752.TYPED_LABS, every=M752.TYPED_OUT)
+            db = dbm.connect()
+            prof_r.delete_profile(db, tpid868)
+            db.close()
+            check("#868: a result already here typed in again with what it lacked (a range, its own range) is kept with its own row and said "
+                  "(“added again with its range, so neither is lost”), one with nothing more left out (“won't be saved again”), and the save "
+                  "counts what it adds, with an Undo; Labs, each typed lab day (its Timeline badge and drawer rows: its own), a share link's "
+                  "page and the summary's preview and PDF give each result as the matrix does", not bad868, bad868)
             # ---- #848: two results at one time (tests/ranges_matrix.py's AT_ONCE: Potassium 5.0 and 5.6 ▲ High at one time,
             # from two imports, not copies). Labs' chart and the lab panel's strip found the keyboard's stop by its time and
             # got the first of the two again, so → stayed there for good; what read the point nearest read the first, so

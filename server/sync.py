@@ -678,10 +678,17 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
         keyless_new = [e for e in delta["events"] if isinstance(e, dict) and not isinstance(e.get("key"), str)
                        and str(e.get("id")) not in dups["events"]]
         dups["events"] = {str(e.get("id")) for e in delta["events"] if isinstance(e, dict)}   # events: decided below
-        rest = preview.trim(delta, dups)
-
         hashes = records.key_hashes(db, touched)
         have = _rows_by_hash(db, pid, hashes.values())
+        # a result already here is kept as a copy only with its own row (#868): one whose row is a record the profile
+        # has, updated in place below in its own import, would be a result of this pull's import with no lab day of
+        # its own (util.js labDraws put it in every lab day of its date); left out, a duplicate
+        keys = {str(e.get("id")): e.get("key") for e in delta["events"] if isinstance(e, dict)}   # (each touched)
+        for i, ns in dups["at"].items():
+            for n, (eid, _) in list(ns.items()):
+                if hashes.get(keys.get(eid)) in have:
+                    preview.leave_out(dups, i, n)
+        rest = preview.trim(delta, dups)
         # events come from the whole set read so far (a lab day groups results across pulls), ids as it numbers them;
         # one only this pull's records have (keyless, or not in the whole set) keeps its own, marked apart
         new_events, updates, src = [], [], {}

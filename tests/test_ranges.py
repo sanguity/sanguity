@@ -547,7 +547,7 @@ class Api(unittest.TestCase):
         self.assertEqual({(o["name"], o["unit"]): [o["value"], o["flag"], o["range"], o["out"], o["of"]] for o in s["out_of_range"]},
                          out, f"{when}: out of range since then")
         k = next(o for o in s["out_of_range"] if o["name"] == both)
-        self.assertEqual(k["source"], "; ".join(labels), f"{when}: the sources of both copies")
+        self.assertEqual(k["source"], "; ".join(dict.fromkeys(labels)), f"{when}: the sources of both copies (each once: #868's typed twice)")
         r = c.post(f"/api/profiles/{pid}/summary/pdf", headers=H, json=body)
         self.assertEqual(r.status_code, 200, r.text[:200])
         text = " ".join("\n".join(p.extract_text() for p in PdfReader(io.BytesIO(r.content)).pages).split())
@@ -671,6 +671,7 @@ class Api(unittest.TestCase):
             self.assertEqual({k: first["duplicates"].get(k, 0) for k in M.UPLOADED_HERE}, {"copies": 0, "results": 0}, f"{when}: the first's review")
             self.assertEqual({k: second["duplicates"].get(k, 0) for k in M.UPLOADED_HERE}, M.UPLOADED_HERE,
                              f"{when}: the second's review: its results already here added again with its report's range and flag, none skipped")
+            self.assertEqual(second["duplicates"].get("brings"), M.UPLOADED_BRINGS[order[1]], f"{when}: what each copy brings (#868)")
             self.assertEqual([len(first["possible"]), len(second["possible"])], [0, M.UPLOADED_POSSIBLE], f"{when}: possible matches (#847's eGFR)")
             self.assertEqual(c.put(f"/api/profiles/{pid}/settings/overview.keyLabs", json={"value": M.UPLOADED_LABS}, headers=H).status_code, 200)
             r = c.post(f"/api/profiles/{pid}/links", json={"sections": ["results"]}, headers=H)
@@ -683,6 +684,43 @@ class Api(unittest.TestCase):
                 prof.delete_profile(db, pid)
             finally:
                 db.close()
+
+    def test_2_typed_copies(self):
+        """#868: a result already here typed in again (tests/ranges_matrix.py's TYPED), Type them in's rule an upload's:
+        kept as a copy only with its own row, and said by what it brings. The second save's rows are duplicates by key
+        (each keyed by its test, time and value), so their labitems were left out while Potassium's and CRP's results,
+        bringing a range, were kept: "won't be saved again", "Saved nothing new", and copies with no row of their own.
+        Now each row says what it brings (TYPED_SAID), the save counts the two it adds and the one it leaves out, and
+        every view gives each result as TYPED_SEEN, each typed import's lab day its own rows (TYPED_DAYS)."""
+        db = dbm.connect()
+        try:
+            owner = db.execute("SELECT id FROM users WHERE username='robin'").fetchone()["id"]
+            pid = prof.create_profile(db, "Typed again (fictional)", owner_id=owner)
+        finally:
+            db.close()
+        c = self.c["robin"]
+        first = c.post(f"/api/profiles/{pid}/manual", json={"rows": M.typed(0, TODAY)[0], "save": True}, headers=H)
+        self.assertEqual(first.status_code, 200, first.text)
+        rows = M.typed(1, TODAY)[0]
+        j = c.post(f"/api/profiles/{pid}/manual", json={"rows": rows}, headers=H).json()
+        self.assertEqual([x["copy"] for x in j["rows"]], M.TYPED_SAID, "what each row brings")
+        self.assertEqual([x["duplicate"] for x in j["rows"]], [x is None for x in M.TYPED_SAID], "and which are duplicates")
+        r = c.post(f"/api/profiles/{pid}/manual", json={"rows": rows, "save": True}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        saved = r.json()
+        self.assertEqual((saved["counts"]["typed"], saved["skipped"], saved["counts"]["results"]), ({"labs": 2}, 1, 2), "the save counts its copies")
+        self.assertIsNotNone(saved["import_id"])
+        self.assertEqual(c.put(f"/api/profiles/{pid}/settings/overview.keyLabs", json={"value": M.TYPED_LABS}, headers=H).status_code, 200)
+        link = c.post(f"/api/profiles/{pid}/links", json={"sections": ["results"]}, headers=H)
+        self.assertEqual(link.status_code, 200, link.text)
+        body = {"appointment": None, "since": M.day(M.TYPED_SINCE, TODAY)[:10], "sections": ["out_of_range", "trends"], "labs": []}
+        self.copies_views(pid, link.json()["path"].split("#", 1)[1], body, "typed again", M.TYPED_SEEN, M.TYPED_SEEN, M.TYPED_TRENDS,
+                          M.TYPED_OUT, M.TYPED_DAYS, both="Potassium, Blood")
+        db = dbm.connect()
+        try:
+            prof.delete_profile(db, pid)
+        finally:
+            db.close()
 
     def test_2_summary_latest_copies(self):
         """#825: one result twice at one time, its latest, a range on one copy only, in each import order (tests/
