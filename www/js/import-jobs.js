@@ -255,11 +255,19 @@
     return Math.max(0, (d.events || 0) - (draws(j) ? (d.kinds || {}).lab || 0 : 0) + (d.results || 0) + (d.other || 0)); };
   // ...and with a wearable's data there already (#500): the bar's count, and the list's (#504)
   const allHere = j => { const w = (j.duplicates || {}).watch || {}; return hereCount(j) + [...WATCH].reduce((a, k) => a + (w[k] || 0), 0); };
-  /* lab results already here that this file adds again (#846: the server's preview.find "copies"), with what its report
-     says of their range and flag: in the bar as already here, and said under it */
+  /* lab results already here that this file adds again (#846: the server's preview.find "copies"), in the bar as already
+     here, and said under it by what each brings (#868, "brings"): its report's range, its flag, or its row in the file's
+     own lab day (which said "with its report's range and flag" of a file that printed neither) */
   const copiesHere = j => (j.duplicates || {}).copies || 0;
-  const copiesLine = j => { const n = copiesHere(j); return n ? node("p", {class: "hint imp-copies", text: `${cap(plural(n, ["lab result", "lab results"]))} ` +
-    `already here ${n === 1 ? "is" : "are"} added again from this file with its report's range and flag, so neither report's is lost.`}) : null; };
+  const copiesLine = j => {
+    const n = copiesHere(j), b = (j.duplicates || {}).brings || {};
+    if (!n) return null;
+    const said = [["range", "with its report's range"], ["flag", "with its report's flag"]].filter(([k]) => b[k]), kinds = said.length + (b.row ? 1 : 0);
+    const lost = said.length ? ", so neither report's is lost" : "", row = ", to go with its own lab day";
+    return node("p", {class: "hint imp-copies", text: `${cap(plural(n, ["lab result", "lab results"]))} already here ${n === 1 ? "is" : "are"} added again from this file` +
+      (kinds > 1 ? ": " + said.map(([k, w]) => `${b[k]} ${w}`).join(" and ") + lost + (b.row ? `, and ${b.row}${row.slice(1)}` : "")
+        : said.length ? " " + said[0][1] + lost : b.row ? row : lost || ", so neither report's is lost") + "."});
+  };
   // the duplicates of what the profile has (#22): skipped, each with a box to add it again anyway; a series' results
   // dated from the first to the last (#490), a lab draw not offered beside its own results
   function dupChoices(j) {

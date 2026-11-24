@@ -24,6 +24,14 @@ dropped with them: a spreadsheet with no range, then a C-CDA of the same results
 left Labs, the Overview, the summary and share links saying 150 unflagged while the C-CDA's lab day said "Out of
 range 3"; the other way round, the spreadsheet's lab day said "Out of range: None".
 
+One rule for a result already here (#868), an upload's, a sync's and Type them in's alike (they all ask find()):
+  - it's kept as a copy only with its own row: the row's labitem in the upload is kept with it, its key here or not,
+    and its lab day with that; a copy the upload gives no row of its own is left out, a duplicate, never a point
+    without its lab day (one was kept with its row left out by key: Type them in's "won't be saved again" saved it,
+    and every lab day of its date counted it, util.js labDraws)
+  - what it brings is said ("brings": "range", "flag", or "row" where it's kept only for its row), and counted as
+    added, with an Undo
+
   dups = find(db, pid, fmt, data)
   report(data, dups) -> {"counts", "samples", "range", "duplicates": {...}, "total"}   for the page
   trim(data, dups, keep) -> the data to save                               keep: refs of duplicates to save anyway
@@ -86,20 +94,33 @@ def _meta_lists(data):
     return out
 
 
-def _adds(here, p):
-    """Whether point p, a copy of a result already here, says anything of its range and flag that none of its copies
-    here (here: their points) says (crossmatch.said): read as one with it, it would change it (ranges.copies: a range
-    where it has none, a flag), or it's another result, its report's range not theirs (ranges.agree, #847)."""
+def _brings(here, p):
+    """What point p, a copy of a result already here, says of its range and flag that none of its copies here (here:
+    their points) says (crossmatch.said), or None: "range" where it gives a range and each of them has none (read as one
+    with it, ranges.copies, it would have that range) or another (it's another result, its report's range not theirs,
+    ranges.agree, #847); else "flag" where read as one with them it would change their flag."""
     if not isinstance(p, list):
-        return False
-    mine = crossmatch.said(p)
-    return not any(ranges.agree(o, mine) and ranges.copies(o, mine) == o for o in map(crossmatch.said, here))
+        return None
+    mine, theirs = crossmatch.said(p), [crossmatch.said(o) for o in here]
+    if any(ranges.agree(o, mine) and ranges.copies(o, mine) == o for o in theirs):
+        return None
+    ranged = lambda x: x[:2] != (None, None)
+    return "range" if ranged(mine) and all(not ranged(o) or not ranges.agree(o, mine) for o in theirs) else "flag"
+
+
+def _drawer(data):
+    """The upload's drawer rows (crossmatch._rows), its events' ids as text (an importer's may be numbers)."""
+    details = data.get("details") if isinstance(data.get("details"), dict) else {}
+    return crossmatch._rows({"events": [e for e in data.get("events") or [] if isinstance(e, dict) and "id" in e],
+                             "details": {str(k): d for k, d in details.items()}})
 
 
 def find(db, pid, fmt, data):
     """The duplicates in data: {"events": {event id}, "points": {series index: {point index}}, "txt": {series index:
-    {index}}, "series": {series index} (wholly known, nothing in it), "meta": {path: {index}}}; and "copies": {series
-    index: {point index}}, its results already here that are kept with it, not duplicates (#846: _adds, _with_rows)."""
+    {index}}, "series": {series index} (wholly known, nothing in it), "meta": {path: {index}}}; "copies": {series
+    index: {point index}}, its results already here that are kept with it, not duplicates (#846), each with its own row
+    (#868: "at", {series index: {point index: (event id, row index)}} in the upload) and what it brings ("brings":
+    {series index: {point index: "range" | "flag" | "row"}})."""
     events = [e for e in data.get("events") or [] if isinstance(e, dict)]
     keyed = {str(e["id"]): e["key"] for e in events if isinstance(e.get("key"), str) and e["key"].strip()}
     hashes = records.key_hashes(db, keyed.values())
@@ -119,7 +140,7 @@ def find(db, pid, fmt, data):
     by_name = collections.defaultdict(list)
     for s in old_series:
         by_name[(str(s.get("name")), str(s.get("unit")))].append(s)
-    points, txt, whole, copies = {}, {}, set(), {}
+    points, txt, whole, copies, brings = {}, {}, set(), {}, {}
     for i, s in enumerate(labs):
         if not isinstance(s, dict):
             continue
@@ -138,7 +159,8 @@ def find(db, pid, fmt, data):
         for p in old_pts:   # each result here, its copies
             have_p[_point(p)].append(p if isinstance(p, list) else [])
         here = {n for n, p in enumerate(s.get("pts") or []) if _point(p) in have_p}
-        copies[i] = {n for n in here if _adds(have_p[_point(s["pts"][n])], s["pts"][n])}   # (#846) kept with what it says
+        said = {n: what for n in here if (what := _brings(have_p[_point(s["pts"][n])], s["pts"][n]))}
+        copies[i], brings[i] = set(said), said   # (#846) kept with what it says
         points[i] = here - copies[i]
         txt[i] = {n for n, t in enumerate(s.get("txt") or []) if _text(t) in have_t}
         if not (s.get("pts") or s.get("txt")):
@@ -150,28 +172,63 @@ def find(db, pid, fmt, data):
         have = {_entry(x) for x in old_meta.get(path) or []}
         meta[path] = {n for n, x in enumerate(items) if _entry(x) in have}
 
-    dups = {"events": dup, "points": points, "txt": txt, "series": whole, "meta": meta, "copies": copies}
-    _settle_labdays(data, dups, set())
-    _with_rows(data, dups)
+    dups = {"events": dup, "points": points, "txt": txt, "series": whole, "meta": meta, "copies": copies, "brings": brings}
+    _settle(data, dups, set())
     return dups
 
 
-def _with_rows(data, dups):
+def _row(drawer, s, p):
+    """Point p's row in the upload's lab days (crossmatch._row_of: (event id as text, row index)), or None."""
+    at = crossmatch._row_of(drawer, s, p) if isinstance(p, list) and p else None
+    return (str(at[0]), at[1]) if at else None
+
+
+def _settle(data, dups, kept, anyway=None):
+    """What's kept of the results already here, and the rows and lab days that go with them (#868). Each copy comes
+    with its own row: the row's labitem is kept with it (its key here or not, so a typed row, keyed by its test, time
+    and value, is kept with the range it brings), and its lab day with that; a copy the upload gives no row is left
+    out, a duplicate, so no point is kept without its lab day (one was, its row left out by key: Type them in's
+    "won't be saved again" saved it, and util.js labDraws put it in every lab day of its date). anyway: {series index:
+    {point index}}, results here kept anyway (keep()), whose rows are kept too, none left out. Then the lab days
+    (_settle_labdays, kept: events kept anyway), and the rows kept bring their results here as copies (_with_rows)."""
+    labs, drawer = data.get("labs") or [], _drawer(data)
+    at = dups["at"] = {}
+    dups.setdefault("copies", {}), dups.setdefault("brings", {})
+    for i, ns in list(dups["copies"].items()) + list((anyway or {}).items()):
+        for n in sorted(ns):
+            row = _row(drawer, labs[i], labs[i]["pts"][n])
+            if row:
+                at.setdefault(i, {})[n] = row
+                dups["events"].discard(row[0])   # its row with it
+            else:   # no row of its own here: left out
+                leave_out(dups, i, n)
+    _settle_labdays(data, dups, kept)
+    _with_rows(data, dups, drawer)
+
+
+def leave_out(dups, i, n):
+    """Series i's point n, a copy of a result already here, left out after all: a duplicate (a sync's, #868)."""
+    if n in dups["copies"].get(i, ()):
+        dups["copies"][i].discard(n)
+        dups["brings"].get(i, {}).pop(n, None)
+        dups["at"].get(i, {}).pop(n, None)
+        dups["points"].setdefault(i, set()).add(n)
+
+
+def _with_rows(data, dups, drawer):
     """(#846) A result already here whose row in the upload's lab day is kept (the row's result new to the profile:
-    another file's report of it) is kept with it, a copy, so the row reads its own result's flag as every row does
-    (#782, drawer.js rowPoint; the row matched as crossmatch._row_of matches it): left out, the lab day of a spreadsheet
-    with no range said "Out of range: None" beside a C-CDA's copies with theirs and High."""
-    if not any(dups["points"].values()):
-        return
-    labs, details = data.get("labs") or [], data.get("details") if isinstance(data.get("details"), dict) else {}
-    drawer = crossmatch._rows({"events": [e for e in data.get("events") or [] if isinstance(e, dict) and "id" in e],
-                               "details": {str(k): d for k, d in details.items()}})   # (an importer's ids may be numbers)
+    another file's report of it) is kept with it, a copy ("brings" "row"), so the row reads its own result's flag as
+    every row does (#782, drawer.js rowPoint; the row matched as crossmatch._row_of matches it): left out, the lab day of
+    a spreadsheet with no range said "Out of range: None" beside a C-CDA's copies with theirs and High."""
+    labs = data.get("labs") or []
     for i, drop in dups["points"].items():
         for n in sorted(drop):
-            at = crossmatch._row_of(drawer, labs[i], labs[i]["pts"][n]) if isinstance(labs[i]["pts"][n], list) else None
-            if at and str(at[0]) not in dups["events"]:
+            row = _row(drawer, labs[i], labs[i]["pts"][n])
+            if row and row[0] not in dups["events"]:
                 drop.discard(n)
-                dups.setdefault("copies", {}).setdefault(i, set()).add(n)
+                dups["copies"].setdefault(i, set()).add(n)
+                dups["brings"].setdefault(i, {})[n] = "row"
+                dups["at"].setdefault(i, {})[n] = row
 
 
 def _settle_labdays(data, dups, kept):
@@ -198,14 +255,16 @@ def keep(data, dups, refs):
         elif kept & set(ids):
             kept.add(day)                    # a result kept keeps its day
     dups["events"] -= kept
+    anyway = {}
     for r in refs:
         if r.startswith("s:") and r[2:].isdigit():
             i = int(r[2:])
-            dups["points"].pop(i, None)
+            anyway[i] = dups["points"].pop(i, set())
             dups["txt"].pop(i, None)
             dups["series"].discard(i)
-    _settle_labdays(data, dups, kept)
-    _with_rows(data, dups)   # a result kept anyway keeps its rows' results already here, as copies (#846)
+    # a result kept anyway keeps its row and lab day (#868), and an event kept its rows' results already here, as
+    # copies (#846)
+    _settle(data, dups, kept, anyway)
     return dups
 
 
@@ -341,8 +400,10 @@ def report(data, dups, summarise):
     out["duplicates"] = {"events": sum(kinds.values()), "kinds": dict(sorted(kinds.items())), "results": results,
                          "other": sum(len(v) for v in dups["meta"].values()),
                          "items": items[:ITEMS_SHOWN], "more": max(0, len(items) - ITEMS_SHOWN),
-                         # (#846) results already here, added with what this upload's report says of them, which the review says
-                         "copies": sum(len(v) for v in (dups.get("copies") or {}).values())}
+                         # (#846) results already here, added with what this upload's report says of them, which the review says,
+                         # and what each brings (#868: its report's range, its flag, or its own lab day's row)
+                         "copies": sum(len(v) for v in (dups.get("copies") or {}).values()),
+                         "brings": dict(sorted(collections.Counter(w for v in (dups.get("brings") or {}).values() for w in v.values()).items()))}
     out["total"] = whole["counts"]
     out["new"] = adds_anything(new)
     return out

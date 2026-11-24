@@ -2089,6 +2089,15 @@ Everything on `main` so far; it becomes the first tagged release.
   and that result's mark was in the name as a symbol, so a screen reader said "black diamond 20 U/L" for ALT's ◆, and
   read ▲ and ▼ as symbols too. The name now says "20 U/L, Flagged" ("High", "Low"), the mark hidden from it and shown
   as before.
+- **A result already here typed or uploaded again is kept only with its own row, and said for what it brings** (#868):
+  Potassium 5.3 typed in with no range, then again with "3.5-5.1": its check line said "already in this profile: it
+  won't be saved again" and the save "Saved nothing new" with no Undo, yet its result was saved, with no row of its
+  own, so both lab days of that date counted it ("4 out of range or flagged" beside a drawer of 3). Now Type them in,
+  an upload and a sync follow one rule: a result already here is left out, or kept with its own row and lab day and
+  said for what it brings ("already in this profile: added again with its range, so neither is lost"), counted in the
+  save with its Undo; one the upload gives no row of its own is left out. An upload's review says the same of each copy,
+  "with its report's range", "with its report's flag", or "to go with its own lab day" for a file that prints neither
+  (it said "with its report's range and flag" of every copy).
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

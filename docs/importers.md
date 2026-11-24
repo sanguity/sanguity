@@ -206,7 +206,9 @@ records it has seen before without decrypting every row. Before anything is save
 (`server/preview.py`): an event whose key the profile already has is a duplicate and is skipped unless the person
 ticks it to keep anyway; a series adds only the points (time and value as reported) the profile doesn't have, and a
 point it has already, but whose copy in the upload says something of its range or flag that no copy there says, or
-whose row in the upload's lab day is new, is added as a copy, read as one result with the copy there (#846). A
+whose row in the upload's lab day is new, is added as a copy, read as one result with the copy there (#846), always
+with its own row, whose labitem and lab day are kept with it even where their keys are known (#868: the same rule for
+Type them in and a sync; a copy the upload gives no row of its own is left out, never a result without its lab day). A
 record without a key falls back to the same importer, date, kind and content, which is slower and easier to fool, so
 give keys. A lab day stays while any of its results is new and goes when all of them are duplicates; `check()` runs
 again on what's left before it's saved.

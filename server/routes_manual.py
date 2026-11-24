@@ -25,7 +25,10 @@ The readback says, per row and per record: ok, its problems (records also "field
 mark), notes, what it became (a record's "summary", and "summary_parts": that line split at its own dates, the dates
 at the odd places, as stored, for the page to write in the person's format, #317), and "duplicate" when the profile
 has it already. Duplicates are found by the import preview's own check (preview.find over everything typed, as format
-"manual"), and for home measurements and workouts in the profile's watch summary. A row or record that can't be read,
+"manual"), and for home measurements and workouts in the profile's watch summary. A typed result already here is
+read by that check's one rule, an upload's (#868): left out with its row, a duplicate, or kept with its row, a copy,
+its row's "copy" saying what it brings ("range", "flag", or "row": the result here from another report of it), and
+saved and counted as typed, with an Undo. A row or record that can't be read,
 or that repeats another typed in the same save, is refused with its reason, and nothing is saved until everything
 reads. Duplicates are left out of a save, as the preview leaves them out of an upload, unless keep_duplicates; a save
 of nothing but duplicates is refused.
@@ -143,10 +146,11 @@ def _matched(db, got):
     return {n: f["target"] for n, f in labmap.remembered(db, MATCHED_AS, idents).items() if f["target"]}
 
 
-def _describe(n, r, problems, notes, matched=None, dup=False):
+def _describe(n, r, problems, notes, matched=None, dup=False, copy=None):
     """A row as the page's check line says it. edge: whether its one-sided range leaves its limit out ("<" for "<5",
-    ">" for ">60", "" else: common.range_edge, #780), so the line says "< 5" or "≤ 5" as Labs will (#826)."""
-    d = {"row": n, "ok": not problems, "problems": problems, "notes": notes, "duplicate": dup}
+    ">" for ">60", "" else: common.range_edge, #780), so the line says "< 5" or "≤ 5" as Labs will (#826). copy: what
+    its result, already here, brings, kept with its row (#868: "range", "flag" or "row"), which the line says."""
+    d = {"row": n, "ok": not problems, "problems": problems, "notes": notes, "duplicate": dup, "copy": copy}
     if r:
         d.update(date=_display(r["t"]), name=(matched or {}).get(n) or common.canonical_lab(r["test"], r["loinc"]) or r["test"],
                  value=r["x"], text=r["reported"] if r["x"] is None else None, unit=r["unit"], low=r["lo"], high=r["hi"],
@@ -205,10 +209,15 @@ def _combine(lab, items):
 
 
 def _duplicates(db, pid, data, lab, got, origin, have_watch):
-    """(preview.find's duplicates, {row number: duplicate?}, {record number: "all" | "some"} of its parts)."""
+    """(preview.find's duplicates, {row number: duplicate?}, {record number: "all" | "some"} of its parts, {row number:
+    what it brings}). A row's result already here is a duplicate, left out with its row, or kept with it, a copy, and
+    what it brings said (#868: preview.find's one rule, an upload's too): "range", "flag", or "row" (its own row, the
+    result here from another report of it)."""
     dups = preview.find(db, pid, NAME, data)
     by_key = {e.get("key"): str(e["id"]) for e in lab.get("events") or [] if e.get("k") == "labitem"}
+    said = {at[0]: dups["brings"][i][n] for i, ns in dups["at"].items() for n, at in ns.items() if n in dups["brings"].get(i, {})}
     rows = {n: by_key.get(csv_labs._key(r)) in dups["events"] for n, r, p, _ in got if r and not p}
+    copies = {n: said[by_key.get(csv_labs._key(r))] for n, r, p, _ in got if r and not p and by_key.get(csv_labs._key(r)) in said}
     offset = len(lab.get("labs") or [])
     index = {s["name"]: offset + i for i, s in enumerate(data["labs"][offset:])}
     parts = collections.defaultdict(list)   # record number -> [is each of its parts a duplicate]
@@ -222,7 +231,7 @@ def _duplicates(db, pid, data, lab, got, origin, have_watch):
     for n, _ in origin["watch"]:
         parts[n].append(n in watch_dup)
     found = {n: "all" if all(xs) else "some" for n, xs in parts.items() if any(xs)}
-    return dups, rows, found
+    return dups, rows, found, copies
 
 
 def _item(rec, dup=None):
@@ -286,13 +295,13 @@ def manual(pid: int, body: Rows, request: Request, s=Depends(user), db=Depends(g
     built, origin = manual_items.build([r for r in recs if r["ok"]], base_id=base)
     data = _combine(lab, built["data"])
     have_watch = watch_store.load(db, pid) if origin["watch"] else None
-    dups, dup_rows, found = _duplicates(db, pid, data, lab, got, origin, have_watch)
+    dups, dup_rows, found, copy_rows = _duplicates(db, pid, data, lab, got, origin, have_watch)
     seen = (dups, dict(found))   # asked again under the write lock before saving (#592)
     found.update(found_heights)
     for n, note in manual_items.watch_replaces(have_watch, origin["watch"]).items():   # typed again, other values (#224)
         next(r for r in recs if r["n"] == n)["notes"].append(note)
 
-    shown = [_describe(*x, matched, dup_rows.get(x[0], False)) for x in got]
+    shown = [_describe(*x, matched, dup_rows.get(x[0], False), copy_rows.get(x[0])) for x in got]
     items = [_item(r, found.get(r["n"])) for r in recs]
     bad = [f"Row {n} {'; '.join(p)}." for n, _, p, _ in got if p]
     bad += [f"Record {r['n']} ({(r.get('label') or 'record').lower()}) {'; '.join(r['problems'])}." for r in recs if r["problems"]]
