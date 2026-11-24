@@ -56,6 +56,27 @@ def q(url):
     return dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(url).query))
 
 
+INTERP = "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation"
+
+
+def unpaired(data, day):
+    """(#868, #897) The lab results of that day with no row of their own (none in a labitem of their own import that a
+    lab day lists, matched as drawer.js rowPoint matches one: crossmatch._row_of), and the rows with no result of their
+    own: ([(series, time, import)], [(labitem id, row index)])."""
+    from server import crossmatch
+    listed = {str(i) for e in data["events"] if e["k"] == "lab" for i in (data["details"].get(str(e["id"])) or {}).get("ids") or []}
+    rows = crossmatch._rows({"events": [e for e in data["events"] if str(e["id"]) in listed], "details": data["details"]})
+    found, rowless = set(), []
+    for s in data["labs"]:
+        if s.get("watch") or s.get("panel") == "Vitals":
+            continue
+        for p in list(s["pts"]) + list(s.get("txt") or []):
+            if str(p[0])[:10] == day:
+                at = crossmatch._row_of(rows, s, p)
+                found.add(at) if at else rowless.append((s["name"], p[0], s.get("imp")))
+    return rowless, [(eid, r) for (_, d), rs in rows.items() if d == day for eid, r, _ in rs if (eid, r) not in found]
+
+
 class Connections(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -172,6 +193,25 @@ class Connections(unittest.TestCase):
 
     def data(self):
         return whole(self.robin, self.pid)
+
+    def draw(self, day="2025-03-04"):
+        """A draw as the page has it (#899): each lab result of that day ({name: [(low, high, flag, its row's range as
+        printed, its row's flag as read)]}), the day's lab days ("lab days": [(title, each of its rows)]) and what's
+        unpaired, results without rows and rows without results ("unpaired")."""
+        from server import crossmatch, ranges
+        data = self.data()
+        drawer, out = crossmatch._rows(data), {}
+        for s in data["labs"]:
+            if s.get("panel") != "Vitals":
+                for p in s["pts"]:
+                    if p[0][:10] == day:
+                        at = crossmatch._row_of(drawer, s, p)
+                        row = at and data["details"][str(at[0])]["rows"][at[1]]
+                        out.setdefault(s["name"], []).append((p[2], p[3], p[4], row and row[3], row and ranges.read_flag(row[4], p[1], p[2], p[3], p[5])))
+        out["lab days"] = [(e["title"], [r[:5] for i in data["details"][str(e["id"])]["ids"] for r in (data["details"].get(str(i)) or {}).get("rows") or []])
+                           for e in data["events"] if e["k"] == "lab" and e["t"][:10] == day]
+        out["unpaired"] = unpaired(data, day)
+        return out
 
     # ---------------------------------------------------------------- sign-in (#32)
 
@@ -455,15 +495,19 @@ class Connections(unittest.TestCase):
         self.assertEqual(said(self.data()), said(before), "both undone: as they were")
         self.assertEqual(self.counts(), n)
 
-    def test_another_source_at_one_time_is_never_the_same_record(self):   # #885
+    def test_another_source_at_one_time_is_never_the_same_record(self):   # #885, #897
         """Only the same record of the same source is updated in place: an Observation by its own id. A hospital's FHIR
         file uploaded, Potassium 5.05 (3.5–5.0, High) and Sodium on their own (no report) on two days; then a pull
         brings the connected source's Potassium at that time, another Observation in a labitem keyed by the same day:
         with no range a duplicate, with another range (3.5–5.1) a copy with its own row, and the hospital's results and
-        rows, and its lab days, stay as they were. The pull took the plan's for the hospital's sent again, its no range
-        and no flag or its range replacing the hospital's (#869), and updated the hospital's labitem and lab day of that
-        day in place with its own rows (sync._update_in_place, _link_labdays: by the day's key). Its own Observation sent
-        again, amended, is updated in place, the hospital's as it was; undone, both pulls leave the hospital's as it was."""
+        rows stay as they were. The pull took the plan's for the hospital's sent again, its no range and no flag or its
+        range replacing the hospital's (#869), and updated the hospital's labitem and lab day of that day in place with
+        its own rows (sync._update_in_place, _link_labdays: by the day's key). Its own Observation sent again, amended,
+        is updated in place, the hospital's as it was; undone, both pulls leave the hospital's as it was.
+        One lab day a draw (#897): the pull added its own beside the hospital's ("2 lab draws"), the duplicate's row in
+        it with no result of its own, read against the hospital's result. Now the copy's row, and a result new to the
+        profile (the source's Glucose), join the hospital's lab day, each row beside its result in the pull's own
+        labitem; the duplicate's row is left out with it."""
         from server import crossmatch, ranges, uploads
         days = ("2025-05-06T08:30:00-05:00", "2025-05-07T08:30:00-05:00")
 
@@ -516,29 +560,248 @@ class Connections(unittest.TestCase):
         cid = self.connect(self.source())
         self.first_pull(cid)
         n = self.counts()
-        # the source's Potassium of the first day, no range: a duplicate; of the second, its own range: a copy
+        # the source's Potassium of the first day, no range: a duplicate; of the second, its own range: a copy; and its
+        # Glucose of the second, new to the profile
         self.fake.add(k("plan-k0", days[0]), patient="pat-1")
         self.fake.add(k("plan-k1", days[1], (3.5, 5.1)), patient="pat-1")
+        self.fake.add(obs("plan-glu1", "2345-7", "Glucose", 97, "mg/dL", days[1], (70, 99)), patient="pat-1")
         res = self.pull(cid)
         self.assertTrue(res["ok"], res)
-        self.assertEqual((res["counts"]["results"], res["counts"].get("updated")), (1, None), res)
-        self.assertEqual(self.counts()["results"], n["results"] + 1)
+        self.assertEqual((res["counts"]["results"], res["counts"].get("updated")), (2, None), res)
+        self.assertEqual(self.counts()["results"], n["results"] + 2)
         mine, labdays = said()
         self.assertEqual({x: v for x, v in mine.items() if x[2]}, before[0], "the hospital's results and rows as they were")
-        self.assertEqual([d for d in labdays if d[1]], before[1], "and its lab days")
-        self.assertEqual({x: v for x, v in mine.items() if not x[2]}, {("Potassium, Blood", days[1][:10], False): [(3.5, 5.1, "", "3.5-5.1", "")]},
-                         "the source's copy, its own range and row")
+        self.assertEqual({x: v for x, v in mine.items() if not x[2]}, {("Potassium, Blood", days[1][:10], False): [(3.5, 5.1, "", "3.5-5.1", "")],
+                                                                    ("Glucose, Blood", days[1][:10], False): [(70, 99, "", "70-99", "")]},
+                         "the source's copy, its own range and row, and its new result")
+        joined = lambda plan_k: [before[1][0], (*before[1][1][:2], before[1][1][2] + [["Glucose", "97", "mg/dL", "70-99"], ["Potassium", "5.05", "mmol/L", plan_k]])]   # noqa: E731
+        self.assertEqual(labdays, joined("3.5-5.1"), "one lab day a draw: the hospital's, its rows as they were, joined by the "
+                         "source's on the second day, the duplicate's row left out on the first (#897)")
+        self.assertEqual([self.draw(t[:10])["lab days"][0][0] for t in days], ["2 lab results", "4 lab results"], "titled for what it holds")
+        self.assertEqual([self.draw(t[:10])["unpaired"] for t in days], [([], [])] * 2, "each result with its row, each row with its result")
         # its own Observation amended: updated in place, the hospital's as it was
         self.fake.update("Observation", "plan-k1", {"referenceRange": [{"low": {"value": 3.5}, "high": {"value": 5.0}, "text": "3.5-5.0"}]})
         again = self.pull(cid)
         self.assertEqual((again["counts"]["results"], again["counts"].get("updated")), (0, 1), again)
         mine, labdays = said()
         self.assertEqual({x: v for x, v in mine.items() if x[2]}, before[0], "the hospital's as they were")
-        self.assertEqual([d for d in labdays if d[1]], before[1])
+        self.assertEqual(labdays, joined("3.5-5.0"))
         self.assertEqual(mine[("Potassium, Blood", days[1][:10], False)], [(3.5, 5.0, "H", "3.5-5.0", "H")], "the source's own, updated")
         for iid in (again["import"], res["import"]):
             self.assertEqual(self.robin.post(f"/api/profiles/{self.pid}/imports/{iid}/undo", headers=H).status_code, 200)
         self.assertEqual(said(), before, "both undone: as the upload left them")
+        self.assertEqual([self.draw(t[:10])["lab days"][0][0] for t in days], ["2 lab results"] * 2)
+
+    LDL_CORRECTED = {"referenceRange": [{"text": "<200 mg/dL", "high": {"value": 200, "unit": "mg/dL"}}],
+                     "interpretation": [{"coding": [{"system": INTERP, "code": "N"}]}]}
+
+    def amended_where_it_is(self, cid, before):
+        """(#899) LDL corrected at the source ("<130 mg/dL" and High, then "<200 mg/dL" and Normal) and pulled: the result
+        here and its row updated where they are, whoever's import holds them, nothing added, the draw's one lab day.
+        -> the pull's result"""
+        n = self.counts()
+        self.assertEqual(before["LDL Cholesterol"], [(None, 130, "H", "<130 mg/dL", "H")])
+        self.assertEqual([t for t, _ in before["lab days"]], ["4 lab results"])
+        self.fake.update("Observation", "obs-ldl", self.LDL_CORRECTED)
+        res = self.pull(cid)
+        self.assertTrue(res["ok"], res)
+        self.assertEqual((res["counts"]["results"], res["counts"].get("updated")), (0, 1), res)
+        after = self.draw()
+        self.assertEqual(after["LDL Cholesterol"], [(None, 200, "", "<200 mg/dL", "")], "one result, as sent now, its row with it")
+        self.assertEqual(after["lab days"], [(t, [r if r[0] != "LDL Cholesterol" else [*r[:3], "<200 mg/dL", ""] for r in rows])
+                                             for t, rows in before["lab days"]], "the draw's one lab day, its LDL row updated")
+        self.assertEqual({k: v for k, v in self.counts().items() if k != "imports"}, {k: v for k, v in n.items() if k != "imports"}, "nothing added")
+        self.assertEqual(after["unpaired"], ([], []))
+        return res
+
+    def undo(self, *imports):
+        for iid in imports:
+            self.assertEqual(self.robin.post(f"/api/profiles/{self.pid}/imports/{iid}/undo", headers=H).status_code, 200)
+
+    def test_a_pull_updates_an_uploads_rows_where_they_are_and_joins_its_lab_day(self):   # #899
+        """The portal's own export uploaded, then the portal connected: its first pull finds everything already here. LDL
+        corrected at the source updated the upload's result but left its row reading "<130 mg/dL", now unflagged
+        (sync._update_in_place, _link_labdays, #885: only the connection's own events of a day), and added a second lab day
+        for the draw. Now the result and its row are updated where they are, in the draw's one lab day; a result new that
+        day (an ALT) joins that lab day, its row beside it in the pull's own labitem. Undone, each pull puts back what it
+        changed, result and row."""
+        self.upload_bundle([json.loads(json.dumps(r)) for r in self.fake.resources(patient="pat-1")])
+        cid = self.connect(self.source())
+        self.first_pull(cid)
+        before, n = self.draw(), self.counts()
+        self.assertEqual(before["unpaired"], ([], []))
+        res = self.amended_where_it_is(cid, before)
+        lab_day = self.draw()["lab days"][0][1]
+        self.fake.add({"resourceType": "Observation", "id": "obs-alt-899", "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
+                       "code": {"coding": [{"system": "http://loinc.org", "code": "1742-6"}], "text": "ALT"}, "effectiveDateTime": "2025-03-04T09:45:00-06:00",
+                       "valueQuantity": {"value": 60, "unit": "U/L"}, "interpretation": [{"coding": [{"system": INTERP, "code": "H"}]}]}, patient="pat-1")
+        more = self.pull(cid)
+        self.assertEqual((more["counts"]["results"], more["counts"]["kinds"]), (1, {}), more)
+        joined = self.draw()
+        self.assertEqual(joined["lab days"], [("5 lab results", lab_day + [["ALT", "60", "U/L", "", "H"]])], "the draw's one lab day, joined")
+        self.assertEqual((joined["ALT"], joined["unpaired"]), ([(None, None, "H", "", "H")], ([], [])), "its row beside its result")
+        self.undo(more["import"], res["import"])
+        self.assertEqual(self.draw(), before, "undone: result and row as the upload left them")
+        self.assertEqual(self.counts(), n)
+
+    def test_a_lab_day_a_pull_joined_keeps_its_labitems_whatever_is_undone(self):   # #899
+        """The upload's lab day joined by two pulls (an ALT, then a GGT, each its own labitem): the first pull undone
+        before the second, the lab day lists the second's labitem still, the first's gone with it; the upload undone,
+        its lab day goes to the pull whose labitem it lists, holding only that, so the GGT keeps its lab day."""
+        upload = self.upload_bundle([json.loads(json.dumps(r)) for r in self.fake.resources(patient="pat-1")])
+        cid = self.connect(self.source())
+        self.first_pull(cid)
+        before = self.draw()["lab days"][0][1]
+        test = lambda oid, code, name, v: {"resourceType": "Observation", "id": oid, "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],   # noqa: E731
+                                           "code": {"coding": [{"system": "http://loinc.org", "code": code}], "text": name},
+                                           "effectiveDateTime": "2025-03-04T09:45:00-06:00", "valueQuantity": {"value": v, "unit": "U/L"}}
+        self.fake.add(test("obs-alt-899", "1742-6", "ALT", 60), patient="pat-1")
+        alt = self.pull(cid)
+        self.fake.add(test("obs-ggt-899", "2324-2", "GGT", 30), patient="pat-1")
+        ggt = self.pull(cid)
+        rows = {"ALT": ["ALT", "60", "U/L", "", ""], "GGT": ["GGT", "30", "U/L", "", ""]}
+        self.assertEqual(self.draw()["lab days"], [("6 lab results", before + [rows["ALT"], rows["GGT"]])])
+        self.undo(alt["import"])
+        drawn = self.draw()
+        self.assertEqual((drawn["lab days"], drawn["unpaired"]), ([("5 lab results", before + [rows["GGT"]])], ([], [])))
+        self.undo(upload["import_id"])
+        drawn = self.draw()
+        self.assertEqual((drawn["lab days"], drawn["unpaired"]), ([("1 lab result", [rows["GGT"]])], ([], [])), "the GGT keeps its lab day")
+        self.undo(ggt["import"])
+        self.assertEqual({k: v for k, v in self.counts().items() if k != "imports"}, {"events": 0, "series": 0, "results": 0}, "nothing left")
+
+    def test_connected_again_a_pull_updates_the_first_connections_rows(self):   # #899
+        """Connected and pulled, disconnected keeping its records, connected again (a new connection, whose first pull
+        finds them already here). LDL corrected at the source updated the result, but its row, in the first connection's
+        lab event, still read "<130 mg/dL", and the pull added a second lab day for the draw. Now both where they are, in
+        the one lab day; undone, as before."""
+        sid = self.source()
+        cid = self.connect(sid)
+        self.first_pull(cid)
+        r = self.robin.post(f"/api/profiles/{self.pid}/connections/{cid}/disconnect", json={"remove_records": False}, headers=H)
+        self.assertEqual(r.json()["removed"], 0)
+        cid2 = self.connect(sid, patient="pat-1")
+        self.first_pull(cid2)
+        before, n = self.draw(), self.counts()
+        res = self.amended_where_it_is(cid2, before)
+        self.undo(res["import"])
+        self.assertEqual(self.draw(), before, "undone: result and row as they were")
+        self.assertEqual(self.counts(), n)
+
+    def test_a_result_new_on_a_day_the_connection_has_gets_its_row_beside_it(self):   # #899
+        """A pull's result new on a day its connection has: its row went in the first pull's labitem of that day, updated
+        whole in its own import (sync._update_in_place), so the drawer, reading a row's result from the row's own import
+        (drawer.js rowPoint), found none for it; and LDL's value corrected at the source (162, then 165: a result of its
+        own, #877) left both LDL results without a row. Now each new row goes in the pull's own labitem, beside its result,
+        joining the day's lab day; undone, as before."""
+        cid = self.connect(self.source())
+        self.first_pull(cid)
+        before = self.draw()
+        self.fake.add({"resourceType": "Observation", "id": "obs-alt-899", "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
+                       "code": {"coding": [{"system": "http://loinc.org", "code": "1742-6"}], "text": "ALT"}, "effectiveDateTime": "2025-03-04T09:45:00-06:00",
+                       "valueQuantity": {"value": 60, "unit": "U/L"}}, patient="pat-1")
+        alt = self.pull(cid)
+        self.fake.update("Observation", "obs-ldl", {"valueQuantity": {"value": 165, "unit": "mg/dL"}})
+        ldl = self.pull(cid)
+        self.assertEqual((alt["counts"]["results"], ldl["counts"]["results"]), (1, 1))
+        drawn = self.draw()
+        self.assertEqual(drawn["lab days"], [("6 lab results", before["lab days"][0][1] + [["ALT", "60", "U/L", "", ""], ["LDL Cholesterol", "165", "mg/dL", "<130 mg/dL", "H"]])])
+        self.assertEqual(drawn["unpaired"], ([], []), "each result with its row, each row with its result")
+        self.undo(ldl["import"], alt["import"])
+        self.assertEqual(self.draw(), before)
+
+    def strip_keys(self, pid=None):
+        """Each labitem as saved before #885: no "keys". -> {event id: its keys as they were}"""
+        from server import records
+        db = dbm.connect()
+        try:
+            had = {}
+            for r in db.execute("SELECT id, detail FROM events WHERE profile_id=?", (pid or self.pid,)).fetchall():
+                d = records._dec(r["detail"])
+                if isinstance(d, dict) and "keys" in d:
+                    had[r["id"]] = d.pop("keys")
+                    db.execute("UPDATE events SET detail=? WHERE id=?", (records._enc(d), r["id"]))
+            return had
+        finally:
+            db.close()
+
+    def keys_now(self, ids):
+        from server import records
+        db = dbm.connect()
+        try:
+            return {i: (records._dec(db.execute("SELECT detail FROM events WHERE id=?", (i,)).fetchone()["detail"]) or {}).get("keys") for i in ids}
+        finally:
+            db.close()
+
+    def test_lab_events_saved_before_885_get_their_rows_keys(self):   # #899, schema version 40
+        """A labitem saved before #885 has no "keys": its rows' Observations were named nowhere, so LDL corrected at the
+        source and pulled again was never found as the same record (#869): its result left as it was, a duplicate, beside
+        its row updated. Schema step 40 marks them, and at start-up sync.backfill_keys gives a connection's theirs from
+        its store, each row by the row the records it read make. An upload's has nothing left naming them (its files went
+        with its job) and keeps none. Then the corrected LDL is updated in place, result and row, the one lab day; undone,
+        as before. A connection made again to the same portal gives the first one's records theirs from its own store."""
+        from server import records, uploads
+        db = dbm.connect()
+        try:   # another source's file, of another day: its labitem's keys can't be worked out again
+            up = uploads.create(db, self.pid, None)
+            uploads.add_file(db, self.pid, up, "hospital.json", io.BytesIO(json.dumps({"resourceType": "Bundle", "type": "collection", "entry": [{"resource": {
+                "resourceType": "Observation", "id": "hosp-na", "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
+                "code": {"coding": [{"system": "http://loinc.org", "code": "2951-2"}], "text": "Sodium"}, "effectiveDateTime": "2025-05-06T08:30:00-05:00",
+                "valueQuantity": {"value": 140, "unit": "mmol/L"}}}]}).encode()))
+            uploads.finish(db, self.pid, up)
+        finally:
+            db.close()
+        r = self.robin.post(f"/api/profiles/{self.pid}/uploads/{up}/import", json={}, headers=H)
+        jid, end = r.json()["id"], time.time() + 30
+        while time.time() < end and (j := self.robin.get(f"/api/profiles/{self.pid}/jobs/{jid}").json())["state"] != "done":
+            if j["state"] == "preview":
+                self.robin.post(f"/api/profiles/{self.pid}/jobs/{jid}/confirm", headers=H)
+            time.sleep(0.05)
+        sid = self.source()
+        cid = self.connect(sid)
+        self.first_pull(cid)
+        before = self.draw()
+        had = self.strip_keys()
+        self.assertEqual(len(had), 3, "the upload's labitem, and the pull's: its report's and its day's")
+        db = dbm.connect()
+        try:
+            db.executescript("BEGIN;" + dbm.SCHEMA[39] + "COMMIT;")
+            self.assertTrue(dbm.meta_get(db, sync.KEYS_TO_GIVE), "the schema step marks the work")
+            self.assertEqual(sync.backfill_keys(db), 2, "the connection's two")
+            self.assertIsNone(dbm.meta_get(db, sync.KEYS_TO_GIVE), "once")
+            self.assertEqual(sync.backfill_keys(db), 0)
+            upload = db.execute("SELECT id FROM events WHERE import_id=?", (j["import_id"],)).fetchall()
+        finally:
+            db.close()
+        theirs = {i: k for i, k in had.items() if i not in {x["id"] for x in upload}}
+        self.assertEqual(self.keys_now(theirs), theirs, "the connection's, each row's Observation as #885 keeps them")
+        self.assertEqual(set(self.keys_now(set(had) - set(theirs)).values()), {None}, "the upload's: none")
+        self.assertEqual(self.draw(), before)
+        res = self.amended_where_it_is(cid, before)
+        self.undo(res["import"])
+        self.assertEqual(self.draw(), before, "undone: result and row as they were")
+        # the same portal connected again, in another profile: the first connection's store went at Disconnect, and
+        # the new one's gives its records their keys
+        db = dbm.connect()
+        other = prof.create_profile(db, "Robin again (fictional)", owner_id=self.uids["robin"])
+        db.close()
+        was, self.pid = self.pid, other
+        try:
+            first = self.connect(sid)
+            self.first_pull(first)
+            self.robin.post(f"/api/profiles/{self.pid}/connections/{first}/disconnect", json={"remove_records": False}, headers=H)
+            self.first_pull(self.connect(sid, patient="pat-1"))
+            had = self.strip_keys()
+            self.assertEqual(len(had), 2)
+            db = dbm.connect()
+            try:
+                db.executescript("BEGIN;" + dbm.SCHEMA[39] + "COMMIT;")
+                self.assertEqual(sync.backfill_keys(db), 2)
+            finally:
+                db.close()
+            self.assertEqual(self.keys_now(had), had)
+        finally:
+            self.pid = was
 
     def test_paging(self):
         self.fake.page_size = self.fake.max_count = 2

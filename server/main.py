@@ -92,6 +92,9 @@ async def lifespan(app):
             atrest.load_pepper(db)
             sealed = atrest.seal_everything(db)
             records.backfill_key_hashes(db)   # source keys' hashes for rows from before schema version 13
+            if (given := sync.backfill_keys(db)):   # a lab event's rows' own records, from before #885 (schema version 40)
+                print(f"Gave {given} lab event(s) a connected source saved before the rows' own records were kept "
+                      "theirs, from what the source has sent.", flush=True)
             if sealed["files"] or sealed["fields"]:
                 print(f"Encrypted {sealed['files']} files and {sealed['fields']} database fields that weren't yet.", flush=True)
             if (moved := prof.migrate_files(db)):

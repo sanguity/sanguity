@@ -2171,6 +2171,16 @@ Everything on `main` so far; it becomes the first tagged release.
   "Already here", the button said "Add 1 lab result", but the save added all four results of its report, "4 lab
   results in 4 tests", and a second lab day "4 lab results" for the same draw. Now only what's ticked is added, with
   its own row in a lab day holding only it ("1 lab result"); ticking the lab day adds each of its results, as before.
+- **A sync updates its own result and its row wherever they are, in the draw's one lab day** (#899, #897): where the
+  day's lab results came from another import (the portal's own export uploaded before connecting, or the portal
+  connected again after a Disconnect that kept its records), LDL corrected at the source ("<130" and High, then "<200"
+  and Normal) was updated in Labs but its row still read "<130 mg/dL", now unflagged, and the pull added a second lab
+  day for the draw ("2 lab draws"); after another source's file of that day, a result the pull left out as a duplicate
+  kept its row there, read against the other's result. Now each row is found by its own record (its Observation)
+  wherever it is and updated there, with its result; a result new that day has its row beside it and joins the day's
+  lab day, a duplicate's row is left out with it, and undoing the pull puts back both result and row. Lab results a
+  connected source saved before #885 take their rows' records from what the source has sent, once, at the first start
+  (schema version 40); an upload's can't, as nothing left names them.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
@@ -3090,6 +3100,12 @@ From an install with connected sources (before #228):
   Connected-source apps (the source says which kinds it leaves out; the walk-through lists the scopes) and their types
   in the app's registration at the vendor. Existing connections keep pulling what they did, and ask to sign in again
   only when someone turns a new kind on.
+
+From an install whose connected sources pulled lab results (before #885):
+- Nothing to do: on the first start after updating (schema version 40), the lab results each connection saved take
+  their rows' records from what that source has sent (#899), and the log says how many. A connection disconnected
+  by then kept nothing to give them from: its records take theirs from a connection to the same portal the profile
+  has, or keep none.
 
 From an install whose phone already sent blood glucose (before #181):
 - Nothing to do: on its first start after updating, the receiver reads the glucose in the uploads it has archived in

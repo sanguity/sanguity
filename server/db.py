@@ -1133,6 +1133,15 @@ SCHEMA = [
     UPDATE sqlite_sequence SET seq = MAX(seq, (SELECT COALESCE(MAX(session_id), 0) FROM activity)) WHERE
         name='sessions';
     """,
+    # version 40: a lab event's rows each found by its own record (#899). Since #885 the FHIR importer gives a labitem's
+    # details "keys", each row's Observation; one saved before has none, so a result its source amended and sent again
+    # was never found as the same record (an upload added a copy, a sync left it as it was beside its row updated). The
+    # rows and results don't say their Observations, and they're encrypted, so this only marks the work: at start-up
+    # sync.backfill_keys gives the labitems a connection's pulls saved, or changed in place, theirs from the
+    # connection's store (the records it has read), and clears the mark. An upload's keep none: its files are gone.
+    """
+    INSERT OR REPLACE INTO meta(k, v) VALUES('labitem_keys', '1');
+    """,
 ]
 
 
