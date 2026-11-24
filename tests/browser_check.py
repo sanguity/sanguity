@@ -1792,6 +1792,28 @@ TILE_TEXT722_JS = r"""() => { const out = {n: 0, past: []};
     }
   }
   return out; }"""
+# #722's check for words that aren't tiles' (#849): each line of text drawn in each element shown that matches sel (an
+# SVG's text by its box), scrolled into view, within the edges of its closest box (#819's longer words: a Timeline's
+# badge in its row, the heatmap's counts and their heading in #hmWrap, which clips) and of the screen.
+# {n: elements, past: each text past its box, and by how much, said: the words of those saying "flagged"}
+TEXT_IN849_JS = r"""([sel, box]) => { const out = {n: 0, past: [], said: []}, V = document.documentElement.clientWidth;
+  for (const e of document.querySelectorAll(sel)) {
+    if (!e.checkVisibility()) continue;
+    e.scrollIntoView({block: 'center'});
+    out.n++;
+    const B = e.closest(box).getBoundingClientRect(), w = document.createTreeWalker(e, NodeFilter.SHOW_TEXT);
+    const said = [...e.childNodes].filter(c => c.nodeName !== 'title').map(c => c.textContent).join('').trim();
+    if (/flagged/i.test(said)) out.said.push(said);
+    for (let t; (t = w.nextNode());) {
+      if (!t.data.trim() || t.parentElement.closest('.vh, title')) continue;
+      const r = document.createRange(); r.selectNodeContents(t);
+      const rs = t.parentElement.closest('svg') ? [t.parentElement.getBoundingClientRect()] : [...r.getClientRects()].filter(x => x.width);
+      const d = Math.max(0, ...rs.map(x => Math.max(B.left - x.left, x.right - B.right, -x.left, x.right - V)));
+      if (d > 1) out.past.push(`“${t.data.trim().slice(0, 30)}” ${Math.round(d)} px past its box or the screen`);
+    }
+  }
+  out.said = [...new Set(out.said)];
+  return out; }"""
 # the sizes every grid of tiles is checked at with text at 200% (#753): phones, the widths between a phone and a laptop
 # where a column's floor in px left a value no room, a laptop's, and a phone held sideways; and that text, #622's
 # (the --fs-* tokens and the root's size doubled), as a stylesheet the page adopts ("" for none)
@@ -20753,6 +20775,36 @@ def main():
                   "on its report” (the Overview's list, Labs' chart headers, words and Legend, the heatmap, the lab panel, the Timeline's badges "
                   "and line, the drawer, a share link's chart, the summary's heading, charts and notes and its PDF), the page's rule the "
                   "server's; ◆ “Flagged” in every one", not bad819, bad819)
+            # ---- #849: #819's longer words at 200% text on a phone (320 to 412 px, light and dark). A Timeline badge kept
+            # on one line ("▲ 6 out of range or flagged") ran past the screen's edge, and the heatmap's counts' heading,
+            # "Outside or flagged", widened its grid past #hmWrap, which clips, so each row's count was cut or gone. The
+            # badge's words wrap, whole, and the heading takes the lines its room needs (#722's text check, TEXT_IN849_JS,
+            # over the badges, the matrix's with a ◆ among their flags, and over every word of the heatmap)
+            bad849, n849, theme849 = [], {}, js("document.documentElement.dataset.theme || null")
+            js(ADOPT_CSS_JS, BIG_TEXT_CSS)
+            for dark849 in (False, True):
+                js("t => { document.documentElement.dataset.theme = t; }", "dark" if dark849 else "light")
+                for w849 in (320, 360, 375, 412):
+                    page.set_viewport_size({"width": w849, "height": 800})
+                    where = f"{w849} px{' dark' if dark849 else ''}"
+                    js("() => { state.q = ''; setPeriod('all'); state.tables.delete('#hm'); pickTab('timeline'); }")
+                    settle(500)
+                    got = js(TEXT_IN849_JS, ["#list .tl-row .badge.abn", ".tl-row"])
+                    n849[f"badges {where}"] = [got["n"], len([t for t in got["said"] if t.endswith(M752.flagged(["A"], "short"))])]
+                    bad849 += [f"the Timeline's badges at {where}: {x}" for x in got["past"]]
+                    js("() => switchTab('labs', 'heatmap')")
+                    settle(500)
+                    got = js(TEXT_IN849_JS, ["#hm text", "#hmWrap"])
+                    n849[f"heatmap {where}"] = [got["n"], got["said"]]
+                    bad849 += [f"the heatmap at {where}: {x}" for x in got["past"]]
+            js(ADOPT_CSS_JS, "")
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme849)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("#849: at 200% text on a phone (320 to 412 px), light and dark, the Timeline's badges (“▲ 9 out of range or flagged”) and the "
+                  "heatmap's counts and their heading (“Outside or flagged”) inside their row, the heatmap's box and the screen, their words wrapping "
+                  "whole (#722's text check; the badge ran past the screen's edge, and the heading widened the grid past its box, cutting the counts off)",
+                  not bad849 and all(v[0] and v[1] for v in n849.values()) and all(v[1] == [M752.flagged(["A"], "head")] for k, v in n849.items() if k.startswith("heatmap")),
+                  bad849[:12] or n849)
             # ---- #845: no view reads a flag's letter itself (tests/test_ranges.py searches www/js for one). Labs' list of
             # labs marked a ◆ with ▼ (ALT's "A" read as not "H"); Settings' preview of the key-lab tiles read the flags of
             # the lab's first series as sent, H and L only: no ◆, no flag worked out against a range (its report's or one
