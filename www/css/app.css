@@ -630,13 +630,17 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 :is(.chart,.ev-track) .hd{display:flex;align-items:baseline;gap:var(--sp-2);flex-wrap:wrap}
 .chart .hd .name{font-weight:var(--fw-semibold)}
 :is(.chart,.ev-track) .hd .unit{color:var(--muted);font-size:var(--fs-2)}
-.chart .hd .read{margin-left:auto;font-variant-numeric:tabular-nums;font-size:var(--fs-3);color:var(--ink2)}
+.chart .hd .read{flex-grow:1;font-variant-numeric:tabular-nums;font-size:var(--fs-3);color:var(--ink2);justify-items:end}
 .chart .hd .read b{color:var(--ink);font-size:var(--fs-3)}
+/* a readout over the longest it can say, unseen: as big whatever it says (chartkit.js ckRead, #865) */
+.ck-read{display:grid}
+.ck-read>*{grid-area:1/1}
+.ck-room{visibility:hidden}
 .chart .hd-sub{display:contents}
 .test-page:not(.tq)>.i-circle-question-mark{display:none}
 .chart .hd>.btn:not(.rename-btn){margin:0;align-self:center}   /* its ✕: the quiet small button (#353); the ✎ keeps the name's line (#373) */
 /* a phone's (#621): the name, Chart | Table and ✕ (the seg keeps the ✕'s room, so the two wrap together under a name
-   too long for them, #615); the unit, counts and a 24 px "?" in a muted line; the readout one line (#253) */
+   too long for them, #615); the unit, counts and a 24 px "?" in a muted line; the readout under them, wrapped (#862) */
 @media (max-width:700px){
   .chart .hd{gap:var(--sp-1);align-items:center}
   .chart .hd>.view-seg{margin:0 calc(var(--sp-7) + var(--sp-1)) 0 auto}
@@ -645,7 +649,7 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
   .chart .hd .test-page{margin:-5px 0 -5px var(--sp-1);min-width:24px;vertical-align:middle}
   .chart .hd .test-page>*{display:none}
   .chart .hd .test-page>.i-circle-question-mark{display:block;font-size:var(--fs-5)}
-  .chart .hd .read{order:2;flex-basis:100%;margin-left:0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chart .hd .read{order:2;flex-basis:100%;min-width:0;justify-items:start}
   .chart .hd>.rdiff{order:3}
 }
 :is(.chart svg:not(.icon),.ev-svg){width:100%;display:block}
@@ -717,7 +721,7 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .hm-legend span{margin:0 var(--sp-2) 0 var(--sp-1)}
 /* labs compared (#297, compare.js): a slot per lab, its key (chartkit.js ckSeriesKey) beside its pick and its readout
    under it; each line in its slot's ink and dash; a dumbbell's row marked while it's hovered or stepped to */
-.cmp-pick{display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-4);align-items:center;margin:var(--sp-3) 0}
+.cmp-pick{display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-4);align-items:start;margin:var(--sp-3) 0}
 .cmp-slot{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--sp-1) var(--sp-2);align-items:center;flex:1 1 14em;max-width:24em}
 .cmp-slot>.read{grid-column:2;font-size:var(--fs-2);color:var(--ink2)}
 #labsCompare svg:not(.icon,.cmp-k){width:100%;display:block}
@@ -2027,8 +2031,7 @@ dialog.palette[open]{display:flex;flex-direction:column;overflow:hidden}
    existing look, a ring on a chart that has keyboard focus, and the marks that say "out of range" without colour:
    ▲ above the range, ▼ below, on the Labs charts, the heatmap's cells, the Overview's sparklines and their legends */
 .view-seg{flex:none}   /* the small size (.seg.view-seg, components) */
-:is(.chart,.ev-track) .hd .view-seg{align-self:center}
-.ev-track .hd .view-seg{margin-left:auto}
+:is(.chart,.ev-track) .hd .view-seg{align-self:center;margin-left:auto}   /* at its line's end (a chart's after a long readout, #865) */
 @media (max-width:640px){.ev-track .hd .unit{order:1;flex-basis:100%}}   /* its Chart | Table beside its name, the counts under */
 svg[role=application]:focus{outline:none}
 svg[role=application]:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:var(--r-sm)}

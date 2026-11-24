@@ -63,13 +63,22 @@ function renderCompare() {
   renderCmpMs(placed.filter(r => r.pts.length));
 }
 /* the slots' readouts: each lab's latest in the period, or got[i], its results at the date hovered (null: none near),
-   two at one time each said (#848: "2 results: 5.6 mmol/L · 117%; 5.0 mmol/L · 94%") */
+   two at one time each said (#848: "2 results: 5.6 mmol/L · 117%; 5.0 mmol/L · 94%"). Each as tall whatever it says
+   (chartkit.js ckRead, #865: a second line moved the chart under the pointer, #863), laid out for the longest its lab's
+   results would say, latest or hovered, in any period */
+const cmpReadSays = (s, at, latest) => at?.length ? `${latest ? "Latest " : ""}${ckEach(at, q => `${readText(s, q)[0]} · ${cmpPlace(q)}`)} · ${fmtD(at[0].ts)}`
+  : latest ? "No results in this period" : "No result near this date";
 function cmpRead(got) {
   const list = cmpSel ? cmpSeries() : [];
   list.forEach((s, i) => {
     const r = $("#cmpRead" + i); if (!r) return;
-    const pts = s ? cmpPlaced(s) : [], at = got ? got[i] : pts.slice(-1), say = q => `${readText(s, q)[0]} · ${cmpPlace(q)}`;
-    r.textContent = !s ? "" : at?.length ? `${got ? "" : "Latest "}${ckEach(at, say)} · ${fmtD(at[0].ts)}` : got ? "No result near this date" : "No results in this period";
+    if (!s) return r.replaceChildren();
+    if (r._s !== s) {
+      const all = cmpPlaced(s, -Infinity, Infinity), at = new Map();
+      for (const p of all) (at.get(p.ts) || at.set(p.ts, []).get(p.ts)).push(p);
+      r._s = s; r._say = ckRead(r, [[cmpReadSays(s, null, true)], [cmpReadSays(s, null)], ...all.map(p => [cmpReadSays(s, [p], true)]), ...[...at.values()].map(g => [cmpReadSays(s, g)])]);
+    }
+    r._say([cmpReadSays(s, got ? got[i] : cmpPlaced(s).slice(-1), !got)]);
   });
 }
 /* the chart: the period's time scale, the place in each result's own range up the side, the range itself the band from

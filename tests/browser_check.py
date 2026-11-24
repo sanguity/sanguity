@@ -21172,6 +21172,53 @@ def main():
             check("#848: two results at one time: → and ← step through their time once and on past it on Labs' chart, the lab panel's strip and "
                   "Compare (→ stayed there for good), and the readout, the tooltip and what's announced say both, the ▲ High one too, each with its "
                   "flag and range", not bad848, bad848)
+            # ---- #865: a chart's readout keeps its height whatever it says (chartkit.js ckRead), so the plot never moves
+            # under the pointer. #848's two results made Labs' header readout a longer line: it wrapped the header, the plot
+            # dropped 28–37 px (68 at 150% text), the pointer hovered nothing, the readout said "Latest" again and the plot
+            # jumped back, so the ▲ High under the mouse said nothing; Compare's slot readout grew a line (#863); on a phone
+            # Labs' was cut to one line with "…" (#862). The mouse on each of the two results' marks on Labs' chart and on
+            # Compare, at 700–1400 px with text as usual and at 150%, and on a phone (360, 412 px) as usual and at 200%:
+            # neither chart moves, the readout and the tooltip say both, the readout's words whole
+            BIG865 = {1: "", 1.5: ":root{--fs-1:17.25px;--fs-2:18.75px;--fs-3:21px;--fs-4:23.25px;--fs-5:27px;--fs-6:33px;--fs-7:42px} html{font-size:150%}",
+                      2: BIG_TEXT_CSS}
+            MARKS865 = r"""sel => { const s = document.querySelector(sel), r = s.getBoundingClientRect(), k = r.width / s._geom.w, a = s.querySelector('path.abn').getBBox();
+              const x = a.x + a.width / 2, d = [...s.querySelectorAll('circle[cx]')].find(c => c.getAttribute('visibility') !== 'hidden' && Math.abs(+c.getAttribute('cx') - x) < 1);
+              return [['▲', r.left + x * k, r.top + (a.y + a.height / 2) * k], ['dot', r.left + +d.getAttribute('cx') * k, r.top + +d.getAttribute('cy') * k]]; }"""
+            SAID865 = r"""([sel, read]) => { const t = document.getElementById('tip'), r = document.querySelector(read);
+              return [document.querySelector(sel).getBoundingClientRect().top, r.innerText.replace(/\s+/g, ' '), getComputedStyle(t).display === 'none' ? '' : t.innerText.replace(/\s+/g, ' '),
+                r.scrollWidth > r.clientWidth + 1 || r.scrollHeight > r.clientHeight + 1]; }"""
+            size865, bad865 = page.viewport_size, []
+            for w865, k865 in [(w, k) for w in (700, 900, 1100, 1400) for k in (1, 1.5)] + [(w, k) for w in (360, 412) for k in (1, 2)]:
+                page.set_viewport_size({"width": w865, "height": 900})
+                js(ADOPT_CSS_JS, BIG865[k865])
+                for where865, setup865, sel865, read865, said865 in (
+                        ("Labs", "() => { state.tables.clear(); state.sel = new Set(['Potassium']); applyPreset('all'); switchTab('labs', 'chart'); renderLabs(); }",
+                         '#charts .chart[data-lab="Potassium"] svg.ck', '#charts .chart[data-lab="Potassium"] .read', (M752.AT_ONCE_SAID["labs"], "2 results")),
+                        ("Compare", "() => { cmpSel = ['Potassium', 'Sodium'].map(n => cmpKey(SERIES.find(s => s.name === n))).concat(''); state.tables.delete('#cmp'); "
+                         "applyPreset('all'); switchTab('labs', 'compare'); renderCompare(); }", "#cmpSvg", "#cmpRead0", (M752.AT_ONCE_SAID["compare_read"], M752.AT_ONCE_SAID["compare"]))):
+                    js(setup865)
+                    settle(500)
+                    js(f"() => document.querySelector('{sel865}').scrollIntoView({{block: 'center'}})")
+                    settle(150)
+                    for mark865, x865, y865 in js(MARKS865, sel865):
+                        page.mouse.move(5, 5)
+                        settle(150)
+                        top865 = js(SAID865, [sel865, read865])[0]
+                        page.mouse.move(x865 - 30, y865)
+                        page.mouse.move(x865, y865, steps=3)
+                        settle(400)
+                        got865 = js(SAID865, [sel865, read865])
+                        if abs(got865[0] - top865) > .5 or said865[0] not in got865[1] or said865[1] not in got865[2] or got865[3]:
+                            bad865.append(f"{where865} at {w865} px{f', text at {k865:.0%}' if k865 > 1 else ''}, the mouse on the {mark865}: the plot moved "
+                                          f"{got865[0] - top865:+.1f} px, its readout “{got865[1]}”{' cut' if got865[3] else ''}, the tooltip “{got865[2][:90]}”")
+            page.mouse.move(5, 5)
+            js("() => { document.adoptedStyleSheets = []; hideTip(); cmpSel = null; switchTab('labs', 'chart'); }")
+            page.set_viewport_size(size865)
+            settle(300)
+            check("#865: a chart's readout keeps its height whatever it says: the mouse on each of two results at one time on Labs' chart and Compare, "
+                  "at 700, 900, 1100 and 1400 px with text as usual and at 150%, and at 360 and 412 px as usual and at 200%: neither chart moves (the "
+                  "readout wrapped the header and the ▲ High couldn't be hovered), and the readout and tooltip say both, the readout uncut on a phone",
+                  not bad865, bad865)
             db = dbm.connect()
             prof_r.delete_profile(db, apid)
             db.close()

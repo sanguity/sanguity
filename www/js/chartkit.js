@@ -12,7 +12,7 @@
    - ckLegend: a chart's key, each mark keyed as it's drawn (a line for a line);
    - ckCross, ckSync, ckTip: the crosshair, at one time on every time chart of a view, and the hover's readout pinned to
      the top of the plot beside it; ckAt, ckNearest, ckEach, ckOne: every result at the time hovered or stepped to, each
-     said (#848);
+     said (#848); ckRead: a chart's readout in its header, as big whatever it says (#865);
    - ckFlagRows: names over marks in up to three rows, with leader lines and "+N" (Labs' event track, event-track.js);
    - abnMark: an out-of-range result's ▲, ▼ or ◆;
    - ckSpark: the one sparkline, scaled to the reference band (the Overview, the visit summary, a share link's page);
@@ -394,6 +394,28 @@ function ckNearest(pts, t, tol = Infinity) {
 }
 const ckEach = (at, say) => at.length > 1 ? `${at.length} results: ${at.map(say).join("; ")}` : at.length ? say(at[0]) : "";
 const ckOne = (p, value) => [value, flagWord(p[4]), rangeWords(p) && `(${rangeWords(p)})`].filter(Boolean).join(" ");
+/* ---- a chart's readout in its header (#865): the latest, or what's hovered or stepped to, the same size whatever it
+   says, so the plot never moves under the pointer. A longer line (#848's two results at one time, one result's at
+   700–1000 px or with larger text) wrapped the header, the plot dropped, the pointer hovered nothing, the readout said
+   "Latest" again and the plot jumped back: the ▲ under the mouse said nothing. So what it says is in one cell of a grid
+   (app.css .ck-read) with the widest three of all it can say there too, unseen, and its header is laid out for the
+   longest; on a phone it wraps to its words, uncut (#862). ckRead(box, says): box the readout; says each thing it can
+   say, [text or element, ...] (an element's words in bold); -> say(parts), showing those. Ranked by their widths in
+   the box's font, every digit as 0 (they're tabular), one each of those alike */
+let ckPen = null;
+function ckRead(box, says) {
+  const cs = getComputedStyle(box), font = ` ${cs.fontSize} ${cs.fontFamily}`, seen = new Map();
+  ckPen ??= document.createElement("canvas").getContext("2d");
+  for (const ps of says) {
+    const parts = present(ps).filter(p => p !== ""), txt = parts.map(p => [p.nodeType === 1, String(p.textContent ?? p).replace(/\d/g, "0")]);
+    const key = txt.map(([b, t]) => (b ? "\n" : "\t") + t).join("");
+    if (!seen.has(key)) seen.set(key, [txt.reduce((w, [b, t]) => { ckPen.font = (b ? "bold" : "normal") + font; return w + ckPen.measureText(t).width; }, 0), parts]);
+  }
+  const said = el("span"), room = [...seen.values()].sort((a, b) => b[0] - a[0]).slice(0, 3);
+  box.classList.add("ck-read");
+  box.replaceChildren(said, ...room.map(([, parts]) => el("span", {class: "ck-room", "aria-hidden": "true"}, ...parts)));
+  return ps => said.replaceChildren(...present(ps));
+}
 
 /* ---- the overview strip (#295): a tab's records across every year in 40 px (more with larger text, #641), under the
    period bar, the period a window on it (charts.js stripDraw). ckStripBins: the stretch, the shortest of a day, a week,

@@ -2077,6 +2077,14 @@ Everything on `main` so far; it becomes the first tagged release.
   or PDF report's range); where the file's commas group thousands it isn't read, but kept as printed, a text value or
   a range not used for the flag, which the upload's warnings and Type them in's notes say. A number grouped in a way
   thousands can't be ("12,34.5", "1234,500" in such a file) isn't read either.
+- **A chart's readout keeps its height, so the chart never moves under the pointer** (#865): Labs' chart said #848's
+  two results at one time in its header in a line too long for it, which wrapped the header: the plot dropped 28 to
+  37 px (68 at 150% text) from under the mouse, which then hovered nothing, so the readout said "Latest" again and the
+  plot jumped back, and the ▲ High there couldn't be hovered; at 900 px one result's readout did the same. Compare's
+  readout under a lab's pick grew a line the same way (#863), and on a phone Labs' readout was cut to one line with
+  "…" (#862). Each readout is now laid out for the longest it can say (its lab's latest or any of its times, in any
+  period), so it's the same size whatever it says, and on a phone it wraps to its words, uncut. Where the header's
+  line has no room for the longest, what doesn't fit is on the next line from the start, at its end.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
