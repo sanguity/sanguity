@@ -494,8 +494,10 @@ header.topbar .tabs::-webkit-scrollbar{display:none}
   :is(#addMenuBtn,#userMenuBtn){min-width:44px;padding-inline:var(--sp-2)}
   #userMenuBtn>.menu-ico{display:inline}
   :is(#addMenuBtn,#userMenuBtn)>.menu-caret{display:none}
-  header.topbar.prof-row .profile-pick{order:4;flex-basis:100%;max-width:none}   /* a row of its own, with too little room for its name (nav.js fit, #622) */
 }
+/* the profile's name on a row of its own, with too little room for it (nav.js fit, #622, #785) */
+header.topbar.prof-row{flex-wrap:wrap}
+header.topbar.prof-row .profile-pick{order:4;flex-basis:100%;max-width:none}
 @media (max-width:480px){ header .brand-name{gap:0} }
 @media (max-width:700px) and (min-height:501px){
   html:has(header.topbar>.tabs:not([hidden])){--tabbar:calc(57px + env(safe-area-inset-bottom,0px))}
