@@ -27,6 +27,9 @@ they agree):
 - A report's one-sided range keeps whether its limit includes its edge (#780; the point's edge, common.range_edge): 5
   is "H" against a report's "<5", in range against its "<=5"; 60 "L" against ">60". A range from settings includes
   both its limits.
+- A flag as stored is read as a new import of it would read it (read_flag(): the importers' one rule for a printed
+  flag, common.report_flag, #839), so an older import's "N" or "Normal" is no flag (the range says it), its ">" or "HH"
+  High, its "AA" placed by the range where it can be. Nothing stored is changed.
 - A chart's band (steps()) has a step for each result with a range, none beside a result without one (#752); "<5" and
   "≤ 5" are two ranges.
 - One result that came twice (two sources, then "Same result"; copies()) is one result with any range and flag
@@ -167,18 +170,28 @@ def has_own(lo, hi, flag):
 comparator, flag = common.comparator, common.range_flag
 
 
+def read_flag(flag_, v, lo, hi, text="", edge=""):
+    """A result's flag as stored, read as its report's (#839): by the one rule for a printed flag (common.report_flag,
+    #817), so a flag an older import stored as printed reads as a new import of it would: "H" or "L" where it says which
+    way (">", "HH", "High"), whatever the range; one that says no way ("A", "AA", "Abnormal") placed by the range where
+    it can be, else "A"; none, or one that says neither ("N", "Normal") or isn't read, the range's (""). Stored, it's
+    left as it was: every reading of a result's flag goes through this (judge(), the summary's points, a result's copies
+    in crossmatch), and www/js/ranges.js readFlag is the same on the page. v: the value as a number, or None; text: the
+    value as given (a bound's comparator, "<15"); edge: its range's (#780)."""
+    return common.report_flag(flag_, v, lo, hi, comparator(text), edge)
+
+
 def judge(v, lo, hi, flag_, text, row=None, edge=""):
     """A result's range, flag and where its range came from, by the one rule (#752; ranges.js applyRangeOverrides):
-    its report's own range and flag where it gives them; where it gives a range and no flag, the flag worked out
-    against it (edge: whether its limit includes its edge, #780); where it gives neither (a number), row's range, a
-    range from settings (find()), its flag worked out against that. -> (lo, hi, flag, source): source REPORT or SOURCE"""
-    f = str(flag_ or "").strip()
-    if f or v is None or (lo is None and hi is None and not row):
+    its report's own range and flag where it gives them, its flag as stored read as its report's (read_flag, #839);
+    where it gives a range and no flag, the flag worked out against it (edge: whether its limit includes its edge,
+    #780); where it gives neither (a number), row's range, a range from settings (find()), its flag worked out against
+    that. -> (lo, hi, flag, source): source REPORT or SOURCE"""
+    f = read_flag(flag_, v, lo, hi, text, edge)   # (the range's where it gives none: flag())
+    if f or v is None or lo is not None or hi is not None or not row:
         return lo, hi, f, REPORT
-    if lo is None and hi is None:
-        lo, hi = row.get("low"), row.get("high")
-        return lo, hi, flag(v, lo, hi, comparator(text)), SOURCE
-    return lo, hi, flag(v, lo, hi, comparator(text), edge), REPORT
+    lo, hi = row.get("low"), row.get("high")
+    return lo, hi, flag(v, lo, hi, comparator(text)), SOURCE
 
 
 def copies(a, b):

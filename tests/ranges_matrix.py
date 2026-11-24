@@ -11,7 +11,8 @@ keep it ("<=5", ">=60"), at and past it, through the importers that read them to
 say no way ("A", "Abnormal", "Critical"), inside its range, past it and with none printed, read through the CSV importer
 as an upload is (THROUGH_CSV: ALT, its flags in CASES as printed, #817), and pasted into Type them in (PASTE_FLAGS,
 #835); and ranges given as text alone, "a - b", "<40", "<=40", "less than 40", read through the C-CDA importer
-(THROUGH_CCDA: AST, its texts RANGE_TEXT, #827), and through CareSpace and MyChart exports (#836). JUDGED is what each
+(THROUGH_CCDA: AST, its texts RANGE_TEXT, #827), and through CareSpace and MyChart exports (#836); and flags stored as
+their reports printed them, as older imports stored them ("N", ">", "HH", "Normal": Calcium, #839). JUDGED is what each
 result is judged as, by the one rule (server/ranges.py judge, www/js/ranges.js applyRangeOverrides): [flag, low, high,
 source], and EDGES its edge where its range has one; STEPS the band's steps, each the results it covers, with its words
 (a result whose report gave no range is under none). The summary's "since" day is SINCE days back, so each case has a
@@ -182,6 +183,26 @@ JUDGED["AST"] = [["", 10, 40, R], ["L", 10, 40, R], ["", None, 40, R], ["H", Non
 STEPS["AST"] = [[[0, 1], "10–40 on report"], [[2, 3], "< 40 on report"], [[4, 5], "≤ 40 on report"], [[6, 7], "< 40 on report"]]
 TRENDS["AST"] = [("40", "High", None), ("35", None, None), "< 40"]
 OUT_OF_RANGE["AST"] = ["40", "High", "< 40", 2, 4]
+
+# ---- a flag stored as its report printed it (#839): Calcium's results as an older import stored them, before #817's one
+# rule, each flag in CASES as printed ("N", ">", "<", "HH", "LL", "AA", "Normal"), stored as it is. Every view reads a
+# stored flag as a new import of it would (server/ranges.py read_flag, ranges.js readFlag: the one rule for a printed
+# flag, common.report_flag): ">" and "HH" High and "<" and "LL" Low whatever the range; "AA" placed by the range where it
+# can be, else kept "A"; "N" and "Normal" say neither, so the range alone ("N" on 10.9 against 8.5–10.5 is High), and a
+# "Normal" with no range printed takes a range from Settings (8.6–10.3) as a result with no flag does. The page read
+# each "N", ">", "<" and "Normal" as ◆ Flagged, while the summary and share links read "N" and "Normal" as no flag, ">"
+# as High, and "AA" as Flagged past its range
+UNITS["Calcium"] = "mg/dL"
+OVERRIDES.append({"lab": "Calcium", "unit": "mg/dL", "sex": "any", "low": 8.6, "high": 10.3})
+CASES["Calcium"] = [(100, 9.4, 8.5, 10.5, "N", "9.4"), (90, 9.6, 8.5, 10.5, ">", "9.6"), (80, 9.0, 8.5, 10.5, "<", "9.0"),
+                    (70, 11.8, 8.5, 10.5, "HH", "11.8"), (60, 9.8, 8.5, 10.5, "Normal", "9.8"), (50, 7.6, 8.5, 10.5, "LL", "7.6"),
+                    (40, 9.9, 8.5, 10.5, "AA", "9.9"), (30, 11.2, 8.5, 10.5, "AA", "11.2"), (20, 10.4, None, None, "Normal", "10.4"),
+                    (10, 10.9, 8.5, 10.5, "N", "10.9")]
+JUDGED["Calcium"] = [["", 8.5, 10.5, R], ["H", 8.5, 10.5, R], ["L", 8.5, 10.5, R], ["H", 8.5, 10.5, R], ["", 8.5, 10.5, R],
+                     ["L", 8.5, 10.5, R], ["A", 8.5, 10.5, R], ["H", 8.5, 10.5, R], ["H", 8.6, 10.3, S], ["H", 8.5, 10.5, R]]
+STEPS["Calcium"] = [[list(range(8)), "8.5–10.5 on report"], [[8], "8.6–10.3 from settings"], [[9], "8.5–10.5 on report"]]
+TRENDS["Calcium"] = [("7.6", "Low", None), ("10.9", "High", None), "8.5–10.5"]
+OUT_OF_RANGE["Calcium"] = ["10.9", "High", "8.5–10.5", 4, 4]
 
 
 def edges(lab):

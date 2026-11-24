@@ -114,12 +114,13 @@ def range_text(text):
 
 # a flag as reports print it (flag_word(): lower case, punctuation as spaces): one that says which way, as Quest, Labcorp,
 # a spreadsheet's Flag column, C-CDA and FHIR interpretation codes (HL7's ObservationInterpretation) and CareSpace give
-# it; one that marks a result abnormal without saying which way (#817), a yes in an "Abnormal" or "Out of range" column
-# among them (#835); one that says neither, a no in such a column too; and which of them say it's critical, for its
-# HL7 code (flag_code)
-_FLAG_WAY = {**dict.fromkeys(("h", "hh", "hu", ">", "hi", "high", "a h", "above", "above high normal", "critical high",
+# it ("A>" and "A<" as the visit summary read them, #839); one that marks a result abnormal without saying which way
+# (#817), a yes in an "Abnormal" or "Out of range" column among them (#835); one that says neither, a no in such a column
+# too; and which of them say it's critical, for its HL7 code (flag_code). The first two are www/js/ranges.js FLAG_WAY and
+# FLAG_NO_WAY too, for the page's reading of a stored flag (#839, server/ranges.py read_flag)
+_FLAG_WAY = {**dict.fromkeys(("h", "hh", "hu", ">", "hi", "high", "a h", "a>", "above", "above high normal", "critical high",
                               "panic high", "significantly high", "off scale high"), "H"),
-             **dict.fromkeys(("l", "ll", "lu", "<", "lo", "low", "below", "below low normal", "critical low", "panic low",
+             **dict.fromkeys(("l", "ll", "lu", "<", "lo", "low", "a<", "below", "below low normal", "critical low", "panic low",
                               "significantly low", "off scale low"), "L")}
 _FLAG_NO_WAY = {"a", "aa", "abn", "abnormal", "critical", "critical abnormal", "panic", "alert", "y", "yes", "true"}
 _FLAG_NEITHER = {"", "n", "normal", "no", "false"}

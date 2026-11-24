@@ -269,8 +269,9 @@ function rowPoint(d, i, ev) {
   return null;
 }
 /* a result row's flag (#752, #782): the one Labs shows for its result (rowPoint), by the one rule (ranges.js) against its
-   report's range or, where the report gives none, a range from settings; a row with no result, its report's */
-const rowFlag = (d, i, ev, at = rowPoint(d, i, ev)) => at ? at.p[4] || "" : d.rows[i][4] || "";
+   report's range or, where the report gives none, a range from settings; a row with no result, its report's as printed,
+   read as Labs reads a stored flag (readFlag, #839: an "N" is no flag, not ◆) */
+const rowFlag = (d, i, ev, at = rowPoint(d, i, ev)) => at ? at.p[4] || "" : readFlag(d.rows[i][4], null);
 /* how many of a result's rows are flagged, as its table marks them */
 const rowsFlags = (d, ev) => (d?.rows || []).map((_, i) => rowFlag(d, i, ev)).filter(Boolean);   // (their words, #819: flaggedWords)
 const rowsOut = (d, ev) => rowsFlags(d, ev).length;

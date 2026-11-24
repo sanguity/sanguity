@@ -52,8 +52,8 @@ def page_once(pts, apart=None):
     seen, out = set(), []
     flag = lambda p: ranges.judge(p[1], *p[2:6], None, (list(p) + [None] * 8)[7] or "")[2]   # as judged, the page's ties
     for p, a in sorted(zip(pts, apart or [None] * len(pts)), key=lambda x: (x[0][0], bool(flag(x[0])))):
-        q = list(p) + [None] * (8 - len(p))
-        k = (q[0], q[1], str(q[5] or "").strip(), q[2], q[3], str(q[4] or ""), q[7] or "", a)
+        q = list(p) + [None] * (8 - len(p))   # (its flag as the page compares it, read as stored: ranges.read_flag, #839)
+        k = (q[0], q[1], str(q[5] or "").strip(), q[2], q[3], flag(p), q[7] or "", a)
         if k not in seen:
             seen.add(k)
             out.append(p)
@@ -175,17 +175,65 @@ class Rules(unittest.TestCase):
         got = [s["pts"] for s in labs]
         self.assertEqual([s.get("rangeFrom") for s in labs], [None, {"0": 2}, {"0": 1}, None, None, {"0": 1}, None, None],
                          "#834: a copy whose report gave no range says whose copy's gave it")
+        # (a copy given the one result's range has its flag as read, #839: the first's 5.2 against its 3.5–5.1 is "H"; a
+        # copy left as it was keeps its own, read the same)
         self.assertEqual(got, [[[t, 5.2, 3.5, 5.1, "", "5.2"], [u, 4.0, None, None, "", "4.0"]],   # the first copy's own
                                [[t, 150, 135, 145, "H", "150"]],   # the second's range and its report's H
-                               [[t, 5.2, 3.5, 5.1, "", "5.2"], [u, 4.1, 3.5, 5.1, "", "4.1"]],   # the first's range
+                               [[t, 5.2, 3.5, 5.1, "H", "5.2"], [u, 4.1, 3.5, 5.1, "", "4.1"]],   # the first's range
                                [[t, 150, 135, 145, "H", "150", "Portal"]],
                                [[t, 5.2, None, None, "", "5.2"]],   # another unit
-                               [[t, 5, None, 5, "", "5", None, "<"], [t, 5, None, 5, "", "5", None, "<"]],   # twice from one, "<5" with it
+                               [[t, 5, None, 5, "H", "5", None, "<"], [t, 5, None, 5, "", "5", None, "<"]],   # twice from one, "<5" with it
                                [[t, 5, None, None, "", "5.0"]],   # "5.0" given otherwise
                                [[t, 5.2, None, None, ""]]])   # a watch's
         self.assertEqual([ranges.judge(p[1], *p[2:6], None, (p + [None] * 8)[7] or "")[2] for p in (got[1][0], got[2][0], got[5][0])], ["H", "H", "H"],
                          "each copy judged High: 150 against 135–145, 5.2 against 3.5–5.1, 5 against “<5”")
         self.assertEqual(own, [s["pts"] for s in was], "the records' own lists as they were")
+
+    def test_a_stored_flag(self):
+        """#839: a result's flag as stored is read as its report's, by the importers' one rule for a printed flag
+        (ranges.read_flag: common.report_flag), so an older import's flag stored as printed reads as a new import of it
+        would: ">" and "HH" High, "<" and "LL" Low, whatever the range; "AA" placed by the range where it can be, else
+        "A"; "N" and "Normal" no flag, so the range says it, and a range from Settings applies where its report printed
+        none; what an import stores now reads as it is. The summary says it so (judge, out_of_range), and a result's
+        copies are put together with each copy's flag as read (crossmatch.copies, Same result's _carry and the summary's):
+        a copy's "N" keeps no other copy's flag from it. The page reads it the same way (ranges.js readFlag:
+        tests/browser_check.py)."""
+        from server.importers import common
+        f = ranges.read_flag
+        self.assertEqual([f(p, 13, 11, 15) for p in (">", "HH", "High", "H", "<", "LL", "low", "L", "AA", "A", "Abnormal", "N", "Normal", "", None, "Final")],
+                         ["H"] * 4 + ["L"] * 4 + ["A"] * 3 + [""] * 5)
+        self.assertEqual([f(p, 16, 11, 15) for p in ("N", "Normal", "AA", "<", "")] + [f(p, 10, 11, 15) for p in ("N", "AA", ">")],
+                         ["H", "H", "H", "L", "H", "L", "L", "H"])
+        self.assertEqual([f(p, None, None, None) for p in ("N", ">", "<", "AA", "Normal", "")], ["", "H", "L", "A", "", ""], "a text result")
+        self.assertEqual([f("A>", 13, 11, 15), f("A<", 13, 11, 15)], ["H", "L"], "as the summary read them, its words now the rule's")
+        self.assertEqual([f("N", 15, 15, 60, "<15"), f("Normal", 5, None, 5, "5", "<"), f("N", 5, None, 5, "5")], ["L", "H", ""],
+                         "a bound, a limit that leaves its edge out (#780)")
+        for p in ("H", "L", "A", "AA", ""):   # what an import stores reads as it is
+            for v, lo, hi in ((13, 11, 15), (16, 11, 15), (10, 11, 15), (13, None, None), (None, None, None)):
+                stored = common.report_flag(p, v, lo, hi)
+                self.assertEqual(f(stored, v, lo, hi), stored, (p, v, lo, hi))
+        row = {"low": 8.6, "high": 10.3}   # (a range from Settings)
+        self.assertEqual([ranges.judge(10.4, None, None, p, "10.4", row) for p in ("Normal", "N", "", ">")],
+                         [(8.6, 10.3, "H", ranges.SOURCE)] * 3 + [(None, None, "H", ranges.REPORT)])
+        self.assertEqual([summary.out_of_range({"flag": ranges.judge(v, lo, hi, p, str(v))[2]})
+                          for p, v, lo, hi in (("N", 13, 11, 15), ("N", 16, 11, 15), (">", 13, 11, 15), ("<", 13, None, None), ("AA", 13, 11, 15),
+                                               ("AA", 16, 11, 15), ("Normal", 13, None, None))],
+                         [None, "High", "High", "Low", "Flagged", "High", None])
+        # a result's copies: the first's "N" (no range) keeps no flag from the second's "H"; "AA" with no range takes the
+        # other's range, then placed by it
+        t = day(-2)
+        data = lambda: {"labs": [{"name": "Potassium", "unit": "mmol/L", "imp": 1, "pts": [[t, 4.0, None, None, "N", "4.0"]]},
+                                 {"name": "ALT", "unit": "U/L", "imp": 1, "pts": [[t, 60, None, None, "AA", "60"]]},
+                                 {"name": "Potassium", "unit": "mmol/L", "imp": 2, "pts": [[t, 4.0, None, None, "H", "4.0"]]},
+                                 {"name": "ALT", "unit": "U/L", "imp": 2, "pts": [[t, 60, 7, 56, "", "60"]]}]}
+        got = [ranges.judge(p[1], *p[2:6])[2] for s in crossmatch.copies(data())["labs"] for p in s["pts"]]
+        self.assertEqual(got, ["H"] * 4, "each copy as the one result: Potassium the second's H, ALT's AA placed High by 7–56")
+        series = summary._series(data())
+        self.assertEqual([summary.out_of_range(p) for n in ("Potassium", "ALT") for p in series[n]["pts"]], ["High", "High"],
+                         "the summary's, once each, the same")
+        ks = {"name": "Potassium", "unit": "mmol/L"}
+        self.assertEqual(crossmatch._carry([t, 4.0, None, None, "N", "4.0"], ks, [t, 4.0, None, None, "H", "4.0"], ks)[4], "H",
+                         "Same result: the kept copy's “N” keeps no flag from the other's “H”")
 
 
 # a portal export: ferritin with no range (twice), one with its own range, one flagged by the lab with no range,
@@ -718,6 +766,9 @@ class Api(unittest.TestCase):
         flags = {s["name"]: [p[4] for p in s["pts"]] for s in back["labs"]}
         for n in ("Chloride, Blood", "ALT"):   # a report's own flag with them, "A" too (#817: it came back with none)
             self.assertEqual(flags.get(n), [f for f, *_ in M.JUDGED[n]], f"the FHIR export's {n}, read back")
+        # #839: flags stored as printed ("N", ">", "HH", "Normal") go out as printed and come back as every view reads them
+        # (a range from Settings stays out of the export, as out of a share link)
+        self.assertEqual(flags.get("Calcium"), [f for f, *_ in M.share_judged("Calcium")], "the FHIR export's Calcium, read back")
 
     def test_2_text_ranges(self):
         """#827, #836: a range given as text alone, no low and high of a source's own (ranges_matrix RANGE_TEXT: AST's
