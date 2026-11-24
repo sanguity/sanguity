@@ -33,7 +33,8 @@ they agree):
 - A chart's band (steps()) has a step for each result with a range, none beside a result without one (#752); "<5" and
   "≤ 5" are two ranges.
 - One result that came twice (two sources, then "Same result"; copies()) is one result with any range and flag
-  either copy has (#781), the range's edge with it (#780), judged by the same rule.
+  either copy has (#781), the range's edge with it (#780), judged by the same rule; two copies whose reports print
+  different ranges are two results, each with its own (agree(), #847).
 
 The ranges are a profile setting (server/settings.py, section "ranges"), encrypted: ranges.overrides. The birth date
 and sex are About this person's (#194, server/person.py: person.birthDate and person.sex; before #194 they were

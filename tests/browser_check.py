@@ -20954,7 +20954,9 @@ def main():
             # share links said each unflagged while the C-CDA's lab day said "Out of range 3"; the C-CDA first, the
             # spreadsheet's lab day "Out of range: None". Now its review says how many it adds again with its report's
             # range and flag (in its bar as already here), and every view (views781) gives each as one result with them,
-            # each file's lab day flagging its rows
+            # each file's lab day flagging its rows. And two copies whose reports print different ranges (#847: "<5" and
+            # "<=5", ">=60" and ">60", 13.5–17.5 and 12–16) are two results in each, each with its own range and flag: they
+            # were one, the first's range and flag given to the other ("<=5 ▲ High" in the C-CDA's lab day)
             card846, bad846 = "[...document.querySelectorAll('.import-job')].pop()", []
             for order846 in M752.UPLOAD_ORDERS:
                 when846 = " then ".join(order846)
@@ -20970,8 +20972,8 @@ def main():
                                            f"/^(Ready to import|All duplicates|Not imported)/.test({card846}.textContent)", timeout=30000)
                     got846 = js(f"""(c => [c.querySelector('.imp-state').textContent, [...c.querySelectorAll('.imp-split li')].map(li => li.textContent),
                       c.querySelector('.imp-copies')?.textContent ?? null, c.querySelector('.imp-actions .primary').textContent])({card846})""")
-                    n846, all846 = (M752.UPLOADED_HERE["copies"] if k846 == order846[1] else 0), len(M752.UPLOADED)
-                    want846 = ["Ready to import", [f"{all846 - n846} new", f"{n846} already here", "0 possibly the same"],
+                    (n846, p846), all846 = (M752.UPLOADED_HERE["copies"], M752.UPLOADED_POSSIBLE) if k846 == order846[1] else (0, 0), len(M752.UPLOADED)
+                    want846 = ["Ready to import", [f"{all846 - n846 - p846} new", f"{n846} already here", f"{p846} possibly the same"],
                                f"{n846} lab results already here are added again from this file with its report's range and flag, so neither "
                                "report's is lost." if n846 else None, f"Add {all846} lab results"]
                     if got846 != want846:
@@ -20996,10 +20998,11 @@ def main():
                 db = dbm.connect()
                 prof_r.delete_profile(db, upid846)
                 db.close()
-            check("#846: a result already here comes again in another file with its range or flag (a spreadsheet's, then a C-CDA's, and the other "
-                  "way round, each uploaded, reviewed and added): its review says how many it adds again with its report's range and flag, none "
-                  "skipped, and Labs, the Overview's list, each file's lab day (its Timeline badge and drawer rows), a share link's page and the "
-                  "summary's preview and PDF give each as one result with them", not bad846, bad846)
+            check("#846, #847: a result already here comes again in another file with its range or flag (a spreadsheet's, then a C-CDA's, and the "
+                  "other way round, each uploaded, reviewed and added): its review says how many it adds again with its report's range and flag, "
+                  "none skipped, and Labs, the Overview's list, each file's lab day (its Timeline badge and drawer rows), a share link's page and "
+                  "the summary's preview and PDF give each as one result with them; two copies whose reports print different ranges (in the "
+                  "edge, in the limits) are two results in each, each with its own range and flag", not bad846, bad846)
             # ---- #780: a one-sided range keeps whether its limit includes its edge ("<5" leaves 5 out, "<=5" keeps it;
             # ">60", ">=60"). The page's rule and words against the server's over a grid of values, ranges, bounds and
             # edges; then the matrix's one-sided cases through the real CSV importer (ranges_matrix printed()): each

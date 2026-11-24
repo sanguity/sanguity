@@ -255,15 +255,16 @@ def _series(data, rcfg=None):
     """{name: {"name", "unit", "pts": [point dict with its source], "also": [the name's series in other units]}}: every
     import's series of a name and unit put together (the same test from two sources is one trend), each result keeping
     its own range. Two copies of one result (the same time, value as given and unit: from two sources, or twice from
-    one) are one, with any range (its edge with it, #780) and flag either has, by ranges.copies (#781: a copy with no
-    range beside one with its report's range and Low kept the first, and the summary and a share link said 3.2 with
-    neither), and the sources of both (a "Same result" link's too: crossmatch.apply). Then each result is judged by the
-    one rule (#752). A lab in two units is a series in each, as the records page keeps it (#438), none left out (#781:
-    only the latest result's unit was kept, and a Low in the other went unsaid): the one with the latest result under
-    its name, the others in its "also", newest first (each() gives every one). rcfg: ranges.config(), for results whose
-    report gives no range (#44). Two the person said aren't the same result stay two, each with its own range and flag
-    (#833: the series' "apart", crossmatch.copies), a flagged one after an unflagged one at their time, so a trend's Now
-    and its chart's latest dot are the flagged one."""
+    one), which the records' crossmatch.copies gave the one result's range (its edge with it, #780) and flag (#781: a
+    copy with no range beside one with its report's range and Low kept the first, and the summary and a share link
+    said 3.2 with neither), are one, with the sources of both (a "Same result" link's too: crossmatch.apply). Then each
+    result is judged by the one rule (#752). A lab in two units is a series in each, as the records page keeps it
+    (#438), none left out (#781: only the latest result's unit was kept, and a Low in the other went unsaid): the one
+    with the latest result under its name, the others in its "also", newest first (each() gives every one). rcfg:
+    ranges.config(), for results whose report gives no range (#44). Copies crossmatch.copies keeps apart stay two, each
+    with its own range and flag (the series' "apart": two the person said aren't the same, #833; two whose reports print
+    different ranges, #847), as do two copies saying different things, never one's range beside the other's flag, a
+    flagged one after an unflagged one at their time, so a trend's Now and its chart's latest dot are the flagged one."""
     imports = data.get("imports") or {}
     label = lambda imp: (imports.get(str(imp)) or {}).get("label") or ""
     by = {}
@@ -281,15 +282,13 @@ def _series(data, rcfg=None):
     for (name, unit), pts in by.items():
         pts.sort(key=lambda p: str(p["t"]))
         kept, at = [], {}
-        for p in pts:
-            key = (p["t"], p["v"], p["text"], p.pop("apart"))
+        for p in pts:   # (as the page's same.js isCopy compares them)
+            key = (p["t"], p["v"], p["text"], p["lo"], p["hi"], p["flag"], p["edge"], p.pop("apart"))
             k = at.get(key)
             if k is None:
                 at[key] = p
                 kept.append(p)
-            else:   # the same result again: once, with what either says of its range (its edge with it, #780) and flag
-                k["lo"], k["hi"], k["flag"], k["edge"] = ranges.copies((k["lo"], k["hi"], k["flag"], k["edge"]),
-                                                                       (p["lo"], p["hi"], p["flag"], p["edge"]))
+            else:   # the same result again (crossmatch.copies made its copies one): once, from both sources
                 k["src"] += p["src"]
         pts = [{**_judged(p, name, unit, rcfg), "src": "; ".join(dict.fromkeys(x for x in p["src"] if x))} for p in kept]
         pts.sort(key=lambda p: (str(p["t"]), bool(p["flag"])))   # (#833) at one time, a flagged result last

@@ -550,11 +550,15 @@ def copies(data, apart=()):
     is High in both): Labs and the Overview, which show it once (same.js joinSeries), and each import's lab day, its
     drawer row and its Timeline badge. The copies stay in their imports' series; the points changed are new lists.
 
-    Two the person said aren't the same result (#833; apart: not_same(), their pair hashes) are two results: each copy
-    joins the first result (in import order) none of whose copies it was said not to be, and the copies of each are
-    one, so a pair marked "Not the same" each keeps its own range and flag. Where a time's copies are more than one
-    result, each point's series says which it's in ("apart": {point index: 0, 1, ...}), so the page and the summary
-    (summary._series) show each once and none in another.
+    Copies are one result only where their own ranges agree or one has none (ranges.agree, #847): two whose reports
+    print different ranges ("<5" and "<=5", 13.5–17.5 and 12–16) are two results, each with its own range and flag (the
+    C-CDA's "<=5" copy was given the spreadsheet's "<5" and its High, and its drawer row said "<=5 ▲ High"; the eGFR
+    whose own report made it Low showed nowhere). And two the person said aren't the same result (#833; apart:
+    not_same(), their pair hashes) are two results. Each copy joins the first result (in import order) whose every copy
+    its range agrees with and none of which it was said not to be, and the copies of each are one, so each keeps its
+    own range and flag. Where a time's copies are more than one result, each point's series says which it's in
+    ("apart": {point index: 0, 1, ...}), so the page (same.js joinSeries) and the summary (summary._series) show each
+    once and none in another.
 
     A copy whose own report gave no range, given its other copy's, says whose it is (#834: "rangeFrom": {point index:
     the import whose copy's report gave it}), so the drawer's row of its lab day names that range and where it came from
@@ -577,21 +581,22 @@ def copies(data, apart=()):
     for group in at.values():
         if len(group) < 2:
             continue
-        results = [group]
-        if apart:   # (#833) the results these copies are, by what the person said
-            key = {m: point_key(labs[m[0]], labs[m[0]]["pts"][m[1]]) for m in group}
-            results = []
-            for m in group:
-                r = next((r for r in results if all(key[m] == key[x] or pair_hash(key[m], key[x]) not in apart for x in r)), None)
-                if r is None:
-                    results.append([m])
-                else:
-                    r.append(m)
-            if len(results) > 1:
-                for k, r in enumerate(results):
-                    for i, n in r:
-                        s = mine(i)
-                        s["apart"] = {**(s.get("apart") or {}), str(n): k}
+        # the results these copies are: by their own ranges (#847), and by what the person said (#833)
+        own = {m: said(labs[m[0]]["pts"][m[1]]) for m in group}
+        key = {m: point_key(labs[m[0]], labs[m[0]]["pts"][m[1]]) for m in group} if apart else {}
+        results = []
+        for m in group:
+            r = next((r for r in results if all(ranges.agree(own[m], own[x]) and (not apart or key[m] == key[x] or pair_hash(key[m], key[x]) not in apart)
+                                                for x in r)), None)
+            if r is None:
+                results.append([m])
+            else:
+                r.append(m)
+        if len(results) > 1:
+            for k, r in enumerate(results):
+                for i, n in r:
+                    s = mine(i)
+                    s["apart"] = {**(s.get("apart") or {}), str(n): k}
         for result in results:
             if len(result) < 2:
                 continue

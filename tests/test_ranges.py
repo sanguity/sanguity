@@ -9,7 +9,7 @@ only.
 
   python3 tests/test_ranges.py
 """
-import datetime, io, json, os, re, shutil, sys, tempfile, time, unittest, zlib
+import collections, datetime, io, json, os, re, shutil, sys, tempfile, time, unittest, zlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-ranges-test-")
@@ -152,6 +152,12 @@ class Rules(unittest.TestCase):
                            ((None, 5, "", ""), (None, 5, "H", "<"), (None, 5, "", "")),   # a High against "<5" isn't "≤ 5"'s
                            ((None, 5, "", "<"), (None, 5, "H", "<"), (None, 5, "H", "<"))]:
             self.assertEqual(ranges.copies(a, b), want, (a, b))
+        # #847: two copies are one result only where their own ranges agree (the low, the high and the edge) or one has none
+        for a, b, want in [((None, None, ""), (3.5, 5.1, "L"), True), ((3.5, 5.1, "H"), (None, None, "A"), True),
+                           ((3.5, 5.1, "H"), (3.5, 5.1, ""), True), ((None, 5, "H", "<"), (None, 5, "", "<"), True),
+                           ((None, 5, "H", "<"), (None, 5, "", ""), False), ((60, None, "", ""), (60, None, "L", ">"), False),
+                           ((13.5, 17.5, "L"), (12, 16, ""), False), ((3.5, 5.1, ""), (3.5, 5.3, ""), False), ((None, 5, ""), (1, 5, ""), False)]:
+            self.assertEqual((ranges.agree(a, b), ranges.agree(b, a)), (want, want), (a, b))
 
     def test_copies_not_linked(self):
         """#825: a result twice and not linked (two imports, or twice from one: the same lab, unit, time, value and value
@@ -188,6 +194,39 @@ class Rules(unittest.TestCase):
         self.assertEqual([ranges.judge(p[1], *p[2:6], None, (p + [None] * 8)[7] or "")[2] for p in (got[1][0], got[2][0], got[5][0])], ["H", "H", "H"],
                          "each copy judged High: 150 against 135–145, 5.2 against 3.5–5.1, 5 against “<5”")
         self.assertEqual(own, [s["pts"] for s in was], "the records' own lists as they were")
+        self.assertEqual([s.get("apart") for s in labs], [None] * 8, "one result each")
+
+    def test_copies_with_two_ranges(self):
+        """#847: copies of one result (the same lab, unit, time and value as given) are one result only where their own
+        ranges agree or one has none. Two whose reports print different ranges, in the edge ("<5" and "<=5", ">=60" and
+        ">60") or in the limits (13.5–17.5 and 12–16), are two results, each with its own range and flag, in either import
+        order (crossmatch.copies' "apart"; the summary's points the same): the first's range and High were given to the
+        second, beside its own "<=5". A third copy with no range joins the first result (in import order) and takes its
+        range; with a range of its own like the second's, it's the second's."""
+        t = day(-2)
+        crp = lambda imp, rng, edge, flag: {"name": "CRP", "unit": "mg/L", "imp": imp, "pts": [[t, 5, None, rng, flag, "5", None, edge]]}
+        egfr = lambda imp, edge, flag: {"name": "eGFR", "unit": "mL/min/1.73m2", "imp": imp, "pts": [[t, 60, 60, None, flag, "60", None, edge]]}
+        hgb = lambda imp, lo, hi, flag: {"name": "Hemoglobin", "unit": "g/dL", "imp": imp, "pts": [[t, 13.0, lo, hi, flag, "13.0"]]}
+        flag = lambda p: ranges.judge(p[1], *p[2:6], None, (p + [None] * 8)[7] or "")[2]
+        for first, second in ((1, 2), (2, 1)):
+            labs = sorted([crp(first, 5, "<", "H"), crp(second, 5, "", ""), egfr(first, "", ""), egfr(second, ">", "L"),
+                           hgb(first, 13.5, 17.5, "L"), hgb(second, 12, 16, "")], key=lambda s: s["imp"])
+            got = crossmatch.copies({"labs": json.loads(json.dumps(labs))})["labs"]
+            said = {(s["name"], s["imp"]): [[flag(p), p[2], p[3], (p + [None] * 8)[7] or ""] for p in s["pts"]] for s in got}
+            self.assertEqual(said, {(s["name"], s["imp"]): [[flag(p), p[2], p[3], (p + [None] * 8)[7] or ""] for p in s["pts"]] for s in labs},
+                             f"{first} first: each copy its own range and flag")
+            self.assertEqual(sorted((s["name"], s["imp"], s["apart"]) for s in got),
+                             sorted((s["name"], s["imp"], {"0": 0 if s["imp"] == 1 else 1}) for s in labs), f"{first} first: two results each")
+            self.assertEqual([s.get("rangeFrom") for s in got], [None] * 6, "no range from the other")
+            series = summary._series({"labs": got})
+            self.assertEqual({n: [[p["flag"], p["lo"], p["hi"], p["edge"]] for p in series[n]["pts"]] for n in ("CRP", "eGFR", "Hemoglobin")},
+                             {"CRP": [["", None, 5, ""], ["H", None, 5, "<"]], "eGFR": [["", 60, None, ""], ["L", 60, None, ">"]],
+                              "Hemoglobin": [["", 12, 16, ""], ["L", 13.5, 17.5, ""]]}, f"{first} first: the summary's, two each, the flagged last")
+        three = [crp(1, None, "", ""), crp(2, 5, "<", "H"), crp(3, 5, "", ""), crp(4, None, "", ""), crp(5, 5, "", "")]
+        got = crossmatch.copies({"labs": three})["labs"]
+        self.assertEqual([[s["apart"]["0"], flag(s["pts"][0]), s["pts"][0][3], (s["pts"][0] + [None] * 8)[7] or ""] for s in got],
+                         [[0, "H", 5, "<"], [0, "H", 5, "<"], [1, "", 5, ""], [0, "H", 5, "<"], [1, "", 5, ""]],
+                         "copies with no range join the first result; one with the second's range, the second")
 
     def test_a_stored_flag(self):
         """#839: a result's flag as stored is read as its report's, by the importers' one rule for a printed flag
@@ -228,9 +267,9 @@ class Rules(unittest.TestCase):
                                  {"name": "ALT", "unit": "U/L", "imp": 2, "pts": [[t, 60, 7, 56, "", "60"]]}]}
         got = [ranges.judge(p[1], *p[2:6])[2] for s in crossmatch.copies(data())["labs"] for p in s["pts"]]
         self.assertEqual(got, ["H"] * 4, "each copy as the one result: Potassium the second's H, ALT's AA placed High by 7–56")
-        series = summary._series(data())
+        series = summary._series(crossmatch.copies(data()))
         self.assertEqual([summary.out_of_range(p) for n in ("Potassium", "ALT") for p in series[n]["pts"]], ["High", "High"],
-                         "the summary's, once each, the same")
+                         "the summary's, once each, the same (the records' copies as crossmatch.copies gives them)")
         ks = {"name": "Potassium", "unit": "mmol/L"}
         self.assertEqual(crossmatch._carry([t, 4.0, None, None, "N", "4.0"], ks, [t, 4.0, None, None, "H", "4.0"], ks)[4], "H",
                          "Same result: the kept copy's “N” keeps no flag from the other's “H”")
@@ -472,9 +511,13 @@ class Api(unittest.TestCase):
         cell = lambda x: x and [x["value"], x["flag"]]
         got = {(t["name"], t["unit"]): [cell(t["then"]), cell(t["now"]), (t["now"] or {}).get("range", "")] for t in s["trends"]}
         self.assertEqual(list(got.items()), list(trends.items()), f"{when}: the trends, each unit its row, the latest result's first")
-        pts = {(x["name"], x["unit"], p["d"]): [summary.out_of_range(p), p["lo"], p["hi"]] for x in series for p in x["pts"]}
+        pts = collections.defaultdict(list)   # each day's results, in order (#847: two at one time)
+        for x in series:
+            for p in x["pts"]:
+                pts[(x["name"], x["unit"], p["d"])].append([summary.out_of_range(p), p["lo"], p["hi"]])
         for t in s["trends"]:
-            self.assertEqual([q[2:5] for q in t["spark"]], [pts[(t["name"], t["unit"], q[0])] for q in t["spark"]], f"{when}: {t['name']}'s chart")
+            self.assertEqual([q[2:5] for q in t["spark"]], [r for d in dict.fromkeys(q[0] for q in t["spark"]) for r in pts[(t["name"], t["unit"], d)]],
+                             f"{when}: {t['name']}'s chart")
         self.assertEqual({(o["name"], o["unit"]): [o["value"], o["flag"], o["range"], o["out"], o["of"]] for o in s["out_of_range"]},
                          out, f"{when}: out of range since then")
         k = next(o for o in s["out_of_range"] if o["name"] == both)
@@ -582,7 +625,8 @@ class Api(unittest.TestCase):
         and value, and left its copy out with its range and flag: the spreadsheet first, every view said each unflagged
         and the C-CDA's lab day "Out of range"; the C-CDA first, the spreadsheet's lab day "None". Now its review says how
         many it adds again with its report's range and flag and skips none, and every view gives each as one result
-        with them, each file's lab day flagging its rows."""
+        with them, each file's lab day flagging its rows. #847: two copies whose reports print different ranges (in the
+        edge, in the limits) are two results in every view, each with its own range and flag."""
         db = dbm.connect()
         try:
             owner = db.execute("SELECT id FROM users WHERE username='robin'").fetchone()["id"]
@@ -601,6 +645,7 @@ class Api(unittest.TestCase):
             self.assertEqual({k: first["duplicates"].get(k, 0) for k in M.UPLOADED_HERE}, {"copies": 0, "results": 0}, f"{when}: the first's review")
             self.assertEqual({k: second["duplicates"].get(k, 0) for k in M.UPLOADED_HERE}, M.UPLOADED_HERE,
                              f"{when}: the second's review: its results already here added again with its report's range and flag, none skipped")
+            self.assertEqual([len(first["possible"]), len(second["possible"])], [0, M.UPLOADED_POSSIBLE], f"{when}: possible matches (#847's eGFR)")
             self.assertEqual(c.put(f"/api/profiles/{pid}/settings/overview.keyLabs", json={"value": M.UPLOADED_LABS}, headers=H).status_code, 200)
             r = c.post(f"/api/profiles/{pid}/links", json={"sections": ["results"]}, headers=H)
             self.assertEqual(r.status_code, 200, r.text)
