@@ -629,7 +629,8 @@ def for_preview(db, pid, data, dups):
     same as one already in the profile from another import: [{ref: "m:<series index>:<point index>", name, t, value,
     unit, other: {imp, label, name, t, value, unit}, key, other_key}]. key and other_key are for jobs._save; the page
     gets the list without them (public()). Not a result already here that's added with its own report of it (#846,
-    dups' "copies"): the review says those apart, and the page reads each as one with its copy here (copies())."""
+    dups' "copies"): the review says those apart, and the page reads each as one with its copy here (copies()); nor one
+    its source sends again, updated in place (#869, dups' "updates")."""
     from . import records
     have = records.assemble(db, pid)
     if not have:
@@ -651,7 +652,7 @@ def for_preview(db, pid, data, dups):
     for i, s in enumerate(data.get("labs") or []):
         if not isinstance(s, dict) or i in dups.get("series", ()):
             continue
-        drop = dups.get("points", {}).get(i, set()) | dups.get("copies", {}).get(i, set())
+        drop = dups.get("points", {}).get(i, set()) | dups.get("copies", {}).get(i, set()) | set(dups.get("updates", {}).get(i, ()))
         for n, p in enumerate(s.get("pts") or []):
             if n in drop or not isinstance(p, list) or not p:
                 continue

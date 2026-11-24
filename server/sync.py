@@ -674,7 +674,7 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
         # labs and the profile-wide lists come from what this pull read; lab names matched as remembered
         lab_plan = labmap.plan(db, pid, "fhir", delta)
         delta = labmap.apply(delta, lab_plan["auto"])
-        dups = preview.find(db, pid, "fhir", delta)
+        dups = preview.find(db, pid, "fhir", delta, whole=full)   # (#869: a result sent again found by its rows in the whole set)
         keyless_new = [e for e in delta["events"] if isinstance(e, dict) and not isinstance(e.get("key"), str)
                        and str(e.get("id")) not in dups["events"]]
         dups["events"] = {str(e.get("id")) for e in delta["events"] if isinstance(e, dict)}   # events: decided below
@@ -727,7 +727,7 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
             return os.path.realpath(p) if p and os.path.isfile(p) else None
 
         meta_changes = _meta_changes(db, pid, delta)
-        if not (preview.adds_anything(data) or updates or meta_changes):
+        if not (preview.adds_anything(data) or updates or meta_changes or preview.updates(dups)):
             _keep_store(db, c, store)
             _done(db, c, got, report)
             return {"ok": True, "import": None, "counts": None, "changed": 0}
@@ -741,6 +741,9 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
         labmap.used(db, lab_plan["ids"].values())   # the lab-name matches it was saved with (#500)
         changed = _update_in_place(db, pid, iid, updates, {**full.get("details", {}), **src}, stored, costs)
         changed += _apply_meta(db, iid, meta_changes)
+        # results the source sent again, amended (#869): updated in place, after their rows' labitems (whole, above)
+        if (amended := preview.update(db, pid, iid, delta, dups, rows=False)):
+            summary["counts"]["updated"] = amended
         _link_labdays(db, pid, iid, full, set(full_by_key) & (touched | {e.get("key") for e in new_events}))
         summary["counts"]["documents"] = n_docs
         summary["changed"] = changed
@@ -890,23 +893,29 @@ def _apply_meta(db, iid, changes):
 # ---------------------------------------------------------------- undo (history.undo, in its transaction)
 
 def unapply(db, iid):
-    """Put back what sync import iid changed in place. A later sync that changed the same record again keeps its
-    version, and what it says was there before becomes what this one found. Call before the import's rows go.
-    An import that removed a kind's records (remove_kind) puts them back."""
+    """Put back what import iid changed in place: a sync's, or an upload's results sent again by their source (#869).
+    A later import that changed the same record again keeps its version, and what it says was there before becomes
+    what this one found (its results' too, each the earliest). Call before the import's rows go. An import that
+    removed a kind's records (remove_kind) puts them back."""
     _put_back(db, iid)
     for r in db.execute("SELECT * FROM sync_changes WHERE import_id=? ORDER BY id DESC", (iid,)).fetchall():
         prev = records._dec(r["previous"])
         if r["event_id"] is not None:
-            later = db.execute("SELECT id FROM sync_changes WHERE event_id=? AND id > ? ORDER BY id LIMIT 1",
+            later = db.execute("SELECT id, previous FROM sync_changes WHERE event_id=? AND id > ? ORDER BY id LIMIT 1",
                                (r["event_id"], r["id"])).fetchone()
             if later:
-                db.execute("UPDATE sync_changes SET previous=? WHERE id=?", (r["previous"], later["id"]))
+                theirs = records._dec(later["previous"])
+                results = {**dict(theirs.get("results") or []), **dict(prev.get("results") or [])}   # (#869) this one's first
+                db.execute("UPDATE sync_changes SET previous=? WHERE id=?",
+                           (records._enc({**prev, **({"results": [[k, v] for k, v in results.items()]} if results else {})}), later["id"]))
             else:
                 db.execute("UPDATE events SET body=?, detail=? WHERE id=?",
                            (records._enc(prev["body"]), None if prev["detail"] is None else records._enc(prev["detail"]), r["event_id"]))
                 if "cost" in prev:   # kept since #92; older entries didn't change the Costs row
                     db.execute("UPDATE events SET cost=? WHERE id=?",
                                (None if prev["cost"] is None else records._enc(prev["cost"]), r["event_id"]))
+                for rid, body in prev.get("results") or []:   # results it updated in place (#869)
+                    db.execute("UPDATE results SET body=? WHERE id=?", (records._enc(body), rid))
             continue
         later = None
         for x in db.execute("SELECT id, previous FROM sync_changes WHERE meta_import=? AND id > ? ORDER BY id",

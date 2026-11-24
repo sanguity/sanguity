@@ -281,7 +281,8 @@ def _all_here(data, dups, i):
     if not isinstance(s, dict):
         return False
     pts, txt = s.get("pts") or [], s.get("txt") or []
-    return i in dups["series"] or bool(pts or txt) and len(dups["points"].get(i, ())) >= len(pts) and len(dups["txt"].get(i, ())) >= len(txt)
+    here = len(dups["points"].get(i, ())) + len((dups.get("updates") or {}).get(i, ()))   # (updated in place, #869)
+    return i in dups["series"] or bool(pts or txt) and here >= len(pts) and len(dups["txt"].get(i, ())) >= len(txt)
 
 
 def _watch_split(db, pid, watch):
@@ -476,18 +477,22 @@ def _save(db, j):
                 summary["restored"] = restored
             # all of it here by now (#547: the same file in two reviews, one added): no import, and nothing to undo or
             # remove the upload by, so it's cancelled with it, saying so; a first pull is saved, its upload removed below
-            if not (preview.adds_anything(new) or watch or restored) and not _first_pull(db, jid):
+            amended = preview.updates(dups)   # results here their source sends again, updated in place (#869)
+            if not (preview.adds_anything(new) or watch or restored or amended) and not _first_pull(db, jid):
                 cancelled = _cancelled(db, pid, jid, who, _ips.get(jid), "running", NOTHING_NEW)
                 if cancelled and cancelled[1]:   # another job uses the upload: kept
                     db.execute("UPDATE jobs SET message=? WHERE id=?", (crypto.enc(ALL_HERE), jid))
         if not cancelled:
             iid = None
-            # all duplicates: nothing to add, not even an empty import; but watch data needs an import to be undone by
-            if preview.adds_anything(new) or watch:
+            # all duplicates: nothing to add, not even an empty import; but watch data and results updated in place
+            # (#869) need an import to be undone by
+            if preview.adds_anything(new) or watch or amended:
                 keepdocs, n = prof.index_documents(db, pid, new["details"], stored)
                 summary["counts"]["documents"] = n
                 iid = records.store(db, pid, new, "upload", fmt=name)
                 prof.link_documents(db, iid, keepdocs)
+                if amended:
+                    summary["counts"]["updated"] = preview.update(db, pid, iid, data, dups)
             if watch:   # last, so a failure before it leaves no file behind
                 kept = watch_store.save_import(db, pid, watch, import_id=iid)   # all of it, as it came: undone with its import
                 summary["counts"].update(watch_days=fresh["watch_days"], workouts=fresh["workouts"],   # what's new of it (#497)

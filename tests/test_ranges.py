@@ -685,6 +685,37 @@ class Api(unittest.TestCase):
             finally:
                 db.close()
 
+    def test_2_resent(self):
+        """#869: the same record sent again by its source (tests/ranges_matrix.py's RESENT), a FHIR file's results
+        uploaded, then uploaded again amended: a range corrected (and a Low taken back), a range given, a flag changed.
+        The second added a copy of each, its lab day's rows reading the first's flags beside the new ranges. Now its
+        review says it updates them, and every view gives one result each as the second file says, the lab day's rows
+        with the ranges it prints now (RESENT_RANGES) beside their results' flags (RESENT_DAYS)."""
+        db = dbm.connect()
+        try:
+            owner = db.execute("SELECT id FROM users WHERE username='robin'").fetchone()["id"]
+            pid = prof.create_profile(db, "Sent again (fictional)", owner_id=owner)
+        finally:
+            db.close()
+        c = self.c["robin"]
+        self.upload(pid, *M.resent(0, TODAY))
+        second, done = self.upload(pid, *M.resent(1, TODAY))
+        self.assertEqual({k: second["duplicates"].get(k, 0) for k in M.RESENT_HERE}, M.RESENT_HERE, "the second's review: each updated in place")
+        self.assertEqual((second["new"], done["counts"].get("updated")), (True, M.RESENT_HERE["updates"]), "and its save")
+        self.assertEqual(c.put(f"/api/profiles/{pid}/settings/overview.keyLabs", json={"value": M.RESENT_LABS}, headers=H).status_code, 200)
+        link = c.post(f"/api/profiles/{pid}/links", json={"sections": ["results"]}, headers=H)
+        self.assertEqual(link.status_code, 200, link.text)
+        body = {"appointment": None, "since": M.day(M.RESENT_SINCE, TODAY)[:10], "sections": ["out_of_range", "trends"], "labs": []}
+        data = self.copies_views(pid, link.json()["path"].split("#", 1)[1], body, "sent again", M.RESENT_SEEN, M.RESENT_SEEN, M.RESENT_TRENDS,
+                                 M.RESENT_OUT, M.RESENT_DAYS, both="Potassium, Blood")
+        rows = [r for e in data["events"] if e["k"] == "lab" for i in data["details"][str(e["id"])]["ids"] for r in data["details"][str(i)]["rows"]]
+        self.assertEqual([r[3] for r in rows], M.RESENT_RANGES, "each row's range as its source prints it now")
+        db = dbm.connect()
+        try:
+            prof.delete_profile(db, pid)
+        finally:
+            db.close()
+
     def test_2_typed_copies(self):
         """#868: a result already here typed in again (tests/ranges_matrix.py's TYPED), Type them in's rule an upload's:
         kept as a copy only with its own row, and said by what it brings. The second save's rows are duplicates by key

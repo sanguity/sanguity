@@ -198,6 +198,29 @@ def series_points(db, pid, series_ids):
     return pts, txt
 
 
+def series_results(db, pid, series_ids):
+    """The results of these series with where each is: [(result id, series id, import id, the series' body, point)],
+    for a result its source sends again to be updated in place (preview.py, #869)."""
+    out = []
+    for ids in _chunks(sorted(set(series_ids))):
+        marks = ",".join("?" * len(ids))
+        bodies = {r["id"]: _dec(r["body"]) or {} for r in db.execute(f"SELECT id, body FROM series WHERE profile_id=? AND id IN ({marks})", (pid, *ids))}
+        out += [(r["id"], r["series_id"], r["import_id"], bodies.get(r["series_id"]) or {}, _dec(r["body"]))
+                for r in db.execute(f"SELECT id, series_id, import_id, body FROM results WHERE profile_id=? AND series_id IN ({marks})", (pid, *ids))]
+    return out
+
+
+def events_with_keys(db, pid, keys):
+    """The profile's events with these source keys, as the page's records have them (with "imp" and their details
+    as "detail"), for the rows of a result its source sends again (preview.py, #869)."""
+    hashes = key_hashes(db, keys)
+    out = []
+    for h in _chunks(sorted(set(hashes.values()))):
+        q = f"SELECT id, import_id, body, detail FROM events WHERE profile_id=? AND key_hash IN ({','.join('?' * len(h))}) ORDER BY id"
+        out += [{**(_dec(r["body"]) or {}), "id": r["id"], "imp": r["import_id"], "detail": _dec(r["detail"])} for r in db.execute(q, (pid, *h))]
+    return out
+
+
 def keyless(db, pid, fmt):
     """Events and series without a source key that imports of format fmt brought: ([event body], [series body
     with its pts]). For the duplicate check's fallback (same importer, date, kind and content); importers give keys

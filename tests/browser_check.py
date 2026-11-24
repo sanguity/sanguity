@@ -21187,6 +21187,57 @@ def main():
                   "(“added again with its range, so neither is lost”), one with nothing more left out (“won't be saved again”), and the save "
                   "counts what it adds, with an Undo; Labs, each typed lab day (its Timeline badge and drawer rows: its own), a share link's "
                   "page and the summary's preview and PDF give each result as the matrix does", not bad868, bad868)
+            # ---- #869: the same record sent again by its source (tests/ranges_matrix.py's RESENT): a FHIR file uploaded,
+            # then again with a range corrected and a Low taken back, a range given and a flag changed. The second added a
+            # copy of each, one result shown twice or read as one with the old flag, its lab day's rows reading the old
+            # point's flag beside the new range. Now its review says it updates them ("Update 4 lab results"), its card
+            # and toast say so, and every view (views781) gives one result each as the second file says, the lab day's
+            # rows (RESENT_DAYS) with the ranges it prints now (RESENT_RANGES) beside their results' flags
+            db = dbm.connect()
+            rpid869 = prof_r.create_profile(db, "Sent again (fictional)", owner_id=owner)
+            db.close()
+            bad869 = []
+            for k869 in (0, 1):
+                name869, text869 = M752.resent(k869)
+                page.goto(base + f"/import.html?profile={rpid869}")
+                page.wait_for_selector("#importer", state="visible", timeout=10000)
+                page.set_input_files("#pickFiles", files=[{"name": name869, "mimeType": "application/json", "buffer": text869.encode()}])
+                page.wait_for_function(f"document.querySelectorAll('.import-job').length && /^(Ready to import|All duplicates|Not imported)/.test({card846}.textContent)", timeout=30000)
+                if k869:
+                    got869 = js(f"""(c => [c.querySelector('.imp-state').textContent, [...c.querySelectorAll('.imp-split li')].map(li => li.textContent),
+                      c.querySelector('.imp-copies')?.textContent ?? null, c.querySelector('.imp-updates')?.textContent ?? null,
+                      c.querySelector('.imp-actions .primary').textContent])({card846})""")
+                    n869 = M752.RESENT_HERE["updates"]
+                    want869 = ["Ready to import", ["0 new", f"{n869} already here", "0 possibly the same"], None, M752.RESENT_SAID, f"Update {n869} lab results"]
+                    if got869 != want869:
+                        bad869.append(f"the second's review {got869} not {want869}")
+                js(f"{card846}.querySelector('.imp-actions .primary').click()")
+                page.wait_for_function(f"/^(Imported|Not imported)/.test({card846}.textContent)", timeout=30000)
+                if k869:
+                    said869 = js(f"""[[...{card846}.querySelectorAll('ul > li')].map(li => li.textContent),
+                      (t => t && [t.querySelector('.sg-toast-text').textContent, ...[...t.querySelectorAll('button')].map(b => b.textContent)])(document.querySelector('#sgToasts .sg-toast:last-child'))]""")
+                    if said869[0] != [f"{n869} lab results updated"] or not said869[1] or said869[1][0] != f"Updated {n869} lab results." or "Undo…" not in said869[1]:
+                        bad869.append(f"the second's card and toast say {said869}")
+                js("for (const t of document.querySelectorAll('#sgToasts .sg-toast')) t.sgGone()")
+            tok869 = js("""async ([pid, value]) => { const h = {'X-Sanguity': '1', 'Content-Type': 'application/json'};
+              await fetch(`api/profiles/${pid}/settings/overview.keyLabs`, {method: 'PUT', headers: h, body: JSON.stringify({value})});
+              const r = await fetch(`api/profiles/${pid}/links`, {method: 'POST', headers: h, body: JSON.stringify({sections: ['results']})});
+              return (await r.json()).path.split('#')[1]; }""", [rpid869, M752.RESENT_LABS])
+            bad869 += views781("sent again", M752.RESENT_SEEN, M752.RESENT_SEEN, M752.RESENT_TRENDS, M752.RESENT_OUT, M752.RESENT_DAYS,
+                               pid=rpid869, tok=tok869, labs=M752.RESENT_LABS, every=M752.RESENT_OUT)
+            page.goto(base + f"/?profile={rpid869}")   # the lab day's rows: each its range as printed now
+            page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {rpid869}", timeout=20000)
+            got869 = js("""async () => { await openEvent(DATA.events.find(e => e.k === 'lab'));
+              const out = [...document.querySelectorAll('#drawer table.data tbody tr')].map(r => r.cells[2].textContent); closeDrawer(); return out; }""")
+            if got869 != M752.RESENT_RANGES:
+                bad869.append(f"the drawer's ranges {got869} not {M752.RESENT_RANGES}")
+            db = dbm.connect()
+            prof_r.delete_profile(db, rpid869)
+            db.close()
+            check("#869: the same record sent again by its source, amended (a FHIR file again: a range corrected and a Low taken back, a range "
+                  "given, a flag changed) is updated in place, never a copy: its review says so (“Update 4 lab results”), its card and toast too, "
+                  "with an Undo, and Labs, the lab day (its Timeline badge, the drawer's rows with the ranges printed now beside their results' "
+                  "flags), a share link's page and the summary's preview and PDF give one result each as the second file says", not bad869, bad869)
             # ---- #848: two results at one time (tests/ranges_matrix.py's AT_ONCE: Potassium 5.0 and 5.6 ▲ High at one time,
             # from two imports, not copies). Labs' chart and the lab panel's strip found the keyboard's stop by its time and
             # got the first of the two again, so → stayed there for good; what read the point nearest read the first, so

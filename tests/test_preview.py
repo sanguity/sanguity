@@ -25,7 +25,10 @@ import logging   # noqa: E402
 
 from fastapi.testclient import TestClient   # noqa: E402
 
-from server import accounts, activity, crypto, db as dbm, importers as reg, jobs, main, preview, profiles as prof, records, uploads   # noqa: E402
+from server import accounts, activity, crossmatch, crypto, db as dbm, importers as reg, jobs, main, preview, profiles as prof, ranges, records, uploads   # noqa: E402
+
+sys.path.insert(0, os.path.join(ROOT, "tests"))
+import ranges_matrix as M   # noqa: E402  (#752's matrix: RESENT, #869)
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
 H = {"X-Sanguity": "1"}
@@ -421,12 +424,11 @@ class Preview(unittest.TestCase):
     def test_a_result_here_keeps_what_its_upload_says(self):   # #846, #868
         """A lab result already here (its test, time and value) is a duplicate only where its copy in the upload says
         nothing of its range and flag that a copy here doesn't, and its row in the upload's lab day goes too: the same
-        file again is all duplicates; the same FHIR observation sent again with its reference range adds its copy with
-        it, and with its own row (#868: its lab day kept with it, there already by key or not); a spreadsheet of it,
-        its own lab day, adds its copy for that day's row; a copy with another range than the one here is another
-        result's, kept with its row, and left out where the upload gives it none. The review counts each ("copies") by
-        what it brings, and the records read the copies as one result, High (crossmatch.copies: the copy with none
-        given the other's range)."""
+        file again is all duplicates; the same FHIR observation sent again with its reference range is that result,
+        updated in place with it (#869: it added a copy, #868 its row too); a spreadsheet of it, its own lab day, adds its
+        copy for that day's row; a copy with another range than the one here is another result's, kept with its row,
+        and left out where the upload gives it none (#868). The review counts each ("copies") by what it brings, and the
+        records read the copies as one result, High (crossmatch.copies: the copy with none given the other's range)."""
         pid = self.profile("Copies with their own report")
         obs = lambda rng, value=5.2: {"resourceType": "Bundle", "type": "collection", "entry": [{"resource": {
             "resourceType": "Observation", "id": "k1", "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
@@ -438,11 +440,10 @@ class Preview(unittest.TestCase):
         self.assertEqual((j["new"], j["duplicates"]["results"], j["duplicates"].get("copies", 0)), (False, 1, 0), j["duplicates"])
         self.save(pid, j)
         ranged = {"potassium.json": json.dumps(obs({"low": {"value": 3.5}, "high": {"value": 5.1}, "text": "3.5-5.1"}))}
-        j, _ = self.previewed(pid, ranged)   # sent again with its range: its result's copy kept with it, and its row
-        self.assertEqual((j["new"], j["duplicates"]["results"], j["duplicates"].get("copies", 0), j["counts"]["results"]), (True, 0, 1, 1), j["duplicates"])
-        self.assertEqual((j["duplicates"]["brings"], j["duplicates"]["kinds"], j["counts"]["kinds"]), ({"range": 1}, {}, {"lab": 1}),
-                         "its range said, and its lab day kept with it, there already by key (#868: it was left out, the copy kept)")
-        self.assertEqual(j["possible"], [], "said as a copy, not as possibly the same")
+        j, _ = self.previewed(pid, ranged)   # sent again with its range: the same result, updated in place with it (#869)
+        self.assertEqual((j["new"], j["duplicates"]["results"], j["duplicates"].get("copies", 0), j["duplicates"]["updates"], j["counts"]["results"]),
+                         (True, 0, 0, 1, 0), j["duplicates"])
+        self.assertEqual(j["possible"], [], "said as updated, not as possibly the same")
         self.assertEqual(self.save(pid, j)["state"], "done")
         j, _ = self.previewed(pid, ranged)   # and again: nothing it says isn't here now
         self.assertEqual((j["new"], j["duplicates"]["results"], j["duplicates"].get("copies", 0)), (False, 1, 0), j["duplicates"])
@@ -466,10 +467,48 @@ class Preview(unittest.TestCase):
         finally:
             db.close()
         pts = [p for s in got["labs"] if s["name"] == "Potassium, Blood" for p in s["pts"]]
-        self.assertEqual([(p[2], p[3], p[4]) for p in pts], [(3.5, 5.1, "H")] * 3, "each copy the one result's range, High")
-        rows = [got["details"][str(e["id"])]["rows"][0][4] for e in got["events"] if e["k"] == "labitem"]
-        self.assertEqual(len(rows), 3, "the FHIR files' lab days (the second's with its copy, #868) and the spreadsheet's")
+        self.assertEqual([(p[2], p[3], p[4]) for p in pts], [(3.5, 5.1, "H")] * 2, "each copy the one result's range, High")
+        rows = [got["details"][str(e["id"])]["rows"][0] for e in got["events"] if e["k"] == "labitem"]
+        self.assertEqual([r[3] for r in rows], ["3.5-5.1", ""], "the FHIR file's lab day (its row as sent again, #869) and the spreadsheet's")
         self.assertEqual(rowless(got), [], "every result with its row in its own import's lab day")
+
+    def test_a_result_sent_again_is_updated_in_place(self):   # #869
+        """The same record sent again by its source, amended (tests/ranges_matrix.py's RESENT: a FHIR file's report and
+        results on their own, then again with a range corrected and a Low taken back, a range given, a flag changed), is
+        that result: updated in place, range and flag, its drawer row with it, never a copy. The second upload added a
+        copy of each (one result shown twice, or read as one with the old one's flag), its lab day's rows reading the old
+        point's flag beside the new range. Its review says so ("updates"), its save counts them ("updated") in an import
+        to undo, each row's flag is its result's, the same file again is all duplicates, and Undo puts back what was."""
+        pid = self.profile("Sent again")
+        first, second = (dict([M.resent(k)]) for k in (0, 1))
+        self.assertEqual(self.save(pid, self.previewed(pid, first)[0])["state"], "done")
+        before, n = assembled(pid), count(pid)
+        j, _ = self.previewed(pid, second)
+        self.assertEqual({k: j["duplicates"].get(k, 0) for k in M.RESENT_HERE}, M.RESENT_HERE, j["duplicates"])
+        self.assertEqual((j["new"], j["counts"]["results"], j["duplicates"]["kinds"], j["possible"]), (True, 0, {"lab": 1}, []), "nothing added: updated")
+        done = self.save(pid, j)
+        self.assertEqual((done["state"], done["counts"].get("updated")), ("done", 4), done)
+        self.assertEqual({k: v for k, v in count(pid).items() if k != "imports"}, {k: v for k, v in n.items() if k != "imports"}, "no rows added")
+        got = assembled(pid)
+        pts = {s["name"]: s["pts"] for s in got["labs"]}
+        self.assertEqual({k: [[p[4], p[2], p[3]] for p in v] for k, v in pts.items()},
+                         {n: [[f, lo, hi] for f, lo, hi in v] for (n, _), v in M.RESENT_SEEN.items()}, "one result each, as sent now")
+        drawer, printed = crossmatch._rows(got), [n for n, _ in M.RESENT_DAYS[(1, M.RESENT_BACK)]]
+        for s in got["labs"]:
+            for p in s["pts"]:
+                eid, r = crossmatch._row_of(drawer, s, p)
+                row = got["details"][str(eid)]["rows"][r]
+                self.assertEqual((ranges.read_flag(row[4], p[1], p[2], p[3], p[5]), row[3]), (p[4], M.RESENT_RANGES[printed.index(row[0])]),
+                                 f"{s['name']}: its row and its result agree")
+        j, _ = self.previewed(pid, second)   # the same again: nothing it says isn't here now
+        self.assertEqual((j["new"], j["duplicates"]["results"], j["duplicates"].get("updates")), (False, 4, 0), j["duplicates"])
+        r = self.robin.post(f"/api/profiles/{pid}/jobs/{j['id']}/discard", headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        r = self.robin.post(f"/api/profiles/{pid}/imports/{done['import_id']}/undo", headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        after = assembled(pid)
+        self.assertEqual(({s["name"]: s["pts"] for s in after["labs"]}, after["details"]), ({s["name"]: s["pts"] for s in before["labs"]}, before["details"]),
+                         "undone: its results and rows as they were")
 
     def test_a_copy_only_with_its_own_row(self):   # #868
         """One rule for a result already here, an upload's and Type them in's alike (preview.find): kept as a copy only

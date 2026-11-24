@@ -18,7 +18,8 @@ Undo removes everything the import added, and only that, in one transaction:
 It never touches anything else stored apart from the import's rows: settings, other imports, corrections (#33).
 
 By origin:
-  upload    undone as above: the profile is as it was before the import.
+  upload    undone as above: the profile is as it was before the import; the results it updated in place, sent again
+            by their source (#869, preview.update), get back what they were (sync_changes).
   manual    the same: records typed in on the import page (routes_manual.py), their files and watch data.
   sync      a connected source's scheduled pull (sync.py): what it added goes, and the records it updated in place
             get back what they were (sync_changes); the connection keeps pulling what's new from then on. Two
@@ -189,9 +190,9 @@ def undo(db, pid, iid, who, ip=None, at=None):
                 raise Refused("No such import. It may have been undone already.", 404)
             ups = [r[0] for r in db.execute("SELECT DISTINCT upload_id FROM jobs WHERE import_id=?", (iid,))]
             ups += [u for u in _document_uploads(db, pid, iid) if u not in ups]   # hand entry's attached files
-            if imp["origin"] == "sync":   # a connected source's sync: what it changed in place goes back first
-                from . import sync
-                sync.unapply(db, iid)
+            # what it changed in place goes back first: a connected source's sync's, an upload's results sent again (#869)
+            from . import sync
+            sync.unapply(db, iid)
             forgot = labmap.forget(db, iid)   # before its row goes (labmaps.import_id is set null with it)
             records.drop(db, pid, [iid])   # events, series, results, documents: by cascade
             for u in ups:

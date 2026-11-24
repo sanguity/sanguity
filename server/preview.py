@@ -31,10 +31,16 @@ One rule for a result already here (#868), an upload's, a sync's and Type them i
     and every lab day of its date counted it, util.js labDraws)
   - what it brings is said ("brings": "range", "flag", or "row" where it's kept only for its row), and counted as
     added, with an Undo
+  - the same record sent again by its source, saying something else of its range and flag (#869: its row in a labitem
+    whose key names the source's own record, not a hash of the result's content, the one its result here has its row
+    in), isn't a copy: it's updated in place ("updates"), its range and flag and its row as the source gives them now
+    (update(), with what each was kept, so undoing the import puts them back). A re-pull or a re-sent FHIR Observation
+    with its range corrected added a copy, one result shown twice beside a drawer row reading the other's flag
 
   dups = find(db, pid, fmt, data)
   report(data, dups) -> {"counts", "samples", "range", "duplicates": {...}, "total"}   for the page
   trim(data, dups, keep) -> the data to save                               keep: refs of duplicates to save anyway
+  update(db, pid, iid, data, dups) -> how many results here it updated, once import iid is saved
 """
 import collections, copy, json, re
 
@@ -115,12 +121,16 @@ def _drawer(data):
                              "details": {str(k): d for k, d in details.items()}})
 
 
-def find(db, pid, fmt, data):
+def find(db, pid, fmt, data, whole=None):
     """The duplicates in data: {"events": {event id}, "points": {series index: {point index}}, "txt": {series index:
     {index}}, "series": {series index} (wholly known, nothing in it), "meta": {path: {index}}}; "copies": {series
     index: {point index}}, its results already here that are kept with it, not duplicates (#846), each with its own row
     (#868: "at", {series index: {point index: (event id, row index)}} in the upload) and what it brings ("brings":
-    {series index: {point index: "range" | "flag" | "row"}})."""
+    {series index: {point index: "range" | "flag" | "row"}}); and "updates" (#869: _same_records), {series index: {point
+    index: [{"result", "event", "row", "at"}]}}, its results already here that their source sends again, each the result
+    here it updates (its id), that result's row here (its event's id and the row's index) and its own in the upload.
+    whole: the records the upload's rows are in, where they aren't its own (a sync's: the whole set read so far, a lab
+    day grouping results across pulls)."""
     events = [e for e in data.get("events") or [] if isinstance(e, dict)]
     keyed = {str(e["id"]): e["key"] for e in events if isinstance(e.get("key"), str) and e["key"].strip()}
     hashes = records.key_hashes(db, keyed.values())
@@ -140,7 +150,7 @@ def find(db, pid, fmt, data):
     by_name = collections.defaultdict(list)
     for s in old_series:
         by_name[(str(s.get("name")), str(s.get("unit")))].append(s)
-    points, txt, whole, copies, brings = {}, {}, set(), {}, {}
+    points, txt, empty, copies, brings, olds = {}, {}, set(), {}, {}, {}
     for i, s in enumerate(labs):
         if not isinstance(s, dict):
             continue
@@ -149,6 +159,7 @@ def find(db, pid, fmt, data):
             if h not in s_known:
                 continue
             old_pts, old_txt = records.series_points(db, pid, s_known[h])
+            olds[i] = s_known[h]
         else:
             same = by_name.get((str(s.get("name")), str(s.get("unit"))))
             if not same:
@@ -162,9 +173,11 @@ def find(db, pid, fmt, data):
         said = {n: what for n in here if (what := _brings(have_p[_point(s["pts"][n])], s["pts"][n]))}
         copies[i], brings[i] = set(said), said   # (#846) kept with what it says
         points[i] = here - copies[i]
+        if i in olds:   # (#869) those saying something else of their range and flag than a copy here: sent again?
+            olds[i] = (olds[i], {n for n in here if any(crossmatch.said(o) != crossmatch.said(s["pts"][n]) for o in have_p[_point(s["pts"][n])])})
         txt[i] = {n for n, t in enumerate(s.get("txt") or []) if _text(t) in have_t}
         if not (s.get("pts") or s.get("txt")):
-            whole.add(i)
+            empty.add(i)
 
     old_meta = _meta_lists(records.metas(db, pid))
     meta = {}
@@ -172,9 +185,60 @@ def find(db, pid, fmt, data):
         have = {_entry(x) for x in old_meta.get(path) or []}
         meta[path] = {n for n, x in enumerate(items) if _entry(x) in have}
 
-    dups = {"events": dup, "points": points, "txt": txt, "series": whole, "meta": meta, "copies": copies, "brings": brings}
+    dups = {"events": dup, "points": points, "txt": txt, "series": empty, "meta": meta, "copies": copies, "brings": brings}
+    _same_records(db, pid, data, dups, {i: o for i, o in olds.items() if isinstance(o, tuple) and o[1]}, whole)
     _settle(data, dups, set())
     return dups
+
+
+def _record_key(key):
+    """Whether a source key names the source's own record (a report's id, a document's, one source's results of a day:
+    docs/importers.md, "Source keys"), not a hash of the result's content (":h:"), which every copy of it has (#869)."""
+    return isinstance(key, str) and bool(key.strip()) and ":h:" not in key
+
+
+def _same_records(db, pid, data, dups, olds, whole=None):
+    """(#869) A result here sent again by its source saying something else of its range and flag (the source amended
+    it) is the same result: updated in place ("updates"), never added as a copy, nor left out a duplicate. It's the same
+    record where its row in the upload (in whole's lab days, where given) is in a labitem whose source key names the
+    source's own record (_record_key: a report's, one source's results of a day; never a hash of the result's content,
+    which a typed or spreadsheet result's copy has too, #868), and the result here, its series' key, time and value as
+    reported the same, has its row in a labitem of the profile with that key. A re-pull of an Observation whose range
+    its source corrected (13.5–17.5 and Low, then 12.0–15.5) added a copy beside the labitem updated in place: two
+    results, and the lab day's row read the old one's Low beside the new range. olds: {series index: (its series here,
+    the points saying something else than a copy here)}."""
+    dups["updates"] = {}
+    if not olds:
+        return
+    src = whole or data
+    labs, drawer = data.get("labs") or [], _drawer(src)
+    events = {str(e["id"]): e for e in src.get("events") or [] if isinstance(e, dict) and "id" in e}
+    want = {}
+    for i, (_, ns) in olds.items():
+        for n in ns:
+            row = _row(drawer, labs[i], labs[i]["pts"][n])
+            if row and _record_key(key := (events.get(row[0]) or {}).get("key")):
+                want[(i, n)] = (row, key)
+    if not want:
+        return
+    here = records.events_with_keys(db, pid, {k for _, k in want.values()})
+    rows, keyed = crossmatch._rows({"events": here, "details": {str(e["id"]): e["detail"] for e in here}}), {e["id"]: e for e in here}
+    by = collections.defaultdict(list)   # (series id, point) -> [(result id, its series as the records have it, point)]
+    for rid, sid, imp, body, q in records.series_results(db, pid, {x for i, _ in want for x in olds[i][0]}):
+        if isinstance(q, list) and q:
+            by[(sid, _point(q))].append((rid, {**body, "imp": imp}, q))
+    for (i, n), (row, key) in want.items():
+        found = []
+        for sid in olds[i][0]:
+            for rid, s, q in by[(sid, _point(labs[i]["pts"][n]))]:
+                at = crossmatch._row_of(rows, s, q)
+                if at and keyed[at[0]].get("key") == key:
+                    found.append({"result": rid, "event": at[0], "row": at[1], "at": None if whole else row})
+        if found:
+            dups["points"].get(i, set()).discard(n)
+            dups["copies"].get(i, set()).discard(n)
+            dups["brings"].get(i, {}).pop(n, None)
+            dups["updates"].setdefault(i, {})[n] = found
 
 
 def _row(drawer, s, p):
@@ -194,10 +258,12 @@ def _settle(data, dups, kept, anyway=None):
     labs, drawer = data.get("labs") or [], _drawer(data)
     at = dups["at"] = {}
     dups.setdefault("copies", {}), dups.setdefault("brings", {})
+    # (#869) a labitem whose rows are updated in place isn't added again for a copy's row: that copy is left out
+    updated = {u["at"][0] for us in (dups.get("updates") or {}).values() for ul in us.values() for u in ul if u["at"]}
     for i, ns in list(dups["copies"].items()) + list((anyway or {}).items()):
         for n in sorted(ns):
             row = _row(drawer, labs[i], labs[i]["pts"][n])
-            if row:
+            if row and row[0] not in updated:
                 at.setdefault(i, {})[n] = row
                 dups["events"].discard(row[0])   # its row with it
             else:   # no row of its own here: left out
@@ -291,7 +357,7 @@ def trim(data, dups):
             continue
         if i in dups["series"]:
             continue
-        drop_p, drop_t = dups["points"].get(i, set()), dups["txt"].get(i, set())
+        drop_p, drop_t = dups["points"].get(i, set()) | set((dups.get("updates") or {}).get(i, ())), dups["txt"].get(i, set())   # (updated in place, #869)
         pts = [copy.deepcopy(p) for n, p in enumerate(s.get("pts") or []) if n not in drop_p]
         txt = [copy.deepcopy(t) for n, t in enumerate(s.get("txt") or []) if n not in drop_t]
         if (s.get("pts") or s.get("txt")) and not (pts or txt):
@@ -403,7 +469,59 @@ def report(data, dups, summarise):
                          # (#846) results already here, added with what this upload's report says of them, which the review says,
                          # and what each brings (#868: its report's range, its flag, or its own lab day's row)
                          "copies": sum(len(v) for v in (dups.get("copies") or {}).values()),
-                         "brings": dict(sorted(collections.Counter(w for v in (dups.get("brings") or {}).values() for w in v.values()).items()))}
+                         "brings": dict(sorted(collections.Counter(w for v in (dups.get("brings") or {}).values() for w in v.values()).items())),
+                         # (#869) results here that their source sends again, updated in place with what it says now
+                         "updates": updates(dups)}
     out["total"] = whole["counts"]
-    out["new"] = adds_anything(new)
+    out["new"] = adds_anything(new) or bool(updates(dups))
     return out
+
+
+def updates(dups):
+    """How many of the upload's results update a result here in place (#869: find()'s "updates")."""
+    return sum(len(v) for v in (dups.get("updates") or {}).values())
+
+
+def update(db, pid, iid, data, dups, rows=True):
+    """Save find()'s updates (#869), once import iid is saved: each result here that its source sent again takes the
+    point it sends now (its range, flag and edge), and its drawer row the row it sends now (rows: false where the row's
+    labitem is updated in place whole, as a sync's are), with what each was kept (sync_changes, by the row's event: an
+    earlier change of that event in this import gets them added) so undoing import iid puts them back (sync.unapply).
+    -> how many of data's results updated one here"""
+    labs = data.get("labs") or []
+    details = {str(k): d for k, d in (data.get("details") or {}).items()}
+    by_event, n = collections.defaultdict(list), 0
+    for i, us in (dups.get("updates") or {}).items():
+        for k, ul in us.items():
+            n += 1
+            for u in ul:
+                by_event[u["event"]].append((labs[i]["pts"][k], u))
+    for eid, items in by_event.items():
+        r = db.execute("SELECT body, detail, cost FROM events WHERE id=? AND profile_id=?", (eid, pid)).fetchone()
+        if r is None:
+            continue
+        detail = records._dec(r["detail"])
+        after, before = copy.deepcopy(detail), []
+        for p, u in items:
+            old = db.execute("SELECT body FROM results WHERE id=? AND profile_id=?", (u["result"], pid)).fetchone()
+            if old is None:
+                continue
+            before.append([u["result"], records._dec(old["body"])])
+            db.execute("UPDATE results SET body=? WHERE id=?", (records._enc(p), u["result"]))
+            sent = (details.get(u["at"][0]) or {}).get("rows") if rows and u["at"] else None
+            if sent and u["at"][1] < len(sent) and isinstance(after, dict) and u["row"] < len(after.get("rows") or []):
+                after["rows"][u["row"]] = copy.deepcopy(sent[u["at"][1]])
+        if not before:
+            continue
+        had = db.execute("SELECT id, previous FROM sync_changes WHERE import_id=? AND event_id=?", (iid, eid)).fetchone()
+        if had:
+            prev = records._dec(had["previous"])
+            db.execute("UPDATE sync_changes SET previous=? WHERE id=?", (records._enc({**prev, "results": (prev.get("results") or []) + before}), had["id"]))
+        else:
+            db.execute("INSERT INTO sync_changes(import_id, event_id, previous) VALUES(?, ?, ?)",
+                       (iid, eid, records._enc({"body": records._dec(r["body"]), "detail": detail,
+                                                "cost": records._dec(r["cost"]) if r["cost"] is not None else None, "results": before})))
+        if after != detail:
+            db.execute("UPDATE events SET detail=? WHERE id=?", (records._enc(after), eid))
+    records._bump(db, pid)
+    return n
