@@ -7,23 +7,44 @@
    Plain script, loaded in order by index.html after sources.js; all files share one global scope. */
 "use strict";
 /* one chart per test: series with the same name and unit from different imports are drawn together, each point
-   keeping its own import (p.imp) and the sources linked to it (p.same). Points need their ts already. */
+   keeping its own import (p.imp) and the sources linked to it (p.same). A result that came twice and isn't linked
+   (#825: from two imports, or twice from one) is one point: the server gives each copy the one result's range and flag
+   (crossmatch.copies, as the summary's), so a later copy at its time saying the same (its value as given, range,
+   flag and edge) is left out, and the one kept names its import too (p.also: the Timeline counts it in each one's
+   draw, util.js labDraws). Labs, the Overview, the heatmap and the rest read it once, its flag never under a copy's
+   dot. The records' own series keep both, for each import's lab day (drawer.js rowPoint). Points need their ts and
+   ranges (applyRangeOverrides) already. */
 function joinSeries(labs) {
   const out = [], by = new Map();
   for (const s of labs) {
-    s.pts.forEach((p, n) => { p.imp = s.imp; p.same = (s.same && s.same[n]) || null; });
+    s.pts.forEach((p, n) => { p.imp = s.imp; p.same = (s.same && s.same[n]) || null; p.also = null; });
     const k = s.name + "\u001f" + (s.unit || "");
     const have = by.get(k);
     if (!have) { const c = {...s, imps: [s.imp]}; by.set(k, c); out.push(c); continue; }
     have.pts = have.pts.concat(s.pts); have.txt = (have.txt || []).concat(s.txt || []); have.imps.push(s.imp);
   }
-  for (const s of out) if (s.imps.length > 1) { s.pts.sort((a, b) => a.ts - b.ts); s.n = s.pts.length; }
+  for (const s of out) {
+    if (s.imps.length > 1) s.pts.sort((a, b) => a.ts - b.ts);
+    const at = new Map(), pts = s.watch ? s.pts : s.pts.filter(p => {   // at: the points kept at a time
+      const there = at.get(p.ts), was = there?.find(q => isCopy(q, p));
+      if (!there) at.set(p.ts, [p]); else if (!was) there.push(p);
+      if (was) (was.also ||= []).push(p.imp);
+      return !was;
+    });
+    if (s.imps.length > 1 || pts.length < s.pts.length) { s.pts = pts; s.n = pts.length; }
+  }
   return out;
 }
-/* "CSV lab results; FHIR records (same result)" for a point, as plain text */
+/* whether two results at one time are one's copies: the same time as given, value and value as given, range, flag and edge */
+const isCopy = (a, b) => a[0] === b[0] && a[1] === b[1] && String(a[5] ?? "").trim() === String(b[5] ?? "").trim() && a[2] === b[2]
+  && a[3] === b[3] && (a[4] || "") === (b[4] || "") && (a[7] || "") === (b[7] || "") && (a.rs || "") === (b.rs || "");
+/* a result shown once that came from more imports than its own (#825), in its row of Labs' table: " · also from 1 more
+   source" (nothing for one that came twice from one) */
+const alsoWords = p => { const n = new Set((p.also || []).filter(i => i !== p.imp)).size; return n ? ` · also from ${n} more source${n > 1 ? "s" : ""}` : ""; };
+/* "CSV lab results; FHIR records (same result)" for a point, as plain text: its copies' imports too (#825) */
 function pointSources(s, p) {
   const imp = p.imp ?? s.imp;
-  return [sourceText(imp), ...(p.same || []).map(x => sourceText(x.imp) + " (same result)")].filter(Boolean).join("; ");
+  return [...new Set([imp, ...(p.also || [])].map(sourceText)), ...(p.same || []).map(x => sourceText(x.imp) + " (same result)")].filter(Boolean).join("; ");
 }
 const sameValue = x => `${x.value} ${x.unit || ""}`.trim();
 const sameWhen = t => /^\d{4}-\d{2}-\d{2}$/.test(t) || /T(00:00|12:00):00$/.test(t) ? fmtD(t) : fmtDT(t);

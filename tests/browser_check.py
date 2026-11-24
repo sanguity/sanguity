@@ -20636,10 +20636,11 @@ def main():
             db.close()
             # ---- #781: one result twice, and a lab in two units (tests/ranges_matrix.py's COPIES): two imports, the same
             # result in each with its range and flag said in one, the other or a part in each; a lab in two units; one
-            # result in two units. Labs shows both copies, each unit its own series; the summary's preview, its PDF and a
-            # share link's page give every result: a result twice once, with any range and flag either copy has, each unit
-            # its own row (they kept the first import's copy, Potassium 3.2 with no range or Low, and the latest result's
-            # unit only, Glucose's 3.1 mmol/L Low gone). Then each pair linked as the same result: once everywhere, the
+            # result in two units. Labs shows each unit its own series, and a result twice once (#825: it showed both
+            # copies); the summary's preview, its PDF and a share link's page give every result: a result twice once, with
+            # any range and flag either copy has, each unit its own row (they kept the first import's copy, Potassium 3.2
+            # with no range or Low, and the latest result's unit only, Glucose's 3.1 mmol/L Low gone). Then each pair
+            # linked as the same result: once everywhere, the
             # older import's copy kept with the other's range and flag (a range in g/L given in g/dL). A one-sided range's
             # edge goes with its range (#780: a copy's "<5" beside one with none, 5 High; a "<40" ng/L given as "< 0.04"
             # ng/mL). And each import's lab days (#782): each one's Timeline badge, and in the drawer its Out of range and
@@ -20731,12 +20732,84 @@ def main():
                 bad781.append(f"Same result: {linked781}")
             bad781 += views781("after Same result", M752.COPIES_SAME, M752.COPIES_SAME, M752.COPIES_TRENDS_SAME, M752.COPIES_OUT_SAME, M752.COPIES_DAYS_SAME)
             check("#781: one result twice (a copy with no range beside one with its report's range and Low; a flag in one, the range in the other) "
-                  "and a lab in two units: Labs shows both copies and each unit; the summary's preview, its PDF and a share link every result, a result "
+                  "and a lab in two units: Labs shows each unit, and a result twice once with them (#825); the summary's preview, its PDF and a share "
+                  "link every result, a result "
                   "twice once with any range and flag either copy has, each unit its own row; after “Same result”, once everywhere with them; a "
                   "one-sided range's edge with its range (#780); each lab day's Timeline badge and drawer flags as Labs shows its results (#782)",
                   not bad781, bad781)
             db = dbm.connect()
             prof_r.delete_profile(db, cpid)
+            db.close()
+            # ---- #825: one result twice at one time, its latest, a range on one copy only, in each import order
+            # (tests/ranges_matrix.py's LATEST: Potassium's range on the first import's copy, Sodium's on the second's).
+            # The Overview's tile read the later copy alone (no ▲ High, "no change since" its own copy) and its list left
+            # it out, and Labs' chart drew the copy's dot over the ▲. Each copy has the one result's range and flag
+            # (crossmatch.copies) and the page shows it once: the tile (▲ High, its change from the result before it),
+            # the list, Labs' chart (one mark at that time, a ▲, never under a dot; "1 outside reference range") and
+            # table (one row, from both sources), the heatmap (one cell, counted once), and each import's lab day: its
+            # Timeline badge, and in the drawer each row's flag
+            db = dbm.connect()
+            lpid = prof_r.create_profile(db, "Latest copies (fictional)", owner_id=owner)
+            for imp825, fmt825 in ((1, "csv"), (2, "fhir")):
+                with dbm.transaction(db):
+                    rec_r.store(db, lpid, M752.copies(imp825, cases=M752.LATEST), "upload", fmt=fmt825)
+            db.close()
+            js("""async ([pid, value]) => { await fetch(`api/profiles/${pid}/settings/overview.keyLabs`, {method: 'PUT',
+              headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, body: JSON.stringify({value})}); }""", [lpid, M752.LATEST_LABS])
+            page.goto(base + f"/?profile={lpid}")
+            page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {lpid}", timeout=20000)
+            bad825 = []
+            js("() => { setPeriod('all'); pickTab('overview'); }")
+            settle(500)
+            ov825 = js("""[Object.fromEntries([...document.querySelectorAll('#view-overview .tile:not(.home-tile)')].map(t => [t.querySelector('.lbl > span').textContent,
+              [t.querySelector('.st')?.textContent || '', t.querySelector('.val').firstChild.textContent, t.querySelector('.delta').textContent]])),
+              Object.fromEntries([...document.querySelectorAll('#ovOut .ov-row')].map(r => [r.querySelector('.n').textContent, [r.querySelector('.v').textContent.trim(), r.querySelector('.r').textContent]]))]""")
+            if {k: v for k, v in ov825[0].items() if k in M752.LATEST_TILES} != M752.LATEST_TILES:
+                bad825.append(f"the Overview's tiles {ov825[0]} not {M752.LATEST_TILES}")
+            if ov825[1] != M752.LATEST_OUT:
+                bad825.append(f"the Overview's out-of-range list {ov825[1]} not {M752.LATEST_OUT}")
+            js("labs => { state.tables.clear(); state.sel = new Set(labs); applyPreset('all'); switchTab('labs', 'chart'); renderLabs(); }", M752.LATEST_LABS)
+            settle(600)
+            for n, j in M752.LATEST_JUDGED.items():   # each mark [x, flagged] in the order drawn, and the header's counts
+                got = js("""n => { const c = [...document.querySelectorAll('#charts .chart')].find(c => c.dataset.lab === n);
+                  return [[...c.querySelectorAll('svg.ck :is(circle.pt, path.pt.abn)')].map(m => [m.tagName === 'circle' ? +m.getAttribute('cx')
+                    : +/^M(-?[\\d.]+)/.exec(m.getAttribute('d'))[1], m.matches('.abn')]), c.querySelector('.hd-sub .unit').textContent]; }""", n)
+                under = [x for i, (x, f) in enumerate(got[0]) if f and any(abs(x - x2) < .5 and not f2 for x2, f2 in got[0][i + 1:])]
+                if [f for _, f in got[0]] != [bool(f) for f, *_ in j] or under or f"{len(j)} results · 1 outside reference range" not in got[1]:
+                    bad825.append(f"Labs' {n} chart: marks {[f for _, f in got[0]]}, a ▲ under a dot at {under}, “{got[1]}”")
+            js("labs => { for (const n of labs) state.tables.add(n); renderCharts(); }", M752.LATEST_LABS)
+            settle(400)
+            for n, j in M752.LATEST_JUDGED.items():   # one row each, newest first, the latest from both sources
+                rows = js("n => [...[...document.querySelectorAll('#charts .chart')].find(c => c.dataset.lab === n).querySelectorAll('table.data tbody tr')].map(r => [r.cells[2].textContent, r.cells[3].textContent])", n)
+                want = [[words752(lo, hi), FLAG752[f]] for f, lo, hi in j][::-1]
+                if [[r[0].split(" · ")[0], r[1]] for r in rows] != want or not rows[0][0].endswith(" · also from 1 more source"):
+                    bad825.append(f"Labs' {n} table: {rows[:2]}… ({len(rows)} rows) not {want[:2]}… ({len(want)})")
+            js("labs => { for (const n of labs) state.tables.delete(n); switchTab('labs', 'heatmap'); }", M752.LATEST_LABS)
+            settle(400)
+            hm825 = js("""labs => [labs.map(n => [...document.querySelectorAll('#hm rect.cell')].filter(c => c.dataset.s === n).sort((a, b) => a.dataset.k.localeCompare(b.dataset.k) || a.dataset.j - b.dataset.j)
+                .map(c => { const f = c.style.fill; return f.includes('--div-lo') ? -1 : f.includes('--div-hi') ? 1 : f.includes('--div-mid') ? 0 : null; })),
+              [...document.querySelectorAll('#hm text')].map(t => t.textContent).filter(t => /^\\d+$/.test(t))]""", M752.LATEST_LABS)
+            want825 = [[[{"H": 1, "L": -1}.get(f, 0) for f, *_ in M752.LATEST_JUDGED[n]] for n in M752.LATEST_LABS], ["1"] * len(M752.LATEST_LABS)]
+            if hm825 != want825:
+                bad825.append(f"the heatmap: {hm825} not {want825}")
+            js("() => { state.q = ''; pickTab('timeline'); }")
+            settle(600)
+            dr825 = js("""async latest => { const imps = Object.keys(DATA.imports || {}).map(Number).sort((a, b) => a - b), out = {};
+              const badge = Object.fromEntries([...document.querySelectorAll('#list .tl-row[data-id]')].map(r => [r.dataset.id, r.querySelector('.badge.abn')?.textContent || null]));
+              for (const e of DATA.events.filter(e => e.k === 'lab' && e.t.slice(0, 10) === latest.slice(0, 10))) {
+                await openEvent(e);
+                out[`${imps.indexOf(e.imp) + 1}`] = [badge[e.id] ?? null, [...document.querySelectorAll('#drawer table.data tbody tr')].map(r => [r.cells[0].firstChild.textContent, r.cells[3].textContent])];
+              }
+              closeDrawer(); return out; }""", M752.day(2))
+            want825 = {f"{i}": [f"{sum(1 for _, f in rows if f)} out of range", [[n, FLAG752[f]] for n, f in rows]] for (i, _), rows in M752.LATEST_DAYS.items()}
+            if dr825 != want825:
+                bad825.append(f"each import's lab day of the latest, its Timeline badge and drawer rows: {dr825} not {want825}")
+            check("#825: one result twice at one time, its latest, a range on one copy only (in each import order): read as one result with "
+                  "that range and flag by the Overview's tile (▲ High, its change from the result before, not “no change” from its copy) and its "
+                  "list, Labs' chart (one mark, a ▲ never under a dot) and table (one row), the heatmap (one cell) and each import's lab day "
+                  "(its Timeline badge, the drawer's rows)", not bad825, bad825)
+            db = dbm.connect()
+            prof_r.delete_profile(db, lpid)
             db.close()
             # ---- #780: a one-sided range keeps whether its limit includes its edge ("<5" leaves 5 out, "<=5" keeps it;
             # ">60", ">=60"). The page's rule and words against the server's over a grid of values, ranges, bounds and

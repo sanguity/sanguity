@@ -218,6 +218,9 @@ function abnMark(cx, cy, f, s = 4.5, cls = "pt abn") {
     : `M${p(0, -s)}L${p(s, 0)}L${p(0, s)}L${p(-s, 0)}Z`;
   return el("svg:path", {class: cls, d});
 }
+/* the order a chart's marks are drawn in (#825): in time, at one time a flagged result's after an unflagged one's, so
+   its ▲, ▼ or ◆ is never under a dot. pts in time order, with .ts */
+const ckOnTop = pts => pts.some((p, i) => i && p.ts === pts[i - 1].ts && pts[i - 1][4] && !p[4]) ? [...pts].sort((a, b) => a.ts - b.ts || !!a[4] - !!b[4]) : pts;
 
 /* ---- the sparkline (#299): the one on the Overview's tiles, the visit summary's trends and a share link's results.
    A lab's values in time on a scale set by its reference band, not by its own values: the band the middle 60% of the
@@ -297,7 +300,7 @@ function ckSolo(pts, {h = 120, print = null, unit = "", label = "", say = () => 
     ckBand(g, steps, x, y, L, R, T, B);
     ckBandLabels(g, steps, x, y, L, R, T, B, pts.map(p => [x(p.ts), y(p[1])]));   // each step said with its source (#649, #717, #752)
     if (pts.length > 1) g.push(el("svg:path", {class: "line", d: ckDecimate(pts.map(p => [x(p.ts), y(p[1])]), q => q[0], 1, {ends: true}).map((q, i) => (i ? "L" : "M") + q[0].toFixed(1) + "," + q[1].toFixed(1)).join("")}));
-    for (const p of pts) if (pts.length <= 120 || p[4]) {
+    for (const p of ckOnTop(pts)) if (pts.length <= 120 || p[4]) {
       const m = p[4] ? abnMark(x(p.ts), y(p[1]), p[4]) : el("svg:circle", {class: "pt", cx: x(p.ts), cy: y(p[1]), r: 3});
       m.append(el("svg:title", {text: say(p)}));
       g.push(m);

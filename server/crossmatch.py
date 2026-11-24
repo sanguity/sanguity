@@ -41,7 +41,8 @@ with neither. In the drawer, the other source's row is left out of its result (a
 nothing else is left), and the kept row's result lists the other under "same", the kept row given the other's range
 and flag in the same way. Three sources linked in pairs show once, with all three named. Removing the link shows
 both again; undoing one side's import leaves the link stored but unapplied (found: false), and the other side shows
-alone.
+alone. copies() runs after it, on the copies of a result not linked (#825: the same lab, unit, time and value, from two
+imports or twice from one): each is given the one result's range and flag in the same way, and the page shows it once.
 
 Visits and claims, later. A visit from a C-CDA and the same visit from a FHIR sync could match on the same
 organisation, the same day and the same encounter type, and a claim could match a visit by date of service and
@@ -519,6 +520,48 @@ def _tidy(data, folded):
         data["events"] = [e for e in data["events"] if e["id"] not in gone]
         for i in gone:
             details.pop(str(i), None)
+
+
+# ---------------------------------------------------------------- one result twice, not linked (#825)
+
+def copies(data):
+    """Two copies of one result still shown apart (#825: from two imports not linked as the same result, or twice from
+    one): the same lab and unit, time, value and value as given, as summary._series finds them. Each copy is given the
+    range and flag of the one result by ranges.copies (#781), as the summary gives its one row: the first copy's own (in
+    import order), what it lacks from the others', the range's edge with it (#780). So whichever copy is read, the
+    later or the earlier, it's judged the same (a Potassium 5.2 with no range beside its copy with its report's 3.5–5.1
+    is High in both): Labs and the Overview, which show it once (same.js joinSeries), and each import's lab day, its
+    drawer row and its Timeline badge. The copies stay in their imports' series; the points changed are new lists."""
+    labs, at = data.get("labs") or [], collections.defaultdict(list)
+    for i, s in enumerate(labs):
+        if isinstance(s, dict) and not s.get("watch"):
+            for n, p in enumerate(s.get("pts") or []):
+                if isinstance(p, list) and p:
+                    q = p + [None] * (6 - len(p))
+                    at[(s.get("name"), s.get("unit") or "", str(q[0]), _num(q[1]), str(q[5] or "").strip())].append((i, n))
+    own = lambda p: (_num(p[2]), _num(p[3]), str(p[4] or "").strip(), str(p[7] or ""))   # a point's range, flag and edge
+    touched = set()
+    for group in at.values():
+        if len(group) < 2:
+            continue
+        pts = [labs[i]["pts"][n] + [None] * (8 - len(labs[i]["pts"][n])) for i, n in group]
+        got = own(pts[0])
+        for p in pts[1:]:
+            got = ranges.copies(got, own(p))
+        for (i, n), p in zip(group, pts):
+            if own(p) == got:
+                continue
+            kp = list(labs[i]["pts"][n])
+            kp += [None] * (5 - len(kp))
+            kp[2:5] = got[:3]
+            if got[3] or len(kp) > 7:   # its edge after the source tag (null in its place where there's none)
+                kp += [None] * (8 - len(kp))
+                kp[7] = got[3] or None
+            if i not in touched:
+                labs[i] = {**labs[i], "pts": list(labs[i]["pts"])}
+                touched.add(i)
+            labs[i]["pts"][n] = kp
+    return data
 
 
 # ---------------------------------------------------------------- the import preview
