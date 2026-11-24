@@ -632,10 +632,15 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 :is(.chart,.ev-track) .hd .unit{color:var(--muted);font-size:var(--fs-2)}
 .chart .hd .read{flex-grow:1;font-variant-numeric:tabular-nums;font-size:var(--fs-3);color:var(--ink2);justify-items:end}
 .chart .hd .read b{color:var(--ink);font-size:var(--fs-3)}
-/* a readout over the longest it can say, unseen: as big whatever it says (chartkit.js ckRead, #865) */
+/* a readout over the longest it can say, unseen: as big whatever it says (chartkit.js ckRead, #865); its probe as wide
+   as it, as many lines as the most it says takes there, and what it says measured in its sizer (ckFit, #900) */
 .ck-read{display:grid}
 .ck-read>*{grid-area:1/1}
 .ck-room{visibility:hidden}
+.ck-probe{align-self:start;justify-self:stretch}
+.ck-sizer{position:absolute;width:0;overflow:hidden;white-space:pre;visibility:hidden}
+.ck-sizer>*{display:inline-block}
+.ck-sizer>.w{white-space:nowrap}
 .chart .hd-sub{display:contents}
 .test-page:not(.tq)>.i-circle-question-mark{display:none}
 .chart .hd>.btn:not(.rename-btn){margin:0;align-self:center}   /* its ✕: the quiet small button (#353); the ✎ keeps the name's line (#373) */

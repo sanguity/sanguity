@@ -30,6 +30,7 @@ through real uploads, a spreadsheet's and a C-CDA document's, put through the im
 order. Fictional data only.
 """
 import datetime
+import random
 
 UNITS = {"Potassium": "mmol/L", "Sodium": "mmol/L", "Folate": "ng/mL", "Magnesium": "mg/dL", "Hemoglobin": "g/dL",
          "Amylase": "U/L", "Lipase": "U/L", "Chloride, Blood": "mmol/L", "Creatinine": "mg/dL"}
@@ -966,3 +967,48 @@ AT_ONCE_SAID = {"each": ["5.6 mmol/L ▲ High (3.5–5.3)", "5.0 mmol/L (3.5–5
                 "labs": "2 results: 5.6 mmol/L ▲ High (3.5–5.3); 5.0 mmol/L (3.5–5.1) · ",
                 "compare_read": "2 results: 5.6 mmol/L · 117%; 5.0 mmol/L · 94% · ",
                 "compare": "Potassium: 2 results: 5.6 mmol/L, 117% of its range (3.5–5.3) · ▲ Above range; 5.0 mmol/L, 94% of its range (3.5–5.1)"}
+
+
+# ---------------------------------------------------------------- #900: many times with two results, plausible
+# A profile of the kind whose readouts outgrew their room (#900, Redesign 7's review round 9): six labs (MANY_LABS:
+# name, unit, low, high, decimals), each drawn on fourteen days over two and a half years at five times of day ("7:05
+# AM" to "11:59 PM"), each draw from one import or both (two results at one time), every value, range and flag drawn
+# at random from plausible ones: a little below the range to well over it, its limits as printed or a tenth off, its
+# report's flag or none, so the readouts say things of every length. many(seed) -> [(fmt, records)], each import's
+# records to store (records.store) as an upload of that format. MANY_SEEDS: the profiles #900's check draws, two
+# the review found moving the chart at many sizes
+MANY_LABS = [("Potassium", "mmol/L", 3.5, 5.1, 1), ("eGFR", "mL/min/1.73m2", 60, None, 0), ("Creatinine", "mg/dL", 0.6, 1.3, 2),
+             ("C-Reactive Protein", "mg/L", None, 5, 1), ("Hemoglobin", "g/dL", 13.5, 17.5, 1), ("Platelet Count", "x10^3/uL", 150, 400, 0)]
+MANY_SEEDS = (41, 51)
+
+
+def many(seed, today=None):
+    rnd, today, by = random.Random(seed), today or datetime.date.today(), {}
+    for name, unit, lo, hi, dec in MANY_LABS:
+        for d in sorted(rnd.sample(range(5, 900), 14), reverse=True):
+            hh, mm = rnd.choice([(8, 0), (10, 45), (7, 5), (13, 30), (23, 59)])
+            t = (today - datetime.timedelta(days=d)).isoformat() + f"T{hh:02d}:{mm:02d}:00"
+            for imp in rnd.sample([1, 2], rnd.choice([1, 2, 2])):
+                v = round(max((lo or 0) + ((hi or (lo or 1) * 2) - (lo or 0)) * rnd.uniform(-.3, 1.5), .01), dec)
+                l2 = None if lo is None else round(lo * rnd.choice([1, 1, .9]), dec)
+                h2 = None if hi is None else round(hi * rnd.choice([1, 1, 1.05]), dec)
+                f = rnd.choice(["", "", "H", "L", "A"]) if rnd.random() < .5 else "H" if h2 is not None and v > h2 else "L" if l2 is not None and v < l2 else ""
+                by.setdefault(imp, []).append((name, unit, t, v, l2, h2, f, f"{v:.{dec}f}" if dec else f"{int(v)}"))
+    out = []
+    for imp, rs in by.items():
+        labs, events, details = {}, [], {}
+        for name, unit, t, v, lo, hi, f, g in rs:
+            s = labs.setdefault(name, {"name": name, "key": f"{('csv', 'fhir')[imp - 1]}:{name.lower()}|{unit}", "unit": unit, "panel": "", "txt": [], "pts": []})
+            s["pts"].append([t, v, lo, hi, f, g])
+        for s in labs.values():
+            s["pts"].sort(); s["n"] = len(s["pts"])
+        for t in sorted({r[2] for r in rs}, reverse=True):
+            rows = [[n, g, u, printed_range(lo, hi), f] for n, u, tt, v, lo, hi, f, g in rs if tt == t]
+            abn = {"abn": n} if (n := sum(1 for r in rows if r[4])) else {}
+            events.append({"id": len(events) + 1, "t": t, "k": "lab", "title": f"Lab results (fictional, {imp})", **abn})
+            events.append({"id": len(events) + 1, "t": t, "k": "labitem", "title": f"Lab results (fictional, {imp})", "hidden": 1, **abn})
+            details[str(len(events))] = {"type": "result", "order": f"Lab results (fictional, {imp})", "rows": rows}
+            details[str(len(events) - 1)] = {"type": "labday", "ids": [len(events)]}
+        out.append((("csv", "fhir")[imp - 1], {"built": today.isoformat(), "source": "fictional", "events": events, "details": details,
+                                                "costs": [], "upcoming": [], "labs": list(labs.values())}))
+    return out
