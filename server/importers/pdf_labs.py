@@ -23,7 +23,7 @@ import collections, hashlib, json, os, re, subprocess, sys
 from datetime import datetime
 
 from . import pdf_layouts
-from .common import canonical_lab, comparator, lab_day_sub, lab_day_title, loinc_of, range_text, report_flag, value_number
+from .common import canonical_lab, comparator, lab_day_sub, lab_day_title, loinc_of, range_part, range_text, report_flag, value_number
 
 NAME = "pdf-labs"
 LABEL = "Lab report PDF (Quest, Labcorp)"
@@ -360,24 +360,29 @@ def _build(reports, warnings):
                 dupes += 1
                 continue
             seen.add(ident)
-            # its value by the one reader of a number, as a report whose decimal mark isn't known (#870: _number, its own,
-            # read "0,500" as 500 and "1.2E-3" as no number); its range cell by the one parser of a range as text (#850)
-            x = value_number(r["value"])
-            lo, hi, edge = range_text(r["range"], whole=True)
+            # its value by the one reader of a number and its range cell by the one parser of a range as text (#850),
+            # each with the decimal mark its layout says its lab writes (Quest's and Labcorp's points: "1,250" is 1250,
+            # "0,500" isn't read), else as a report that doesn't say (#870: _number, its own, read "0,500" as 500)
+            mark = getattr(rep["layout"], "DECIMAL_COMMA", None)
+            x = value_number(r["value"], mark)
+            lo, hi, edge = range_text(r["range"], mark, whole=True)
             # the point's flag by the one rule (common.report_flag, #817): H or L as printed; a printed "A", "Abnormal"
             # or "Critical" by the range, else kept "A"; none printed, the range's. The row keeps the flag as printed
             rows.append({**r, "rep": rep, "x": x, "lo": lo, "hi": hi, "edge": edge,
                          "dir": report_flag(r["flag"], x, lo, hi, comparator(r["value"]), edge)})
     if dupes:
         warnings.append(f"Left out {dupes} result{'s' if dupes != 1 else ''} that appeared twice (same test, time and value).")
-    for rep in reports:   # a value printed as a number that can't be read ("1,250": thousands, or a decimal comma?), as
-        # the spreadsheets' warnings say it (#859, #870)
-        unread = [r for r in rows if r["rep"] is rep and r["x"] is None and pdf_layouts.is_number(r["value"])]
-        if unread:
-            n = len(unread)
-            warnings.append(f"{rep['rel']}: {n} value{'s' if n != 1 else ''} couldn't be read as a number, so "
-                            f"{'they were' if n != 1 else 'it was'} kept as text, not charted: "
-                            + ", ".join(f"{r['name']} ({r['value']!r})" for r in unread[:5]) + (f" and {n - 5} more" if n > 5 else "") + ".")
+    kept = {"value": lambda n: f"{n} value{'s' if n != 1 else ''} couldn't be read as a number, so {'they were' if n != 1 else 'it was'} "
+                               "kept as text, not charted",
+            "range": lambda n: f"{n} range{'s' if n != 1 else ''} couldn't be read, so {'they aren' if n != 1 else 'it isn'}'t used for the flag"}
+    for rep in reports:   # a value or a range printed with numbers that can't be read ("0,500" from a lab that writes
+        # decimal points, "1,250" where that isn't known), as a spreadsheet's warnings say it (#859, #870)
+        for part, unread in (("value", [(r["name"], r["value"]) for r in rows if r["rep"] is rep and r["x"] is None and pdf_layouts.is_number(r["value"])]),
+                             ("range", [(r["name"], r["range"]) for r in rows if r["rep"] is rep and r["lo"] is None and r["hi"] is None
+                                        and range_part(r["range"])[0]])):
+            if unread:
+                warnings.append(f"{rep['rel']}: {kept[part](len(unread))}: " + ", ".join(f"{n} ({v!r})" for n, v in unread[:5])
+                                + (f" and {len(unread) - 5} more" if len(unread) > 5 else "") + ".")
 
     for rep in reports:   # the report itself, to open beside its results
         ts = sorted(r["t"] for r in rows if r["rep"] is rep)

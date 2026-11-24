@@ -30,15 +30,18 @@ def ymd(s):
 # (#870): nothing else in the importers or the FHIR export turns printed text into a number
 NUMBER = (r"[-+]?(?:\d{1,3}(?:['\u00a0\u202f]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)*|[.,]\d+)(?:[eE][-+]?\d+)?"
           r"(?![.,'\u00a0\u202f]?\d)")
-BOUNDS = r"<=|>=|=<|=>|<|>|≤|≥"   # a value given as a bound, as reports print one: "<0.5", "=<5", "≥ 60" (comparator)
+# a value given as a bound, as reports print one (comparator): "<0.5", "=<5", "≥ 60", Quest's "> OR = 60" (#870)
+BOUNDS = r"<\s*(?:(?i:or)\s*)?=|>\s*(?:(?i:or)\s*)?=|=\s*<|=\s*>|<|>|≤|≥"
 _BOUND = re.compile(rf"\s*({BOUNDS})")
 _CMP = {"=<": "<=", "≤": "<=", "=>": ">=", "≥": ">="}
 
 
 def comparator(text):
-    """A value given as a bound ("<15", "≤ 0.5", ">90"): its comparator, "<", "<=", ">" or ">=", else "" (#718)."""
+    """A value given as a bound ("<15", "≤ 0.5", ">90", "> OR = 60"): its comparator, "<", "<=", ">" or ">=", else ""
+    (#718). www/js/ranges.js rangeCmp is the same."""
     m = _BOUND.match(str(text or ""))
-    return _CMP.get(m.group(1), m.group(1)) if m else ""
+    c = re.sub(r"(?i)\s|or", "", m.group(1)) if m else ""
+    return _CMP.get(c, c)
 
 
 def value_number(value, decimal_comma=None):

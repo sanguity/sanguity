@@ -17,6 +17,7 @@ from . import is_range, is_unit, is_value
 NAME = "labcorp"
 LABEL = "Labcorp"
 SOURCE = "Labcorp"
+DECIMAL_COMMA = False   # a US lab: "1,250" is 1250 (#870)
 
 HEADER = re.compile(r"^\s*Tests\s+Result\s+Flag\s+Units\s+Reference Interval\s+Lab\s*$")
 END = re.compile(r"^\s*(?:Performing Labs?|Lab\s+Performing Laboratory)\b", re.I)

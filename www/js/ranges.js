@@ -28,10 +28,11 @@ function rangeRowFor(cfg, lab, unit, day) {
   }
   return best;
 }
-/* a value given as a bound ("<15", "≤ 0.5", ">90"): its comparator, "<", "<=", ">" or ">=", else "" (#718;
-   server/ranges.py comparator) */
+/* a value given as a bound ("<15", "≤ 0.5", ">90", "> OR = 60"): its comparator, "<", "<=", ">" or ">=", else ""
+   (#718, #870; server/ranges.py comparator) */
 const RANGE_CMP = {"=<": "<=", "≤": "<=", "=>": ">=", "≥": ">="};
-const rangeCmp = t => { const m = /^\s*(<=|>=|=<|=>|<|>|≤|≥)/.exec(t ?? ""); return m ? RANGE_CMP[m[1]] || m[1] : ""; };
+const rangeCmp = t => { const m = /^\s*(<\s*(?:or\s*)?=|>\s*(?:or\s*)?=|=\s*<|=\s*>|<|>|≤|≥)/i.exec(t ?? ""), c = m ? m[1].replace(/\s|or/gi, "") : "";
+  return RANGE_CMP[c] || c; };
 /* the one flag rule (#752; server/ranges.py flag, which the importers use too): "H" above the high, "L" below the low,
    whatever value a bound (its comparator c) stands for, else "": "<15" against a low of 15 is low (every value under 15
    is), ">90" against a high of 90 high; "<15" against a low of 10 is neither (it may be 12 or 9). e, a point's edge

@@ -18,6 +18,7 @@ from . import is_value, range_and_unit
 NAME = "quest"
 LABEL = "Quest Diagnostics"
 SOURCE = "Quest"
+DECIMAL_COMMA = False   # a US lab: "1,250" is 1250 (#870)
 
 HEADER = re.compile(r"^\s*Test Name\s+In Range\s+Out Of Range\s+Reference Range\s+Lab\s*$")
 END = re.compile(r"^\s*Performing Sites?:", re.I)

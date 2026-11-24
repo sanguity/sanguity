@@ -169,27 +169,42 @@ class Reports(Base):
 
 class NeverGuess(Base):
     def test_a_value_read_by_the_one_reader_of_a_number(self):
-        """#870: a report's value is read by common.value_number, as a source that doesn't say its decimal mark is (as its
-        range cell is, #859): "0,500" is 0.5 and "0,05" 0.05 (a comma that can't group thousands); "1,250" isn't read,
-        never a guess, so it's kept as text and the upload says so; "4,5", "=<5" and scientific notation ("1.2E-3", a
-        range "4.0E-2") are read. The layouts' own reader read "0,500" as 500 (Troponin I ▲ High), and "0,05", "4,5",
-        "=<5" and "1.2E-3" weren't values at all, so their rows were left out."""
-        quest = self.pdf("quest.pdf", gen.quest([("COMMAS (FICTIONAL)", None), ("TROPONIN I", "0,500", "", "<0.040", "ng/mL"),
-                                                 ("CREATININE", "0,05", "", "0.60-1.30", "mg/dL"), ("PLATELET COUNT", "1,250", "", "140-400", "Thousand/uL"),
-                                                 ("WHITE BLOOD CELL COUNT", "12,500", "", "3.8-10.8", "Thousand/uL"),
-                                                 ("POTASSIUM", "4,5", "", "3.5-5.3", "mmol/L"), ("C-REACTIVE PROTEIN", "=<5", "", "<8.0", "mg/L")]))
+        """#870: a report's value is read by common.value_number and its range by common.range_text, each with the decimal
+        mark its layout says its lab writes (DECIMAL_COMMA). Quest and Labcorp are US labs, so "1,250" is 1250 (a B12 or
+        a ferritin over 1,000 is common) and "0,500" isn't read, a value kept as text and a range not used for the flag,
+        which the upload says; "0,05" and "4,5" (a comma that can't group thousands), "=<5", Quest's "> OR = 60" and
+        scientific notation ("1.2E-3", a range "4.0E-2") are read. A layout whose lab doesn't say reads as a source that
+        doesn't (#859): "0,500" is 0.5 and "1,250" isn't read. The layouts' own reader read "0,500" as 500 (Troponin I ▲
+        High) whatever the lab, and "0,05", "4,5", "=<5", "> OR = 60" and "1.2E-3" weren't values, so their rows were
+        left out."""
+        rows = [("COMMAS (FICTIONAL)", None), ("TROPONIN I", "0,500", "", "<0.040", "ng/mL"), ("CREATININE", "0,05", "", "0.60-1.30", "mg/dL"),
+                ("PLATELET COUNT", "1,250", "", "140-400", "Thousand/uL"), ("WHITE BLOOD CELL COUNT", "12,500", "", "3.8-10.8", "Thousand/uL"),
+                ("POTASSIUM", "4,5", "", "3.5-5.3", "mmol/L"), ("C-REACTIVE PROTEIN", "=<5", "", "<8.0", "mg/L"),
+                ("EGFR", "> OR = 60", "", "> OR = 60", "mL/min/1.73m2"), ("LIPASE", "5", "", "<0,500", "U/L")]
+        quest = self.pdf("quest.pdf", gen.quest(rows))
         out = self.run_files(**{"quest.pdf": quest})
+        self.assertEqual(out["warnings"], ["quest.pdf: 1 value couldn't be read as a number, so it was kept as text, not charted: TROPONIN I ('0,500').",
+                                           "quest.pdf: 1 range couldn't be read, so it isn't used for the flag: LIPASE ('<0,500')."])
+        said = lambda out: {s["name"]: [p[1:6] for p in s["pts"]] + [t[1] for t in s["txt"]] for s in out["data"]["labs"]}   # noqa: E731
+        self.assertEqual(said(out), {"TROPONIN I": ["0,500"], "Creatinine": [[0.05, 0.6, 1.3, "L", "0,05"]],
+                                     "Platelet Count": [[1250, 140, 400, "H", "1,250"]], "WBC": [[12500, 3.8, 10.8, "H", "12,500"]],
+                                     "Potassium, Blood": [[4.5, 3.5, 5.3, "", "4,5"]], "C-REACTIVE PROTEIN": [[5, None, 8.0, "", "=<5"]],
+                                     "EGFR": [[60, 60, None, "", "> OR = 60"]], "Lipase": [[5, None, None, "", "5"]]})
+        pdf_labs._cache.clear()   # a layout whose lab doesn't say its decimal mark: Quest's, but for its DECIMAL_COMMA
+        unsaid = types.ModuleType("unsaid")
+        unsaid.__dict__.update({k: v for k, v in vars(pdf_layouts.quest).items() if not k.startswith("__") and k != "DECIMAL_COMMA"})
+        with mock.patch.object(pdf_layouts, "layouts", lambda: [unsaid]):
+            out = self.run_files(**{"quest.pdf": quest})
         self.assertEqual(out["warnings"], ["quest.pdf: 2 values couldn't be read as a number, so they were kept as text, not charted: "
                                            "PLATELET COUNT ('1,250'), WHITE BLOOD CELL COUNT ('12,500')."])
-        labs = {s["name"]: [p[1:5] for p in s["pts"]] + s["txt"] for s in out["data"]["labs"]}
-        self.assertEqual({n: [x[1] if len(x) == 2 else x for x in v] for n, v in labs.items()},
-                         {"TROPONIN I": [[0.5, None, 0.04, "H"]], "Creatinine": [[0.05, 0.6, 1.3, "L"]], "Platelet Count": ["1,250"],
-                          "WBC": ["12,500"], "Potassium, Blood": [[4.5, 3.5, 5.3, ""]], "C-REACTIVE PROTEIN": [[5, None, 8.0, ""]]})
+        self.assertEqual({n: said(out)[n] for n in ("TROPONIN I", "Platelet Count", "WBC", "Lipase")},
+                         {"TROPONIN I": [[0.5, None, 0.04, "H", "0,500"]], "Platelet Count": ["1,250"], "WBC": ["12,500"],
+                          "Lipase": [[5, None, 0.5, "H", "5"]]})
         pdf_labs._cache.clear()
         lab = self.pdf("labcorp.pdf", gen.labcorp([("Scientific (Fictional)", None), ("Troponin I", "1.2E-3", "", "ng/mL", "<4.0E-2"),
-                                                   ("Creatinine", "1.5E0", "", "mg/dL", "6.0E-1-1.3E0")]))
+                                                   ("Creatinine", "1.5E0", "", "mg/dL", "6.0E-1-1.3E0"), ("Vitamin B12", "1,250", "", "pg/mL", "232-1,245")]))
         labs = {s["name"]: s["pts"][0][1:5] for s in self.run_files(**{"labcorp.pdf": lab})["data"]["labs"]}
-        self.assertEqual(labs, {"Troponin I": [0.0012, None, 0.04, ""], "Creatinine": [1.5, 0.6, 1.3, "H"]})
+        self.assertEqual(labs, {"Troponin I": [0.0012, None, 0.04, ""], "Creatinine": [1.5, 0.6, 1.3, "H"], "Vitamin B12": [1250, 232, 1245, "H"]})
 
     def test_lines_the_layout_doesnt_read_are_warnings(self):
         rows = list(gen.QUEST_ROWS)

@@ -220,12 +220,13 @@ SPELLINGS = [
 SPELLED_AS = ("AST", "U/L")   # a lab every importer charts (CareSpace only those it knows)
 # #859: no thousands follow a leading 0. COMMAS: a number as printed, as a value and in a range ("<0,500"), and what each
 # reads as (None: unread, kept as printed and said so) where the file's decimal commas aren't known (a C-CDA document,
-# FHIR, CareSpace, MyChart, a PDF report: a comma that can't group thousands is decimal), where its commas group
-# thousands (a comma-delimited spreadsheet that writes decimal points, Type them in) and where they're decimal (a
+# FHIR, CareSpace, MyChart, a PDF report from a lab whose layout doesn't say: a comma that can't group thousands is
+# decimal), where its commas group thousands (a comma-delimited spreadsheet that writes decimal points, Type them in, and
+# #870's Quest and Labcorp PDF reports, US labs whose layouts say they write decimal points) and where they're decimal (a
 # spreadsheet with semicolons, or with "0,500" or "4,5" among its values). "0,500" was 500 where commas group thousands.
 # #870: and in scientific notation, read in every mode ("1.2E-3" was no number but in a spreadsheet's). Each read as a
-# value by every importer that reads a printed one (C-CDA, CareSpace and PDF reports where the decimal mark isn't
-# known), and the FHIR export of each import read back the same (the export sent "0,500" and "1,250" as text alone)
+# value by every importer that reads a printed one (C-CDA, CareSpace and PDF reports), and the FHIR export of each import
+# read back the same (the export sent "0,500" and "1,250" as text alone)
 COMMAS = {"0,500": (0.5, None, 0.5), "0,05": (0.05, 0.05, 0.05), "1,250": (None, 1250, 1.25), "12,500": (None, 12500, 12.5),
           "1.2E-3": (0.0012, 0.0012, 0.0012), "5,0E3": (5000.0, 5000.0, 5000.0)}
 UNKNOWN, IN_THOUSANDS, DECIMAL = 0, 1, 2   # COMMAS' modes
@@ -238,7 +239,8 @@ UNKNOWN, IN_THOUSANDS, DECIMAL = 0, 1, 2   # COMMAS' modes
 # kept every bound as text, so read back they had no number, range or flag
 BOUND_VALUES = [["=<5", "10 - 40", 5, "<=", "L"], ["≤ 5", "<5", 5, "<=", ""], ["< 5", "5 - 10", 5, "<", "L"],
                 ["<=5", "5 - 10", 5, "<=", ""], ["≥60", "<60", 60, ">=", "H"], ["=>60", ">=60", 60, ">=", ""],
-                ["> 10", "5 - 10", 10, ">", "H"], [">= 60", "10 - 40", 60, ">=", "H"], ["<0.5", "<0.5", 0.5, "<", ""]]
+                ["> 10", "5 - 10", 10, ">", "H"], [">= 60", "10 - 40", 60, ">=", "H"], ["<0.5", "<0.5", 0.5, "<", ""],
+                ["> OR = 60", "10 - 40", 60, ">=", "H"]]   # (as Quest prints a value, #870: its row was left out)
 
 # ---- a flag stored as its report printed it (#839): Calcium's results as an older import stored them, before #817's one
 # rule, each flag in CASES as printed ("N", ">", "<", "HH", "LL", "AA", "Normal"), stored as it is. Every view reads a
@@ -421,6 +423,17 @@ def bounded(today=None):
     """BOUND_VALUES' results, one a day, the oldest first: [(test, unit, time, value as given, range as printed)]."""
     n, u = SPELLED_AS
     return [(n, u, day(100 - i, today), v, r) for i, (v, r, *_) in enumerate(BOUND_VALUES)]
+
+
+def pdf_layout_unsaid():
+    """A PDF layout whose lab doesn't say its decimal mark (#870): Quest's, but for its DECIMAL_COMMA, so its reports are
+    read as a source that doesn't say (COMMAS' UNKNOWN). For tests that put it in place of the layouts there are."""
+    import types
+    from server.importers.pdf_layouts import quest
+    lay = types.ModuleType("pdf_layout_unsaid")
+    lay.__dict__.update({k: v for k, v in vars(quest).items() if not k.startswith("__") and k != "DECIMAL_COMMA"})
+    lay.NAME, lay.LABEL = "unsaid", "A lab that doesn't say its decimal mark (fictional)"
+    return lay
 
 
 def commas_back(today=None):

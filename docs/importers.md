@@ -294,9 +294,12 @@ skip; and `row(cells)` reads one table line, split into cells at gaps of two or 
 flag, unit and range, or returns None. **Never guess:** a line in the table that `row` doesn't read is a warning
 naming its page and line, and a PDF no layout recognises (or two do) is refused. The package's docstring has the
 contract, and its helpers (`is_value`, `is_number`, `is_unit`, `is_range`, `range_and_unit`) read the parts most
-layouts share; a row's range is read by `common.range_text(range, whole=True)`, the one parser of a range as text
-(#850), and its value by `common.value_number(value)` (#870), as a source that doesn't say its decimal mark: "0,500"
-is 0.5, and "1,250" isn't read, but kept as text, which the upload's warnings say.
+layouts share; a row's range is read by `common.range_text(range, decimal_comma, whole=True)`, the one parser of a
+range as text (#850), and its value by `common.value_number(value, decimal_comma)` (#870, a bound's too: "=<5",
+Quest's "> OR = 60"), each with the decimal mark the layout says its lab writes, `DECIMAL_COMMA`. Quest and Labcorp are
+US labs (`False`): "1,250" is 1250, and "0,500" isn't read. A layout that leaves it out reads as a source that
+doesn't say: "0,500" is 0.5, and "1,250" isn't read. A value or a range that isn't read is kept as printed, a text
+value or a range not used for the flag, which the upload's warnings say.
 
 To add a layout:
 
