@@ -543,7 +543,11 @@ def copies(data, apart=()):
     joins the first result (in import order) none of whose copies it was said not to be, and the copies of each are
     one, so a pair marked "Not the same" each keeps its own range and flag. Where a time's copies are more than one
     result, each point's series says which it's in ("apart": {point index: 0, 1, ...}), so the page and the summary
-    (summary._series) show each once and none in another."""
+    (summary._series) show each once and none in another.
+
+    A copy whose own report gave no range, given its other copy's, says whose it is (#834: "rangeFrom": {point index:
+    the import whose copy's report gave it}), so the drawer's row of its lab day names that range and where it came from
+    beside the flag worked out against it."""
     labs, at = data.get("labs") or [], collections.defaultdict(list)
     for i, s in enumerate(labs):
         if isinstance(s, dict) and not s.get("watch"):
@@ -585,7 +589,12 @@ def copies(data, apart=()):
             got = own(pts[0])
             for p in pts[1:]:
                 got = ranges.copies(got, own(p))
+            # (#834) the import whose copy's report gave the range, for a copy whose own gave none
+            src = next((labs[i].get("imp") for (i, _), p in zip(result, pts) if own(p)[:2] != (None, None)), None)
             for (i, n), p in zip(result, pts):
+                if own(p)[:2] == (None, None) and got[:2] != (None, None):
+                    s = mine(i)
+                    s["rangeFrom"] = {**(s.get("rangeFrom") or {}), str(n): src}
                 if own(p) == got:
                     continue
                 kp = list(labs[i]["pts"][n])

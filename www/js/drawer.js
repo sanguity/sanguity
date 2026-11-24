@@ -282,12 +282,15 @@ function resultTable(d, ev) {
     el("tbody", {}, rows.map(([n, v, u, rr], i) => {
       // its series' chart (the series it's a result of, #782); a value flagged against a range from settings names that
       // range on a line under it, as the row's range is its report's: "<3.0 mmol/L (settings range 3.9–5.5)", as the visit
-      // summary says it (under the value, so the flag's column stays as narrow as "▼ Low" on a phone)
+      // summary says it (under the value, so the flag's column stays as narrow as "▼ Low" on a phone). A row whose report
+      // printed no range, its result's from another copy of it (#825), names that range and where it came from in its Ref
+      // range (#834: crossmatch.copies' "rangeFrom"): "3.5–5.1 (from the other copy's report)"
       const f = rowFlag(d, i, ev, at[i]), sn = at[i]?.s.name ?? n, chart = SERIES.some(s => s.name === sn && s.n), own = f && at[i]?.p.rs === "settings";
+      const copied = !String(rr ?? "").trim() && at[i]?.p.rangeFrom != null && at[i].p.rs !== "settings" && rangeWords(at[i].p);
       return el("tr", {class: chart ? "link" : "", onclick: () => { if (chart) showSeries(sn); }},
         el("td", {}, chart ? el("button", {class: "cell-btn", type: "button", text: nice(n)}) : nice(n), nice(n) !== n ? el("small", {class: "muted", text: ` (${n})`}) : null,   // #38
           SERIES.some(s => s.name === n && s.n) ? renameButton("lab", n) : null, testLink(n, true)), el("td", {class: f ? "abn" : "", text: `${v ?? ""} ${u || ""}`.trim()}, ...rowOrig(rows[i]),
-          own ? el("small", {class: "orig", text: `(settings range ${rangeWords(at[i].p)})`}) : null), el("td", {text: rr || ""}), el("td", {class: f ? "abn" : ""}, ...flagNodes(f)));   // the mark and the word (#60); "What is this test?" (#163); a value kept with its unit (#270)
+          own ? el("small", {class: "orig", text: `(settings range ${rangeWords(at[i].p)})`}) : null), el("td", {text: copied ? `${copied} (from the other copy's report)` : rr || ""}), el("td", {class: f ? "abn" : ""}, ...flagNodes(f)));   // the mark and the word (#60); "What is this test?" (#163); a value kept with its unit (#270)
     }))));
 }
 /* #41: a converted row's value and range as reported (units.js), on its own line under the value */

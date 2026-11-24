@@ -379,3 +379,10 @@ NOT_SAME_DAYS = {(1, 2): [("Potassium", "H"), ("Sodium", "")], (2, 2): [("Potass
 NOT_SAME_SINCE = 15
 NOT_SAME_OUT = {"Potassium": ["5.2", "High", "3.5–5.1", 1, 2], "Sodium": ["150", "High", "135–145", 1, 2]}
 NOT_SAME_TRENDS = {"Potassium": ["4.4", "5.2", "High"], "Sodium": ["141", "150", "High"]}
+
+# ---- #834: each import's lab day of LATEST's latest, the Ref range of each row in the drawer: its report's as printed,
+# else (its report printed none) the range its result has from its other copy, said where it came from; once marked
+# "Not the same", its own (none)
+COPY_RANGE = " (from the other copy's report)"
+LATEST_DAY_RANGES = {(1, 2): ["3.5 - 5.1", "135–145" + COPY_RANGE], (2, 2): ["3.5–5.1" + COPY_RANGE, "135 - 145"]}
+NOT_SAME_DAY_RANGES = {(1, 2): ["3.5 - 5.1", ""], (2, 2): ["", "135 - 145"]}
