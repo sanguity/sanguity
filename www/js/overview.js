@@ -18,7 +18,10 @@ function insurerHint(rows) {
 const seriesBy = n => SERIES.find(s => s.name === n);
 function statusOf(p) {
   if (!p) return null;
-  const st = p[4] === "H" ? {cls: "hi", text: "▲ High"} : p[4] === "L" ? {cls: "lo", text: "▼ Low"} : (p[2] != null || p[3] != null) ? {cls: "ok", text: "In range", icon: "check"} : null;   // ▲ and ▼ are text, the marks for out of range; the ✓ an icon (#257)
+  // its flag as Labs says it (charts.js flagWord): ▲ and ▼ are text, the marks for out of range, ◆ a flag its report
+  // gives that says neither way (an "A" inside its range, #782: it was said "In range"); the ✓ an icon (#257)
+  const f = p[4], st = f ? {cls: /^h/i.test(f) ? "hi" : /^l/i.test(f) ? "lo" : "flag", text: flagWord(f)}
+    : (p[2] != null || p[3] != null) ? {cls: "ok", text: "In range", icon: "check"} : null;
   if (st && p.rs === "settings") st.title = "Against a " + RANGE_FROM_SETTINGS;   // #44
   return st;
 }
@@ -184,7 +187,7 @@ function ovKeyLabs(lastDraw) {
   const flags = el("div", {class: "ov-out", id: "ovOut"}, el("p", {class: "ov-out-say", text: out.length
     ? `Outside its reference range at its latest result (${out.length}):` : "Nothing outside its reference range at its latest result."}));
   for (const o of out.slice(0, 14)) {
-    const st = statusOf(o.last), word = st.cls === "hi" ? "High" : "Low";
+    const st = statusOf(o.last), word = {hi: "High", lo: "Low"}[st.cls] || "Flagged";
     flags.append(el("div", {class: "ov-row", ...pressable(() => goSeries(o.s.name))},
       el("span", {class: "n", text: nice(o.s.name)}), el("span", {class: "v"}, `${o.last[5] || fmtNum(o.last[1])} ${o.s.unit} `, el("span", {class: "st " + st.cls, text: st.text}), ucOrig(o.s, o.last) ? el("span", {class: "orig", text: " reported " + ucOrig(o.s, o.last)}) : null),
       el("span", {class: "r", text: refText(o.last)}),

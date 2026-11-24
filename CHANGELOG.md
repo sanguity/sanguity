@@ -1933,6 +1933,14 @@ Everything on `main` so far; it becomes the first tagged release.
   no range printed was a grey "no range" cell counted 0, it's now a cell below the range with its ▼, counted.
   "Reported … ref" beside a converted value says its report's range only, as Labs says it ("ref ≤ 100", not "ref –100";
   no longer a range from Settings as if the report gave it).
+- **A result's range keeps its edge when it came twice, and a report's own flag is never dropped** (#780, #781, #782):
+  one result from two sources, a portal's with its report's "<5" and a spreadsheet's with no range, was one in the
+  visit summary and share links (and, once linked as the same result, on every page and in the drawer) with "≤ 5",
+  so 5 was in range; now the range keeps whether 5 is in it, in another unit too (a "<40" ng/L kept beside 0.04
+  ng/mL is "< 0.04", and 0.04 High). And a PDF report's flag that says neither way ("A", "Abnormal") on a value inside
+  its range was kept with none, so Labs, the heatmap, the summary and share links showed nothing and, since the drawer
+  shows Labs' flag, it did too; it's now kept and shown as ◆ Flagged (Abnormal in the summary and share links),
+  marked and counted on the heatmap and the Timeline, and the Overview no longer says it "In range".
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

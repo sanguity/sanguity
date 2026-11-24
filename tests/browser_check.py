@@ -20316,7 +20316,8 @@ def main():
               return (await r.json()).path.split('#')[1]; }""", [mpid, M752.OVERRIDES, list(M752.CASES)])
             num752 = lambda v: f"{v:g}"
             words752 = M752.words   # "30–110", "< 5", "≤ 5", "> 60", "≥ 60" (#780)
-            FLAG752 = {"H": "▲ High", "L": "▼ Low", "": ""}
+            FLAG752 = {"H": "▲ High", "L": "▼ Low", "A": "◆ Flagged", "": ""}   # Labs', the drawer's, the Overview's
+            SAID752 = {**FLAG752, "A": "◆ Abnormal"}   # the summary's and a share link's (summary.out_of_range, M752.SAID)
             # a chart's marks in order, each [x, flagged, under a band step], and its band's words (Labs, the share page, the summary)
             CHART752 = r"""s => { const bands = [...s.querySelectorAll('rect.refband')].map(r => [+r.getAttribute('x'), +r.getAttribute('x') + +r.getAttribute('width')]);
               return {marks: [...s.querySelectorAll('circle.pt, path.pt.abn')].map(m => { const x = m.tagName === 'circle' ? +m.getAttribute('cx') : +/^M(-?[\d.]+)/.exec(m.getAttribute('d'))[1];
@@ -20358,19 +20359,24 @@ def main():
                        if hm752.get(n) != [{"H": 1, "L": -1}.get(f, 0) for f, *_ in j]]
             # #782: the heatmap reads a flag before a range. Its one row, Chloride, Blood (twenty results), has two its report
             # flagged with no range printed (a grey "no range" cell each, counted 0, no word in its table, while Labs said 1
-            # outside): each its way's colour with its ▲ or ▼, counted, said in the table, the rest as Labs flags them
+            # outside): each its way's colour with its ▲ or ▼, counted, said in the table, the rest as Labs flags them. Its
+            # latest its report flags "A" inside its range: the range's grey with a ◆ (as Labs marks it), counted, said
+            # "flagged" in its table and named in the legend (it was kept with no flag, so shown as any result in range)
             bad782 = []
             hm782 = js("""() => { const cells = [...document.querySelectorAll('#hm rect.cell[data-s="Chloride, Blood"]')].sort((a, b) => a.dataset.k < b.dataset.k ? -1 : 1);
               return [cells.map(c => { const f = c.style.fill; return f.includes('--div-lo') ? -1 : f.includes('--div-hi') ? 1 : f.includes('--div-mid') ? 0 : null; }),
-                document.querySelectorAll('#hm .hm-mark').length, [...document.querySelectorAll('#hm text')].map(t => t.textContent).filter(t => /^\\d+$/.test(t))]; }""")
+                document.querySelectorAll('#hm .hm-mark').length, [...document.querySelectorAll('#hm text')].map(t => t.textContent).filter(t => /^\\d+$/.test(t)),
+                [...document.querySelectorAll('#hm .hm-mark')].filter(m => (m.getAttribute('d').match(/L/g) || []).length === 3).length,
+                document.getElementById('hmLegend').textContent.includes('◆ flagged by its report')]; }""")
             cl782 = M752.JUDGED["Chloride, Blood"]
-            want782 = [[{"H": 1, "L": -1}.get(f, 0) for f, *_ in cl782], sum(1 for f, *_ in cl782 if f), [str(sum(1 for f, *_ in cl782 if f))]]
+            want782 = [[{"H": 1, "L": -1}.get(f, 0) for f, *_ in cl782], sum(1 for f, *_ in cl782 if f), [str(sum(1 for f, *_ in cl782 if f))],
+                       sum(1 for f, *_ in cl782 if f == "A"), True]
             if hm782 != want782:
                 bad782.append(f"the heatmap's Chloride, Blood: {hm782} not {want782}")
             js("() => { state.tables.add('#hm'); renderHeatmap(); }")
             settle(300)
             hmt782 = js("""[...document.querySelectorAll('#hmTable tbody tr')].filter(r => r.cells[0]?.textContent.startsWith('Chloride, Blood')).map(r => [...r.cells].slice(1).map(c => c.textContent))[0]""")
-            want782 = [str(want782[1])] + [f"{v:g}" + {"H": " ▲ high", "L": " ▼ low"}.get(f, "") for (_, v, *_), (f, *_) in zip(M752.CASES["Chloride, Blood"], cl782)]
+            want782 = [str(want782[1])] + [f"{v:g}" + {"H": " ▲ high", "L": " ▼ low", "A": " ◆ flagged"}.get(f, "") for (_, v, *_), (f, *_) in zip(M752.CASES["Chloride, Blood"], cl782)]
             if hmt782 != want782:
                 bad782.append(f"the heatmap's table: {hmt782} not {want782}")
             js("() => { state.tables.delete('#hm'); renderHeatmap(); }")
@@ -20455,6 +20461,11 @@ def main():
                 want782 = {n: [f"{v} {u}" + (f", ref {w}" if w else "") for v, w in pts] for n, (u, pts) in said782.items() if n in si782}
                 if si782 != want782 or "Creatinine" not in si782:
                     bad782.append(f"“Reported … ref” in SI units: {si782} not {want782}")
+                # a one-sided range as its report printed it, its edge with it (#780): "ref < 100", then "ref ≤ 100"
+                want = [f"{t} {M752.UNITS['Glucose, Blood']}, ref {M752.words(lo, hi, e)}"
+                        for (_, _, lo, hi, _, t), e in zip(M752.CASES["Glucose, Blood"], M752.edges("Glucose, Blood"))]
+                if si782.get("Glucose, Blood") != want:
+                    bad782.append(f"“Reported … ref” of a one-sided range in SI units: {si782.get('Glucose, Blood')} not {want}")
                 js("labs => { state.tables.clear(); state.sel = new Set(labs); state.tables.add('Creatinine'); applyPreset('all'); switchTab('labs', 'chart'); renderLabs(); }", ["Creatinine"])
                 settle(400)
                 got = js("[...document.querySelectorAll('#charts .chart[data-lab=\"Creatinine\"] table.data tbody tr')].map(r => r.cells[1].textContent.split(' (reported ')[1])")
@@ -20483,7 +20494,7 @@ def main():
                 j = M752.share_judged(n)
                 hist = js(f"""(() => {{ const b = [...document.querySelectorAll('#share-results .share-open')].find(b => b.textContent === {json.dumps(n)}), h = document.getElementById(b.getAttribute('aria-controls'));
                   return [[...h.querySelector('table').tBodies[0].rows].map(r => [r.cells[1].querySelector('.share-flag')?.textContent || '', r.cells[2].textContent]).reverse(), h.querySelector('svg.ck-solo') && ({CHART752})(h.querySelector('svg.ck-solo'))]; }})()""")
-                if hist[0] != [[FLAG752[f], words752(lo, hi, e)] for (f, lo, hi, _), e in zip(j, M752.edges(n))]:
+                if hist[0] != [[SAID752[f], words752(lo, hi, e)] for (f, lo, hi, _), e in zip(j, M752.edges(n))]:
                     bad752.append(f"the share page's {n}: {hist[0]}")
                 steps = [s for s in M752.STEPS[n] if s[1].endswith("on report")]
                 if not hist[1]:
@@ -20509,7 +20520,7 @@ def main():
             except Exception as e:
                 pdf752 = f"no PDF: {e}"
             for n, (then, now, rng752) in M752.TRENDS.items():
-                cell = lambda c: f"{c[0]}{' ' + FLAG752[c[1][0]] if c[1] else ''}" + (f" ({' '.join(w for w in c[2] if w)})" if c[2] else "")
+                cell = lambda c: f"{c[0]}{' ' + SAID752[c[1][0]] if c[1] else ''}" + (f" ({' '.join(w for w in c[2] if w)})" if c[2] else "")
                 if sum752["rows"].get(n) != [cell(then), cell(now), rng752]:
                     bad752.append(f"the summary's {n} row: {sum752['rows'].get(n)} not {[cell(then), cell(now), rng752]}")
                 pdf_then = f"{then[0]}{' ' + then[1] if then[1] else ''} .{{1,16}}?" + (re.escape(f" ({' '.join(w for w in then[2] if w)})") if then[2] else "")
@@ -20541,7 +20552,10 @@ def main():
             # share link's page give every result: a result twice once, with any range and flag either copy has, each unit
             # its own row (they kept the first import's copy, Potassium 3.2 with no range or Low, and the latest result's
             # unit only, Glucose's 3.1 mmol/L Low gone). Then each pair linked as the same result: once everywhere, the
-            # older import's copy kept with the other's range and flag (a range in g/L given in g/dL)
+            # older import's copy kept with the other's range and flag (a range in g/L given in g/dL). A one-sided range's
+            # edge goes with its range (#780: a copy's "<5" beside one with none, 5 High; a "<40" ng/L given as "< 0.04"
+            # ng/mL). And each import's lab days (#782): each one's Timeline badge, and in the drawer its Out of range and
+            # each row's flag as Labs shows its result (the kept copy's after Same result, the other's lab day gone)
             db = dbm.connect()
             cpid = prof_r.create_profile(db, "Copies (fictional)", owner_id=owner)
             for imp781, fmt781 in ((1, "csv"), (2, "fhir")):
@@ -20554,12 +20568,13 @@ def main():
               return (await r.json()).path.split('#')[1]; }""", [cpid, M752.COPIES_LABS])
             SUM781 = {"Low": "▼ Low", "High": "▲ High"}
 
-            def views781(when, seen, once, trends, out):
-                """what's wrong in Labs (seen: its results), a share link's page, the summary's preview and its PDF (once)"""
+            def views781(when, seen, once, trends, out, days):
+                """what's wrong in Labs (seen: its results), a share link's page, the summary's preview and its PDF (once),
+                and the Timeline and the drawer (days: each import's lab days, M752.COPIES_DAYS)"""
                 bad = []
                 page.goto(base + f"/?profile={cpid}")
                 page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {cpid}", timeout=20000)
-                got = {(n, u): p for n, u, p in js("SERIES.filter(s => !s.watch).map(s => [s.name, s.unit, s.pts.map(p => [p[4] || '', p[2], p[3]])])")}
+                got = {(n, u): p for n, u, p in js("SERIES.filter(s => !s.watch).map(s => [s.name, s.unit, s.pts.map(p => [p[4] || '', p[2], p[3], ...(p[7] ? [p[7]] : [])])])")}
                 if got != seen:
                     bad.append(f"{when}: Labs' results {got}")
                 js("labs => { state.tables.clear(); for (const n of labs) state.tables.add(n); state.sel = new Set(labs); applyPreset('all'); switchTab('labs', 'chart'); renderLabs(); }",
@@ -20567,9 +20582,25 @@ def main():
                 settle(600)
                 got = {(n, u): r for n, u, r in js("""[...document.querySelectorAll('#charts .chart')].map(c => [c.dataset.lab, c.querySelector('.hd-sub .unit').textContent.split(' ')[0],
                   [...c.querySelectorAll('table.data tbody tr')].map(r => [r.cells[2].textContent.split(' · ')[0], r.cells[3].textContent]).reverse()])""")}
-                if got != {k: [[words752(lo, hi), FLAG752[f]] for f, lo, hi in v] for k, v in seen.items()}:
+                if got != {k: [[words752(lo, hi, *e), FLAG752[f]] for f, lo, hi, *e in v] for k, v in seen.items()}:
                     bad.append(f"{when}: Labs' tables {got}")
                 js("state.tables.clear()")
+                # the Timeline's badge on each import's lab day, and the drawer's Out of range and rows' flags
+                js("() => { state.q = ''; setPeriod('all'); pickTab('timeline'); }")
+                settle(600)
+                got = js("""async () => { const imps = Object.keys(DATA.imports || {}).map(Number).sort((a, b) => a - b), out = {}, day = Date.parse(isoDay(Date.now()) + 'T00:00:00');
+                  const badge = Object.fromEntries([...document.querySelectorAll('#list .tl-row[data-id]')].map(r => [r.dataset.id, r.querySelector('.badge.abn')?.textContent || null]));
+                  for (const e of DATA.events.filter(e => e.k === 'lab')) {
+                    await openEvent(e);
+                    const facts = Object.fromEntries([...document.querySelectorAll('#drawer dl.facts dt')].map(t => [t.textContent, t.nextElementSibling.textContent]));
+                    out[`${imps.indexOf(e.imp) + 1} ${Math.round((day - Date.parse(e.t.slice(0, 10) + 'T00:00:00')) / 864e5)}`] = [badge[e.id] ?? null, facts['Out of range'],
+                      [...document.querySelectorAll('#drawer table.data tbody tr')].map(r => [r.cells[0].firstChild.textContent, r.cells[3].textContent])];
+                  }
+                  closeDrawer(); return out; }""")
+                want = {f"{i} {d}": [f"{k} out of range" if k else None, str(k) if k else "None", [[n, FLAG752[f]] for n, f in rows]]
+                        for (i, d), rows in days.items() for k in [sum(1 for _, f in rows if f)]}
+                if got != want:
+                    bad.append(f"{when}: the Timeline's and the drawer's lab days {got} not {want}")
                 page.goto(base + f"/share.html#{tok781}")
                 page.wait_for_selector("#share-results .share-latest", timeout=10000)
                 js("[...document.querySelectorAll('#share-results .share-tools button')].find(b => b.textContent.startsWith('Open every')).click()")
@@ -20577,7 +20608,7 @@ def main():
                 got = {(n, u): r for n, u, r in js("""[...document.querySelectorAll('#share-results .share-open')].map(b => [b.textContent, b.parentElement.querySelector('.share-unit')?.textContent || '',
                   [...document.getElementById(b.getAttribute('aria-controls')).querySelector('table').tBodies[0].rows]
                     .map(r => [r.cells[1].querySelector('.share-flag')?.textContent || '', r.cells[2].textContent]).reverse()])""")}
-                if got != {k: [[FLAG752[f], words752(lo, hi)] for f, lo, hi in v] for k, v in once.items()}:
+                if got != {k: [[SAID752[f], words752(lo, hi, *e)] for f, lo, hi, *e in v] for k, v in once.items()}:
                     bad.append(f"{when}: the share page's {got}")
                 page.goto(base + f"/sharing.html?profile={cpid}#summary")
                 page.wait_for_selector("#preview:not([hidden]):not([aria-busy]) #prevBody .sum-chart", timeout=15000)
@@ -20603,17 +20634,18 @@ def main():
                 bad += [f"{when}: the PDF's {v} {u}, linked to another" for (n, u), (v, *_) in M752.COPIES_OUT.items() if (n, u) not in out and f"{v} {u}" in pdf]
                 return bad
 
-            bad781 = views781("before", M752.COPIES_SEEN, M752.COPIES_ONCE, M752.COPIES_TRENDS, M752.COPIES_OUT)
+            bad781 = views781("before", M752.COPIES_SEEN, M752.COPIES_ONCE, M752.COPIES_TRENDS, M752.COPIES_OUT, M752.COPIES_DAYS)
             linked781 = js("""async pid => { const h = {'X-Sanguity': '1', 'Content-Type': 'application/json'}, out = [];
               for (const x of (await (await fetch(`api/profiles/${pid}/data`, {headers: h})).json()).possible || [])
                 out.push([x.a.name, (await fetch(`api/profiles/${pid}/same`, {method: 'POST', headers: h, body: JSON.stringify({ref: x.ref})})).status]);
               return out.sort(); }""", cpid)
-            if linked781 != [["Calcium", 201], ["Hemoglobin", 201], ["Potassium", 201], ["Sodium", 201]]:
+            if linked781 != [[n, 201] for n in M752.COPIES_LINKED]:
                 bad781.append(f"Same result: {linked781}")
-            bad781 += views781("after Same result", M752.COPIES_SAME, M752.COPIES_SAME, M752.COPIES_TRENDS_SAME, M752.COPIES_OUT_SAME)
+            bad781 += views781("after Same result", M752.COPIES_SAME, M752.COPIES_SAME, M752.COPIES_TRENDS_SAME, M752.COPIES_OUT_SAME, M752.COPIES_DAYS_SAME)
             check("#781: one result twice (a copy with no range beside one with its report's range and Low; a flag in one, the range in the other) "
                   "and a lab in two units: Labs shows both copies and each unit; the summary's preview, its PDF and a share link every result, a result "
-                  "twice once with any range and flag either copy has, each unit its own row; after “Same result”, once everywhere with them",
+                  "twice once with any range and flag either copy has, each unit its own row; after “Same result”, once everywhere with them; a "
+                  "one-sided range's edge with its range (#780); each lab day's Timeline badge and drawer flags as Labs shows its results (#782)",
                   not bad781, bad781)
             db = dbm.connect()
             prof_r.delete_profile(db, cpid)

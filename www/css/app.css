@@ -691,7 +691,7 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .lab-panel{font-size:var(--fs-2);font-weight:var(--fw-semibold);color:var(--ink2);margin:0 0 var(--sp-2)}   /* a panel's name over its labs, as everywhere they're grouped (labGroups, #279, #441) */
 .tiles.ov-read{--tile:min(150px,calc(50% - var(--sp-3)))}   /* one row at 1400 px (and as .tiles on a phone, #722) */
 .st{display:inline-flex;align-items:center;gap:3px;font-size:var(--fs-1);font-weight:var(--fw-semibold);white-space:nowrap}
-.st.hi,.st.lo{color:var(--crit)}
+.st.hi,.st.lo,.st.flag{color:var(--crit)}
 .ov-cols{display:grid;grid-template-columns:1.2fr 1fr;gap:0 var(--sp-5);align-items:start}
 .ov-row{display:grid;grid-template-columns:1fr auto auto;gap:var(--sp-1) var(--sp-3);align-items:baseline;padding:var(--sp-2) var(--sp-1);border-bottom:1px solid var(--grid);cursor:pointer;border-radius:var(--r-sm)}
 .ov-row:hover{background:var(--hover)}

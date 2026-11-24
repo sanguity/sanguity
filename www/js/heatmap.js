@@ -22,6 +22,9 @@ function hmLevel(p) {
 /* a level's colour: in range the neutral grey, outside it 40% to 100% of the way to blue (below) or red (above), the
    nearest steps far enough from the grey to tell apart (#300: it's darker than it was, the card's white beside it) */
 const hmFill = lv => lv === 0 ? "var(--div-mid)" : `color-mix(in oklab, var(--div-mid), var(${lv < 0 ? "--div-lo" : "--div-hi"}) ${20 + Math.abs(lv) * 20}%)`;
+/* a result's mark, its flag's as Labs marks it: ▲ above, ▼ below (its level), ◆ for a flag its report gives that
+   says neither, on a value inside its range (an "A": the range's grey, its flag said and counted); "" for none */
+const hmMark = p => { const lv = hmLevel(p); return lv > 0 ? "H" : lv < 0 ? "L" : p[4] ? "A" : ""; };
 /* a row's results in the period by day, each of them in time order (#471): a day can hold two draws' results, an
    outside lab's typed in on a clinic draw's day, and the last no longer hides the others. -> Map(day -> [point]) */
 function hmDays(s) {
@@ -71,19 +74,21 @@ function renderHeatmap(live) {   // live: a frame of a drag (charts.js), at the 
     svg._geom = {L: LW, R: avail - 8, w: avail}; axis.replaceChildren(); axis.setAttribute("height", 0); return;
   }
   const cellPts = rows.map(hmDays);   // each row's results by day (#471)
-  // each row's results outside their own range in the period, counted at its end (#300), as many as it has ▲ and ▼
-  const outN = cellPts.map(m => { let n = 0; for (const ps of m.values()) for (const p of ps) if (hmLevel(p)) n++; return n; });
+  // each row's results outside their own range in the period, counted at its end (#300), as many as it has ▲, ▼ and ◆
+  const outN = cellPts.map(m => { let n = 0; for (const ps of m.values()) for (const p of ps) if (hmMark(p)) n++; return n; });
   const RW = Math.ceil(labelW(String(Math.max(...outN)), "")) + 10;   // their column, right of the grid
   // columns always fit the width (fractional widths are fine, under 1 px too: #476, ten years on a phone); zoom in to
   // get wider cells. On the kit's scale (chartkit.js ckScale): a column's index to its left edge
   const cw = Math.min(22, (avail - LW - RW) / cols.length), colX = ckScale(0, 1, LW, LW + cw), R = colX(cols.length);
-  // the colours, and the marks that say the same without them (#60): ▲ above the range, ▼ below, on cells wide enough
-  // (3 px), and where some aren't, a word on it: a cell under 3 px, or a part of one split between a day's draws (#476)
-  const thin = cw < 3 || cellPts.some(m => [...m.values()].some(ps => ps.length > 1 && cw / ps.length < 3 && ps.some(p => hmLevel(p))));
+  // the colours, and the marks that say the same without them (#60): ▲ above the range, ▼ below (◆ flagged, named where
+  // there's one), on cells wide enough (3 px), and where some aren't, a word on it: a cell under 3 px, or a part of one
+  // split between a day's draws (#476)
+  const thin = cw < 3 || cellPts.some(m => [...m.values()].some(ps => ps.length > 1 && cw / ps.length < 3 && ps.some(hmMark)));
+  const dia = cellPts.some(m => [...m.values()].some(ps => ps.some(p => hmMark(p) === "A")));
   $("#hmLegend").replaceChildren(...[-4, -3, -2, -1, 0, 1, 2, 3, 4].map(lv => el("i", {style: {background: hmFill(lv)}})),
     el("span", {text: "← far below · below · in range · above · far above →"}), el("span", {style: {color: "var(--muted)"}, text: "(distance outside the range, as a share of the range's width)"}),
     el("span", {class: "hm-key"}, el("b", {"aria-hidden": "true", text: "▲"}), " above the range, ", el("b", {"aria-hidden": "true", text: "▼"}), " below",
-      thin ? el("span", {style: {color: "var(--muted)"}, text: " (zoom in to see them on each cell, or show the table)"}) : null));
+      dia ? [", ", el("b", {"aria-hidden": "true", text: "◆"}), " flagged by its report"] : null, thin ? el("span", {style: {color: "var(--muted)"}, text: " (zoom in to see them on each cell, or show the table)"}) : null));
   const groups = []; let gy = top;
   const yOf = new Map();
   let lastPanel = null;
@@ -142,12 +147,13 @@ function renderHeatmap(live) {   // live: a frame of a drag (charts.js), at the 
       for (const [f, d] of runs) g.push(el("svg:path", {class: "cell-run", d, fill: f, "data-run": i}));
       return;
     }
-    for (const {k: d, ps, j, lv, x} of cells) {
+    for (const {k: d, ps, p, j, lv, x} of cells) {
       const w = cw / ps.length;
       const r = el("svg:rect", {class: "cell", x: x + (w > 6 ? .5 : 0), y: ry + 1, width: w - (w > 6 ? 1 : 0), height: rowH - gap, rx: w > 8 ? 2 : null, style: `fill:${fill(lv)}`});
       r.dataset.s = s.name; r.dataset.i = i; r.dataset.k = d; r.dataset.j = j;
       g.push(r);
-      if (lv && w >= 3) g.push(abnMark(x + w / 2, ry + 1 + (rowH - gap) / 2, lv > 0 ? "H" : "L", Math.min(3.6 * k, w / 2 - .8), "hm-mark"));   // #60
+      const f = hmMark(p);
+      if (f && w >= 3) g.push(abnMark(x + w / 2, ry + 1 + (rowH - gap) / 2, f, Math.min(3.6 * k, w / 2 - .8), "hm-mark"));   // #60
     }
   });
   // the time axis, the kit's (chartkit.js ckAxis), in a strip of its own that sticks to the bottom of the window until
@@ -281,11 +287,11 @@ function hmTable(rows, cols, grp) {
     tb.append(el("tr", {}, el("th", {scope: "row", "data-tip": renamedTitle("lab", s.name) + differ}, name,
       about ? el("span", {class: "vh"}, ", ", el("span", {id: aboutId, text: about})) : null,
       edit || tq ? el("span", {class: "hm-acts"}, edit, tq) : null),   // the ✎ and ? kept together, a phone's name wrapping (#469)
-      el("td", {text: [...byDay.values()].flat().filter(p => hmLevel(p)).length.toLocaleString("en-US")}),
+      el("td", {text: [...byDay.values()].flat().filter(hmMark).length.toLocaleString("en-US")}),
       ...cols.map(([k]) => {
         const ps = byDay.get(k); if (!ps) return el("td", {});
         const one = p => {
-          const lv = hmLevel(p), w = lv ? FLAG_OF(lv > 0 ? "H" : "L") : null;   // as the heatmap colours it
+          const f = hmMark(p), w = f ? FLAG_OF(f) : null;   // as the heatmap marks it
           const ref = refText(p);
           return [w, ref, [p[5] || fmtNum(p[1]), w ? el("span", {"aria-hidden": "true", text: " " + w[0]}) : null, w ? el("span", {class: "vh", text: " " + w[1].toLowerCase()}) : null,
             ref && differ ? el("span", {class: "vh hm-ref", text: ", " + ref}) : null]];
@@ -296,7 +302,8 @@ function hmTable(rows, cols, grp) {
           ...ps.flatMap((p, j) => { const [w, , kids] = one(p); return [j ? el("br") : null, el("span", {class: w ? "abn" : null}, ...kids, ` (${fmtTime(p.ts)})`)]; }));
       })));
   }
-  box.replaceChildren(el("p", {class: "hint", text: `${rows.length} lab${rows.length === 1 ? "" : "s"} on ${cols.length} draw day${cols.length === 1 ? "" : "s"}. ▲ above its reference range, ▼ below.`}),
+  const dia = rows.some(s => [...hmDays(s).values()].some(ps => ps.some(p => hmMark(p) === "A")));
+  box.replaceChildren(el("p", {class: "hint", text: `${rows.length} lab${rows.length === 1 ? "" : "s"} on ${cols.length} draw day${cols.length === 1 ? "" : "s"}. ▲ above its reference range, ▼ below${dia ? ", ◆ flagged by its report" : ""}.`}),
     scrollBox({class: "tablewrap hm-table", "aria-label": "Lab results by draw day"}, el("table", {class: "data"},
       el("thead", {}, el("tr", {}, el("th", {scope: "col", text: "Lab"}), el("th", {scope: "col", text: "Outside range"}), ...cols.map(([, ts]) => el("th", {scope: "col", text: fmtD(ts)})))), ...bodies)));
 }
