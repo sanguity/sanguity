@@ -889,7 +889,8 @@ class Api(unittest.TestCase):
         points have the matrix's range and edge, each judged as JUDGED; and the FHIR
         export says a limit that leaves its edge out in its text alone (FHIR's low and high include theirs), which the
         FHIR importer reads back as it was, with each report's own flag (#817: a report's "A" inside its range came back
-        with none)."""
+        with none). A value given as a bound (">=5", "<=60") is one in a FHIR bundle too, its Quantity's comparator, and
+        read back (#870: the FHIR importer kept it as text, so neither had its number, range or flag)."""
         import types, zipfile
         from server import fhir_export
         from server.importers import ccda, common, csv_labs, fhir, pdf_labs
@@ -909,13 +910,12 @@ class Api(unittest.TestCase):
         rows, tmp = M.printed(TODAY), tempfile.mkdtemp(dir=TMP)
         edge = lambda p: p[7] if len(p) > 7 else ""
 
-        def same(data, how, plain=False):
+        def same(data, how):
             """each one-sided lab's points as the matrix has them: value, range, value as given and edge, the flag
-            stored and as judged; plain: only the results given as a number (FHIR keeps a bound as text)"""
+            stored and as judged"""
             by = {s["name"]: s["pts"] for s in data["labs"]}
             for n in M.PRINTED:
-                want = [[v, lo, hi, t, e, f, f] for (_, v, lo, hi, _, t), e, (f, *_) in zip(M.CASES[n], M.EDGES[n], M.JUDGED[n])
-                        if not (plain and ranges.comparator(t))]
+                want = [[v, lo, hi, t, e, f, f] for (_, v, lo, hi, _, t), e, (f, *_) in zip(M.CASES[n], M.EDGES[n], M.JUDGED[n])]
                 got = [[p[1], p[2], p[3], p[5], edge(p), ranges.judge(p[1], p[2], p[3], p[4], p[5], None, edge(p))[2], p[4]] for p in by.get(n, [])]
                 self.assertEqual(got, want, f"{how}: {n}")
 
@@ -944,7 +944,7 @@ class Api(unittest.TestCase):
                                  "code": {"text": n}, "effectiveDateTime": t, "valueQuantity": q, "referenceRange": [rr]}}
         with open(os.path.join(tmp, "one-sided.json"), "w", encoding="utf-8") as f:
             json.dump({"resourceType": "Bundle", "type": "collection", "entry": [obs(i, *r) for i, r in enumerate(rows)]}, f)
-        same(fhir.parse({"one-sided.json": os.path.join(tmp, "one-sided.json")})["data"], "a FHIR bundle", plain=True)
+        same(fhir.parse({"one-sided.json": os.path.join(tmp, "one-sided.json")})["data"], "a FHIR bundle")
         with open(os.path.join(tmp, "one-sided.xml"), "w", encoding="utf-8") as f:
             f.write(M.ccda([r[:5] for r in rows]))
         same(ccda.parse({"one-sided.xml": os.path.join(tmp, "one-sided.xml")})["data"], "a C-CDA document, its ranges as text (#827)")
@@ -972,7 +972,7 @@ class Api(unittest.TestCase):
             want = [(None, None, r) if e else (lo, hi, r) for (_, _, lo, hi, *_), e, r in zip(M.CASES[n], M.EDGES[n], M.PRINTED[n])]
             self.assertEqual([x[1:] for x in sorted(said.get(n, []))], want, f"the FHIR export's {n}")
         back = fhir.parse({"bundle.json": os.path.join(tmp, "bundle.json")})["data"]
-        same(back, "the FHIR export, read back", plain=True)
+        same(back, "the FHIR export, read back")
         flags = {s["name"]: [p[4] for p in s["pts"]] for s in back["labs"]}
         for n in ("Chloride, Blood", "ALT"):   # a report's own flag with them, "A" too (#817: it came back with none)
             self.assertEqual(flags.get(n), [f for f, *_ in M.JUDGED[n]], f"the FHIR export's {n}, read back")
@@ -999,28 +999,40 @@ class Api(unittest.TestCase):
                    for p in pts]
             self.assertEqual(got, want, f"{how}: {n}")
 
-    def test_2_range_spellings(self):
-        """#850: one parser of a range as text (common.range_text) for every importer, Type them in and the FHIR export.
-        The ways a report prints a range (ranges_matrix SPELLINGS: "=>60", "< OR = 5", "less than or equal to 5",
-        "greater than or equal to 60", "5,0 - 10,0" with decimal commas, "3.5-5.1", "<5", "under 5" ...), each beside a
-        value at or past its limit, give the same low, high, edge and flag through a spreadsheet (comma-delimited, and
-        with semicolons and decimal commas), Type them in's check, Quest-like PDF reports (each range its whole cell), a
-        C-CDA document, a FHIR bundle, a CareSpace export and a MyChart export, each range its text alone; and through the
-        FHIR export read back, of a spreadsheet's import and of rows with no result of their own (the export reading the
-        text). The CSV importer and Type them in read "=>60" as a high of 60 and "< OR = 5", "> OR = 60" and the words not
-        at all; the C-CDA, FHIR, CareSpace and MyChart importers no decimal comma; a PDF report no words; the export
-        "≤ 5", "< OR = 5" and "=>60" as text alone."""
-        import csv, types, zipfile
+    def _read_back(self, data, name="Read back"):
+        """data stored in a profile of its own, as an import stores it, and its FHIR export read back by the FHIR
+        importer: (the data read back, the bundle)."""
+        import zipfile
         from server import fhir_export
-        from server.importers import carespace, ccda, csv_labs, epic_mychart, fhir, pdf_labs
-        rows, tmp, (lab, unit) = M.spelled(TODAY), tempfile.mkdtemp(dir=TMP), M.SPELLED_AS
-        want = [[lo, hi, e, f] for _, _, lo, hi, e, f in M.SPELLINGS]
+        from server.importers import fhir
+        db = dbm.connect()
+        try:
+            owner = db.execute("SELECT id FROM users WHERE username='robin'").fetchone()["id"]
+            pid = prof.create_profile(db, f"{name} (fictional)", owner_id=owner)
+            with dbm.transaction(db):
+                records.store(db, pid, data, "upload", fmt="csv")
+            blob = b"".join(fhir_export.stream(fhir_export.plan(db, pid, {"labs"}), "robin", zone="America/New_York"))
+            prof.delete_profile(db, pid)
+        finally:
+            db.close()
+        path = os.path.join(tempfile.mkdtemp(dir=TMP), "bundle.json")
+        with zipfile.ZipFile(io.BytesIO(blob)) as z, open(path, "wb") as f:
+            f.write(z.read("bundle.json"))
+        with open(path, encoding="utf-8") as f:
+            bundle = json.load(f)
+        return fhir.parse({"bundle.json": path})["data"], bundle
 
-        def said(data, how, only=None):
-            """each spelling's result's [low, high, edge, flag] in what an importer read (only: those it was given)"""
-            pts = next((s["pts"] for s in data["labs"] if s["name"] == lab), [])
-            got = [[p[2], p[3], p[7] if len(p) > 7 else "", p[4]] for p in pts]
-            self.assertEqual(got, [w for i, w in enumerate(want) if only is None or i in only], how)
+    def _every_importer(self, rows, tmp):
+        """rows [(test, unit, time, value as given, range as printed)] through every importer that reads lab results, as
+        an upload is, and the FHIR export: [(how, its data, the rows' indexes it was given or None for all, the bundle
+        or None)]. A spreadsheet (comma-delimited, and with semicolons, its values' decimal points commas), Quest-like
+        PDF reports (the ASCII rows with a number in their range, each range its whole cell: Quest's font has no "≤" or
+        "–"), a C-CDA document, a FHIR bundle (a bound as its Quantity's comparator), a CareSpace export and a MyChart
+        export, each range its text alone; and the FHIR export read back, of the spreadsheet's import (each result's
+        range as read) and of lab days whose rows have no result of their own (the export reading each row)."""
+        import csv, types
+        from server.importers import carespace, ccda, common, csv_labs, epic_mychart, fhir, pdf_labs
+        out = []
 
         def sheet(name, delim):
             path = os.path.join(tmp, name)
@@ -1029,93 +1041,124 @@ class Api(unittest.TestCase):
                 w.writerow(["Date", "Time", "Test", "Value", "Unit", "Reference range"])
                 w.writerows([t[:10], t[11:16], n, v.replace(".", ",") if delim == ";" else v, u, r] for n, u, t, v, r in rows)
             return csv_labs.parse({name: path})["data"]
-        by_csv = sheet("spelled.csv", ",")
-        said(by_csv, "a spreadsheet")
-        said(sheet("spelled-eu.csv", ";"), "a spreadsheet with semicolons and decimal commas")
-
-        r = self.c["robin"].post(f"/api/profiles/{self.pid}/manual", headers=H, json={"rows": [
-            {"date": t[:10], "time": t[11:16], "test": n, "value": v, "unit": u, "range": rng} for n, u, t, v, rng in rows]})
-        self.assertEqual(r.status_code, 200, r.text)
-        typed = r.json()["rows"]
-        self.assertEqual([[x["low"], x["high"], x["edge"], x["flag"]] for x in typed], want, "Type them in's check")
-        self.assertEqual([i for i, x in enumerate(typed) if "the range couldn't be read, so it isn't used for the flag" in x["notes"]],
-                         [i for i, (_, _, lo, hi, *_) in enumerate(M.SPELLINGS) if lo is None and hi is None], "its notes")
+        by_csv = sheet("rows.csv", ",")
+        out += [("a spreadsheet", by_csv, None, None),
+                ("a spreadsheet with semicolons and decimal commas", sheet("rows-eu.csv", ";"), None, None)]
 
         gen = types.ModuleType("pdf_fixture_generator")
         gen.__file__ = os.path.join(ROOT, "tests", "fixtures", "importers", "pdf-labs", "generate.py")
         with open(gen.__file__, encoding="utf-8") as f:
             exec(compile(f.read(), gen.__file__, "exec"), gen.__dict__)
-        # (Quest's font has no "≤" or "–", and a text reference has no unit beside it, so a series of its own)
-        printable, pdfs = [i for i, (_, _, _, _, rng) in enumerate(rows) if rng.isascii() and re.search(r"\d", rng)], {}
+        printable, pdfs = [i for i, (_, _, _, v, rng) in enumerate(rows) if v.isascii() and rng.isascii() and re.search(r"\d", rng)], {}
         for i in printable:   # a report a day, its range and unit one cell, the range read as a whole cell
             n, u, t, v, rng = rows[i]
             pdfs[f"quest-{t[:10]}.pdf"] = path = os.path.join(tmp, f"quest-{t[:10]}.pdf")
-            gen.write(path, gen.quest([("SPELLINGS (FICTIONAL)", None), (n, v, "", rng, "" if rng.endswith(u) else u)],
+            gen.write(path, gen.quest([("MATRIX (FICTIONAL)", None), (n, v, "", rng, "" if rng.endswith(u) else u)],
                                       collected=f"{t[5:7]}/{t[8:10]}/{t[:4]} / 08:00 EST"))
-        said(pdf_labs.parse(pdfs)["data"], "PDF reports", printable)
+        out.append(("PDF reports", pdf_labs.parse(pdfs)["data"], printable, None))
 
-        with open(os.path.join(tmp, "spelled.xml"), "w", encoding="utf-8") as f:
+        with open(os.path.join(tmp, "rows.xml"), "w", encoding="utf-8") as f:
             f.write(M.ccda(rows))
-        said(ccda.parse({"spelled.xml": os.path.join(tmp, "spelled.xml")})["data"], "a C-CDA document")
-        with open(os.path.join(tmp, "spelled.json"), "w", encoding="utf-8") as f:
+        out.append(("a C-CDA document", ccda.parse({"rows.xml": os.path.join(tmp, "rows.xml")})["data"], None, None))
+        with open(os.path.join(tmp, "rows.json"), "w", encoding="utf-8") as f:
             json.dump({"resourceType": "Bundle", "type": "collection", "entry": [{"resource": {
-                "resourceType": "Observation", "id": f"s{i}", "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
-                "code": {"text": n}, "effectiveDateTime": t, "valueQuantity": {"value": float(v), "unit": u}, "referenceRange": [{"text": rng}]}}
+                "resourceType": "Observation", "id": f"r{i}", "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
+                "code": {"text": n}, "effectiveDateTime": t, "referenceRange": [{"text": rng}],
+                "valueQuantity": {"value": common.value_number(v), "unit": u, **({"comparator": c} if (c := common.comparator(v)) else {})}}}
                 for i, (n, u, t, v, rng) in enumerate(rows)]}, f)
-        said(fhir.parse({"spelled.json": os.path.join(tmp, "spelled.json")})["data"], "a FHIR bundle")
-        said(carespace.parse(M.carespace(rows, os.path.join(tmp, "carespace")))["data"], "a CareSpace export")
-        said(epic_mychart.parse(M.epic(rows, os.path.join(tmp, "mychart")))["data"], "a MyChart export")
+        out.append(("a FHIR bundle", fhir.parse({"rows.json": os.path.join(tmp, "rows.json")})["data"], None, None))
+        out.append(("a CareSpace export", carespace.parse(M.carespace(rows, os.path.join(tmp, "carespace")))["data"], None, None))
+        out.append(("a MyChart export", epic_mychart.parse(M.epic(rows, os.path.join(tmp, "mychart")))["data"], None, None))
 
-        # the FHIR export, read back: of the spreadsheet's import (each result's range as read, its row's as printed), and
-        # of lab days whose rows have no result of their own (the export reads each row's range, as printed)
         rowed = {"built": M.day(0, TODAY)[:10], "source": "fictional", "costs": [], "upcoming": [], "labs": [],
-                 "events": [{"id": i + 1, "t": t, "k": "labitem", "title": "Spellings (fictional)"} for i, (_, _, t, _, _) in enumerate(rows)],
-                 "details": {str(i + 1): {"type": "result", "order": "Spellings (fictional)", "rows": [[n, v, u, rng, ""]]}
+                 "events": [{"id": i + 1, "t": t, "k": "labitem", "title": "Matrix (fictional)"} for i, (_, _, t, _, _) in enumerate(rows)],
+                 "details": {str(i + 1): {"type": "result", "order": "Matrix (fictional)", "rows": [[n, v, u, rng, ""]]}
                              for i, (n, u, _, v, rng) in enumerate(rows)}}
-        db = dbm.connect()
-        try:
-            owner = db.execute("SELECT id FROM users WHERE username='robin'").fetchone()["id"]
-            for how, data in (("a spreadsheet's import", by_csv), ("rows alone", rowed)):
-                pid = prof.create_profile(db, "Spellings (fictional)", owner_id=owner)
-                with dbm.transaction(db):
-                    records.store(db, pid, data, "upload", fmt="csv")
-                blob = b"".join(fhir_export.stream(fhir_export.plan(db, pid, {"labs"}), "robin", zone="America/New_York"))
-                prof.delete_profile(db, pid)
-                with zipfile.ZipFile(io.BytesIO(blob)) as z:
-                    path = os.path.join(tmp, f"back-{len(how)}.json")
-                    with open(path, "wb") as f:
-                        f.write(z.read("bundle.json"))
-                    bundle = json.loads(z.read("bundle.json"))
-                said(fhir.parse({"bundle.json": path})["data"], f"the FHIR export of {how}, read back")
-                if how == "rows alone":   # "≤ 5", "< OR = 5", "=>60" with their numbers (they went out as text alone)
-                    out = [((e["resource"].get("referenceRange") or [{}])[0]) for e in bundle["entry"] if e["resource"]["resourceType"] == "Observation"]
-                    self.assertEqual([[x.get("low", {}).get("value"), x.get("high", {}).get("value"), x.get("text")] for x in out],
-                                     [[None if e else lo, None if e else hi, rng] for (rng, _, lo, hi, e, _) in M.SPELLINGS], "the export's ranges")
-        finally:
-            db.close()
+        for how, data in (("a spreadsheet's import", by_csv), ("rows alone", rowed)):
+            back, bundle = self._read_back(data)
+            out.append((f"the FHIR export of {how}, read back", back, None, bundle))
+        return out
+
+    def test_2_range_spellings(self):
+        """#850: one parser of a range as text (common.range_text) for every importer, Type them in and the FHIR export.
+        The ways a report prints a range (ranges_matrix SPELLINGS: "=>60", "< OR = 5", "less than or equal to 5",
+        "greater than or equal to 60", "5,0 - 10,0" with decimal commas, "3.5-5.1", "<5", "under 5", #870's "5.0E3-1.0E4"
+        and "<1.0E4" ...), each beside a value at or past its limit, give the same value, low, high, edge and flag
+        through every importer (_every_importer: spreadsheets, Quest-like PDF reports, C-CDA, FHIR, CareSpace, MyChart and
+        the FHIR export read back) and Type them in's check. The CSV importer and Type them in read "=>60" as a high of 60
+        and "< OR = 5", "> OR = 60" and the words not at all; the C-CDA, FHIR, CareSpace and MyChart importers no decimal
+        comma; a PDF report no words; the export "≤ 5", "< OR = 5" and "=>60" as text alone; and every one "<1.0E4" as a
+        high of 1, "5.0E3-1.0E4" as none (#870)."""
+        rows, tmp, (lab, unit) = M.spelled(TODAY), tempfile.mkdtemp(dir=TMP), M.SPELLED_AS
+        want = [[float(v), lo, hi, e, f] for _, v, lo, hi, e, f in M.SPELLINGS]
+        for how, data, only, bundle in self._every_importer(rows, tmp):
+            pts = next((s["pts"] for s in data["labs"] if s["name"] == lab), [])   # [value, low, high, edge, flag]
+            self.assertEqual([[p[1], p[2], p[3], p[7] if len(p) > 7 else "", p[4]] for p in pts],
+                             [w for i, w in enumerate(want) if only is None or i in only], how)
+            if how.endswith("rows alone, read back"):   # "≤ 5", "< OR = 5", "=>60" with their numbers (they went out as text alone)
+                out = [((e["resource"].get("referenceRange") or [{}])[0]) for e in bundle["entry"] if e["resource"]["resourceType"] == "Observation"]
+                self.assertEqual([[x.get("low", {}).get("value"), x.get("high", {}).get("value"), x.get("text")] for x in out],
+                                 [[None if e else lo, None if e else hi, rng] for (rng, _, lo, hi, e, _) in M.SPELLINGS], "the export's ranges")
+
+        r = self.c["robin"].post(f"/api/profiles/{self.pid}/manual", headers=H, json={"rows": [
+            {"date": t[:10], "time": t[11:16], "test": n, "value": v, "unit": u, "range": rng} for n, u, t, v, rng in rows]})
+        self.assertEqual(r.status_code, 200, r.text)
+        typed = r.json()["rows"]
+        self.assertEqual([[x["value"], x["low"], x["high"], x["edge"], x["flag"]] for x in typed], want, "Type them in's check")
+        self.assertEqual([i for i, x in enumerate(typed) if "the range couldn't be read, so it isn't used for the flag" in x["notes"]],
+                         [i for i, (_, _, lo, hi, *_) in enumerate(M.SPELLINGS) if lo is None and hi is None], "its notes")
+
+    def test_2_bound_values(self):
+        """#870: a value given as a bound, as reports print one (ranges_matrix BOUND_VALUES: "=<5", "≤ 5", "< 5", "≥60",
+        "=>60", "> 10", ">= 60", "<0.5"), beside a range, gives the same number, comparator and flag through every
+        importer (_every_importer: spreadsheets, Quest-like PDF reports, C-CDA, FHIR, CareSpace, MyChart) and Type them
+        in's check, and through the FHIR export read back, of a spreadsheet's import and of rows alone. The export sent
+        "=<5", "≤ 5" and "≥60" as text alone (its own reader read "<", "<=", ">" and ">=" only), and the FHIR importer
+        kept every bound as text, so read back they had no number, range or flag."""
+        rows, tmp, (lab, unit) = M.bounded(TODAY), tempfile.mkdtemp(dir=TMP), M.SPELLED_AS
+        want = [[x, c, f] for _, _, x, c, f in M.BOUND_VALUES]
+        for how, data, only, bundle in self._every_importer(rows, tmp):
+            pts = next((s["pts"] for s in data["labs"] if s["name"] == lab), [])   # [value, its comparator, flag]
+            self.assertEqual([[p[1], ranges.comparator(p[5]), p[4]] for p in pts], [w for i, w in enumerate(want) if only is None or i in only], how)
+            if bundle:   # each a Quantity with its comparator (FHIR's "<", "<=", ">=", ">")
+                q = [e["resource"].get("valueQuantity") or {} for e in bundle["entry"] if e["resource"]["resourceType"] == "Observation"]
+                self.assertEqual([[x.get("value"), x.get("comparator")] for x in q], [[x, c] for _, _, x, c, _ in M.BOUND_VALUES], how)
+        r = self.c["robin"].post(f"/api/profiles/{self.pid}/manual", headers=H, json={"rows": [
+            {"date": t[:10], "time": t[11:16], "test": n, "value": v, "unit": u, "range": rng} for n, u, t, v, rng in rows]})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual([[x["value"], x["flag"]] for x in r.json()["rows"]], [[x, f] for _, _, x, _, f in M.BOUND_VALUES], "Type them in's check")
 
     def test_2_commas_in_each_mode(self):
         """#859: no thousands follow a leading 0 (common.number_text). ranges_matrix COMMAS' numbers ("0,500", "0,05",
-        "1,250", "12,500"), each as a value and in a range ("<0,500"), read as each mode reads them: where a file's commas
-        group thousands (a comma-delimited spreadsheet that writes decimal points, and Type them in) "0,500" is unread,
-        kept as printed and said so (the upload's warning, Type them in's notes), "1,250" 1250; where they're decimal (a
-        spreadsheet with semicolons, or with "0,500" among its values) "0,500" is 0.5 and "1,250" 1.25; where that isn't
-        known (C-CDA, FHIR, CareSpace, MyChart, a PDF report's range) "0,500" is 0.5 and "1,250" unread. "0,500" was
-        500 where commas group thousands."""
+        "1,250", "12,500", and #870's "1.2E-3" and "5,0E3"), each as a value and in a range ("<0,500"), read as each mode
+        reads them: where a file's commas group thousands (a comma-delimited spreadsheet that writes decimal points, and
+        Type them in) "0,500" is unread, kept as printed and said so (the upload's warning, Type them in's notes),
+        "1,250" 1250; where they're decimal (a spreadsheet with semicolons, or with "0,500" among its values) "0,500" is
+        0.5 and "1,250" 1.25; where that isn't known (C-CDA, FHIR, CareSpace, MyChart, a PDF report) "0,500" is 0.5 and
+        "1,250" unread, as a value (#870: the PDF read "0,500" as 500, "0,05" not at all) and in a range. And the FHIR
+        export of each import, read back, has the same values, ranges and flags (#870: it sent "0,500" and "1,250" as
+        text alone, so they came back with no number, range or flag; a limit printed "<1,250" in a file whose commas
+        group thousands came back with none, and one its import couldn't read, "<0,500" there, as 0.5)."""
         import csv, types
         from server.importers import carespace, ccda, csv_labs, epic_mychart, fhir, pdf_labs
         tmp, (lab, unit) = tempfile.mkdtemp(dir=TMP), M.SPELLED_AS
         nums = list(M.COMMAS)
         values = [(lab, unit, M.day(100 - i, TODAY), n, "") for i, n in enumerate(nums)]   # each a value, no range
         ranged = [(lab, unit, M.day(50 - i, TODAY), "5", "<" + n) for i, n in enumerate(nums)]   # 5 beside "<0,500"...
-        want = lambda mode: ([M.COMMAS[n][mode] for n in nums], [M.COMMAS[n][mode] for n in nums])   # noqa: E731
+        flags = lambda highs: [ranges.flag(5, None, h, "", "<") for h in highs]   # noqa: E731  (5 against each, its edge left out)
+        want = lambda mode, kept=True: ([M.COMMAS[n][mode] if kept else None for n in nums], [M.COMMAS[n][mode] for n in nums],   # noqa: E731
+                                        flags(M.COMMAS[n][mode] for n in nums))
 
         def read(data):
-            """[each value as read (None: kept as text)], [each range's high as read]"""
+            """[each value as read (None: kept as text)], [each range's high as read], [each ranged one's flag]"""
             s = next((s for s in data["labs"] if s["name"] == lab), {"pts": [], "txt": []})
             at = {p[0][:16]: p for p in s["pts"]}
             return ([(at.get(t[:16]) or [None, None])[1] for _, _, t, _, _ in values],
-                    [(at.get(t[:16]) or [None] * 4)[3] for _, _, t, _, _ in ranged])
+                    [(at.get(t[:16]) or [None] * 4)[3] for _, _, t, _, _ in ranged],
+                    [(at.get(t[:16]) or [None] * 5)[4] for _, _, t, _, _ in ranged])
+
+        def back(data, how):   # the FHIR export of an import, read back: the same values, ranges and flags (#870)
+            self.assertEqual(read(self._read_back(data, "Commas")[0]), read(data), f"the FHIR export of {how}, read back")
 
         def sheet(name, delim, extra):
             path = os.path.join(tmp, name)
@@ -1130,43 +1173,58 @@ class Api(unittest.TestCase):
         self.assertEqual(read(thousands["data"]), want(M.IN_THOUSANDS), "a comma-delimited spreadsheet that writes decimal points")
         self.assertIn("1 value couldn't be read as a number, so it was kept as text, not charted: in-thousands.csv line 2 ('0,500').",
                       thousands["warnings"])
-        self.assertIn("1 range couldn't be read, so it isn't used for the flag: in-thousands.csv line 6 ('<0,500').", thousands["warnings"])
-        self.assertEqual(read(sheet("decimal.csv", ";", commas)["data"]), want(M.DECIMAL), "a spreadsheet with semicolons")
-        self.assertEqual(read(sheet("decimal-quoted.csv", ",", [])["data"]), want(M.DECIMAL), "a comma-delimited one with \"0,500\" among its values")
+        self.assertIn(f"1 range couldn't be read, so it isn't used for the flag: in-thousands.csv line {2 + len(nums)} ('<0,500').",
+                      thousands["warnings"])
+        back(thousands["data"], "a comma-delimited spreadsheet")
+        for name, delim, extra, how in (("decimal.csv", ";", commas, "a spreadsheet with semicolons"),
+                                        ("decimal-quoted.csv", ",", [], "a comma-delimited one with \"0,500\" among its values")):
+            data = sheet(name, delim, extra)["data"]
+            self.assertEqual(read(data), want(M.DECIMAL), how)
+            back(data, how)
 
         r = self.c["robin"].post(f"/api/profiles/{self.pid}/manual", headers=H, json={"rows": [
             {"date": t[:10], "time": t[11:16], "test": n, "value": v, "unit": u, "range": rng} for n, u, t, v, rng in values + ranged]})
         self.assertEqual(r.status_code, 200, r.text)
         typed = r.json()["rows"]
-        self.assertEqual(([x["value"] for x in typed[:len(nums)]], [x["high"] for x in typed[len(nums):]]), want(M.IN_THOUSANDS), "Type them in")
+        self.assertEqual(([x["value"] for x in typed[:len(nums)]], [x["high"] for x in typed[len(nums):]], [x["flag"] for x in typed[len(nums):]]),
+                         want(M.IN_THOUSANDS), "Type them in")
         self.assertEqual([[n for n in x["notes"] if "read" in n or "not a number" in n] for x in typed],
                          [["not a number: kept as a text result, not charted"] if M.COMMAS[n][M.IN_THOUSANDS] is None else [] for n in nums]
                          + [["the range couldn't be read, so it isn't used for the flag"] if M.COMMAS[n][M.IN_THOUSANDS] is None else []
                             for n in nums], "Type them in's notes")
 
-        # where decimal commas aren't known: a range as text alone, and a PDF report's range cell
-        unknown = [None] * len(nums), [M.COMMAS[n][M.UNKNOWN] for n in nums]
-        got = lambda data: ([None] * len(nums), read(data)[1])   # noqa: E731  (their values are numbers of their own)
-        with open(os.path.join(tmp, "commas.xml"), "w", encoding="utf-8") as f:
-            f.write(M.ccda(ranged))
-        self.assertEqual(got(ccda.parse({"commas.xml": os.path.join(tmp, "commas.xml")})["data"]), unknown, "a C-CDA document")
+        # where decimal commas aren't known: a value as printed (C-CDA's text, CareSpace's, a PDF report's), a range as
+        # text alone (a FHIR bundle's and a MyChart export's values are numbers of their own) and a PDF report's range cell
+        docs = {}   # (a document a result: the export finds a report's rows at its time)
+        for i, row in enumerate(values + ranged):
+            docs[f"commas-{i}.xml"] = path = os.path.join(tmp, f"commas-{i}.xml")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(M.ccda([row]))
         with open(os.path.join(tmp, "commas.json"), "w", encoding="utf-8") as f:
             json.dump({"resourceType": "Bundle", "type": "collection", "entry": [{"resource": {
                 "resourceType": "Observation", "id": f"c{i}", "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
                 "code": {"text": n}, "effectiveDateTime": t, "valueQuantity": {"value": 5, "unit": u}, "referenceRange": [{"text": rng}]}}
                 for i, (n, u, t, v, rng) in enumerate(ranged)]}, f)
-        self.assertEqual(got(fhir.parse({"commas.json": os.path.join(tmp, "commas.json")})["data"]), unknown, "a FHIR bundle")
-        self.assertEqual(got(carespace.parse(M.carespace(ranged, os.path.join(tmp, "carespace")))["data"]), unknown, "a CareSpace export")
-        self.assertEqual(got(epic_mychart.parse(M.epic(ranged, os.path.join(tmp, "mychart")))["data"]), unknown, "a MyChart export")
         gen = types.ModuleType("pdf_fixture_generator")
         gen.__file__ = os.path.join(ROOT, "tests", "fixtures", "importers", "pdf-labs", "generate.py")
         with open(gen.__file__, encoding="utf-8") as f:
             exec(compile(f.read(), gen.__file__, "exec"), gen.__dict__)
         pdfs = {}
-        for n, u, t, v, rng in ranged:
+        for n, u, t, v, rng in values + ranged:
             pdfs[f"quest-{t[:10]}.pdf"] = path = os.path.join(tmp, f"quest-{t[:10]}.pdf")
             gen.write(path, gen.quest([("COMMAS (FICTIONAL)", None), (n, v, "", rng, u)], collected=f"{t[5:7]}/{t[8:10]}/{t[:4]} / 08:00 EST"))
-        self.assertEqual(got(pdf_labs.parse(pdfs)["data"]), unknown, "PDF reports")
+        by_pdf = pdf_labs.parse(pdfs)
+        for how, data, kept in (("C-CDA documents", ccda.parse(docs)["data"], True),
+                                ("a FHIR bundle", fhir.parse({"commas.json": os.path.join(tmp, "commas.json")})["data"], False),
+                                ("a CareSpace export", carespace.parse(M.carespace(values + ranged, os.path.join(tmp, "carespace")))["data"], True),
+                                ("a MyChart export", epic_mychart.parse(M.epic(ranged, os.path.join(tmp, "mychart")))["data"], False),
+                                ("PDF reports", by_pdf["data"], True)):
+            self.assertEqual(read(data), want(M.UNKNOWN, kept), how)
+            back(data, how)
+        unread = [n for n in nums if M.COMMAS[n][M.UNKNOWN] is None]   # a PDF report's says each, as a spreadsheet's does
+        self.assertEqual(sorted(w for w in by_pdf["warnings"] if "couldn't be read as a number" in w),
+                         sorted(f"quest-{t[:10]}.pdf: 1 value couldn't be read as a number, so it was kept as text, not charted: {lab} ('{v}')."
+                                for _, _, t, v, _ in values if v in unread))
 
     def test_2_summary_matrix(self):
         """#752: one rule for a result's range, flag and source, through the server. The matrix (tests/ranges_matrix.py): a

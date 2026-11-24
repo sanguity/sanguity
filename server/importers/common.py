@@ -3,7 +3,7 @@
 Standard library only: build.py imports this module and must keep running on a bare Python 3.
 Everything here is a plain function of its arguments, so an importer can use any piece of it on its own.
 """
-import functools, html, json, os, re
+import functools, html, json, math, os, re
 from datetime import datetime
 
 # ------------------------------------------------------------------ dates, numbers, text
@@ -24,13 +24,14 @@ def ymd(s):
     return f"{m.group(1)}-{m.group(2)}-{m.group(3)}" if m else None
 
 
-def num(s):
-    """The number in a result value such as "4.2", "<0.5" or ">= 60"; None for anything else."""
-    m = re.match(r"^\s*([<>]=?)?\s*(-?\d+(?:\.\d+)?)\s*$", str(s or ""))
-    return float(m.group(2)) if m else None
-
-
-_BOUND = re.compile(r"\s*(<=|>=|=<|=>|<|>|≤|≥)")
+# a number as printed, for a reader that finds one inside text (a value with its unit or flag after it, a range, a
+# vital sign, a medicine's amount): "4.5", "1,234.5", "1.234,5", "4,5", "1'234", ".5", "1.2E-3", "5.0E3". It runs to its
+# end ("1,000" and "3,5" are never 1 and 3), and what it matches is read by number_text, the one reader of a number
+# (#870): nothing else in the importers or the FHIR export turns printed text into a number
+NUMBER = (r"[-+]?(?:\d{1,3}(?:['\u00a0\u202f]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)*|[.,]\d+)(?:[eE][-+]?\d+)?"
+          r"(?![.,'\u00a0\u202f]?\d)")
+BOUNDS = r"<=|>=|=<|=>|<|>|≤|≥"   # a value given as a bound, as reports print one: "<0.5", "=<5", "≥ 60" (comparator)
+_BOUND = re.compile(rf"\s*({BOUNDS})")
 _CMP = {"=<": "<=", "≤": "<=", "=>": ">=", "≥": ">="}
 
 
@@ -38,6 +39,20 @@ def comparator(text):
     """A value given as a bound ("<15", "≤ 0.5", ">90"): its comparator, "<", "<=", ">" or ">=", else "" (#718)."""
     m = _BOUND.match(str(text or ""))
     return _CMP.get(m.group(1), m.group(1)) if m else ""
+
+
+def value_number(value, decimal_comma=None):
+    """The number of a result's value as its report gives it: a number given as one (a JSON number) as it is; a value
+    printed ("4.2", "4,5", "0,500", "1.2E-3", a bound's "<0.5", "=<5", "≥ 60", its comparator() aside) read by
+    number_text, decimal_comma as it takes it; None for anything else ("Negative", "1,250" where decimal commas aren't
+    known, "> OR = 60"). Every importer's reader of a value (the PDF reports', C-CDA's, CareSpace's) and the FHIR
+    export's, which writes it as a Quantity with its comparator (#870: they had readers of their own, which read "4,5",
+    "=<5" and "1.2E-3" as no number and "0,500" in a PDF report as 500)."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value if math.isfinite(value) else None
+    s = str(value if value is not None else "")
+    m = _BOUND.match(s)
+    return number_text(s[m.end():] if m else s, decimal_comma)
 
 
 def range_flag(v, lo, hi, cmp="", edge=""):
@@ -59,15 +74,17 @@ def range_flag(v, lo, hi, cmp="", edge=""):
 
 
 def number_text(s, decimal_comma=None):
-    """A number as printed: "4.5", "1,234.5", "1.234,5", "4,5", "1'234"; None when it isn't one number. decimal_comma
+    """A number as printed: "4.5", "1,234.5", "1.234,5", "4,5", "1'234", "1.2E-3"; None when it isn't one number. The one
+    reader of a number as printed (#870): every importer's (a value by value_number, a range by range_text, a number in
+    other text by NUMBER) and the FHIR export's. decimal_comma
     says whether the file writes decimal commas, where that's known: True where it does (a spreadsheet with semicolons
     or tabs, or with "4,5" among its values, csv_labs: "1,250" is 1.25), False where it doesn't (a comma-delimited
     spreadsheet's, a row typed in: "1,250" is 1250), None where it isn't known (a C-CDA document, FHIR, CareSpace,
     MyChart, a PDF report): a comma that can't be a thousands separator is a decimal one ("3,5" is 3.5), one that can
     ("1,250") leaves the number unread, never a guess (#850). No thousands follow a leading 0 (#859): "0,500" is 0.5
     where the file's commas can be decimal (True, None), and unread where a comma before three digits groups thousands
-    (False), as is any grouping that can't be one ("1234,500", "12,34.5"). The CSV importer's values are read by it,
-    and every range given as text (range_text)."""
+    (False), as is any grouping that can't be one ("1234,500", "12,34.5"). Scientific notation is read in every mode:
+    "1.2E-3" is 0.0012, "5,0E3" 5000 where commas can be decimal."""
     s = str(s or "").strip().replace("\u00a0", "").replace("\u202f", "").replace("'", "")
     if not s or not re.fullmatch(r"[-+]?[\d.,]*\d(?:[eE][-+]?\d+)?|[-+]?[\d.,]*[.,]\d+", s):
         return None
@@ -99,15 +116,18 @@ def number_text(s, decimal_comma=None):
         x = float(s)
     except ValueError:
         return None
+    if not math.isfinite(x):   # "1E999"
+        return None
     return int(x) if x.is_integer() and "." not in s and "e" not in s.lower() else x
 
 
 # a reference range as text (range_text): "3.5 - 5.1", "70–99", "10 to 40", "5,0 - 10,0"; a one-sided limit that keeps
 # its edge in the range, "<=5", "=<5", "≤ 5", "< OR = 5", "less than or equal to 5", "up to 5", ">=60", "=>60", "≥ 60",
 # "> OR = 60", "greater than or equal to 60"; one that leaves it out (#780), "<5", "less than 5", "under 5", "below 5",
-# ">60", "greater than 60", "more than 60", "over 60", "above 60"; a unit or words may follow ("<130 mg/dL"). A number
-# runs to its end, as number_text reads it: "1,000" and "3,5" are never 1 and 3
-_RNUM = r"([-+]?(?:\d{1,3}(?:['\u00a0\u202f]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)*|[.,]\d+))(?![.,]?\d)"
+# ">60", "greater than 60", "more than 60", "over 60", "above 60"; a unit or words may follow ("<130 mg/dL"). Its numbers
+# are NUMBER's, read by number_text: "1,000" and "3,5" are never 1 and 3, "5.0E3-1.0E4" is 5000 to 10000 (#870: it read
+# no scientific notation, so "<1.0E4" was a high of 1)
+_RNUM = rf"({NUMBER})"
 _RSPAN = re.compile(rf"\s*{_RNUM}\s*(?:-|–|—|\.\.|to\b)\s*{_RNUM}", re.I)
 _RBOUND = re.compile(r"\s*(?:(<\s*(?:or\s*)?=|=\s*<|≤|less\s+than\s+or\s+equal\s+to|up\s+to)"   # a high, its edge in it
                      r"|(>\s*(?:or\s*)?=|=\s*>|≥|(?:greater|more)\s+than\s+or\s+equal\s+to)"   # a low, its edge in it

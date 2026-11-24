@@ -17,17 +17,18 @@ that re-filing against the stays from every source it reads.
 """
 import collections
 import hashlib
+import math
 import re
 
-from .common import iso
+from .common import iso, number_text
 
 
 def money(x):
-    """A rounded amount from 12.5, "12.50" or {"value": 12.5}; 0.0 when there's none."""
-    try:
-        return round(float((x or {}).get("value") if isinstance(x, dict) else x or 0), 2)
-    except (TypeError, ValueError):
-        return 0.0
+    """A rounded amount from 12.5, "12.50" or {"value": 12.5}, one given as text read by common.number_text (#870); 0.0
+    when there's none."""
+    v = (x or {}).get("value") if isinstance(x, dict) else x
+    n = v if isinstance(v, (int, float)) and not isinstance(v, bool) else number_text(v)
+    return round(float(n), 2) if n is not None and math.isfinite(n) else 0.0
 
 
 def code_category(code, desc):

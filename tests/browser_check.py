@@ -21460,6 +21460,49 @@ def main():
                   "“couldn't be read” note, and saved, Labs has each range, edge and flag", not bad850, bad850[:6])
             db = dbm.connect()
             prof_r.delete_profile(db, ppid)
+            # ---- #870: one reader of a number, the FHIR export's too. A spreadsheet with semicolons ("4,5", "0,500", "=<5",
+            # "12,5") and a comma-delimited one ("1,250", "≥60") imported (ranges_matrix commas_back()), the profile exported
+            # as FHIR by its link and the zip uploaded into another on the import page: Labs has each result with the same
+            # value, range, edge and flag, and the Overview's out-of-range list the same rows. The export sent all but one
+            # as text, so read back 1 of the 7 was charted and the list lost 3 of its 4
+            bad870, pids870, tmp870 = [], [], tempfile.mkdtemp()
+            card870 = "[...document.querySelectorAll('.import-job')].pop()"
+            for name870 in ("Commas (fictional)", "Commas read back (fictional)"):
+                pids870.append(prof_r.create_profile(db, name870, owner_id=owner))
+            with dbm.transaction(db):
+                for file870, text870 in M752.commas_back():
+                    with open(os.path.join(tmp870, file870), "w", encoding="utf-8") as f870:
+                        f870.write(text870)
+                    rec_r.store(db, pids870[0], csv780.parse({file870: os.path.join(tmp870, file870)})["data"], "upload", fmt="csv")
+            db.close()
+            shutil.rmtree(tmp870, ignore_errors=True)
+            zip870 = page.request.get(base + f"/api/profiles/{pids870[0]}/export?format=fhir&include=labs")
+            page.goto(base + f"/import.html?profile={pids870[1]}")
+            page.wait_for_selector("#importer", state="visible", timeout=10000)
+            page.set_input_files("#pickFiles", files=[{"name": "commas-fhir.zip", "mimeType": "application/zip", "buffer": zip870.body()}])
+            page.wait_for_function(f"document.querySelectorAll('.import-job').length && /^(Ready to import|All duplicates|Not imported)/.test({card870}.textContent)",
+                                   timeout=30000)
+            js(f"{card870}.querySelector('.imp-actions .primary').click()")
+            page.wait_for_function(f"/^(Imported|Not imported)/.test({card870}.textContent)", timeout=30000)
+            seen870 = []
+            for pid870 in pids870:   # each lab's [unit, its results' value, range, edge and flag]; the Overview's rows
+                page.goto(base + f"/?profile={pid870}")
+                page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {pid870}", timeout=20000)
+                js("() => { setPeriod('all'); pickTab('overview'); }")
+                settle(500)
+                seen870.append(js("""[Object.fromEntries(SERIES.filter(s => !s.watch).map(s => [s.name, [s.unit, s.pts.map(p => [p[1], p[2], p[3], p[7] || '', p[4] || ''])]])),
+                  [...document.querySelectorAll('#ovOut .ov-row')].map(r => [r.querySelector('.n').textContent, r.querySelector('.st').textContent,
+                    r.querySelector('.r').textContent]).sort()]"""))
+            if [len(seen870[0][0]), len(seen870[0][1])] != [7, 4]:
+                bad870.append(f"the spreadsheets' import: {seen870[0]}")
+            if seen870[1] != seen870[0]:
+                bad870.append(f"read back: {seen870[1]} not {seen870[0]}")
+            db = dbm.connect()
+            for pid870 in pids870:
+                prof_r.delete_profile(db, pid870)
+            check("#870: “4,5”, “0,500”, “12,5” (with semicolons), “1,250” (comma-delimited), “=<5” and “≥60” exported as FHIR and the zip "
+                  "uploaded into another profile: Labs has each with the same value, range, edge and flag, and the Overview's out-of-range "
+                  "list the same four", not bad870, bad870)
             # ---- #839: a flag stored as its report printed it (an older import's "N", ">", "HH", "Normal") is read as a new
             # import of it would, by the one rule for a printed flag, on the page as on the server (ranges.js readFlag,
             # server/ranges.py read_flag: common.report_flag): the page read every one but H and L as ◆ Flagged, the summary

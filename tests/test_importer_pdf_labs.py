@@ -168,6 +168,29 @@ class Reports(Base):
 
 
 class NeverGuess(Base):
+    def test_a_value_read_by_the_one_reader_of_a_number(self):
+        """#870: a report's value is read by common.value_number, as a source that doesn't say its decimal mark is (as its
+        range cell is, #859): "0,500" is 0.5 and "0,05" 0.05 (a comma that can't group thousands); "1,250" isn't read,
+        never a guess, so it's kept as text and the upload says so; "4,5", "=<5" and scientific notation ("1.2E-3", a
+        range "4.0E-2") are read. The layouts' own reader read "0,500" as 500 (Troponin I ▲ High), and "0,05", "4,5",
+        "=<5" and "1.2E-3" weren't values at all, so their rows were left out."""
+        quest = self.pdf("quest.pdf", gen.quest([("COMMAS (FICTIONAL)", None), ("TROPONIN I", "0,500", "", "<0.040", "ng/mL"),
+                                                 ("CREATININE", "0,05", "", "0.60-1.30", "mg/dL"), ("PLATELET COUNT", "1,250", "", "140-400", "Thousand/uL"),
+                                                 ("WHITE BLOOD CELL COUNT", "12,500", "", "3.8-10.8", "Thousand/uL"),
+                                                 ("POTASSIUM", "4,5", "", "3.5-5.3", "mmol/L"), ("C-REACTIVE PROTEIN", "=<5", "", "<8.0", "mg/L")]))
+        out = self.run_files(**{"quest.pdf": quest})
+        self.assertEqual(out["warnings"], ["quest.pdf: 2 values couldn't be read as a number, so they were kept as text, not charted: "
+                                           "PLATELET COUNT ('1,250'), WHITE BLOOD CELL COUNT ('12,500')."])
+        labs = {s["name"]: [p[1:5] for p in s["pts"]] + s["txt"] for s in out["data"]["labs"]}
+        self.assertEqual({n: [x[1] if len(x) == 2 else x for x in v] for n, v in labs.items()},
+                         {"TROPONIN I": [[0.5, None, 0.04, "H"]], "Creatinine": [[0.05, 0.6, 1.3, "L"]], "Platelet Count": ["1,250"],
+                          "WBC": ["12,500"], "Potassium, Blood": [[4.5, 3.5, 5.3, ""]], "C-REACTIVE PROTEIN": [[5, None, 8.0, ""]]})
+        pdf_labs._cache.clear()
+        lab = self.pdf("labcorp.pdf", gen.labcorp([("Scientific (Fictional)", None), ("Troponin I", "1.2E-3", "", "ng/mL", "<4.0E-2"),
+                                                   ("Creatinine", "1.5E0", "", "mg/dL", "6.0E-1-1.3E0")]))
+        labs = {s["name"]: s["pts"][0][1:5] for s in self.run_files(**{"labcorp.pdf": lab})["data"]["labs"]}
+        self.assertEqual(labs, {"Troponin I": [0.0012, None, 0.04, ""], "Creatinine": [1.5, 0.6, 1.3, "H"]})
+
     def test_lines_the_layout_doesnt_read_are_warnings(self):
         rows = list(gen.QUEST_ROWS)
         rows.insert(3, "Specimen slightly hemolyzed; repeat if needed")          # a comment under a result
@@ -310,6 +333,9 @@ class Layouts(unittest.TestCase):
         self.assertTrue(all(map(is_range, ("less than 5", "greater than or equal to 60", "=>60"))))
         self.assertFalse(any(map(is_range, ("88", "<5 mg/L"))))
         self.assertTrue(all(map(is_value, ("88", "<0.01", "1,250", "NON-REACTIVE", "2+", "1:40"))))
+        # #870: a number as the one reader of a number reads one (common.NUMBER): "0,05", "4,5", "=<5", "1.2E-3" were none
+        self.assertTrue(all(map(is_value, ("0,05", "4,5", "0,500", "=<5", "< 5", "≥ 60", "1.2E-3", "5,0E3", ".5"))))
+        self.assertFalse(any(map(is_value, ("12 34", "5 mg", "1.2E"))))
         self.assertFalse(any(map(is_value, ("SEE NOTE", "TNP", "", "88 H 4"))))
         self.assertTrue(all(map(is_unit, ("mg/dL", "x10E3/uL", "%", "fL", "mL/min/1.73m2"))))
         self.assertFalse(any(map(is_unit, ("NEGATIVE", "65-99"))))

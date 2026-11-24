@@ -47,7 +47,7 @@ Not in it, as FHIR has no place for them: the journal, settings (other than Abou
 out-of-pocket payments, the activity log and the original uploads; and whatever was left unticked.
 Written as it's sent, a resource at a time, like Export everything (export.py).
 """
-import datetime, html, json, os, re, urllib.parse, uuid, zipfile
+import collections, datetime, html, json, math, os, re, urllib.parse, uuid, zipfile
 
 from . import crypto, ecg, export, profiles as prof, settings
 from .importers import common
@@ -212,14 +212,21 @@ def dt(s, zone, instant=False):
 
 
 def _num(v):
+    """A record's number: one stored as a number as it is, one stored as text read by common.number_text, the one
+    reader of a number (#870); None for anything else."""
     if isinstance(v, bool):
         return None
     if isinstance(v, (int, float)):
         return v
-    m = re.fullmatch(r"\s*(-?\d+(?:\.\d+)?)\s*", str(v or ""))
-    if not m:
-        return None
-    return float(m[1]) if "." in m[1] else int(m[1])
+    return common.number_text(v) if isinstance(v, str) else None
+
+
+def _amount(text):
+    """(number, the rest) of a medicine's quantity or a vaccine's amount as given ("30 tablets", "0.5 mL"), its number
+    by common.number_text (#870); None where it doesn't start with one."""
+    m = re.fullmatch(rf"\s*({common.NUMBER})\s*(.*)", str(text or ""))
+    n = common.number_text(m[1]) if m else None
+    return None if n is None else (n, m[2])
 
 
 def _text(s):
@@ -266,25 +273,44 @@ def _clean(x):
     return x
 
 
-def _range(text, lo=None, hi=None, unit=None, edge=""):
+def _range(text, lo=None, hi=None, unit=None, edge="", imported=False):
     """A referenceRange from a result's own range: the numbers when given or readable, and the text as printed. FHIR's
     low and high include their value, so a limit that leaves its edge out (edge, the point's: "<" for a range printed
     "<5", ">" for ">60", #780) is said in the text alone, "<5" where none was printed. A range as text alone is read by
     the importers' one parser of a range as text (common.range_text, #850: "≤ 5", "< OR = 5" and "=>60" went out as
-    text alone, their numbers unread), so the FHIR importer reads the export back to the range it was read as."""
+    text alone, their numbers unread), so the FHIR importer reads the export back to the range it was read as.
+    imported: lo, hi and edge are what a lab series' point was imported as, by what its file says of its decimal mark,
+    so its text isn't read anew (#870): a limit said in the text alone is said from its number ("<1250") where the one
+    parser, reading as a source that doesn't say its decimal mark, doesn't read the text as printed to it ("<1,250" from
+    a spreadsheet whose commas group thousands: no number); and a text its import couldn't read as a range ("<0,500"
+    there, which would be read as 0.5) isn't sent as one (_range_note says it)."""
     text = _text(text)
-    if lo is None and hi is None and text:
+    if lo is None and hi is None and text and not imported:
         lo, hi, edge = common.range_text(text)
+    elif _range_unread(text, lo, hi, imported):
+        text = None
     edge, r = str(edge or ""), {}
     for k, v, side in (("low", lo, ">"), ("high", hi, "<")):
         if isinstance(v, (int, float)) and not isinstance(v, bool):
             if side not in edge:
                 r[k] = qty(v, unit)
-            elif not text:
-                text = side + (f"{v:g}" if isinstance(v, float) else str(v))
+            elif not text or imported and common.range_text(text) != (lo, hi, edge):
+                text = side + f"{v:.15g}"
     if text:
         r["text"] = text
     return [r] if r else []
+
+
+def _range_unread(text, lo, hi, imported):
+    """Whether a result's range as printed is one its import couldn't read (it has no low or high) though the one
+    parser of a range as text would read it, where the source doesn't say its decimal mark: "<0,500" from a
+    spreadsheet whose commas group thousands (#859, #870)."""
+    return bool(imported and text and lo is None and hi is None and common.range_text(text) != (None, None, ""))
+
+
+def _range_note(text, lo, hi, imported):
+    """The Observation's note for a range _range doesn't send as one (_range_unread): the range as printed."""
+    return [{"text": f"Reference range as printed: {_text(text)}"}] if _range_unread(_text(text), lo, hi, imported) else []
 
 
 INTERP_NAMES = {"H": "High", "L": "Low", "HH": "Critical high", "LL": "Critical low", "A": "Abnormal", "AA": "Critical abnormal"}
@@ -299,17 +325,37 @@ def _interp(flag):
 
 
 def _value(rep, num=None, unit=None):
-    """value[x] for a result as reported: a Quantity for a number (with its comparator: "<0.5"), else a string."""
+    """value[x] for a result as reported (rep) and its number (num): a Quantity of the number, with its comparator where
+    the value is given as a bound ("<0.5", "=<5", "≥ 60": common.comparator); a string where it has none. The number is
+    the one it was imported as, which the importers read by common.number_text with what their file says of its decimal
+    mark (a report's row with no result of its own, _row_number). The export read the value as printed with a reader of
+    its own, the imported number only where none was printed, so "4,5", "0,500", "1,250" (a spreadsheet's, in
+    thousands), "=<5" and "≥60" went out as text beside a range and a flag, and read back had no number, range or flag
+    (#870)."""
     rep = str(rep if rep is not None else "").strip()
-    m = re.fullmatch(r"(<=|>=|<|>)\s*(-?\d+(?:\.\d+)?)", rep)
-    if m:
-        return {"valueQuantity": {"comparator": m[1], **qty(_num(m[2]), unit)}}
-    n = _num(rep) if rep else None
-    if n is None and isinstance(num, (int, float)) and not isinstance(num, bool) and not rep:
-        n = num
-    if n is not None:
-        return {"valueQuantity": qty(n, unit)}
-    return {"valueString": rep} if rep else {}
+    if not isinstance(num, (int, float)) or isinstance(num, bool) or not math.isfinite(num):
+        return {"valueString": rep} if rep else {}
+    cmp = common.comparator(rep)
+    return {"valueQuantity": {**({"comparator": cmp} if cmp else {}), **qty(num, unit)}}
+
+
+def _row_number(data):
+    """A report's row's number, for a row with no result of its own in the lab series (a source's result it doesn't
+    chart, a lab day's rows alone): its value read by common.value_number, as a source that doesn't say its decimal mark
+    is ("4,5" is 4.5, "1,250" unread); None for a value its import kept as a text result ("0,500" where its file's commas
+    group thousands, #859), which goes out as it was printed. -> number(minute, name, value as printed)."""
+    kept = collections.defaultdict(set)
+    for s in data.get("labs") or []:
+        for x in (s.get("txt") or []) if isinstance(s, dict) else []:
+            if isinstance(x, list) and len(x) >= 2:
+                kept[(str(x[0])[:16], str(x[1]).strip())].add(id(s))
+    by_id = {id(s): s for s in data.get("labs") or [] if isinstance(s, dict)}
+
+    def number(minute, name, value):
+        if any(_named(by_id[i], name) for i in kept.get((minute, str(value or "").strip()), ())):
+            return None
+        return common.value_number(value)
+    return number
 
 
 def _div(*paras):
@@ -436,19 +482,20 @@ def _edge(p):
     return str(p[7] or "") if isinstance(p, list) and len(p) > 7 else ""
 
 
-def _lab_obs(b, key, name, loinc, t, rep, num, unit, lo, hi, rtext, flag, vital, performer, status="final", edge=""):
+def _lab_obs(b, key, name, loinc, t, rep, num, unit, lo, hi, rtext, flag, vital, performer, status="final", edge="", imported=True):
+    """imported: lo, hi and edge are a lab series' point's, as it was imported (_range); else a report's row's alone."""
     code = cc(name, coding(LOINC, loinc))
     value = _value(rep, num, unit)
     prof_ = _vital_profile(loinc, value) if vital else None
     return _obs(b, key, code, t, value, ("vital-signs" if vital else "laboratory",), performer=performer, profile=prof_,
                 status=OBS_STATUS.get(str(status or "").lower(), "final"), interpretation=_interp(flag),
-                referenceRange=_range(rtext, lo, hi, unit, edge))
+                referenceRange=_range(rtext, lo, hi, unit, edge, imported), note=_range_note(rtext, lo, hi, imported))
 
 
 def _labs(b, data, used):
     """DiagnosticReports for the lab reports, their results as Observations; then every lab series' point that no
     report holds, and the clinic weights."""
-    series = _series_index(data)
+    series, row_number = _series_index(data), _row_number(data)
     details = data.get("details") or {}
     for e in data.get("events") or []:
         d = details.get(str(e.get("id")))
@@ -472,9 +519,10 @@ def _labs(b, data, used):
             s, p = (hit[0], hit[0]["pts"][hit[1]]) if hit else (None, None)
             if hit:
                 used.add((id(s), hit[1]))
-            o = _lab_obs(b, (b.keyed(e), "row", n), name, _loinc(s, name), t, row[1], p[1] if p else None, row[2] or (s or {}).get("unit"),
+            num = p[1] if p else row_number(str(e.get("t"))[:16], name, row[1])   # the number it was imported as (#870)
+            o = _lab_obs(b, (b.keyed(e), "row", n), name, _loinc(s, name), t, row[1], num, row[2] or (s or {}).get("unit"),
                          p[2] if p and len(p) > 2 else None, p[3] if p and len(p) > 3 else None, row[3], row[4], False,
-                         [x for x in (lab,) if x], d.get("status"), _edge(p))
+                         [x for x in (lab,) if x], d.get("status"), _edge(p), imported=p is not None)
             results.append(o)
             yield o
         report = [x for x in d.get("report") or [] if isinstance(x, list) and len(x) >= 2 and _text(x[1])]
@@ -644,7 +692,7 @@ def _meds(b, data):
             if supply is None:
                 m = re.search(r"(\d+)-day supply", e.get("sub") or "")
                 supply = int(m[1]) if m else None
-            qm = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*(.*)", str(d.get("quantity") or ""))
+            qm = _amount(d.get("quantity"))
             contained, auth = [], []
             if _text(d.get("prescriber")):
                 contained.append(_clean({"resourceType": "MedicationRequest", "id": "rx", "status": "completed", "intent": "order",
@@ -656,7 +704,7 @@ def _meds(b, data):
                           "status": "completed", "medicationCodeableConcept": cc(e.get("title") or "Medication", coding(RXNORM, d.get("rxnorm"))),
                           "subject": b.subject(), "performer": [{"actor": b.party("Organization", pharmacy)}] if _text(pharmacy) else [],
                           "authorizingPrescription": auth, "whenHandedOver": t,
-                          "quantity": {"value": _num(qm[1]), "unit": _text(qm[2])} if qm else None,
+                          "quantity": {"value": qm[0], "unit": _text(qm[1])} if qm else None,
                           "daysSupply": {"value": supply, "unit": "days", "system": UCUM, "code": "d"} if supply is not None else None,
                           "dosageInstruction": [{"text": d.get("instructions")}] if _text(d.get("instructions")) else []})
 
@@ -670,14 +718,14 @@ def _immunizations(b, data):
             continue
         system = CVX if d.get("system") == "CVX" else None
         dose = re.fullmatch(r"\s*(\S+)(?:\s+of\s+(\S+))?\s*", str(d.get("dose") or ""))
-        am = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*(.*)", str(d.get("amount") or ""))
+        am = _amount(d.get("amount"))
         status = str(d.get("status") or "").lower()
         yield _clean({"resourceType": "Immunization", "id": b.rid("Immunization", b.keyed(e)),
                       "status": {"not done": "not-done", "entered in error": "entered-in-error"}.get(status, "completed"),
                       "vaccineCode": cc(d.get("vaccine") or e.get("title") or "Vaccine", coding(system, d.get("code")) if system else None),
                       "patient": b.subject(), "occurrenceDateTime": t, "lotNumber": d.get("lot"),
                       "manufacturer": b.party("Organization", d.get("manufacturer")), "site": cc(d.get("site")), "route": cc(d.get("route")),
-                      "doseQuantity": qty(_num(am[1]), am[2]) if am else None,
+                      "doseQuantity": qty(am[0], am[1]) if am else None,
                       "performer": [x for x in ({"actor": b.party("Practitioner", d.get("performer"))} if _text(d.get("performer")) else None,
                                                 {"actor": b.party("Organization", d.get("where"))} if _text(d.get("where")) else None) if x],
                       "reasonCode": [cc(x) for x in re.split(r";\s*", str(d.get("reason") or "")) if _text(x)],

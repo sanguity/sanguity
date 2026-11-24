@@ -49,7 +49,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
 from . import common
-from .common import canonical_lab, range_edge, range_text, report_flag, unit_key
+from .common import canonical_lab, comparator, range_edge, range_text, report_flag, unit_key
 
 NAME = "fhir"
 LABEL = "FHIR records (Apple Health, Blue Button, patient portals)"
@@ -285,14 +285,13 @@ def codes(cc, system=None):
 
 
 def num(x):
+    """A FHIR number: a JSON number as it is; one written as text (a string where a decimal belongs, a SampledData's
+    data) by common.number_text, the one reader of a number (#870); None for anything else."""
     if isinstance(x, bool):
         return None
     if isinstance(x, (int, float)):
         return x
-    try:
-        return int(x) if re.fullmatch(r"\s*-?\d+\s*", str(x)) else float(x)
-    except (TypeError, ValueError):
-        return None
+    return common.number_text(x) if isinstance(x, str) else None
 
 
 class Decimal(float):
@@ -307,7 +306,7 @@ class Decimal(float):
 
 
 def fmt(v):
-    if isinstance(v, Decimal) and re.fullmatch(r"-?\d+(\.\d+)?", v.text):
+    if isinstance(v, Decimal) and "e" not in v.text.lower():   # as the JSON wrote it ("2.0"), but for an exponent
         return v.text
     return f"{v:g}" if isinstance(v, float) else str(v)
 
@@ -409,14 +408,15 @@ def _category(r):
     return out
 
 
-def _flag(interp, v, lo, hi, edge=""):
+def _flag(interp, v, lo, hi, edge="", cmp=""):
     """The result's flag from the lab's interpretation (each concept's codes and words) by the one rule
     (common.report_flag, #817): H or L where it says which way; "A" or "AA" (abnormal, no way) by the range, else kept
     "A" (inside its range, none given, a text result), as Sanguity's FHIR export writes it; none, against the range
-    (edge: its limit leaving its edge out, #780). A value with a comparator is kept as text, so it has no number here."""
+    (edge: its limit leaving its edge out, #780; cmp: a value given as a bound, its comparator, "<15" against a low of
+    15 low, #870)."""
     said = [w for c in (interp if isinstance(interp, list) else [interp] if interp else []) for w in (*codes(c), text_of(c))]
     x = v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
-    return report_flag(said, x, lo, hi, "", edge)
+    return report_flag(said, x, lo, hi, cmp, edge)
 
 
 def _range(o):
@@ -435,13 +435,15 @@ def _range(o):
 
 
 def _value(o):
-    """(numeric value or None, value as reported, unit)."""
+    """(numeric value or None, value as reported, unit). A Quantity with a comparator ("<", "<=", ">=", ">") is a value
+    given as a bound, its number kept with it as every other importer keeps one ("<0.5", #870: it was text alone, so a
+    bound read back from Sanguity's FHIR export had no number, range or flag); one it doesn't know ("ad") stays text."""
     q = o.get("valueQuantity")
     if isinstance(q, dict) and q.get("value") is not None:
         v = num(q["value"])
         unit = q.get("unit") or q.get("code") or ""
         rep = (q.get("comparator") or "") + fmt(q["value"])
-        return (None if q.get("comparator") else v), rep, unit
+        return (None if q.get("comparator") and not comparator(rep) else v), rep, unit
     for k in ("valueString", "valueInteger", "valueBoolean", "valueDateTime", "valueTime"):
         if k in o:
             v = o[k]
@@ -734,7 +736,7 @@ def parse(files):
         """Add one Observation (or component) to its lab series and return the detail row for it."""
         v, rep, unit = _value(value_src)
         lo, hi, rtxt, edge = _range(value_src if value_src.get("referenceRange") else o)
-        flag = _flag(value_src.get("interpretation") or o.get("interpretation"), v, lo, hi, edge)
+        flag = _flag(value_src.get("interpretation") or o.get("interpretation"), v, lo, hi, edge, comparator(rep))
         loinc = (codes(code_cc, LOINC) or [None])[0]
         base = key = canonical_lab(name, loinc) or name   # the series: lab-aliases.json's name when it knows the test
         s = labs.get(key)

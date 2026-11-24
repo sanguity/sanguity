@@ -28,8 +28,8 @@ import os
 import re
 from datetime import datetime
 
-from .common import (canonical_lab, lab_day_sub, lab_day_title, loinc_of, number_text, range_edge, range_part, range_text,
-                     report_flag)
+from .common import (BOUNDS, NUMBER, canonical_lab, comparator, lab_day_sub, lab_day_title, loinc_of, number_text, range_edge,
+                     range_part, range_text, report_flag)
 
 NAME = "csv"
 LABEL = "Lab results spreadsheet (CSV)"
@@ -187,13 +187,11 @@ def detect(files):
 
 
 # ------------------------------------------------------------------ numbers, values and ranges
-# a value's number ("1,234.5", "1.234,5", "4,5", "4.5") is read by common.number_text, with the file's decimal_comma
-# ("1,200" in a comma-delimited file is a thousands separator, "4,5" or "1,25" a decimal comma); a range by
-# common.range_text, the one parser of a range as text, with it too (#850)
-_NUM = r"[-+]?(?:\d[\d.,'  ]*\d|\d)(?:[eE][-+]?\d+)?|[-+]?[.,]\d+"
-
-_CMP = {"<": "<", "<=": "<=", "=<": "<=", "≤": "<=", ">": ">", ">=": ">=", "=>": ">=", "≥": ">="}
-_VALUE_RE = re.compile(r"\s*(<=|>=|=<|=>|<|>|≤|≥)?\s*(" + _NUM + r")\s*(.*?)\s*$")
+# a value's number ("1,234.5", "1.234,5", "4,5", "4.5", "1.2E-3": common.NUMBER, its bound common.BOUNDS) is read by
+# common.number_text, the one reader of a number (#870), with the file's decimal_comma ("1,200" in a comma-delimited
+# file is a thousands separator, "4,5" or "1,25" a decimal comma); a range by common.range_text, the one parser of a
+# range as text, with it too (#850)
+_VALUE_RE = re.compile(rf"\s*({BOUNDS})?\s*({NUMBER})\s*(.*?)\s*$")
 _UNIT_RE = re.compile(r"(?=.*[A-Za-z%µμ])[A-Za-zµμ%/^*0-9.\s]+")
 _TRAILING_FLAG = re.compile(r"^(?:(.*?)\s+)?(HH|LL|H|L|(?i:high|low))\s*\*?$")   # a flag after the value or unit
 
@@ -208,7 +206,7 @@ def _value(s, decimal_comma):
     x = number_text(m.group(2), decimal_comma)
     if x is None:
         return None, "", "", not m.group(3) or bool(_UNIT_RE.fullmatch(m.group(3)))
-    return x, _CMP.get(m.group(1) or "", ""), m.group(3), False
+    return x, comparator(m.group(1)), m.group(3), False
 
 
 def _fmt(x):

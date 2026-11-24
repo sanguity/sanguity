@@ -24,7 +24,8 @@ export. Series: "loinc:<code>" or "carespace:name|<name lower-cased>", with "|<u
 import collections, hashlib, json, posixpath, re
 import xml.etree.ElementTree as ET
 
-from .common import canonical_lab, comparator, iso, lab_day_sub, lab_day_title, loinc_of, num, range_edge, range_text, report_flag, unit_key, ymd
+from .common import (NUMBER, canonical_lab, comparator, iso, lab_day_sub, lab_day_title, loinc_of, number_text, range_edge, range_text,
+                     report_flag, unit_key, value_number, ymd)
 
 NAME = "carespace"
 LABEL = "CareSpace / OncoEMR portal export"
@@ -216,7 +217,7 @@ def parse(files, org=None, tag=None):
         if lo is None and hi is None:   # a range only displayed ("<5"): the one parser of a range as text (#836: dropped)
             lo, hi, _ = range_text(r.get("referenceRangeDisplay"))
         edge = range_edge(r.get("referenceRangeDisplay"), lo, hi)   # its limits as displayed: "<5" leaves 5 out (#780)
-        x = num(v.get("value"))
+        x = value_number(v.get("value"))   # "4.1", "<0.5", "4,5": the one reader of a number (#870)
         # by the one rule (common.report_flag, #817): H or L as coded; "A" or "AA" by the range, else kept "A"; uncoded,
         # against the range ("<0.5" against a low of 0.5 is low, #752)
         flag = report_flag(r.get("interpretationCode"), x, lo, hi, comparator(v.get("value")), edge)
@@ -266,11 +267,11 @@ def parse(files, org=None, tag=None):
             f = WEIGHT_UNITS.get((val.get("unit") or "").strip().lower())
             low = et.find("h:low", NS)
             t = _cda_time(et.get("value") or (low.get("value") if low is not None else None))
-            try:
-                lb = float(val.get("value")) * f
-            except (TypeError, ValueError):
+            x = number_text(val.get("value"))
+            if x is None or f is None:
                 continue
-            if t and f and 1 < lb < 600:   # from 1 lb: a baby's weight too (#196)
+            lb = x * f
+            if t and 1 < lb < 600:   # from 1 lb: a baby's weight too (#196)
                 clinic_w.setdefault(t[:16], [t, round(lb, 1), org])
 
         procs_by_day = collections.defaultdict(list)
@@ -324,11 +325,11 @@ def parse(files, org=None, tag=None):
             problems.append(p)
         for r in _table(ccd, "VITAL SIGNS"):
             obs, d = r.get("Observation", ""), ymd(r.get("Date Recorded"))
-            m = re.match(r"\s*(-?\d+(?:\.\d+)?)\s*([a-zA-Z%/]*)", r.get("Value", ""))
+            m = re.match(rf"\s*({NUMBER})\s*([a-zA-Z%/]*)", r.get("Value", ""))   # "72 bpm", "98,6 F": by number_text (#870)
             hit = next((v for v in VITALS if obs.lower().startswith(v[0].lower())), None)
-            if not (d and m and hit):
+            x, u = (number_text(m.group(1)), m.group(2).lower()) if m else (None, "")
+            if not (d and x is not None and hit):
                 continue
-            x, u = float(m.group(1)), m.group(2).lower()
             if hit[1] == "Weight" and u == "kg":
                 x = round(x * 2.20462, 1)
             if hit[1] == "Weight":   # charted with the scale's weights, not as a series

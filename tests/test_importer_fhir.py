@@ -197,8 +197,23 @@ class Ndjson(Shape, unittest.TestCase):
         self.assertEqual([p[4] for p in g["pts"]], ["H", ""])
         self.assertEqual(len(by_kind(self.data, "lab")), 2)
 
-    def test_comparator_value_is_text(self):
-        self.assertEqual(series(self.data, "eGFR")["txt"], [["2025-04-09T07:20:00-05:00", ">60"]])
+    def test_comparator_value_is_a_bound(self):
+        """A Quantity with a comparator is a value given as a bound, its number kept with it as every other importer
+        keeps one (#870: it was text alone, so a bound read back from Sanguity's FHIR export had no number, range or
+        flag); one FHIR's comparators don't read as a bound ("ad") stays text."""
+        egfr = series(self.data, "eGFR")
+        self.assertEqual(([p[:2] + p[4:6] for p in egfr["pts"]], egfr["txt"]), ([["2025-04-09T07:20:00-05:00", 60, "", ">60"]], []))
+        o = {"resourceType": "Observation", "id": "b1", "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
+             "code": {"text": "eGFR"}, "effectiveDateTime": "2025-04-09T07:20:00-05:00", "referenceRange": [{"low": {"value": 90}}]}
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        with open(os.path.join(tmp, "b.json"), "w", encoding="utf-8") as f:
+            json.dump({"resourceType": "Bundle", "type": "collection", "entry": [
+                {"resource": {**o, "id": f"b{i}", "effectiveDateTime": f"2025-04-1{i}T07:20:00-05:00", "valueQuantity": {"value": 60, "comparator": c}}}
+                for i, c in enumerate(("<", "<=", ">", "ad"))]}, f)
+        got = series(fhir.parse({"b.json": os.path.join(tmp, "b.json")})["data"], "eGFR")
+        self.assertEqual(([[p[1], p[4], p[5]] for p in got["pts"]], [t[1] for t in got["txt"]]),
+                         ([[60, "L", "<60"], [60, "L", "<=60"], [60, "", ">60"]], ["ad60"]))   # (each against a low of 90)
 
     def test_other_resource_files(self):
         self.assertEqual(self.data["problems"][0]["name"], "Prediabetes")
