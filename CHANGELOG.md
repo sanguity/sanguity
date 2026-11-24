@@ -2085,6 +2085,10 @@ Everything on `main` so far; it becomes the first tagged release.
   "…" (#862). Each readout is now laid out for the longest it can say (its lab's latest or any of its times, in any
   period), so it's the same size whatever it says, and on a phone it wraps to its words, uncut. Where the header's
   line has no room for the longest, what doesn't fit is on the next line from the start, at its end.
+- **Labs' list names a lab's latest flag by its word** (#866): each lab's checkbox is named with its latest result,
+  and that result's mark was in the name as a symbol, so a screen reader said "black diamond 20 U/L" for ALT's ◆, and
+  read ▲ and ▼ as symbols too. The name now says "20 U/L, Flagged" ("High", "Low"), the mark hidden from it and shown
+  as before.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

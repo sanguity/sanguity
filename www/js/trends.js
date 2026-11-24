@@ -55,7 +55,7 @@ function renderSeriesList() {
       wrap.append(box);
     } else wrap.append(el("h3", {class: "grp lab-panel", text: panel}));   // the panels as headings, under the list's h2 (#441)
     for (const s of labs) {
-      const L = latest(s), tq = testLink(s.name, true);   // #163
+      const L = latest(s), tq = testLink(s.name, true), fl = FLAG_OF(L?.[4]), lv = L ? `${L[5] || fmtNum(L[1])} ${s.unit}` : "";   // #163
       const base = "s_" + s.name.replace(/\W/g, "_");   // a lab's second unit: s_Hemoglobin_2 (#438)
       let id = base;
       for (let k = 2; ids.has(id); k++) id = base + "_" + k;
@@ -68,7 +68,10 @@ function renderSeriesList() {
             for (const c of wrap.querySelectorAll("input[data-lab]")) if (c.dataset.lab === s.name) c.checked = ev.target.checked;   // its other unit's row too (#438)
             renderCharts(); save(); $("#seriesSel b").textContent =`${state.sel.size} selected`; otherSays(); tvRefresh(); }}),
         el("span", {class: "nm", "data-tip": nmTip, text: nice(s.name)}), tq,
-        el("span", {class: "lv" + (L && L[4] ? " abn" : ""), "data-tip": lvTip, text: L ? `${FLAG_OF(L[4]) ? FLAG_OF(L[4]).mark + " " : ""}${L[5] || fmtNum(L[1])} ${s.unit}` : ""}),   // its mark as its chart's (ranges.js, #845: a ◆ was ▼)
+        // its mark as its chart's (ranges.js, #845: a ◆ was ▼); in the box's name its word: "20 U/L, Flagged", not
+        // "black diamond 20 U/L" (#866)
+        el("span", {class: "lv" + (fl ? " abn" : ""), "data-tip": lvTip, "aria-hidden": fl ? "true" : null, text: fl ? `${fl.mark} ${lv}` : lv}),
+        fl ? el("span", {class: "vh", text: `${lv}, ${fl.word}`}) : null,
         el("span", {id: id + "_about", hidden: "", text: [nmTip, lvTip].filter(Boolean).join(". ")})));
     }
   }
