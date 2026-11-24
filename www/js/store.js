@@ -139,17 +139,23 @@ function storeSpan() {
   const own = new Set(["journal", "mood", "cycle"]), today = dayTs(zToday()) + DAY - 1;
   for (const e of EV) if (isFinite(e.ts)) { const t = own.has(e.k) ? Math.min(e.ts, today) : e.ts; if (t < min) min = t; if (t > max) max = t; const l = own.has(e.k) ? Math.min(e.ts, today + 366 * DAY) : e.ts; if (l > last) last = l; }
   state.min = min; state.max = max; state.last = last;
-  for (const s of SERIES) if (s.watch && s.pts.length) state.max = Math.max(state.max, s.pts[s.pts.length - 1].ts);
+  // the watch's last day, a reading left out among them (#783: All ended at the last kept, the scale's later ones on
+  // no period); with no records at all (a phone's readings, or weights typed in, alone), its first day too
+  for (const s of SERIES) if (s.watch) for (const p of [s.pts[0], s.pts.at(-1), ...(s.out || [])]) if (p) {
+    state.max = Math.max(state.max, p.ts); if (min === Infinity) state.min = Math.min(state.min, p.ts);
+  }
 }
 /* the scale's weights left out (#754): one more than 12% from the median of the other weights, the scale's and the
    visits', less than 90 days either side, where there are 3 or more (a profile's weight typed into another app,
-   someone else on the scale), and one not above 0. The server leaves out the same in the visit summary and share
-   links (measures.py scale_left_out, step for step). scale: [[day, weight]], clinic: [[time, weight]] in the same
-   unit -> the scale's days left out. It's worked out for every page, so in one pass through the weights in time
-   order, those within 90 days kept in order of weight as it goes, not sorted again for each (ten years of a daily
-   scale: a few milliseconds, #201) */
-const W_OUT = {days: 90, share: .12, why: "more than 12% from the median of the weights within 90 days of it"};
-function weightsOut(scale, clinic) {
+   someone else on the scale), and one not above 0. Never a weight typed in on Sources (typed: a Set of their days),
+   nor one taken before 18 (born: About this person's birth date; growth charts judge a child's weights, not a
+   median): #783. Both are among the others. The server leaves out the same in the visit summary and share links
+   (measures.py scale_left_out, step for step). scale: [[day, weight]], clinic: [[time, weight]] in the same unit ->
+   the scale's days left out. It's worked out for every page, so in one pass through the weights in time order,
+   those within 90 days kept in order of weight as it goes, not sorted again for each (ten years of a daily scale: a
+   few milliseconds, #201) */
+const W_OUT = {days: 90, share: .12, adult: 18, why: "more than 12% from the median of the weights within 90 days of it"};
+function weightsOut(scale, clinic, typed = new Set(), born = "") {
   const day = d => Date.parse(String(d).slice(0, 10) + "T00:00:00Z") / DAY, out = new Set();   // whole days, as the server's
   const ok = v => typeof v === "number" && v > 0;
   const ref = [...scale, ...clinic].map(([d, v]) => [day(d), v]).filter(r => isFinite(r[0]) && ok(r[1])).sort((x, y) => x[0] - y[0]);
@@ -157,6 +163,8 @@ function weightsOut(scale, clinic) {
   let i = 0, j = 0;   // ref[i] to ref[j - 1]: the weights within 90 days of this one, their values in win, in order
   for (const [d, v] of scale.map(p => [p[0], p[1], day(p[0])]).sort((p, q) => p[2] - q[2])) {
     if (!ok(v)) { out.add(d); continue; }
+    const age = born ? ageOn(born, d) : null;
+    if (typed.has(d) || age != null && age < W_OUT.adult) continue;
     const t = day(d);
     for (; j < ref.length && ref[j][0] < t + W_OUT.days; j++) win.splice(at(ref[j][1]), 0, ref[j][1]);
     for (; i < j && ref[i][0] <= t - W_OUT.days; i++) win.splice(at(ref[i][1]), 1);
@@ -187,9 +195,10 @@ function storeWatch() {
   const cw = DATA.clinicWeights || [];
   if (M.weight || cw.length) {
     const s = add(M.weight || {key: "weight", name: "Weight", unit: "lb", group: "Body", pts: [], conv: DATA.unitConv?.lb}, {name: "Body weight", key: "weight"});
-    // the scale's weights left out here, where the series is made, so every page has the same ones (#754): the
-    // visits' weights fill their days, as any other day without one; s.out, those left out (as sent, not converted)
-    const out = weightsOut(s.pts.map(p => [p.day, p[1]]), cw);
+    // the scale's weights left out here, where the series is made, so every page has the same ones (#754), never one
+    // typed in or a child's (#783): the visits' weights fill their days, as any other day without one; s.out, those
+    // left out (as sent, not converted)
+    const out = weightsOut(s.pts.map(p => [p.day, p[1]]), cw, new Set(M.weight?.typed || []), personOf().birthDate);
     s.out = s.pts.filter(p => out.has(p.day)); s.pts = s.pts.filter(p => !out.has(p.day));
     const have = new Set(s.pts.map(p => p.day));
     for (const [t, v, org] of cw) {

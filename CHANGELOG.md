@@ -1855,6 +1855,17 @@ Everything on `main` so far; it becomes the first tagged release.
   the same rule to what the summary and share links send, so every place has the same weights. Body's weight card says
   how many were left out in the period, which and why, and the summary's and a link's BMI and target sections how many
   and why.
+- **A weight typed in, or a child's, is never left out; a period reaches every weight's day** (#783): #754's rule left
+  out any weight more than 12% from the median of those around it, so a baby's 20 weekly weights typed in at home were
+  14 left out: the visit summary listed 6 and called the rest "from the smart scale", the Overview said 13.0 lb on Sep
+  30 for his latest 15.7 lb on Nov 11, and his last six were on no period, All among them. A parent's or person's own
+  typed weights were judged the same way. Now the rule is only for a scale's readings: never a weight typed in on
+  Sources, nor one taken before 18 (by About this person's birth date; growth charts are how a child's are read), though
+  both count among the others. Weights typed in are said as typed in on Body's card, its table and readouts, the growth
+  charts, and the summary's and share links' rows. Body's All and the period ending at the latest record reach every
+  reading's day, those left out among them, so Body and the summary say the same count, and the Overview's Weight tile
+  says how many of the year's were left out. A profile with weights typed in and no records has a period again (its All
+  stopped the page). Weights typed in before this are marked once at start-up.
 - **Settings' Start from a condition shown on a phone**: the records bar's rule hiding its period buttons on a phone (#277)
   hid Settings' condition presets too, which share their id; it's now for the bar's alone.
 - **Larger text: every grid of tiles keeps its words inside, at every width** (#753): #722's floor held only on a

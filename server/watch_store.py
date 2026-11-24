@@ -24,12 +24,14 @@ Where it is kept, in the profile's own folder (so encryption at rest, deletion a
                                          on: never in a summary here (cycle_tracking.py has them)
 The merged file is rebuilt (rebuild) from the imports' own files, legacy first and then by import id, a later import
 winning per day and workout as it did when it came in; only files whose import still exists count. All are sealed
-with the app's key (crypto.write_file).
+with the app's key (crypto.write_file). A daily measure's days typed in on Sources (weight or steps at home, an import
+of origin "manual") are listed as its "typed" (#783): rebuild marks them, and a merge keeps the mark with the day's
+value, so a weight typed in is never judged as a scale's (measures.scale_left_out) and is said as typed in.
 """
 import json, os, secrets
 from datetime import datetime, timezone
 
-from . import crypto, ecg, profiles as prof
+from . import crypto, db as dbm, ecg, profiles as prof
 
 SIDE = "apple-health.json"
 LEGACY = "legacy.json"   # imported before imports were kept apart, or with no import id: not undoable
@@ -37,6 +39,8 @@ UNDOING = ".undoing-"     # a summary set aside by an undo that has not committe
 # lists of readings one by one, [time, value(s)..., source, app] (the phone's, watch/receiver.py #180 #184; typed in
 # at home, app "Typed in", manual_items.py #224): list -> where its app is in a row
 READINGS = {"bp_readings": 5, "temp_readings": 3, "glucose_readings": 3, "spo2_readings": 3}
+TYPED_ORIGIN = "manual"   # imports.origin of records typed in on Sources (routes_manual.NAME)
+TYPED_MARKED = "watch.typed"   # the meta key once every merged file marks the days typed in (#783; migrate)
 
 
 def own_path(pid):
@@ -81,24 +85,30 @@ def _by_start(x):
 
 
 def merge(low, high):
-    """`high` laid over `low`: its points win per (metric key, day), its workouts per key and then per start time.
-    Either may be None. Top-level fields (updated, tz, last_payload...) come from `high` where it has them, but for the
-    lists of readings (READINGS), which keep both, `high`'s winning per minute, source and app (#224: a reading typed
-    in again for its minute replaces the one before)."""
+    """`high` laid over `low`: its points win per (metric key, day), with their mark of a day typed in (a metric's
+    "typed", #783), its workouts per key and then per start time. Either may be None. Top-level fields (updated, tz,
+    last_payload...) come from `high` where it has them, but for the lists of readings (READINGS), which keep both,
+    `high`'s winning per minute, source and app (#224: a reading typed in again for its minute replaces the one
+    before)."""
     if not low or not high:
         return dict(high or low) if (high or low) else None
     out = {**low, **high}
-    metrics, order = {}, []
+    metrics, order, typed = {}, [], {}
     for src in (low, high):
         for m in src.get("metrics") or []:
             k = m.get("key")
             if k not in metrics:
                 order.append(k)
-                metrics[k] = {**m, "pts": {}}
+                metrics[k], typed[k] = {**{f: x for f, x in m.items() if f != "typed"}, "pts": {}}, set()
             else:
                 metrics[k].update({f: m[f] for f in ("name", "unit", "group") if f in m})   # high names win
             metrics[k]["pts"].update((d, v) for d, v in m.get("pts") or [])
-    out["metrics"] = [{**metrics[k], "pts": [[d, v] for d, v in sorted(metrics[k]["pts"].items())]} for k in order]
+            mine = set(m.get("typed") or ())   # a day typed in keeps its mark with its value; one laid over it, not (#783)
+            if mine or typed[k]:
+                for d, _ in m.get("pts") or []:
+                    (typed[k].add if d in mine else typed[k].discard)(d)
+    out["metrics"] = [{**metrics[k], "pts": [[d, v] for d, v in sorted(metrics[k]["pts"].items())],
+                       **({"typed": sorted(typed[k])} if typed[k] else {})} for k in order]
     hi = list(high.get("exercise") or [])
     keys = {x["key"] for x in hi if x.get("key")}
     starts = {_instant(x.get("start")) for x in hi}
@@ -174,14 +184,31 @@ def layers(db, pid):
     return sorted(i for i in ids if i in live)
 
 
+def typed_imports(db, pid):
+    """The ids of the profile's imports typed in on Sources (routes_manual)."""
+    return {r[0] for r in db.execute("SELECT id FROM imports WHERE profile_id=? AND origin=?", (pid, TYPED_ORIGIN))}
+
+
+def mark_typed(summary):
+    """An import's summary typed in on Sources, each daily measure's days marked as typed in (its "typed", #783): a
+    weight typed in is never judged as a scale's (measures.scale_left_out, store.js weightsOut), and is said as typed
+    in."""
+    if not summary:
+        return summary
+    mark = lambda m: {**m, "typed": sorted({d for d, _ in m.get("pts") or []})} if isinstance(m, dict) else m
+    return {**summary, "metrics": [mark(m) for m in summary.get("metrics") or []]}
+
+
 def rebuild(db, pid, prune=True):
-    """Write the merged imports file again from the imports' own summaries; when nothing is left, remove it (and point
-    watch_file back at none, if it was pointed at it). Returns the merged summary, or None. prune: also remove the ECG
-    samples no import lists any more (#182; an undo does that only once it has committed)."""
+    """Write the merged imports file again from the imports' own summaries, the days of those typed in on Sources
+    marked so (mark_typed); when nothing is left, remove it (and point watch_file back at none, if it was pointed at
+    it). Returns the merged summary, or None. prune: also remove the ECG samples no import lists any more (#182; an
+    undo does that only once it has committed)."""
     target, current = _target(db, pid)
-    merged = _read(layer_path(pid))
+    merged, mine = _read(layer_path(pid)), typed_imports(db, pid)
     for iid in layers(db, pid):
-        merged = merge(merged, _read(layer_path(pid, iid)))
+        layer = _read(layer_path(pid, iid))
+        merged = merge(merged, mark_typed(layer) if iid in mine else layer)
     own = own_path(pid)
     if prune:
         _prune_waves(pid, merged)
@@ -382,8 +409,9 @@ def _migrate_profile(db, pid):
 def migrate(db):
     """At start-up: move each profile's imported watch file from before #24 into its legacy layer, and drop the
     summaries of imports that no longer exist (one whose saving failed after its file was written, an undo stopped
-    before it tidied up), rebuilding those profiles' merged files. Returns how many profiles were migrated."""
-    n = 0
+    before it tidied up), rebuilding those profiles' merged files; and once, those with imports typed in, whose days
+    merged before #783 weren't marked as typed in. Returns how many profiles were migrated."""
+    n, mark = 0, not dbm.meta_get(db, TYPED_MARKED)
     for r in db.execute("SELECT id FROM profiles ORDER BY id").fetchall():
         pid = r["id"]
         n += _migrate_profile(db, pid)
@@ -396,8 +424,10 @@ def migrate(db):
             if name.startswith(UNDOING) or (name.endswith(".json") and name[:-5].isdigit() and int(name[:-5]) not in live):
                 _remove(os.path.join(d, name))
                 stale = True
-        if stale:
+        if stale or (mark and live & typed_imports(db, pid)):
             rebuild(db, pid)
+    if mark:
+        dbm.meta_set(db, TYPED_MARKED, "1")
     return n
 
 

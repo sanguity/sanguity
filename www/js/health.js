@@ -33,9 +33,11 @@ function openHealth(a, b) { closeDrawer(); state.from = a; state.to = b; state.p
 function hData() {
   const M = Object.fromEntries(((WATCH || {}).metrics || []).map(m => [m.key, m]));
   const ser = k => (M[k] ? M[k].pts : []).map(([d, v]) => [dayTs(d), v]);
-  // less the scale's weights the series leaves out (store.js weightsOut, #754), as the Overview's and the server's
-  const gone = new Set((SERIES.find(s => s.key === "weight")?.out || []).map(p => p.day));
+  // less the scale's weights the series leaves out (store.js weightsOut, #754), as the Overview's and the server's;
+  // those typed in on Sources marked (p.typed), said as typed in, never as the scale's (#783)
+  const gone = new Set((SERIES.find(s => s.key === "weight")?.out || []).map(p => p.day)), typed = new Set(M.weight?.typed || []);
   const scale = ser("weight").filter(p => !gone.has(isoDay(p[0]))), scaleDays = new Set(scale.map(p => isoDay(p[0])));
+  for (const p of scale) if (typed.has(isoDay(p[0]))) p.typed = true;
   const clinic = (DATA.clinicWeights || []).map(([t, v, org]) => [dayTs(t.slice(0, 10)), v, org]).filter(p => !scaleDays.has(isoDay(p[0])));
   const byDay = k => M[k] ? Object.fromEntries(M[k].pts) : {};   // once per metric, not once per night (#201)
   const parts = ["sleep_deep_min", "sleep_rem_min", "sleep_light_min"].map(byDay);
@@ -63,11 +65,12 @@ function hData() {
   const out = {scale, clinic, bmi, sleep, hr, ex, wOut: ser("weight").filter(p => gone.has(isoDay(p[0]))), rest: ser("hr_rest"), steps: ser("steps"), fat: ser("body_fat"), lean: ser("lean_mass"), bmr: ser("bmr"),
     hrv: ser("hrv"), vit: hVitals(), fit: hFitness()};
   // All's span (hSpan): from the first reading a card draws to the last, the visits' among them (#721: a weight or the
-  // vitals taken at a visit before the phone's first day were on 2 years and not on All), the CGM's and meter's
+  // vitals taken at a visit before the phone's first day were on 2 years and not on All), the CGM's and meter's, and
+  // the scale's left out, which the weight card names (#783: those after the last kept were on no period)
   if (G === undefined) G = gData();
   let first = Infinity, last = -Infinity;
   const span = t => { if (t < first) first = t; if (t > last) last = t; };
-  for (const k of ["scale", "clinic", "sleep", "hr", "rest", "steps", "fat", "lean", "hrv"]) for (const p of out[k]) span(p[0]);
+  for (const k of ["scale", "clinic", "wOut", "sleep", "hr", "rest", "steps", "fat", "lean", "hrv"]) for (const p of out[k]) span(p[0]);
   const {bp, temp, spo2} = out.vit, {resp, vo2} = out.fit;
   for (const r of [ex, bp.home, bp.clinic, temp.home, temp.clinic, spo2.home, spo2.typed, spo2.clinic, resp.home, resp.clinic, vo2.home].flat()) span(r.t);
   if (G && G.first <= G.last) { span(G.first); span(G.last); }
@@ -342,8 +345,9 @@ function renderHealth() {
   const vx = {a, b, long, legend, head, byDay};   // for the readings' cards (#180)
   // Body: weight and body composition, with BMI; then a child's growth
   if (wAll.length || H.fat.length || H.lean.length) {
+    const tw = H.scale.some(p => p.typed), sw = H.scale.some(p => !p.typed);   // weights typed in, the scale's (#783)
     const body = el("div", {class: "card", id: "h-body"}, head("Weight & body composition", "#h-body"),
-      el("p", {class: "hint", text: "Scale readings, with weights taken at clinic visits filling the gaps. Each line is a 14-day average."}), wOutWords(a, b));
+      el("p", {class: "hint", text: `${tw ? sw ? "Scale readings and weights typed in" : "Weights typed in" : "Scale readings"}, with weights taken at clinic visits filling the gaps. Each line is a 14-day average.`}), wOutWords(a, b));
     S.body.append(body);
     const wT = tgtIn("weight", "lb"), wSide = p => wT && !p[2] ? tgtSide(p[1], ...wT, 1) : "";   // a target of the person's own (#234): the scale's weights
     tgtLine(body, "weight", "lb", wT ? inR(H.scale, a, b).map(wSide) : null);
@@ -351,9 +355,9 @@ function renderHealth() {
       const comp = H.fat.length || H.lean.length;
       const bm = H.bmi.length > 0, who = bm && hState.bmiWho && H.bmi.some(r => !r.child);   // BMI (#195)
       body.append(...hTable("#h-body", ["Date", "Weight (lb)", "From", ...(bm ? ["BMI (kg/m²)"] : []), ...(who ? ["WHO adult category"] : []), ...(comp ? ["Body fat (%)", "Lean mass (lb)"] : [])],
-        byDay(wAll, H.fat, H.lean, H.bmi.map(r => [r.t, r.v, r])).map(({t, v: [w, fat, lean, bp]}) => [fmtD(t), w && wSide(w) ? [f1(w), wSide(w), TGT_WORDS[wSide(w)]] : f1(w), w ? (w[2] ? `Clinic visit (${w[2]})` : "Smart scale") : "",
+        byDay(wAll, H.fat, H.lean, H.bmi.map(r => [r.t, r.v, r])).map(({t, v: [w, fat, lean, bp]}) => [fmtD(t), w && wSide(w) ? [f1(w), wSide(w), TGT_WORDS[wSide(w)]] : f1(w), w ? wFrom(w, true) : "",
           ...(bm ? [bp ? bmiWords(bp[2]) : ""] : []), ...(who ? [bp && !bp[2].child ? whoWords(bp[2].v) : ""] : []), ...(comp ? [f1(fat), f1(lean)] : [])])));
-    } else { body.append(legend([[C.w, "Smart scale", 1], [C.clinic, "Clinic visit", "ring"], [C.w, "14-day average", "line"]])); if (wT) body.lastChild.append(tgtKey()); }
+    } else { body.append(legend([[C.w, tw ? sw ? "Smart scale or typed in" : "Typed in" : "Smart scale", 1], [C.clinic, "Clinic visit", "ring"], [C.w, "14-day average", "line"]])); if (wT) body.lastChild.append(tgtKey()); }
     const wTrend = rolling(wAll, 14);
     if (!state.tables.has("#h-body")) hChart(body, a, b, {h: 220, label: "Weight", noun: "reading", nav: wAll, layers: [
       ...(wT ? [tgtLayer(wT)] : []),
@@ -362,7 +366,7 @@ function renderHealth() {
       {type: "dots", data: H.scale, color: C.w, opacity: .55, flag: wSide}],
       tip: t => { const p = nearest(wAll, t, len > 200 * DAY ? 10 : 4); if (!p) return null; const fat = nearest(H.fat, p[0], .6), lean = nearest(H.lean, p[0], .6);
         const bp = H.bmi.find(r => r.w === p);   // its BMI (#195)
-        return {t: p[0], rows: [el("div", {class: "v", text: `${p[1].toFixed(1)} lb`}), el("div", {class: "s", text: fmtD(p[0]) + (p[2] ? ` · clinic visit (${p[2]})` : " · smart scale")}),
+        return {t: p[0], rows: [el("div", {class: "v", text: `${p[1].toFixed(1)} lb`}), el("div", {class: "s", text: fmtD(p[0]) + " · " + wFrom(p)}),
           wSide(p) ? el("div", {class: "s", text: tgtWord(wSide(p))}) : null,
           bp ? el("div", {class: "s", text: `BMI ${bmiWords(bp)}`}) : null,
           fat ? tipRow(C.fat, `Body fat ${fat[1].toFixed(1)}%`) : null, lean ? tipRow(C.lean, `Lean mass ${lean[1].toFixed(1)} lb`) : null]}; }});
@@ -1131,6 +1135,8 @@ function wOutWords(a, b) {
   return n ? el("p", {class: "hint h-wout"}, ...keepDates(n === 1 ? `1 scale reading left out: ${w[0]}, ${W_OUT.why}.`
     : `${n} scale readings left out, each ${W_OUT.why}: ${listOf([...w, n > 3 && `${n - 3} more`])}.`)) : null;
 }
+/* where a weight came from: a clinic visit, typed in on Sources (#783), or the smart scale; up: with a capital */
+const wFrom = (p, up) => { const s = p[2] ? `clinic visit (${p[2]})` : p.typed ? "typed in" : "smart scale"; return up ? s[0].toUpperCase() + s.slice(1) : s; };
 function bmiTile(tile, a, b) {
   if (!H.bmi.length) return;
   if (H.bmi.some(r => r.child)) growthLoad();   // a child's percentile for age (#196)
@@ -1168,7 +1174,7 @@ function bmiChart(card, a, b, {long}) {
     {type: "dots", data: long && scale.length > 400 ? [] : scale, color: C.bmi, opacity: .55}],
     tip: t => { const p = nearest(pts, t, b - a > 200 * DAY ? 10 : 4); if (!p) return null; const r = p[2];
       return {t: p[0], rows: [el("div", {class: "v", text: `BMI ${bmiWords(r)}`}),
-        el("div", {class: "s", text: `${fmtD(r.t)} · ${r.w[1].toFixed(1)} lb${r.w[2] ? ` at a clinic visit (${r.w[2]})` : " on the smart scale"}`}),
+        el("div", {class: "s", text: `${fmtD(r.t)} · ${r.w[1].toFixed(1)} lb${r.w[2] ? ` at a clinic visit (${r.w[2]})` : r.w.typed ? ", typed in" : " on the smart scale"}`}),
         el("div", {class: "s", text: `Height ${bmiHeight(r.h)}, from ${fmtD(dayTs(r.h.date))}`}),
         who && !r.child ? el("div", {class: "s", text: `The WHO's category for adults: ${whoWords(r.v)}`}) : null,
         r.child ? el("div", {class: "s", text: `Aged ${r.age}: ${bmiChildPct(r) != null ? "the percentile is the CDC's, for age and sex" : "under 20, no adult categories"}`}) : null]}; }});
@@ -1177,11 +1183,12 @@ function bmiChart(card, a, b, {long}) {
 /* ---------------------------------------------------------------- children's growth (#196; growth.js) */
 /* For a profile with a birth date and a sex used for reference ranges, the measurements taken before 20 over the
    published growth charts' percentile curves for age and sex, each measurement's percentile in its readout, the table
-   and the latest list: weight (the smart scale's and the clinic visits'), height (About this person's history, and the
-   heights in the records), BMI from 2 years (#195's, each weight with the height of its day) and head circumference
-   under 2 when the records have it. The WHO's charts to 2 years, the CDC's from 2 to 20, picked as a pair; ages before
-   2 corrected for a baby born early (About this person's due date). Where measurements fall, sourced and labelled;
-   never what that means. Weights in kg and lengths in cm, or lb and inches as chosen under Settings → Units. */
+   and the latest list: weight (the smart scale's, those typed in and the clinic visits'), height (About this person's
+   history, and the heights in the records), BMI from 2 years (#195's, each weight with the height of its day) and head
+   circumference under 2 when the records have it. The WHO's charts to 2 years, the CDC's from 2 to 20, picked as a
+   pair; ages before 2 corrected for a baby born early (About this person's due date). Where measurements fall,
+   sourced and labelled; never what that means. Weights in kg and lengths in cm, or lb and inches as chosen under
+   Settings → Units. */
 const grState = {set: null};   // the chart set picked on this page: "who" or "cdc"
 let GT;   // the growth tables once fetched (null if they couldn't be)
 const LEN_CM = {cm: 1, in: 2.54, "[in_i]": 2.54, inch: 2.54, inches: 2.54, m: 100};
@@ -1213,7 +1220,7 @@ function growthData() {
     seen.add(key + day + x.toFixed(1));
     out.push({t, day, key, x, src, age, set, p: GT ? growthPct(GT, key, P.sex, age.days, x) : null});
   };
-  for (const p of [...H.scale, ...H.clinic]) add(p[0], "weight", p[1] * LB_KG, p[2] ? `clinic visit (${p[2]})` : "smart scale");
+  for (const p of [...H.scale, ...H.clinic]) add(p[0], "weight", p[1] * LB_KG, wFrom(p));
   for (const h of P.heights) add(dayTs(h.date), "height", h.cm, "About this person");
   for (const [test, key] of [[isHeightSeries, "height"], [isHeadSeries, "head"]]) for (const s of SERIES.filter(test)) {
     const f = LEN_CM[String(s.unit || "").trim().toLowerCase()];
@@ -1273,7 +1280,7 @@ function growthCard(box, head) {
   const latest = keys.map(k => D.meas.filter(m => m.set === set && m.key === k).at(-1)).filter(Boolean);
   card.append(el("h4", {class: "sub", text: "Latest on these charts"}), el("ul", {class: "vital-list"}, ...latest.map(m => el("li", {},
     el("b", {text: `${gName(m.key, m.set)} ${gVal(m)}`}), m.p == null ? "" : ` · ${pctText(m.p)} percentile`,
-    el("span", {class: "muted", text: ` · ${fmtD(m.t)} · aged ${gAgeText(m.age)} · from ${m.src}`})))), note);
+    el("span", {class: "muted", text: ` · ${fmtD(m.t)} · aged ${gAgeText(m.age)} · ${m.src === "typed in" ? m.src : "from " + m.src}`})))), note);
 }
 /* one chart: x the age in days, the publisher's percentile curves, and the measurements */
 function growthChart(host, sex, set, key, pts) {

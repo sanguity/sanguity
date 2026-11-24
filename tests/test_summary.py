@@ -808,6 +808,46 @@ class Summary(unittest.TestCase):
         b = measures.blocks(c(), ["bmi", "targets"], lambda x: x < d(-40))
         self.assertEqual((b["bmi"]["lead"][1:], next(r for r in b["targets"]["rows"] if r[0] == "Weight")[4]), ([], "None of 20 outside it"), "none in the period: nothing said")
 
+    def test_typed_and_child_weights_kept(self):
+        """#783: the rule only for a scale's weights, never one typed in on Sources (the weight series' "typed" days,
+        watch_store.mark_typed) nor one taken before 18 (About this person's birth date: growth charts judge a child's
+        weights, not a median), though both are among the others; those typed in are said as typed in, never as the
+        smart scale's. A baby's 20 weekly weights typed in were 14 left out, and said as the scale's."""
+        out = lambda scale, typed=(), born="": measures.scale_left_out(list(scale), [], set(typed), born)
+        four = [("2026-03-01", 180), ("2026-03-02", 181), ("2026-03-03", 182), ("2026-03-04", 140)]
+        self.assertEqual(out(four), {"2026-03-04"}, "a scale's")
+        self.assertEqual(out(four, ["2026-03-04"]), set(), "typed in: kept")
+        self.assertEqual(out([("2026-03-01", 180), ("2026-03-02", 140), ("2026-03-03", 140), ("2026-03-04", 140)], ["2026-03-02", "2026-03-03", "2026-03-04"]),
+                         {"2026-03-01"}, "those typed in are among the others")
+        self.assertEqual(out(four, born="2008-03-05"), set(), "17 that day: a child's, kept")
+        self.assertEqual(out(four, born="2008-03-04"), {"2026-03-04"}, "18 that day")
+        self.assertEqual(out([("2026-03-01", 18), ("2026-03-02", 0)], born="2026-01-01"), {"2026-03-02"}, "0 is no weight, a child's or not")
+        # a baby boy's 20 weekly weights, growing steadily (about the 26th percentile): typed in, or a scale's
+        days = [(datetime.date(2026, 7, 1) + datetime.timedelta(days=7 * i)).isoformat() for i in range(20)]
+        pts = [[x, round((3.3 + i * 0.2) / 0.45359237, 1)] for i, x in enumerate(days)]
+        baby = lambda typed, born: measures.Ctx({"metrics": [{"key": "weight", "unit": "lb", "pts": pts, **({"typed": days} if typed else {})}]}, {},
+                                                {"person": {"birthDate": born, "sex": "male", "heights": [{"date": "2026-07-01", "cm": 50.0, "unit": "cm"}]}})
+        b = measures.blocks(baby(True, "2026-07-01"), ["bmi"], lambda x: True)["bmi"]
+        self.assertEqual(([r[0] for r in b["rows"] if r[1] == "Weight"], b["lead"]), (days[::-1], []), "every one, none said left out")
+        self.assertEqual({r[4] for r in b["rows"] if r[1] == "Weight"}, {"typed in; WHO chart"})
+        b = measures.blocks(baby(False, "2026-07-01"), ["bmi"], lambda x: True)["bmi"]
+        self.assertEqual(({r[4] for r in b["rows"] if r[1] == "Weight"}, b["total"], b["lead"]), ({"smart scale; WHO chart"}, 21, []), "a baby scale's: a child's, kept")
+        b = measures.blocks(baby(False, ""), ["bmi"], lambda x: True)["bmi"]
+        self.assertEqual(b["lead"][1:], ["14 weights from the smart scale left out: each more than 12% from the median of the weights within 90 days of it."],
+                         "with no birth date, a scale's are judged as an adult's")
+        # an adult's scale, with two weights typed in among its own on days it has none, far from them: kept, said as
+        # typed in, a weight target counting them; the scale's own high one left out
+        pts = sorted([[d(i), {-30: 212.0}.get(i, 176.5 + i % 3 / 10)] for i in range(-60, 0) if i not in (-45, -10)] + [[d(-45), 150.0], [d(-10), 205.0]])
+        c = measures.Ctx({"metrics": [{"key": "weight", "unit": "lb", "pts": pts, "typed": [d(-45), d(-10)]}]}, {},
+                         {"person": {"birthDate": "1980-05-05", "heights": [{"date": d(-400), "cm": 178.0, "unit": "cm"}], "targets": {"weight": {"high": 90.0, "unit": "lb"}}}})
+        b = measures.blocks(c, ["bmi", "targets"], lambda x: True)
+        rows = {r[0]: r for r in b["bmi"]["rows"]}
+        self.assertEqual(len(rows), 59, "60 days less the scale's 212 lb")
+        self.assertEqual([rows[d(i)][4].split(", height")[0] for i in (-45, -10, -1)], ["weight 150 lb (typed in)", "weight 205 lb (typed in)", "weight 176.7 lb (smart scale)"])
+        self.assertEqual(b["bmi"]["lead"][1:], ["1 weight from the smart scale left out: more than 12% from the median of the weights within 90 days of it."])
+        self.assertEqual(next(r for r in b["targets"]["rows"] if r[0] == "Weight")[4], "1 of 59 weights above it; 1 left out", "205 lb typed in, above it")
+        self.assertIn("weight, the smart scale's and those typed in;", b["targets"]["note"])
+
 
 class SharedDraftMoves(unittest.TestCase):
     """(#219) Schema step 31 moves each profile's shared draft (the settings key summary.questions) once: to whoever

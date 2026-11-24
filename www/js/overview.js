@@ -216,11 +216,15 @@ function watchTiles() {
       const last = s.pts.at(-1), pm = primaryMs(), dx = pm ? dayTs(pm.date) : NaN;
       const at = pm ? s.pts.filter(p => Math.abs(p.ts - dx) < 75 * DAY).sort((a, b) => Math.abs(a.ts - dx) - Math.abs(b.ts - dx))[0] : null;
       const d = at && last !== at ? last[1] - at[1] : null;
+      // the scale's readings left out (store.js weightsOut, #754) over the sparkline's year and after the latest kept,
+      // said as Body says them: a later one was the latest nowhere, and said nowhere (#783)
+      const gone = (s.out || []).filter(p => p.ts > last.ts - 365 * DAY).length;
       out.push(el("button", {class: "tile", onclick: () => { if (pm) setPeriod(msKey(pm)); pickTab("health"); }},
         el("span", {class: "lbl", text: "Weight"}),
         el("span", {class: "val"}, last[1].toFixed(1), el("small", {text: s.unit})),
         ucOrig(s, last) ? el("span", {class: "orig", text: "Reported " + ucOrig(s, last)}) : null,   // #41
-        el("span", {class: "delta"}, keepDates(d != null ? `${chgWords(d, Math.abs(d).toFixed(1), " " + s.unit)} since ${lcLabel(pm.label)} · ${fmtD(last.ts)}` : fmtD(last.ts))),
+        el("span", {class: "delta"}, keepDates((d != null ? `${chgWords(d, Math.abs(d).toFixed(1), " " + s.unit)} since ${lcLabel(pm.label)} · ${fmtD(last.ts)}` : fmtD(last.ts))
+          + (gone ? ` · ${gone} scale reading${gone === 1 ? "" : "s"} left out` : ""))),
         spark(s, s.pts.filter(p => p.ts > last.ts - 365 * DAY), {band: false})));
       continue;
     }
