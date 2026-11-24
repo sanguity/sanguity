@@ -23,7 +23,7 @@ import collections, hashlib, json, os, re, subprocess, sys
 from datetime import datetime
 
 from . import pdf_layouts
-from .common import canonical_lab, comparator, lab_day_sub, lab_day_title, loinc_of, range_flag
+from .common import canonical_lab, comparator, lab_day_sub, lab_day_title, loinc_of, report_flag
 from .pdf_layouts import bounds
 
 NAME = "pdf-labs"
@@ -196,21 +196,6 @@ def _when(m):
     if h > 23 or mi > 59:
         return None
     return f"{y:04d}-{mo:02d}-{d:02d}T{h:02d}:{mi:02d}:00" + _TZ.get((m.groupdict().get("tz") or "").upper(), "")
-
-
-_FLAG_DIR = {"h": "H", "hh": "H", "high": "H", "critical high": "H", "panic high": "H",
-             "l": "L", "ll": "L", "low": "L", "critical low": "L", "panic low": "L"}
-
-
-def _direction(flag, x, lo, hi, value="", edge=""):
-    """The point's flag from the printed one: H or L where it says which way, else (an "A", "Abnormal", "Critical") by
-    the range, the one rule (server/ranges.py flag, #752: "<0.5" against a low of 0.5 is low; 5 against "<5" high, #780),
-    and "A" where the range doesn't place it (a value its report flags inside its printed range, or with none printed):
-    a report's own flag comes first, so Labs, the drawer, the heatmap, the summary and share links say it (it was kept
-    with none, and said only in the drawer's row until #782's drawer read Labs' flag). "" for none printed."""
-    if not flag:
-        return ""
-    return _FLAG_DIR.get(flag.lower()) or range_flag(x, lo, hi, comparator(value), edge) or "A"
 
 
 def _number(value):
@@ -389,7 +374,10 @@ def _build(reports, warnings):
             seen.add(ident)
             x = _number(r["value"])
             lo, hi, edge = bounds(r["range"])
-            rows.append({**r, "rep": rep, "x": x, "lo": lo, "hi": hi, "edge": edge, "dir": _direction(r["flag"], x, lo, hi, r["value"], edge)})
+            # the point's flag by the one rule (common.report_flag, #817): H or L as printed; a printed "A", "Abnormal"
+            # or "Critical" by the range, else kept "A"; none printed, the range's. The row keeps the flag as printed
+            rows.append({**r, "rep": rep, "x": x, "lo": lo, "hi": hi, "edge": edge,
+                         "dir": report_flag(r["flag"], x, lo, hi, comparator(r["value"]), edge)})
     if dupes:
         warnings.append(f"Left out {dupes} result{'s' if dupes != 1 else ''} that appeared twice (same test, time and value).")
 

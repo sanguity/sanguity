@@ -80,6 +80,36 @@ def range_edge(text, lo, hi):
     return "<" if m.group(1) and hi == x else ">" if m.group(2) and lo == x else ""
 
 
+# a flag as reports print it (flag_word(): lower case, punctuation as spaces): one that says which way, as Quest, Labcorp,
+# a spreadsheet's Flag column, C-CDA and FHIR interpretation codes (HL7's ObservationInterpretation) and CareSpace give
+# it; and one that marks a result abnormal without saying which way (#817)
+_FLAG_WAY = {**dict.fromkeys(("h", "hh", "hu", ">", "hi", "high", "a h", "above", "above high normal", "critical high",
+                              "panic high", "significantly high", "off scale high"), "H"),
+             **dict.fromkeys(("l", "ll", "lu", "<", "lo", "low", "below", "below low normal", "critical low", "panic low",
+                              "significantly low", "off scale low"), "L")}
+_FLAG_NO_WAY = {"a", "aa", "abn", "abnormal", "critical", "critical abnormal", "panic", "alert"}
+
+
+def flag_word(text):
+    """A printed flag as _FLAG_WAY and _FLAG_NO_WAY spell it: "H*" as "h", "Critical-High" as "critical high", "A/H" as
+    "a h"."""
+    return " ".join(re.sub(r"[^0-9a-z<>]+", " ", str(text or "").lower()).split())
+
+
+def report_flag(printed, v, lo, hi, cmp="", edge=""):
+    """The one rule for a result's flag from its report (#817), every importer's (docs/importers.md): "H" or "L" where
+    the flag it prints says which way ("H", "HH", "High", "Critical high", ">"); where it prints one that marks the
+    result abnormal without a direction ("A", "AA", "Abnormal", "Critical", "Alert"), the way its range places it
+    (range_flag: "A" on a value above it is "H"), else "A", a report's own flag first: a value it flags inside its
+    printed range, or with none printed, is kept flagged (◆ on Labs, the heatmap, the summary and share links), never
+    dropped; where it prints none, or one that says neither ("N", "Normal"), by the range alone. printed: the flag as
+    printed, or several (a C-CDA's or a FHIR resource's interpretation codes and words; the first that says which way
+    wins). v: the value as a number, or None (text); cmp and edge as for range_flag."""
+    words = [flag_word(p) for p in (printed if isinstance(printed, (list, tuple)) else [printed])]
+    way = next((_FLAG_WAY[w] for w in words if w in _FLAG_WAY), "")
+    return way or range_flag(v, lo, hi, cmp, edge) or ("A" if any(w in _FLAG_NO_WAY for w in words) else "")
+
+
 TAG_RE = re.compile(r"<[^>]+>")
 
 

@@ -27,7 +27,7 @@ import os
 import re
 from datetime import datetime
 
-from .common import canonical_lab, lab_day_sub, lab_day_title, loinc_of, range_edge, range_flag
+from .common import canonical_lab, lab_day_sub, lab_day_title, loinc_of, range_edge, report_flag
 
 NAME = "csv"
 LABEL = "Lab results spreadsheet (CSV)"
@@ -259,20 +259,6 @@ def _range(s, decimal_comma):
 
 def _fmt(x):
     return "" if x is None else str(x)
-
-
-_FLAGS = {"h": "H", "hh": "H", "high": "H", "hi": "H", "a h": "H", ">": "H", "above": "H", "above high normal": "H",
-          "critical high": "H", "panic high": "H", "l": "L", "ll": "L", "low": "L", "lo": "L", "<": "L",
-          "below": "L", "below low normal": "L", "critical low": "L", "panic low": "L"}
-
-
-def _flag(text, x, cmp, lo, hi, edge=""):
-    """H, L or "" from a flag column, falling back to the range by the one rule (server/ranges.py flag, #752: "<15"
-    against a low of 15 is low; 5 against "<5" high, #780)."""
-    t = _norm(text) or (text or "").strip()
-    if t in _FLAGS:
-        return _FLAGS[t]
-    return range_flag(x, lo, hi, cmp, edge)   # "A", "Abnormal", "N", "Normal" and the like: the range says which way
 
 
 # ------------------------------------------------------------------ dates
@@ -565,7 +551,7 @@ def read_row(get, decimal_comma=False, order=None, bounds=True):
             range_text = (f"{_fmt(lo)} - {_fmt(hi)}" if lo is not None and hi is not None else
                           f">={_fmt(lo)}" if lo is not None else f"<={_fmt(hi)}" if hi is not None else "")
     edge = range_edge(range_text, lo, hi)   # "<" for "<5": 5 is outside it (#780)
-    flag = _flag(flag_text, x, cmp, lo, hi, edge)
+    flag = report_flag(flag_text, x, lo, hi, cmp, edge)   # the one rule (#817): "A" in range kept, "Abnormal" past it placed
     return {"t": t, "test": test, "x": x, "reported": reported, "unit": unit, "range": range_text,
             "lo": lo, "hi": hi, "edge": edge, "flag": flag, "panel": get("panel"), "lab": get("lab"), "loinc": get("loinc")}, None
 

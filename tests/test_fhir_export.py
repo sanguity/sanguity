@@ -297,6 +297,37 @@ class FhirExport(unittest.TestCase):
                 self.assertEqual(self.imported(robin, b, {"fhir.zip": blob})["importer"], "fhir")
                 self.compare(a, b)
 
+    def test_a_flag_that_says_no_way_comes_back(self):
+        """#817: a result its report flagged abnormal with no way the range places ("A": inside its range, with none
+        printed, or a text result; the importers keep it since #752 and #817) goes out as interpretation "A" and comes
+        back "A", on the point and the row: the FHIR importer placed "A" by the range alone, so it came back with none."""
+        t = "2026-10-01T08:00:00"
+        data = {"built": "2026-10-02", "source": "fictional", "costs": [], "upcoming": [],
+                "events": [{"id": 1, "t": t, "k": "lab", "title": "Lab results (fictional)"},
+                           {"id": 2, "t": t, "k": "labitem", "title": "Flags panel (fictional)", "hidden": 1, "abn": 3}],
+                "details": {"1": {"type": "labday", "ids": [2]},
+                            "2": {"type": "result", "order": "Flags panel (fictional)",
+                                  "rows": [["RDW", "13.1", "%", "11.0 - 15.0", "A"], ["Fibrinogen", "300", "mg/dL", "", "A"],
+                                           ["Urine culture", "Positive", "", "", "A"]]}},
+                "labs": [{"name": "RDW", "unit": "%", "panel": "", "n": 1, "txt": [], "pts": [[t, 13.1, 11.0, 15.0, "A", "13.1"]]},
+                         {"name": "Fibrinogen", "unit": "mg/dL", "panel": "", "n": 1, "txt": [], "pts": [[t, 300, None, None, "A", "300"]]},
+                         {"name": "MPV", "unit": "fL", "panel": "", "n": 1, "txt": [],   # no report holds it: from its series
+                          "pts": [["2026-10-05T08:00:00", 9.9, 7.5, 12.5, "A", "9.9"]]}]}
+        pid = profiles.create_profile(self.db, "Flags (fictional)", owner_id=self.uids["robin"])
+        with dbm.transaction(self.db):
+            records.store(self.db, pid, data, "upload", fmt="csv")
+        blob = self.export(pid, {"labs"})
+        said = {e["resource"]["code"]["text"]: [c["code"] for i in e["resource"].get("interpretation") or [] for c in i["coding"]]
+                for e in self.bundle(blob)[0]["entry"] if e["resource"]["resourceType"] == "Observation"}
+        self.assertEqual(said, {"RDW": ["A"], "Fibrinogen": ["A"], "Urine culture": ["A"], "MPV": ["A"]})
+        have, _, got = self.round_trip(pid, blob)
+        want, back = project(have), project(got["data"])
+        self.assertEqual([p[5] for p in back.get("point", [])], ["A", "A", "A"], back.get("point"))
+        self.assertEqual(back.get("point"), want.get("point"))
+        self.assertEqual({r[0]: r[4] for x in back.get("labitem", []) for r in x[4]},
+                         {"RDW": "A", "Fibrinogen": "A", "Urine culture": "A", "MPV": "A"}, "each row (MPV's a result of its own)")
+        profiles.delete_profile(self.db, pid)
+
     # ---------------------------------------------------------------- the bundle itself
     def test_valid_against_the_fhir_r4_schema(self):
         bundle, _, _ = self.bundle(self.export(cycle=True))

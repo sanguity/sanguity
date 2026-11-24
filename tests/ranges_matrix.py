@@ -7,7 +7,9 @@ Each case is a lab whose results [days back, value, low, high, flag, as given] g
 range and flag were said differently: a report's range then none; none then a report's; a range from Settings then a
 report's; a report's then one from Settings; a range that changes; values given as "<" and ">" bounds at and past
 each edge of a report's range and of one from Settings; and one-sided ranges that leave their edge out ("<5", ">60") or
-keep it ("<=5", ">=60"), at and past it, through the importers that read them too (#780). JUDGED is what each result is
+keep it ("<=5", ">=60"), at and past it, through the importers that read them too (#780); and a report's flags that
+say no way ("A", "Abnormal", "Critical"), inside its range, past it and with none printed, read through the CSV importer
+as an upload is (THROUGH_CSV: ALT, its flags in CASES as printed, #817). JUDGED is what each result is
 judged as, by the one rule (server/ranges.py judge, www/js/ranges.js applyRangeOverrides): [flag, low, high, source],
 and EDGES its edge where its range has one; STEPS the band's steps, each the results it covers, with its words (a result
 whose report gave no range is under none). The summary's "since" day is SINCE days back, so each case has a Then and a
@@ -139,6 +141,23 @@ STEPS["Glucose, Blood"] = [[[0, 1], "< 100 on report"], [[2], "≤ 100 on report
 TRENDS["Glucose, Blood"] = [("99", None, ["report range", "< 100"]), ("100", None, None), "≤ 100"]
 OUT_OF_RANGE["Glucose, Blood"] = ["100", "High", "< 100", 1, 2]
 
+# ---- a report's own flag (#817): ALT's results come in a spreadsheet with its report's flags in a Flag column, read by
+# the CSV importer (THROUGH_CSV: records() takes their series from csv_labs.parse, as an upload would, each flag in
+# CASES as printed). "A", "Abnormal", "Critical" and "AA" say no way: placed by the range where it can ("A" on 60
+# against 7–56 is High, "Abnormal" on 5 Low), else kept "A", ◆ in every view (inside its range, or with none printed;
+# the CSV and FHIR importers kept it with no flag, so Labs, the heatmap, the Overview, the summary and share links said
+# it in range); "N" says neither, so the range alone (in range)
+UNITS["ALT"] = "U/L"
+CASES["ALT"] = [(100, 30, 7, 56, "", "30"), (90, 40, 7, 56, "A", "40"), (80, 60, 7, 56, "A", "60"), (70, 5, 7, 56, "Abnormal", "5"),
+                (60, 50, 7, 56, "Abnormal", "50"), (40, 45, None, None, "Critical", "45"), (30, 35, 7, 56, "N", "35"),
+                (20, 25, 7, 56, "AA", "25"), (10, 20, 7, 56, "A", "20")]
+THROUGH_CSV = ["ALT"]
+JUDGED["ALT"] = [["", 7, 56, R], ["A", 7, 56, R], ["H", 7, 56, R], ["L", 7, 56, R], ["A", 7, 56, R], ["A", None, None, R],
+                 ["", 7, 56, R], ["A", 7, 56, R], ["A", 7, 56, R]]
+STEPS["ALT"] = [[[0, 1, 2, 3, 4], "7–56 on report"], [[6, 7, 8], "7–56 on report"]]
+TRENDS["ALT"] = [("50", "Abnormal", None), ("20", "Abnormal", None), "7–56"]
+OUT_OF_RANGE["ALT"] = ["20", "Abnormal", "7–56", 3, 4]
+
 
 def edges(lab):
     """Each result's edge as kept (EDGES; "" for every result of the other cases)."""
@@ -195,18 +214,34 @@ def day_results(d):
     return [(n, i) for n, pts in CASES.items() for i, p in enumerate(pts) if p[0] == d]
 
 
+def through_csv(today=None):
+    """THROUGH_CSV's series as the CSV importer reads them (csv_labs.parse, #817), from a spreadsheet of their results
+    as their reports print them: date, time, test, value as given, unit, range as printed and flag as printed."""
+    import os, tempfile
+    from server.importers import csv_labs
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "flags.csv")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("Date,Time,Test,Value,Unit,Reference range,Flag\n" + "".join(
+                f"{day(d, today)[:10]},{day(d, today)[11:16]},{n},{t},{UNITS[n]},{printed_range(lo, hi)},{flag}\n"
+                for n in THROUGH_CSV for d, v, lo, hi, flag, t in CASES[n]))
+        return {s["name"]: s for s in csv_labs.parse({"flags.csv": path})["data"]["labs"]}
+
+
 def records(today=None):
-    """The profile's records, as an import stores them (records.store): a point with an edge keeps it as pts[7]; a lab
-    day each draw day, its one result listing that day's rows as the report prints them, and the count of flags its
-    importer stored (abn: the report's own)."""
-    labs = [{"name": n, "unit": UNITS[n], "panel": "", "n": len(pts), "txt": [],
+    """The profile's records, as an import stores them (records.store): a point with an edge keeps it as pts[7], and
+    THROUGH_CSV's series as the CSV importer reads them (through_csv()); a lab day each draw day, its one result listing
+    that day's rows as the report prints them, each with the flag its importer stored, and the count of those (abn)."""
+    csv = through_csv(today)
+    labs = [csv[n] if n in THROUGH_CSV else {"name": n, "unit": UNITS[n], "panel": "", "n": len(pts), "txt": [],
              "pts": [[day(d, today), v, lo, hi, f, t] + ([None, e] if e else []) for (d, v, lo, hi, f, t), e in zip(pts, edges(n))]}
             for n, pts in CASES.items()]
+    stored = {s["name"]: [p[4] for p in s["pts"]] for s in labs}
     draws, details = draw_days(), {}
     events = [{"id": i + 1, "t": day(d, today), "k": "lab", "title": "Lab results (fictional)"} for i, d in enumerate(draws)]
     events.append({"id": len(events) + 1, "t": day(SINCE, today), "k": "visit", "title": "Office visit (fictional)"})   # the summary's "since"
     for i, d in enumerate(draws):
-        rows = [[ROW_NAMES.get(n, n), CASES[n][j][5], UNITS[n], printed_range(*CASES[n][j][2:4], edges(n)[j]), CASES[n][j][4]]
+        rows = [[ROW_NAMES.get(n, n), CASES[n][j][5], UNITS[n], printed_range(*CASES[n][j][2:4], edges(n)[j]), stored[n][j]]
                 for n, j in day_results(d)]
         abn = {"abn": n} if (n := sum(1 for r in rows if r[4])) else {}
         events[i].update(abn)

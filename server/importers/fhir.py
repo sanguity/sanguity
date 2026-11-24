@@ -49,7 +49,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
 from . import common
-from .common import canonical_lab, range_edge, range_flag, unit_key
+from .common import canonical_lab, range_edge, report_flag, unit_key
 
 NAME = "fhir"
 LABEL = "FHIR records (Apple Health, Blue Button, patient portals)"
@@ -410,21 +410,13 @@ def _category(r):
 
 
 def _flag(interp, v, lo, hi, edge=""):
-    """data.json flags are "H", "L" or "": take the lab's interpretation, else compare against the range (edge: its
-    limit leaving its edge out, #780)."""
-    code = ""
-    for c in (interp if isinstance(interp, list) else [interp] if interp else []):
-        code = (codes(c) or [text_of(c)])[0] if c else ""
-        if code:
-            break
-    code = (code or "").upper()
-    if code in ("H", "HH", "HU", ">", "HIGH", "CRITICAL HIGH", "ABOVE HIGH NORMAL"):
-        return "H"
-    if code in ("L", "LL", "LU", "<", "LOW", "CRITICAL LOW", "BELOW LOW NORMAL"):
-        return "L"
-    if isinstance(v, (int, float)) and not isinstance(v, bool):   # by the one rule (server/ranges.py flag, #752)
-        return range_flag(v, lo, hi, "", edge)   # (a value with a comparator is kept as text, so it has none here)
-    return ""   # "A" (abnormal, no direction) has no slot in data.json's H/L flags
+    """The result's flag from the lab's interpretation (each concept's codes and words) by the one rule
+    (common.report_flag, #817): H or L where it says which way; "A" or "AA" (abnormal, no way) by the range, else kept
+    "A" (inside its range, none given, a text result), as Sanguity's FHIR export writes it; none, against the range
+    (edge: its limit leaving its edge out, #780). A value with a comparator is kept as text, so it has no number here."""
+    said = [w for c in (interp if isinstance(interp, list) else [interp] if interp else []) for w in (*codes(c), text_of(c))]
+    x = v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+    return report_flag(said, x, lo, hi, "", edge)
 
 
 def _range(o):

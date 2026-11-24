@@ -202,6 +202,25 @@ class Common(unittest.TestCase):
         self.assertEqual(common.resolve_name("HGB", "g/dL", "Other Clinic", labs), "Hemoglobin")
         self.assertEqual(common.resolve_name("HGB", "g/L", "Other Clinic", labs), "Hemoglobin (Other Clinic)")
 
+    def test_a_report_flag(self):
+        """#817: one rule for a result's flag from its report, every importer's (CSV and typed in, PDF, FHIR, C-CDA,
+        CareSpace, MyChart): H or L as printed, whatever the range; a flag that says no way ("A", "AA", "Abnormal",
+        "Critical", "Alert") placed by the range where it can be, else kept "A" (inside its range, none printed, a text
+        result); none, or one that says neither ("N", "Normal", anything else), by the range alone."""
+        f = common.report_flag
+        self.assertEqual([f(p, 13, 11, 15) for p in ("H", "HH", "HU", "High", "Critical-High", "H*", ">", "L", "LL", "low", "Panic low", "<")],
+                         ["H"] * 7 + ["L"] * 5)
+        no_way = ("A", "AA", "Abnormal", "ABN", "Critical", "Alert", "Critical abnormal", "A*", ["N", "A"])
+        self.assertEqual([f(p, 13, 11, 15) for p in no_way], ["A"] * len(no_way))
+        self.assertEqual([f(p, 16, 11, 15) for p in no_way] + [f(p, 10, 11, 15) for p in no_way], ["H"] * len(no_way) + ["L"] * len(no_way))
+        self.assertEqual([f("A", 13, None, None), f("Abnormal", None, None, None), f("AA", None, 11, 15)], ["A"] * 3)
+        self.assertEqual([f(p, 13, 11, 15) for p in ("", None, [], "N", "Normal", "Final", "*", "POS")], [""] * 8)
+        self.assertEqual([f(p, 16, 11, 15) for p in ("", None, "N", "Normal")], ["H"] * 4)
+        self.assertEqual([f(["N", "H"], 13, 11, 15), f(["A", "L"], 16, 11, 15)], ["H", "L"])
+        # by the one rule (range_flag): a bound ("<15" against a low of 15 is low), a limit that leaves its edge out (#780)
+        self.assertEqual([f("A", 15, 15, 60, "<"), f("A", 5, None, 5, "", "<"), f("A", 5, None, 5), f("A", 5, None, 5, "", "")],
+                         ["L", "H", "A", "A"])
+
     def test_stays(self):
         st = common.inferred_stays({"Mar 02, 2026": ["2026-03-02T06:00:00", "2026-03-04T06:00:00"]},
                                    ["2026-05-01T05:00:00", "2026-05-03T05:00:00", "2026-06-20T05:00:00"], "Other Clinic")

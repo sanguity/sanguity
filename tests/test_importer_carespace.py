@@ -8,7 +8,7 @@ differences: event ids, keys and document URLs.
 
   python -m unittest discover -s tests -p "test_importer*.py" -v
 """
-import json, os, re, shutil, subprocess, sys, tempfile, unittest
+import collections, json, os, re, shutil, subprocess, sys, tempfile, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FIX = os.path.join(ROOT, "tests", "fixtures", "importers", "carespace")
@@ -177,6 +177,32 @@ class Edges(unittest.TestCase):
             out = carespace.parse(reg.files_in(dst))
         self.assertIn("1 lab result had no date and was left out.", out["warnings"])
         self.assertIn("1 lab result had no test name and was left out.", out["warnings"])
+
+    def test_a_flag_that_says_no_way_is_kept(self):
+        """#817: a report's own flag comes first. An interpretationCode "A" or "AA" (abnormal, no way) is placed by the
+        range where it can be, and kept as "A" where it can't (a value inside its range, or a text result), on the point
+        and the row; before, only H, HH, L and LL were read, so it was kept with none."""
+        codes = {(0, "WBC"): "A", (0, "POTASSIUM"): "AA", (0, "HCT"): "A", (0, "Urine color"): "A", (0, "CREAT"): "N"}
+        with tempfile.TemporaryDirectory() as d:
+            dst = copy("full", d)
+            p = os.path.join(dst, "api", "lab_results.json")
+            with open(p, encoding="utf-8") as f:
+                doc = json.load(f)
+            seen = collections.Counter()
+            for r in doc["data"]:
+                k = (seen[r["name"]], r["name"])
+                seen[r["name"]] += 1
+                if k in codes:
+                    r["interpretationCode"] = codes[k]
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump(doc, f)
+            out = carespace.parse(reg.files_in(dst))
+        days = sorted((e for e in by_kind(out["data"], "lab")), key=lambda e: e["t"])
+        rows = {r[0]: r[4] for i in out["data"]["details"][days[0]["id"]]["ids"] for r in out["data"]["details"][i]["rows"]}
+        self.assertEqual({n: rows[n] for _, n in codes}, {"WBC": "A", "POTASSIUM": "A", "HCT": "L", "Urine color": "A", "CREAT": ""})
+        pts = {n: series(out["data"], n)["pts"][0][4] for n in ("WBC", "Potassium, Blood", "Hematocrit", "Creatinine")}
+        self.assertEqual(pts, {"WBC": "A", "Potassium, Blood": "A", "Hematocrit": "L", "Creatinine": ""})
+        self.assertEqual(days[0].get("abn"), 3 + 3, "the lab day counts them: HGB, GLUCOSE and HCT were flagged before")
 
     def test_repeated_rows_are_left_out_not_keyed_twice(self):
         with tempfile.TemporaryDirectory() as d:

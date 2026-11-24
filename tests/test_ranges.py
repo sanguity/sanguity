@@ -628,7 +628,8 @@ class Api(unittest.TestCase):
         Quest-like PDF reports ("< OR = 5") and as a FHIR bundle (a source's own high beside its printed "<5", a printed
         range alone): each importer's points have the matrix's range and edge, each judged as JUDGED; and the FHIR
         export says a limit that leaves its edge out in its text alone (FHIR's low and high include theirs), which the
-        FHIR importer reads back as it was."""
+        FHIR importer reads back as it was, with each report's own flag (#817: a report's "A" inside its range came back
+        with none)."""
         import types, zipfile
         from server import fhir_export
         from server.importers import common, csv_labs, fhir, pdf_labs
@@ -648,12 +649,12 @@ class Api(unittest.TestCase):
         rows, tmp = M.printed(TODAY), tempfile.mkdtemp(dir=TMP)
         edge = lambda p: p[7] if len(p) > 7 else ""
 
-        def same(data, how, stored=True, plain=False):
+        def same(data, how, plain=False):
             """each one-sided lab's points as the matrix has them: value, range, value as given and edge, the flag
-            stored (stored) and as judged; plain: only the results given as a number (FHIR keeps a bound as text)"""
+            stored and as judged; plain: only the results given as a number (FHIR keeps a bound as text)"""
             by = {s["name"]: s["pts"] for s in data["labs"]}
             for n in M.PRINTED:
-                want = [[v, lo, hi, t, e, f, f if stored else ""] for (_, v, lo, hi, _, t), e, (f, *_) in zip(M.CASES[n], M.EDGES[n], M.JUDGED[n])
+                want = [[v, lo, hi, t, e, f, f] for (_, v, lo, hi, _, t), e, (f, *_) in zip(M.CASES[n], M.EDGES[n], M.JUDGED[n])
                         if not (plain and ranges.comparator(t))]
                 got = [[p[1], p[2], p[3], p[5], edge(p), ranges.judge(p[1], p[2], p[3], p[4], p[5], None, edge(p))[2], p[4]] for p in by.get(n, [])]
                 self.assertEqual(got, want, f"{how}: {n}")
@@ -672,7 +673,7 @@ class Api(unittest.TestCase):
             gen.write(path, gen.quest([("MATRIX PANEL (FICTIONAL)", None)] + [(n, v, "", r.replace("<=", "< OR = ").replace(">=", "> OR = "), u)
                                                                              for n, u, at, v, r, _ in rows if at == t],
                                       collected=f"{t[5:7]}/{t[8:10]}/{t[:4]} / 08:00 EST"))
-        same(pdf_labs.parse(pdfs)["data"], "PDF reports", stored=False)   # (a PDF's flag is the one printed: none here)
+        same(pdf_labs.parse(pdfs)["data"], "PDF reports")   # (none printed: the range's, by the one rule, #817)
 
         def obs(i, n, u, t, v, r):
             c = ranges.comparator(v)
@@ -708,7 +709,11 @@ class Api(unittest.TestCase):
             want = [(None, None, f"{'<' if hi is not None else '>'}{lo if hi is None else hi}") if e else (lo, hi, r)
                     for (_, _, lo, hi, *_), e, r in zip(M.CASES[n], M.EDGES[n], M.PRINTED[n])]
             self.assertEqual([x[1:] for x in sorted(said.get(n, []))], want, f"the FHIR export's {n}")
-        same(fhir.parse({"bundle.json": os.path.join(tmp, "bundle.json")})["data"], "the FHIR export, read back", plain=True)
+        back = fhir.parse({"bundle.json": os.path.join(tmp, "bundle.json")})["data"]
+        same(back, "the FHIR export, read back", plain=True)
+        flags = {s["name"]: [p[4] for p in s["pts"]] for s in back["labs"]}
+        for n in ("Chloride, Blood", "ALT"):   # a report's own flag with them, "A" too (#817: it came back with none)
+            self.assertEqual(flags.get(n), [f for f, *_ in M.JUDGED[n]], f"the FHIR export's {n}, read back")
 
     def test_2_summary_matrix(self):
         """#752: one rule for a result's range, flag and source, through the server. The matrix (tests/ranges_matrix.py): a
@@ -753,10 +758,11 @@ class Api(unittest.TestCase):
                    for a, b, lo, hi, rs, e in ranges.steps([(t, p["lo"], p["hi"], p["rs"], p["edge"]) for t, p in zip(ts, series[n]["pts"])],
                                                            -float("inf"), float("inf"))]
             self.assertEqual(got, M.STEPS[n], n)
-        # the importers' flag is the rule's: a CSV's "<30" against its own 30–110 is low, as Labs and the summary say
-        from server.importers import csv_labs
+        # the importers' flag is the rule's (common.report_flag, #817): a CSV's "<30" against its own 30–110 is low, as
+        # Labs and the summary say
+        from server.importers import common
         for d, v, lo, hi, f, t in M.CASES["Amylase"]:
-            self.assertEqual(csv_labs._flag("", v, ranges.comparator(t), lo, hi), ranges.flag(v, lo, hi, ranges.comparator(t)), t)
+            self.assertEqual(common.report_flag("", v, lo, hi, ranges.comparator(t)), ranges.flag(v, lo, hi, ranges.comparator(t)), t)
         self.assertEqual([ranges.flag(30, 30, 110, ranges.comparator(t)) for t in ("<30", "<=30", "≤30", "30", ">=30")], ["L", "", "", "", ""])
         self.assertEqual([ranges.flag(110, 30, 110, ranges.comparator(t)) for t in (">110", ">=110", "≥110", "110", "<=110")], ["H", "", "", "", ""])
 
