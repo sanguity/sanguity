@@ -20775,10 +20775,11 @@ def main():
             db.close()
             js("""async ([pid, value]) => { await fetch(`api/profiles/${pid}/settings/overview.keyLabs`, {method: 'PUT',
               headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, body: JSON.stringify({value})}); }""", [lpid, M752.LATEST_LABS])
-            def views825(judged, days, also):
+            def views825(judged, days, also, day_ranges):
                 """what's wrong in the Overview's tiles and list, Labs' charts and tables, the heatmap and each import's lab day
                 of the latest (its Timeline badge and drawer rows), against each result's [flag, low, high] (judged) and each
-                import's rows (days); also: the latest's table row says it came from another source too (#825)"""
+                import's rows (days), each row's Ref range in the drawer (day_ranges, #834: a range from the other copy said
+                so); also: the latest's table row says it came from another source too (#825)"""
                 page.goto(base + f"/?profile={lpid}")
                 page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {lpid}", timeout=20000)
                 bad825 = []
@@ -20823,19 +20824,20 @@ def main():
                   const badge = Object.fromEntries([...document.querySelectorAll('#list .tl-row[data-id]')].map(r => [r.dataset.id, r.querySelector('.badge.abn')?.textContent || null]));
                   for (const e of DATA.events.filter(e => e.k === 'lab' && e.t.slice(0, 10) === latest.slice(0, 10))) {
                     await openEvent(e);
-                    out[`${imps.indexOf(e.imp) + 1}`] = [badge[e.id] ?? null, [...document.querySelectorAll('#drawer table.data tbody tr')].map(r => [r.cells[0].firstChild.textContent, r.cells[3].textContent])];
+                    out[`${imps.indexOf(e.imp) + 1}`] = [badge[e.id] ?? null, [...document.querySelectorAll('#drawer table.data tbody tr')].map(r => [r.cells[0].firstChild.textContent, r.cells[2].textContent, r.cells[3].textContent])];
                   }
                   closeDrawer(); return out; }""", M752.day(2))
-                want825 = {f"{i}": [f"{sum(1 for _, f in rows if f)} out of range", [[n, FLAG752[f]] for n, f in rows]] for (i, _), rows in days.items()}
+                want825 = {f"{i}": [f"{sum(1 for _, f in rows if f)} out of range", [[n, r, FLAG752[f]] for (n, f), r in zip(rows, day_ranges[(i, d)])]]
+                           for (i, d), rows in days.items()}
                 if dr825 != want825:
                     bad825.append(f"each import's lab day of the latest, its Timeline badge and drawer rows: {dr825} not {want825}")
                 return bad825
 
-            bad825 = views825(M752.LATEST_JUDGED, M752.LATEST_DAYS, True)
+            bad825 = views825(M752.LATEST_JUDGED, M752.LATEST_DAYS, True, M752.LATEST_DAY_RANGES)
             check("#825: one result twice at one time, its latest, a range on one copy only (in each import order): read as one result with "
                   "that range and flag by the Overview's tile (▲ High, its change from the result before, not “no change” from its copy) and its "
                   "list, Labs' chart (one mark, a ▲ never under a dot) and table (one row), the heatmap (one cell) and each import's lab day "
-                  "(its Timeline badge, the drawer's rows)", not bad825, bad825)
+                  "(its Timeline badge, the drawer's rows, a row's range from the other copy named so in its Ref range, #834)", not bad825, bad825)
             # ---- #833: the same pairs marked "Not the same": two results everywhere, each with its own range and flag
             # (crossmatch.copies and summary._series read them as one, hiding one). Labs' charts and tables both (the ▲
             # after the dot at that time), the Overview's tile the flagged one, its change from the result before that time,
@@ -20846,7 +20848,7 @@ def main():
                 out.push([x.a.name, (await fetch(`api/profiles/${pid}/same`, {method: 'POST', headers: h, body: JSON.stringify({ref: x.ref, same: false})})).status]);
               return out.sort(); }""", lpid)
             bad833 = [] if ns833 == [[n, 201] for n in sorted(M752.LATEST_LABS)] else [f"Not the same: {ns833}"]
-            bad833 += views825(M752.NOT_SAME_JUDGED, M752.NOT_SAME_DAYS, False)
+            bad833 += views825(M752.NOT_SAME_JUDGED, M752.NOT_SAME_DAYS, False, M752.NOT_SAME_DAY_RANGES)
             check("#833: a pair marked “Not the same” is two results, each with its own range and flag: Labs' charts (both, the ▲ never under the "
                   "dot) and tables, the Overview's tile (the flagged one, its change from the result before) and list, the heatmap and each "
                   "import's lab day (its Timeline badge, the drawer's rows)", not bad833, bad833)

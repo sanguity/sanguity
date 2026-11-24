@@ -1973,6 +1973,10 @@ Everything on `main` so far; it becomes the first tagged release.
   Timeline, the summary and share links. At one time the flagged one is drawn over the other and read as the latest
   (the Overview's tile, its list and a sparkline's dot, a trend's Now), and the Overview's change is from the result
   before that time, never from the other.
+- **The drawer names a range that came from a result's other copy** (#834): since #825 a copy whose own report printed
+  no range is judged against its other copy's, but its row in the drawer showed ▲ High beside an empty Ref range. The
+  cell now says that range and where it came from, "3.5–5.1 (from the other copy's report)", as a range from Settings
+  is named "(settings range …)".
 - **Type them in says a range as Labs does** (#826): the line under a typed result said "range under 5" for both "<5"
   and "<=5" (and "over 60" for ">60" and ">=60"), so a CRP of 5 read "range under 5 · ▲ High" with one and "range
   under 5" unflagged with the other, while Labs then said "< 5" and "≤ 5". The server now sends whether the range

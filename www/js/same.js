@@ -19,7 +19,8 @@
 function joinSeries(labs) {
   const out = [], by = new Map();
   for (const s of labs) {
-    s.pts.forEach((p, n) => { p.imp = s.imp; p.same = (s.same && s.same[n]) || null; p.also = null; p.apart = s.apart?.[n] ?? null; });
+    s.pts.forEach((p, n) => { p.imp = s.imp; p.same = (s.same && s.same[n]) || null; p.also = null; p.apart = s.apart?.[n] ?? null;
+      p.rangeFrom = s.rangeFrom?.[n] ?? null; });   // (#834: the import whose copy's report gave its range, drawer.js resultTable)
     const k = s.name + "\u001f" + (s.unit || "");
     const have = by.get(k);
     if (!have) { const c = {...s, imps: [s.imp]}; by.set(k, c); out.push(c); continue; }

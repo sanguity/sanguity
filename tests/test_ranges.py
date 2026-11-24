@@ -171,7 +171,10 @@ class Rules(unittest.TestCase):
             {"name": "Potassium", "unit": "mmol/L", "imp": 3, "watch": True, "pts": [[t, 5.2, None, None, ""]]}]}
         was = json.loads(json.dumps(data["labs"]))
         own = [s["pts"] for s in data["labs"]]
-        got = [s["pts"] for s in crossmatch.copies(data)["labs"]]
+        labs = crossmatch.copies(data)["labs"]
+        got = [s["pts"] for s in labs]
+        self.assertEqual([s.get("rangeFrom") for s in labs], [None, {"0": 2}, {"0": 1}, None, None, {"0": 1}, None, None],
+                         "#834: a copy whose report gave no range says whose copy's gave it")
         self.assertEqual(got, [[[t, 5.2, 3.5, 5.1, "", "5.2"], [u, 4.0, None, None, "", "4.0"]],   # the first copy's own
                                [[t, 150, 135, 145, "H", "150"]],   # the second's range and its report's H
                                [[t, 5.2, 3.5, 5.1, "", "5.2"], [u, 4.1, 3.5, 5.1, "", "4.1"]],   # the first's range
@@ -516,7 +519,12 @@ class Api(unittest.TestCase):
         latest = M.day(2, TODAY)
         self.assertEqual(sorted((s["name"], s["imp"], flag(p)) for s in data["labs"] for p in s["pts"] if p[0] == latest),
                          sorted((n, i, "H") for n in M.LATEST_LABS for i in {s["imp"] for s in data["labs"]}), "each copy flagged")
-        imps, got = sorted(data["imports"], key=int), {}
+        imps = sorted(data["imports"], key=int)
+        self.assertEqual(sorted((s["name"], imps.index(str(s["imp"])) + 1, s["pts"][int(n)][0] == latest, imps.index(str(f)) + 1)
+                                for s in data["labs"] for n, f in (s.get("rangeFrom") or {}).items()),
+                         [("Potassium", 2, True, 1), ("Sodium", 1, True, 2)],
+                         "#834: the copy whose report gave no range says whose copy's did (Potassium's the first import's, Sodium's the second's)")
+        got = {}
         for e in data["events"]:
             if e["k"] == "lab" and e["t"] == latest:
                 rows = []
@@ -574,6 +582,7 @@ class Api(unittest.TestCase):
         for s in d["labs"]:
             page.setdefault(s["name"], []).extend(s["pts"])
             apart.setdefault(s["name"], []).extend((s.get("apart") or {}).get(str(n)) for n in range(len(s["pts"])))
+        self.assertEqual([s["rangeFrom"] for s in d["labs"] if s.get("rangeFrom")], [], "#834: no range from the other, so none said")
         self.assertEqual({n: [[flag(p), p[2], p[3]] for p in page_once(pts, apart[n])] for n, pts in page.items()}, M.NOT_SAME_JUDGED,
                          "the records page's results: both, each its own range and flag")
         imps, latest, got = sorted(d["imports"], key=int), M.day(2, TODAY), {}
