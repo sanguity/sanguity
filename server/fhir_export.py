@@ -269,16 +269,12 @@ def _clean(x):
 def _range(text, lo=None, hi=None, unit=None, edge=""):
     """A referenceRange from a result's own range: the numbers when given or readable, and the text as printed. FHIR's
     low and high include their value, so a limit that leaves its edge out (edge, the point's: "<" for a range printed
-    "<5", ">" for ">60", #780) is said in the text alone, "<5" where none was printed."""
+    "<5", ">" for ">60", #780) is said in the text alone, "<5" where none was printed. A range as text alone is read by
+    the importers' one parser of a range as text (common.range_text, #850: "≤ 5", "< OR = 5" and "=>60" went out as
+    text alone, their numbers unread), so the FHIR importer reads the export back to the range it was read as."""
     text = _text(text)
     if lo is None and hi is None and text:
-        m = re.fullmatch(r"\s*(-?\d+(?:\.\d+)?)\s*[-–]\s*(-?\d+(?:\.\d+)?)\s*\S*\s*", text)
-        if m:
-            lo, hi = _num(m[1]), _num(m[2])
-        m = re.fullmatch(r"\s*([<>])=?\s*(-?\d+(?:\.\d+)?)\s*\S*\s*", text)
-        if m:
-            lo, hi = (_num(m[2]), None) if m[1] == ">" else (None, _num(m[2]))
-        edge = common.range_edge(text, lo, hi)
+        lo, hi, edge = common.range_text(text)
     edge, r = str(edge or ""), {}
     for k, v, side in (("low", lo, ">"), ("high", hi, "<")):
         if isinstance(v, (int, float)) and not isinstance(v, bool):

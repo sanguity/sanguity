@@ -24,7 +24,7 @@ Standard library only.
 """
 import importlib, logging, pkgutil, re
 
-from ..common import range_edge
+from ..common import range_part
 
 log = logging.getLogger("sanguity.importers")
 
@@ -52,14 +52,10 @@ def layouts():
 
 
 # ------------------------------------------------------------------ shared pieces of a row
-NUMBER = r"\d+(?:\.\d+)?"
 _NUMERIC_VALUE = re.compile(r"(?:<=?|>=?)?\s*-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?")
 _OTHER_VALUE = re.compile(r"\d+\+|1:\d+|[A-Za-z][A-Za-z ,'/-]{0,39}")   # "2+", "1:40", "NON-REACTIVE", "Yellow"
 NOT_VALUES = {"see note", "see below", "see comment", "tnp", "dnr", "qns", "cancelled", "canceled", "pending",
               "not performed", "test not performed", "comment", "note"}
-_RANGE = re.compile(rf"(?:(?:<|>|<=|>=|=<|=>|[<>] OR =)\s*{NUMBER}|{NUMBER}\s*-\s*{NUMBER})", re.I)
-_BOUND = re.compile(rf"(<|>|<=|>=|=<|=>|[<>] OR =)\s*({NUMBER})", re.I)
-_SPAN = re.compile(rf"({NUMBER})\s*-\s*({NUMBER})")
 _UNIT = re.compile(r"[A-Za-z%µμ][A-Za-z0-9%µμ/.*^ ]*|[x×]?10\^?[Ee]?\d+/[A-Za-z]+")
 _UNIT_WORDS = re.compile(r"(?i)fl|pg|sec|seconds|ratio|index|units?|copies|mm|cm|kg|lbs?|titer|cells|mosm|mIU|IU|U")
 NOT_ESTABLISHED = re.compile(r"(?i)not estab(?:lished|\.)?")
@@ -81,9 +77,12 @@ def is_text_value(s):
 
 
 def is_range(s):
-    """A reference range as printed: "65-99", "<200", "> OR = 60", "Not Estab." or a text result like "NEGATIVE"."""
+    """A reference range as printed, the whole cell: "65-99", "<200", "> OR = 60", "less than or equal to 5" (by
+    common.range_part, the one parser of a range as text's reading, #850), "Not Estab." or a text result like
+    "NEGATIVE"."""
     s = (s or "").strip()
-    return bool(_RANGE.fullmatch(s) or NOT_ESTABLISHED.fullmatch(s) or is_text_value(s))
+    rng, rest = range_part(s)
+    return bool(rng and not rest or NOT_ESTABLISHED.fullmatch(s) or is_text_value(s))
 
 
 def is_unit(s):
@@ -97,35 +96,15 @@ def is_unit(s):
 
 def range_and_unit(s):
     """(range, unit) from one cell holding both, as Quest prints them ("65-99 mg/dL", "<5.7 % of total Hgb",
-    "NON-REACTIVE", "mg/dL" with no range); None when the cell is neither."""
+    "> OR = 60 mL/min/1.73m2", "NON-REACTIVE", "mg/dL" with no range; the range where common.range_part finds it,
+    #850); None when the cell is neither. The range's low, high and edge are read by common.range_text with the whole
+    cell (pdf_labs.py)."""
     s = (s or "").strip()
-    m = re.fullmatch(rf"({_RANGE.pattern})(?:\s+(\S.*))?", s, re.I)
-    if m and (not m.group(2) or re.fullmatch(r"[A-Za-z%µμ][^<>]*", m.group(2))):
-        return m.group(1), (m.group(2) or "").strip()
+    rng, rest = range_part(s)
+    if rng and (not rest or re.fullmatch(r"[A-Za-z%µμ][^<>]*", rest)):
+        return rng, rest
     if is_unit(s):
         return "", s
     if is_text_value(s) or NOT_ESTABLISHED.fullmatch(s):
         return s, ""
     return None
-
-
-def bounds(rng):
-    """(low, high, edge) from a printed range: "65-99" -> (65, 99, ""), "<200" -> (None, 200, "<"), "> OR = 60" ->
-    (60, None, ""), ">59" -> (59, None, ">"); (None, None, "") for a text reference. edge: whether a one-sided limit
-    leaves its edge out, as "<200" does and "< OR = 200" doesn't (common.range_edge, #780)."""
-    rng = (rng or "").strip()
-    m = _SPAN.fullmatch(rng)
-    if m:
-        lo, hi = _num(m.group(1)), _num(m.group(2))
-        return (lo, hi, "") if lo <= hi else (None, None, "")
-    m = _BOUND.fullmatch(rng)
-    if m:
-        x = _num(m.group(2))
-        lo, hi = (None, x) if m.group(1).startswith(("<", "=<")) else (x, None)
-        return lo, hi, range_edge(rng, lo, hi)
-    return None, None, ""
-
-
-def _num(s):
-    x = float(s)
-    return int(x) if x.is_integer() and "." not in s else x

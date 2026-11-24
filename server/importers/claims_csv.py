@@ -21,6 +21,7 @@ import re
 
 from . import csv_labs as _csv
 from ._claims import Claims, hkey, nice_drug
+from .common import number_text
 
 NAME = "claims-csv"
 LABEL = "Insurance claims spreadsheet (EOB CSV)"
@@ -194,7 +195,7 @@ def _money(s, decimal_comma):
     s = s.strip("()")
     if s in ("", "-", "—", "–", "n/a", "N/A"):
         return 0.0
-    x = _csv._number(s, decimal_comma)
+    x = number_text(s, decimal_comma)
     if x is None:
         return None
     return round(-float(x) if neg else float(x), 2)
