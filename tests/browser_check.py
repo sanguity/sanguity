@@ -20145,6 +20145,89 @@ def main():
             db = dbm.connect()
             prof_r.delete_profile(db, mpid)
             db.close()
+            # ---- #781: one result twice, and a lab in two units (tests/ranges_matrix.py's COPIES): two imports, the same
+            # result in each with its range and flag said in one, the other or a part in each; a lab in two units; one
+            # result in two units. Labs shows both copies, each unit its own series; the summary's preview, its PDF and a
+            # share link's page give every result: a result twice once, with any range and flag either copy has, each unit
+            # its own row (they kept the first import's copy, Potassium 3.2 with no range or Low, and the latest result's
+            # unit only, Glucose's 3.1 mmol/L Low gone). Then each pair linked as the same result: once everywhere, the
+            # older import's copy kept with the other's range and flag (a range in g/L given in g/dL)
+            db = dbm.connect()
+            cpid = prof_r.create_profile(db, "Copies (fictional)", owner_id=owner)
+            for imp781, fmt781 in ((1, "csv"), (2, "fhir")):
+                with dbm.transaction(db):
+                    rec_r.store(db, cpid, M752.copies(imp781), "upload", fmt=fmt781)
+            db.close()
+            tok781 = js("""async ([pid, value]) => { const h = {'X-Sanguity': '1', 'Content-Type': 'application/json'};
+              await fetch(`api/profiles/${pid}/settings/overview.keyLabs`, {method: 'PUT', headers: h, body: JSON.stringify({value})});
+              const r = await fetch(`api/profiles/${pid}/links`, {method: 'POST', headers: h, body: JSON.stringify({sections: ['results']})});
+              return (await r.json()).path.split('#')[1]; }""", [cpid, M752.COPIES_LABS])
+            SUM781 = {"Low": "▼ Low", "High": "▲ High"}
+
+            def views781(when, seen, once, trends, out):
+                """what's wrong in Labs (seen: its results), a share link's page, the summary's preview and its PDF (once)"""
+                bad = []
+                page.goto(base + f"/?profile={cpid}")
+                page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {cpid}", timeout=20000)
+                got = {(n, u): p for n, u, p in js("SERIES.filter(s => !s.watch).map(s => [s.name, s.unit, s.pts.map(p => [p[4] || '', p[2], p[3]])])")}
+                if got != seen:
+                    bad.append(f"{when}: Labs' results {got}")
+                js("labs => { state.tables.clear(); for (const n of labs) state.tables.add(n); state.sel = new Set(labs); applyPreset('all'); switchTab('labs', 'chart'); renderLabs(); }",
+                   M752.COPIES_LABS)
+                settle(600)
+                got = {(n, u): r for n, u, r in js("""[...document.querySelectorAll('#charts .chart')].map(c => [c.dataset.lab, c.querySelector('.hd-sub .unit').textContent.split(' ')[0],
+                  [...c.querySelectorAll('table.data tbody tr')].map(r => [r.cells[2].textContent.split(' · ')[0], r.cells[3].textContent]).reverse()])""")}
+                if got != {k: [[words752(lo, hi), FLAG752[f]] for f, lo, hi in v] for k, v in seen.items()}:
+                    bad.append(f"{when}: Labs' tables {got}")
+                js("state.tables.clear()")
+                page.goto(base + f"/share.html#{tok781}")
+                page.wait_for_selector("#share-results .share-latest", timeout=10000)
+                js("[...document.querySelectorAll('#share-results .share-tools button')].find(b => b.textContent.startsWith('Open every')).click()")
+                settle(400)
+                got = {(n, u): r for n, u, r in js("""[...document.querySelectorAll('#share-results .share-open')].map(b => [b.textContent, b.parentElement.querySelector('.share-unit')?.textContent || '',
+                  [...document.getElementById(b.getAttribute('aria-controls')).querySelector('table').tBodies[0].rows]
+                    .map(r => [r.cells[1].querySelector('.share-flag')?.textContent || '', r.cells[2].textContent]).reverse()])""")}
+                if got != {k: [[FLAG752[f], words752(lo, hi)] for f, lo, hi in v] for k, v in once.items()}:
+                    bad.append(f"{when}: the share page's {got}")
+                page.goto(base + f"/sharing.html?profile={cpid}#summary")
+                page.wait_for_selector("#preview:not([hidden]):not([aria-busy]) #prevBody .sum-chart", timeout=15000)
+                s = js(r"""async () => { const table = w => [...document.querySelectorAll('#prevBody h3')].find(h => h.textContent.startsWith(w)).nextElementSibling;
+                  const at = c => c.childNodes[0].textContent, rows = w => [...table(w).querySelectorAll('tbody tr')];
+                  const r = await fetch(`api/profiles/${PID}/summary/pdf`, {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, body: JSON.stringify(chosen())});
+                  const a = new Uint8Array(await r.arrayBuffer()); let b = ''; for (const x of a) b += String.fromCharCode(x);
+                  return {trends: rows('Trends').map(r => [r.cells[0].textContent, at(r.cells[1]), at(r.cells[2]), r.cells[6].textContent]),
+                    out: rows('Out of range').map(r => [...r.cells].slice(0, 4).map(c => c.textContent)), pdf: btoa(b)}; }""")
+                cell = lambda x, none: f"{x[0]} {SUM781[x[1]]}" if x and x[1] else x[0] if x else none
+                want = [[f"{n} ({u})", cell(th, "none before"), cell(nw, "no new result"), r] for (n, u), (th, nw, r) in trends.items()]
+                if s["trends"] != want:
+                    bad.append(f"{when}: the summary's trends {s['trends']} not {want}")
+                want = sorted([n + (f" ({o} of {of})" if of > 1 else ""), f"{v} {u}", f, r] for (n, u), (v, f, r, o, of) in out.items())
+                if sorted(s["out"]) != want:
+                    bad.append(f"{when}: the summary's out of range {s['out']} not {want}")
+                try:
+                    pdf = " ".join("\n".join(p_.extract_text() for p_ in PdfReader(io.BytesIO(base64.b64decode(s["pdf"]))).pages).split())
+                except Exception as e:
+                    pdf = f"no PDF: {e}"
+                bad += [f"{when}: the PDF's {w}" for w in [f"{v} {u} {f} {r}" for (n, u), (v, f, r, *_) in out.items()]
+                        + [f"{n} ({u})" for n, u in trends] if w not in pdf]
+                bad += [f"{when}: the PDF's {v} {u}, linked to another" for (n, u), (v, *_) in M752.COPIES_OUT.items() if (n, u) not in out and f"{v} {u}" in pdf]
+                return bad
+
+            bad781 = views781("before", M752.COPIES_SEEN, M752.COPIES_ONCE, M752.COPIES_TRENDS, M752.COPIES_OUT)
+            linked781 = js("""async pid => { const h = {'X-Sanguity': '1', 'Content-Type': 'application/json'}, out = [];
+              for (const x of (await (await fetch(`api/profiles/${pid}/data`, {headers: h})).json()).possible || [])
+                out.push([x.a.name, (await fetch(`api/profiles/${pid}/same`, {method: 'POST', headers: h, body: JSON.stringify({ref: x.ref})})).status]);
+              return out.sort(); }""", cpid)
+            if linked781 != [["Calcium", 201], ["Hemoglobin", 201], ["Potassium", 201], ["Sodium", 201]]:
+                bad781.append(f"Same result: {linked781}")
+            bad781 += views781("after Same result", M752.COPIES_SAME, M752.COPIES_SAME, M752.COPIES_TRENDS_SAME, M752.COPIES_OUT_SAME)
+            check("#781: one result twice (a copy with no range beside one with its report's range and Low; a flag in one, the range in the other) "
+                  "and a lab in two units: Labs shows both copies and each unit; the summary's preview, its PDF and a share link every result, a result "
+                  "twice once with any range and flag either copy has, each unit its own row; after “Same result”, once everywhere with them",
+                  not bad781, bad781)
+            db = dbm.connect()
+            prof_r.delete_profile(db, cpid)
+            db.close()
             js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
             # ---- About this person (#194): on Sharing, a group of its own under Profiles: the birth date and the sex
             # used for reference ranges (worded as such, apart from gender identity), saved together; a dated height

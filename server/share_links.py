@@ -342,7 +342,8 @@ def _build(db, link, today, section):
             if isinstance(s, dict) and s.get("name") and s.get("panel") and not s.get("watch"):
                 panel.setdefault(s["name"], _text(s["panel"], 120))
         labs = []
-        for name, s in summary._series(data).items():
+        for s in summary.each(summary._series(data)):   # a lab in two units: each (#781), a result twice once (ranges.copies)
+            name = s["name"]
             if pick and name not in pick:
                 continue
             pts = [{"t": _text(p["t"], 25), "value": summary.value_text(p), "v": p["v"], "range": summary.range_text(p),

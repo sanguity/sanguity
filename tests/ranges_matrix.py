@@ -8,7 +8,8 @@ report's; a report's then one from Settings; a range that changes; and values gi
 each edge of a report's range and of one from Settings. JUDGED is what each result is judged as, by the one rule
 (server/ranges.py judge, www/js/ranges.js applyRangeOverrides): [flag, low, high, source]; STEPS the band's steps, each
 the results it covers, with its words (a result whose report gave no range is under none). The summary's "since" day is
-SINCE days back, so each case has a Then and a Now. Fictional data only.
+SINCE days back, so each case has a Then and a Now. COPIES (#781, at the end) is a second profile's: one result twice
+(from two imports) and a lab in two units, before and after "Same result". Fictional data only.
 """
 import datetime
 
@@ -92,3 +93,76 @@ def records(today=None):
 def share_judged(lab):
     """What a share link says of each result (its report's range and flag only: it never sends a range from Settings)."""
     return [[f, lo, hi, R] if src == R else ["", None, None, R] for f, lo, hi, src in JUDGED[lab]]
+
+
+# ---------------------------------------------------------------- #781: one result twice, and a lab in two units
+# A profile of two imports (copies(1), a spreadsheet; then copies(2), a portal's): the same result in each, its range
+# and flag said in one, in the other, or a part in each, before the "since" day (COPIES_SINCE days back, a visit) and
+# after it; a lab in two units; and one result in two units (a change of prefix: 11.0 g/dL and 110 g/L), which "Same
+# result" can link (crossmatch.match). COPIES: (lab, unit): {import: [(days back, value, low, high, flag, as given)]}.
+# Each result's [flag, low, high] (no range from Settings here) as:
+#   COPIES_SEEN  Labs shows it before "Same result": both copies, a lab in two units two series (#438)
+#   COPIES_ONCE  the summary, its PDF and a share link show it then: a result twice once, with any range and flag either
+#                copy has (ranges.copies), each unit its own row
+#   COPIES_SAME  every one shows it once each pair is linked as the same result (crossmatch.apply): the older import's
+#                copy kept, with the other's range and flag where it has none, a range in another unit converted exactly
+COPIES_SINCE = 45
+COPIES = {
+    # the issue's Potassium: typed in with no range, then a portal's with its report's range and Low
+    ("Potassium", "mmol/L"): {1: [(30, 3.2, None, None, "", "3.2"), (5, 4.0, None, None, "", "4.0")],
+                              2: [(30, 3.2, 3.5, 5.1, "L", "3.2")]},
+    # the reverse: the first import's with its range (Low worked out against it), the portal's with none
+    ("Calcium", "mg/dL"): {1: [(20, 8.1, 8.5, 10.5, "", "8.1")], 2: [(20, 8.1, None, None, "", "8.1")]},
+    # a flag in one (no range), the range in the other (no flag), before the "since" day: the trend's Then
+    ("Sodium", "mmol/L"): {1: [(60, 133, None, None, "L", "133"), (10, 140, 135, 145, "", "140")],
+                           2: [(60, 133, 135, 145, "", "133")]},
+    # a lab in two units: Low in the first's, the latest in the second's
+    ("Glucose, Blood", "mmol/L"): {1: [(100, 5.0, 3.9, 5.5, "", "5.0"), (30, 3.1, 3.9, 5.5, "L", "3.1")]},
+    ("Glucose, Blood", "mg/dL"): {2: [(10, 92, 70, 99, "", "92")]},
+    # one result in two units, its range and Low in the second's
+    ("Hemoglobin", "g/dL"): {1: [(15, 11.0, None, None, "", "11.0")]},
+    ("Hemoglobin", "g/L"): {2: [(15, 110, 120, 160, "L", "110")]},
+}
+COPIES_SEEN = {
+    ("Potassium", "mmol/L"): [["", None, None], ["L", 3.5, 5.1], ["", None, None]],
+    ("Calcium", "mg/dL"): [["L", 8.5, 10.5], ["", None, None]],
+    ("Sodium", "mmol/L"): [["L", None, None], ["L", 135, 145], ["", 135, 145]],
+    ("Glucose, Blood", "mmol/L"): [["", 3.9, 5.5], ["L", 3.9, 5.5]],
+    ("Glucose, Blood", "mg/dL"): [["", 70, 99]],
+    ("Hemoglobin", "g/dL"): [["", None, None]],
+    ("Hemoglobin", "g/L"): [["L", 120, 160]],
+}
+COPIES_ONCE = {**COPIES_SEEN, ("Potassium", "mmol/L"): [["L", 3.5, 5.1], ["", None, None]],
+               ("Calcium", "mg/dL"): [["L", 8.5, 10.5]], ("Sodium", "mmol/L"): [["L", 135, 145], ["", 135, 145]]}
+COPIES_SAME = {**{k: v for k, v in COPIES_ONCE.items() if k != ("Hemoglobin", "g/L")}, ("Hemoglobin", "g/dL"): [["L", 12, 16]]}
+# the summary since then (the key labs COPIES_LABS): each trend row (each unit its own, the latest result's first) its
+# Then and Now ([value, flag in words] or None) and its Now's range; and its out-of-range rows [value, flag, range, out, of]
+COPIES_LABS = list(dict.fromkeys(n for n, _ in COPIES))
+COPIES_TRENDS = {
+    ("Potassium", "mmol/L"): [None, ["4.0", None], ""],
+    ("Calcium", "mg/dL"): [None, ["8.1", "Low"], "8.5–10.5"],
+    ("Sodium", "mmol/L"): [["133", "Low"], ["140", None], "135–145"],
+    ("Glucose, Blood", "mg/dL"): [None, ["92", None], "70–99"],
+    ("Glucose, Blood", "mmol/L"): [["5.0", None], ["3.1", "Low"], "3.9–5.5"],
+    ("Hemoglobin", "g/dL"): [None, ["11.0", None], ""],
+    ("Hemoglobin", "g/L"): [None, ["110", "Low"], "120–160"],
+}
+COPIES_TRENDS_SAME = {**{k: v for k, v in COPIES_TRENDS.items() if k != ("Hemoglobin", "g/L")},
+                      ("Hemoglobin", "g/dL"): [None, ["11.0", "Low"], "12–16"]}
+COPIES_OUT = {("Potassium", "mmol/L"): ["3.2", "Low", "3.5–5.1", 1, 2], ("Calcium", "mg/dL"): ["8.1", "Low", "8.5–10.5", 1, 1],
+              ("Glucose, Blood", "mmol/L"): ["3.1", "Low", "3.9–5.5", 1, 1], ("Hemoglobin", "g/L"): ["110", "Low", "120–160", 1, 1]}
+COPIES_OUT_SAME = {**{k: v for k, v in COPIES_OUT.items() if k != ("Hemoglobin", "g/L")},
+                   ("Hemoglobin", "g/dL"): ["11.0", "Low", "12–16", 1, 1]}
+
+
+def copies(imp, today=None):
+    """Import imp's records (1 or 2), as an import stores them (records.store): its labs, each with its source's key (a
+    spreadsheet's, a portal's: what tells a result's copies apart, crossmatch.point_key), their draws, and in the first
+    the summary's "since" visit."""
+    labs = [{"name": n, "key": f"{('csv', 'fhir')[imp - 1]}:{n.lower()}|{u}", "unit": u, "panel": "", "n": len(by[imp]), "txt": [],
+             "pts": [[day(d, today), v, lo, hi, f, t] for d, v, lo, hi, f, t in by[imp]]} for (n, u), by in COPIES.items() if imp in by]
+    draws = sorted({d for by in COPIES.values() for d, *_ in by.get(imp, ())}, reverse=True)
+    events = [{"id": i + 1, "t": day(d, today), "k": "lab", "title": f"Lab results (fictional, {imp})"} for i, d in enumerate(draws)]
+    if imp == 1:
+        events.append({"id": len(events) + 1, "t": day(COPIES_SINCE, today), "k": "visit", "title": "Office visit (fictional)"})
+    return {"built": day(0, today)[:10], "source": "fictional", "events": events, "details": {}, "costs": [], "upcoming": [], "labs": labs}
