@@ -41,24 +41,36 @@ const rangeFlag = (v, lo, hi, c = "", e = "") => hi != null && c[0] !== "<" && (
 /* a point's edge (p[7], server/importers/common.py range_edge): "<" where its one-sided range was printed "<5", leaving
    5 out of it, ">" for ">60"; "" for one that keeps it ("<=5", ">=60") or a range of two limits (#780) */
 const rangeEdge = p => String(p[7] || "");
+/* a result's flag as stored, read as its report's (#839; server/ranges.py read_flag, the importers' one rule for a
+   printed flag, common.report_flag): "H" or "L" where it says which way (">", "HH", "High"), whatever the range; one
+   that says no way ("A", "AA", "Abnormal") placed by rangeFlag where its range can, else "A"; none, or one that says
+   neither ("N", "Normal") or isn't read, the range's. So an older import's "N" is no flag, not ◆, and its ">" High, as
+   the summary and share links read them. FLAG_WAY and FLAG_NO_WAY: common.py's words (a flag lower-cased, punctuation as
+   spaces: flagWordOf); v: a number or null; c and e as for rangeFlag */
+const FLAG_WAY = Object.fromEntries([["H", "h,hh,hu,>,hi,high,a h,a>,above,above high normal,critical high,panic high,significantly high,off scale high"],
+  ["L", "l,ll,lu,<,lo,low,a<,below,below low normal,critical low,panic low,significantly low,off scale low"]].flatMap(([f, ws]) => ws.split(",").map(w => [w, f])));
+const FLAG_NO_WAY = new Set("a,aa,abn,abnormal,critical,critical abnormal,panic,alert,y,yes,true".split(","));
+const flagWordOf = f => String(f ?? "").toLowerCase().replace(/[^0-9a-z<>]+/g, " ").trim();
+const readFlag = (f, v, lo, hi, c = "", e = "") => { const w = flagWordOf(f);
+  return FLAG_WAY[w] || (typeof v === "number" && isFinite(v) ? rangeFlag(v, lo, hi, c, e) : "") || (FLAG_NO_WAY.has(w) ? "A" : ""); };
 /* each lab result's range (p[2], p[3]), flag (p[4]) and its range's source (p.rs "settings", else its report): the
-   report's own range and flag where it gives them; where it gives a range and no flag, the flag rangeFlag works out
-   against it; where it gives neither, a range from settings that fits, p.rs = "settings", its flag worked out against
-   that. Every page reads a result's flag from here (Labs, the heatmap, the Overview, Compare, the lab panel).
-   -> how many results took a range from settings */
+   report's own range and flag where it gives them, its flag as stored read as its report's (readFlag, #839); where it
+   gives a range and no flag, the flag rangeFlag works out against it; where it gives neither, a range from settings that
+   fits, p.rs = "settings", its flag worked out against that. Every page reads a result's flag from here (Labs, the
+   heatmap, the Overview, Compare, the lab panel, the drawer's rows). -> how many results took a range from settings */
 function applyRangeOverrides(series, cfg) {
   let n = 0;
   for (const s of series) {
     if (s.watch) continue;
     for (const p of s.pts) {
-      if (typeof p[1] !== "number" || !isFinite(p[1]) || String(p[4] || "").trim()) continue;
-      if (p[2] == null && p[3] == null) {
-        const r = rangeRowFor(cfg, s.name, s.unit, String(p[0] || "").slice(0, 10));
-        if (!r) continue;
-        p[2] = r.low ?? null; p[3] = r.high ?? null; p.rs = "settings"; n++;
-        if (p[7]) p[7] = "";   // (a range from settings keeps both its edges)
-      }
-      p[4] = rangeFlag(p[1], p[2], p[3], rangeCmp(p[5]), rangeEdge(p));
+      const v = typeof p[1] === "number" && isFinite(p[1]) ? p[1] : null;
+      p[4] = readFlag(p[4], v, p[2], p[3], rangeCmp(p[5]), rangeEdge(p));
+      if (v == null || p[4] || p[2] != null || p[3] != null) continue;
+      const r = rangeRowFor(cfg, s.name, s.unit, String(p[0] || "").slice(0, 10));
+      if (!r) continue;
+      p[2] = r.low ?? null; p[3] = r.high ?? null; p.rs = "settings"; n++;
+      if (p[7]) p[7] = "";   // (a range from settings keeps both its edges)
+      p[4] = rangeFlag(v, p[2], p[3], rangeCmp(p[5]));
     }
   }
   return n;

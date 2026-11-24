@@ -21030,6 +21030,46 @@ def main():
                   "does (the paste kept only H and L)", not bad835, bad835)
             db = dbm.connect()
             prof_r.delete_profile(db, ppid)
+            # ---- #839: a flag stored as its report printed it (an older import's "N", ">", "HH", "Normal") is read as a new
+            # import of it would, by the one rule for a printed flag, on the page as on the server (ranges.js readFlag,
+            # server/ranges.py read_flag: common.report_flag): the page read every one but H and L as ◆ Flagged, the summary
+            # "N" as none and ">" as High. The page's reading against the server's over a grid of flags, values, ranges,
+            # bounds and edges; a drawer row with no result (a text one), its printed flag read so; and a result's two copies
+            # from two imports, the first's "N" (no range) beside the second's "H", the first's "AA" (no range) beside the
+            # second's 7–56: Labs shows each once, High, as the summary does (tests/test_ranges.py). The matrix's Calcium,
+            # its flags stored as printed, goes through #752's, #782's and #819's checks above with every other case
+            words839 = ["H", "HH", "High", "Critical-High", "H*", ">", "A>", "L", "LL", "low", "<", "A<", "A", "AA", "Abnormal", "Critical",
+                        "Alert", "Yes", "N", "Normal", "No", "", "Final", "POS"]
+            grid839 = [[w, v, lo, hi, c, e] for w in words839 for v, lo, hi in ((13, 11, 15), (16, 11, 15), (10, 11, 15), (13, None, None),
+                                                                                 (None, None, None), (15, 15, 60), (5, None, 5))
+                       for c, e in (("", ""), ("<", ""), ("", "<"))]
+            bad839 = [f"readFlag{tuple(x)} “{got}”, the server's “{rng.read_flag(*x)}”"
+                      for x, got in zip(grid839, js("g => g.map(([w, v, lo, hi, c, e]) => readFlag(w, v, lo, hi, c, e))", grid839))
+                      if got != rng.read_flag(*x)]
+            got839 = js("ws => ws.map(f => rowFlag({rows: [['Culture (fictional)', 'No growth', '', '', f]]}, 0, null))", words839)
+            if got839 != [rng.read_flag(w, None, None, None) for w in words839]:
+                bad839.append(f"a drawer row with no result: {got839}")
+            t839 = M752.day(3)
+            cp839 = lambda labs: {"built": M752.day(0)[:10], "source": "fictional", "details": {}, "costs": [], "upcoming": [],
+                                  "events": [{"id": 1, "t": t839, "k": "visit", "title": "Office visit (fictional)"}],
+                                  "labs": [{"name": n, "unit": u, "panel": "", "n": 1, "txt": [], "pts": [[t839, v, lo, hi, f, str(v)]]} for n, u, v, lo, hi, f in labs]}
+            spid = prof_r.create_profile(db, "Stored flags (fictional)", owner_id=owner)
+            for labs839, fmt839 in (([("Potassium", "mmol/L", 4.0, None, None, "N"), ("ALT", "U/L", 60, None, None, "AA")], "csv"),
+                                    ([("Potassium", "mmol/L", 4.0, None, None, "H"), ("ALT", "U/L", 60, 7, 56, "")], "fhir")):
+                with dbm.transaction(db):
+                    rec_r.store(db, spid, cp839(labs839), "upload", fmt=fmt839)
+            db.close()
+            page.goto(base + f"/?profile={spid}")
+            page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {spid}", timeout=20000)
+            got839 = js("Object.fromEntries(SERIES.filter(s => !s.watch).map(s => [s.name, s.pts.map(p => [p[4] || '', p[2], p[3]])]))")
+            if got839 != {"Potassium": [["H", None, None]], "ALT": [["H", 7, 56]]}:
+                bad839.append(f"a result's two copies on Labs: {got839}")
+            check("#839: a flag stored as its report printed it is read as a new import of it would, on the page as on the server: the "
+                  "page's reading is the server's (“N” and “Normal” none, so the range says it; “>” and “HH” High; “AA” placed by the range), "
+                  "a drawer row with no result's too, and a result's copies are one result with each copy's flag so read",
+                  not bad839, bad839[:12])
+            db = dbm.connect()
+            prof_r.delete_profile(db, spid)
             db.close()
             js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was_profile)
             # ---- About this person (#194): on Sharing, a group of its own under Profiles: the birth date and the sex

@@ -177,10 +177,12 @@ def _num(v):
 
 def _pt(p):
     """A result point [time, value, low, high, flag, text, source tag, edge] as a dict (edge: whether its one-sided
-    range leaves its limit's edge out, "<" or ">", #780)."""
+    range leaves its limit's edge out, "<" or ">", #780), its flag as stored read as its report's (ranges.read_flag,
+    #839: an older import's "N" is no flag, its ">" High, as the page reads them), before its copies are put together."""
     p = list(p) + [None] * (8 - len(p)) if isinstance(p, (list, tuple)) else [None] * 8
-    return {"t": p[0], "d": _day(p[0]), "v": _num(p[1]), "lo": _num(p[2]), "hi": _num(p[3]),
-            "flag": str(p[4] or "").strip(), "text": str(p[5] or "").strip(), "rs": "report", "edge": str(p[7] or "")}
+    v, lo, hi, text, edge = _num(p[1]), _num(p[2]), _num(p[3]), str(p[5] or "").strip(), str(p[7] or "")
+    return {"t": p[0], "d": _day(p[0]), "v": v, "lo": lo, "hi": hi, "flag": ranges.read_flag(p[4], v, lo, hi, text, edge),
+            "text": text, "rs": "report", "edge": edge}
 
 
 def _judged(p, name, unit, rcfg):
@@ -194,17 +196,13 @@ def _judged(p, name, unit, rcfg):
 
 
 def out_of_range(p):
-    """"High", "Low" or "Flagged" by the result's flag (its report's, else the one worked out against its range,
-    _judged), or None. "Flagged" for one its report gives without saying which way (an "A"), as every page says ◆ (#819:
-    the summary and share links said "Abnormal")."""
+    """"High", "Low" or "Flagged" by the result's flag (its report's, read as stored by the one rule, else the one
+    worked out against its range: _pt, _judged), or None. "Flagged" for one its report gives without saying which way
+    (an "A"), as every page says ◆ (#819: the summary and share links said "Abnormal"). (#839: it read a stored flag by a
+    list of its own, "N" as none and ">" as High where the page read both as ◆; the one reading, ranges.read_flag, gives
+    "H", "L", "A" or "".)"""
     f = p["flag"].upper()
-    if f in ("H", "HH", "HI", "HIGH", ">", "H*", "A>"):
-        return "High"
-    if f in ("L", "LL", "LO", "LOW", "<", "L*", "A<"):
-        return "Low"
-    if f in ("N", "NORMAL", "NEG", "NEGATIVE"):
-        return None
-    return "Flagged" if f else None
+    return {"H": "High", "L": "Low"}.get(f[:1], "Flagged") if f else None
 
 
 def range_words(lo, hi, edge=""):

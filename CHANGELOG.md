@@ -2013,6 +2013,13 @@ Everything on `main` so far; it becomes the first tagged release.
   result whose range came only as its displayed text ("<5", no low or high) was kept with none, so Labs showed no range
   and no flag while the drawer showed "<5" beside the value. Both now read it by the one parser of a range as text: 5
   is High against "<5", in range against "<=5".
+- **A flag stored as its report printed it reads the same on every page and in the summary** (#839): a flag kept as
+  printed by an older import ("N", ">", "<", "Normal") read ◆ Flagged on Labs, the Overview, the heatmap and the drawer,
+  while the summary and share links read "N" and "Normal" as no flag and ">" as High, so a normal result could read
+  "◆ Flagged" in the app. Every page and the server now read a stored flag by the one rule an import reads a printed
+  one with (#817): ">" and "HH" High, "<" and "LL" Low, "AA" placed by the range where it can be, "N" and "Normal" no
+  flag, so the range says it (a range from Settings where the report printed none). Nothing stored is changed and
+  nothing needs importing again; a result's copies are put together with their flags read so.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

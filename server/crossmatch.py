@@ -459,15 +459,17 @@ def _carry(kp, ks, p, s):
     are left as they are."""
     kp, p = list(kp), list(p) + [None] * (8 - len(p))
     lo, hi = _num(p[2]), _num(p[3])
+    pf = ranges.read_flag(p[4], _num(p[1]), lo, hi, p[5], p[7])   # each flag as stored read as its report's (#839)
     if lo is not None or hi is not None:
         f = factor(_canon_name(s), s.get("unit"), ks.get("unit"))
         if f is None:   # (a chain of links: no exact factor between these two) nothing of p's is carried
             return kp
         if f != 1:
             lo, hi = (None if x is None else float(Decimal(str(x)) * f) for x in (lo, hi))
-    have = (kp + [None] * 8)[2:8]
-    was = (_num(have[0]), _num(have[1]), str(have[2] or "").strip(), str(have[5] or ""))
-    got = ranges.copies(was, (lo, hi, p[4], p[7]))
+    have = (kp + [None] * 8)[1:8]
+    was = (_num(have[1]), _num(have[2]), ranges.read_flag(have[3], _num(have[0]), _num(have[1]), _num(have[2]), have[4], have[6]),
+           str(have[6] or ""))
+    got = ranges.copies(was, (lo, hi, pf, p[7]))
     if got == was:
         return kp
     kp += [None] * (5 - len(kp))
@@ -555,7 +557,9 @@ def copies(data, apart=()):
                 if isinstance(p, list) and p:
                     q = p + [None] * (6 - len(p))
                     at[(s.get("name"), s.get("unit") or "", str(q[0]), _num(q[1]), str(q[5] or "").strip())].append((i, n))
-    own = lambda p: (_num(p[2]), _num(p[3]), str(p[4] or "").strip(), str(p[7] or ""))   # a point's range, flag and edge
+    # a point's range, flag and edge, its flag as stored read as its report's (#839: an older import's "N" is none, so
+    # it keeps no other copy's flag from it, as the summary and the page read it)
+    own = lambda p: (_num(p[2]), _num(p[3]), ranges.read_flag(p[4], _num(p[1]), _num(p[2]), _num(p[3]), p[5], p[7]), str(p[7] or ""))
     touched = set()
 
     def mine(i):   # series i as a new dict with its own list of points, the records' own left as they are

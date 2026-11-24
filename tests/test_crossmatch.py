@@ -129,12 +129,13 @@ class Rule(unittest.TestCase):
         self.assertEqual(kept[2:5], [135, 145, "L"], "a flag in one, the range in the other")
         # #780: a one-sided range's edge goes with it (pts[7], after the source tag or null in its place), in another unit too
         trop, ng, src = S("Troponin I", "ng/mL"), S("Troponin I", "ng/L", imp=2), [t, 40, None, 40, "", "40", None, "<"]
-        self.assertEqual(cm._carry(P(t, 0.04, "0.04"), trop, src, ng), [t, 0.04, None, 0.04, "", "0.04", None, "<"],
+        # (the other's flag as read, #839: its 40 against its "<40" is "H", which the kept copy's 0.04 against "<0.04" is too)
+        self.assertEqual(cm._carry(P(t, 0.04, "0.04"), trop, src, ng), [t, 0.04, None, 0.04, "H", "0.04", None, "<"],
                          "a report's \"<40\" ng/L, given as \"<0.04\" ng/mL")
         own = [t, 0.04, None, 0.04, "", "0.04", "RCC"]
         self.assertEqual(cm._carry(own, trop, src, ng), own, "its own range (\"≤ 0.04\") kept, without the other's edge")
         crp = S("C-Reactive Protein", "mg/L")
-        self.assertEqual(cm._carry(P(t, 5), crp, [t, 5, None, 5, "", "5", None, "<"], crp | {"imp": 2}), [t, 5, None, 5, "", "5", None, "<"])
+        self.assertEqual(cm._carry(P(t, 5), crp, [t, 5, None, 5, "", "5", None, "<"], crp | {"imp": 2}), [t, 5, None, 5, "H", "5", None, "<"])
         self.assertEqual(cm._carry_row(["Hemoglobin", "11.0", "g/dL", "", ""], ["HGB", "110", "g/L", "120-160", "L"]),
                          ["Hemoglobin", "11.0", "g/dL", "120-160 g/L", "L"], "the drawer's row: a range in another unit said with it")
         row = ["Potassium", "3.2", "mmol/L", "3.5-5.1", ""]
