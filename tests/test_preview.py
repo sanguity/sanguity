@@ -408,6 +408,38 @@ class Preview(unittest.TestCase):
         finally:
             db.close()
 
+    def test_one_ticked_adds_only_it(self):   # #887
+        """Ticking one duplicate to add anyway adds only that result (preview.keep), with its own row, in a lab day
+        holding only it. A C-CDA document of four results at one time uploaded again, ALT ticked: _settle kept its
+        report's labitem for ALT's row, every row of it, and _with_rows took each other row's result for a copy kept for
+        its row, so the review's button said "Add 1 lab result" and the save added 4, a second "4 lab results" for the
+        same draw. Ticking the lab day adds each of its results, as before."""
+        t = "2025-10-07T07:45:00"
+        rows = [("ALT", "U/L", t, "45", "10-40"), ("C-Reactive Protein", "mg/L", t, "5", "<=5"), ("Potassium", "mmol/L", t, "5.1", "3.5-5.0"),
+                ("Sodium", "mmol/L", t, "140", "135-145")]
+        doc, pid = {"portal.xml": M.ccda(rows)}, self.profile("One ticked")
+        self.assertEqual(self.save(pid, self.previewed(pid, doc)[0])["state"], "done")
+        n = count(pid)
+
+        def days():   # the lab days at that time: (title, each of its rows' test and value), as saved
+            got = assembled(pid)
+            self.assertEqual(rowless(got), [], "every result with its row in its own import's lab day")
+            return sorted((e["title"], [r[:2] for i in got["details"][str(e["id"])]["ids"] for r in got["details"][str(i)]["rows"]])
+                          for e in got["events"] if e["k"] == "lab" and e["t"][:16] == t[:16])
+        every = ("4 lab results", [[x[0], x[3]] for x in rows])
+        j, _ = self.previewed(pid, doc)
+        refs = {i["title"]: i["ref"] for i in j["duplicates"]["items"]}
+        self.assertEqual((j["new"], j["duplicates"]["results"]), (False, len(rows)), j["duplicates"])
+        done = self.save(pid, j, keep=[refs["ALT"]])
+        self.assertEqual((done["state"], done["counts"]["results"], done["counts"]["kinds"]), ("done", 1, {"lab": 1}), done)
+        self.assertEqual(count(pid)["results"], n["results"] + 1, "ALT alone added")
+        self.assertEqual(days(), [("1 lab result", [["ALT", "45"]]), every], "its own row, in a lab day holding only it")
+        j, _ = self.previewed(pid, doc)   # the lab day ticked: each of its results
+        refs = {i["kind"]: i["ref"] for i in j["duplicates"]["items"]}
+        done = self.save(pid, j, keep=[refs["lab"]])
+        self.assertEqual((done["state"], done["counts"]["results"]), ("done", len(rows)), done)
+        self.assertEqual(days(), [("1 lab result", [["ALT", "45"]]), every, every])
+
     def test_a_trimmed_lab_day_still_holds_together(self):
         data = {"events": [{"id": 1, "t": "2025-05-01", "k": "lab", "title": "2 results", "key": "x:labday:2025-05-01"},
                            {"id": 2, "t": "2025-05-01", "k": "labitem", "title": "CBC", "hidden": True, "key": "x:r1"},
