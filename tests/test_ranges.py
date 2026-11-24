@@ -456,7 +456,8 @@ class Api(unittest.TestCase):
         range in g/L given in g/dL, the kept copy's unit). A one-sided range's edge goes with its range (#780: "<5" kept
         with 5 left out, the copy High), and each import's lab days (#782) name their rows' series, each row's result
         flagged as COPIES_DAYS has it (the drawer's flags, the Timeline's counts), the other's rows folded into the kept
-        one's after Same result."""
+        one's after Same result. A copy's "A" with no range beside its other copy's range (#825 with #817, ALT's first
+        and AST's second): placed by it whichever came first, High past it, "Flagged" inside it (#819)."""
         db = dbm.connect()
         try:
             owner = db.execute("SELECT id FROM users WHERE username='robin'").fetchone()["id"]
@@ -466,7 +467,7 @@ class Api(unittest.TestCase):
                     records.store(db, pid, M.copies(imp, TODAY), "upload", fmt=fmt)
         finally:
             db.close()
-        c, word = self.c["robin"], {"L": "Low", "H": "High"}
+        c, word = self.c["robin"], M.SAID   # (a ◆ "Flagged", #819: ALT's and AST's "A", #817)
         self.assertEqual(c.put(f"/api/profiles/{pid}/settings/overview.keyLabs", json={"value": M.COPIES_LABS}, headers=H).status_code, 200)
         r = c.post(f"/api/profiles/{pid}/links", json={"sections": ["results"]}, headers=H)
         self.assertEqual(r.status_code, 200, r.text)
