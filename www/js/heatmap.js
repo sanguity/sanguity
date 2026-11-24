@@ -66,7 +66,7 @@ function renderHeatmap(live) {   // live: a frame of a drag (charts.js), at the 
   const avail = (live && svg._avail) || (svg._avail = svg.parentElement.clientWidth || 320);
   // its fixed sizes grow with the labels (chartkit.js ckK, #633: at 200% text the names and the axis fell outside):
   // the names' column, kept to under half the box, the rows and the lines over them
-  const k = ckK(), LW = Math.min(Math.round((avail < 600 ? 120 : 190) * k), Math.floor(avail * .45)), top = 34 * k, rowH = 14 * k, gap = 2, GH = 16 * k;
+  const k = ckK(), LW = Math.min(Math.round((avail < 600 ? 120 : 190) * k), Math.floor(avail * .45)), rowH = 14 * k, gap = 2, GH = 16 * k;
   if (!rows.length || !cols.length) {   // a plot kept to drag back to where the draws are, and double-click (#382)
     svg.replaceChildren(el("svg:rect", {width: avail, height: 96, fill: "transparent"}),
       el("svg:text", {x: avail / 2, y: 52, "text-anchor": "middle", text: !rows.length && state.labQ ? "No lab names match the filter." : "No lab draws in this date range."}));
@@ -89,12 +89,15 @@ function renderHeatmap(live) {   // live: a frame of a drag (charts.js), at the 
     el("span", {text: "← far below · below · in range · above · far above →"}), el("span", {style: {color: "var(--muted)"}, text: "(distance outside the range, as a share of the range's width)"}),
     el("span", {class: "hm-key"}, el("b", {"aria-hidden": "true", text: "▲"}), " above the range, ", el("b", {"aria-hidden": "true", text: "▼"}), " below",
       dia ? [", ", el("b", {"aria-hidden": "true", text: "◆"}), " flagged by its report"] : null, thin ? el("span", {style: {color: "var(--muted)"}, text: " (zoom in to see them on each cell, or show the table)"}) : null));
+  // the counts' heading, "Outside", "Outside or flagged" with a ◆ (#819), right of the names' column on the first
+  // panel's line: on as many lines as its room there takes, each word whole, the rows lower to make room over it (#849:
+  // at 200% text on a phone its one line widened the grid past its box, which cut the counts off)
+  const outHead = flaggedWords(dia ? ["A"] : [], "head"), heads = ckLines(outHead, "", avail - LW - 12), top = (34 + (heads.length - 1) * 12) * k;
   const groups = []; let gy = top;
   const yOf = new Map();
   let lastPanel = null;
   for (const s of rows) { const p = grp.get(s); if (p !== lastPanel) { groups.push([p, gy]); gy += GH; lastPanel = p; } yOf.set(s, gy); gy += rowH; }
-  const outHead = flaggedWords(dia ? ["A"] : [], "head");   // the counts' heading: "Outside", "Outside or flagged" with a ◆ (#819)
-  const W = Math.max(R + RW, LW + 8 + labelW(outHead, "")), H = gy + 4;   // (room for the counts' heading over a narrow grid)
+  const W = Math.max(R + RW, LW + 8 + Math.max(...heads.map(h => labelW(h, "")))), H = gy + 4;   // (room for the counts' heading over a narrow grid)
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("width", W); svg.setAttribute("height", H);
   svg._geom = {L: LW, R, w: W};
   const g = [];
@@ -110,8 +113,10 @@ function renderHeatmap(live) {   // live: a frame of a drag (charts.js), at the 
   g.push(el("svg:text", {x: LW - 8, y: 14 * k, "text-anchor": "end", text: "Hospital"}));
   g.push(el("svg:text", {x: LW - 8, y: 28 * k, "text-anchor": "end", text: "Procedure"}));
   for (const [p, py] of groups) g.push(el("svg:text", {class: "grp", x: 0, y: py + 11 * k, text: p}));
-  // the counts' heading, on the first panel's line, right of its name
-  g.push(el("svg:text", {x: W - 4, y: top + 11 * k, "text-anchor": "end", text: outHead}, el("svg:title", {text: `Results ${flaggedWords(dia ? ["A"] : [])} in these dates`})));
+  // the counts' heading, its last line on the first panel's line, right of its name
+  g.push(el("svg:text", {x: W - 4, y: top + (11 - (heads.length - 1) * 12) * k, "text-anchor": "end"},
+    ...heads.map((h, i) => el("svg:tspan", {x: W - 4, dy: i ? 12 * k : null, text: h + (i < heads.length - 1 ? " " : "")})),
+    el("svg:title", {text: `Results ${flaggedWords(dia ? ["A"] : [])} in these dates`})));
   const pix = [];   // each row's cells by pixel, where columns are under one (below)
   rows.forEach((s, i) => {
     // a lab kept in two units says which row is which, its unit kept whole (#438)

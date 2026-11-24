@@ -2,7 +2,7 @@
    drawChart) and Body and activity (health.js hChart) draw through it. Each part is its own small function, for the
    rest of the kit to plug in beside (the event track, the overview strip, sparklines):
    - ckScale, niceTicks, ckNum: the scales, and a value axis's round numbers, written as they are; ckFit, a label cut
-     to its room;
+     to its room; ckLines, one broken into lines that fit it;
    - ckTimeTicks, ckAxis, ckFoot: the time axis, its ticks at two levels (days over months, months over years), and
      the plot's foot alone, for a chart in a stack under one axis;
    - ckGrid, ckUnit: the value axis, a hairline and a label at each round number, and its unit as its title;
@@ -59,6 +59,13 @@ function labelW(text, cls) {
 document.fonts.addEventListener("loadingdone", () => labelSizes.clear());
 /* text cut with "…" to the room there is, in a label of class cls (a lane's or a medication's name, #633) */
 function ckFit(t, cls, room) { if (labelW(t, cls) <= room) return t; for (let n = t.length - 1; n > 1; n--) { const s = t.slice(0, n).trimEnd() + "…"; if (labelW(s, cls) <= room) return s; } return "…"; }
+/* text broken at its spaces into lines no wider than room, in a label of class cls, each word whole (a word wider
+   than room a line of its own): the heatmap's counts' heading at 200% text on a phone (#849) */
+function ckLines(t, cls, room) {
+  const out = [];
+  for (const w of t.split(" ")) if (out.length && labelW(out.at(-1) + " " + w, cls) <= room) out[out.length - 1] += " " + w; else out.push(w);
+  return out;
+}
 /* the labels' size against the 11.5 px the charts are laid out for, 1 or more: with larger text (200%, a phone's font
    size, #622) a chart's gutters, rows of labels and their offsets grow by it, so its labels stay inside it (1.4.4).
    The sizes labelW kept go when it changes */

@@ -605,7 +605,7 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .tl-row>.key{position:absolute;left:var(--sp-2);top:calc(var(--sp-2) + .3em)}   /* its kind's icon, in its lane's colour (#354) */
 .tl-row .t{margin-right:var(--sp-2);font-weight:var(--fw-medium)}
 .tl-row .k{display:inline-block;color:var(--muted);font-size:var(--fs-1);font-weight:var(--fw-medium)}   /* on the title's line, or whole on the next */
-.tl-row .k>.badge{margin-left:var(--sp-2)}
+.tl-row .k>.badge{margin-left:var(--sp-2);white-space:normal;align-items:baseline;border-radius:var(--r-lg)}   /* its words wrap, whole, at 200% text on a phone (#849) */
 .tl-row .s{display:block;color:var(--ink2);font-size:var(--fs-2)}
 .tl-sub{margin-left:var(--sp-5)}   /* a day's workouts, opened from their folded row */
 .tl-fold>.key{color:var(--ink2)}   /* the Watch lane's */

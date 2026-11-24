@@ -2061,6 +2061,11 @@ Everything on `main` so far; it becomes the first tagged release.
   (only the table listed it); Compare said one result a lab. The keyboard now stops at that time once and goes on, and
   every chart says each result there, told apart by its flag and range: "2 results: 5.6 mmol/L ▲ High (3.5–5.3);
   5.0 mmol/L (3.5–5.1)".
+- **#819's longer words fit at 200% text on a phone: the Timeline's badge, the heatmap's counts** (#849): with text
+  at 200% on a phone (320 to 412 px), a lab day's badge on the Timeline, kept on one line ("▲ 6 out of range or
+  flagged"), ran past the screen's edge, and the heatmap's counts heading, "Outside or flagged", made the grid wider
+  than its box, which cut off each row's count (at 360 px none showed). The badge's words now wrap, each whole, and the
+  heading takes as many lines as its room needs, the rows lower to make room for it.
 - **Removing a reminder's time is said, and Enter in a time doesn't save the reminder** (#853): Remove time 2 said
   nothing, and focus went to the field that now has its name, so a screen reader heard "Time 2" again; since #830 that
   field had focus, and a second Enter there saved the reminder a time short and took the drawer back to the
