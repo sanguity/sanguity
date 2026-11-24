@@ -7,8 +7,10 @@ Each case is a lab whose results [days back, value, low, high, flag, as given] g
 range and flag were said differently: a report's range then none; none then a report's; a range from Settings then a
 report's; a report's then one from Settings; a range that changes; values given as "<" and ">" bounds at and past
 each edge of a report's range and of one from Settings; and one-sided ranges that leave their edge out ("<5", ">60") or
-keep it ("<=5", ">=60"), at and past it, through the importers that read them too (#780); and a report's flags that
-say no way ("A", "Abnormal", "Critical"), inside its range, past it and with none printed, read through the CSV importer
+keep it ("<=5", ">=60"), at and past it, through the importers that read them too (#780), each spelled as reports
+print it ("=>60", "< OR = 5", "less than or equal to 5") and read through the CSV importer as an upload is (#850; and
+SPELLINGS, the ways a report prints a range, through every importer, Type them in and the FHIR export); and a
+report's flags that say no way ("A", "Abnormal", "Critical"), inside its range, past it and with none printed, read through the CSV importer
 as an upload is (THROUGH_CSV: ALT, its flags in CASES as printed, #817), and pasted into Type them in (PASTE_FLAGS,
 #835); and ranges given as text alone, "a - b", "<40", "<=40", "less than 40", read through the C-CDA importer
 (THROUGH_CCDA: AST, its texts RANGE_TEXT, #827), and through CareSpace and MyChart exports (#836); and flags stored as
@@ -123,7 +125,10 @@ CASES.update({
              (70, 60, 60, None, "", ">60"), (40, 60, 60, None, "", "60"), (30, 59, 60, None, "", "59"),
              (20, 60, 60, None, "", "<=60"), (10, 60, 60, None, "", "<60")],
 })
-PRINTED = {"C-Reactive Protein": ["<5"] * 4 + ["<=5"] * 4, "eGFR": [">60"] * 4 + [">=60"] * 4}
+# #850: each spelled as reports print it, the matrix's through the CSV importer (THROUGH_CSV below): "=>60" was read
+# as a high of 60 (59 against it in range, 60 High), "< OR = 5", "> OR = 60" and "less than or equal to 5" not at all
+PRINTED = {"C-Reactive Protein": ["<5", "< 5", "less than 5", "under 5", "<=5", "< OR = 5", "less than or equal to 5", "=<5"],
+           "eGFR": [">60", "> 60", "greater than 60", "over 60", ">=60", "=>60", "> OR = 60", "greater than or equal to 60"]}
 EDGES = {"C-Reactive Protein": ["<"] * 4 + [""] * 4, "eGFR": [">"] * 4 + [""] * 4}
 JUDGED.update({
     "C-Reactive Protein": [["", None, 5, R], ["H", None, 5, R], ["H", None, 5, R], ["", None, 5, R],
@@ -156,7 +161,8 @@ UNITS["ALT"] = "U/L"
 CASES["ALT"] = [(100, 30, 7, 56, "", "30"), (90, 40, 7, 56, "A", "40"), (80, 60, 7, 56, "A", "60"), (70, 5, 7, 56, "Abnormal", "5"),
                 (60, 50, 7, 56, "Abnormal", "50"), (40, 45, None, None, "Critical", "45"), (30, 35, 7, 56, "N", "35"),
                 (20, 25, 7, 56, "AA", "25"), (10, 20, 7, 56, "A", "20")]
-THROUGH_CSV = ["ALT"]
+# (#850: and the one-sided cases, each range spelled as PRINTED has it: the one parser of a range as text's reading)
+THROUGH_CSV = ["ALT", "C-Reactive Protein", "eGFR"]
 JUDGED["ALT"] = [["", 7, 56, R], ["A", 7, 56, R], ["H", 7, 56, R], ["L", 7, 56, R], ["A", 7, 56, R], ["A", None, None, R],
                  ["", 7, 56, R], ["A", 7, 56, R], ["A", 7, 56, R]]
 # and pasted into Type them in (#835: pasted() as a spreadsheet's copy, the flags in an "Abnormal" column, some as
@@ -170,11 +176,11 @@ OUT_OF_RANGE["ALT"] = ["20", "Flagged", "7–56", 3, 4]
 # no IVL (RANGE_TEXT), read by the C-CDA importer (THROUGH_CCDA: records() takes their series from ccda.parse, as an
 # upload would). It read a range from an IVL, or a text "a - b", so "<40" was dropped: no range and no flag on Labs while
 # the drawer showed "<40" beside the value. Now through the one range parser, its edge kept: 40 against "<40" (or "less
-# than 40") is High, against "<=40" in range
+# than 40") is High, against "<=40" in range; "10,0 - 40,0" with decimal commas (#850: dropped, so 8 wasn't Low)
 UNITS["AST"] = "U/L"
 CASES["AST"] = [(100, 30, 10, 40, "", "30"), (90, 8, 10, 40, "", "8"), (80, 39, None, 40, "", "39"), (70, 40, None, 40, "", "40"),
                 (40, 40, None, 40, "", "40"), (30, 41, None, 40, "", "41"), (20, 40, None, 40, "", "40"), (10, 35, None, 40, "", "35")]
-RANGE_TEXT = {"AST": ["10 - 40", "10-40", "<40", "< 40", "<=40", "≤ 40", "<40 U/L", "less than 40"]}
+RANGE_TEXT = {"AST": ["10 - 40", "10,0 - 40,0", "<40", "< 40", "<=40", "≤ 40", "<40 U/L", "less than 40"]}
 THROUGH_CCDA = ["AST"]
 # the same results from a CareSpace export and an Epic MyChart export, each range its displayed text alone, no low or
 # high of its own (#836: carespace() and epic(), which tests/test_ranges.py reads through those importers): dropped, as
@@ -185,6 +191,27 @@ JUDGED["AST"] = [["", 10, 40, R], ["L", 10, 40, R], ["", None, 40, R], ["H", Non
 STEPS["AST"] = [[[0, 1], "10–40 on report"], [[2, 3], "< 40 on report"], [[4, 5], "≤ 40 on report"], [[6, 7], "< 40 on report"]]
 TRENDS["AST"] = [("40", "High", None), ("35", None, None), "< 40"]
 OUT_OF_RANGE["AST"] = ["40", "High", "< 40", 2, 4]
+
+# ---- #850: one parser of a range as text (common.range_text) for every importer, Type them in and the FHIR export.
+# SPELLINGS: the ways a report prints a range, each [as printed, value, low, high, edge, flag], a value at or past its
+# limit ("<5" leaves 5 out of it, so 5 is High; against "<=5" in range). Through a spreadsheet (comma-delimited, and
+# with semicolons and decimal commas), Type them in, a PDF report, a C-CDA document, FHIR, CareSpace and MyChart, and
+# a FHIR export read back, each gives that range, edge and flag (spelled(); tests/test_ranges.py
+# test_2_range_spellings). The CSV importer read "=>60" as a high of 60 (90 against it High) and "< OR = 5", "less than
+# or equal to 5" and "> OR = 60" not at all, as Type them in did; the C-CDA, FHIR, CareSpace and MyChart importers
+# no decimal comma; a PDF report no words; the FHIR export said "≤ 5" and "< OR = 5" as text alone
+SPELLINGS = [
+    ["3.5-5.1", "3.5", 3.5, 5.1, "", ""], ["3.5 - 5.1", "5.2", 3.5, 5.1, "", "H"], ["70–99", "70", 70, 99, "", ""],
+    ["10 to 40", "9", 10, 40, "", "L"], ["5,0 - 10,0", "4.9", 5.0, 10.0, "", "L"], ["5..10", "10", 5, 10, "", ""],
+    ["<5", "5", None, 5, "<", "H"], ["less than 5", "5", None, 5, "<", "H"], ["under 5", "4", None, 5, "<", ""],
+    ["< 5 U/L", "5", None, 5, "<", "H"], ["<=5", "5", None, 5, "", ""], ["=<5", "5", None, 5, "", ""],
+    ["≤ 5", "6", None, 5, "", "H"], ["< OR = 5", "5", None, 5, "", ""], ["less than or equal to 5", "5", None, 5, "", ""],
+    ["up to 5", "6", None, 5, "", "H"], [">60", "60", 60, None, ">", "L"], ["greater than 60", "60", 60, None, ">", "L"],
+    ["over 60", "61", 60, None, ">", ""], [">=60", "60", 60, None, "", ""], ["=>60", "90", 60, None, "", ""],
+    ["=>60", "59", 60, None, "", "L"], ["≥ 60", "59", 60, None, "", "L"], ["> OR = 60", "60", 60, None, "", ""],
+    ["greater than or equal to 60", "59", 60, None, "", "L"], ["Negative", "5", None, None, "", ""],
+]
+SPELLED_AS = ("AST", "U/L")   # a lab every importer charts (CareSpace only those it knows)
 
 # ---- a flag stored as its report printed it (#839): Calcium's results as an older import stored them, before #817's one
 # rule, each flag in CASES as printed ("N", ">", "<", "HH", "LL", "AA", "Normal"), stored as it is. Every view reads a
@@ -252,6 +279,11 @@ def printed_range(lo, hi, edge=""):
     return f"{'>' if '>' in edge else '>='}{lo:g}" if lo is not None else ""
 
 
+def printed_at(lab, i):
+    """CASES[lab][i]'s range as its report prints it: as PRINTED spells it (#850), else printed_range()."""
+    return PRINTED[lab][i] if lab in PRINTED else printed_range(*CASES[lab][i][2:4], edges(lab)[i])
+
+
 def draw_days():
     """The days back with a lab draw, the oldest first."""
     return sorted({d for pts in CASES.values() for d, *_ in pts}, reverse=True)
@@ -264,15 +296,16 @@ def day_results(d):
 
 def through_csv(today=None):
     """THROUGH_CSV's series as the CSV importer reads them (csv_labs.parse, #817), from a spreadsheet of their results
-    as their reports print them: date, time, test, value as given, unit, range as printed and flag as printed."""
+    as their reports print them: date, time, test, value as given, unit, range as printed (printed_at()) and flag as
+    printed."""
     import os, tempfile
     from server.importers import csv_labs
     with tempfile.TemporaryDirectory() as tmp:
         path = os.path.join(tmp, "flags.csv")
         with open(path, "w", encoding="utf-8") as f:
             f.write("Date,Time,Test,Value,Unit,Reference range,Flag\n" + "".join(
-                f"{day(d, today)[:10]},{day(d, today)[11:16]},{n},{t},{UNITS[n]},{printed_range(lo, hi)},{flag}\n"
-                for n in THROUGH_CSV for d, v, lo, hi, flag, t in CASES[n]))
+                f"{day(d, today)[:10]},{day(d, today)[11:16]},{n},{t},{UNITS[n]},{printed_at(n, i)},{flag}\n"
+                for n in THROUGH_CSV for i, (d, v, lo, hi, flag, t) in enumerate(CASES[n])))
         return {s["name"]: s for s in csv_labs.parse({"flags.csv": path})["data"]["labs"]}
 
 
@@ -309,6 +342,12 @@ def ccda(rows):
 def text_ranged(lab, today=None):
     """lab's results with their ranges as text alone (RANGE_TEXT): [(test, unit, time, value as given, range as text)]."""
     return [(lab, UNITS[lab], day(d, today), t, r) for (d, *_, t), r in zip(CASES[lab], RANGE_TEXT[lab])]
+
+
+def spelled(today=None):
+    """SPELLINGS' results, one a day, the oldest first: [(test, unit, time, value as given, range as printed)]."""
+    n, u = SPELLED_AS
+    return [(n, u, day(200 - i, today), v, r) for i, (r, v, *_) in enumerate(SPELLINGS)]
 
 
 def carespace(rows, into):
@@ -370,8 +409,7 @@ def records(today=None):
     events = [{"id": i + 1, "t": day(d, today), "k": "lab", "title": "Lab results (fictional)"} for i, d in enumerate(draws)]
     events.append({"id": len(events) + 1, "t": day(SINCE, today), "k": "visit", "title": "Office visit (fictional)"})   # the summary's "since"
     for i, d in enumerate(draws):
-        rows = [[ROW_NAMES.get(n, n), CASES[n][j][5], UNITS[n], printed_range(*CASES[n][j][2:4], edges(n)[j]), stored[n][j]]
-                for n, j in day_results(d)]
+        rows = [[ROW_NAMES.get(n, n), CASES[n][j][5], UNITS[n], printed_at(n, j), stored[n][j]] for n, j in day_results(d)]
         abn = {"abn": n} if (n := sum(1 for r in rows if r[4])) else {}
         events[i].update(abn)
         events.append({"id": len(events) + 1, "t": day(d, today), "k": "labitem", "title": "Lab results (fictional)", "hidden": 1, **abn})

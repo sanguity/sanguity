@@ -21005,9 +21005,10 @@ def main():
                   "edge, in the limits) are two results in each, each with its own range and flag", not bad846, bad846)
             # ---- #780: a one-sided range keeps whether its limit includes its edge ("<5" leaves 5 out, "<=5" keeps it;
             # ">60", ">=60"). The page's rule and words against the server's over a grid of values, ranges, bounds and
-            # edges; then the matrix's one-sided cases through the real CSV importer (ranges_matrix printed()): each
-            # result's flag, range and edge on Labs, its table's words, its lab panel's counts and range, and each lab day's
-            # rows in the drawer, the range as its report printed it beside the same flag ("5" beside "<5" ▲ High)
+            # edges; then the matrix's one-sided cases through the real CSV importer (ranges_matrix printed(), each range
+            # spelled as reports print it, "less than 5", "=>60", "< OR = 5", #850): each result's flag, range and edge on
+            # Labs, its table's words, its lab panel's counts and range, and each lab day's rows in the drawer, the range as
+            # its report printed it beside the same flag ("5" beside "<5" ▲ High)
             from server import summary as sum780
             from server.importers import csv_labs as csv780
             grid780 = [[v, lo, hi, c, e] for v in (4, 5, 6) for lo, hi in ((None, 5), (5, None), (3, 5)) for c in ("", "<", "<=", ">", ">=")
@@ -21091,6 +21092,36 @@ def main():
             check("#835: a report's printed flags pasted into Type them in (“A”, “AA”, “Abnormal”, “Critical”, “Y”, “Yes”, “No” in an "
                   "“Abnormal” column) are kept as pasted, each row says its flag by the one rule, and saved, Labs judges each as the matrix "
                   "does (the paste kept only H and L)", not bad835, bad835)
+            # ---- #850: one parser of a range as text, Type them in's too (common.range_text). The ways a report prints a
+            # range (ranges_matrix SPELLINGS: "=>60", "> OR = 60", "< OR = 5", "less than or equal to 5", "5,0 - 10,0" ...),
+            # pasted: each row's check line says its range and flag as Labs will, with no note but for a range that isn't
+            # one ("=>60" was "range ≤ 60 · ▲ High" beside 90, "< OR = 5" and the words "the range couldn't be read");
+            # saved, Labs has each's range, edge and flag
+            bad850 = []
+            page.goto(base + f"/sources.html?profile={ppid}#manual")
+            page.wait_for_selector("#typeIn .man-row [data-f=date]", state="visible", timeout=10000)
+            js("""text => { const dt = new DataTransfer(); dt.setData('text/plain', text);
+              document.querySelector('.man-row [data-f=date]').dispatchEvent(new ClipboardEvent('paste', {clipboardData: dt, bubbles: true, cancelable: true})); }""",
+               "Date\tTime\tTest\tValue\tUnit\tReference range\n" + "".join(f"{t[:10]}\t{t[11:16]}\t{n}\t{v}\t{u}\t{r}\n" for n, u, t, v, r in M752.spelled()))
+            page.wait_for_function(f"document.getElementById('manMsg').textContent === '{len(M752.SPELLINGS)} results ready to save.'", timeout=10000)
+            got850 = js("[...document.querySelectorAll('.man-row .man-check')].map(c => c.textContent)")
+            # each line after its value: " · range ≥ 60 · ▼ Low", or its note where it has no range
+            said850 = [g.split(f" · {v} {u}", 1)[-1] for g, (_, u, _, v, _) in zip(got850, M752.spelled())]
+            want850 = [(f" · range {M752.words(lo, hi, e)}" if lo is not None or hi is not None else "") + (f" · {FLAG752[f]}" if f else "")
+                       + ("" if lo is not None or hi is not None else " (the range couldn't be read, so it isn't used for the flag)")
+                       for _, _, lo, hi, e, f in M752.SPELLINGS]
+            if said850 != want850:
+                bad850.append(f"the check lines: {[(s[0], g, w) for s, g, w in zip(M752.SPELLINGS, said850, want850) if g != w]}")
+            page.click("#manSave")
+            page.wait_for_function("document.getElementById('manMsg').textContent.startsWith('Saved')", timeout=10000)
+            page.goto(base + f"/?profile={ppid}")
+            page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {ppid}", timeout=20000)
+            labs850 = js("n => (SERIES.find(s => s.name === n) || {pts: []}).pts.map(p => [p[2], p[3], p[7] || '', p[4] || ''])", M752.SPELLED_AS[0])
+            if labs850 != [[lo, hi, e, f] for _, _, lo, hi, e, f in M752.SPELLINGS]:
+                bad850.append(f"Labs' {M752.SPELLED_AS[0]}: {labs850}")
+            check("#850: a range typed in as reports print it (“=>60”, “> OR = 60”, “< OR = 5”, “less than or equal to 5”, “5,0 - 10,0”…) "
+                  "is read by the one parser of a range as text: each row's check line says its range and flag as Labs will, with no "
+                  "“couldn't be read” note, and saved, Labs has each range, edge and flag", not bad850, bad850[:6])
             db = dbm.connect()
             prof_r.delete_profile(db, ppid)
             # ---- #839: a flag stored as its report printed it (an older import's "N", ">", "HH", "Normal") is read as a new

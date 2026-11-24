@@ -23,8 +23,7 @@ import collections, hashlib, json, os, re, subprocess, sys
 from datetime import datetime
 
 from . import pdf_layouts
-from .common import canonical_lab, comparator, lab_day_sub, lab_day_title, loinc_of, report_flag
-from .pdf_layouts import bounds
+from .common import canonical_lab, comparator, lab_day_sub, lab_day_title, loinc_of, range_text, report_flag
 
 NAME = "pdf-labs"
 LABEL = "Lab report PDF (Quest, Labcorp)"
@@ -373,7 +372,7 @@ def _build(reports, warnings):
                 continue
             seen.add(ident)
             x = _number(r["value"])
-            lo, hi, edge = bounds(r["range"])
+            lo, hi, edge = range_text(r["range"], whole=True)   # its cell, by the one parser of a range as text (#850)
             # the point's flag by the one rule (common.report_flag, #817): H or L as printed; a printed "A", "Abnormal"
             # or "Critical" by the range, else kept "A"; none printed, the range's. The row keeps the flag as printed
             rows.append({**r, "rep": rep, "x": x, "lo": lo, "hi": hi, "edge": edge,

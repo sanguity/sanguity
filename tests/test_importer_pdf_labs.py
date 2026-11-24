@@ -296,10 +296,19 @@ class Layouts(unittest.TestCase):
                                      f"{rel}: run tests/fixtures/importers/pdf-labs/generate.py")
 
     def test_helpers(self):
-        from server.importers.pdf_layouts import bounds, is_range, is_unit, is_value, range_and_unit
-        self.assertEqual([bounds(s) for s in ("65-99", "<200", "> OR = 60", ">59", "NEGATIVE", "9-3", "< OR = 5", "<=5")],
+        from server.importers.common import range_text
+        from server.importers.pdf_layouts import is_range, is_unit, is_value, range_and_unit
+        # a range cell's low, high and edge by the one parser of a range as text, the whole cell (#850: the layouts had
+        # their own, which read no words), whether a one-sided limit leaves its edge out (#780)
+        bounds = lambda s: range_text(s, whole=True)   # noqa: E731
+        self.assertEqual([bounds(s) for s in ("65-99", "<200", "> OR = 60", ">59", "NEGATIVE", "9-3", "< OR = 5", "<=5", "=>60",
+                                              "less than or equal to 5", "greater than or equal to 60", "<5 see note")],
                          [(65, 99, ""), (None, 200, "<"), (60, None, ""), (59, None, ">"), (None, None, ""), (None, None, ""),
-                          (None, 5, ""), (None, 5, "")])   # whether a one-sided limit leaves its edge out (#780)
+                          (None, 5, ""), (None, 5, ""), (60, None, ""), (None, 5, ""), (60, None, ""), (None, None, "")])
+        self.assertEqual([range_and_unit(s) for s in ("> OR = 60 mL/min/1.73m2", "less than or equal to 5 mg/L", "=>60 mL/min/1.73m2")],
+                         [("> OR = 60", "mL/min/1.73m2"), ("less than or equal to 5", "mg/L"), ("=>60", "mL/min/1.73m2")])
+        self.assertTrue(all(map(is_range, ("less than 5", "greater than or equal to 60", "=>60"))))
+        self.assertFalse(any(map(is_range, ("88", "<5 mg/L"))))
         self.assertTrue(all(map(is_value, ("88", "<0.01", "1,250", "NON-REACTIVE", "2+", "1:40"))))
         self.assertFalse(any(map(is_value, ("SEE NOTE", "TNP", "", "88 H 4"))))
         self.assertTrue(all(map(is_unit, ("mg/dL", "x10E3/uL", "%", "fL", "mL/min/1.73m2"))))

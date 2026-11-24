@@ -2036,6 +2036,15 @@ Everything on `main` so far; it becomes the first tagged release.
   own report, showed nowhere until the pair was marked "Not the same". Copies are now one result only where their own
   ranges agree or one has none; where both print a range and they differ (in the edge or the limits), each keeps its
   own range and flag on every page, in the drawer, the summary and share links, the flagged one read as the latest.
+- **"=>60" is a low, and every importer reads a range as text one way** (#850): a spreadsheet and Type them in read
+  "=>60" as a high of 60, so an eGFR of 90 beside it was stored "≤ 60" and High, and read "< OR = 5", "> OR = 60",
+  "less than or equal to 5" and "greater than or equal to 60" not at all (no range, no flag, the check line saying it
+  couldn't be read); the C-CDA, FHIR, CareSpace and MyChart importers read no decimal comma ("5,0 - 10,0"), a PDF
+  report's range no words, and the FHIR export sent "≤ 5" and "< OR = 5" as text alone. Spreadsheets, Type them in,
+  PDF reports, the FHIR export and every other importer now read a range by the one parser of a range as text, which
+  takes a decimal comma where it can't be a thousands separator, and a spreadsheet's own decimal commas: each spelling
+  gives the same range, its edge and its flag from every one. Results imported before keep what they were read as;
+  importing the file again reads them anew.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

@@ -147,8 +147,13 @@ code, as the FHIR export writes it. A flag stored before this rule, as its repor
 stored is changed. The edge is for a one-sided range whose limit leaves its edge out, as printed: `"<"` for `"<5"` (5 is above it), `">"` for
 `">60"` (60 is below it); leave it off (or `""`) for a range that keeps it (`"<=5"`, `"< OR = 5"`, `">=60"`) or one
 with a low and a high, and put `null` in the tag's place when there's no tag. `common.range_edge(printed, low, high)`
-works it out, and the flag rule honours it (#780); a range given as text alone ("<5", "<=5", ">60", "3.5-5.1 mmol/L")
-is read by `common.range_text(text)`, the one parser of a range as text: `(low, high, edge)` (#827). `txt` holds
+works it out, and the flag rule honours it (#780); a range given as text ("<5", "<=5", "=>60", "< OR = 5", "less than
+or equal to 5", "3.5-5.1 mmol/L", "5,0 - 10,0") is read by `common.range_text(text, decimal_comma, whole)`, the one
+parser of a range as text, every importer's, Type them in's and the FHIR export's: `(low, high, edge)` (#827, #850).
+Pass `decimal_comma` where the file says whether it writes decimal commas (a spreadsheet's: `"1,250"` is 1.25 with
+them, 1250 without); left out, a comma that can't be a thousands separator is a decimal one (`"3,5"`) and one that can
+(`"1,250"`) isn't read. `whole=True` reads a cell that is the range and nothing else (a PDF report's); a layout's cell
+holding a range and a unit is split by `common.range_part`. Don't write a parser of your own. `txt` holds
 results that aren't numbers. Name series with `common.canonical_lab(name, loinc)` so the same test from two sources
 lands on one chart (it returns None for labs it doesn't know: keep the source's name then), and add a LOINC code when
 you have one. A series may carry a `key` too, such as `"loinc:718-7"` (see below).
@@ -272,8 +277,8 @@ headings (`HEADER`), the collection date, ordering provider and specimen number 
 skip; and `row(cells)` reads one table line, split into cells at gaps of two or more spaces, into its name, value,
 flag, unit and range, or returns None. **Never guess:** a line in the table that `row` doesn't read is a warning
 naming its page and line, and a PDF no layout recognises (or two do) is refused. The package's docstring has the
-contract, and its helpers (`is_value`, `is_unit`, `is_range`, `range_and_unit`, `bounds`) read the parts most
-layouts share.
+contract, and its helpers (`is_value`, `is_unit`, `is_range`, `range_and_unit`) read the parts most layouts share; a
+row's range is read by `common.range_text(range, whole=True)`, the one parser of a range as text (#850).
 
 To add a layout:
 

@@ -58,58 +58,103 @@ def range_flag(v, lo, hi, cmp="", edge=""):
     return ""
 
 
-# a one-sided range's limit as printed, where it leaves its edge out: "<5", "less than 5", "under 5", ">60", "over 60";
-# not "<=5", "≤5", "< OR = 5", "less than or equal to 5", "up to 5", ">=60", "> OR = 60" (#780)
-_EDGE = re.compile(r"\s*(?:(<|less than|under|below)|(>|greater than|more than|over|above))(?!\s*(?:=|or\b))\s*(-?\d+(?:[.,]\d+)?)",
-                   re.I)
-
-
-def range_edge(text, lo, hi):
-    """Whether a one-sided reference range, as printed (text), leaves its limit's edge out (#780): "<" for "<5" (5 is
-    above it), ">" for ">60" (60 is below it), "" for one that includes it ("<=5", "≤ 5", "< OR = 5", "up to 5", ">=60")
-    and for a range with a low and a high. lo and hi are the range's numbers as read (from the text, or from a source's
-    own low and high beside it): the edge is said only where the text's number is the one limit there is. Kept with the
-    range on each point (pts[7], docs/importers.md), the flag rule (range_flag) and its words honour it."""
-    m = _EDGE.match(str(text or ""))
-    if not m or (lo is None) == (hi is None):
-        return ""
+def number_text(s, decimal_comma=None):
+    """A number as printed: "4.5", "1,234.5", "1.234,5", "4,5", "1'234"; None when it isn't one number. decimal_comma
+    says whether the file writes decimal commas, where that's known: True where it does (a spreadsheet with semicolons
+    or tabs, or with "4,5" among its values, csv_labs: "1,250" is 1.25), False where it doesn't (a comma-delimited
+    spreadsheet's, a row typed in: "1,250" is 1250), None where it isn't known (a C-CDA document, FHIR, CareSpace,
+    MyChart, a PDF report): a comma that can't be a thousands separator is a decimal one ("3,5" is 3.5), one that can
+    ("1,250") leaves the number unread, never a guess (#850). The CSV importer's values are read by it, and every range
+    given as text (range_text)."""
+    s = str(s or "").strip().replace("\u00a0", "").replace("\u202f", "").replace("'", "")
+    if not s or not re.fullmatch(r"[-+]?[\d.,]*\d(?:[eE][-+]?\d+)?|[-+]?[\d.,]*[.,]\d+", s):
+        return None
+    if "," in s and "." in s:
+        s = s.replace(",", "") if s.rfind(".") > s.rfind(",") else s.replace(".", "").replace(",", ".")
+    elif "," in s:
+        grouped = re.fullmatch(r"[-+]?\d{1,3}(,\d{3})+", s)   # "1,250": in thousands, or 1.25 with a decimal comma
+        if grouped and decimal_comma is None:
+            return None
+        if grouped and not decimal_comma:
+            s = s.replace(",", "")
+        elif s.count(",") == 1:
+            s = s.replace(",", ".")
+        else:
+            return None
+    elif s.count(".") > 1:
+        if decimal_comma and re.fullmatch(r"[-+]?\d{1,3}(\.\d{3})+", s):
+            s = s.replace(".", "")
+        else:
+            return None
     try:
-        x = float(m.group(3).replace(",", "."))
+        x = float(s)
     except ValueError:
-        return ""
-    return "<" if m.group(1) and hi == x else ">" if m.group(2) and lo == x else ""
+        return None
+    return int(x) if x.is_integer() and "." not in s and "e" not in s.lower() else x
 
 
-# a reference range as text (range_text): "3.5 - 5.1", "70–99", "10 to 40"; "<5", "<=5", "≤ 5", "< OR = 5", "less
-# than 5", "up to 5", ">60", ">= 60", "over 60" and the like; a unit or words may follow ("<130 mg/dL"). A number runs
-# to its end ("1,000" and "3,5" are not 1 and 3)
-_RNUM = r"(-?\d+(?:\.\d+)?)(?![\d.,])"
-_RSPAN = re.compile(rf"\s*{_RNUM}\s*(?:-|–|—|to\b)\s*{_RNUM}", re.I)
-_RBOUND = re.compile(rf"\s*(<\s*or\s*=|>\s*or\s*=|<=|>=|=<|=>|≤|≥|less than or equal to|greater than or equal to|up to|"
-                     rf"less than|greater than|more than|under|below|over|above|<|>)\s*{_RNUM}", re.I)
+# a reference range as text (range_text): "3.5 - 5.1", "70–99", "10 to 40", "5,0 - 10,0"; a one-sided limit that keeps
+# its edge in the range, "<=5", "=<5", "≤ 5", "< OR = 5", "less than or equal to 5", "up to 5", ">=60", "=>60", "≥ 60",
+# "> OR = 60", "greater than or equal to 60"; one that leaves it out (#780), "<5", "less than 5", "under 5", "below 5",
+# ">60", "greater than 60", "more than 60", "over 60", "above 60"; a unit or words may follow ("<130 mg/dL"). A number
+# runs to its end, as number_text reads it: "1,000" and "3,5" are never 1 and 3
+_RNUM = r"([-+]?(?:\d{1,3}(?:['\u00a0\u202f]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)*|[.,]\d+))(?![.,]?\d)"
+_RSPAN = re.compile(rf"\s*{_RNUM}\s*(?:-|–|—|\.\.|to\b)\s*{_RNUM}", re.I)
+_RBOUND = re.compile(r"\s*(?:(<\s*(?:or\s*)?=|=\s*<|≤|less\s+than\s+or\s+equal\s+to|up\s+to)"   # a high, its edge in it
+                     r"|(>\s*(?:or\s*)?=|=\s*>|≥|(?:greater|more)\s+than\s+or\s+equal\s+to)"   # a low, its edge in it
+                     r"|(<|less\s+than|under|below)|(>|greater\s+than|more\s+than|over|above))"   # a high, a low, left out
+                     rf"\s*{_RNUM}", re.I)
 
 
-def _rnum(s):
-    x = float(s)
-    return int(x) if x.is_integer() and "." not in s else x
-
-
-def range_text(text):
-    """The one parser of a reference range given as text (#827, #836; the C-CDA, FHIR, CareSpace and MyChart importers',
-    where a source gives no low and high of its own): (low, high, edge), edge as range_edge works it out from the text
-    ("<" for "<5": 5 is above it, #780); (None, None, "") for text it can't read ("See note", "Negative", "3,5-5,1"),
-    never a guess."""
+def _range_at(text, decimal_comma):
+    """(low, high, edge, end) of the range text starts with, end where it ends (0 for none); low and high None where
+    it's printed as a range but its numbers can't be read ("5-3", "1,000-2,000" where decimal commas aren't known)."""
     t = str(text or "")
     m = _RSPAN.match(t)
     if m:
-        lo, hi = _rnum(m.group(1)), _rnum(m.group(2))
-        return (lo, hi, "") if lo <= hi else (None, None, "")
+        lo, hi = number_text(m.group(1), decimal_comma), number_text(m.group(2), decimal_comma)
+        return (lo, hi, "", m.end()) if lo is not None and hi is not None and lo <= hi else (None, None, "", m.end())
     m = _RBOUND.match(t)
     if not m:
-        return None, None, ""
-    x, op = _rnum(m.group(2)), m.group(1).lower()
-    lo, hi = (None, x) if "<" in op or "≤" in op or op.startswith(("less", "up", "under", "below")) else (x, None)
-    return lo, hi, range_edge(t, lo, hi)
+        return None, None, "", 0
+    x, high = number_text(m.group(5), decimal_comma), m.group(1) or m.group(3)
+    if x is None:
+        return None, None, "", m.end()
+    return ((None, x) if high else (x, None)) + ("<" if m.group(3) else ">" if m.group(4) else "", m.end())
+
+
+def range_text(text, decimal_comma=None, whole=False):
+    """The one parser of a reference range given as text (#827, #836, #850): every importer's (CSV and Type them in, PDF,
+    C-CDA, FHIR, CareSpace, MyChart, where a source gives no low and high of its own) and the FHIR export's. (low, high,
+    edge): edge "<" where a one-sided high leaves its edge out ("<5": 5 is above it), ">" where a low does (">60"), ""
+    else (#780); (None, None, "") for text it can't read ("See note", "Negative", "1,000-2,000" where decimal commas
+    aren't known), never a guess. decimal_comma as number_text takes it; whole: the text is the range and nothing else
+    (a PDF report's cell: "<5 see note" isn't read), else words may follow it ("<130 mg/dL")."""
+    t = str(text or "")
+    lo, hi, edge, end = _range_at(t, decimal_comma)
+    return (None, None, "") if whole and t[end:].strip() else (lo, hi, edge)
+
+
+def range_part(text, decimal_comma=None):
+    """(the range text starts with, as printed; what follows it): ("65-99", "mg/dL") from "65-99 mg/dL", ("> OR = 60",
+    "mL/min/1.73m2"); ("", text) where it starts with none. By range_text's reading, for a PDF layout's cell that holds a
+    range and a unit (pdf_layouts.range_and_unit, is_range)."""
+    t = str(text or "").strip()
+    end = _range_at(t, decimal_comma)[3]
+    return t[:end].strip(), t[end:].strip()
+
+
+def range_edge(text, lo, hi, decimal_comma=None):
+    """Whether a one-sided reference range, as printed (text), leaves its limit's edge out (#780): "<" for "<5" (5 is
+    above it), ">" for ">60" (60 is below it), "" for one that includes it ("<=5", "≤ 5", "< OR = 5", "up to 5", ">=60")
+    and for a range with a low and a high. lo and hi are the range's numbers as read (from the text, or from a source's
+    own low and high beside it): the edge is said only where the text's number is the one limit there is. The text is
+    read by range_text (#850). Kept with the range on each point (pts[7], docs/importers.md), the flag rule
+    (range_flag) and its words honour it."""
+    if (lo is None) == (hi is None):
+        return ""
+    tlo, thi, edge = range_text(text, decimal_comma)
+    return edge if (edge == "<" and thi == hi) or (edge == ">" and tlo == lo) else ""
 
 
 # a flag as reports print it (flag_word(): lower case, punctuation as spaces): one that says which way, as Quest, Labcorp,

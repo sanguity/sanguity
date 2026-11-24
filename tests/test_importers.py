@@ -240,19 +240,42 @@ class Common(unittest.TestCase):
                          [True] * 7 + [False] * 2)
 
     def test_a_range_as_text(self):
-        """#827: one parser for a reference range given as text: (low, high, edge), a one-sided limit's edge by
-        range_edge ("<5" leaves 5 out, "<=5" keeps it, #780), a unit or words after it allowed; nothing it can't read."""
+        """#827, #850: one parser for a reference range given as text: (low, high, edge), a one-sided limit's edge with
+        it ("<5" leaves 5 out, "<=5" and "=>60" keep it, #780), a unit or words after it allowed; nothing it can't read.
+        tests/test_ranges.py test_2_range_spellings has its spellings through every importer that reads one."""
         r = common.range_text
-        self.assertEqual([r(t) for t in ("3.5-5.1", "3.5 - 5.1 mmol/L", "70–99", "10 to 40", "-2 - 2", "0.5-1.5mg/dL")],
-                         [(3.5, 5.1, ""), (3.5, 5.1, ""), (70, 99, ""), (10, 40, ""), (-2, 2, ""), (0.5, 1.5, "")])
+        self.assertEqual([r(t) for t in ("3.5-5.1", "3.5 - 5.1 mmol/L", "70–99", "10 to 40", "-2 - 2", "0.5-1.5mg/dL", "5..10")],
+                         [(3.5, 5.1, ""), (3.5, 5.1, ""), (70, 99, ""), (10, 40, ""), (-2, 2, ""), (0.5, 1.5, ""), (5, 10, "")])
         self.assertEqual([r(t) for t in ("<5", "< 5 mg/L", "less than 5", "under 5", "below 5")], [(None, 5, "<")] * 5)
-        self.assertEqual([r(t) for t in ("<=5", "≤ 5", "=<5", "< OR = 5", "<= 5.0", "up to 5", "less than or equal to 5")],
-                         [(None, 5, "")] * 4 + [(None, 5.0, "")] + [(None, 5, "")] * 2)
+        self.assertEqual([r(t) for t in ("<=5", "≤ 5", "=<5", "< OR = 5", "<= 5.0", "up to 5", "less than or equal to 5", "< = 5")],
+                         [(None, 5, "")] * 4 + [(None, 5.0, "")] + [(None, 5, "")] * 3)
         self.assertEqual([r(t) for t in (">60", "> 60 mL/min/1.73m2", "greater than 60", "more than 60", "over 60", "above 60")],
                          [(60, None, ">")] * 6)
-        self.assertEqual([r(t) for t in (">=60", "≥ 60", "=>60", "> OR = 60", "greater than or equal to 60")], [(60, None, "")] * 5)
-        self.assertEqual([r(t) for t in ("", None, "Negative", "See note", "5-3", "1,000-2,000", "3,5-5,1", "Not Estab.", "5")],
+        self.assertEqual([r(t) for t in (">=60", "≥ 60", "=>60", "> OR = 60", "greater than or equal to 60", "=> 60 mL/min")],
+                         [(60, None, "")] * 6)
+        self.assertEqual([r(t) for t in ("", None, "Negative", "See note", "5-3", "1,000-2,000", "Not Estab.", "5", "<1,000")],
                          [(None, None, "")] * 9)
+        # #850: one parser for every importer, Type them in and the FHIR export, so it takes a file's decimal commas: a
+        # comma that can't be a thousands separator is a decimal one anywhere ("3,5"); one that can ("1,000") only where
+        # the file says which (decimal_comma: a spreadsheet's, csv_labs), never guessed. A whole cell (a PDF report's)
+        # is the range and nothing else
+        self.assertEqual([r(t) for t in ("3,5-5,1", "5,0 - 10,0", "<0,5", "=>1,5")],
+                         [(3.5, 5.1, ""), (5.0, 10.0, ""), (None, 0.5, "<"), (1.5, None, "")])
+        self.assertEqual([r(t, False) for t in ("1,000-2,000", "150,000 - 450,000", "<1,000", "1,234.5-2,000")],
+                         [(1000, 2000, ""), (150000, 450000, ""), (None, 1000, "<"), (1234.5, 2000, "")])
+        self.assertEqual([r(t, True) for t in ("1,000-2,000", "1.234,5-2.000,5", "3,5-5,1", "<1,250")],
+                         [(1.0, 2.0, ""), (1234.5, 2000.5, ""), (3.5, 5.1, ""), (None, 1.25, "<")])
+        self.assertEqual([r(t, whole=True) for t in ("<5", " 3.5 - 5.1 ", "<5 mg/L", "3.5-5.1 see note")],
+                         [(None, 5, "<"), (3.5, 5.1, ""), (None, None, ""), (None, None, "")])
+        self.assertEqual([common.range_part(t) for t in ("65-99 mg/dL", "> OR = 60 mL/min/1.73m2", "NEGATIVE", "9-3 mg")],
+                         [("65-99", "mg/dL"), ("> OR = 60", "mL/min/1.73m2"), ("", "NEGATIVE"), ("9-3", "mg")])
+        self.assertEqual([common.number_text(t, dc) for t in ("1,250", "3,5", "1.234,5", "1'250") for dc in (None, False, True)],
+                         [None, 1250, 1.25, 3.5, 3.5, 3.5, 1234.5, 1234.5, 1234.5, 1250, 1250, 1250])
+        # the edge of a limit read from the text by the same parser, with a source's own low or high beside it (#780)
+        self.assertEqual([common.range_edge(t, lo, hi, dc) for t, lo, hi, dc in (
+            ("<5", None, 5, None), ("=>60", 60, None, None), (">60", 60, None, None), ("<1,000", None, 1000, None),
+            ("<1,000", None, 1000, False), ("<5,5", None, 5.5, None), ("<5", 1, 5, None), ("<5", None, 6, None))],
+            ["<", "", ">", "", "<", "<", "", ""])
 
     def test_stays(self):
         st = common.inferred_stays({"Mar 02, 2026": ["2026-03-02T06:00:00", "2026-03-04T06:00:00"]},

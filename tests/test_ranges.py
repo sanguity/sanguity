@@ -787,9 +787,10 @@ class Api(unittest.TestCase):
         """#780: a one-sided range keeps whether its limit includes its edge, from each importer that reads one through
         storage and the FHIR export, and the one rule honours it. The edge as printed and the rule on their own (5
         against "<5" is high, against "<=5" neither; 60 against ">60" low; ">=5" against "<5" high); then the matrix's
-        one-sided cases (ranges_matrix PRINTED: "<5" then "<=5", ">60" then ">=60", at and past the edge) as a CSV, as
-        Quest-like PDF reports ("< OR = 5"), as a FHIR bundle (a source's own high beside its printed "<5", a printed
-        range alone) and as a C-CDA document (each range its text alone, no IVL, #827: it was dropped): each importer's
+        one-sided cases (ranges_matrix PRINTED: "<5" then "<=5", ">60" then ">=60", at and past the edge, each spelled as
+        reports print it, "less than 5", "=>60", "< OR = 5", #850) as a CSV, as Quest-like PDF reports ("< OR = 5"), as a
+        FHIR bundle (a source's own high beside its printed "<5", a printed range alone) and as a C-CDA document (each
+        range its text alone, no IVL, #827: it was dropped): each importer's
         points have the matrix's range and edge, each judged as JUDGED; and the FHIR
         export says a limit that leaves its edge out in its text alone (FHIR's low and high include theirs), which the
         FHIR importer reads back as it was, with each report's own flag (#817: a report's "A" inside its range came back
@@ -831,23 +832,23 @@ class Api(unittest.TestCase):
         gen.__file__ = os.path.join(ROOT, "tests", "fixtures", "importers", "pdf-labs", "generate.py")
         with open(gen.__file__, encoding="utf-8") as f:
             exec(compile(f.read(), gen.__file__, "exec"), gen.__dict__)
-        pdfs = {}
+        pdfs = {}   # (a range in words as Quest prints it, its column too narrow for "greater than or equal to 60 mL/min/1.73m2")
+        quest = lambda r, n, j: (r if not re.search("[a-z]", r) else M.printed_range(*M.CASES[n][j][2:4], M.EDGES[n][j]))   # noqa: E731
         for t in sorted({r[2] for r in rows}):   # a report a day, Quest's way of printing "<=5": "< OR = 5"
             pdfs[f"quest-{t[:10]}.pdf"] = path = os.path.join(tmp, f"quest-{t[:10]}.pdf")
-            gen.write(path, gen.quest([("MATRIX PANEL (FICTIONAL)", None)] + [(n, v, "", r.replace("<=", "< OR = ").replace(">=", "> OR = "), u)
-                                                                             for n, u, at, v, r, _ in rows if at == t],
+            gen.write(path, gen.quest([("MATRIX PANEL (FICTIONAL)", None)] + [(n, v, "", quest(r, n, j).replace("<=", "< OR = ").replace(">=", "> OR = "), u)
+                                                                             for n, u, at, v, r, j in rows if at == t],
                                       collected=f"{t[5:7]}/{t[8:10]}/{t[:4]} / 08:00 EST"))
         same(pdf_labs.parse(pdfs)["data"], "PDF reports")   # (none printed: the range's, by the one rule, #817)
 
-        def obs(i, n, u, t, v, r):
-            c = ranges.comparator(v)
+        def obs(i, n, u, t, v, r, j):
+            c, (lo, hi) = ranges.comparator(v), M.CASES[n][j][2:4]
             q = {"value": float(v[len(c):]) if "." in v else int(v[len(c):]), "unit": u, **({"comparator": c} if c else {})}
-            x = float(r.lstrip("<>=")) if "." in r else int(r.lstrip("<>="))
-            rr = {"text": r} if "=" in r else {("high" if r[0] == "<" else "low"): {"value": x}, "text": r}   # a source's own limit beside "<5"
+            rr = {"text": r} if not M.EDGES[n][j] else {("high" if hi is not None else "low"): {"value": lo if hi is None else hi}, "text": r}   # a source's own limit beside "<5"
             return {"resource": {"resourceType": "Observation", "id": f"m{i}", "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
                                  "code": {"text": n}, "effectiveDateTime": t, "valueQuantity": q, "referenceRange": [rr]}}
         with open(os.path.join(tmp, "one-sided.json"), "w", encoding="utf-8") as f:
-            json.dump({"resourceType": "Bundle", "type": "collection", "entry": [obs(i, *r[:5]) for i, r in enumerate(rows)]}, f)
+            json.dump({"resourceType": "Bundle", "type": "collection", "entry": [obs(i, *r) for i, r in enumerate(rows)]}, f)
         same(fhir.parse({"one-sided.json": os.path.join(tmp, "one-sided.json")})["data"], "a FHIR bundle", plain=True)
         with open(os.path.join(tmp, "one-sided.xml"), "w", encoding="utf-8") as f:
             f.write(M.ccda([r[:5] for r in rows]))
@@ -872,9 +873,8 @@ class Api(unittest.TestCase):
             if r["resourceType"] == "Observation" and r["code"].get("text") in M.PRINTED:
                 rr = (r.get("referenceRange") or [{}])[0]
                 said.setdefault(r["code"]["text"], []).append((r["effectiveDateTime"][:10], rr.get("low", {}).get("value"), rr.get("high", {}).get("value"), rr.get("text")))
-        for n in M.PRINTED:   # "<5" as its text alone, "<=5" as a high of 5 with its lab day's row's text as printed (#782)
-            want = [(None, None, f"{'<' if hi is not None else '>'}{lo if hi is None else hi}") if e else (lo, hi, r)
-                    for (_, _, lo, hi, *_), e, r in zip(M.CASES[n], M.EDGES[n], M.PRINTED[n])]
+        for n in M.PRINTED:   # "<5" as its text alone, "<=5" as a high of 5, with its lab day's row's text as printed (#782)
+            want = [(None, None, r) if e else (lo, hi, r) for (_, _, lo, hi, *_), e, r in zip(M.CASES[n], M.EDGES[n], M.PRINTED[n])]
             self.assertEqual([x[1:] for x in sorted(said.get(n, []))], want, f"the FHIR export's {n}")
         back = fhir.parse({"bundle.json": os.path.join(tmp, "bundle.json")})["data"]
         same(back, "the FHIR export, read back", plain=True)
@@ -903,6 +903,101 @@ class Api(unittest.TestCase):
             got = [[p[1], p[2], p[3], p[5], p[7] if len(p) > 7 else "", p[4], ranges.judge(p[1], p[2], p[3], p[4], p[5], None, p[7] if len(p) > 7 else "")[2]]
                    for p in pts]
             self.assertEqual(got, want, f"{how}: {n}")
+
+    def test_2_range_spellings(self):
+        """#850: one parser of a range as text (common.range_text) for every importer, Type them in and the FHIR export.
+        The ways a report prints a range (ranges_matrix SPELLINGS: "=>60", "< OR = 5", "less than or equal to 5",
+        "greater than or equal to 60", "5,0 - 10,0" with decimal commas, "3.5-5.1", "<5", "under 5" ...), each beside a
+        value at or past its limit, give the same low, high, edge and flag through a spreadsheet (comma-delimited, and
+        with semicolons and decimal commas), Type them in's check, Quest-like PDF reports (each range its whole cell), a
+        C-CDA document, a FHIR bundle, a CareSpace export and a MyChart export, each range its text alone; and through the
+        FHIR export read back, of a spreadsheet's import and of rows with no result of their own (the export reading the
+        text). The CSV importer and Type them in read "=>60" as a high of 60 and "< OR = 5", "> OR = 60" and the words not
+        at all; the C-CDA, FHIR, CareSpace and MyChart importers no decimal comma; a PDF report no words; the export
+        "≤ 5", "< OR = 5" and "=>60" as text alone."""
+        import csv, types, zipfile
+        from server import fhir_export
+        from server.importers import carespace, ccda, csv_labs, epic_mychart, fhir, pdf_labs
+        rows, tmp, (lab, unit) = M.spelled(TODAY), tempfile.mkdtemp(dir=TMP), M.SPELLED_AS
+        want = [[lo, hi, e, f] for _, _, lo, hi, e, f in M.SPELLINGS]
+
+        def said(data, how, only=None):
+            """each spelling's result's [low, high, edge, flag] in what an importer read (only: those it was given)"""
+            pts = next((s["pts"] for s in data["labs"] if s["name"] == lab), [])
+            got = [[p[2], p[3], p[7] if len(p) > 7 else "", p[4]] for p in pts]
+            self.assertEqual(got, [w for i, w in enumerate(want) if only is None or i in only], how)
+
+        def sheet(name, delim):
+            path = os.path.join(tmp, name)
+            with open(path, "w", encoding="utf-8", newline="") as f:
+                w = csv.writer(f, delimiter=delim)
+                w.writerow(["Date", "Time", "Test", "Value", "Unit", "Reference range"])
+                w.writerows([t[:10], t[11:16], n, v.replace(".", ",") if delim == ";" else v, u, r] for n, u, t, v, r in rows)
+            return csv_labs.parse({name: path})["data"]
+        by_csv = sheet("spelled.csv", ",")
+        said(by_csv, "a spreadsheet")
+        said(sheet("spelled-eu.csv", ";"), "a spreadsheet with semicolons and decimal commas")
+
+        r = self.c["robin"].post(f"/api/profiles/{self.pid}/manual", headers=H, json={"rows": [
+            {"date": t[:10], "time": t[11:16], "test": n, "value": v, "unit": u, "range": rng} for n, u, t, v, rng in rows]})
+        self.assertEqual(r.status_code, 200, r.text)
+        typed = r.json()["rows"]
+        self.assertEqual([[x["low"], x["high"], x["edge"], x["flag"]] for x in typed], want, "Type them in's check")
+        self.assertEqual([i for i, x in enumerate(typed) if "the range couldn't be read, so it isn't used for the flag" in x["notes"]],
+                         [i for i, (_, _, lo, hi, *_) in enumerate(M.SPELLINGS) if lo is None and hi is None], "its notes")
+
+        gen = types.ModuleType("pdf_fixture_generator")
+        gen.__file__ = os.path.join(ROOT, "tests", "fixtures", "importers", "pdf-labs", "generate.py")
+        with open(gen.__file__, encoding="utf-8") as f:
+            exec(compile(f.read(), gen.__file__, "exec"), gen.__dict__)
+        # (Quest's font has no "≤" or "–", and a text reference has no unit beside it, so a series of its own)
+        printable, pdfs = [i for i, (_, _, _, _, rng) in enumerate(rows) if rng.isascii() and re.search(r"\d", rng)], {}
+        for i in printable:   # a report a day, its range and unit one cell, the range read as a whole cell
+            n, u, t, v, rng = rows[i]
+            pdfs[f"quest-{t[:10]}.pdf"] = path = os.path.join(tmp, f"quest-{t[:10]}.pdf")
+            gen.write(path, gen.quest([("SPELLINGS (FICTIONAL)", None), (n, v, "", rng, "" if rng.endswith(u) else u)],
+                                      collected=f"{t[5:7]}/{t[8:10]}/{t[:4]} / 08:00 EST"))
+        said(pdf_labs.parse(pdfs)["data"], "PDF reports", printable)
+
+        with open(os.path.join(tmp, "spelled.xml"), "w", encoding="utf-8") as f:
+            f.write(M.ccda(rows))
+        said(ccda.parse({"spelled.xml": os.path.join(tmp, "spelled.xml")})["data"], "a C-CDA document")
+        with open(os.path.join(tmp, "spelled.json"), "w", encoding="utf-8") as f:
+            json.dump({"resourceType": "Bundle", "type": "collection", "entry": [{"resource": {
+                "resourceType": "Observation", "id": f"s{i}", "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
+                "code": {"text": n}, "effectiveDateTime": t, "valueQuantity": {"value": float(v), "unit": u}, "referenceRange": [{"text": rng}]}}
+                for i, (n, u, t, v, rng) in enumerate(rows)]}, f)
+        said(fhir.parse({"spelled.json": os.path.join(tmp, "spelled.json")})["data"], "a FHIR bundle")
+        said(carespace.parse(M.carespace(rows, os.path.join(tmp, "carespace")))["data"], "a CareSpace export")
+        said(epic_mychart.parse(M.epic(rows, os.path.join(tmp, "mychart")))["data"], "a MyChart export")
+
+        # the FHIR export, read back: of the spreadsheet's import (each result's range as read, its row's as printed), and
+        # of lab days whose rows have no result of their own (the export reads each row's range, as printed)
+        rowed = {"built": M.day(0, TODAY)[:10], "source": "fictional", "costs": [], "upcoming": [], "labs": [],
+                 "events": [{"id": i + 1, "t": t, "k": "labitem", "title": "Spellings (fictional)"} for i, (_, _, t, _, _) in enumerate(rows)],
+                 "details": {str(i + 1): {"type": "result", "order": "Spellings (fictional)", "rows": [[n, v, u, rng, ""]]}
+                             for i, (n, u, _, v, rng) in enumerate(rows)}}
+        db = dbm.connect()
+        try:
+            owner = db.execute("SELECT id FROM users WHERE username='robin'").fetchone()["id"]
+            for how, data in (("a spreadsheet's import", by_csv), ("rows alone", rowed)):
+                pid = prof.create_profile(db, "Spellings (fictional)", owner_id=owner)
+                with dbm.transaction(db):
+                    records.store(db, pid, data, "upload", fmt="csv")
+                blob = b"".join(fhir_export.stream(fhir_export.plan(db, pid, {"labs"}), "robin", zone="America/New_York"))
+                prof.delete_profile(db, pid)
+                with zipfile.ZipFile(io.BytesIO(blob)) as z:
+                    path = os.path.join(tmp, f"back-{len(how)}.json")
+                    with open(path, "wb") as f:
+                        f.write(z.read("bundle.json"))
+                    bundle = json.loads(z.read("bundle.json"))
+                said(fhir.parse({"bundle.json": path})["data"], f"the FHIR export of {how}, read back")
+                if how == "rows alone":   # "≤ 5", "< OR = 5", "=>60" with their numbers (they went out as text alone)
+                    out = [((e["resource"].get("referenceRange") or [{}])[0]) for e in bundle["entry"] if e["resource"]["resourceType"] == "Observation"]
+                    self.assertEqual([[x.get("low", {}).get("value"), x.get("high", {}).get("value"), x.get("text")] for x in out],
+                                     [[None if e else lo, None if e else hi, rng] for (rng, _, lo, hi, e, _) in M.SPELLINGS], "the export's ranges")
+        finally:
+            db.close()
 
     def test_2_summary_matrix(self):
         """#752: one rule for a result's range, flag and source, through the server. The matrix (tests/ranges_matrix.py): a

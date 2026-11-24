@@ -5,8 +5,9 @@ high limits), plus an optional flag, panel, time and lab column. Headers are mat
 caller can pass `mapping` to `parse` for files whose headers differ (the column-mapping step of issue #27).
 
 Comma, semicolon and tab delimiters, a UTF-8 or UTF-16 byte order mark, quoted fields, decimal commas, ISO and
-common US/European dates, "<5" and ">200" style values and ranges like "13.5 - 17.5", "<200" or ">60" are read.
-Rows that can't be read are skipped with a warning. Lab names are kept as reported.
+common US/European dates and "<5" and ">200" style values are read, and ranges like "13.5 - 17.5", "13,5 - 17,5",
+"<200", "=>60" or "< OR = 5" by common.range_text, the one parser of a range as text (#850). Rows that can't be read
+are skipped with a warning. Lab names are kept as reported.
 
 The result is the data.json shape that build.py writes: one hidden `labitem` event per test and time, one `lab`
 event per day linking to them, and a `labs` series per test.
@@ -27,7 +28,7 @@ import os
 import re
 from datetime import datetime
 
-from .common import canonical_lab, lab_day_sub, lab_day_title, loinc_of, range_edge, report_flag
+from .common import canonical_lab, lab_day_sub, lab_day_title, loinc_of, number_text, range_edge, range_text, report_flag
 
 NAME = "csv"
 LABEL = "Lab results spreadsheet (CSV)"
@@ -185,35 +186,10 @@ def detect(files):
 
 
 # ------------------------------------------------------------------ numbers, values and ranges
+# a value's number ("1,234.5", "1.234,5", "4,5", "4.5") is read by common.number_text, with the file's decimal_comma
+# ("1,200" in a comma-delimited file is a thousands separator, "4,5" or "1,25" a decimal comma); a range by
+# common.range_text, the one parser of a range as text, with it too (#850)
 _NUM = r"[-+]?(?:\d[\d.,'  ]*\d|\d)(?:[eE][-+]?\d+)?|[-+]?[.,]\d+"
-
-
-def _number(s, decimal_comma):
-    """A float from "1,234.5", "1.234,5", "4,5" or "4.5"; None when it isn't one number."""
-    s = (s or "").strip().replace(" ", "").replace(" ", "").replace("'", "")
-    if not s or not re.fullmatch(r"[-+]?[\d.,]*\d(?:[eE][-+]?\d+)?|[-+]?[\d.,]*[.,]\d+", s):
-        return None
-    if "," in s and "." in s:
-        s = s.replace(",", "") if s.rfind(".") > s.rfind(",") else s.replace(".", "").replace(",", ".")
-    elif "," in s:
-        # "1,200" in a comma-delimited file is a thousands separator; "4,5" or "1,25" is a decimal comma
-        if not decimal_comma and re.fullmatch(r"[-+]?\d{1,3}(,\d{3})+", s):
-            s = s.replace(",", "")
-        elif s.count(",") == 1:
-            s = s.replace(",", ".")
-        else:
-            return None
-    elif s.count(".") > 1:
-        if decimal_comma and re.fullmatch(r"[-+]?\d{1,3}(\.\d{3})+", s):
-            s = s.replace(".", "")
-        else:
-            return None
-    try:
-        x = float(s)
-    except ValueError:
-        return None
-    return int(x) if x.is_integer() and "." not in s and "e" not in s.lower() else x
-
 
 _CMP = {"<": "<", "<=": "<=", "=<": "<=", "≤": "<=", ">": ">", ">=": ">=", "=>": ">=", "≥": ">="}
 _VALUE_RE = re.compile(r"\s*(<=|>=|=<|=>|<|>|≤|≥)?\s*(" + _NUM + r")\s*(.*?)\s*$")
@@ -226,35 +202,10 @@ def _value(s, decimal_comma):
     m = _VALUE_RE.match(s or "")
     if not m:
         return None, "", ""
-    x = _number(m.group(2), decimal_comma)
+    x = number_text(m.group(2), decimal_comma)
     if x is None:
         return None, "", ""
     return x, _CMP.get(m.group(1) or "", ""), m.group(3)
-
-
-_RANGE_RE = re.compile(r"\s*(" + _NUM + r")\s*(?:-|–|—|to|\.\.)\s*(" + _NUM + r")\s*(.*)$", re.I)
-_BOUND_RE = re.compile(r"\s*(<=|>=|=<|=>|<|>|≤|≥|up to|less than|greater than|under|over|below|above)\s*(" + _NUM + r")\s*(.*)$",
-                       re.I)
-
-
-def _range(s, decimal_comma):
-    """(low, high) from "13.5 - 17.5", "13,5-17,5", "<200", ">= 60" or "up to 5"; (None, None) when unreadable. Whether
-    a one-sided one leaves its edge out ("<200" does, "<=200" doesn't) is common.range_edge's (#780)."""
-    s = (s or "").strip()
-    if not s:
-        return None, None
-    m = _RANGE_RE.match(s)
-    if m:
-        lo, hi = _number(m.group(1), decimal_comma), _number(m.group(2), decimal_comma)
-        if lo is not None and hi is not None and lo <= hi:
-            return lo, hi
-    m = _BOUND_RE.match(s)
-    if m:
-        x = _number(m.group(2), decimal_comma)
-        if x is not None:
-            op = m.group(1).lower()
-            return (None, x) if op[0] in "<=≤" or op in ("up to", "less than", "under", "below") else (x, None)
-    return None, None
 
 
 def _fmt(x):
@@ -541,18 +492,20 @@ def read_row(get, decimal_comma=False, order=None, bounds=True):
             unit = unit or rest      # "5.2 mg/dL" in one cell
         elif rest:
             x = None                 # "1 of 3", "2+ casts": text
-    range_text = get("range")   # kept as reported in the result row, even when unreadable
-    lo, hi = _range(range_text, decimal_comma)
+    printed = get("range")   # kept as reported in the result row, even when unreadable
+    # by the one parser of a range as text (common.range_text, #850: "=>60" was read as a high, "< OR = 5" and "less than
+    # or equal to 5" not at all), with the file's decimal commas
+    lo, hi, _ = range_text(printed, decimal_comma)
     if bounds:
-        lo2 = _number(get("low"), decimal_comma)
-        hi2 = _number(get("high"), decimal_comma)
+        lo2 = number_text(get("low"), decimal_comma)
+        hi2 = number_text(get("high"), decimal_comma)
         lo, hi = (lo2 if lo2 is not None else lo), (hi2 if hi2 is not None else hi)
-        if not range_text:
-            range_text = (f"{_fmt(lo)} - {_fmt(hi)}" if lo is not None and hi is not None else
-                          f">={_fmt(lo)}" if lo is not None else f"<={_fmt(hi)}" if hi is not None else "")
-    edge = range_edge(range_text, lo, hi)   # "<" for "<5": 5 is outside it (#780)
+        if not printed:
+            printed = (f"{_fmt(lo)} - {_fmt(hi)}" if lo is not None and hi is not None else
+                       f">={_fmt(lo)}" if lo is not None else f"<={_fmt(hi)}" if hi is not None else "")
+    edge = range_edge(printed, lo, hi, decimal_comma)   # "<" for "<5": 5 is outside it (#780)
     flag = report_flag(flag_text, x, lo, hi, cmp, edge)   # the one rule (#817): "A" in range kept, "Abnormal" past it placed
-    return {"t": t, "test": test, "x": x, "reported": reported, "unit": unit, "range": range_text,
+    return {"t": t, "test": test, "x": x, "reported": reported, "unit": unit, "range": printed,
             "lo": lo, "hi": hi, "edge": edge, "flag": flag, "panel": get("panel"), "lab": get("lab"), "loinc": get("loinc")}, None
 
 
@@ -569,7 +522,7 @@ def timestamp(date_s, time_s="", order=None):
 
 def number(s):
     """A number as a spreadsheet cell reads ("1,234.5", "4.5"); None when it isn't one."""
-    return _number(s, False)
+    return number_text(s, False)
 
 
 def guessed_date(s, guessed):
