@@ -204,6 +204,30 @@ class Edges(unittest.TestCase):
         self.assertEqual(pts, {"WBC": "A", "Potassium, Blood": "A", "Hematocrit": "L", "Creatinine": ""})
         self.assertEqual(days[0].get("abn"), 3 + 3, "the lab day counts them: HGB, GLUCOSE and HCT were flagged before")
 
+    def test_a_range_given_as_text_alone(self):
+        """#836: a result whose range is only displayed ("<16.0", no lowerLimit or upperLimit) is read through the one
+        range parser (common.range_text), its edge kept: it was dropped, no range and no flag on Labs while the drawer
+        showed the text beside the value. The row keeps the text as displayed."""
+        got = []
+        for value, text in (("16.0", "<16.0"), ("16.0", "less than 16.0"), ("16.0", "<=16.0"), ("12.0", ">12.0"), ("12.0", "≥ 12.0"),
+                            ("11.2", "12.0-16.0 g/dL"), ("13", "See note")):
+            with tempfile.TemporaryDirectory() as d:
+                dst = copy("full", d)
+                p = os.path.join(dst, "api", "lab_results.json")
+                with open(p, encoding="utf-8") as f:
+                    doc = json.load(f)
+                hgb = doc["data"][0]   # the first HGB, 11.2 against 12.0-16.0
+                hgb.update(value={"value": value, "unit": "g/dL"}, referenceRange={"unit": "g/dL"}, referenceRangeDisplay=text, interpretationCode=None)
+                with open(p, "w", encoding="utf-8") as f:
+                    json.dump(doc, f)
+                out = carespace.parse(reg.files_in(dst))
+            pt = series(out["data"], "Hemoglobin")["pts"][0]
+            row = next(r for e in out["data"]["details"].values() if isinstance(e, dict) for r in e.get("rows") or [] if r[0] == "HGB" and r[1] == value)
+            got.append([pt[2], pt[3], pt[4], (pt[7:] or [""])[0], row[3]])
+        self.assertEqual(got, [[None, 16, "H", "<", "<16.0"], [None, 16, "H", "<", "less than 16.0"], [None, 16, "", "", "<=16.0"],
+                               [12, None, "L", ">", ">12.0"], [12, None, "", "", "≥ 12.0"], [12, 16, "L", "", "12.0-16.0 g/dL"],
+                               [None, None, "", "", "See note"]])
+
     def test_repeated_rows_are_left_out_not_keyed_twice(self):
         with tempfile.TemporaryDirectory() as d:
             dst = copy("full", d)

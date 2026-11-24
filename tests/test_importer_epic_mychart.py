@@ -323,6 +323,30 @@ class Parse(Tmp):
         labdays = [e["key"] for e in out["data"]["events"] if e["k"] == "lab"]
         self.assertEqual(len(labdays), len(set(labdays)))
 
+    def test_a_range_given_as_text_alone(self):
+        """#836: a component whose range is only formatted ("<16.0", no low or high) is read through the one range
+        parser (common.range_text), its edge kept: it was dropped, no range and no flag on Labs while the drawer showed
+        the text beside the value. The row keeps the text as formatted."""
+        got = []
+        for value, text in (("16.0", "<16.0"), ("16.0", "less than 16.0"), ("16.0", "<=16.0"), ("12.0", ">12.0"), ("12.0", "≥ 12.0"),
+                            ("11.2", "12.0-16.0 g/dL"), ("13", "See note")):
+            up = self.tmp()
+            copy_tree(FIXTURE, os.path.join(up, "export"))
+            p = os.path.join(up, "export", "test-results", "willowbrook_test_results_raw.json")
+            doc = load(p)
+            hgb = doc["details"]["a1"]["results"][0]["resultComponents"][0]   # HGB, 13.1 against 12.0 - 16.0
+            self.assertEqual(hgb["componentInfo"]["name"], "HGB")
+            hgb["componentResultInfo"] = {"value": value, "numericValue": float(value), "referenceRange": {"formattedReferenceRange": text}}
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump(doc, f)
+            out = epic.parse(reg.files_in(up))
+            pt = next(q for s in out["data"]["labs"] if s["name"] == "Hemoglobin" for q in s["pts"] if q[0].startswith("2026-02-14"))
+            row = next(r for e in out["data"]["details"].values() if isinstance(e, dict) for r in e.get("rows") or [] if r[0] == "HGB" and r[1] == value)
+            got.append([pt[2], pt[3], pt[4], (pt[7:] or [""])[0], row[3]])
+        self.assertEqual(got, [[None, 16, "H", "<", "<16.0"], [None, 16, "H", "<", "less than 16.0"], [None, 16, "", "", "<=16.0"],
+                               [12, None, "L", ">", ">12.0"], [12, None, "", "", "≥ 12.0"], [12, 16, "L", "", "12.0-16.0 g/dL"],
+                               [None, None, "", "", "See note"]])
+
     def test_damaged_visit_records_are_skipped_with_a_warning(self):
         d = copy_tree(FIXTURE, os.path.join(self.tmp(), "export"))
         with open(os.path.join(d, "visit-records", "broken.zip"), "wb") as f:

@@ -719,6 +719,25 @@ class Api(unittest.TestCase):
         for n in ("Chloride, Blood", "ALT"):   # a report's own flag with them, "A" too (#817: it came back with none)
             self.assertEqual(flags.get(n), [f for f, *_ in M.JUDGED[n]], f"the FHIR export's {n}, read back")
 
+    def test_2_text_ranges(self):
+        """#827, #836: a range given as text alone, no low and high of a source's own (ranges_matrix RANGE_TEXT: AST's
+        "10 - 40", "<40", "<=40", "≤ 40", "<40 U/L", "less than 40"), through each importer that reads one: a C-CDA
+        document (as records() reads AST), a CareSpace export and a MyChart export. Each point has the matrix's range and
+        edge, its flag stored and judged as JUDGED (CareSpace and MyChart dropped such a range: no range, no flag)."""
+        from server.importers import carespace, ccda, epic_mychart
+        tmp, n = tempfile.mkdtemp(dir=TMP), "AST"
+        rows = M.text_ranged(n, TODAY)
+        with open(os.path.join(tmp, "ranges.xml"), "w", encoding="utf-8") as f:
+            f.write(M.ccda(rows))
+        want = [[v, lo, hi, t, e, f, f] for (_, v, lo, hi, _, t), e, (f, *_) in zip(M.CASES[n], M.EDGES[n], M.JUDGED[n])]
+        for how, data in (("a C-CDA document (#827)", ccda.parse({"ranges.xml": os.path.join(tmp, "ranges.xml")})["data"]),
+                          ("a CareSpace export", carespace.parse(M.carespace(rows, os.path.join(tmp, "carespace")))["data"]),
+                          ("a MyChart export", epic_mychart.parse(M.epic(rows, os.path.join(tmp, "mychart")))["data"])):
+            pts = next((s["pts"] for s in data["labs"] if s["name"] == n), [])
+            got = [[p[1], p[2], p[3], p[5], p[7] if len(p) > 7 else "", p[4], ranges.judge(p[1], p[2], p[3], p[4], p[5], None, p[7] if len(p) > 7 else "")[2]]
+                   for p in pts]
+            self.assertEqual(got, want, f"{how}: {n}")
+
     def test_2_summary_matrix(self):
         """#752: one rule for a result's range, flag and source, through the server. The matrix (tests/ranges_matrix.py): a
         report's range then none; none then a report's; Settings then a report's; a report's then Settings; a range that

@@ -24,7 +24,7 @@ export. Series: "loinc:<code>" or "carespace:name|<name lower-cased>", with "|<u
 import collections, hashlib, json, posixpath, re
 import xml.etree.ElementTree as ET
 
-from .common import canonical_lab, comparator, iso, lab_day_sub, lab_day_title, loinc_of, num, range_edge, report_flag, unit_key, ymd
+from .common import canonical_lab, comparator, iso, lab_day_sub, lab_day_title, loinc_of, num, range_edge, range_text, report_flag, unit_key, ymd
 
 NAME = "carespace"
 LABEL = "CareSpace / OncoEMR portal export"
@@ -213,6 +213,8 @@ def parse(files, org=None, tag=None):
             continue
         first_t.setdefault(t[:10], t)
         lo, hi = ref.get("lowerLimit"), ref.get("upperLimit")
+        if lo is None and hi is None:   # a range only displayed ("<5"): the one parser of a range as text (#836: dropped)
+            lo, hi, _ = range_text(r.get("referenceRangeDisplay"))
         edge = range_edge(r.get("referenceRangeDisplay"), lo, hi)   # its limits as displayed: "<5" leaves 5 out (#780)
         x = num(v.get("value"))
         # by the one rule (common.report_flag, #817): H or L as coded; "A" or "AA" by the range, else kept "A"; uncoded,
