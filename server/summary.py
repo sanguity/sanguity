@@ -194,8 +194,9 @@ def _judged(p, name, unit, rcfg):
 
 
 def out_of_range(p):
-    """"High", "Low" or "Abnormal" by the result's flag (its report's, else the one worked out against its range,
-    _judged), or None."""
+    """"High", "Low" or "Flagged" by the result's flag (its report's, else the one worked out against its range,
+    _judged), or None. "Flagged" for one its report gives without saying which way (an "A"), as every page says ◆ (#819:
+    the summary and share links said "Abnormal")."""
     f = p["flag"].upper()
     if f in ("H", "HH", "HI", "HIGH", ">", "H*", "A>"):
         return "High"
@@ -203,7 +204,7 @@ def out_of_range(p):
         return "Low"
     if f in ("N", "NORMAL", "NEG", "NEGATIVE"):
         return None
-    return "Abnormal" if f else None
+    return "Flagged" if f else None
 
 
 def range_words(lo, hi, edge=""):
@@ -470,23 +471,31 @@ def uses_settings(r):
 
 
 BOUND_NOTE = " A value given as a bound (“<15”) is out of range only where every value it stands for is."
+# what a ◆ is, said where there's one (#819: the notes named only High and Low, "outside the range")
+FLAGGED_NOTE = " Flagged: flagged on its own report without saying high or low, its value inside its range or with none given."
 
 
 def notes(s):
     """What the tables' and the charts' flags are judged against, said under each (#717, #752), in the preview and the
     PDF alike: {"out_of_range", "trends", "charts"} (each only with its section). A range from settings, a cell judged
-    against a range other than its row's, and a value given as a bound are said only where there's one."""
+    against a range other than its row's, a value given as a bound and a result flagged on its report without saying
+    which way (#819, ranges.flagged_words) are said only where there's one."""
     out, oor, tr = {}, s.get("out_of_range"), s.get("trends")
     if oor:
-        out["out_of_range"] = ("(2 of 3): how many of the results since then were out of range. Each is judged against the "
-                               "range printed on its own report" + (", or, where its report gives none, the range from settings, "
-                                                                     "its Range marked “(settings)”" if any(r["range"].endswith("(settings)") for r in oor) else "")
-                               + "." + (BOUND_NOTE if any(ranges.comparator(r["value"]) for r in oor) else ""))
+        flags = [r["flag"] for r in oor]
+        out["out_of_range"] = (f"(2 of 3): how many of the results since then were {ranges.flagged_words(flags, 'short')}. Each is "
+                               "judged against the range printed on its own report" + (", or, where its report gives none, the range "
+                                                                                      "from settings, its Range marked “(settings)”"
+                                                                                      if any(r["range"].endswith("(settings)") for r in oor) else "")
+                               + "." + (FLAGGED_NOTE if any(map(ranges.says_neither, flags)) else "")
+                               + (BOUND_NOTE if any(ranges.comparator(r["value"]) for r in oor) else ""))
     if tr:
         sets = any(map(uses_settings, tr))   # its Now's range, or its sparkline's and chart's band (#649)
+        flagged = any(ranges.says_neither((r[k] or {}).get("flag")) for r in tr for k in ("then", "now"))
         out["trends"] = ("Then: the last result on or before that day. Since: how many results since. High or Low (in red): "
                          "outside the range on that result's own report" + (", or, where its report gives none, outside the "
                                                                             "range from settings" if sets else "") + "."
+                         + (FLAGGED_NOTE if flagged else "")
                          + (" A Then judged against a range other than its row's (its Now's) gives it in its cell (“report "
                             "range” or “settings range” and its numbers)." if any((r["then"] or {}).get("own") for r in tr) else "")
                          + (BOUND_NOTE if any(p[2] and ranges.comparator(p[6]) for r in tr for p in r["spark"]) else "")
@@ -499,7 +508,9 @@ def notes(s):
                                                                                 "range from settings" if sets else "")
                              + ", each step marked “on report”" + (" or “from settings”, none beside a result with neither" if sets
                                                                    else ", none beside a result whose report gives none")
-                             + "; a red triangle pointing up or down, a result above or below it.")
+                             + "; a red triangle pointing up or down, a result above or below it"
+                             + ("; a red diamond, one flagged on its report" if any(ranges.says_neither(p[2]) for r in drawn for p in r["spark"]) else "")
+                             + ".")
     return out
 
 
@@ -832,7 +843,8 @@ def _render(s, charts):
         try:
             if sid == "out_of_range":
                 rows = s["out_of_range"]
-                lay.heading(f"Out of range since {fmt_date(since['date'])}", len(rows))
+                flagged = ranges.flagged_words([r["flag"] for r in rows], "short")   # "Out of range or flagged" with a ◆ (#819)
+                lay.heading(f"{flagged[0].upper()}{flagged[1:]} since {fmt_date(since['date'])}", len(rows))
                 if not rows:
                     lay.note("No results since then are outside the reference range on their own report.")
                     continue

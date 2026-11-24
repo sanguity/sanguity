@@ -1977,6 +1977,14 @@ Everything on `main` so far; it becomes the first tagged release.
   no range is judged against its other copy's, but its row in the drawer showed ▲ High beside an empty Ref range. The
   cell now says that range and where it came from, "3.5–5.1 (from the other copy's report)", as a range from Settings
   is named "(settings range …)".
+- **A report's flag that says neither way is "Flagged", and counted as flagged, not "outside the range"** (#819): a
+  report's "A" (◆) on a value inside its range was counted and headed as outside it, in the Overview's "Outside its
+  reference range at its latest result", Labs' chart header ("7 outside reference range" on results inside it), a
+  share link's chart and the visit summary's notes, which named only High and Low; and it was "◆ Flagged" in the app
+  but "◆ Abnormal" in the summary and share links. Now every heading, count and note of flagged results says them by
+  one rule, adding "or flagged on its report" where a ◆ is among them (the Overview's list, Labs' chart headers and
+  words, the Legend's ◆ key, the heatmap's column, the lab panel, the Timeline's badges and line, the drawer, a share
+  link's chart, and the summary's heading, charts and notes and its PDF), and ◆ is "Flagged" everywhere.
 - **Type them in says a range as Labs does** (#826): the line under a typed result said "range under 5" for both "<5"
   and "<=5" (and "over 60" for ">60" and ">=60"), so a CRP of 5 read "range under 5 · ▲ High" with one and "range
   under 5" unflagged with the other, while Labs then said "< 5" and "≤ 5". The server now sends whether the range

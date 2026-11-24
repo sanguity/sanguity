@@ -199,6 +199,30 @@ def copies(a, b):
     return (lo, hi, f, e) if len(a) > 3 or len(b) > 3 else (lo, hi, f)
 
 
+# ---------------------------------------------------------------- flagged results, said one way (#819)
+# A ▲ or ▼ is outside its range; a ◆, a report's flag that says neither way (an "A"), is flagged on its report, its value
+# inside its range or with none, and is "Flagged" everywhere (summary.out_of_range; the page's charts.js FLAG_OF). Every
+# heading, count and note of flagged results says them by flagged_words(flags, form), as the page does by ranges.js
+# flaggedWords: "its" for one result each, "count" for a number of them, "short" for a heading ("Out of range since"),
+# "head" for a narrow column's heading, each with what a ◆ is where there's one
+FLAGGED_FORMS = {"its": ("outside its reference range", " or flagged on its report"),
+                 "count": ("outside reference range", " or flagged on their report"),
+                 "short": ("out of range", " or flagged"), "head": ("Outside", " or flagged")}
+
+
+def says_neither(flag):
+    """Whether a flag says neither way (a ◆): not High or Low ("H", "L", or the summary's words)."""
+    f = str(flag or "").strip()
+    return bool(f) and f[0].lower() not in "hl"
+
+
+def flagged_words(flags, form="count"):
+    """The words for these flagged results (#819): "outside reference range", or "outside reference range or flagged on
+    their report" where any is a ◆ (FLAGGED_FORMS' forms)."""
+    base, more = FLAGGED_FORMS[form]
+    return base + (more if any(says_neither(f) for f in flags) else "")
+
+
 def steps(pts, start, end):
     """The reference band as steps in time (www/js/ranges.js rangeSteps; the PDF's charts and sparklines, #299, #302):
     pts [(t, lo, hi, source)] in time order, or [(t, lo, hi, source, edge)] (#780: "<5" and "≤ 5" are two ranges).

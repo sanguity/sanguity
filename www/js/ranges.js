@@ -104,3 +104,17 @@ const refWords = p => rangeWords(p) && rangeWords(p) + (p.rs === "settings" ? ` 
 const refText = p => rangeWords(p) && "ref " + refWords(p);
 const rangeSrc = st => st.rs === "settings" ? "from settings" : "on report";
 const rangeSaid = st => `${st.key} ${rangeSrc(st)}`;
+/* ---- flagged results, said one way (#819): a ▲ or ▼ is outside its range; a ◆, a report's flag that says neither way
+   (an "A"), is flagged on its report, its value inside its range or with none, and is "Flagged" everywhere (charts.js
+   FLAG_OF, the summary and share links: summary.out_of_range). Every heading, count and note of flagged results says
+   them by flaggedWords(flags, form): flags, each result's (p[4], or the summary's "High", "Low", "Flagged"); form "its"
+   for one result each ("outside its reference range": the Overview's list, the lab panel), "count" for a number of
+   them ("7 outside reference range": Labs' chart, a share link's and the summary's charts, the heatmap), "short" for a
+   badge, a fact or a heading ("2 out of range"), "head" for a narrow column's heading ("Outside": the heatmap's); each
+   with what a ◆ is where there's one ("… or flagged on its report", "… or flagged on their report", "… or flagged").
+   server/ranges.py flagged_words is the same, for the summary */
+const FLAGGED_FORMS = {its: ["outside its reference range", " or flagged on its report"], count: ["outside reference range", " or flagged on their report"],
+  short: ["out of range", " or flagged"], head: ["Outside", " or flagged"]};
+const flagSaysNeither = f => !!String(f ?? "").trim() && !/^\s*[hl]/i.test(f);   // a ◆ (FLAG_OF)
+const flaggedWords = (flags, form = "count") => FLAGGED_FORMS[form][0] + ([...flags].some(flagSaysNeither) ? FLAGGED_FORMS[form][1] : "");
+const capFirst = t => t.charAt(0).toUpperCase() + t.slice(1);

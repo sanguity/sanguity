@@ -272,7 +272,8 @@ function rowPoint(d, i, ev) {
    report's range or, where the report gives none, a range from settings; a row with no result, its report's */
 const rowFlag = (d, i, ev, at = rowPoint(d, i, ev)) => at ? at.p[4] || "" : d.rows[i][4] || "";
 /* how many of a result's rows are flagged, as its table marks them */
-const rowsOut = (d, ev) => (d?.rows || []).filter((_, i) => rowFlag(d, i, ev)).length;
+const rowsFlags = (d, ev) => (d?.rows || []).map((_, i) => rowFlag(d, i, ev)).filter(Boolean);   // (their words, #819: flaggedWords)
+const rowsOut = (d, ev) => rowsFlags(d, ev).length;
 function resultTable(d, ev) {
   const rows = d.rows;
   if (!rows || !rows.length) return null;
@@ -330,14 +331,14 @@ function openEvent(e) {
   const main = [], go = [], facts = rows => main.push(drawerFacts(rows, "facts")), kv = rows => main.push(drawerFacts(rows));
   if (d.type === "result") main.push(...resultBody(d, e.id, true));
   else if (d.type === "labday") {
-    const rs = d.ids.map(id => DATA.details[id]).filter(Boolean), abn = d.ids.reduce((a, id) => a + rowsOut(DATA.details[id], byId.get(id)), 0);
-    facts([["Results", String(rs.reduce((a, r) => a + (r.rows || []).length, 0))], ["Out of range", abn ? String(abn) : "None"],
+    const rs = d.ids.map(id => DATA.details[id]).filter(Boolean), flags = d.ids.flatMap(id => rowsFlags(DATA.details[id], byId.get(id))), abn = flags.length;
+    facts([["Results", String(rs.reduce((a, r) => a + (r.rows || []).length, 0))], [capFirst(flaggedWords(flags, "short")), abn ? String(abn) : "None"],   // (#819)
       ["Ordered by", uniq(rs.map(r => r.provider))], ["Lab", uniq(rs.map(r => r.lab))]]);
     go.push(goBtn("Show this day in Labs", () => { setRange(e.ts - 45*DAY, e.ts + 45*DAY); pickTab("labs"); }));
     for (const id of d.ids) {
       const r = DATA.details[id], ev2 = byId.get(id); if (!r) continue;
-      const abn = rowsOut(r, ev2);
-      const det = el("details", {class: "res", open: d.ids.length <= 3 || null}, el("summary", {}, el("span", {text: panelName(r.order || ev2.title)}), el("span", {class: "spacer"}), el("span", {class: "res-t", text: fmtDT(ev2.ts).split(", ").pop()}), abn ? el("span", {class: "badge abn", "data-tip": `${abn} outside reference range`, text: abn}, el("span", {class: "vh", text: " outside reference range"})) : null), el("div", {}, ...resultBody({...r, order: null}, id), eventSource(ev2)));
+      const fl = rowsFlags(r, ev2), abn = fl.length, said = flaggedWords(fl);
+      const det = el("details", {class: "res", open: d.ids.length <= 3 || null}, el("summary", {}, el("span", {text: panelName(r.order || ev2.title)}), el("span", {class: "spacer"}), el("span", {class: "res-t", text: fmtDT(ev2.ts).split(", ").pop()}), abn ? el("span", {class: "badge abn", "data-tip": `${abn} ${said}`, text: abn}, el("span", {class: "vh", text: " " + said})) : null), el("div", {}, ...resultBody({...r, order: null}, id), eventSource(ev2)));
       main.push(det);
     }
   } else if (d.type === "conversation") {

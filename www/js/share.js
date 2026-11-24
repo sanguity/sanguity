@@ -135,9 +135,9 @@ const shSpark = pts => ckSpark(shPts(pts), {r: 2.2, cls: "share-spark"});
 function shChart(s) {
   const pts = shPts(s.results).filter(q => Number.isFinite(q[1]));
   if (pts.length < 2) return null;
-  const out = pts.filter(q => q[4]).length;
+  const out = pts.filter(q => q[4]).map(q => q[4]);   // (#819: an "A" inside its range was counted "outside the range")
   return el("div", {class: "share-chart"}, ckSolo(pts, {unit: s.unit, print: {w: 320, h: 80},
-    label: `${s.label}: a chart of ${pts.length} results, ${shDay(pts[0].p.t)} to ${shDay(pts.at(-1).p.t)}${out ? `, ${out} outside the range on their report` : ""}. The table under it lists each.`,
+    label: `${s.label}: a chart of ${pts.length} results, ${shDay(pts[0].p.t)} to ${shDay(pts.at(-1).p.t)}${out.length ? `, ${out.length} ${flaggedWords(out)}` : ""}. The table under it lists each.`,
     say: q => `${shWhen(q.p.t)}: ${q.p.value}${s.unit ? " " + s.unit : ""}${q[4] ? " " + (SH_FLAG[q[4]] || "◆ " + q[4]) : ""}`}));
 }
 let SH_HIST = 0;

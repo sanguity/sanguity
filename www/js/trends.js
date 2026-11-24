@@ -136,12 +136,16 @@ const MARK_KINDS = new Set(["procedure", "imaging"]);
 const evHead = (k, cx, cy) => shapeMark(KIND_SHAPE[k], cx, cy, 3.7, {class: "evhead", "data-k": k, fill: CAT_OF[k].color});
 /* the Legend's keys for what's drawn over or under the charts: each only while its kind is on them in these dates
    (#301), LEGEND_HAS[its data-legend]() saying so; journal.js and cycle.js add theirs */
-const LEGEND_HAS = {procedure: () => markEvents().some(e => e.k === "procedure"), imaging: () => markEvents().some(e => e.k === "imaging")};
+const LEGEND_HAS = {procedure: () => markEvents().some(e => e.k === "procedure"), imaging: () => markEvents().some(e => e.k === "imaging"),
+  // a ◆ on a chart shown, a result its report flags without saying which way (#819), named beside ▲ and ▼
+  flagged: () => SERIES.some(s => !s.watch && state.sel.has(s.name) && s.pts.some(p => p.ts >= state.from && p.ts <= state.to && flagSaysNeither(p[4])))};
 function legendSync() { for (const k of document.querySelectorAll("#view-labs .chart-legend [data-legend]")) k.hidden = !LEGEND_HAS[k.dataset.legend]?.(); }
 {
   const legend = document.querySelector("#view-labs .chart-legend");
   const key = (k, words) => el("span", {class: "jlegend marks-key", "data-legend": k, hidden: true}, shapeKey(KIND_SHAPE[k], {fill: CAT_OF[k].color}), words);
   if (legend) legend.append(key("procedure", "Procedure"), key("imaging", "Imaging"));
+  legend?.querySelector(".abn-key")?.parentElement.after(el("span", {"data-legend": "flagged", hidden: true},
+    el("b", {class: "abn-key", "aria-hidden": "true", text: "◆"}), "Flagged on its report"));
   // the header's Legend and ⓘ (#279, index.html): each opens under its button as a menu does (nav.js), words, not items
   if ($("#legendBtn")) menuWire({btn: $("#legendBtn"), list: $("#legendList"), text: true});   // (the ⓘ: util.js aboutWire, #280)
 }
@@ -192,7 +196,7 @@ function chartCard(s) {
   // its name in the records, when renamed, on the screen beside the unit, not in a tip only a mouse finds (#358). On a
   // phone (#621) three lines: the name with Chart | Table and ✕, then the unit, counts and "?" (.hd-sub), then Latest
   card.append(el("div", {class: "hd"}, s.watch ? el("span", {class: "name", text: nice(s.name)}) : labOpener(s, "name"), s.watch ? null : renameButton("lab", s.name),
-    el("span", {class: "hd-sub"}, el("span", {class: "unit", text: `${s.unit}${!s.watch && nice(s.name) !== s.name ? " · " + renamedTitle("lab", s.name).replace(/^In/, "in") : ""}${s.uc ? ` (converted from ${s.uc.from})` : ""}${s.watch ? (s.key === "weight" ? " · scale + clinic visits" : s.panel.startsWith("Body") ? " · smart scale" : " · watch, daily") : ""} · ${pts.length} ${s.watch ? "day" : "result"}${pts.length === 1 ? "" : "s"}${nAbn ? ` · ${nAbn} outside reference range` : ""}${pts.some(p => p.rs === "settings") ? " · " + RANGE_FROM_SETTINGS + " for results without one" : ""}`}), testLink(s.name)), legend, read,   // "What is this test?" (#163, test-pages.js)
+    el("span", {class: "hd-sub"}, el("span", {class: "unit", text: `${s.unit}${!s.watch && nice(s.name) !== s.name ? " · " + renamedTitle("lab", s.name).replace(/^In/, "in") : ""}${s.uc ? ` (converted from ${s.uc.from})` : ""}${s.watch ? (s.key === "weight" ? " · scale + clinic visits" : s.panel.startsWith("Body") ? " · smart scale" : " · watch, daily") : ""} · ${pts.length} ${s.watch ? "day" : "result"}${pts.length === 1 ? "" : "s"}${nAbn ? ` · ${nAbn} ${flaggedWords(pts.map(p => p[4]))}` : ""}${pts.some(p => p.rs === "settings") ? " · " + RANGE_FROM_SETTINGS + " for results without one" : ""}`}), testLink(s.name)), legend, read,   // "What is this test?" (#163, test-pages.js)
     viewSeg(s.name, nice(s.name), renderCharts),   // Chart | Table (#60)
     el("button", {class: "btn quiet small", type: "button", "data-tip": `Remove ${nice(s.name)}`, "aria-label": `Remove ${nice(s.name)}`, onclick: () => {
       // focus to the next chart's ×, else to this lab's box in the list (or Other, closed, it's in), else to the
@@ -222,7 +226,7 @@ function chartCard(s) {
 function labSays(s, pts) {
   const unit = s.watch ? (s.kind === "stack" ? "night" : "day") : "result", nAbn = pts.filter(p => p[4]).length, lastP = pts.at(-1), ms = msSay(state.from, state.to);
   return `${nice(s.name)}: ${pts.length} ${unit}${pts.length === 1 ? "" : "s"}${pts.length ? ` from ${fmtD(pts[0].ts)} to ${fmtD(lastP.ts)}, latest ${readText(s, lastP)[0]}` : " in this period"}`
-    + `${nAbn ? `, ${nAbn} outside reference range` : ""}${rangesDiffer(pts) ? `. ${RANGE_DIFFERS}: ${rangesDiffer(pts)} ${s.unit}` : ""}. Left and right arrow keys step through them.${ms ? " " + ms : ""}`;
+    + `${nAbn ? `, ${nAbn} ${flaggedWords(pts.map(p => p[4]))}` : ""}${rangesDiffer(pts) ? `. ${RANGE_DIFFERS}: ${rangesDiffer(pts)} ${s.unit}` : ""}. Left and right arrow keys step through them.${ms ? " " + ms : ""}`;
 }
 function drawChart(svg, s, pts, read, live) {   // live: a frame of a drag, at the width it had (#292)
   if (!svg.isConnected) return;

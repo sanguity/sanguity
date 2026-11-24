@@ -230,12 +230,12 @@ $("#tlWork").onchange = ev => { state.tlWork = ev.target.checked; renderList(); 
    reports, so "100 results, 67 out of range" read as 67 of 100 when it was 67 of 442 values); Labs' Vitals, readings
    taken at visits, aren't a draw's; with tests (a Set of series), theirs only. A draw's values are its own (store.js
    labDayWords' e.res, #471), as its badge counts them: an outside lab's result typed in on a clinic draw's day isn't
-   counted when only the clinic's draw is listed. -> [n, abn] */
+   counted when only the clinic's draw is listed. -> [n, abn, the flags of those, for their words (#819)] */
 function tlLabValues(labs, tests = null) {
   const seen = new Set();   // (a result whose import has no draw that day is each of that day's draws')
   for (const e of labs) for (const [s, p] of e.res || []) if (!tests || tests.has(s)) seen.add(p);
-  let abn = 0; for (const p of seen) if (p[4]) abn++;
-  return [seen.size, abn];
+  const flags = [...seen].filter(p => p[4]).map(p => p[4]);
+  return [seen.size, flags.length, flags];
 }
 /* the tests a search names (#459): the lab series whose name, the name Labs shows it by, or panel has what was typed,
    as a lab day's search words do (store.js labDayWords); none with no search */
@@ -252,16 +252,19 @@ function tlAbnDays() {
   const tests = tlTestsHit();
   tlAbnDay = tests.length ? new Set(tests) : null;
 }
-const tlAbn = e => e.k === "lab" && (tlAbnDay || e.res?.length) ? (e.res || []).filter(([s, p]) => p[4] && (!tlAbnDay || tlAbnDay.has(s))).length : e.abn;
+const tlAbnFlags = e => e.k === "lab" && (tlAbnDay || e.res?.length) ? (e.res || []).filter(([s, p]) => p[4] && (!tlAbnDay || tlAbnDay.has(s))).map(([, p]) => p[4]) : null;
+const tlAbn = e => tlAbnFlags(e)?.length ?? e.abn;
+/* its count in words, as its badge and tip say it (#819): "2 out of range", "2 out of range or flagged" where one is a ◆ */
+const tlAbnSaid = e => `${tlAbn(e)} ${flaggedWords(tlAbnFlags(e) || [], "short")}`;
 /* the line over the list: "The last year: 9 lab draws, 31 results, 3 out of range · 97 workouts, not listed". Under a
    search that names tests, the draws' results are those tests' only ("23 lab draws, 23 PSA results": not the 598 values
    of the draws that have a PSA, 8 of them out of range, read as PSA's), and it says which */
 function tlSum(v, listed) {
-  const labs = v.filter(e => e.k === "lab"), tests = tlTestsHit(), [res, abn] = tlLabValues(labs, tests.length ? new Set(tests) : null);
+  const labs = v.filter(e => e.k === "lab"), tests = tlTestsHit(), [res, abn, flags] = tlLabValues(labs, tests.length ? new Set(tests) : null);
   const work = v.filter(isWork).length, parts = [], when = periodLabel(), names = [...new Set(tests.map(s => nice(s.name)))];
   const what = !names.length ? tlN(res, "result") : names.length === 1 ? tlN(res, `${names[0]} result`)
     : `${tlN(res, "result")} of the ${names.length} tests matching “${timelineFilters().q || state.q}”`;
-  if (labs.length) parts.push(`${tlN(labs.length, "lab draw")}, ${what}${abn ? `, ${abn.toLocaleString("en-US")} out of range` : ""}`);
+  if (labs.length) parts.push(`${tlN(labs.length, "lab draw")}, ${what}${abn ? `, ${abn.toLocaleString("en-US")} ${flaggedWords(flags, "short")}` : ""}`);
   if (work) parts.push(tlN(work, "workout") + (listed ? "" : ", not listed"));
   const p = $("#tlSum");
   p.hidden = !parts.length;
@@ -333,7 +336,7 @@ function tlRow(e, cls) {
   key.style.color = CAT_OF[e.k].color;
   return el("div", {class: "tl-row" + (cls ? " " + cls : "") + (state.selEv === e.id ? " sel" : ""), "data-id": e.id, ...pressable(ev => openFrom(ev.currentTarget, () => openEvent(e)))},
     el("span", {class: "d vh", text: fmtD(e.ts)}), key, el("span", {class: "t", text: e.title}),
-    el("span", {class: "k"}, KIND_LABEL[e.k], tlAbn(e) ? el("span", {class: "badge abn", text: `${tlAbn(e)} out of range`}) : null),
+    el("span", {class: "k"}, KIND_LABEL[e.k], tlAbn(e) ? el("span", {class: "badge abn", text: tlAbnSaid(e)}) : null),
     e.sub ? el("span", {class: "s", text: e.sub}) : null);
 }
 /* a day's workouts: one row, or several folded into one that opens to each (kept open across redraws, tlOpen) */

@@ -94,12 +94,12 @@ TRENDS = {
     "Hemoglobin": [("13.0", "Low", ["report range", "13.5–17.5"]), ("13.0", None, None), "12–16"],
     "Amylase": [(">25", None, None), (">120", "High", None), "30–110"],
     "Lipase": [(">15", None, None), (">70", "High", None), "15–60 (settings)"],
-    "Chloride, Blood": [("100", None, None), ("104", "Abnormal", None), "98–107"],
+    "Chloride, Blood": [("100", None, None), ("104", "Flagged", None), "98–107"],
     "Creatinine": [("0.5", "Low", ["settings range", "0.6–1.2"]), ("1.4", "High", None), "≤ 1.3"],
 }
 # the summary's out-of-range rows since then: [value, flag, range, out, of]
 OUT_OF_RANGE = {"Sodium": ["133", "Low", "135–145", 1, 1], "Amylase": [">120", "High", "30–110", 4, 4],
-                "Lipase": [">70", "High", "15–60 (settings)", 4, 4], "Chloride, Blood": ["104", "Abnormal", "98–107", 2, 4],
+                "Lipase": [">70", "High", "15–60 (settings)", 4, 4], "Chloride, Blood": ["104", "Flagged", "98–107", 2, 4],
                 "Creatinine": ["1.4", "High", "≤ 1.3", 2, 3]}
 
 # ---- one-sided ranges (#780): whether a limit includes its edge, kept from each importer that reads it (CSV, PDF,
@@ -145,7 +145,20 @@ def edges(lab):
     return EDGES.get(lab) or [""] * len(CASES[lab])
 
 
-SAID = {"H": "High", "L": "Low", "A": "Abnormal"}   # a flag as the summary, its PDF and a share link say it (summary.out_of_range)
+SAID = {"H": "High", "L": "Low", "A": "Flagged"}   # a flag as the summary, its PDF and a share link say it (summary.out_of_range)
+# #819: flagged results said one way. A ◆ ("A", Chloride, Blood's latest, inside its range) is "Flagged" everywhere (SAID;
+# it was "Abnormal" in the summary and share links), and every heading, count and note of flagged results says it where
+# there's one: FLAGGED_WORDS, each form's words (server/ranges.py flagged_words, ranges.js flaggedWords) without a ◆ and
+# with one; FLAGGED_NOTE, the summary's note of what "Flagged" is, said where there's one
+FLAGGED_WORDS = {"its": ("outside its reference range", "outside its reference range or flagged on its report"),
+                 "count": ("outside reference range", "outside reference range or flagged on their report"),
+                 "short": ("out of range", "out of range or flagged"), "head": ("Outside", "Outside or flagged")}
+FLAGGED_NOTE = "Flagged: flagged on its own report without saying high or low, its value inside its range or with none given."
+
+
+def flagged(flags, form="count"):
+    """FLAGGED_WORDS' words of a form for results flagged so ("H", "L", "A")."""
+    return FLAGGED_WORDS[form]["A" in flags]
 
 
 def words(lo, hi, edge=""):

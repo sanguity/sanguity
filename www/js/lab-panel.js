@@ -77,7 +77,7 @@ function openLab(s) {
       ...row("Lowest", at(st.low.p) + (st.low.more ? `, and ${st.low.more} more time${st.low.more > 1 ? "s" : ""}` : ""), "low"),
       ...row("Highest", at(st.high.p) + (st.high.more ? `, and ${st.high.more} more time${st.high.more > 1 ? "s" : ""}` : ""), "high"),
       ...row("Latest inside its range", st.ranged ? (st.lastIn ? at(st.lastIn) : "None in this period") : "", "lastin"),
-      ...row("Outside its range", st.ranged ? (out.length ? out.map(([k, m, word]) => `${m} ${w[k]} ${word}`).join(" · ") : "None") : "", "out"),
+      ...row(capFirst(flaggedWords(pts.map(p => p[4]), "its")), st.ranged ? (out.length ? out.map(([k, m, word]) => `${m} ${w[k]} ${word}`).join(" · ") : "None") : "", "out"),   // (#819)
       ...row("No range on the report", w[""] ? `${w[""]} result${w[""] > 1 ? "s" : ""}` : "", "norange"),
       ...row("Reference range", rangesDiffer(pts) ? `${rangesDiffer(pts)} ${u}: each result's own` : st.ranged && pts.some(rangeWords) ? `${rangeWords(pts.find(rangeWords))} ${u}` : "", "range"),
       ...row("Range from settings", st.fromSettings ? `${st.fromSettings} result${st.fromSettings > 1 ? "s" : ""}, whose report gives none` : "", "settings"),
@@ -91,7 +91,7 @@ function openLab(s) {
     onLabs && table ? null : goBtn("Show them as a table", () => go(true))),
     el("p", {class: "hint dnote", text: "Counts and positions from the lab's table for this period. This isn't medical advice."}),
     aboutWords({title: "How these are counted"}, "Every result the lab's table lists for the period, against each result's own reference range on its report (or one you set in Settings, where the report gives none), the range the chart's band steps with.",
-      "A result counts as outside its range when its report flags it, or when its value is past the range (one given as “<15”, when every value it stands for is); the median is the middle result, or the mean of the two in the middle, of those given as the value measured (one given as “<15” left out). The change is the latest result less the first, as printed; it doesn't say how the results in between went."));
+      "A result counts as outside its range when its report flags it high or low, or when its value is past the range (one given as “<15”, when every value it stands for is); one its report flags without saying which way (◆) is counted as flagged on its report; the median is the middle result, or the mean of the two in the middle, of those given as the value measured (one given as “<15” left out). The change is the latest result less the first, as printed; it doesn't say how the results in between went."));
   showDrawer();
 }
 /* the panel drawn again as the period or the records change (app.js renderAll), in place: its scroll and focus kept */
