@@ -5,7 +5,7 @@ warnings when a connection stops syncing), against the fake SMART on FHIR server
 
   python3 tests/test_connections.py
 """
-import base64, http.client, json, os, sqlite3, sys, tempfile, time, unittest, urllib.parse
+import base64, http.client, io, json, os, sqlite3, sys, tempfile, time, unittest, urllib.parse
 from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -454,6 +454,91 @@ class Connections(unittest.TestCase):
         self.assertEqual(undo(again["import"]).status_code, 200)
         self.assertEqual(said(self.data()), said(before), "both undone: as they were")
         self.assertEqual(self.counts(), n)
+
+    def test_another_source_at_one_time_is_never_the_same_record(self):   # #885
+        """Only the same record of the same source is updated in place: an Observation by its own id. A hospital's FHIR
+        file uploaded, Potassium 5.05 (3.5–5.0, High) and Sodium on their own (no report) on two days; then a pull
+        brings the connected source's Potassium at that time, another Observation in a labitem keyed by the same day:
+        with no range a duplicate, with another range (3.5–5.1) a copy with its own row, and the hospital's results and
+        rows, and its lab days, stay as they were. The pull took the plan's for the hospital's sent again, its no range
+        and no flag or its range replacing the hospital's (#869), and updated the hospital's labitem and lab day of that
+        day in place with its own rows (sync._update_in_place, _link_labdays: by the day's key). Its own Observation sent
+        again, amended, is updated in place, the hospital's as it was; undone, both pulls leave the hospital's as it was."""
+        from server import crossmatch, ranges, uploads
+        days = ("2025-05-06T08:30:00-05:00", "2025-05-07T08:30:00-05:00")
+
+        def obs(oid, code, name, v, unit, t, rng=None, flag=None):
+            r = {"resourceType": "Observation", "id": oid, "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
+                 "code": {"coding": [{"system": "http://loinc.org", "code": code}], "text": name}, "effectiveDateTime": t,
+                 "valueQuantity": {"value": v, "unit": unit}}
+            if rng:
+                r["referenceRange"] = [{"low": {"value": rng[0]}, "high": {"value": rng[1]}, "text": f"{rng[0]}-{rng[1]}"}]
+            if flag:
+                r["interpretation"] = [{"coding": [{"system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation", "code": flag}]}]
+            return r
+        k = lambda oid, t, rng=None, flag=None: obs(oid, "2823-3", "Potassium", 5.05, "mmol/L", t, rng, flag)   # noqa: E731
+        hospital = [r for i, t in enumerate(days) for r in (k(f"hosp-k{i}", t, (3.5, 5.0), "H"), obs(f"hosp-na{i}", "2951-2", "Sodium", 140, "mmol/L", t, (135, 145)))]
+        db = dbm.connect()
+        try:
+            up = uploads.create(db, self.pid, None)
+            uploads.add_file(db, self.pid, up, "hospital.json", io.BytesIO(json.dumps({"resourceType": "Bundle", "type": "collection",
+                                                                                      "entry": [{"resource": r} for r in hospital]}).encode()))
+            uploads.finish(db, self.pid, up)
+        finally:
+            db.close()
+        r = self.robin.post(f"/api/profiles/{self.pid}/uploads/{up}/import", json={}, headers=H)
+        self.assertEqual(r.status_code, 202, r.text)
+        jid, end = r.json()["id"], time.time() + 30
+        while time.time() < end and (j := self.robin.get(f"/api/profiles/{self.pid}/jobs/{jid}").json())["state"] != "done":
+            if j["state"] == "preview":
+                self.assertEqual(self.robin.post(f"/api/profiles/{self.pid}/jobs/{jid}/confirm", headers=H).status_code, 202)
+            time.sleep(0.05)
+        self.assertEqual(j["state"], "done", j)
+        upload_iid = j["import_id"]
+
+        def said():   # each result on the two days: its range and flag, its row's as printed and as read; each lab day's rows
+            data = self.data()
+            drawer, out = crossmatch._rows(data), {}
+            for s in data["labs"]:
+                for p in s["pts"]:
+                    if p[0][:10] in {t[:10] for t in days}:
+                        at = crossmatch._row_of(drawer, s, p)
+                        row = at and data["details"][str(at[0])]["rows"][at[1]]
+                        out.setdefault((s["name"], p[0][:10], s["imp"] == upload_iid), []).append(
+                            (p[2], p[3], p[4], row and row[3], row and ranges.read_flag(row[4], p[1], p[2], p[3], p[5])))
+            labdays = sorted((e["t"][:10], e["imp"] == upload_iid, [r[:4] for i in data["details"][str(e["id"])]["ids"] for r in data["details"][str(i)]["rows"]])
+                             for e in data["events"] if e["k"] == "lab" and e["t"][:10] in {t[:10] for t in days})
+            return out, labdays
+        hosp_k, hosp_na = [(3.5, 5.0, "H", "3.5-5.0", "H")], [(135, 145, "", "135-145", "")]
+        before = said()
+        self.assertEqual(before, ({(n, t[:10], True): v for t in days for n, v in (("Potassium, Blood", hosp_k), ("Sodium, Blood", hosp_na))},
+                                  [(t[:10], True, [["Potassium", "5.05", "mmol/L", "3.5-5.0"], ["Sodium", "140", "mmol/L", "135-145"]]) for t in days]))
+        cid = self.connect(self.source())
+        self.first_pull(cid)
+        n = self.counts()
+        # the source's Potassium of the first day, no range: a duplicate; of the second, its own range: a copy
+        self.fake.add(k("plan-k0", days[0]), patient="pat-1")
+        self.fake.add(k("plan-k1", days[1], (3.5, 5.1)), patient="pat-1")
+        res = self.pull(cid)
+        self.assertTrue(res["ok"], res)
+        self.assertEqual((res["counts"]["results"], res["counts"].get("updated")), (1, None), res)
+        self.assertEqual(self.counts()["results"], n["results"] + 1)
+        mine, labdays = said()
+        self.assertEqual({x: v for x, v in mine.items() if x[2]}, before[0], "the hospital's results and rows as they were")
+        self.assertEqual([d for d in labdays if d[1]], before[1], "and its lab days")
+        self.assertEqual({x: v for x, v in mine.items() if not x[2]}, {("Potassium, Blood", days[1][:10], False): [(3.5, 5.1, "", "3.5-5.1", "")]},
+                         "the source's copy, its own range and row")
+        # its own Observation amended: updated in place, the hospital's as it was
+        self.fake.update("Observation", "plan-k1", {"referenceRange": [{"low": {"value": 3.5}, "high": {"value": 5.0}, "text": "3.5-5.0"}]})
+        again = self.pull(cid)
+        self.assertEqual((again["counts"]["results"], again["counts"].get("updated")), (0, 1), again)
+        mine, labdays = said()
+        self.assertEqual({x: v for x, v in mine.items() if x[2]}, before[0], "the hospital's as they were")
+        self.assertEqual([d for d in labdays if d[1]], before[1])
+        self.assertEqual(mine[("Potassium, Blood", days[1][:10], False)], [(3.5, 5.0, "H", "3.5-5.0", "H")], "the source's own, updated")
+        for iid in (again["import"], res["import"]):
+            self.assertEqual(self.robin.post(f"/api/profiles/{self.pid}/imports/{iid}/undo", headers=H).status_code, 200)
+        self.assertEqual(said(), before, "both undone: as the upload left them")
 
     def test_paging(self):
         self.fake.page_size = self.fake.max_count = 2
