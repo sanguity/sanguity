@@ -17,7 +17,7 @@ if "server.config" not in sys.modules:   # alone; run with tests/test_api.py, th
 
 from fastapi.testclient import TestClient   # noqa: E402
 
-from server import accounts, atrest, config, crypto, db as dbm, export, main, manage, profiles as prof, watch_store   # noqa: E402
+from server import accounts, atrest, config, crypto, db as dbm, export, main, manage, profiles as prof, records, watch_store   # noqa: E402
 from server.importers import apple_health   # noqa: E402
 
 EXPORT_XML = os.path.join(ROOT, "tests", "fixtures", "apple_health", "apple_health_export", "export.xml")
@@ -141,6 +141,37 @@ class Store(unittest.TestCase):
         watch_store.save_import(self.db, pid, apple_health.parse(files)["data"]["watch"])
         again = watch_store.load(self.db, pid)
         self.assertEqual((again["metrics"], again["exercise"]), (first["metrics"], first["exercise"]))
+
+    def test_days_typed_in_are_marked(self):
+        """#783: a daily measure's days typed in on Sources (an import of origin "manual") are listed as its "typed", so
+        a weight typed in is never judged as a scale's: rebuild marks them from the import's origin, and a merge keeps
+        the mark with the day's value (a later import's day, or the receiver's, takes it away). At start-up, a merged
+        file from before is marked, once."""
+        def imp(origin, s):   # an import of its own, as jobs.py and routes_manual save one
+            with dbm.transaction(self.db):
+                iid = records.store(self.db, pid, {"events": [], "labs": [], "details": {}, "costs": []}, origin, fmt=origin)
+                watch_store.save_import(self.db, pid, s, import_id=iid)
+        typed = lambda key="weight": next((m.get("typed") for m in watch_store.load(self.db, pid)["metrics"] if m["key"] == key), None)
+        pid = self.profile(watch_file=self.receiver_file(summary({"weight": {"2024-03-05": 180.0}})))
+        imp("upload", summary({"weight": {"2024-03-01": 176.0, "2024-03-02": 176.2}}))
+        imp("manual", summary({"weight": {"2024-03-02": 150.0, "2024-03-03": 151.0, "2024-03-05": 152.0}, "steps": {"2024-03-03": 4000}}))
+        self.assertEqual(pts(watch_store.load(self.db, pid), "weight"), {"2024-03-01": 176.0, "2024-03-02": 150.0, "2024-03-03": 151.0, "2024-03-05": 180.0})
+        self.assertEqual((typed(), typed("steps")), (["2024-03-02", "2024-03-03"], ["2024-03-03"]), "the receiver's day isn't typed in")
+        imp("upload", summary({"weight": {"2024-03-03": 177.0}}))
+        self.assertEqual(typed(), ["2024-03-02"], "a later import's day takes the mark away")
+        # a merged file from before #783, its days not marked: at start-up they're marked, once
+        side = watch_store.side_path(pid)
+        old = watch_store._read(side)
+        old["metrics"] = [{k: v for k, v in m.items() if k != "typed"} for m in old["metrics"]]
+        watch_store._write(side, old)
+        dbm.meta_set(self.db, watch_store.TYPED_MARKED, None)
+        self.assertIsNone(typed())
+        watch_store.migrate(self.db)
+        self.assertEqual((typed(), dbm.meta_get(self.db, watch_store.TYPED_MARKED)), (["2024-03-02"], "1"))
+        watch_store._write(side, old)
+        watch_store.migrate(self.db)
+        self.assertIsNone(typed(), "once only")
+        watch_store.rebuild(self.db, pid)
 
     # ---------------------------------------------------------------- the API and export
     def client(self, name=WREN):

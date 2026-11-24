@@ -355,6 +355,8 @@ class Manual(unittest.TestCase):
         w = self.watch(pid)
         self.assertEqual({m["key"]: (m["group"], m["unit"], m["pts"]) for m in w["metrics"]},
                          {"weight": ("Body", "lb", [["2026-05-06", 176.4]]), "steps": ("Activity", "steps", [["2026-05-06", 8210]])})
+        self.assertEqual({m["key"]: m.get("typed") for m in w["metrics"]}, {"weight": ["2026-05-06"], "steps": ["2026-05-06"]},
+                         "marked as typed in: a weight typed in is never judged as a scale's (#783)")
         self.assertEqual({k: w["exercise"][0][k] for k in ("start", "end", "name", "kind", "minutes")},
                          {"start": "2026-05-06T07:00:00", "end": "2026-05-06T07:40:00", "name": "Brisk walk", "kind": "brisk_walk", "minutes": 40})
         self.assertTrue(w["exercise"][0]["key"].startswith("manual:h:"))

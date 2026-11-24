@@ -64,9 +64,9 @@ SECTIONS = [   # (id, label, what a share link shows: said on the owner's form a
                                                        "recording's average heart rate, and the device that made it; not the "
                                                        "traces themselves"),
     ("bmi", "BMI and growth", "each weight with the height in effect on its day and the BMI from them, and where each "
-                              "weight came from (the smart scale, or a clinic visit and its clinic), and how many of the "
-                              "scale's were left out; for a child, where each measurement falls on the WHO's or the CDC's "
-                              "growth charts"),   # (#754: the scale's left out, how many and why)
+                              "weight came from (the smart scale, typed in, or a clinic visit and its clinic), and how many "
+                              "of the scale's were left out; for a child, where each measurement falls on the WHO's or the "
+                              "CDC's growth charts"),   # (#754: the scale's left out, how many and why; #783: typed in)
     ("targets", "Your targets for home readings", "each target typed in as the care team gave it, who set it and when, and how many "
                                                   "readings at home, or days of steps counted by the phone, were above or "
                                                   "below it; for a CGM target, the share of the CGM readings in it, below it "
@@ -380,22 +380,27 @@ def ecg_block(c, keep, most):
                   "No ECGs or irregular rhythm notifications in this period.", most, of="ECGs and notifications")
 
 
-W_OUT_DAYS, W_OUT_SHARE = 90, 0.12
+W_OUT_DAYS, W_OUT_SHARE, W_OUT_ADULT = 90, 0.12, 18
 W_OUT_WHY = "more than 12% from the median of the weights within 90 days of it"
 
 
-def scale_left_out(scale, clinic):
+def scale_left_out(scale, clinic, typed=(), born=""):
     """The smart scale's days whose weight is left out (#754), as the page leaves them out (store.js weightsOut): one
     more than 12% from the median of the other weights, the scale's and the visits', less than 90 days either side,
     where there are 3 or more (a profile's weight typed into another app, someone else on the scale), and one not
-    above 0. scale, clinic: [(day, weight)] in the same unit -> a set of the scale's days. Step for step as the page's:
-    one pass in time order, the weights within 90 days kept in order of weight as it goes."""
+    above 0. Never a weight typed in on Sources (typed: their days), nor one taken before 18 (born: About this
+    person's birth date; growth charts judge a child's weights, not a median): #783. Both are among the others.
+    scale, clinic: [(day, weight)] in the same unit -> a set of the scale's days. Step for step as the page's: one
+    pass in time order, the weights within 90 days kept in order of weight as it goes."""
     day = lambda d: datetime.fromisoformat(d[:10]).toordinal()
     ref = sorted(((day(d), v) for d, v in [*scale, *clinic] if v > 0), key=lambda r: r[0])
     win, out, i, j = [], set(), 0, 0   # ref[i:j]: the weights within 90 days of this one, their values in win, in order
     for d, v in sorted(scale, key=lambda p: day(p[0])):
         if not v > 0:
             out.add(d)
+            continue
+        age = person.age_on(born, d) if born else None
+        if d in typed or (age is not None and age < W_OUT_ADULT):
             continue
         t = day(d)
         while j < len(ref) and ref[j][0] < t + W_OUT_DAYS:
@@ -411,13 +416,19 @@ def scale_left_out(scale, clinic):
     return out
 
 
+def _typed(c):
+    """The weight series' days typed in on Sources (watch_store.mark_typed, #783)."""
+    return {str(d) for d in (c.metrics.get("weight") or {}).get("typed") or []}
+
+
 def _scale(c):
-    """The smart scale's [(day, weight)] kept, and those left out (scale_left_out), as sent (lb): worked out once."""
+    """The weight series' [(day, weight)] kept, the scale's and those typed in, and the scale's left out
+    (scale_left_out), as sent (lb): worked out once."""
     if "_scale" not in c.__dict__:
         clinic = [(_day(w[0]), w[1]) for w in c.data.get("clinicWeights") or []
                   if isinstance(w, list) and len(w) >= 2 and _day(w[0]) and _num(w[1]) and w[1] > 0]
         pts = c.pts("weight")
-        gone = scale_left_out(pts, clinic)
+        gone = scale_left_out(pts, clinic, _typed(c), c.person["birthDate"])
         c._scale = ([p for p in pts if p[0] not in gone], [p for p in pts if p[0] in gone])
     return c._scale
 
@@ -430,11 +441,11 @@ def _left_out(c, keep):
 
 
 def _weights(c):
-    """[(day, kg, where)] oldest first: the smart scale's days, less those left out (#754), and the clinic visits'
-    weights on other days."""
-    m = c.metrics.get("weight") or {}
+    """[(day, kg, where)] oldest first: the smart scale's days and those typed in (#783), less the scale's left out
+    (#754), and the clinic visits' weights on other days."""
+    m, typed = c.metrics.get("weight") or {}, _typed(c)
     kg = person.LB_KG if str(m.get("unit") or "lb") == "lb" else 1
-    out = {d: (v * kg, "smart scale") for d, v in _scale(c)[0]}
+    out = {d: (v * kg, "typed in" if d in typed else "smart scale") for d, v in _scale(c)[0]}
     for w in c.data.get("clinicWeights") or []:
         if isinstance(w, list) and len(w) >= 2 and _day(w[0]) and _num(w[1]) and w[1] > 0 and _day(w[0]) not in out:
             out[_day(w[0])] = (w[1] * person.LB_KG, f"clinic visit ({w[2]})" if len(w) > 2 and w[2] else "clinic visit")
@@ -562,7 +573,7 @@ def targets_block(c, keep, most):
         elif k == "spo2":
             when = _outside(sides([v for d, v in c.pts("spo2_avg") if keep(d)] +
                                   [_num(r[1]) for _, r in _home(c, "spo2_readings", keep, (1,), 3)]))
-        else:   # weight: the smart scale's days, in the unit shown, less those left out, said (#754)
+        else:   # weight: the smart scale's days and those typed in, in the unit shown, less the scale's left out, said (#754, #783)
             m = c.metrics.get("weight") or {}
             to_kg = person.LB_KG if str(m.get("unit") or "lb") == "lb" else 1
             when = _outside(sides([conv(v * to_kg) for d, v in _scale(c)[0] if keep(d)]), "weights")
@@ -576,7 +587,7 @@ def targets_block(c, keep, most):
     return _block([("Measure", "text", 92), ("Your target", "text", 100), ("Set by", "text", 104), ("Set on", "day", 54),
                    ("In this period", "text", None)], rows, lead,
                   "A blood pressure reading is above its target when its systolic or diastolic is; blood oxygen is each day's average "
-                  "from the watch and each reading typed in; weight, the smart scale's; steps, each day's count from the phone. Readings taken at visits aren't compared. "
+                  "from the watch and each reading typed in; weight, the smart scale's and those typed in; steps, each day's count from the phone. Readings taken at visits aren't compared. "
                   "Standard published ranges stay labelled as their publisher's. Not medical advice.",
                   "No targets entered.", most, of="targets")
 

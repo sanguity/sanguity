@@ -7062,8 +7062,9 @@ def main():
             js("state.tables.clear(); renderHealth()")
             settle(200)
             n754 = len(body754["w"])
-            check("…the Overview's Weight tile and its sparkline have the weights Body has: the latest kept, its day, a point for each over the year (the latest left out)",
-                  ov754 and ov754[0] == body754["tile"] == f"{body754['w'][-1][1]:.1f}" and ov754[1].endswith(body754["latest"]) and ov754[2] == n754
+            check("…the Overview's Weight tile and its sparkline have the weights Body has: the latest kept, its day, a point for each over the year (the latest left out), "
+                  "and how many were left out (#783)",
+                  ov754 and ov754[0] == body754["tile"] == f"{body754['w'][-1][1]:.1f}" and ov754[1].endswith(body754["latest"] + "\u00a0· 2\u00a0scale readings left out") and ov754[2] == n754
                   and [d for d, _ in body754["w"]][-1] == "2026-11-14" and not {"2026-10-10", "2026-11-15"} & {d for d, _ in body754["w"]}, [ov754, body754["tile"], n754])
             check("…Body's chart names them, its table lists them, the overview strip counts them with the phone's steps, and none left out",
                   body754["chart"].startswith(f"Weight: {n754} readings from {body754['from']} to {body754['latest']}.") and [r[1].split(" ")[0] for r in tb754[0]] == [v for _, v in tb754[1]]
@@ -7111,6 +7112,176 @@ def main():
             db = dbm.connect()
             prof754.delete_profile(db, pid754)
             db.close()
+            page.goto(base + "/?profile=1")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
+            settle(300)
+
+            # ---- the scale's rule only for a scale's readings (#783): a weight typed in on Sources, or one taken
+            # before 18 (About this person's birth date: growth charts judge a child's, not a median), is never left
+            # out, though it counts among the others, and is said as typed in; and the period reaches every reading's
+            # day, left out or not, so Body, the Overview, the visit summary and a share link have the same weights
+            # and say the same count left out. The page's rule and the server's at the edges, then three profiles of
+            # their own: a baby boy with 20 weekly weights typed in, an adult with two weights typed in among a
+            # scale's, and a scale's alone with its two latest left out, after the last kept. Each deleted after
+            from datetime import date as date783, timedelta as td783
+            from server import db as dbm, measures as meas783, profiles as prof783, records as rec783
+            edges783 = [   # [scale, clinic, typed, born]
+                [[["2026-03-01", 180], ["2026-03-02", 181], ["2026-03-03", 182], ["2026-03-04", 140]], [], [], ""],   # a scale's: left out
+                [[["2026-03-01", 180], ["2026-03-02", 181], ["2026-03-03", 182], ["2026-03-04", 140]], [], ["2026-03-04"], ""],   # typed in: kept
+                [[["2026-03-01", 180], ["2026-03-02", 140], ["2026-03-03", 140], ["2026-03-04", 140]], [], ["2026-03-02", "2026-03-03", "2026-03-04"], ""],   # among the others
+                [[["2026-03-01", 180], ["2026-03-02", 181], ["2026-03-03", 182], ["2026-03-04", 140]], [], [], "2008-03-05"],   # 17 that day: kept
+                [[["2026-03-01", 180], ["2026-03-02", 181], ["2026-03-03", 182], ["2026-03-04", 140]], [], [], "2008-03-04"],   # 18: left out
+                [[["2026-03-01", 18], ["2026-03-02", 0]], [], [], "2026-01-01"]]   # 0 is no weight, a child's or not
+            page783 = js("cases => cases.map(([s, c, t, b]) => [...weightsOut(s, c, new Set(t), b)].sort())", edges783)
+            want783 = [sorted(meas783.scale_left_out([tuple(x) for x in s], [(x[0][:10], x[1]) for x in c], set(t), b)) for s, c, t, b in edges783]
+            check("never a weight typed in, nor a child's (#783): the page and the server leave out only a scale's weights, of 18 and over, at the edges; the others count",
+                  page783 == want783 and want783 == [["2026-03-04"], [], ["2026-03-01"], [], ["2026-03-04"], ["2026-03-02"]], [page783, want783])
+            api783 = lambda m, path, body=None: js("([m, p, b]) => fetch('api/' + p, {method: m, headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, "
+                                                   "body: b == null ? undefined : JSON.stringify(b)}).then(async r => [r.status, await r.json().catch(() => null)])", [m, path, body])
+            was783, files783 = js("localStorage.getItem('ht-profile')"), []
+            days783 = [(date783(2026, 8, 1) + td783(days=i)).isoformat() for i in range(106)]   # Aug 1 to Nov 14
+
+            def scale783(name, pts):   # a profile of a scale's weights (a phone's file), a visit in August and a height
+                wf = os.path.join(TMP, f"watch783-{len(files783)}", "daily.json")
+                os.makedirs(os.path.dirname(wf), exist_ok=True)
+                with open(wf, "w") as f:
+                    json.dump({"last_payload": pts[-1][0] + "T07:00:00Z", "exercise": [], "metrics": [{"key": "weight", "name": "Weight", "unit": "lb", "group": "Body", "pts": pts}]}, f)
+                files783.append(wf)
+                db = dbm.connect()
+                pid = prof783.create_profile(db, name, owner_id=db.execute("SELECT id FROM users WHERE username=?", (USER,)).fetchone()["id"], watch_file=wf)
+                with dbm.transaction(db):
+                    rec783.store(db, pid, {"built": "2026-11-20", "source": "fictional", "details": {}, "costs": [], "upcoming": [], "labs": [],
+                                           "events": [{"id": 1, "t": "2026-08-03T09:30:00", "k": "visit", "title": "Office visit", "sub": "Lakeside Clinic (fictional)"}]}, "upload", fmt="ccda")
+                db.close()
+                return pid, [api783("POST", f"profiles/{pid}/person/heights", {"date": "2019-01-10", "unit": "cm", "cm": 178})[0]]
+
+            def seen783(pid, since):   # each place's weights: Body on All (Chart and Table) and 2 years, the Overview's tile, the summary and a link
+                page.goto(base + f"/?profile={pid}")
+                page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {pid}", timeout=20000)
+                js("switchTab('overview')")
+                settle(400)
+                ov = js("""(() => { const t = [...document.querySelectorAll('#view-overview .tile')].find(t => t.querySelector('.lbl')?.textContent === 'Weight');
+                    return t && {val: t.querySelector('.val').firstChild.textContent, delta: t.querySelector('.delta').textContent,
+                      spark: (t.querySelector('svg.spark path')?.getAttribute('d').match(/[ML]/g) || []).length}; })()""")
+                js("state.tables.clear(); setPeriod('all'); switchTab('health')")
+                settle(500)
+                body = js("""(() => { const w = [...H.scale, ...H.clinic].filter(p => p[0] >= state.from && p[0] <= state.to).sort((p, q) => p[0] - q[0]);
+                    return {w: w.map(p => [isoDay(p[0]), +p[1].toFixed(1)]), out: SERIES.find(s => s.key === 'weight').out.map(p => p.day), max: isoDay(state.max), hLast: isoDay(H.last),
+                      chart: document.querySelector('#h-body svg.ck').getAttribute('aria-label').split('.')[0], said: document.querySelector('#h-body .h-wout')?.textContent || '',
+                      hint: document.querySelector('#h-body > .hint').textContent, key: [...document.querySelectorAll('#h-body .legend > span')].map(x => x.textContent),
+                      first: fmtD(w[0][0]), latest: fmtD(w.at(-1)[0])}; })()""")
+                js("setPeriod('2y'); renderAll()")
+                settle(300)
+                body["said2y"] = js("document.querySelector('#h-body .h-wout')?.textContent || ''")
+                js("state.tables.add('#h-body'); setPeriod('all'); renderHealth()")
+                settle(300)
+                body["table"] = js("""[...document.querySelectorAll('#h-body table.data tbody tr')].reverse().map(r => [r.cells[0].textContent, r.cells[2].textContent]).filter(r => r[1])""")
+                body["saidT"] = js("document.querySelector('#h-body .h-wout')?.textContent || ''")
+                js("state.tables.clear(); renderHealth()")
+                sm = api783("POST", f"profiles/{pid}/summary/preview", {"appointment": None, "since": since, "sections": ["bmi"], "labs": [], "questions": ""})
+                lk = api783("POST", f"profiles/{pid}/links", {"sections": ["bmi"], "from": since, "label": "Weights (browser check)", "hours": 1})
+                sh = js("t => fetch('api/share/view', {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, body: JSON.stringify({token: t})}).then(r => r.json())",
+                        lk[1]["path"].split("#", 1)[1]) if lk[0] == 200 else {}
+                if lk[0] == 200:
+                    api783("DELETE", f"profiles/{pid}/links/{lk[1]['link']['id']}")
+                sent = {}
+                for k, m in (("summary", (sm[1] or {}).get("measures") or {}), ("link", sh)):   # each weight, oldest first: a child's on its Weight row, an adult's on its BMI row
+                    b, w = m.get("bmi") or {"rows": [], "lead": [], "total": 0}, []
+                    for r in reversed(b["rows"]):
+                        x = re.search(r"^weight ([\d.]+) lb \((.*?)\), height", r[4]) if r[1] == "BMI" else None
+                        if r[1] == "Weight" or x:
+                            w.append([r[0], float(x.group(1)) if x else float(r[2].split(" ")[0]), x.group(2) if x else r[4].split(";")[0]])
+                    sent[k] = {"w": [p[:2] for p in w], "from": [[p[0], p[2]] for p in w], "lead": b["lead"], "total": b["total"]}
+                return ov, body, sent
+
+            def sends783(sent, body, typed, said, total):   # the latest weights each sends (the summary's 12, a link's 20 of over 40): Body's, from where Body says; the count left out said; how many in all
+                return all(len(s["w"]) >= min(12, len(body["w"])) and s["w"] == body["w"][-len(s["w"]):] and s["from"] == [[d, "typed in" if d in typed else "smart scale"] for d, _ in s["w"]]
+                           and [x for x in s["lead"] if "left out" in x] == ([said] if said else []) and s["total"] == total for s in sent.values())
+
+            # a baby boy: 20 weekly weights typed in from his first day, growing at about the 26th percentile (#783: 14
+            # of them left out, the latest on no period)
+            st783 = api783("POST", "profiles", {"name": "Baby (fictional)"})
+            baby783 = st783[1]["id"]
+            typed783 = [{"kind": "home", "date": (date783(2026, 7, 1) + td783(days=7 * i)).isoformat(), "weight": f"{(3.3 + i * 0.2) / 0.45359237:.1f}", "weight_unit": "lb"} for i in range(20)]
+            st783 = [st783[0], api783("PUT", f"profiles/{baby783}/person", {"birthDate": "2026-07-01", "sex": "male"})[0],
+                     api783("POST", f"profiles/{baby783}/person/heights", {"date": "2026-07-01", "unit": "cm", "cm": 50})[0],
+                     api783("POST", f"profiles/{baby783}/manual", {"rows": [], "save": True, "items": typed783})[0]]
+            ov783, body783, sent783 = seen783(baby783, "2026-06-30")
+            want783 = [[x["date"], float(x["weight"])] for x in typed783]
+            check("…a baby's 20 weights typed in: every one on Body's chart on All, and the Overview's tile and sparkline, none said left out",
+                  st783 == [200, 200, 200, 200] and body783["w"] == want783 and not body783["out"] and not body783["said"] and body783["chart"] == f"Weight: 20 readings from {body783['first']} to {body783['latest']}"
+                  and ov783 and ov783["val"] == f"{want783[-1][1]:.1f}" and ov783["delta"] == body783["latest"] and ov783["spark"] == 20, [st783, body783, ov783])
+            check("…the visit summary and a share link send them, each from “typed in”, never “the smart scale”, none left out",
+                  sends783(sent783, body783, {d for d, _ in want783}, "", 21), sent783)   # (the 20 and his length)
+            check("…Body says where they came from: typed in, in its hint, its key and its table",
+                  body783["hint"].startswith("Weights typed in, with") and body783["key"][0] == "Typed in" and {f for _, f in body783["table"]} == {"Typed in"} and len(body783["table"]) == 20,
+                  [body783["hint"], body783["key"], body783["table"][:3]])
+
+            # an adult: a scale's weights from Aug 1, one high (Oct 10, left out), and on two days without one, weights
+            # typed in far from its others (Sep 15, 150.0; Nov 1, 205.0), kept and said as typed in
+            adult783, st783 = scale783("Typed in and a scale (fictional)", [[d, {"2026-10-10": 212.0}.get(d, round(176.5 + i * 7 % 11 / 10, 1))]
+                                                                            for i, d in enumerate(days783) if d not in ("2026-09-15", "2026-11-01")])
+            st783 += [api783("PUT", f"profiles/{adult783}/person", {"birthDate": "1980-05-05", "sex": "female"})[0],
+                      api783("POST", f"profiles/{adult783}/manual", {"rows": [], "save": True, "items": [{"kind": "home", "date": "2026-09-15", "weight": "150.0", "weight_unit": "lb"},
+                                                                                                         {"kind": "home", "date": "2026-11-01", "weight": "205.0", "weight_unit": "lb"}]})[0]]
+            ov783, body783, sent783 = seen783(adult783, "2026-07-31")
+            got783 = dict(body783["w"])
+            check("…an adult's two weights typed in among a scale's: kept, the scale's high one left out, and Body says that one only",
+                  st783 == [200, 200, 200] and got783.get("2026-09-15") == 150.0 and got783.get("2026-11-01") == 205.0 and body783["out"] == ["2026-10-10"] and len(body783["w"]) == 105
+                  and body783["said"] == js("'1 scale reading left out: 212.0 lb on ' + fmtD(dayTs('2026-10-10')) + ', ' + W_OUT.why + '.'"), [st783, body783["out"], body783["said"], len(body783["w"])])
+            check("…the summary and a link send Body's weights, those two from “typed in”, and say 1 left out",
+                  sends783(sent783, body783, {"2026-09-15", "2026-11-01"}, "1 weight from the smart scale left out: more than 12% from the median of the weights within 90 days of it.", 105)
+                  and ["2026-11-01", "typed in"] in sent783["link"]["from"], {k: [v["w"][-3:], v["from"][-14:], v["lead"], v["total"]] for k, v in sent783.items()})
+            typed783 = js("['2026-09-15', '2026-11-01'].map(d => fmtD(dayTs(d)))")
+            check("…Body's hint and key say both, its table each one's",
+                  body783["hint"].startswith("Scale readings and weights typed in, with") and body783["key"][0] == "Smart scale or typed in" and len(body783["table"]) == 105
+                  and all(f == ("Typed in" if d in typed783 else "Smart scale") for d, f in body783["table"]), [body783["hint"], body783["key"], [r for r in body783["table"] if r[1] != "Smart scale"]])
+
+            # a scale's alone, kept to Nov 14, its two latest left out (141.0 on Nov 15, 140.5 on Nov 20): All ended on
+            # Nov 14, Body said none of them, or 1 where the records reached Nov 15, the summary 2, the Overview nothing
+            late783, st783 = scale783("A scale, its latest left out (fictional)", [[d, round(176.5 + i * 7 % 11 / 10, 1)] for i, d in enumerate(days783)] + [["2026-11-15", 141.0], ["2026-11-20", 140.5]])
+            ov783, body783, sent783 = seen783(late783, "2026-07-31")
+            said783 = js("'2 scale readings left out, each ' + W_OUT.why + ': 141.0 lb on ' + fmtD(dayTs('2026-11-15')) + ' and 140.5 lb on ' + fmtD(dayTs('2026-11-20')) + '.'")
+            check("…a scale's two latest left out: the records' period and Body's All reach their day, and Body says both, on All and 2 years, in Chart and Table",
+                  st783 == [200] and body783["out"] == ["2026-11-15", "2026-11-20"] and body783["max"] == body783["hLast"] == "2026-11-20" and body783["said"] == body783["said2y"] == body783["saidT"] == said783
+                  and body783["w"][-1][0] == "2026-11-14" and len(body783["w"]) == 106, [st783, body783["out"], body783["max"], body783["hLast"], body783["said"], body783["said2y"], body783["saidT"]])
+            check("…the Overview's tile has Body's latest kept and says the two left out; the summary and a link send Body's weights and say 2",
+                  ov783 and ov783["val"] == f"{body783['w'][-1][1]:.1f}" and ov783["delta"] == body783["latest"] + "\u00a0· 2\u00a0scale readings left out" and ov783["spark"] == len(body783["w"])
+                  and sends783(sent783, body783, set(), "2 weights from the smart scale left out: each more than 12% from the median of the weights within 90 days of it.", 106),
+                  [ov783, {k: [v["w"][-2:], v["lead"], v["total"]] for k, v in sent783.items()}])
+            js("switchTab('overview')")
+            bad783, axe783 = [], []
+            for width in (1400, 320):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 640})
+                for theme in ("light", "dark"):
+                    js("t => { document.documentElement.dataset.theme = t; }", theme)
+                    settle(300)
+                    if width == 320:
+                        bad783 += phone_fits(page, f"the Overview, two weights left out ({theme})")
+                    axe783 += axe_check(page, f"the Overview, two weights left out, {width} px, {theme}")[0]
+            js("delete document.documentElement.dataset.theme")
+            text783, _ = tiles_big753(page, settle, lambda width: ["the Overview, two weights left out"])
+            check("…the tile's words fit 320 px, and every size from 320 to 1400 px with text at 200%; axe-core finds nothing serious at 1400 and 320 px, light and dark",
+                  not bad783 and not axe783 and not text783, (bad783 + axe783 + text783)[:6])
+            # a child's kept on a profile's own weights: born Nov 18, 2008, the reading of Nov 15 was taken at 17, so the
+            # page and the summary keep it (its latest); Nov 20's, at 18, is still left out
+            st783 = api783("PUT", f"profiles/{late783}/person", {"birthDate": "2008-11-18", "sex": "female"})[0]
+            page.goto(base + f"/?profile={late783}")
+            page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {late783}", timeout=20000)
+            kid783 = js("(s => [s.out.map(p => p.day), s.pts.at(-1).day])(SERIES.find(s => s.key === 'weight'))")
+            sm783 = api783("POST", f"profiles/{late783}/summary/preview", {"appointment": None, "since": "2026-07-31", "sections": ["bmi"], "labs": [], "questions": ""})
+            b783 = ((sm783[1] or {}).get("measures") or {}).get("bmi") or {"rows": [], "lead": []}
+            check("…a child's kept: born Nov 18, 2008, the reading of Nov 15 (at 17) is kept by the page and the summary, Nov 20's (at 18) still left out",
+                  st783 == 200 and kid783 == [["2026-11-20"], "2026-11-15"] and [r[:2] for r in b783["rows"][:1]] == [["2026-11-15", "Weight"]] and "141 lb" in b783["rows"][0][2]
+                  and [x for x in b783["lead"] if "left out" in x] == ["1 weight from the smart scale left out: more than 12% from the median of the weights within 90 days of it."],
+                  [st783, kid783, b783["rows"][:1], b783["lead"]])
+            js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was783)
+            db = dbm.connect()
+            for pid783 in (baby783, adult783, late783):   # (p is the browser's playwright)
+                prof783.delete_profile(db, pid783)
+            db.close()
+            for wf783 in files783:
+                shutil.rmtree(os.path.dirname(wf783), ignore_errors=True)
             page.goto(base + "/?profile=1")
             page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
             settle(300)
@@ -18108,7 +18279,7 @@ def main():
                   and re.search(r"80–140 mg/dL\. \d+ of \d+ meter readings in this period above it", gl["line"]), gl)
             others = js("['h-body', 'h-temp'].map(id => document.querySelector('#' + id + ' .tgt-line')?.textContent || '')")
             check("…weight and body temperature each with theirs, in the units each card shows (lb; the temperature's own)",
-                  others[0].startswith("Your target, as your care team gave it: up to 170 lb.") and "smart scale weights in this period" in others[0]
+                  others[0].startswith("Your target, as your care team gave it: up to 170 lb.") and "weights at home in this period" in others[0]
                   and re.match(r"Your target, as your care team gave it: up to (37\.5 °C|99\.5 °F)\.", others[1]), others)
             for width in (1400, 375):
                 page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})

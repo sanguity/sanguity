@@ -21,7 +21,7 @@ const TGT = {
   cgm: {name: "CGM time in range", what: "CGM readings", units: ["mg/dL", "mmol/L"], places: 0, card: "#h-glucose"},
   temp: {name: "Body temperature", what: "readings at home", units: ["C", "F"], places: 1, card: "#h-temp"},
   spo2: {name: "Blood oxygen", what: "readings at home", units: ["%"], places: 0, card: "#h-oxygen"},
-  weight: {name: "Weight", what: "smart scale weights", units: ["kg", "lb"], places: 1, card: "#h-body"},
+  weight: {name: "Weight", what: "weights at home", units: ["kg", "lb"], places: 1, card: "#h-body"},
   steps: {name: "Steps a day", what: "days", units: ["steps"], places: 0, card: "#h-activity", marks: " ▲ or ▼ in the table marks a day above or below it."},   // #298
 };
 const TGT_UNIT = {C: "°C", F: "°F"};
