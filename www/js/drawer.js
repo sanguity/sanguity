@@ -257,7 +257,7 @@ function docFrame(html, h = 420, title = "The record as it was sent") {   // tit
    server/records.py _row_series: by the row's name or its canonical one, so a report's "Glucose" is Labs' "Glucose,
    Blood", #782), else the one with the row's name; in the row's import, on its day, with its value as reported (or
    its one result that day) */
-const rowSaid = t => { const m = /^\s*([<>]=?|=<|=>|≤|≥)?\s*(-?\d+(?:\.\d+)?)\s*$/.exec(t ?? ""); return m ? rangeCmp(m[1] || "") + +m[2] : String(t ?? "").trim(); };
+const rowSaid = t => { const r = valueRead(t); return r ? r.c + r.x : String(t ?? "").trim(); };   // (ranges.js's one reader, #874)
 function rowPoint(d, i, ev) {
   if (!ev) return null;
   const row = d.rows[i], name = d.series?.[i] ?? row[0], v = rowSaid(row.orig ? row.orig[0] : row[1]), day = isoDay(ev.ts);

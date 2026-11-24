@@ -2122,7 +2122,19 @@ Everything on `main` so far; it becomes the first tagged release.
   "1,250" as 1250 and leave "0,500" unread, kept as printed and said in the upload's warnings, as a comma-delimited
   spreadsheet's are; Quest's "> OR = 60" printed as a value is read as a bound (its row was left out), on the page as
   on the server; and "5.0E3-1.0E4" and "1.2E-3" are read everywhere. Results imported before keep what they were read
-  as; importing the file again reads them anew.
+  as; undoing their import and importing the file again reads them anew.
+- **A file imported again after its reading changed adds nothing, and a copy printed "4,5" or "=<5" is matched**
+  (#874): #870 reads a FHIR bound ("<=5", ">60") and a C-CDA's "4,5" or "=<5" as numbers where they were kept as text,
+  and the FHIR export writes "=<5" and "1,250" as numbers where it wrote text, so a file imported before, uploaded
+  again, added each result again: charted beside the same result listed as text. The import's preview matched a result
+  only with one of its kind, a number with a number and text with text; now a result already here as text is the one
+  a number reads as (its number and comparator, by the one reader of a number, whichever decimal mark the file
+  writes), and the other way round, so the same file adds nothing. "Possibly the same result" from another source read
+  "4,5", "=<5", "≤ 5" and "1.2E-3" as no number, so such a copy was never offered as one; it reads each value as the
+  importers do. And the review's few new results show "=<5" and "1.2E-3" as printed (it said "5" and "0.0012"). On
+  the page, a value is read the same way, by one reader: in another unit (Settings' SI units) Labs said "=<5" and
+  "> OR = 60" as a plain number, their bound gone ("0.500"), and the drawer's row of "> OR = 60" kept its 60 beside the
+  other unit, its "=<5" left in its own.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

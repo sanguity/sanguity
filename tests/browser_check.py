@@ -21509,6 +21509,22 @@ def main():
             check("#870: “4,5”, “0,500”, “12,5” (with semicolons), “1,250” (comma-delimited), “=<5” and “≥60” exported as FHIR and the zip "
                   "uploaded into another profile: Labs has each with the same value, range, edge and flag, and the Overview's out-of-range "
                   "list the same four; and the page reads a bound as the server does, Quest's “> OR = 60” as “>=”", not bad870, bad870)
+            # ---- #874: the page reads a value as printed by one reader, ranges.js valueRead (units.js and drawer.js had
+            # patterns of their own): each of BOUND_VALUES' and COMMAS' spellings, and text, reads as the server reads it
+            # (common.value_number and comparator, where the decimal mark isn't known); in a converted unit a bound keeps
+            # its bound ("=<5" was said as "0.500"), and a drawer row printed "> OR = 60" finds its result's ">= 60"
+            from server.importers import common as common874
+            said874 = [v for v, *_ in M752.BOUND_VALUES] + list(M752.COMMAS) + ["4,5", "1,234.5", "1.234,5", "Negative", "82 mm[Hg]", "", "-0.5"]
+            got874 = js("ts => ts.map(t => (r => r && [r.c, r.x])(valueRead(t)))", said874)
+            want874 = [(lambda x: None if x is None else [common874.comparator(t), x])(common874.value_number(t)) for t in said874]
+            bad874 = [f"the page's reading of {t!r}: {g}, the server's {w}" for t, g, w in zip(said874, got874, want874) if g != w]
+            conv874 = js("""() => { const uc = {a: 0.1, b: 0}; return [['=<5', '> OR = 60', '<0.5', '≤ 5', '4,5', '1.2E-3', 'Negative'].map(t => ucText(uc, t)),
+              ['3.5 - 5.1', '<=5', '> OR = 60', '5,0 - 10,0', 'see note'].map(t => ucRange(uc, t)), rowSaid('> OR = 60') === rowSaid('>= 60'), rowSaid('4,5') === rowSaid(4.5)]; }""")
+            if conv874 != [["=<0.500", "> OR = 6.00", "<0.0500", "≤ 0.500", "0.450", "0.000120", "Negative"], ["0.350–0.510", "<=0.500", "> OR = 6.00", "0.500–1.00", None], True, True]:
+                bad874.append(f"in another unit (×0.1): {conv874}")
+            check("#874: the page reads a value as printed as the server does, by one reader (ranges.js valueRead: “=<5”, “> OR = 60”, “4,5”, "
+                  "“1.2E-3”, “1,250” unread), a converted unit keeps a bound (“=<5” was “0.500”) and a drawer row finds its result by it",
+                  not bad874, bad874)
             # ---- #839: a flag stored as its report printed it (an older import's "N", ">", "HH", "Normal") is read as a new
             # import of it would, by the one rule for a printed flag, on the page as on the server (ranges.js readFlag,
             # server/ranges.py read_flag: common.report_flag): the page read every one but H and L as ◆ Flagged, the summary

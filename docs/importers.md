@@ -161,7 +161,10 @@ by `common.range_part`. Don't write a parser of your own. A value's number is re
 `common.number_text`, the one reader of a number, which every range's numbers go through too; a number inside other
 text ("72 bpm", "30 tablets") is found by `common.NUMBER` and read by `number_text` (#870). Scientific notation is
 read everywhere ("5.0E3-1.0E4", "1.2E-3"). Don't write a reader of your own: `tests/test_importers.py`
-`test_numbers_read_in_one_place` lists every `float()` in the importers and the FHIR export, and why it isn't one.
+`test_numbers_read_in_one_place` lists every `float()` in the importers, the FHIR export and the server's readers of a
+result's value as stored (`crossmatch.py`, `preview.py`, #874), and why it isn't one. The page reads a value as printed
+the same way, by `www/js/ranges.js` `valueRead` (#874: units.js and the drawer's rows read "=<5" and "> OR = 60" by
+patterns of their own); `tests/test_ranges.py` `test_numbers_read_in_one_place_on_the_page` lists any other.
 A FHIR `Quantity` with a comparator is a value given as a bound, its number kept with it. `txt` holds results that
 aren't numbers. Name series with
 `common.canonical_lab(name, loinc)` so the same test from two sources lands on one chart (it returns None for labs it
@@ -220,7 +223,10 @@ Type them in and a sync; a copy the upload gives no row of its own is left out, 
 A point its source sends again saying something else of its range or flag (#869: its row in a labitem whose key, the
 source's own record's and not a `:h:` hash, is the one its point here has its row in, the same series key, time and
 value) is that result, updated in place with its row, never a copy: so give a labitem the key of the report it comes
-in, or of its day, as the FHIR importer does. A
+in, or of its day, as the FHIR importer does. A text result here is that point, and a point here that text result,
+where it reads as it (#874: its value read by `common.value_number`, whichever decimal mark its file writes, with its
+comparator), so a file read again after a reading of it changed between text and a number (#870: a FHIR bound, a
+C-CDA's "4,5", the FHIR export's "=<5" and "1,250") adds nothing. A
 record without a key falls back to the same importer, date, kind and content, which is slower and easier to fool, so
 give keys. A lab day stays while any of its results is new and goes when all of them are duplicates; `check()` runs
 again on what's left before it's saved.
@@ -232,7 +238,8 @@ code (`"loinc:<code>"`, or a `loinc` field) when the source gives one.
 Keys only recognise a record coming back from the same source. The same lab result from two sources (a file, then a
 connected source's sync) is spotted by `server/crossmatch.py` instead: the same LOINC code (or canonical series), the
 same collection time to the minute (any time that day when one side has only a date) and the same value once units
-are made comparable by exact conversions only. It is flagged at the preview and in the result's details, never merged
+are made comparable by exact conversions only (each value read by `common.value_number`, so "4,5" is 4.5 and "=<5" is
+"<=" 5, #874). It is flagged at the preview and in the result's details, never merged
 by itself; the person's "same result" shows it once, with both sources. For it to work, give each point the time as
 the source wrote it (a bare date as noon, `common.iso`), the value as reported in `pts[5]`, and the series' unit.
 `check()` refuses a key that isn't a non-empty string, or that is used twice within one import: among the events,

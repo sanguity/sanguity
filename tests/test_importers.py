@@ -304,11 +304,14 @@ class Common(unittest.TestCase):
             ("<1,000", None, 1000, False), ("<5,5", None, 5.5, None), ("<5", 1, 5, None), ("<5", None, 6, None))],
             ["<", "", ">", "", "<", "<", "", ""])
 
-    # #870: every float() or Decimal() call in server/importers/ and server/fhir_export.py, and every pattern of a
-    # number's digits with a decimal mark, by (file, the function or name it's in, the call as written or the pattern's
-    # piece), with why it isn't a reader of a number as printed. Any other is one: read it by common.number_text
-    # (value_number for a result's value, range_text for a range, NUMBER for a number inside other text). Numbers a
-    # source writes as data (a JSON number, FHIR's decimals) aren't printed, so they're taken as they are
+    # #870: every float() or Decimal() call in server/importers/ and server/fhir_export.py, and in the server's readers
+    # of a result's value as stored (NUMBER_FILES, #874: crossmatch.py's and preview.py's read "4,5" and "=<5" as no
+    # number, so a copy printed so wasn't matched), and every pattern of a number's digits with a decimal mark, by (file,
+    # the function or name it's in, the call as written or the pattern's piece), with why it isn't a reader of a number
+    # as printed. Any other is one: read it by common.number_text (value_number for a result's value, range_text for a
+    # range, NUMBER for a number inside other text). Numbers a source writes as data (a JSON number, FHIR's decimals)
+    # aren't printed, so they're taken as they are
+    NUMBER_FILES = ["fhir_export.py", "crossmatch.py", "preview.py", "records.py", "summary.py", "measures.py"]
     NUMBER_READS = {
         ("importers/common.py", "number_text", "float(s)"): "the one reader of a number as printed",
         ("importers/common.py", "number_text", "[\\d.,"): "the one reader: the shape of a number it reads",
@@ -328,6 +331,9 @@ class Common(unittest.TestCase):
         ("importers/apple_health.py", "_number", 'float("inf")'): "infinity, to leave it out",
         ("fhir_export.py", "adj", "float(amount or 0)"): "a claim's amount as stored, a number (_claims.money)",
         ("fhir_export.py", "_claims", "float(paid or 0)"): "a claim's amount as stored, a number (_claims.money)",
+        ("crossmatch.py", "_value", "Decimal(str(x))"): "a value value_number read (or its number as imported), as a decimal",
+        ("crossmatch.py", "_carry", "Decimal(str(x))"): "a range's limit as stored, a number, changed by an exact factor",
+        ("crossmatch.py", "_carry", "float(Decimal(str(x)) * f)"): "a range's limit as stored, a number, changed by an exact factor",
     }
     # a pattern of a number's digits with a decimal mark: \d+(?:\.\d+)?, \d+\.\d+, \d*[.,]\d+, \d+(?:[.,]\d+)*; \d+,\d{2};
     # [\d.]+, [\d.,]*, [0-9.]+; \d{1,3}(?:,\d{3})+ (not a time's fraction of a second, "\d{2}(?:\.\d+)?")
@@ -337,12 +343,14 @@ class Common(unittest.TestCase):
         """#870: one reader of a number as printed, common.number_text, for every importer and the FHIR export. The PDF
         reports had their own (pdf_labs._number: "0,500" was 500, Troponin I ▲ High; "0,05" and "4,5" weren't values, so
         their rows were left out), and so did the C-CDA, CareSpace and FHIR importers and the export (_num, _value,
-        num: "4,5", "=<5" and "≥60" went out as text beside a range and a flag, read back with none). Every float() and
-        Decimal() call and every pattern of a number's digits with a decimal mark there is one NUMBER_READS lists."""
+        num: "4,5", "=<5" and "≥60" went out as text beside a range and a flag, read back with none). And the server's
+        readers of a result's value as stored (#874: crossmatch's _NUM and preview's PLAIN, so a copy printed "4,5" or
+        "=<5" was never possibly the same). Every float() and Decimal() call and every pattern of a number's digits with
+        a decimal mark there is one NUMBER_READS lists."""
         import ast
         found = set()
         for path in sorted(glob.glob(os.path.join(ROOT, "server", "importers", "**", "*.py"), recursive=True)) + [
-                os.path.join(ROOT, "server", "fhir_export.py")]:
+                os.path.join(ROOT, "server", f) for f in self.NUMBER_FILES]:
             rel = os.path.relpath(path, os.path.join(ROOT, "server")).replace(os.sep, "/")
             with open(path, encoding="utf-8") as f:
                 src = f.read()
