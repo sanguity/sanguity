@@ -2045,6 +2045,10 @@ Everything on `main` so far; it becomes the first tagged release.
   takes a decimal comma where it can't be a thousands separator, and a spreadsheet's own decimal commas: each spelling
   gives the same range, its edge and its flag from every one. Results imported before keep what they were read as;
   importing the file again reads them anew.
+- **Removing a reminder's time is said, and Enter in a time doesn't save the reminder** (#853): Remove time 2 said
+  nothing, and focus went to the field that now has its name, so a screen reader heard "Time 2" again; since #830 that
+  field had focus, and a second Enter there saved the reminder a time short and took the drawer back to the
+  medication. Removing a time now says "Time 2 removed; 2 times left", and Enter in a time does nothing: Save saves.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

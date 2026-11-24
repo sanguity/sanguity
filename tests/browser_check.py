@@ -9018,12 +9018,24 @@ def main():
                 page.focus("#dbody .mr-time:nth-child(2) button")
                 page.keyboard.press("Enter")
                 rm830 = [js(FOC830)]
+                # #853: and it's said, the next time taking its name; a second Enter, in the time's field focus went to, doesn't
+                # save the form (it saved the reminder a time short and took the drawer back to the medication; Save does)
+                settle(200)
+                rm853 = [js("document.getElementById('sgStatus').textContent")]
+                page.keyboard.press("Enter")
+                settle(400)
+                rm853.append(js("[document.getElementById('dtitle').textContent, [...document.querySelectorAll('#dbody .mr-time input')].map(i => i.value), document.activeElement.getAttribute('aria-label')]"))
                 page.focus("#dbody .mr-time:last-child button")
                 page.keyboard.press(" ")
                 rm830.append(js(FOC830))
+                settle(200)
+                rm853.append(js("document.getElementById('sgStatus').textContent"))
                 check("…Remove time 2 by the keyboard leaves focus on the next time's field, and on the one before for the last, each time named by its "
                       "place (#830: focus went to the page)", rm830 == [["Time 2 12:00", ["Time 1 08:00", "Time 2 12:00"], ["Remove time 1", "Remove time 2"], 2],
                                                                            ["Time 1 08:00", ["Time 1 08:00"], ["Remove time 1"], 1]], rm830)
+                check("…and it's said (“Time 2 removed; 2 times left”), and Enter in the time field focus goes to doesn't save the form (#853: it saved "
+                      "the reminder a time short)", "Time 2 removed; 2 times left." in rm853[0] and rm853[1] == ["New reminder", ["08:00", "12:00"], "Time 2"]
+                      and "Time 2 removed; 1 time left." in rm853[2] and "Reminder saved" not in rm853[0] + rm853[2], rm853)
                 page.click("#dbody button:text-is('Add another time')")
                 page.locator("#dbody .mr-time input >> nth=1").fill("20:00")
                 page.click("#dbody .mr-days button[aria-label=Saturday]")
