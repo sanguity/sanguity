@@ -20775,58 +20775,81 @@ def main():
             db.close()
             js("""async ([pid, value]) => { await fetch(`api/profiles/${pid}/settings/overview.keyLabs`, {method: 'PUT',
               headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, body: JSON.stringify({value})}); }""", [lpid, M752.LATEST_LABS])
-            page.goto(base + f"/?profile={lpid}")
-            page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {lpid}", timeout=20000)
-            bad825 = []
-            js("() => { setPeriod('all'); pickTab('overview'); }")
-            settle(500)
-            ov825 = js("""[Object.fromEntries([...document.querySelectorAll('#view-overview .tile:not(.home-tile)')].map(t => [t.querySelector('.lbl > span').textContent,
-              [t.querySelector('.st')?.textContent || '', t.querySelector('.val').firstChild.textContent, t.querySelector('.delta').textContent]])),
-              Object.fromEntries([...document.querySelectorAll('#ovOut .ov-row')].map(r => [r.querySelector('.n').textContent, [r.querySelector('.v').textContent.trim(), r.querySelector('.r').textContent]]))]""")
-            if {k: v for k, v in ov825[0].items() if k in M752.LATEST_TILES} != M752.LATEST_TILES:
-                bad825.append(f"the Overview's tiles {ov825[0]} not {M752.LATEST_TILES}")
-            if ov825[1] != M752.LATEST_OUT:
-                bad825.append(f"the Overview's out-of-range list {ov825[1]} not {M752.LATEST_OUT}")
-            js("labs => { state.tables.clear(); state.sel = new Set(labs); applyPreset('all'); switchTab('labs', 'chart'); renderLabs(); }", M752.LATEST_LABS)
-            settle(600)
-            for n, j in M752.LATEST_JUDGED.items():   # each mark [x, flagged] in the order drawn, and the header's counts
-                got = js("""n => { const c = [...document.querySelectorAll('#charts .chart')].find(c => c.dataset.lab === n);
-                  return [[...c.querySelectorAll('svg.ck :is(circle.pt, path.pt.abn)')].map(m => [m.tagName === 'circle' ? +m.getAttribute('cx')
-                    : +/^M(-?[\\d.]+)/.exec(m.getAttribute('d'))[1], m.matches('.abn')]), c.querySelector('.hd-sub .unit').textContent]; }""", n)
-                under = [x for i, (x, f) in enumerate(got[0]) if f and any(abs(x - x2) < .5 and not f2 for x2, f2 in got[0][i + 1:])]
-                if [f for _, f in got[0]] != [bool(f) for f, *_ in j] or under or f"{len(j)} results · 1 outside reference range" not in got[1]:
-                    bad825.append(f"Labs' {n} chart: marks {[f for _, f in got[0]]}, a ▲ under a dot at {under}, “{got[1]}”")
-            js("labs => { for (const n of labs) state.tables.add(n); renderCharts(); }", M752.LATEST_LABS)
-            settle(400)
-            for n, j in M752.LATEST_JUDGED.items():   # one row each, newest first, the latest from both sources
-                rows = js("n => [...[...document.querySelectorAll('#charts .chart')].find(c => c.dataset.lab === n).querySelectorAll('table.data tbody tr')].map(r => [r.cells[2].textContent, r.cells[3].textContent])", n)
-                want = [[words752(lo, hi), FLAG752[f]] for f, lo, hi in j][::-1]
-                if [[r[0].split(" · ")[0], r[1]] for r in rows] != want or not rows[0][0].endswith(" · also from 1 more source"):
-                    bad825.append(f"Labs' {n} table: {rows[:2]}… ({len(rows)} rows) not {want[:2]}… ({len(want)})")
-            js("labs => { for (const n of labs) state.tables.delete(n); switchTab('labs', 'heatmap'); }", M752.LATEST_LABS)
-            settle(400)
-            hm825 = js("""labs => [labs.map(n => [...document.querySelectorAll('#hm rect.cell')].filter(c => c.dataset.s === n).sort((a, b) => a.dataset.k.localeCompare(b.dataset.k) || a.dataset.j - b.dataset.j)
-                .map(c => { const f = c.style.fill; return f.includes('--div-lo') ? -1 : f.includes('--div-hi') ? 1 : f.includes('--div-mid') ? 0 : null; })),
-              [...document.querySelectorAll('#hm text')].map(t => t.textContent).filter(t => /^\\d+$/.test(t))]""", M752.LATEST_LABS)
-            want825 = [[[{"H": 1, "L": -1}.get(f, 0) for f, *_ in M752.LATEST_JUDGED[n]] for n in M752.LATEST_LABS], ["1"] * len(M752.LATEST_LABS)]
-            if hm825 != want825:
-                bad825.append(f"the heatmap: {hm825} not {want825}")
-            js("() => { state.q = ''; pickTab('timeline'); }")
-            settle(600)
-            dr825 = js("""async latest => { const imps = Object.keys(DATA.imports || {}).map(Number).sort((a, b) => a - b), out = {};
-              const badge = Object.fromEntries([...document.querySelectorAll('#list .tl-row[data-id]')].map(r => [r.dataset.id, r.querySelector('.badge.abn')?.textContent || null]));
-              for (const e of DATA.events.filter(e => e.k === 'lab' && e.t.slice(0, 10) === latest.slice(0, 10))) {
-                await openEvent(e);
-                out[`${imps.indexOf(e.imp) + 1}`] = [badge[e.id] ?? null, [...document.querySelectorAll('#drawer table.data tbody tr')].map(r => [r.cells[0].firstChild.textContent, r.cells[3].textContent])];
-              }
-              closeDrawer(); return out; }""", M752.day(2))
-            want825 = {f"{i}": [f"{sum(1 for _, f in rows if f)} out of range", [[n, FLAG752[f]] for n, f in rows]] for (i, _), rows in M752.LATEST_DAYS.items()}
-            if dr825 != want825:
-                bad825.append(f"each import's lab day of the latest, its Timeline badge and drawer rows: {dr825} not {want825}")
+            def views825(judged, days, also):
+                """what's wrong in the Overview's tiles and list, Labs' charts and tables, the heatmap and each import's lab day
+                of the latest (its Timeline badge and drawer rows), against each result's [flag, low, high] (judged) and each
+                import's rows (days); also: the latest's table row says it came from another source too (#825)"""
+                page.goto(base + f"/?profile={lpid}")
+                page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {lpid}", timeout=20000)
+                bad825 = []
+                js("() => { setPeriod('all'); pickTab('overview'); }")
+                settle(500)
+                ov825 = js("""[Object.fromEntries([...document.querySelectorAll('#view-overview .tile:not(.home-tile)')].map(t => [t.querySelector('.lbl > span').textContent,
+                  [t.querySelector('.st')?.textContent || '', t.querySelector('.val').firstChild.textContent, t.querySelector('.delta').textContent]])),
+                  Object.fromEntries([...document.querySelectorAll('#ovOut .ov-row')].map(r => [r.querySelector('.n').textContent, [r.querySelector('.v').textContent.trim(), r.querySelector('.r').textContent]]))]""")
+                if {k: v for k, v in ov825[0].items() if k in M752.LATEST_TILES} != M752.LATEST_TILES:
+                    bad825.append(f"the Overview's tiles {ov825[0]} not {M752.LATEST_TILES}")
+                if ov825[1] != M752.LATEST_OUT:
+                    bad825.append(f"the Overview's out-of-range list {ov825[1]} not {M752.LATEST_OUT}")
+                js("labs => { state.tables.clear(); state.sel = new Set(labs); applyPreset('all'); switchTab('labs', 'chart'); renderLabs(); }", M752.LATEST_LABS)
+                settle(600)
+                for n, j in judged.items():   # each mark [x, flagged] in the order drawn, and the header's counts
+                    got = js("""n => { const c = [...document.querySelectorAll('#charts .chart')].find(c => c.dataset.lab === n);
+                      return [[...c.querySelectorAll('svg.ck :is(circle.pt, path.pt.abn)')].map(m => [m.tagName === 'circle' ? +m.getAttribute('cx')
+                        : +/^M(-?[\\d.]+)/.exec(m.getAttribute('d'))[1], m.matches('.abn')]), c.querySelector('.hd-sub .unit').textContent]; }""", n)
+                    under = [x for i, (x, f) in enumerate(got[0]) if f and any(abs(x - x2) < .5 and not f2 for x2, f2 in got[0][i + 1:])]
+                    if [f for _, f in got[0]] != [bool(f) for f, *_ in j] or under or f"{len(j)} results · 1 outside reference range" not in got[1]:
+                        bad825.append(f"Labs' {n} chart: marks {[f for _, f in got[0]]}, a ▲ under a dot at {under}, “{got[1]}”")
+                js("labs => { for (const n of labs) state.tables.add(n); renderCharts(); }", M752.LATEST_LABS)
+                settle(400)
+                for n, j in judged.items():   # one row each, newest first, the latest from both sources
+                    rows = js("n => [...[...document.querySelectorAll('#charts .chart')].find(c => c.dataset.lab === n).querySelectorAll('table.data tbody tr')].map(r => [r.cells[2].textContent, r.cells[3].textContent])", n)
+                    want = [[words752(lo, hi), FLAG752[f]] for f, lo, hi in j][::-1]
+                    if [[r[0].split(" · ")[0], r[1]] for r in rows] != want or rows[0][0].endswith(" · also from 1 more source") != also \
+                            or any("also from" in r[0] for r in rows[1:]):
+                        bad825.append(f"Labs' {n} table: {rows[:2]}… ({len(rows)} rows) not {want[:2]}… ({len(want)})")
+                js("labs => { for (const n of labs) state.tables.delete(n); switchTab('labs', 'heatmap'); }", M752.LATEST_LABS)
+                settle(400)
+                hm825 = js("""labs => [labs.map(n => [...document.querySelectorAll('#hm rect.cell')].filter(c => c.dataset.s === n).sort((a, b) => a.dataset.k.localeCompare(b.dataset.k) || a.dataset.j - b.dataset.j)
+                    .map(c => { const f = c.style.fill; return f.includes('--div-lo') ? -1 : f.includes('--div-hi') ? 1 : f.includes('--div-mid') ? 0 : null; })),
+                  [...document.querySelectorAll('#hm text')].map(t => t.textContent).filter(t => /^\\d+$/.test(t))]""", M752.LATEST_LABS)
+                want825 = [[[None if lo is None and hi is None and not f else {"H": 1, "L": -1}.get(f, 0) for f, lo, hi in judged[n]]
+                             for n in M752.LATEST_LABS], ["1"] * len(M752.LATEST_LABS)]
+                if hm825 != want825:
+                    bad825.append(f"the heatmap: {hm825} not {want825}")
+                js("() => { state.q = ''; pickTab('timeline'); }")
+                settle(600)
+                dr825 = js("""async latest => { const imps = Object.keys(DATA.imports || {}).map(Number).sort((a, b) => a - b), out = {};
+                  const badge = Object.fromEntries([...document.querySelectorAll('#list .tl-row[data-id]')].map(r => [r.dataset.id, r.querySelector('.badge.abn')?.textContent || null]));
+                  for (const e of DATA.events.filter(e => e.k === 'lab' && e.t.slice(0, 10) === latest.slice(0, 10))) {
+                    await openEvent(e);
+                    out[`${imps.indexOf(e.imp) + 1}`] = [badge[e.id] ?? null, [...document.querySelectorAll('#drawer table.data tbody tr')].map(r => [r.cells[0].firstChild.textContent, r.cells[3].textContent])];
+                  }
+                  closeDrawer(); return out; }""", M752.day(2))
+                want825 = {f"{i}": [f"{sum(1 for _, f in rows if f)} out of range", [[n, FLAG752[f]] for n, f in rows]] for (i, _), rows in days.items()}
+                if dr825 != want825:
+                    bad825.append(f"each import's lab day of the latest, its Timeline badge and drawer rows: {dr825} not {want825}")
+                return bad825
+
+            bad825 = views825(M752.LATEST_JUDGED, M752.LATEST_DAYS, True)
             check("#825: one result twice at one time, its latest, a range on one copy only (in each import order): read as one result with "
                   "that range and flag by the Overview's tile (▲ High, its change from the result before, not “no change” from its copy) and its "
                   "list, Labs' chart (one mark, a ▲ never under a dot) and table (one row), the heatmap (one cell) and each import's lab day "
                   "(its Timeline badge, the drawer's rows)", not bad825, bad825)
+            # ---- #833: the same pairs marked "Not the same": two results everywhere, each with its own range and flag
+            # (crossmatch.copies and summary._series read them as one, hiding one). Labs' charts and tables both (the ▲
+            # after the dot at that time), the Overview's tile the flagged one, its change from the result before that time,
+            # and its list it, the heatmap two cells that day, and each import's lab day its own row's flag (the summary and
+            # share links: tests/test_ranges.py test_2_summary_not_same)
+            ns833 = js("""async pid => { const h = {'X-Sanguity': '1', 'Content-Type': 'application/json'}, out = [];
+              for (const x of (await (await fetch(`api/profiles/${pid}/data`, {headers: h})).json()).possible || [])
+                out.push([x.a.name, (await fetch(`api/profiles/${pid}/same`, {method: 'POST', headers: h, body: JSON.stringify({ref: x.ref, same: false})})).status]);
+              return out.sort(); }""", lpid)
+            bad833 = [] if ns833 == [[n, 201] for n in sorted(M752.LATEST_LABS)] else [f"Not the same: {ns833}"]
+            bad833 += views825(M752.NOT_SAME_JUDGED, M752.NOT_SAME_DAYS, False)
+            check("#833: a pair marked “Not the same” is two results, each with its own range and flag: Labs' charts (both, the ▲ never under the "
+                  "dot) and tables, the Overview's tile (the flagged one, its change from the result before) and list, the heatmap and each "
+                  "import's lab day (its Timeline badge, the drawer's rows)", not bad833, bad833)
             db = dbm.connect()
             prof_r.delete_profile(db, lpid)
             db.close()

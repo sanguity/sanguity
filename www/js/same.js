@@ -12,19 +12,21 @@
    (crossmatch.copies, as the summary's), so a later copy at its time saying the same (its value as given, range,
    flag and edge) is left out, and the one kept names its import too (p.also: the Timeline counts it in each one's
    draw, util.js labDraws). Labs, the Overview, the heatmap and the rest read it once, its flag never under a copy's
-   dot. The records' own series keep both, for each import's lab day (drawer.js rowPoint). Points need their ts and
-   ranges (applyRangeOverrides) already. */
+   dot. The records' own series keep both, for each import's lab day (drawer.js rowPoint). Two the person said aren't
+   the same result stay two (#833: the server names which result each is, p.apart from the series' "apart"), and at
+   one time a flagged result comes after an unflagged one, so what reads the latest (the Overview's tile, a sparkline's
+   dot) reads the flag. Points need their ts and ranges (applyRangeOverrides) already. */
 function joinSeries(labs) {
   const out = [], by = new Map();
   for (const s of labs) {
-    s.pts.forEach((p, n) => { p.imp = s.imp; p.same = (s.same && s.same[n]) || null; p.also = null; });
+    s.pts.forEach((p, n) => { p.imp = s.imp; p.same = (s.same && s.same[n]) || null; p.also = null; p.apart = s.apart?.[n] ?? null; });
     const k = s.name + "\u001f" + (s.unit || "");
     const have = by.get(k);
     if (!have) { const c = {...s, imps: [s.imp]}; by.set(k, c); out.push(c); continue; }
     have.pts = have.pts.concat(s.pts); have.txt = (have.txt || []).concat(s.txt || []); have.imps.push(s.imp);
   }
   for (const s of out) {
-    if (s.imps.length > 1) s.pts.sort((a, b) => a.ts - b.ts);
+    if (s.imps.length > 1) s.pts.sort((a, b) => a.ts - b.ts || !!a[4] - !!b[4]);
     const at = new Map(), pts = s.watch ? s.pts : s.pts.filter(p => {   // at: the points kept at a time
       const there = at.get(p.ts), was = there?.find(q => isCopy(q, p));
       if (!there) at.set(p.ts, [p]); else if (!was) there.push(p);
@@ -35,9 +37,10 @@ function joinSeries(labs) {
   }
   return out;
 }
-/* whether two results at one time are one's copies: the same time as given, value and value as given, range, flag and edge */
+/* whether two results at one time are one's copies: the same time as given, value and value as given, range, flag and
+   edge, and not two the person said aren't the same (#833) */
 const isCopy = (a, b) => a[0] === b[0] && a[1] === b[1] && String(a[5] ?? "").trim() === String(b[5] ?? "").trim() && a[2] === b[2]
-  && a[3] === b[3] && (a[4] || "") === (b[4] || "") && (a[7] || "") === (b[7] || "") && (a.rs || "") === (b.rs || "");
+  && a[3] === b[3] && (a[4] || "") === (b[4] || "") && (a[7] || "") === (b[7] || "") && (a.rs || "") === (b.rs || "") && a.apart === b.apart;
 /* a result shown once that came from more imports than its own (#825), in its row of Labs' table: " · also from 1 more
    source" (nothing for one that came twice from one) */
 const alsoWords = p => { const n = new Set((p.also || []).filter(i => i !== p.imp)).size; return n ? ` · also from ${n} more source${n > 1 ? "s" : ""}` : ""; };

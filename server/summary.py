@@ -262,7 +262,9 @@ def _series(data, rcfg=None):
     one rule (#752). A lab in two units is a series in each, as the records page keeps it (#438), none left out (#781:
     only the latest result's unit was kept, and a Low in the other went unsaid): the one with the latest result under
     its name, the others in its "also", newest first (each() gives every one). rcfg: ranges.config(), for results whose
-    report gives no range (#44)."""
+    report gives no range (#44). Two the person said aren't the same result stay two, each with its own range and flag
+    (#833: the series' "apart", crossmatch.copies), a flagged one after an unflagged one at their time, so a trend's Now
+    and its chart's latest dot are the flagged one."""
     imports = data.get("imports") or {}
     label = lambda imp: (imports.get(str(imp)) or {}).get("label") or ""
     by = {}
@@ -270,17 +272,18 @@ def _series(data, rcfg=None):
         if not isinstance(s, dict) or not s.get("name") or s.get("watch"):
             continue
         unit, same = s.get("unit") or "", s.get("same") if isinstance(s.get("same"), dict) else {}
+        apart = s.get("apart") if isinstance(s.get("apart"), dict) else {}
         for n, raw in enumerate(s.get("pts") or []):
             p = _pt(raw)
             if p["d"]:
                 srcs = [label(s.get("imp")), *(label(x.get("imp")) for x in same.get(str(n)) or () if isinstance(x, dict))]
-                by.setdefault((s["name"], unit), []).append({**p, "unit": unit, "src": srcs})
+                by.setdefault((s["name"], unit), []).append({**p, "unit": unit, "src": srcs, "apart": apart.get(str(n))})
     out = {}
     for (name, unit), pts in by.items():
         pts.sort(key=lambda p: str(p["t"]))
         kept, at = [], {}
         for p in pts:
-            key = (p["t"], p["v"], p["text"])
+            key = (p["t"], p["v"], p["text"], p.pop("apart"))
             k = at.get(key)
             if k is None:
                 at[key] = p
@@ -290,6 +293,7 @@ def _series(data, rcfg=None):
                                                                        (p["lo"], p["hi"], p["flag"], p["edge"]))
                 k["src"] += p["src"]
         pts = [{**_judged(p, name, unit, rcfg), "src": "; ".join(dict.fromkeys(x for x in p["src"] if x))} for p in kept]
+        pts.sort(key=lambda p: (str(p["t"]), bool(p["flag"])))   # (#833) at one time, a flagged result last
         out.setdefault(name, []).append({"name": name, "unit": unit, "pts": pts})
     for name, ss in out.items():
         ss.sort(key=lambda s: str(s["pts"][-1]["t"]), reverse=True)   # the latest result's unit first

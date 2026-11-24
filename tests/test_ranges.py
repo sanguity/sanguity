@@ -44,13 +44,16 @@ def row(**kw):
     return {"lab": "Ferritin", "unit": "ng/mL", "sex": "any", "ageFrom": None, "ageTo": None, "low": 20, "high": 200, **kw}
 
 
-def page_once(pts):
-    """A series' results as the records page shows them (same.js joinSeries): in time order, a result's copies (each
-    given the one result's range and flag by crossmatch.copies, #825) once, the first."""
+def page_once(pts, apart=None):
+    """A series' results as the records page shows them (same.js joinSeries): in time order, a flagged one after an
+    unflagged one at its time (#833), a result's copies (each given the one result's range and flag by
+    crossmatch.copies, #825) once, the first; two the person said aren't the same apart (apart: each point's mark, the
+    series' "apart", #833)."""
     seen, out = set(), []
-    for p in sorted(pts, key=lambda p: p[0]):
+    flag = lambda p: ranges.judge(p[1], *p[2:6], None, (list(p) + [None] * 8)[7] or "")[2]   # as judged, the page's ties
+    for p, a in sorted(zip(pts, apart or [None] * len(pts)), key=lambda x: (x[0][0], bool(flag(x[0])))):
         q = list(p) + [None] * (8 - len(p))
-        k = (q[0], q[1], str(q[5] or "").strip(), q[2], q[3], str(q[4] or ""), q[7] or "")
+        k = (q[0], q[1], str(q[5] or "").strip(), q[2], q[3], str(q[4] or ""), q[7] or "", a)
         if k not in seen:
             seen.add(k)
             out.append(p)
@@ -533,6 +536,75 @@ class Api(unittest.TestCase):
                          {n: [v.split(" ")[0], "High", r.removeprefix("ref ")] for n, (v, r) in M.LATEST_OUT.items()}, "the summary's out of range")
         self.assertEqual({t["name"]: [t["then"]["value"], t["now"]["value"], t["now"]["flag"]] for t in s["trends"]},
                          {"Potassium": ["4.4", "5.2", "High"], "Sodium": ["141", "150", "High"]}, "the summary's trends: Then the result before")
+        db = dbm.connect()
+        try:
+            prof.delete_profile(db, pid)
+        finally:
+            db.close()
+
+    def test_2_summary_not_same(self):
+        """#833: LATEST's latest pairs marked "Not the same" (tests/ranges_matrix.py's NOT_SAME_*): two results, each with
+        its own range and flag, everywhere. The records page shows both (crossmatch.copies keeps them apart and says so,
+        the series' "apart"), each import's lab day flags its own row, and the summary and a share link give both, the
+        out-of-range row "1 of 2" and a trend's Now the flagged one. Undone, they're one result again."""
+        db = dbm.connect()
+        try:
+            owner = db.execute("SELECT id FROM users WHERE username='robin'").fetchone()["id"]
+            pid = prof.create_profile(db, "Not the same (fictional)", owner_id=owner)
+            for imp, fmt in ((1, "csv"), (2, "fhir")):
+                with dbm.transaction(db):
+                    records.store(db, pid, M.copies(imp, TODAY, M.LATEST), "upload", fmt=fmt)
+        finally:
+            db.close()
+        c = self.c["robin"]
+
+        def data():
+            db = dbm.connect()
+            try:
+                return records.assemble(db, pid)
+            finally:
+                db.close()
+
+        possible = data()["possible"]
+        self.assertEqual(sorted(x["a"]["name"] for x in possible), M.LATEST_LABS)
+        ids = [c.post(f"/api/profiles/{pid}/same", json={"ref": x["ref"], "same": False}, headers=H).json()["id"] for x in possible]
+        d = data()
+        flag = lambda p: ranges.judge(p[1], *p[2:6], None, (p + [None] * 8)[7] or "")[2]
+        page, apart = {}, {}
+        for s in d["labs"]:
+            page.setdefault(s["name"], []).extend(s["pts"])
+            apart.setdefault(s["name"], []).extend((s.get("apart") or {}).get(str(n)) for n in range(len(s["pts"])))
+        self.assertEqual({n: [[flag(p), p[2], p[3]] for p in page_once(pts, apart[n])] for n, pts in page.items()}, M.NOT_SAME_JUDGED,
+                         "the records page's results: both, each its own range and flag")
+        imps, latest, got = sorted(d["imports"], key=int), M.day(2, TODAY), {}
+        for e in d["events"]:
+            if e["k"] == "lab" and e["t"] == latest:
+                rows = []
+                for i in d["details"][str(e["id"])]["ids"]:
+                    det = d["details"][str(i)]
+                    for r, n in zip(det["rows"], det.get("series") or [None] * len(det["rows"])):
+                        p = next((p for s in d["labs"] if s["name"] == n and s.get("imp") == e.get("imp") for p in s["pts"]
+                                  if p[0][:10] == e["t"][:10] and p[5] == r[1]), None)
+                        rows.append((n, p and flag(p)))
+                got[(imps.index(str(e["imp"])) + 1, 2)] = rows
+        self.assertEqual(got, M.NOT_SAME_DAYS, "each import's lab day of the latest: its own row's flag")
+        self.assertEqual(c.put(f"/api/profiles/{pid}/settings/overview.keyLabs", json={"value": M.LATEST_LABS}, headers=H).status_code, 200)
+        body = {"appointment": None, "since": M.day(M.NOT_SAME_SINCE, TODAY)[:10], "sections": ["out_of_range", "trends"], "labs": []}
+        s = c.post(f"/api/profiles/{pid}/summary/preview", headers=H, json=body).json()
+        self.assertEqual({o["name"]: [o["value"], o["flag"], o["range"], o["out"], o["of"]] for o in s["out_of_range"]}, M.NOT_SAME_OUT,
+                         "the summary's out of range: one of the two")
+        self.assertEqual({t["name"]: [t["then"]["value"], t["now"]["value"], t["now"]["flag"]] for t in s["trends"]}, M.NOT_SAME_TRENDS,
+                         "the summary's trends: Now the flagged one")
+        r = c.post(f"/api/profiles/{pid}/links", json={"sections": ["results"]}, headers=H)
+        view = TestClient(main.app, base_url="http://testserver").post("/api/share/view", json={"token": r.json()["path"].split("#", 1)[1]},
+                                                                       headers=H).json()
+        self.assertEqual({x["name"]: [len(x["results"]), sorted(str(q["flag"]) for q in x["results"] if q["t"] == latest)] for x in view["results"]},
+                         {n: [21, ["High", "None"]] for n in M.LATEST_LABS}, "a share link: both")
+        for i in ids:   # undone: one result again, flagged
+            self.assertEqual(c.delete(f"/api/profiles/{pid}/same/{i}", headers=H).status_code, 200)
+        d = data()
+        self.assertEqual({n: [[flag(p), p[2], p[3]] for p in page_once([p for s in d["labs"] if s["name"] == n for p in s["pts"]])]
+                          for n in M.LATEST_LABS}, M.LATEST_JUDGED, "undone: one result again")
         db = dbm.connect()
         try:
             prof.delete_profile(db, pid)

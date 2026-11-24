@@ -1966,6 +1966,13 @@ Everything on `main` so far; it becomes the first tagged release.
   Overview's tile and list, Labs' chart (one mark, a ▲ never drawn under a dot) and table ("also from 1 more
   source"), the heatmap (one cell) and the lab panel, and each import's lab day flags it in the drawer and counts it
   on the Timeline. Same result still links them, to show the drawer's rows once too.
+- **Two results marked "Not the same" stay two** (#833): two results of one lab, unit, time and value were read as
+  one on every page (#825) and in the summary and share links (#781) even after the person said they aren't the same
+  result, so one was hidden, its range and flag given to the other, and the counts dropped. Now each keeps its own
+  range and flag everywhere: Labs' charts and tables, the heatmap, each import's lab day in the drawer and on the
+  Timeline, the summary and share links. At one time the flagged one is drawn over the other and read as the latest
+  (the Overview's tile, its list and a sparkline's dot, a trend's Now), and the Overview's change is from the result
+  before that time, never from the other.
 - **Type them in says a range as Labs does** (#826): the line under a typed result said "range under 5" for both "<5"
   and "<=5" (and "over 60" for ">60" and ">=60"), so a CRP of 5 read "range under 5 · ▲ High" with one and "range
   under 5" unflagged with the other, while Labs then said "< 5" and "≤ 5". The server now sends whether the range
