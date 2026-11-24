@@ -117,8 +117,8 @@ function table(heads, rows, cls = "") {   // a region that can be scrolled from 
   return scrollBox({class: "scroll", "aria-label": heads.filter(Boolean).join(", ")}, el("table", {class: ("tbl " + cls).trim()},
     el("thead", {}, el("tr", {}, ...heads.map(h => el("th", {text: h})))), el("tbody", {}, ...rows)));
 }
-/* a trend's sparkline (chartkit.js ckSpark, #299): the server's [day, value, flag, low, high], oldest first */
-const spark = pts => ckSpark(pts.map(([d, v, f, lo, hi]) => ckPt(zParse(d), v, lo, hi, f)), {r: 2});
+/* a trend's sparkline (chartkit.js ckSpark, #299): the server's [day, value, flag, low, high, …, edge], oldest first */
+const spark = pts => ckSpark(pts.map(([d, v, f, lo, hi, , , e]) => ckPt(zParse(d), v, lo, hi, f, e)), {r: 2});
 /* a trend's chart (chartkit.js ckSolo, #302), as the PDF draws it under the trends' table, its name over it: of its
    spark's points (the last result on or before the "since" day and each after, or with none after the last few), two
    or more. A result's range from settings (its report gave none, #44) is said so (#649): the band's end "from
@@ -127,7 +127,7 @@ const spark = pts => ckSpark(pts.map(([d, v, f, lo, hi]) => ckPt(zParse(d), v, l
 const SUM_FLAG = {High: "▲ High", Low: "▼ Low"};
 const sumFlag = f => SUM_FLAG[f] || "◆ " + f;
 function sumChart(r) {
-  const pts = r.spark.map(([d, v, f, lo, hi, rs, t]) => Object.assign(ckPt(zParse(d), v, lo, hi, f), {d, rs: rs || undefined, t})), name = r.label + (r.unit ? ` (${r.unit})` : "");
+  const pts = r.spark.map(([d, v, f, lo, hi, rs, t, e]) => Object.assign(ckPt(zParse(d), v, lo, hi, f, e), {d, rs: rs || undefined, t})), name = r.label + (r.unit ? ` (${r.unit})` : "");
   const out = pts.filter(p => p[4]), set = out.filter(p => p.rs).length;
   return el("figure", {class: "sum-chart"}, el("figcaption", {text: name}), ckSolo(pts, {h: 64,
     label: `${name}: a chart of ${pts.length} results, ${fmtDay(pts[0].d)} to ${fmtDay(pts.at(-1).d)}${out.length ? `, ${out.length} outside their range` +

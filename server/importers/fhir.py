@@ -49,7 +49,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
 from . import common
-from .common import canonical_lab, range_flag, unit_key
+from .common import canonical_lab, range_edge, range_flag, unit_key
 
 NAME = "fhir"
 LABEL = "FHIR records (Apple Health, Blue Button, patient portals)"
@@ -409,8 +409,9 @@ def _category(r):
     return out
 
 
-def _flag(interp, v, lo, hi):
-    """data.json flags are "H", "L" or "": take the lab's interpretation, else compare against the range."""
+def _flag(interp, v, lo, hi, edge=""):
+    """data.json flags are "H", "L" or "": take the lab's interpretation, else compare against the range (edge: its
+    limit leaving its edge out, #780)."""
     code = ""
     for c in (interp if isinstance(interp, list) else [interp] if interp else []):
         code = (codes(c) or [text_of(c)])[0] if c else ""
@@ -422,11 +423,14 @@ def _flag(interp, v, lo, hi):
     if code in ("L", "LL", "LU", "<", "LOW", "CRITICAL LOW", "BELOW LOW NORMAL"):
         return "L"
     if isinstance(v, (int, float)) and not isinstance(v, bool):   # by the one rule (server/ranges.py flag, #752)
-        return range_flag(v, lo, hi)   # (a value with a comparator is kept as text, so it has none here)
+        return range_flag(v, lo, hi, "", edge)   # (a value with a comparator is kept as text, so it has none here)
     return ""   # "A" (abnormal, no direction) has no slot in data.json's H/L flags
 
 
 def _range(o):
+    """(low, high, as printed, edge): edge "<" where a one-sided range leaves its limit's edge out, as "<130 mg/dL"
+    does, ">" for ">60" (common.range_edge, #780). FHIR's own low and high include theirs, so a high of 130 beside the
+    text "<130" is read as the text says; with no text, they're said "<= 130"."""
     rr = (o.get("referenceRange") or [{}])[0] or {}
     lo, hi = num((rr.get("low") or {}).get("value")), num((rr.get("high") or {}).get("value"))
     txt = rr.get("text") or ""
@@ -440,7 +444,7 @@ def _range(o):
         m = re.fullmatch(r"\s*([<>])=?\s*(-?\d+(?:\.\d+)?)\s*\S*\s*", txt)   # "<130 mg/dL", ">=60"
         if m:
             lo, hi = (num(m.group(2)), None) if m.group(1) == ">" else (None, num(m.group(2)))
-    return lo, hi, txt
+    return lo, hi, txt, range_edge(txt, lo, hi)
 
 
 def _value(o):
@@ -742,8 +746,8 @@ def parse(files):
     def series_point(o, name, code_cc, value_src, t, panel, src):
         """Add one Observation (or component) to its lab series and return the detail row for it."""
         v, rep, unit = _value(value_src)
-        lo, hi, rtxt = _range(value_src if value_src.get("referenceRange") else o)
-        flag = _flag(value_src.get("interpretation") or o.get("interpretation"), v, lo, hi)
+        lo, hi, rtxt, edge = _range(value_src if value_src.get("referenceRange") else o)
+        flag = _flag(value_src.get("interpretation") or o.get("interpretation"), v, lo, hi, edge)
         loinc = (codes(code_cc, LOINC) or [None])[0]
         base = key = canonical_lab(name, loinc) or name   # the series: lab-aliases.json's name when it knows the test
         s = labs.get(key)
@@ -757,7 +761,7 @@ def parse(files):
         s["unit"] = s["unit"] or unit
         s["panels"][panel] += 1
         if v is not None:
-            s["pts"].append([t, v, lo, hi, flag, rep, src])
+            s["pts"].append([t, v, lo, hi, flag, rep, src] + ([edge] if edge else []))
         elif rep:
             s["txt"].append([t, rep])
         return [name, rep, unit, rtxt, flag], bool(flag)

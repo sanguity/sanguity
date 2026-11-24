@@ -176,10 +176,11 @@ def _num(v):
 
 
 def _pt(p):
-    """A result point [time, value, low, high, flag, text, ...] as a dict."""
-    p = list(p) + [None] * (7 - len(p)) if isinstance(p, (list, tuple)) else [None] * 7
+    """A result point [time, value, low, high, flag, text, source tag, edge] as a dict (edge: whether its one-sided
+    range leaves its limit's edge out, "<" or ">", #780)."""
+    p = list(p) + [None] * (8 - len(p)) if isinstance(p, (list, tuple)) else [None] * 8
     return {"t": p[0], "d": _day(p[0]), "v": _num(p[1]), "lo": _num(p[2]), "hi": _num(p[3]),
-            "flag": str(p[4] or "").strip(), "text": str(p[5] or "").strip(), "rs": "report"}
+            "flag": str(p[4] or "").strip(), "text": str(p[5] or "").strip(), "rs": "report", "edge": str(p[7] or "")}
 
 
 def _judged(p, name, unit, rcfg):
@@ -187,8 +188,9 @@ def _judged(p, name, unit, rcfg):
     flag; where it gives a range and no flag, the flag worked out against it; where it gives neither, the range set in
     Settings that fits it (#44, rcfg: ranges.config()), its flag worked out against that."""
     own = p["v"] is None or ranges.has_own(p["lo"], p["hi"], p["flag"])
-    lo, hi, f, rs = ranges.judge(p["v"], p["lo"], p["hi"], p["flag"], p["text"], None if own else ranges.find(rcfg, name, unit, p["d"]))
-    return {**p, "lo": lo, "hi": hi, "flag": f, "rs": rs}
+    lo, hi, f, rs = ranges.judge(p["v"], p["lo"], p["hi"], p["flag"], p["text"], None if own else ranges.find(rcfg, name, unit, p["d"]),
+                                 p["edge"])
+    return {**p, "lo": lo, "hi": hi, "flag": f, "rs": rs, "edge": p["edge"] if rs == ranges.REPORT else ""}
 
 
 def out_of_range(p):
@@ -204,17 +206,18 @@ def out_of_range(p):
     return "Abnormal" if f else None
 
 
-def range_words(lo, hi):
-    """"0.7–1.3", "≤ 5" or "≥ 60" ("" with neither)."""
+def range_words(lo, hi, edge=""):
+    """"0.7–1.3", "≤ 5" or "≥ 60" ("" with neither); a limit that leaves its edge out (edge, #780) as printed, "< 5",
+    "> 60" (ranges.js rangeWords)."""
     if lo is not None and hi is not None:
         return f"{fmt_num(lo)}–{fmt_num(hi)}"
     if hi is not None:
-        return f"≤ {fmt_num(hi)}"
-    return f"≥ {fmt_num(lo)}" if lo is not None else ""
+        return f"{'<' if '<' in (edge or '') else '≤'} {fmt_num(hi)}"
+    return f"{'>' if '>' in (edge or '') else '≥'} {fmt_num(lo)}" if lo is not None else ""
 
 
 def range_text(p):
-    w = range_words(p["lo"], p["hi"])
+    w = range_words(p["lo"], p["hi"], p.get("edge"))
     return w + " (settings)" if w and p.get("rs") == ranges.SOURCE else w
 
 
@@ -233,7 +236,7 @@ def bound(p):
 def own_range(p):
     """The range a result is judged against, in words with its source (#752): ["report range", "1.7–2.4"], ["settings
     range", "5–20"]; with none, ["flagged on its report", ""] or ["no range given", ""]."""
-    w = range_words(p["lo"], p["hi"])
+    w = range_words(p["lo"], p["hi"], p.get("edge"))
     if w:
         return ["settings range" if p["rs"] == ranges.SOURCE else "report range", w]
     return ["flagged on its report" if p["flag"] else "no range given", ""]
@@ -424,14 +427,15 @@ def build(db, pid, uid, profile_name, opts):
                 line = s["pts"][-6:]
             # Then flagged as Now is, so the table and the chart agree on it (#649), saying the range it's judged against
             # where that isn't the row's (#717, #752); each spark point [day, value, flag, low, high, "settings" or None,
-            # its value as given]: its range from settings where its report gave none (#44), the chart's band marked so;
-            # its value as the table says it, "<5" (#718)
+            # its value as given, its range's edge]: its range from settings where its report gave none (#44), the chart's
+            # band marked so; its value as the table says it, "<5" (#718); "<" or ">" where its range leaves its limit's
+            # edge out, "<5" (#780)
             rows.append({"name": name, "label": nick.get(name, name), "unit": s["unit"],
                          "then": then and at_cell(then, last), "now": last and {**at_cell(last), "range": range_text(last)},
                          "change": change if change in (None, NOT_WORKED_OUT) else ("+" if change > 0 else "") + fmt_num(0 if abs(change) < 1e-9 else change),
                          "since": len(after),
                          "spark": [[p["d"], p["v"], out_of_range(p), p["lo"], p["hi"], ranges.SOURCE if p["rs"] == ranges.SOURCE else None,
-                                    value_text(p)] for p in line if p["v"] is not None]})
+                                    value_text(p), p["edge"]] for p in line if p["v"] is not None]})
         out["trends"] = rows
     if "medications" in wanted:
         out["medications"] = _medications(data, now)
@@ -604,7 +608,7 @@ def _spark(page, row, x, y, w, h=10):
     line = len(pts) > 2
     use = pts if line else pts[-1:]
     days = [datetime.date.fromisoformat(p[0]).toordinal() for p in use]
-    band = ranges.steps([(t, p[3], p[4], p[5]) for t, p in zip(days, use)], -math.inf, math.inf)   # (#752: none beside a result without one)
+    band = ranges.steps([(t, p[3], p[4], p[5], p[7]) for t, p in zip(days, use)], -math.inf, math.inf)   # (#752: none beside a result without one)
     if not line and not band:
         return
     los, his = [r[2] for r in band if r[2] is not None], [r[3] for r in band if r[3] is not None]
@@ -612,7 +616,7 @@ def _spark(page, row, x, y, w, h=10):
     t0, t1 = (days[0], days[-1]) if line else (days[0] - 1, days[0])
     X = lambda t: x + 2 + (t - t0) / ((t1 - t0) or 1) * (w - 4)   # the latest dot over the band's end, not past it
     Y = lambda v: y + (v - v0) / (v1 - v0) * h
-    for ta, tb, lo, hi, _ in band:   # each result's step from halfway after the result before to halfway to the next
+    for ta, tb, lo, hi, *_ in band:   # each result's step from halfway after the result before to halfway to the next
         a, b = max(x, X(ta)), min(x + w, X(tb))
         bot, top = Y(lo) if lo is not None else y, Y(hi) if hi is not None else y + h
         if b > a and top > bot:
@@ -668,9 +672,9 @@ def _chart(page, row, names, x, top, w):
         page.text_right(L - 2, Y(v) - 2.2, fmt_num(v), 6.5, False, MUTED)
     # the band's steps (server/ranges.py steps, as ranges.js rangeSteps): each result's range from halfway after the
     # result before it to halfway to the next, none beside a result whose report gave none (#752); neighbours with the
-    # same range from the same source one
-    steps = [[X(a), X(b), rlo, rhi, rs] for a, b, rlo, rhi, rs in ranges.steps([(t, p[3], p[4], p[5]) for t, p in zip(days, pts)], t0, t1)]
-    for a, b, rlo, rhi, _ in steps:
+    # same range from the same source one ("<5" and "≤ 5" two, #780)
+    steps = [[X(a), X(b), rlo, rhi, rs, e] for a, b, rlo, rhi, rs, e in ranges.steps([(t, p[3], p[4], p[5], p[7]) for t, p in zip(days, pts)], t0, t1)]
+    for a, b, rlo, rhi, *_ in steps:
         bot, tp = Y(rlo) if rlo is not None else B, Y(rhi) if rhi is not None else T
         page.rect(a, bot, b - a, tp - bot, SHADE)
         for e in (rlo, rhi):
@@ -691,9 +695,9 @@ def _chart(page, row, names, x, top, w):
     # each step said with its source, as the preview's (chartkit.js ckBandLabels, #649, #717, #752): the latest at the
     # plot's right where it reaches it, else over its own stretch, each before it over its own; then the rest clear of it
     marks, taken = [(X(t), Y(p[1])) for t, p in zip(days, pts)], []
-    for n, (a, b, rlo, rhi, rs) in [*enumerate(steps)][::-1]:
+    for n, (a, b, rlo, rhi, rs, e) in [*enumerate(steps)][::-1]:
         last = n == len(steps) - 1
-        box = _band_label(page, f"{range_words(rlo, rhi)} {band_source(rs)}", rlo, rhi, marks, L, R, T, B, Y,
+        box = _band_label(page, f"{range_words(rlo, rhi, e)} {band_source(rs)}", rlo, rhi, marks, L, R, T, B, Y,
                           span=None if b >= R - 0.5 else (a, b), taken=taken, alone=last or rs != steps[n + 1][4], src=band_source(rs))
         taken += [box] if box else []
     page.text(L, B - 9, _short(pts[0][0]), 6.5, False, MUTED)

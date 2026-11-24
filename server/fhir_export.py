@@ -266,8 +266,10 @@ def _clean(x):
     return x
 
 
-def _range(text, lo=None, hi=None, unit=None):
-    """A referenceRange from a result's own range: the numbers when given or readable, and the text as printed."""
+def _range(text, lo=None, hi=None, unit=None, edge=""):
+    """A referenceRange from a result's own range: the numbers when given or readable, and the text as printed. FHIR's
+    low and high include their value, so a limit that leaves its edge out (edge, the point's: "<" for a range printed
+    "<5", ">" for ">60", #780) is said in the text alone, "<5" where none was printed."""
     text = _text(text)
     if lo is None and hi is None and text:
         m = re.fullmatch(r"\s*(-?\d+(?:\.\d+)?)\s*[-–]\s*(-?\d+(?:\.\d+)?)\s*\S*\s*", text)
@@ -276,11 +278,14 @@ def _range(text, lo=None, hi=None, unit=None):
         m = re.fullmatch(r"\s*([<>])=?\s*(-?\d+(?:\.\d+)?)\s*\S*\s*", text)
         if m:
             lo, hi = (_num(m[2]), None) if m[1] == ">" else (None, _num(m[2]))
-    r = {}
-    if isinstance(lo, (int, float)) and not isinstance(lo, bool):
-        r["low"] = qty(lo, unit)
-    if isinstance(hi, (int, float)) and not isinstance(hi, bool):
-        r["high"] = qty(hi, unit)
+        edge = common.range_edge(text, lo, hi)
+    edge, r = str(edge or ""), {}
+    for k, v, side in (("low", lo, ">"), ("high", hi, "<")):
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            if side not in edge:
+                r[k] = qty(v, unit)
+            elif not text:
+                text = side + (f"{v:g}" if isinstance(v, float) else str(v))
     if text:
         r["text"] = text
     return [r] if r else []
@@ -425,13 +430,18 @@ def _loinc(s, name=None):
     return (s or {}).get("loinc") or common.loinc_of((s or {}).get("name")) or (common.loinc_of(common.canonical_lab(name)) if name else None)
 
 
-def _lab_obs(b, key, name, loinc, t, rep, num, unit, lo, hi, rtext, flag, vital, performer, status="final"):
+def _edge(p):
+    """A point's edge (pts[7], #780): "<" where its range is printed "<5", leaving 5 out, ">" for ">60", else ""."""
+    return str(p[7] or "") if isinstance(p, list) and len(p) > 7 else ""
+
+
+def _lab_obs(b, key, name, loinc, t, rep, num, unit, lo, hi, rtext, flag, vital, performer, status="final", edge=""):
     code = cc(name, coding(LOINC, loinc))
     value = _value(rep, num, unit)
     prof_ = _vital_profile(loinc, value) if vital else None
     return _obs(b, key, code, t, value, ("vital-signs" if vital else "laboratory",), performer=performer, profile=prof_,
                 status=OBS_STATUS.get(str(status or "").lower(), "final"), interpretation=_interp(flag),
-                referenceRange=_range(rtext, lo, hi, unit))
+                referenceRange=_range(rtext, lo, hi, unit, edge))
 
 
 def _labs(b, data, used):
@@ -463,7 +473,7 @@ def _labs(b, data, used):
                 used.add((id(s), hit[1]))
             o = _lab_obs(b, (b.keyed(e), "row", n), name, _loinc(s, name), t, row[1], p[1] if p else None, row[2] or (s or {}).get("unit"),
                          p[2] if p and len(p) > 2 else None, p[3] if p and len(p) > 3 else None, row[3], row[4], False,
-                         [x for x in (lab,) if x], d.get("status"))
+                         [x for x in (lab,) if x], d.get("status"), _edge(p))
             results.append(o)
             yield o
         report = [x for x in d.get("report") or [] if isinstance(x, list) and len(x) >= 2 and _text(x[1])]
@@ -491,7 +501,7 @@ def _labs(b, data, used):
             src = p[6] if len(p) > 6 else None
             yield _lab_obs(b, ("series", s.get("key") or name, p[0], p[5] if len(p) > 5 else p[1]), name, loinc, t,
                            p[5] if len(p) > 5 and _text(p[5]) else p[1], p[1], unit, p[2] if len(p) > 2 else None,
-                           p[3] if len(p) > 3 else None, None, p[4] if len(p) > 4 else "", vital, _performer(b, src))
+                           p[3] if len(p) > 3 else None, None, p[4] if len(p) > 4 else "", vital, _performer(b, src), edge=_edge(p))
     yield from _clinic_bp(b, data, used)
     for w in data.get("clinicWeights") or []:
         if isinstance(w, list) and len(w) >= 2 and isinstance(_num(w[1]), (int, float)) and b.t(w[0]):
@@ -523,7 +533,7 @@ def _clinic_bp(b, data, used):
                 value = _value(p[5] if len(p) > 5 and _text(p[5]) else p[1], p[1], s.get("unit") or "mmHg")
                 comps.append(_clean({"code": cc(s.get("name") or ("Systolic blood pressure" if loinc == SYSTOLIC else "Diastolic blood pressure"),
                                                 coding(LOINC, loinc)), **value, "interpretation": _interp(p[4] if len(p) > 4 else ""),
-                                     "referenceRange": _range(None, p[2] if len(p) > 2 else None, p[3] if len(p) > 3 else None, s.get("unit"))}))
+                                     "referenceRange": _range(None, p[2] if len(p) > 2 else None, p[3] if len(p) > 3 else None, s.get("unit"), _edge(p))}))
                 src = src or (p[6] if len(p) > 6 else None)
         whole = len(comps) == 2 and all((c.get("valueQuantity") or {}).get("code") == "mm[Hg]" for c in comps)
         yield _obs(b, ("bp", t), cc("Blood pressure panel", coding(LOINC, "85354-9", "Blood pressure panel with all children optional")),

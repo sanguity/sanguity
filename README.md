@@ -589,8 +589,10 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
   gives each row its own range. The band is drawn only beside results that have a range, each step said with where it
   came from ("3.5–5.1 on report", "5–20 from settings"), on Labs, share links and the visit summary alike. A value
   given as a bound is flagged only where every value it stands for is outside the range: "<15" against a low of 15 is
-  low, "<15" against a low of 10 isn't. One rule works a flag out everywhere: the importers, Labs, the Overview,
-  Compare, share links and the visit summary (#752).
+  low, "<15" against a low of 10 isn't. A one-sided range keeps its edge as printed: 5 is high against "<5" and in
+  range against "<=5", 60 low against ">60", each said that way ("< 5", "≤ 5"), and the FHIR export gives "<5" as
+  its text (#780). One rule works a flag out everywhere: the importers, Labs, the Overview, Compare, share links and
+  the visit summary (#752).
 - **Visit summary:** one or two printable pages to bring to an appointment (**Sharing → Visit summary**, from the profile menu, top left):
   results out of range since the last visit, each against the range on its own report (or a range from settings
   when the report gives none), trends of the key labs and

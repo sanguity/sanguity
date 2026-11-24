@@ -4,12 +4,14 @@ the Overview, Compare, a share link's page, the summary's preview and its PDF).
 
 Each case is a lab whose results [days back, value, low, high, flag, as given] go through one of the ways a result's
 range and flag were said differently: a report's range then none; none then a report's; a range from Settings then a
-report's; a report's then one from Settings; a range that changes; and values given as "<" and ">" bounds at and past
-each edge of a report's range and of one from Settings. JUDGED is what each result is judged as, by the one rule
-(server/ranges.py judge, www/js/ranges.js applyRangeOverrides): [flag, low, high, source]; STEPS the band's steps, each
-the results it covers, with its words (a result whose report gave no range is under none). The summary's "since" day is
-SINCE days back, so each case has a Then and a Now. COPIES (#781, at the end) is a second profile's: one result twice
-(from two imports) and a lab in two units, before and after "Same result". Fictional data only.
+report's; a report's then one from Settings; a range that changes; values given as "<" and ">" bounds at and past
+each edge of a report's range and of one from Settings; and one-sided ranges that leave their edge out ("<5", ">60") or
+keep it ("<=5", ">=60"), at and past it, through the importers that read them too (#780). JUDGED is what each result is
+judged as, by the one rule (server/ranges.py judge, www/js/ranges.js applyRangeOverrides): [flag, low, high, source],
+and EDGES its edge where its range has one; STEPS the band's steps, each the results it covers, with its words (a result
+whose report gave no range is under none). The summary's "since" day is SINCE days back, so each case has a Then and a
+Now. COPIES (#781, at the end) is a second profile's: one result twice (from two imports) and a lab in two units, before
+and after "Same result". Fictional data only.
 """
 import datetime
 
@@ -75,15 +77,59 @@ TRENDS = {
 OUT_OF_RANGE = {"Sodium": ["133", "Low", "135–145", 1, 1], "Amylase": [">120", "High", "30–110", 4, 4],
                 "Lipase": [">70", "High", "15–60 (settings)", 4, 4]}
 
+# ---- one-sided ranges (#780): whether a limit includes its edge, kept from each importer that reads it (CSV, PDF,
+# FHIR) through storage, the FHIR export and every view. "<5" leaves 5 out of it, "<=5" keeps it; ">60" leaves 60 out,
+# ">=60" keeps it. Each lab's reports print one, then the other (two band steps, "< 5" then "≤ 5"), with results at and
+# past the edge, some given as bounds (">=5" against "<5" is high, against "<=5" may be inside it). PRINTED: each
+# result's range as printed, in CASES' order; EDGES: its edge as kept (pts[7]: "<" the high left out, ">" the low)
+UNITS.update({"C-Reactive Protein": "mg/L", "eGFR": "mL/min/1.73m2"})
+CASES.update({
+    "C-Reactive Protein": [(100, 4, None, 5, "", "4"), (90, 5, None, 5, "", "5"), (80, 5, None, 5, "", ">=5"),
+                           (70, 5, None, 5, "", "<5"), (40, 5, None, 5, "", "5"), (30, 6, None, 5, "", "6"),
+                           (20, 5, None, 5, "", ">=5"), (10, 5, None, 5, "", ">5")],
+    "eGFR": [(100, 61, 60, None, "", "61"), (90, 60, 60, None, "", "60"), (80, 60, 60, None, "", "<=60"),
+             (70, 60, 60, None, "", ">60"), (40, 60, 60, None, "", "60"), (30, 59, 60, None, "", "59"),
+             (20, 60, 60, None, "", "<=60"), (10, 60, 60, None, "", "<60")],
+})
+PRINTED = {"C-Reactive Protein": ["<5"] * 4 + ["<=5"] * 4, "eGFR": [">60"] * 4 + [">=60"] * 4}
+EDGES = {"C-Reactive Protein": ["<"] * 4 + [""] * 4, "eGFR": [">"] * 4 + [""] * 4}
+JUDGED.update({
+    "C-Reactive Protein": [["", None, 5, R], ["H", None, 5, R], ["H", None, 5, R], ["", None, 5, R],
+                           ["", None, 5, R], ["H", None, 5, R], ["", None, 5, R], ["H", None, 5, R]],
+    "eGFR": [["", 60, None, R], ["L", 60, None, R], ["L", 60, None, R], ["", 60, None, R],
+             ["", 60, None, R], ["L", 60, None, R], ["", 60, None, R], ["L", 60, None, R]],
+})
+STEPS.update({"C-Reactive Protein": [[[0, 1, 2, 3], "< 5 on report"], [[4, 5, 6, 7], "≤ 5 on report"]],
+              "eGFR": [[[0, 1, 2, 3], "> 60 on report"], [[4, 5, 6, 7], "≥ 60 on report"]]})
+TRENDS.update({"C-Reactive Protein": [("<5", None, ["report range", "< 5"]), (">5", "High", None), "≤ 5"],
+               "eGFR": [(">60", None, ["report range", "> 60"]), ("<60", "Low", None), "≥ 60"]})
+OUT_OF_RANGE.update({"C-Reactive Protein": [">5", "High", "≤ 5", 2, 4], "eGFR": ["<60", "Low", "≥ 60", 2, 4]})
+
+
+def edges(lab):
+    """Each result's edge as kept (EDGES; "" for every result of the other cases)."""
+    return EDGES.get(lab) or [""] * len(CASES[lab])
+
+
+def words(lo, hi, edge=""):
+    """A range as every page, the summary, its PDF and a share link say it (ranges.js rangeWords, summary.range_words):
+    "30–110", "< 5", "≤ 5", "> 60", "≥ 60"; "" for none."""
+    if lo is not None and hi is not None:
+        return f"{lo:g}–{hi:g}"
+    if hi is not None:
+        return f"{'<' if '<' in edge else '≤'} {hi:g}"
+    return f"{'>' if '>' in edge else '≥'} {lo:g}" if lo is not None else ""
+
 
 def day(n, today=None):
     return ((today or datetime.date.today()) - datetime.timedelta(days=n)).isoformat() + "T08:00:00"
 
 
 def records(today=None):
-    """The profile's records, as an import stores them (records.store)."""
+    """The profile's records, as an import stores them (records.store): a point with an edge keeps it as pts[7]."""
     labs = [{"name": n, "unit": UNITS[n], "panel": "", "n": len(pts), "txt": [],
-             "pts": [[day(d, today), v, lo, hi, f, t] for d, v, lo, hi, f, t in pts]} for n, pts in CASES.items()]
+             "pts": [[day(d, today), v, lo, hi, f, t] + ([None, e] if e else []) for (d, v, lo, hi, f, t), e in zip(pts, edges(n))]}
+            for n, pts in CASES.items()]
     draws = sorted({d for pts in CASES.values() for d, *_ in pts}, reverse=True)   # a lab draw each day
     events = [{"id": i + 1, "t": day(d, today), "k": "lab", "title": "Lab results (fictional)"} for i, d in enumerate(draws)]
     events.append({"id": len(events) + 1, "t": day(SINCE, today), "k": "visit", "title": "Office visit (fictional)"})   # the summary's "since"
@@ -93,6 +139,13 @@ def records(today=None):
 def share_judged(lab):
     """What a share link says of each result (its report's range and flag only: it never sends a range from Settings)."""
     return [[f, lo, hi, R] if src == R else ["", None, None, R] for f, lo, hi, src in JUDGED[lab]]
+
+
+def printed(today=None):
+    """The one-sided cases as their reports print them, for the importers that read them (#780): [(lab, unit, time,
+    value as given, range as printed, index in CASES)], in time order."""
+    return sorted(((n, UNITS[n], day(d, today), t, PRINTED[n][i], i) for n in PRINTED for i, (d, *_, t) in enumerate(CASES[n])),
+                  key=lambda r: (r[2], r[0]))
 
 
 # ---------------------------------------------------------------- #781: one result twice, and a lab in two units

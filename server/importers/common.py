@@ -40,19 +40,44 @@ def comparator(text):
     return _CMP.get(m.group(1), m.group(1)) if m else ""
 
 
-def range_flag(v, lo, hi, cmp=""):
+def range_flag(v, lo, hi, cmp="", edge=""):
     """The one rule for a flag worked out from a range (#752; server/ranges.py flag is this, kept here for build.py):
     "H" above the high, "L" below the low, whatever value a bound (cmp, comparator()) stands for, else "": "<15"
     against a low of 15 is low (every value under 15 is), ">90" against a high of 90 high; "<15" against a low of 10 is
-    neither (it may be 12 or 9). The importers' (a report's range and no flag), a range from settings (#44), the visit
-    summary and share links all use it; www/js/ranges.js rangeFlag is the same."""
+    neither (it may be 12 or 9). edge (range_edge()) holds "<" where the high leaves its edge out, ">" where the low does
+    (#780): 5 against "<5" is high, 60 against ">60" low, as ">=5" against "<5" is; against "<=5" and ">=60" neither.
+    The importers' (a report's range and no flag), a range from settings (#44), the visit summary and share links all
+    use it; www/js/ranges.js rangeFlag is the same."""
     if v is None:
         return ""
-    if hi is not None and (v >= hi if cmp == ">" else not cmp.startswith("<") and v > hi):
+    edge = str(edge or "")
+    if hi is not None and not cmp.startswith("<") and (v >= hi if cmp == ">" or "<" in edge else v > hi):
         return "H"
-    if lo is not None and (v <= lo if cmp == "<" else not cmp.startswith(">") and v < lo):
+    if lo is not None and not cmp.startswith(">") and (v <= lo if cmp == "<" or ">" in edge else v < lo):
         return "L"
     return ""
+
+
+# a one-sided range's limit as printed, where it leaves its edge out: "<5", "less than 5", "under 5", ">60", "over 60";
+# not "<=5", "≤5", "< OR = 5", "less than or equal to 5", "up to 5", ">=60", "> OR = 60" (#780)
+_EDGE = re.compile(r"\s*(?:(<|less than|under|below)|(>|greater than|more than|over|above))(?!\s*(?:=|or\b))\s*(-?\d+(?:[.,]\d+)?)",
+                   re.I)
+
+
+def range_edge(text, lo, hi):
+    """Whether a one-sided reference range, as printed (text), leaves its limit's edge out (#780): "<" for "<5" (5 is
+    above it), ">" for ">60" (60 is below it), "" for one that includes it ("<=5", "≤ 5", "< OR = 5", "up to 5", ">=60")
+    and for a range with a low and a high. lo and hi are the range's numbers as read (from the text, or from a source's
+    own low and high beside it): the edge is said only where the text's number is the one limit there is. Kept with the
+    range on each point (pts[7], docs/importers.md), the flag rule (range_flag) and its words honour it."""
+    m = _EDGE.match(str(text or ""))
+    if not m or (lo is None) == (hi is None):
+        return ""
+    try:
+        x = float(m.group(3).replace(",", "."))
+    except ValueError:
+        return ""
+    return "<" if m.group(1) and hi == x else ">" if m.group(2) and lo == x else ""
 
 
 TAG_RE = re.compile(r"<[^>]+>")

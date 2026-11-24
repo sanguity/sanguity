@@ -41,7 +41,7 @@ import zipfile
 
 from . import ccda
 from .common import (canonical_lab, comparator, ext_alias, inferred_stays, iso, lab_alias, lab_day_sub, lab_day_title,
-                     lab_defs, range_flag, resolve_name, stay, strip_html, unit_key)
+                     lab_defs, range_edge, range_flag, resolve_name, stay, strip_html, unit_key)
 
 NAME = "epic-mychart"
 LABEL = "Epic MyChart export"
@@ -208,9 +208,10 @@ def _results(out, tr, rel, org, tag, infer_stays):
                 rr = cr.get("referenceRange") or {}
                 v = cr.get("numericValue")
                 lo, hi = rr.get("low"), rr.get("high")
+                edge = range_edge(rr.get("formattedReferenceRange"), lo, hi)   # as formatted: "<5" leaves 5 out (#780)
                 flag = ""
                 if isinstance(v, (int, float)) and not isinstance(v, bool):   # by the one rule (server/ranges.py flag, #752)
-                    flag = range_flag(v, lo, hi, comparator(cr.get("value")))
+                    flag = range_flag(v, lo, hi, comparator(cr.get("value")), edge)
                 if flag:
                     abn_here += 1
                 rows.append([name, cr.get("value"), unit, rr.get("formattedReferenceRange") or "", flag])
@@ -220,7 +221,7 @@ def _results(out, tr, rel, org, tag, infer_stays):
                 if s is None:
                     s = out.labs[sname] = {"unit": unit, "pts": [], "txt": [], "code": ci.get("componentID")}
                 if isinstance(v, (int, float)) and not isinstance(v, bool):
-                    s["pts"].append([t, v, lo, hi, flag, (cr.get("value") or "")] + ([tag] if tag else []))
+                    s["pts"].append([t, v, lo, hi, flag, (cr.get("value") or "")] + ([tag or None, edge] if edge else [tag] if tag else []))
                 else:
                     s["txt"].append([t, cr.get("value") or ""])
             study = r.get("studyResult") or {}
@@ -474,14 +475,14 @@ def _fold_external(out):
         if ext in out.labs and canon in out.labs:
             a, b = out.labs[ext], out.labs[canon]
             if not a["unit"] or not b["unit"] or unit_key(a["unit"]) == unit_key(b["unit"]):
-                b["pts"] += [p[:6] + ["EXT"] for p in a["pts"]]
+                b["pts"] += [p[:6] + ["EXT"] + p[7:] for p in a["pts"]]
                 b["txt"] += a["txt"]
                 out.panel_votes[canon].update(out.panel_votes[ext])
                 del out.labs[ext]
     for s in out.labs.values():
         when = 16 if s.get("vital") else 10   # vitals: the same reading at the same minute (two the same day are two)
         seen, keep = set(), []
-        for p in sorted(s["pts"], key=lambda p: (p[0][:when], p[6] if len(p) > 6 else "")):
+        for p in sorted(s["pts"], key=lambda p: (p[0][:when], (p[6] if len(p) > 6 else "") or "")):
             k = (p[0][:when], round(p[1], 4))
             if k not in seen:
                 seen.add(k)

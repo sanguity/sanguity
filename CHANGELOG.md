@@ -1911,6 +1911,16 @@ Everything on `main` so far; it becomes the first tagged release.
   its whole length), its role, the brand's word and More's name for the tab shown make way in turn, each still said to
   a screen reader, and given back where there's room; if that's not enough the name takes a row of its own under the
   bar, as on a phone (#622). Nothing on the bar overlaps (WCAG 1.4.4).
+- **A range printed "<5" leaves 5 out of it** (#780): the CSV, PDF and FHIR importers read "<5" as a high of 5, the
+  same as "<=5", so a C-Reactive Protein of 5 against its report's "<5", an LDL of 100 against "<100" and an eGFR of
+  60 against ">60" were shown in range, said "≤ 5", "≤ 100" and "≥ 60" on Labs, the Overview, share links and the
+  visit summary, while the drawer showed the report's "<5" beside the unflagged 5; the FHIR export wrote "<5" as a
+  high of 5, which FHIR reads as included. Now each result keeps whether its one-sided range includes its edge, from
+  every importer that reads one (CSV and typed-in results, PDF reports, FHIR, C-CDA, CareSpace and MyChart, by the
+  range as printed) through storage and the FHIR export (a limit left out is in its text alone), and the one flag
+  rule honours it: 5 is high against "<5" and in range against "<=5", 60 low against ">60". The range is said as
+  printed, "< 5" and "≤ 5", and "<5" and "≤ 5" are two steps of a chart's band. Results imported before this keep
+  their ranges as they were read.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

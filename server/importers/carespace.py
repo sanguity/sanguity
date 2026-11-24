@@ -24,7 +24,7 @@ export. Series: "loinc:<code>" or "carespace:name|<name lower-cased>", with "|<u
 import collections, hashlib, json, posixpath, re
 import xml.etree.ElementTree as ET
 
-from .common import canonical_lab, comparator, iso, lab_day_sub, lab_day_title, loinc_of, num, range_flag, unit_key, ymd
+from .common import canonical_lab, comparator, iso, lab_day_sub, lab_day_title, loinc_of, num, range_edge, range_flag, unit_key, ymd
 
 NAME = "carespace"
 LABEL = "CareSpace / OncoEMR portal export"
@@ -214,10 +214,11 @@ def parse(files, org=None, tag=None):
             continue
         first_t.setdefault(t[:10], t)
         lo, hi = ref.get("lowerLimit"), ref.get("upperLimit")
+        edge = range_edge(r.get("referenceRangeDisplay"), lo, hi)   # its limits as displayed: "<5" leaves 5 out (#780)
         x = num(v.get("value"))
         flag = FLAGS.get((r.get("interpretationCode") or "").upper(), "")
         if not flag and x is not None:   # by the one rule (server/ranges.py flag, #752: "<0.5" against a low of 0.5 is low)
-            flag = range_flag(x, lo, hi, comparator(v.get("value")))
+            flag = range_flag(x, lo, hi, comparator(v.get("value")), edge)
         unit = v.get("unit") or ref.get("unit") or ""
         pan = (panels.get(r.get("labPanelRecordId")) or {}).get("testName") or "Lab panel"
         by_day[t[:10]][pan].append([r["name"], v.get("value"), unit, r.get("referenceRangeDisplay") or "", flag])
@@ -228,7 +229,7 @@ def parse(files, org=None, tag=None):
         if name in labs and unit_key(labs[name]["unit"]) != unit_key(unit):
             name = f"{canon} ({org})"
         s = labs.setdefault(name, {"unit": unit, "pts": [], "base": canon})
-        s["pts"].append([iso(t), x, lo, hi, flag, str(v.get("value")), tag])
+        s["pts"].append([iso(t), x, lo, hi, flag, str(v.get("value")), tag] + ([edge] if edge else []))
         panel_votes[name][pan] += 1
     if no_date:
         warnings.append(f"{no_date} lab result{'s' if no_date != 1 else ''} had no date and {'were' if no_date != 1 else 'was'} left out.")

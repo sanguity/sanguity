@@ -61,7 +61,8 @@ class Shape:
             self.assertTrue({"name", "unit", "panel", "n", "pts", "txt"} <= set(s), s)
             self.assertEqual(s["n"], len(s["pts"]))
             for p in s["pts"]:
-                self.assertEqual(len(p), 7)
+                self.assertEqual(len(p), 7 + bool(p[7:]))
+                self.assertIn(p[7:], ([], ["<"], [">"]))   # an edge left out of a one-sided range (#780)
                 self.assertIsInstance(p[1], (int, float))
                 self.assertIn(p[4], ("", "H", "L"))
             for p in s["txt"]:
@@ -133,8 +134,8 @@ class Bundle(Shape, unittest.TestCase):
         self.assertEqual(hgb["pts"], [["2025-03-04T09:45:00-06:00", 12.1, 13.5, 17.5, "L", "12.1", "Maple Grove Clinic"]])
         plt = series(self.data, "Platelet Count")   # no interpretation: flag from the range
         self.assertEqual((plt["unit"], plt["pts"][0][4]), ("10*3/uL", "H"))
-        ldl = series(self.data, "LDL Cholesterol")  # text-only range "<130 mg/dL"
-        self.assertEqual(ldl["pts"][0][2:5], [None, 130, "H"])
+        ldl = series(self.data, "LDL Cholesterol")  # text-only range "<130 mg/dL": 130 left out of it (#780)
+        self.assertEqual(ldl["pts"][0][2:5] + ldl["pts"][0][7:], [None, 130, "H", "<"])
 
     def test_text_values_kept(self):
         s = series(self.data, "Color of Urine")

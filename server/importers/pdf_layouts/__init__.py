@@ -24,6 +24,8 @@ Standard library only.
 """
 import importlib, logging, pkgutil, re
 
+from ..common import range_edge
+
 log = logging.getLogger("sanguity.importers")
 
 REQUIRED = ("NAME", "LABEL", "SOURCE", "recognise", "HEADER", "PANEL", "COLLECTED", "row")
@@ -108,18 +110,20 @@ def range_and_unit(s):
 
 
 def bounds(rng):
-    """(low, high) numbers from a printed range: "65-99" -> (65, 99), "<200" -> (None, 200), "> OR = 60" -> (60,
-    None); (None, None) for a text reference."""
+    """(low, high, edge) from a printed range: "65-99" -> (65, 99, ""), "<200" -> (None, 200, "<"), "> OR = 60" ->
+    (60, None, ""), ">59" -> (59, None, ">"); (None, None, "") for a text reference. edge: whether a one-sided limit
+    leaves its edge out, as "<200" does and "< OR = 200" doesn't (common.range_edge, #780)."""
     rng = (rng or "").strip()
     m = _SPAN.fullmatch(rng)
     if m:
         lo, hi = _num(m.group(1)), _num(m.group(2))
-        return (lo, hi) if lo <= hi else (None, None)
+        return (lo, hi, "") if lo <= hi else (None, None, "")
     m = _BOUND.fullmatch(rng)
     if m:
         x = _num(m.group(2))
-        return (None, x) if m.group(1).startswith(("<", "=<")) else (x, None)
-    return None, None
+        lo, hi = (None, x) if m.group(1).startswith(("<", "=<")) else (x, None)
+        return lo, hi, range_edge(rng, lo, hi)
+    return None, None, ""
 
 
 def _num(s):

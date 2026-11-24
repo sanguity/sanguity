@@ -202,12 +202,12 @@ _FLAG_DIR = {"h": "H", "hh": "H", "high": "H", "critical high": "H", "panic high
              "l": "L", "ll": "L", "low": "L", "critical low": "L", "panic low": "L"}
 
 
-def _direction(flag, x, lo, hi, value=""):
+def _direction(flag, x, lo, hi, value="", edge=""):
     """H, L or "" for the charts: from the printed flag, or for "A"/"Abnormal" from the range by the one rule
-    (server/ranges.py flag, #752: "<0.5" against a low of 0.5 is low)."""
+    (server/ranges.py flag, #752: "<0.5" against a low of 0.5 is low; 5 against "<5" high, #780)."""
     if not flag:
         return ""
-    return _FLAG_DIR.get(flag.lower()) or range_flag(x, lo, hi, comparator(value))
+    return _FLAG_DIR.get(flag.lower()) or range_flag(x, lo, hi, comparator(value), edge)
 
 
 def _number(value):
@@ -385,8 +385,8 @@ def _build(reports, warnings):
                 continue
             seen.add(ident)
             x = _number(r["value"])
-            lo, hi = bounds(r["range"])
-            rows.append({**r, "rep": rep, "x": x, "lo": lo, "hi": hi, "dir": _direction(r["flag"], x, lo, hi, r["value"])})
+            lo, hi, edge = bounds(r["range"])
+            rows.append({**r, "rep": rep, "x": x, "lo": lo, "hi": hi, "edge": edge, "dir": _direction(r["flag"], x, lo, hi, r["value"], edge)})
     if dupes:
         warnings.append(f"Left out {dupes} result{'s' if dupes != 1 else ''} that appeared twice (same test, time and value).")
 
@@ -444,7 +444,7 @@ def _build(reports, warnings):
         if r["x"] is not None:
             if not s["unit"]:
                 s["unit"], s["unitk"] = r["unit"], u
-            s["pts"].append([r["t"], r["x"], r["lo"], r["hi"], r["dir"], r["value"], r["rep"]["layout"].SOURCE])
+            s["pts"].append([r["t"], r["x"], r["lo"], r["hi"], r["dir"], r["value"], r["rep"]["layout"].SOURCE] + ([r["edge"]] if r["edge"] else []))
         else:
             s["txt"].append([r["t"], r["value"]])
         s["panels"][r["panel"]] += 1

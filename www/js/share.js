@@ -125,7 +125,7 @@ const SH_DRAW = {
 const SH_FLAG = {High: "▲ High", Low: "▼ Low"};
 const shFlag = f => f ? el("span", {class: "share-flag", text: SH_FLAG[f] || "◆ " + f}) : "";
 /* a test's results, newest first as the server sends them, as the kit's points, oldest first */
-const shPts = pts => pts.map(p => Object.assign(ckPt(zParse(String(p.t).slice(0, 19)), p.v, p.lo, p.hi, p.flag), {p})).reverse();
+const shPts = pts => pts.map(p => Object.assign(ckPt(zParse(String(p.t).slice(0, 19)), p.v, p.lo, p.hi, p.flag, p.edge), {p})).reverse();
 /* its sparkline (chartkit.js ckSpark, #299) */
 const shSpark = pts => ckSpark(shPts(pts), {r: 2.2, cls: "share-spark"});
 /* its chart above its history's table (chartkit.js ckSolo, #302), of two numbers or more: from what the link sends
