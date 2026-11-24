@@ -231,8 +231,13 @@ else the labitem's key the same and one record's, a report's; never a `:h:` hash
 spreadsheet has too, nor a key scoped to a day, `<NAME>:labitem:<YYYY-MM-DD>`, which another source's results of that
 day have too) is that result, updated in place with its row, never a copy: so give a labitem the key of the report it
 comes in, and where it holds a day's results on their own, each row's own record's key in `keys`, as the FHIR
-importer does. Another source's copy of it is a copy or a duplicate, never an update, and a sync updates in place
-only its own events with a key scoped to a day, never an upload's or another source's. A text result here is that
+importer does. Another source's copy of it is a copy or a duplicate, never an update. A sync never replaces an event
+with a key scoped to a day that an upload or another source saved; it finds each row of its own day's labitem by the
+row's own record in `keys`, wherever it is (#899: in an upload of the portal's own export, or a connection made before
+to the same portal), and updates that row there, puts a row new to the profile in a labitem of its own beside its
+result, leaves out a duplicate's row with it (#897), and joins the day's lab day rather than adding a second. A
+labitem saved before #885 has no `keys`; a connection's take theirs from what it has read, once (schema version 40),
+and an upload's keep none, as nothing left names its rows' records. A text result here is that
 point, and a point here that text result, where it reads as it (#874: its value read by `common.value_number`,
 whichever decimal mark its file writes, with its comparator), so a file read again after a reading of it changed
 between text and a number (#870: a FHIR bound, a C-CDA's "4,5", the FHIR export's "=<5" and "1,250") adds nothing. A

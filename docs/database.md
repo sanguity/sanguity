@@ -3,7 +3,7 @@
 Sanguity keeps everything in one SQLite database, `DATA_DIR/sanguity.db`, plus files in the data folder that it
 points at (documents, uploads, previews, watch summaries). The schema is built step by step from `SCHEMA` in
 [`server/db.py`](../server/db.py): each step is a numbered version (`PRAGMA user_version`), applied once at start-up,
-so an older install upgrades itself. This page describes **schema version 39**. When you add a step, update the
+so an older install upgrades itself. This page describes **schema version 40**. When you add a step, update the
 diagrams here too.
 
 Two things hold everywhere:
@@ -118,7 +118,9 @@ erDiagram
 ```
 
 `meta` (`k`, `v`) holds install-wide values: the pepper for password hashes (encrypted), the setup code's hash, and
-one-off migration markers.
+one-off migration markers. Schema version 40 (#899) adds one, `labitem_keys`: the lab events a connected source saved
+before #885 have no `keys` (each row's own record), which the rows and results don't say and which are encrypted, so
+`sync.backfill_keys` gives them theirs at start-up from the connection's store of what it has read, then clears it.
 
 ## Records and imports
 

@@ -46,8 +46,14 @@ removes the store (connections.disconnect), so nothing a pull read outlives a Di
     - records whose source key it has are updated in place (the row keeps its id, import and corrections), when
       what the vendor sends now differs (a claim's Costs row with it); sync_changes keeps what each was, so undoing
       the sync puts it back. A key scoped to a day (a lab day's, the labitem of a day's results on their own,
-      preview.day_key) names no one source's record: only this connection's own events with it are its (#885), never
-      an upload's or another source's of that day, whose rows a pull replaced
+      preview.day_key) names no one source's record (#885): an upload's or another source's labitem of that day is
+      never replaced by the pull's, whose rows it lost. Each of its rows is its own record (its Observation, the
+      details' "keys") and is found by it wherever it is (#899: an upload of the portal's own export, a connection made
+      before this one), updated there; a row new to the profile goes in a labitem of the pull's own beside its result,
+      and one whose result is a duplicate is left out with it (#897). The day's lab day is joined, never a second
+      added beside it: the connection's own, else the earliest (an upload's), keeping every labitem it lists
+      (_link_labdays). Lab events saved before #885 take their rows' records from the connection's store once
+      (backfill_keys, schema version 40)
     - only records that come from what this pull read count: one undone from the history doesn't come back
       unless the vendor changes it
   Each is recorded in the import history (#24) with a done job, and can be undone there.
@@ -62,10 +68,11 @@ Each successful pull, new records or not, marks every import of the connection a
 (imports.synced, #100): the page shows it as "last synced" beside each record's source. The first pull's import gets
 it when its preview is saved.
 """
-import contextlib, hashlib, io, json, logging, os, shutil, tempfile, threading, urllib.parse
+import contextlib, hashlib, io, json, logging, os, re, shutil, tempfile, threading, urllib.parse
 
 from . import activity, config, connections as conns, crypto, db as dbm, importers as registry, jobs, labmap, outside
 from . import preview, profiles as prof, records, smart, uploads
+from .importers import common
 
 log = logging.getLogger("sanguity.sync")
 
@@ -581,6 +588,20 @@ def _parse(files):
     return data
 
 
+def _whole(c, store, files=None):
+    """The records the connection's whole set read so far (its store) makes, as the importer reads them, with the pull's
+    files (files, its attachments) beside it; None where it holds nothing Sanguity shows."""
+    tmp = tempfile.mkdtemp(prefix="sanguity-sync-")
+    try:
+        os.chmod(tmp, 0o700)
+        path = os.path.join(tmp, "connection.json")
+        with open(path, "wb") as f:
+            f.write(_bundle(c["fhir_base"], store["resources"].values()))
+        return _with_ext(_parse({**{k: v for k, v in (files or {}).items() if k != "pull.json"}, "connection.json": path}))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def _with_ext(data):
     for d in (data or {}).get("details", {}).values():   # as jobs._import: the type comes from the path
         if isinstance(d, dict) and d.get("type") == "file" and isinstance(d.get("url"), str) and not d.get("ext"):
@@ -611,15 +632,13 @@ def _touched(delta, delta_resources, store):
     return keys
 
 
-def _rows_by_hash(db, pid, hashes, cid=None, days=()):
-    """{key hash: [event ids]}. days: the hashes of keys scoped to a day (preview.day_key), whose events are
-    connection cid's own only (#885: another source's results of that day have the key too)."""
-    out, ours = {}, _ours(db, pid, cid) if days else set()
+def _rows_by_hash(db, pid, hashes):
+    """{key hash: [event ids]}, any import's."""
+    out = {}
     for h in records._chunks(sorted({x for x in hashes if x})):
-        q = f"SELECT id, key_hash, import_id FROM events WHERE profile_id=? AND key_hash IN ({','.join('?' * len(h))}) ORDER BY id"
+        q = f"SELECT id, key_hash FROM events WHERE profile_id=? AND key_hash IN ({','.join('?' * len(h))}) ORDER BY id"
         for r in db.execute(q, (pid, *h)):
-            if r["key_hash"] not in days or r["import_id"] in ours:
-                out.setdefault(r["key_hash"], []).append(r["id"])
+            out.setdefault(r["key_hash"], []).append(r["id"])
     return out
 
 
@@ -628,9 +647,114 @@ def _ours(db, pid, cid):
     return {r[0] for r in db.execute("SELECT id FROM imports WHERE profile_id=? AND connection_id=?", (pid, cid))}
 
 
+# (#899) A labitem keyed by its day (a FHIR file's results on their own, preview.day_key) is no one source's record: its
+# rows are, each its own Observation (the details' "keys", #885). A pull finds each row by that record wherever it is,
+# whoever's import holds it (an upload of the portal's own export, the records of a connection made before this one
+# to the same portal), and updates it there; a row new to the profile goes in a labitem of this pull's own, beside its
+# result (drawer.js rowPoint reads a row's result from the row's own import, #881); and a row whose result is left out,
+# a duplicate of one here, is left out with it (#897: in the pull's lab day it read another source's result's flag).
+
+def _day_labitem(e):
+    """Whether event e is a labitem keyed by its day, whose rows are each found by its own record (#899)."""
+    return isinstance(e, dict) and e.get("k") == "labitem" and preview.day_key(e.get("key"))
+
+
+def _row_keys(d):
+    """[(its own record's key, which of that record's rows it is)] for each row of a labitem's details d (an Observation
+    with components makes a row of each): None for a row without one of its own (a hash of its content, or saved before
+    #885 without "keys", and not given them, backfill_keys)."""
+    keys = d.get("keys") if isinstance(d, dict) and isinstance(d.get("keys"), list) else []
+    rows, seen, out = (d.get("rows") if isinstance(d, dict) else None) or [], {}, []
+    for j in range(len(rows)):
+        k = keys[j] if j < len(keys) and preview._record_key(keys[j]) else None
+        out.append(k and (k, seen.setdefault(k, 0)))
+        if k:
+            seen[k] += 1
+    return out
+
+
+def _rows_here(db, pid, ours, h):
+    """{(own record, n): (event id, row index, row)}: the rows of the profile's labitems with key hash h, any import's,
+    by their own records (_row_keys); the connection's own (ours: its imports) first, the latest, then the earliest."""
+    out = {}
+    rs = db.execute("SELECT id, import_id, detail FROM events WHERE profile_id=? AND key_hash=? ORDER BY id", (pid, h)).fetchall()
+    for r in sorted(rs, key=lambda r: (r["import_id"] not in ours, -r["id"] if r["import_id"] in ours else r["id"])):
+        d = records._dec(r["detail"])
+        for j, own in enumerate(_row_keys(d)):
+            if own:
+                out.setdefault(own, (r["id"], j, d["rows"][j]))
+    return out
+
+
+def _left_out(delta, dups):
+    """The rows of this pull's labitems whose results are left out, duplicates of results here (#897): {(event id as
+    text, row index)}, the row as preview._row finds a result's (crossmatch._row_of)."""
+    labs, drawer, out = delta.get("labs") or [], preview._drawer(delta), set()
+    for what, field in (("points", "pts"), ("txt", "txt")):
+        for i, ns in (dups.get(what) or {}).items():
+            got = labs[i].get(field) or [] if i < len(labs) and isinstance(labs[i], dict) else []
+            out.update(at for n in ns if n < len(got) and (at := preview._row(drawer, labs[i], got[n])))
+    return out
+
+
+def _place(e, detail, here, sent, dropped):
+    """(#899) Where the rows of e, a labitem keyed by its day as the whole set makes it (detail its details), go: each
+    found here by its own record (here: _rows_here), its value as reported the same, is updated in place there, where
+    it differs; one this pull read (sent: {(own record, n): (event id, row index)} of its own labitems), new to the
+    profile or with another value (a result of its own, #877, beside the one whose row stays), goes in a labitem of this
+    pull's own, unless its result is left out (dropped: _left_out). -> (that labitem or None, its details, {event id
+    here: {row index: row}})"""
+    rows, changes, new = detail.get("rows") or [], {}, []
+    for j, own in enumerate(_row_keys(detail)):
+        if own in here and here[own][2][1:2] == rows[j][1:2]:
+            eid, r, _ = here[own]
+            changes.setdefault(eid, {})[r] = rows[j]
+        elif own in sent and sent[own] not in dropped:
+            new.append(j)
+    if not new:
+        return None, None, changes
+    d = {**detail, "rows": [rows[j] for j in new], "keys": [(detail.get("keys") or [None] * len(rows))[j] for j in new]}
+    return _with_abn(e, d["rows"]), d, changes
+
+
+def _with_abn(body, rows):
+    """A labitem's body with its count of flagged rows (abn, as the FHIR importer counts them) for these rows."""
+    n = sum(1 for row in rows if isinstance(row, list) and len(row) > 4 and row[4])
+    return {**{k: v for k, v in body.items() if k != "abn"}, **({"abn": n} if n else {})}
+
+
+def _set_rows(db, pid, iid, changes):
+    """(#899) Rows found by their own records updated in place, in whichever import's labitem holds them, where they
+    differ: what each labitem was is kept (sync_changes) for undoing the pull. -> how many labitems changed"""
+    n = 0
+    for eid, rows in changes.items():
+        r = db.execute("SELECT id, import_id, body, detail FROM events WHERE id=? AND profile_id=?", (eid, pid)).fetchone()
+        old = records._dec(r["detail"]) if r else None
+        if not isinstance(old, dict) or not isinstance(old.get("rows"), list):
+            continue
+        d = {**old, "rows": [rows.get(j, row) for j, row in enumerate(old["rows"])]}
+        if _same(d, old):
+            continue
+        _changing(db, iid, r)
+        db.execute("UPDATE events SET body=?, detail=? WHERE id=?",
+                   (records._enc(_with_abn(records._dec(r["body"]), d["rows"])), records._enc(d), eid))
+        n += 1
+    return n
+
+
+def _changing(db, iid, r):
+    """Before import iid changes event r (its id, import_id, body and detail) in place: what it was, kept once
+    (sync_changes) for undoing iid, unless it's iid's own."""
+    if r["import_id"] != iid and not db.execute("SELECT 1 FROM sync_changes WHERE import_id=? AND event_id=?",
+                                                (iid, r["id"])).fetchone():
+        db.execute("INSERT INTO sync_changes(import_id, event_id, previous) VALUES(?, ?, ?)",
+                   (iid, r["id"], records._enc({"body": records._dec(r["body"]), "detail": records._dec(r["detail"])})))
+
+
 def _events_with_key(db, pid, cid, key, cols):
     """The profile's events with source key key, cols of each: connection cid's own only where the key is scoped to a
-    day (preview.day_key, #885), as an upload's or another source's lab day of that day isn't this one's to change."""
+    day (preview.day_key, #885), as an upload's or another source's lab day of that day isn't this one's to replace
+    (#899: _link_labdays joins it)."""
     h = records.key_hashes(db, [key])[key]
     if preview.day_key(key):
         return db.execute(f"""SELECT {cols} FROM events WHERE profile_id=? AND key_hash=?
@@ -654,15 +778,7 @@ def _later(db, c, got, who, ip):
     try:
         with uploads.open_plain(db, pid, up) as files:
             delta = _with_ext(_parse(files))
-            tmp = tempfile.mkdtemp(prefix="sanguity-sync-")
-            try:
-                os.chmod(tmp, 0o700)
-                path = os.path.join(tmp, "connection.json")
-                with open(path, "wb") as f:
-                    f.write(_bundle(c["fhir_base"], store["resources"].values()))
-                full = _with_ext(_parse({**{k: v for k, v in files.items() if k != "pull.json"}, "connection.json": path}))
-            finally:
-                shutil.rmtree(tmp, ignore_errors=True)
+            full = _whole(c, store, files)
             names = set(files)
         result = _save(db, c, up, delta, full, got, store, names, report, who, ip)
     except BaseException:
@@ -699,19 +815,28 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
                        and str(e.get("id")) not in dups["events"]]
         dups["events"] = {str(e.get("id")) for e in delta["events"] if isinstance(e, dict)}   # events: decided below
         hashes = records.key_hashes(db, touched)
-        have = _rows_by_hash(db, pid, hashes.values(), cid, {hashes[k] for k in touched if preview.day_key(k)})   # (#885)
+        have = _rows_by_hash(db, pid, hashes.values())   # (any import's, #899: a lab day joined, a day's rows by their records)
+        dayitems = {k for k in touched if _day_labitem(full_by_key.get(k) or delta_by_key.get(k))}
+        ours = _ours(db, pid, cid)
+        here = {k: _rows_here(db, pid, ours, hashes[k]) for k in dayitems}   # (#899) the rows here, by their own records
+        mine = {str(e["id"]): _row_keys(delta.get("details", {}).get(str(e["id"])))
+                for e in delta["events"] if isinstance(e, dict) and e.get("k") == "labitem"}
+        sent = {own: (eid, j) for eid, owns in mine.items() for j, own in enumerate(owns) if own}
         # a result already here is kept as a copy only with its own row (#868): one whose row is a record the profile
         # has, updated in place below in its own import, would be a result of this pull's import with no lab day of
-        # its own (util.js labDraws put it in every lab day of its date); left out, a duplicate
+        # its own (util.js labDraws put it in every lab day of its date); left out, a duplicate. A day's labitem is no
+        # record: a row of it is where its own record is here (#899), else new, in this pull's labitem beside its copy
         keys = {str(e.get("id")): e.get("key") for e in delta["events"] if isinstance(e, dict)}   # (each touched)
         for i, ns in dups["at"].items():
-            for n, (eid, _) in list(ns.items()):
-                if hashes.get(keys.get(eid)) in have:
+            for n, (eid, r) in list(ns.items()):
+                k, owns = keys.get(eid), mine.get(eid) or []
+                if (r < len(owns) and owns[r] in here[k]) if k in dayitems else hashes.get(k) in have:
                     preview.leave_out(dups, i, n)
         rest = preview.trim(delta, dups)
+        dropped = _left_out(delta, dups)   # (#897) the rows of the results left out, duplicates: left out with them
         # events come from the whole set read so far (a lab day groups results across pulls), ids as it numbers them;
         # one only this pull's records have (keyless, or not in the whole set) keeps its own, marked apart
-        new_events, updates, src = [], [], {}
+        new_events, updates, src, rows_here = [], [], {}, {}
         for k in sorted(touched):
             e, details = full_by_key.get(k), full.get("details", {})
             if e is None:
@@ -719,11 +844,18 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
                 e = e and {**e, "id": f"d{e.get('id')}", "_from": details.get(str(e.get("id")))}
             if e is None:
                 continue
-            if hashes.get(k) in have:
+            i = str(e["id"])
+            src[i] = e.pop("_from", None) if "_from" in e else details.get(i)
+            if k in dayitems:   # (#899) each row where its own record is, else new, in a labitem of this pull's
+                e, src[i], changes = _place(e, src[i] or {}, here[k], sent, dropped)
+                for eid, rs in changes.items():
+                    rows_here.setdefault(eid, {}).update(rs)
+                if e:
+                    new_events.append(e)
+            elif hashes.get(k) in have:
                 updates.append(e)
             else:
                 new_events.append(e)
-            src[str(e["id"])] = e.pop("_from", None) if "_from" in e else details.get(str(e["id"]))
         for e in keyless_new:
             e = {**e, "id": f"d{e.get('id')}"}
             new_events.append(e)
@@ -760,8 +892,10 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
         db.execute("UPDATE imports SET connection_id=? WHERE id=?", (cid, iid))
         labmap.used(db, lab_plan["ids"].values())   # the lab-name matches it was saved with (#500)
         changed = _update_in_place(db, pid, iid, updates, {**full.get("details", {}), **src}, stored, costs, cid)
+        changed += _set_rows(db, pid, iid, rows_here)   # (#899) a day's rows, where each is
         changed += _apply_meta(db, iid, meta_changes)
-        # results the source sent again, amended (#869): updated in place, after their rows' labitems (whole, above)
+        # results the source sent again, amended (#869): updated in place, after their rows (above: a report's labitem
+        # whole, a day's rows where each is)
         if (amended := preview.update(db, pid, iid, delta, dups, rows=False)):
             summary["counts"]["updated"] = amended
         _link_labdays(db, pid, iid, full, set(full_by_key) & (touched | {e.get("key") for e in new_events}), cid)
@@ -812,8 +946,9 @@ def _costs_by_id(full, delta):
 
 def _update_in_place(db, pid, iid, updates, details, stored, costs=None, cid=None):
     """Change the events whose source key the profile has, where the vendor's version differs; keep what each was.
-    A claim's Costs row changes with it (an adjusted claim's new amounts). One whose key is scoped to a day is this
-    connection's (cid) only (#885: _events_with_key)."""
+    A claim's Costs row changes with it (an adjusted claim's new amounts). One whose key is scoped to a day (a lab day:
+    a day's labitem has its rows placed, _place) is this connection's (cid) only (#885: _events_with_key); another's is
+    joined (_link_labdays)."""
     n = 0
     for e in updates:
         body = {k: v for k, v in e.items() if k != "id"}
@@ -823,6 +958,8 @@ def _update_in_place(db, pid, iid, updates, details, stored, costs=None, cid=Non
             old_b, old_d = records._dec(r["body"]), records._dec(r["detail"])
             old_c = records._dec(r["cost"]) if r["cost"] is not None else None
             cost = {**new_c, "id": r["id"]} if new_c is not None else old_c   # a row the vendor's version lacks stays
+            if isinstance(new_d, dict) and new_d.get("type") == "labday":   # titled for the rows it holds (_link_labdays)
+                body = _labday_body(db, {k: v for k, v in e.items() if k != "id"}, (old_d or {}).get("ids") or [])
             if _same(old_b, body) and _same(_comparable(old_d), _comparable(new_d)) and _same(old_c, cost):
                 continue
             d = _file_url(old_d, new_d)
@@ -842,29 +979,58 @@ def _update_in_place(db, pid, iid, updates, details, stored, costs=None, cid=Non
 
 
 def _link_labdays(db, pid, iid, full, keys, cid=None):
-    """Point each lab day this pull touched at its results' rows: all of that day's, across this connection's pulls
-    and imports. A lab day's key, and a labitem's of a day's results on their own, are scoped to a day: another
-    source's lab day of that day, and its rows, aren't this one's (#885: an upload's lab day was pointed at the pull's)."""
+    """Point each lab day this pull touched at its results' rows, across this connection's pulls and imports: one lab
+    day a draw, whoever's came first (#899, #897). The day's lab day is the connection's own where it has one, else the
+    earliest there is (an upload's of the portal's own export, a connection's made before this one), never a second
+    beside it. The connection's own lists its labitems of that day (a report's wherever it is, as one record's); another's
+    keeps every labitem it lists, none taken out, and is joined by the connection's (#885: never pointed at the pull's
+    alone). Its title counts the rows it holds (\"5 lab results\")."""
     events = {str(e.get("id")): e for e in full["events"] if isinstance(e, dict)}
+    ours = _ours(db, pid, cid)
     for e in full["events"]:
         if not isinstance(e, dict) or e.get("key") not in keys:
             continue
         d = full["details"].get(str(e.get("id")))
         if not (isinstance(d, dict) and d.get("type") == "labday"):
             continue
+        h = records.key_hashes(db, [e["key"]])[e["key"]]
+        days = db.execute("SELECT id, import_id, body, detail FROM events WHERE profile_id=? AND key_hash=? ORDER BY id", (pid, h)).fetchall()
+        mine = [r for r in days if r["import_id"] in ours]
+        if not days:
+            continue
+        day, own = (mine[-1], True) if mine else (days[0], False)
         members = [events[str(i)]["key"] for i in d.get("ids") or [] if str(i) in events and events[str(i)].get("key")]
         mh = records.key_hashes(db, members)
-        rows = _rows_by_hash(db, pid, mh.values(), cid, {mh[k] for k in members if preview.day_key(k)})
-        ids = [rows[mh[k]][-1] for k in members if mh.get(k) in rows]
-        for r in _events_with_key(db, pid, cid, e["key"], "id, import_id, body, detail"):
-            old = records._dec(r["detail"]) or {}
-            if old.get("ids") == ids:
-                continue
-            if r["import_id"] != iid and not db.execute("SELECT 1 FROM sync_changes WHERE import_id=? AND event_id=?",
-                                                        (iid, r["id"])).fetchone():
-                db.execute("INSERT INTO sync_changes(import_id, event_id, previous) VALUES(?, ?, ?)",
-                           (iid, r["id"], records._enc({"body": records._dec(r["body"]), "detail": records._dec(r["detail"])})))
-            db.execute("UPDATE events SET detail=? WHERE id=?", (records._enc({**old, "type": "labday", "ids": ids}), r["id"]))
+        ids = []
+        for k in members:
+            rs = db.execute("SELECT id, import_id FROM events WHERE profile_id=? AND key_hash=? ORDER BY id", (pid, mh[k])).fetchall()
+            got = [r["id"] for r in rs if r["import_id"] in ours] or ([rs[-1]["id"]] if own and rs and not preview.day_key(k) else [])
+            ids += [i for i in got if i not in ids]
+        old = records._dec(day["detail"]) or {}
+        if not own or not ids:
+            ids = (old.get("ids") or []) + [i for i in ids if i not in (old.get("ids") or [])]
+        body = _labday_body(db, records._dec(day["body"]), ids)
+        if old.get("ids") == ids and _same(body, records._dec(day["body"])):
+            continue
+        _changing(db, iid, day)
+        db.execute("UPDATE events SET body=?, detail=? WHERE id=?",
+                   (records._enc(body), records._enc({**old, "type": "labday", "ids": ids}), day["id"]))
+
+
+def _labday_body(db, body, ids):
+    """A lab day's body titled for the rows its labitems (ids) hold (\"5 lab results\", as the importers title one; a
+    title of another form kept), its abn their count of flagged rows."""
+    rows, abn = 0, 0
+    for i in ids:
+        r = db.execute("SELECT body, detail FROM events WHERE id=?", (i,)).fetchone()
+        d = records._dec(r["detail"]) if r else None
+        if isinstance(d, dict) and isinstance(d.get("rows"), list):
+            rows += len(d["rows"])
+            abn += (records._dec(r["body"]) or {}).get("abn") or 0
+    out = {k: v for k, v in body.items() if k != "abn"}
+    if rows and isinstance(out.get("title"), str):
+        out["title"] = re.sub(r"^\d+ lab results?(?= · |$)", common.lab_day_title(rows), out["title"])
+    return {**out, **({"abn": abn} if abn else {})}
 
 
 def _meta_changes(db, pid, delta):
@@ -911,14 +1077,111 @@ def _apply_meta(db, iid, changes):
     return n
 
 
+# ---------------------------------------------------------------- lab events saved before #885 (#899, schema step 40)
+
+KEYS_TO_GIVE = "labitem_keys"   # meta, set by schema step 40: backfill_keys hasn't run yet
+
+
+def backfill_keys(db):
+    """Once, at start-up after schema step 40 (#899): the labitems a connection's pulls saved, or changed in place,
+    before #885 gave each row its own record ("keys") take them from the connection's whole set read so far (its
+    store), each row the one that set makes the same (name, value, unit, range and flag, else name, value and unit).
+    Nothing else holds them: a row is [name, value, unit, range, flag] and a result [time, value, low, high, flag...],
+    with no Observation id, and an upload's files go once its job ends, so an upload's labitems keep none. A
+    connection's store goes at Disconnect: its records take theirs from another connection's to the same server
+    (fhir_base) of the same profile, the same portal connected again. -> how many labitems were given keys"""
+    if not dbm.meta_get(db, KEYS_TO_GIVE):
+        return 0
+    n = 0
+    for c in db.execute("SELECT * FROM connections ORDER BY id").fetchall():
+        store = _load_store(c["profile_id"], c["id"])
+        if len(store["resources"]) <= 1:
+            continue
+        try:
+            full = _whole(c, store) or {}
+        except Exception:   # one store that can't be read stops none of the rest, nor the start-up
+            log.exception("connection %s: its store couldn't be read to give its lab events their keys", c["id"])
+            continue
+        made = {e["key"]: full["details"].get(str(e["id"])) for e in full.get("events") or []
+                if isinstance(e, dict) and e.get("k") == "labitem" and isinstance(e.get("key"), str)}
+        with dbm.transaction(db):
+            imps = [r[0] for r in db.execute("""SELECT id FROM imports WHERE connection_id IN (SELECT id FROM connections
+                                                WHERE profile_id=? AND fhir_base=?)""", (c["profile_id"], c["fhir_base"]))]
+            q = ",".join("?" * len(imps))
+            given = 0
+            for r in db.execute(f"""SELECT id, body, detail FROM events WHERE import_id IN ({q}) OR id IN
+                                    (SELECT event_id FROM sync_changes WHERE import_id IN ({q}))""", imps + imps).fetchall() if imps else []:
+                b, d = records._dec(r["body"]) or {}, records._dec(r["detail"])
+                f = made.get(b.get("key")) if b.get("k") == "labitem" else None
+                if not (isinstance(f, dict) and isinstance(d, dict) and isinstance(d.get("rows"), list)) or "keys" in d:
+                    continue
+                keys = _match_keys(d["rows"], f.get("rows") or [], f.get("keys") or [])
+                if any(keys):
+                    db.execute("UPDATE events SET detail=? WHERE id=?", (records._enc({**d, "keys": keys}), r["id"]))
+                    given += 1
+            if given:
+                records._bump(db, c["profile_id"])
+            n += given
+    dbm.meta_set(db, KEYS_TO_GIVE, None)
+    return n
+
+
+def _match_keys(rows, made, keys):
+    """Each of rows' own record's key: that of the row in made (the whole set's, keys its records) the same as it, else
+    the one with its name, value and unit, each taken once; None where none is."""
+    out, used = [None] * len(rows), set()
+    for same in (lambda a, b: a == b, lambda a, b: a[:3] == b[:3]):
+        for i, row in enumerate(rows):
+            j = next((j for j, m in enumerate(made[:len(keys)]) if out[i] is None and j not in used
+                      and isinstance(m, list) and isinstance(row, list) and same(m, row)), None)
+            if j is not None:
+                out[i] = keys[j]
+                used.add(j)
+    return out
+
+
 # ---------------------------------------------------------------- undo (history.undo, in its transaction)
 
 def unapply(db, iid):
     """Put back what import iid changed in place: a sync's, or an upload's results sent again by their source (#869).
     A later import that changed the same record again keeps its version, and what it says was there before becomes
     what this one found (its results' too, each the earliest). Call before the import's rows go. An import that
-    removed a kind's records (remove_kind) puts them back."""
+    removed a kind's records (remove_kind) puts them back. A lab day a pull joined (#899) lists none of its labitems
+    once they go, and one of iid's own that a pull joined is handed to that pull, holding its labitems: they keep a
+    lab day (_hand_over)."""
     _put_back(db, iid)
+    _hand_over(db, iid)
+    changed = [r[0] for r in db.execute("SELECT DISTINCT event_id FROM sync_changes WHERE import_id=? AND event_id IS NOT NULL", (iid,))]
+    _unapply(db, iid)
+    gone = {r[0] for r in db.execute("SELECT id FROM events WHERE import_id=?", (iid,))}
+    for ch in records._chunks(changed) if gone else []:   # (a later pull's version kept: iid's labitems go from it)
+        for r in db.execute(f"SELECT id, body, detail FROM events WHERE id IN ({','.join('?' * len(ch))})", ch).fetchall():
+            d = records._dec(r["detail"])
+            if isinstance(d, dict) and d.get("type") == "labday" and gone & set(d.get("ids") or []):
+                ids = [i for i in d["ids"] if i not in gone]
+                db.execute("UPDATE events SET body=?, detail=? WHERE id=?",
+                           (records._enc(_labday_body(db, records._dec(r["body"]), ids)), records._enc({**d, "ids": ids}), r["id"]))
+
+
+def _hand_over(db, iid):
+    """(#899) Undoing import iid: a lab day of its own that a later pull joined (changed in place: sync_changes) goes to
+    the latest import whose labitems it lists, holding only those, so they keep their lab day when iid's records go."""
+    for r in db.execute("""SELECT id, body, detail FROM events e WHERE import_id=? AND EXISTS
+                           (SELECT 1 FROM sync_changes s WHERE s.event_id = e.id AND s.import_id != ?)""", (iid, iid)).fetchall():
+        d = records._dec(r["detail"])
+        if not (isinstance(d, dict) and d.get("type") == "labday" and d.get("ids")):
+            continue
+        q = f"SELECT id, import_id FROM events WHERE import_id != ? AND id IN ({','.join('?' * len(d['ids']))})"
+        theirs = db.execute(q, (iid, *d["ids"])).fetchall()
+        if theirs:
+            ids = [i for i in d["ids"] if i in {x["id"] for x in theirs}]
+            db.execute("UPDATE events SET import_id=?, body=?, detail=? WHERE id=?",
+                       (max(x["import_id"] for x in theirs), records._enc(_labday_body(db, records._dec(r["body"]), ids)),
+                        records._enc({**d, "ids": ids}), r["id"]))
+
+
+def _unapply(db, iid):
+    """What import iid changed in place (sync_changes) put back, as unapply says."""
     for r in db.execute("SELECT * FROM sync_changes WHERE import_id=? ORDER BY id DESC", (iid,)).fetchall():
         prev = records._dec(r["previous"])
         if r["event_id"] is not None:
