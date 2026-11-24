@@ -21069,6 +21069,60 @@ def main():
                   "none skipped, and Labs, the Overview's list, each file's lab day (its Timeline badge and drawer rows), a share link's page and "
                   "the summary's preview and PDF give each as one result with them; two copies whose reports print different ranges (in the "
                   "edge, in the limits) are two results in each, each with its own range and flag", not bad846, bad846)
+            # ---- #848: two results at one time (tests/ranges_matrix.py's AT_ONCE: Potassium 5.0 and 5.6 ▲ High at one time,
+            # from two imports, not copies). Labs' chart and the lab panel's strip found the keyboard's stop by its time and
+            # got the first of the two again, so → stayed there for good; what read the point nearest read the first, so
+            # the ▲ High, drawn over it, was never said (only the table listed it); and Compare said one result a lab. Now
+            # the keyboard steps through that time once and on past it, and the readout, the tooltip and what's announced
+            # say both, each told apart by its flag and range
+            db = dbm.connect()
+            apid = prof_r.create_profile(db, "At one time (fictional)", owner_id=owner)
+            for imp848, fmt848 in ((1, "csv"), (2, "fhir")):
+                with dbm.transaction(db):
+                    rec_r.store(db, apid, M752.copies(imp848, cases=M752.AT_ONCE), "upload", fmt=fmt848)
+            db.close()
+            page.goto(base + f"/?profile={apid}")
+            page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {apid}", timeout=20000)
+            bare848, two848 = (lambda t: re.sub(r"[▲▼◆]\s*", "", t)), M752.day(M752.AT_ONCE_DAY)[:10]
+
+            def keys848(where, sel, read):
+                """the keyboard on a chart (sel): Home, → twice, ← twice; what's wrong with its stops' days, and at the
+                two results' time each time its readout (read) and what's announced"""
+                page.focus(sel)
+                out = []
+                for k in ("Home", "ArrowRight", "ArrowRight", "ArrowLeft", "ArrowLeft"):
+                    js("document.getElementById('sgStatus').textContent = ''")
+                    page.keyboard.press(k)
+                    settle(200)
+                    out.append(js("""([sel, read]) => { const s = document.querySelector(sel);
+                      return [s._kt == null ? null : isoDay(s._kt), document.querySelector(read)?.innerText || '', document.getElementById('sgStatus').textContent]; }""", [sel, read]))
+                page.keyboard.press("Escape")
+                days = [M752.day(M752.AT_ONCE_DAYS[i])[:10] for i in (0, 1, 2, 1, 0)]
+                return [] if [o[0] for o in out] == days else [f"{where}: the keys' stops {[o[0] for o in out]} not {days}"], [o[1:] for o in out if o[0] == two848]
+
+            js("() => { state.tables.clear(); state.sel = new Set(['Potassium']); applyPreset('all'); switchTab('labs', 'chart'); renderLabs(); }")
+            settle(500)
+            bad848, at848 = keys848("Labs' chart", '#charts .chart[data-lab="Potassium"] svg.ck', '#charts .chart[data-lab="Potassium"] .read')
+            bad848 += [f"Labs' chart at the two: its readout “{r}”, said “{s}”" for r, s in at848 if M752.AT_ONCE_SAID["labs"] not in r
+                       or not s.startswith("2 results") or any(bare848(w) not in s for w in M752.AT_ONCE_SAID["each"])] + ([] if len(at848) == 2 else ["Labs' chart: the two not stepped to twice"])
+            js("openLab(SERIES.find(s => s.name === 'Potassium'))")
+            settle(400)
+            b848, at848 = keys848("the lab panel's strip", "#dbody svg.lab-strip", "#tip")
+            bad848 += b848 + [f"the lab panel's strip at the two: its tooltip “{r}”, said “{s}”" for r, s in at848 if not r.startswith("2 results")
+                              or any(w not in r or bare848(w) not in s for w in M752.AT_ONCE_SAID["each"])] + ([] if len(at848) == 2 else ["the strip: the two not stepped to twice"])
+            js("closeDrawer()")
+            js("() => { cmpSel = ['Potassium', 'Sodium'].map(n => cmpKey(SERIES.find(s => s.name === n))).concat(''); state.tables.delete('#cmp'); switchTab('labs', 'compare'); renderCompare(); }")
+            settle(500)
+            b848, at848 = keys848("Compare", "#cmpSvg", "#cmpRead0")
+            bad848 += b848 + [f"Compare at the two: its readout “{r}”, said “{s}”" for r, s in at848 if M752.AT_ONCE_SAID["compare_read"] not in r
+                              or bare848(M752.AT_ONCE_SAID["compare"]) not in s] + ([] if len(at848) == 2 else ["Compare: the two not stepped to twice"])
+            js("() => { cmpSel = null; switchTab('labs', 'chart'); }")
+            check("#848: two results at one time: → and ← step through their time once and on past it on Labs' chart, the lab panel's strip and "
+                  "Compare (→ stayed there for good), and the readout, the tooltip and what's announced say both, the ▲ High one too, each with its "
+                  "flag and range", not bad848, bad848)
+            db = dbm.connect()
+            prof_r.delete_profile(db, apid)
+            db.close()
             # ---- #780: a one-sided range keeps whether its limit includes its edge ("<5" leaves 5 out, "<=5" keeps it;
             # ">60", ">=60"). The page's rule and words against the server's over a grid of values, ranges, bounds and
             # edges; then the matrix's one-sided cases through the real CSV importer (ranges_matrix printed(), each range
