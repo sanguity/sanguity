@@ -12,7 +12,8 @@
    - ckLegend: a chart's key, each mark keyed as it's drawn (a line for a line);
    - ckCross, ckSync, ckTip: the crosshair, at one time on every time chart of a view, and the hover's readout pinned to
      the top of the plot beside it; ckAt, ckNearest, ckEach, ckOne: every result at the time hovered or stepped to, each
-     said (#848); ckRead: a chart's readout in its header, as big whatever it says (#865);
+     said (#848), ckTimes every time's; ckRead, ckReadAt: a chart's readout in its header, as big whatever it says
+     (#865, #894);
    - ckFlagRows: names over marks in up to three rows, with leader lines and "+N" (Labs' event track, event-track.js);
    - abnMark: an out-of-range result's ▲, ▼ or ◆;
    - ckSpark: the one sparkline, scaled to the reference band (the Overview, the visit summary, a share link's page);
@@ -383,10 +384,13 @@ function ckTip(svg, px, nodes) {
    the readout, the tooltip and what's announced. The keyboard went no further than their time (it looked for the
    time's index and found the first again), and what read the point nearest read the first, so the flagged one, drawn
    last over it (#825), was never said. ckAt(pts, t): pts' results at time t (pts with .ts), a flagged one first (the
-   one ringed); ckNearest(pts, t, tol): those at the time nearest t, within tol ([] for none); ckEach(at, say): their
-   words, say(p) for one, "2 results: …; …" for more; ckOne(p, value): one of them told apart, its value as given, its
-   flag and its range: "5.6 mmol/L ▲ High (3.5–5.3)" */
-const ckAt = (pts, t) => pts.filter(p => p.ts === t).sort((a, b) => !!b[4] - !!a[4]);
+   one ringed; ckFirst, their one order); ckTimes(pts): every time's results, each so, in pts' order; ckNearest(pts, t,
+   tol): those at the time nearest t, within tol ([] for none); ckEach(at, say): their words, say(p) for one,
+   "2 results: …; …" for more; ckOne(p, value): one of them told apart, its value as given, its flag and its range:
+   "5.6 mmol/L ▲ High (3.5–5.3)" */
+const ckFirst = (a, b) => !!b[4] - !!a[4];
+const ckAt = (pts, t) => pts.filter(p => p.ts === t).sort(ckFirst);
+function ckTimes(pts) { const at = new Map(); for (const p of pts) (at.get(p.ts) || at.set(p.ts, []).get(p.ts)).push(p); return [...at.values()].map(g => g.sort(ckFirst)); }
 function ckNearest(pts, t, tol = Infinity) {
   let b = null;
   for (const p of pts) if (!b || Math.abs(p.ts - t) < Math.abs(b.ts - t)) b = p;
@@ -416,6 +420,12 @@ function ckRead(box, says) {
   box.replaceChildren(said, ...room.map(([, parts]) => el("span", {class: "ck-room", "aria-hidden": "true"}, ...parts)));
   return ps => said.replaceChildren(...present(ps));
 }
+/* a time chart's readout for its results pts (ckRead): say(at, last) its words, for at, the results at the time hovered
+   or stepped to as ckAt gives them, or for null, at rest, last the latest. Its room is every time's words and every
+   latest's, built by say as what's shown is, each time's results in the order they're said (#894: the room had two at
+   one time in the file's order, the hover the flagged one first, and wrapped, what was said could take a line more,
+   so the chart moved still); more: other words it can say */
+const ckReadAt = (box, pts, say, more = []) => ckRead(box, [...pts.map(p => say(null, p)), ...ckTimes(pts).map(at => say(at)), ...more]);
 
 /* ---- the overview strip (#295): a tab's records across every year in 40 px (more with larger text, #641), under the
    period bar, the period a window on it (charts.js stripDraw). ckStripBins: the stretch, the shortest of a day, a week,
