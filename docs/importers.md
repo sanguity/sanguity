@@ -208,7 +208,11 @@ ticks it to keep anyway; a series adds only the points (time and value as report
 point it has already, but whose copy in the upload says something of its range or flag that no copy there says, or
 whose row in the upload's lab day is new, is added as a copy, read as one result with the copy there (#846), always
 with its own row, whose labitem and lab day are kept with it even where their keys are known (#868: the same rule for
-Type them in and a sync; a copy the upload gives no row of its own is left out, never a result without its lab day). A
+Type them in and a sync; a copy the upload gives no row of its own is left out, never a result without its lab day).
+A point its source sends again saying something else of its range or flag (#869: its row in a labitem whose key, the
+source's own record's and not a `:h:` hash, is the one its point here has its row in, the same series key, time and
+value) is that result, updated in place with its row, never a copy: so give a labitem the key of the report it comes
+in, or of its day, as the FHIR importer does. A
 record without a key falls back to the same importer, date, kind and content, which is slower and easier to fool, so
 give keys. A lab day stays while any of its results is new and goes when all of them are duplicates; `check()` runs
 again on what's left before it's saved.

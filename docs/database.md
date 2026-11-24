@@ -511,7 +511,10 @@ in [connected-sources-oauth.md](connected-sources-oauth.md): each install regist
 - **imports.connection_id**: the connection an import came from (the first pull, then each sync, origin `sync`).
 - **sync_changes**: what a sync changed in place (an event, or an entry of an import's profile-wide lists), with what
   it was before, so undoing that sync puts it back. A later sync that changed the same record again inherits the
-  "before".
+  "before". Since #869 an upload's import has them too, and an event's "before" may list results (`"results": [[result
+  id, its body before]]`): results here that their source sent again, amended (a re-pull or a re-sent FHIR
+  Observation's corrected range), updated in place with their drawer rows (server/preview.py update()), never copied;
+  undone with the import.
 - **smart_clients.waiting** (schema version 29, #165): when an admin marked the source as waiting for the vendor's
   review, NULL otherwise. While it is set nobody can connect the source, its client ID may still be empty, and
   Portals and health plans tells people to upload the portal's export meanwhile.

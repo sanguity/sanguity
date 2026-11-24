@@ -2098,6 +2098,15 @@ Everything on `main` so far; it becomes the first tagged release.
   save with its Undo; one the upload gives no row of its own is left out. An upload's review says the same of each copy,
   "with its report's range", "with its report's flag", or "to go with its own lab day" for a file that prints neither
   (it said "with its report's range and flag" of every copy).
+- **A result its source sends again amended is updated in place, never copied** (#869): a connected source's
+  Hemoglobin 12.1 (13.5–17.5, Low) corrected at the source to 12.0–15.5 and Normal came back at the next sync as a
+  second result beside the first, Labs saying "2 results · 1 outside reference range", and its lab day's row, updated
+  in place, read the old result's Low beside the new range; the same FHIR file uploaded again with a range corrected
+  did the same, and a flag changed with no range was lost. Now the same record from the same source (its row in the
+  report or the day it came in, by its key) is updated in place, its range, flag and row as the source gives them now,
+  in every view; an upload's review says so ("4 lab results already here from the same source are updated with the
+  range and flag this file gives now") and its button "Update 4 lab results", and undoing the sync or the upload
+  puts back what was there.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

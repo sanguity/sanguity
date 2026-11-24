@@ -395,6 +395,59 @@ class Connections(unittest.TestCase):
         # undone records don't come back by themselves at the next pull
         self.assertIsNone(self.pull(cid)["import"])
 
+    def test_a_result_sent_again_is_updated_in_place(self):   # #869
+        """A result the source amends comes back at the next pull: the same result, updated in place, range and flag,
+        never a copy. The report's Hemoglobin 12.1 (13.5–17.5, Low) amended to 12.0–15.5 and Normal, its Platelet Count
+        given a range (none, then 150–400: High), an ALT's flag changed (High with no range, then Abnormal). The pull
+        updated their lab day's rows in place but added a copy of each result: two results, the row reading the first's
+        Low beside the new range. Now no result is added, each is as the source sends it now, its row agreeing with it;
+        undoing the pull puts back the results and the rows."""
+        code = lambda c: {"coding": [{"system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation", "code": c}]}
+        self.fake.add({"resourceType": "Observation", "id": "obs-alt", "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
+                       "code": {"coding": [{"system": "http://loinc.org", "code": "1742-6"}], "text": "ALT"},
+                       "effectiveDateTime": "2025-03-04T09:45:00-06:00", "valueQuantity": {"value": 60, "unit": "U/L"},
+                       "interpretation": [code("H")]}, patient="pat-1")
+        self.fake.update("Observation", "obs-plt", {"referenceRange": None})   # its range given at the next pull
+        cid = self.connect(self.source())
+        self.first_pull(cid)
+        before, n = self.data(), self.counts()
+
+        def said(data):   # each lab's results, and its rows' ranges as printed and flags as read, by the row's result
+            from server import crossmatch, ranges
+            drawer, out = crossmatch._rows(data), {}
+            for s in data["labs"]:
+                if s["name"] in ("Hemoglobin", "Platelet Count", "ALT"):
+                    for p in s["pts"]:
+                        at = crossmatch._row_of(drawer, s, p)
+                        row = at and data["details"][str(at[0])]["rows"][at[1]]
+                        out.setdefault(s["name"], []).append([p[2], p[3], p[4], row and row[3], row and ranges.read_flag(row[4], p[1], p[2], p[3], p[5])])
+            return out
+        self.assertEqual(said(before), {"Hemoglobin": [[13.5, 17.5, "L", "13.5 - 17.5", "L"]], "Platelet Count": [[None, None, "", "", ""]],
+                                        "ALT": [[None, None, "H", "", "H"]]})
+        self.fake.update("Observation", "obs-hgb", {"referenceRange": [{"low": {"value": 12.0, "unit": "g/dL"}, "high": {"value": 15.5, "unit": "g/dL"},
+                                                                        "text": "12.0-15.5"}], "interpretation": [code("N")]})
+        self.fake.update("Observation", "obs-plt", {"referenceRange": [{"low": {"value": 150}, "high": {"value": 400}}]})
+        self.fake.update("Observation", "obs-alt", {"interpretation": [code("A")]})
+        res = self.pull(cid)
+        self.assertTrue(res["ok"], res)
+        self.assertEqual((res["counts"]["results"], res["counts"].get("updated")), (0, 3), res)
+        self.assertEqual({k: v for k, v in self.counts().items() if k != "imports"}, {k: v for k, v in n.items() if k != "imports"}, "no result added")
+        self.assertEqual(said(self.data()), {"Hemoglobin": [[12.0, 15.5, "", "12.0-15.5", ""]], "Platelet Count": [[150, 400, "H", "150 - 400", "H"]],
+                                             "ALT": [[None, None, "A", "", "A"]]}, "each as sent now, its row agreeing")
+        # amended again (its report's Hemoglobin and Platelet Count one record), then the first pull undone: what the later
+        # one changed again keeps its version (sync.unapply), the rest as before; then the later one: all as before
+        self.fake.update("Observation", "obs-hgb", {"referenceRange": [{"low": {"value": 12.0, "unit": "g/dL"}, "high": {"value": 15.0, "unit": "g/dL"},
+                                                                        "text": "12.0-15.0"}]})
+        again = self.pull(cid)
+        self.assertEqual((again["counts"]["results"], again["counts"].get("updated")), (0, 1), again)
+        undo = lambda iid: self.robin.post(f"/api/profiles/{self.pid}/imports/{iid}/undo", headers=H)
+        self.assertEqual(undo(res["import"]).status_code, 200)
+        self.assertEqual(said(self.data()), {"Hemoglobin": [[12.0, 15.0, "", "12.0-15.0", ""]], "Platelet Count": [[150, 400, "H", "150 - 400", "H"]],
+                                             "ALT": [[None, None, "H", "", "H"]]}, "the report as the later pull left it, the ALT as before")
+        self.assertEqual(undo(again["import"]).status_code, 200)
+        self.assertEqual(said(self.data()), said(before), "both undone: as they were")
+        self.assertEqual(self.counts(), n)
+
     def test_paging(self):
         self.fake.page_size = self.fake.max_count = 2
         cid = self.connect(self.source())

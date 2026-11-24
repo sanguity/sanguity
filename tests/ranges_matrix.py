@@ -779,6 +779,58 @@ TYPED_OUT = {("C-Reactive Protein", "mg/L"): ["5", "High", "< 5", 1, 2], ("Potas
              ("Sodium, Blood", "mmol/L"): ["150", "High", "135–145", 1, 1]}
 
 
+# ---------------------------------------------------------------- #869: the same record sent again by its source
+# A FHIR file's results (RESENT, at RESENT_BACK days back), sent again with what its source amended (resent(1)): the
+# report's Hemoglobin with its range corrected and its Low taken back (13.5–17.5 "L", then 12.0–15.5 "N"), its WBC's
+# range given (none, then 4.5–11.0, so High), a Potassium's range corrected (3.5–5.3, then 3.5–5.1: High) and an
+# ALT's flag changed ("H" with no range, then "A": Flagged). Each Observation the same, by its id in the report or by its
+# day (its labitem's key), its value and time the same. The second upload added a copy of each beside the first, read
+# as one result (#825) or, its range another, as two (#847), its lab day's rows (the first's, by key) reading the old
+# point's flag beside the new range. Now each is updated in place, range and flag, the drawer's row with it: one result
+# each, as the second file says. RESENT: lab (code text) -> (LOINC, unit, value, [(range text, low, high, interpretation)
+# first, then]); RESENT_HERE the second's review; RESENT_SEEN each result as every view shows it; RESENT_DAYS the lab
+# day's rows (the test as printed, its flag) and RESENT_RANGES each row's Ref range as printed now; RESENT_TRENDS and
+# RESENT_OUT the summary's since RESENT_SINCE days back
+RESENT_BACK, RESENT_SINCE = 5, 10
+RESENT = {"Hemoglobin": ("718-7", "g/dL", 12.1, [("13.5-17.5", 13.5, 17.5, "L"), ("12.0-15.5", 12.0, 15.5, "N")], "report"),
+          "WBC": ("6690-2", "10*3/uL", 12.5, [(None, None, None, None), ("4.5-11.0", 4.5, 11.0, None)], "report"),
+          "Potassium": ("2823-3", "mmol/L", 5.2, [("3.5-5.3", 3.5, 5.3, None), ("3.5-5.1", 3.5, 5.1, None)], None),
+          "ALT": ("1742-6", "U/L", 60, [(None, None, None, "H"), (None, None, None, "A")], None)}
+RESENT_HERE = {"updates": 4, "copies": 0, "results": 0}
+RESENT_SAID = "4 lab results already here from the same source are updated with the range and flag this file gives now, not added again."
+RESENT_SEEN = {("ALT", "U/L"): [["A", None, None]], ("Hemoglobin", "g/dL"): [["", 12, 15.5]], ("WBC", "10*3/uL"): [["H", 4.5, 11]],
+               ("Potassium, Blood", "mmol/L"): [["H", 3.5, 5.1]]}
+RESENT_DAYS = {(1, RESENT_BACK): [("Hemoglobin", ""), ("WBC", "H"), ("ALT", "A"), ("Potassium", "H")]}
+RESENT_RANGES = ["12.0-15.5", "4.5-11.0", "", "3.5-5.1"]
+RESENT_LABS = ["ALT", "Hemoglobin", "Potassium, Blood", "WBC"]
+RESENT_TRENDS = {("ALT", "U/L"): [None, ["60", "Flagged"], ""], ("Hemoglobin", "g/dL"): [None, ["12.1", None], "12–15.5"],
+                 ("Potassium, Blood", "mmol/L"): [None, ["5.2", "High"], "3.5–5.1"], ("WBC", "10*3/uL"): [None, ["12.5", "High"], "4.5–11"]}
+RESENT_OUT = {("ALT", "U/L"): ["60", "Flagged", "", 1, 1], ("WBC", "10*3/uL"): ["12.5", "High", "4.5–11", 1, 1],
+              ("Potassium, Blood", "mmol/L"): ["5.2", "High", "3.5–5.1", 1, 1]}
+
+
+def resent(k, today=None):
+    """RESENT as its source sends it the first time (k 0) or again, amended (k 1): (a file's name, a FHIR Bundle's text),
+    the report's results under a DiagnosticReport, the rest on their own (keyed by their day)."""
+    import json
+    t = day(RESENT_BACK, today)
+    obs = []
+    for name, (code, unit, v, sent, where) in RESENT.items():
+        text, lo, hi, interp = sent[k]
+        r = {"resourceType": "Observation", "id": "obs-" + code, "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
+             "code": {"coding": [{"system": "http://loinc.org", "code": code}], "text": name}, "effectiveDateTime": t,
+             "valueQuantity": {"value": v, "unit": unit}}
+        if text:
+            r["referenceRange"] = [{"low": {"value": lo, "unit": unit}, "high": {"value": hi, "unit": unit}, "text": text}]
+        if interp:
+            r["interpretation"] = [{"coding": [{"system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation", "code": interp}]}]
+        obs.append(r)
+    report = {"resourceType": "DiagnosticReport", "id": "dr-cbc", "status": "final", "category": [{"coding": [{"code": "LAB"}]}],
+              "code": {"text": "CBC"}, "effectiveDateTime": t,
+              "result": [{"reference": "Observation/" + o["id"]} for o, (_, (*_, where)) in zip(obs, RESENT.items()) if where]}
+    return f"labs-{k + 1}.json", json.dumps({"resourceType": "Bundle", "type": "collection", "entry": [{"resource": r} for r in obs + [report]]})
+
+
 def typed(k, today=None):
     """TYPED's k-th save as Type them in's rows ({date, time, test, value, unit, range}), and as a spreadsheet's copy to
     paste into it (a header, then a row each, tab-separated)."""

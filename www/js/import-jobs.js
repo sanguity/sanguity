@@ -268,6 +268,11 @@
       (kinds > 1 ? ": " + said.map(([k, w]) => `${b[k]} ${w}`).join(" and ") + lost + (b.row ? `, and ${b.row}${row.slice(1)}` : "")
         : said.length ? " " + said[0][1] + lost : b.row ? row : lost || ", so neither report's is lost") + "."});
   };
+  /* lab results already here that their source sends again, saying something else of their range and flag: updated in
+     place (#869, the server's "updates"), in the bar as already here, and said under it */
+  const updatesHere = j => (j.duplicates || {}).updates || 0;
+  const updatesLine = j => { const n = updatesHere(j); return n ? node("p", {class: "hint imp-updates", text: `${cap(plural(n, ["lab result", "lab results"]))} ` +
+    `already here from the same source ${n === 1 ? "is" : "are"} updated with the range and flag this file gives now, not added again.`}) : null; };
   // the duplicates of what the profile has (#22): skipped, each with a box to add it again anyway; a series' results
   // dated from the first to the last (#490), a lab draw not offered beside its own results
   function dupChoices(j) {
@@ -322,6 +327,7 @@
 
   // what an import brings besides events, in the order the counts are listed: [count key, words, icon, colour]
   // (#179 the profile's lists, #182 ECGs, #223 an Apple Health export's readings and cycle records)
+  const UPDATED = ["lab result updated", "lab results updated"];   // (#869: counts' "updated", once saved)
   const EXTRA = [["results", ["lab result", "lab results"], "test-tube-diagonal", "var(--c-lab)"],
     ["documents", ["attached file", "attached files"], "file-text", "var(--ink2)"],
     ["allergies", ["allergy", "allergies"], "triangle-alert", "var(--muted)"],
@@ -336,7 +342,8 @@
     ["glucose_readings", ["glucose meter reading", "glucose meter readings"], "droplet", "var(--ink2)"],
     ["cgm_days", ["day of CGM readings", "days of CGM readings"], "droplet", "var(--ink2)"],
     ["heights", ["height, offered for About this person", "heights, offered for About this person"], "ruler", "var(--ink2)"],
-    ["cycle", ["cycle tracking record", "cycle tracking records"], "droplet", "var(--c-cycle)"]];
+    ["cycle", ["cycle tracking record", "cycle tracking records"], "droplet", "var(--c-cycle)"],
+    ["updated", UPDATED, "test-tube-diagonal", "var(--c-lab)"]];   // results here updated in place (#869), once saved
   const RECORDS = new Set(["results", "allergies", "problems", "upcoming"]);   // besides events: what's a record
   // a wearable's (the server's jobs._watch_counts), counted in the review's bar beside the records (#500)
   const WATCH = new Set(["watch_days", "workouts", "ecgs", "rhythm", "bp_readings", "temp_readings", "glucose_readings", "cgm_days", "heights", "cycle"]);
@@ -376,7 +383,7 @@
   function split(j) {
     const c = j.counts || {}, same = (j.possible || []).length, copies = copiesHere(j);
     const records = counted(c).filter(x => x.record || WATCH.has(x.k)).reduce((a, x) => a + x.n, 0);
-    const here = allHere(j) + copies;
+    const here = allHere(j) + copies + updatesHere(j);   // (results updated in place, #869: not in what's new)
     const parts = [["new", Math.max(0, records - same - copies), "new"], ["here", here, "already here"], ["same", same, "possibly the same"]];
     const total = parts.reduce((a, p) => a + p[1], 0);
     if (!total) return null;
@@ -420,7 +427,8 @@
             if (it.kind === "results") c.results = (c.results || 0) + (it.n || 0);
             else c.kinds[it.kind] = (c.kinds[it.kind] || 0) + 1;
           }
-          const w = addWords(c) || (j.restores ? "Add from the export" : null);   // (#589: its journal... only)
+          // (#589: its journal... only; #869: results here updated in place, only)
+          const w = addWords(c) || (j.restores ? "Add from the export" : updatesHere(j) ? "Update " + plural(updatesHere(j), ["lab result", "lab results"]) : null);
           add.textContent = w || "Nothing to add";
           add.disabled = !w;
         };
@@ -483,7 +491,7 @@
           node("p", {class: "hint", text: j.new ? "Nothing is saved until you add it with the button at the foot."
             : sgNothing(j) ? "Nothing in this upload is left to add to this profile. Cancel it to remove the upload."
             : "Everything in this upload is in this profile already. Tick a duplicate to add it again anyway, or cancel."}),
-          j.new ? tiles(j) : null, restoredLine(j.restores, false), split(j), labs.part, same.part, dups.part, copiesLine(j), notes(j),
+          j.new ? tiles(j) : null, restoredLine(j.restores, false), split(j), labs.part, same.part, dups.part, copiesLine(j), updatesLine(j), notes(j),
           node("div", {class: "sg-bar imp-actions", role: "region", "aria-label": "Add or cancel this import"},
             node("span", {class: "sg-bar-what"}, node("span", {class: "sg-bar-n", text: "Not saved yet"}), msg),
             node("span", {class: "sg-bar-acts"}, cancel, add)));
@@ -578,8 +586,10 @@
     // (#360: it can't be reversed): the card stays as it is
     const what = items.map(li => li.textContent);
     const most = counted(c).map((x, i) => [x.n, what[i]]).sort((a, b) => b[0] - a[0]).map(x => x[1]);   // the largest first (#497)
-    const labs = c.results > 0, where = labs ? "labs" : "timeline";
-    const t = toast(what.length ? `Imported ${most.slice(0, 2).join(", ")}${what.length > 2 ? " and more" : ""}.` : "Imported: nothing new.", {
+    const labs = c.results > 0 || c.updated > 0, where = labs ? "labs" : "timeline";
+    // (#869: results here updated in place, and nothing else: "Updated 4 lab results.")
+    const t = toast(what.length === 1 && c.updated ? `Updated ${plural(c.updated, ["lab result", "lab results"])}.`
+      : what.length ? `Imported ${most.slice(0, 2).join(", ")}${what.length > 2 ? " and more" : ""}.` : "Imported: nothing new.", {
       actions: [{text: labs ? "Open Labs" : "Open the timeline", href: `index.html?profile=${pid}#${where}`},
         ...(j.import_id != null && what.length ? [{text: "Undo…", onClick: () => undoImport(card, pid, j)}] : [])]});
     if (j.import_id != null) {
@@ -671,6 +681,7 @@
     if (c.glucose_readings) out.push(plural(c.glucose_readings, ["glucose meter reading", "glucose meter readings"]));
     if (c.cgm_days) out.push(plural(c.cgm_days, ["day of CGM readings", "days of CGM readings"]));
     if (c.heights) out.push(plural(c.heights, ["height", "heights"]));
+    if (c.updated) out.push(plural(c.updated, UPDATED));   // results here updated in place (#869)
     return out.length ? out.join(", ") : "No records";
   }
   /* what an Undo asks, of an import as Import history has it (e, GET imports' entry), in one wording wherever it's
@@ -679,10 +690,11 @@
      would forget now (#500, the server's labmap.forgettable: not those another import has used since); e.cycle: the
      cycle records it saved, which only the toast of the person who saved them knows (#534) */
   function undoAsks(e) {
-    const n = e.lab_matches || 0, typed = e.origin === "manual";
-    const what = [importCounts(e.counts, false), e.cycle && plural(e.cycle, EXTRA.find(x => x[0] === "cycle")[1])].filter(w => w && w !== "No records").join(", ");
+    const n = e.lab_matches || 0, typed = e.origin === "manual", upd = (e.counts || {}).updated || 0;   // (#869: results updated in place)
+    const what = [importCounts({...e.counts, updated: 0}, false), e.cycle && plural(e.cycle, EXTRA.find(x => x[0] === "cycle")[1])].filter(w => w && w !== "No records").join(", ");
     return `Everything this ${typed ? "typed-in" : e.label} import brought is removed${what ? ": " + what.toLowerCase() : ""}` +
       (e.upload != null ? ", and the files uploaded for it" : "") + "." +
+      (upd ? ` The ${plural(upd, ["lab result", "lab results"])} it updated ${upd === 1 ? "gets" : "get"} back the range and flag ${upd === 1 ? "it" : "they"} had.` : "") +
       (!n ? "" : n === 1 ? " The lab-name match made for it is forgotten too: the next import of that name asks about it again."
        : ` The ${n.toLocaleString("en-US")} lab-name matches made for it are forgotten too: the next import of those names asks about them again.`) +
       ` This can't be reversed; you can ${typed ? "type them in" : "import the files"} again.`;
