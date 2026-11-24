@@ -11,7 +11,8 @@
    - ckDecimate: a series with more points than pixels, drawn with what each pixel shows (#292);
    - ckLegend: a chart's key, each mark keyed as it's drawn (a line for a line);
    - ckCross, ckSync, ckTip: the crosshair, at one time on every time chart of a view, and the hover's readout pinned to
-     the top of the plot beside it;
+     the top of the plot beside it; ckAt, ckNearest, ckEach, ckOne: every result at the time hovered or stepped to, each
+     said (#848);
    - ckFlagRows: names over marks in up to three rows, with leader lines and "+N" (Labs' event track, event-track.js);
    - abnMark: an out-of-range result's ▲, ▼ or ◆;
    - ckSpark: the one sparkline, scaled to the reference band (the Overview, the visit summary, a share link's page);
@@ -349,8 +350,9 @@ function ckLegend(items, tag = "div") {
 }
 
 /* ---- the crosshair, synced: a chart sets svg._hover(t), which puts its crosshair (and whatever else it marks) at its
-   own nearest point to t, or hides it for null or nothing near, and returns that point. ckSync(svg, t) does so on every
-   time chart (svg.ck) of svg's view, so they all show one date, and returns svg's own point */
+   own nearest point to t, or hides it for null or nothing near, and returns what it marks there (a lab's chart: every
+   result at that time, ckAt, #848). ckSync(svg, t) does so on every time chart (svg.ck) of svg's view, so they all
+   show one date, and returns svg's own */
 const ckCross = (T, B) => el("svg:line", {class: "cross", y1: T, y2: B, visibility: "hidden"});
 function ckCrossAt(cross, px) {
   if (px == null) return cross.setAttribute("visibility", "hidden");
@@ -369,6 +371,22 @@ function ckTip(svg, px, nodes) {
   const p = svgPoint(svg, px, svg._geom.T);
   showTip(nodes, {clientX: p.clientX, clientY: p.clientY - 14});   // showTip sets it 14 px below the point it's given
 }
+/* ---- every result at one time (#848): two results at one time (two imports' draws, a pair marked "Not the same",
+   #833) are one place on a chart, one stop of its keyboard (charts.js chartKeys) and of its hover, and each is said in
+   the readout, the tooltip and what's announced. The keyboard went no further than their time (it looked for the
+   time's index and found the first again), and what read the point nearest read the first, so the flagged one, drawn
+   last over it (#825), was never said. ckAt(pts, t): pts' results at time t (pts with .ts), a flagged one first (the
+   one ringed); ckNearest(pts, t, tol): those at the time nearest t, within tol ([] for none); ckEach(at, say): their
+   words, say(p) for one, "2 results: …; …" for more; ckOne(p, value): one of them told apart, its value as given, its
+   flag and its range: "5.6 mmol/L ▲ High (3.5–5.3)" */
+const ckAt = (pts, t) => pts.filter(p => p.ts === t).sort((a, b) => !!b[4] - !!a[4]);
+function ckNearest(pts, t, tol = Infinity) {
+  let b = null;
+  for (const p of pts) if (!b || Math.abs(p.ts - t) < Math.abs(b.ts - t)) b = p;
+  return b && Math.abs(b.ts - t) <= tol ? ckAt(pts, b.ts) : [];
+}
+const ckEach = (at, say) => at.length > 1 ? `${at.length} results: ${at.map(say).join("; ")}` : at.length ? say(at[0]) : "";
+const ckOne = (p, value) => [value, flagWord(p[4]), rangeWords(p) && `(${rangeWords(p)})`].filter(Boolean).join(" ");
 
 /* ---- the overview strip (#295): a tab's records across every year in 40 px (more with larger text, #641), under the
    period bar, the period a window on it (charts.js stripDraw). ckStripBins: the stretch, the shortest of a day, a week,

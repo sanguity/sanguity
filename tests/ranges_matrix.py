@@ -730,3 +730,24 @@ def uploaded(kind, today=None):
 def uploaded_days(order):
     """Each file's lab day's rows (UPLOADED_ROWS) by (import: 1 the first uploaded, in order; days back)."""
     return {(order.index(k) + 1, UPLOADED_BACK): rows for k, rows in UPLOADED_ROWS.items()}
+
+
+# ---------------------------------------------------------------- #848: two results at one time, each said
+# A profile of two imports (copies(1, cases=AT_ONCE), then copies(2, ...)): Potassium's draws, and at one time
+# (AT_ONCE_DAY days back) a result from each import, not copies (two values, each its own range): 5.0 inside 3.5–5.1,
+# and 5.6 above 3.5–5.3, its report's H; and Sodium's, to compare it with. Labs' chart, the lab panel's strip and Compare
+# step from the keyboard through that time once, on to the next (→ stayed there for good), and say both, in the
+# readout, the tooltip and what's announced (what read the point nearest read the first, so the ▲ High one, drawn last
+# over it, was never said). AT_ONCE_DAYS: the draws, days back. AT_ONCE_SAID: each said as Labs' readout and the strip's
+# tooltip tell them apart, the flagged one first ("each"); Labs' readout ("labs"), Compare's slot readout
+# ("compare_read") and its tooltip's line ("compare")
+AT_ONCE = {
+    ("Potassium", "mmol/L"): {1: [(60, 4.1, 3.5, 5.1, "", "4.1"), (30, 5.0, 3.5, 5.1, "", "5.0"), (10, 4.4, 3.5, 5.1, "", "4.4")],
+                              2: [(30, 5.6, 3.5, 5.3, "H", "5.6")]},
+    ("Sodium", "mmol/L"): {1: [(60, 140, 135, 145, "", "140"), (30, 141, 135, 145, "", "141"), (10, 139, 135, 145, "", "139")]},
+}
+AT_ONCE_DAYS, AT_ONCE_DAY = [60, 30, 10], 30
+AT_ONCE_SAID = {"each": ["5.6 mmol/L ▲ High (3.5–5.3)", "5.0 mmol/L (3.5–5.1)"],
+                "labs": "2 results: 5.6 mmol/L ▲ High (3.5–5.3); 5.0 mmol/L (3.5–5.1) · ",
+                "compare_read": "2 results: 5.6 mmol/L · 117%; 5.0 mmol/L · 94% · ",
+                "compare": "Potassium: 2 results: 5.6 mmol/L, 117% of its range (3.5–5.3) · ▲ Above range; 5.0 mmol/L, 94% of its range (3.5–5.1)"}

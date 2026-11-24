@@ -303,34 +303,40 @@ function drawChart(svg, s, pts, read, live) {   // live: a frame of a drag, at t
   const hit = el("svg:rect", {x: L, y: T - 12, width: R - L, height: B - T + 12, fill: "transparent"});
   g.push(cross, dot, hit);
   svg.replaceChildren(...g.filter(Boolean));
-  const lastP = pts[pts.length - 1];
-  const setRead = p => {
+  const lastP = pts[pts.length - 1], when = p => s.watch ? fmtD(p.ts) : fmtDT(p.ts);
+  // the readout: the latest, or every result at the time hovered (#848: "2 results: 5.6 mmol/L ▲ High (3.5–5.3);
+  // 5.0 mmol/L (3.5–5.1)", each told apart by its range, chartkit.js ckEach)
+  const setRead = at => {
     read.replaceChildren();
-    if (!p) { if (lastP) read.append("Latest ", el("b", {text: readText(s, lastP)[0].replace(` ${s.unit}`, "")}), ` · ${fmtD(lastP.ts)}`); return; }
-    read.append(el("b", {text: readText(s, p)[0]}), p[4] ? el("span", {style: {color: "var(--crit)", fontWeight: "var(--fw-semibold)"}, text: " " + flagWord(p[4])}) : "", ` · ${s.watch ? fmtD(p.ts) : fmtDT(p.ts)}`);
+    if (!at) { if (lastP) read.append("Latest ", el("b", {text: readText(s, lastP)[0].replace(` ${s.unit}`, "")}), ` · ${fmtD(lastP.ts)}`); return; }
+    const p = at[0];
+    if (at.length > 1) read.append(el("b", {text: `${at.length} results:`}), " " + at.map(q => ckOne(q, readText(s, q)[0])).join("; "), ` · ${when(p)}`);
+    else read.append(el("b", {text: readText(s, p)[0]}), p[4] ? el("span", {style: {color: "var(--crit)", fontWeight: "var(--fw-semibold)"}, text: " " + flagWord(p[4])}) : "", ` · ${when(p)}`);
   };
   setRead(null);
+  // every result at the time nearest t (within 3% of the period), the flagged one ringed: -> them, or null
   svg._hover = t => {
-    if (t == null || !pts.length) { ckCrossAt(cross, null); dot.setAttribute("visibility", "hidden"); setRead(null); return null; }
-    let best = pts[0]; for (const p of pts) if (Math.abs(p.ts - t) < Math.abs(best.ts - t)) best = p;
-    const tol = Math.max((state.to - state.from) * 0.03, s.watch ? DAY * .6 : 0);
-    if (Math.abs(best.ts - t) > tol) { ckCrossAt(cross, null); dot.setAttribute("visibility", "hidden"); setRead(null); return null; }
+    const at = t == null ? [] : ckNearest(pts, t, Math.max((state.to - state.from) * 0.03, s.watch ? DAY * .6 : 0));
+    if (!at.length) { ckCrossAt(cross, null); dot.setAttribute("visibility", "hidden"); setRead(null); return null; }
+    const best = at[0];
     ckCrossAt(cross, x(best.ts));
     dot.setAttribute("cx", x(best.ts)); dot.setAttribute("cy", y(best[1])); dot.setAttribute("visibility", "visible");
-    setRead(best); return best;
+    setRead(at); return at;
   };
   // what hovering at time t shows: every chart's crosshair and readout at that date (ckSync), this one's tooltip
-  // pinned at the top of its crosshair (ckTip); the keyboard too (#60)
+  // pinned at the top of its crosshair (ckTip); the keyboard too (#60). Two results at that time: each on a line, its
+  // flag and range with it, and their sources (#848)
   const showAt = (t, px) => {
-    const mine = ckSync(svg, t);
+    const at = ckSync(svg, t), mine = at?.[0];
     const nodes = [];
-    if (mine) {
-      const [a, b] = readText(s, mine);
-      nodes.push(el("div", {class: "v", text: a}), el("div", {class: "s"}, el("span", {class: "k", style: {background: "var(--c-lab)"}}), nice(s.name), nice(s.name) !== s.name ? el("span", {class: "muted", text: ` (${s.name})`}) : null), b ? el("div", {class: "s", text: b}) : null,
-        el("div", {class: "s", text: (s.watch ? fmtD(mine.ts) : fmtDT(mine.ts)) + (mine[2] != null || mine[3] != null ? " · " + refText(mine) : "")}),
-        mine[6] ? el("div", {class: "s", text: "Source: " + srcName(mine[6]) + (srcName(mine[6]) !== mine[6] ? ` (${mine[6]})` : "")}) : null,
-        !s.watch && pointSources(s, mine) ? el("div", {class: "s", text: "From " + pointSources(s, mine)}) : null,
-        mine[4] ? el("div", {class: "s", style: {color: "var(--crit)"}, text: flagPast(mine[4])}) : null);
+    if (at) {
+      const [a, b] = readText(s, mine), one = at.length < 2, from = [...new Set(at.map(p => pointSources(s, p)).filter(Boolean))].join("; ");
+      nodes.push(el("div", {class: "v", text: one ? a : `${at.length} results`}), el("div", {class: "s"}, el("span", {class: "k", style: {background: "var(--c-lab)"}}), nice(s.name), nice(s.name) !== s.name ? el("span", {class: "muted", text: ` (${s.name})`}) : null), one && b ? el("div", {class: "s", text: b}) : null,
+        ...(one ? [] : at.map(p => el("div", {class: "s" + (p[4] ? " abn" : ""), text: ckOne(p, readText(s, p)[0])}))),
+        el("div", {class: "s", text: when(mine) + (one && (mine[2] != null || mine[3] != null) ? " · " + refText(mine) : "")}),
+        one && mine[6] ? el("div", {class: "s", text: "Source: " + srcName(mine[6]) + (srcName(mine[6]) !== mine[6] ? ` (${mine[6]})` : "")}) : null,
+        !s.watch && from ? el("div", {class: "s", text: "From " + from}) : null,
+        one && mine[4] ? el("div", {class: "s", style: {color: "var(--crit)"}, text: flagPast(mine[4])}) : null);
     }
     ckTip(svg, mine ? x(mine.ts) : px, nodes);
     return tipWords(nodes);

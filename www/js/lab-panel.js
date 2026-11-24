@@ -128,21 +128,26 @@ function labStripDraw(svg, s, pts) {
   const ring = el("svg:circle", {r: 7, fill: "none", stroke: "var(--ink)", "stroke-width": 2, visibility: "hidden", "pointer-events": "none"});
   g.push(ring);
   svg.replaceChildren(...g);
-  const show = (p, ev) => {
-    if (!p) { ring.setAttribute("visibility", "hidden"); hideTip(); return ""; }
+  // at: every result at the time hovered or stepped to (chartkit.js ckAt), the flagged one ringed; two at one time
+  // each on a line, its flag and range with it (#848: the first of them alone was said)
+  const show = (at, ev) => {
+    if (!at?.length) { ring.setAttribute("visibility", "hidden"); hideTip(); return ""; }
+    const p = at[0], f = flagWord(p[4]);
     ring.setAttribute("cx", x(p.ts)); ring.setAttribute("cy", y(p[1])); ring.setAttribute("visibility", "visible");
-    const f = flagWord(p[4]), nodes = [el("div", {class: "v", text: readText(s, p)[0]}), el("div", {class: "s", text: fmtDT(p.ts)}),
-      rangeWords(p) ? el("div", {class: "s", text: refText(p)}) : null, f ? el("div", {class: "s abn", text: f}) : null];
+    const nodes = at.length > 1 ? [el("div", {class: "v", text: `${at.length} results`}), el("div", {class: "s", text: fmtDT(p.ts)}),
+      ...at.map(q => el("div", {class: "s" + (q[4] ? " abn" : ""), text: ckOne(q, readText(s, q)[0])}))]
+      : [el("div", {class: "v", text: readText(s, p)[0]}), el("div", {class: "s", text: fmtDT(p.ts)}),
+        rangeWords(p) ? el("div", {class: "s", text: refText(p)}) : null, f ? el("div", {class: "s abn", text: f}) : null];
     showTip(nodes, ev || svgPoint(svg, x(p.ts), y(p[1])));
     return tipWords(nodes);
   };
   svg.onpointermove = ev => {
     const r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) * (w / r.width);
     let best = null; for (const p of pts) if (!best || Math.abs(x(p.ts) - px) < Math.abs(x(best.ts) - px)) best = p;
-    show(best && Math.abs(x(best.ts) - px) < 12 ? best : null, ev);
+    show(best && Math.abs(x(best.ts) - px) < 12 ? ckAt(pts, best.ts) : null, ev);
   };
   svg.onpointerleave = () => show(null);
   const out = pts.filter(p => FLAG_OF(p[4])).map(p => p[4]);   // (#819, #845: a ◆ was "outside it")
   chartKeys(svg, `${nice(s.name)}: ${pts.length} result${pts.length === 1 ? "" : "s"} against ${rangesDiffer(pts) ? "each one's own" : "its"} reference range, ${out.length} ${flaggedWords(out)}. Left and right arrow keys step through them.`,
-    () => pts.map(p => p.ts), t => show(pts.find(p => p.ts === t)), () => show(null));
+    () => pts.map(p => p.ts), t => show(ckAt(pts, t)), () => show(null));
 }

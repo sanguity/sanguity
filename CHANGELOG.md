@@ -2055,6 +2055,12 @@ Everything on `main` so far; it becomes the first tagged release.
   through one place, its mark, word and way (ranges.js), and a check keeps any other from reading its letter: the list
   marks a ◆ as ◆, Settings' preview shows what the Overview's tiles do, ◆, a range from Settings and all, and the panel
   counts a ◆ with a range as inside it and a result with no range as having none.
+- **Two results at one time: the keyboard steps past them, and both are said** (#848): on Labs' chart and the lab
+  panel's strip, → stopped at two results of one time (two imports' draws, or a pair marked "Not the same") for good,
+  and the readout, tooltip and announcement gave the first of them, so the ▲ High one, drawn over it, was never said
+  (only the table listed it); Compare said one result a lab. The keyboard now stops at that time once and goes on, and
+  every chart says each result there, told apart by its flag and range: "2 results: 5.6 mmol/L ▲ High (3.5–5.3);
+  5.0 mmol/L (3.5–5.1)".
 - **Removing a reminder's time is said, and Enter in a time doesn't save the reminder** (#853): Remove time 2 said
   nothing, and focus went to the field that now has its name, so a screen reader heard "Time 2" again; since #830 that
   field had focus, and a second Enter there saved the reminder a time short and took the drawer back to the

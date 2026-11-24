@@ -62,13 +62,14 @@ function renderCompare() {
   cmpRead(null);
   renderCmpMs(placed.filter(r => r.pts.length));
 }
-/* the slots' readouts: each lab's latest in the period, or got[i], its result at the date hovered (null: none near) */
+/* the slots' readouts: each lab's latest in the period, or got[i], its results at the date hovered (null: none near),
+   two at one time each said (#848: "2 results: 5.6 mmol/L · 117%; 5.0 mmol/L · 94%") */
 function cmpRead(got) {
   const list = cmpSel ? cmpSeries() : [];
   list.forEach((s, i) => {
     const r = $("#cmpRead" + i); if (!r) return;
-    const pts = s ? cmpPlaced(s) : [], p = got ? got[i] : pts.at(-1);
-    r.textContent = !s ? "" : p ? `${got ? "" : "Latest "}${readText(s, p)[0]} · ${cmpPlace(p)} · ${fmtD(p.ts)}` : got ? "No result near this date" : "No results in this period";
+    const pts = s ? cmpPlaced(s) : [], at = got ? got[i] : pts.slice(-1), say = q => `${readText(s, q)[0]} · ${cmpPlace(q)}`;
+    r.textContent = !s ? "" : at?.length ? `${got ? "" : "Latest "}${ckEach(at, say)} · ${fmtD(at[0].ts)}` : got ? "No result near this date" : "No results in this period";
   });
 }
 /* the chart: the period's time scale, the place in each result's own range up the side, the range itself the band from
@@ -102,8 +103,9 @@ function cmpDraw(svg, live) {
   const hit = el("svg:rect", {x: L, y: T - 12, width: R - L, height: B - T + 12, fill: "transparent"});
   g.push(cross, ...rings, hit);
   svg.replaceChildren(...g);
-  // hovering at time t: the nearest date with a result, each lab's result nearest it (within 3% of the period) ringed,
-  // the slots' readouts saying them, and the tooltip at the top of the crosshair; the keyboard steps through the same
+  // hovering at time t: the nearest date with a result, each lab's results nearest it (within 3% of the period, every
+  // one at that time, chartkit.js ckAt, #848) ringed, the flagged one where there are two, the slots' readouts saying
+  // them, and the tooltip at the top of the crosshair; the keyboard steps through the same
   const times = [...new Set(on.flatMap(r => r.pts.map(p => p.ts)))].sort((a, b) => a - b), tol = (state.to - state.from) * .03;
   const near = (ts, t, get = v => v) => { let b = null; for (const v of ts) if (b == null || Math.abs(get(v) - t) < Math.abs(get(b) - t)) b = v; return b != null && Math.abs(get(b) - t) <= tol ? b : null; };
   svg._hover = t => {
@@ -111,17 +113,18 @@ function cmpDraw(svg, live) {
     ckCrossAt(cross, t0 == null ? null : x(t0));
     const got = [null, null, null];
     on.forEach((r, j) => {
-      const p = t0 == null ? null : near(r.pts, t0, q => q.ts);
+      const q = t0 == null ? null : near(r.pts, t0, q => q.ts), p = q && ckAt(r.pts, q.ts)[0];
       rings[j].setAttribute("visibility", p ? "visible" : "hidden");
-      if (p) { rings[j].setAttribute("cx", x(p.ts)); rings[j].setAttribute("cy", at(p)); got[r.i] = p; }
+      if (p) { rings[j].setAttribute("cx", x(p.ts)); rings[j].setAttribute("cy", at(p)); got[r.i] = ckAt(r.pts, p.ts); }
     });
     cmpRead(t0 == null ? null : got);
     return t0 == null ? null : [t0, got];
   };
   const showAt = (t, px) => {
     const h = svg._hover(t); if (!h) { hideTip(); return ""; }
-    const [t0, got] = h, nodes = [el("div", {class: "v", text: fmtD(t0)}), ...on.map(r => { const p = got[r.i]; return p ? el("div", {class: "s"}, ckSeriesKey(r.i),
-      `${nice(r.s.name)}: ${readText(r.s, p)[0]}, ${cmpPlace(p)} of its range (${refWords(p)})${p[4] ? " · " + flagPast(p[4]) : ""}${isoDay(p.ts) !== isoDay(t0) ? " · " + fmtD(p.ts) : ""}`) : null; })];
+    const said = (r, p) => `${readText(r.s, p)[0]}, ${cmpPlace(p)} of its range (${refWords(p)})${p[4] ? " · " + flagPast(p[4]) : ""}`;
+    const [t0, got] = h, nodes = [el("div", {class: "v", text: fmtD(t0)}), ...on.map(r => { const ps = got[r.i]; return ps ? el("div", {class: "s"}, ckSeriesKey(r.i),
+      `${nice(r.s.name)}: ${ckEach(ps, p => said(r, p))}${isoDay(ps[0].ts) !== isoDay(t0) ? " · " + fmtD(ps[0].ts) : ""}`) : null; })];
     ckTip(svg, x(t0) ?? px, nodes);
     return tipWords(nodes);
   };

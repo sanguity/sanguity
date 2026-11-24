@@ -326,13 +326,15 @@ function chartTable(heads, rows, cls = "") {
 const chartSvg = (label, attrs) => el("svg:svg", {tabindex: 0, role: "application", "aria-roledescription": "chart", "aria-label": label, ...attrs});
 /* the keyboard on a chart: it takes focus (role application, said as a chart, label summing it up); ← and → step
    between its points, Home and End go to the first and last, Escape lets go. times() -> the points' times shown now,
-   in order; show(t) shows that point's readout (the hover's) and returns its words, said to screen readers; clear()
-   hides it. Set again on every redraw. */
+   in order; two results at one time are one stop, the next → goes on past it (#848: it looked for the stop by its time
+   and found the first of the two again, so → stayed there for good), and show says each (chartkit.js ckAt). show(t)
+   shows that time's readout (the hover's) and returns its words, said to screen readers; clear() hides it. Set again
+   on every redraw. */
 function chartKeys(svg, label, times, show, clear) {
   svg.setAttribute("tabindex", "0"); svg.setAttribute("role", "application");
   svg.setAttribute("aria-roledescription", "chart"); svg.setAttribute("aria-label", label);
   svg.onkeydown = ev => {
-    const ts = times(), n = ts.length, k = ev.key;
+    const ts = [...new Set(times())], n = ts.length, k = ev.key;
     if (k === "Escape") { if (svg._kt == null) return; svg._kt = null; clear(); ev.preventDefault(); ev.stopPropagation(); return; }
     if (!n || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(k)) return;
     ev.preventDefault();
