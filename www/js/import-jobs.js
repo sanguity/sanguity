@@ -255,6 +255,11 @@
     return Math.max(0, (d.events || 0) - (draws(j) ? (d.kinds || {}).lab || 0 : 0) + (d.results || 0) + (d.other || 0)); };
   // ...and with a wearable's data there already (#500): the bar's count, and the list's (#504)
   const allHere = j => { const w = (j.duplicates || {}).watch || {}; return hereCount(j) + [...WATCH].reduce((a, k) => a + (w[k] || 0), 0); };
+  /* lab results already here that this file adds again (#846: the server's preview.find "copies"), with what its report
+     says of their range and flag: in the bar as already here, and said under it */
+  const copiesHere = j => (j.duplicates || {}).copies || 0;
+  const copiesLine = j => { const n = copiesHere(j); return n ? node("p", {class: "hint imp-copies", text: `${cap(plural(n, ["lab result", "lab results"]))} ` +
+    `already here ${n === 1 ? "is" : "are"} added again from this file with its report's range and flag, so neither report's is lost.`}) : null; };
   // the duplicates of what the profile has (#22): skipped, each with a box to add it again anyway; a series' results
   // dated from the first to the last (#490), a lab draw not offered beside its own results
   function dupChoices(j) {
@@ -361,10 +366,10 @@
   // how many records are new, already here or possibly the same as another source's: a bar in three parts and its key.
   // A wearable's data counts beside them (#500: a later export's new day and workout, and those it has already)
   function split(j) {
-    const c = j.counts || {}, same = (j.possible || []).length;
+    const c = j.counts || {}, same = (j.possible || []).length, copies = copiesHere(j);
     const records = counted(c).filter(x => x.record || WATCH.has(x.k)).reduce((a, x) => a + x.n, 0);
-    const here = allHere(j);
-    const parts = [["new", Math.max(0, records - same), "new"], ["here", here, "already here"], ["same", same, "possibly the same"]];
+    const here = allHere(j) + copies;
+    const parts = [["new", Math.max(0, records - same - copies), "new"], ["here", here, "already here"], ["same", same, "possibly the same"]];
     const total = parts.reduce((a, p) => a + p[1], 0);
     if (!total) return null;
     let x = 0;
@@ -470,7 +475,7 @@
           node("p", {class: "hint", text: j.new ? "Nothing is saved until you add it with the button at the foot."
             : sgNothing(j) ? "Nothing in this upload is left to add to this profile. Cancel it to remove the upload."
             : "Everything in this upload is in this profile already. Tick a duplicate to add it again anyway, or cancel."}),
-          j.new ? tiles(j) : null, restoredLine(j.restores, false), split(j), labs.part, same.part, dups.part, notes(j),
+          j.new ? tiles(j) : null, restoredLine(j.restores, false), split(j), labs.part, same.part, dups.part, copiesLine(j), notes(j),
           node("div", {class: "sg-bar imp-actions", role: "region", "aria-label": "Add or cancel this import"},
             node("span", {class: "sg-bar-what"}, node("span", {class: "sg-bar-n", text: "Not saved yet"}), msg),
             node("span", {class: "sg-bar-acts"}, cancel, add)));

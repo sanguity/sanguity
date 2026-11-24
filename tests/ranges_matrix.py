@@ -20,7 +20,9 @@ Then and a Now. Each draw day is a lab day with one result listing that day's re
 its row named as the report names the test (ROW_NAMES: "CHLORIDE" for the series "Chloride, Blood", "CREAT" for
 "Creatinine"), the value as given, the range as printed (a one-sided one with its edge, "<5" or "<=5") and the report's
 own flag, and the count of flags its importer stored. COPIES (#781, at the end) is a second profile's: one result
-twice (from two imports) and a lab in two units, before and after "Same result". Fictional data only.
+twice (from two imports) and a lab in two units, before and after "Same result"; UPLOADED (#846) one result twice
+through real uploads, a spreadsheet's and a C-CDA document's, put through the import's preview and save in each
+order. Fictional data only.
 """
 import datetime
 
@@ -582,3 +584,51 @@ NOT_SAME_TRENDS = {"Potassium": ["4.4", "5.2", "High"], "Sodium": ["141", "150",
 COPY_RANGE = " (from the other copy's report)"
 LATEST_DAY_RANGES = {(1, 2): ["3.5 - 5.1", "135–145" + COPY_RANGE], (2, 2): ["3.5–5.1" + COPY_RANGE, "135 - 145"]}
 NOT_SAME_DAY_RANGES = {(1, 2): ["3.5 - 5.1", ""], (2, 2): ["", "135 - 145"]}
+
+
+# ---------------------------------------------------------------- #846: one result twice through real uploads
+# A profile's two uploads of the same results at one time (UPLOADED_BACK days back): a spreadsheet and a C-CDA document
+# (uploaded()), each read by its importer and put through the import's preview and save, in each order (UPLOAD_ORDERS).
+# Their reports say a result's range and flag in one file only: the C-CDA's range (an edge with it, "<100"), the
+# spreadsheet's "A" with no range. The preview counted a result here already a duplicate by its test, time and value,
+# and left the second upload's copy out with its range and flag: the spreadsheet first, Labs, the Overview, the summary
+# and share links said each unflagged while the C-CDA's lab day said "Out of range 3"; the C-CDA first, the
+# spreadsheet's lab day said "Out of range: None". Now its copy is added with them, and its review says so: each is one
+# result with them everywhere (crossmatch.copies, #825), each file's lab day flagging its row. UPLOADED: a lab as its
+# reports print it, (unit, value as given, the spreadsheet's range and flag, the C-CDA's range); UPLOADED_SEEN each
+# result's [flag, low, high(, edge)] as Labs, the summary and a share link show it; UPLOADED_ROWS each file's lab day's
+# rows (the test as printed, the flag Labs shows for its result); UPLOADED_TRENDS and UPLOADED_OUT the summary's since
+# UPLOADED_SINCE days back (the key labs UPLOADED_LABS); UPLOADED_HERE the second upload's review: its results already
+# here that it adds again with its report's range and flag ("copies"), and those it skips ("results")
+UPLOADED_BACK, UPLOADED_SINCE = 3, 10
+UPLOADED = {"Sodium": ("mmol/L", "150", "", "", "135-145"), "Potassium": ("mmol/L", "5.2", "", "", "3.5-5.1"),
+            "Glucose": ("mg/dL", "100", "", "", "<100"), "ALT": ("U/L", "60", "", "A", "")}
+UPLOADED_SEEN = {("Sodium, Blood", "mmol/L"): [["H", 135, 145]], ("Potassium, Blood", "mmol/L"): [["H", 3.5, 5.1]],
+                 ("Glucose, Blood", "mg/dL"): [["H", None, 100, "<"]], ("ALT", "U/L"): [["A", None, None]]}
+UPLOADED_ROWS = {"csv": [("ALT", "A"), ("Glucose", "H"), ("Potassium", "H"), ("Sodium", "H")],
+                 "ccda": [("ALT", "A"), ("Glucose", "H"), ("Potassium", "H"), ("Sodium", "H")]}
+UPLOADED_LABS = ["ALT", "Glucose, Blood", "Potassium, Blood", "Sodium, Blood"]
+UPLOADED_TRENDS = {("ALT", "U/L"): [None, ["60", "Flagged"], ""], ("Glucose, Blood", "mg/dL"): [None, ["100", "High"], "< 100"],
+                   ("Potassium, Blood", "mmol/L"): [None, ["5.2", "High"], "3.5–5.1"],
+                   ("Sodium, Blood", "mmol/L"): [None, ["150", "High"], "135–145"]}
+UPLOADED_OUT = {("ALT", "U/L"): ["60", "Flagged", "", 1, 1], ("Glucose, Blood", "mg/dL"): ["100", "High", "< 100", 1, 1],
+                ("Potassium, Blood", "mmol/L"): ["5.2", "High", "3.5–5.1", 1, 1],
+                ("Sodium, Blood", "mmol/L"): ["150", "High", "135–145", 1, 1]}
+UPLOADED_HERE = {"copies": 4, "results": 0}
+UPLOAD_ORDERS = (("csv", "ccda"), ("ccda", "csv"))
+SHOWN = {"Potassium, Blood": "Potassium", "Sodium, Blood": "Sodium"}   # as the summary names them (Settings' labNicknames)
+
+
+def uploaded(kind, today=None):
+    """UPLOADED's results as one file of kind "csv" (a spreadsheet: its range and flag as printed) or "ccda" (a C-CDA
+    document, ccda(): its range as text): (its name, its text), the tests in UPLOADED_ROWS' order."""
+    t, rows = day(UPLOADED_BACK, today), sorted(UPLOADED.items(), key=lambda x: x[0].lower())
+    if kind == "csv":
+        return "copies.csv", "Date,Time,Test,Value,Unit,Reference range,Flag\n" + "".join(
+            f"{t[:10]},{t[11:16]},{n},{v},{u},{r},{f}\n" for n, (u, v, r, f, _) in rows)
+    return "copies.xml", ccda([(n, u, t, v, r) for n, (u, v, _, _, r) in rows])
+
+
+def uploaded_days(order):
+    """Each file's lab day's rows (UPLOADED_ROWS) by (import: 1 the first uploaded, in order; days back)."""
+    return {(order.index(k) + 1, UPLOADED_BACK): rows for k, rows in UPLOADED_ROWS.items()}
