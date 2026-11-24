@@ -10,7 +10,8 @@ Contract (shared with the importer registry, #18):
 
 What becomes what:
     Observation (laboratory)       one `labitem` event (hidden) per report or per day, under a `lab` event per day,
-                                   and a point in `labs` [t, value, lo, hi, flag, as reported, source]
+                                   and a point in `labs` [t, value, lo, hi, flag, as reported, source]; the labitem's
+                                   "keys" name each row's Observation (#885: a day's key is every source's)
     Observation (vital-signs)      a point in `labs` (panel "Vitals"); body weight goes to `clinicWeights` in lb
     DiagnosticReport               groups its lab Observations; without lab results it is a `study`/`imaging` event
                                    with its conclusion; presentedForm attachments become documents
@@ -773,17 +774,18 @@ def parse(files):
         return rows, abn
 
     def add_labitem(key, t, order, members, report, prov, status, lab, specimen):
-        rows, abn = [], 0
+        rows, keys, abn = [], [], 0
         for o in members:
             src = lab or SOURCE
             rr, a = obs_rows(o, order, src)
             rows += rr
+            keys += [rkey(o)] * len(rr)   # (#885) the Observation each row is: a day's key isn't one source's record
             abn += a
         if not rows:
             return
         det = {"type": "result", "order": order, "name": order, "collected": t[:16].replace("T", " "),
                "resulted": t[:10], "provider": prov, "status": status, "specimen": specimen, "lab": lab, "dx": [],
-               "rows": rows, "report": report, "comments": []}
+               "rows": rows, "keys": keys, "report": report, "comments": []}
         sub = " · ".join(x for x in [prov, status, lab] if x)
         i = b.add(t, "labitem", order, sub, det, abn=abn, hidden=1, key=key)
         day = t[:10]

@@ -515,6 +515,61 @@ class Preview(unittest.TestCase):
         self.assertEqual(({s["name"]: s["pts"] for s in after["labs"]}, after["details"]), ({s["name"]: s["pts"] for s in before["labs"]}, before["details"]),
                          "undone: its results and rows as they were")
 
+    def test_another_source_at_one_time_is_never_the_same_record(self):   # #885
+        """Only the same record of the same source is updated in place (#869): an Observation by its own id, a report
+        by its own. A hospital's FHIR file of Potassium 5.05 (3.5–5.0, High) and Sodium, results on their own (no
+        report), then a health plan's of that Potassium at that time, another Observation in a labitem keyed by the same
+        day: with no range it's a duplicate, with another range (3.5–5.1) a copy with its own row, and the hospital's
+        result and row keep their range and flag. Both were taken for the hospital's sent again ("1 lab result already
+        here from the same source is updated"): the plan's no range and no flag, or its range, replaced the hospital's.
+        The hospital's Observation sent again, its range corrected, is updated in place, the plan's copy as it was."""
+        t = "2025-09-03T08:30:00"
+
+        def obs(oid, code, name, v, unit, rng=None, flag=None):
+            r = {"resourceType": "Observation", "id": oid, "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
+                 "code": {"coding": [{"system": "http://loinc.org", "code": code}], "text": name}, "effectiveDateTime": t,
+                 "valueQuantity": {"value": v, "unit": unit}}
+            if rng:
+                r["referenceRange"] = [{"low": {"value": rng[0]}, "high": {"value": rng[1]}, "text": f"{rng[0]}-{rng[1]}"}]
+            if flag:
+                r["interpretation"] = [{"coding": [{"system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation", "code": flag}]}]
+            return r
+        sent = lambda name, *rs: {name: json.dumps({"resourceType": "Bundle", "type": "collection", "entry": [{"resource": r} for r in rs]})}   # noqa: E731
+        k = lambda oid, rng=None, flag=None: obs(oid, "2823-3", "Potassium", 5.05, "mmol/L", rng, flag)   # noqa: E731
+
+        def said(pid):   # each result: its range and flag, and its row's range as printed and flag as read
+            got = assembled(pid)
+            drawer, out = crossmatch._rows(got), {}
+            for s in got["labs"]:
+                for p in s["pts"]:
+                    at = crossmatch._row_of(drawer, s, p)
+                    row = at and got["details"][str(at[0])]["rows"][at[1]]
+                    out.setdefault(s["name"], []).append((p[2], p[3], p[4], row and row[3], row and ranges.read_flag(row[4], p[1], p[2], p[3], p[5])))
+            self.assertEqual(rowless(got), [], "every result with its own row")
+            return {n: sorted(v) for n, v in out.items()}
+
+        pid = self.profile("Two sources at one time")
+        hospital = sent("hospital.json", k("hosp-k", (3.5, 5.0), "H"), obs("hosp-na", "2951-2", "Sodium", 140, "mmol/L", (135, 145)))
+        self.assertEqual(self.save(pid, self.previewed(pid, hospital)[0])["state"], "done")
+        before = said(pid)
+        self.assertEqual(before, {"Potassium, Blood": [(3.5, 5.0, "H", "3.5-5.0", "H")], "Sodium, Blood": [(135, 145, "", "135-145", "")]})
+        j, _ = self.previewed(pid, sent("plan.json", k("plan-77")))   # the plan's, no range: a duplicate
+        self.assertEqual((j["new"], j["duplicates"]["results"], j["duplicates"].get("copies", 0), j["duplicates"].get("updates", 0)), (False, 1, 0, 0), j["duplicates"])
+        self.assertEqual(self.save(pid, j)["state"], "discarded")
+        self.assertEqual(said(pid), before, "the hospital's result and row as they were")
+        j, _ = self.previewed(pid, sent("plan.json", k("plan-77", (3.5, 5.1))))   # its own range: a copy, with its own row
+        self.assertEqual((j["new"], j["duplicates"]["results"], j["duplicates"].get("copies", 0), j["duplicates"].get("brings"), j["duplicates"].get("updates", 0)),
+                         (True, 0, 1, {"range": 1}, 0), j["duplicates"])
+        done = self.save(pid, j)
+        self.assertEqual((done["state"], done["counts"]["results"], done["counts"].get("updated")), ("done", 1, None), done)
+        self.assertEqual(said(pid), {**before, "Potassium, Blood": [(3.5, 5.0, "H", "3.5-5.0", "H"), (3.5, 5.1, "", "3.5-5.1", "")]},
+                         "two results, each its own range and row")
+        j, _ = self.previewed(pid, sent("hospital.json", k("hosp-k", (3.5, 5.2))))   # the hospital's own, amended
+        self.assertEqual((j["duplicates"]["results"], j["duplicates"].get("copies", 0), j["duplicates"].get("updates", 0)), (0, 0, 1), j["duplicates"])
+        self.assertEqual(self.save(pid, j)["counts"].get("updated"), 1)
+        self.assertEqual(said(pid), {**before, "Potassium, Blood": [(3.5, 5.1, "", "3.5-5.1", ""), (3.5, 5.2, "", "3.5-5.2", "")]},
+                         "the hospital's updated in place, the plan's copy as it was")
+
     def test_a_copy_only_with_its_own_row(self):   # #868
         """One rule for a result already here, an upload's and Type them in's alike (preview.find): kept as a copy only
         with its own row, its lab day with it, and said by what it brings. Potassium 5.3 typed with no range, then again

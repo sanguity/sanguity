@@ -35,9 +35,10 @@ One rule for a result already here (#868), an upload's, a sync's and Type them i
     and every lab day of its date counted it, util.js labDraws)
   - what it brings is said ("brings": "range", "flag", or "row" where it's kept only for its row), and counted as
     added, with an Undo
-  - the same record sent again by its source, saying something else of its range and flag (#869: its row in a labitem
-    whose key names the source's own record, not a hash of the result's content, the one its result here has its row
-    in), isn't a copy: it's updated in place ("updates"), its range and flag and its row as the source gives them now
+  - the same record sent again by its source, saying something else of its range and flag (#869: its row and its
+    result's row here one record of one source, #885: the same Observation by its id, or the same report; never by a
+    key scoped to a day nor a hash of the result's content, which another source's copy has too), isn't a copy: it's
+    updated in place ("updates"), its range and flag and its row as the source gives them now
     (update(), with what each was kept, so undoing the import puts them back). A re-pull or a re-sent FHIR Observation
     with its range corrected added a copy, one result shown twice beside a drawer row reading the other's flag
 
@@ -221,48 +222,80 @@ def find(db, pid, fmt, data, whole=None):
     return dups
 
 
+# a source key scoped to a day (docs/importers.md, "Source keys": "<NAME>:labitem:<YYYY-MM-DD>", with "|<org>" or a
+# panel after it, and "<NAME>:labday:<YYYY-MM-DD>"), not one record's: every source's results of that day have it (#885)
+DAY_KEY = re.compile(r"[^:|]+:lab(?:item|day):\d{4}-\d{2}-\d{2}(?:\||$)")
+
+
+def day_key(key):
+    """Whether a source key is scoped to a day (DAY_KEY): a FHIR file's results on their own, a CareSpace day's panel."""
+    return isinstance(key, str) and bool(DAY_KEY.match(key))
+
+
 def _record_key(key):
-    """Whether a source key names the source's own record (a report's id, a document's, one source's results of a day:
-    docs/importers.md, "Source keys"), not a hash of the result's content (":h:"), which every copy of it has (#869)."""
-    return isinstance(key, str) and bool(key.strip()) and ":h:" not in key
+    """Whether a source key names one record of its source (a report's id, a document's, an Observation's:
+    docs/importers.md, "Source keys"): never a hash of the result's content (":h:"), which every copy of it has (#869),
+    nor a key scoped to a day (day_key), which another source's results of that day have too (#885)."""
+    return isinstance(key, str) and bool(key.strip()) and ":h:" not in key and not day_key(key)
+
+
+def _row_record(event, detail, r):
+    """(#885) Row r of a labitem as the record it is: (the labitem's key, the row's own record's key or None). A row's
+    own is in its details' "keys" (the FHIR importer's: each row's Observation, its labitem a day's or a report's)."""
+    own = detail.get("keys") if isinstance(detail, dict) else None
+    own = own[r] if isinstance(own, list) and r < len(own) and _record_key(own[r]) else None
+    return (event or {}).get("key"), own
+
+
+def _same_record(a, b):
+    """(#885) Whether two rows (_row_record) are one record of one source: each with its own record's key, the same
+    one; else the same labitem key where it names one record (a report's; a row kept before rows had keys of their
+    own). Never by a key scoped to a day, which another source's copy of a result at that time has too: a hospital's
+    Potassium (3.5–5.1, High), then a health plan's, another Observation with no range, was taken for the hospital's
+    amended and wiped out its range and flag."""
+    if a[1] and b[1]:
+        return a[1] == b[1]
+    return _record_key(a[0]) and a[0] == b[0]
 
 
 def _same_records(db, pid, data, dups, olds, whole=None):
     """(#869) A result here sent again by its source saying something else of its range and flag (the source amended
     it) is the same result: updated in place ("updates"), never added as a copy, nor left out a duplicate. It's the same
-    record where its row in the upload (in whole's lab days, where given) is in a labitem whose source key names the
-    source's own record (_record_key: a report's, one source's results of a day; never a hash of the result's content,
-    which a typed or spreadsheet result's copy has too, #868), and the result here, its series' key, time and value as
-    reported the same, has its row in a labitem of the profile with that key. A re-pull of an Observation whose range
-    its source corrected (13.5–17.5 and Low, then 12.0–15.5) added a copy beside the labitem updated in place: two
-    results, and the lab day's row read the old one's Low beside the new range. olds: {series index: (its series here,
-    the points saying something else than a copy here)}."""
+    record where its row in the upload (in whole's lab days, where given) and the row here of the result here (its
+    series' key, time and value as reported the same) are one record of one source (_same_record, #885: the same
+    Observation by its own id, or the same report; never a key scoped to a day, which another source's results of that
+    day have too, nor a hash of the result's content, which a typed or spreadsheet result's copy has too, #868). A
+    re-pull of an Observation whose range its source corrected (13.5–17.5 and Low, then 12.0–15.5) added a copy beside
+    the labitem updated in place: two results, and the lab day's row read the old one's Low beside the new range. olds:
+    {series index: (its series here, the points saying something else than a copy here)}."""
     dups["updates"] = {}
     if not olds:
         return
     src = whole or data
     labs, drawer = data.get("labs") or [], _drawer(src)
     events = {str(e["id"]): e for e in src.get("events") or [] if isinstance(e, dict) and "id" in e}
+    details = {str(k): d for k, d in (src.get("details") or {}).items()}
     want = {}
     for i, (_, ns) in olds.items():
         for n in ns:
             row = _row(drawer, labs[i], labs[i]["pts"][n])
-            if row and _record_key(key := (events.get(row[0]) or {}).get("key")):
-                want[(i, n)] = (row, key)
+            rec = row and _row_record(events.get(row[0]), details.get(row[0]), row[1])
+            if rec and (rec[1] or _record_key(rec[0])):
+                want[(i, n)] = (row, rec)
     if not want:
         return
-    here = records.events_with_keys(db, pid, {k for _, k in want.values()})
+    here = records.events_with_keys(db, pid, {rec[0] for _, rec in want.values()})
     rows, keyed = crossmatch._rows({"events": here, "details": {str(e["id"]): e["detail"] for e in here}}), {e["id"]: e for e in here}
     by = collections.defaultdict(list)   # (series id, point) -> [(result id, its series as the records have it, point)]
     for rid, sid, imp, body, q in records.series_results(db, pid, {x for i, _ in want for x in olds[i][0]}):
         if isinstance(q, list) and q:
             by[(sid, _point(q))].append((rid, {**body, "imp": imp}, q))
-    for (i, n), (row, key) in want.items():
+    for (i, n), (row, rec) in want.items():
         found = []
         for sid in olds[i][0]:
             for rid, s, q in by[(sid, _point(labs[i]["pts"][n]))]:
                 at = crossmatch._row_of(rows, s, q)
-                if at and keyed[at[0]].get("key") == key:
+                if at and _same_record(rec, _row_record(keyed[at[0]], keyed[at[0]].get("detail"), at[1])):
                     found.append({"result": rid, "event": at[0], "row": at[1], "at": None if whole else row})
         if found:
             dups["points"].get(i, set()).discard(n)

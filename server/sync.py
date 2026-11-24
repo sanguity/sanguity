@@ -45,7 +45,9 @@ removes the store (connections.disconnect), so nothing a pull read outlives a Di
       profile has already are skipped, and remembered lab-name matches applied (labmap.py)
     - records whose source key it has are updated in place (the row keeps its id, import and corrections), when
       what the vendor sends now differs (a claim's Costs row with it); sync_changes keeps what each was, so undoing
-      the sync puts it back
+      the sync puts it back. A key scoped to a day (a lab day's, the labitem of a day's results on their own,
+      preview.day_key) names no one source's record: only this connection's own events with it are its (#885), never
+      an upload's or another source's of that day, whose rows a pull replaced
     - only records that come from what this pull read count: one undone from the history doesn't come back
       unless the vendor changes it
   Each is recorded in the import history (#24) with a done job, and can be undone there.
@@ -609,13 +611,31 @@ def _touched(delta, delta_resources, store):
     return keys
 
 
-def _rows_by_hash(db, pid, hashes):
-    out = {}
+def _rows_by_hash(db, pid, hashes, cid=None, days=()):
+    """{key hash: [event ids]}. days: the hashes of keys scoped to a day (preview.day_key), whose events are
+    connection cid's own only (#885: another source's results of that day have the key too)."""
+    out, ours = {}, _ours(db, pid, cid) if days else set()
     for h in records._chunks(sorted({x for x in hashes if x})):
-        q = f"SELECT id, key_hash FROM events WHERE profile_id=? AND key_hash IN ({','.join('?' * len(h))}) ORDER BY id"
+        q = f"SELECT id, key_hash, import_id FROM events WHERE profile_id=? AND key_hash IN ({','.join('?' * len(h))}) ORDER BY id"
         for r in db.execute(q, (pid, *h)):
-            out.setdefault(r["key_hash"], []).append(r["id"])
+            if r["key_hash"] not in days or r["import_id"] in ours:
+                out.setdefault(r["key_hash"], []).append(r["id"])
     return out
+
+
+def _ours(db, pid, cid):
+    """The imports connection cid saved (its first pull's and every later one's)."""
+    return {r[0] for r in db.execute("SELECT id FROM imports WHERE profile_id=? AND connection_id=?", (pid, cid))}
+
+
+def _events_with_key(db, pid, cid, key, cols):
+    """The profile's events with source key key, cols of each: connection cid's own only where the key is scoped to a
+    day (preview.day_key, #885), as an upload's or another source's lab day of that day isn't this one's to change."""
+    h = records.key_hashes(db, [key])[key]
+    if preview.day_key(key):
+        return db.execute(f"""SELECT {cols} FROM events WHERE profile_id=? AND key_hash=?
+                              AND import_id IN (SELECT id FROM imports WHERE connection_id=?)""", (pid, h, cid)).fetchall()
+    return db.execute(f"SELECT {cols} FROM events WHERE profile_id=? AND key_hash=?", (pid, h)).fetchall()
 
 
 def _same(a, b):
@@ -679,7 +699,7 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
                        and str(e.get("id")) not in dups["events"]]
         dups["events"] = {str(e.get("id")) for e in delta["events"] if isinstance(e, dict)}   # events: decided below
         hashes = records.key_hashes(db, touched)
-        have = _rows_by_hash(db, pid, hashes.values())
+        have = _rows_by_hash(db, pid, hashes.values(), cid, {hashes[k] for k in touched if preview.day_key(k)})   # (#885)
         # a result already here is kept as a copy only with its own row (#868): one whose row is a record the profile
         # has, updated in place below in its own import, would be a result of this pull's import with no lab day of
         # its own (util.js labDraws put it in every lab day of its date); left out, a duplicate
@@ -739,12 +759,12 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
         prof.link_documents(db, iid, keepdocs)
         db.execute("UPDATE imports SET connection_id=? WHERE id=?", (cid, iid))
         labmap.used(db, lab_plan["ids"].values())   # the lab-name matches it was saved with (#500)
-        changed = _update_in_place(db, pid, iid, updates, {**full.get("details", {}), **src}, stored, costs)
+        changed = _update_in_place(db, pid, iid, updates, {**full.get("details", {}), **src}, stored, costs, cid)
         changed += _apply_meta(db, iid, meta_changes)
         # results the source sent again, amended (#869): updated in place, after their rows' labitems (whole, above)
         if (amended := preview.update(db, pid, iid, delta, dups, rows=False)):
             summary["counts"]["updated"] = amended
-        _link_labdays(db, pid, iid, full, set(full_by_key) & (touched | {e.get("key") for e in new_events}))
+        _link_labdays(db, pid, iid, full, set(full_by_key) & (touched | {e.get("key") for e in new_events}), cid)
         summary["counts"]["documents"] = n_docs
         summary["changed"] = changed
         summary["connection"] = c["source"]
@@ -790,16 +810,16 @@ def _costs_by_id(full, delta):
     return out
 
 
-def _update_in_place(db, pid, iid, updates, details, stored, costs=None):
+def _update_in_place(db, pid, iid, updates, details, stored, costs=None, cid=None):
     """Change the events whose source key the profile has, where the vendor's version differs; keep what each was.
-    A claim's Costs row changes with it (an adjusted claim's new amounts)."""
+    A claim's Costs row changes with it (an adjusted claim's new amounts). One whose key is scoped to a day is this
+    connection's (cid) only (#885: _events_with_key)."""
     n = 0
     for e in updates:
-        h = records.key_hashes(db, [e["key"]])[e["key"]]
         body = {k: v for k, v in e.items() if k != "id"}
         new_d = details.get(str(e.get("id")))
         new_c = (costs or {}).get(str(e.get("id")))
-        for r in db.execute("SELECT id, body, detail, cost FROM events WHERE profile_id=? AND key_hash=?", (pid, h)).fetchall():
+        for r in _events_with_key(db, pid, cid, e["key"], "id, body, detail, cost"):
             old_b, old_d = records._dec(r["body"]), records._dec(r["detail"])
             old_c = records._dec(r["cost"]) if r["cost"] is not None else None
             cost = {**new_c, "id": r["id"]} if new_c is not None else old_c   # a row the vendor's version lacks stays
@@ -821,8 +841,10 @@ def _update_in_place(db, pid, iid, updates, details, stored, costs=None):
     return n
 
 
-def _link_labdays(db, pid, iid, full, keys):
-    """Point each lab day this pull touched at its results' rows: all of that day's, across pulls and imports."""
+def _link_labdays(db, pid, iid, full, keys, cid=None):
+    """Point each lab day this pull touched at its results' rows: all of that day's, across this connection's pulls
+    and imports. A lab day's key, and a labitem's of a day's results on their own, are scoped to a day: another
+    source's lab day of that day, and its rows, aren't this one's (#885: an upload's lab day was pointed at the pull's)."""
     events = {str(e.get("id")): e for e in full["events"] if isinstance(e, dict)}
     for e in full["events"]:
         if not isinstance(e, dict) or e.get("key") not in keys:
@@ -832,10 +854,9 @@ def _link_labdays(db, pid, iid, full, keys):
             continue
         members = [events[str(i)]["key"] for i in d.get("ids") or [] if str(i) in events and events[str(i)].get("key")]
         mh = records.key_hashes(db, members)
-        rows = _rows_by_hash(db, pid, mh.values())
+        rows = _rows_by_hash(db, pid, mh.values(), cid, {mh[k] for k in members if preview.day_key(k)})
         ids = [rows[mh[k]][-1] for k in members if mh.get(k) in rows]
-        h = records.key_hashes(db, [e["key"]])[e["key"]]
-        for r in db.execute("SELECT id, import_id, body, detail FROM events WHERE profile_id=? AND key_hash=?", (pid, h)).fetchall():
+        for r in _events_with_key(db, pid, cid, e["key"], "id, import_id, body, detail"):
             old = records._dec(r["detail"]) or {}
             if old.get("ids") == ids:
                 continue

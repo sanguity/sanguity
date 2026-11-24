@@ -114,7 +114,7 @@ results in `labs` by the one flag rule, #782; its `abn` counts only where none o
 | `type` | Fields |
 |---|---|
 | `file` | **A document.** `url`: its path **inside the upload** (a key of `files`, optionally with `#page=2`); `ext`: `pdf`, `png`, `html`, ... |
-| `result` | `order`, `name`, `collected`, `resulted`, `provider`, `status`, `specimen`, `lab`, `dx` (list), `rows` (`[name, value, unit, range, flag]`), `report` (`[part, text, isHtml]`), `comments`. The server adds `series` when it puts the records together, never an importer: each row's lab series by name, or `null` (#782, `records._row_series`), so the page reads a row's flag from that result as Labs shows it |
+| `result` | `order`, `name`, `collected`, `resulted`, `provider`, `status`, `specimen`, `lab`, `dx` (list), `rows` (`[name, value, unit, range, flag]`), `report` (`[part, text, isHtml]`), `comments`; optionally `keys`, each row's own source record's key (#885: the FHIR importer's, each row's Observation, its labitem keyed by a report or by a day), so a record sent again is found by it, never by a key every source's results of that day have. The server adds `series` when it puts the records together, never an importer: each row's lab series by name, or `null` (#782, `records._row_series`), so the page reads a row's flag from that result as Labs shows it |
 | `labday` | `ids`: the `labitem` events of that draw |
 | `visit` | `who`, `where`, `dx`, `procs` (list), `note`, `src` |
 | `stay` | `admit`, `discharge`, `where`, `how` (where the dates came from) |
@@ -220,13 +220,17 @@ point it has already, but whose copy in the upload says something of its range o
 whose row in the upload's lab day is new, is added as a copy, read as one result with the copy there (#846), always
 with its own row, whose labitem and lab day are kept with it even where their keys are known (#868: the same rule for
 Type them in and a sync; a copy the upload gives no row of its own is left out, never a result without its lab day).
-A point its source sends again saying something else of its range or flag (#869: its row in a labitem whose key, the
-source's own record's and not a `:h:` hash, is the one its point here has its row in, the same series key, time and
-value) is that result, updated in place with its row, never a copy: so give a labitem the key of the report it comes
-in, or of its day, as the FHIR importer does. A text result here is that point, and a point here that text result,
-where it reads as it (#874: its value read by `common.value_number`, whichever decimal mark its file writes, with its
-comparator), so a file read again after a reading of it changed between text and a number (#870: a FHIR bound, a
-C-CDA's "4,5", the FHIR export's "=<5" and "1,250") adds nothing. A
+A point its source sends again saying something else of its range or flag (#869: the same series key, time and value,
+its row and its point's row here one record of one source, #885: each row's own key in its labitem's `keys` the same,
+else the labitem's key the same and one record's, a report's; never a `:h:` hash, which a copy typed or in a
+spreadsheet has too, nor a key scoped to a day, `<NAME>:labitem:<YYYY-MM-DD>`, which another source's results of that
+day have too) is that result, updated in place with its row, never a copy: so give a labitem the key of the report it
+comes in, and where it holds a day's results on their own, each row's own record's key in `keys`, as the FHIR
+importer does. Another source's copy of it is a copy or a duplicate, never an update, and a sync updates in place
+only its own events with a key scoped to a day, never an upload's or another source's. A text result here is that
+point, and a point here that text result, where it reads as it (#874: its value read by `common.value_number`,
+whichever decimal mark its file writes, with its comparator), so a file read again after a reading of it changed
+between text and a number (#870: a FHIR bound, a C-CDA's "4,5", the FHIR export's "=<5" and "1,250") adds nothing. A
 record without a key falls back to the same importer, date, kind and content, which is slower and easier to fool, so
 give keys. A lab day stays while any of its results is new and goes when all of them are duplicates; `check()` runs
 again on what's left before it's saved.

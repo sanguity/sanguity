@@ -2144,6 +2144,14 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Type them in says a value typed as a bound as one** (#875): "=<5" typed in was saved as a bound, at most 5, and
   flagged so, but its row's check line said "5 U/L", an exact value. It now says "≤ 5 U/L" ("< 0.5", "≥ 60", "> 10"),
   as Labs words a limit, by the comparator the server read.
+- **Another source's copy of a result never takes the place of the one here** (#885): #869 took a FHIR result in no
+  report for the same record as any other source's at that time, as both sit under a key naming only their day. A
+  hospital's Potassium 5.3 (3.5–5.1, High), then a health plan's file of it with no range: its review said "1 lab
+  result already here from the same source is updated", and Labs and the lab day then said 5.3 with no range and no
+  flag; with a range of its own, the plan's replaced the hospital's. A sync did the same, and also replaced an
+  upload's lab day of that day with its own rows. Now only the same record from the same source is updated in place,
+  found by its own id (an Observation's, a report's): another source's copy is kept as a copy, with its own range and
+  row, or left out as a duplicate, and the hospital's result keeps its range and flag.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
