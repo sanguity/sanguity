@@ -2070,6 +2070,13 @@ Everything on `main` so far; it becomes the first tagged release.
   nothing, and focus went to the field that now has its name, so a screen reader heard "Time 2" again; since #830 that
   field had focus, and a second Enter there saved the reminder a time short and took the drawer back to the
   medication. Removing a time now says "Time 2 removed; 2 times left", and Enter in a time does nothing: Save saves.
+- **"0,500" is never read as 500** (#859): in a comma-delimited spreadsheet that writes decimal points, and in Type
+  them in, a value or range "0,500" was read as 500 (its leading 0 taken as a group of thousands), a thousand times
+  the value. No thousands follow a leading 0: a spreadsheet with "0,500" among its values writes decimal commas, so it
+  is 0.5 there (and "1,250" 1.25), as with semicolons and where a file doesn't say (a C-CDA, FHIR, CareSpace, MyChart
+  or PDF report's range); where the file's commas group thousands it isn't read, but kept as printed, a text value or
+  a range not used for the flag, which the upload's warnings and Type them in's notes say. A number grouped in a way
+  thousands can't be ("12,34.5", "1234,500" in such a file) isn't read either.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

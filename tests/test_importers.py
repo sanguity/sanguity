@@ -271,6 +271,16 @@ class Common(unittest.TestCase):
                          [("65-99", "mg/dL"), ("> OR = 60", "mL/min/1.73m2"), ("", "NEGATIVE"), ("9-3", "mg")])
         self.assertEqual([common.number_text(t, dc) for t in ("1,250", "3,5", "1.234,5", "1'250") for dc in (None, False, True)],
                          [None, 1250, 1.25, 3.5, 3.5, 3.5, 1234.5, 1234.5, 1234.5, 1250, 1250, 1250])
+        # #859: no thousands follow a leading 0: "0,500" is 0.5 where commas can be decimal, unread where a comma before
+        # three digits groups thousands (False), as is a grouping that can't be one; in a range too
+        modes = (None, False, True)
+        self.assertEqual({t: [common.number_text(t, dc) for dc in modes] for t in ("0,500", "0,05", "1,250", "12,500", "1234,500",
+                                                                                     "12,34.5", "0,500.5", "0.500.000", "1.234.567")},
+                         {"0,500": [0.5, None, 0.5], "0,05": [0.05] * 3, "1,250": [None, 1250, 1.25], "12,500": [None, 12500, 12.5],
+                          "1234,500": [1234.5, None, 1234.5], "12,34.5": [None] * 3, "0,500.5": [None] * 3, "0.500.000": [None] * 3,
+                          "1.234.567": [None, None, 1234567]})
+        self.assertEqual([r("<0,500 - 1", dc)[:2] for dc in modes] + [r("0,500 - 1,250", dc)[:2] for dc in modes],
+                         [(None, 0.5), (None, None), (None, 0.5), (None, None), (None, None), (0.5, 1.25)])
         # the edge of a limit read from the text by the same parser, with a source's own low or high beside it (#780)
         self.assertEqual([common.range_edge(t, lo, hi, dc) for t, lo, hi, dc in (
             ("<5", None, 5, None), ("=>60", 60, None, None), (">60", 60, None, None), ("<1,000", None, 1000, None),

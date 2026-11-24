@@ -64,25 +64,34 @@ def number_text(s, decimal_comma=None):
     or tabs, or with "4,5" among its values, csv_labs: "1,250" is 1.25), False where it doesn't (a comma-delimited
     spreadsheet's, a row typed in: "1,250" is 1250), None where it isn't known (a C-CDA document, FHIR, CareSpace,
     MyChart, a PDF report): a comma that can't be a thousands separator is a decimal one ("3,5" is 3.5), one that can
-    ("1,250") leaves the number unread, never a guess (#850). The CSV importer's values are read by it, and every range
-    given as text (range_text)."""
+    ("1,250") leaves the number unread, never a guess (#850). No thousands follow a leading 0 (#859): "0,500" is 0.5
+    where the file's commas can be decimal (True, None), and unread where a comma before three digits groups thousands
+    (False), as is any grouping that can't be one ("1234,500", "12,34.5"). The CSV importer's values are read by it,
+    and every range given as text (range_text)."""
     s = str(s or "").strip().replace("\u00a0", "").replace("\u202f", "").replace("'", "")
     if not s or not re.fullmatch(r"[-+]?[\d.,]*\d(?:[eE][-+]?\d+)?|[-+]?[\d.,]*[.,]\d+", s):
         return None
-    if "," in s and "." in s:
-        s = s.replace(",", "") if s.rfind(".") > s.rfind(",") else s.replace(".", "").replace(",", ".")
-    elif "," in s:
-        grouped = re.fullmatch(r"[-+]?\d{1,3}(,\d{3})+", s)   # "1,250": in thousands, or 1.25 with a decimal comma
-        if grouped and decimal_comma is None:
+    thousands = lambda sep: re.fullmatch(rf"[-+]?[1-9]\d{{0,2}}(\{sep}\d{{3}})+", s)   # noqa: E731  "1,250", never "0,500"
+    if "," in s and "." in s:   # the last one the decimal mark, the other in thousands: "1,234.5", "1.234,5"
+        point, sep = (".", ",") if s.rfind(".") > s.rfind(",") else (",", ".")
+        s, frac = s[:s.rfind(point)], s[s.rfind(point) + 1:]
+        if not thousands(sep):
             return None
-        if grouped and not decimal_comma:
+        s = s.replace(sep, "") + "." + frac
+    elif "," in s:
+        grouped = thousands(",")   # "1,250": in thousands, or 1.25 with a decimal comma
+        if decimal_comma is not None and not decimal_comma and (grouped or re.fullmatch(r"[-+]?\d+,\d{3}", s)):
+            if not grouped:
+                return None   # "0,500" where a comma before three digits groups thousands: it can't (#859)
             s = s.replace(",", "")
+        elif grouped and decimal_comma is None:
+            return None
         elif s.count(",") == 1:
             s = s.replace(",", ".")
         else:
             return None
     elif s.count(".") > 1:
-        if decimal_comma and re.fullmatch(r"[-+]?\d{1,3}(\.\d{3})+", s):
+        if decimal_comma and thousands("."):
             s = s.replace(".", "")
         else:
             return None

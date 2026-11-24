@@ -9,16 +9,17 @@ report's; a report's then one from Settings; a range that changes; values given 
 each edge of a report's range and of one from Settings; and one-sided ranges that leave their edge out ("<5", ">60") or
 keep it ("<=5", ">=60"), at and past it, through the importers that read them too (#780), each spelled as reports
 print it ("=>60", "< OR = 5", "less than or equal to 5") and read through the CSV importer as an upload is (#850; and
-SPELLINGS, the ways a report prints a range, through every importer, Type them in and the FHIR export); and a
-report's flags that say no way ("A", "Abnormal", "Critical"), inside its range, past it and with none printed, read through the CSV importer
-as an upload is (THROUGH_CSV: ALT, its flags in CASES as printed, #817), and pasted into Type them in (PASTE_FLAGS,
-#835); and ranges given as text alone, "a - b", "<40", "<=40", "less than 40", read through the C-CDA importer
-(THROUGH_CCDA: AST, its texts RANGE_TEXT, #827), and through CareSpace and MyChart exports (#836); and flags stored as
-their reports printed them, as older imports stored them ("N", ">", "HH", "Normal": Calcium, #839). JUDGED is what each
-result is judged as, by the one rule (server/ranges.py judge, www/js/ranges.js applyRangeOverrides): [flag, low, high,
-source], and EDGES its edge where its range has one; STEPS the band's steps, each the results it covers, with its words
-(a result whose report gave no range is under none). The summary's "since" day is SINCE days back, so each case has a
-Then and a Now. Each draw day is a lab day with one result listing that day's results as a report prints them (#782):
+SPELLINGS, the ways a report prints a range, through every importer, Type them in and the FHIR export; COMMAS, "0,500"
+and the like in each mode of decimal commas, #859); and a report's flags that say no way ("A", "Abnormal",
+"Critical"), inside its range, past it and with none printed, read through the CSV importer as an upload is
+(THROUGH_CSV: ALT, its flags in CASES as printed, #817), and pasted into Type them in (PASTE_FLAGS, #835); and ranges
+given as text alone, "a - b", "<40", "<=40", "less than 40", read through the C-CDA importer (THROUGH_CCDA: AST, its
+texts RANGE_TEXT, #827), and through CareSpace and MyChart exports (#836); and flags stored as their reports printed
+them, as older imports stored them ("N", ">", "HH", "Normal": Calcium, #839). JUDGED is what each result is judged
+as, by the one rule (server/ranges.py judge, www/js/ranges.js applyRangeOverrides): [flag, low, high, source], and
+EDGES its edge where its range has one; STEPS the band's steps, each the results it covers, with its words (a result
+whose report gave no range is under none). The summary's "since" day is SINCE days back, so each case has a Then and
+a Now. Each draw day is a lab day with one result listing that day's results as a report prints them (#782):
 its row named as the report names the test (ROW_NAMES: "CHLORIDE" for the series "Chloride, Blood", "CREAT" for
 "Creatinine"), the value as given, the range as printed (a one-sided one with its edge, "<5" or "<=5") and the report's
 own flag, and the count of flags its importer stored. COPIES (#781, at the end) is a second profile's: one result
@@ -212,6 +213,13 @@ SPELLINGS = [
     ["greater than or equal to 60", "59", 60, None, "", "L"], ["Negative", "5", None, None, "", ""],
 ]
 SPELLED_AS = ("AST", "U/L")   # a lab every importer charts (CareSpace only those it knows)
+# #859: no thousands follow a leading 0. COMMAS: a number as printed, as a value and in a range ("<0,500"), and what each
+# reads as (None: unread, kept as printed and said so) where the file's decimal commas aren't known (a C-CDA document,
+# FHIR, CareSpace, MyChart, a PDF report: a comma that can't group thousands is decimal), where its commas group
+# thousands (a comma-delimited spreadsheet that writes decimal points, Type them in) and where they're decimal (a
+# spreadsheet with semicolons, or with "0,500" or "4,5" among its values). "0,500" was 500 where commas group thousands
+COMMAS = {"0,500": (0.5, None, 0.5), "0,05": (0.05, 0.05, 0.05), "1,250": (None, 1250, 1.25), "12,500": (None, 12500, 12.5)}
+UNKNOWN, IN_THOUSANDS, DECIMAL = 0, 1, 2   # COMMAS' modes
 
 # ---- a flag stored as its report printed it (#839): Calcium's results as an older import stored them, before #817's one
 # rule, each flag in CASES as printed ("N", ">", "<", "HH", "LL", "AA", "Normal"), stored as it is. Every view reads a
