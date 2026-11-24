@@ -1893,6 +1893,13 @@ Everything on `main` so far; it becomes the first tagged release.
   choice or ticks, and they were gone, nothing asked. The drawer's forms are now read as they're drawn, and while any
   field differs from that the click does nothing (✕ and Escape still close it); with nothing changed it closes it as
   before.
+- **Above 700 px the profile's name keeps its place in the top bar** (#785): on a tablet, a phone held sideways or
+  with larger text, every tab went under More, which named the tab shown, and the profile's name took all the
+  squeeze: on Body and activity none of it showed at 701 px ("owner ⌄" alone) and little up to 768, and with text at
+  200% none from 701 to 1024 px, where "Sanguity" was drawn over the role. Now, with less than 6 em for the name (or
+  its whole length), its role, the brand's word and More's name for the tab shown make way in turn, each still said to
+  a screen reader, and given back where there's room; if that's not enough the name takes a row of its own under the
+  bar, as on a phone (#622). Nothing on the bar overlaps (WCAG 1.4.4).
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

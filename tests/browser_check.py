@@ -12068,6 +12068,51 @@ def main():
             check("With text at 200% at 360 and 412 px, light and dark (#622, 1.4.4): the phone's tabs inside their places, icons alone, still named, the bar "
                   "as tall as the page leaves it; the profile's name whole, on a row of its own at 360; Labs' chart, axis and event-track labels inside their "
                   "charts, none over another. At the usual size the tabs keep their words and the profile its place", not bad622, bad622)
+            # ---- #785: #622's check above 700 px, where the tabs are in the top bar, all under More where they don't fit: at
+            # 701, 768, 900, 1024 and 1100 px and on a phone on its side (844×390, 915×412, a touch screen), with text as
+            # usual and at 130%, 150% and 200%, on the records page (Body and activity, the longest tab's name) and every
+            # page with the bar: the profile's name at its floor (6 em, or whole if shorter), on the bar's row or one of its
+            # own, the bar no wider than the window, and nothing on it over anything else or outside it. More saying "More"
+            # for the tab shown still has the tab in its name. (Each page in a context of its own, so the records page
+            # here is left as it is)
+            T785 = r"""() => { const r = e => e.getBoundingClientRect(), hd = document.querySelector('header.topbar'), H = r(hd), bad = [];
+              const shown = e => !!e && e.checkVisibility() && getComputedStyle(e).clipPath === 'none' && !e.closest('.vh');
+              const name = document.querySelector('#profileMenuBtn .profile-name'), floor = Math.min(name.scrollWidth, 6 * parseFloat(getComputedStyle(name).fontSize));
+              if (floor < name.scrollWidth ? name.clientWidth + 1 < floor : name.scrollWidth > name.clientWidth) bad.push(`its name ${name.clientWidth} px of ${Math.round(floor)}`);
+              if (hd.scrollWidth > hd.clientWidth + 1) bad.push(`the bar ${hd.scrollWidth} px in ${hd.clientWidth}`);
+              const parts = [['brand', document.querySelector('header .brand-name svg.brand')], ['brand word', document.querySelector('header .brand-word')], ['name', name],
+                ['role', document.querySelector('#profileMenuBtn .profile-role')], ['caret', document.querySelector('#profileMenuBtn .menu-caret')],
+                ...[...document.querySelectorAll('header .tabs > a, #tabMoreBtn')].map(a => [a.id, a]), ...['barSearch', 'addMenuBtn', 'userMenuBtn', 'installBtn'].map(id => [id, document.getElementById(id)])]
+                .filter(([, e]) => shown(e)).map(([k, e]) => [k, k === 'name' ? (b => ({left: b.left, right: b.left + name.clientWidth, top: b.top, bottom: b.bottom}))(r(e)) : r(e)]);
+              for (const [k, b] of parts) if (b.left < H.left - 1 || b.right > Math.min(H.right, innerWidth) + 1) bad.push(k + ' outside the bar');
+              parts.forEach(([k, a], i) => parts.slice(i + 1).forEach(([m, b]) => {
+                if (a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1 && !(k === 'name' && ['role', 'caret'].includes(m))) bad.push(k + ' over ' + m); }));
+              const more = document.getElementById('tabMoreBtn'), cur = document.querySelector('a[id^=tab-][aria-current=page]');
+              if (more.classList.contains('tab-cur') && !(more.getAttribute('aria-label') || '').startsWith(cur.textContent)) bad.push('More not named for ' + cur.textContent);
+              return bad; }"""
+            big785 = lambda f: "" if f == 1 else BIG622 if f == 2 else ":root{%s} html{font-size:%d%%}" % (
+                ";".join(f"--fs-{i}:{round(v * f, 2)}px" for i, v in enumerate((11.5, 12.5, 14, 15.5, 18, 22, 28), 1)), round(f * 100))
+            bad785, n785 = {}, 0
+            for touch785, sizes785 in ((False, ((701, 800), (768, 1000), (900, 900), (1024, 768), (1100, 900))), (True, ((844, 390), (915, 412)))):
+                c785 = browser.new_context(viewport={"width": sizes785[0][0], "height": sizes785[0][1]}, bypass_csp=True, has_touch=touch785, is_mobile=touch785)
+                c785.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
+                p785 = c785.new_page()
+                for path785 in ("?profile=1#health", "settings.html?profile=1", "sources.html?profile=1", "sharing.html?profile=1", "account.html", "admin.html"):
+                    p785.goto(base + "/" + path785)
+                    p785.wait_for_function("(n => !!n && !document.getElementById('profilePick').hidden)(document.querySelector('#profileMenuBtn .profile-name'))", timeout=20000)
+                    p785.wait_for_timeout(500)
+                    for w785, h785 in sizes785:
+                        p785.set_viewport_size({"width": w785, "height": h785})
+                        for f785 in (1, 1.3, 1.5, 2):
+                            p785.evaluate("css => { const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = css ? [s] : []; }", big785(f785))
+                            p785.wait_for_timeout(200)
+                            n785 += 1
+                            if (got785 := p785.evaluate(T785)):
+                                bad785[f"{path785.split('?')[0] or 'records'} {w785}×{h785}{' touch' if touch785 else ''} {round(f785 * 100)}%"] = got785
+                c785.close()
+            check("Above 700 px (#785, #622, 1.4.4): at 701 to 1100 px and on a phone on its side (844×390, 915×412), text at 100–200%, on every page with "
+                  "the top bar, the profile's name at its floor (6 em, or whole), on the bar's row or its own; nothing on the bar over anything else or "
+                  "outside it", n785 == 168 and not bad785, [n785, dict(list(bad785.items())[:12]), len(bad785)])
             # ---- #633: the heatmap's own labels too (its names' column, rows and axis grow with the text, chartkit.js ckK):
             # with text at 200% and as usual, at 360 and 412 px, light and dark, every row's and panel's name, count and the
             # axis's labels inside the grid's or the axis's SVG, none over another

@@ -300,7 +300,8 @@ const SgNav = (() => {
      fit go under More (#265), which ends with Edit tabs…; the tab shown always stays in sight, taking the last place
      there is. More itself is always whole (#395): the tabs never shrink, the profile's name does first, down to FLOOR
      (or its whole length, if that's less); where even one tab beside More doesn't fit, that tab goes under More too,
-     and More takes its name ("Labs ▾", raised as the tab shown is). On a phone they're the bar at the screen's foot
+     and More takes its name ("Labs ▾", raised as the tab shown is); with still too little room for the name, other
+     things make way for it, or it takes a row of its own (#785, fit()). On a phone they're the bar at the screen's foot
      instead, five places (phoneBar, below). */
   const TABS = [["overview", "Overview"], ["health", "Body and activity"], ["medications", "Medications"], ["timeline", "Timeline"], ["labs", "Labs"], ["costs", "Costs"]];
   const tabEl = Object.fromEntries(TABS.map(([t, text]) => [t, el("a", {id: "tab-" + t, href: (onRecords ? "#" : "./#") + t, text,
@@ -330,11 +331,22 @@ const SgNav = (() => {
       more.btn.setAttribute("aria-label", named ? cur.textContent + ", more tabs" : "More tabs");
       more.btn.classList.toggle("tab-cur", named);
     };
-    const name = wrap.hidden ? null : prof.btn.querySelector(".profile-name");
-    const floor = name ? Math.min(name.scrollWidth, FLOOR * parseFloat(getComputedStyle(name).fontSize)) : 0;
+    const name = wrap.hidden ? null : prof.btn.querySelector(".profile-name"), fs = name ? parseFloat(getComputedStyle(name).fontSize) : 0;
+    const floor = name ? Math.min(name.scrollWidth, FLOOR * fs) : 0;
     const tight = () => header.scrollWidth > header.clientWidth + 1 || tabs.scrollWidth > tabs.clientWidth + 1
       || (name && (floor < name.scrollWidth ? name.clientWidth + 1 < floor : name.scrollWidth > name.clientWidth));   // (a short name: whole)
+    // what's made way for the name (#785), off: its role said only ("role": in the button's name, as at 480 px and
+    // narrower; not on a row of its own), the brand's word ("word"), More's name for the tab shown ("more": "More", the
+    // tab still in its name, raised as the tab shown)
+    const off = [], squeeze = row => {
+      prof.btn.querySelector(".profile-role")?.classList.toggle("vh", off.includes("role") && !row);
+      header.querySelector(".brand-word")?.classList.toggle("vh", off.includes("word"));
+      word.textContent = more.btn.classList.contains("tab-cur") && !off.includes("more") ? cur.textContent : "More";
+    };
+    const back = (ok, row) => { for (const w of [...off].reverse()) { off.splice(off.indexOf(w), 1); squeeze(row); if (!ok()) { off.push(w); squeeze(row); } } };
+    header.classList.remove("prof-row");
     put(shown);
+    squeeze();
     if (PHONE.matches) put(phoneSlots(shown, cur));
     else {
       for (let n = shown.length - 1; n >= 0 && tight(); n--) {
@@ -342,16 +354,27 @@ const SgNav = (() => {
         if (cur && n && !vis.includes(cur)) vis[n - 1] = cur;
         put(vis);
       }
+      // above 700 px (#785: a tablet, a phone on its side, larger text), every tab under More and the name still cut
+      // under 6 em (or its whole length, if that's less), or the bar wider than the window: its role, the brand's word
+      // and More's name go in turn until it has that, those it can spare then given back. Still cut, it goes to a row of
+      // its own under the bar, as on a phone (#622), its role beside it, and the others back where the bar's row has room
+      const low = Math.min(name?.scrollWidth ?? 0, 6 * fs), cramped = () => header.scrollWidth > header.clientWidth + 1
+        || name && (low < name.scrollWidth ? name.clientWidth + 1 < low : name.scrollWidth > name.clientWidth);   // (a short name: whole)
+      for (const w of ["role", "word", "more"]) if (cramped()) { off.push(w); squeeze(); }
+      if (name && cramped()) {
+        header.classList.add("prof-row");
+        squeeze(true);
+        back(() => header.scrollWidth <= header.clientWidth + 1 && header.querySelector(".bar-menus").getBoundingClientRect().top < svgLogo.getBoundingClientRect().bottom, true);
+      } else back(() => !cramped());
     }
     // on a phone with larger text (the name over 16 px, #622), a name cut short with less than 6 em of room beside the
     // brand and the menus goes to a row of its own under them (.prof-row); the room counted as it is on one row,
     // whichever it's on. At the usual size the bar stays one row, a name cut at 320 px as before (#268, #315)
-    if (name) {
-      const fs = parseFloat(getComputedStyle(name).fontSize);
+    if (name && PHONE.matches) {
       const cs = getComputedStyle(header), gap = parseFloat(cs.columnGap) || 0, flow = [...header.children].filter(c => c.checkVisibility() && !/fixed|absolute/.test(getComputedStyle(c).position));
       const room = header.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - (flow.length - 1) * gap
         - flow.reduce((s, c) => s + (c === wrap ? prof.btn.offsetWidth - name.clientWidth : c.matches(".spacer") ? 0 : c.offsetWidth), 0);
-      header.classList.toggle("prof-row", PHONE.matches && fs > 16 && room < Math.min(name.scrollWidth + 1, 6 * fs));
+      header.classList.toggle("prof-row", fs > 16 && room < Math.min(name.scrollWidth + 1, 6 * fs));
     }
     // the profile's name cut short: the whole of it in a tip (said in the button's name already, #396)
     if (name && name.scrollWidth > name.clientWidth) prof.btn.dataset.tip = name.textContent; else delete prof.btn.dataset.tip;
