@@ -21,7 +21,8 @@
     value: /^(value|result|result value|results|reading|your value|level)$/, unit: /^(unit|units|uom|unit of measure)$/,
     range: /^(range|reference range|ref range|reference interval|normal range|reference)$/,
     low: /^(low|ref low|range low|lower limit|min|minimum|normal low)$/, high: /^(high|ref high|range high|upper limit|max|maximum|normal high)$/,
-    flag: /^(flag|flags|abnormal flag|abnormal|interpretation|h l|hl)$/, lab: /^(lab|laboratory|performing lab|facility)$/};
+    flag: /^(flag|flags|abnormal flag|abnormal|abn|abnormal indicator|out of range|result flag|interpretation|h l|hl)$/,
+    lab: /^(lab|laboratory|performing lab|facility)$/};
   const box = $("#manRows"), msg = $("#manMsg"), saveBtn = $("#manSave"), recs = window.sanguityRecords;
   const keepBox = $("#manKeep"), labs = $("#manLabs"), BODY_MAX = 60000;   // nginx refuses API bodies over 64 KB
   let timer = null, seq = 0, ok = 0, bad = 0, okRecs = 0, badRecs = 0, saving = false;
@@ -143,9 +144,14 @@
 
   /* ---------------------------------------------------------------- pasting from a spreadsheet */
   const norm = h => h.toLowerCase().replace(/[^0-9a-z]+/g, " ").trim();
-  function flagOf(t) {
-    t = norm(t);
-    return /^(h|hh|high|hi|a h|critical high)$/.test(t) ? "H" : /^(l|ll|low|lo|critical low)$/.test(t) ? "L" : "";
+  // a flag pasted is kept as printed (#835): High or Low where the select has it, else an option of its own ("Abnormal",
+  // "Yes"), so the server reads it by the one rule (common.report_flag) as it reads a spreadsheet's Flag column, and the
+  // row's check says what it became; only High and Low were kept, so "A" or "Abnormal" was saved with no flag
+  function putFlag(s, t) {
+    t = t.slice(0, 60);   // (the server takes 60 characters)
+    const o = [...s.options].find(o => [o.value, o.textContent].some(x => x && x.toLowerCase() === t.toLowerCase()));
+    if (!o && t) s.append(el("option", {value: t, text: t}));
+    s.value = o ? o.value : t;
   }
   box.addEventListener("paste", ev => {
     const target = ev.target.closest("[data-f]"), text = (ev.clipboardData || window.clipboardData).getData("text");
@@ -166,8 +172,7 @@
       const v = {};
       cols.forEach((f, i) => { if (f && cells[i] != null) v[f] = cells[i].trim(); });
       if ((v.low || v.high) && !v.range) v.range = v.low && v.high ? `${v.low} - ${v.high}` : v.low ? `>=${v.low}` : `<=${v.high}`;
-      if ("flag" in v) v.flag = flagOf(v.flag);
-      for (const [f] of FIELDS) if (f in v) put(input(r, f), v[f]);
+      for (const [f] of FIELDS) if (f in v) (f === "flag" ? putFlag : put)(input(r, f), v[f]);
       n++;
       r = r.nextElementSibling;
     }

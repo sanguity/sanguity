@@ -291,10 +291,15 @@ def _range(text, lo=None, hi=None, unit=None, edge=""):
     return [r] if r else []
 
 
+INTERP_NAMES = {"H": "High", "L": "Low", "HH": "Critical high", "LL": "Critical low", "A": "Abnormal", "AA": "Critical abnormal"}
+
+
 def _interp(flag):
-    flag = str(flag or "").upper()
-    names = {"H": "High", "L": "Low", "HH": "Critical high", "LL": "Critical low", "A": "Abnormal"}
-    return [cc(None, coding(INTERP, flag, names[flag]))] if flag in names else []
+    """A result's interpretation from its flag, a point's ("H", "L", "A") or a report row's as printed ("High",
+    "Critical", "Abnormal"...), by the one rule's words (common.flag_code, #835: only "H", "L", "HH", "LL" and "A" were
+    written, so a PDF row's in-range "Abnormal" was lost); the FHIR importer reads it back to the same flag."""
+    code = common.flag_code(flag)
+    return [cc(None, coding(INTERP, code, INTERP_NAMES[code]))] if code else []
 
 
 def _value(rep, num=None, unit=None):

@@ -221,6 +221,24 @@ class Common(unittest.TestCase):
         self.assertEqual([f("A", 15, 15, 60, "<"), f("A", 5, None, 5, "", "<"), f("A", 5, None, 5), f("A", 5, None, 5, "", "")],
                          ["L", "H", "A", "A"])
 
+    def test_a_flag_said_yes_and_as_hl7(self):
+        """#835: the one rule reads a yes in a flag column ("Y", "Yes", "True") as a flag that says no way, and a no
+        ("N", "No", "False") as one that says neither; and flag_code gives a printed flag's HL7 interpretation code, as
+        the FHIR export writes it and the FHIR importer reads it back to the same flag."""
+        f = common.report_flag
+        self.assertEqual([f(p, 13, 11, 15) for p in ("Y", "yes", "TRUE", "N", "No", "false")], ["A"] * 3 + [""] * 3)
+        self.assertEqual([f(p, 16, 11, 15) for p in ("Yes", "No")], ["H", "H"])
+        printed = ["H", "HH", "High", "Critical High", "Panic high", "HU", ">", "L", "LL", "low", "Critical low", "<", "A", "AA",
+                   "Abnormal", "Critical", "Critical abnormal", "Panic", "Alert", "ABN", "Yes", "", "N", "Normal", "No", "Final"]
+        codes = ["H", "HH", "H", "HH", "HH", "H", "H", "L", "LL", "L", "LL", "L", "A", "AA",
+                 "A", "AA", "AA", "AA", "A", "A", "A", "", "", "", "", ""]
+        self.assertEqual([common.flag_code(p) for p in printed], codes)
+        for p, c in zip(printed, codes):   # the code read back by the one rule gives the printed flag's own
+            for v, lo, hi in ((13, 11, 15), (16, 11, 15), (10, 11, 15), (13, None, None)):
+                self.assertEqual(f(c, v, lo, hi), f(p, v, lo, hi), (p, c, v, lo, hi))
+        self.assertEqual([common.flag_known(p) for p in ("H", "Abnormal", "Yes", "N", "Normal", "No", "", "Final", "see note")],
+                         [True] * 7 + [False] * 2)
+
     def test_a_range_as_text(self):
         """#827: one parser for a reference range given as text: (low, high, edge), a one-sided limit's edge by
         range_edge ("<5" leaves 5 out, "<=5" keeps it, #780), a unit or words after it allowed; nothing it can't read."""

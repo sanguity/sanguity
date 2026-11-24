@@ -305,6 +305,18 @@ class Layouts(Written):
         r, _ = csv_labs.read_row(lambda k: typed.get(k, ""))
         self.assertEqual(r["flag"], "A", "a typed result's too")
 
+    def test_a_yes_in_an_abnormal_column_is_a_flag(self):
+        """#835: an "Abnormal" or "Out of range" column that answers yes or no ("Y", "Yes", "True"; "N", "No") is read
+        by the one rule: a yes is a flag that says no way, placed by the range where it can be, else kept "A"; a no says
+        neither, so the range alone. Before, the range alone said each, so a yes inside the range was dropped."""
+        for header in ("Abnormal", "Out of range"):
+            with self.subTest(header=header):
+                f = self.write("y.csv", f"Date,Test,Value,Range,{header}\n2025-01-01,A,5,1-10,Y\n2025-01-01,B,5,1-10,Yes\n"
+                                        "2025-01-01,C,12,1-10,yes\n2025-01-01,D,5,,TRUE\n2025-01-01,E,5,1-10,No\n2025-01-01,F,12,1-10,N\n"
+                                        "2025-01-01,G,0.5,1-10,no\n")
+                d = csv_labs.parse(f)["data"]
+                self.assertEqual([series(d, n)["pts"][0][4] for n in "ABCDEFG"], ["A", "A", "H", "A", "", "H", "L"])
+
     def test_one_test_in_two_units(self):
         f = self.write("u.csv", "Date,Test,Value,Unit\n2025-01-01,Glucose,95,mg/dL\n2025-02-01,Glucose,100,mg/dL\n"
                                 "2025-03-01,Glucose,5.4,mmol/L\n")

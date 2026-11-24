@@ -328,6 +328,40 @@ class FhirExport(unittest.TestCase):
                          {"RDW": "A", "Fibrinogen": "A", "Urine culture": "A", "MPV": "A"}, "each row (MPV's a result of its own)")
         profiles.delete_profile(self.db, pid)
 
+    def test_each_printed_flag_goes_out_and_comes_back(self):
+        """#835: a report row's flag as printed (a PDF's rows keep it: "High", "Critical High", "Abnormal", "AA",
+        "Critical", "Alert", "Yes"...) goes out as its HL7 interpretation code by the one rule (common.flag_code: "H",
+        "HH", "A", "AA"...), and comes back as the same flag on the point and the row (common.report_flag): only "H",
+        "L", "HH", "LL" and "A" were written, so an in-range "Abnormal" was lost on export."""
+        from server.importers import common
+        t = "2026-10-01T08:00:00"
+        printed = ["H", "HH", "High", "Critical High", "L", "Low", "Panic Low", "A", "AA", "Abnormal", "Critical", "Alert", "Yes", "N", ""]
+        cases = [(p, 13, 11, 15) for p in printed] + [("Abnormal", 16, 11, 15), ("Critical", 10, 11, 15), ("Critical", 13, None, None)]
+        name = lambda i: f"Flag {i} (fictional)"
+        data = {"built": "2026-10-02", "source": "fictional", "costs": [], "upcoming": [],
+                "events": [{"id": 1, "t": t, "k": "lab", "title": "Lab results (fictional)"},
+                           {"id": 2, "t": t, "k": "labitem", "title": "Flags panel (fictional)", "hidden": 1}],
+                "details": {"1": {"type": "labday", "ids": [2]},
+                            "2": {"type": "result", "order": "Flags panel (fictional)",
+                                  "rows": [[name(i), str(v), "U/L", f"{lo} - {hi}" if lo is not None else "", p] for i, (p, v, lo, hi) in enumerate(cases)]}},
+                "labs": [{"name": name(i), "unit": "U/L", "panel": "", "n": 1, "txt": [],
+                          "pts": [[t, v, lo, hi, common.report_flag(p, v, lo, hi), str(v)]]} for i, (p, v, lo, hi) in enumerate(cases)]}
+        pid = profiles.create_profile(self.db, "Printed flags (fictional)", owner_id=self.uids["robin"])
+        with dbm.transaction(self.db):
+            records.store(self.db, pid, data, "upload", fmt="csv")
+        blob = self.export(pid, {"labs"})
+        said = {e["resource"]["code"]["text"]: [c["code"] for i in e["resource"].get("interpretation") or [] for c in i["coding"]]
+                for e in self.bundle(blob)[0]["entry"] if e["resource"]["resourceType"] == "Observation"}
+        codes = ["H", "HH", "H", "HH", "L", "L", "LL", "A", "AA", "A", "AA", "A", "A", "", "", "A", "AA", "AA"]
+        self.assertEqual([said.get(name(i)) for i in range(len(cases))], [[c] if c else [] for c in codes])
+        _, _, got = self.round_trip(pid, blob)
+        back = {s["name"]: s["pts"][0][4] for s in got["data"]["labs"]}
+        rows = {r[0]: r[4] for e in got["data"]["details"].values() if isinstance(e, dict) and e.get("type") == "result" for r in e["rows"]}
+        want = [common.report_flag(p, v, lo, hi) for p, v, lo, hi in cases]
+        self.assertEqual([back.get(name(i)) for i in range(len(cases))], want, "each point's flag back")
+        self.assertEqual([rows.get(name(i)) for i in range(len(cases))], want, "each row's flag back, by the one rule")
+        profiles.delete_profile(self.db, pid)
+
     # ---------------------------------------------------------------- the bundle itself
     def test_valid_against_the_fhir_r4_schema(self):
         bundle, _, _ = self.bundle(self.export(cycle=True))
