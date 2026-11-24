@@ -11,7 +11,7 @@
    (#825: from two imports, or twice from one) is one point: the server gives each copy the one result's range and flag
    (crossmatch.copies, as the summary's), so a later copy at its time saying the same (its value as given, range,
    flag and edge) is left out, and the one kept names its import too (p.also: the Timeline counts it in each one's
-   draw, util.js labDraws). Labs, the Overview, the heatmap and the rest read it once, its flag never under a copy's
+   draw, util.js labDraws). Copies whose reports print different ranges are two results (#847), each with its own. Labs, the Overview, the heatmap and the rest read it once, its flag never under a copy's
    dot. The records' own series keep both, for each import's lab day (drawer.js rowPoint). Two the person said aren't
    the same result stay two (#833: the server names which result each is, p.apart from the series' "apart"), and at
    one time a flagged result comes after an unflagged one, so what reads the latest (the Overview's tile, a sparkline's

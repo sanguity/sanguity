@@ -618,6 +618,27 @@ UPLOADED_HERE = {"copies": 4, "results": 0}
 UPLOAD_ORDERS = (("csv", "ccda"), ("ccda", "csv"))
 SHOWN = {"Potassium, Blood": "Potassium", "Sodium, Blood": "Sodium"}   # as the summary names them (Settings' labNicknames)
 
+# ---- #847: two copies whose reports print different ranges, through the same uploads: in the edge ("<5" in the
+# spreadsheet, "<=5" in the C-CDA; ">=60" and ">60") and in the limits (13.5–17.5 and 12–16). They were one result, the
+# first's range and flag given to the other (the C-CDA's lab day said "<=5 ▲ High" for its CRP, and its eGFR, Low by its
+# own report, showed nowhere). Now two each, everywhere, each with its own range and flag, at one time the flagged one
+# after the other (Labs, a trend's Now, the Overview's list); an out-of-range row "1 of 2". CRP's and Hemoglobin's (by
+# LOINC code) are results already here at the second upload, added with their own range (#846); eGFR's, with no code, a
+# possible match from another source (UPLOADED_POSSIBLE)
+UPLOADED.update({"CRP": ("mg/L", "5", "<5", "", "<=5"), "eGFR": ("mL/min/1.73m2", "60", ">=60", "", ">60"),
+                 "Hemoglobin": ("g/dL", "13.0", "13.5-17.5", "", "12-16")})
+UPLOADED_SEEN.update({("CRP", "mg/L"): [["", None, 5], ["H", None, 5, "<"]], ("eGFR", "mL/min/1.73m2"): [["", 60, None], ["L", 60, None, ">"]],
+                      ("Hemoglobin", "g/dL"): [["", 12, 16], ["L", 13.5, 17.5]]})
+UPLOADED_ROWS = {"csv": [("ALT", "A"), ("CRP", "H"), ("eGFR", ""), ("Glucose", "H"), ("Hemoglobin", "L"), ("Potassium", "H"), ("Sodium", "H")],
+                 "ccda": [("ALT", "A"), ("CRP", ""), ("eGFR", "L"), ("Glucose", "H"), ("Hemoglobin", ""), ("Potassium", "H"), ("Sodium", "H")]}
+UPLOADED_LABS = ["ALT", "CRP", "eGFR", "Glucose, Blood", "Hemoglobin", "Potassium, Blood", "Sodium, Blood"]
+UPLOADED_TRENDS = {**{k: v for k, v in UPLOADED_TRENDS.items() if k[0] == "ALT"}, ("CRP", "mg/L"): [None, ["5", "High"], "< 5"],
+                   ("eGFR", "mL/min/1.73m2"): [None, ["60", "Low"], "> 60"], **{k: v for k, v in UPLOADED_TRENDS.items() if k[0] == "Glucose, Blood"},
+                   ("Hemoglobin", "g/dL"): [None, ["13.0", "Low"], "13.5–17.5"], **{k: v for k, v in UPLOADED_TRENDS.items() if k[0] > "H"}}
+UPLOADED_OUT.update({("CRP", "mg/L"): ["5", "High", "< 5", 1, 2], ("eGFR", "mL/min/1.73m2"): ["60", "Low", "> 60", 1, 2],
+                     ("Hemoglobin", "g/dL"): ["13.0", "Low", "13.5–17.5", 1, 2]})
+UPLOADED_HERE, UPLOADED_POSSIBLE = {"copies": 6, "results": 0}, 1
+
 
 def uploaded(kind, today=None):
     """UPLOADED's results as one file of kind "csv" (a spreadsheet: its range and flag as printed) or "ccda" (a C-CDA
