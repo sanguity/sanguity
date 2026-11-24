@@ -291,12 +291,13 @@ class Common(unittest.TestCase):
                          [("5.0E3-1.0E4", "U/L"), ("3.4-10.8", "x10E3/uL")])
         # a result's value: a bound's number with its comparator aside, a number given as one as it is (#870)
         v = common.value_number
-        self.assertEqual([v(t) for t in ("4.2", "=<5", "≤ 5", "< 5", "≥60", "=>60", ">= 60", "4,5", "0,500", "1.2E-3", "<1.0E4", " 7 ")],
-                         [4.2, 5, 5, 5, 60, 60, 60, 4.5, 0.5, 0.0012, 10000.0, 7])
-        self.assertEqual([v(t) for t in ("1,250", "> OR = 60", "Negative", "5 mg", "", None, True, float("nan"))], [None] * 8)
+        self.assertEqual([v(t) for t in ("4.2", "=<5", "≤ 5", "< 5", "≥60", "=>60", ">= 60", "4,5", "0,500", "1.2E-3", "<1.0E4", " 7 ",
+                                         "> OR = 60", "< or = 5")],
+                         [4.2, 5, 5, 5, 60, 60, 60, 4.5, 0.5, 0.0012, 10000.0, 7, 60, 5])
+        self.assertEqual([v(t) for t in ("1,250", "> OR 60", "Negative", "5 mg", "", None, True, float("nan"))], [None] * 8)
         self.assertEqual([v("1,250", False), v("0,500", False), v(12.5), v(7)], [1250, None, 12.5, 7])
-        self.assertEqual([common.comparator(t) for t in ("=<5", "≤ 5", "< 5", "≥60", "=>60", ">= 60", "> 10", "5")],
-                         ["<=", "<=", "<", ">=", ">=", ">=", ">", ""])
+        self.assertEqual([common.comparator(t) for t in ("=<5", "≤ 5", "< 5", "≥60", "=>60", ">= 60", "> 10", "5", "> OR = 60", "<or=5", "> ORANGE")],
+                         ["<=", "<=", "<", ">=", ">=", ">=", ">", "", ">=", "<=", ">"])
         # the edge of a limit read from the text by the same parser, with a source's own low or high beside it (#780)
         self.assertEqual([common.range_edge(t, lo, hi, dc) for t, lo, hi, dc in (
             ("<5", None, 5, None), ("=>60", 60, None, None), (">60", 60, None, None), ("<1,000", None, 1000, None),

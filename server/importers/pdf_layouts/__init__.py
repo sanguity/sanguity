@@ -5,7 +5,10 @@ A layout module (docs/importers.md, "PDF lab reports", has the full version):
     NAME = "quest"                    short id: lower-case letters, digits and dashes
     LABEL = "Quest Diagnostics"       the lab, as shown on the results
     SOURCE = "Quest"                  short source tag on lab points and lab days
-    def recognise(lines) -> bool      page 1's text lines: is this the lab's layout? Look for the lab's name and the
+    DECIMAL_COMMA = False             optional: whether the lab's reports write decimal commas (True) or decimal points
+                                      (False: "1,250" is 1250, "0,500" isn't read); left out, not known: a comma that
+                                      can't group thousands is decimal ("0,500" is 0.5), "1,250" isn't read (#859, #870)
+    def recognise(lines) -> bool     page 1's text lines: is this the lab's layout? Look for the lab's name and the
                                       results table's column headings, never for one of them alone
     HEADER = re.compile(...)          the results table's column headings; rows are read only below it, on each page
     END = re.compile(...) or None     a line that ends the table on its page (a performing-lab block), optional

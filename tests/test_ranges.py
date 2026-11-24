@@ -1110,7 +1110,7 @@ class Api(unittest.TestCase):
 
     def test_2_bound_values(self):
         """#870: a value given as a bound, as reports print one (ranges_matrix BOUND_VALUES: "=<5", "≤ 5", "< 5", "≥60",
-        "=>60", "> 10", ">= 60", "<0.5"), beside a range, gives the same number, comparator and flag through every
+        "=>60", "> 10", ">= 60", "<0.5", Quest's "> OR = 60"), beside a range, gives the same number, comparator and flag through every
         importer (_every_importer: spreadsheets, Quest-like PDF reports, C-CDA, FHIR, CareSpace, MyChart) and Type them
         in's check, and through the FHIR export read back, of a spreadsheet's import and of rows alone. The export sent
         "=<5", "≤ 5" and "≥60" as text alone (its own reader read "<", "<=", ">" and ">=" only), and the FHIR importer
@@ -1131,16 +1131,18 @@ class Api(unittest.TestCase):
     def test_2_commas_in_each_mode(self):
         """#859: no thousands follow a leading 0 (common.number_text). ranges_matrix COMMAS' numbers ("0,500", "0,05",
         "1,250", "12,500", and #870's "1.2E-3" and "5,0E3"), each as a value and in a range ("<0,500"), read as each mode
-        reads them: where a file's commas group thousands (a comma-delimited spreadsheet that writes decimal points, and
-        Type them in) "0,500" is unread, kept as printed and said so (the upload's warning, Type them in's notes),
-        "1,250" 1250; where they're decimal (a spreadsheet with semicolons, or with "0,500" among its values) "0,500" is
-        0.5 and "1,250" 1.25; where that isn't known (C-CDA, FHIR, CareSpace, MyChart, a PDF report) "0,500" is 0.5 and
-        "1,250" unread, as a value (#870: the PDF read "0,500" as 500, "0,05" not at all) and in a range. And the FHIR
+        reads them: where a file's commas group thousands (a comma-delimited spreadsheet that writes decimal points, Type
+        them in, and Quest's PDF reports, a US lab's whose layout says so) "0,500" is unread, kept as printed and said so
+        (the upload's warning, Type them in's notes), "1,250" 1250; where they're decimal (a spreadsheet with semicolons, or
+        with "0,500" among its values) "0,500" is 0.5 and "1,250" 1.25; where that isn't known (C-CDA, FHIR, CareSpace,
+        MyChart, a PDF report from a lab whose layout doesn't say) "0,500" is 0.5 and "1,250" unread, as a value (#870: the
+        PDF read "0,500" as 500 whatever its lab, "0,05" not at all) and in a range. And the FHIR
         export of each import, read back, has the same values, ranges and flags (#870: it sent "0,500" and "1,250" as
         text alone, so they came back with no number, range or flag; a limit printed "<1,250" in a file whose commas
         group thousands came back with none, and one its import couldn't read, "<0,500" there, as 0.5)."""
         import csv, types
-        from server.importers import carespace, ccda, csv_labs, epic_mychart, fhir, pdf_labs
+        from unittest import mock
+        from server.importers import carespace, ccda, csv_labs, epic_mychart, fhir, pdf_labs, pdf_layouts
         tmp, (lab, unit) = tempfile.mkdtemp(dir=TMP), M.SPELLED_AS
         nums = list(M.COMMAS)
         values = [(lab, unit, M.day(100 - i, TODAY), n, "") for i, n in enumerate(nums)]   # each a value, no range
@@ -1213,18 +1215,25 @@ class Api(unittest.TestCase):
         for n, u, t, v, rng in values + ranged:
             pdfs[f"quest-{t[:10]}.pdf"] = path = os.path.join(tmp, f"quest-{t[:10]}.pdf")
             gen.write(path, gen.quest([("COMMAS (FICTIONAL)", None), (n, v, "", rng, u)], collected=f"{t[5:7]}/{t[8:10]}/{t[:4]} / 08:00 EST"))
-        by_pdf = pdf_labs.parse(pdfs)
+        by_pdf = pdf_labs.parse(pdfs)   # (Quest's: a US lab's, so its commas group thousands)
+        pdf_labs._cache.clear()
+        with mock.patch.object(pdf_layouts, "layouts", lambda: [M.pdf_layout_unsaid()]):
+            unsaid_pdf = pdf_labs.parse(pdfs)
         for how, data, kept in (("C-CDA documents", ccda.parse(docs)["data"], True),
                                 ("a FHIR bundle", fhir.parse({"commas.json": os.path.join(tmp, "commas.json")})["data"], False),
                                 ("a CareSpace export", carespace.parse(M.carespace(values + ranged, os.path.join(tmp, "carespace")))["data"], True),
                                 ("a MyChart export", epic_mychart.parse(M.epic(ranged, os.path.join(tmp, "mychart")))["data"], False),
-                                ("PDF reports", by_pdf["data"], True)):
+                                ("PDF reports from a lab whose layout doesn't say its decimal mark", unsaid_pdf["data"], True)):
             self.assertEqual(read(data), want(M.UNKNOWN, kept), how)
             back(data, how)
-        unread = [n for n in nums if M.COMMAS[n][M.UNKNOWN] is None]   # a PDF report's says each, as a spreadsheet's does
-        self.assertEqual(sorted(w for w in by_pdf["warnings"] if "couldn't be read as a number" in w),
-                         sorted(f"quest-{t[:10]}.pdf: 1 value couldn't be read as a number, so it was kept as text, not charted: {lab} ('{v}')."
-                                for _, _, t, v, _ in values if v in unread))
+        self.assertEqual(read(by_pdf["data"]), want(M.IN_THOUSANDS), "Quest's PDF reports")
+        back(by_pdf["data"], "Quest's PDF reports")
+        for out, mode in ((by_pdf, M.IN_THOUSANDS), (unsaid_pdf, M.UNKNOWN)):   # a PDF report's says each, as a spreadsheet's does
+            self.assertEqual(sorted(w for w in out["warnings"] if "couldn't be read" in w), sorted(
+                [f"quest-{t[:10]}.pdf: 1 value couldn't be read as a number, so it was kept as text, not charted: {lab} ('{v}')."
+                 for _, _, t, v, _ in values if M.COMMAS[v][mode] is None]
+                + [f"quest-{t[:10]}.pdf: 1 range couldn't be read, so it isn't used for the flag: {lab} ('{r}')."
+                   for _, _, t, _, r in ranged if M.COMMAS[r[1:]][mode] is None]), mode)
 
     def test_2_summary_matrix(self):
         """#752: one rule for a result's range, flag and source, through the server. The matrix (tests/ranges_matrix.py): a

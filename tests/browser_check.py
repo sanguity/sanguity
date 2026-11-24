@@ -21497,12 +21497,18 @@ def main():
                 bad870.append(f"the spreadsheets' import: {seen870[0]}")
             if seen870[1] != seen870[0]:
                 bad870.append(f"read back: {seen870[1]} not {seen870[0]}")
+            # a value given as a bound, each as ranges_matrix BOUND_VALUES spells it (Quest's "> OR = 60" too): the page's
+            # comparator is the server's (ranges.js rangeCmp read "> OR = 60" as ">", the importers as ">=")
+            cmp870 = js("ts => ts.map(rangeCmp)", [v for v, *_ in M752.BOUND_VALUES] + ["< or = 5", "<OR=5"])
+            want870 = [c for _, _, _, c, _ in M752.BOUND_VALUES] + ["<=", "<="]
+            if cmp870 != want870 or [rng.comparator(v) for v, *_ in M752.BOUND_VALUES] != want870[:len(M752.BOUND_VALUES)]:
+                bad870.append(f"the page's comparators {cmp870}, the server's {[rng.comparator(v) for v, *_ in M752.BOUND_VALUES]}, not {want870}")
             db = dbm.connect()
             for pid870 in pids870:
                 prof_r.delete_profile(db, pid870)
             check("#870: “4,5”, “0,500”, “12,5” (with semicolons), “1,250” (comma-delimited), “=<5” and “≥60” exported as FHIR and the zip "
                   "uploaded into another profile: Labs has each with the same value, range, edge and flag, and the Overview's out-of-range "
-                  "list the same four", not bad870, bad870)
+                  "list the same four; and the page reads a bound as the server does, Quest's “> OR = 60” as “>=”", not bad870, bad870)
             # ---- #839: a flag stored as its report printed it (an older import's "N", ">", "HH", "Normal") is read as a new
             # import of it would, by the one rule for a printed flag, on the page as on the server (ranges.js readFlag,
             # server/ranges.py read_flag: common.report_flag): the page read every one but H and L as ◆ Flagged, the summary
