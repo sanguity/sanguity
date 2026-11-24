@@ -160,8 +160,8 @@ JUDGED["ALT"] = [["", 7, 56, R], ["A", 7, 56, R], ["H", 7, 56, R], ["L", 7, 56, 
 # yes or no), judged as JUDGED: the paste kept H and L only, so its "A", "Abnormal", "Critical" and "Yes" were none
 PASTE_FLAGS = {"ALT": ["", "Yes", "A", "Abnormal", "Y", "Critical", "No", "AA", "A"]}
 STEPS["ALT"] = [[[0, 1, 2, 3, 4], "7–56 on report"], [[6, 7, 8], "7–56 on report"]]
-TRENDS["ALT"] = [("50", "Abnormal", None), ("20", "Abnormal", None), "7–56"]
-OUT_OF_RANGE["ALT"] = ["20", "Abnormal", "7–56", 3, 4]
+TRENDS["ALT"] = [("50", "Flagged", None), ("20", "Flagged", None), "7–56"]
+OUT_OF_RANGE["ALT"] = ["20", "Flagged", "7–56", 3, 4]
 
 # ---- a range given as text alone (#827): AST's results come in a C-CDA document whose reference ranges are text with
 # no IVL (RANGE_TEXT), read by the C-CDA importer (THROUGH_CCDA: records() takes their series from ccda.parse, as an
