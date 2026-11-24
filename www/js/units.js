@@ -40,12 +40,14 @@ function ucText(uc, text) {
   return r ? r.b + ucFmt(r.x * uc.a + uc.b, r.sig) : text;
 }
 /* a reference range as text ("70-99", "<5.7", "3.5 – 5.0", "≤ 100"), or null when it isn't one that can be converted:
-   a limit, or two numbers either side of "-", "–" or "to", each read by ranges.js valueRead (#874) */
-function ucRange(uc, text) {
+   a limit, or two numbers either side of "-", "–" or "to", each read by ranges.js valueRead (#874); with as, the low and
+   high its import read in it, only where they're those (#886: "<0,500" left unread where a file's commas group
+   thousands isn't read anew as 0.5) */
+function ucRange(uc, text, as) {
   const f = r => ucFmt(r.x * uc.a + uc.b, r.sig), one = valueRead(text);
-  if (one) return one.b + f(one);
+  if (one) return !as || as.filter(x => x != null).join() === `${one.x}` ? one.b + f(one) : null;
   const m = /^\s*(-?[^\s–-][^–-]*?)\s*(?:-|–|\bto\b)\s*(\S.*?)\s*$/i.exec(String(text ?? "")), a = m && valueRead(m[1]), b = m && valueRead(m[2]);
-  return a && b && !a.c && !b.c ? `${f(a)}–${f(b)}` : null;
+  return a && b && !a.c && !b.c && (!as || as[0] === a.x && as[1] === b.x) ? `${f(a)}–${f(b)}` : null;
 }
 /* convert series in place (lab series from DATA.labs, or watch series), each with its own conv */
 function applyUnits(list) {
@@ -54,12 +56,14 @@ function applyUnits(list) {
     if (!uc) continue;
     s.uc = {...uc, from: s.unit};
     s.unit = uc.to;
-    for (const p of s.pts) {
+    for (const [j, p] of s.pts.entries()) {
       const has = p[5] != null && p[5] !== "", shown = has ? String(p[5]) : p[1] == null ? "" : fmtNum(p[1]), read = has ? valueRead(shown) : null;
       // a reported text with its own unit ("37 Cel", from an importer that converted it) is kept whole: text that isn't a
       // value as ranges.js valueRead reads one ("4,5", "=<5" and "> OR = 60" are, #874: they were said as their number)
-      // its report's range said as Labs says one (ranges.js rangeWords, #782), not one from settings, which isn't the report's
-      p.orig = {v: shown, ref: p.rs === "settings" ? null : rangeWords(p), own: has && !read};
+      // its report's range said as Labs says one (ranges.js rangeWords, #782), not one from settings, which isn't the report's;
+      // r, its report's low and high as its import read them (#886: its drawer row's, applyUnitsToRows), not another copy's
+      p.orig = {v: shown, ref: p.rs === "settings" ? null : rangeWords(p), own: has && !read,
+        r: p.rs === "settings" || s.rangeFrom?.[j] != null || p[2] == null && p[3] == null ? null : [p[2], p[3]]};
       if (typeof p[1] === "number") p[1] = p[1] * uc.a + uc.b;
       for (const i of [2, 3]) { const n = ucNum(p[i]); if (n != null) p[i] = +ucFmt(n * uc.a + uc.b, ucSig(p[i])); }
       // its number as imported, converted, with its bound as printed ("=<0.500")
@@ -75,23 +79,24 @@ function ucOrig(s, p) {
   const o = p.orig;
   return `${o.v}${o.own ? "" : " " + s.uc.from}${o.ref ? ", ref " + o.ref : ""}`;
 }
-/* the drawer's result rows ([name, value, unit, ref range, flag]) in the chosen units, by the conversion of the
-   series with that unit and the row's series' name (d.series, #782: a report's "Glucose" is "Glucose, Blood"), else
-   its own; each converted row keeps what was reported as row.orig = [value, unit, range] */
+/* the drawer's result rows ([name, value, unit, ref range, flag]) in the chosen units, each read only as its import
+   read it (#886), as the page doesn't know a file's decimal mark: by its result (drawer.js rowPoint, its value as
+   reported the row's) in that series' unit (d.series, #782: a report's "Glucose" is "Glucose, Blood"), its value that
+   result's number as Labs says it, its range the low and high the import read in it (as printed where the page reads
+   those, else as Labs words them), one it didn't read left in its own unit. A row with no such result is text to its
+   import ("0,500" where a file's commas group thousands, kept as text, was converted as 0.5) and stays as reported.
+   Each converted row keeps what was reported as row.orig = [value, unit, range] */
 function applyUnitsToRows(labs, details) {
-  const by = new Map();
-  for (const s of labs) if (s.uc) by.set(s.name + "\u001f" + s.uc.from, s.uc);
-  if (!by.size) return;
-  for (const d of Object.values(details || {})) {
+  if (!labs.some(s => s.uc)) return;
+  for (const [id, d] of Object.entries(details || {})) {
     if (!d || !Array.isArray(d.rows)) continue;
+    const ev = byId.get(+id) ?? byId.get(id);
     for (const [i, row] of d.rows.entries()) {
-      const uc = by.get((d.series?.[i] ?? row[0]) + "\u001f" + (row[2] || "")); if (!uc || row.orig) continue;
-      if (!valueRead(row[1])) continue;   // text: nothing to convert (ranges.js valueRead, #874)
-      const v = ucText(uc, row[1]);
+      const at = !row.orig && rowPoint(d, i, ev), uc = at && at.s.uc, p = at && at.p;
+      if (!uc || uc.from !== (row[2] || "") || rowSaid(row[1]) !== rowSaid(p.orig.v)) continue;
       row.orig = [row[1], row[2], row[3]];
-      const rr = row[3] ? ucRange(uc, row[3]) : row[3];
-      row[1] = v; row[2] = uc.to;
-      row[3] = rr == null ? `${row[3]} ${uc.from}` : rr;   // a range that can't be read stays, in its own unit
+      row[1] = p[5] || fmtNum(p[1]); row[2] = uc.to;
+      if (row[3]) row[3] = p.orig.r ? ucRange(uc, row[3], p.orig.r) ?? rangeWords(p) : `${row[3]} ${uc.from}`;
     }
   }
 }

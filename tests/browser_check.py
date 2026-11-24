@@ -21640,6 +21640,82 @@ def main():
             check("#874: the page reads a value as printed as the server does, by one reader (ranges.js valueRead: “=<5”, “> OR = 60”, “4,5”, "
                   "“1.2E-3”, “1,250” unread), a converted unit keeps a bound (“=<5” was “0.500”) and a drawer row finds its result by it",
                   not bad874, bad874)
+            # ---- #886: the drawer reads a row's number only as its import read it. ranges_matrix COMMAS' numbers ("0,500",
+            # "0,05", "1,250", "12,500", "1.2E-3", "5,0E3"), each a Creatinine value and in a range ("<0,500" beside 5), in each
+            # mode of #859 (where a file's decimal mark isn't known, a CareSpace export's; where its commas group thousands, a
+            # comma-delimited spreadsheet that writes decimal points; where they're decimal, one with semicolons), with SI chosen
+            # over mg/dL and conventional over µmol/L: a row its import read is in the other unit, its number the one its import
+            # read (as Labs says it), "Reported …" under it; one its import kept as text, or a range it left unread, stays as
+            # printed (the value in its own row as reported, the range in its own unit). The drawer read each anew with no decimal
+            # mark known (units.js by ranges.js valueRead, #874), so "0,500" kept as text where commas group thousands was "44.2
+            # µmol/L · Reported 0,500 mg/dL", unflagged, and "<0,500" left unread was "<44.2"
+            import csv as csv886
+            from server.importers import carespace as care886, csv_labs as csv886i
+            bad886, tmp886, nums886 = [], tempfile.mkdtemp(), list(M752.COMMAS)
+            put886 = "u => fetch('api/settings/user/units', {method: 'PUT', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, body: JSON.stringify({value: u})}).then(r => r.status)"
+            units886 = js("fetch('api/settings/user').then(r => r.json())")["units"]
+            for choice886, unit886 in (("si", "mg/dL"), ("conventional", "umol/L")):
+                db886 = dbm.connect()   # (its own: #839's below goes on with db)
+                cpid886 = prof_r.create_profile(db886, f"Commas in {choice886} (fictional)", owner_id=owner)
+                rows886 = {}   # mode -> [(test, unit, time, value as given, range as printed)]: each number a value, then in a range
+                for mode886 in (M752.UNKNOWN, M752.IN_THOUSANDS, M752.DECIMAL):
+                    rows886[mode886] = [("Creatinine", unit886, M752.day(300 - 40 * mode886 - i), n, "") for i, n in enumerate(nums886)] + \
+                                       [("Creatinine", unit886, M752.day(280 - 40 * mode886 - i), "5", "<" + n) for i, n in enumerate(nums886)]
+                with dbm.transaction(db886):
+                    rec_r.store(db886, cpid886, care886.parse(M752.carespace(rows886[M752.UNKNOWN], os.path.join(tmp886, choice886)))["data"], "upload", fmt="carespace")
+                    for mode886, name886, delim886, extra886 in ((M752.IN_THOUSANDS, "in-thousands.csv", ",", ("4.2", "3.5 - 5.1")),
+                                                                 (M752.DECIMAL, "decimal.csv", ";", ("4,2", "3,5 - 5,1"))):
+                        with open(os.path.join(tmp886, name886), "w", encoding="utf-8", newline="") as f886:
+                            w886 = csv886.writer(f886, delimiter=delim886)
+                            w886.writerow(["Date", "Time", "Test", "Value", "Unit", "Reference range"])
+                            w886.writerows([t[:10], t[11:16], n, v, u, r] for n, u, t, v, r in rows886[mode886] + [("Potassium", "mmol/L", M752.day(10), *extra886)])
+                        rec_r.store(db886, cpid886, csv886i.parse({name886: os.path.join(tmp886, name886)})["data"], "upload", fmt="csv")
+                db886.close()
+                js(put886, {**units886, "lab": choice886})
+                try:
+                    page.goto(base + f"/?profile={cpid886}")
+                    page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {cpid886}", timeout=20000)
+                    # each Creatinine row as the drawer shows it (resultTable): [its time, value cell, "Reported …" under it, Ref range];
+                    # and the conversion's factor
+                    got886, a886 = js("""async () => { await loadDetails(DATA.events.map(e => e.id)); const out = {};
+                      for (const e of DATA.events.filter(e => e.k === 'labitem')) {
+                        const t = resultTable(DATA.details[e.id], e);
+                        for (const r of t ? t.querySelectorAll('tbody tr') : [])
+                          if (r.cells[0].firstChild.textContent === 'Creatinine')
+                            out[e.t.slice(0, 10)] = [r.cells[1].firstChild.textContent.replace(/\\s+/g, ' '), r.cells[1].querySelector('.orig')?.textContent ?? null, r.cells[2].textContent];
+                      }
+                      return [out, SERIES.find(s => s.name === 'Creatinine')?.uc?.a ?? null]; }""")
+                finally:
+                    js(put886, units886)   # (the units as they were)
+                to886 = {"mg/dL": "µmol/L", "umol/L": "mg/dL"}[unit886]
+                def near886(t, x):   # a converted value's or limit's number, x's in the other unit (to 3 figures, 6 places at most)
+                    try:
+                        n = float(re.sub(r"^[<>≤≥=\s]+", "", t).split(" ")[0])
+                    except ValueError:
+                        return False
+                    return x is not None and bool(a886) and abs(n - x * a886) <= max(abs(x * a886) * 0.006, 5e-7)
+                for mode886, rows in rows886.items():
+                    for k886, (_, _, t, v, r) in enumerate(rows):
+                        n886 = nums886[k886 % len(nums886)]
+                        read886 = M752.COMMAS[n886][mode886]   # its import's reading (None: kept as printed)
+                        cell = got886.get(t[:10])
+                        if not r:   # a value: converted from its number as imported, else as reported
+                            ok886 = cell and (cell[0] == f"{v} {unit886}" and cell[1] is None if read886 is None
+                                              else cell[0].endswith(" " + to886) and near886(cell[0], read886) and cell[1] == f"Reported {v} {unit886}")
+                        else:   # 5 beside "<n": its range converted from the limit its import read, else as printed in its own unit
+                            ok886 = cell and cell[0].endswith(" " + to886) and (cell[2] == f"{r} {unit886}" if read886 is None
+                                                                                else cell[2].startswith("<") and near886(cell[2], read886))
+                        if not ok886:
+                            bad886.append(f"{choice886}, {['decimal mark unknown', 'commas in thousands', 'decimal commas'][mode886]}: {v!r}"
+                                          f"{' in ' + repr(r) if r else ''} (read as {read886}) shown as {cell}")
+                db886 = dbm.connect()
+                prof_r.delete_profile(db886, cpid886)
+                db886.close()
+            shutil.rmtree(tmp886, ignore_errors=True)
+            check("#886: the drawer reads a row's number only as its import read it: each of COMMAS' numbers (“0,500”, “1,250”, “12,500”…) "
+                  "as a value and in a range, in each mode (a CareSpace export's, a spreadsheet's with commas in thousands, one's with decimal commas), "
+                  "with SI and conventional units chosen, is in the other unit by the number its import read, and stays as printed where "
+                  "its import kept it as text or left the range unread (“0,500” was converted as 0.5 there)", not bad886, bad886[:12])
             # ---- #839: a flag stored as its report printed it (an older import's "N", ">", "HH", "Normal") is read as a new
             # import of it would, by the one rule for a printed flag, on the page as on the server (ranges.js readFlag,
             # server/ranges.py read_flag: common.report_flag): the page read every one but H and L as ◆ Flagged, the summary

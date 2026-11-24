@@ -164,7 +164,10 @@ read everywhere ("5.0E3-1.0E4", "1.2E-3"). Don't write a reader of your own: `te
 `test_numbers_read_in_one_place` lists every `float()` in the importers, the FHIR export and the server's readers of a
 result's value as stored (`crossmatch.py`, `preview.py`, #874), and why it isn't one. The page reads a value as printed
 the same way, by `www/js/ranges.js` `valueRead` (#874: units.js and the drawer's rows read "=<5" and "> OR = 60" by
-patterns of their own); `tests/test_ranges.py` `test_numbers_read_in_one_place_on_the_page` lists any other.
+patterns of their own); `tests/test_ranges.py` `test_numbers_read_in_one_place_on_the_page` lists any other. It
+doesn't know a file's decimal mark, so a drawer row is converted into another unit only as its import read it (#886:
+`units.js` `applyUnitsToRows`, by its result's number and the range its import read), and a value its import kept as
+text, or a range it left unread ("0,500" where a file's commas group thousands), stays as printed.
 A FHIR `Quantity` with a comparator is a value given as a bound, its number kept with it. `txt` holds results that
 aren't numbers. Name series with
 `common.canonical_lab(name, loinc)` so the same test from two sources lands on one chart (it returns None for labs it
