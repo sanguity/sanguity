@@ -1996,7 +1996,9 @@ Everything on `main` so far; it becomes the first tagged release.
   none printed) it was dropped and every view said it in range (the C-CDA importer kept it on the drawer's row only),
   and the FHIR export's interpretation "A" was lost when it was read back in. Now every importer reads a printed flag
   by one rule, as the PDF importer did: H or L as printed, a flag that says neither way placed by the range where it
-  can be, else kept and shown as ◆ Flagged (Abnormal in the summary and share links).
+  can be, else kept and shown as ◆ Flagged, "Flagged" in the summary and share links too (#819). A result that came
+  twice, its "A" in one copy with no range printed and its report's range in the other, is placed by that range
+  whichever was imported first (#825; it was ◆ Flagged on a value past it where the "A" came first).
 - **A C-CDA's range given as text alone is read, its edge kept** (#827): a reference range with no low and high of
   its own, only its text ("<5", "<=5", ">60"), was read only where it said "a - b", so the rest were dropped: Labs, the
   Overview, the summary and share links showed no range and no flag while the drawer showed "<5" beside the value. It's

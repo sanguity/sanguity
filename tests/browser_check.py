@@ -20748,7 +20748,10 @@ def main():
             # older import's copy kept with the other's range and flag (a range in g/L given in g/dL). A one-sided range's
             # edge goes with its range (#780: a copy's "<5" beside one with none, 5 High; a "<40" ng/L given as "< 0.04"
             # ng/mL). And each import's lab days (#782): each one's Timeline badge, and in the drawer its Out of range and
-            # each row's flag as Labs shows its result (the kept copy's after Same result, the other's lab day gone)
+            # each row's flag as Labs shows its result (the kept copy's after Same result, the other's lab day gone). A
+            # copy's "A" with no range beside its other copy's range, in each import order (ALT, AST: #825 with #817), is
+            # placed by that range (High past it, ◆ inside), said "Flagged" in the summary and share links and "… or
+            # flagged" in the badges and the drawer (#819)
             db = dbm.connect()
             cpid = prof_r.create_profile(db, "Copies (fictional)", owner_id=owner)
             for imp781, fmt781 in ((1, "csv"), (2, "fhir")):
@@ -20759,7 +20762,7 @@ def main():
               await fetch(`api/profiles/${pid}/settings/overview.keyLabs`, {method: 'PUT', headers: h, body: JSON.stringify({value})});
               const r = await fetch(`api/profiles/${pid}/links`, {method: 'POST', headers: h, body: JSON.stringify({sections: ['results']})});
               return (await r.json()).path.split('#')[1]; }""", [cpid, M752.COPIES_LABS])
-            SUM781 = {"Low": "▼ Low", "High": "▲ High"}
+            SUM781 = {"Low": "▼ Low", "High": "▲ High", "Flagged": "◆ Flagged"}   # (#819: ALT's and AST's ◆, #825 with #817)
 
             def views781(when, seen, once, trends, out, days):
                 """what's wrong in Labs (seen: its results), a share link's page, the summary's preview and its PDF (once),
@@ -20785,12 +20788,14 @@ def main():
                   const badge = Object.fromEntries([...document.querySelectorAll('#list .tl-row[data-id]')].map(r => [r.dataset.id, r.querySelector('.badge.abn')?.textContent || null]));
                   for (const e of DATA.events.filter(e => e.k === 'lab')) {
                     await openEvent(e);
-                    const facts = Object.fromEntries([...document.querySelectorAll('#drawer dl.facts dt')].map(t => [t.textContent, t.nextElementSibling.textContent]));
-                    out[`${imps.indexOf(e.imp) + 1} ${Math.round((day - Date.parse(e.t.slice(0, 10) + 'T00:00:00')) / 864e5)}`] = [badge[e.id] ?? null, facts['Out of range'],
+                    const facts = [...document.querySelectorAll('#drawer dl.facts dt')].map(t => [t.textContent, t.nextElementSibling.textContent]);
+                    out[`${imps.indexOf(e.imp) + 1} ${Math.round((day - Date.parse(e.t.slice(0, 10) + 'T00:00:00')) / 864e5)}`] = [badge[e.id] ?? null,
+                      (facts.find(([k]) => k.startsWith('Out of range')) || [])[1],
                       [...document.querySelectorAll('#drawer table.data tbody tr')].map(r => [r.cells[0].firstChild.textContent, r.cells[3].textContent])];
                   }
                   closeDrawer(); return out; }""")
-                want = {f"{i} {d}": [f"{k} out of range" if k else None, str(k) if k else "None", [[n, FLAG752[f]] for n, f in rows]]
+                # (a ◆ among a day's flags: its badge "… out of range or flagged", its fact "Out of range or flagged", #819)
+                want = {f"{i} {d}": [f"{k} {M752.flagged([f for _, f in rows], 'short')}" if k else None, str(k) if k else "None", [[n, FLAG752[f]] for n, f in rows]]
                         for (i, d), rows in days.items() for k in [sum(1 for _, f in rows if f)]}
                 if got != want:
                     bad.append(f"{when}: the Timeline's and the drawer's lab days {got} not {want}")

@@ -492,6 +492,27 @@ COPIES_SEEN = COPIES_ONCE
 COPIES_DAYS.update({(1, 30): [("Potassium", "L"), ("Glucose, Blood", "L")], (1, 25): [("C-Reactive Protein", "H")],
                     (2, 20): [("Calcium", "L")]})
 
+# ---- copies and a report's flag that says no way together (#825 with #817): one copy's "A" with no range printed (kept
+# "A" by the one rule, as a spreadsheet's Flag column, a paste or a PDF gives it), the other's report's range, in each
+# import order (ALT's "A" in the first import, AST's in the second). Once, the "A" is placed by the range it then has, as
+# the one rule places a printed "A": 60 is High against 7–56 in either order (it was ◆ Flagged where the "A" came
+# first, its copy's High lost, and ▲ High where it came second), 30 inside it stays ◆ Flagged; after Same result the
+# same. ◆ is said "Flagged" in the summary and share links (#819)
+COPIES.update({
+    ("ALT", "U/L"): {1: [(35, 60, None, None, "A", "60"), (33, 30, None, None, "A", "30")], 2: [(35, 60, 7, 56, "H", "60"), (33, 30, 7, 56, "", "30")]},
+    ("AST", "U/L"): {1: [(35, 60, 10, 40, "H", "60"), (33, 30, 10, 40, "", "30")], 2: [(35, 60, None, None, "A", "60"), (33, 30, None, None, "A", "30")]},
+})
+COPIES_ONCE.update({("ALT", "U/L"): [["H", 7, 56], ["A", 7, 56]], ("AST", "U/L"): [["H", 10, 40], ["A", 10, 40]]})
+COPIES_SAME.update({("ALT", "U/L"): [["H", 7, 56], ["A", 7, 56]], ("AST", "U/L"): [["H", 10, 40], ["A", 10, 40]]})
+COPIES_LABS += ["ALT", "AST"]
+COPIES_TRENDS.update({("ALT", "U/L"): [None, ["30", "Flagged"], "7–56"], ("AST", "U/L"): [None, ["30", "Flagged"], "10–40"]})
+COPIES_TRENDS_SAME.update({("ALT", "U/L"): [None, ["30", "Flagged"], "7–56"], ("AST", "U/L"): [None, ["30", "Flagged"], "10–40"]})
+COPIES_OUT.update({("ALT", "U/L"): ["30", "Flagged", "7–56", 2, 2], ("AST", "U/L"): ["30", "Flagged", "10–40", 2, 2]})
+COPIES_OUT_SAME.update({("ALT", "U/L"): ["30", "Flagged", "7–56", 2, 2], ("AST", "U/L"): ["30", "Flagged", "10–40", 2, 2]})
+COPIES_LINKED = sorted(COPIES_LINKED + ["ALT", "ALT", "AST", "AST"])
+COPIES_DAYS.update({(i, d): [("ALT", f), ("AST", f)] for i in (1, 2) for d, f in ((35, "H"), (33, "A"))})
+COPIES_DAYS_SAME.update({(1, d): [("ALT", f), ("AST", f)] for d, f in ((35, "H"), (33, "A"))})
+
 
 def copies(imp, today=None, cases=None):
     """Import imp's records (1 or 2) of cases (COPIES by default, or LATEST), as an import stores them (records.store): its labs, each with its source's key (a
