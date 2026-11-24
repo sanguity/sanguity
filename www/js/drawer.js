@@ -152,22 +152,29 @@ drawer.addEventListener("cancel", e => e.preventDefault());
 // edge closed it), and never while a form in it holds a change not saved, which would be gone, nothing asked: words
 // typed (a journal note, a new title), and any other field changed (#784: a dose set to Skipped at 07:15, a reminder's
 // time, a journal entry's mood or date, Fix date's new date, a new category or the similar entries ticked, a photo
-// chosen): that click does nothing. ✕ and Escape still close it.
+// chosen), or removed (#811: a reminder's time, a journal photo): that click does nothing. ✕ and Escape still close it.
 const drawerBeside = e => e.target === drawer && drawer.matches(":modal") && !drawerPhone.matches
   && (r => e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)(drawer.getBoundingClientRect());
-/* a change: each field of its forms (the ⋯ menu's corrections, .edit-form, too) read as it's drawn, and compared with
-   that: its value, its tick, a radio's or a toggle's state. By its id where it has one, so one drawn again keeps how
-   it was first (a photo's words, as another photo is removed), until the drawer's next record (drawerHead). A file
-   chosen is a change (a photo: sent at once, and its box emptied) */
-const FORM_FIELDS = ":is(form, .edit-form) :is(input, select, textarea, [aria-checked], [aria-pressed])";
+/* a change (#784, #811): each of its forms (the ⋯ menu's corrections, .edit-form, too) read whole as it's drawn, every
+   field in order by its id or name (its value, its tick, a radio's or a toggle's state; an empty one holds nothing to
+   lose: a time added and left blank), and compared whole with the form now. So a field or a row drawn and since
+   removed is a change (a reminder's time, a journal photo: its id is a field of the form), as one added is (a photo
+   chosen: sent at once, its box emptied once it's sent), and a change undone isn't (a photo added and removed again).
+   What's drawn in a form until it's first touched (a key, a click, a field changed) is how it was drawn (the similar
+   entries Change category asks the server for), and a form drawn anew (its content all put in again: the ⋯ menu's
+   next correction, or Cancel emptying it) is read again from there. A new record's forms are new (drawerHead) */
+const DRAWER_FORMS = ":is(form, .edit-form)", FORM_FIELDS = ":is(input, select, textarea, [aria-checked], [aria-pressed])";
 const fieldNow = f => f.matches("[type=checkbox], [type=radio]") ? f.checked : f.matches("input, select, textarea") ? f.value
   : f.getAttribute("aria-checked") ?? f.getAttribute("aria-pressed");
-const drawerWas = new Map(), drawerFiles = new WeakSet();
-new MutationObserver(rs => { for (const r of rs) for (const n of r.addedNodes) if (n.nodeType === 1 && drawer.contains(n))
-  for (const f of [n, ...n.querySelectorAll(FORM_FIELDS)]) if (f.matches(FORM_FIELDS) && !drawerWas.has(f.id || f)) drawerWas.set(f.id || f, fieldNow(f)); })
-  .observe(drawer, {childList: true, subtree: true});
-drawer.addEventListener("change", e => { if (e.target.files?.length) drawerFiles.add(e.target); }, true);   // (before the form's own empties it)
-const drawerChanged = () => [...drawer.querySelectorAll(FORM_FIELDS)].some(f => drawerFiles.has(f) || (k => drawerWas.has(k) && drawerWas.get(k) !== fieldNow(f))(f.id || f));
+const formNow = x => JSON.stringify([...x.querySelectorAll(FORM_FIELDS)].map(f => [f.id || f.name || "", fieldNow(f)]).filter(([, v]) => v !== ""));
+const drawerWas = new WeakMap(), drawerTouched = new WeakSet();
+new MutationObserver(rs => {
+  for (const r of rs) if (r.target.matches?.(DRAWER_FORMS) && [...r.target.childNodes].every(n => [...r.addedNodes].includes(n))) drawerTouched.delete(r.target);
+  for (const x of drawer.querySelectorAll(DRAWER_FORMS)) if (!drawerTouched.has(x)) drawerWas.set(x, formNow(x));
+}).observe(drawer, {childList: true, subtree: true});
+for (const t of ["keydown", "click", "input", "change"])   // (in the capture phase: before the form's own handlers change it)
+  drawer.addEventListener(t, e => { const x = e.target.closest?.(DRAWER_FORMS); if (x && drawerWas.has(x)) drawerTouched.add(x); }, true);
+const drawerChanged = () => [...drawer.querySelectorAll(DRAWER_FORMS)].some(x => drawerTouched.has(x) && formNow(x) !== drawerWas.get(x));
 let drawerPress = false;
 drawer.addEventListener("mousedown", e => { if ((drawerPress = drawerBeside(e))) e.preventDefault(); });
 drawer.addEventListener("click", e => {
@@ -193,7 +200,6 @@ function drawerHead(k, title, line, tone, days = []) {
   drawerKeys = [];
   drawerMenu([]); delete drawer.dataset.med; delete drawer.dataset.lab; drawerStill = null;   // a medication's history marks it again (meds.js medShown, #417), a lab's panel (lab-panel.js labShown, #296)
   const body = $("#dbody"); body.replaceChildren(); body.scrollTop = 0; body.classList.remove("fill");
-  drawerWas.clear();   // its forms read again as they're drawn (#784)
   return body;
 }
 /* a value as it's said under the head: "" when the head or a key fact said it already, and without what they said at

@@ -352,15 +352,16 @@ function jPhotosPart(have, uid) {
     list.replaceChildren(...photos.map((p, i) => {
       const alt = el("input", {type: "text", id: `j-alt-${uid}-${i}`, maxlength: 300, placeholder: "e.g. Red patch, 3 cm, left forearm", autocomplete: "off"});
       alt.value = p.alt; alt.oninput = () => { p.alt = alt.value; };
-      return el("figure", {class: "jpic"}, el("img", {src: p.src, alt: p.alt || `Photo ${i + 1}`}),
+      // which photo it is, a field of the form: one removed or another put in its place is a change (drawer.js, #811)
+      return el("figure", {class: "jpic"}, el("input", {type: "hidden", name: "photo", value: p.id}), el("img", {src: p.src, alt: p.alt || `Photo ${i + 1}`}),
         el("figcaption", {}, el("label", {for: alt.id, text: `What photo ${i + 1} shows (optional)`}), alt,
           el("button", {class: "btn", type: "button", text: "Remove", "aria-label": `Remove photo ${i + 1}`, onclick: () => {
             photos.splice(i, 1); draw(); sayIn(msg, "Photo removed. It's deleted once the entry is saved."); input.focus(); }})));
     }));
     input.disabled = photos.length >= J_PHOTOS_MAX;
   };
-  input.onchange = async () => {
-    const files = [...input.files]; input.value = "";
+  input.onchange = async () => {   // the box holds what was chosen until it's sent (a change while it's sent, #811), then empties
+    const files = [...input.files];
     for (const f of files) {
       if (photos.length >= J_PHOTOS_MAX) { sayIn(msg, `An entry can have at most ${J_PHOTOS_MAX} photos.`, true); break; }
       if (f.type && !J_PHOTO_TYPES.includes(f.type)) { sayIn(msg, `${f.name} isn't a JPEG, PNG or WebP picture.`, true); continue; }
@@ -376,6 +377,7 @@ function jPhotosPart(have, uid) {
         sayIn(msg, `${f.name} added.` + (j.removed?.length ? ` Taken out of the file before it was kept: ${j.removed.join(", ")}.` : " There was nothing in it to take out, such as where it was taken."));
       } catch (err) { sayIn(msg, "Couldn't reach the server: " + err.message, true); }
     }
+    input.value = "";
   };
   draw();
   const node = el("div", {class: "jfield jphotos"}, el("span", {id: `j-photo-${uid}-l`}, "Photos (optional) ", el("span", {class: "hint", text: `JPEG, PNG or WebP, up to ${J_PHOTOS_MAX}`})),

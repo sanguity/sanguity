@@ -10404,14 +10404,20 @@ def main():
             # category's choice and its similar entries' ticks), a click beside it keeps the drawer and the form as they
             # were, focus too. With nothing changed the click still closes each. At 768 and 1100 px. (A photo's upload
             # answered here, so nothing is kept on the server.)
+            # #811: …and a field or a row drawn and since removed is a change too (only those still there were compared):
+            # a reminder's second time removed, a journal entry's first photo removed (the other drawn again in its place,
+            # its words alike), and that photo removed and another added. A change undone isn't: a photo added and removed
+            # again (its file box was counted until the next record), a time added and removed, a time removed and put
+            # back; the click closes it as before. (The entry's two photos, made up here, answered here too.)
             SIG784 = r"""() => [document.getElementById('drawer').classList.contains('open'), document.getElementById('dtitle').textContent,
               [...document.querySelectorAll('#dbody :is(form, .edit-form) :is(input, select, textarea, [aria-checked], [aria-pressed])')].map(f => f.matches('[type=checkbox]') ? f.checked
                 : f.matches('input, select, textarea') ? f.value : f.getAttribute('aria-checked') ?? f.getAttribute('aria-pressed')).join('|'),
-              document.querySelectorAll('#dbody .jpic').length, document.activeElement.id || document.activeElement.tagName]"""
+              [...document.querySelectorAll('#dbody .jpic img')].map(i => i.getAttribute('src').slice(-24)).join('|'), document.activeElement.id || document.activeElement.tagName]"""
             png784 = __import__("base64").b64decode(js("""(() => { const c = document.createElement('canvas'); c.width = 40; c.height = 30; const x = c.getContext('2d');
                 x.fillStyle = '#c8574f'; x.fillRect(0, 0, 40, 30); return c.toDataURL('image/png').split(',')[1]; })()"""))
-            photos784 = "**/api/profiles/*/journal/photos"
+            photos784, pics811 = "**/api/profiles/*/journal/photos", "**/api/profiles/*/journal/photos/browser-check-811*"
             page.route(photos784, lambda r: r.fulfill(status=200, content_type="application/json", body='{"id": "browser-check-784", "removed": []}'))
+            page.route(pics811, lambda r: r.fulfill(status=200, content_type="image/png", body=png784))
             ev784 = js("""[(EV.find(e => e.k === 'visit' && EV.filter(x => x.k === e.k && x.title === e.title).length > 2) || {}).id,
                 (EV.find(e => e.k === 'imaging' || e.k === 'procedure') || {}).id]""")
 
@@ -10427,9 +10433,17 @@ def main():
                 page.focus(sel)
                 for _ in range(3):
                     page.keyboard.press(key)
+            def photo784():   # a photo chosen, and in the list once it's sent
+                n = js("document.querySelectorAll('#dbody .jpics-edit .jpic').length")
+                page.set_input_files("#dbody .jphoto-in", files=[{"name": "rash.png", "mimeType": "image/png", "buffer": png784}])
+                page.wait_for_function("n => document.querySelectorAll('#dbody .jpics-edit .jpic').length > n", arg=n, timeout=5000)
             forms784 = {"dose": lambda: js("closeDrawer(); doseForm(MEDS[0], null, {})"), "reminder": lambda: js("closeDrawer(); medReminderForm(MEDS[0], null)"),
                         "journal": lambda: js("closeDrawer(); journalNew()"), "Fix date": lambda: fix784(ev784[1], "Fix date"),
-                        "Change category": lambda: fix784(ev784[0], "Change category")}
+                        "Change category": lambda: fix784(ev784[0], "Change category"),
+                        "reminder of two times": lambda: js("closeDrawer(); medReminderForm(MEDS[0], {id: -811, times: ['08:00', '20:00'], days: MR_DAYS.map(d => d[0]), "
+                                                            "from: zToday(), until: null, tz: 'UTC', on: true})"),
+                        "journal entry with two photos": lambda: js("closeDrawer(); journalForm({id: -811, kind: 'symptom', t: isoDay(Date.now()), title: 'Rash', severity: 3, "
+                                                                    "note: '', med: null, where: [], photos: [{id: 'browser-check-811a', alt: ''}, {id: 'browser-check-811b', alt: ''}]}, {}, closeDrawer)")}
             set784 = [
                 ("dose", "Skipped", lambda: page.click("#dbody .dose-st [data-st=skipped]")),
                 ("dose", "its time", lambda: page.fill("#dbody .jform input[type=time]", "07:15")),
@@ -10442,12 +10456,19 @@ def main():
                 ("journal", "its date", lambda: page.fill("#dbody .jform input[type=date]", js("isoDay(Date.now() - 3 * DAY)"))),
                 ("journal", "a medication", lambda: page.select_option("#dbody .jform select", index=1)),
                 ("journal", "a place on the body", lambda: (page.click("#dbody .jwhere summary"), page.click("#dbody .jwhere svg .jreg >> nth=0"))),
-                ("journal", "a photo", lambda: (page.set_input_files("#dbody .jphoto-in", files=[{"name": "rash.png", "mimeType": "image/png", "buffer": png784}]),
-                                               page.wait_for_selector("#dbody .jpics-edit .jpic", timeout=5000))),
+                ("journal", "a photo", photo784),
                 ("Fix date", "a new date and time", lambda: page.fill("#dbody .edit-form input[type=datetime-local]", "2024-01-02T09:30")),
                 ("Change category", "another category", lambda: page.select_option("#dbody .edit-form select", index=1)),
                 ("Change category", "a similar entry unticked", lambda: (page.click("#dbody .similar details summary"), page.uncheck("#dbody .similar-list input >> nth=0"))),
-                ("Change category", "for new imports", lambda: page.check("#dbody .similar input[data-similar=rule]"))]
+                ("Change category", "for new imports", lambda: page.check("#dbody .similar input[data-similar=rule]")),
+                ("reminder of two times", "time 2 removed", lambda: page.click("#dbody button[aria-label='Remove time 2']")),
+                ("journal entry with two photos", "photo 1 removed", lambda: page.click("#dbody button[aria-label='Remove photo 1']")),
+                ("journal entry with two photos", "photo 1 removed, another added", lambda: (page.click("#dbody button[aria-label='Remove photo 1']"), photo784()))]
+            undone784 = [   # #811: each a change undone, which closes it
+                ("reminder", "a time added and removed", lambda: (page.click("#dbody .mr-add"), page.click("#dbody button[aria-label='Remove time 2']"))),
+                ("reminder of two times", "time 2 removed and put back", lambda: (page.click("#dbody button[aria-label='Remove time 2']"), page.click("#dbody .mr-add"),
+                                                                                 page.fill("#dbody .mr-times input >> nth=1", "20:00"))),
+                ("journal", "a photo added and removed", lambda: (photo784(), page.click("#dbody button[aria-label='Remove photo 1']")))]
             kept784, shut784 = {}, {}
             for w784 in (768, 1100):
                 page.set_viewport_size({"width": w784, "height": 800})
@@ -10468,14 +10489,24 @@ def main():
                     page.mouse.click(20, 400)
                     settle(300)
                     shut784[f"{w784} {form784}"] = js("document.getElementById('drawer').classList.contains('open')")
+                for form784, what784, do784 in undone784:
+                    forms784[form784]()
+                    settle(200)
+                    do784()
+                    settle(150)
+                    page.mouse.click(20, 400)
+                    settle(300)
+                    shut784[f"{w784} {form784}: {what784}"] = js("document.getElementById('drawer').classList.contains('open')")
                 js("closeDrawer()")
                 settle(300)
             page.unroute(photos784)
+            page.unroute(pics811)
             check("…nor while a field of a form in it has changed, words typed or not: a dose's Skipped, date or time, a reminder's time, day or end, a "
-                  "journal entry's mood, severity, date, medication, place or photo, Fix date's new date, Change category's choice or ticks; a click "
-                  "beside it keeps the drawer, the form and focus as they were, at 768 and 1100 px; with nothing changed it still closes each (#784)",
-                  len(kept784) == 2 * len(set784) and all(v == [True, True] for v in kept784.values()) and len(shut784) == 10 and not any(shut784.values()),
-                  [{k: v for k, v in kept784.items() if v != [True, True]}, {k: v for k, v in shut784.items() if v}])
+                  "journal entry's mood, severity, date, medication, place or photo, Fix date's new date, Change category's choice or ticks, a reminder's "
+                  "time or a journal photo removed; a click beside it keeps the drawer, the form and focus as they were, at 768 and 1100 px; with nothing "
+                  "changed, or a change undone (a photo added and removed, a time added and removed), it still closes each (#784, #811)",
+                  len(kept784) == 2 * len(set784) and all(v == [True, True] for v in kept784.values()) and len(shut784) == 2 * (len(forms784) + len(undone784))
+                  and not any(shut784.values()), [{k: v for k, v in kept784.items() if v != [True, True]}, {k: v for k, v in shut784.items() if v}])
             page.set_viewport_size({"width": 1400, "height": 900})
             page.focus("#list .tl-row")
             page.keyboard.press("Enter")
