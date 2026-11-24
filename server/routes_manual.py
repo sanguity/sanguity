@@ -144,11 +144,13 @@ def _matched(db, got):
 
 
 def _describe(n, r, problems, notes, matched=None, dup=False):
+    """A row as the page's check line says it. edge: whether its one-sided range leaves its limit out ("<" for "<5",
+    ">" for ">60", "" else: common.range_edge, #780), so the line says "< 5" or "≤ 5" as Labs will (#826)."""
     d = {"row": n, "ok": not problems, "problems": problems, "notes": notes, "duplicate": dup}
     if r:
         d.update(date=_display(r["t"]), name=(matched or {}).get(n) or common.canonical_lab(r["test"], r["loinc"]) or r["test"],
                  value=r["x"], text=r["reported"] if r["x"] is None else None, unit=r["unit"], low=r["lo"], high=r["hi"],
-                 flag=r["flag"])
+                 edge=r.get("edge") or "", flag=r["flag"])
     return d
 
 

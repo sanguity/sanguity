@@ -1966,6 +1966,11 @@ Everything on `main` so far; it becomes the first tagged release.
   Overview's tile and list, Labs' chart (one mark, a ▲ never drawn under a dot) and table ("also from 1 more
   source"), the heatmap (one cell) and the lab panel, and each import's lab day flags it in the drawer and counts it
   on the Timeline. Same result still links them, to show the drawer's rows once too.
+- **Type them in says a range as Labs does** (#826): the line under a typed result said "range under 5" for both "<5"
+  and "<=5" (and "over 60" for ">60" and ">=60"), so a CRP of 5 read "range under 5 · ▲ High" with one and "range
+  under 5" unflagged with the other, while Labs then said "< 5" and "≤ 5". The server now sends whether the range
+  leaves its limit out, and the line says it as Labs will: "range < 5 · ▲ High", "range ≤ 5", "range ≥ 60",
+  "range 3.5–5.1", a flag that says neither way "◆ Flagged".
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
