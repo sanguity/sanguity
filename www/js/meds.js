@@ -262,13 +262,17 @@ function medReminderForm(m, r) {
     input.id = id("t" + (i + 1)); input.setAttribute("aria-label", `Time ${i + 1}`); rm.setAttribute("aria-label", `Remove time ${i + 1}`);
   });
   const addTime = v => {
-    const input = el("input", {type: "time", required: true}); input.value = v || "";
-    // removed (never the only one), focus goes to the next time's field, or the one before (#830: it went to the page)
+    // Enter in a time doesn't save the form, Save does (#853: a second Enter on Remove, in the next time's field, saved it)
+    const input = el("input", {type: "time", required: true, onkeydown: ev => { if (ev.key === "Enter") ev.preventDefault(); }}); input.value = v || "";
+    // removed (never the only one), focus goes to the next time's field, or the one before (#830: it went to the page),
+    // and that's said, as the next one takes its name (#853: "Time 2 removed; 2 times left")
     const row = el("div", {class: "mr-time"}, input, el("button", {class: "btn small", type: "button", text: "Remove", onclick: () => {
-      if (times.children.length < 2) return;
+      const n = [...times.children].indexOf(row) + 1, left = times.children.length - 1;
+      if (!left) return;
       const to = row.nextElementSibling || row.previousElementSibling;
       row.remove(); more.hidden = false; named();
       to.querySelector("input").focus();
+      sayIn(msg, `Time ${n} removed; ${left} time${left > 1 ? "s" : ""} left.`);
     }}));
     times.append(row); more.hidden = times.children.length >= 6; named();
     return input;
