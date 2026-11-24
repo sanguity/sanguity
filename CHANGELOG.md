@@ -1917,6 +1917,9 @@ Everything on `main` so far; it becomes the first tagged release.
   nothing asked, and the reminder kept both times and the entry its photo. And a photo added and removed again kept the
   drawer open, though nothing was left to save. Each form is now compared whole with how it was drawn, which photos it
   has included, so a field or row removed is a change and a change undone isn't; a photo still being sent counts.
+- **Removing a reminder's time leaves focus on the next one** (#830): Remove time 2 pressed from the keyboard took
+  the row away and left focus on the page; it goes to the next time's field now, or the one before for the last. The
+  times left are named by their place again ("Time 2" was said twice once a time after a removed one was added).
 - **A range printed "<5" leaves 5 out of it** (#780): the CSV, PDF and FHIR importers read "<5" as a high of 5, the
   same as "<=5", so a C-Reactive Protein of 5 against its report's "<5", an LDL of 100 against "<100" and an eGFR of
   60 against ">60" were shown in range, said "≤ 5", "≤ 100" and "≥ 60" on Labs, the Overview, share links and the

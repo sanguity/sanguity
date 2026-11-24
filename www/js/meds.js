@@ -256,12 +256,21 @@ function medReminderForm(m, r) {
   const uid = Math.random().toString(36).slice(2, 8), id = n => `mr-${n}-${uid}`;
   const msg = el("p", {class: "hint edit-msg", role: "status"});
   const times = el("div", {class: "mr-times"});
+  // each time named, and its id, by its place: one removed, those after it move up (#830: a second "Time 2" after it)
+  const named = () => [...times.children].forEach((row, i) => {
+    const [input, rm] = row.children;
+    input.id = id("t" + (i + 1)); input.setAttribute("aria-label", `Time ${i + 1}`); rm.setAttribute("aria-label", `Remove time ${i + 1}`);
+  });
   const addTime = v => {
-    const n = times.children.length + 1;
-    const input = el("input", {type: "time", id: id("t" + n), required: true, "aria-label": `Time ${n}`}); input.value = v || "";
-    const row = el("div", {class: "mr-time"}, input, el("button", {class: "btn small", type: "button", text: "Remove", "aria-label": `Remove time ${n}`,
-      onclick: () => { if (times.children.length > 1) { row.remove(); more.hidden = false; } }}));
-    times.append(row); more.hidden = times.children.length >= 6;
+    const input = el("input", {type: "time", required: true}); input.value = v || "";
+    // removed (never the only one), focus goes to the next time's field, or the one before (#830: it went to the page)
+    const row = el("div", {class: "mr-time"}, input, el("button", {class: "btn small", type: "button", text: "Remove", onclick: () => {
+      if (times.children.length < 2) return;
+      const to = row.nextElementSibling || row.previousElementSibling;
+      row.remove(); more.hidden = false; named();
+      to.querySelector("input").focus();
+    }}));
+    times.append(row); more.hidden = times.children.length >= 6; named();
     return input;
   };
   const more = el("button", {class: "btn small mr-add", type: "button", text: "Add another time", onclick: () => addTime("").focus()});
