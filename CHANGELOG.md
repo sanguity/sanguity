@@ -2210,6 +2210,9 @@ Everything on `main` so far; it becomes the first tagged release.
   and "4,9" read as having no decimals, so "First to latest" said "+0 mmol/L (+9%)" and the median of "4,5" and "4,6"
   "4.5"; "1.2E-3" read as having one. Each result's decimals are now read by the page's one reader of a value, so
   they're "+0.4 mmol/L (+9%)" and "4.55".
+- **A converted value keeps its figures, however small** (#898): shown in another unit, a value was written to as many
+  significant figures as it was reported with, but to 6 decimal places at most, so a very small one lost them: a
+  Creatinine "1.2E-3 µmol/L" was "0.000014 mg/dL", about 3% off. It's now "0.0000136 mg/dL".
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

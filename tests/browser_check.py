@@ -21843,12 +21843,12 @@ def main():
                 finally:
                     js(put886, units886)   # (the units as they were)
                 to886 = {"mg/dL": "µmol/L", "umol/L": "mg/dL"}[unit886]
-                def near886(t, x):   # a converted value's or limit's number, x's in the other unit (to 3 figures, 6 places at most)
-                    try:
+                def near886(t, x):   # a converted value's or limit's number, x's in the other unit, to its 3 figures however
+                    try:             # small (#898: "1.2E-3" µmol/L was "0.000014" mg/dL at 6 places, 3% off, passed here)
                         n = float(re.sub(r"^[<>≤≥=\s]+", "", t).split(" ")[0])
                     except ValueError:
                         return False
-                    return x is not None and bool(a886) and abs(n - x * a886) <= max(abs(x * a886) * 0.006, 5e-7)
+                    return x is not None and bool(a886) and abs(n - x * a886) <= abs(x * a886) * 0.006
                 for mode886, rows in rows886.items():
                     for k886, (_, _, t, v, r) in enumerate(rows):
                         n886 = nums886[k886 % len(nums886)]
