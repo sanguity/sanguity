@@ -3494,6 +3494,9 @@ Everything on `main` so far; it becomes the first tagged release.
   320 px, the drawer's results table scrolled sideways with its flag ("▼ Low") off to the right, only the red value
   showing. Where its four columns don't fit, each result is now a few lines: the test, its value with the flag beside
   it, and its reference range. A screen reader still reads it as a table; wider drawers are as before.
+- **…and each of those results is four cells to a screen reader** (#988): laid out as lines, a result with no flag
+  dropped its empty Flag cell, so a screen reader heard three cells in that row and four in a flagged one. The empty
+  cell is now only hidden from sight, and every row keeps its four cells.
 - **Medication names are whole on the Timeline and the Medications tab** (#643): a medication's name in the
   Timeline's gutter and beside the Medications tab's lane was cut to fit ("Acyclo…" at 200% text on a phone, and
   shortened at the usual size too), the whole name only in a tooltip a touch screen can't show. Each name is now

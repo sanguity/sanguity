@@ -12997,6 +12997,38 @@ def main():
             settle(300)
             check("…and the drawer's results where four columns don't fit (360 px with text at 200%, 320 px), light and dark: each result's flag beside "
                   "its value, nothing off to the right; four columns at 360, 412 and 1400 px as usual (#829)", not bad829, bad829)
+            # #988: …and each of those rows still four cells to a screen reader, its empty flag or range one too: the empty
+            # Flag cell was display: none, so an unflagged row was 3 cells and a flagged one 4. Chromium's accessibility tree,
+            # at 320 px as usual and 360 px with text at 200% (stacked), and at 412 px (four columns), on a lab day with
+            # results flagged and not: every row of every results table 4 cells or column headers, a flag among them
+            def cells988():
+                cdp = page.context.new_cdp_session(page)
+                try:
+                    root = cdp.send("DOM.getDocument", {"depth": -1})["root"]["nodeId"]
+                    out = []
+                    for tr in cdp.send("DOM.querySelectorAll", {"nodeId": root, "selector": "#dbody .res-wrap table.data tr"})["nodeIds"]:
+                        ns = cdp.send("Accessibility.getPartialAXTree", {"nodeId": tr, "fetchRelatives": True})["nodes"]
+                        row = next((n for n in ns if n.get("role", {}).get("value") == "row"), None)
+                        out.append([(n.get("role", {}).get("value"), n.get("name", {}).get("value", "")[:24]) for n in ns if row and n.get("parentId") == row["nodeId"] and not n.get("ignored")])
+                    return out
+                finally:
+                    cdp.detach()
+            js("closeDrawer(); openEvent(EV.filter(e => e.k === 'lab' && !e.hidden && (e.res || []).some(([s, p]) => p[4]) && (e.res || []).some(([s, p]) => !p[4])).at(-1))")
+            page.wait_for_selector("#dbody .tablewrap table.data", timeout=10000)
+            bad988 = {}
+            for w988, big988 in ((320, False), (360, True), (412, False)):
+                page.set_viewport_size({"width": w988, "height": 800})
+                js(ADOPT_CSS_JS, BIG622 if big988 else "")
+                settle(300)
+                rows988 = cells988()
+                odd988 = [r for r in rows988 if len(r) != 4 or not {k for k, _ in r} <= {"cell", "columnheader"}]
+                if odd988 or not rows988 or not any(r[3][1].strip() for r in rows988 if len(r) == 4 and r[3][0] == "cell"):
+                    bad988[f"{w988} px{', text at 200%' if big988 else ''}"] = odd988[:4] or f"{len(rows988)} rows, none flagged"
+            js("() => { closeDrawer(); document.adoptedStyleSheets = []; }")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(300)
+            check("…and each of those rows four cells to a screen reader, an empty flag or range one too, stacked at 320 px and at 360 px with text at "
+                  "200%, and in four columns at 412 px (#988: an unflagged row was 3 cells, its empty flag display: none)", not bad988, bad988)
             # ---- #797: a date or time field never narrower than its date or time ("04/14/20", "03/14/2"): each one shown, as
             # wide as the same field laid out on its own (its own width, a copy beside it), on Settings → Milestones above 700
             # px and on a phone on its side with text at 150% and 200%, the period's sheet's custom dates on a phone at 200%,
