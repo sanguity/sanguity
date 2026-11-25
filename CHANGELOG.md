@@ -2117,6 +2117,11 @@ Everything on `main` so far; it becomes the first tagged release.
 - **At rest a chart's readout says both of two results at the latest time** (#904): with two results at the period's
   latest time, Labs' "Latest" and Compare's named one of them, and so did each chart's name for screen readers. Both
   now say both, as hovering that time does: "Latest: 2 results: 5.6 mmol/L ▲ High (3.5–5.3); 5.0 mmol/L (3.5–5.1)".
+- **The browser check hears each keyboard step of every kind of chart** (#913, `tests/browser_check.py`): a review
+  read the page's live regions empty once after a chart's arrow key, which nothing checked. Every kind of chart (Labs'
+  charts and event track, a lab's panel's strip, Compare and its before and after, Costs' two, Body and activity's
+  charts, the glucose profile, the growth charts and an ECG) is now stepped by keyboard and what's said read after each
+  step: each says what's shown there. They all did; the check fails if one says nothing.
 - **A result already here typed or uploaded again is kept only with its own row, and said for what it brings** (#868):
   Potassium 5.3 typed in with no range, then again with "3.5-5.1": its check line said "already in this profile: it
   won't be saved again" and the save "Saved nothing new" with no Undo, yet its result was saved, with no row of its
