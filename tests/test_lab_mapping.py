@@ -796,6 +796,43 @@ class LabMapping(unittest.TestCase):
         self.assertEqual(labmap.lookup("csv", "HGB-X", "g/dL", "718-7"), labmap.lookup("csv", "hgb x", "G/DL", " 718-7"))
         self.assertNotEqual(labmap.lookup("csv", "HGB-X", "g/dL", "718-7"), labmap.lookup("ccda", "HGB-X", "g/dL", "718-7"))
 
+    # ---------------------------------------------------------------- the panels (#994)
+
+    def test_the_panel_table_puts_each_lab_in_one_panel(self):
+        """lab-aliases.json's "panels": each a name and the labs in it, each lab by the name the file gives it (its
+        canonical name, so a spelling finds its panel through it), in one panel at most; a lab in none is under Other"""
+        with open(os.path.join(ROOT, "lab-aliases.json"), encoding="utf-8") as f:
+            table = json.load(f)
+        panels, labs = table["panels"], table["labs"]
+        named = [n for names in panels.values() for n in names]
+        self.assertTrue(panels and all(isinstance(p, str) and p.strip() and names for p, names in panels.items()), panels)
+        self.assertEqual(sorted(n for n in set(named) if named.count(n) > 1), [], "a lab in two panels")
+        self.assertEqual([n for n in named if n not in labs], [], "a name lab-aliases.json's labs doesn't give")
+        from server.importers import common
+        self.assertEqual([common.lab_panel(n) for n in ("Hemoglobin", "hemoglobin", "Platelets", "POTASSIUM", "Potassium, Blood", "LD", "Not a lab", "", None)],
+                         ["Blood count", "Blood count", "Blood count", "Metabolic", "Metabolic", "", "", "", ""])
+
+    def test_a_series_with_no_panel_of_its_own_is_put_in_one(self):
+        """the records the page reads: a series whose import gave no panel has the one another import gave a series of the
+        same name, else the table's (a spelling's through its canonical name); one an import gave keeps it; none for a
+        lab in no panel; what's stored keeps what each import gave"""
+        pid = self.profile("Panels")
+        self.save(pid, self.previewed(pid, csv(["2026-01-05", "WBC", "6.1", "K/uL", "4.0 - 11.0", "", "My clinic's own panel", ""])))
+        self.save(pid, self.previewed(pid, csv(["2026-02-05", "WBC", "6.4", "K/uL", "4.0 - 11.0", "", "", ""],
+                                               ["2026-02-05", "Hemoglobin", "14.1", "g/dL", "13.5 - 17.5", "", "", ""],
+                                               ["2026-02-05", "POTASSIUM", "4.1", "mmol/L", "3.5 - 5.1", "", "", ""],
+                                               ["2026-02-05", "Made-up assay (fictional)", "3", "U", "", "", "", ""])))
+        got = sorted((s["name"], s["panel"]) for s in self.data(pid)["labs"])
+        self.assertEqual(got, [("Hemoglobin", "Blood count"), ("Made-up assay (fictional)", ""), ("Potassium, Blood", "Metabolic"),
+                               ("WBC", "My clinic's own panel"), ("WBC", "My clinic's own panel")])
+        db = dbm.connect()
+        try:
+            from server import records
+            stored = sorted((s["name"], s["panel"]) for s in records.assemble(db, pid, raw=True)["labs"])
+        finally:
+            db.close()
+        self.assertEqual(stored, [("Hemoglobin", ""), ("Made-up assay (fictional)", ""), ("Potassium, Blood", ""), ("WBC", ""), ("WBC", "My clinic's own panel")])
+
 
 if __name__ == "__main__":
     try:

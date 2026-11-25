@@ -22887,6 +22887,74 @@ def main():
             check("…axe-core and a phone's width find nothing in it at 1400, 375 and 320 px, light and dark; with text at 200% at 360 and 412 px every word "
                   "inside its row and the view switch whole; in forced colours a row's words and its focus ring drawn", not seen993 and fc993 == [True, True, True],
                   [seen993[:6], fc993])
+            # ---- #994: Latest grouped by panel (labGroups, util.js, as everywhere labs are grouped: each lab in one group,
+            # Other last), with a name filter and Flagged only above the list, the count in its heading ("3 of 12 labs,
+            # flagged only") and what they keep in the line under it with Reset filters. Typed and ticked from the keyboard:
+            # the count said; both kept for the profile in this browser (a reload keeps them), another profile's its own
+            GROUPS994 = r"""() => { const out = []; let g = null;
+              for (const x of document.querySelectorAll('#ltRows > h3.lab-panel, #ltRows .lt-row')) if (x.matches('h3')) g = x.textContent; else out.push([x.dataset.lab, x.dataset.unit, g]);
+              return out; }"""
+            SHOWN994 = """[[...document.querySelectorAll('#ltRows .lt-row')].map(a => a.dataset.lab), document.getElementById('ltQn').textContent, document.getElementById('ltSum').hidden ? '' : document.getElementById('ltSum').textContent,
+              document.getElementById('sgStatus').textContent]"""
+            js("applyPreset('all'); switchTab('labs', 'latest')")
+            settle(300)
+            groups994 = js(GROUPS994)
+            want994 = js("""() => { const ss = SERIES.filter(s => !s.watch && s.pts.length), gs = labGroups(byFrequency(ss));
+              return gs.flatMap(g => g.labs.map(s => [s.name, s.unit, gs.length > 1 ? g.panel : null])); }""")
+            all994 = js("SERIES.filter(s => !s.watch && s.pts.length).map(s => [s.name, ckLast(s.pts).some(p => FLAG_OF(p[4]))])")
+            page.focus("#ltQ")
+            page.keyboard.type("hem")
+            settle(500)
+            named994 = js(SHOWN994)
+            page.keyboard.press("Tab")
+            focus994 = js("document.activeElement.id")
+            page.keyboard.press("Space")
+            settle(400)
+            both994 = js(SHOWN994)
+            page.fill("#ltQ", "")
+            settle(500)
+            flagged994 = js(SHOWN994)
+            kept994 = js("JSON.parse(localStorage.getItem('ht-latest:' + PROFILE.id) || 'null')")
+            page.reload()
+            page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+            js("switchTab('labs', 'latest')")
+            settle(300)
+            reload994 = js(SHOWN994)[:2] + [js("[document.getElementById('ltQ').value, document.getElementById('ltFlag').checked]")]
+            from server import db as dbm994, profiles as prof994, records as rec994
+            db = dbm994.connect()
+            opid994 = prof994.create_profile(db, "Latest's filters (fictional)", owner_id=db.execute("SELECT id FROM users WHERE username=?", (USER,)).fetchone()["id"])
+            with dbm994.transaction(db):
+                rec994.store(db, opid994, {"built": "2026-11-15", "source": "fictional", "events": [{"id": 1, "t": "2026-10-01T08:00:00", "k": "lab", "title": "Lab results"}],
+                                           "details": {}, "costs": [], "upcoming": [], "labs": [{"name": "Hemoglobin", "unit": "g/dL", "panel": "CBC", "n": 1, "txt": [],
+                                                                                                  "pts": [["2026-10-01T08:00:00", 12.1, 13.5, 17.5, "L", "12.1"]]}]}, "upload")
+            db.close()
+            page.goto(base + f"/?profile={opid994}#labs-latest")
+            page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {opid994}", timeout=20000)
+            other994 = js("[document.getElementById('ltQ').value, document.getElementById('ltFlag').checked, localStorage.getItem('ht-latest:' + PROFILE.id)]")
+            page.goto(base + "/?profile=1#labs-latest")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
+            db = dbm994.connect()
+            prof994.delete_profile(db, opid994)
+            db.close()
+            settle(300)
+            page.click("#ltSum .fsum-reset")
+            settle(300)
+            reset994 = js(SHOWN994)[:3] + [js("[document.activeElement.id, document.getElementById('ltFlag').checked, (JSON.parse(localStorage.getItem('ht-latest:' + PROFILE.id) || '{}')).flagged]")]
+            hem994 = sorted(n for n, _ in all994 if "hem" in n.lower() or "hem" in js("n => nice(n).toLowerCase()", n))
+            flag994 = sorted(n for n, f in all994 if f)
+            n994 = len(all994)
+            check("Labs' Latest grouped by panel (#994): each lab once, under its panel as labGroups puts it (as the Labs list and the Overview do), Other last",
+                  groups994 == want994 and len({(n, u) for n, u, _ in groups994}) == len(groups994) and (not want994[-1][2] or want994[-1][2] == "Other"), [groups994, want994])
+            check("…a name filter and Flagged only narrow it, from the keyboard (the box, Tab to the switch, Space), each saying how many in its heading "
+                  "(“3 of 12 labs, flagged only”) and announcing it, the line under it what they keep, with Reset filters",
+                  focus994 == "ltFlag" and sorted(named994[0]) == hem994 and named994[1] == f"{len(hem994) or 'None'} of {n994} labs" and named994[1] in named994[3]
+                  and "matching “hem”" in named994[2] and sorted(both994[0]) == sorted(set(hem994) & set(flag994))
+                  and both994[1] == f"{len(set(hem994) & set(flag994)) or 'None'} of {n994} labs, flagged only" and both994[2].startswith("Showing flagged labs only · matching “hem”")
+                  and sorted(flagged994[0]) == flag994 and flagged994[1] == f"{len(flag994) or 'None'} of {n994} labs, flagged only" and "Reset filters" in flagged994[2],
+                  [focus994, named994, both994, flagged994, hem994, flag994])
+            check("…both kept for the profile in this browser: a reload keeps Flagged only (and the name, emptied here, empty), another profile's are its own "
+                  "(none kept); Reset filters clears both, focus on the name's box", kept994 == {"q": "", "flagged": True} and reload994 == [flagged994[0], flagged994[1], ["", True]]
+                  and other994 == ["", False, None] and reset994[1] == f"{n994} labs" and reset994[2] == "" and reset994[3] == ["ltQ", False, False], [kept994, reload994, other994, reset994])
             # …#900: and whatever it says, at the width it's shown. The room held the widest three it says as one line, and
             # wrapped, a narrower one could take a line more: on profiles of many times with two results (the review's 20,
             # ranges_matrix.many) Compare dropped 18 px at 803–818 px and 36 px at 461–467 px with 200% text, Labs 40.6 px at
@@ -26271,14 +26339,15 @@ def main():
             check("…and the server refuses a delete whose name doesn't match", refused == 400 and js("fetch('api/profiles/2/data').then(r => r.status)") != 404, refused)
             problems[refused_from:] = [x for x in problems[refused_from:] if "400" not in x]   # that refusal was the point
             second.get_by_label("Type Second person to confirm").fill("Second person")
-            keys936 = ["ht-state:2", "ht-health:2", "ht-glucose:2"]   # what this browser keeps of profile 2 (#936)
+            keys936 = ["ht-state:2", "ht-health:2", "ht-glucose:2", "ht-latest:2"]   # what this browser keeps of profile 2 (#936; Latest's filters, #994)
             js("ks => ks.forEach(k => localStorage.setItem(k, JSON.stringify({sel: ['Ferritin'], stays: true, v: 2})))", keys936)
             go.click()
             page.wait_for_function("![...document.querySelectorAll('#profile option')].some(o => o.textContent.includes('Second person')) && "
                                    "[...document.querySelectorAll('#sgToasts .sg-toast-text')].some(t => t.textContent.startsWith('Deleted “Second person”.'))", timeout=10000)
             check("…and another profile is shown after it", js("document.getElementById('profile').value") != "2")
             left936 = js("ks => ks.filter(k => localStorage.getItem(k) !== null)", keys936)
-            check("…and what this browser kept of it goes with it: its view with the lab names picked, Body and activity's options (#936)",
+            check("…and what this browser kept of it goes with it: its view with the lab names picked, Body and activity's options, Labs' Latest's "
+                  "filters (#936, #994)",
                   left936 == [], left936)
             settle(300)
             check("…with focus on the page's heading, in sight (#417)", (js(IN_SIGHT) or [0, 0])[1] == "groupTitle", js(IN_SIGHT))
@@ -26860,17 +26929,20 @@ def main():
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
             # ---- picked lab names cleared at sign-out (#220): sel goes from every profile's saved view, the rest stays
             js("""() => { state.sel = new Set(SERIES.filter(s => !s.watch).slice(0, 2).map(s => s.name)); save();
-                         localStorage.setItem('ht-state:99', JSON.stringify({preset: '1y', tab: 'labs', cats: ['lab'], sel: ['Ferritin'], v: 2})); }""")
+                         localStorage.setItem('ht-state:99', JSON.stringify({preset: '1y', tab: 'labs', cats: ['lab'], sel: ['Ferritin'], v: 2}));
+                         localStorage.setItem('ht-latest:99', JSON.stringify({q: 'ferritin', flagged: true, seen: 5})); }""")   # (Latest's filters, #994)
             views_before = js("[JSON.parse(localStorage.getItem(stateKey())), JSON.parse(localStorage.getItem('ht-state:99')), stateKey()]")
             before = len(problems)
             menu_click(page, "#logout")
             page.wait_for_url("**/login.html", timeout=10000)
             views = js("Object.keys(localStorage).filter(k => k.startsWith('ht-state')).map(k => [k, JSON.parse(localStorage.getItem(k))])")
+            latest220 = js("JSON.parse(localStorage.getItem('ht-latest:99'))")
             kept = lambda v: {k: v.get(k) for k in ("preset", "tab", "labsView", "cats")}   # noqa: E731  (from, to: the period's dates, drawn again)
-            check("sign-out clears the picked lab names from every saved view, keeping its period, tab and kinds (#220)",
-                  len(views_before[0]["sel"]) == 2 and views and all("sel" not in v for _, v in views)
+            check("sign-out clears the picked lab names from every saved view, keeping its period, tab and kinds (#220), and the lab name typed in "
+                  "Labs' Latest's filter, keeping its Flagged only (#994)",
+                  len(views_before[0]["sel"]) == 2 and views and all("sel" not in v for _, v in views) and latest220 == {"flagged": True, "seen": 5}
                   and kept(dict(views).get("ht-state:99") or {}) == kept(views_before[1]) and kept(dict(views).get(views_before[2]) or {}) == kept(views_before[0]),
-                  [views_before, views])
+                  [views_before, views, latest220])
             page.evaluate("localStorage.setItem('ht-state:99', JSON.stringify({preset: '5y', sel: ['Ferritin'], v: 2}))")
             page.reload()
             check("…and reaching the sign-in page clears them too", page.evaluate("JSON.parse(localStorage.getItem('ht-state:99'))") == {"preset": "5y", "v": 2})
