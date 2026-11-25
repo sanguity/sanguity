@@ -193,7 +193,7 @@ def _bundle(base, resources):
 # ---------------------------------------------------------------- one pull
 
 def _due_after_failure(failures, retry_after=None):
-    wait = min(config.SYNC_HOURS * 3600, BACKOFF_FIRST * 2 ** max(0, failures - 1))
+    wait = min(config.setting("SYNC_HOURS") * 3600, BACKOFF_FIRST * 2 ** max(0, failures - 1))
     return dbm.now() + max(wait, retry_after or 0)
 
 
@@ -427,10 +427,10 @@ def _fetch(reader, patient, cursor, searches=None, rules=None, used=0, scopes=No
     """Read what's new: {"resources", "binaries" {rel: bytes}, "cursor", "report", "warnings", "left_out", "added"}.
     searches: plan()'s (every type, as before #99, when None); rules: the attachment rules (#101);
     scopes: the granted scopes; a type they don't cover isn't asked for (#92)."""
-    left, resources, report, warnings = config.SYNC_MAX_RESOURCES, [], {}, []
+    left, resources, report, warnings = config.setting("SYNC_MAX_RESOURCES"), [], {}, []
     searches, kinds = searches or ([(t, {}, t, None) for t in conns.TYPES[1:]], set(conns.KINDS))
     rules = rules or {"auto": True, "types": ["pdf", "image", "text", "html", "other"], "budget_mb": 1 << 30,
-                      "max_mb": config.SYNC_MAX_ATTACHMENT // config.MB}
+                      "max_mb": config.setting("SYNC_MAX_ATTACHMENT_MB")}
     cursor = cursor or {}
     new_cursor = {}   # only the searches made now: one dropped (a kind turned off) starts over when it comes back
     try:
@@ -524,7 +524,7 @@ def _first(db, c, got, who, ip):
             _keep_store(db, c, store)
             db.execute("""UPDATE connections SET cursor=?, pending_cursor=NULL, last_sync=?, next_sync=?, failures=0,
                           error_kind=NULL, last_error=NULL, report=?, warned=NULL WHERE id=? AND state='active'""",
-                       (json.dumps(got["cursor"]), dbm.now(), dbm.now() + config.SYNC_HOURS * 3600,
+                       (json.dumps(got["cursor"]), dbm.now(), dbm.now() + config.setting("SYNC_HOURS") * 3600,
                         conns._jenc(_report(got)), cid))
             _note_attachments(db, c, got)
         return {"ok": True, "first": True, "job": None}
@@ -576,7 +576,7 @@ def first_saved(db, jid, iid):
         _fold_first(db, c, jid, iid)
     db.execute("""UPDATE connections SET cursor=IFNULL(pending_cursor, '{}'), pending_cursor=NULL,
                   next_sync=CASE WHEN state='active' THEN ? ELSE NULL END WHERE id=?""",
-               (dbm.now() + config.SYNC_HOURS * 3600, c["id"]))
+               (dbm.now() + config.setting("SYNC_HOURS") * 3600, c["id"]))
 
 
 def _fold_first(db, c, jid, iid):
@@ -1154,7 +1154,7 @@ def _done(db, c, got, report):
         records._bump(db, db.execute("SELECT profile_id FROM connections WHERE id=?", (c["id"],)).fetchone()["profile_id"])
     db.execute("""UPDATE connections SET cursor=?, last_sync=?, next_sync=?, failures=0, error_kind=NULL, last_error=NULL,
                   report=?, warned=NULL WHERE id=?""",
-               (json.dumps(got["cursor"]), dbm.now(), dbm.now() + config.SYNC_HOURS * 3600, conns._jenc(report), c["id"]))
+               (json.dumps(got["cursor"]), dbm.now(), dbm.now() + config.setting("SYNC_HOURS") * 3600, conns._jenc(report), c["id"]))
     _note_attachments(db, c, got)
 
 
@@ -2045,12 +2045,12 @@ def fetch_anyway(db, who, pid, cid, sid, ip=None):
     http = smart.Client(outside.for_connection(db, cid, "Connected source: sync", who, ip))   # the one way out (#97)
     try:
         reader = smart.Reader(http, c["fhir_base"], conns.Tokens(db, cid, http))
-        body = reader.get(c["fhir_base"] + "/" + d["rel"], accept="*/*", max_bytes=config.SYNC_MAX_ATTACHMENT).body
+        body = reader.get(c["fhir_base"] + "/" + d["rel"], accept="*/*", max_bytes=config.setting("SYNC_MAX_ATTACHMENT_MB") * config.MB).body
     except (smart.AccessEnded, smart.TokenRejected) as e:
         conns.needs_reconnect(db, cid, str(e) + " Sign in again to keep this source up to date.")
         raise conns.Problem(str(e) + " Sign in again, then fetch it.", 409) from None
     except smart.TooBig:
-        raise conns.Problem(f"It's bigger than {config.SYNC_MAX_ATTACHMENT // config.MB} MB, the most this server "
+        raise conns.Problem(f"It's bigger than {config.setting('SYNC_MAX_ATTACHMENT_MB')} MB, the most this server "
                             "fetches (SYNC_MAX_ATTACHMENT_MB, set by whoever runs it).", 409) from None
     except smart.SmartError as e:
         raise conns.Problem("The vendor didn't send it: " + str(e), 502) from None

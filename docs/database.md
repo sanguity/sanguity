@@ -443,6 +443,11 @@ erDiagram
 
 One row per key and owner (a unique index on `key`, `IFNULL(profile_id, 0)`, `IFNULL(user_id, 0)`).
 
+An install row can be a server setting the environment can set too (#999): its registry entry names the variable
+(`env`, one of `server/config.py`'s `VARS`), and the row is plain. The server reads it through `config.setting(NAME)`
+wherever it's used: the environment's value when the variable is set (not empty), else this row, else the default.
+Such a row is read over a read-only connection of its own, at most every two seconds, and at once after a change.
+
 The `units` setting (#41) is a user's row, plain JSON (`{"lab", "weight", "temperature", "height"}`). The conversions it picks
 from aren't stored: each lab series the page loads carries its exact ones (`conv`, from `server/units.py`) when the
 records are put together, and the page converts as it draws, keeping what was reported.

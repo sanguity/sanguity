@@ -124,7 +124,7 @@ def _retry_after(resp):
 class Client:
     def __init__(self, permit, timeout=None):
         self.permit = permit
-        self.timeout = timeout or config.CONNECT_TIMEOUT
+        self.timeout = timeout or config.setting("CONNECT_TIMEOUT")
 
     @property
     def hosts(self):

@@ -35,8 +35,14 @@
 {% do app.set_command(["python3", "-m", "server"]) %}
 {% do app.depends.add_dependency(values.consts.setup_container_name, "service_completed_successfully") %}
 {% do app.healthcheck.set_custom_test(["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/healthz',timeout=3)"]) %}
-{% do app.environment.add_env("COOKIE_SECURE", values.sanguity.cookie_secure) %}
-{% do app.environment.add_env("PUBLIC_ORIGINS", values.sanguity.public_origins) %}
+{# the app's own settings only when changed from their default (#999): one passed is shown as set by the environment,
+   fixed, and the rest can be changed in the app #}
+{% if values.sanguity.cookie_secure not in ["", "auto"] %}
+  {% do app.environment.add_env("COOKIE_SECURE", values.sanguity.cookie_secure) %}
+{% endif %}
+{% if values.sanguity.public_origins %}
+  {% do app.environment.add_env("PUBLIC_ORIGINS", values.sanguity.public_origins) %}
+{% endif %}
 {% do app.environment.add_env("FORWARDED_ALLOW_IPS", "*") %}
 {% do app.environment.add_user_envs(values.sanguity.additional_envs) %}
 {% do app.add_storage("/tmp", app_tmp) %}

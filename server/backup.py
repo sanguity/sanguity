@@ -63,17 +63,10 @@ WATCH_FRIENDLY = {"readings": ("samples", "buckets", "hae_points", "hae_vitals",
                   "workouts": ("exercise",), "ecgs": ("ecg",)}
 
 
-def _days(name, default):
-    """A number of days from the environment, in seconds; the default when unset, unreadable or below zero (as the
-    watch receiver reads its own, watch/receiver.py)."""
-    try:
-        v = float(os.environ.get(name) or default)
-    except ValueError:
-        v = default
-    return (v if 0 <= v < 1e6 else default) * 86400   # (NaN isn't; nor is inf, which would never be reached)
-
-
-RESTORE_KEEP = _days("RESTORE_KEEP_DAYS", 30)   # what a restore replaced is deleted this long after (#595)
+# what a restore replaced is deleted this long after (#595): RESTORE_KEEP_DAYS, in seconds; the default when unset,
+# unreadable or below zero (as the watch receiver reads its own, watch/receiver.py). Read once: it's the environment's
+# alone, never a setting, as the receiver keeps its own folders by it too
+RESTORE_KEEP = config.setting("RESTORE_KEEP_DAYS") * 86400
 KEEP_DAYS = int(RESTORE_KEEP / 86400) if RESTORE_KEEP % 86400 == 0 else round(RESTORE_KEEP / 86400, 2)   # in words
 REPLACED = re.compile(r"(?:before-restore|watch-restored)-(\d{8}-\d{6})(?:-1)*")   # as restore() names them (#603: the
 # receiver's data it couldn't hand over too), and the receiver its own before-restore folders

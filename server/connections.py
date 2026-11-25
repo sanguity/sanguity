@@ -387,7 +387,7 @@ def return_address():
     """Where the vendor sends a sign-in back: this install's /connect/return, at its first https:// address in
     PUBLIC_ORIGINS (else its first address there). None until PUBLIC_ORIGINS is set. Under option 2 this would be
     the relay's address instead; it is the only thing that would change."""
-    origins = sorted(config.PUBLIC_ORIGINS, key=lambda o: (not o.startswith("https://"), o))
+    origins = sorted(config.setting("PUBLIC_ORIGINS"), key=lambda o: (not o.startswith("https://"), o))
     return origins[0] + RETURN_PATH if origins else None
 
 
@@ -982,8 +982,8 @@ def attach_rules(db, c, install=None):
     install = install or settings.install_values(db, "sync.attach")
     own = json.loads(c["attach"]) if c["attach"] else {}
     out = {k: own.get(k, install[key]) for k, key in ATTACH_KEYS.items()}
-    out["max_mb"] = min(out["max_mb"], settings.CEILING_MB)
-    out["ceiling_mb"] = settings.CEILING_MB
+    out["ceiling_mb"] = settings.ceiling_mb()
+    out["max_mb"] = min(out["max_mb"], out["ceiling_mb"])
     return out
 
 
