@@ -336,12 +336,21 @@ function drawSync(sec, note, keep = []) {
   if (back && !card.contains(document.activeElement)) document.getElementById(back)?.focus({preventScroll: true});   // (a control saved as it's changed)
 }
 const syncSec = d => d.sections.find(s => s.id === "sync");
+/* a sync default saved: the kinds ticked, a list, by util.js saveWhole with the list it was made from (read), refused if
+   changed elsewhere since (409, #923), this page's quick second tick going on from its first (#956) */
+async function syncPut(key, value, read) {
+  const path = `settings/install/${encodeURIComponent(key)}`;
+  if (!Array.isArray(value)) return call(path, "PUT", {value});
+  const r = await saveWhole(path, value, read), j = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(typeof j.detail === "string" ? j.detail : `${r.status} ${r.statusText}`), {status: r.status});
+  return j;
+}
 /* an Undo: each setting put back as it was (was: [{key, label, value, wrote}]), only one still as written */
 async function syncUndo(was) {
   const now = syncSec(await call("settings/install")).settings, back = [], since = [];
   for (const w of was) {
     if (!same(now.find(st => st.key === w.key)?.value, w.wrote)) { since.push(w.label); continue; }
-    await call(`settings/install/${encodeURIComponent(w.key)}`, "PUT", {value: w.value, ...(Array.isArray(w.wrote) ? {was: w.wrote} : {})});
+    await syncPut(w.key, w.value, w.wrote);
     back.push(w.label);
   }
   const text = [back.length ? `Undone: ${syncList(back)} ${back.length === 1 ? "is" : "are"} as before.` : "",
@@ -351,12 +360,16 @@ async function syncUndo(was) {
 }
 /* on or off, or the kinds ticked: saved at once, one at a time */
 function syncNow(e) {
+  // (#923, #956) the kinds ticked, a list: sent as it's ticked, util.js saveWhole queueing it after this page's save
+  // before it and going on from that one; refused if changed elsewhere since, and read again
+  const list = Array.isArray(e.st.value) && e.dirty() ? [e.get(), e.st.value] : null;
+  const put = list && syncPut(e.st.key, list[0], list[1]);
+  put?.catch(() => {});   // (answered below, in turn)
   e.queue = (e.queue || Promise.resolve()).then(async () => {
-    if (!e.dirty()) return;
-    const value = e.get(), was = [{key: e.st.key, label: e.st.label, value: e.st.value, wrote: value}];
+    if (!put && !e.dirty()) return;
+    const value = list ? list[0] : e.get(), was = [{key: e.st.key, label: e.st.label, value: list ? list[1] : e.st.value, wrote: value}];
     let d;
-    // (#923) the kinds ticked, a list: saved with the one they were made from, refused if it's changed since, and read again
-    try { d = await call(`settings/install/${encodeURIComponent(e.st.key)}`, "PUT", {value, ...(Array.isArray(value) ? {was: e.st.value} : {})}); }
+    try { d = await (put || syncPut(e.st.key, value, e.st.value)); }
     catch (err) {
       if (err.status === 409) { drawSync(syncSec(await call("settings/install")), err.message, SYNC.filter(x => x !== e && x.dirty())); return; }
       const now = SYNC.find(x => x.st.key === e.st.key && x.dirty()) || e;   // (drawn again meanwhile: that one)
