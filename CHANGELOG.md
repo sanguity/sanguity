@@ -3579,6 +3579,12 @@ Everything on `main` so far; it becomes the first tagged release.
   where it comes from, and `config reset SETTING` or `--all` takes away what was saved in the app, which the running
   app follows within seconds; `SANGUITY_SAVED_SETTINGS=off` in `.env` leaves everything saved in the app out until
   it's taken out again, the way back in when a saved value locks everyone out (README, The server's settings).
+- **The phone upload address names the port TrueNAS, Unraid and CasaOS publish, and the host a proxy served** (#1007):
+  those templates published the receiver's port but didn't tell the app, so the address on Sources → Phone and watch
+  said 8731 whatever port was chosen; and with no public address it took the Host the request was sent on, where the
+  calendar's and Find your provider's addresses take the host a reverse proxy says it served. TrueNAS passes its
+  receiver port, CasaOS its fixed 8731, and Unraid has a second field for the same number (an Unraid template can't
+  copy a port into a variable; change both together); the address takes X-Forwarded-Host as the others do.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

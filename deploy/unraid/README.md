@@ -10,6 +10,7 @@ that user. The root filesystem is read-only (`--read-only --tmpfs /tmp`).
 |---|---|---|
 | Web UI port | 8080 | 8730 |
 | Watch receiver port | 8081 | 8731 |
+| Watch receiver port, for the upload address (the same number again: the app gives it in the phone's upload address, #1007) | `RECEIVER_PORT` | 8731 |
 | Data | `/data` | `/mnt/user/appdata/sanguity/data` |
 | Encryption key | `/run/secrets/sanguity` | `/mnt/user/appdata/sanguity-key` |
 | Backups (Sanguity writes them on the schedule set under **Admin → Backups**; copy them off the server too) | `/backups` | `/mnt/user/appdata/sanguity/backups` |
