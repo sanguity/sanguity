@@ -9903,6 +9903,15 @@ def main():
             # legible only through the halo), its glucose profile, a lab's panel, a share link's page (its histories open)
             # and the visit summary's preview, both ways: every chart's text CanvasText on Canvas, and the target's edges
             # CanvasText. The share link's page and the summary in a page of their own, in the app's theme as it loads
+            # #728: and the sparklines (chartkit.js ckSpark) on the Overview's tiles, a share link's Trend column and the visit
+            # summary's trends: their line, their latest result's dot and its ▲ or ▼ CanvasText (the dot kept the app's ink,
+            # 1.18:1 against the system's background; the line 2.84:1 and a red ▲ 2.46:1 with the system light, #657)
+            SPARK728 = r"""sel => { const s = document.createElement('span'); s.style.forcedColorAdjust = 'none'; s.style.color = 'CanvasText'; document.body.append(s);
+              const text = getComputedStyle(s).color, out = {n: 0, bad: []}; s.remove();
+              for (const sp of document.querySelectorAll(sel)) { if (!sp.checkVisibility()) continue; out.n++;
+                for (const m of sp.querySelectorAll('circle, path.spark-abn')) { const f = getComputedStyle(m).fill; if (f !== text) out.bad.push(`${m.tagName === 'circle' ? 'its latest dot' : 'its ▲ or ▼'} filled ${f}`); }
+                for (const l of sp.querySelectorAll('path:not([class])')) { const c = getComputedStyle(l).stroke; if (c !== text) out.bad.push(`its line stroked ${c}`); } }
+              out.bad = [...new Set(out.bad)]; return out; }"""
             TGT729 = r"""() => { const s = document.createElement('span'); s.style.forcedColorAdjust = 'none'; s.style.color = 'CanvasText'; document.body.append(s);
               const text = getComputedStyle(s).color; s.remove(); const e = [...document.querySelectorAll('#view-health .tgt-edge')].filter(x => x.checkVisibility());
               return {n: e.length, bad: [...new Set(e.map(x => getComputedStyle(x).stroke))].filter(c => c !== text).map(c => `tgt-edge stroked ${c}`)}; }"""
@@ -9910,7 +9919,7 @@ def main():
               body: JSON.stringify({sections: ['results'], label: 'Forced colours (browser check)', hours: 1})}).then(r => r.json())""")
             was729 = js("[document.documentElement.dataset.theme || null, matchMedia('(prefers-color-scheme: dark)').matches, state.tab, state.preset]")
             js("""window._was729 = CFG.person; CFG.person = {...(CFG.person || {}), targets: {...targetsOf(), steps: {low: 8000, high: null, by: "", on: ""}}}""")
-            fc729 = {}
+            fc729, fc728 = {}, {}
             for system729 in ("dark", "light"):
                 app729 = "light" if system729 == "dark" else "dark"
                 way729 = f"the system {system729}, the app {app729}"
@@ -9920,6 +9929,9 @@ def main():
                 fc729[f"{way729}: Body and activity"] = js(FC657, "#view-health svg text")
                 fc729[f"{way729}: its glucose profile"] = js(FC657, "#view-health svg.glu-prof text")
                 fc729[f"{way729}: its target's edges"] = js(TGT729)
+                js("switchTab('overview')")
+                settle(500)
+                fc728[f"{way729}: the Overview's tiles"] = js(SPARK728, "#view-overview svg.spark")
                 js("openLab(SERIES.find(s => s.name === 'Hemoglobin'))")
                 settle(500)
                 fc729[f"{way729}: a lab's panel"] = js(FC657, "#dbody svg text")
@@ -9933,10 +9945,12 @@ def main():
                 pg729.locator("#share-results .share-tools button", has_text="Open every history").click()
                 pg729.wait_for_timeout(600)
                 fc729[f"{way729}: a share link's page"] = pg729.evaluate(FC657, "#share-results svg text")
+                fc728[f"{way729}: a share link's Trend column"] = pg729.evaluate(SPARK728, "#share-results svg.spark")
                 pg729.goto(base + "/sharing.html?profile=1#summary")
                 pg729.wait_for_selector("#preview:not([hidden]):not([aria-busy]) h3", timeout=15000)
                 pg729.wait_for_timeout(600)
                 fc729[f"{way729}: the visit summary's preview"] = pg729.evaluate(FC657, "#preview svg text")
+                fc728[f"{way729}: the visit summary's trends"] = pg729.evaluate(SPARK728, "#preview svg.spark")
                 ctx729.close()
             js("id => fetch('api/profiles/1/links/' + id, {method: 'DELETE', headers: {'X-Sanguity': '1'}})", link729["link"]["id"])
             page.emulate_media(forced_colors="none", color_scheme="dark" if was729[1] else "light")
@@ -9946,6 +9960,9 @@ def main():
             check("…and on Body and activity (a target of one's own drawn), its glucose profile, a lab's panel, a share link's page and the visit "
                   "summary's preview, both ways (#729): every chart's text CanvasText on Canvas (“Your target” kept the app's ink), and the target's "
                   "dashed edges CanvasText", all(v["n"] > 0 and not v["bad"] for v in fc729.values()), {k: v for k, v in fc729.items() if not v["n"] or v["bad"]})
+            check("…and their sparklines, both ways (#728): on the Overview's tiles, a share link's Trend column and the visit summary's trends, their "
+                  "line, latest dot and ▲ or ▼ CanvasText (the dot kept the app's ink, 1.18:1)", all(v["n"] > 0 and not v["bad"] for v in fc728.values()),
+                  {k: v for k, v in fc728.items() if not v["n"] or v["bad"]})
             # their labels (#312): at 1400, 375 and 320 px each one on the Timeline and Body and activity is inside its plot
             # with no mark on it; one shortened to fit ends in "…" and keeps the full names in its title; a Body and
             # activity chart's aria-label names them (Labs names them on its event track, #294: TRACK_JS). Body names them

@@ -2044,6 +2044,7 @@ svg[role=application]:focus-visible{outline:2px solid var(--accent);outline-offs
 .chart-table{max-height:360px}
 path.pt.abn{stroke-width:1.5}
 .spark{overflow:visible}.spark-abn{fill:var(--crit)}   /* (ckSpark, #299: a mark at an end past the box) */
+@media (forced-colors:active){ .spark :is(circle,.spark-abn){fill:CanvasText} .spark path:not([class]){stroke:CanvasText} }   /* its line and latest: SVG keeps the app's ink (#728) */
 .hm-mark{fill:var(--ink);pointer-events:none}
 .abn-key{color:var(--crit);font-size:var(--fs-1);letter-spacing:-1px}
 .hm-legend .hm-key{margin-left:var(--sp-3);color:var(--ink2)}
