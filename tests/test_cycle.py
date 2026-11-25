@@ -393,6 +393,9 @@ class App(unittest.TestCase):
             self.assertEqual(con.execute("SELECT COUNT(*) FROM settings WHERE key=?", (cycle_tracking.KEY,)).fetchone()[0], 0)
             con.close()
         rx.cycle_sweep(self.stores)
+        # (#946) and the receiver's cycle.json and its own note of the deletion go, as the app has seen it done
+        self.assertFalse(os.path.exists(rx.cycle_file(self.slot)), "no cycle.json left saying it was ever on")
+        self.assertEqual([rx.Store(self.slot).meta(k) for k in ("cycle_purged", "cycle_purged_at")], [None, None])
         self.post(ldc(seq=4))
         self.assertFalse(any("menstru" in t for t in archived(self.slot)), "off again: left out again")
         self.assertEqual(self.stores[self.slot].db.execute("SELECT COUNT(*) FROM cycle").fetchone()[0], 0)
@@ -915,6 +918,9 @@ class Receiver(unittest.TestCase):
         rx.cycle_sweep({})
         self.assertEqual(json.loads(crypto.read_file(rx.cycle_file("7")))["purged"], "token-7", "said done: there was nothing")
         self.assertFalse(os.path.isdir(rx.slot_dir("7")), "and no store made for it")
+        sealed_keys({"profiles": [], "cycle": [], "cycle_purge": {}})   # (#946) the app has seen it done: it goes
+        rx.cycle_sweep({})
+        self.assertFalse(os.path.exists(rx.cycle_file("7")))
 
     def test_reprocess_remembers_deletions_done(self):
         sealed_keys({"profiles": [], "cycle": [""], "cycle_purge": {"": "token-a"}})

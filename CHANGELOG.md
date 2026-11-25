@@ -3371,6 +3371,10 @@ Everything on `main` so far; it becomes the first tagged release.
   stopped the command line keeping an export's activity log (who opened the old profile, from where; owners only
   there) and cycle records in the profile's `imported/`, but one loaded before still held them, in every backup. The
   start's sweep removes them, and nothing else of what it was loaded from.
+- **The watch receiver keeps nothing saying cycle tracking was on, once the app has seen its deletion done** (#946):
+  after tracking was turned off, the receiver's `cycle.json` kept `{"on": false, "purged": …}` in its data folder for
+  good, and its database the deletion's note, though the app had let go of its own record of it (#935). Both go once
+  the app no longer asks for that deletion.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
