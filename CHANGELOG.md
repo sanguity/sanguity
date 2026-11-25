@@ -2311,6 +2311,10 @@ Everything on `main` so far; it becomes the first tagged release.
   copied, or a lost phone's calendar app, kept getting updates. Both end them now. Change password says beforehand how
   many it will turn off, and so does Remove passkey's question; each says after that they went and where to make new
   ones (Sharing, Calendar feed). Turning off your own authenticator app keeps them, as before.
+- **Two moods for one day saved at once save one** (#925): the journal checked that a day had no mood yet before
+  taking the write, so two saved at the same moment (a double tap, or two people) both saved, and then neither could
+  be changed ("There's a mood entry for that day already"). Now the check is made inside the write, the second is
+  refused, and a mood changed on its own day is fine, so two left from before can each be changed or deleted.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

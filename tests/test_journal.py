@@ -424,6 +424,60 @@ class Journal(unittest.TestCase):
         entries = log["entries"] if isinstance(log, dict) else log
         self.assertEqual(entries[0]["detail"], {"action": "change", "kind": "mood"})
 
+    def test_two_moods_for_one_day_sent_at_once_save_one(self):   # #925
+        """Two moods for the same day sent at the same moment (a double tap, two people): each request's check that the
+        day has no mood yet is held until the other's has run too, or for 2 seconds. One is saved, the other refused,
+        and the one saved can be changed; the same for a note changed into that day's mood while another is added."""
+        import threading
+        real = journal.check
+
+        def race(*sends):
+            both = threading.Barrier(len(sends), timeout=2)
+
+            def held(*a, **k):
+                out = real(*a, **k)
+                try:
+                    both.wait()   # with the check outside the write, both pass it before either saves
+                except threading.BrokenBarrierError:
+                    pass          # inside it, the other is waiting for the write lock
+                return out
+            got = [None] * len(sends)
+
+            def go(i, send):
+                got[i] = send().status_code
+            with unittest.mock.patch.object(journal, "check", held):
+                ts = [threading.Thread(target=go, args=(i, send)) for i, send in enumerate(sends)]
+                [t.start() for t in ts]
+                [t.join(30) for t in ts]
+            return sorted(got)
+
+        def moods(day):
+            return [e for e in self.robin.get(self.url()).json()["entries"] if e["kind"] == "mood" and e["t"] == day]
+
+        mood = lambda c, m: lambda: c.post(self.url(), json={"kind": "mood", "t": "2026-04-06", "mood": m}, headers=H)
+        self.assertEqual(race(mood(self.robin, 6), mood(self.lee, 3)), [201, 400])
+        kept = moods("2026-04-06")
+        self.assertEqual(len(kept), 1, "one mood a day")
+        r = self.robin.put(self.url(f"/{kept[0]['id']}"), json={"kind": "mood", "t": "2026-04-06", "mood": 7}, headers=H)
+        self.assertEqual(r.status_code, 200, "the one saved can be changed")
+
+        nid = self.add(kind="note", t="2026-04-07", note="Fictional note")["id"]
+        to_mood = lambda: self.robin.put(self.url(f"/{nid}"), json={"kind": "mood", "t": "2026-04-07", "mood": 5}, headers=H)
+        add = lambda: self.lee.post(self.url(), json={"kind": "mood", "t": "2026-04-07", "mood": 4}, headers=H)
+        self.assertIn(race(to_mood, add), ([200, 400], [201, 400]), "whichever comes first is saved, the other refused")
+        self.assertEqual(len(moods("2026-04-07")), 1, "one mood a day")
+
+        db = dbm.connect()   # two moods of one day saved at once before #925: each can still be changed
+        robin = dict(db.execute("SELECT id, username FROM users WHERE username='robin'").fetchone())
+        two = [journal.add(db, self.pid, robin, {"kind": "mood", "t": "2026-04-08", "mood": m, "energy": None, "note": ""})
+               for m in (6, 3)]
+        db.close()
+        for jid in two:
+            r = self.robin.put(self.url(f"/{jid}"), json={"kind": "mood", "t": "2026-04-08", "mood": 5}, headers=H)
+            self.assertEqual(r.status_code, 200, r.text)
+        r = self.robin.put(self.url(f"/{nid}"), json={"kind": "mood", "t": "2026-04-08", "mood": 5}, headers=H)
+        self.assertEqual(r.status_code, 400, "another entry can't become that day's mood")
+
     def put_groups(self, groups, c=None, status=200):
         r = (c or self.robin).put(f"/api/profiles/{self.pid}/settings/journal.groups", json={"value": groups}, headers=H)
         self.assertEqual(r.status_code, status, r.text)
