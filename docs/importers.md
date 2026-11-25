@@ -243,7 +243,8 @@ row's own record in `keys`, wherever it is (#899: in an upload of the portal's o
 to the same portal), and updates that row there, puts a row new to the profile in a labitem of its own beside its
 result, leaves out a duplicate's row with it (#897), and joins the day's lab day rather than adding a second: its
 own, else its source's (#912: one listing the portal's records, an upload's of its export, never another source's of
-that date while there's one), else the earliest. A
+that date while there's one), else the earliest; its first pull's lab day joins it the same way (#910), and each lab
+event is listed by one lab day. A
 report's labitem the profile has is placed the same way, row by row (#881): a result its source adds to the report has
 its row in a labitem of the pull's own of that report, so every row sits beside its result, in its result's import. A
 labitem saved before #885 has no `keys`; a connection's take theirs from what it has read, once (schema version 40),
