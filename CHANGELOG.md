@@ -3182,6 +3182,12 @@ Everything on `main` so far; it becomes the first tagged release.
   every backup. One no record holds is now removed at the first start a day on, as an upload left unfinished is, and
   so is an upload whose import was never started; a saved record's file, and an export's uploads put back with
   `server.manage import`, are kept.
+- **Undoing an import made with `server.manage import` deletes what it was loaded from** (#934): an export loaded
+  with it was unpacked into the profile's folder (`imported/`: its `data.json` with every record, its documents and
+  watch data) and a profile's records from before schema version 10 were kept as `data-before-v10.json`; undoing the
+  import removed its records but neither file, which stayed in every backup. Undoing it now deletes the unpacked export,
+  its watch data no longer shown (an upload's kept), and the history entry says so; the records file from before
+  version 10 is deleted once it's loaded, and one an earlier version kept is deleted at the next start.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
@@ -3197,8 +3203,8 @@ From an install made before accounts:
 
 From an install that keeps records in `data.json` (before #103):
 - Nothing to do. On the first start each `DATA_DIR/profiles/<id>/data.json` is loaded into the database
-  (schema version 10) and kept beside it as `data-before-v10.json`, which can be deleted once you've checked
-  the app. A file that can't be read is left alone with a message in the log, and the app still starts.
+  (schema version 10), then deleted; a `data-before-v10.json` an earlier version kept beside it is deleted too
+  (#934). A file that can't be read is left alone with a message in the log, and the app still starts.
 - `corrections.json`'s `not_hospital_stays` are moved into the app's corrections once, at the first start.
 - Milestones, from `corrections.json` and from the records' `data.json`, are moved into each profile's settings
   once, at the first start (#39). After that `corrections.json` isn't read and can be deleted; `build.py` no

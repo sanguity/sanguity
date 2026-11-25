@@ -9,7 +9,7 @@ is replaced by a random document id; the id maps to a file under the records fol
 profile's own folder, and nothing else on disk can be reached.
 
 Before schema version 10 a profile's records were profiles/<id>/data.json; migrate_files loads such a file into
-the tables at start-up and keeps it beside them as data-before-v10.json.
+the tables at start-up, then deletes it (#934).
 """
 import contextlib, json, os, secrets, shutil, threading
 from urllib.parse import quote
@@ -347,17 +347,56 @@ def bootstrap(db):
     return pid
 
 
-MIGRATED = "data-before-v10.json"
+MIGRATED = "data-before-v10.json"   # the records file as versions before #934 kept it once it was loaded
+IMPORTED = "imported"   # an export server.manage import unpacked into the profile's folder (export.import_archive)
+
+
+def forget_dataset(db, pid, iid):
+    """A dataset import (server.manage import) being undone, inside its transaction (#934): what it was loaded from,
+    kept in the profile's folder, goes with it. That's the export export.import_archive unpacked into imported/ (its
+    data.json holds every record, beside its documents, settings and watch data), unless a document of another import
+    is stored there; and a records file from before schema version 10 an older version kept. A watch file in imported/
+    the profile reads is let go here, and the imports' own watch data merged again without it (watch_store.rebuild).
+    Returns the paths to remove once the undo has committed."""
+    from . import watch_store
+    folder = profile_dir(pid)
+    out = [p for p in (os.path.join(folder, MIGRATED),) if os.path.isfile(p)]
+    src = os.path.join(folder, IMPORTED)
+    if not os.path.isdir(src) or os.path.islink(src):
+        return out
+    for r in db.execute("SELECT path FROM documents WHERE profile_id=? AND import_id IS NOT ?", (pid, iid)):
+        if _inside(crypto.dec(r["path"]), src):
+            return out
+    r = db.execute("SELECT watch_file FROM profiles WHERE id=?", (pid,)).fetchone()
+    if r and r["watch_file"] and _inside(r["watch_file"], src):
+        db.execute("UPDATE profiles SET watch_file=NULL WHERE id=?", (pid,))
+        side = watch_store.side_path(pid)   # the imports' merged beside it: merged again into the profile's own file
+        watch_store.rebuild(db, pid, prune=False)
+        out += [side] if os.path.isfile(side) else []
+    return out + [src]
+
+
+def remove(paths):
+    """Remove files and folders (forget_dataset's, once the undo has committed)."""
+    for p in paths:
+        if os.path.isdir(p) and not os.path.islink(p):
+            shutil.rmtree(p, ignore_errors=True)
+        else:
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(p)
 
 
 def migrate_files(db):
     """Load each profile's data.json, where its records were kept before schema version 10, into the tables as one
-    import (the setup build's, for a linked profile, so the next rebuild replaces it), and keep the file beside
-    them as data-before-v10.json. Its document links already point at the profile's documents, which become the
-    import's. Returns the number of profiles loaded."""
+    import (the setup build's, for a linked profile, so the next rebuild replaces it), then delete the file: every
+    record is in the tables, and undone they'd stay in it (#934; versions before kept it as data-before-v10.json,
+    deleted here too). Its document links already point at the profile's documents, which become the import's.
+    Returns the number of profiles loaded."""
     n = 0
     for r in db.execute("SELECT id, linked_build FROM profiles ORDER BY id").fetchall():
         pid, path = r["id"], data_path(r["id"])
+        with contextlib.suppress(FileNotFoundError):   # loaded by an older version, which kept it (#934)
+            os.remove(os.path.join(profile_dir(pid), MIGRATED))
         if not os.path.isfile(path):
             continue
         if not records.imports(db, pid):   # else loaded already, by a start that stopped before moving the file
@@ -372,5 +411,5 @@ def migrate_files(db):
                 iid = records.store(db, pid, data, "build" if r["linked_build"] else "dataset")
                 db.execute("UPDATE documents SET import_id=? WHERE profile_id=? AND import_id IS NULL", (iid, pid))
             n += 1
-        os.replace(path, os.path.join(profile_dir(pid), MIGRATED))
+        os.remove(path)
     return n

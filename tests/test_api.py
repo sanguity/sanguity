@@ -1700,7 +1700,7 @@ class Api(unittest.TestCase):
         self.assertEqual(prof.migrate_files(db), 1)   # the broken one is left for someone to look at
         self.assertTrue(os.path.isfile(prof.data_path(broken)))
         self.assertFalse(os.path.exists(prof.data_path(pid)))
-        self.assertTrue(os.path.isfile(os.path.join(prof.profile_dir(pid), prof.MIGRATED)))
+        self.assertFalse(os.path.exists(os.path.join(prof.profile_dir(pid), prof.MIGRATED)), "not kept: undone, its records would stay in it (#934)")
         self.assertEqual(db.execute("SELECT origin FROM imports WHERE profile_id=?", (pid,)).fetchone()[0], "dataset")
         self.assertIsNotNone(db.execute("SELECT import_id FROM documents WHERE id='olddoc'").fetchone()[0])
         ben = self.login("ben")

@@ -9,7 +9,7 @@ watch data imported before #24. Fictional data only.
 
   python3 tests/test_import_history.py
 """
-import io, json, os, shutil, sys, tempfile, time, unittest
+import io, json, os, shutil, sys, tempfile, time, unittest, zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-history-test-")
@@ -401,6 +401,52 @@ class History(unittest.TestCase):
         self.assertEqual(e["counts"]["events"], 5)
         self.undo(pid, e["id"])
         self.assertEqual(self.state(pid)["data"][0], 204)
+
+    def test_undoing_a_dataset_import_deletes_what_it_was_loaded_from(self):   # #934
+        """server.manage import of an export unpacks it into the profile's folder (imported/: its data.json holds every
+        record, beside its documents and the phone's summary); undoing that import deletes it, and the watch data it
+        brought is no longer shown, an upload's kept. A records file from before schema version 10 isn't kept once it's
+        loaded; one an older version kept goes at the next start, and with an undo."""
+        from server import export
+        pid = self.profile()
+        zpath = os.path.join(TMP, "export-934.zip")   # an export as Export everything writes it, with the phone's summary
+        with zipfile.ZipFile(zpath, "w") as z:
+            for root, _, names in os.walk(SANGUITY):
+                for n in names:
+                    z.write(os.path.join(root, n), os.path.relpath(os.path.join(root, n), SANGUITY).replace(os.sep, "/"))
+            z.writestr("watch/daily.json", json.dumps(summary({"steps": {"2026-01-05": 4321}})))
+        export.import_archive(self.db, pid, zpath)
+        src = os.path.join(prof.profile_dir(pid), "imported")
+        self.assertTrue(all(os.path.isfile(os.path.join(src, n)) for n in ("data.json", "watch/daily.json", "documents/3/report.pdf")))
+        old = os.path.join(prof.profile_dir(pid), prof.MIGRATED)   # as a version before #934 left it
+        crypto.write_file(old, json.dumps({"events": [{"id": 1, "t": "2020-01-01", "k": "visit", "title": "Old visit"}]}).encode())
+        self.imported(pid, apple_files())   # an upload's watch data: kept beside the export's
+        alone = self.profile()
+        self.imported(alone, apple_files())
+        steps = lambda w: dict(next((m["pts"] for m in w["metrics"] if m["key"] == "steps"), []))
+        self.assertEqual(steps(self.state(pid)["watch"][1]).get("2026-01-05"), 4321)
+        e = next(e for e in self.history(pid)["imports"] if e["origin"] == "dataset")
+        self.undo(pid, e["id"])
+        self.assertFalse(os.path.exists(src), "the unpacked export goes with its import")
+        self.assertFalse(os.path.exists(old))
+        self.assertFalse(os.path.exists(watch_store.side_path(pid)))
+        self.assertIn("the copy of what it was loaded from", e["note"], "the history says so")
+        after, mine = self.state(pid)["watch"][1], self.state(alone)["watch"][1]
+        self.assertNotIn("2026-01-05", steps(after))
+        self.assertEqual({m["key"]: m["pts"] for m in after["metrics"]}, {m["key"]: m["pts"] for m in mine["metrics"]},
+                         "the upload's watch data, as it is without the export's")
+        from server import backup
+        path = backup.create(dest=os.path.join(TMP, "backups-934"))
+        self.assertFalse([n for n in backup.verify(path)["files"] if n.startswith(f"profiles/{pid}/imported/")])
+        # the records file from before schema version 10: loaded, then deleted, at the next start
+        crypto.write_file(old, b"{}")
+        crypto.write_file(prof.data_path(pid), json.dumps({"events": [{"id": 1, "t": "2020-01-01", "k": "visit", "title": "Old visit"}],
+                                                           "details": {}, "labs": [], "costs": []}).encode())
+        other = self.profile()
+        crypto.write_file(prof.data_path(other), json.dumps({"events": [], "details": {}}).encode())
+        self.assertEqual(prof.migrate_files(self.db), 1)   # (pid has imports: its data.json is taken as loaded already)
+        for p in (old, prof.data_path(pid), prof.data_path(other), os.path.join(prof.profile_dir(other), prof.MIGRATED)):
+            self.assertFalse(os.path.exists(p), p)
 
     def test_undo_rolls_back_whole(self):
         pid = self.profile()

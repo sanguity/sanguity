@@ -26,7 +26,10 @@ By origin:
             more come from a connection (imports.note says which, #99, #101): taking out the records of a kind it
             brought (undone, they come back, each lab result in its lab day, whatever was undone meanwhile: #914) and
             an attachment fetched on request (undone, the file goes and the attachment is listed as left out again).
-  dataset   undone, but it replaced the profile's records when it was loaded, and those can't be brought back.
+  dataset   undone, but it replaced the profile's records when it was loaded, and those can't be brought back. What
+            it was loaded from and kept in the profile's folder goes too once the undo commits (#934,
+            profiles.forget_dataset): an export server.manage import unpacked there (imported/), the watch data in it
+            among them, and a records file from before schema version 10 an older version kept.
   build     refused: the profile is kept in step with the setup build, so the next rebuild would bring it back.
 """
 import collections, json, os
@@ -36,7 +39,8 @@ from . import activity, crypto, db as dbm, importers as registry, labmap, record
 FILES_SHOWN = 20   # file names listed per import; the rest are counted
 NOTES = {
     "dataset": "This import replaced the profile's records when it was loaded (server.manage import). Undoing it "
-               "removes the records it brought; what it replaced can't be brought back.",
+               "removes the records it brought, and the copy of what it was loaded from kept with them; what it "
+               "replaced can't be brought back.",
     "build": "These records come from the setup build, which this profile is kept in step with: undone, they would "
              "come back at the next rebuild. To leave records out, their export has to be taken out of the build, which "
              "an admin does on the server.",
@@ -182,7 +186,7 @@ def undo(db, pid, iid, who, ip=None, at=None):
     if imp["origin"] == "build":
         raise Refused("This import is the setup build's and can't be undone here: " + NOTES["build"])
     entry = _entry(db, pid, imp)
-    finish_watch, discard = None, []
+    finish_watch, discard, sources = None, [], []
     try:
         with dbm.transaction(db):
             # asked again under the write lock (#542): undone, or its profile deleted, since it was read above
@@ -195,6 +199,9 @@ def undo(db, pid, iid, who, ip=None, at=None):
             sync.unapply(db, iid)
             forgot = labmap.forget(db, iid)   # before its row goes (labmaps.import_id is set null with it)
             records.drop(db, pid, [iid])   # events, series, results, documents: by cascade
+            if imp["origin"] == "dataset":   # what it was loaded from, kept in the profile's folder (#934)
+                from . import profiles as prof
+                sources = prof.forget_dataset(db, pid, iid)
             for u in ups:
                 if not _still_used(db, pid, iid, u):
                     db.execute("UPDATE uploads SET state='discarded', manifest=NULL WHERE id=? AND profile_id=?", (u, pid))
@@ -215,4 +222,7 @@ def undo(db, pid, iid, who, ip=None, at=None):
         finish_watch(True)
     for u in discard:
         uploads._rmtree(uploads.folder(pid, u))
+    if sources:
+        from . import profiles as prof
+        prof.remove(sources)
     return {**entry, "state": "undone", "can_undo": False, "undone_at": dbm.now(), "undone_by": who["username"]}
