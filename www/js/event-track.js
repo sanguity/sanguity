@@ -47,7 +47,7 @@ function trackCard() {
   if (state.tables.has("#track")) card.append(trackTable(items, layers));
   else {   // named as it's made, so focus on it is found again when it's drawn anew (store.js keepFocus)
     card.append(el("svg:svg", {class: "ck ev-svg", tabindex: 0, role: "application", "aria-roledescription": "event track", "aria-label": trackLabel(items, layers)}));
-    requestAnimationFrame(drawTrack);
+    requestAnimationFrame(() => drawTrack());
   }
   return card;
 }
@@ -61,14 +61,17 @@ function trackTable(items, layers) {
       el("td", {}, open ? el("button", {class: "cell-btn", type: "button", text: words, onclick: open}) : words))))));
 }
 /* the track's drawing, at the charts' x for each date (their plot's edges, _geom), so a milestone's flag is over its
-   line in every chart; drawn again as the charts are while they're dragged (charts.js) */
-function drawTrack() {
+   line in every chart; drawn again as the charts are while they're dragged (charts.js; live: a frame of it), its names
+   in as many rows as when the drag began, more of them under a "+N" if they need more, so it doesn't grow or shrink
+   over the charts while they're dragged (#895: a row more, 30 px at 200% text, moved them under the pointer) */
+function drawTrack(live) {
   const svg = $("#evTrack svg.ev-svg"); if (!svg?.isConnected) return;
   const items = trackItems(), shown = trackLayers(), layers = shown.map(l => [l, l.space()]), geo = $("#charts .chart svg.ck")?._geom;
-  const w = labW(svg.parentElement), L = geo?.L ?? 52, R = geo ? w - (geo.w - geo.R) : w - 12, x = ckScale(state.from, state.to, L, R);
-  const flags = ckFlagRows(items.map(i => ({x: x(i.t), text: i.k === "milestone" ? i.words : shortTitle(i.words), cls: i.k === "milestone" ? "mslabel" : "evlabel", rank: i.k === "milestone" ? 0 : 1, i})), L, R);
-  const k = ckK(), RH = 15 * k, nRows = flags.length ? Math.max(...flags.map(f => f.row)) + 1 : 0, yM = items.length ? 6 + nRows * RH + 8 : 0;   // (rows as tall as larger text, #622)
-  let h = items.length ? yM + 10 : 2;
+  const w = labW(svg.parentElement), L = geo?.L ?? 52, R = geo ? w - (geo.w - geo.R) : w - 12, x = ckScale(state.from, state.to, L, R), held = live ? svg._rows : 0;
+  const flags = ckFlagRows(items.map(i => ({x: x(i.t), text: i.k === "milestone" ? i.words : shortTitle(i.words), cls: i.k === "milestone" ? "mslabel" : "evlabel", rank: i.k === "milestone" ? 0 : 1, i})), L, R, held || 3);
+  const k = ckK(), RH = 15 * k, nRows = held || (flags.length ? Math.max(...flags.map(f => f.row)) + 1 : 0), named = items.length || held, yM = named ? 6 + nRows * RH + 8 : 0;   // (rows as tall as larger text, #622)
+  if (!live) svg._rows = nRows;
+  let h = named ? yM + 10 : 2;
   // the rows' names (a layer's short) in the gutter, or over each row where one is wider than it (larger text, #633)
   const g = [], layersTop = h, over = layers.some(([l]) => l.short && labelW(l.short, "jrow-label") > L - 8), LH = l => over && l.short ? 14 * k : 0;
   h += layers.reduce((a, [l, n]) => a + n + LH(l), 0) + 4;

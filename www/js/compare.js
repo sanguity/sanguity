@@ -258,4 +258,5 @@ const cmpMsSays = (rows, m) => `Each lab's median place in its own range before 
 panZoom($("#labsCompare"), {...mainWindow,
   plot: ev => { const s = ev.target.closest?.("#cmpSvg"); return s && s._geom ? s : null; }, span: svgSpan,
   start: () => $("#cmpSvg")?._hover?.(null), data: () => seriesSpan((cmpSel ? cmpSeries() : []).filter(Boolean)),
-  draw: () => { const s = $("#cmpSvg"); if (s?._geom) cmpDraw(s, true); stripDraw(); }, end: () => { renderFilters(); renderCompare(); save(); }});
+  draw: () => { const s = $("#cmpSvg"); if (s?._geom) cmpDraw(s, true); stripDraw(); }, end: () => { renderFilters(); renderCompare(); save(); },
+  twin: () => $("#cmpSvg")});   // kept where it was on the screen (charts.js, #895)
