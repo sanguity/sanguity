@@ -433,7 +433,8 @@ already is pointed out and left out of the save unless you tick **Save again wha
 everything as one import, which shows wherever imported records do (the timeline and its panel, Labs, Body and activity
 and Costs) and can be undone from the import history as a whole, the attached files and the home measurements included.
 Owners and editors only. An attached file is sent as an upload, so the upload limits above apply to it; it is kept
-encrypted like any other.
+encrypted like any other. One whose record is never saved (the page closed, or **Leave** chosen) is removed when the
+app next starts a day on, as is an upload whose import was never started.
 
 ### Correcting records
 
