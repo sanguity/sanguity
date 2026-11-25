@@ -1662,7 +1662,11 @@ class Connections(unittest.TestCase):
         self.assertEqual(len(visits()), had)
         self.assertEqual(len(self.data().get("upcoming")), 2)
         self.assertEqual({k: v for k, v in self.counts().items() if k != "imports"}, {k: v for k, v in before.items() if k != "imports"})
-        # labs work the same way, series and all
+        # labs work the same way, series and all, once they're off (#922: refused while they're pulled)
+        r = self.robin.post(f"/api/profiles/{self.pid}/connections/{cid}/remove", json={"kind": "labs"}, headers=H)
+        self.assertEqual(r.status_code, 409, r.text)
+        self.assertIn("Turn lab results off", r.json()["detail"])
+        self.assertEqual(self.patch(cid, {"kinds": [k for k in kinds if k != "labs"]}).status_code, 200)
         r = self.robin.post(f"/api/profiles/{self.pid}/connections/{cid}/remove", json={"kind": "labs"}, headers=H)
         self.assertEqual(r.status_code, 200, r.text)
         self.assertFalse([s for s in self.data()["labs"] if s.get("panel") != "Vitals"])
@@ -1671,6 +1675,54 @@ class Connections(unittest.TestCase):
         self.assertEqual(self.counts()["results"], before["results"])
         self.assertEqual(self.kim.post(f"/api/profiles/{self.pid}/connections/{cid}/remove", json={"kind": "labs"},
                                        headers=H).status_code, 403)   # viewers can't
+
+    def test_put_back_leaves_out_what_was_pulled_again(self):   # #922
+        """Medications, then the problem list, then lab results: each turned off and removed, turned on again, changed
+        at the source (med-1 completed, cond-1 given a note, LDL corrected) and pulled, and the removal undone from the
+        history. Put back added the removed records beside the ones pulled again: "fhir:MedicationRequest/med-1" twice,
+        cond-1 twice, two LDLs and two lab days for one draw. Now what's here again stays as the source sends it now,
+        once, and the rest comes back (cond-2, which no pull sent again; the draw's other results, in the one lab day).
+        And removing a kind that's still pulled is refused."""
+        from server import crossmatch
+        cid = self.connect(self.source())
+        self.first_pull(cid)
+        allk = list(conns.KINDS)
+
+        def remove(kind, change):
+            r = self.robin.post(f"/api/profiles/{self.pid}/connections/{cid}/remove", json={"kind": kind}, headers=H)
+            self.assertEqual(r.status_code, 409, "refused while it's pulled")
+            self.assertEqual(self.patch(cid, {"kinds": [k for k in allk if k != kind]}).status_code, 200)
+            r = self.robin.post(f"/api/profiles/{self.pid}/connections/{cid}/remove", json={"kind": kind}, headers=H)
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertEqual(self.patch(cid, {"kinds": allk}).status_code, 200)
+            change()
+            self.assertTrue(self.pull(cid)["ok"])
+            self.undo(r.json()["import"])
+            return self.data()
+
+        meds = lambda d: sorted(e["key"] for e in d["events"] if e["k"] == "med")   # noqa: E731
+        probs = lambda d: sorted(x["key"] for x in d.get("problems") or [] if x.get("type") != "Allergy")   # noqa: E731
+        labs = lambda d: sorted((s["name"], len(s["pts"]) + len(s.get("txt") or [])) for s in d["labs"] if s.get("panel") != "Vitals")   # noqa: E731
+        days = lambda d: [(e["title"], e["sub"]) for e in d["events"] if e["k"] == "lab"]   # noqa: E731
+        before, had = self.data(), {k: v for k, v in self.counts().items() if k != "imports"}
+
+        d = remove("medications", lambda: self.fake.update("MedicationRequest", "med-1", {"status": "completed"}))
+        self.assertEqual(meds(d), meds(before), "med-1 once")
+        med = next(e for e in d["events"] if e.get("key") == "fhir:MedicationRequest/med-1")
+        self.assertEqual(d["details"][str(med["id"])]["status"], "Completed", "as the source sends it now")
+
+        d = remove("problems", lambda: self.fake.update("Condition", "cond-1", {"note": [{"text": "Changed at the source (fictional)"}]}))
+        self.assertEqual(probs(d), probs(before), "cond-1 once, cond-2 back")
+
+        d = remove("labs", lambda: self.fake.update("Observation", "obs-ldl", self.LDL_CORRECTED))
+        self.assertEqual(labs(d), labs(before), "each result once")
+        self.assertEqual(days(d), days(before), "one lab day for the draw, listing them all")
+        ldl = next(s for s in d["labs"] if s["name"] == "LDL Cholesterol")
+        self.assertEqual(ldl["pts"][0][3], 200, "the LDL as corrected")
+        self.assertEqual(crossmatch.lab_faults(d), [])
+        self.assertEqual({k: v for k, v in self.counts().items() if k in ("series", "results")},
+                         {k: v for k, v in had.items() if k in ("series", "results")}, "as many results as before")
+        self.assertEqual(self.counts()["events"], had["events"] + 1, "the LDL's row in a lab event of the pull's own")
 
     def joined_draw(self, first):
         """(#914) The draw's lab day, the upload's (first "U": the portal's export uploaded first) or the connection's
@@ -1717,6 +1769,7 @@ class Connections(unittest.TestCase):
                     done = set()
                     for step in order:
                         if step == "R":
+                            self.assertEqual(self.patch(cid, {"kinds": [k for k in conns.KINDS if k != "labs"]}).status_code, 200)
                             r = self.robin.post(f"/api/profiles/{self.pid}/connections/{cid}/remove", json={"kind": "labs"}, headers=H)
                             if r.status_code == 409:   # nothing of it left to remove: no removal to put back
                                 imps["R"] = None
@@ -1881,7 +1934,9 @@ class Connections(unittest.TestCase):
         hist = self.robin.get(f"/api/profiles/{self.pid}/imports").json()["imports"]
         self.assertEqual(hist[0]["counts"]["kinds"], {"immunization": 1}, hist[0])   # immunizations last: one event
         self.assertIn("Immunizations from", hist[0]["label"])
-        # the problem list removed: allergies stay, and the other way round
+        # the problem list removed (turned off first, #922): allergies stay, and the other way round
+        on = [k for k in conns.KINDS if k not in self.NEW_KINDS]
+        self.assertEqual(self.patch(cid, {"kinds": [k for k in on if k != "problems"]}).status_code, 200)
         r = self.robin.post(f"/api/profiles/{self.pid}/connections/{cid}/remove", json={"kind": "problems"}, headers=H)
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(problems(), [])
@@ -1893,6 +1948,7 @@ class Connections(unittest.TestCase):
         self.assertEqual(len(problems()), n_problems)
         self.assertEqual({k: v for k, v in self.counts().items() if k != "imports"}, {k: v for k, v in before.items() if k != "imports"})
         # documents removed takes the imaging studies too
+        self.assertEqual(self.patch(cid, {"kinds": [k for k in on if k not in ("problems", "documents")]}).status_code, 200)
         r = self.robin.post(f"/api/profiles/{self.pid}/connections/{cid}/remove", json={"kind": "documents"}, headers=H)
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(self.mine()["imaging"], [])

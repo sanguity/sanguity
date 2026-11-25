@@ -19,8 +19,8 @@ back. Labs and vitals are Observations by category; DiagnosticReports come for l
 sent as date=ge<it> where the type has that search, and checked on each resource too (a server may ignore it;
 undated resources are kept). Each search has its own cursor, named by its parameters, so a kind turned on later
 (or an earlier start date) is pulled from the beginning, and what the profile has already is matched by source key
-as always. Turning a kind off stops it being pulled; remove_kind() takes out what it brought, as an import in the
-history that undoing puts back. Kinds that share a place (#228) are told apart by the resource a record's source key
+as always. Turning a kind off stops it being pulled; remove_kind() takes out what it brought (only once it's off,
+#922), as an import in the history that undoing puts back, less what's here again since (the kind turned on again). Kinds that share a place (#228) are told apart by the resource a record's source key
 names: a pharmacy fill (`rx`) is a claim's or a MedicationDispense's, an upcoming visit a planned Encounter's (visits)
 or an Appointment's, and the problem list's allergies (type "Allergy") are the allergies kind's.
 
@@ -1688,11 +1688,19 @@ def _put_back(db, iid):
     what its pulls kept of each for Undo too, theirs that are still here), its results with theirs. A lab event goes
     back in each lab day it was taken out of (_lab_days_out's "_in"), or, that lab day undone meanwhile (the upload
     whose it was), in one made again as it was, of the latest import whose lab events it lists; each lab day it
-    touches lists only lab events there are, titled for them."""
+    touches lists only lab events there are, titled for them. What's here again since (#922: the kind turned on again
+    and pulled, or the same records uploaded) isn't put back beside it (_back_since); the connection's own lab day of a
+    draw put back joins the one it has made since (_one_day)."""
     back, days = {}, set()
-    for x in db.execute("SELECT * FROM sync_removed WHERE import_id=? ORDER BY id", (iid,)).fetchall():
+    removed = db.execute("SELECT * FROM sync_removed WHERE import_id=? ORDER BY id", (iid,)).fetchall()
+    pid = db.execute("SELECT profile_id FROM imports WHERE id=?", (iid,)).fetchone()[0]
+    since = _back_since(db, pid, [(x["what"], records._dec(x["row"])) for x in removed])
+    for x in removed:
         row = records._dec(x["row"])
         if x["what"] == "event":
+            row = since.event(row)
+            if row is None:
+                continue
             cols = ["profile_id", "import_id", "body", "detail", "cost", "cost_seq", "key_hash"]
             free = not db.execute("SELECT 1 FROM events WHERE id=?", (row["id"],)).fetchone()
             names = (["id"] if free else []) + cols
@@ -1707,6 +1715,9 @@ def _put_back(db, iid):
             if isinstance(d, dict) and d.get("type") == "labday":
                 days.add(eid)
         elif x["what"] == "series":
+            row = since.series(row)
+            if row is None:
+                continue
             free = not db.execute("SELECT 1 FROM series WHERE id=?", (row["id"],)).fetchone()
             names = (["id"] if free else []) + ["profile_id", "import_id", "body", "key_hash"]
             sid = db.execute(f"INSERT INTO series({', '.join(names)}) VALUES({', '.join('?' * len(names))})",
@@ -1720,6 +1731,9 @@ def _put_back(db, iid):
                     db.execute("INSERT INTO results(profile_id, import_id, series_id, body) VALUES(?, ?, ?, ?)",
                                (row["profile_id"], row["import_id"], sid, b))
         else:
+            row = since.meta(row)
+            if row is None:
+                continue
             m = db.execute("SELECT meta FROM imports WHERE id=?", (x["home_import"],)).fetchone()
             meta = records._dec(m["meta"]) or {}
             top, _, sub = row["path"].partition(".")
@@ -1756,6 +1770,117 @@ def _put_back(db, iid):
             continue
         db.execute("UPDATE events SET body=?, detail=? WHERE id=?",
                    (records._enc(_labday_body(db, body or records._dec(r["body"]) or {}, ids)), records._enc({**d, "ids": ids}), ld_id))
+    _one_day(db, pid, iid, days)
+
+
+class _Since:
+    """(#922) A removal's rows less what's here again since it was made (_back_since)."""
+
+    def __init__(self, events, rows, results, items):
+        self.events, self.rows, self.results, self.items = events, rows, results, items
+
+    def event(self, row):
+        """The event to put back (a labitem without the rows here again, its flags counted again), or None."""
+        if row["id"] in self.events:
+            return None
+        keep = self.rows.get(row["id"])
+        if keep is None:
+            return row
+        d = records._dec(row["detail"])
+        d = {**d, **{f: [x for j, x in enumerate(d[f]) if j in keep] for f in ROW_FIELDS if isinstance(d.get(f), list)}}
+        body = _with_abn(records._dec(row["body"]) or {}, d.get("rows") or [])
+        return {**row, "body": records._enc(body), "detail": records._enc(d)}
+
+    def series(self, row):
+        """The series to put back without the results here again, or None when that leaves none."""
+        gone = self.results.get(row["id"])
+        if not gone:
+            return row
+        body = records._dec(row["body"]) or {}
+        txt = [p for n, p in enumerate(body.get("txt") or []) if ("txt", n) not in gone]
+        keep = [n for n in range(len(row["results"])) if ("pts", n) not in gone]
+        if not keep and not txt:
+            return None
+        rids = row.get("rids") or [None] * len(row["results"])
+        return {**row, "body": records._enc({**body, **({"txt": txt} if "txt" in body else {})}),
+                "results": [row["results"][n] for n in keep], "rids": [rids[n] for n in keep]}
+
+    def meta(self, row):
+        items = [x for x in row["items"] if not (isinstance(x, dict) and x.get("key") in self.items.get(row["path"], ()))]
+        return {**row, "items": items} if items else None
+
+
+def _back_since(db, pid, removed):
+    """(#922) What of a removal (removed: [(what, row)] as sync_removed keeps them) is here again since it was made: the
+    kind turned on again and pulled (from the beginning, a kind's search having its own cursor), or the same records
+    uploaded. An event whose source key names its record (preview._record_key) and is here; a labitem's rows whose
+    records are in a labitem here, with their results (crossmatch._row_of, as the drawer pairs them); a list's
+    entries (the problem list, upcoming visits) whose keys are here. Put back leaves those out: the ones here are the
+    source's newer word, and the removed ones beside them would be the same record twice. -> _Since"""
+    events, rows, results, items = set(), {}, {}, {}
+    out = [r for what, r in removed if what == "event"]
+    for r in out:
+        b = records._dec(r["body"]) or {}
+        if b.get("k") not in ("lab", "labitem") and r.get("key_hash") and preview._record_key(b.get("key")) and \
+                db.execute("SELECT 1 FROM events WHERE profile_id=? AND key_hash=? LIMIT 1", (pid, r["key_hash"])).fetchone():
+            events.add(r["id"])
+    items_out = {r["id"]: (records._dec(r["body"]) or {}, records._dec(r["detail"])) for r in out
+                 if (records._dec(r["body"]) or {}).get("k") == "labitem"}
+    if items_out:
+        here = {k for it in _items_here(db, pid, [r["key_hash"] for r in out if r["id"] in items_out]).values()
+                for k in _row_keys(it["detail"]) if k}
+        dropped = set()
+        for eid, (b, d) in items_out.items():
+            rk = _row_keys(d)
+            gone = {j for j, k in enumerate(rk) if k and k in here}
+            if not gone:
+                continue
+            dropped |= {(eid, j) for j in gone}
+            if len(gone) == len(rk):
+                events.add(eid)
+            else:
+                rows[eid] = {j for j in range(len(rk)) if j not in gone}
+        if dropped:
+            imps = {r["id"]: r["import_id"] for r in out}
+            drawer = crossmatch._rows({"events": [{**b, "id": eid, "imp": imps[eid]} for eid, (b, _) in items_out.items()],
+                                       "details": {str(eid): d for eid, (_, d) in items_out.items()}})
+            for what, r in removed:
+                if what != "series":
+                    continue
+                sr = {**(records._dec(r["body"]) or {}), "imp": r["import_id"]}
+                pts = [("pts", n, records._dec(b)) for n, b in enumerate(r["results"])] + [("txt", n, p) for n, p in enumerate(sr.get("txt") or [])]
+                gone = {(f, n) for f, n, p in pts if isinstance(p, list) and p and crossmatch._row_of(drawer, sr, p) in dropped}
+                if gone:
+                    results[r["id"]] = gone
+    paths = {r["path"] for what, r in removed if what == "meta"}
+    if paths:
+        for (m,) in db.execute("SELECT meta FROM imports WHERE profile_id=?", (pid,)).fetchall():
+            meta = records._dec(m) or {}
+            for path in paths:
+                got = _meta_list(meta, path)
+                items.setdefault(path, set()).update(x.get("key") for x in got or [] if isinstance(x, dict) and x.get("key"))
+    return _Since(events, rows, results, items)
+
+
+def _one_day(db, pid, iid, days):
+    """(#922) A lab day of the connection's own put back (days: those put back whole, or made again) where the
+    connection has made another for that draw since (the kind turned on again and pulled): its lab events join that
+    one, as a pull's join the draw's lab day (_draw_day), and it goes; one lab day a draw."""
+    ours = {r[0] for r in db.execute("SELECT id FROM imports WHERE connection_id=(SELECT connection_id FROM imports WHERE id=?)", (iid,))}
+    for ld_id in sorted(days):
+        r = db.execute("SELECT import_id, key_hash, detail FROM events WHERE id=?", (ld_id,)).fetchone()
+        if not r or r["import_id"] not in ours:
+            continue
+        other = [x for x in _labday_rows(db, pid, r["key_hash"]) if x["id"] != ld_id and x["import_id"] in ours]
+        if not other:
+            continue
+        to = other[-1]
+        ids = [i for i in to["detail"].get("ids") or []]
+        ids += [i for i in (records._dec(r["detail"]) or {}).get("ids") or [] if i not in ids]
+        ids = [i for i in ids if i in _there(db, ids)]
+        db.execute("DELETE FROM events WHERE id=?", (ld_id,))
+        db.execute("UPDATE events SET body=?, detail=? WHERE id=?",
+                   (records._enc(_labday_body(db, to["body"], ids)), records._enc({**to["detail"], "ids": ids}), to["id"]))
 
 
 # ---------------------------------------------------------------- taking out what a kind brought (#99)
@@ -1825,7 +1950,8 @@ def _lab_days_out(db, pid, events):
 
 def remove_kind(db, who, pid, cid, kind, ip=None):
     """Take out the records of one kind that this connection brought, as one entry in the import history: undoing
-    it there puts them back (_put_back). Records of that kind from elsewhere (uploads, other sources) stay. Its lab
+    it there puts them back (_put_back). Only a kind turned off (#922): one still pulled would come back with the next
+    sync, and Put back then bring it twice. Records of that kind from elsewhere (uploads, other sources) stay. Its lab
     events leave the lab days that stay (_lab_days_out, #914), and what its pulls kept of each for Undo goes and comes
     back with it, so Remove, Put back and Undo in any order leave each result its row in one lab day.
     Returns {"import", "counts"}."""
@@ -1833,6 +1959,9 @@ def remove_kind(db, who, pid, cid, kind, ip=None):
     if kind not in conns.KINDS:
         raise conns.Problem("There's no kind of record called that.", 400)
     label = conns.KINDS[kind][0]
+    if c["state"] != "disconnected" and kind in conns.chosen_kinds(c):   # (#922) the next pull would bring it back
+        raise conns.Problem(f"Turn {label.lower()} off for {c['source']} first: while they're pulled, the next sync "
+                            "brings back what's removed.", 409)
     with dbm.transaction(db):
         homes = [r[0] for r in db.execute("SELECT id FROM imports WHERE connection_id=? AND profile_id=? AND note IS NULL "
                                           "ORDER BY id", (cid, pid))]

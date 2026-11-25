@@ -2324,6 +2324,12 @@ Everything on `main` so far; it becomes the first tagged release.
   date, so hiding the ALT a pull added hid the whole day's results from the lab day's drawer, and hiding a hospital's
   lab day hid the portal's too; the same went for renaming one or fixing its date. Now an edit of a lab event or a lab
   day finds only the one holding what it held, and hiding it again replaces only its own edit.
+- **Putting back what a connected source brought never doubles what's back since** (#922): medications removed from
+  a connection, turned on again and pulled, then the removal undone from Import history, left the same prescription
+  twice; the problem list kept a condition twice, and lab results an LDL twice in two lab days of one draw. Now Put
+  back leaves out what's here again, as the source sends it now, and brings back the rest (a condition no pull sent
+  again, the draw's other results, in its one lab day). And the server refuses to remove a kind that's still
+  pulled, as the page only offers it once the kind is off.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
