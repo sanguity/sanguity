@@ -173,6 +173,54 @@ class Edits(unittest.TestCase):
         self.check_all_applied(self.data())
         self.check_all_applied(self.rebuild())   # #33's done-when, for events without a source key
 
+    def test_a_lab_day_merged_into_another_lists_both(self):   # #915
+        """Merging a lab day into another of its date keeps both lists: results typed in for the day (their own lab day)
+        merged by hand into a portal's. _merge filled in only what the first lacked, so the merged lab day listed the
+        portal's lab events alone: the typed results' rows were gone from its drawer while its badge still counted their
+        flags (util.js labDraws, the typed lab day no longer there). Now it lists both days' lab events, is titled for
+        them ("4 lab results", their tests), its badge and drawer agree (crossmatch.lab_faults), and undoing the merge
+        gives back both lab days."""
+        from server import crossmatch, importers as reg
+        db = dbm.connect()
+        uid = db.execute("SELECT id FROM users WHERE username='robin'").fetchone()[0]
+        pid = prof.create_profile(db, "Merged lab days (fictional)", owner_id=uid)
+        t = "2025-03-04T09:45:00"
+        obs = lambda oid, code, name, v, unit, lo, hi, flag: {"resource": {   # noqa: E731
+            "resourceType": "Observation", "id": oid, "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
+            "code": {"coding": [{"system": "http://loinc.org", "code": code}], "text": name}, "effectiveDateTime": t,
+            "valueQuantity": {"value": v, "unit": unit}, "referenceRange": [{"low": {"value": lo}, "high": {"value": hi}, "text": f"{lo}-{hi}"}],
+            **({"interpretation": [{"coding": [{"system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation", "code": flag}]}]} if flag else {})}}
+        path = os.path.join(TMP, "portal.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"resourceType": "Bundle", "type": "collection", "entry": [obs("hgb", "718-7", "Hemoglobin", 12.1, "g/dL", 13.5, 17.5, "L"),
+                                                                                  obs("plt", "777-3", "Platelet Count", 255, "10*3/uL", 150, 400, None)]}, f)
+        try:
+            with dbm.transaction(db):
+                records.store(db, pid, reg.run({"portal.json": path})["data"], "upload", fmt="fhir")
+        finally:
+            db.close()
+        rows = [{"date": t[:10], "time": "10:30", "test": "Potassium", "value": "5.4", "unit": "mmol/L", "range": "3.5-5.1"},
+                {"date": t[:10], "time": "10:30", "test": "Sodium", "value": "139", "unit": "mmol/L", "range": "135-145"}]
+        r = self.robin.post(f"/api/profiles/{pid}/manual", json={"rows": rows, "save": True}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        before = whole(self.robin, pid)
+        days = {e["imp"]: e for e in before["events"] if e["k"] == "lab"}
+        self.assertEqual(len(days), 2)
+        portal, typed = (days[i] for i in sorted(days))
+        lists = {e["id"]: before["details"][str(e["id"])]["ids"] for e in days.values()}
+        r = self.robin.post(f"/api/profiles/{pid}/edits", json={"event": portal["id"], "action": "merge", "other": typed["id"]}, headers=H)
+        self.assertEqual(r.status_code, 201, r.text)
+        d = whole(self.robin, pid)
+        merged = [e for e in d["events"] if e["k"] == "lab"]
+        self.assertEqual([e["id"] for e in merged], [portal["id"]], "one lab day")
+        self.assertEqual(d["details"][str(portal["id"])]["ids"], lists[portal["id"]] + lists[typed["id"]], "both days' lab events")
+        self.assertEqual((merged[0]["title"], merged[0]["sub"]), ("4 lab results", "Lab results, Potassium, Sodium"))
+        self.assertEqual(crossmatch.lab_faults(d), [], "each result with its row, badge and drawer agreeing")
+        self.robin.delete(f"/api/profiles/{pid}/edits/{r.json()['id']}", headers=H)
+        after = whole(self.robin, pid)
+        self.assertEqual(([e for e in after["events"] if e["k"] == "lab"], crossmatch.lab_faults(after)),
+                         ([e for e in before["events"] if e["k"] == "lab"], []), "undone: both lab days as they were")
+
     def test_replies_carry_the_records(self):
         """#271: an edit, and its undo, answer with the records as the page loads them, so it draws them in place"""
         d = self.data()
