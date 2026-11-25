@@ -761,8 +761,9 @@ written from the database when the app starts. The lab-name matches reviews made
 #927) are records, not access: each is what an import of that profile chose and goes with that import's Undo, so
 they're the backup's, each still its own profile's. A
 profile the backup has that today's database hasn't comes back with no memberships, and the restore names it. With no
-database to replace, or one whose pepper isn't the backup's (another install's), all of it is the backup's, everyone
-signed out all the same, and the restore says so (`backup._ready`).
+database to replace, one that can't be read (`quick_check` fails or it isn't a database: damaged, #958) or one whose
+pepper isn't the backup's (another install's), all of it is the backup's, everyone signed out all the same, and the
+restore says so (`backup._ready`). The receiver's data is staged only after that, once the restore will go ahead.
 
 **What a restore replaced (#595).** A restore (`server.manage restore`, with the app stopped) moves the database,
 `profiles/` and `build/` it replaces to `DATA_DIR/before-restore-<time>/` (`-1` added for a second restore in the same

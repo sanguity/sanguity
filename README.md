@@ -741,8 +741,9 @@ source disconnected after the backup was made stays so. A source still connected
 and one connected since pulls from the start, with its review. Everyone is signed out. A profile deleted since comes back with nobody given access to it (an admin gives it an
 owner under **Admin → Accounts**, Profiles without an owner), and one made since isn't in the backup (its records are
 in the `before-restore-<time>/` folder); the restore names both. With no database to replace (a new machine, disaster
-recovery), or one of another install, all of it comes from the backup as it was then, and the restore says so: check
-the accounts and each profile's sharing before you share the address again.
+recovery), one that can't be read (damaged: it's kept with what was replaced) or one of another install, all of it
+comes from the backup as it was then, and the restore says so: check the accounts and each profile's sharing before
+you share the address again.
 
 The phone and watch data goes to `WATCH_DIR/keys/restore/` (the one folder of the receiver's the app may write), and
 the receiver puts it back when it starts, moving what it had to `WATCH_DIR/before-restore-<time>/`, which it deletes

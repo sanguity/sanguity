@@ -650,8 +650,9 @@ What each added, and how it keeps to the rules above. Each file named has its ow
 - A restore brings back records only (#917): accounts, passwords, passkeys, two-factor sign-in, memberships, share
   links, calendar feeds, phone upload secrets and connected sources' sign-ins (the vendors' client secrets and each
   connection's tokens) stay as they are, from the database it replaces, so access ended
-  after the backup stays ended; everyone is signed out. With no database to replace (disaster recovery), or another
-  install's, they're the backup's, and the restore says so and what to check.
+  after the backup stays ended; everyone is signed out. With no database to replace (disaster recovery), a damaged
+  one (#958), or another install's, they're the backup's, and the restore says so and what to check. The phone data is
+  staged only once the restore will go ahead.
 - What a restore replaced (#595), `DATA_DIR/before-restore-<time>/`, is listed by name and time only, deleted 30 days
   after the restore (at start and hourly), or by **Delete now**: by name only, matching the names a restore gives, never
   a link or a path, with the fresh check; each deletion an account event (`backup.replaced`). No backup includes it.
