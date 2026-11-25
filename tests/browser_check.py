@@ -1546,6 +1546,37 @@ FOCUSED720_JS = r"""() => { const a = document.activeElement, r = a.getBoundingC
 BODY_CHART720_JS = r"""i => { const s = [...document.querySelectorAll('#view-health svg[role=application]')].filter(s => s.checkVisibility())[i];
   if (s) { s.scrollIntoView({block: 'center'}); s.focus({preventScroll: true}); } return !!s; }"""
 
+# a chart's keyboard steps said (#913): the shown chart sel (the nth), focused in the middle of the window, stepped Home, →,
+# →, End and ←, the page's status line (announce, util.js: #sgStatus) emptied before each and read 200 ms after (its words
+# are written 60 ms after they're given). [what's wrong]: a step that said nothing, one that said what the stop before it
+# said though it moved, and one whose words aren't its tooltip's, what's shown read out (where it shows one; the event
+# track says the kind first and which of how many: "Milestone: Diagnosis, Apr 14, 2025. 3 of 11.", tip False)
+STEP913_JS = r"""([sel, n]) => { const s = [...document.querySelectorAll(sel)].filter(s => s.checkVisibility())[n];
+  if (!s) return false; s.scrollIntoView({block: 'center'}); s.focus({preventScroll: true}); return document.activeElement === s; }"""
+SAID913_JS = r"""() => { const t = document.getElementById('tip'), norm = x => x.replace(/[▲▼◆]/g, '').replace(/[^\p{L}\p{N}]+/gu, '');
+  const said = document.getElementById('sgStatus').textContent;
+  return [said, String(document.activeElement._kt), getComputedStyle(t).display === 'none' ? null : norm(t.textContent) === norm(said)]; }"""
+
+
+def steps913(page, where, sel, n=0, tip=True):
+    if not page.evaluate(STEP913_JS, [sel, n]):
+        return [f"{where}: not focused"]
+    out, was = [], None
+    for k in ("Home", "ArrowRight", "ArrowRight", "End", "ArrowLeft"):
+        page.evaluate("document.getElementById('sgStatus').textContent = ''")
+        page.keyboard.press(k)
+        page.wait_for_timeout(200)
+        said, kt, same = page.evaluate(SAID913_JS)
+        if not said.strip():
+            out.append(f"{where}, {k}: nothing said")
+        elif was and kt != was[1] and said == was[0]:
+            out.append(f"{where}, {k}: “{said[:60]}” said again at another stop")
+        elif same is False if tip else not re.search(r"\. \d+ of \d+\.$", said):
+            out.append(f"{where}, {k}: said “{said[:80]}”, not {'its tooltip' if tip else 'which of how many'}")
+        was = (said, kt)
+    page.keyboard.press("Escape")
+    return out
+
 # Labs' event track (#294, event-track.js): {items: the events it marks, named: its names, folded: how many a "+N" counts,
 # marks, rows: rows of names, layers: rows under them, stuck: under the top bar, inCharts: any event, name or layer's mark
 # drawn in a chart, problems: a name past the plot, on another or with a leader through it, an event neither named nor
@@ -4901,6 +4932,36 @@ def main():
                   and all(a == b and a.startswith("svg") and "Hemoglobin" in a for a, b in keep712.values())
                   and hm712[0] is None and hm712[1] == "img" and re.search(r"\bTable\b.* every result", hm712[2])
                   and hm712[3:6] == ["Table", True, True] and hm712[6] > 10, [made712, keep712, hm712])
+            # ---- #913: every kind of chart says each keyboard step: focused and stepped Home, →, →, End and ←, the page's
+            # status line (#sgStatus, announce) read after each step says what's shown there, the tooltip's words where it
+            # has one (a round 10 reviewer read the live regions empty once, unconfirmed): Labs' charts and event track,
+            # the lab panel's strip, Compare and its before and after, Costs' two charts, every chart on Body and activity
+            # and its glucose profile, and an ECG (the growth charts with the child's profile, below)
+            js("window._was913 = [new Set(state.sel), new Set(state.tables), state.marks, costState.view]")
+            heard913, n913 = [], {}
+            for where913, go913, sel913 in (
+                    ("Labs' chart", "state.tables.clear(); state.marks = true; state.sel = new Set(['Hemoglobin', 'WBC']); applyPreset('2y'); switchTab('labs', 'chart')", "#charts .chart svg.ck"),
+                    ("the event track", "switchTab('labs', 'chart')", "#evTrack svg.ev-svg"),
+                    ("the lab panel's strip", "openLab(SERIES.find(s => s.name === 'Hemoglobin'))", "#dbody svg.lab-strip"),
+                    ("Compare", "closeDrawer(); switchTab('labs', 'compare')", "#cmpSvg"),
+                    ("Compare's before and after", "switchTab('labs', 'compare')", "#cmpMsSvg"),
+                    ("Costs' claims", "costState.view = 'claims'; switchTab('costs')", "#costChart"),
+                    ("Costs' running totals", "costState.view = 'paid'; switchTab('costs')", "#paidChart"),
+                    ("Body and activity", "switchTab('health')", "#view-health svg.ck"),
+                    ("the glucose profile", "switchTab('health')", "#view-health svg.glu-prof"),
+                    ("an ECG", "openEvent(EV.find(e => e.k === 'ecg'))", "#dbody svg.ecg-svg")):
+                js(go913)
+                settle(600)
+                n913[where913] = js(f"[...document.querySelectorAll({sel913!r})].filter(s => s.checkVisibility()).length")
+                if not n913[where913]:
+                    heard913.append(f"{where913}: no chart")
+                for i913 in range(n913[where913]):
+                    heard913 += steps913(page, f"{where913} {i913 + 1}", sel913, i913, tip=where913 != "the event track")
+            js("() => { const [s, t, m, v] = window._was913; closeDrawer(); hideTip(); state.sel = s; state.tables = t; state.marks = m; costState.view = v; applyPreset('all'); switchTab('labs', 'chart'); }")
+            settle(300)
+            check("#913: every kind of chart says each keyboard step (Home, →, →, End, ←), the status line read after each saying what's shown there "
+                  "(the tooltip's words): Labs' charts and event track, the lab panel's strip, Compare and its before and after, Costs' two, every chart "
+                  "on Body and activity, its glucose profile and an ECG", not heard913 and all(n913.values()) and n913["Body and activity"] >= 8, heard913[:12] or n913)
             # #720: and wholly in sight once the tab's charts are drawn, a frame after it: every chart on Body and activity,
             # stepped to a point in the middle of the window, at 1400→1200 px, 412→360 px and with the records loaded again
             # at 360 px with text at 200% (Heart rate, HRV, Sleep and Steps and the cards under them went below the window:
@@ -22633,6 +22694,10 @@ def main():
             check("…a chart steps from the keyboard: the measurement, its percentile, when, the age and the chart it's read on",
                   f"{last_w[2]:.1f} kg · {pt} percentile" in tipg and "aged 4 years 6 months" in tipg and "CDC chart" in tipg
                   and js("document.querySelector('#h-growth .growth-cell svg').getAttribute('aria-label')").startswith("Weight for age, the CDC's chart, 2 to 20 years: 5 measurements"), tipg)
+            # #913: and each growth chart says its keyboard steps, the tooltip's words (steps913)
+            n913g = js("document.querySelectorAll('#h-growth svg.growth-chart').length")
+            heard913g = [b for i in range(n913g) for b in steps913(page, f"growth chart {i + 1}", "#h-growth svg.growth-chart", i)]
+            check("…and each of its charts says each keyboard step, the tooltip's words (#913)", n913g >= 3 and not heard913g, heard913g or n913g)
             page.click("#h-growth .growth-set button:has-text('Birth to 2 years')")
             settle(400)
             heads = js("[...document.querySelectorAll('#h-growth .growth-cell h4')].map(h => h.textContent)")
