@@ -3466,6 +3466,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - **A reminder's only time says why it can't be removed** (#837): with one time left in a reminder's form, its
   Remove did nothing and said nothing. It's now shown as off, with "A reminder needs a time" as its tip and its
   description, and pressing it says so; the time stays.
+- **The browser check keeps that tip off the reminder form's controls** (#977, `tests/browser_check.py`): a review
+  had it opening below Remove, over Add another time. It opens above, over the form's "Times of day" or the drawer's
+  subtitle, at every width and text size tried, by the keyboard and the mouse, and the check now holds it there.
 - **Adding a reminder's time is said** (#867): after Remove time, "Time 2 removed; 1 time left" stayed at the
   form's foot once Add another time had made it two. Adding a time now says "Time 2 added" there instead.
 - **A period's button keeps focus as the fonts arrive** (#747): the presets' row is fitted again once the app's
