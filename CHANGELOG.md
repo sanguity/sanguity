@@ -2246,6 +2246,13 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Merging two lab days by hand keeps both days' results** (#915): results typed in for a day, merged into the
   portal's lab day of that date, disappeared from its drawer while its Timeline badge still counted their flags. Now
   the merged lab day lists both days' results, titled for all of them, and its badge and drawer agree.
+- **A result the portal adds to a report has its row beside it** (#881): a GGT the portal added to the CBC report it
+  had sent before went in the report's lab event where it was, the uploaded export's or the first pull's, so its row
+  sat in another import than its result: the drawer found no result for the row, and Labs' GGT had no row in any lab
+  day. Now a report's rows are placed one by one, each by its own record, as a day's are (#899): a result new to the
+  report has its row beside it, in a lab event of the pull's own of that report, in the draw's lab day, and Undo and
+  Remove take a result and its row together. A row saved apart from its result before (a pull's new result whose row
+  went in the first pull's lab event, before #899) is moved beside it the next time a pull reads that day.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
