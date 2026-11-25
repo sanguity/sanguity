@@ -36,6 +36,10 @@ sanguity → Package settings → Change visibility, or no catalog can pull it.
   it read-only (its summaries, and its data for backups, #227) with only `keys/` writable;
 - the Unraid container mounts every folder those services do, publishes 8080→8730 and 8081→8731, and sets
   PUID, PGID and TZ;
+- no template passes one of the app's settings (`server/config.py`'s `VARS`) unless it's filled in (#999): both
+  compose files pass each as `${NAME:-}`, TrueNAS only a field changed from its default, Unraid's are empty and
+  CasaOS passes none; except the receiver's published port, which each passes as `RECEIVER_PORT` (the same number)
+  for the phone upload address (#1007);
 - the key folder isn't inside the data folder;
 - the catalogs' own rules: TrueNAS `app.yaml` fields and `questions.yaml` covering every value the template reads;
   CasaOS's validator rules (top-level `name`, reverse-domain `x-casaos.id`, `docker compose config`) and its
