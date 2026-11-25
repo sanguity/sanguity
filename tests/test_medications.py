@@ -186,6 +186,57 @@ class InTheRecords(unittest.TestCase):
             db.close()
         self.assertNotIn("medications", self.data())
 
+    def test_renamed_keeps_its_reminders_and_fills(self):   # #921
+        """A listing renamed to its brand name in the drawer (edits.py): the medication was grouped by the name shown,
+        so it took a new key ("zestril"), and its reminder (and dose) stayed under the old one: the calendar feed's
+        events went, and the pharmacy's fill, still "LISINOPRIL", stayed behind as a medication of its own holding the
+        reminder. Now it keeps its key, shown by its new name with the fill beside it; the reminder is its and in the
+        feed; the new name finds it too ("aka": a side effect linked by name, a reminder set under it before). Undone,
+        it's as before."""
+        from datetime import date
+        from server import med_reminders
+        db = dbm.connect()
+        with dbm.transaction(db):
+            e, d = med("a", "2026-01-05T08:00:00", "Lisinopril 10 mg tablet", instructions="One tablet daily", status="Active")
+            iid = records.store(db, self.pid, {"events": [e, fill("b", "2026-01-06T12:00:00", "LISINOPRIL 10MG TAB")],
+                                               "details": {"a": d}}, "upload")
+        db.close()
+        try:
+            data = self.data()
+            listing = next(x["id"] for x in data["events"] if x["k"] == "med")
+            r = self.c.post(f"/api/profiles/{self.pid}/medications/reminders", headers=H,
+                            json={"med": "lisinopril", "times": ["08:00"], "days": ["mo", "tu", "we", "th", "fr", "sa", "su"],
+                                  "start": "2026-11-01", "tz": "America/New_York"})
+            self.assertEqual(r.status_code, 201, r.text)
+            r = self.c.post(f"/api/profiles/{self.pid}/edits", headers=H, json={"event": listing, "action": "rename", "title": "Zestril 10 mg tablet"})
+            self.assertEqual(r.status_code, 201, r.text)
+            data = self.data()
+            (m,) = data["medications"]
+            self.assertEqual((m["key"], m["name"], m.get("aka"), len(m["fills"]), m["spans"][-1]["open"]),
+                             ("lisinopril", "Zestril 10 mg tablet", ["zestril"], 1, True), "one medication, its fill beside it")
+            self.assertEqual([x["med"] for x in data["reminders"]], ["lisinopril"])
+            db = dbm.connect()
+            try:
+                events, _ = med_reminders.feed_events(db, self.pid, False, date(2026, 11, 20))
+                self.assertEqual(len(events), 1, "the reminder still in the calendar feed")
+                self.assertEqual(med_reminders.current(db, self.pid)["zestril"]["key"], "lisinopril", "set under its new name before: still its")
+            finally:
+                db.close()
+            r = self.c.post(f"/api/profiles/{self.pid}/medications/reminders", headers=H,
+                            json={"med": "lisinopril", "times": ["20:00"], "days": ["mo"], "start": "2026-11-01", "tz": "America/New_York"})
+            self.assertEqual(r.status_code, 201, "a current medication still")
+            (rename,) = self.c.get(f"/api/profiles/{self.pid}/edits").json()["edits"]
+            self.assertEqual(self.c.delete(f"/api/profiles/{self.pid}/edits/{rename['id']}", headers=H).status_code, 200)
+            (m,) = self.data()["medications"]
+            self.assertEqual((m["key"], m["name"], m.get("aka")), ("lisinopril", "Lisinopril 10 mg tablet", None), "undone: as before")
+        finally:
+            db = dbm.connect()
+            with dbm.transaction(db):
+                db.execute("DELETE FROM edits")
+                db.execute("DELETE FROM med_reminders")
+                records.drop(db, self.pid, [iid])
+            db.close()
+
 
 class Fhir(unittest.TestCase):
     def test_prescriber_end_and_rxnorm(self):

@@ -42,8 +42,10 @@ def medications(db, pid):
     """{key: name} of the profile's medications (medications.history, edits applied)."""
     from . import records
     body = records.served(db, pid)
-    meds = (json.loads(body).get("medications") or []) if body else []
-    return {m["key"]: m.get("name") or m["key"] for m in meds if isinstance(m, dict) and m.get("key")}
+    meds = [m for m in ((json.loads(body).get("medications") or []) if body else []) if isinstance(m, dict) and m.get("key")]
+    # (#921) and the keys of the names a rename gave one: a dose logged under it before its key stayed is still its
+    return {**{k: m.get("name") or m["key"] for m in meds for k in m.get("aka") or []},
+            **{m["key"]: m.get("name") or m["key"] for m in meds}}
 
 
 def check(db, pid, med, t, status, note=None, slot=None, today=None, keep_med=None):

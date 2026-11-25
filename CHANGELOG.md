@@ -2336,6 +2336,12 @@ Everything on `main` so far; it becomes the first tagged release.
   key labs, tabs or milestones, Labs' saved views, the visit summary's measures ticked, the Admin page's attachment
   kinds) is saved with the one it was made from, and refused if it changed since: the page reads it again, shows it
   as it is now and says so, and the change is made again on that.
+- **A medication renamed keeps its reminders, doses and fills** (#921): renamed in its drawer ("Lisinopril 10 mg
+  tablet" to "Zestril 10 mg tablet"), a medication was grouped under its new name, so its reminders left the calendar
+  feed and were listed under no medication, its doses stayed behind, and with pharmacy fills the old name lived on as
+  a medication of fills alone holding the reminders while Today dropped the slot. Now a medication keeps what the
+  records first called it as its key, shown by its new name, its fills, reminders and doses with it; a side effect or
+  a dose linked to it by its new name finds it too.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
