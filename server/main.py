@@ -104,7 +104,7 @@ async def lifespan(app):
                 print(f"Moved the records of {moved} profile(s) into the database.", flush=True)
             if (moved := settings.migrate_files(db, prof.profile_dir)):
                 print(f"Moved the settings.json of {moved} profile(s) into the database; settings are changed on the "
-                      f"Settings page now, and each file is kept as {settings.MIGRATED}.", flush=True)
+                      "Settings page now, and each file was deleted.", flush=True)
             if (kept := watch_store.migrate(db)):
                 print(f"Kept the imported watch data of {kept} profile(s) as an import that can't be undone.", flush=True)
             pid = prof.bootstrap(db)

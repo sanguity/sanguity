@@ -547,7 +547,8 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
   minutes": X is plain text found anywhere in the title, or, as an advanced option, a regular expression, which is
   checked before it's saved and refused if it could make matching slow. Milestones are named dates, one of them
   primary (the one the Overview counts from); they are encrypted like the records. They live in the database (backed up and exported with the profile); a
-  `settings.json` from before is moved in once at the upgrade and kept as `settings-before-v18.json`.
+  `settings.json` from before is moved in once at the upgrade, then deleted (a `settings-before-v18.json` an earlier
+  version kept is deleted too).
 - **Start from a condition** (Settings → Dashboard, #186): pick one or more of 79 conditions (type 2 diabetes,
   chronic kidney disease, atrial fibrillation, hepatitis C, sickle cell disease, myeloma, lupus, HIV, pregnancy, on
   lithium or warfarin, and more, #187) to preview and fill in the key-lab tiles and home readings commonly followed for them,

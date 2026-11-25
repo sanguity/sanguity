@@ -19,11 +19,11 @@ editor for its kind on the Settings screen (www/js/settings.js; "labs", "tiles",
 "theme" and "units" exist).
 
 settings.json, before schema version 18: each profile's copy (profiles/<id>/settings.json) is loaded into the
-table once at start-up (migrate_files) and kept beside it as settings-before-v18.json. A setup build's settings.json
+table once at start-up (migrate_files), then deleted (#934). A setup build's settings.json
 only seeds a linked profile's settings the first time the build is loaded into it, filling what isn't set; after
 that a rebuild never changes settings, and says so in the log when the build's settings.json differs from them.
 """
-import datetime, json, os, re
+import contextlib, datetime, json, os, re
 
 from . import config, crypto, db as dbm
 
@@ -823,16 +823,19 @@ def fill_profile(db, pid, values):
     return new
 
 
-MIGRATED = "settings-before-v18.json"
+MIGRATED = "settings-before-v18.json"   # the file as versions before #934 kept it once it was loaded
 
 
 def migrate_files(db, profile_dir):
     """At start-up: load each profile's settings.json, from before schema version 18, into the table (only what isn't
-    set, so a start that stopped half way does no harm), then keep the file beside it as settings-before-v18.json.
+    set, so a start that stopped half way does no harm), then delete the file (#934: kept, it outlived the settings
+    and every import undone since; versions before kept it as settings-before-v18.json, deleted here too).
     profile_dir(pid) is the profile's folder. Returns the number of profiles whose file was loaded."""
     n = 0
     for r in db.execute("SELECT id FROM profiles ORDER BY id").fetchall():
         pid = r["id"]
+        with contextlib.suppress(FileNotFoundError):   # loaded by an older version, which kept it
+            os.remove(os.path.join(profile_dir(pid), MIGRATED))
         path = os.path.join(profile_dir(pid), "settings.json")
         if not os.path.isfile(path):
             continue
@@ -845,7 +848,7 @@ def migrate_files(db, profile_dir):
         with dbm.transaction(db):
             fill_profile(db, pid, from_file(obj, where=f"profile {pid}'s settings.json"))
             db.execute("UPDATE profiles SET settings_seeded=1 WHERE id=?", (pid,))
-        os.replace(path, os.path.join(profile_dir(pid), MIGRATED))
+        os.remove(path)
         n += 1
     return n
 

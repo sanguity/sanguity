@@ -166,15 +166,19 @@ class Settings(unittest.TestCase):
         self.assertEqual(m["overview"]["keyLabs"], settings.KEY_LABS)   # not in the file: the default
         self.assertNotIn("unknownKey", m)
         self.assertEqual(self.merged(2)["overview"]["keyLabs"], ["Ferritin", "Glucose"])
-        for pid in (1, 2):   # kept aside, no longer read
+        for pid in (1, 2):   # deleted once loaded, not kept aside for good (#934)
             folder = os.path.join(TMP, "profiles", str(pid))
             self.assertFalse(os.path.exists(os.path.join(folder, "settings.json")))
-            self.assertTrue(os.path.isfile(os.path.join(folder, settings.MIGRATED)))
-        # a second start changes nothing, even after the app changed a setting
+            self.assertFalse(os.path.exists(os.path.join(folder, settings.MIGRATED)))
+        # a second start changes nothing, even after the app changed a setting; the copy an older version kept goes
         self.put("trends.defaultLabs", ["Glucose", "Ferritin"])
+        kept = os.path.join(TMP, "profiles", "1", settings.MIGRATED)
+        with open(kept, "w", encoding="utf-8") as f:
+            json.dump(OLD_FILE, f)
         db = dbm.connect()
         self.assertEqual(settings.migrate_files(db, prof.profile_dir), 0)
         db.close()
+        self.assertFalse(os.path.exists(kept), "an older version's copy is deleted at the next start (#934)")
         self.assertEqual(self.merged(1)["trends"]["defaultLabs"], ["Glucose", "Ferritin"])
         with contextlib.redirect_stdout(io.StringIO()) as out:
             with client():   # a whole restart

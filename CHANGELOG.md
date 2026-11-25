@@ -3187,7 +3187,8 @@ Everything on `main` so far; it becomes the first tagged release.
   watch data) and a profile's records from before schema version 10 were kept as `data-before-v10.json`; undoing the
   import removed its records but neither file, which stayed in every backup. Undoing it now deletes the unpacked export,
   its watch data no longer shown (an upload's kept), and the history entry says so; the records file from before
-  version 10 is deleted once it's loaded, and one an earlier version kept is deleted at the next start.
+  version 10 is deleted once it's loaded, and one an earlier version kept is deleted at the next start; so is a
+  profile's `settings.json` from before schema version 18, kept as `settings-before-v18.json` until now.
 - **A backup's manifest no longer says whose profile tracks their cycle, and the data is readable only by the app's
   user** (#935): a backup's plain `manifest.json` counted each profile's phone database's rows by table name
   (`"cycle": 37`, a dose log's), readable without the key; a profile's cycle tracking setting stayed in the database,
