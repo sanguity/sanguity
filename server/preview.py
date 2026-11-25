@@ -39,7 +39,7 @@ One rule for a result already here (#868), an upload's, a sync's and Type them i
   - the same record sent again by its source, saying something else of its range and flag (#869: its row and its
     result's row here one record of one source, #885: the same Observation by its id, or the same report; never by a
     key scoped to a day nor a hash of the result's content, which another source's copy has too), isn't a copy: it's
-    updated in place ("updates"), its range and flag and its row as the source gives them now
+    updated in place ("updates"), its range and flag (#877: its value too) and its row as the source gives them now
     (update(), with what each was kept, so undoing the import puts them back). A re-pull or a re-sent FHIR Observation
     with its range corrected added a copy, one result shown twice beside a drawer row reading the other's flag
 
@@ -206,8 +206,12 @@ def find(db, pid, fmt, data, whole=None):
         read_p = set().union(*map(_point_read, old_pts)) if s.get("txt") else set()
         points[i] = (here - copies[i]) | {n for n, p in enumerate(s.get("pts") or []) if n not in here and old_txt
                                           and (_point(p) in have_t or _point_read(p) & read_t)}
-        if i in olds:   # (#869) those saying something else of their range and flag than a copy here: sent again?
-            olds[i] = (olds[i], here, {n for n in here if any(crossmatch.said(o) != crossmatch.said(s["pts"][n]) for o in have_p[_point(s["pts"][n])])})
+        if i in olds:   # (#869) those saying something else of their range and flag than a copy here: sent again? (#877)
+            # and those at the time of a result here with another value: the same record amended in value?
+            at = {str(p[0]) for p in old_pts if isinstance(p, list) and p}
+            amended = {n for n, p in enumerate(s.get("pts") or []) if n not in here and isinstance(p, list) and p and str(p[0]) in at}
+            olds[i] = (olds[i], here | amended,
+                       {n for n in here if any(crossmatch.said(o) != crossmatch.said(s["pts"][n]) for o in have_p[_point(s["pts"][n])])} | amended)
         txt[i] = {n for n, t in enumerate(s.get("txt") or []) if _text(t) in have_t or _text(t) in have_p or _text_read(t) & read_p}
         if not (s.get("pts") or s.get("txt")):
             empty.add(i)
@@ -268,16 +272,19 @@ def _same_records(db, pid, data, dups, olds, whole=None):
     Observation by its own id, or the same report; never a key scoped to a day, which another source's results of that
     day have too, nor a hash of the result's content, which a typed or spreadsheet result's copy has too, #868). A
     re-pull of an Observation whose range its source corrected (13.5–17.5 and Low, then 12.0–15.5) added a copy beside
-    the labitem updated in place: two results, and the lab day's row read the old one's Low beside the new range.
+    the labitem updated in place: two results, and the lab day's row read the old one's Low beside the new range. (#877)
+    Its value amended (LDL 162, then 165) is the same: the same record at the time of a result here, updated in place
+    with its old value kept for Undo, never added beside it.
 
     (#879) An Observation is found by its id whichever bundle it comes in: its row here is looked for in the labitems
     of its result's import (records.labitems_of) where none with the upload's labitem key holds it, as one that came in
     a report and comes alone now (or the other way round) is under another key (a report's, its day's). One saying what
     it says here is a duplicate, its row a record here ("known": {labitem id: {row index}}, which _settle keeps no
     labitem for): it was kept as a copy with a lab day of its own beside the report's, or, amended, as another result.
-    olds: {series index: (its series here, the points here at their time and value, those saying something else than
-    a copy here)}; those of the second asked about where their row, its own record's (an Observation's), is in a
-    labitem new to the profile (an upload's)."""
+    olds: {series index: (its series here, the points here at their time and value or at the time of one with another
+    value, those saying something else than a copy here or at the time of one with another value)}; those of the
+    second only asked about where their row, its own record's (an Observation's), is in a labitem new to the profile
+    (an upload's)."""
     dups["updates"], known = {}, dups.setdefault("known", {})
     if not olds:
         return
@@ -295,10 +302,14 @@ def _same_records(db, pid, data, dups, olds, whole=None):
     if not want:
         return
     by = collections.defaultdict(list)   # (series id, point) -> [(result id, its series as the records have it, point)]
+    by_t = collections.defaultdict(list)   # (series id, time) -> the same, for a value amended (#877)
     for rid, sid, imp, body, q in records.series_results(db, pid, {x for i, _ in want for x in olds[i][0]}):
         if isinstance(q, list) and q:
             by[(sid, _point(q))].append((rid, {**body, "imp": imp}, q))
-    results = {(i, n): [r for sid in olds[i][0] for r in by[(sid, _point(labs[i]["pts"][n]))]] for i, n in want}
+            by_t[(sid, str(q[0]))].append((rid, {**body, "imp": imp}, q))
+    # each result here at the point's time and value, else (#877) at its time with another value
+    results = {(i, n): [r for sid in olds[i][0] for r in by.get((sid, _point(p))) or by_t.get((sid, str(p[0]))) or []]
+               for i, n in want for p in [labs[i]["pts"][n]]}
     here = records.events_with_keys(db, pid, {rec[0] for _, rec in want.values()})
     rows = crossmatch._rows({"events": here, "details": {str(e["id"]): e["detail"] for e in here}})
     away = {s["imp"] for (i, n), (_, rec) in want.items() if rec[1] for _, s, q in results[(i, n)] if not crossmatch._row_of(rows, s, q)}
@@ -319,7 +330,7 @@ def _same_records(db, pid, data, dups, olds, whole=None):
         dups["brings"].get(i, {}).pop(n, None)
         if not whole:   # its row a record here: no labitem kept for it
             known.setdefault(row[0], set()).add(row[1])
-        if any(crossmatch.said(q) != crossmatch.said(p) for _, q in found):
+        if any(_point(q) != _point(p) or crossmatch.said(q) != crossmatch.said(p) for _, q in found):
             dups["points"].get(i, set()).discard(n)
             dups["updates"].setdefault(i, {})[n] = [u for u, _ in found]
         else:   # (#879) the same record saying the same: a duplicate

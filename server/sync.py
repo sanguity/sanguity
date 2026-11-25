@@ -840,17 +840,17 @@ def _left_out(delta, dups):
     return out
 
 
-def _place(e, detail, here, sent, dropped, fresh=False):
+def _place(e, detail, here, sent, dropped, fresh=False, amended=()):
     """(#899, #881) Where the rows of e, a labitem as the whole set makes it (a day's, or a report's; detail its
-    details), go: each found here by its own record (here: _rows_here), its value as reported the same, is updated in
-    place there, where it differs; one this pull read (sent: {(own record, n): (event id, row index)} of its own
-    labitems), new to the profile or with another value (a result of its own, #877, beside the one whose row stays),
-    goes in a labitem of this pull's own, unless its result is left out (dropped: _left_out). fresh: no labitem here has
-    e's key, so a row with no record of its own (a hash of its content) goes in it too, as an upload's would. -> (that
-    labitem or None, its details, {event id here: {row index: row}})"""
+    details), go: each found here by its own record (here: _rows_here), its value as reported the same or its result
+    updated in place with the value amended (#877, amended: {(event id, row index)} here of the results find() updates),
+    is updated in place there, where it differs; one this pull read (sent: {(own record, n): (event id, row index)} of
+    its own labitems), new to the profile, goes in a labitem of this pull's own, unless its result is left out (dropped:
+    _left_out). fresh: no labitem here has e's key, so a row with no record of its own (a hash of its content) goes in it
+    too, as an upload's would. -> (that labitem or None, its details, {event id here: {row index: row}})"""
     rows, changes, new = detail.get("rows") or [], {}, []
     for j, own in enumerate(_row_keys(detail)):
-        if own in here and here[own][2][1:2] == rows[j][1:2]:
+        if own in here and (here[own][2][1:2] == rows[j][1:2] or here[own][:2] in amended):
             eid, r, _ = here[own]
             changes.setdefault(eid, {})[r] = rows[j]
         elif own in sent and sent[own] not in dropped or fresh and not own:
@@ -1003,6 +1003,8 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
                     preview.leave_out(dups, i, n)
         rest = preview.trim(delta, dups)
         dropped = _left_out(delta, dups)   # (#897) the rows of the results left out, duplicates: left out with them
+        # (#877) the rows here of the results the source sent again amended, their value too: updated where they are
+        amended = {(u["event"], u["row"]) for us in (dups.get("updates") or {}).values() for ul in us.values() for u in ul}
         # events come from the whole set read so far (a lab day groups results across pulls), ids as it numbers them;
         # one only this pull's records have (keyless, or not in the whole set) keeps its own, marked apart
         new_events, updates, src, rows_here, fields = [], [], {}, {}, {}
@@ -1019,7 +1021,7 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
                 if preview._record_key(k):   # a report's own details, in each of its labitems here
                     fields.update({x: {f: v for f, v in (src[i] or {}).items() if f not in ROW_FIELDS}
                                    for x, li in labitems.items() if li["key_hash"] == hashes.get(k)})
-                e, src[i], changes = _place(e, src[i] or {}, here, sent, dropped, hashes.get(k) not in have)
+                e, src[i], changes = _place(e, src[i] or {}, here, sent, dropped, hashes.get(k) not in have, amended)
                 for eid, rs in changes.items():
                     rows_here.setdefault(eid, {}).update(rs)
                 if e:

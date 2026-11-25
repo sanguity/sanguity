@@ -272,7 +272,7 @@
      place (#869, the server's "updates"), in the bar as already here, and said under it */
   const updatesHere = j => (j.duplicates || {}).updates || 0;
   const updatesLine = j => { const n = updatesHere(j); return n ? node("p", {class: "hint imp-updates", text: `${cap(plural(n, ["lab result", "lab results"]))} ` +
-    `already here from the same source ${n === 1 ? "is" : "are"} updated with the range and flag this file gives now, not added again.`}) : null; };
+    `already here from the same source ${n === 1 ? "is" : "are"} updated with the value, range and flag this file gives now, not added again.`}) : null; };
   // what saving it does, in the button's words: "update" where it updates results here and adds nothing ("Update 4 lab
   // results", #869), else "add" (it said "until you add it with the button" beside "Update 4 lab results")
   const saveVerb = j => !j.restores && !addWords(j.counts || {}) && updatesHere(j) ? "update the results" : "add it";
@@ -697,7 +697,7 @@
     const what = [importCounts({...e.counts, updated: 0}, false), e.cycle && plural(e.cycle, EXTRA.find(x => x[0] === "cycle")[1])].filter(w => w && w !== "No records").join(", ");
     return `Everything this ${typed ? "typed-in" : e.label} import brought is removed${what ? ": " + what.toLowerCase() : ""}` +
       (e.upload != null ? ", and the files uploaded for it" : "") + "." +
-      (upd ? ` The ${plural(upd, ["lab result", "lab results"])} it updated ${upd === 1 ? "gets" : "get"} back the range and flag ${upd === 1 ? "it" : "they"} had.` : "") +
+      (upd ? ` The ${plural(upd, ["lab result", "lab results"])} it updated ${upd === 1 ? "gets" : "get"} back the value, range and flag ${upd === 1 ? "it" : "they"} had.` : "") +
       (!n ? "" : n === 1 ? " The lab-name match made for it is forgotten too: the next import of that name asks about it again."
        : ` The ${n.toLocaleString("en-US")} lab-name matches made for it are forgotten too: the next import of those names asks about them again.`) +
       ` This can't be reversed; you can ${typed ? "type them in" : "import the files"} again.`;
