@@ -2270,6 +2270,11 @@ Everything on `main` so far; it becomes the first tagged release.
   in both drawers and the badge ("2 out of range") apart from the drawer's 3. Now a first pull's results join the lab
   day of their source's draw as a later pull's do, each lab event is listed by one lab day, and a lab day no longer
   lists an upload's results once that upload is undone.
+- **Undoing a pull puts back what it changed, whatever a later pull changed beside it** (#911): a pull changed the
+  CBC's Hemoglobin (Low, then Normal), a later one the same report's Platelet Count; undoing the first kept the later
+  pull's version of the whole report, so the Hemoglobin stayed Normal while Import history said it "gets back the
+  range and flag it had". Now a later change keeps its version only for the result it changed itself: the Hemoglobin
+  is Low again, result and row, and the Platelet Count as the later pull left it.
 - **A result its source amends in value is updated, not added beside the old one** (#877): LDL corrected at the source
   from 162 to 165 (the same Observation), pulled again or in a FHIR file uploaded again, was added as a second result
   with a row of its own, so the old value showed beside the corrected one in Labs and in the lab day. Now the same record

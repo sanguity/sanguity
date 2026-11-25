@@ -1479,7 +1479,8 @@ def _match_keys(rows, made, keys):
 def unapply(db, iid):
     """Put back what import iid changed in place: a sync's, or an upload's results sent again by their source (#869).
     A later import that changed the same record again keeps its version, and what it says was there before becomes
-    what this one found (its results' too, each the earliest). Call before the import's rows go. An import that
+    what this one found (its results' too, each the earliest); in a lab event each row is its own record (#911,
+    _rows_back), so what the later one didn't change goes back now. Call before the import's rows go. An import that
     removed a kind's records (remove_kind) puts them back. A lab day a pull joined (#899) lists none of its labitems
     once they go, and one of iid's own that a pull joined is handed to that pull, holding its labitems: they keep a
     lab day (_hand_over). A lab day put back lists only the lab events there are (#908: what it was may list those of
@@ -1542,6 +1543,8 @@ def _unapply(db, iid):
         if r["event_id"] is not None:
             later = db.execute("SELECT id, previous FROM sync_changes WHERE event_id=? AND id > ? ORDER BY id LIMIT 1",
                                (r["event_id"], r["id"])).fetchone()
+            if later and _rows_back(db, r, prev):   # (#911) a labitem: row by row, each record's own
+                continue
             if later:
                 theirs = records._dec(later["previous"])
                 results = {**dict(theirs.get("results") or []), **dict(prev.get("results") or [])}   # (#869) this one's first
@@ -1574,6 +1577,75 @@ def _unapply(db, iid):
                 items[i] = prev["entry"]
         db.execute("UPDATE imports SET meta=? WHERE id=?", (records._enc(meta), r["meta_import"]))
     db.execute("DELETE FROM sync_changes WHERE import_id=?", (iid,))
+
+
+def _row_ids(d):
+    """Each row of a labitem's details d as the record it is (_row_keys), else by its place: [identity]."""
+    return [own or ("#", j) for j, own in enumerate(_row_keys(d))]
+
+
+def _by_row(d):
+    """{row identity: row} of a labitem's details d."""
+    rows = (d or {}).get("rows") if isinstance(d, dict) else None
+    return dict(zip(_row_ids(d), rows)) if isinstance(rows, list) else {}
+
+
+def _rows_back(db, r, prev):
+    """(#911) Undoing one import's change of a labitem (r: its sync_changes row, prev: what it was before) that a later
+    import changed again, record by record: a row the later one didn't change gets back what it was now, its result too
+    (prev's "results", #869); one it changed keeps its version, and what it says was there before (theirs, and every
+    later one's that saw this one's) becomes what this one found. #869's rule applied to the labitem whole: a pull's
+    Hemoglobin back from Low to Normal undone under a later pull that changed the report's Platelets kept Normal, while
+    the history said it "gets back the range and flag it had". A report's own details go the same way. -> whether it was
+    a labitem (else the event goes as a whole, as before)"""
+    old = prev.get("detail")
+    e = db.execute("SELECT id, import_id, body, detail FROM events WHERE id=?", (r["event_id"],)).fetchone()
+    now = records._dec(e["detail"]) if e else None
+    if not (isinstance(old, dict) and isinstance(old.get("rows"), list) and isinstance(now, dict) and isinstance(now.get("rows"), list)):
+        return False
+    laters = [(x["id"], records._dec(x["previous"])) for x in
+              db.execute("SELECT id, previous FROM sync_changes WHERE event_id=? AND id > ? ORDER BY id", (r["event_id"], r["id"])).fetchall()]
+    seen = laters[0][1].get("detail") if isinstance(laters[0][1].get("detail"), dict) else {}   # what this one left
+    was, left = _by_row(old), _by_row(seen)
+    mine = {k for k in left if k not in was or not _same(left[k], was[k])}   # the rows this one changed or added
+    nonrow = lambda d: {k: v for k, v in (d or {}).items() if k not in ROW_FIELDS}   # noqa: E731
+
+    def back(d):
+        """d with what this one did taken out: each of its rows as it was where d's is what this one left it, one it
+        added gone; its report's details too."""
+        ids, rows, out = _row_ids(d), d.get("rows") or [], {"rows": [], "keys": []}
+        keys = d.get("keys") if isinstance(d.get("keys"), list) else [None] * len(rows)
+        for j, k in enumerate(ids):
+            if k in mine and k not in was:
+                continue   # one it added: gone with it
+            row = was[k] if k in mine and _same(rows[j], left.get(k)) else rows[j]
+            out["rows"].append(row)
+            out["keys"].append(keys[j] if j < len(keys) else None)
+        base = nonrow(old) if _same(nonrow(d), nonrow(seen)) else nonrow(d)
+        return {**base, **{k: v for k, v in d.items() if k in ROW_FIELDS and k not in ("rows", "keys")}, "rows": out["rows"],
+                **({"keys": out["keys"]} if isinstance(d.get("keys"), list) else {})}
+    cur = back(now)
+    if not _same(cur, now):
+        db.execute("UPDATE events SET body=?, detail=? WHERE id=?",
+                   (records._enc(_with_abn(records._dec(e["body"]) or {}, cur["rows"])), records._enc(cur), e["id"]))
+    # results this one updated in place (#869): back now, unless a later one changed it again, whose "before" it becomes
+    mine_res, theirs = dict(prev.get("results") or []), {}
+    for xid, p in laters:
+        for rid, body in p.get("results") or []:
+            theirs.setdefault(rid, xid)
+    for rid, body in mine_res.items():
+        if rid not in theirs:
+            db.execute("UPDATE results SET body=? WHERE id=?", (records._enc(body), rid))
+    for xid, p in laters:   # what each later one says was there before: as this one found it, where it saw this one's
+        d = p.get("detail")
+        if not isinstance(d, dict) or not isinstance(d.get("rows"), list):
+            continue
+        res = [[rid, mine_res[rid] if theirs.get(rid) == xid and rid in mine_res else body] for rid, body in p.get("results") or []]
+        d = back(d)
+        q = {**p, "detail": d, "body": _with_abn(p.get("body") or {}, d["rows"]), **({"results": res} if res else {})}
+        if not _same(q, p):
+            db.execute("UPDATE sync_changes SET previous=? WHERE id=?", (records._enc(q), xid))
+    return True
 
 
 def _put_back(db, iid):
