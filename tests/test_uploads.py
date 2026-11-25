@@ -411,6 +411,26 @@ class Uploads(unittest.TestCase):
         # a day-old finished upload no job ever read, nor any record holds, goes too (#933: see the test below)
         self.assertFalse(os.path.exists(uploads.folder(self.pid, ready)))
 
+    def test_a_copy_a_stop_left_half_written_goes_at_start(self):   # #940
+        """A file of a ready upload written again (uploads.rewrite, #555: an Apple Health export without its cycle
+        records) is written beside it as <name>.tmp, sealed, then put in its place; a stop in between left the .tmp in
+        the live upload's folder for good, in every backup. The start's tidying removes it, and any a file still being
+        received left, and nothing else of a live upload."""
+        u, _ = self.upload({"apple_health_export/export.xml": b"<HealthData/>"})
+        receiving = self.new()
+        self.put(receiving, "half.csv", LAB_CSV)
+        before = {x: sorted(os.listdir(uploads.folder(self.pid, x))) for x in (u, receiving)}
+        for x in (u, receiving):   # as crypto.StreamWriter leaves one, stopped before close() or abort()
+            w = crypto.StreamWriter(os.path.join(uploads.folder(self.pid, x), before[x][0]))
+            w.write(b"<HealthData>" + b"x" * 70000)
+            w._f.close()
+        self.assertTrue(all(any(n.endswith(".tmp") for n in os.listdir(uploads.folder(self.pid, x))) for x in (u, receiving)))
+        uploads.cleanup(self.db)
+        self.assertEqual({x: sorted(os.listdir(uploads.folder(self.pid, x))) for x in (u, receiving)}, before, "the .tmp gone, the rest kept")
+        with uploads.open_plain(self.db, self.pid, u) as files:
+            with open(files["apple_health_export/export.xml"], "rb") as f:
+                self.assertEqual(f.read(), b"<HealthData/>")
+
     def test_an_unclaimed_typed_in_file_goes_a_day_on(self):   # #933
         """A file sent for a record typed in that was never saved (the page closed, or Leave chosen) is an upload no job
         reads: at the first start a day on it goes, as one still receiving does, and is no longer in Export everything
