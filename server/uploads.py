@@ -490,8 +490,10 @@ def orphaned(db, now=None):
 
 def cleanup(db, now=None):
     """At start-up: remove uploads still receiving after a day (abandoned), uploads nothing holds (orphaned: an
-    import's no job holds, one no job read a day on), and any upload folder that no live upload owns (a discarded one,
-    or one left by a crash). Returns how many uploads still receiving were removed."""
+    import's no job holds, one no job read a day on), any upload folder that no live upload owns (a discarded one,
+    or one left by a crash), and in a live one's folder the sealed .tmp a stop left half written (#940: a file being
+    received, or written again by rewrite, before it took its name). Returns how many uploads still receiving were
+    removed."""
     now = now or dbm.now()
     stale = db.execute("SELECT id, profile_id FROM uploads WHERE state='receiving' AND created < ?", (now - STALE,)).fetchall()
     for r in stale:
@@ -511,4 +513,8 @@ def cleanup(db, now=None):
                 shutil.rmtree(os.path.join(up, u), ignore_errors=True)
             elif not (u.isdigit() and (int(p), int(u)) in live):
                 _rmtree(os.path.join(up, u))
+            elif os.path.isdir(d := os.path.join(up, u)):
+                for n in os.listdir(d):   # (nothing writes at start-up: jobs and syncs start after)
+                    if n.endswith(".tmp"):
+                        _remove(os.path.join(d, n))
     return len(stale)

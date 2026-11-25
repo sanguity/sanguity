@@ -3350,6 +3350,10 @@ Everything on `main` so far; it becomes the first tagged release.
   it rebuilt the merged watch file without the write lock, so an import saving its watch data meanwhile (its summary
   written, its import not yet committed) had the merged file written over without its days, which stayed hidden until
   the next rebuild. The rebuild now waits for the write lock, as the import holds it until it's saved.
+- **A file half written when the app stopped is removed from its upload at the next start** (#940): an uploaded
+  Apple Health export written again without its cycle records (#555), or a file still arriving, is written sealed
+  beside its upload's files and then takes its name; a stop in between left that copy in the upload's folder for
+  good, and in every backup. The start's tidying of uploads removes it.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
