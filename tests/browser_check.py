@@ -14952,6 +14952,45 @@ def main():
             left = js("fetch('api/profiles/1/watch').then(r => r.json()).then(w => [['bp_readings', 'temp_readings', 'spo2_readings', 'glucose_readings']"
                       ".map(k => (w[k] || []).filter(r => r.includes('Typed in')).length), w.bp_readings.length > 20])")
             check("…undone, the typed readings are gone and the phone's stay", left == [[0, 0, 0, 0], True], left)
+            # ---- #822: a weight typed in for a day the phone's scale has one was saved and shown nowhere (the receiver's
+            # file won), the check line saying nothing. Now it's the day's, said: its check line names the scale's it
+            # replaces; saved, Body's chart and table have it as typed in, the API too; undone, the scale's again
+            scale822 = js("fetch('api/profiles/1/watch').then(r => r.json()).then(w => w.metrics.find(m => m.key === 'weight').pts.at(-3))")
+            typed_form(1)
+            add_record("home")
+            page.fill(card(1, "date"), scale822[0])
+            page.fill(card(1, "weight"), f"{scale822[1] + 4.2:.1f}")
+            page.wait_for_function("!!document.querySelector('.man-item .man-check svg.i-check')", timeout=5000)
+            said822 = js("document.querySelector('.man-item .man-check').textContent")
+            page.click("#manSave")
+            page.wait_for_function("document.getElementById('manMsg').textContent.startsWith('Saved')", timeout=10000)
+            api822 = lambda: js(f"fetch('api/profiles/1/watch').then(r => r.json()).then(w => {{ const m = w.metrics.find(m => m.key === 'weight');"   # noqa: E731
+                                f" return [Object.fromEntries(m.pts)['{scale822[0]}'], (m.typed || []).includes('{scale822[0]}')]; }})")
+            saved822 = api822()
+            page.click("#manMsg a")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE && PROFILE.id === 1 && state.tab === 'health'", timeout=20000)
+            js(f"state.tables.clear(); setRange(dayTs('{scale822[0]}') - 7 * DAY, dayTs('{scale822[0]}') + DAY); switchTab('health')")
+            settle(400)
+            body822 = js(f"""(() => {{ const p = H.scale.find(q => isoDay(q[0]) === '{scale822[0]}');
+                return [p && +p[1].toFixed(1), !!(p && p.typed), H.scale.filter(q => isoDay(q[0]) === '{scale822[0]}').length]; }})()""")
+            page.click("#h-body .view-seg button:text-is('Table')")
+            settle(300)
+            row822 = js(f"[...document.querySelectorAll('#h-body table.data tbody tr')].map(r => r.textContent).find(t => t.startsWith(fmtD(dayTs('{scale822[0]}')))) || ''")
+            js("state.tables.clear(); renderHealth()")
+            page.goto(base + "/sources.html?profile=1#history")
+            page.reload()
+            page.wait_for_function("document.querySelectorAll(\"#historyList li[data-format='manual']:not(.undone)\").length >= 1", timeout=10000)
+            page.click("#history li[data-format='manual']:not(.undone) button.undo")
+            answer_ask(page)
+            page.wait_for_function("document.getElementById('historyMsg').textContent.startsWith('Undone')", timeout=10000)
+            js("document.getElementById('historyMsg').textContent = ''")
+            undone822 = api822()
+            want822 = round(scale822[1] + 4.2, 1)
+            check("#822: a weight typed in for a day the phone's scale has one is that day's: its check line says it replaces the scale's, "
+                  "Body's chart and table show it as typed in, and undone, the scale's is back",
+                  f"replaces the smart scale's {scale822[1]:g} lb for that day (undoing this save brings it back)" in said822
+                  and saved822 == [want822, True] and body822 == [want822, True, 1] and f"{want822:.1f}" in row822 and "Typed in" in row822
+                  and undone822 == [scale822[1], False], [said822, saved822, body822, row822, undone822, scale822])
             # a height is typed in About this person, where its history is, not among the kinds (#285); one sent to the
             # typed-in route (the API still takes it) goes into that history
             typed_form(2)

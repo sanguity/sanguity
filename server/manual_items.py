@@ -60,6 +60,9 @@ the phone's are on (health.js), saying "Typed in", and undoing the save takes th
 its minute: typed again for the same date and time with other values, the later save's is the one shown (watch_store
 merges a later import over an earlier one), which is how a reading typed wrong is corrected; with the same values it
 is a duplicate, as is one the phone sent already (the same values within a minute, in the summary's time zone).
+A weight or a step count typed in at home is its day's (#822): on a day the phone's scale or an export has another,
+the one typed is shown, the check line saying what it replaces, until another typed for that day replaces it or its
+save is undone (it was saved and shown nowhere, the phone's file winning).
 HEIGHT: a height typed in goes straight into About this person's history, the person's own list of heights (a
 clinic's heights in the records wait there to be added, because an import can be undone; one the person typed is one
 they accept). There it is changed or removed (Settings → About this person); undoing the save leaves it, as undo
@@ -852,14 +855,29 @@ def _same_reading(rd, part):
     return None
 
 
+REPLACED = {"weight": ("the smart scale's", "weight"), "steps": ("the phone's", "step count")}   # whose a day's is, and what
+
+
 def watch_replaces(have, origin):
-    """{record number: note} for readings typed again for a minute with other values: the later is the one shown."""
+    """{record number: [notes]} for readings typed again for a minute with other values, and a weight or a step count
+    typed in for a day the profile has another for (#822: the phone's scale's, an export's, or one typed in before):
+    the one typed is the one shown (watch_store.merge), and its note says what it replaces and how it comes back."""
     if not have:
         return {}
     rd, out = _readings_by_minute(have), {}
+    days = {m.get("key"): (dict((str(p[0]), p[1]) for p in m.get("pts") or [] if isinstance(p, list) and len(p) > 1),
+                           {str(d) for d in m.get("typed") or ()}) for m in have.get("metrics") or [] if isinstance(m, dict)}
     for n, part in origin:
+        if part[0] == "m" and part[1] in REPLACED:
+            pts, typed = days.get(part[1], ({}, set()))
+            old = pts.get(part[2])
+            if isinstance(old, (int, float)) and old != part[3]:
+                whose, what = REPLACED[part[1]]
+                said = f"{_fmt(old)} lb" if part[1] == "weight" else f"{int(old):,} steps"
+                out.setdefault(n, []).append((f"replaces the {what} typed in before for that day ({said})" if part[2] in typed
+                                              else f"replaces {whose} {said} for that day") + " (undoing this save brings it back)")
         if part[0] != "r" or _same_reading(rd, part):
             continue
         if any(typed for _, typed in rd.get((part[1], part[2][:16]), ())):
-            out[n] = "replaces the reading typed in before for that time (undoing this save brings it back)"
+            out.setdefault(n, []).append("replaces the reading typed in before for that time (undoing this save brings it back)")
     return out

@@ -2191,6 +2191,12 @@ Everything on `main` so far; it becomes the first tagged release.
   the upload's results, gone: "5 lab results" on the Timeline over the one ALT row in its drawer. The same with the
   connection's own first pull in the upload's place. Now a lab day put back lists only what's still there, titled for
   it ("1 lab result"), and goes once nothing of it is left, whichever order the three are undone in.
+- **A weight typed in on a day the phone's scale has one is the one shown, and the save says so** (#822): typed in
+  under Type them in, it was saved but drawn, tabled and sent nowhere, as the phone's file won the day, and the check
+  line said nothing. Now a weight or a step count typed in is its day's, over the phone's or an Apple Health export's,
+  whichever came first: its check line says "replaces the smart scale's 176.8 lb for that day (undoing this save brings
+  it back)" (or the one typed in before), and Body and activity, the Overview, the visit summary and share links show
+  it as typed in. Undoing the save brings the scale's back.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
