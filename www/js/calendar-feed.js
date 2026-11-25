@@ -19,14 +19,14 @@
     return j;
   }
 
-  /* where a calendar app elsewhere could reach this address, or why it may not */
-  function reach() {
-    const h = location.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  /* where a calendar app elsewhere could reach this address (a URL), or why it may not */
+  function reach(u) {
+    const h = u.hostname.toLowerCase().replace(/^\[|\]$/g, "");
     const local = h === "localhost" || h.endsWith(".localhost") || h.endsWith(".local") || h.endsWith(".lan") ||
       h.endsWith(".home.arpa") || h.endsWith(".internal") || !h.includes(".") && !h.includes(":") ||
       /^(10|127)\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\.|^169\.254\./.test(h) || h === "::1" || /^f[cd]/.test(h);
     const notes = [];
-    if (location.protocol === "http:") notes.push("This address uses plain HTTP, so the feed and its token travel unencrypted. Put Sanguity behind HTTPS first if your calendar fetches it over the internet.");
+    if (u.protocol === "http:") notes.push("This address uses plain HTTP, so the feed and its token travel unencrypted. Put Sanguity behind HTTPS first if your calendar fetches it over the internet.");
     if (local) notes.push("This server's address only works on your own network (or tailnet): your phone's calendar updates only while it's there, and Google Calendar and Outlook on the web can't reach it at all.");
     return notes.join(" ");
   }
@@ -37,13 +37,13 @@
   $("#calCopy").replaceWith(copy);
   let qr = null;
   const unQr = () => { qr?.btn?.remove(); qr?.fig?.remove(); qr = null; };
-  function showSetup(path) {
-    const url = new URL(path, location.href.replace(/[^/]*$/, "")).href;
+  function showSetup(path, base) {   // base: the server's public address, where one is set (#1009)
+    const u = new URL(path, base || location.href.replace(/[^/]*$/, "")), url = u.href;
     $("#calUrl").value = url;
     unQr();
     qr = qrShow(url, {what: "the feed's address", caption: "Scan it with the phone's camera to take the address there, then subscribe to it.", field: true});
     if (qr) { copy.after(qr.btn); $("#calSetup .cal-url").after(qr.fig); }
-    const r = reach();
+    const r = reach(u);
     $("#calReach").textContent = r;
     $("#calReach").hidden = !r;
     $("#calSetup").hidden = false;
@@ -92,7 +92,7 @@
     try {
       const j = await call(`profiles/${pid}/calendar`, "POST", {details, labs: $("#calLabs").checked, meds: $("#calMeds").checked, tz: zone()});
       await load();
-      showSetup(j.path);
+      showSetup(j.path, j.base);
       say("Your calendar feed is ready. Add it to your calendar app with the address below.");
     } catch (e) { say(e.message, true); }
     $("#calCreate").disabled = false;
@@ -100,7 +100,7 @@
   $("#calRotate").onclick = async () => {
     if (!await ask({title: "Get a new address?", message: "The old one stops working at once: you'll need to subscribe again with the new one.",
                     action: "Get new address", danger: true})) return;
-    try { const j = await call(`profiles/${pid}/calendar/rotate`, "POST"); await load(); showSetup(j.path); say("New address made; the old one no longer works."); }
+    try { const j = await call(`profiles/${pid}/calendar/rotate`, "POST"); await load(); showSetup(j.path, j.base); say("New address made; the old one no longer works."); }
     catch (e) { say(e.message, true); }
   };
   $("#calRevoke").onclick = async () => {
