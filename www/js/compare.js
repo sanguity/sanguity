@@ -62,18 +62,19 @@ function renderCompare() {
   renderCmpMs(placed.filter(r => r.pts.length));
 }
 /* the slots' readouts: each lab's latest in the period, or got[i], its results at the date hovered (null: none near),
-   two at one time each said (#848: "2 results: 5.6 mmol/L · 117%; 5.0 mmol/L · 94%"). Each as tall whatever it says
+   two at one time each said (#848: "2 results: 5.6 mmol/L · 117%; 5.0 mmol/L · 94%"; at rest "Latest: 2 results: …",
+   #904). Each as tall whatever it says
    (chartkit.js ckReadAt, #865: a second line moved the chart under the pointer, #863), laid out for the longest its
    lab's results would say, latest or hovered, in any period, or that there's none */
-const cmpReadSays = (s, at, latest) => at?.length ? `${latest ? "Latest " : ""}${ckEach(at, q => `${readText(s, q)[0]} · ${cmpPlace(q)}`)} · ${fmtD(at[0].ts)}`
+const cmpReadSays = (s, at, latest) => at?.length ? `${latest ? at.length > 1 ? "Latest: " : "Latest " : ""}${ckEach(at, q => `${readText(s, q)[0]} · ${cmpPlace(q)}`)} · ${fmtD(at[0].ts)}`
   : latest ? "No results in this period" : "No result near this date";
 function cmpRead(got) {
   const list = cmpSel ? cmpSeries() : [];
   list.forEach((s, i) => {
     const r = $("#cmpRead" + i); if (!r) return;
     if (!s) return r.replaceChildren();
-    if (r._s !== s) { r._s = s; r._say = ckReadAt(r, cmpPlaced(s, -Infinity, Infinity), (at, last) => [cmpReadSays(s, at || [last], !at)], [[cmpReadSays(s, null, true)], [cmpReadSays(s, null)]]); }
-    r._say([cmpReadSays(s, got ? got[i] : cmpPlaced(s).slice(-1), !got)]);
+    if (r._s !== s) { r._s = s; r._say = ckReadAt(r, cmpPlaced(s, -Infinity, Infinity), (at, last) => [cmpReadSays(s, at || last, !at)], [[cmpReadSays(s, null, true)], [cmpReadSays(s, null)]]); }
+    r._say([cmpReadSays(s, got ? got[i] : ckLast(cmpPlaced(s)), !got)]);   // at rest the latest time's, both of two there (#904)
   });
 }
 /* the chart: the period's time scale, the place in each result's own range up the side, the range itself the band from
@@ -136,10 +137,10 @@ function cmpDraw(svg, live) {
   hit.addEventListener("pointerleave", () => { if (!$("#labsCompare").classList.contains("dragging")) { svg._hover(null); hideTip(); } });
   chartKeys(svg, cmpSays(on), () => times, t => showAt(t, x(t)), () => { svg._hover(null); hideTip(); });
 }
-/* the chart's words, its name (chartKeys): each lab's results placed in the period and the latest's place, and the
-   milestones. on: the slots' labs with their results placed ({s, pts}) */
+/* the chart's words, its name (chartKeys): each lab's results placed in the period and the latest's place (both of two
+   at its time, #904), and the milestones. on: the slots' labs with their results placed ({s, pts}) */
 const cmpSays = on => `Labs compared within their own ranges, ${fmtD(state.from)} to ${fmtD(state.to)}, 0% at each result's low limit and 100% at its high: `
-  + on.map(r => `${nice(r.s.name)}, ${r.pts.length} result${r.pts.length === 1 ? "" : "s"}${r.pts.length ? `, latest ${cmpPlace(r.pts.at(-1))} of its range` : ""}`).join("; ")
+  + on.map(r => { const last = ckLast(r.pts); return `${nice(r.s.name)}, ${r.pts.length} result${r.pts.length === 1 ? "" : "s"}${last.length ? `, latest ${ckEach(last, cmpPlace)} of ${last.length > 1 ? "their ranges" : "its range"}` : ""}`; }).join("; ")
   + `. Left and right arrow keys step through the dates.${msSay(state.from, state.to) ? " " + msSay(state.from, state.to) : ""}`;
 /* the chart as a table: every result of the labs compared in the period, newest first, with its place in its range (or
    why it has none) */

@@ -527,11 +527,13 @@ function ckRead(box, says) {
   return ps => said.replaceChildren(...present(ps));
 }
 /* a time chart's readout for its results pts (ckRead): say(at, last) its words, for at, the results at the time hovered
-   or stepped to as ckAt gives them, or for null, at rest, last the latest. Its room is every time's words and every
-   latest's, built by say as what's shown is, each time's results in the order they're said (#894: the room had two at
-   one time in the file's order, the hover the flagged one first, and wrapped, what was said could take a line more,
-   so the chart moved still); more: other words it can say */
-const ckReadAt = (box, pts, say, more = []) => ckRead(box, [...pts.map(p => say(null, p)), ...ckTimes(pts).map(at => say(at)), ...more]);
+   or stepped to as ckAt gives them, or for null, at rest, last the latest time's (ckLast: two at that time are both
+   the latest, #904: the readout said one). Its room is every time's words and every latest's, built by say as what's
+   shown is, each time's results in the order they're said (#894: the room had two at one time in the file's order,
+   the hover the flagged one first, and wrapped, what was said could take a line more, so the chart moved still);
+   more: other words it can say */
+const ckLast = pts => pts.length ? ckAt(pts, pts.at(-1).ts) : [];
+const ckReadAt = (box, pts, say, more = []) => { const ts = ckTimes(pts); return ckRead(box, [...ts.map(at => say(null, at)), ...ts.map(at => say(at)), ...more]); };
 
 /* ---- the overview strip (#295): a tab's records across every year in 40 px (more with larger text, #641), under the
    period bar, the period a window on it (charts.js stripDraw). ckStripBins: the stretch, the shortest of a day, a week,

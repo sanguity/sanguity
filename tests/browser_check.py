@@ -21834,6 +21834,41 @@ def main():
             check("#894: …and at every width: every time of Labs' charts and of Compare hovered at each width from 320 to 1400 px, 4 px apart, with text "
                   "as usual, at 150% and at 200%: no chart moves (the readout's room held two at one time in another order than it says them), no "
                   "readout cut", not bad894, bad894[:20])
+            # ---- #904: and at rest, with two results at the period's latest time, the readout says both, "Latest: 2 results:
+            # …", as a hover says them (chartkit.js ckEach): Labs' readout said one of them (trends.js lastP), Compare's slot
+            # one (cmpPlaced(s).slice(-1)), and each chart's name one. The period from 90 to 20 days back, its latest time
+            # the two; Labs' charts and Compare at rest at 360, 412, 900 and 1400 px with text as usual and at 200%: the
+            # readout and the chart's name say both, and hovering each time moves no chart (the readout's room holds the
+            # latest as it says it now, ckReadAt)
+            REST904 = r"""([labs, from, to]) => { state.tables.clear(); state.preset = 'custom'; state.from = zParse(from); state.to = zParse(to);
+              if (labs) { state.sel = new Set(['Potassium', 'Sodium']); switchTab('labs', 'chart'); renderLabs(); }
+              else { cmpSel = ['Potassium', 'Sodium'].map(n => cmpKey(SERIES.find(s => s.name === n))).concat(''); state.tables.delete('#cmp'); switchTab('labs', 'compare'); renderCompare(); }
+              return new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => { const svg = document.querySelector(labs ? '#charts .chart[data-lab="Potassium"] svg.ck' : '#cmpSvg');
+                r([document.querySelector(labs ? '#charts .chart[data-lab="Potassium"] .read' : '#cmpRead0').firstElementChild.textContent, svg.getAttribute('aria-label')]); }))); }"""
+            day904 = js("d => fmtD(zParse(d))", M752.day(M752.AT_ONCE_DAY))
+            want904 = {True: ("Latest: 2 results: " + "; ".join(M752.AT_ONCE_SAID["each"]) + f" · {day904}", "latest 2 results: " + "; ".join(re.sub(r"[▲▼◆]\s*", "", w) for w in M752.AT_ONCE_SAID["each"])),
+                       False: (f"Latest: {M752.AT_ONCE_SAID['compare_read']}{day904}", "Potassium, 3 results, latest 2 results: 117%; 94% of their ranges")}
+            bad904 = []
+            for k904 in (1, 2):
+                js(ADOPT_CSS_JS, BIG865[k904])
+                for w904 in (360, 412, 900, 1400):
+                    page.set_viewport_size({"width": w904, "height": 900})
+                    for labs904 in (True, False):
+                        read904, name904 = js(REST904, [labs904, M752.day(90), M752.day(20)])
+                        where904 = f"{'Labs' if labs904 else 'Compare'} at {w904} px{', text at 200%' if k904 > 1 else ''}"
+                        if read904 != want904[labs904][0]:
+                            bad904.append(f"{where904}: its readout “{read904}”, not “{want904[labs904][0]}”")
+                        if want904[labs904][1] not in name904:
+                            bad904.append(f"{where904}: its name “{name904}”")
+                        moved904 = js(SWEEP894, labs904)
+                        if moved904:
+                            bad904.append(f"{where904}: {moved904[0]}")
+            js("() => { document.adoptedStyleSheets = []; cmpSel = null; applyPreset('all'); switchTab('labs', 'chart'); }")
+            page.set_viewport_size(size865)
+            settle(300)
+            check("#904: at rest with two results at the period's latest time, Labs' readout and Compare's say both, “Latest: 2 results: …” as a hover "
+                  "says them, and so do the charts' names, at 360, 412, 900 and 1400 px with text as usual and at 200%, no chart moving as each time is "
+                  "hovered", not bad904, bad904)
             db = dbm.connect()
             prof_r.delete_profile(db, apid)
             db.close()
