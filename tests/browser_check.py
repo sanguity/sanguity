@@ -12679,6 +12679,29 @@ def main():
             check("With text at 200% at 360 and 412 px, light and dark (#622, 1.4.4): the phone's tabs inside their places, icons alone, still named, the bar "
                   "as tall as the page leaves it; the profile's name whole, on a row of its own at 360; Labs' chart, axis and event-track labels inside their "
                   "charts, none over another. At the usual size the tabs keep their words and the profile its place", not bad622, bad622)
+            # ---- #746: a pick-one menu's tick clear of its item's words, with text at 200% and as usual: the period's sheet on a
+            # phone (360 px) and More… at 1400 px, a calendar year picked there (the 28 px ✓ sat over the first letter)
+            TICK746 = r"""() => [...document.querySelectorAll('.menu-item[aria-checked=true]')].filter(i => i.checkVisibility()).map(i => {
+              const c = i.querySelector('.i-check').getBoundingClientRect(), t = [...i.childNodes].find(n => n.nodeType === 3 && n.textContent.trim()), r = document.createRange();
+              r.selectNodeContents(t); return [t.textContent.trim(), Math.round(r.getBoundingClientRect().left - c.right)]; })"""
+            was746, bad746 = js("state.preset"), {}
+            for w, menu, per in ((360, "#periodPill", "2y"), (1400, "#periodMoreBtn", js("periodYears()[0]"))):
+                page.set_viewport_size({"width": w, "height": 800})
+                for big in (False, True):
+                    js("([css, p]) => { const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = css ? [s] : []; applyPreset(p); }", [BIG622 if big else "", per])
+                    settle(300)
+                    page.click(menu)
+                    settle(300)
+                    got = js(TICK746)
+                    if len(got) != 1 or got[0][1] < 1:
+                        bad746[f"{menu} {w}{' 200%' if big else ''}"] = got
+                    page.keyboard.press("Escape")
+                    settle(200)
+            js("p => { document.adoptedStyleSheets = []; applyPreset(p); }", was746)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(300)
+            check("…and a pick-one menu's ✓ clear of its item's first letter, with text at 200% and as usual: the period's sheet at 360 px and More… "
+                  "at 1400 px (#746)", not bad746, bad746)
             # ---- #785: #622's check above 700 px, where the tabs are in the top bar, all under More where they don't fit: at
             # 701, 768, 900, 1024 and 1100 px and on a phone on its side (844×390, 915×412, a touch screen), with text as
             # usual and at 130%, 150% and 200%, on the records page (Body and activity, the longest tab's name) and every

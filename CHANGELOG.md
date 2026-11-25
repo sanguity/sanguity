@@ -3454,6 +3454,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - **A period's button keeps focus as the fonts arrive** (#747): the presets' row is fitted again once the app's
   fonts have loaded (#656), and a preset or Since button that had focus then lost it to the page, once per page
   load. That redraw keeps focus too, or gives it to More… where the button has gone in there.
+- **A menu's tick is clear of its words with larger text** (#746): a picked item's ✓ in the period's sheet, More…
+  and the profile menu grows with the text, but the room for it didn't, so at 200% it covered the item's first
+  letter ("✓Last 2 years"). The room now grows with the text too; at the usual size nothing moves.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
