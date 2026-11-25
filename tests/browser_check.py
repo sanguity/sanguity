@@ -22750,6 +22750,30 @@ def main():
             js("state.tables.clear()")
             check("…at 1400 and 375 px, light and dark, both charts' sets and the table: nothing cut off or overlapping, and axe-core finds nothing serious",
                   not g_bad and not g_axe, (g_bad + g_axe)[:6])
+            # #709: #622's check for the growth charts (#633's L633): at 360 and 412 px, light and dark, both sets, at the usual
+            # size and with text at 200% (1.4.4), each label inside its chart and none over another. Its geometry was fixed
+            # (the gutters, the rows under it, the curves' names 10 px apart), not grown with the labels (chartkit.js ckK)
+            g709, theme709 = {}, js("document.documentElement.dataset.theme || null")
+            for w709 in (360, 412):
+                page.set_viewport_size({"width": w709, "height": 800})
+                for mode709 in ("light", "dark"):
+                    for big709 in (False, True):
+                        js("([t, css]) => { document.documentElement.dataset.theme = t; const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = css ? [s] : []; }",
+                           [mode709, BIG622 if big709 else ""])
+                        for set709 in ("cdc", "who"):
+                            js("s => { grState.set = s; state.tables.clear(); renderHealth(); }", set709)
+                            settle(400)
+                            got709 = js(L633, "#h-growth svg.growth-chart")
+                            n709 = js("[...document.querySelectorAll('#h-growth svg.growth-chart')].filter(s => s.checkVisibility()).length")
+                            if got709 or n709 < 3:
+                                g709[f"{set709} {w709} {mode709}{' 200%' if big709 else ''}"] = got709[:8] or f"{n709} charts"
+                            if big709 and os.environ.get("SANGUITY_SHOTS"):
+                                page.locator("#h-growth").screenshot(path=os.path.join(os.environ["SANGUITY_SHOTS"], f"709-growth-{set709}-{w709}-{mode709}-200.png"))
+            js("t => { document.adoptedStyleSheets = []; if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; grState.set = null; renderHealth(); }", theme709)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(300)
+            check("…and with text at 200% at 360 and 412 px, light and dark, and at the usual size (#709, #622, 1.4.4): both sets' growth charts keep every "
+                  "label inside them, none over another", not g709, g709)
             # the due date is About this person's, changed by owners and editors
             page.goto(base + f"/settings.html?profile={cpid}#about")
             page.wait_for_selector(f"#about[data-profile='{cpid}'] #aboutDue", timeout=10000)
