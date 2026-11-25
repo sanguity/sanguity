@@ -535,7 +535,8 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
   corrections made to them, the journal and its photos, the medication log and reminders, documents, settings, watch
   data and uploaded files; the activity log only in an owner's, #589) under **Sharing → Export everything**, and load
   it into another install with `server.manage create-profile` and `import`, or upload it on a profile's import page:
-  the corrections come back undoable. Or, there, as **FHIR R4** (#205): a standard bundle other health apps can
+  the corrections come back undoable. Uploaded, it's kept without its activity log, and without its cycle records
+  unless cycle tracking is on there (#918). Or, there, as **FHIR R4** (#205): a standard bundle other health apps can
   read, of the kinds of records ticked, as the app shows them (every correction made, #916), with the documents' files
   beside it; Sanguity's own import reads it back into the same records
   ([docs/fhir-export.md](docs/fhir-export.md) says what each record becomes, and what a bundle has no place for).

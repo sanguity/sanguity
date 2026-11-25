@@ -372,7 +372,7 @@ Not opened as issues; written up here for the owner to file or drop:
 | 7.2.1 | Authentication decisions logged | **Fixed** | `login.ok` (with method), `login.fail` (with step and reason), `login.throttled`, `setup.fail` and `reauth.fail`. |
 | 7.2.2 | Access-control failures logged | **Fixed** | `access.denied` (profile, role needed) and `csrf.refused`. |
 | 7.3.1 | Log injection prevented | Met | Each event is one JSON-encoded line. Activity details are stored as JSON and shown with `textContent`. |
-| 7.3.3 | Logs protected | Met | Docker's own log storage on the host. A profile's activity log is readable only by its owners, and is in Export everything only when an owner exports (#589); account events, backups, vendor setup and outside contacts with no profile, by admins. |
+| 7.3.3 | Logs protected | Met | Docker's own log storage on the host. A profile's activity log is readable only by its owners, and is in Export everything only when an owner exports (#589); such an export uploaded on an import page is kept without it, as an upload is in every editor's Export everything (#918, `export.strip_uploads`); account events, backups, vendor setup and outside contacts with no profile, by admins. |
 | 7.3.4 | Time synced | N/A | The host's clock. |
 | 7.4.1 | Generic error message | Met | Unhandled errors return a plain "Internal Server Error". Debug mode and tracebacks are never sent. A failed import tells the person why in plain words, stored encrypted. |
 | 7.4.2 | Exception handling | Met | Known failures map to clear 4xx answers. A failed import saves nothing (`tests/test_jobs.py`); a failed pull backs off and says so; a failed backup is shown on the Admin page. |

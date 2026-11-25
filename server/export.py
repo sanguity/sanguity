@@ -19,16 +19,18 @@ The zip:
                       the person's data like the rest; loading the export keeps them beside its daily.json again
   uploads/<id>/...    the files uploaded on the import page, as they were (zips unpacked), one folder per upload
   activity.json       the profile's activity log, only in an owner's export (#589): like GET .../activity, it is for
-                      owners only (who opened the profile, from where)
+                      owners only (who opened the profile, from where). Loading an export leaves it out, and an upload
+                      of one doesn't keep it (strip_uploads, #918: its files are in every editor's Export everything)
   cycle/cycle.json    menstrual cycle records (#183), only when the person exporting ticked them in, each time
-                      (cycle_tracking.for_export); loading an export leaves them out, as cycle tracking is per install
+                      (cycle_tracking.for_export); loading an export leaves them out, as cycle tracking is per install,
+                      and an upload of one keeps them only while cycle tracking is on there (#918)
 It's written as it's sent, a piece at a time, so a large profile never sits in memory or on disk.
 
 What doesn't come back from an export (the Sharing page says so): the activity log (history from the other install),
 who is shared on it, share links, calendar feeds, connected sources and their sign-ins, the watch receiver's key,
 visit summary drafts, and which import each record came from (they load as one import, "Sanguity data or export").
 """
-import contextlib, datetime, gzip, json, os, re, secrets, shutil, urllib.parse, zipfile
+import contextlib, datetime, gzip, json, os, posixpath, re, secrets, shutil, urllib.parse, zipfile
 
 from . import (crossmatch, crypto, cycle_tracking, db as dbm, ecg, edits, journal, journal_photos, med_log, med_reminders, oop,
                profiles as prof, records, settings, uploads, watch_store)
@@ -281,11 +283,46 @@ arrive as one import).
 ALLOWED = re.compile(r"^(data\.json|settings\.json|README\.txt|activity\.json|watch/daily\.json|watch/ecg/[0-9a-f]{16}\.json|"
                      r"cycle/cycle\.json|documents/[^/]+/.+|uploads/\d+/.+|journal/photos/\d+\.(?:jpg|png|webp))$")
 WAVE = re.compile(r"^watch/ecg/([0-9a-f]{16})\.json$")   # (#225) kept as the app keeps them: gzipped, then sealed
-LEFT_OUT = {"cycle/cycle.json"}   # cycle records (#183): not loaded into the profile, nor kept in its folder
+LEFT_OUT = {"cycle/cycle.json",   # cycle records (#183): not loaded into the profile, nor kept in its folder
+            "activity.json"}     # nor the activity log: history from the other install, its owners' only (#589, #918)
 UPLOAD = re.compile(r"^uploads/(\d+)/(.+)$")
 # a zip that unpacks to more than this is refused before anything is written (a damaged or hostile archive could
 # otherwise fill the disk); far above any real profile's records
 MAX_ENTRIES, MAX_BYTES = 100_000, 16 * 2**30
+
+
+def strip_uploads(db, pid, upload_id=None, cycle=None):
+    """An export of Sanguity's uploaded to a profile keeps only what that profile imports from it (#918): every file of
+    its zip was kept as the upload's, which is in every editor's Export everything and in backups, so its activity log
+    (owners only where it came from, #589: who opened it, from where) reached the new profile's editors, and its cycle
+    records stayed whatever cycle tracking was there. Each export among a profile's ready uploads (or upload_id's
+    alone), found by its README.txt ("Sanguity export: ...") beside a data.json at any depth, loses its activity.json,
+    and its cycle/cycle.json while cycle tracking is off there (as an upload holds cycle records only while it's on,
+    #555; an export's are never loaded, LEFT_OUT). Called as an upload is finished (routes_uploads.py), on the uploads a
+    loaded export brings back (import_archive), and once tracking is turned off or its data deleted
+    (cycle_tracking.drop_imported, with cycle False: the cycle records go whether it's on or not). Returns how many
+    files went."""
+    keep_cycle = cycle_tracking.is_on(db, pid) if cycle is None else cycle
+    q = "SELECT id FROM uploads WHERE profile_id=? AND state='ready'" + (" AND id=?" if upload_id is not None else "") + " ORDER BY id"
+    n = 0
+    for (up,) in db.execute(q, (pid,) + ((upload_id,) if upload_id is not None else ())).fetchall():
+        paths, drop = set(uploads.manifest(db, pid, up)), []
+        for rel in sorted(paths):
+            base, name = posixpath.split(rel)
+            if name != "README.txt" or posixpath.join(base, "data.json") not in paths:
+                continue
+            if not uploads.head(db, pid, up, rel, 15).startswith(b"Sanguity export"):
+                continue
+            gone = [posixpath.join(base, "activity.json")] + ([] if keep_cycle else [posixpath.join(base, "cycle", "cycle.json")])
+            drop += [x for x in gone if x in paths]
+        n += uploads.drop_files(db, pid, up, drop)
+    return n
+
+
+def strip_all(db):
+    """strip_uploads over every profile's uploads, at start-up (main.py): exports an older version kept whole (#918),
+    or a backup restored from then brought back. Returns how many files went."""
+    return sum(strip_uploads(db, pid) for (pid,) in db.execute("SELECT DISTINCT profile_id FROM uploads WHERE state='ready'").fetchall())
 
 
 PARTS = ("journal", "doses", "reminders")   # what people wrote, beside the records and their corrections
@@ -692,6 +729,7 @@ def import_archive(db, pid, archive):
                         uploads.add_file(db, pid, upload_id, rel, src)
                 uploads.finish(db, pid, upload_id, unzip=False)   # unpacked already: zips left in it stay zips
                 cycle_tracking.strip_uploads(db, pid, upload_id, on=cycle_tracking.is_on(db, pid))   # (#555)
+                strip_uploads(db, pid, upload_id)   # an export uploaded there once keeps only what this profile imports (#918)
             except uploads.UploadError as e:
                 uploads.discard(db, pid, upload_id)
                 raise ValueError(f"an upload in the zip can't be kept: {e}") from None

@@ -2293,6 +2293,13 @@ Everything on `main` so far; it becomes the first tagged release.
   stay" and a change of category were lost, and one result two sources gave, linked as the same result, went twice.
   Now every correction and same-result link is applied first. Sanguity's own zip still holds the records as imported,
   with the corrections beside them.
+- **An uploaded export keeps only what its profile imports** (#918): an owner's Export everything uploaded on another
+  profile's import page kept every file of its zip as the upload's, and an upload is in every editor's Export
+  everything: the old profile's activity log (who opened it, from where), owners only there, was then downloadable by
+  the new profile's editors, and its cycle records stayed whatever that profile's cycle tracking. Now the upload keeps
+  neither its activity.json nor, unless cycle tracking is on there, its cycle/cycle.json (until it's turned off or the
+  cycle data deleted); the command line's import doesn't keep the activity log either, and uploads an older version
+  kept whole lose them at the next start.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
