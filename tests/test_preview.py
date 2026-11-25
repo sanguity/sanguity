@@ -439,6 +439,29 @@ class Preview(unittest.TestCase):
         self.assertEqual((done["state"], done["counts"]["results"]), ("done", len(rows)), done)
         self.assertEqual(days(), [("1 lab result", [["ALT", "45"]]), every, every])
 
+    def test_a_text_result_ticked_adds_it_with_its_row(self):   # #901
+        """A text result ticked to add anyway is kept with its row, in a lab day holding only it, as a number is
+        (#887): a C-CDA document of a urine colour and two numbers uploaded again, the urine colour ticked under
+        "Already here". keep() made its text results new but kept only its points' rows, so it was saved with no row and
+        no lab day, counted in every lab day of its date."""
+        t = "2025-10-08T07:45:00"
+        rows = [("Color of Urine", "", t, "Yellow", ""), ("Potassium", "mmol/L", t, "5.1", "3.5-5.0"), ("Sodium", "mmol/L", t, "140", "135-145")]
+        doc, pid = {"portal.xml": M.ccda(rows)}, self.profile("A text result ticked")
+        self.assertEqual(self.save(pid, self.previewed(pid, doc)[0])["state"], "done")
+        n = count(pid)
+        j, _ = self.previewed(pid, doc)
+        refs = {i["title"]: i["ref"] for i in j["duplicates"]["items"]}
+        self.assertFalse(j["new"], j["duplicates"])
+        done = self.save(pid, j, keep=[refs["Color of Urine"]])
+        self.assertEqual((done["state"], done["counts"]["kinds"]), ("done", {"lab": 1}), done)
+        got = assembled(pid)
+        self.assertEqual(rowless(got), [], "kept with its row")
+        self.assertEqual(count(pid)["results"], n["results"], "no number added")
+        self.assertEqual(sorted((e["title"], [r[:2] for i in got["details"][str(e["id"])]["ids"] for r in got["details"][str(i)]["rows"]])
+                                for e in got["events"] if e["k"] == "lab"),
+                         [("1 lab result", [["Color of Urine", "Yellow"]]), ("3 lab results", [[x[0], x[3]] for x in rows])], "in a lab day holding only it")
+        self.assertEqual([x[1] for s in got["labs"] if s["name"] == "Color of Urine" for x in s.get("txt") or []], ["Yellow", "Yellow"])
+
     def test_a_lab_day_says_what_it_holds_wherever_its_list_changes(self):   # #889
         """A lab day kept with less than it had, or more, is titled for what it holds and lists only its tests, by one
         function (common.lab_day_counted) wherever its list changes: an import's duplicates left out (preview.trim), a
