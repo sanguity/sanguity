@@ -31,6 +31,7 @@ Profile events (profile_id set), readable by the profile's owners:
                 or "delete", kind "note", "symptom", "side_effect" or "mood" (#161); never what it says)
   summary       {"sections", "since", "for", "pages", "questions"}: made a visit summary PDF (summary.py, #48; the
                 sections and dates only, never the questions or any result)
+  watch.secret  {"ended", "maker"} (actor ACCESS_ENDED): the secret its maker made went with their access (#929)
   watch.secret  {"rotated"}: made the profile's watch receiver secret, or a new one in place of the old (#46; never
                 the secret)
   cycle         {"change": "on" | "off" | "delete"}: an owner turned menstrual cycle tracking on or off (off deletes
@@ -88,7 +89,8 @@ SCHEDULED_SYNC = "scheduled sync"   # a connected source's pull on its schedule 
 SHARE_LINK = "share link"           # whoever holds a share link, opening it (share_links.py)
 SCHEDULED_BACKUP = "scheduled backup"   # a backup on the Admin page's schedule (backup_jobs.py, #200)
 TIME_LIMIT = "time limit"   # something deleted when its time is up: what a restore replaced (backup_jobs.py, #595)
-SYSTEM = (COMMAND_LINE, SETUP_BUILD, SCHEDULED_SYNC, SHARE_LINK, SCHEDULED_BACKUP, TIME_LIMIT)
+ACCESS_ENDED = "access ended"   # what ends with its maker's access: a phone upload secret (watch_keys.end_lost, #929)
+SYSTEM = (COMMAND_LINE, SETUP_BUILD, SCHEDULED_SYNC, SHARE_LINK, SCHEDULED_BACKUP, TIME_LIMIT, ACCESS_ENDED)
 
 
 def log(db, action, who=None, profile_id=None, detail=None, ip=None, session_id=None, actor=None, item=None):

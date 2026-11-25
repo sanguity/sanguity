@@ -122,13 +122,16 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
      someone not yet shared with ({username}). Resolves true to go ahead. Owner is a grant as serious as Admin's
      Make admin, so its question starts on Cancel too (#314). */
   const an = r => (r === "owner" || r === "editor" ? "an " : "a ") + r;
+  // #929: the phone upload secret someone made goes when they can no longer change the profile (watch_keys.end_lost)
+  const secretGoes = (m, they = "they") => m.phone_secret ? ` The phone upload secret ${they} made stops working too, so a phone ` +
+    "set up with it can't upload: someone who can change the profile makes a new one under Sources, Phone and watch." : "";
   function sureOfRole(p, m, to, otherwise = null) {
     if (m.user_id === ME.user.id) {
       // the last owner whose account is enabled, as the server counts them (dbm.active_owners, #314): it says why not
       if (!MEMBERS.some(x => x.role === "owner" && x.user_id !== m.user_id && !x.disabled)) return otherwise ? otherwise() : true;
       return ask({title: `Make yourself ${an(to)} of ${p.name}?`, action: "Change my role", danger: true, message: [
         to === "viewer" ? `You'll only be able to view ${p.name}: no longer change or export its records, see or change its ` +
-                          "cycle tracking, share it, change who has access, make share links, see its activity, or rename or delete it."
+                          "cycle tracking, share it, change who has access, make share links, see its activity, or rename or delete it." + secretGoes(m, "you")
           : `You'll no longer be able to share ${p.name}, change who has access, make share links, see its activity, turn cycle ` +
             "tracking on or off or delete what it kept, or rename or delete it. You can still change its records and export them.",
         "Only another owner can make you an owner again."]});
@@ -136,7 +139,9 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     if (to === "owner") return ask({title: `Make ${m.username} an owner of ${p.name}?`, action: "Make owner", danger: true, message:
       `Owners choose who sees ${p.name}: ${m.username} could share it, change anyone's role (yours too), rename it and delete it.`});
     if (m.role === "owner") return ask({title: `Make ${m.username} ${an(to)} of ${p.name}?`, action: "Change role", message:
-      `${m.username} will no longer be able to share it, change who has access, or rename or delete it.`});
+      `${m.username} will no longer be able to share it, change who has access, or rename or delete it.` + (to === "viewer" ? secretGoes(m) : "")});
+    if (to === "viewer" && m.phone_secret) return ask({title: `Make ${m.username} a viewer of ${p.name}?`, action: "Change role",
+      message: `${m.username} will only be able to view it.` + secretGoes(m)});
     return otherwise ? otherwise() : true;
   }
   async function leave(p) {
@@ -192,12 +197,12 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
               msg.scrollIntoView({block: "nearest"});
               return;
             }
-            if (!await ask({title: `Leave ${p.name}?`, message: "You'll stop having access to its records." + (owner ? "" : " An owner can share it with you again."),
+            if (!await ask({title: `Leave ${p.name}?`, message: "You'll stop having access to its records." + secretGoes(m, "you") + (owner ? "" : " An owner can share it with you again."),
                             action: "Leave profile", danger: true})) return;
             leave(p); }})
           : owner ? el("button", {class: "btn small", type: "button", text: "Remove", "aria-label": `Remove ${m.username}`, "data-act": "remove",
             onclick: async () => {
-              if (!await ask({title: `Remove ${m.username}'s access?`, message: `They'll stop seeing the records in ${p.name}. You can share it with them again later.`,
+              if (!await ask({title: `Remove ${m.username}'s access?`, message: `They'll stop seeing the records in ${p.name}.${secretGoes(m)} You can share it with them again later.`,
                               action: "Remove access", danger: true})) return;
               const at = MEMBERS.indexOf(m);   // focus then on the next person's Remove, else the one before, else the heading (util.js)
               try { await call(`profiles/${p.id}/members/${m.user_id}`, "DELETE"); await again(() => focusNear(rows(), at, "[data-act=remove]", $("#people h2")));

@@ -65,13 +65,15 @@ def sign_out_everywhere(db, uid, feeds=True):
 
 def end_lost_access(db):
     """What depended on access that is gone ends for good (#590), so giving the access back doesn't bring it back:
-    share links whose maker is no longer an active owner are revoked (share_links.stop_unowned), and calendar feeds
-    whose person can no longer view the profile are deleted (calendar.drop_without_access). Call it, inside the same
+    share links whose maker is no longer an active owner are revoked (share_links.stop_unowned), calendar feeds whose
+    person can no longer view the profile are deleted (calendar.drop_without_access), and a phone upload secret whose
+    maker can no longer change the profile is taken away (watch_keys.end_lost, #929). Call it, inside the same
     transaction, after a change that can take access away and before one that gives it (which also catches what an
     older version left behind)."""
-    from . import share_links   # (it imports much of the app)
+    from . import share_links, watch_keys   # (they import much of the app)
     share_links.stop_unowned(db)
     calendar.drop_without_access(db)
+    watch_keys.end_lost(db)
 
 
 def forget_setup_code(db):

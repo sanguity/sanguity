@@ -3260,6 +3260,13 @@ Everything on `main` so far; it becomes the first tagged release.
   100 the account's codes stop working, a right one too, until a recovery code is used or an admin resets two-factor
   sign-in. The sign-in and Account pages tell the person (a recovery code or a passkey still signs them in), and admins
   see it on Admin, beside the account in Accounts and in the install's activity log.
+- **A phone upload secret goes with its maker's access** (#929): removing someone from a profile, making them a
+  viewer or disabling their account ended their share links and calendar feeds (#590), but the phone upload secret
+  they had made stayed, so their phone kept writing readings into the profile (a removed editor's 95.5 kg was taken).
+  Now the secret goes, for good, when its maker can no longer change the profile, and the receiver stops taking it;
+  the profile's activity log says so, Sharing's Remove, Leave and a change to viewer say it first, and someone who
+  can change the profile makes a new one under Sources → Phone and watch. A secret an older version left behind this
+  way goes when the app starts.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

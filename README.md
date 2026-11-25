@@ -273,7 +273,9 @@ Each profile has its own receiver secret, so each person's phone uploads to thei
 Phone and watch**, a profile's owners and editors see the upload address to give the phone app (each
 `PUBLIC_ORIGINS` host on `RECEIVER_PORT`, or `WATCH_UPLOAD_URL` if the receiver is behind your own HTTPS proxy) and
 **Make a secret**, and when the phone last sent something. The secret is shown once, to copy into the app; **Make a new secret** replaces it (the old one
-stops working). An install from before kept working: `auth/watch_secret` stays the first profile's secret until that
+stops working). A secret goes when the person who made it can no longer change the profile (removed, made a viewer, or
+their account disabled), so their phone stops uploading; Sharing's Remove says so first, and someone who can change the
+profile makes a new one. An install from before kept working: `auth/watch_secret` stays the first profile's secret until that
 profile makes one here. The app hands the secrets to the receiver, encrypted, in `WATCH_DIR/keys/`.
 
 **What the receiver keeps, and how long.** A profile's phone data (its database, every upload, its summary and ECG

@@ -3,7 +3,8 @@
 The phone app signs every upload with a secret (HMAC-SHA256 of the body, watch/receiver.py); the receiver finds the
 profile whose secret made the signature and folds the upload into that profile's own summary. A profile's owners and
 editors make its secret on the Sources page (Phone and watch), and make a new one ("rotate") when a phone is lost or
-replaced; the secret is shown once, when it's made.
+replaced; the secret is shown once, when it's made. A secret goes, for good, when the person who made it can no longer
+change the profile (end_lost, #929, as their share links and calendar feeds do, #590): their phone stops uploading.
 
 Where things are kept:
   the settings table, key "_watch.receiver" (profile scope, sealed with crypto.enc like any private setting, so it
@@ -208,6 +209,35 @@ def last_upload(row, legacy):
         return int(os.path.getmtime(path)) if path else None
     except OSError:
         return None
+
+
+def maker(db, pid):
+    """The account that made the profile's secret (its id), or None."""
+    row = _row(db, pid)
+    return row.get("by") if row else None
+
+
+def end_lost(db):
+    """Take away every profile's secret whose maker is no longer an active owner or editor of it (#929: removed, made
+    a viewer, their account disabled or removed), so the phone they set up with it can't upload: given access again,
+    they'd find it working, as a share link would (accounts.end_lost_access). Inside the caller's transaction; the
+    receiver is told once it commits. Each is in the profile's activity log. Returns the profiles whose secret went."""
+    from . import activity
+    gone = []
+    for r in db.execute("SELECT profile_id FROM settings WHERE key=? AND user_id IS NULL AND profile_id IS NOT NULL",
+                        (KEY,)).fetchall():
+        pid, by = r["profile_id"], maker(db, r["profile_id"])
+        if by is None or db.execute("""SELECT 1 FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.user_id=?
+                                       AND m.profile_id=? AND m.role IN ('owner', 'editor') AND u.disabled=0""", (by, pid)).fetchone():
+            continue
+        name = db.execute("SELECT username FROM users WHERE id=?", (by,)).fetchone()
+        db.execute("DELETE FROM settings WHERE key=? AND profile_id=? AND user_id IS NULL", (KEY, pid))
+        activity.log(db, "watch.secret", None, pid, {"ended": True, "maker": name["username"] if name else None},
+                     actor=activity.ACCESS_ENDED)
+        gone.append(pid)
+    if gone:
+        dbm.after_commit(db, lambda: publish(db))
+    return gone
 
 
 def rotate(db, pid, by):
