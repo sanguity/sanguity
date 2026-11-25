@@ -142,7 +142,9 @@ def check(db, pid, e, keep_med=None, jid=None):
             raise JournalError("Give a mood, an energy level, or both.")
         if title or med or e.get("severity") is not None or e.get("photos"):
             raise JournalError("A mood entry has a mood, an energy level and a note, nothing else.")
-        if any(x["kind"] == "mood" and x["t"] == t and x["id"] != jid for x in listing(db, pid)):
+        day = [x for x in listing(db, pid) if x["kind"] == "mood" and x["t"] == t]
+        # a mood changed on its own day is fine, even beside a second one two saves at once left before #925
+        if any(x["id"] != jid for x in day) and not any(x["id"] == jid for x in day):
             raise JournalError("There's a mood entry for that day already: change that one instead.")
         return {"kind": kind, "t": t, "mood": mood, "energy": energy, "note": note}
     if e.get("mood") is not None or e.get("energy") is not None:

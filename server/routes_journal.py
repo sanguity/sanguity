@@ -64,8 +64,8 @@ def list_journal(pid: int, s=Depends(user), db=Depends(get_db)):
 @router.post("/api/profiles/{pid}/journal", status_code=201)
 def add_entry(pid: int, body: Entry, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "editor")
-    entry = _checked(db, pid, body)
-    with dbm.transaction(db):
+    with dbm.transaction(db):   # checked inside (#925): two moods for one day sent at once, the second is refused
+        entry = _checked(db, pid, body)
         jid = journal.add(db, pid, s, entry)
         activity.log(db, "journal", s, pid, journal.log_detail("add", entry), _client_ip(request))
     records.stamp(response, db, pid)
@@ -127,11 +127,11 @@ def photo(pid: int, photo_id: int, s=Depends(user), db=Depends(get_db)):
 @router.put("/api/profiles/{pid}/journal/{jid}")
 def change_entry(pid: int, jid: int, body: Entry, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "editor")
-    was = journal.get(db, pid, jid)
-    if was is None:
-        raise HTTPException(404, "No such journal entry.")
-    entry = _checked(db, pid, body, was.get("med"), jid)
-    with dbm.transaction(db):
+    with dbm.transaction(db):   # checked inside, as an entry added is (#925)
+        was = journal.get(db, pid, jid)
+        if was is None:
+            raise HTTPException(404, "No such journal entry.")
+        entry = _checked(db, pid, body, was.get("med"), jid)
         if journal.change(db, pid, jid, s, entry) is None:
             raise HTTPException(404, "No such journal entry.")
         activity.log(db, "journal", s, pid, journal.log_detail("change", entry), _client_ip(request))
