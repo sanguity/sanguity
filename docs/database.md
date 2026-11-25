@@ -744,7 +744,8 @@ second). That folder may hold a profile deleted before the restore, or since, so
 is renamed `.deleting-…` before it's deleted, so a stop halfway leaves nothing that looks newer; what's left goes at
 the next sweep. Only names a restore gives are touched, never a link. Each deletion is an account event
 (`backup.replaced`, by "time limit" or the admin). A backup never includes it: it takes only the database, `profiles/`
-and `build/`.
+and `build/`. So is the phone and watch data a restore leaves in `DATA_DIR/watch-restored-<time>/` when it can't write
+the receiver's `keys/` folder, for the operator to move in by hand (#603): listed beside them, deleted as long after.
 
 ```mermaid
 erDiagram

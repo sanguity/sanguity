@@ -652,6 +652,15 @@ class Backups(unittest.TestCase):
             self.assertFalse(m["watch_restored"]["staged"])
             self.assertTrue(os.path.isfile(os.path.join(m["watch_restored"]["folder"], "watch.db")))
             self.assertTrue(m["watch_restored"]["folder"].startswith(os.path.join(new_data, "watch-restored-")))
+            # listed beside what the restore replaced, deleted as long after (#603; test_9c has the rest)
+            left = os.path.basename(m["watch_restored"]["folder"])
+            listed = {r["name"]: r for r in backup.replaced()}
+            self.assertEqual((listed[left]["kind"], listed[os.path.basename(aside)]["kind"]), ("watch", "data"))
+            self.assertAlmostEqual(listed[left]["deletes"] - listed[left]["made"], backup.RESTORE_KEEP, delta=1)
+            with mock.patch.object(config, "WATCH_KEYS", os.path.join(TMP, "no-keys-here", "receiver-secrets.json")):
+                again, _ = backup._stage_watch(path, backup.verify(path), left[len("watch-restored-"):])
+            self.assertEqual(os.path.basename(again), left + "-1", "a second restore in the same second: its own")
+            shutil.rmtree(again)
             time.sleep(1.05)
             m, aside = backup.restore(path)   # staged again, as the operator would
             self.assertTrue(m["watch_restored"]["staged"])
@@ -1040,6 +1049,51 @@ class Backups(unittest.TestCase):
             self.assertTrue(os.path.exists(d), d)
         os.remove(link)
         shutil.rmtree(notes)
+
+    def test_9c_the_phone_data_a_restore_left_to_move_in(self):
+        """The owner's decision (#603): the phone and watch data a restore leaves in DATA_DIR/watch-restored-<time>/,
+        where the receiver's keys folder can't be written, is listed on Admin → Backups beside what restores replaced,
+        deleted RESTORE_KEEP after the restore at start and hourly, logged, or by an admin's Delete now. Never in a backup."""
+        keep = backup.RESTORE_KEEP / 86400
+        stamp = lambda d: time.strftime("%Y%m%d-%H%M%S", time.localtime(time.time() - d * 86400))
+        old, recent = (self.aside(d, "watch-restored-" + stamp(d)) for d in (keep + 1, 2))
+        halfway = self.aside(0, backup.DELETING + "watch-restored-" + "20200101-000000")
+        others = self.aside(keep * 3, "watch-restored-notes")   # not a name restore() gives: left alone
+        st = self.status()
+        rows = [(r["name"], r["kind"]) for r in st["replaced"]]
+        self.assertEqual(rows, [(os.path.basename(old), "watch"), (os.path.basename(recent), "watch")], st["replaced"])
+        row = st["replaced"][1]
+        self.assertAlmostEqual(row["deletes"] - row["made"], backup.RESTORE_KEEP, delta=1)
+        name = self.backup_now()["file"]
+        self.assertFalse([n for n in backup.verify(os.path.join(FOLDER, name))["files"] if "watch-restored" in n])
+        # the sweep: the old one goes, logged; the recent one and what isn't restore()'s stay
+        backup_jobs.stop()
+        try:
+            db = dbm.connect()
+            try:
+                self.assertEqual(backup_jobs.sweep_replaced(db, force=True), [os.path.basename(old)])
+            finally:
+                db.close()
+        finally:
+            backup_jobs.start()
+        self.assertFalse(os.path.exists(old) or os.path.exists(halfway))
+        self.assertTrue(os.path.isdir(recent) and os.path.isdir(others))
+        logged = [e for e in self.actions("backup.replaced") if e["detail"]["name"] == os.path.basename(old)]
+        self.assertEqual([(e["actor"], e["detail"]["days"]) for e in logged], [("time limit", 30)])
+        # Delete now, as for what a restore replaced
+        path = f"/api/backups/replaced/{os.path.basename(recent)}"
+        self.assertEqual(self.robin.delete(path, headers=H).status_code, 403)
+        r = self.ada.delete(path, headers=H)
+        if r.status_code == 403 and r.json().get("detail") == "reauth_required":
+            self.assertEqual(self.ada.post("/api/me/reauth", json={"secret": PW["ada"]}, headers=H).status_code, 200)
+            r = self.ada.delete(path, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["replaced"], [])
+        self.assertFalse(os.path.exists(recent))
+        self.assertEqual(self.ada.delete(f"/api/backups/replaced/{os.path.basename(others)}", headers=H).status_code, 404)
+        self.assertTrue(os.path.isdir(others))
+        shutil.rmtree(others)
+        os.remove(os.path.join(FOLDER, name))
 
 
 def tiny_png():

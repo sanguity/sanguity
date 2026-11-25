@@ -33,7 +33,10 @@ may hold a profile deleted before the restore, or since, so it is deleted RESTOR
 (#595): at start and hourly while the app runs (backup_jobs.sweep_replaced), or by an admin's Delete now on Admin ->
 Backups (replaced(), delete_replaced()). No backup takes it: a backup holds only the database, profiles/ and build/.
 The receiver's data goes to the receiver's keys/restore/ folder, the one of its folders the app may write; the
-receiver moves it in when it next starts, and what it had to before-restore-<time>/ in its own folder.
+receiver moves it in when it next starts, and what it had to before-restore-<time>/ in its own folder. Where that
+folder can't be written, it goes to DATA_DIR/watch-restored-<time>/ for the operator to move in by hand, listed and
+deleted as a before-restore folder is, RESTORE_KEEP_DAYS after the restore (#603: it may hold a profile deleted since,
+and the backup still has it).
 """
 import contextlib, datetime, glob, hashlib, io, json, logging, os, re, shutil, sqlite3, tarfile, tempfile, time
 
@@ -68,7 +71,9 @@ def _days(name, default):
 
 RESTORE_KEEP = _days("RESTORE_KEEP_DAYS", 30)   # what a restore replaced is deleted this long after (#595)
 KEEP_DAYS = int(RESTORE_KEEP / 86400) if RESTORE_KEEP % 86400 == 0 else round(RESTORE_KEEP / 86400, 2)   # in words
-REPLACED = re.compile(r"before-restore-(\d{8}-\d{6})(?:-1)*")   # as restore() names them, and the receiver its own
+REPLACED = re.compile(r"(?:before-restore|watch-restored)-(\d{8}-\d{6})(?:-1)*")   # as restore() names them (#603: the
+# receiver's data it couldn't hand over too), and the receiver its own before-restore folders
+WATCH_LEFT = "watch-restored-"   # a restore's phone and watch data, left in DATA_DIR to be moved in by hand (#603)
 
 
 class BackupError(Exception):
@@ -652,7 +657,8 @@ def _extract(tar, m, target):
 def _stage_watch(archive, manifest, stamp):
     """The receiver's data from a backup (#227), where the receiver takes it from when it starts: its keys folder's
     restore/ (written as restore.part/ first, renamed by restore() once the rest is restored), or, when that folder
-    can't be written here, DATA_DIR/watch-restored-<time>/ for the operator to move in by hand. An earlier restore's
+    can't be written here, DATA_DIR/watch-restored-<time>/ for the operator to move in by hand (listed with what restores
+    replaced, and deleted as they are, #603). An earlier restore's
     that the receiver hasn't taken yet goes (this one replaces it). Returns (folder, staged) or (None, False)."""
     keys = os.path.dirname(config.WATCH_KEYS)
     stage = os.path.join(keys, WATCH_STAGE)
@@ -662,7 +668,9 @@ def _stage_watch(archive, manifest, stamp):
     if not any(n.startswith(WATCH + "/") for n in manifest.get("files") or {}):
         return None, False
     staged = os.path.isdir(keys) and os.access(keys, os.W_OK)
-    where = stage + ".part" if staged else os.path.join(config.DATA_DIR, f"watch-restored-{stamp}")
+    where = stage + ".part" if staged else os.path.join(config.DATA_DIR, f"{WATCH_LEFT}{stamp}")
+    while not staged and os.path.lexists(where):   # a second restore in the same second (REPLACED's -1)
+        where += "-1"
     os.makedirs(where)
     with tarfile.open(archive, "r:gz") as tar:
         for m in tar:
@@ -708,11 +716,11 @@ def restore(archive):
     return manifest, aside
 
 
-# ---------------------------------------------------------------- what a restore replaced (#595)
+# ---------------------------------------------------------------- what a restore replaced (#595) or left (#603)
 
 def _replaced_dir(name):
-    """The path of a before-restore-<time>/ folder in DATA_DIR by its name, or None: only names restore() gives, only
-    a folder of its own (never a link), only directly in DATA_DIR."""
+    """The path of a before-restore-<time>/ or watch-restored-<time>/ folder in DATA_DIR by its name, or None: only
+    names restore() gives, only a folder of its own (never a link), only directly in DATA_DIR."""
     if not isinstance(name, str) or not REPLACED.fullmatch(name):
         return None
     path = os.path.join(config.DATA_DIR, name)
@@ -720,7 +728,7 @@ def _replaced_dir(name):
 
 
 def made_replaced(name, path):
-    """When a before-restore-<time>/ folder was made (epoch seconds): its name's time, or its last change if that's
+    """When a restore made one of those folders (epoch seconds): its name's time, or its last change if that's
     later (the later of the two, so it's never deleted early); None if neither can be read."""
     try:
         return max(datetime.datetime.strptime(REPLACED.fullmatch(name).group(1), "%Y%m%d-%H%M%S").timestamp(),
@@ -730,7 +738,8 @@ def made_replaced(name, path):
 
 
 def replaced():
-    """What restores replaced, kept in DATA_DIR, oldest first: [{"name", "made", "deletes"}] (epoch seconds)."""
+    """What restores replaced, and the phone and watch data they left to be moved in by hand (#603), kept in DATA_DIR,
+    oldest first: [{"name", "kind" ("data" or "watch"), "made", "deletes"}] (epoch seconds)."""
     try:
         names = sorted(os.listdir(config.DATA_DIR))
     except OSError:
@@ -740,11 +749,12 @@ def replaced():
         path = _replaced_dir(n)
         made = made_replaced(n, path) if path else None
         if made is not None:
-            out.append({"name": n, "made": int(made), "deletes": int(made + RESTORE_KEEP)})
+            out.append({"name": n, "kind": "watch" if n.startswith(WATCH_LEFT) else "data", "made": int(made),
+                        "deletes": int(made + RESTORE_KEEP)})
     return sorted(out, key=lambda r: (r["made"], r["name"]))
 
 
-DELETING = ".deleting-"   # a before-restore-<time>/ folder being deleted: renamed first, so a stop halfway can't leave
+DELETING = ".deleting-"   # one of those folders being deleted: renamed first, so a stop halfway can't leave
                           # part of it looking newly changed (kept longer); what's left is deleted at the next sweep
 
 
@@ -756,7 +766,7 @@ def _remove(path):
 
 
 def delete_replaced(name):
-    """Delete one before-restore-<time>/ folder by its name. Returns whether there was one to delete."""
+    """Delete one of those folders by its name. Returns whether there was one to delete."""
     path = _replaced_dir(name)
     if not path:
         return False
@@ -765,11 +775,11 @@ def delete_replaced(name):
 
 
 def sweep_replaced(now=None):
-    """Delete each before-restore-<time>/ folder RESTORE_KEEP after it was made, and what a deletion stopped halfway
-    left. Returns the names deleted; one that can't be is left for the next sweep."""
+    """Delete each of those folders RESTORE_KEEP after it was made, and what a deletion stopped halfway left. Returns
+    the names deleted; one that can't be is left for the next sweep."""
     now = time.time() if now is None else now
-    for p in glob.glob(os.path.join(config.DATA_DIR, DELETING + "before-restore-*")):
-        if os.path.isdir(p) and not os.path.islink(p):
+    for p in glob.glob(os.path.join(config.DATA_DIR, DELETING + "*")):
+        if REPLACED.fullmatch(os.path.basename(p)[len(DELETING):]) and os.path.isdir(p) and not os.path.islink(p):
             shutil.rmtree(p, ignore_errors=True)
     gone = []
     for r in replaced():

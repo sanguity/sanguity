@@ -16262,6 +16262,21 @@ def main():
                     check(f"…Backups fits {width} px in the {theme} theme", fits == [], fits)
                 page.set_viewport_size({"width": 1400, "height": 900})
             js(f"localStorage.setItem('ht-theme', {json.dumps(theme_was_200)}); applyTheme()" if theme_was_200 else "localStorage.removeItem('ht-theme'); applyTheme()")
+            # (#603) the phone and watch data a restore left to be moved in by hand: listed beside it, as long, said as such
+            rs603 = time.strftime("watch-restored-%Y%m%d-%H%M%S", time.localtime(time.time() - 86400))
+            os.makedirs(os.path.join(TMP, rs603, "profiles"))
+            os.utime(os.path.join(TMP, rs603), (time.time() - 86400,) * 2)
+            js("call('backups').then(drawBackups)")
+            page.wait_for_function("document.querySelectorAll('#bkReplaced tbody tr').length === 2", timeout=10000)
+            row603 = js(f"""(r => r && [r.cells[0].textContent, r.cells[1].textContent, r.querySelector('button').getAttribute('aria-label')])(
+                document.querySelector('#bkReplaced tr[data-replaced="{rs603}"]'))""")
+            check("…the phone and watch data a restore left to move in by hand is listed beside it (#603), said as such, deleted 30 "
+                  "days on, with its own Delete now",
+                  bool(row603) and row603[0].startswith("The restore of ") and "its phone and watch data to move in by hand" in row603[0]
+                  and row603[0].endswith(rs603) and js(f"fmtDT({(time.time() + 29 * 86400) // 60 * 60 * 1000})")[:6] in row603[1]
+                  and row603[2].startswith("Delete now the phone and watch data the restore of ")
+                  and "watch-restored-<time>/" in js("document.getElementById('bkReplaced').textContent"), row603)
+            shutil.rmtree(os.path.join(TMP, rs603))
             os.replace(os.path.join(bk_dir, stale_name), os.path.join(bk_dir, made[0]))   # up to date again for the checks below
             shutil.rmtree(os.path.join(TMP, rs595[1]))   # (#595) as before, for the checks below
             _config.WATCH_STORE = ""   # (#227) as before, for the checks below

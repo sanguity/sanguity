@@ -84,7 +84,7 @@ const WHAT = {
   "backup.check": d => `checked the backup ${d.name}: ${d.ok ? "good" : "not good"}`,
   "backup.fail": d => `couldn't make a backup (${d.error})`,
   "backup.schedule": d => d.schedule === "off" ? "turned off scheduled backups" : `scheduled backups ${d.schedule}, keeping the newest ${d.keep}`,
-  "backup.replaced": d => `deleted what a restore replaced, ${d.name}` + (d.days != null ? `, ${d.days} day${d.days === 1 ? "" : "s"} after the restore` : ""),
+  "backup.replaced": d => `deleted ${/^watch-restored-/.test(d.name) ? "the phone and watch data a restore left to move in" : "what a restore replaced"}, ${d.name}` + (d.days != null ? `, ${d.days} day${d.days === 1 ? "" : "s"} after the restore` : ""),   // (#603)
 };
 const FILTERS = [["", "Everything"], ["view", "Opened the records"], ["document", "Opened documents"],
   ["share", "Sharing"], ["unshare", "Removed access"], ["rename", "Renames"], ["import", "Imports"], ["reload", "Reloads"],

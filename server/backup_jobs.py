@@ -21,7 +21,8 @@ At start-up (recover): rows left queued or running never finished. A backup whos
 (a stop just after writing it, or a database restored from that very backup, which holds its own row as running);
 the others failed. What they left in the backups folder goes (backup.clean_leftovers).
 
-What a restore replaced (DATA_DIR/before-restore-<time>/, #595) is deleted RESTORE_KEEP_DAYS (30) after the restore:
+What a restore replaced (DATA_DIR/before-restore-<time>/, #595), and the phone and watch data it left to move in by
+hand (watch-restored-<time>/, #603), is deleted RESTORE_KEEP_DAYS (30) after the restore:
 at start-up, and hourly from the thread (sweep_replaced), each one logged as deleted by "time limit"; or by an admin's
 Delete now (routes_backups.py). The Admin page lists them, with when each goes.
 

@@ -3195,6 +3195,12 @@ Everything on `main` so far; it becomes the first tagged release.
   readable by other users on the host. The row counts are now sealed with the data key (a check reads them, and a
   backup's from before as they are); the setting goes once its deletion is done; and the app makes what it keeps with
   umask 077 (database 0600, folders 0700), an older install's made so at its first start.
+- **The phone and watch data a restore leaves to be moved in by hand is listed, and deleted 30 days on** (#603, the
+  owner's decision): where the receiver's keys folder can't be written, a restore leaves the backup's phone and watch
+  data in `DATA_DIR/watch-restored-<time>/`, which nothing deleted or listed, though it can hold a profile deleted
+  since. **Admin → Backups** now lists it beside what restores replaced, said as the phone and watch data to move in,
+  deletes it 30 days after the restore (`RESTORE_KEEP_DAYS`) at start and hourly, logged, and has a **Delete now**;
+  the restore says so. A second such restore in the same second leaves its own folder rather than failing.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
