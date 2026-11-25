@@ -230,7 +230,8 @@ with a result added, another source's results under a key scoped to their day). 
 events is titled for their rows and lists their orders (#889, `common.lab_day_counted`), as the importers make one.
 A point its source sends again saying something else of its range or flag (#869: the same series key, time and value,
 its row and its point's row here one record of one source, #885: each row's own key in its labitem's `keys` the same,
-else the labitem's key the same and one record's, a report's; never a `:h:` hash, which a copy typed or in a
+wherever its labitem is (#879: an Observation that came in a report, uploaded on its own, is that record), else the
+labitem's key the same and one record's, a report's; never a `:h:` hash, which a copy typed or in a
 spreadsheet has too, nor a key scoped to a day, `<NAME>:labitem:<YYYY-MM-DD>`, which another source's results of that
 day have too) is that result, updated in place with its row, never a copy: so give a labitem the key of the report it
 comes in, and where it holds a day's results on their own, each row's own record's key in `keys`, as the FHIR

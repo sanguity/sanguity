@@ -2235,6 +2235,10 @@ Everything on `main` so far; it becomes the first tagged release.
 - **A text result ticked to add again comes with its row** (#901): a urine colour ticked under "Already here" in a
   file uploaded again was saved with no row and no lab day. Now it's added with its own row, in a lab day holding only
   it, as a number ticked is (#887).
+- **A FHIR result is the same record whichever file it comes in** (#879): an Observation uploaded on its own after
+  coming inside a report (or the other way round) was taken for another source's result: kept as a second copy with
+  a lab day of its own beside the report's, or, with its range corrected, added as a second result. Now it's found by
+  its own id: the same again adds nothing, and corrected it's updated in place, its row with it, with an Undo.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
