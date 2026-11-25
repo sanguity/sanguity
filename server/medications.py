@@ -8,7 +8,11 @@ groups both by medication and lays each one out as what the records say, in orde
 
   {"name": what it's shown as (the newest listing's title),
    "key": the grouping key (the drug's leading words, before any strength: "tacrolimus" for "Tacrolimus 1 mg
-          capsule" and "TACROLIMUS 0.5MG CAP"),
+          capsule" and "TACROLIMUS 0.5MG CAP"), of each record's title as imported: a medication renamed in the app
+          (edits.py) is shown by its new name and keeps its key, so its reminders, doses and fills, which name it by
+          its key, stay with it (#921),
+   "aka": [the keys of the names it's shown by, where a rename gave it another (no other medication's)], only then:
+          what a name typed or picked as shown (a side effect's medication, a phone's dose) finds it by,
    "rxnorm": [the RxNorm codes its listings carry],
    "spans": [{"from": YYYY-MM-DD, "to": YYYY-MM-DD | null, "open": the records give no end, "stopped": a listing
               says it was stopped (a status like Stopped, Completed or Discontinued, or an end date),
@@ -74,9 +78,10 @@ def _supply(d, e):
     return int(m.group(1)) if m else None
 
 
-def history(data):
-    """The profile's medications as spans, changes and fills (see above), sorted by name. data: the assembled records."""
-    details, groups = data.get("details") or {}, {}
+def history(data, imported=None):
+    """The profile's medications as spans, changes and fills (see above), sorted by name. data: the assembled records;
+    imported: {event id: its title as imported, before any correction} (records._assemble), whose key groups it."""
+    details, groups, imported = data.get("details") or {}, {}, imported or {}
     for e in data.get("events") or []:
         if not isinstance(e, dict) or e.get("k") not in MED_KINDS or e.get("hidden"):
             continue
@@ -85,7 +90,7 @@ def history(data):
             continue
         d = details.get(str(e.get("id")))
         d = d if isinstance(d, dict) else {}
-        g = groups.setdefault(med_key(title), {"listings": [], "fills": []})
+        g = groups.setdefault(med_key(_text(imported.get(e.get("id"))) or title), {"listings": [], "fills": []})
         if e["k"] == "rx":
             g["fills"].append({"t": day, "id": e.get("id"), "title": title,
                                "pharmacy": _text(d.get("provider") or d.get("pharmacy")) or None, "supply": _supply(d, e)})
@@ -95,6 +100,11 @@ def history(data):
                               "prescriber": _text(d.get("prescriber")) or None, "source": _text(d.get("src")) or None,
                               "rxnorm": _text(d.get("rxnorm")) or None})
     out = [_lay_out(key, g) for key, g in groups.items()]
+    for m in out:   # (#921) the keys of the names a rename gave it, none another medication's own
+        g = groups[m["key"]]
+        aka = sorted({med_key(x["title"]) for x in g["listings"] + g["fills"]} - set(groups))
+        if aka:
+            m["aka"] = aka
     return sorted(out, key=lambda m: (m["name"].lower(), m["key"]))
 
 

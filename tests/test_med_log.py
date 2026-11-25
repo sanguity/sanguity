@@ -181,6 +181,33 @@ class Log(unittest.TestCase):
         self.assertEqual([(d["status"], d["note"]) for d in exported["doses"]], [("taken", NOTE)])
         self.assertIn('"doses": 1 logged', z.read("README.txt").decode())
 
+    def test_a_dose_follows_its_medication_through_a_rename(self):   # #921
+        """Fictionamide renamed to its brand name in the drawer: the medication took the new name's key, its dose stayed
+        under "fictionamide", by no medication, and no dose could be logged under its old key. Now it keeps its key, its
+        doses with it, and a dose is logged for it as before; one logged under the new name's key (a page from before
+        the rename's reload) is still its. Undone, as before."""
+        did = self.log(note=NOTE)["id"]
+        listing = next(e["id"] for e in self.data()["events"] if e["k"] == "med")
+        r = self.c["robin"].post(f"/api/profiles/{self.pid}/edits", json={"event": listing, "action": "rename", "title": "Brandamide 10 mg tablet"}, headers=H)
+        self.assertEqual(r.status_code, 201, r.text)
+        edit = r.json()["id"]
+        try:
+            data = self.data()
+            (m,) = data["medications"]
+            self.assertEqual((m["key"], m["name"], m.get("aka")), ("fictionamide", "Brandamide 10 mg tablet", ["brandamide"]))
+            self.assertEqual([d["med"] for d in data["doses"] if d["id"] == did], ["fictionamide"], "the dose stays its")
+            self.log(t=D(-1) + "T20:00")   # under its key, as before
+            self.log(med="brandamide", t=D(-2) + "T08:00")   # under its new name's
+            db = dbm.connect()
+            try:
+                self.assertEqual(med_log.medications(db, self.pid), {"fictionamide": "Brandamide 10 mg tablet", "brandamide": "Brandamide 10 mg tablet"})
+            finally:
+                db.close()
+        finally:
+            self.assertEqual(self.c["robin"].delete(f"/api/profiles/{self.pid}/edits/{edit}", headers=H).status_code, 200)
+        (m,) = self.data()["medications"]
+        self.assertEqual((m["key"], m["name"], m.get("aka")), ("fictionamide", "Fictionamide 10 mg tablet", None), "undone: as before")
+
     def test_counts_say_what_was_logged(self):
         c = med_log.counts([{"status": s} for s in ["taken"] * 11 + ["late", "skipped", "skipped"]])
         self.assertEqual(med_log.said(c), "12 of 14 logged doses taken (1 late), 2 skipped")
