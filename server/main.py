@@ -445,6 +445,7 @@ def login(body: Login, request: Request, response: Response, db=Depends(get_db))
     if u["totp_secret"] or keys_n:   # the password was right; now the code or a passkey
         return {"two_factor": True, "ticket": _tickets.issue(u["id"]),
                 "methods": {"code": bool(u["totp_secret"]), "passkey": keys_n > 0,
+                            **({"codes_stopped": True} if accounts.codes_stopped(u) else {}),   # (#928: a recovery code still works)
                             "sites": passkeys.sites(db, u["id"])}}   # where they were made, for a page at 127.0.0.1 (#535)
     _remember_device(request, response, db, u["id"])
     _start_session(request, response, db, u["id"], "password")
@@ -501,11 +502,18 @@ def login_code(body: LoginCode, request: Request, response: Response, db=Depends
     if not u or not u["totp_secret"]:
         raise HTTPException(401, "That took too long. Enter your password again.")
     keys = ("pair:2fa|" + str(uid) + "|" + _client_ip(request), "user:2fa|" + str(uid))
+    code = twofactor.looks_like_code(body.code)
+    if code and accounts.codes_stopped(u):   # (#928: before the throttle, whose wait wouldn't help)
+        _audit("login.fail", request, u, step="code", reason="codes stopped")
+        raise HTTPException(401, accounts.CODES_STOPPED)
     if (w := sec.throttle.wait(*keys)):
         _audit("login.throttled", request, u, step="code")
         raise HTTPException(429, f"Too many wrong codes. Try again in {w} seconds.", headers={"Retry-After": str(w)})
     out = {"must_change_pw": bool(u["must_change_pw"])}
-    if twofactor.looks_like_code(body.code):
+    if code:
+        n = accounts.code_try(db, uid)   # counted before it's checked (#928)
+        if n is None:
+            raise HTTPException(401, accounts.CODES_STOPPED)
         secret = crypto.dec(u["totp_secret"])
         step = twofactor.verify(secret, body.code, u["totp_last_step"])
         if step is None:
@@ -513,8 +521,11 @@ def login_code(body: LoginCode, request: Request, response: Response, db=Depends
             _tickets.failed(body.ticket)
             _audit("login.fail", request, u, step="code",
                    reason="code already used" if twofactor.verify(secret, body.code) is not None else "wrong code")
+            if n >= twofactor.STOP_AFTER:
+                _codes_stopped_now(request, db, u)
+                raise HTTPException(401, "That code isn't right either. " + accounts.CODES_STOPPED)
             raise HTTPException(401, "That code isn't right. Check your authenticator app's time, or use a recovery code.")
-        db.execute("UPDATE users SET totp_last_step=? WHERE id=?", (step, uid))
+        accounts.code_right(db, uid, step)
     else:
         rows = db.execute("SELECT code_hash FROM recovery_codes WHERE user_id=? AND used_at IS NULL", (uid,)).fetchall()
         match = next((r[0] for r in rows if twofactor.recovery_matches(r[0], body.code)), None)
@@ -525,6 +536,7 @@ def login_code(body: LoginCode, request: Request, response: Response, db=Depends
             _tickets.failed(body.ticket)
             _audit("login.fail", request, u, step="recovery code")
             raise HTTPException(401, "That recovery code isn't right, or it was used already.")
+        accounts.code_right(db, uid)   # the authenticator's codes work again (#928)
         accounts.sign_out_everywhere(db, uid)   # a recovery code may mean a lost phone: end every other sign-in
         out["recovery_codes_left"] = left = db.execute(
             "SELECT COUNT(*) FROM recovery_codes WHERE user_id=? AND used_at IS NULL", (uid,)).fetchone()[0]
@@ -532,8 +544,33 @@ def login_code(body: LoginCode, request: Request, response: Response, db=Depends
     _tickets.used(body.ticket)
     sec.throttle.clear(keys[0])
     _remember_device(request, response, db, uid)
-    _start_session(request, response, db, uid, "password + " + ("code" if twofactor.looks_like_code(body.code) else "recovery code"))
+    _start_session(request, response, db, uid, "password + " + ("code" if code else "recovery code"))
     return out
+
+
+def _codes_stopped_now(request, db, u):
+    """The wrong code that made twofactor.STOP_AFTER (#928): in the security log and the install's activity log, where
+    admins see it, as their notice does (alerts.codes_stopped) and the person's sign-in and Account page."""
+    _audit("2fa.stopped", request, u, wrong=twofactor.STOP_AFTER)
+    activity.log(db, "2fa.stopped", u, detail={"wrong": twofactor.STOP_AFTER}, ip=_client_ip(request))
+
+
+def _code_checked(request, db, s, code, action):
+    """A code from the authenticator app of signed-in account s, for the fresh check or new recovery codes (#928):
+    counted, and refused once its codes have stopped. Returns its step, or None for a wrong one."""
+    if accounts.codes_stopped(s):
+        raise HTTPException(409 if action == "new recovery codes" else 403,
+               f"Codes from your authenticator app are stopped for this account: {twofactor.STOP_AFTER} wrong codes "
+               "were entered since its last right one. " + ("Use your password or a passkey instead." if action == "fresh check"
+               else "Sign in once with a recovery code to use them again, or ask an admin to reset your two-factor sign-in."))
+    n = accounts.code_try(db, s["id"])
+    step = twofactor.verify(crypto.dec(s["totp_secret"]), code, s["totp_last_step"]) if n is not None else None
+    if step is None:
+        if n is not None and n >= twofactor.STOP_AFTER:
+            _codes_stopped_now(request, db, s)
+        return None
+    accounts.code_right(db, s["id"], step)
+    return step
 
 
 class PasskeyStart(BaseModel):
@@ -715,14 +752,12 @@ def reauth(body: FreshCheck, request: Request, s=Depends(user), db=Depends(get_d
     """The fresh check before a powerful admin action (see fresh): the password, or a code from the app."""
     if s["totp_secret"] and twofactor.looks_like_code(body.secret):   # no password is 6 digits (8 at least)
         keys = ("pair:2fa|" + str(s["id"]) + "|" + _client_ip(request), "user:2fa|" + str(s["id"]))
-        if (w := sec.throttle.wait(*keys)):
+        if (w := sec.throttle.wait(*keys)) and not accounts.codes_stopped(s):
             raise HTTPException(429, f"Too many wrong codes. Try again in {w} seconds.", headers={"Retry-After": str(w)})
-        step = twofactor.verify(crypto.dec(s["totp_secret"]), body.secret, s["totp_last_step"])
-        if step is None:
+        if _code_checked(request, db, s, body.secret, "fresh check") is None:
             sec.throttle.fail(*keys)
             _audit("reauth.fail", request, s, action="fresh check", step="code")
             raise HTTPException(403, "That code isn't right, or it was used already. Wait for the next one.")
-        db.execute("UPDATE users SET totp_last_step=? WHERE id=?", (step, s["id"]))
     else:
         keys = ("pair:pw|" + s["username"].lower() + "|" + _client_ip(request),)
         if (w := sec.throttle.wait(*keys)):
@@ -793,7 +828,8 @@ def _password(request, s, password, action):
 def two_factor_state(s=Depends(settled), db=Depends(get_db)):
     left = db.execute("SELECT COUNT(*) FROM recovery_codes WHERE user_id=? AND used_at IS NULL", (s["id"],)).fetchone()[0]
     return {"on": bool(s["totp_secret"]), "recovery_codes_left": left if s["totp_secret"] else 0,
-            "required": accounts.two_factor_required(db), "passkeys": passkeys.count(db, s["id"])}
+            "required": accounts.two_factor_required(db), "passkeys": passkeys.count(db, s["id"]),
+            "codes_stopped": accounts.codes_stopped(s)}   # (#928)
 
 
 @app.post("/api/me/2fa/start")
@@ -823,7 +859,7 @@ def two_factor_confirm(body: TwoFactorConfirm, request: Request, s=Depends(settl
         sec.throttle.fail(*keys)
         raise HTTPException(400, "That code doesn't match. Scan the QR code again, and check the time on your phone.")
     with dbm.transaction(db):
-        db.execute("UPDATE users SET totp_secret=totp_pending, totp_pending=NULL, totp_last_step=? WHERE id=?", (step, s["id"]))
+        db.execute("UPDATE users SET totp_secret=totp_pending, totp_pending=NULL, totp_last_step=?, totp_fails=0 WHERE id=?", (step, s["id"]))
         codes = accounts.new_recovery_codes(db, s["id"])
         activity.log(db, "2fa.on", s, ip=_client_ip(request))
     return {"recovery_codes": codes}
@@ -835,14 +871,12 @@ def two_factor_new_codes(body: TwoFactorCode, request: Request, s=Depends(settle
     if not s["totp_secret"]:
         raise HTTPException(409, "Two-factor sign-in is off.")
     keys = ("pair:2fa|" + str(s["id"]) + "|" + _client_ip(request),)
-    if (w := sec.throttle.wait(*keys)):
+    if (w := sec.throttle.wait(*keys)) and not accounts.codes_stopped(s):
         raise HTTPException(429, f"Too many wrong codes. Try again in {w} seconds.")
-    step = twofactor.verify(crypto.dec(s["totp_secret"]), body.code, s["totp_last_step"])
-    if step is None:
+    if _code_checked(request, db, s, body.code, "new recovery codes") is None:   # counted (#928)
         sec.throttle.fail(*keys)
         raise HTTPException(400, "That code isn't right.")
     with dbm.transaction(db):
-        db.execute("UPDATE users SET totp_last_step=? WHERE id=?", (step, s["id"]))
         codes = accounts.new_recovery_codes(db, s["id"])
         activity.log(db, "2fa.codes", s, ip=_client_ip(request))
     return {"recovery_codes": codes}
@@ -1271,8 +1305,9 @@ def users(s=Depends(admin), db=Depends(get_db)):
         """SELECT id, username, is_admin, disabled, must_change_pw, created,
                   totp_secret IS NOT NULL OR EXISTS(SELECT 1 FROM passkeys k WHERE k.user_id = users.id) AS two_factor,
                   totp_secret IS NOT NULL AS authenticator_app, (SELECT COUNT(*) FROM passkeys k WHERE k.user_id = users.id) AS passkeys,
-                  (SELECT COUNT(*) FROM sessions x WHERE x.user_id = users.id AND x.expires > ?) AS sessions
-           FROM users ORDER BY username COLLATE NOCASE""", (dbm.now(),))]
+                  (SELECT COUNT(*) FROM sessions x WHERE x.user_id = users.id AND x.expires > ?) AS sessions,
+                  totp_secret IS NOT NULL AND totp_fails >= ? AS codes_stopped
+           FROM users ORDER BY username COLLATE NOCASE""", (dbm.now(), twofactor.STOP_AFTER))]
 
 
 class UserIn(BaseModel):
@@ -1436,9 +1471,9 @@ def edit_user(uid: int, body: UserPatch, request: Request, s=Depends(admin), db=
 
 @app.get("/api/security/notice")
 def security_notice(s=Depends(admin), db=Depends(get_db)):
-    """A burst of failed sign-ins since the last dismissal, or null (ASVS 8.1.4); and connected sources that stopped
-    syncing, per source (#102)."""
-    return {"notice": alerts.notice(db), "sync": alerts.sync_notice(db)}
+    """A burst of failed sign-ins since the last dismissal, or null (ASVS 8.1.4); accounts whose authenticator codes
+    stopped (#928); and connected sources that stopped syncing, per source (#102)."""
+    return {"notice": alerts.notice(db), "codes_stopped": alerts.codes_stopped(db), "sync": alerts.sync_notice(db)}
 
 
 @app.post("/api/security/notice/dismiss")

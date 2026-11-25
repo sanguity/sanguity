@@ -1,4 +1,5 @@
-"""Notices for admins: bursts of failed sign-ins (ASVS 8.1.4), and connected sources that stopped syncing (#102).
+"""Notices for admins: bursts of failed sign-ins (ASVS 8.1.4), accounts whose authenticator codes stopped working
+after too many wrong ones (#928), and connected sources that stopped syncing (#102).
 
 Every failed sign-in is also written to the log (main._audit); here it is kept for KEEP_DAYS in the database too:
 when, from which address, and which account if the name was a real one (a typed name that matches no account is
@@ -46,6 +47,18 @@ def notice(db):
     if total < TOTAL and peak < PER_SOURCE:
         return None
     return {"since": since, "last": last, "total": total, "addresses": addresses, "accounts": accounts}
+
+
+def codes_stopped(db):
+    """Accounts whose sign-in with an authenticator code has stopped (#928: twofactor.STOP_AFTER wrong codes since the
+    last right one), with when: [{"username", "since"}]. It lasts while it's true: a recovery code or an admin's reset
+    of two-factor sign-in ends it."""
+    from . import twofactor
+    return [dict(r) for r in db.execute(
+        """SELECT u.username, (SELECT MAX(a.at) FROM activity a WHERE a.profile_id IS NULL AND a.action='2fa.stopped'
+                               AND a.actor_id = u.id) AS since
+           FROM users u WHERE u.totp_secret IS NOT NULL AND u.totp_fails >= ? ORDER BY u.username COLLATE NOCASE""",
+        (twofactor.STOP_AFTER,))]
 
 
 def dismiss(db):

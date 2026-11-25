@@ -4,6 +4,10 @@ encoder, #495), as it draws every other QR code.
 
 TOTP here: SHA-1, 6 digits, 30-second steps, accepting the step before and after for clock drift, and never the
 same step twice for an account (so a code seen over someone's shoulder can't be replayed).
+Wrong codes are counted per account since its last right one (#928, users.totp_fails, accounts.code_try): at
+STOP_AFTER (NIST SP 800-63B's limit of consecutive failures) the account's codes stop working, a right one too, until
+a recovery code is used or an admin resets two-factor sign-in; the sign-in throttle (security.Throttle) alone forgets
+after 15 minutes, which let someone who knows the password try about 2,200 codes a day.
 Recovery codes: 10 per account, 8 characters each (about 40 bits), each usable once. Each is stored as
 "h1:" + a random 128-bit salt + HMAC-SHA256(pepper, salt + code) (ASVS 2.6.2: a unique salt per code when it has
 under 112 bits; the pepper, see security.py, means a copied database alone can't be searched for them). Codes made
@@ -14,6 +18,7 @@ import base64, hashlib, hmac, re, secrets, struct, time, urllib.parse
 from . import security as sec
 
 ISSUER, DIGITS, PERIOD, DRIFT = "Sanguity", 6, 30, 1
+STOP_AFTER = 100   # wrong codes in a row, since the last right one, before the account's codes stop (#928)
 RECOVERY_COUNT = 10
 _RECOVERY_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"   # no 0/o, 1/i/l to misread
 

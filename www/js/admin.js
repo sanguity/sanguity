@@ -38,6 +38,7 @@ const AdminNav = sideNav({id: "admNav", page: "Admin", groups: GROUPS, find: "Fi
 async function loadNotice() {
   const all = await call("security/notice"), n = all.notice, box = $("#secNotice");
   syncNotice(all.sync || []);
+  codeNotice(all.codes_stopped || []);
   box.hidden = !n;
   if (!n) return;
   const list = (rows, key) => rows.map(r => `${r[key]} (${r.failures})`).join(", ");
@@ -51,6 +52,18 @@ async function loadNotice() {
     el("button", {class: "btn small", type: "button", text: "Dismiss", onclick: async () => {
       try { await call("security/notice/dismiss", "POST"); box.hidden = true; } catch (e) { sayIn(msg, e.message, true); } }}),
     msg);
+}
+
+/* accounts whose authenticator codes stopped after 100 wrong ones since the last right one (#928): while it lasts */
+function codeNotice(rows) {
+  const box = $("#codeNotice");
+  box.hidden = !rows.length;
+  if (!rows.length) return;
+  box.replaceChildren(el("b", {text: "Sign-in with an authenticator code is stopped for " +
+    rows.map(r => r.username + (r.since ? ` (since ${when(r.since)})` : "")).join(", ") + ". "}),
+    "Too many wrong codes were entered since the last right one, so someone may know the password. If the person " +
+    "didn't make them, reset their password and their two-factor sign-in under Accounts. A recovery code or a passkey " +
+    "still signs them in; a recovery code lets codes work again.");
 }
 
 /* connected sources that stopped syncing, across the install (#102): counts per source, no profiles named */
@@ -71,7 +84,7 @@ function syncNotice(rows) {
    server refuses the rest of this page until then too) */
 function adminGate() {
   $("#adminTf").hidden = false; $("#adminTools").hidden = $("#userDanger").hidden = true; $("#users").hidden = false;
-  $("#secNotice").hidden = $("#syncNotice").hidden = $("#backupNotice").hidden = true;
+  $("#secNotice").hidden = $("#codeNotice").hidden = $("#syncNotice").hidden = $("#backupNotice").hidden = true;
   for (const id of ["#backups", "#admin", "#sec-sync", "#labmaps", "#installLog"]) gateCard($(id));
 }
 function gateCard(card) {
@@ -169,6 +182,7 @@ async function loadUsers(mine = document.activeElement?.closest?.("#userList tr[
         el("td", {class: "who"}, el("b", {text: u.username}), self ? el("span", {class: "muted", text: " (you)"}) : null,
           u.is_admin ? el("span", {class: "tag", text: "admin"}) : null,
           u.two_factor ? el("span", {class: "tag", text: "two-factor"}) : null,
+          u.codes_stopped ? el("span", {class: "tag off", text: "codes stopped"}) : null,   // (#928)
           u.disabled ? el("span", {class: "tag off", text: "disabled"}) : null,
           !u.disabled && u.must_change_pw ? el("span", {class: "muted new-pw", text: "Hasn't chosen a password yet"}) : null),
         el("td", {text: devices(u.sessions)}),

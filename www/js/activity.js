@@ -67,6 +67,7 @@ const WHAT = {
   "2fa.codes": () => "made new recovery codes",
   "2fa.recovery": d => `signed in with a recovery code (${d.left} left)`,
   "2fa.reset": d => `turned off two-factor sign-in for ${d.username}`,
+  "2fa.stopped": d => `authenticator codes stopped after ${d.wrong} wrong ones in a row`,   // (#928)
   "security.notice_dismissed": () => "dismissed the failed sign-ins notice",
   "connect.source": d => `${{add: "set up", edit: "changed", remove: "removed"}[d.change] || "changed"} the connected source “${d.name}”`,
   "passkey.add": d => `added the passkey “${d.name}”`,

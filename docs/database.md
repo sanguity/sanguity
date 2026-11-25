@@ -45,6 +45,7 @@ erDiagram
         text totp_secret "🔒 authenticator app"
         text totp_pending "🔒 being set up"
         int totp_last_step "no code reuse"
+        int totp_fails "wrong codes since the last right one: 100 stops them (#928)"
         text webauthn_handle "passkeys' user handle"
         int created
     }
