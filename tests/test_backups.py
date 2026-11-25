@@ -933,10 +933,10 @@ class Backups(unittest.TestCase):
 
     # ---------------------------------------------------------------- a restore keeps today's access (#917)
 
-    def restore_into(self, folder, path, today=None, change=None):
+    def restore_into(self, folder, path, today=None, change=None, damage=None):
         """server.manage restore of the backup at path into a data folder of its own (the app stopped there), its
-        database a copy of today's (or none: disaster recovery), changed by change(con) first. Returns (what the restore
-        said, the restored database opened)."""
+        database a copy of today's (or none: disaster recovery), changed by change(con) first, or its file by
+        damage(path). Returns (what the restore said, the restored database opened)."""
         os.makedirs(folder)
         if today:
             src, dst = sqlite3.connect(os.path.join(DATA, "sanguity.db")), sqlite3.connect(os.path.join(folder, "sanguity.db"))
@@ -946,6 +946,8 @@ class Backups(unittest.TestCase):
                 change(dst)
                 dst.commit()
             dst.close()
+            if damage:
+                damage(os.path.join(folder, "sanguity.db"))
         out = io.StringIO()
         with mock.patch.object(backup, "_app_is_running", return_value=False), contextlib.redirect_stdout(out), \
                 mock.patch.multiple(config, DATA_DIR=folder, DB_PATH=os.path.join(folder, "sanguity.db")):
@@ -1307,6 +1309,59 @@ class Backups(unittest.TestCase):
         db = dbm.connect()
         prof.delete_profile(db, pid)
         db.close()
+
+    def test_17_a_restore_over_a_damaged_database(self):   # #958
+        """Today's database damaged, the reason many restores are made: not a database at all, or its pages overwritten.
+        It can't be read, so it's as if there were none: the restore goes ahead with the backup's access and says why,
+        the damaged file kept with what it replaced. The phone data is staged only once the restore will go ahead: one
+        that fails leaves no watch-restored folder, and nothing for the receiver."""
+        path = backup.create(os.path.join(TMP, "backups-958"))
+
+        def garbage(p):
+            with open(p, "r+b") as f:
+                f.write(os.urandom(4096))
+
+        def pages(p):
+            size = os.path.getsize(p)
+            with open(p, "r+b") as f:
+                f.seek(4096)
+                f.write(os.urandom(min(size - 4096, 64 * 4096)))
+        for label, damage in (("garbage", garbage), ("pages", pages)):
+            folder = os.path.join(TMP, f"restored-958-{label}")
+            said, con = self.restore_into(folder, path, today=True, damage=damage)
+            self.assertIn("The database it replaced can't be read", said, label)
+            self.assertIn("are the backup's, as they were on", said, label)
+            self.assertTrue({"ada", "robin"} <= {r[0] for r in con.execute("SELECT username FROM users")}, label)
+            self.assertEqual(con.execute("SELECT COUNT(*) FROM sessions").fetchone()[0], 0, label)
+            self.assertEqual(con.execute("PRAGMA integrity_check").fetchone()[0], "ok", label)
+            aside = [n for n in os.listdir(folder) if n.startswith("before-restore-")]
+            self.assertEqual(len(aside), 1, label)
+            self.assertTrue(os.path.isfile(os.path.join(folder, aside[0], "sanguity.db")), "the damaged file is kept aside")
+
+        # a restore that fails before anything is replaced stages none of the phone data, either way
+        store = os.path.join(TMP, "store-958")
+        os.makedirs(store)
+        w = sqlite3.connect(":memory:")
+        w.execute("CREATE TABLE meta(k TEXT PRIMARY KEY, v TEXT)")
+        w.commit()
+        with open(os.path.join(store, "watch.db"), "wb") as f:
+            f.write(crypto.seal(w.serialize()))
+        w.close()
+        with mock.patch.object(config, "WATCH_STORE", store):
+            wpath = backup.create(os.path.join(TMP, "backups-958w"))
+        self.assertIn("watch/watch.db", backup.verify(wpath)["files"])
+        folder, keys = os.path.join(TMP, "restored-958w"), os.path.join(TMP, "keys-958")
+        os.makedirs(folder)
+        os.makedirs(keys)
+        shutil.copy(os.path.join(DATA, "sanguity.db"), folder)
+        for where in (os.path.join(TMP, "no-keys-958", "receiver-secrets.json"), os.path.join(keys, "receiver-secrets.json")):
+            with mock.patch.object(backup, "_app_is_running", return_value=False), \
+                    mock.patch.multiple(config, DATA_DIR=folder, DB_PATH=os.path.join(folder, "sanguity.db"), WATCH_KEYS=where), \
+                    mock.patch.object(backup, "_ready", side_effect=RuntimeError("a fictional failure")):
+                with self.assertRaises(RuntimeError):
+                    backup.restore(wpath)
+            self.assertEqual(sorted(os.listdir(folder)), ["sanguity.db"], "nothing left in the data folder")
+            self.assertEqual(os.listdir(keys), [], "nothing staged for the receiver")
 
 
     # ---------------------------------------------------------------- what a restore replaced (#595)

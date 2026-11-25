@@ -3317,6 +3317,12 @@ Everything on `main` so far; it becomes the first tagged release.
   from 12, never slowed, and the admins' notice said nothing. They now share a per-account limit as sign-in has (30
   free tries, from any address, then waits), and each wrong password or code is in the admins' notice of failed
   sign-ins, which says how many came from a device already signed in and that resetting its password signs it out.
+- **A restore over a damaged database goes ahead** (#958): keeping today's access (#917) read the database being
+  replaced, and when it was damaged (not a database, or its pages overwritten), the reason many restores are made, the
+  restore stopped with "file is not a database", after it had already left the phone and watch data to be moved in
+  by hand. Now a database that can't be read is taken as none: the restore goes ahead with the backup's access, says
+  so, and keeps the damaged file with what it replaced; and the phone data is handed over only once the restore will
+  go ahead, so one that fails leaves none of it.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

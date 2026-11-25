@@ -98,7 +98,9 @@ def _say_access(a, created, aside):
     if a.get("kept"):
         print(f"Today's {ACCESS_WORDS} were kept as they were before the restore; only the records are the backup's. " + out)
     else:
-        why = ("There was no database here to keep them from" if a.get("why") == "none" else
+        why = {"none": "There was no database here to keep them from",
+               "unreadable": "The database it replaced can't be read (it's damaged; it's kept with what was replaced), so "
+                             "they weren't kept from it"}.get(a.get("why"),
                "The database it replaced isn't this install's (another's, or one this key can't read), so they weren't "
                "kept from it")
         print(f"{why}: the {ACCESS_WORDS} are the backup's, as they were on {created}. A share link revoked, a member "

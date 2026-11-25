@@ -676,13 +676,17 @@ def _stage_watch(archive, manifest, stamp):
     while not staged and os.path.lexists(where):   # a second restore in the same second (REPLACED's -1)
         where += "-1"
     os.makedirs(where)
-    with tarfile.open(archive, "r:gz") as tar:
-        for m in tar:
-            if m.name.startswith(WATCH + "/"):   # names verify() checked: inside where
-                _extract(tar, m, os.path.join(where, *m.name.split("/")[1:]))
-    with open(os.path.join(where, "restore.json"), "w", encoding="utf-8") as f:   # names and times only
-        json.dump({"backup": os.path.basename(archive), "created": manifest.get("created"),
-                   "profiles": sorted(manifest.get("watch") or {})}, f)
+    try:
+        with tarfile.open(archive, "r:gz") as tar:
+            for m in tar:
+                if m.name.startswith(WATCH + "/"):   # names verify() checked: inside where
+                    _extract(tar, m, os.path.join(where, *m.name.split("/")[1:]))
+        with open(os.path.join(where, "restore.json"), "w", encoding="utf-8") as f:   # names and times only
+            json.dump({"backup": os.path.basename(archive), "created": manifest.get("created"),
+                       "profiles": sorted(manifest.get("watch") or {})}, f)
+    except BaseException:   # (#958) none of it left half-written
+        shutil.rmtree(where, ignore_errors=True)
+        raise
     return where, staged
 
 
@@ -801,9 +805,10 @@ def _keep_access(con, now_tables):
 
 def _ready(path, now_path):
     """Make the backup's database at path (brought up to date already) the one to restore: today's access kept from the
-    database at now_path, or, with none there (disaster recovery) or one of another install (its pepper isn't the
-    backup's, so its accounts aren't this backup's), the backup's as it is; everyone signed out either way. Returns
-    what happened, for the restore to say: {"kept", "why" (None, "none" or "other"), "sessions" (ended), "back" ([[id,
+    database at now_path, or, with none there (disaster recovery), one that can't be read (damaged, #958) or one of
+    another install (its pepper isn't the backup's, so its accounts aren't this backup's), the backup's as it is;
+    everyone signed out either way. Returns what happened, for the restore to say: {"kept", "why" (None, "none",
+    "unreadable" or "other"), "sessions" (ended), "back" ([[id,
     name]]: profiles the backup has that today's database hasn't, deleted since, back with nobody's access), "gone" (
     [[id, name]]: profiles made since, not in the backup), "stores" ([[profile, connection]]: disconnected sources whose
     store of what they read the restore removes once it has put the files back)}."""
@@ -811,12 +816,24 @@ def _ready(path, now_path):
     con = sqlite3.connect(path, isolation_level=None)
     try:
         con.execute("PRAGMA foreign_keys=ON")
-        now_tables = set()
+        now_tables, attached = set(), False
         if now_path:
-            con.execute("ATTACH DATABASE ? AS now", (now_path,))
-            now_tables = {r[0] for r in con.execute("SELECT name FROM now.sqlite_master WHERE type='table'")}
-            pepper = _pepper(con, "main")
-            out["why"] = None if {"users", "meta"} <= now_tables and pepper is not False and _pepper(con, "now") == pepper else "other"
+            try:   # today's, damaged (#958: why many restores are made), is as if there were none: the backup's is kept
+                con.execute("ATTACH DATABASE ? AS now", (now_path,))
+                attached = True
+                if con.execute("PRAGMA now.quick_check").fetchone()[0] == "ok":
+                    now_tables = {r[0] for r in con.execute("SELECT name FROM now.sqlite_master WHERE type='table'")}
+            except sqlite3.DatabaseError:
+                now_tables = set()
+            if not now_tables:
+                out["why"] = "unreadable"
+                if attached:
+                    with contextlib.suppress(sqlite3.Error):
+                        con.execute("DETACH DATABASE now")
+                    attached = False
+            else:
+                pepper = _pepper(con, "main")
+                out["why"] = None if {"users", "meta"} <= now_tables and pepper is not False and _pepper(con, "now") == pepper else "other"
         before = set(map(tuple, con.execute("PRAGMA main.foreign_key_check")))   # (one an old backup has already)
         con.execute("BEGIN IMMEDIATE")
         try:
@@ -837,7 +854,7 @@ def _ready(path, now_path):
         except BaseException:
             con.execute("ROLLBACK")
             raise
-        if now_path:
+        if attached:
             con.execute("DETACH DATABASE now")
         con.execute("PRAGMA journal_mode=DELETE")   # one file, moved into place whole; the app makes it WAL again
     finally:
@@ -859,7 +876,6 @@ def restore(archive):
         raise BackupError("This backup was made by a newer version of Sanguity. Update first, then restore.")
     _check_key(archive)
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    watch, staged = _stage_watch(archive, manifest, stamp)   # first: it replaces nothing, so a failure leaves all as it was
     aside = os.path.join(config.DATA_DIR, f"before-restore-{stamp}")
     while os.path.lexists(aside):   # a second restore in the same second (REPLACED's -1)
         aside += "-1"
@@ -874,6 +890,8 @@ def restore(archive):
         finally:
             con.close()
         manifest["access"] = _ready(ready, live if os.path.isfile(live) else None)
+        # the receiver's data, once the restore will go ahead (#958): a restore that fails before leaves none of it
+        watch, staged = _stage_watch(archive, manifest, stamp)
     except BaseException:
         shutil.rmtree(aside, ignore_errors=True)
         raise
