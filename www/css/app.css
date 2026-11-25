@@ -2324,7 +2324,7 @@ svg text.growth-pct{font-size:var(--fs-1)}
 .about .tgt-who{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
 .about .tgt-who input[type=text]{width:14em}
 .about .tgt-form>.about-row{margin-top:0;flex-basis:100%}
-@media (forced-colors:active){ .tgt-key{forced-color-adjust:none;border-color:CanvasText} }
+@media (forced-colors:active){ .tgt-key{forced-color-adjust:none;border-color:CanvasText} .tgt-edge{stroke:CanvasText} .tgt-label{fill:CanvasText;stroke:Canvas} }   /* (SVG keeps the app's ink, #729) */
 
 
 /* ---- Start from a condition (#186, presets.js): Settings → Dashboard's picker, searchable and grouped by body
