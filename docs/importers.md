@@ -386,6 +386,7 @@ The pieces build.py uses, as plain functions (standard library only):
 | `iso(s)`, `ymd(s)`, `num(s)`, `strip_html(h)` | Dates to ISO, `YYYY-MM-DD` from the start of a string, the number in `"<0.5"`, HTML to text |
 | `canonical_lab(name=None, loinc=None)` | The series name from [`lab-aliases.json`](../lab-aliases.json), by LOINC code or by name/alias |
 | `loinc_of(canon)`, `lab_defs()`, `lab_alias()` | The LOINC code for a series; the alias table itself |
+| `lab_panel(name)` | The panel `lab-aliases.json`'s `panels` puts a lab in (by its name or the canonical name it spells), `""` for none: the records the page reads put a series whose report gave no panel there (#994) |
 | `unit_norm(u)`, `unit_for(canon, u)`, `unit_key(u)` | Units in a comparable form ("x10E3/uL" = "10*3/uL" = "K/uL"; mEq/L = mmol/L for sodium and friends) |
 | `resolve_name(name, unit, org, labs)` | The series to add a result to: the canonical one when units agree, `"<name> (<org>)"` when they don't |
 | `stay(admit, discharge, where, org, how, exact=None)` | A hospital stay event from real admit/discharge dates |

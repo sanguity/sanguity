@@ -51,6 +51,7 @@ import collections, hashlib, hmac, json, re, threading
 from contextlib import contextmanager
 
 from . import crossmatch, crypto, edits, encounters, journal, medications, oop, units
+from .importers import common
 
 FORMAT = "sanguity-data"            # imports.format of a data.json (build.py, the demo, an export zip)
 ROWS = ("events", "details", "labs", "costs")   # the parts kept as rows; the rest of the object is the meta
@@ -350,6 +351,20 @@ def rename_import(db, pid, iid, name):
     return label, name
 
 
+def _panels(labs):
+    """(#994) Each lab series whose import gave it no panel is put in one: the panel another import gave a series of the
+    same name, else the one lab-aliases.json's "panels" names for it (importers.common.lab_panel), so a lab typed in or
+    from a spreadsheet is grouped as the pages group it (labGroups) with the rest of its panel, not under Other. The
+    records as stored keep what each import gave."""
+    given = {}
+    for s in labs:
+        if s.get("panel") and s.get("name") not in given:
+            given[s.get("name")] = s["panel"]
+    for s in labs:
+        if not s.get("panel") and not s.get("watch"):
+            s["panel"] = given.get(s.get("name")) or common.lab_panel(s.get("name"))
+
+
 def _assemble(db, pid, raw=False):
     imps = db.execute("SELECT id, at, origin, format, synced, meta, name FROM imports WHERE profile_id=? ORDER BY id", (pid,)).fetchall()
     if not imps:
@@ -384,6 +399,7 @@ def _assemble(db, pid, raw=False):
     if raw:   # #589: the rows as stored, for an export to load again exactly
         out = {**out, "events": events, "details": details, "labs": labs, "costs": costs}
     else:
+        _panels(labs)   # (#994) a series whose report gave no panel: its name's from another report, else lab-aliases.json's
         encounters.tidy(events, details)   # chart activity, plain visit titles, reminders (#236); corrections have the last word
         out = edits.apply(db, pid, {**out, "events": events, "details": details, "labs": labs, "costs": costs})
         hidden = out.pop(edits.UNLISTED, None)   # (#950) the lab events hidden by hand
