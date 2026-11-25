@@ -55,7 +55,8 @@ removes the store (connections.disconnect), so nothing a pull read outlives a Di
       moved beside it, _apart). The day's lab day is joined, never a second
       added beside it: the connection's own, else the earliest (an upload's), keeping every labitem it lists
       (_link_labdays). Lab events saved before #885 take their rows' records from the connection's store once
-      (backfill_keys, schema version 40)
+      (backfill_keys, schema version 40), and those of the days a pull reads as it goes (_give_keys, #909: an upload
+      of the portal's own export, the portal connected again)
     - only records that come from what this pull read count: one undone from the history doesn't come back
       unless the vendor changes it
   Each is recorded in the import history (#24) with a done job, and can be undone there.
@@ -978,6 +979,8 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
         days = {str((full_by_key.get(k) or delta_by_key.get(k)).get("t") or "")[:10] for k in items}
         hashes_on = records.key_hashes(db, items | {e["key"] for e in full["events"] if _labitem(e) and str(e.get("t") or "")[:10] in days})
         labitems = _items_here(db, pid, hashes_on.values())
+        if _give_keys(db, c, labitems):   # (#909) lab events saved before #885, given their rows' records first
+            labitems = _items_here(db, pid, hashes_on.values())
         if _apart(db, pid, labitems, _connected(db, c)):   # (#881) a row saved apart from its result, moved beside it first
             labitems = _items_here(db, pid, hashes_on.values())
         dups = preview.find(db, pid, "fhir", delta, whole=full)   # (#869: a result sent again found by its rows in the whole set)
@@ -1292,6 +1295,57 @@ def backfill_keys(db):
                 records._bump(db, c["profile_id"])
             n += given
     dbm.meta_set(db, KEYS_TO_GIVE, None)
+    return n
+
+
+def _give_keys(db, c, items):
+    """(#909) At a pull, as backfill_keys does at start-up: the labitems of the days it reads (items: _items_here) saved
+    before #885 with no "keys" take their rows' records from the whole set connection c had read before this pull (its
+    store as it was), each row the one that set's labitem of the same key makes the same (_match_keys): one a connection
+    to the same portal saved (its store gone at Disconnect, so backfill_keys had none to give from: the portal connected
+    again after the upgrade), and an upload of the portal's own export (its files gone with its job) where every row is
+    one of that labitem's and it was collected at the same time; another source's file of that day, under the same day's
+    key, never is. Then a corrected range finds the row and its result here, the same record, and updates both in place:
+    it added a second result. What an Undo would put back there gets them too. -> how many labitems were given keys"""
+    keyless = [li for li in items.values() if isinstance(li["detail"], dict) and isinstance(li["detail"].get("rows"), list)
+               and li["detail"]["rows"] and "keys" not in li["detail"]]
+    if not keyless:
+        return 0
+    connected = _connected(db, c)
+    uploaded = {r[0] for r in db.execute("SELECT id FROM imports WHERE profile_id=? AND origin='upload' AND format='fhir' AND connection_id IS NULL",
+                                         (c["profile_id"],))}
+    keyless = [li for li in keyless if li["import_id"] in connected | uploaded]
+    store = _load_store(c["profile_id"], c["id"])   # (as it was: this pull's is written once it's saved)
+    if not keyless or len(store["resources"]) <= 1:
+        return 0
+    try:
+        full = _whole(c, store) or {}
+    except Exception:   # a store that can't be read gives none, as at start-up
+        log.exception("connection %s: its store couldn't be read to give lab events their keys", c["id"])
+        return 0
+    made = {records.key_hashes(db, [e["key"]])[e["key"]]: full["details"].get(str(e["id"])) for e in full.get("events") or []
+            if isinstance(e, dict) and e.get("k") == "labitem" and isinstance(e.get("key"), str)}
+    n = 0
+    for li in keyless:
+        f, d = made.get(li["key_hash"]), li["detail"]
+        if not isinstance(f, dict):
+            continue
+        keys = _match_keys(d["rows"], f.get("rows") or [], f.get("keys") or [])
+        if li["import_id"] not in connected and not (all(keys) and f.get("collected") == d.get("collected")):
+            continue
+        if not any(keys):
+            continue
+        li["detail"] = {**d, "keys": keys}
+        db.execute("UPDATE events SET detail=? WHERE id=?", (records._enc(li["detail"]), li["id"]))
+        for x in db.execute("SELECT id, previous FROM sync_changes WHERE event_id=?", (li["id"],)).fetchall():
+            prev = records._dec(x["previous"])
+            pd = prev.get("detail")
+            if isinstance(pd, dict) and isinstance(pd.get("rows"), list) and "keys" not in pd:
+                db.execute("UPDATE sync_changes SET previous=? WHERE id=?",
+                           (records._enc({**prev, "detail": {**pd, "keys": _match_keys(pd["rows"], f.get("rows") or [], f.get("keys") or [])}}), x["id"]))
+        n += 1
+    if n:
+        records._bump(db, c["profile_id"])
     return n
 
 

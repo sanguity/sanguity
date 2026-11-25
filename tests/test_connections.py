@@ -973,6 +973,73 @@ class Connections(unittest.TestCase):
         finally:
             self.pid = was
 
+    def test_lab_events_saved_before_885_are_given_their_rows_keys_at_a_pull(self):   # #909
+        """Saved before #885 (no "keys"), as sync.backfill_keys can't reach: the portal's export uploaded, then the portal
+        connected (its first pull found it all here: the connection has no lab events of its own, and the upload's files
+        are gone), and the portal connected, disconnected keeping its records and connected again after the upgrade (the
+        first connection's store went at Disconnect). LDL corrected at the source added a second result (162 against
+        <200 beside 162 against <130, High). Now a pull gives the lab events of the days it reads theirs from what the
+        connection had read (its store), each row the one it makes the same, and the corrected LDL is updated in place,
+        result and row, the one lab day; undone, as before. Another source's lab event of that day, under the same day's
+        key, keeps none, its LDL as it was."""
+        from server import records
+        for case in ("uploaded", "connected again"):
+            with self.subTest(case=case):
+                self.fake = FakeFHIR(patients=["robin-example"]).start()
+                self.addCleanup(self.fake.stop)
+                db = dbm.connect()
+                self.pid = prof.create_profile(db, f"Before #885, {case} (fictional)", owner_id=self.uids["robin"])
+                db.close()
+                sid = self.source()
+                if case == "uploaded":
+                    self.upload_bundle([json.loads(json.dumps(r)) for r in self.fake.resources(patient="pat-1")])
+                else:
+                    first = self.connect(sid)
+                    self.first_pull(first)
+                    self.robin.post(f"/api/profiles/{self.pid}/connections/{first}/disconnect", json={"remove_records": False}, headers=H)
+                db = dbm.connect()
+                try:   # another source's results of that day on their own, keyed by the same day, an LDL among them
+                    db.execute("BEGIN IMMEDIATE")
+                    other = records.store(db, self.pid, {"events": [
+                        {"id": 1, "t": "2025-03-04T07:10:00", "k": "labitem", "title": "Lab results", "hidden": 1, "key": "fhir:labitem:2025-03-04", "abn": 1},
+                        {"id": 2, "t": "2025-03-04T07:10:00", "k": "lab", "title": "2 lab results", "key": "fhir:labday:2025-03-04", "abn": 1}],
+                        "details": {"1": {"type": "result", "order": "Lab results", "collected": "2025-03-04 07:10",
+                                          "rows": [["LDL Cholesterol", "162", "mg/dL", "<100 mg/dL", "H"], ["Sodium", "140", "mmol/L", "135-145", ""]]},
+                                    "2": {"type": "labday", "ids": [1]}},
+                        "labs": [{"name": "LDL Cholesterol", "unit": "mg/dL", "key": "hospital:ldl", "pts": [["2025-03-04T07:10:00", 162, None, 100, "H", "162"]]},
+                                 {"name": "Sodium", "unit": "mmol/L", "key": "hospital:na", "pts": [["2025-03-04T07:10:00", 140, 135, 145, "", "140"]]}]},
+                        "upload", fmt="fhir")
+                    db.execute("COMMIT")
+                finally:
+                    db.close()
+                had = self.strip_keys()
+                db = dbm.connect()
+                try:
+                    db.executescript("BEGIN;" + dbm.SCHEMA[39] + "COMMIT;")
+                    self.assertEqual(sync.backfill_keys(db), 0, "nothing a connection's store at start-up can reach")
+                finally:
+                    db.close()
+                cid = self.connect(sid, patient="pat-1")
+                self.first_pull(cid)
+                before, n = self.draw(), self.counts()
+                self.assertEqual((sorted(before["LDL Cholesterol"]), len(before["lab days"])), ([(None, 100, "H", "<100 mg/dL", "H"), (None, 130, "H", "<130 mg/dL", "H")], 2))
+                self.fake.update("Observation", "obs-ldl", self.LDL_CORRECTED)
+                res = self.pull(cid)
+                self.assertEqual((res["counts"]["results"], res["counts"].get("updated")), (0, 1), res)
+                drawn = self.draw()
+                self.assertEqual((sorted(drawn["LDL Cholesterol"]), self.faults()), ([(None, 100, "H", "<100 mg/dL", "H"), (None, 200, "", "<200 mg/dL", "")], []),
+                                 "the portal's LDL and its row corrected, nothing added; the other's as it was")
+                self.assertEqual({k: v for k, v in self.counts().items() if k != "imports"}, {k: v for k, v in n.items() if k != "imports"})
+                db = dbm.connect()
+                try:
+                    theirs = [(records._dec(r["detail"]) or {}).get("keys") for r in db.execute("SELECT detail FROM events WHERE import_id=?", (other,))]
+                finally:
+                    db.close()
+                self.assertEqual(theirs, [None, None], "another source's lab event of that day keeps none")
+                self.assertTrue(had)
+                self.undo(res["import"])
+                self.assertEqual((self.draw(), self.counts()), (before, n), "undone: result and row as they were")
+
     def test_paging(self):
         self.fake.page_size = self.fake.max_count = 2
         cid = self.connect(self.source())

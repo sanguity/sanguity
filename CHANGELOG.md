@@ -2253,6 +2253,13 @@ Everything on `main` so far; it becomes the first tagged release.
   report has its row beside it, in a lab event of the pull's own of that report, in the draw's lab day, and Undo and
   Remove take a result and its row together. A row saved apart from its result before (a pull's new result whose row
   went in the first pull's lab event, before #899) is moved beside it the next time a pull reads that day.
+- **A result saved before #885 that its source corrects is updated, not added again** (#909): the portal's export
+  uploaded, then the portal connected, or the portal connected again after a Disconnect that kept its records, all
+  before #885: LDL corrected at the source added a second result (162 against <200 beside 162 against <130, High), as
+  nothing named the lab events' rows' records and the start-up's pass (#899) can't reach them. Now a pull gives the lab
+  events of the days it reads their rows' records from what the portal has sent, a connection's to the same portal and
+  an upload of its export where every row is the portal's, and the corrected LDL is updated in place, result and row.
+  Another source's results of that day keep none.
 - **A result its source amends in value is updated, not added beside the old one** (#877): LDL corrected at the source
   from 162 to 165 (the same Observation), pulled again or in a FHIR file uploaded again, was added as a second result
   with a row of its own, so the old value showed beside the corrected one in Labs and in the lab day. Now the same record
@@ -3182,7 +3189,8 @@ From an install whose connected sources pulled lab results (before #885):
 - Nothing to do: on the first start after updating (schema version 40), the lab results each connection saved take
   their rows' records from what that source has sent (#899), and the log says how many. A connection disconnected
   by then kept nothing to give them from: its records take theirs from a connection to the same portal the profile
-  has, or keep none.
+  has, or keep none. The lab results of a day a pull reads take theirs then too (#909): those of a connection to the
+  same portal connected again, and those of an upload of the portal's own export, each row the one the portal sent.
 
 From an install whose phone already sent blood glucose (before #181):
 - Nothing to do: on its first start after updating, the receiver reads the glucose in the uploads it has archived in

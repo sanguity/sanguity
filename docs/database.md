@@ -120,7 +120,8 @@ erDiagram
 `meta` (`k`, `v`) holds install-wide values: the pepper for password hashes (encrypted), the setup code's hash, and
 one-off migration markers. Schema version 40 (#899) adds one, `labitem_keys`: the lab events a connected source saved
 before #885 have no `keys` (each row's own record), which the rows and results don't say and which are encrypted, so
-`sync.backfill_keys` gives them theirs at start-up from the connection's store of what it has read, then clears it.
+`sync.backfill_keys` gives them theirs at start-up from the connection's store of what it has read, then clears it;
+a pull gives those of the days it reads theirs as it goes (`sync._give_keys`, #909).
 
 ## Records and imports
 
