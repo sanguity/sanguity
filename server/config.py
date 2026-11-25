@@ -151,6 +151,22 @@ def source(name):
     return lookup(name)[0]
 
 
+def public_address():
+    """The address the app gives out (#1009): share links, calendar feed addresses and their QR codes, the link back in
+    each calendar event, and connected sources' return address. The first https:// one of PUBLIC_ORIGINS (in order of
+    their names, as the return address has always been taken), else the first; None while it lists none: then the
+    address a page was opened at."""
+    origins = sorted(setting("PUBLIC_ORIGINS"), key=lambda o: (not o.startswith("https://"), o))
+    return origins[0] if origins else None
+
+
+def given_base():
+    """{"base": public_address() + "/"} for an answer that gives out an address the page makes from a path (#1009),
+    or {} with none set (the page uses its own address, as before)."""
+    a = public_address()
+    return {"base": a + "/"} if a else {}
+
+
 def unreadable():
     """[(name, text)] of the variables set to something they can't be read as (left out, as if unset)."""
     out = []

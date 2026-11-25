@@ -3589,6 +3589,13 @@ Everything on `main` so far; it becomes the first tagged release.
   "SYNC_MAX_ATTACHMENT_MB in .env", which no compose file passed, so setting it there did nothing. Both compose files
   pass it now (#999), the help says where it's set on TrueNAS and Unraid too, and the ceiling is read at each use; a
   check keeps every variable a help or message sends someone to `.env` for one the compose files read.
+- **Share links, calendar feed addresses and their QR codes are given at the public address where one is set**
+  (#1009): the page made them from its own address, so a link made at the server's home-network address or a dev
+  name couldn't be opened by the clinician it was sent to, though `PUBLIC_ORIGINS` names the address to give out.
+  With one set, the server says it when it makes a link or a feed address (its first `https://` address, else its
+  first, as connected sources' return address is taken), and the page makes the link, the address and the QR code
+  from it; the link back in each calendar event takes the `https://` one too (it took the first by name, `http://`
+  ones first). Without one, as before. The calendar's note about where a feed can be reached reads the address given.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

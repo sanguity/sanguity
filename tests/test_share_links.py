@@ -175,6 +175,21 @@ class ShareLinks(unittest.TestCase):
         self.assertTrue(r.headers["content-type"].startswith("text/plain"))
         self.assertNotIn("set-cookie", r.headers)
 
+    def test_made_at_the_public_address_where_one_is_set(self):   # #1009
+        """A link is given at the public address where one is set (the first https:// one of PUBLIC_ORIGINS by name,
+        else the first), as "base" beside its path, which the page makes the link from in place of its own address;
+        without one, none, and the page uses its own, as before. Read at each link: set or changed, it applies at once."""
+        from unittest import mock
+        with mock.patch.dict(os.environ, {"PUBLIC_ORIGINS": ""}):
+            r = self.c["robin"].post(f"/api/profiles/{self.pid}/links", json={"sections": ["visits"]}, headers=H).json()
+            self.assertNotIn("base", r)
+        for origins, base in (("http://sanguity.lan:8730, https://health.example.test, https://zz-second.example.test", "https://health.example.test/"),
+                              ("http://sanguity.lan:8730", "http://sanguity.lan:8730/")):
+            with mock.patch.dict(os.environ, {"PUBLIC_ORIGINS": origins}):
+                r = self.c["robin"].post(f"/api/profiles/{self.pid}/links", json={"sections": ["visits"]}, headers=H).json()
+                self.assertEqual((r["base"], r["path"][:11]), (base, "share.html#"))
+                self.view(r["path"].split("#", 1)[1])   # the same link, wherever it's opened
+
     # ---------------------------------------------------------------- what a link shows
 
     def test_only_the_chosen_sections_labs_and_range(self):
