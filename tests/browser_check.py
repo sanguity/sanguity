@@ -22990,8 +22990,8 @@ def main():
                   and sorted(flagged994[0]) == flag994 and flagged994[1] == f"{len(flag994) or 'None'} of {n994} labs, flagged only" and "Reset filters" in flagged994[2],
                   [focus994, named994, both994, flagged994, hem994, flag994])
             check("…both kept for the profile in this browser: a reload keeps Flagged only (and the name, emptied here, empty), another profile's are its own "
-                  "(none kept); Reset filters clears both, focus on the name's box", kept994 == {"q": "", "flagged": True} and reload994 == [flagged994[0], flagged994[1], ["", True]]
-                  and other994 == ["", False, None] and reset994[1] == f"{n994} labs" and reset994[2] == "" and reset994[3] == ["ltQ", False, False], [kept994, reload994, other994, reset994])
+                  "(none kept); Reset filters clears both, focus on the name's box", {k: kept994.get(k) for k in ("q", "flagged")} == {"q": "", "flagged": True} and reload994 == [flagged994[0], flagged994[1], ["", True]]
+                  and other994[:2] == ["", False] and not {"q", "flagged"} & set(json.loads(other994[2] or "{}")) and reset994[1] == f"{n994} labs" and reset994[2] == "" and reset994[3] == ["ltQ", False, False], [kept994, reload994, other994, reset994])
             # ---- #995: each row's change since the result before (its chart's previous point: latest993, here and over the
             # ranges matrix after #904's) and how long ago it was taken, by the days between its day and today in the
             # person's time zone, its day in their date format: a profile of a result 30 hours ago (an instant), 40 days
@@ -23053,6 +23053,68 @@ def main():
                   "UTC−11, dmy and ymd)", not bad995, bad995)
             check("…one taken a year or more ago dimmed and said “last taken 2 years ago”, its words still 4.5:1 in light and dark; axe-core finds nothing",
                   len(dim995) == 8 and all(v >= 4.5 for v in dim995.values()) and not seen995, [dim995, seen995])
+            # ---- #996: results added since this browser last showed Latest for the profile are marked New ("New · today",
+            # when they came) and counted in its heading until the page is loaded again; another profile keeps its own;
+            # with storage blocked nothing is marked and nothing breaks. Two profiles of a draw each, Latest shown on each,
+            # then results imported into the first: a newer Hemoglobin and Ferritin, a lab it hadn't
+            uid996 = js("fetch('api/me').then(r => r.json()).then(m => m.user.id)")
+            draw996 = lambda days, labs: {"built": "2026-11-15", "source": "fictional", "events": [{"id": 1, "t": (now995 - td995(days=days)).strftime("%Y-%m-%dT08:00:00"), "k": "lab", "title": "Lab results"}],
+                                          "details": {}, "costs": [], "upcoming": [], "labs": [{"name": n, "unit": u, "panel": "", "n": 1, "txt": [],
+                                                                                               "pts": [[(now995 - td995(days=days)).strftime("%Y-%m-%dT08:00:00"), v, lo, hi, "", str(v)]]} for n, u, v, lo, hi in labs]}
+
+            def store996(pid, data):
+                db = dbm994.connect()
+                with dbm994.transaction(db):
+                    rec994.store(db, pid, data, "upload")
+                db.close()
+
+            def latest996(pg, pid, again=False):
+                if again:   # (the same address again is only a move within the page)
+                    pg.reload()
+                else:
+                    pg.goto(base + f"/?profile={pid}#labs-latest")
+                pg.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {pid} && state.labsView === 'latest'", timeout=20000)
+                pg.wait_for_timeout(300)
+                return pg.evaluate("""[Object.fromEntries([...document.querySelectorAll('#ltRows .lt-row')].map(a => [a.dataset.lab, a.querySelector('.n .badge')?.textContent || null])),
+                  document.getElementById('ltQn').textContent, (() => { try { return JSON.parse(localStorage.getItem('ht-latest:' + PROFILE.id) || 'null'); } catch (e) { return 'blocked'; } })()]""")
+            db = dbm994.connect()
+            p996, q996 = (prof994.create_profile(db, n, owner_id=uid996) for n in ("Latest's New (fictional)", "Latest's New, another (fictional)"))
+            db.close()
+            for pid996 in (p996, q996):
+                store996(pid996, draw996(20, [("Hemoglobin", "g/dL", 13.9, 13.5, 17.5), ("WBC", "K/uL", 6.1, 4.0, 11.0)]))
+            first996 = [latest996(page, p996), latest996(page, q996)]
+            store996(p996, draw996(1, [("Hemoglobin", "g/dL", 14.4, 13.5, 17.5), ("Ferritin", "ng/mL", 90, 20, 200)]))
+            marked996 = latest996(page, p996)
+            again996 = latest996(page, p996, again=True)
+            other996 = latest996(page, q996)
+            bctx996 = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
+            bctx996.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
+            bctx996.add_init_script("Object.defineProperty(window, 'localStorage', {get() { throw new DOMException('The operation is insecure.', 'SecurityError'); }, configurable: true})")
+            bp996, err996 = bctx996.new_page(), []
+            bp996.on("pageerror", lambda e: err996.append(str(e)))
+            blocked996 = [latest996(bp996, p996)]
+            store996(p996, draw996(0, [("WBC", "K/uL", 6.6, 4.0, 11.0)]))
+            blocked996.append(latest996(bp996, p996, again=True))
+            bctx996.close()
+            page.goto(base + "/?profile=1#labs-latest")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
+            db = dbm994.connect()
+            for pid996 in (p996, q996):
+                prof994.delete_profile(db, pid996)
+            db.close()
+            new996 = lambda b: bool(b) and b.startswith("New") and b.endswith("today")
+            check("Latest's New (#996): results imported since this browser last showed Latest for the profile are marked “New · today” and counted in its "
+                  "heading (“3 labs · 2 new”); loaded again, none is; nothing on a first look",
+                  [f[0] for f in first996] == [{"Hemoglobin": None, "WBC": None}] * 2 and [f[1] for f in first996] == ["2 labs"] * 2
+                  and set(marked996[0]) == {"Hemoglobin", "WBC", "Ferritin"} and new996(marked996[0]["Hemoglobin"]) and new996(marked996[0]["Ferritin"]) and marked996[0]["WBC"] is None
+                  and marked996[1] == "3 labs · 2 new" and again996[0] == {"Hemoglobin": None, "WBC": None, "Ferritin": None} and again996[1] == "3 labs",
+                  [first996, marked996, again996])
+            check("…kept per profile in this browser, the newest import it showed and nothing more: another profile's its own, with nothing new; with storage "
+                  "blocked nothing is marked, a new import too, and nothing breaks",
+                  set(first996[0][2]) == {"seen"} and set(again996[2]) == {"seen"} and again996[2]["seen"] > first996[0][2]["seen"]
+                  and other996[0] == {"Hemoglobin": None, "WBC": None} and other996[2] == first996[1][2] != again996[2]
+                  and [b[0] for b in blocked996] == [{"Hemoglobin": None, "WBC": None, "Ferritin": None}] * 2 and [b[1:] for b in blocked996] == [["3 labs", "blocked"]] * 2 and not err996,
+                  [first996, again996, other996, blocked996, err996])
             # …#900: and whatever it says, at the width it's shown. The room held the widest three it says as one line, and
             # wrapped, a narrower one could take a line more: on profiles of many times with two results (the review's 20,
             # ranges_matrix.many) Compare dropped 18 px at 803–818 px and 36 px at 461–467 px with 200% text, Labs 40.6 px at

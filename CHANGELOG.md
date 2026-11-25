@@ -3577,6 +3577,11 @@ Everything on `main` so far; it becomes the first tagged release.
   the key-lab tiles say it, and "12 days ago" by your own time zone. Two results at the latest time each have their
   change from the result before them. A result a year or more old is dimmed, still easy to read, and says "last
   taken 2 years ago".
+- **Latest marks what's new** (#996): after an upload, a sync or results typed in, nothing showed which results
+  were new. Results added since this browser last showed Latest for the profile are marked **New** ("New · today",
+  when they came), with a count in the heading; the marks go the next time the page is loaded. What was last shown
+  is kept in this browser for each profile and never sent anywhere; with the browser's storage blocked, nothing is
+  marked.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
