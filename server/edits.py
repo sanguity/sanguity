@@ -438,7 +438,12 @@ def add(db, pid, uid, action, event_id, title=None, t=None, other_id=None, k=Non
     def replaced(v):
         theirs = _held(_dec(v))
         return not mine or not theirs or bool(mine & theirs)
-    db.executemany("DELETE FROM edits WHERE id=?", [(r[0],) for r in db.execute(same, args).fetchall() if replaced(r[1])])
+    gone = [r for r in db.execute(same, args).fetchall() if replaced(r[1])]
+    for r in gone:   # (#954) a rename of a rename: what the first moved goes back when this one is undone
+        if (_dec(r[1]) or {}).get("moved"):
+            from . import medications
+            value["moved"] = medications.merged(value.get("moved"), _dec(r[1])["moved"])
+    db.executemany("DELETE FROM edits WHERE id=?", [(r[0],) for r in gone])
     eid = _insert(db, pid, uid, action, key, value, other)
     _bump(db, pid)
     return eid, e
@@ -492,21 +497,39 @@ def similar(db, pid, event_id):
             "label": imp.get("name") or imp.get("label") or "", "items": items}
 
 
+def moved(db, pid, edit_id, rec):
+    """(#954) Keep with a rename what it moved of its medications' (medications.follow), for its undoing."""
+    r = db.execute("SELECT value FROM edits WHERE id=? AND profile_id=?", (edit_id, pid)).fetchone()
+    if r and rec:
+        from . import medications
+        value = _dec(r["value"]) or {}
+        db.execute("UPDATE edits SET value=? WHERE id=?", (_enc({**value, "moved": medications.merged(value.get("moved"), rec)}), edit_id))
+
+
 def remove(db, pid, edit_id):
     """Remove an edit (undo it), with the rest of its batch (the similar entries changed with it, and a rule made
-    then). Returns what it was, {"action", "was", "n"} (n: edits removed), or None if there's no such edit."""
+    then). Returns what it was, {"action", "was", "n", "moved"} (n: edits removed; moved: what renames among them moved
+    of their medications', #954, for medications.back), or None if there's no such edit."""
     r = db.execute("SELECT action, value FROM edits WHERE id=? AND profile_id=?", (edit_id, pid)).fetchone()
     if not r:
         return None
     value = _dec(r["value"]) or {}
-    gone = [edit_id]
+    gone, recs = [edit_id], [value.get("moved")]
     if value.get("batch"):
-        gone += [x["id"] for x in db.execute("SELECT id, value FROM edits WHERE profile_id=? AND id<>?", (pid, edit_id))
-                 if (_dec(x["value"]) or {}).get("batch") == value["batch"]]
+        for x in db.execute("SELECT id, value FROM edits WHERE profile_id=? AND id<>?", (pid, edit_id)).fetchall():
+            v = _dec(x["value"]) or {}
+            if v.get("batch") == value["batch"]:
+                gone.append(x["id"])
+                recs.append(v.get("moved"))
     db.executemany("DELETE FROM edits WHERE id=?", [(i,) for i in gone])
     _bump(db, pid)
     was = value.get("was") or ({"k": value.get("from"), "title": value.get("title")} if r["action"] == RULE else None)
-    return {"action": r["action"], "was": was, "n": len(gone)}
+    out = {}
+    for rec in recs:
+        if rec:
+            from . import medications
+            out = medications.merged(out, rec)
+    return {"action": r["action"], "was": was, "n": len(gone), "moved": out}
 
 
 def listing(db, pid):

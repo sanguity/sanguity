@@ -186,56 +186,120 @@ class InTheRecords(unittest.TestCase):
             db.close()
         self.assertNotIn("medications", self.data())
 
-    def test_renamed_keeps_its_reminders_and_fills(self):   # #921
-        """A listing renamed to its brand name in the drawer (edits.py): the medication was grouped by the name shown,
-        so it took a new key ("zestril"), and its reminder (and dose) stayed under the old one: the calendar feed's
-        events went, and the pharmacy's fill, still "LISINOPRIL", stayed behind as a medication of its own holding the
-        reminder. Now it keeps its key, shown by its new name with the fill beside it; the reminder is its and in the
-        feed; the new name finds it too ("aka": a side effect linked by name, a reminder set under it before). Undone,
-        it's as before."""
+    def test_a_rename_takes_what_hangs_on_its_medication(self):   # #921, #954
+        """A rename groups a medication as it's shown (as before #921): it joins a medication of its new name, or
+        leaves one it shared a key with. What hangs on a medication's key goes with it in the same save (#954): its
+        reminders (and so the calendar feed's events) and the side effects linked to it by name go to the medication
+        its newest listing is in now, and undoing the rename puts them back. Four renames, each undone:
+        - Lisinopril renamed Zestril (#921's case): Zestril takes the reminder and the side effect, its fill (still
+          "LISINOPRIL") a medication of fills alone; the feed still has the reminder.
+        - Zestril, another clinic's listing of it, renamed Lisinopril: one medication, Zestril's reminder with it.
+        - Vitamin B6 renamed Pyridoxine (B6 and B12 shared the key "vitamin b", named for B6, its newest listing):
+          two medications, the reminder with Pyridoxine, B12 alone under "vitamin b".
+        - Lisinopril renamed Zestril, then back: the reminder back on Lisinopril, and Undo leaves it there."""
         from datetime import date
-        from server import med_reminders
-        db = dbm.connect()
-        with dbm.transaction(db):
-            e, d = med("a", "2026-01-05T08:00:00", "Lisinopril 10 mg tablet", instructions="One tablet daily", status="Active")
-            iid = records.store(db, self.pid, {"events": [e, fill("b", "2026-01-06T12:00:00", "LISINOPRIL 10MG TAB")],
-                                               "details": {"a": d}}, "upload")
-        db.close()
-        try:
-            data = self.data()
-            listing = next(x["id"] for x in data["events"] if x["k"] == "med")
-            r = self.c.post(f"/api/profiles/{self.pid}/medications/reminders", headers=H,
-                            json={"med": "lisinopril", "times": ["08:00"], "days": ["mo", "tu", "we", "th", "fr", "sa", "su"],
-                                  "start": "2026-11-01", "tz": "America/New_York"})
-            self.assertEqual(r.status_code, 201, r.text)
-            r = self.c.post(f"/api/profiles/{self.pid}/edits", headers=H, json={"event": listing, "action": "rename", "title": "Zestril 10 mg tablet"})
-            self.assertEqual(r.status_code, 201, r.text)
-            data = self.data()
-            (m,) = data["medications"]
-            self.assertEqual((m["key"], m["name"], m.get("aka"), len(m["fills"]), m["spans"][-1]["open"]),
-                             ("lisinopril", "Zestril 10 mg tablet", ["zestril"], 1, True), "one medication, its fill beside it")
-            self.assertEqual([x["med"] for x in data["reminders"]], ["lisinopril"])
-            db = dbm.connect()
-            try:
-                events, _ = med_reminders.feed_events(db, self.pid, False, date(2026, 11, 20))
-                self.assertEqual(len(events), 1, "the reminder still in the calendar feed")
-                self.assertEqual(med_reminders.current(db, self.pid)["zestril"]["key"], "lisinopril", "set under its new name before: still its")
-            finally:
-                db.close()
-            r = self.c.post(f"/api/profiles/{self.pid}/medications/reminders", headers=H,
-                            json={"med": "lisinopril", "times": ["20:00"], "days": ["mo"], "start": "2026-11-01", "tz": "America/New_York"})
-            self.assertEqual(r.status_code, 201, "a current medication still")
-            (rename,) = self.c.get(f"/api/profiles/{self.pid}/edits").json()["edits"]
-            self.assertEqual(self.c.delete(f"/api/profiles/{self.pid}/edits/{rename['id']}", headers=H).status_code, 200)
-            (m,) = self.data()["medications"]
-            self.assertEqual((m["key"], m["name"], m.get("aka")), ("lisinopril", "Lisinopril 10 mg tablet", None), "undone: as before")
-        finally:
+        from server import journal, med_reminders
+        ALL = ["mo", "tu", "we", "th", "fr", "sa", "su"]
+
+        def store(*rows, rx=()):
             db = dbm.connect()
             with dbm.transaction(db):
-                db.execute("DELETE FROM edits")
-                db.execute("DELETE FROM med_reminders")
-                records.drop(db, self.pid, [iid])
+                iid = records.store(db, self.pid, {"events": [e for e, _ in rows] + list(rx), "details": {e["id"]: d for e, d in rows}}, "upload")
             db.close()
+            return iid
+
+        def remind(key):
+            r = self.c.post(f"/api/profiles/{self.pid}/medications/reminders", headers=H,
+                            json={"med": key, "times": ["08:00"], "days": ALL, "start": "2026-11-01", "tz": "America/New_York"})
+            self.assertEqual(r.status_code, 201, r.text)
+
+        def rename(title, new):
+            eid = next(e["id"] for e in self.data()["events"] if e["k"] == "med" and e["title"] == title)
+            r = self.c.post(f"/api/profiles/{self.pid}/edits", headers=H, json={"event": eid, "action": "rename", "title": new})
+            self.assertEqual(r.status_code, 201, r.text)
+            return r.json()["id"]
+
+        def undo(edit):
+            self.assertEqual(self.c.delete(f"/api/profiles/{self.pid}/edits/{edit}", headers=H).status_code, 200)
+
+        def state():
+            d = self.data()
+            db = dbm.connect()
+            try:
+                feed = len(med_reminders.feed_events(db, self.pid, False, date(2026, 11, 20))[0])
+                side = [e["med"] for e in journal.listing(db, self.pid) if e.get("med")]
+            finally:
+                db.close()
+            return (sorted((m["key"], m["name"], len(m["spans"]), len(m["fills"])) for m in d["medications"]),
+                    sorted(r["med"] for r in d.get("reminders") or []), feed, side)
+
+        def clean(*iids):
+            db = dbm.connect()
+            with dbm.transaction(db):
+                for t in ("edits", "med_reminders", "journal"):
+                    db.execute(f"DELETE FROM {t}")
+                records.drop(db, self.pid, list(iids))
+            db.close()
+
+        # Lisinopril, with its pharmacy's fill, renamed Zestril
+        iid = store(med("a", "2026-01-05T08:00:00", "Lisinopril 10 mg tablet", instructions="One tablet daily", status="Active"),
+                    rx=[fill("f", "2026-01-06T12:00:00", "LISINOPRIL 10MG TAB")])
+        try:
+            remind("lisinopril")
+            r = self.c.post(f"/api/profiles/{self.pid}/journal", headers=H,
+                            json={"kind": "side_effect", "t": "2026-11-02", "title": "Dry cough", "severity": 3, "med": "Lisinopril 10 mg tablet"})
+            self.assertEqual(r.status_code, 201, r.text)
+            before = state()
+            self.assertEqual(before, ([("lisinopril", "Lisinopril 10 mg tablet", 1, 1)], ["lisinopril"], 1, ["Lisinopril 10 mg tablet"]))
+            edit = rename("Lisinopril 10 mg tablet", "Zestril 10 mg tablet")
+            self.assertEqual(state(), ([("lisinopril", "LISINOPRIL 10MG TAB", 0, 1), ("zestril", "Zestril 10 mg tablet", 1, 0)], ["zestril"], 1,
+                                       ["Zestril 10 mg tablet"]), "the reminder and the side effect with the renamed medication")
+            undo(edit)
+            self.assertEqual(state(), before, "undone: each where it was")
+        finally:
+            clean(iid)
+
+        # another clinic's Zestril, renamed Lisinopril to make the two one
+        iid = store(med("a", "2025-01-05T08:00:00", "Lisinopril 10 mg tablet", instructions="One tablet daily", status="Active"),
+                    med("b", "2026-01-05T08:00:00", "Zestril 10 mg tablet", instructions="One tablet daily", status="Active"))
+        try:
+            remind("zestril")
+            before = state()
+            edit = rename("Zestril 10 mg tablet", "Lisinopril 10 mg tablet")
+            self.assertEqual(state()[:3], ([("lisinopril", "Lisinopril 10 mg tablet", 1, 0)], ["lisinopril"], 1), "merged, the reminder with it")
+            undo(edit)
+            self.assertEqual(state(), before, "undone: two again, the reminder with Zestril")
+        finally:
+            clean(iid)
+
+        # Vitamin B6 renamed Pyridoxine, to tell it from B12
+        iid = store(med("a", "2026-01-10T08:00:00", "Vitamin B12 1000 mcg tablet", instructions="One daily", status="Active"),
+                    med("b", "2026-03-01T08:00:00", "Vitamin B6 50 mg tablet", instructions="One daily", status="Active"))
+        try:
+            remind("vitamin b")
+            before = state()
+            self.assertEqual(before[0], [("vitamin b", "Vitamin B6 50 mg tablet", 2, 0)])
+            edit = rename("Vitamin B6 50 mg tablet", "Pyridoxine 50 mg tablet")
+            self.assertEqual(state()[:3], ([("pyridoxine", "Pyridoxine 50 mg tablet", 1, 0), ("vitamin b", "Vitamin B12 1000 mcg tablet", 1, 0)],
+                                           ["pyridoxine"], 1), "split, the reminder with the one it was set on, by its name")
+            undo(edit)
+            self.assertEqual(state(), before)
+        finally:
+            clean(iid)
+
+        # renamed, then back
+        iid = store(med("a", "2026-01-05T08:00:00", "Lisinopril 10 mg tablet", instructions="One tablet daily", status="Active"))
+        try:
+            remind("lisinopril")
+            before = state()
+            rename("Lisinopril 10 mg tablet", "Zestril 10 mg tablet")
+            self.assertEqual(state()[1], ["zestril"])
+            edit = rename("Zestril 10 mg tablet", "Lisinopril 10 mg tablet")
+            self.assertEqual(state(), before, "named as it was: the reminder back")
+            undo(edit)
+            self.assertEqual(state(), before, "and its undoing leaves it so")
+        finally:
+            clean(iid)
 
 
 class Fhir(unittest.TestCase):

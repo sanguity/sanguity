@@ -385,7 +385,6 @@ def _assemble(db, pid, raw=False):
         out = {**out, "events": events, "details": details, "labs": labs, "costs": costs}
     else:
         encounters.tidy(events, details)   # chart activity, plain visit titles, reminders (#236); corrections have the last word
-        named = {e["id"]: e.get("title") for e in events if e.get("k") in medications.MED_KINDS}   # (#921) as imported
         out = edits.apply(db, pid, {**out, "events": events, "details": details, "labs": labs, "costs": costs})
         for e in out.get("events") or []:
             e.pop("orig", None)            # what tidy() changed, kept only for the corrections to find their events
@@ -396,7 +395,7 @@ def _assemble(db, pid, raw=False):
         out = oop.annotate(db, pid, out, pay_imps)   # out-of-pocket: sources, HSA/FSA, matched to claims, counted once (#55)
     if (entries := journal.listing(db, pid)):   # only when there are some, like edits
         out["journal"] = entries
-    if not raw and (meds := medications.history(out, named)):   # #50: each medication's spans and fills, only when there are some
+    if not raw and (meds := medications.history(out)):   # #50: each medication's spans and fills, only when there are some
         out["medications"] = meds
     from . import med_reminders
     if (rem := med_reminders.listing(db, pid)):   # #162: reminders for the calendar feed, only when there are some

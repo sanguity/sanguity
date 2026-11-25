@@ -27,7 +27,7 @@ function medLogLoad() {
   DOSES = [...typed, ...sent].filter(d => isFinite(d.ts)).sort((a, b) => a.ts - b.ts);
   medLogControls();
 }
-const dosesOf = m => DOSES.filter(d => medHas(m, d.key));
+const dosesOf = m => DOSES.filter(d => d.key === m.key);
 const doseWhen = d => fmtDT(d.ts);
 const doseSay = d => `${DOSE_LABEL[d.status]}, ${d.name}, ${doseWhen(d)}`;
 /* a dose's mark: ● taken, ◆ taken late, ○ skipped */
@@ -172,7 +172,7 @@ function todayDoses({id = "ovDoses", head = el("h3", {text: "Today's medication 
   const logged = d => el("span", {class: "dose-done"}, doseIcon(d.status), `${DOSE_LABEL[d.status]} · ${fmtTime(d.ts)}` + (d.phone ? ` · from ${d.app}` : ""));
   const rows = [];   // [its time, its row]
   for (const m of cur) {
-    const mine = todays.filter(d => medHas(m, d.key));
+    const mine = todays.filter(d => d.key === m.key);
     const slots = [...new Set(mrOf(m).filter(r => r.on && r.days.includes(dow) && r.from <= today && !(mrEnds(r, m) && mrEnds(r, m).day < today)).flatMap(r => r.times))].sort();
     const open = () => el("button", {class: "cell-btn dose-med", type: "button", text: m.name, "data-tip": "Its details and log", onclick: () => openMedication(m)});
     for (const slot of slots) {
@@ -194,7 +194,7 @@ function todayDoses({id = "ovDoses", head = el("h3", {text: "Today's medication 
     const hm = now().slice(11), came = rows.filter(r => r[0].length === 5 && r[0] <= hm).at(-1);
     from = Math.min(came ? rows.findIndex(r => r[0] === came[0]) : 0, rows.length - few); n = few;
   }
-  const week = thisWeek(DOSES.filter(d => cur.some(m => medHas(m, d.key))));
+  const week = thisWeek(DOSES.filter(d => cur.some(m => m.key === d.key)));
   return el("div", {class: "card", id, "data-more": rows.length - n || null}, head,
     el("p", {class: "hint", text: !write ? (todays.length ? "What was logged today." : "Nothing logged today.") : away ? "Logging a dose needs the server: you're offline."
       : "Log what happened, for your own record: taken, taken late or skipped."}),
@@ -238,12 +238,12 @@ const dosesInWindow = () => dosesOnCharts && state.cats.has("med") ? DOSES.filte
 CHART_LAYERS.push({
   name: "Doses logged", short: "Doses",
   space: () => dosesInWindow().length ? 18 * ckK() : 0,
-  rows: () => dosesInWindow().map(d => { const m = MEDS.find(m => medHas(m, d.key)); return [d.ts, "Dose logged", doseSay(d), m && (() => openMedication(m)), "med"]; }),
+  rows: () => dosesInWindow().map(d => { const m = MEDS.find(m => m.key === d.key); return [d.ts, "Dose logged", doseSay(d), m && (() => openMedication(m)), "med"]; }),
   draw(g, x, top, R, L) {
     const y = top + 9 * ckK();
     for (const d of dosesInWindow()) {
       const dx = x(d.ts); if (dx < L - 2 || dx > R + 3) continue;
-      const m = MEDS.find(m => medHas(m, d.key));
+      const m = MEDS.find(m => m.key === d.key);
       const node = doseShape(d.status, dx, y, {tabindex: 0, role: "button", "aria-label": doseSay(d)}, 3.4);
       node.addEventListener("pointermove", ev => { ev.stopPropagation(); if (m) doseTip(m, DOSES.indexOf(d), ev); });
       node.addEventListener("pointerleave", hideTip);

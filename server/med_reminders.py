@@ -61,9 +61,6 @@ def current(db, pid):
         if isinstance(m, dict) and m.get("key"):
             spans = m.get("spans") or []
             out[m["key"]] = {**m, "current": bool(spans) and bool(spans[-1].get("open"))}
-    for m in meds:   # (#921) a reminder set under the name a rename gave it, before its key stayed: still its
-        for k in (m.get("aka") or []) if isinstance(m, dict) and m.get("key") else ():
-            out.setdefault(k, out[m["key"]])
     return out
 
 

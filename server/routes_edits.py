@@ -8,7 +8,7 @@ from typing import List, Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
-from . import activity, db as dbm, edits, records
+from . import activity, db as dbm, edits, medications, records
 from .main import _client_ip, get_db, need, user
 
 router = APIRouter()
@@ -18,6 +18,15 @@ def with_records(db, pid, reply, status=200):
     """The reply with the records as the page loads them (#271)."""
     body, rev = records.page_reply(db, pid, reply)
     return Response(body, status_code=status, media_type="application/json", headers={"X-Records-Rev": rev})
+
+
+def _is_med(db, pid, ids):
+    """Whether any of these events is a medication's listing or fill (#954)."""
+    for i in ids:
+        r = db.execute("SELECT body FROM events WHERE id=? AND profile_id=?", (i, pid)).fetchone()
+        if r and (records._dec(r["body"]) or {}).get("k") in medications.MED_KINDS:
+            return True
+    return False
 
 
 class NewEdit(BaseModel):
@@ -54,6 +63,8 @@ def add_edit(pid: int, body: NewEdit, request: Request, s=Depends(user), db=Depe
     need(db, s, pid, "editor")
     try:
         with dbm.transaction(db):
+            # (#954) a medication renamed: what hangs on it by its key follows it (medications.follow)
+            meds = medications.of_records(db, pid) if body.action == "rename" and _is_med(db, pid, [body.event, *(body.also or ())]) else None
             if body.action in ("rename", "kind") and (body.also or body.rule):
                 ids, e, rule = edits.add_batch(db, pid, s["id"], body.action, body.event, also=body.also or (),
                                                title=body.title, k=body.k, rule=bool(body.rule))
@@ -61,6 +72,8 @@ def add_edit(pid: int, body: NewEdit, request: Request, s=Depends(user), db=Depe
                 ids, rule = None, None
                 eid, e = edits.add(db, pid, s["id"], body.action, body.event, title=body.title, t=body.t,
                                    other_id=body.other, k=body.k)
+            if meds is not None:
+                edits.moved(db, pid, ids[0] if ids else eid, medications.follow(db, pid, meds))
             activity.log(db, "edit", s, pid, {"action": body.action, "title": e.get("title"),
                                               **({"to": body.title.strip()} if body.action == "rename" else {}),
                                               **({"to": body.k} if body.action == "kind" else {}),
@@ -76,9 +89,14 @@ def add_edit(pid: int, body: NewEdit, request: Request, s=Depends(user), db=Depe
 def remove_edit(pid: int, edit_id: int, request: Request, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "editor")
     with dbm.transaction(db):
+        r = db.execute("SELECT action FROM edits WHERE id=? AND profile_id=?", (edit_id, pid)).fetchone()
+        meds = medications.of_records(db, pid) if r and r["action"] == "rename" else None
         gone = edits.remove(db, pid, edit_id)
         if gone is None:
             raise HTTPException(404, "No such edit.")
+        if meds is not None:   # (#954) what the rename moved goes back; what hangs on a medication gone with it follows
+            medications.back(db, pid, gone["moved"])
+            medications.follow(db, pid, meds, gone_only=True)
         activity.log(db, "edit", s, pid, {"action": gone["action"], "title": (gone["was"] or {}).get("title"), "undone": True,
                                           **({"with": gone["n"] - 1} if gone["n"] > 1 else {})}, _client_ip(request))
     return with_records(db, pid, {"ok": True, "n": gone["n"]})
