@@ -90,6 +90,8 @@ async def lifespan(app):
         try:
             atrest.check_key(db)   # stops here, saying why, if the key is missing or wrong
             atrest.load_pepper(db)
+            if (gone := prof.sweep(db)):   # what a profile's deletion stopped part-way left (#932)
+                print(f"Removed {gone} folder(s) of deleted profiles that a stop part-way left.", flush=True)
             sealed = atrest.seal_everything(db)
             records.backfill_key_hashes(db)   # source keys' hashes for rows from before schema version 13
             if (given := sync.backfill_keys(db)):   # a lab event's rows' own records, from before #885 (schema version 40)

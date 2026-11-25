@@ -215,22 +215,49 @@ def build_error(pid):
     return f[1] if f and f[0] == build_version() else None
 
 
+DELETING = ".deleting-"   # profiles/.deleting-<id>/: a profile's folder while its deletion is saved
+
+
+def _deleting_dir(pid):
+    return os.path.join(config.DATA_DIR, "profiles", f"{DELETING}{int(pid)}")
+
+
+def _put_back(aside, folder):
+    """A folder moved aside put back where it was (#932): renamed back if nothing is there, else moved in beside
+    what was written there meanwhile, entry by entry, never onto it (a file written since is the newer one)."""
+    if not os.path.lexists(folder):
+        os.replace(aside, folder)
+        return
+    for n in os.listdir(aside):
+        src, dst = os.path.join(aside, n), os.path.join(folder, n)
+        if not os.path.lexists(dst):
+            os.replace(src, dst)
+        elif os.path.isdir(src) and not os.path.islink(src) and os.path.isdir(dst) and not os.path.islink(dst):
+            _put_back(src, dst)
+    shutil.rmtree(aside, ignore_errors=True)
+
+
 def delete_profile(db, pid):
     """Remove a profile: its records, settings, its folder (anything imported), document index, memberships and
     activity, and the watch receiver is asked to delete what it keeps for it (watch_keys.forget, #588; the caller
-    publishes the secrets file after). The folder is moved aside first and removed only once the database change is
-    committed, so a failure leaves the profile whole. Original exports are never touched.
+    publishes the secrets file after). Original exports are never touched.
     The lab-name matches its own reviews made go with it (labmap.forget_profile, #591).
+    The folder is moved aside only once the write lock is held (#932), so a save that holds it (a pull keeping what its
+    source sent, an import's watch data) has written its files first and they go too; and it's removed once the database
+    change is committed, with anything written to the profile's folder meanwhile by what doesn't take the lock (a file
+    being uploaded). A failure puts it back, beside anything written meanwhile, never onto it; what a stop part-way
+    leaves is put back or removed at the next start (sweep).
     Returns what was deleted: {"name", "members", "linked_build", "lab_matches"}."""
     from . import watch_keys
-    p = db.execute("SELECT name, linked_build FROM profiles WHERE id=?", (pid,)).fetchone()
-    members = db.execute("SELECT COUNT(*) FROM memberships WHERE profile_id=?", (pid,)).fetchone()[0]
-    folder, aside = profile_dir(pid), os.path.join(config.DATA_DIR, "profiles", f".deleting-{int(pid)}")
-    shutil.rmtree(aside, ignore_errors=True)
-    if os.path.isdir(folder):
-        os.replace(folder, aside)
+    folder, aside, moved = profile_dir(pid), _deleting_dir(pid), False
     try:
         with dbm.transaction(db):
+            p = db.execute("SELECT name, linked_build FROM profiles WHERE id=?", (pid,)).fetchone()
+            members = db.execute("SELECT COUNT(*) FROM memberships WHERE profile_id=?", (pid,)).fetchone()[0]
+            shutil.rmtree(aside, ignore_errors=True)   # what an earlier deletion of it left: it all goes now
+            if os.path.isdir(folder):
+                os.replace(folder, aside)
+                moved = True
             watch_keys.forget(db, pid)
             from . import labmap   # the lab-name matches its reviews made (#591), while its imports are there
             matches = labmap.forget_profile(db, pid)
@@ -238,13 +265,48 @@ def delete_profile(db, pid):
             if p["linked_build"]:   # don't bring it back from the build on the next start
                 dbm.meta_set(db, "build_unlinked", "1")
     except BaseException:
-        if os.path.isdir(aside):
-            os.replace(aside, folder)
+        if moved and os.path.isdir(aside):
+            _put_back(aside, folder)
         raise
-    shutil.rmtree(aside, ignore_errors=True)
+    for d in (aside, folder):
+        shutil.rmtree(d, ignore_errors=True)
     _failed.pop(pid, None)
     records.forget(pid)
     return {"name": p["name"], "members": members, "linked_build": bool(p["linked_build"]), "lab_matches": matches}
+
+
+def sweep(db):
+    """At start-up (#932): what a profile's deletion stopped part-way left in profiles/. A .deleting-<id>/ goes, or is
+    put back if its profile is still there (the app stopped before the deletion was saved); a <id>/ that no profile
+    owns goes (written after its profile was deleted, by something that doesn't hold the write lock). The profiles' id
+    count is moved past them first, so no new profile is given one of their ids (#588). Nothing else there is touched.
+    Returns how many folders were removed."""
+    base = os.path.join(config.DATA_DIR, "profiles")
+    try:
+        names = os.listdir(base)
+    except OSError:
+        return 0
+    live = {r[0] for r in db.execute("SELECT id FROM profiles")}
+    gone = []
+    for n in names:
+        path = os.path.join(base, n)
+        if os.path.islink(path) or not os.path.isdir(path):
+            continue
+        pid = n[len(DELETING):] if n.startswith(DELETING) else n
+        if not pid.isdigit():
+            continue
+        if int(pid) in live:
+            if n != pid:
+                _put_back(path, profile_dir(int(pid)))
+            continue
+        gone.append((int(pid), path))
+    if gone:
+        top = max(p for p, _ in gone)
+        if not db.execute("UPDATE sqlite_sequence SET seq=MAX(seq, ?) WHERE name='profiles'", (top,)).rowcount:
+            db.execute("INSERT INTO sqlite_sequence(name, seq) VALUES('profiles', ?)", (top,))
+    for _, path in gone:
+        shutil.rmtree(path, ignore_errors=True)
+    return len(gone)
 
 
 def link_build(db, pid):
