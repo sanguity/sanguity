@@ -3236,6 +3236,14 @@ Everything on `main` so far; it becomes the first tagged release.
   a profile deleted since comes back with nobody given access (an admin gives it an owner) and one made since isn't in
   the backup, and the restore names both. With no database to replace (a new machine), or another install's, all of it
   comes from the backup as it was then, and the restore says so and what to check. README's Backup and restore says so.
+- **A connected source's address can't move while a profile is connected to it** (#926): an admin could change a
+  source's FHIR base while profiles were connected; once tested at the new address, a Disconnect sent the
+  connection's refresh token to that server's revocation endpoint, which then held the patient's portal access, and
+  the connection's pulls stopped. The address now can't change while any profile is connected to the source, as it
+  can't be removed then (the admin is told to add the new address as another source, or disconnect them first); a
+  sign-in started at the old address is used up by the change; and a connection whose source was moved before is
+  contacted only at its own address, its Disconnect sending its tokens nowhere else (the page says to end access in
+  the portal).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

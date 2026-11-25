@@ -8,8 +8,8 @@ way out, under a permit made here from what the install was told to contact:
         reach its issuer only; the rest of a sign-in also its token and registration endpoints' hosts, as its
         tested discovery named them. Read again before each request: removing the source stops contact.
   for_connection(db, connection_id, purpose, who, ip)
-        a profile's connection (a sync, or revoking on disconnect): the hosts of its source, and none once it is
-        disconnected, even in the middle of a pull.
+        a profile's connection (a sync, or revoking on disconnect): the hosts of its source while it's at the
+        address the connection was made with (#926), and none once it is disconnected, even in the middle of a pull.
   for_link(db, pid, host, who, ip, also=())
         a SMART Health Link someone pasted and confirmed (shl.py): its host (a pasted Health Card's issuer), and also
         the hosts the link itself names (file locations, Health Card issuers) that the page named and they confirmed
@@ -75,11 +75,14 @@ def for_source(db, source_id, purpose, pid=None, who=None, ip=None, issuer_only=
 
 
 def _connection_hosts(db, connection_id):
-    from . import smart
+    """Its source's hosts while the source is at the address the connection was made with, else (the source
+    removed, or moved before #926) that address's host alone."""
+    from . import connections, smart
     c = db.execute("SELECT state, issuer, client_id FROM connections WHERE id=?", (connection_id,)).fetchone()
     if not c or c["state"] == "disconnected":
         return set()
-    return _source_hosts(db, c["client_id"]) if c["client_id"] is not None else {smart.host_of(c["issuer"])}
+    r = db.execute("SELECT * FROM smart_clients WHERE id=?", (c["client_id"],)).fetchone() if c["client_id"] is not None else None
+    return connections.hosts_for(r) if connections.same_server(r, c) else {smart.host_of(c["issuer"])}
 
 
 def for_connection(db, connection_id, purpose, who=None, ip=None):

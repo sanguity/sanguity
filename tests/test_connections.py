@@ -2139,6 +2139,46 @@ class Connections(unittest.TestCase):
         # a source a profile is connected to can't be removed
         self.assertEqual(self.robin.delete(f"/api/connect/sources/{sid}", headers=H).status_code, 409)
 
+    def test_a_connection_keeps_the_address_it_was_made_with(self):   # #926
+        """An admin can't move a source's FHIR base while a profile is connected to it, as they can't remove it; a
+        connection whose source was moved anyway (before #926) sends its tokens to no other server; and a sign-in
+        started at the old address doesn't finish at the new one."""
+        sid = self.source()
+        cid = self.connect(sid)
+        other = FakeFHIR(patients=["robin-example"], smart_config={"token_endpoint": self.fake.token_url}).start()
+        self.addCleanup(other.stop)
+        r = self.robin.patch(f"/api/connect/sources/{sid}", json={"issuer": other.fhir_base}, headers=H)
+        self.assertEqual(r.status_code, 409, r.text)
+        self.assertIn("still connected", r.json()["detail"])
+        src = lambda: next(x for x in self.robin.get("/api/connect/sources").json()["sources"] if x["id"] == sid)
+        self.assertEqual((src()["issuer"], src()["tested"] is not None), (self.fake.fhir_base, True))
+        self.assertEqual(self.robin.patch(f"/api/connect/sources/{sid}", json={"name": "Renamed 926"}, headers=H).status_code, 200)
+        # moved anyway, as an admin could before: its tested discovery the other server's, which names a revocation
+        # endpoint there. The connection reaches no host of the other server, and its disconnect sends it nothing
+        db = dbm.connect()
+        old = dict(db.execute("SELECT issuer, discovery FROM smart_clients WHERE id=?", (sid,)).fetchone())
+        db.execute("UPDATE smart_clients SET issuer=?, discovery=? WHERE id=?",
+                   (other.fhir_base, json.dumps(other.smart_configuration()), sid))
+        from server import outside
+        self.assertNotIn(smart.host_of(other.url), outside._connection_hosts(db, cid))
+        db.close()
+        r = self.robin.post(f"/api/profiles/{self.pid}/connections/{cid}/disconnect", json={"remove_records": False}, headers=H)
+        self.assertEqual(r.json(), {"revoked": False, "removed": 0})   # the page says to end access in the portal
+        self.assertEqual(other.requests, [])
+        db = dbm.connect()
+        db.execute("UPDATE smart_clients SET issuer=?, discovery=? WHERE id=?", (old["issuer"], old["discovery"], sid))
+        db.close()
+        # nobody connected now: the address can be corrected, and a sign-in started at the old one is used up
+        url = self.start(sid)
+        r = self.robin.patch(f"/api/connect/sources/{sid}", json={"issuer": other.fhir_base}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertTrue(self.robin.post(f"/api/connect/sources/{sid}/test", headers=H).json()["ok"])
+        r = self.back(self.fake.authorize(url, patient="pat-1"))
+        self.assertEqual(r.status_code, 400, r.text)
+        db = dbm.connect()
+        self.assertIsNone(db.execute("SELECT 1 FROM connections WHERE client_id=? AND state != 'disconnected'", (sid,)).fetchone())
+        db.close()
+
     def test_walk_through_per_vendor(self):   # #165: numbered steps, each with what to paste, for every vendor
         g = self.robin.get("/api/connect/sources").json()["guides"]
         self.assertEqual(set(g), {"epic", "oracle", "insurer", "other"})

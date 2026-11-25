@@ -503,7 +503,8 @@ in [connected-sources-oauth.md](connected-sources-oauth.md): each install regist
 - **smart_clients** is what an admin set up per source (install-wide): the FHIR base (issuer), the client ID, the
   client secret where the vendor issued one, how the app authenticates and the scopes to ask for, and the discovery
   its last test read. The server contacts no host for that source other than the issuer's and those its discovery
-  names for the token, revocation and registration endpoints.
+  names for the token, revocation and registration endpoints. Its FHIR base can't change while a profile is
+  connected to it (#926): a connection's tokens belong to the server at the address it was made with.
 - **connections**: one per profile and source. The access token, the refresh token or (with Epic's dynamic
   registration) the private key and dynamic client ID are one encrypted JSON value, deleted on disconnect, as is the
   patient id. `cursor` is the `_lastUpdated` to ask after, per resource type; `state` is `active`, `needs reconnect`
