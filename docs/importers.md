@@ -226,7 +226,11 @@ resource's plain id `fhir:<type>/<id>` on the same server, from the event's or e
 gives as `{"server", "at": meta.lastUpdated, "of": the bundle's timestamp}` and the preview gives the date of the upload,
 the latest it holds, where it says none; a claim of the same insurer), never from an older version (by `at` where both
 say it, else `of`), and never emptying a field the upload leaves out or sends empty; the review names each record it
-would change and what changes, with a box to leave it out. `ver` is stored, never served; a series adds only the
+would change and what changes, with a box to leave it out. A record whose plain key another source's record holds
+(#967: another server's, by their `ver`) isn't that one: the preview gives it its key naming its server,
+`fhir:<server>|<type>/<id>` as an upload mixing servers has it, so it's added beside the other and found by that key
+when its file comes again; one here from the same server, or one saying none (saved before #955), is the same record,
+as before. `ver` is stored, never served; a series adds only the
 points (time and value as reported) the profile doesn't have, and a
 point it has already, but whose copy in the upload says something of its range or flag that no copy there says, or
 whose row in the upload's lab day is new, is added as a copy, read as one result with the copy there (#846), always

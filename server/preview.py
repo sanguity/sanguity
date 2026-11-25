@@ -3,7 +3,9 @@
 A parsed record is a duplicate when the profile already has one with the same source key (docs/importers.md,
 "Source keys"), found by its key_hash (records.py) without decrypting the rows. A record without a key falls back
 to the same importer, date, kind and content: the bodies of keyless records that earlier imports of the same format
-brought are compared as they are (importers give keys nowadays, so these are few).
+brought are compared as they are (importers give keys nowadays, so these are few). An upload's record whose plain key
+(a FHIR resource's id) another source's record holds here is given a key naming its source first, and added as its
+own (#967: _own_keys).
 
   events      the event's key, else its body (date, kind, title...) without the id
   lab results a point is its series' key (or, without one, the series name and unit) and its time and value as
@@ -165,6 +167,8 @@ def find(db, pid, fmt, data, whole=None):
     "known" (#879), {labitem id: {row index}}, the upload's rows that are records here (the same Observation, whichever
     bundle it came in). whole: the records the upload's rows are in, where they aren't its own (a sync's: the whole set
     read so far, a lab day grouping results across pulls)."""
+    if whole is None:   # (#967) an upload's records another source's hold the keys of here: keyed as their own first
+        _own_keys(db, pid, data)
     events = [e for e in data.get("events") or [] if isinstance(e, dict)]
     keyed = {str(e["id"]): e["key"] for e in events if isinstance(e.get("key"), str) and e["key"].strip()}
     hashes = records.key_hashes(db, keyed.values())
@@ -267,6 +271,73 @@ def _kept(here, sent, flags=()):
 
 def _server(x):
     return str(x or "").strip().rstrip("/").lower()
+
+
+def _said_source(x):
+    """(#967) Where a record of an upload (an event's body, a list's entry) says it came from, as given: its VER's server
+    (the FHIR importer's: its server's base). "" where it doesn't say."""
+    v = x.get(VER) if isinstance(x, dict) and isinstance(x.get(VER), dict) else {}
+    return str(v.get("server") or "").strip()
+
+
+def _source(x, base=None):
+    """(#967) The same of a record here, as compared (_server), else the server of the connection whose pull saved it
+    (base); "" where neither says."""
+    return _server(_said_source(x) or base)
+
+
+def _plain(key):
+    """(#967) Whether a source key names its record by an id that another source's record can have too, and doesn't
+    say the source: a FHIR resource's plain id (fhir:<type>/<id>)."""
+    return isinstance(key, str) and bool(PLAIN_FHIR.match(key))
+
+
+def _named(key, source):
+    """(#967) A plain key naming its source: "<importer>:<source>|<rest>" (fhir:<server>|<type>/<id>, as the FHIR
+    importer keys the resources of an upload that mixes servers)."""
+    prefix, rest = key.split(":", 1)
+    return f"{prefix}:{source}|{rest}"
+
+
+def _own_keys(db, pid, data):
+    """(#967) A record of the upload whose plain key (_plain) another source's record holds here is a record of its own,
+    not that one: its key is made to name its source (_named), in place, before find() looks for duplicates by key.
+    So clinic B's medication with hospital A's ids is added beside hospital A's (it was left out as a duplicate, and
+    #920 put it in hospital A's place before #955), and clinic B's file sent again finds its own by that key. A record
+    here under its key naming its source is its own already; one under the plain key from the same source, or from one
+    it doesn't say (a record saved before #955), is the same record, as before. Events (not lab days nor lab events,
+    whose results have their own rule: #869, #885) and the profile-wide lists' entries."""
+    cands = []   # (the record, its plain key, its source as given, its list's path or None)
+    for e in data.get("events") or []:
+        if isinstance(e, dict) and e.get("k") not in ("lab", "labitem") and _plain(e.get("key")) and (s := _said_source(e)):
+            cands.append((e, e["key"], s, None))
+    for path, items in _meta_lists(data).items():
+        for x in items:
+            if isinstance(x, dict) and _plain(x.get("key")) and (s := _said_source(x)):
+                cands.append((x, x["key"], s, path))
+    if not cands:
+        return
+    bases = {r[0]: r[1] for r in db.execute("""SELECT i.id, c.fhir_base FROM imports i JOIN connections c ON c.id = i.connection_id
+                                               WHERE i.profile_id=?""", (pid,))}   # (a connection's records: its server)
+    held = collections.defaultdict(list)   # (list path or None, key) -> [the source of each record here under it]
+    wanted = {k for _, key, s, _ in cands for k in (key, _named(key, s))}
+    if any(path is None for *_, path in cands):
+        hashes = records.key_hashes(db, wanted)
+        by_hash = {h: k for k, h in hashes.items()}
+        for h in records._chunks(sorted(set(hashes.values()))):
+            q = f"SELECT import_id, key_hash, body FROM events WHERE profile_id=? AND key_hash IN ({','.join('?' * len(h))})"
+            for r in db.execute(q, (pid, *h)):
+                held[(None, by_hash[r["key_hash"]])].append(_source(records._dec(r["body"]) or {}, bases.get(r["import_id"])))
+    if any(path is not None for *_, path in cands):
+        for r in db.execute("SELECT id, meta FROM imports WHERE profile_id=?", (pid,)):
+            for path, items in _meta_lists(records._dec(r["meta"]) or {}).items():
+                for x in items:
+                    if isinstance(x, dict) and x.get("key") in wanted:
+                        held[(path, x["key"])].append(_source(x, bases.get(r["id"])))
+    for x, key, s, path in cands:
+        own, plain = held.get((path, _named(key, s))), held.get((path, key))
+        if own or plain and all(h and h != _server(s) for h in plain):
+            x["key"] = _named(key, s)
 
 
 def _same_source(key, sent, here, base=None, sent_d=None, here_d=None):
