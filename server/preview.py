@@ -338,8 +338,29 @@ def _settle(data, dups, kept, anyway=None):
                 dups["events"].discard(row[0])   # its row with it
             else:   # no row of its own here: left out
                 leave_out(dups, i, n)
+    _new_with_rows(data, dups, drawer)
     _settle_labdays(data, dups, kept)
     _with_rows(data, dups, drawer)
+
+
+def _new_with_rows(data, dups, drawer):
+    """(#878) A result new to the profile, a text result too, is kept with its row, so none is saved without one: where
+    its labitem is a duplicate by key (a report sent again with a result added; another source's results of that day,
+    under the same day's key; a duplicate's text result ticked to add anyway, #901), it's kept with that row (_settle's
+    "rows", #887), and its lab day with it. They were saved with no row and no lab day: the Timeline's badge counted
+    them in every lab day of their date (util.js labDraws) while no drawer listed them."""
+    labs, rows = data.get("labs") or [], dups["rows"]
+    for i, s in enumerate(labs):
+        if not isinstance(s, dict):
+            continue
+        here = (dups["points"].get(i, set()) | dups["copies"].get(i, set()) | set((dups.get("updates") or {}).get(i, ())),
+                dups["txt"].get(i, set()))   # (a copy's row is _settle's to keep or leave out, an update's is here)
+        for field, drop in zip(("pts", "txt"), here):
+            for n, p in enumerate(s.get(field) or []):
+                row = n not in drop and _row(drawer, s, p)
+                if row and (row[0] in dups["events"] or row[0] in rows):
+                    rows.setdefault(row[0], set()).add(row[1])
+                    dups["events"].discard(row[0])
 
 
 def leave_out(dups, i, n):

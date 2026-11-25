@@ -2225,6 +2225,13 @@ Everything on `main` so far; it becomes the first tagged release.
   pull or an Undo, "1 lab result" sat under "CBC with differential, Lab results" for one ALT. Now wherever a lab day's
   list changes (duplicates left out of an import, a pull joining it, an Undo, an entry hidden, a result linked as the
   same as another source's), one rule titles it for its results, lists their tests and counts their flags.
+- **No lab result is saved without its row** (#878): a result new to the profile was saved with no row and no lab day
+  where the report or day it came in was already here: a report sent again with a result added, another source's
+  FHIR file of a day already here (a health plan's after a hospital's, a portal's export after a hospital's file, a
+  portal connected after its export was uploaded), a CareSpace panel, an Epic order or a C-CDA organizer sent again.
+  The Timeline's badge counted it in every lab day of its date while no drawer listed it, and a correction pulled
+  later added a second result beside it. Now each new result, a text result too, is kept with its own row, in a lab
+  day holding it.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
