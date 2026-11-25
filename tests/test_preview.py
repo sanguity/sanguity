@@ -625,6 +625,58 @@ class Preview(unittest.TestCase):
         self.assertEqual(({s["name"]: s["pts"] for s in after["labs"]}, after["details"]), ({s["name"]: s["pts"] for s in before["labs"]}, before["details"]),
                          "undone: its results and rows as they were")
 
+    def test_an_observation_is_found_by_its_id_whichever_bundle_it_comes_in(self):   # #879
+        """A FHIR Observation is the same record by its id whichever bundle it comes in: inside a DiagnosticReport (its
+        labitem keyed by the report), or on its own (keyed by its day). Uploaded alone after coming in a report, it was
+        taken for another source's: kept as a copy, with a lab day of its own beside the report's, or, its range
+        corrected, as a second result. Now the same again is a duplicate, nothing added; its range corrected updates it
+        in place, its row with it, and Undo puts it back; the other way round alike. Another source's of that time, its
+        own Observation, stays another result (#885)."""
+        t = "2025-09-10T08:30:00"
+
+        def obs(oid, rng, v=5.2):
+            return {"resourceType": "Observation", "id": oid, "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
+                    "code": {"coding": [{"system": "http://loinc.org", "code": "2823-3"}], "text": "Potassium"}, "effectiveDateTime": t,
+                    "valueQuantity": {"value": v, "unit": "mmol/L"},
+                    "referenceRange": [{"low": {"value": rng[0]}, "high": {"value": rng[1]}, "text": f"{rng[0]}-{rng[1]}"}]}
+        na = {**obs("na-1", (135, 145), 140), "code": {"coding": [{"system": "http://loinc.org", "code": "2951-2"}], "text": "Sodium"}}
+
+        def sent(*rs, report=False):
+            rs = list(rs) + ([{"resourceType": "DiagnosticReport", "id": "bmp-1", "status": "final", "code": {"text": "Basic metabolic panel"},
+                               "effectiveDateTime": t, "result": [{"reference": f"Observation/{r['id']}"} for r in rs]}] if report else [])
+            return {"labs.json": json.dumps({"resourceType": "Bundle", "type": "collection", "entry": [{"resource": r} for r in rs]})}
+
+        def said(pid):   # each Potassium result: its range and flag, and its row's range as printed
+            got = assembled(pid)
+            self.assertEqual(rowless(got), [], "every result with its row")
+            drawer = crossmatch._rows(got)
+            return sorted((p[2], p[3], p[4], got["details"][str(at[0])]["rows"][at[1]][3]) for s in got["labs"] if s["name"] == "Potassium, Blood"
+                          for p in s["pts"] for at in [crossmatch._row_of(drawer, s, p)])
+        for first, again in ((True, False), (False, True)):   # in its report, then alone; alone, then in its report
+            with self.subTest(report_first=first):
+                pid = self.profile(f"An Observation, {'its report' if first else 'alone'} first")
+                self.assertEqual(self.save(pid, self.previewed(pid, sent(obs("k-1", (3.5, 5.3)), na, report=first))[0])["state"], "done")
+                before, n = said(pid), count(pid)
+                self.assertEqual(before, [(3.5, 5.3, "", "3.5-5.3")])
+                j, _ = self.previewed(pid, sent(obs("k-1", (3.5, 5.3)), report=again))   # the same Observation
+                self.assertEqual((j["new"], j["duplicates"]["results"], j["duplicates"]["copies"], j["duplicates"]["updates"]), (False, 1, 0, 0), j["duplicates"])
+                self.assertEqual(self.save(pid, j)["state"], "discarded")
+                self.assertEqual(count(pid), n, "nothing added")
+                j, _ = self.previewed(pid, sent(obs("k-1", (3.5, 5.1)), report=again))   # its range corrected
+                self.assertEqual((j["duplicates"]["results"], j["duplicates"]["copies"], j["duplicates"]["updates"], j["counts"]["results"]),
+                                 (0, 0, 1, 0), j["duplicates"])
+                done = self.save(pid, j)
+                self.assertEqual((done["state"], done["counts"].get("updated")), ("done", 1), done)
+                self.assertEqual(said(pid), [(3.5, 5.1, "H", "3.5-5.1")], "updated in place, its row with it")
+                self.assertEqual({k: v for k, v in count(pid).items() if k != "imports"}, {k: v for k, v in n.items() if k != "imports"})
+                r = self.robin.post(f"/api/profiles/{pid}/imports/{done['import_id']}/undo", headers=H)
+                self.assertEqual(r.status_code, 200, r.text)
+                self.assertEqual(said(pid), before, "undone: as it was")
+                j, _ = self.previewed(pid, sent(obs("plan-k", (3.5, 5.1)), report=again))   # another source's at that time
+                self.assertEqual((j["duplicates"]["copies"], j["duplicates"]["updates"]), (1, 0), j["duplicates"])
+                self.assertEqual(self.save(pid, j)["state"], "done")
+                self.assertEqual(said(pid), [(3.5, 5.1, "H", "3.5-5.1"), (3.5, 5.3, "", "3.5-5.3")], "another result, its own row")
+
     def test_another_source_at_one_time_is_never_the_same_record(self):   # #885
         """Only the same record of the same source is updated in place (#869): an Observation by its own id, a report
         by its own. A hospital's FHIR file of Potassium 5.05 (3.5–5.0, High) and Sodium, results on their own (no

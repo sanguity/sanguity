@@ -155,9 +155,10 @@ def find(db, pid, fmt, data, whole=None):
     (#868: "at", {series index: {point index: (event id, row index)}} in the upload) and what it brings ("brings":
     {series index: {point index: "range" | "flag" | "row"}}); and "updates" (#869: _same_records), {series index: {point
     index: [{"result", "event", "row", "at"}]}}, its results already here that their source sends again, each the result
-    here it updates (its id), that result's row here (its event's id and the row's index) and its own in the upload.
-    whole: the records the upload's rows are in, where they aren't its own (a sync's: the whole set read so far, a lab
-    day grouping results across pulls)."""
+    here it updates (its id), that result's row here (its event's id and the row's index) and its own in the upload;
+    "known" (#879), {labitem id: {row index}}, the upload's rows that are records here (the same Observation, whichever
+    bundle it came in). whole: the records the upload's rows are in, where they aren't its own (a sync's: the whole set
+    read so far, a lab day grouping results across pulls)."""
     events = [e for e in data.get("events") or [] if isinstance(e, dict)]
     keyed = {str(e["id"]): e["key"] for e in events if isinstance(e.get("key"), str) and e["key"].strip()}
     hashes = records.key_hashes(db, keyed.values())
@@ -206,7 +207,7 @@ def find(db, pid, fmt, data, whole=None):
         points[i] = (here - copies[i]) | {n for n, p in enumerate(s.get("pts") or []) if n not in here and old_txt
                                           and (_point(p) in have_t or _point_read(p) & read_t)}
         if i in olds:   # (#869) those saying something else of their range and flag than a copy here: sent again?
-            olds[i] = (olds[i], {n for n in here if any(crossmatch.said(o) != crossmatch.said(s["pts"][n]) for o in have_p[_point(s["pts"][n])])})
+            olds[i] = (olds[i], here, {n for n in here if any(crossmatch.said(o) != crossmatch.said(s["pts"][n]) for o in have_p[_point(s["pts"][n])])})
         txt[i] = {n for n, t in enumerate(s.get("txt") or []) if _text(t) in have_t or _text(t) in have_p or _text_read(t) & read_p}
         if not (s.get("pts") or s.get("txt")):
             empty.add(i)
@@ -267,9 +268,17 @@ def _same_records(db, pid, data, dups, olds, whole=None):
     Observation by its own id, or the same report; never a key scoped to a day, which another source's results of that
     day have too, nor a hash of the result's content, which a typed or spreadsheet result's copy has too, #868). A
     re-pull of an Observation whose range its source corrected (13.5–17.5 and Low, then 12.0–15.5) added a copy beside
-    the labitem updated in place: two results, and the lab day's row read the old one's Low beside the new range. olds:
-    {series index: (its series here, the points saying something else than a copy here)}."""
-    dups["updates"] = {}
+    the labitem updated in place: two results, and the lab day's row read the old one's Low beside the new range.
+
+    (#879) An Observation is found by its id whichever bundle it comes in: its row here is looked for in the labitems
+    of its result's import (records.labitems_of) where none with the upload's labitem key holds it, as one that came in
+    a report and comes alone now (or the other way round) is under another key (a report's, its day's). One saying what
+    it says here is a duplicate, its row a record here ("known": {labitem id: {row index}}, which _settle keeps no
+    labitem for): it was kept as a copy with a lab day of its own beside the report's, or, amended, as another result.
+    olds: {series index: (its series here, the points here at their time and value, those saying something else than
+    a copy here)}; those of the second asked about where their row, its own record's (an Observation's), is in a
+    labitem new to the profile (an upload's)."""
+    dups["updates"], known = {}, dups.setdefault("known", {})
     if not olds:
         return
     src = whole or data
@@ -277,32 +286,44 @@ def _same_records(db, pid, data, dups, olds, whole=None):
     events = {str(e["id"]): e for e in src.get("events") or [] if isinstance(e, dict) and "id" in e}
     details = {str(k): d for k, d in (src.get("details") or {}).items()}
     want = {}
-    for i, (_, ns) in olds.items():
-        for n in ns:
+    for i, (_, here, other) in olds.items():
+        for n in here:
             row = _row(drawer, labs[i], labs[i]["pts"][n])
             rec = row and _row_record(events.get(row[0]), details.get(row[0]), row[1])
-            if rec and (rec[1] or _record_key(rec[0])):
+            if rec and (rec[1] or _record_key(rec[0])) and (n in other or not whole and rec[1] and row[0] not in dups["events"]):
                 want[(i, n)] = (row, rec)
     if not want:
         return
-    here = records.events_with_keys(db, pid, {rec[0] for _, rec in want.values()})
-    rows, keyed = crossmatch._rows({"events": here, "details": {str(e["id"]): e["detail"] for e in here}}), {e["id"]: e for e in here}
     by = collections.defaultdict(list)   # (series id, point) -> [(result id, its series as the records have it, point)]
     for rid, sid, imp, body, q in records.series_results(db, pid, {x for i, _ in want for x in olds[i][0]}):
         if isinstance(q, list) and q:
             by[(sid, _point(q))].append((rid, {**body, "imp": imp}, q))
+    results = {(i, n): [r for sid in olds[i][0] for r in by[(sid, _point(labs[i]["pts"][n]))]] for i, n in want}
+    here = records.events_with_keys(db, pid, {rec[0] for _, rec in want.values()})
+    rows = crossmatch._rows({"events": here, "details": {str(e["id"]): e["detail"] for e in here}})
+    away = {s["imp"] for (i, n), (_, rec) in want.items() if rec[1] for _, s, q in results[(i, n)] if not crossmatch._row_of(rows, s, q)}
+    if away:   # (#879) a row here under another labitem key than the upload's: in its result's import
+        had = {e["id"] for e in here}
+        here += [e for e in records.labitems_of(db, pid, away) if e["id"] not in had]
+        rows = crossmatch._rows({"events": here, "details": {str(e["id"]): e["detail"] for e in here}})
+    keyed = {e["id"]: e for e in here}
     for (i, n), (row, rec) in want.items():
-        found = []
-        for sid in olds[i][0]:
-            for rid, s, q in by[(sid, _point(labs[i]["pts"][n]))]:
-                at = crossmatch._row_of(rows, s, q)
-                if at and _same_record(rec, _row_record(keyed[at[0]], keyed[at[0]].get("detail"), at[1])):
-                    found.append({"result": rid, "event": at[0], "row": at[1], "at": None if whole else row})
-        if found:
+        p, found = labs[i]["pts"][n], []
+        for rid, s, q in results[(i, n)]:
+            at = crossmatch._row_of(rows, s, q)
+            if at and _same_record(rec, _row_record(keyed[at[0]], keyed[at[0]].get("detail"), at[1])):
+                found.append(({"result": rid, "event": at[0], "row": at[1], "at": None if whole else row}, q))
+        if not found:
+            continue
+        dups["copies"].get(i, set()).discard(n)
+        dups["brings"].get(i, {}).pop(n, None)
+        if not whole:   # its row a record here: no labitem kept for it
+            known.setdefault(row[0], set()).add(row[1])
+        if any(crossmatch.said(q) != crossmatch.said(p) for _, q in found):
             dups["points"].get(i, set()).discard(n)
-            dups["copies"].get(i, set()).discard(n)
-            dups["brings"].get(i, {}).pop(n, None)
-            dups["updates"].setdefault(i, {})[n] = found
+            dups["updates"].setdefault(i, {})[n] = [u for u, _ in found]
+        else:   # (#879) the same record saying the same: a duplicate
+            dups["points"].setdefault(i, set()).add(n)
 
 
 def _row(drawer, s, p):
@@ -326,6 +347,16 @@ def _settle(data, dups, kept, anyway=None):
     at = dups["at"] = {}
     rows = dups.setdefault("rows", {})
     dups.setdefault("copies", {}), dups.setdefault("brings", {})
+    # (#879) a labitem new to the profile keeps no row that's a record here (the same Observation in another bundle,
+    # _same_records' "known"): holding nothing else, it's a duplicate
+    held = {str(k): d for k, d in (data.get("details") or {}).items()}
+    for eid, rs in (dups.get("known") or {}).items():
+        if eid not in kept and eid not in dups["events"] and eid not in rows:
+            left = set(range(len((held.get(eid) or {}).get("rows") or []))) - rs
+            if left:
+                rows[eid] = left
+            else:
+                dups["events"].add(eid)
     # (#869) a labitem whose rows are updated in place isn't added again for a copy's row: that copy is left out
     updated = {u["at"][0] for us in (dups.get("updates") or {}).values() for ul in us.values() for u in ul if u["at"]}
     for i, ns in list(dups["copies"].items()) + list((anyway or {}).items()):

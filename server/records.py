@@ -221,6 +221,19 @@ def events_with_keys(db, pid, keys):
     return out
 
 
+def labitems_of(db, pid, import_ids):
+    """The labitems these imports brought, as events_with_keys gives them: where a result of theirs has its row, for an
+    Observation found by its id under another labitem key than its upload's (preview.py, #879)."""
+    out = []
+    for ch in _chunks(sorted(set(import_ids))):
+        q = f"SELECT id, import_id, body, detail FROM events WHERE profile_id=? AND import_id IN ({','.join('?' * len(ch))}) ORDER BY id"
+        for r in db.execute(q, (pid, *ch)):
+            b = _dec(r["body"]) or {}
+            if b.get("k") == "labitem":
+                out.append({**b, "id": r["id"], "imp": r["import_id"], "detail": _dec(r["detail"])})
+    return out
+
+
 def keyless(db, pid, fmt):
     """Events and series without a source key that imports of format fmt brought: ([event body], [series body
     with its pts]). For the duplicate check's fallback (same importer, date, kind and content); importers give keys
