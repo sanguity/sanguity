@@ -20576,6 +20576,7 @@ def main():
                                 bad900s[f"{w}: {t}, round {n + 1}"] = str(e).splitlines()[0][:120]
                                 page.keyboard.press("Escape")
                     tab_click(page, "#tab-labs")
+                    js("switchTab('labs', 'chart')")   # (its charts, whose readouts these are: a phone opens Labs on Latest till a view's picked, #997)
                     settle(1500)
                     page.set_viewport_size({"width": w + 30, "height": 800})
                     settle(1500)
@@ -22834,6 +22835,7 @@ def main():
             page.goto(base + "/?profile=1#labs")
             page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
             settle(300)
+            pick997 = js("labsPicked")   # (#997: the view picked, the checks after these leave as it was)
             page.click("#labsView button[data-view=latest]")
             js("applyPreset('2y')")
             settle(400)
@@ -23115,6 +23117,68 @@ def main():
                   and other996[0] == {"Hemoglobin": None, "WBC": None} and other996[2] == first996[1][2] != again996[2]
                   and [b[0] for b in blocked996] == [{"Hemoglobin": None, "WBC": None, "Ferritin": None}] * 2 and [b[1:] for b in blocked996] == [["3 labs", "blocked"]] * 2 and not err996,
                   [first996, again996, other996, blocked996, err996])
+            # ---- #997: Labs opens on Latest on a phone. In a browser that's shown nothing yet, Labs' own address (another
+            # page's tab bar links to it, ./#labs) opens Latest at 360 and 412 px and Chart at 900 and 1400 px; on a phone
+            # the tab bar's Labs too, marked as the tab shown, focus and the scroll as Body's tab leaves them. A view picked
+            # is where Labs opens from then on: on a reload, and from another page's bar (Sources'), for that profile only
+            cookies997 = [{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"]
+            OPEN997 = "[state.tab, state.labsView, location.hash, !document.getElementById({latest: 'labsLatest', chart: 'labsChart', heatmap: 'labsHeatmap', compare: 'labsCompare'}[state.labsView]).hidden]"
+            opens997 = {}
+            for w997 in (360, 412, 900, 1400):
+                c997 = browser.new_context(viewport={"width": w997, "height": 800}, bypass_csp=True, is_mobile=w997 < 700, has_touch=w997 < 700)
+                c997.add_cookies(cookies997)
+                p997 = c997.new_page()
+                p997.goto(base + "/?profile=1#labs")
+                p997.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+                opens997[w997] = p997.evaluate(OPEN997)
+                c997.close()
+            c997 = browser.new_context(viewport={"width": 412, "height": 860}, bypass_csp=True, is_mobile=True, has_touch=True)
+            c997.add_cookies(cookies997)
+            p997 = c997.new_page()
+            p997.goto(base + "/?profile=1#overview")
+            p997.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+            BAR997 = "t => [state.tab, state.labsView, document.getElementById('tab-' + t).getAttribute('aria-current'), document.activeElement.id || document.activeElement.tagName, Math.round(scrollY)]"
+            bar997 = {}
+            for t997 in ("health", "labs"):
+                p997.evaluate("scrollTo(0, 300)")
+                tab_click(p997, "#tab-" + t997)
+                p997.wait_for_timeout(500)
+                bar997[t997] = p997.evaluate(BAR997, t997)
+            picked997 = {}
+            for v997 in ("heatmap", "latest", "chart"):
+                p997.click(f"#labsView button[data-view={v997}]")
+                p997.wait_for_timeout(300)
+                p997.reload()
+                p997.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+                got997 = [p997.evaluate(OPEN997)]
+                p997.goto(base + "/sources.html?profile=1")
+                p997.wait_for_selector("#tab-labs", state="attached", timeout=10000)
+                tab_click(p997, "#tab-labs")
+                p997.wait_for_function("typeof booted !== 'undefined' && booted && state.tab === 'labs'", timeout=20000)
+                got997.append(p997.evaluate(OPEN997))
+                picked997[v997] = got997
+            db = dbm994.connect()
+            o997 = prof994.create_profile(db, "Labs on a phone (fictional)", owner_id=uid996)
+            db.close()
+            store996(o997, draw996(5, [("Hemoglobin", "g/dL", 13.9, 13.5, 17.5)]))
+            p997.goto(base + f"/?profile={o997}#labs")
+            p997.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {o997}", timeout=20000)
+            other997 = p997.evaluate(OPEN997)
+            c997.close()
+            db = dbm994.connect()
+            prof994.delete_profile(db, o997)
+            db.close()
+            check("Labs opens on Latest on a phone (#997): in a browser that's shown nothing yet, Labs' address (another page's tab bar) opens Latest at "
+                  "360 and 412 px and Chart at 900 and 1400 px; the phone's tab bar's Labs opens Latest, marked as the tab shown, focus and the scroll as "
+                  "Body's tab leaves them", opens997 == {360: ["labs", "latest", "#labs-latest", True], 412: ["labs", "latest", "#labs-latest", True],
+                                                         900: ["labs", "chart", "#labs", True], 1400: ["labs", "chart", "#labs", True]}
+                  and bar997["labs"][:3] == ["labs", "latest", "page"] and bar997["health"][2] == "page"
+                  and [bar997["labs"][3], bar997["labs"][4]] == [bar997["health"][3].replace("health", "labs"), bar997["health"][4]], [opens997, bar997])
+            check("…a view picked is where it opens from then on, on a reload and from another page's tab bar (Heatmap, Latest, Chart), for that profile "
+                  "only: another opens on Latest still", picked997 == {v: [["labs", v, {"chart": "#labs"}.get(v, "#labs-" + v), True]] * 2 for v in ("heatmap", "latest", "chart")}
+                  and other997 == ["labs", "latest", "#labs-latest", True], [picked997, other997])
+            js("p => { labsPicked = p; save(); applyPreset('all'); switchTab('labs', 'chart'); }", pick997)   # (as the checks before these left it)
+            settle(300)
             # …#900: and whatever it says, at the width it's shown. The room held the widest three it says as one line, and
             # wrapped, a narrower one could take a line more: on profiles of many times with two results (the review's 20,
             # ranges_matrix.many) Compare dropped 18 px at 803–818 px and 36 px at 461–467 px with 200% text, Labs 40.6 px at
@@ -27941,8 +28005,12 @@ def main():
             check("…and the drawer and Costs' editor each say why in a line, once, as today's doses do (#456)",
                   says456 == {k: [["Changes need the server: you're offline.", True]] for k in ("drawer", "costs")}, says456)
             tab_click(ph, "#tab-labs")
+            ph.wait_for_selector("#ltRows .lt-row", timeout=10000)   # (on a phone Labs opens on Latest, #997)
+            latest997 = ph.evaluate("[state.labsView, document.querySelectorAll('#ltRows .lt-row').length]")
+            ph.click("#labsView button[data-view=chart]")
             ph.wait_for_selector("#charts svg", timeout=10000)
-            check("offline: Trends draws from the kept copy", ph.evaluate("document.querySelectorAll('#charts svg').length") > 0)
+            check("offline: Labs draws from the kept copy, its Latest (where a phone opens it, #997) and its charts", latest997[0] == "latest" and latest997[1] > 0
+                  and ph.evaluate("document.querySelectorAll('#charts svg').length") > 0, latest997)
             off405 = ph.evaluate("""(async ([c, ids]) => { await loadDetails(ids);
                 return {dose: DATA.doses.some(d => d.id === c.dose), title: byId.get(c.visit)?.title, hsa: (DATA.oop.claims.find(x => x.id === c.claim) || {}).hsa,
                         day: ids.every(id => detailsHave(id) && !DETAILS_MISSED.has(id))}; })""", [ch405, day])

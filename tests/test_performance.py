@@ -515,7 +515,7 @@ def page_times(viewport, throttle=1):
         for tab in TABS:   # the page loaded on each tab, as a link or a reload would; profile 1 is the big one
             runs = []
             for n in range(RUNS):
-                page.goto(f"{BASE}/index.html?profile=1&run={n}#{tab}")
+                page.goto(f"{BASE}/index.html?profile=1&run={n}#{'labs-chart' if tab == 'labs' else tab}")   # (#labs on a phone opens Latest, #997)
                 runs.append(ready())
             ready_ms[tab] = round(statistics.median(runs))
         page.evaluate("() => applyPreset('all')")   # the most there is to draw, ten years; kept for the loads below
