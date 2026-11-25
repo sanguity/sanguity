@@ -11186,6 +11186,30 @@ def main():
             settle(300)
             check("…each preset and Since button pressed by keyboard keeps focus on itself, chosen, on Labs, Body and activity, the Timeline and Costs, "
                   "at 1400×900 and 844×390 on a touch screen (#724: focus fell to the page)", not lost724, lost724)
+            # #747: a preset with focus as the fonts arrive keeps it: the row, fitted again in Inter (core.js presetsFit, #656),
+            # is drawn through keepFocus too (it dropped focus to the page). The fonts held back (no service worker, so they
+            # come from the network) until a preset has focus, on Labs and the Timeline at 1400 px
+            lost747 = {}
+            for t747 in ("labs", "timeline"):
+                c747, held747 = browser.new_context(storage_state=page.context.storage_state(), service_workers="block", viewport={"width": 1400, "height": 900}, bypass_csp=True), []
+                c747.route("**/fonts/**", lambda route: held747.append(route))
+                p747 = c747.new_page()
+                p747.goto(f"{base}/?profile=1#{t747}", wait_until="domcontentloaded")
+                p747.wait_for_function("typeof booted !== 'undefined' && booted && !!document.querySelector('#presets button')", timeout=20000)
+                p747.keyboard.press("Tab")   # (from the keyboard, as a person would get there)
+                words747 = p747.evaluate("(b => { b.focus(); return b.textContent; })([...document.querySelectorAll('#presets button')].find(b => b.getAttribute('aria-pressed') !== 'true'))")
+                early747 = p747.evaluate("[...document.fonts].some(f => f.family === 'Inter' && f.status === 'loaded')")
+                for r in held747:
+                    r.continue_()
+                c747.unroute("**/fonts/**")
+                p747.evaluate("document.fonts.ready.then(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))))")
+                p747.wait_for_timeout(300)
+                got747 = p747.evaluate(HAS724)
+                if early747 or not held747 or got747.replace(" (not chosen)", "") != words747:
+                    lost747[t747] = [words747, got747, len(held747), early747]
+                c747.close()
+            check("…a preset with focus as the fonts arrive keeps it, the row fitted again in Inter, on Labs and the Timeline (#747: focus fell to the page)",
+                  not lost747, lost747)
             # ---- the overview strip (#295): under the period bar on Labs, Body and activity and the Timeline (not on Costs or
             # Medications), 40 px: the tab's records per stretch across every year, the milestones as flags and the period
             # a window. Dragged by its middle it moves the shared period, as wide; by an edge, that edge; a press beside it

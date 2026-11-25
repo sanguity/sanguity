@@ -91,13 +91,15 @@ function setPeriod(p) {
   else { state.to = end; state.from = end - PRESET_DAYS[p] * DAY; }
 }
 function applyPreset(p) { periodKept = null; setPeriod(p); renderAll(); }
-/* a preset or Since button pressed: focus stays on it as the row is drawn again (store.js keepFocus; #724: it fell to
-   the page, the next Tab starting again at All), or goes to More… where it's gone in there */
-function presetPick(p) {
+/* the presets' row drawn again by draw(): a preset or Since button with focus keeps it (store.js keepFocus; #724: it
+   fell to the page, the next Tab starting again at All), or it goes to More… where its button has gone in there.
+   Pressed (presetPick), and as the fonts arrive (presetsFit, #747) */
+function presetsKeep(draw) {
   const had = !!document.activeElement?.closest("#presets");
-  keepFocus(() => applyPreset(p));
+  keepFocus(draw);
   if (had && document.activeElement === document.body) moreBtn.focus();
 }
+const presetPick = p => presetsKeep(() => applyPreset(p));
 /* period p for this visit only (the palette's search of everything on file from another page, #472): the person's
    own stays the one saved, until they pick another */
 function periodVisit(p) { const kept = periodKept || {preset: state.preset, from: state.from, to: state.to}; setPeriod(p); periodKept = kept; }
@@ -191,7 +193,7 @@ function presetsFit() {
   while (presetsCut < MILESTONES.length && over()) { presetsCut++; renderPeriod(false); }
   presetsFor = key;
 }
-document.fonts.addEventListener("loadingdone", () => { presetsFor = ""; if (typeof booted !== "undefined" && booted && !document.querySelector(".dragging")) presetsFit(); });   // (Inter's widths, once it's in; not in a drag, whose end draws the bar for its dates, #895: mid-drag it grew a line over the charts)
+document.fonts.addEventListener("loadingdone", () => { presetsFor = ""; if (typeof booted !== "undefined" && booted && !document.querySelector(".dragging")) presetsKeep(presetsFit); });   // (Inter's widths, once it's in, through keepFocus, #747; not in a drag, whose end draws the bar for its dates, #895: mid-drag it grew a line over the charts)
 /* back from custom dates to the period before (lastPeriod), or to p: Reset, and a chart's way back (#382). Focus
    goes to the period's control, which says which it is */
 const backWords = () => { const lp = lastPeriod, lm = msOf(lp); return "Back to " + (lp === "all" ? "everything on file" : lm ? "since " + lcLabel(lm.label) : PRESET_TEXT[lp] || lp); };

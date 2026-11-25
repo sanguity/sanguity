@@ -3451,6 +3451,9 @@ Everything on `main` so far; it becomes the first tagged release.
   description, and pressing it says so; the time stays.
 - **Adding a reminder's time is said** (#867): after Remove time, "Time 2 removed; 1 time left" stayed at the
   form's foot once Add another time had made it two. Adding a time now says "Time 2 added" there instead.
+- **A period's button keeps focus as the fonts arrive** (#747): the presets' row is fitted again once the app's
+  fonts have loaded (#656), and a preset or Since button that had focus then lost it to the page, once per page
+  load. That redraw keeps focus too, or gives it to More… where the button has gone in there.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
