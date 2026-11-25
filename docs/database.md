@@ -530,7 +530,10 @@ in [connected-sources-oauth.md](connected-sources-oauth.md): each install regist
   id, its body before]]`): results here that their source sent again, amended (a re-pull or a re-sent FHIR
   Observation's corrected range), updated in place with their drawer rows (server/preview.py update()), never copied;
   undone with the import. Since #920 so are an upload's records of any other kind that their source sends again
-  saying something else (preview.change(): a medication stopped, a problem resolved, a claim processed).
+  saying something else (preview.change(): a medication stopped, a problem resolved, a claim processed). A listing or
+  fill sent again under another name takes its medication's reminders, doses and side effects along (#960,
+  medications.follow), and its "before" says what moved (`"moved"`, as a rename's edit keeps it, #954), put back with
+  the import's undo.
 - **smart_clients.waiting** (schema version 29, #165): when an admin marked the source as waiting for the vendor's
   review, NULL otherwise. While it is set nobody can connect the source, its client ID may still be empty, and
   Portals and health plans tells people to upload the portal's export meanwhile.
