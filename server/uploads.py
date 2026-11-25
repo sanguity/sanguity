@@ -140,10 +140,11 @@ def info(db, pid, upload_id):
 
 # ---------------------------------------------------------------- receiving
 
-def create(db, pid, user_id):
-    """A new, empty upload for profile pid. user_id: who uploads (None: the command line)."""
-    cur = db.execute("INSERT INTO uploads(profile_id, created, created_by, state) VALUES(?, ?, ?, 'receiving')",
-                     (pid, dbm.now(), user_id))
+def create(db, pid, user_id, put_back=False):
+    """A new, empty upload for profile pid. user_id: who uploads (None: the command line). put_back: an export's
+    upload, put back as it was by server.manage import (export.import_archive): kept though no job reads it (#944)."""
+    cur = db.execute("INSERT INTO uploads(profile_id, created, created_by, state, put_back) VALUES(?, ?, ?, 'receiving', ?)",
+                     (pid, dbm.now(), user_id, int(put_back)))
     os.makedirs(folder(pid, cur.lastrowid), mode=0o700, exist_ok=True)
     return cur.lastrowid
 
@@ -467,14 +468,14 @@ def drop_files(db, pid, upload_id, rels):
 
 def orphaned(db, now=None):
     """The ready uploads nothing holds any more (#547), by id: read by an import job once, and now used by none
-    (queued, being read, in review, or saved as an import; jobs.py), with no document stored in them; and those sent
-    from the page (by an account) that no job ever read, with no document stored in them, a day on (#933): a file
-    attached to a record typed in that was never saved, or an upload whose import was never started. One put back
-    from an export (made by the command line) is kept, as is a typed-in record's file once it's saved (its document)."""
+    (queued, being read, in review, or saved as an import; jobs.py), with no document stored in them; and those that
+    no job ever read, with no document stored in them, a day on (#933): a file attached to a record typed in that was
+    never saved, or an upload whose import was never started, whether or not its account is still there (#944). One
+    put back from an export (put_back) is kept, as is a typed-in record's file once it's saved (its document)."""
     now = now or dbm.now()
     rows = db.execute("""SELECT u.id, u.profile_id FROM uploads u WHERE u.state='ready'
                          AND (EXISTS(SELECT 1 FROM jobs j WHERE j.upload_id=u.id)
-                              OR u.created_by IS NOT NULL AND u.created < ?)
+                              OR u.put_back=0 AND u.created < ?)
                          AND NOT EXISTS(SELECT 1 FROM jobs j WHERE j.upload_id=u.id AND (j.state IN ('queued', 'running', 'preview')
                                         OR j.state='done' AND j.import_id IS NOT NULL))""", (now - STALE,)).fetchall()
     docs, out = {}, []

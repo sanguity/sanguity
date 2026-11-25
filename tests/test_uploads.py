@@ -443,7 +443,7 @@ class Uploads(unittest.TestCase):
              "upload": str(saved), "file": "letter.pdf"}]})
         self.assertEqual(r.status_code, 200, r.text)
         today, _ = self.upload({"today.pdf": pdf})
-        put_back = uploads.create(self.db, self.pid, None)   # as export.import_archive puts an export's back
+        put_back = uploads.create(self.db, self.pid, None, put_back=True)   # as export.import_archive puts an export's back
         uploads.add_file(self.db, self.pid, put_back, "portal/labs.csv", io.BytesIO(LAB_CSV))
         uploads.finish(self.db, self.pid, put_back, unzip=False)
         self.db.execute("UPDATE uploads SET created=created-2*86400 WHERE id IN (?, ?, ?)", (left, saved, put_back))
@@ -463,6 +463,45 @@ class Uploads(unittest.TestCase):
         from server import backup
         path = backup.create(dest=os.path.join(TMP, "backups-933"))
         self.assertFalse([n for n in backup.verify(path)["files"] if n.startswith(f"profiles/{self.pid}/uploads/{left}/")])
+
+    def test_an_unclaimed_file_goes_though_its_account_was_removed(self):   # #944
+        """#933's sweep keeps an export's uploads put back with server.manage import, which no account made, and took
+        an upload made by none for one of them: a file attached to a record typed in that was never saved, its account
+        removed within the day (its maker NULL since), was kept for good. Now an upload put back from an export says so
+        (uploads.put_back), and every other one no job read and no record holds goes a day on, whoever made it."""
+        pdf = b"%PDF-1.4\n% a fictional scan\n%%EOF\n"
+        db = self.db
+        temp = accounts.create(db, "temp-944", password="a temporary account's long passphrase")[0]
+        db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'editor')", (temp, self.pid))
+        c = self.login_as("temp-944", "a temporary account's long passphrase")
+        r = c.post(f"/api/profiles/{self.pid}/uploads", headers=H)
+        left = r.json()["id"]
+        self.assertEqual(c.put(f"/api/profiles/{self.pid}/uploads/{left}/files", params={"path": "scan.pdf"}, content=pdf,
+                               headers={**H, "Content-Type": "application/octet-stream"}).status_code, 200)
+        self.assertEqual(c.post(f"/api/profiles/{self.pid}/uploads/{left}/finish", headers=H).status_code, 200)
+        accounts.remove(db, temp)
+        self.assertIsNone(db.execute("SELECT created_by FROM uploads WHERE id=?", (left,)).fetchone()[0], "made by no one now")
+        moved = prof.create_profile(db, "Put back (fictional)", owner_id=self.uid["edna"])   # an export's upload, put back
+        src = os.path.join(TMP, "export-944.zip")
+        with zipfile.ZipFile(src, "w") as z:
+            z.writestr("data.json", json.dumps({"events": [{"id": 1, "t": "2026-01-05T09:00:00", "k": "visit", "title": "Visit (fictional)"}],
+                                                "details": {}, "labs": [], "costs": []}))
+            z.writestr("uploads/4/portal/labs.csv", LAB_CSV)
+        export.import_archive(db, moved, src)
+        (put_back,) = [r_[0] for r_ in db.execute("SELECT id FROM uploads WHERE profile_id=?", (moved,))]
+        db.execute("UPDATE uploads SET created=created-2*86400 WHERE id IN (?, ?)", (left, put_back))
+        uploads.cleanup(db)
+        state = dict(db.execute("SELECT id, state FROM uploads WHERE id IN (?, ?)", (left, put_back)).fetchall())
+        self.assertEqual(state, {left: "discarded", put_back: "ready"})
+        self.assertFalse(os.path.exists(uploads.folder(self.pid, left)))
+        self.assertTrue(os.path.isdir(uploads.folder(moved, put_back)))
+
+    @staticmethod
+    def login_as(name, pw):
+        c = TestClient(main.app)
+        r = c.post("/api/login", json={"username": name, "password": pw}, headers=H)
+        assert r.status_code == 200, r.text
+        return c
 
     def test_key_rotation_reseals_uploads(self):
         u, _ = self.upload({"rotate/labs.csv": LAB_CSV})
@@ -541,6 +580,26 @@ class Streams(unittest.TestCase):
                 w.write(b"partial")
                 raise RuntimeError
         self.assertEqual(os.listdir(self.dir), [])
+
+
+class Schema(unittest.TestCase):
+    def test_version_43_keeps_what_may_have_been_put_back(self):   # #944
+        """At the upgrade, an upload no account made (its maker NULL) that no job read may be an export's put back, or
+        one whose account was removed since: kept, as before. One a job read, or one an account made, isn't."""
+        import sqlite3
+        d = tempfile.mkdtemp(prefix="sanguity-schema43-")
+        self.addCleanup(shutil.rmtree, d, True)
+        db = sqlite3.connect(os.path.join(d, "schema-42.db"), isolation_level=None)
+        for v, sql in enumerate(dbm.SCHEMA[:42], start=1):
+            db.executescript("BEGIN;" + sql + f"PRAGMA user_version={v};COMMIT;")
+        db.execute("INSERT INTO users(id, username, pw_hash, created) VALUES(3, 'ines', 'h', 1)")
+        db.execute("INSERT INTO profiles(id, name, created) VALUES(2, 'Fictional', 1)")
+        db.execute("""INSERT INTO uploads(id, profile_id, created, created_by, state) VALUES(10, 2, 1, NULL, 'ready'),
+                      (11, 2, 1, NULL, 'ready'), (12, 2, 1, 3, 'ready')""")
+        db.execute("INSERT INTO jobs(profile_id, upload_id, state, created) VALUES(2, 11, 'done', 1)")
+        dbm.upgrade(db)
+        self.assertEqual(dict(db.execute("SELECT id, put_back FROM uploads ORDER BY id").fetchall()), {10: 1, 11: 0, 12: 0})
+        db.close()
 
 
 if __name__ == "__main__":

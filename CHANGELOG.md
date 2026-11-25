@@ -3354,6 +3354,11 @@ Everything on `main` so far; it becomes the first tagged release.
   Apple Health export written again without its cycle records (#555), or a file still arriving, is written sealed
   beside its upload's files and then takes its name; a stop in between left that copy in the upload's folder for
   good, and in every backup. The start's tidying of uploads removes it.
+- **A file attached to a record typed in and never saved goes a day on, though its account was removed** (#944): #933
+  keeps an export's uploads put back with `server.manage import`, which no account made, and took any upload made
+  by none for one of them, so a file whose account was removed within the day was kept for good. An upload put back
+  from an export now says so (schema version 43), and every other one no import read and no record holds goes at the
+  first start a day on. Ones from before that no account made and no import read are kept, as they may be an export's.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

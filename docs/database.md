@@ -3,7 +3,7 @@
 Sanguity keeps everything in one SQLite database, `DATA_DIR/sanguity.db`, plus files in the data folder that it
 points at (documents, uploads, previews, watch summaries). The schema is built step by step from `SCHEMA` in
 [`server/db.py`](../server/db.py): each step is a numbered version (`PRAGMA user_version`), applied once at start-up,
-so an older install upgrades itself. This page describes **schema version 42**. When you add a step, update the
+so an older install upgrades itself. This page describes **schema version 43**. When you add a step, update the
 diagrams here too.
 
 Two things hold everywhere:
@@ -128,7 +128,9 @@ a pull gives those of the days it reads theirs as it goes (`sync._give_keys`, #9
 
 Records come in as **imports**: the setup build, an export loaded with `server.manage import`, an upload from the
 browser, or results typed in. A browser upload is stored as raw files (**uploads**, **upload_files**), read by a
-background **job** that stops at a preview, and saved as one import once confirmed. An import's **events** (visits,
+background **job** that stops at a preview, and saved as one import once confirmed; one no job reads (a file sent for a
+record typed in that was never saved) goes a day on, unless it's an export's put back by `server.manage import`
+(`put_back`, schema version 43, #944). An import's **events** (visits,
 stays, lab draws, documents, claims…), lab **series** and their **results**, and its **documents** all point back to
 it. **Edits** (corrections) belong to the profile instead, keyed by a hash of each event's source key, so they
 survive re-imports and undo. So do **same_results**: the person's decision that a lab result from one source is the
@@ -249,6 +251,7 @@ erDiagram
         int created_by FK
         int created
         text state "receiving | ready | discarded"
+        int put_back "an export's, put back: kept though no job reads it (#944)"
         int files
         int bytes
         text manifest "🔒 JSON: stored name, path, size"
