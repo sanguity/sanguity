@@ -2342,6 +2342,13 @@ Everything on `main` so far; it becomes the first tagged release.
   a medication of fills alone holding the reminders while Today dropped the slot. Now a medication keeps what the
   records first called it as its key, shown by its new name, its fills, reminders and doses with it; a side effect or
   a dose linked to it by its new name finds it too.
+- **A record uploaded again with something changed at its source is updated, whatever its kind** (#920): a portal's
+  next FHIR export, after the doctor stopped a medication and resolved a problem, was left out as "already here", so the
+  medication stayed current (its reminders and Today's dose buttons carried on) and the problem Active; an insurer's
+  next claims spreadsheet left a claim Pending at $0 on Costs after it was processed. Now a record from the same source
+  with the same id that says something else is updated in place, as lab results are (#869, #877): the review says so
+  by kind ("1 medication and 1 problem or diagnosis already here from the same source are updated…", "Update 2
+  records"), and undoing the import puts back what each said.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

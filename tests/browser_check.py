@@ -21356,6 +21356,56 @@ def main():
                   "given, a flag changed) is updated in place, never a copy: its review says so (“Update 4 lab results”), its card and toast too, "
                   "with an Undo, and Labs, the lab day (its Timeline badge, the drawer's rows with the ranges printed now beside their results' "
                   "flags), a share link's page and the summary's preview and PDF give one result each as the second file says", not bad869, bad869)
+            # ---- #920: a record of any kind its source changed, uploaded again: a portal's FHIR export, then its next one
+            # after the doctor stopped the medication and resolved the problem. The second was "Nothing new", the medication
+            # still current and the problem Active. Now its review says it updates them, by kind ("Update 2 records"), its
+            # card and toast say so with an Undo, and Medications and the problem list say what the second file says
+            db = dbm.connect()
+            cpid920 = prof_r.create_profile(db, "Changed at the source (fictional)", owner_id=owner)
+            db.close()
+            clinical920 = lambda code: {"coding": [{"system": "http://terminology.hl7.org/CodeSystem/condition-clinical", "code": code}]}   # noqa: E731
+            med920 = {"resourceType": "MedicationRequest", "id": "mr-920", "status": "active", "intent": "order", "subject": {"reference": "Patient/p920"},
+                      "medicationCodeableConcept": {"text": "Metoprolol succinate 25 mg tablet"}, "authoredOn": "2026-03-01", "dosageInstruction": [{"text": "1 tablet daily"}]}
+            cond920 = {"resourceType": "Condition", "id": "c-920", "subject": {"reference": "Patient/p920"}, "code": {"text": "Atrial fibrillation"},
+                       "clinicalStatus": clinical920("active"), "onsetDateTime": "2026-02-20"}
+            files920 = [[med920, cond920], [{**med920, "status": "stopped"}, {**cond920, "clinicalStatus": clinical920("resolved"), "abatementDateTime": "2026-10-15"}]]
+            bad920 = []
+            for k920, res920 in enumerate(files920):
+                body920 = json.dumps({"resourceType": "Bundle", "type": "collection", "entry": [
+                    {"fullUrl": f"https://portal.example/fhir/{r['resourceType']}/{r['id']}", "resource": r}
+                    for r in [{"resourceType": "Patient", "id": "p920", "name": [{"family": "Example", "given": ["Pat"]}]}] + res920]})
+                page.goto(base + f"/import.html?profile={cpid920}")
+                page.wait_for_selector("#importer", state="visible", timeout=10000)
+                page.set_input_files("#pickFiles", files=[{"name": f"portal-{k920}.json", "mimeType": "application/json", "buffer": body920.encode()}])
+                page.wait_for_function(f"document.querySelectorAll('.import-job').length && /^(Ready to import|All duplicates|Not imported)/.test({card846}.textContent)", timeout=30000)
+                if k920:
+                    got920 = js(f"""(c => [c.querySelector('.imp-state').textContent, [...c.querySelectorAll('.imp-split li')].map(li => li.textContent),
+                      c.querySelector('.imp-updates')?.textContent ?? null, c.querySelector('.imp-actions .primary').textContent,
+                      c.querySelector('.imp-title + .hint').textContent])({card846})""")
+                    want920 = ["Ready to import", ["0 new", "2 already here", "0 possibly the same"],
+                               "1 medication and 1 problem or diagnosis already here from the same source are updated with what this file says of them now, not added again.",
+                               "Update 2 records", "Nothing is saved until you update the records with the button at the foot."]
+                    if got920 != want920:
+                        bad920.append(f"the second's review {got920} not {want920}")
+                js(f"{card846}.querySelector('.imp-actions .primary').click()")
+                page.wait_for_function(f"/^(Imported|Not imported)/.test({card846}.textContent)", timeout=30000)
+                if k920:
+                    said920 = js(f"""[[...{card846}.querySelectorAll('ul > li')].map(li => li.textContent),
+                      (t => t && [t.querySelector('.sg-toast-text').textContent, ...[...t.querySelectorAll('button')].map(b => b.textContent)])(document.querySelector('#sgToasts .sg-toast:last-child'))]""")
+                    if said920[0] != ["2 records updated"] or not said920[1] or said920[1][0] != "Updated 2 records." or "Undo…" not in said920[1]:
+                        bad920.append(f"the second's card and toast say {said920}")
+                js("for (const t of document.querySelectorAll('#sgToasts .sg-toast')) t.sgGone()")
+            page.goto(base + f"/?profile={cpid920}")
+            page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {cpid920}", timeout=20000)
+            now920 = js("[DATA.medications.map(m => [m.name, m.spans.at(-1).open, m.spans.at(-1).status]), (DATA.problems || []).map(p => [p.name, p.status])]")
+            if now920 != [[["Metoprolol succinate 25 mg tablet", False, "Stopped"]], [["Atrial fibrillation", "Resolved"]]]:
+                bad920.append(f"the records say {now920}")
+            db = dbm.connect()
+            prof_r.delete_profile(db, cpid920)
+            db.close()
+            check("#920: a portal's FHIR export uploaded again after the doctor stopped a medication and resolved a problem updates them in "
+                  "place: its review says so by kind (“Update 2 records”), its card and toast too, with an Undo, and the records say the "
+                  "medication stopped and the problem resolved", not bad920, bad920)
             # ---- #887: one duplicate ticked to add anyway adds only that result. A C-CDA of four results at one time (ALT,
             # CRP, Potassium, Sodium) uploaded on the import page, then again: ALT ticked in the second's review, its button
             # says "Add 1 lab result", and its save adds that one ("1 lab result in 1 test"), with its own row in a lab day of

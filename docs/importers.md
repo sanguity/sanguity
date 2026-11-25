@@ -218,7 +218,10 @@ The app ignores fields it doesn't know and keeps an event's fields as they are, 
 a keyed hash of it (`key_hash`, an HMAC with a secret derived from the pepper), indexed, so the import preview finds
 records it has seen before without decrypting every row. Before anything is saved, an upload's records are previewed
 (`server/preview.py`): an event whose key the profile already has is a duplicate and is skipped unless the person
-ticks it to keep anyway; a series adds only the points (time and value as reported) the profile doesn't have, and a
+ticks it to keep anyway, unless its source says something else of it now (#920: a key naming one record, never a
+`:h:` hash nor a key scoped to a day; its body, details or Costs row differ, as a medication stopped, a problem
+resolved, a claim processed do), when it's updated in place, the review saying so by kind, and an entry of the
+profile-wide lists the same, both with what they were kept for Undo; a series adds only the points (time and value as reported) the profile doesn't have, and a
 point it has already, but whose copy in the upload says something of its range or flag that no copy there says, or
 whose row in the upload's lab day is new, is added as a copy, read as one result with the copy there (#846), always
 with its own row, whose labitem and lab day are kept with it even where their keys are known (#868: the same rule for

@@ -15,7 +15,11 @@ brought are compared as they are (importers give keys nowadays, so these are few
   the rest    entries of the profile-wide lists (problems, upcoming, clinicWeights, milestones, outOfPocket.payments)
               already there, by key or by content
 
-Duplicates are dropped, not replaced. A lab day is kept while any of its results is new (else they couldn't be
+Duplicates are dropped, not replaced, unless their source says something else of them now (#920, "changed"): a
+record whose source key names it (an event's, a list entry's: _record_key) sent again with another body, detail or
+Costs row (a medication stopped, a problem resolved, a claim processed) is updated in place, whatever its kind
+(change(), with what it was kept, as a sync's are, so undoing the import puts it back); lab results have their own
+rule (#869, below). A lab day is kept while any of its results is new (else they couldn't be
 opened) and dropped when all of them are duplicates; keeping one anyway keeps its results, and keeping a result
 keeps its row and its day, holding only it (#887: not its report's other results). jobs.py re-runs importers.check()
 on what's left before saving it.
@@ -47,6 +51,7 @@ One rule for a result already here (#868), an upload's, a sync's and Type them i
   report(data, dups) -> {"counts", "samples", "range", "duplicates": {...}, "total"}   for the page
   trim(data, dups, keep) -> the data to save                               keep: refs of duplicates to save anyway
   update(db, pid, iid, data, dups) -> how many results here it updated, once import iid is saved
+  change(db, pid, iid, data, dups, stored) -> how many records here it updated (#920), once import iid is saved
 """
 import collections, copy, json, re
 
@@ -225,7 +230,51 @@ def find(db, pid, fmt, data, whole=None):
     dups = {"events": dup, "points": points, "txt": txt, "series": empty, "meta": meta, "copies": copies, "brings": brings}
     _same_records(db, pid, data, dups, {i: o for i, o in olds.items() if isinstance(o, tuple) and o[1]}, whole)
     _settle(data, dups, set())
+    dups["changed"] = _changed(db, pid, data, dups, old_meta)
     return dups
+
+
+def _comparable(d):
+    """A record's details as compared for a change (#920): not where its file is kept, nor a lab day's list."""
+    return {k: v for k, v in d.items() if k not in ("url", "ids")} if isinstance(d, dict) else d
+
+
+def _changed(db, pid, data, dups, old_meta):
+    """(#920) The upload's records already here (by their source key: find()'s duplicates) that their source sends again
+    saying something else: {"events": {event id}, "meta": {path: {index}}}. An event whose key names its record
+    (_record_key: never a day's, nor a hash of its content, which a change makes another), not a lab day's or a lab
+    event's (their results and rows have their own rule, #869), whose body, details or Costs row differ from the one here;
+    an entry of the profile-wide lists (the problem list, upcoming visits) with another one under its key."""
+    events = {str(e["id"]): e for e in data.get("events") or [] if isinstance(e, dict) and "id" in e}
+    details = {str(k): d for k, d in (data.get("details") or {}).items()}
+    costs = {str(c["id"]): c for c in data.get("costs") or [] if isinstance(c, dict) and c.get("id") is not None}
+    keyed = {i: events[i]["key"] for i in dups["events"] if i in events and _record_key(events[i].get("key"))
+             and events[i].get("k") not in ("lab", "labitem")}
+    hashes = records.key_hashes(db, keyed.values())
+    here = collections.defaultdict(list)
+    for h in records._chunks(sorted(set(hashes.values()))):
+        q = f"SELECT id, key_hash, body, detail, cost FROM events WHERE profile_id=? AND key_hash IN ({','.join('?' * len(h))})"
+        for r in db.execute(q, (pid, *h)):
+            here[r["key_hash"]].append(r)
+    out = set()
+    for i, k in keyed.items():
+        body = {x: v for x, v in events[i].items() if x not in ("id", "imp")}
+        for r in here.get(hashes[k]) or []:
+            old_c = records._dec(r["cost"]) if r["cost"] is not None else None
+            cost = {**costs[i], "id": r["id"]} if i in costs else old_c   # a Costs row the new one lacks stays
+            if (_canon(records._dec(r["body"])), _canon(_comparable(records._dec(r["detail"]))), _canon(old_c)) != \
+                    (_canon(body), _canon(_comparable(details.get(i))), _canon(cost)):
+                out.add(i)
+                break
+    have = {(path, x["key"]): x for path, items in old_meta.items() for x in items
+            if isinstance(x, dict) and _record_key(x.get("key"))}
+    meta = {}
+    for path, items in _meta_lists(data).items():
+        ns = {n for n in dups["meta"].get(path, ()) if n < len(items) and isinstance(items[n], dict)
+              and (path, items[n].get("key")) in have and _canon(have[(path, items[n]["key"])]) != _canon(items[n])}
+        if ns:
+            meta[path] = ns
+    return {"events": out, "meta": meta}
 
 
 # a source key scoped to a day (docs/importers.md, "Source keys": "<NAME>:labitem:<YYYY-MM-DD>", with "|<org>" or a
@@ -604,9 +653,11 @@ def report(data, dups, summarise):
     out["samples"] = samples(new)
     out["range"] = whole["range"]
     events = {str(e.get("id")): e for e in data.get("events") or [] if isinstance(e, dict)}
-    kinds = collections.Counter(str(events[i].get("k")) for i in dups["events"] if i in events and not events[i].get("hidden"))
+    changed = dups.get("changed") or {"events": set(), "meta": {}}   # (#920) updated in place, not skipped
+    skipped = {i for i in dups["events"] if i not in changed["events"]}
+    kinds = collections.Counter(str(events[i].get("k")) for i in skipped if i in events and not events[i].get("hidden"))
     items = [{"ref": "e:" + i, "kind": str(e.get("k")), "t": str(e.get("t") or "")[:10], "title": str(e.get("title") or "")}
-             for i, e in events.items() if i in dups["events"] and not e.get("hidden")]
+             for i, e in events.items() if i in skipped and not e.get("hidden")]
     results = 0
     for i, s in enumerate(data.get("labs") or []):
         if not isinstance(s, dict):
@@ -623,16 +674,21 @@ def report(data, dups, summarise):
             items.append(item)
     # the profile-wide lists' entries there already (#497), listed too, with no ref: an entry isn't added twice
     lists = _meta_lists(data)
+    listed = lambda path, x: ("allergy" if x.get("type") == "Allergy" else "problem") if path == "problems" else path   # noqa: E731
     for path, drop in dups["meta"].items():
-        for n in sorted(drop):
+        for n in sorted(drop - changed["meta"].get(path, set())):
             x = lists.get(path, [])[n] if n < len(lists.get(path, [])) else None
             if isinstance(x, dict):
-                kind = ("allergy" if x.get("type") == "Allergy" else "problem") if path == "problems" else path
-                items.append({"ref": None, "kind": kind, "t": str(x.get("date") or x.get("t") or "")[:10],
+                items.append({"ref": None, "kind": listed(path, x), "t": str(x.get("date") or x.get("t") or "")[:10],
                               "title": str(x.get("name") or x.get("title") or "")})
+    # (#920) what's updated in place, by kind: "1 medication and 1 problem already here ... updated"
+    said = collections.Counter(str(events[i].get("k")) for i in changed["events"] if i in events)
+    said.update(listed(path, lists[path][n]) for path, ns in changed["meta"].items() for n in ns)
     items.sort(key=lambda x: (x["t"], x["title"]))
     out["duplicates"] = {"events": sum(kinds.values()), "kinds": dict(sorted(kinds.items())), "results": results,
-                         "other": sum(len(v) for v in dups["meta"].values()),
+                         "other": sum(len(v) for v in dups["meta"].values()) - sum(len(v) for v in changed["meta"].values()),
+                         # (#920) records here their source sends again saying something else, updated in place
+                         "changed": {"n": sum(said.values()), "kinds": dict(sorted(said.items()))},
                          "items": items[:ITEMS_SHOWN], "more": max(0, len(items) - ITEMS_SHOWN),
                          # (#846) results already here, added with what this upload's report says of them, which the review says,
                          # and what each brings (#868: its report's range, its flag, or its own lab day's row)
@@ -641,13 +697,40 @@ def report(data, dups, summarise):
                          # (#869) results here that their source sends again, updated in place with what it says now
                          "updates": updates(dups)}
     out["total"] = whole["counts"]
-    out["new"] = adds_anything(new) or bool(updates(dups))
+    out["new"] = adds_anything(new) or bool(updates(dups)) or bool(changes(dups))
     return out
 
 
 def updates(dups):
     """How many of the upload's results update a result here in place (#869: find()'s "updates")."""
     return sum(len(v) for v in (dups.get("updates") or {}).values())
+
+
+def changes(dups):
+    """How many of the upload's records update one here in place (#920: find()'s "changed")."""
+    c = dups.get("changed") or {}
+    return len(c.get("events") or ()) + sum(len(v) for v in (c.get("meta") or {}).values())
+
+
+def change(db, pid, iid, data, dups, stored):
+    """Save find()'s "changed" (#920), once import iid is saved: each record here that its source sent again saying
+    something else takes what it says now, its body, details and Costs row (sync._update_in_place, a document's file
+    kept by stored(url) as an upload's are), or its entry of a list (sync._apply_meta), with what each was kept
+    (sync_changes) so undoing import iid puts it back (sync.unapply), as a sync's changes are.
+    -> how many records here it updated"""
+    from . import sync   # (it imports this module)
+    c = dups.get("changed") or {}
+    ids, lists = c.get("events") or set(), _meta_lists(data)
+    events = [e for e in data.get("events") or [] if isinstance(e, dict) and str(e.get("id")) in ids]
+    details = {str(k): d for k, d in (data.get("details") or {}).items()}
+    costs = {str(x["id"]): x for x in data.get("costs") or [] if isinstance(x, dict) and x.get("id") is not None}
+    n = sync._update_in_place(db, pid, iid, events, details, stored, costs) if events else 0
+    want = {(path, lists[path][k].get("key")) for path, ks in (c.get("meta") or {}).items() for k in ks}
+    if want:
+        n += sync._apply_meta(db, iid, [x for x in sync._meta_changes(db, pid, data) if (x[1], x[2]) in want])
+    if n:
+        records._bump(db, pid)
+    return n
 
 
 def update(db, pid, iid, data, dups, rows=True):
