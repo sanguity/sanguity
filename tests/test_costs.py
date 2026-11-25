@@ -211,6 +211,48 @@ class Costs(unittest.TestCase):
         self.assertNotIn("forged", json.dumps(d["oop"]))
         self.assertIn("oop", records.SERVED)
 
+    def test_6_a_claim_merged_into_its_twin_counts_once(self):   # #924
+        """The MRI's claim typed in from the paper EOB, then merged into the insurer's: one Costs row, the insurer's,
+        its share counted once (the rows' sum and oop's); undoing the merge gives both rows back."""
+        d = self.data()
+        c2 = self.claim_id(d, "uhc:CL-2")
+        mine = lambda d: [c for c in d["costs"] if c["id"] == c2]
+        share = lambda d: round(sum(c["owe"] for c in d["costs"]), 2)
+        before, counted = share(d), round(sum(c["counted"] for c in d["oop"]["claims"]), 2)
+        out = self.type_in([{"kind": "claim", "date": "2026-04-10", "provider": IMAGING, "title": "MRI brain",
+                             "billed": "1000", "paid": "750", "owe": "250", "insurer": "Example Health (fictional)",
+                             "status": "Paid"}])
+        self.assertEqual([x["ok"] for x in out["items"]], [True], out)
+        d = self.data()
+        typed = next(e["id"] for e in d["events"] if e["k"] == "claim" and e["id"] != c2 and e["t"][:10] == "2026-04-10")
+        self.assertEqual(share(d), round(before + 250, 2), "two rows before the merge")
+        r = self.robin.post(f"/api/profiles/{self.pid}/edits", json={"event": c2, "action": "merge", "other": typed}, headers=H)
+        self.assertEqual(r.status_code, 201, r.text)
+        edit = r.json()["id"]
+        d = self.data()
+        self.assertEqual([(c["owe"], c["prov"], c["cat"]) for c in mine(d)], [(250.0, IMAGING, "Doctor visits")],
+                         "one row, the insurer's")
+        self.assertFalse([c for c in d["costs"] if c["id"] == typed])
+        self.assertEqual(share(d), before, "your share counts the claim once")
+        self.assertEqual([c["id"] for c in d["oop"]["claims"]].count(c2), 1)
+        self.assertEqual(round(sum(c["counted"] for c in d["oop"]["claims"]), 2), counted)
+        r = self.robin.delete(f"/api/profiles/{self.pid}/edits/{edit}", headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        d = self.data()
+        self.assertEqual(len(mine(d)), 1)
+        self.assertEqual(share(d), round(before + 250, 2), "both rows back once the merge is undone")
+        self.assertEqual(len([c for c in d["costs"] if c["id"] == typed]), 1)
+
+    def test_7_merged_rows_fold_once(self):   # #924, edits.apply on its own
+        """A claim merged into another with a row of its own fills in what that lacks; into one with none (a visit),
+        its row moves there; merged into one merged in turn, its row follows to the last."""
+        from server import edits
+        rows = [{"id": 1, "owe": 10.0, "prov": None}, {"id": 2, "owe": 10.0, "prov": "Clinic"}, {"id": 4, "owe": 5.0}]
+        self.assertEqual(edits._fold_costs(rows, {2: 1}), [{"id": 1, "owe": 10.0, "prov": "Clinic"}, {"id": 4, "owe": 5.0}])
+        self.assertEqual(edits._fold_costs(rows, {2: 3}), [rows[0], {"id": 3, "owe": 10.0, "prov": "Clinic"}, rows[2]])
+        self.assertEqual(edits._fold_costs(rows, {2: 1, 1: 4}), [{"id": 4, "owe": 5.0, "prov": "Clinic"}],
+                         "the first's row and the second's both fold into the last")
+
     def test_5_matching_rules(self):
         """oop.annotate on its own: dates outside the window, other providers, refunds and premiums aren't matched."""
         data = {"imports": {"1": {"format": "sanguity-data"}},
