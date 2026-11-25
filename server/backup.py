@@ -30,7 +30,9 @@ in the background.
 Restoring needs the app stopped (it holds a lock on DATA_DIR/app.lock while running). It brings back records only
 (#917, the owner's decision): accounts, passwords, passkeys, two-factor sign-in, who may see each profile, share links,
 calendar feeds, phone upload secrets and connected sources' sign-ins stay as they are now, taken from the database it replaces, and everyone is
-signed out; with no database to replace (disaster recovery) they're the backup's, and the restore says so (_ready).
+signed out; so does each profile's cycle tracking (#964), and the backup's cycle records aren't brought back where it's
+off now or they were deleted since (cycle_tracking.restored); with no database to replace (disaster recovery) they're
+the backup's, and the restore says so (_ready).
 The data it replaces is moved to DATA_DIR/before-restore-<time>/, and an older backup's database is brought up to
 date as it's restored. That folder
 may hold a profile deleted before the restore, or since, so it is deleted RESTORE_KEEP_DAYS (30) after the restore
@@ -701,7 +703,9 @@ def _stage_watch(archive, manifest, stamp):
 # database being replaced: accounts (their passwords, two-factor sign-in, recovery codes, known devices and failed
 # sign-ins with them), passkeys, who may see each profile, share links, calendar feeds, each profile's phone upload
 # secret, the install's two-factor rule, and the connected sources' sign-ins (the vendors' apps and each connection's
-# tokens, _keep_sources). Everyone is signed out.
+# tokens, _keep_sources). Everyone is signed out. Each profile's cycle tracking is today's too, on or off (#964, as the
+# owner's decision extends: its settings row, none where today's database has none, a profile deleted since among
+# them), and the cycle records the backup holds aren't brought back where today's choice doesn't keep them (_cycle_gone).
 # ACCESS_TABLES: tables taken whole from today's database, for the profiles the backup has (a row's profile_id) and the
 # accounts kept (user_id). A new table of access state (who may get in, or how) belongs here; a new column of users
 # (as totp_fails, #928) is today's with the rest of the row (_merge). labmaps, a profile's own lab-name matches since
@@ -709,7 +713,8 @@ def _stage_watch(archive, manifest, stamp):
 ACCESS_TABLES = ("devices", "recovery_codes", "passkeys", "signin_failures", "memberships", "share_links", "calendar_feeds")
 PULLED = ("cursor", "pending_cursor", "first_job", "last_sync", "report", "attach_bytes")   # a connection's place in what
 # it pulled, which goes with the records: the backup's, so it pulls again what came since
-ACCESS_SETTINGS = ("_watch.receiver",)   # a profile's phone upload secret (watch_keys.KEY)
+CYCLE = "_cycle"   # a profile's cycle tracking (cycle_tracking.KEY, #964)
+ACCESS_SETTINGS = ("_watch.receiver", CYCLE)   # a profile's phone upload secret (watch_keys.KEY), its cycle tracking
 ACCESS_META = ("require_2fa", "setup_code")   # the install's two-factor rule; first-time setup's code, while there's no account
 RETIRED = "watch_legacy_retired"   # the install's one phone secret, retired for good (watch_keys): kept retired either way
 
@@ -780,13 +785,41 @@ def _keep_sources(con, now_tables):
     return [tuple(r) for r in con.execute("SELECT profile_id, id FROM main.connections WHERE state='disconnected'")]
 
 
+def _cycle_of(sealed):
+    """A cycle tracking settings row's value (cycle_tracking.setting's), {} where it can't be read."""
+    try:
+        v = json.loads(crypto.dec(sealed)) if sealed else {}
+    except (ValueError, TypeError, crypto.KeyError_):
+        return {}
+    return v if isinstance(v, dict) else {}
+
+
+def _cycle_gone(con, now_tables):
+    """(#964) The profiles whose cycle records the backup holds and today's choice doesn't keep: on in the backup, and
+    off today (or no row: off, its deletion done, #935; or the profile deleted since), or a deletion asked for since
+    (today's latest isn't the backup's). restore() deletes them as turning tracking off does (cycle_tracking.
+    drop_imported: an uploaded export's, every upload's); the watch receiver deletes its copy when it starts, as for
+    any profile with tracking off, or a deletion it hasn't done."""
+    rows = lambda schema: {r[0]: _cycle_of(r[1]) for r in con.execute(   # noqa: E731
+        f"SELECT profile_id, sealed FROM {schema}.settings WHERE key=? AND user_id IS NULL AND profile_id IS NOT NULL", (CYCLE,))}
+    then, now = rows("main"), rows("now") if "settings" in now_tables else {}
+    return sorted(p for p, v in then.items() if v.get("on") and (not now.get(p, {}).get("on") or now[p].get("purge") not in (None, v.get("purge"))))
+
+
 def _keep_access(con, now_tables):
     """Inside the restore's transaction, the restored database (main) given today's access (now): see above. Returns
-    _keep_sources' connections whose stores go."""
+    (_keep_sources' connections whose stores go, _cycle_gone's profiles)."""
     # accounts by id and name: gone since, they go, as a removed account does (its records kept, nameless); there both,
     # as they are now; made since, added
     _merge(con, "users", "username", now_tables)
     stores = _keep_sources(con, now_tables)
+    # (#964) the profiles whose cycle records the backup holds and today's tracking doesn't keep: noted, sealed, for
+    # cycle_tracking.restored to delete once the files are back (or at the next start, a stop between)
+    from .cycle_tracking import RESTORED
+    cycle = _cycle_gone(con, now_tables)
+    con.execute("DELETE FROM main.meta WHERE k=?", (RESTORED,))
+    if cycle:
+        con.execute("INSERT INTO main.meta(k, v) VALUES(?, ?)", (RESTORED, crypto.enc(json.dumps(cycle))))
     profiles = " WHERE profile_id IN (SELECT id FROM main.profiles)"   # a profile made since isn't in the backup
     for t in ACCESS_TABLES:
         con.execute(f'DELETE FROM main."{t}"')
@@ -806,7 +839,7 @@ def _keep_access(con, now_tables):
     for name, seq in seqs:
         if name in tables and not con.execute("UPDATE main.sqlite_sequence SET seq=MAX(seq, ?) WHERE name=?", (seq, name)).rowcount:
             con.execute("INSERT INTO main.sqlite_sequence(name, seq) VALUES(?, ?)", (name, seq))
-    return stores
+    return stores, cycle
 
 
 def _ready(path, now_path):
@@ -817,8 +850,9 @@ def _ready(path, now_path):
     "unreadable" or "other"), "sessions" (ended), "back" ([[id,
     name]]: profiles the backup has that today's database hasn't, deleted since, back with nobody's access), "gone" (
     [[id, name]]: profiles made since, not in the backup), "stores" ([[profile, connection]]: disconnected sources whose
-    store of what they read the restore removes once it has put the files back)}."""
-    out = {"kept": False, "why": "none", "sessions": 0, "back": [], "gone": [], "stores": []}
+    store of what they read the restore removes once it has put the files back), "cycle" ([profile]: those whose cycle
+    records the backup holds and today's tracking doesn't keep, #964, deleted once the files are back)}."""
+    out = {"kept": False, "why": "none", "sessions": 0, "back": [], "gone": [], "stores": [], "cycle": []}
     con = sqlite3.connect(path, isolation_level=None)
     try:
         con.execute("PRAGMA foreign_keys=ON")
@@ -844,7 +878,8 @@ def _ready(path, now_path):
         con.execute("BEGIN IMMEDIATE")
         try:
             if out["why"] is None:
-                out["stores"] = [list(x) for x in _keep_access(con, now_tables)]
+                stores, out["cycle"] = _keep_access(con, now_tables)
+                out["stores"] = [list(x) for x in stores]
                 out["kept"] = True
                 if "profiles" in now_tables:
                     out["back"] = [list(r) for r in con.execute(
@@ -914,6 +949,13 @@ def restore(archive):
         with contextlib.suppress(FileNotFoundError):
             os.remove(os.path.join(config.DATA_DIR, "profiles", str(int(pid)), "connections", str(int(cid))))
     dbm.init()
+    if manifest["access"].pop("cycle", None):   # (#964) the cycle records today's tracking doesn't keep go, now the files are back
+        from . import cycle_tracking
+        db = dbm.connect()
+        try:
+            cycle_tracking.restored(db)
+        finally:
+            db.close()
     if staged:   # complete: the receiver takes it when it next starts
         os.replace(watch, watch[:-len(".part")])
         watch = watch[:-len(".part")]

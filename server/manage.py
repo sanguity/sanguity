@@ -28,8 +28,9 @@
                                          says it holds, then delete the copy (the Admin page's Check a backup); safe
                                          while the app runs: the live data isn't touched
   restore ARCHIVE [--yes]                replace the records (the database, profiles and setup build) with a backup's,
-                                         keeping today's accounts and access, everyone signed out (#917); the app must
-                                         be stopped: docker compose run --rm --no-deps app python -m server.manage restore ...
+                                         keeping today's accounts, access and cycle tracking, everyone signed out
+                                         (#917, #964); the app must be stopped:
+                                         docker compose run --rm --no-deps app python -m server.manage restore ...
                                          The phone and watch data in it goes to the receiver, which puts it back when
                                          it next starts (#227)
 """
@@ -91,12 +92,20 @@ ACCESS_WORDS = ("accounts, passwords, passkeys, two-factor sign-in, who may see 
                 "phone upload secrets and connected sources' sign-ins")
 
 
+# (#964) said whatever any profile does, so the words never tell an admin which profiles track their cycle
+CYCLE_KEPT = ("Each profile's cycle tracking was kept as it is today, on or off, not the backup's: where it's off now, or "
+              "its cycle records were deleted after the backup was made, the cycle records the backup holds weren't "
+              "brought back, and the watch receiver deletes its copy of them when it starts.")
+CYCLE_THEN = "Each profile's cycle tracking is the backup's too, on or off as it was then."
+
+
 def _say_access(a, created, aside):
     """What a restore did with who may get in (#917, backup._ready), in words."""
     ended = a.get("sessions", 0)
     out = f"Everyone is signed out ({ended} sign-in{'s' if ended != 1 else ''} ended)."
     if a.get("kept"):
         print(f"Today's {ACCESS_WORDS} were kept as they were before the restore; only the records are the backup's. " + out)
+        print(CYCLE_KEPT)
     else:
         why = {"none": "There was no database here to keep them from",
                "unreadable": "The database it replaced can't be read (it's damaged; it's kept with what was replaced), so "
@@ -106,6 +115,7 @@ def _say_access(a, created, aside):
         print(f"{why}: the {ACCESS_WORDS} are the backup's, as they were on {created}. A share link revoked, a member "
               "removed, an account removed or disabled, or a password or passkey changed since then is as it was then: "
               f"check Admin > Accounts and each profile's Sharing before you share the address again. {out}")
+        print(CYCLE_THEN)
     for pid, name in a.get("back") or ():
         print(f"Profile {pid} ({name}) was deleted after the backup was made and is back, with nobody given access to it: "
               "an admin gives it an owner on Admin > Accounts (Profiles without an owner), or with "
@@ -143,7 +153,8 @@ def _backup_command(cmd, args):
             m = backup.verify(args[0])
             print(f"Backup from {m['created']}: {len(m['files'])} files. Restoring replaces this install's profiles and "
                   f"records with the backup's (the current ones are moved aside, and deleted {backup.KEEP_DAYS} days "
-                  f"later), keeping today's {ACCESS_WORDS}. Everyone is signed out.")
+                  f"later), keeping today's {ACCESS_WORDS}, and each profile's cycle tracking as it is today. Everyone is "
+                  "signed out.")
             if "--yes" not in args and (not sys.stdin.isatty() or input("Type yes to restore: ").strip().lower() != "yes"):
                 sys.exit("Nothing changed. (Add --yes to restore without being asked.)")
             m, aside = backup.restore(args[0])

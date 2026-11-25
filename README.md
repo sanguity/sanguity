@@ -740,7 +740,9 @@ docker compose up -d
 accounts and their passwords, passkeys and two-factor sign-in, who may see each profile, share links, calendar feeds,
 phone upload secrets and connected sources' sign-ins, so a link revoked, a member removed, a password changed or a
 source disconnected after the backup was made stays so. A source still connected pulls again what it brought since,
-and one connected since pulls from the start, with its review. Everyone is signed out. A profile deleted since comes back with nobody given access to it (an admin gives it an
+and one connected since pulls from the start, with its review. Each profile's cycle tracking stays as it is now too,
+on or off: where it's off now, or its cycle records were deleted after the backup was made, the cycle records the
+backup holds aren't brought back (the watch receiver deletes its copy when it starts). Everyone is signed out. A profile deleted since comes back with nobody given access to it (an admin gives it an
 owner under **Admin → Accounts**, Profiles without an owner), and one made since isn't in the backup (its records are
 in the `before-restore-<time>/` folder); the restore names both. With no database to replace (a new machine, disaster
 recovery), one that can't be read (damaged: it's kept with what was replaced) or one of another install, all of it

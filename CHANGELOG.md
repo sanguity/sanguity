@@ -3495,6 +3495,11 @@ Everything on `main` so far; it becomes the first tagged release.
   reminders, its logged doses and the side effects linked to it stayed with the old name, a medication no longer
   there: the reminder dropped out of the calendar feed and the doses out of its log. Now they go with it, as they do
   when you rename it yourself, and undoing that import puts them back. A medication you renamed keeps your name.
+- **A restore keeps each profile's cycle tracking as it is today** (#964): cycle tracking turned off after a backup was
+  made came back on when the backup was restored, its cycle records with it. As a restore keeps today's access
+  (#917), it now keeps each profile's tracking on or off as it is, and where it's off now, or the cycle records were
+  deleted after the backup, the backup's aren't brought back (an uploaded export's, and those in an Apple Health
+  export uploaded; the watch receiver deletes its copy when it starts). The restore says so, naming no profile.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
