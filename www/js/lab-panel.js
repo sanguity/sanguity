@@ -101,9 +101,13 @@ function openLab(s) {
 function labAgain() { const s = labShown(); if (s) drawerKeep(() => openLab(s)); }
 /* the strip: every result in the period as a mark over time, against the reference band of its own range (the chart's
    stepped band, ranges.js), ▲/▼/◆ for one outside it; no line between them. A picture of what the facts above say;
-   its marks stepped through from the keyboard, each said, as a chart's are (charts.js chartKeys) */
+   its marks stepped through from the keyboard, each said, as a chart's are (charts.js chartKeys). A tab stop with its
+   words as it's made (chartSvg, #652), so focus on it stays on it as the panel's drawn anew (#712: it went to the
+   drawer's Close, the strip a frame from its name) */
+const labStripSays = (s, pts, out = pts.filter(p => FLAG_OF(p[4])).map(p => p[4])) =>   // (#819, #845: a ◆ was "outside it")
+  `${nice(s.name)}: ${pts.length} result${pts.length === 1 ? "" : "s"} against ${rangesDiffer(pts) ? "each one's own" : "its"} reference range, ${out.length} ${flaggedWords(out)}. Left and right arrow keys step through them.`;
 function labStrip(s, pts) {
-  const svg = el("svg:svg", {class: "lab-strip", height: 96});
+  const svg = chartSvg(labStripSays(s, pts), {class: "lab-strip", height: 96});
   requestAnimationFrame(() => labStripDraw(svg, s, pts));
   return svg;
 }
@@ -149,7 +153,5 @@ function labStripDraw(svg, s, pts) {
     show(best && Math.abs(x(best.ts) - px) < 12 ? ckAt(pts, best.ts) : null, ev);
   };
   svg.onpointerleave = () => show(null);
-  const out = pts.filter(p => FLAG_OF(p[4])).map(p => p[4]);   // (#819, #845: a ◆ was "outside it")
-  chartKeys(svg, `${nice(s.name)}: ${pts.length} result${pts.length === 1 ? "" : "s"} against ${rangesDiffer(pts) ? "each one's own" : "its"} reference range, ${out.length} ${flaggedWords(out)}. Left and right arrow keys step through them.`,
-    () => pts.map(p => p.ts), t => show(ckAt(pts, t)), () => show(null));
+  chartKeys(svg, labStripSays(s, pts), () => pts.map(p => p.ts), t => show(ckAt(pts, t)), () => show(null));
 }
