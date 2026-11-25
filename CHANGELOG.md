@@ -1646,6 +1646,9 @@ Everything on `main` so far; it becomes the first tagged release.
   counts, "What is this test?", the Latest reading, then Chart | Table and ✕ on a row of their own. Now Chart | Table
   and ✕ sit at the end of the name's line (together under a name too long to share it), the unit and counts are one
   muted line with a "?" for What is this test?, and Latest follows. Wider screens are as they were.
+- **On a phone, Tab follows a lab chart's header as it's shown** (#634): since #621 the "?" is on the line under Chart
+  | Table and ✕, but Tab reached it first. Now Tab goes from the name and ✎ to Chart | Table and ✕, then the "?", then
+  the chart; wider screens keep their one line's order.
 - **A PDF on a phone opens in its PDF app, not an empty box** (#636): Chrome on Android can't show a PDF inside a page, so a
   document's drawer showed "This content is blocked" where the PDF should be. Where the browser says so
   (`navigator.pdfViewerEnabled`), the drawer shows the document as a card with **Open** first and **Download**.
