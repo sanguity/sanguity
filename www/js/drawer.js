@@ -279,7 +279,9 @@ function resultTable(d, ev) {
   const rows = d.rows;
   if (!rows || !rows.length) return null;
   const at = rows.map((_, i) => rowPoint(d, i, ev));
-  return scrollBox({class: "tablewrap", "aria-label": "Results", style: {maxHeight: "none"}}, el("table", {class: "data"},
+  // too narrow for four columns (320 px, or larger text on a phone), each result's a few lines, its flag beside its value
+  // (app.css .res-wrap; #829: the flag was off to the right, the table scrolling sideways)
+  return scrollBox({class: "tablewrap res-wrap", "aria-label": "Results", style: {maxHeight: "none"}}, el("table", {class: "data"},
     el("thead", {}, el("tr", {}, ["Component", "Value", "Ref range"].map(h => el("th", {scope: "col", text: h})), el("th", {scope: "col"}, el("span", {class: "vh", text: "Flag"})))),
     el("tbody", {}, rows.map(([n, v, u, rr], i) => {
       // its series' chart (the series it's a result of, #782); a value flagged against a range from settings names that
