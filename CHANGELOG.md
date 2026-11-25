@@ -2218,7 +2218,8 @@ Everything on `main` so far; it becomes the first tagged release.
   its review was cancelled or its import undone, whatever was deleted, as the cycle card said. Now it's written again
   without them, streamed and otherwise byte for byte as it was, when cycle tracking is turned off or its data deleted,
   and as it's uploaded: sexual activity always, cycle records and basal body temperature while tracking is off, as the
-  watch receiver keeps a phone's uploads. The card's "What deleting reaches" says so.
+  watch receiver keeps a phone's uploads. The card's "What deleting reaches" says so. One an older version kept as it
+  came, or a backup made by one brings back, is written so once, at the first start after updating.
 - **A lab day lists the tests it holds, not the ones it was imported with** (#889): a lab day kept with fewer results
   than its file had (some already here) was titled for what it held but kept its file's list of tests: Potassium typed
   in, then again with Glucose and Sodium, read "2 lab results · Glucose, Potassium, Sodium" on the Timeline; after a

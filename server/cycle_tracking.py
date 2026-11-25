@@ -26,7 +26,8 @@ asking for everything to be deleted, deletes them all at once, here in the app (
 waiting for review that held nothing else is cancelled, and its upload with it (#539). The uploaded export itself is
 written again without them then (#555: it kept them until its review was cancelled or its import undone), as the
 receiver rewrites its archived uploads, and as it's uploaded while tracking is off (strip_uploads): an upload holds
-cycle records only while tracking is on, and sexual activity never.
+cycle records only while tracking is on, and sexual activity never. One an older version kept as it came, or a backup
+made by one brings back, is written so once at start-up (strip_old).
 """
 import json, os, secrets, shutil
 
@@ -223,6 +224,33 @@ def strip_uploads(db, pid, upload_id=None, on=False):
                 n += uploads.rewrite(db, pid, uid, rel, lambda pieces, write: apple_health.without(_health_data(pieces), write, types))
             except (ValueError, uploads.UploadError, crypto.KeyError_, OSError):
                 continue
+    return n
+
+
+STRIPPED = "uploads_health_stripped"   # meta: how far strip_old has got, "<the highest upload id then>:<done to>"
+
+
+def strip_old(db):
+    """At start-up (main.py), once for each upload: strip_uploads over the uploads an older version kept as they came
+    (#555: before it, an Apple Health export.xml was kept with its sexual activity, and its cycle records whatever
+    tracking was), or that a backup made by one brings back: sexual activity always, cycle records and basal body
+    temperature where tracking is off. The uploads there at the first start that has this (up to the highest id given
+    then) are each read once, in order, the meta row saying how far it got, so a stop part-way goes on from there and a
+    later start reads none; an upload finished since was written so as it was finished. The row is in the database the
+    uploads are, so a backup restored from before it has none, and its uploads are read at the next start. Returns how
+    many records were left out."""
+    try:
+        upto, done = (int(x) for x in (dbm.meta_get(db, STRIPPED) or "").split(":"))
+    except ValueError:   # (none yet: the first start)
+        upto, done = db.execute("SELECT COALESCE(MAX(id), 0) FROM uploads").fetchone()[0], 0
+        dbm.meta_set(db, STRIPPED, f"{upto}:0")
+    n = 0
+    for r in db.execute("SELECT id, profile_id FROM uploads WHERE state='ready' AND id>? AND id<=? ORDER BY id",
+                        (done, upto)).fetchall():
+        n += strip_uploads(db, r["profile_id"], r["id"], on=is_on(db, r["profile_id"]))
+        dbm.meta_set(db, STRIPPED, f"{upto}:{r['id']}")
+    if done < upto:
+        dbm.meta_set(db, STRIPPED, f"{upto}:{upto}")
     return n
 
 
