@@ -391,6 +391,29 @@ class Calendar(unittest.TestCase):
         finally:
             self.drop()
 
+    def test_given_at_the_public_address_where_one_is_set(self):   # #1009
+        """A feed's address is given at the public address where one is set (the first https:// one by name, else the
+        first), as "base" beside its path, when it's made and when it's rotated, and each event links back there too;
+        without one, no base, and the link back is the address the request reached."""
+        from unittest import mock
+        with mock.patch.dict(os.environ, {"PUBLIC_ORIGINS": ""}):
+            j = self.make(details="full")
+            try:
+                self.assertNotIn("base", j)
+                self.assertIn("URL:http://testserver/", self.fetch(j["path"]).text)
+            finally:
+                self.drop()
+        with mock.patch.dict(os.environ, {"PUBLIC_ORIGINS": "http://sanguity.lan:8730, https://health.example.test, https://zz-second.example.test"}):
+            j = self.make(details="full")
+            try:
+                r = self.c["robin"].post(f"/api/profiles/{self.pid}/calendar/rotate", headers=H).json()
+                self.assertEqual((j["base"], r["base"]), ("https://health.example.test/", "https://health.example.test/"))
+                ics = self.fetch(r["path"]).text
+                self.assertIn("URL:https://health.example.test/", ics)
+                self.assertNotIn("sanguity.lan", ics)
+            finally:
+                self.drop()
+
     def test_rotate_and_revoke(self):
         j = self.make()
         old = j["path"]

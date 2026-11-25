@@ -22,10 +22,11 @@ router = APIRouter()
 
 
 def _base_url(request):
-    """Where the app is opened, for the link back in each event: the first PUBLIC_ORIGINS entry if set, else the
-    address this request reached (uvicorn applies X-Forwarded-Proto from nginx)."""
-    if (origins := config.setting("PUBLIC_ORIGINS")):
-        return sorted(origins)[0]
+    """Where the app is opened, for the link back in each event: the address the app gives out (config.public_address,
+    #1009: the first https:// one of PUBLIC_ORIGINS, else its first) if one is set, else the address this request reached
+    (uvicorn applies X-Forwarded-Proto from nginx)."""
+    if (origin := config.public_address()):
+        return origin
     host = _request_host(request)
     return f"{request.url.scheme}://{host}" if host else str(request.base_url)
 
@@ -70,7 +71,8 @@ def make(pid: int, body: FeedIn, request: Request, s=Depends(user), db=Depends(g
             raise HTTPException(409, "You already have a calendar feed of this profile. Rotate it for a new address.")
         token = calendar.create(db, pid, s["id"], body.details, body.labs, body.tz, body.meds)
         _log(db, s, pid, "create", request, details=body.details)
-    return {"path": _path(pid, token), "feed": calendar.mine(db, pid, s["id"])}
+    # (#1009) base: the public address, which the page makes the address from in place of its own, when one is set
+    return {"path": _path(pid, token), **config.given_base(), "feed": calendar.mine(db, pid, s["id"])}
 
 
 @router.post("/api/profiles/{pid}/calendar/rotate")
@@ -82,7 +84,7 @@ def rotate(pid: int, request: Request, s=Depends(user), db=Depends(get_db)):
         if token is None:
             raise HTTPException(404, "You have no calendar feed of this profile.")
         _log(db, s, pid, "rotate", request)
-    return {"path": _path(pid, token), "feed": calendar.mine(db, pid, s["id"])}
+    return {"path": _path(pid, token), **config.given_base(), "feed": calendar.mine(db, pid, s["id"])}
 
 
 @router.patch("/api/profiles/{pid}/calendar")

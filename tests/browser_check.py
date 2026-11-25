@@ -17786,6 +17786,43 @@ def main():
             check("the calendar feed's setup panel fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
             page.click("#calDone")
             check("…and the address isn't kept on the page once done", js("document.getElementById('calUrl').value") == "")
+            # #1009: with a public address set (PUBLIC_ORIGINS, here this server at 127.0.0.1), a share link, a calendar
+            # feed's address and their QR codes are made from it, not from the address the page was opened at: Sharing
+            # opened at localhost (the same server, as a home-network name or a dev name would be) gives them at 127.0.0.1
+            here1009 = base.replace("//127.0.0.1:", "//localhost:")
+            lctx1009 = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
+            try:
+                lp = lctx1009.new_page()
+                lp.on("pageerror", lambda e: problems.append(f"script error (#1009, at localhost): {e}"))
+                lp.goto(here1009 + "/login.html")
+                lp.fill("#u", USER)
+                lp.fill("#p", PW)
+                lp.click("#b")
+                lp.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
+                lp.goto(here1009 + "/sharing.html?profile=1#links")
+                lp.wait_for_selector("#links .share-links button:has-text('New share link')", timeout=10000)
+                lp.locator("#links .share-links button", has_text="New share link").click()
+                lp.locator("#links .share-form").wait_for(timeout=10000)
+                lp.locator("#links .share-form button[type=submit]").click()
+                lp.wait_for_selector(".share-made .share-url", timeout=10000)
+                qr1009 = """sel => { const s = document.querySelector(sel); return s && [s.querySelector('path').getAttribute('d'), s.viewBox.baseVal.width - 8]; }"""
+                link1009 = [lp.evaluate("location.origin"), lp.input_value(".share-made .share-url"), lp.evaluate(qr1009, ".share-made figure.qr-fig > svg.qr")]
+                lp.goto(here1009 + "/sharing.html?profile=1#calendar")
+                lp.wait_for_selector("#calendar:not([hidden]) #calRotate", timeout=10000)
+                lp.click("#calRotate")
+                answer_ask(lp)
+                lp.wait_for_selector("#calSetup:not([hidden])", timeout=10000)
+                feed1009 = [lp.evaluate("document.getElementById('calUrl').value"), lp.evaluate(qr1009, "#calSetup figure.qr-fig > svg.qr"),
+                            lp.evaluate("document.getElementById('calReach').textContent")]
+                lp.click("#calDone")
+            finally:
+                lctx1009.close()
+            read1009 = lambda q: q and read_qr(path_modules(q[0], q[1])).decode()   # noqa: E731
+            check("Sharing opened at another address than the public one: the share link, the feed's address and both QR codes are "
+                  "made from the public address (#1009)", link1009[0] == here1009
+                  and re.fullmatch(re.escape(base) + r"/share\.html#[\w-]{43}", link1009[1]) is not None and read1009(link1009[2]) == link1009[1]
+                  and re.fullmatch(re.escape(base) + r"/api/profiles/1/calendar\.ics\?token=[\w-]{40,}", feed1009[0]) is not None
+                  and read1009(feed1009[1]) == feed1009[0] and "plain HTTP" in feed1009[2], [link1009[:2], feed1009[0], feed1009[2][:80]])
             settle(200)
             check("the Sharing page's calendar feed fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
             cl_tables, cl_bad = cell_labels(page, "Sharing → Calendar feed")
