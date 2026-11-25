@@ -19,6 +19,7 @@ in upload_files; once ready, the upload's manifest. So the folder says nothing a
   with open_plain(db, pid, upload_id) as files: {relpath: absolute path}   decrypted copies in a private temporary
                                                                            folder, removed when the block ends
   discard(db, pid, upload_id)
+  drop_files(db, pid, upload_id, relpaths)                             some of a ready upload's files taken out (#918)
 
 Limits (config.UPLOAD_*): bytes per file, bytes and files per upload (counted after unpacking), and how much a
 file unpacked from a zip may be bigger than it was compressed.
@@ -433,6 +434,35 @@ def discard(db, pid, upload_id):
         db.execute("UPDATE uploads SET state='discarded', manifest=NULL WHERE id=?", (upload_id,))
         db.execute("DELETE FROM upload_files WHERE upload_id=?", (upload_id,))
     _rmtree(folder(pid, upload_id))
+
+
+def head(db, pid, upload_id, rel, n=64):
+    """The first n bytes of one of a ready upload's files, decrypted; b"" when it has no such file."""
+    r, entries = _entries(db, pid, upload_id)
+    e = next((x for x in entries if x["p"] == rel), None) if r["state"] == "ready" else None
+    for piece in crypto.iter_file(os.path.join(folder(pid, upload_id), e["f"])) if e else ():
+        return piece[:n]
+    return b""
+
+
+def drop_files(db, pid, upload_id, rels):
+    """Take files out of a ready upload (#918: what an export brought that its profile doesn't import): out of its
+    manifest and counts first, then their sealed files removed. Returns how many went."""
+    rels = set(rels)
+    if not rels:
+        return 0
+    with dbm.transaction(db):
+        r = _row(db, pid, upload_id)
+        entries = json.loads(crypto.dec(r["manifest"])) if r["state"] == "ready" and r["manifest"] else []
+        gone = [e for e in entries if e["p"] in rels]
+        if not gone:
+            return 0
+        kept = [e for e in entries if e["p"] not in rels]
+        db.execute("UPDATE uploads SET files=?, bytes=?, manifest=? WHERE id=?",
+                   (len(kept), sum(e["n"] for e in kept), crypto.enc(json.dumps(kept, separators=(",", ":"))), upload_id))
+    for e in gone:
+        _remove(os.path.join(folder(pid, upload_id), e["f"]))
+    return len(gone)
 
 
 def orphaned(db, now=None):

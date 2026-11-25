@@ -124,6 +124,9 @@ async def lifespan(app):
             prof.sync_build(db)
             if (gone := uploads.cleanup(db)):
                 print(f"Removed {gone} upload(s) left unfinished for over a day.", flush=True)
+            if (gone := export.strip_all(db)):   # what an uploaded export kept that its profile doesn't import (#918)
+                print(f"Took {gone} file(s) out of uploaded exports: an activity log, or cycle records while cycle tracking "
+                      "is off.", flush=True)
             if (stopped := jobs.recover(db)):
                 print(f"Marked {stopped} import(s) the last stop interrupted as failed; nothing of them was saved.", flush=True)
             from . import journal_photos   # photos sent for a journal entry never saved, a day on (#591)

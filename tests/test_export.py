@@ -262,6 +262,100 @@ class Export(unittest.TestCase):
         # the rest is the same
         self.assertEqual(sorted(n for n in mine.namelist() if n != "activity.json"), sorted(theirs.namelist()))
 
+    def upload(self, pid, files):
+        """An upload of {path: bytes} into profile pid as the import page sends one: {path: bytes} of what it keeps."""
+        up = self.robin.post(f"/api/profiles/{pid}/uploads", headers=H).json()["id"]
+        for path, blob in files.items():
+            r = self.robin.put(f"/api/profiles/{pid}/uploads/{up}/files", params={"path": path}, content=blob,
+                               headers={**H, "Content-Type": "application/octet-stream"})
+            self.assertEqual(r.status_code, 200, r.text)
+        r = self.robin.post(f"/api/profiles/{pid}/uploads/{up}/finish", headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        db = dbm.connect()
+        try:
+            kept = uploads.manifest(db, pid, up)
+            self.assertEqual(r.json()["files"], len(kept), "the reply counts what's kept")
+            with uploads.open_plain(db, pid, up) as plain:
+                out = {}
+                for k, v in plain.items():
+                    with open(v, "rb") as f:
+                        out[k] = f.read()
+                return up, out
+        finally:
+            db.close()
+
+    def test_an_uploaded_export_keeps_only_what_its_profile_imports(self):
+        """#918: an owner's export uploaded on another profile's import page (as Sharing says, to move a profile) kept
+        every file of its zip as the upload's, and an upload is in every editor's Export everything: the activity log,
+        owners only where it came from (#589: who opened it, from where), was then downloaded by the new profile's
+        editors; and its cycle records stayed whatever cycle tracking was there. Now the upload keeps no activity.json,
+        and cycle/cycle.json only while cycle tracking is on there, until it's turned off or the cycle data deleted."""
+        from server import cycle_tracking
+        db = dbm.connect()
+        try:
+            with dbm.transaction(db):
+                cycle_tracking.turn(db, self.pid, True, self.uid["robin"])
+            r = self.robin.get(f"/api/profiles/{self.pid}/export?cycle=1")   # an owner's, with the cycle records ticked
+            with dbm.transaction(db):
+                cycle_tracking.turn(db, self.pid, False, self.uid["robin"])
+            self.assertEqual(r.status_code, 200, r.text[:300])
+            blob = r.content
+            self.assertTrue({"activity.json", "cycle/cycle.json", "data.json", "README.txt"} <= set(zipfile.ZipFile(io.BytesIO(blob)).namelist()))
+            pid = self.new_profile("Moved by upload (fictional)")
+            db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'editor')", (self.uid["lee"], pid))
+            # alone, unpacked at the top; beside another file, in a folder of its own: neither keeps the activity log,
+            # nor, with tracking off here, the cycle records
+            _, alone = self.upload(pid, {"sanguity-export.zip": blob})
+            _, beside = self.upload(pid, {"sanguity-export.zip": blob, "notes.txt": b"fictional"})
+            self.assertTrue({"data.json", "README.txt", "settings.json"} <= set(alone), sorted(alone))
+            self.assertFalse([p for p in alone if p.endswith(("activity.json", "cycle.json"))], sorted(alone))
+            self.assertTrue({"sanguity-export/data.json", "notes.txt"} <= set(beside), sorted(beside))
+            self.assertFalse([p for p in beside if p.endswith(("activity.json", "cycle.json"))], sorted(beside))
+            self.assertFalse([p for p in alone.values() if b'"action": "view"' in p], "no file holds the log")
+            # a zip that only looks like one (no README of an export's) is kept whole: nothing of the person's is lost
+            other = io.BytesIO()
+            with zipfile.ZipFile(other, "w") as z:
+                z.writestr("data.json", '{"events": []}')
+                z.writestr("activity.json", "[]")
+            hand, kept = self.upload(pid, {"hand-made.zip": other.getvalue()})
+            self.assertEqual(sorted(kept), ["activity.json", "data.json"])
+            # so the new profile's editor, who can't read its activity log, finds none of the old one's either
+            self.assertEqual(self.lee.get(f"/api/profiles/{pid}/activity").status_code, 403)
+            theirs = zipfile.ZipFile(io.BytesIO(self.lee.get(f"/api/profiles/{pid}/export").content)).namelist()
+            self.assertEqual([n for n in theirs if n.startswith("uploads/") and n.endswith(("activity.json", "cycle.json"))],
+                             [f"uploads/{hand}/activity.json"], "only the hand-made zip's, which no export made")
+            # one an older version kept whole loses them at the next start (strip_all, main.py), and an export loaded
+            # with the command line keeps neither its own activity log nor its uploads' (import_archive)
+            old = uploads.create(db, pid, None)
+            uploads.add_file(db, pid, old, "sanguity-export.zip", io.BytesIO(blob))
+            uploads.finish(db, pid, old)
+            self.assertIn("activity.json", uploads.manifest(db, pid, old))
+            with dbm.transaction(db):   # (an export holds a data.json once something's imported)
+                records.store(db, pid, {"events": [FILE["events"][0]], "details": {}, "labs": [], "costs": []}, "dataset")
+            archive = os.path.join(TMP, "with-uploads.zip")
+            with open(archive, "wb") as f:
+                f.write(self.robin.get(f"/api/profiles/{pid}/export").content)
+            moved = self.new_profile("Moved again (fictional)")
+            export.import_archive(db, moved, archive)
+            self.assertFalse(os.path.exists(os.path.join(prof.profile_dir(moved), "imported", "activity.json")))
+            held = [p for (u,) in db.execute("SELECT id FROM uploads WHERE profile_id=? AND state='ready'", (moved,))
+                    for p in uploads.manifest(db, moved, u) if p.endswith(("activity.json", "cycle.json"))]
+            self.assertEqual(held, ["activity.json"], "the hand-made zip's alone")
+            self.assertGreaterEqual(export.strip_all(db), 1)
+            self.assertNotIn("activity.json", uploads.manifest(db, pid, old))
+            self.assertIn("data.json", uploads.manifest(db, pid, old))
+            # with cycle tracking on here, its cycle records stay (still never its log), until tracking is turned off
+            with dbm.transaction(db):
+                cycle_tracking.turn(db, pid, True, self.uid["robin"])
+            up, on = self.upload(pid, {"sanguity-export.zip": blob})
+            self.assertIn("cycle/cycle.json", on)
+            self.assertNotIn("activity.json", on)
+            self.assertEqual(self.robin.put(f"/api/profiles/{pid}/cycle", json={"on": False}, headers=H).status_code, 200)
+            self.assertNotIn("cycle/cycle.json", uploads.manifest(db, pid, up))
+            self.assertIn("data.json", uploads.manifest(db, pid, up))
+        finally:
+            db.close()
+
 
 if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

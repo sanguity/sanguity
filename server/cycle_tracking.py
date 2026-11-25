@@ -249,8 +249,9 @@ def drop_imported(db, pid, who=None, ip=None):
     cancelled meanwhile (jobs.rewrite_preview, #526). An export still being read asks again under the same lock
     before its preview is written (jobs._import), so one that gets there meanwhile is seen here (#539). Then every
     Apple Health export the profile's uploads hold is written again without them (strip_uploads, #555)."""
-    from . import jobs
+    from . import export, jobs
     shutil.rmtree(imported_dir(pid), ignore_errors=True)
+    export.strip_uploads(db, pid, cycle=False)   # and an export of Sanguity's uploaded here, its cycle/cycle.json (#918)
     for (jid,) in db.execute("SELECT id FROM jobs WHERE profile_id=? AND (state='preview' OR state='running' AND stage IS NOT 'saving')",
                              (pid,)).fetchall():
         with jobs.preview_lock(jid):

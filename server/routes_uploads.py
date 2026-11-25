@@ -14,7 +14,7 @@ import anyio
 from fastapi import APIRouter, Depends, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 
-from . import activity, config, cycle_tracking, uploads
+from . import activity, config, cycle_tracking, export, uploads
 from .main import _client_ip, get_db, need, user
 
 router = APIRouter()
@@ -75,6 +75,10 @@ def finish_upload(pid: int, upload_id: int, request: Request, s=Depends(user), d
         raise _refused(e) from None
     # an Apple Health export is kept without what isn't (#555): sexual activity, and cycle records while tracking is off
     cycle_tracking.strip_uploads(db, pid, upload_id, on=cycle_tracking.is_on(db, pid))
+    # an export of Sanguity's keeps only what this profile imports (#918): never its activity log, its cycle records
+    # only while cycle tracking is on here
+    if export.strip_uploads(db, pid, upload_id):
+        done = {k: v for k, v in uploads.info(db, pid, upload_id).items() if k in ("files", "bytes")}
     activity.log(db, "upload", s, pid, {"upload": upload_id, **done}, _client_ip(request))
     return done
 
