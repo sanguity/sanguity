@@ -9,7 +9,10 @@ app with each vendor, and the vendor sends the sign-in straight back to the inst
   Epic's dynamic registration) and the scopes to ask for. "Test this connection" reads its discovery and keeps it,
   with the hosts it names: the server contacts no other host for that source. An admin can mark one as waiting for
   the vendor's review (#165, schema version 29: smart_clients.waiting): its client ID may then be missing, nobody can
-  connect it, and Portals and health plans says it's coming and to upload the portal's export meanwhile.
+  connect it, and Portals and health plans says it's coming and to upload the portal's export meanwhile. Its FHIR
+  base can't change while a profile is connected to it, as it can't be removed then (#926): a connection's tokens
+  belong to the server it was made with, which alone is contacted for it, and a sign-in started at the old address
+  is used up by the change.
 
   The return address is return_address(): today the install's own /connect/return at its PUBLIC_ORIGINS address.
   Option 2's relay would replace that one function; nothing else depends on which it is.
@@ -523,24 +526,45 @@ def save_client(db, who, data, cid=None, ip=None):
     if db.execute("SELECT 1 FROM smart_clients WHERE issuer=? AND id IS NOT ?", (issuer, cid)).fetchone():
         raise Problem("Another source has that FHIR base address already.", 409)
     now = dbm.now()
-    if old:
-        moved = issuer != old["issuer"]
-        db.execute("""UPDATE smart_clients SET name=?, vendor=?, issuer=?, client_id=?, secret=?, auth=?, scopes=?, changed=?,
-                      discovery=CASE WHEN ? THEN NULL ELSE discovery END, tested=CASE WHEN ? THEN NULL ELSE tested END,
-                      waiting=? WHERE id=?""",
-                   (name, vendor, issuer, client_id, secret, auth, scopes, now, moved, moved, waiting, cid))
-    else:
-        cid = db.execute("""INSERT INTO smart_clients(name, vendor, issuer, client_id, secret, auth, scopes, created, created_by, waiting)
-                            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                         (name, vendor, issuer, client_id, secret, auth, scopes, now, who["id"], waiting)).lastrowid
-    activity.log(db, "connect.source", who, None, {"name": name, "issuer": issuer, "change": "edit" if old else "add",
-                                                   **({"waiting": bool(waiting)} if not old or bool(waiting) != bool(old["waiting"]) else {})}, ip)
+    with dbm.transaction(db):
+        if old:
+            moved = issuer != _client(db, cid)["issuer"]
+            if moved:   # #926: under the write lock, so no sign-in finishes at the old address meanwhile
+                live = _live(db, cid)
+                if live:
+                    them = ("them", "each") if live != 1 else ("it", "the")
+                    raise Problem(f"{live} profile{'s are' if live != 1 else ' is'} still connected to this source, "
+                                  "with access the server at its address now gave, so the address can't change. Add "
+                                  f"the new address as another source, or disconnect {them[0]} first (on {them[1]} "
+                                  "profile's Connected sources).", 409)
+                db.execute("DELETE FROM connect_pending WHERE client_id=?", (cid,))   # started at the old address
+            db.execute("""UPDATE smart_clients SET name=?, vendor=?, issuer=?, client_id=?, secret=?, auth=?, scopes=?, changed=?,
+                          discovery=CASE WHEN ? THEN NULL ELSE discovery END, tested=CASE WHEN ? THEN NULL ELSE tested END,
+                          waiting=? WHERE id=?""",
+                       (name, vendor, issuer, client_id, secret, auth, scopes, now, moved, moved, waiting, cid))
+        else:
+            cid = db.execute("""INSERT INTO smart_clients(name, vendor, issuer, client_id, secret, auth, scopes, created, created_by, waiting)
+                                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                             (name, vendor, issuer, client_id, secret, auth, scopes, now, who["id"], waiting)).lastrowid
+        activity.log(db, "connect.source", who, None, {"name": name, "issuer": issuer, "change": "edit" if old else "add",
+                                                       **({"waiting": bool(waiting)} if not old or bool(waiting) != bool(old["waiting"]) else {})}, ip)
     return describe_client(_client(db, cid), counts(db).get(cid))
+
+
+def _live(db, cid):
+    """How many connections to vendor setting cid aren't disconnected (they hold its server's tokens)."""
+    return db.execute("SELECT COUNT(*) FROM connections WHERE client_id=? AND state != 'disconnected'", (cid,)).fetchone()[0]
+
+
+def same_server(r, c):
+    """Whether vendor setting r is still at the address connection c was made with (#926: one moved before it
+    couldn't be is another server, whose discovery is never used for c)."""
+    return r is not None and r["issuer"] == c["issuer"]
 
 
 def remove_client(db, who, cid, ip=None):
     r = _client(db, cid)
-    live = db.execute("SELECT COUNT(*) FROM connections WHERE client_id=? AND state != 'disconnected'", (cid,)).fetchone()[0]
+    live = _live(db, cid)
     if live:
         raise Problem(f"{live} profile{'s are' if live != 1 else ' is'} still connected to this source. Disconnect "
                       "them first (on each profile's Connected sources).", 409)
@@ -630,6 +654,9 @@ def start(db, s, pid, vendor=None, issuer=None, connection_id=None, ip=None, kin
             raise Problem("No such connection.", 404)
         if c["client_id"] != r["id"]:
             raise Problem("This connection belongs to another source.", 409)
+        if not same_server(r, c):   # #926
+            raise Problem("This source has moved to another address since this connection was made. Disconnect it, "
+                          "and connect the source again.", 409)
         if kinds is KEEP:
             kinds = json.loads(c["kinds"]) if c["kinds"] else None
         if since is KEEP:
@@ -650,6 +677,8 @@ def start(db, s, pid, vendor=None, issuer=None, connection_id=None, ip=None, kin
     now = dbm.now()
     scopes = narrow_scopes(r["scopes"], kinds, conf)
     with dbm.transaction(db):
+        if (db.execute("SELECT issuer FROM smart_clients WHERE id=?", (r["id"],)).fetchone() or [None])[0] != r["issuer"]:
+            raise Problem("This source's address changed meanwhile. Start again.", 409)   # #926
         db.execute("DELETE FROM connect_pending WHERE expires <= ?", (now,))
         db.execute("""INSERT INTO connect_pending(state_hash, session_id, profile_id, client_id, connection_id, verifier,
                       redirect_uri, scopes, token_url, expires, kinds, since) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -698,6 +727,9 @@ def finish(db, s, code=None, state=None, error=None, error_description=None, ip=
         p = db.execute("SELECT * FROM connect_pending WHERE state_hash=?", (_hash(state),)).fetchone()
         if p:
             db.execute("DELETE FROM connect_pending WHERE state_hash=?", (p["state_hash"],))   # single use
+            # read with it (#926): moving a source used its pending sign-ins up; one moved after this is found below,
+            # before the connection is saved
+            r = db.execute("SELECT * FROM smart_clients WHERE id=?", (p["client_id"],)).fetchone()
     if not p:
         raise Problem("This sign-in isn't one waiting here: it was used already, or started somewhere else. Start "
                       "it again from Connected sources.", 400)
@@ -716,7 +748,6 @@ def finish(db, s, code=None, state=None, error=None, error_description=None, ip=
                       + "). Nothing was connected.", 400)
     if not code or len(code) > 4000:
         raise Problem("The vendor sent no authorization code back.", 400)
-    r = db.execute("SELECT * FROM smart_clients WHERE id=?", (p["client_id"],)).fetchone()
     if not r:
         raise Problem("This source was removed meanwhile.", 409)
     pid = p["profile_id"]
@@ -759,6 +790,10 @@ def finish(db, s, code=None, state=None, error=None, error_description=None, ip=
     host = smart.host_of(r["issuer"])
     with dbm.transaction(db):
         cid = p["connection_id"]
+        now_at = db.execute("SELECT issuer FROM smart_clients WHERE id=?", (r["id"],)).fetchone()
+        was = db.execute("SELECT issuer FROM connections WHERE id=?", (cid,)).fetchone() if cid is not None else None
+        if not now_at or now_at[0] != r["issuer"] or was and was[0] != r["issuer"]:   # #926
+            raise Problem("This source's address changed while you were signing in. Nothing was connected.", 409)
         if cid is None:   # the same patient at the same source again: that connection, not a second one
             for c in db.execute("SELECT id, patient FROM connections WHERE profile_id=? AND issuer=? AND state != 'disconnected'",
                                 (pid, r["issuer"])).fetchall():
@@ -895,9 +930,11 @@ def disconnect(db, who, pid, cid, remove_records=False, ip=None):
     revoked = None
     if c["state"] != "disconnected" and c["secret"]:
         r = db.execute("SELECT * FROM smart_clients WHERE id=?", (c["client_id"],)).fetchone() if c["client_id"] else None
-        url = (_discovery(r) or {}).get("revocation_endpoint") if r else None
+        url = (_discovery(r) or {}).get("revocation_endpoint") if same_server(r, c) else None
         cred = _jdec(c["secret"])
-        if url:
+        if r and not same_server(r, c):
+            revoked = False   # #926: its source moved; its tokens aren't sent to the server there
+        elif url:
             http = smart.Client(outside.for_connection(db, cid, "Connected source: disconnect", who, ip))
             app = (cred.get("dyn_client"), None) if c["credential"] == "jwt" else (r["client_id"], crypto.dec(r["secret"]) if r["secret"] else None)
             token, hint = (cred["refresh"], "refresh_token") if cred.get("refresh") else (cred["access"], "access_token")
