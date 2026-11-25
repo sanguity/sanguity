@@ -230,7 +230,10 @@ would change and what changes, with a box to leave it out. A record whose plain 
 (#967: another server's, by their `ver`) isn't that one: the preview gives it its key naming its server,
 `fhir:<server>|<type>/<id>` as an upload mixing servers has it, so it's added beside the other and found by that key
 when its file comes again; one here from the same server, or one saying none (saved before #955), is the same record,
-as before. `ver` is stored, never served; a series adds only the
+as before. Other importers say a record's source in `ver` too where the file says it (#968: `{"source": ...}`, a
+C-CDA's custodian on each entry named by its own id, a CareSpace export's clinic on its documents), so another
+clinic's with the same id is added as its own (`ccda:<source>|<root>^<extension>`), and a record is updated in place
+only from its own source where both say one. `ver` is stored, never served; a series adds only the
 points (time and value as reported) the profile doesn't have, and a
 point it has already, but whose copy in the upload says something of its range or flag that no copy there says, or
 whose row in the upload's lab day is new, is added as a copy, read as one result with the copy there (#846), always

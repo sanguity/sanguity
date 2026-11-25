@@ -71,7 +71,9 @@ class Parse(unittest.TestCase):
         self.assertEqual([e["t"] for e in self.d["events"]], sorted(e["t"] for e in self.d["events"]))
         for e in self.d["events"]:
             self.assertLessEqual({"id", "t", "k", "title", "sub"}, set(e))
-            self.assertLessEqual(set(e), {"id", "t", "k", "title", "sub", "end", "abn", "hidden", "src", "key"})
+            self.assertLessEqual(set(e), {"id", "t", "k", "title", "sub", "end", "abn", "hidden", "src", "key", "ver"})
+            if "ver" in e:   # (#968) a record named by its own id says whose it is: its document's custodian
+                self.assertTrue(e["key"].startswith("ccda:") and ":h:" not in e["key"] and set(e["ver"]) == {"source"}, e)
             self.assertRegex(e["t"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
         self.assertLessEqual(set(self.d["details"]), set(ids))
 
@@ -153,6 +155,7 @@ class Parse(unittest.TestCase):
         probs = {p["name"]: p for p in self.d["problems"]}
         htn = dict(probs["Essential hypertension"])
         self.assertEqual(htn.pop("key"), "ccda:2.16.840.1.113883.19.5.99999.40^PRB-4001")
+        self.assertEqual(htn.pop("ver"), {"source": "Maple Grove Clinic"})   # (#968) its custodian
         self.assertEqual(htn, {"name": "Essential hypertension", "type": "Problem", "date": "2025-01-15", "status": "Active",
                                "src": "Maple Grove Clinic", "code": "38341003", "system": "SNOMED CT"})
         ida = probs["Iron deficiency anemia, unspecified"]
@@ -433,7 +436,8 @@ class Immunizations(unittest.TestCase):
         (a,) = self.d["problems"]
         self.assertEqual(a, {"name": "Allergy: Penicillin G (Hives)", "type": "Allergy", "date": "2010-01-01", "status": "Active",
                              "src": "Harbor View Clinic", "substance": "Penicillin G", "reactions": ["Hives"], "severity": "Moderate",
-                             "criticality": "High", "code": "7980", "system": "RxNorm", "key": "ccda:2.16.840.1.113883.19.5.77777.5^AL-PCN"})
+                             "criticality": "High", "code": "7980", "system": "RxNorm", "key": "ccda:2.16.840.1.113883.19.5.77777.5^AL-PCN",
+                             "ver": {"source": "Harbor View Clinic"}})
 
 
 class Contract(unittest.TestCase):

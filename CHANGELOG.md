@@ -3385,6 +3385,12 @@ Everything on `main` so far; it becomes the first tagged release.
   record whose id a record of another server holds is added beside it, its key naming its server; clinic B's file
   again is already here, its newer one updates clinic B's records, never hospital A's. A record saved before #955,
   which doesn't say its server, is taken for the same record, as before.
+- **Two clinics' C-CDA or CareSpace records with the same ids are each their own** (#968): for importers other than
+  FHIR, a record's source was taken to be its importer (#955), so a second clinic's C-CDA whose medication had the
+  first's id (one root and extension) was put in the first one's place, and a second clinic's CareSpace export lost
+  its documents of the same file names as already here. Each now says its source where the file says it (a C-CDA's
+  custodian, a CareSpace export's clinic): the other clinic's is added as its own, and a record is updated only from
+  its own clinic.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

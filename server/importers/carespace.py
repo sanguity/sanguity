@@ -20,7 +20,8 @@ made are upcoming (build.py compares with today; the export's own date keeps the
 Keys: "carespace:labitem:<day>|<panel lower-cased>" (results are grouped by day and panel name, so no single
 source record owns a labitem), "carespace:labday:<day>", "carespace:document/<file name>", and "carespace:h:" plus a
 hash of the identifying fields for visits, upcoming visits, medications and problems, which have no ids in the
-export. Series: "loinc:<code>" or "carespace:name|<name lower-cased>", with "|<unit>" when a test is split by unit.
+export. A document says whose it is where the export names its clinic ("ver": {"source": the clinic}, #968), as
+another clinic's export can have a document of the same name. Series: "loinc:<code>" or "carespace:name|<name lower-cased>", with "|<unit>" when a test is split by unit.
 """
 import collections, hashlib, json, posixpath, re
 import xml.etree.ElementTree as ET
@@ -173,7 +174,8 @@ def parse(files, org=None, tag=None):
     ccd_rel = next((root + c for c in CCDS if root + c in files), None)
     ccd = _ccd(files, ccd_rel) if ccd_rel else None
     warnings = []
-    org = org or (_org(ccd) if ccd is not None else None)
+    said = _org(ccd) if ccd is not None else None   # (#968) the clinic as the export names it
+    org = org or said
     if not org:
         org = DEFAULT_ORG
         warnings.append(f'The export doesn\'t name the clinic, so its records are labelled "{DEFAULT_ORG}". '
@@ -356,7 +358,7 @@ def parse(files, org=None, tag=None):
         if mm:
             d, typ, title = mm.groups()
             add(iso(d), "document", title, f"{typ} · {org}", {"type": "file", "url": rel, "ext": "pdf"},
-                key=f"{NAME}:document/{name}")
+                key=f"{NAME}:document/{name}", ver={"source": said} if said else None)   # (#968) whose, as the export says
     upcoming.sort(key=lambda x: x["t"])
 
     # ---- lab series: same-day repeats of one value count once, as in build.py
