@@ -264,35 +264,41 @@ def _rows_of(rows, s, p):
     return named, alike
 
 
-# ---------------------------------------------------------------- what every lab day keeps to (#878)
+# ---------------------------------------------------------------- what every lab day keeps to (#878, #909–#914)
 
-def lab_faults(data):
-    """What's wrong with a set of records' lab days, as the import, sync, Undo, Remove and Put back paths keep them
-    (#878): [] where every lab result, a text result too, has its row in exactly one lab day (in a labitem of its own
-    import on its day, _row_of, as the drawer finds a row's result: drawer.js rowPoint), every lab day lists only events
-    there are and is said for them (common.lab_day_counted: its title and its list of tests), and the results it counts
-    (its badge, util.js labDraws: _draws) are the ones its rows show (its drawer). A visit's Vitals and the watch's are
-    no lab day's. data: the records as assembled (records.assemble), every record's details with them. Each fault:
-      ("no row", series, time, import)                 a result no lab day lists a row of
-      ("in two lab days", series, time, [lab day ids])  a result whose row two lab days list
-      ("row without its result", lab day, labitem, row index, row)
-      ("gone", lab day, event id)                       a lab day listing an event that isn't there
-      ("said", lab day, (title, sub), (title, sub) for what it lists)
-      ("badge", lab day, [its results by labDraws], [its rows' results])   (series names, each a result)"""
+def lab_faults(data, day=None):
+    """What's wrong with a set of records' lab days, as the imports, the syncs, Undo, Remove and Put back leave them,
+    whatever order they ran in (#878, #909–#914), in words: [] where every lab result, a text result too, has its row in
+    exactly one lab day (in a labitem of its own import on its day, as the drawer finds a row's result, drawer.js
+    rowPoint; one result in two reports of its day, CareSpace's, a row in each), every row its result and every labitem
+    one lab day; every lab day lists events there are, one at least, and is said for them (common.lab_day_counted: its
+    title, "5 lab results", and its list of tests); and the results it counts (its badge, util.js labDraws: _draws) are
+    the ones its rows show (its drawer). A visit's Vitals and the watch's are no lab day's, and a procedure's or a
+    study's own results (Epic's bone marrow biopsy, its Cellularity) are in its own rows. data: the records as assembled
+    (records.assemble), every record's details with them. day: that day's only (its lab days, labitems and results)."""
     events = {e["id"]: e for e in data.get("events") or [] if isinstance(e, dict) and "id" in e}
-    details = data.get("details") or {}
-    days = [e for e in events.values() if e.get("k") == "lab"]
-    out, listed = [], collections.defaultdict(list)   # listed: labitem id -> the lab days listing it
+    details = {str(k): v for k, v in (data.get("details") or {}).items()}
+    on = lambda t: day is None or _day(t) == day   # noqa: E731
+    days = [e for e in events.values() if e.get("k") == "lab" and on(e.get("t"))]
+    out, listed = [], {}   # listed: event id -> the lab days listing it
     for e in days:
         ids = (details.get(str(e["id"])) or {}).get("ids") or []
-        out += [("gone", e["id"], i) for i in ids if i not in events]
-        for i in dict.fromkeys(i for i in ids if i in events):
-            listed[i].append(e["id"])
-        said = common.lab_day_counted({k: v for k, v in e.items() if k != "id"}, [(events[i], details.get(str(i))) for i in ids if i in events])
+        held = [i for i in ids if i in events]
+        if len(held) != len(ids):
+            out.append(f"lab day {e['id']} lists {[i for i in ids if i not in events]}, not there")
+        if not held:
+            out.append(f"lab day {e['id']} lists nothing")
+        for i in dict.fromkeys(held):
+            listed.setdefault(i, []).append(e["id"])
+        said = common.lab_day_counted({k: v for k, v in e.items() if k != "id"}, [(events[i], details.get(str(i))) for i in held])
         if (said.get("title"), said.get("sub")) != (e.get("title"), e.get("sub")):
-            out.append(("said", e["id"], (e.get("title"), e.get("sub")), (said.get("title"), said.get("sub"))))
+            out.append(f"lab day {e['id']} is said {e.get('title')!r} · {e.get('sub')!r}, holding {said.get('title')!r} · {said.get('sub')!r}")
+    for i, e in events.items():
+        if e.get("k") == "labitem" and on(e.get("t")) and len(listed.get(i) or []) != 1:
+            names = [r[0] for r in (details.get(str(i)) or {}).get("rows") or [] if isinstance(r, list) and r]
+            out.append(f"labitem {i} ({names}) is listed by {len(listed.get(i) or [])} lab days")
     rows = _rows({"events": [events[i] for i in listed], "details": details})
-    # a procedure's or a study's own results (Epic's bone marrow biopsy, its Cellularity) are in its rows, no lab day's
+    # a procedure's or a study's own results are in its rows, no lab day's
     other = _rows({"events": [{**e, "k": "labitem"} for e in events.values() if e.get("k") not in ("lab", "labitem")], "details": details})
     labs = [(n, s) for n, s in enumerate(data.get("labs") or []) if isinstance(s, dict) and not s.get("watch") and s.get("panel") != "Vitals"]
     shown, found = collections.defaultdict(set), set()   # shown: lab day id -> {(series index, point index)} its rows show
@@ -304,24 +310,21 @@ def lab_faults(data):
                 named, alike = _rows_of(rows, s, p)   # (one result in two reports of its day: CareSpace's, a row in each)
                 at = named or (alike if len(alike) == 1 else [])
                 if not at:
-                    if not any(_rows_of(other, s, p)):
-                        out.append(("no row", s.get("name"), p[0], s.get("imp")))
+                    if on(p[0]) and not any(_rows_of(other, s, p)):
+                        out.append(f"{s.get('name')} at {p[0]} (import {s.get('imp')}): no row")
                     continue
                 found.update(at)
-                held = sorted({d for eid, _ in at for d in listed[eid]})
-                if len(held) > 1:
-                    out.append(("in two lab days", s.get("name"), p[0], held))
+                held = sorted({d for eid, _ in at for d in listed.get(eid) or []})
+                if len(held) > 1 and on(p[0]):
+                    out.append(f"{s.get('name')} at {p[0]} (import {s.get('imp')}): its row in lab days {held}")
                 if field == "pts":
                     for d in held:
                         shown[d].add((n, k))
-    for e in days:
-        for i in (details.get(str(e["id"])) or {}).get("ids") or []:
-            for r, row in enumerate((details.get(str(i)) or {}).get("rows") or [] if i in events else []):
-                if isinstance(row, list) and len(row) >= 2 and (i, r) not in found and ranges.read_flag(row[4] if len(row) > 4 else "", None, None, None):
-                    out.append(("row without its result", e["id"], i, r, row[:5]))   # (flagged: its drawer says it, its badge doesn't)
+    out += [f"row {eid}/{r} ({row[0]}): no result" for rs in rows.values() for eid, r, row in rs if (eid, r) not in found]
     drawn = _draws(events, details, days, labs)
     name = lambda pts: sorted(str(data["labs"][n].get("name")) for n, _ in pts)   # noqa: E731
-    out += [("badge", e["id"], name(drawn[e["id"]]), name(shown[e["id"]])) for e in days if drawn[e["id"]] != shown[e["id"]]]
+    out += [f"lab day {e['id']}: its badge counts {name(drawn[e['id']])}, its drawer shows {name(shown[e['id']])}"
+            for e in days if drawn[e["id"]] != shown[e["id"]]]
     return out
 
 
@@ -355,85 +358,6 @@ def _draws(events, details, days, labs):
             mine = held.get((d, s.get("imp"))) or by.get((d, s.get("imp")))
             for e in ([min(mine, key=lambda e: near(e, t))] if mine else by.get(d) or []):
                 out[e["id"]].add((n, k))
-    return out
-
-
-def _instant(t):
-    """A result's or an event's time as seconds, for which lab day is nearest it (util.js labDraws)."""
-    try:
-        dt = datetime.fromisoformat(str(t).replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    return (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)).timestamp()
-
-
-def lab_faults(data, day=None):
-    """What's wrong with the lab days of the records as the page has them (records.assemble, every record's details),
-    in words: none where every lab result (a point, or a text result) has its row, found as the drawer finds one
-    (_row_of: in a labitem of the result's own import, that day), in a labitem exactly one lab day lists, and every row
-    its result; every lab day lists lab events there are, one at least, and is titled for the rows they hold ("5 lab
-    results"); and each lab day's badge (the flagged results util.js labDraws gives it) counts what its drawer's rows
-    show (each row its result's flag, drawer.js rowFlag). The one check of the lab days the imports, the syncs, Undo,
-    Remove and Put back leave (#909–#914), whatever order they ran in. day: that day's only."""
-    events, details = data.get("events") or [], {str(k): v for k, v in (data.get("details") or {}).items()}
-    ids = {e["id"] for e in events}
-    on = lambda t: day is None or _day(t) == day   # noqa: E731
-    days = [e for e in events if e.get("k") == "lab" and on(e.get("t"))]
-    items = {e["id"]: e for e in events if e.get("k") == "labitem"}
-    out, listed = [], collections.Counter()
-    for e in days:
-        d = details.get(str(e["id"])) or {}
-        held = [i for i in d.get("ids") or [] if i in ids]
-        listed.update(i for i in held if i in items)
-        if len(held) != len(d.get("ids") or []):
-            out.append(f"lab day {e['id']} lists {[i for i in d.get('ids') or [] if i not in ids]}, not there")
-        if not held:
-            out.append(f"lab day {e['id']} lists nothing")
-        n = sum(len((details.get(str(i)) or {}).get("rows") or []) for i in held)
-        m = re.match(r"(\d+) lab results?(?= · |$)", str(e.get("title") or ""))
-        if m and int(m.group(1)) != n:
-            out.append(f"lab day {e['id']} is titled {e.get('title')!r}, holding {n} rows")
-    for i, e in items.items():
-        if on(e.get("t")) and listed[i] != 1:
-            out.append(f"labitem {i} ({[r[0] for r in (details.get(str(i)) or {}).get('rows') or []]}) is listed by {listed[i]} lab days")
-    rows = _rows({"events": [items[i] for i in listed], "details": details})
-    found, labs = {}, [s for s in data.get("labs") or [] if isinstance(s, dict) and not s.get("watch") and s.get("panel") != "Vitals"]
-    for s in labs:
-        for p in list(s.get("pts") or []) + list(s.get("txt") or []):
-            if isinstance(p, list) and p and on(p[0]):
-                at = _row_of(rows, s, p)
-                if at:
-                    found[at] = p
-                else:
-                    out.append(f"{s.get('name')} at {p[0]} (import {s.get('imp')}): no row")
-    out += [f"row {eid}/{r} ({row[0]}): no result" for rs in rows.values() for eid, r, row in rs if (eid, r) not in found]
-    # each lab day's badge, as util.js labDraws gives a lab day its results: those of the imports of the lab events it
-    # lists that day (of several, the one with a report nearest in time), else those of its own import, else every one's
-    by, held, badge = collections.defaultdict(list), collections.defaultdict(list), collections.defaultdict(int)
-    for e in days:
-        by[(_day(e.get("t")), e.get("imp"))].append(e)
-        by[_day(e.get("t"))].append(e)
-        for k in {(_day(items[i].get("t")), items[i].get("imp")) for i in (details.get(str(e["id"])) or {}).get("ids") or [] if i in items}:
-            held[k].append(e)
-
-    def near(e, t):
-        at = [_instant(items[i].get("t")) for i in (details.get(str(e["id"])) or {}).get("ids") or [] if i in items] or [_instant(e.get("t"))]
-        return min((abs(a - t) for a in at if a is not None and t is not None), default=0)
-    for s in labs:
-        for p in s.get("pts") or []:
-            if not (isinstance(p, list) and p and on(p[0])):
-                continue
-            mine = held.get((_day(p[0]), s.get("imp"))) or by.get((_day(p[0]), s.get("imp")))
-            for e in [min(mine, key=lambda e: near(e, _instant(p[0])))] if mine else by.get(_day(p[0])) or []:
-                badge[e["id"]] += bool(p[4]) if len(p) > 4 else 0
-    for e in days:
-        shown = 0
-        for i in (details.get(str(e["id"])) or {}).get("ids") or []:
-            for r, row in enumerate((details.get(str(i)) or {}).get("rows") or [] if i in items else []):
-                p = found.get((i, r))   # (a text result has no flag; a row with no result, its report's as printed)
-                shown += bool((p[4] if len(p) > 4 else "") if p is not None else len(row) > 4 and ranges.read_flag(row[4], None, None, None))
-        if badge[e["id"]] != shown:
-            out.append(f"lab day {e['id']}: its badge says {badge[e['id']]} out of range, its drawer {shown}")
     return out
 
 

@@ -59,24 +59,6 @@ def q(url):
 INTERP = "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation"
 
 
-def unpaired(data, day):
-    """(#868, #897) The lab results of that day with no row of their own (none in a labitem of their own import that a
-    lab day lists, matched as drawer.js rowPoint matches one: crossmatch._row_of), and the rows with no result of their
-    own: ([(series, time, import)], [(labitem id, row index)])."""
-    from server import crossmatch
-    listed = {str(i) for e in data["events"] if e["k"] == "lab" for i in (data["details"].get(str(e["id"])) or {}).get("ids") or []}
-    rows = crossmatch._rows({"events": [e for e in data["events"] if str(e["id"]) in listed], "details": data["details"]})
-    found, rowless = set(), []
-    for s in data["labs"]:
-        if s.get("watch") or s.get("panel") == "Vitals":
-            continue
-        for p in list(s["pts"]) + list(s.get("txt") or []):
-            if str(p[0])[:10] == day:
-                at = crossmatch._row_of(rows, s, p)
-                found.add(at) if at else rowless.append((s["name"], p[0], s.get("imp")))
-    return rowless, [(eid, r) for (_, d), rs in rows.items() if d == day for eid, r, _ in rs if (eid, r) not in found]
-
-
 def lab_obs(oid, code, name, v, unit, flag=None, rng=None, t="2025-03-04T09:45:00-06:00"):
     """A fictional lab Observation on the fake's draw day (2025-03-04, the CBC's and LDL's), High where flag says."""
     r = {"resourceType": "Observation", "id": oid, "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
@@ -229,7 +211,7 @@ class Connections(unittest.TestCase):
     def draw(self, day="2025-03-04"):
         """A draw as the page has it (#899): each lab result of that day ({name: [(low, high, flag, its row's range as
         printed, its row's flag as read)]}), the day's lab days ("lab days": [(title, each of its rows)]) and what's
-        unpaired, results without rows and rows without results ("unpaired")."""
+        wrong with them ("faults", crossmatch.lab_faults: results without rows and rows without results among them)."""
         from server import crossmatch, ranges
         data = self.data()
         drawer, out = crossmatch._rows(data), {}
@@ -242,7 +224,7 @@ class Connections(unittest.TestCase):
                         out.setdefault(s["name"], []).append((p[2], p[3], p[4], row and row[3], row and ranges.read_flag(row[4], p[1], p[2], p[3], p[5])))
         out["lab days"] = [(e["title"], [r[:5] for i in data["details"][str(e["id"])]["ids"] for r in (data["details"].get(str(i)) or {}).get("rows") or []])
                            for e in data["events"] if e["k"] == "lab" and e["t"][:10] == day]
-        out["unpaired"] = unpaired(data, day)
+        out["faults"] = crossmatch.lab_faults(data, day)
         return out
 
     # ---------------------------------------------------------------- sign-in (#32)
@@ -644,7 +626,7 @@ class Connections(unittest.TestCase):
         self.assertEqual(labdays, joined("3.5-5.1"), "one lab day a draw: the hospital's, its rows as they were, joined by the "
                          "source's on the second day, the duplicate's row left out on the first (#897)")
         self.assertEqual([self.draw(t[:10])["lab days"][0][0] for t in days], ["2 lab results", "4 lab results"], "titled for what it holds")
-        self.assertEqual([self.draw(t[:10])["unpaired"] for t in days], [([], [])] * 2, "each result with its row, each row with its result")
+        self.assertEqual([self.draw(t[:10])["faults"] for t in days], [[]] * 2, "each result with its row, each row with its result")
         # its own Observation amended: updated in place, the hospital's as it was
         self.fake.update("Observation", "plan-k1", {"referenceRange": [{"low": {"value": 3.5}, "high": {"value": 5.0}, "text": "3.5-5.0"}]})
         again = self.pull(cid)
@@ -677,7 +659,7 @@ class Connections(unittest.TestCase):
         self.assertEqual(after["lab days"], [(t, [r if r[0] != "LDL Cholesterol" else [*r[:3], "<200 mg/dL", ""] for r in rows])
                                              for t, rows in before["lab days"]], "the draw's one lab day, its LDL row updated")
         self.assertEqual({k: v for k, v in self.counts().items() if k != "imports"}, {k: v for k, v in n.items() if k != "imports"}, "nothing added")
-        self.assertEqual(after["unpaired"], ([], []))
+        self.assertEqual(after["faults"], [])
         return res
 
     def undo(self, *imports):
@@ -695,7 +677,7 @@ class Connections(unittest.TestCase):
         cid = self.connect(self.source())
         self.first_pull(cid)
         before, n = self.draw(), self.counts()
-        self.assertEqual(before["unpaired"], ([], []))
+        self.assertEqual(before["faults"], [])
         res = self.amended_where_it_is(cid, before)
         lab_day = self.draw()["lab days"][0][1]
         self.fake.add({"resourceType": "Observation", "id": "obs-alt-899", "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
@@ -705,7 +687,7 @@ class Connections(unittest.TestCase):
         self.assertEqual((more["counts"]["results"], more["counts"]["kinds"]), (1, {}), more)
         joined = self.draw()
         self.assertEqual(joined["lab days"], [("5 lab results", lab_day + [["ALT", "60", "U/L", "", "H"]])], "the draw's one lab day, joined")
-        self.assertEqual((joined["ALT"], joined["unpaired"]), ([(None, None, "H", "", "H")], ([], [])), "its row beside its result")
+        self.assertEqual((joined["ALT"], joined["faults"]), ([(None, None, "H", "", "H")], []), "its row beside its result")
         self.undo(more["import"], res["import"])
         self.assertEqual(self.draw(), before, "undone: result and row as the upload left them")
         self.assertEqual(self.counts(), n)
@@ -729,10 +711,10 @@ class Connections(unittest.TestCase):
         self.assertEqual(self.draw()["lab days"], [("6 lab results", before + [rows["ALT"], rows["GGT"]])])
         self.undo(alt["import"])
         drawn = self.draw()
-        self.assertEqual((drawn["lab days"], drawn["unpaired"]), ([("5 lab results", before + [rows["GGT"]])], ([], [])))
+        self.assertEqual((drawn["lab days"], drawn["faults"]), ([("5 lab results", before + [rows["GGT"]])], []))
         self.undo(upload["import_id"])
         drawn = self.draw()
-        self.assertEqual((drawn["lab days"], drawn["unpaired"]), ([("1 lab result", [rows["GGT"]])], ([], [])), "the GGT keeps its lab day")
+        self.assertEqual((drawn["lab days"], drawn["faults"]), ([("1 lab result", [rows["GGT"]])], []), "the GGT keeps its lab day")
         self.undo(ggt["import"])
         self.assertEqual({k: v for k, v in self.counts().items() if k != "imports"}, {"events": 0, "series": 0, "results": 0}, "nothing left")
 
@@ -778,8 +760,8 @@ class Connections(unittest.TestCase):
                         listed = [i for e in days for i in data["details"][str(e["id"])]["ids"]]
                         rows = sum(len(data["details"][str(i)]["rows"]) for i in listed if i in have)
                         tests = {s["name"] for s in data["labs"] if any(p[0][:10] == "2025-03-04" for p in s["pts"]) and s.get("panel") != "Vitals"}
-                        self.assertEqual((len(days), [i for i in listed if i not in have], [e["title"] for e in days], unpaired(data, "2025-03-04")),
-                                         (1, [], [common.lab_day_title(rows)], ([], [])), f"after {undone}: one lab day, listing what there is, titled for it")
+                        self.assertEqual((len(days), [i for i in listed if i not in have], [e["title"] for e in days], self.faults()),
+                                         (1, [], [common.lab_day_title(rows)], []), f"after {undone}: one lab day, listing what there is, titled for it")
                         self.assertEqual(("ALT" in tests, "GGT" in tests, "Hemoglobin" in tests),
                                          ("P1" not in undone, "P2" not in undone, first not in undone), f"after {undone}: {tests}")
 
@@ -897,7 +879,7 @@ class Connections(unittest.TestCase):
         self.assertEqual(alt["counts"]["results"], 1)
         drawn = self.draw()
         self.assertEqual(drawn["lab days"], [("5 lab results", before["lab days"][0][1] + [["ALT", "60", "U/L", "", ""]])])
-        self.assertEqual(drawn["unpaired"], ([], []), "each result with its row, each row with its result")
+        self.assertEqual(drawn["faults"], [], "each result with its row, each row with its result")
         self.undo(alt["import"])
         self.assertEqual(self.draw(), before)
 
@@ -1112,7 +1094,7 @@ class Connections(unittest.TestCase):
                     db.execute("BEGIN IMMEDIATE")
                     other = records.store(db, self.pid, {"events": [
                         {"id": 1, "t": "2025-03-04T07:10:00", "k": "labitem", "title": "Lab results", "hidden": 1, "key": "fhir:labitem:2025-03-04", "abn": 1},
-                        {"id": 2, "t": "2025-03-04T07:10:00", "k": "lab", "title": "2 lab results", "key": "fhir:labday:2025-03-04", "abn": 1}],
+                        {"id": 2, "t": "2025-03-04T07:10:00", "k": "lab", "title": "2 lab results", "sub": "Lab results", "key": "fhir:labday:2025-03-04", "abn": 1}],
                         "details": {"1": {"type": "result", "order": "Lab results", "collected": "2025-03-04 07:10",
                                           "rows": [["LDL Cholesterol", "162", "mg/dL", "<100 mg/dL", "H"], ["Sodium", "140", "mmol/L", "135-145", ""]]},
                                     "2": {"type": "labday", "ids": [1]}},
