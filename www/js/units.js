@@ -25,11 +25,12 @@ function ucChoose(conv) {
    has 2, "95" 2, "120" 3; 3 where it isn't one). Each by ranges.js valueRead, the page's one reader of a value (#874) */
 const ucNum = v => { const r = v == null || v === "" ? null : valueRead(v); return r && !r.c ? r.x : null; };
 const ucSig = text => valueRead(text)?.sig ?? 3;
-/* a converted number, to as many significant figures as it was reported with (at least 3) */
+/* a converted number, to as many significant figures as it was reported with (at least 3), however small (#898: at 6
+   places at most, "1.2E-3 µmol/L" was "0.000014" mg/dL, 3% off its 0.0000136); a large one whole */
 function ucFmt(x, sig) {
   if (!isFinite(x)) return "";
   if (x === 0) return "0";
-  const dec = Math.max(0, Math.min(6, Math.max(3, sig) - 1 - Math.floor(Math.log10(Math.abs(x)))));
+  const dec = Math.max(0, Math.min(100, Math.max(3, sig) - 1 - Math.floor(Math.log10(Math.abs(x)))));
   return x.toFixed(dec);
 }
 function ucValue(uc, v) { const n = ucNum(v); return n == null || !uc ? v : n * uc.a + uc.b; }

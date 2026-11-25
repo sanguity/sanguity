@@ -95,6 +95,41 @@ class Factors(unittest.TestCase):
         self.assertEqual(units.conversions(None, "m"), {}, "metres (a watch's distance) aren't a height")
 
 
+def page_js(expr):
+    """expr evaluated in node with ranges.js and units.js loaded as a page loads them (one scope), as JSON."""
+    import json, subprocess
+    js = ("const vm = require('vm'), fs = require('fs'); const ctx = vm.createContext({CFG: {units: {}}});"
+          "for (const f of process.argv.slice(1, -1)) vm.runInContext(fs.readFileSync(f, 'utf8'), ctx, {filename: f});"
+          "console.log(JSON.stringify(vm.runInContext(process.argv.at(-1), ctx)));")
+    files = [os.path.join(ROOT, "www", "js", n) for n in ("ranges.js", "units.js")]
+    r = subprocess.run(["node", "-e", js, *files, expr], capture_output=True, text=True, timeout=60)
+    if r.returncode:
+        raise AssertionError(r.stderr)
+    return json.loads(r.stdout)
+
+
+@unittest.skipUnless(__import__("shutil").which("node") or os.environ.get("CI"), "needs node")   # in CI, a missing node fails
+class PageFigures(unittest.TestCase):
+    def test_a_converted_value_keeps_its_figures(self):
+        """#898: units.js ucFmt wrote a converted value to as many significant figures as it was reported with (at least
+        3), but to 6 decimal places at most, so a very small one lost them: Creatinine "1.2E-3 µmol/L" in mg/dL was
+        "0.000014", about 3% off (1.36e-5). Now every value keeps its figures, however small, here against Decimal's
+        rounding to the same figures; a large one is written whole, as before."""
+        cr = units.conversions("Creatinine", "µmol/L")["conventional"]
+        self.assertEqual(cr[0], "mg/dL")
+        cases = [("1.2E-3", cr[1]), ("0.5", cr[1]), ("88.4", cr[1]), ("1.25E-6", 1), ("3.0E-9", 1e-3), ("7.123E-4", 0.1),
+                 ("4,5", cr[1]), ("120", 1000), ("6.5E5", 1)]
+        got = page_js("CASES.map(([t, a]) => ucText({a, b: 0}, t))".replace("CASES", __import__("json").dumps(cases)))
+        for (t, a), g in zip(cases, got):
+            with self.subTest(value=t, factor=a):
+                x = Decimal(t.replace(",", ".")) * Decimal(repr(a))
+                sig = max(3, len(Decimal(t.replace(",", ".")).as_tuple().digits))
+                want = x.quantize(Decimal(1).scaleb(x.adjusted() - sig + 1)) if x.adjusted() - sig + 1 < 0 else x.quantize(Decimal(1))
+                self.assertEqual(Decimal(g), want, f"{t} × {a}")
+        self.assertEqual(got[0], "0.0000136", "1.2E-3 µmol/L of creatinine in mg/dL")
+        self.assertEqual(page_js("[ucFmt(0, 3), ucFmt(NaN, 3), ucFmt(-1.5e-8, 2), ucFmt(1e-30, 3)]"), ["0", "", "-0.0000000150", "0." + "0" * 29 + "100"])
+
+
 class Served(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
