@@ -673,12 +673,20 @@ def photo_files(pid):
 
 def import_archive(db, pid, archive):
     """Unpack an export into the profile's own folder (so its documents stay) and load it: the records, and what
-    restore() puts back with them, in one transaction. Returns the number of documents. Its uploads become the
-    profile's uploads again, ready, as they were. The activity log in the zip is history from the other install and
-    isn't merged in."""
-    dest = os.path.join(prof.profile_dir(pid), "imported")
-    new = dest + ".new"
-    shutil.rmtree(new, ignore_errors=True)
+    restore() puts back with them, in one transaction. Returns the number of documents. It's unpacked into a folder
+    of its import's own, imported/<import id>/ (#945: prof.import_dataset's unpacked), so what an earlier import was
+    loaded from stays until this one is saved, and then goes. Its uploads become the profile's uploads again, ready,
+    as they were. The activity log in the zip is history from the other install and isn't merged in."""
+    base = prof.imported_dir(pid)
+    os.makedirs(base, mode=0o700, exist_ok=True)
+    new = os.path.join(base, prof.UNPACKING + secrets.token_hex(4))
+    try:
+        return _import_archive(db, pid, archive, new)
+    finally:
+        shutil.rmtree(new, ignore_errors=True)   # (where the import wasn't saved: what it unpacked)
+
+
+def _import_archive(db, pid, archive, new):
     with zipfile.ZipFile(archive) as zf:
         files = [i for i in zf.infolist() if not i.is_dir()]
         if "data.json" not in [i.filename for i in files]:
@@ -711,16 +719,16 @@ def import_archive(db, pid, archive):
                     crypto.write_file(target + ".gz", ecg.pack(wave))
                 continue
             crypto.write_file(target, zf.read(i))   # kept encrypted in the profile's folder
-        shutil.rmtree(dest, ignore_errors=True)
-        os.replace(new, dest)
         photos = {i.filename: i for i in files if i.filename.startswith("journal/photos/")}
-        with photo_files(pid) as written:   # what people wrote and decided, with the records (#589)
-            n = prof.import_dataset(db, pid, dest, then=lambda db, data: restore(
-                db, pid, data, lambda name: zf.read(photos[name]) if name in photos else None, written))
-        watch = os.path.join(dest, "watch", "daily.json")
-        if os.path.isfile(watch):
-            db.execute("UPDATE profiles SET watch_file=? WHERE id=? AND (watch_file IS NULL OR watch_file LIKE ?)",
-                       (watch, pid, os.path.join(prof.profile_dir(pid), "%")))
+
+        def then(db, data, folder):   # what people wrote and decided, with the records (#589); the phone's summary
+            restore(db, pid, data, lambda name: zf.read(photos[name]) if name in photos else None, written)
+            watch = os.path.join(folder, "watch", "daily.json")
+            if os.path.isfile(watch):
+                db.execute("UPDATE profiles SET watch_file=? WHERE id=? AND (watch_file IS NULL OR watch_file LIKE ?)",
+                           (watch, pid, os.path.join(prof.profile_dir(pid), "%")))
+        with photo_files(pid) as written:
+            n = prof.import_dataset(db, pid, new, then=then, unpacked=True)
         for _, entries in sorted(sent.items()):
             upload_id = uploads.create(db, pid, None, put_back=True)   # kept though no job reads it (#944)
             try:

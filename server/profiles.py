@@ -90,48 +90,142 @@ def _check(data):
         raise ValueError("it isn't a Sanguity data file (expected an object with an \"events\" list)")
 
 
-def import_dataset(db, pid, src_dir, version=None, mirror_settings=False, origin="dataset", then=None):
+def import_dataset(db, pid, src_dir, version=None, mirror_settings=False, origin="dataset", then=None, unpacked=False):
     """Load src_dir/data.json (and settings.json, when there is one) into profile pid as one import. It replaces
     the profile's records, or with origin "build" only what the setup build brought before. A settings.json
     replaces the profile's settings (an export loaded back in); with mirror_settings (the setup build) it only
-    seeds them the first time, see settings.from_build. then(db, data): more to load from data.json in the same
-    transaction (an export's corrections, journal and medication log, export.restore, #589).
+    seeds them the first time, see settings.from_build. then(db, data, folder): more to load from data.json in the
+    same transaction (an export's corrections, journal and medication log, export.restore, #589), folder where
+    src_dir's files are now. unpacked: src_dir is an export unpacked for this import in imported/ (export.import_archive),
+    which becomes the import's own folder, imported/<import id>/ (#945).
 
-    Document ids stay the same across re-imports for the same file, so links people saved keep working.
-    Returns the number of documents indexed.
+    A dataset import replaces every import, so what an earlier one was loaded from in imported/ goes once it's saved
+    (left_behind). Document ids stay the same across re-imports for the same file, so links people saved keep
+    working (an export loaded again: by the file's place in it). Returns the number of documents indexed.
     """
     data = read_json(os.path.join(src_dir, "data.json"))
     _check(data)
     shown = {str(e.get("id")) for e in data["events"] if isinstance(e, dict)}
     data["details"] = {k: v for k, v in (data.get("details") or {}).items() if str(k) in shown}   # what the page can open
     os.makedirs(profile_dir(pid), exist_ok=True)
-    with dbm.transaction(db):
-        old = records.imports(db, pid, "build" if origin == "build" else None)
-        before = [records._dec(r["body"]) for r in db.execute(
-            "SELECT body FROM events WHERE profile_id=? AND import_id IN (SELECT value FROM json_each(?))",
-            (pid, json.dumps(old)))] if origin == "build" else []
-        q = """SELECT id, path, ext FROM documents
-               WHERE profile_id=? AND (import_id IS NULL OR import_id IN (SELECT value FROM json_each(?)))"""
-        known = {crypto.dec(r["path"]): (r["id"], r["ext"]) for r in db.execute(q, (pid, json.dumps(old)))}
-        keep, n = index_documents(db, pid, data.get("details") or {}, lambda url: resolve_document(url, src_dir), known)
-        iid = records.store(db, pid, data, origin)
-        link_documents(db, iid, keep)
-        records.drop(db, pid, old)   # and, by cascade, the documents the new import no longer links to
-        if before:   # a rebuild: edits on build events whose title changed follow them
-            edits.follow_rebuild(db, pid, before, data["events"])
-        db.execute("DELETE FROM documents WHERE profile_id=? AND import_id IS NULL", (pid,))
-        src_settings = os.path.join(src_dir, "settings.json")
-        if mirror_settings:
-            settings.from_build(db, pid, src_settings)
-        elif os.path.isfile(src_settings):
-            values = settings.from_file(settings.read_file(src_settings), where=src_settings)
-            if "milestones" not in values and milestones.old(data):   # an export from before #39 kept them in data.json
-                values["milestones"] = milestones.clean(milestones.old(data), src_settings)
-            settings.replace_profile(db, pid, values)
-            db.execute("UPDATE profiles SET settings_seeded=1 WHERE id=?", (pid,))
-        db.execute("UPDATE profiles SET build_mtime=? WHERE id=?", (version, pid))
-        if then:
-            then(db, data)
+    folder, gone = src_dir, []
+    try:
+        with dbm.transaction(db):
+            old = records.imports(db, pid, "build" if origin == "build" else None)
+            before = [records._dec(r["body"]) for r in db.execute(
+                "SELECT body FROM events WHERE profile_id=? AND import_id IN (SELECT value FROM json_each(?))",
+                (pid, json.dumps(old)))] if origin == "build" else []
+            q = """SELECT id, path, ext FROM documents
+                   WHERE profile_id=? AND (import_id IS NULL OR import_id IN (SELECT value FROM json_each(?)))"""
+            known = {crypto.dec(r["path"]): (r["id"], r["ext"]) for r in db.execute(q, (pid, json.dumps(old)))}
+            if unpacked:   # the same file of an export loaded before, at the same place in it: the same document
+                known.update({os.path.realpath(os.path.join(src_dir, rel)): v for p, v in list(known.items()) if (rel := _in_imported(pid, p))})
+            keep, n = index_documents(db, pid, data.get("details") or {}, lambda url: resolve_document(url, src_dir), known)
+            iid = records.store(db, pid, data, origin)
+            link_documents(db, iid, keep)
+            if unpacked:
+                folder = _own_folder(db, pid, iid, src_dir)
+            records.drop(db, pid, old)   # and, by cascade, the documents the new import no longer links to
+            if before:   # a rebuild: edits on build events whose title changed follow them
+                edits.follow_rebuild(db, pid, before, data["events"])
+            db.execute("DELETE FROM documents WHERE profile_id=? AND import_id IS NULL", (pid,))
+            src_settings = os.path.join(folder, "settings.json")
+            if mirror_settings:
+                settings.from_build(db, pid, src_settings)
+            elif os.path.isfile(src_settings):
+                values = settings.from_file(settings.read_file(src_settings), where=src_settings)
+                if "milestones" not in values and milestones.old(data):   # an export from before #39 kept them in data.json
+                    values["milestones"] = milestones.clean(milestones.old(data), src_settings)
+                settings.replace_profile(db, pid, values)
+                db.execute("UPDATE profiles SET settings_seeded=1 WHERE id=?", (pid,))
+            db.execute("UPDATE profiles SET build_mtime=? WHERE id=?", (version, pid))
+            if then:
+                then(db, data, folder)
+            if origin == "dataset":
+                gone = left_behind(db, pid, keep=[folder])
+    except BaseException:
+        if folder != src_dir:   # moved into its import's folder, which wasn't saved: back where it was unpacked
+            os.replace(folder, src_dir)
+        raise
+    remove(gone)
+    return n
+
+
+def imported_dir(pid, iid=None):
+    """Where server.manage import unpacks an export (export.import_archive): imported/, and in it each import's own
+    folder, imported/<import id>/ (#945). An older version unpacked it into imported/ itself."""
+    base = os.path.join(profile_dir(pid), IMPORTED)
+    return base if iid is None else os.path.join(base, str(int(iid)))
+
+
+def _in_imported(pid, path):
+    """Where path is in the export it was unpacked from, if it's in imported/: its path in imported/<id>/ (or in the
+    folder unpacked for an import being saved, .new-…), or in imported/ itself, an older version's. Else None."""
+    base = os.path.realpath(imported_dir(pid))
+    if not _inside(path, base) or os.path.realpath(path) == base:
+        return None
+    parts = os.path.relpath(os.path.realpath(path), base).split(os.sep)
+    if parts[0].isdigit() or parts[0].startswith(UNPACKING):
+        parts = parts[1:]
+    return os.path.join(*parts) if parts else None
+
+
+def _own_folder(db, pid, iid, src):
+    """(#945) Inside import iid's transaction: the export unpacked for it (src, in imported/) becomes its own folder,
+    imported/<iid>/, and its documents' paths go with it (one kept from the export loaded before, by the file's place
+    in it, too). Returns the folder."""
+    dest = imported_dir(pid, iid)
+    if os.path.lexists(dest):   # (an id is never given again, #512: nothing of another import's)
+        remove([dest])
+    os.replace(src, dest)
+    for r in db.execute("SELECT id, path FROM documents WHERE import_id=?", (iid,)).fetchall():
+        rel = _in_imported(pid, crypto.dec(r["path"]))
+        if rel:
+            db.execute("UPDATE documents SET path=? WHERE id=?", (crypto.enc(os.path.realpath(os.path.join(dest, rel))), r["id"]))
+    return dest
+
+
+def left_behind(db, pid, keep=(), older=True):
+    """(#945) What's in imported/ that no import is loaded from, inside a transaction: every import's folder but those
+    in keep (a dataset import being saved replaces every import: its own, or the folder it's loaded from), what an
+    import being saved left half unpacked, and (older) what an older version unpacked into imported/ itself; never one
+    a document of the profile is stored in. imported/ itself where all of it goes. A watch file the profile reads among
+    them is let go, and the imports' own watch data merged again without it. Returns the paths to remove once it's
+    committed (remove)."""
+    from . import watch_store
+    base = imported_dir(pid)
+    if not os.path.isdir(base) or os.path.islink(base):
+        return []
+    held = [crypto.dec(r["path"]) for r in db.execute("SELECT path FROM documents WHERE profile_id=?", (pid,))]
+    names = os.listdir(base)
+    out = [p for n in names for p in [os.path.join(base, n)]
+           if (older or n.isdigit() or n.startswith(UNPACKING)) and not any(_inside(k, p) for k in keep) and not any(_inside(h, p) for h in held)]
+    if len(out) == len(names) and not any(_inside(k, base) for k in keep):
+        out = [base]
+    r = db.execute("SELECT watch_file FROM profiles WHERE id=?", (pid,)).fetchone()
+    if r and r["watch_file"] and any(_inside(r["watch_file"], p) for p in out):
+        db.execute("UPDATE profiles SET watch_file=NULL WHERE id=?", (pid,))
+        side = watch_store.side_path(pid)   # the imports' merged beside it: merged again into the profile's own file
+        watch_store.rebuild(db, pid, prune=False)
+        out += [side] if os.path.isfile(side) else []
+    return out
+
+
+def sweep_imported(db):
+    """At start-up (#945): what a stop left in each profile's imported/ that no import is loaded from (left_behind): the
+    folder of an import replaced or undone, and one half unpacked. What an older version unpacked into imported/ itself
+    goes where an import's own folder is there (it replaced that one), or no command-line import is left; else it may be
+    the one that's left's, and stays until that one is replaced or undone. Returns how many were removed."""
+    n = 0
+    for (pid,) in db.execute("SELECT id FROM profiles ORDER BY id").fetchall():
+        if not os.path.isdir(imported_dir(pid)):
+            continue
+        live = [r[0] for r in db.execute("SELECT id FROM imports WHERE profile_id=? AND origin='dataset'", (pid,))]
+        own = [imported_dir(pid, i) for i in live if os.path.isdir(imported_dir(pid, i))]
+        with dbm.transaction(db):
+            gone = left_behind(db, pid, keep=own, older=bool(own) or not live)
+        remove(gone)
+        n += len(gone)
     return n
 
 
@@ -348,32 +442,20 @@ def bootstrap(db):
 
 
 MIGRATED = "data-before-v10.json"   # the records file as versions before #934 kept it once it was loaded
-IMPORTED = "imported"   # an export server.manage import unpacked into the profile's folder (export.import_archive)
+IMPORTED = "imported"   # exports server.manage import unpacked into the profile's folder (export.import_archive, #945)
+UNPACKING = ".new-"     # in imported/: an export being unpacked for an import not saved yet
 
 
 def forget_dataset(db, pid, iid):
-    """A dataset import (server.manage import) being undone, inside its transaction (#934): what it was loaded from,
-    kept in the profile's folder, goes with it. That's the export export.import_archive unpacked into imported/ (its
-    data.json holds every record, beside its documents, settings and watch data), unless a document of another import
-    is stored there; and a records file from before schema version 10 an older version kept. A watch file in imported/
-    the profile reads is let go here, and the imports' own watch data merged again without it (watch_store.rebuild).
+    """A dataset import (server.manage import) being undone, inside its transaction, after its records and documents
+    are dropped (#934): what it was loaded from, kept in the profile's folder, goes with it. That's the export
+    export.import_archive unpacked into its own folder in imported/ (its data.json holds every record, beside its
+    documents, settings and watch data; #945), and whatever else is there, as no other import is loaded from it (a
+    dataset import replaces every import: left_behind, which leaves a folder a document of another import is stored
+    in and lets go of a watch file in it); and a records file from before schema version 10 an older version kept.
     Returns the paths to remove once the undo has committed."""
-    from . import watch_store
-    folder = profile_dir(pid)
-    out = [p for p in (os.path.join(folder, MIGRATED),) if os.path.isfile(p)]
-    src = os.path.join(folder, IMPORTED)
-    if not os.path.isdir(src) or os.path.islink(src):
-        return out
-    for r in db.execute("SELECT path FROM documents WHERE profile_id=? AND import_id IS NOT ?", (pid, iid)):
-        if _inside(crypto.dec(r["path"]), src):
-            return out
-    r = db.execute("SELECT watch_file FROM profiles WHERE id=?", (pid,)).fetchone()
-    if r and r["watch_file"] and _inside(r["watch_file"], src):
-        db.execute("UPDATE profiles SET watch_file=NULL WHERE id=?", (pid,))
-        side = watch_store.side_path(pid)   # the imports' merged beside it: merged again into the profile's own file
-        watch_store.rebuild(db, pid, prune=False)
-        out += [side] if os.path.isfile(side) else []
-    return out + [src]
+    out = [p for p in (os.path.join(profile_dir(pid), MIGRATED),) if os.path.isfile(p)]
+    return out + left_behind(db, pid)
 
 
 def remove(paths):

@@ -451,7 +451,8 @@ class History(unittest.TestCase):
             z.writestr("watch/daily.json", json.dumps(summary({"steps": {"2026-01-05": 4321}})))
         export.import_archive(self.db, pid, zpath)
         src = os.path.join(prof.profile_dir(pid), "imported")
-        self.assertTrue(all(os.path.isfile(os.path.join(src, n)) for n in ("data.json", "watch/daily.json", "documents/3/report.pdf")))
+        own = prof.imported_dir(pid, records.imports(self.db, pid)[0])   # its own folder in it (#945)
+        self.assertTrue(all(os.path.isfile(os.path.join(own, n)) for n in ("data.json", "watch/daily.json", "documents/3/report.pdf")))
         old = os.path.join(prof.profile_dir(pid), prof.MIGRATED)   # as a version before #934 left it
         crypto.write_file(old, json.dumps({"events": [{"id": 1, "t": "2020-01-01", "k": "visit", "title": "Old visit"}]}).encode())
         self.imported(pid, apple_files())   # an upload's watch data: kept beside the export's
@@ -481,6 +482,63 @@ class History(unittest.TestCase):
         self.assertEqual(prof.migrate_files(self.db), 1)   # (pid has imports: its data.json is taken as loaded already)
         for p in (old, prof.data_path(pid), prof.data_path(other), os.path.join(prof.profile_dir(other), prof.MIGRATED)):
             self.assertFalse(os.path.exists(p), p)
+
+    def test_each_command_line_import_keeps_its_own_folder(self):   # #945
+        """server.manage import of an export unpacked it into imported/, and a later one emptied that folder before its
+        own import was saved (one that failed left the earlier import's documents without their files); a later import
+        of a folder left the earlier export's there, its data.json holding every record, until that later import was
+        undone. Now each export is unpacked into a folder of its import's own, imported/<import id>/: a later import
+        replacing its records takes it away once it's saved (the watch data in it no longer shown), one that fails
+        leaves it as it was, and undoing it deletes it; what an older version unpacked straight into imported/ goes
+        with the next. A document keeps its id when the same export is loaded again."""
+        from server import export
+        pid = self.profile()
+        zpath = os.path.join(TMP, "export-945.zip")
+        with zipfile.ZipFile(zpath, "w") as z:
+            for root, _, names in os.walk(SANGUITY):
+                for n in names:
+                    z.write(os.path.join(root, n), os.path.relpath(os.path.join(root, n), SANGUITY).replace(os.sep, "/"))
+            z.writestr("watch/daily.json", json.dumps(summary({"steps": {"2026-01-05": 4321}})))
+        base = os.path.join(prof.profile_dir(pid), "imported")
+        os.makedirs(os.path.join(base, "documents"))   # as an older version unpacked an export, straight into imported/
+        crypto.write_file(os.path.join(base, "data.json"), b'{"events": []}')
+        docs = lambda: {crypto.dec(r["path"]): r["id"] for r in self.db.execute("SELECT id, path FROM documents WHERE profile_id=?", (pid,))}   # noqa: E731
+        export.import_archive(self.db, pid, zpath)
+        (a,) = records.imports(self.db, pid)
+        self.assertEqual(sorted(os.listdir(base)), [str(a)], "its own folder, the older one's gone with it")
+        first = docs()
+        self.assertTrue(first and all(p.startswith(os.path.realpath(prof.imported_dir(pid, a)) + os.sep) for p in first), first)
+        export.import_archive(self.db, pid, zpath)   # the same export again: it replaces the first, its own folder
+        (b,) = records.imports(self.db, pid)
+        self.assertEqual(sorted(os.listdir(base)), [str(b)])
+        self.assertEqual(sorted(docs().values()), sorted(first.values()), "each document keeps its id")
+        report = next(d for p, d in first.items() if p.endswith("report.pdf"))   # (the export's one file: its scan.png isn't in it)
+        self.assertEqual(self.ines.get(f"/api/profiles/{pid}/documents/{report}").status_code, 200)
+        self.assertEqual(self.state(pid)["watch"][0], 200)
+        real = export.restore
+
+        def broken(*args, **kw):   # a load that fails once unpacked: the import before it stays as it was
+            raise RuntimeError("the disk filled up")
+        export.restore = broken
+        try:
+            with self.assertRaises(RuntimeError):
+                export.import_archive(self.db, pid, zpath)
+        finally:
+            export.restore = real
+        self.assertEqual((records.imports(self.db, pid), sorted(os.listdir(base))), ([b], [str(b)]))
+        self.assertEqual(self.ines.get(f"/api/profiles/{pid}/documents/{report}").status_code, 200)
+        for left in (prof.UNPACKING + "0a0b0c0d", "9999"):   # what a stop left: one half unpacked, one whose import is gone
+            os.makedirs(os.path.join(base, left))
+            crypto.write_file(os.path.join(base, left, "data.json"), b'{"events": []}')
+        self.assertEqual(prof.sweep_imported(self.db), 2, "the start's sweep")
+        self.assertEqual(sorted(os.listdir(base)), [str(b)])
+        prof.import_dataset(self.db, pid, SANGUITY)   # a folder replacing its records: the export's folder goes
+        self.assertFalse(os.listdir(base) if os.path.isdir(base) else [], "nothing of the export it replaced")
+        self.assertEqual(self.state(pid)["watch"][0], 204, "nor the watch data in it")
+        export.import_archive(self.db, pid, zpath)
+        (c,) = records.imports(self.db, pid)
+        self.undo(pid, c)
+        self.assertFalse(os.path.exists(base), "undone, its folder goes")
 
     def test_undo_rolls_back_whole(self):
         pid = self.profile()
