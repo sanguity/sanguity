@@ -399,7 +399,7 @@ function renderLabs() {
   if (hm) renderHeatmap(); else if (cmp) renderCompare(); else if (lt) renderLatest(); else { renderSeriesList(); renderCharts(); }
   save();
 }
-$("#labsView").onclick = ev => { const b = ev.target.closest("button[data-view]"); if (!b || b.dataset.view === state.labsView) return; hideTip(); state.labsView = b.dataset.view; renderLabs(); tabAddress(true); };   // #labs, #labs-heatmap, #labs-compare or #labs-latest (#208, #297, #993), Back returning to the view before (#442)
+$("#labsView").onclick = ev => { const b = ev.target.closest("button[data-view]"); if (!b || b.dataset.view === state.labsView) return; hideTip(); state.labsView = labsPicked = b.dataset.view; renderLabs(); tabAddress(true); };   // #labs, #labs-heatmap, #labs-compare or #labs-latest (#208, #297, #993), Back returning to the view before (#442); the view picked, where Labs opens (#997)
 /* a lab on Labs as a chart, or as its table, from the drawer (a lab's panel's Chart these results or Show them as a
    table, a result's row) or a row of Latest (#993): the drawer closes, taking with it what had focus, so focus goes to
    its chart once it's drawn, or to its name over its table, and that's said (#652: it fell to the page, and nothing
