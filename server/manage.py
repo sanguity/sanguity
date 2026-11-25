@@ -27,6 +27,13 @@
   check ARCHIVE                          restore a backup into a temporary folder beside it, compare it with what it
                                          says it holds, then delete the copy (the Admin page's Check a backup); safe
                                          while the app runs: the live data isn't touched
+  config show                            the server's settings: each one's value, and whether the environment sets
+                                         it, an admin saved it in the app or it's the default (#1006)
+  config reset SETTING|--all             take away the value saved in the app for a setting (its name, like
+                                         SESSION_DAYS or sync.staleDays), or for all of them: each goes back to the
+                                         environment's or its default, in the running app within seconds. With
+                                         SANGUITY_SAVED_SETTINGS=off in the app's environment, they're left out at
+                                         start instead, until it's taken away (README, The server's settings)
   restore ARCHIVE [--yes]                replace the records (the database, profiles and setup build) with a backup's,
                                          keeping today's accounts and access, everyone signed out (#917); the app must
                                          be stopped: docker compose run --rm --no-deps app python -m server.manage restore ...
@@ -35,7 +42,7 @@
 """
 import os, shutil, sys, tempfile, zipfile
 
-from . import accounts, activity, atrest, backup, config, crypto, db as dbm, export, main, profiles as prof, watch_store
+from . import accounts, activity, atrest, backup, config, crypto, db as dbm, export, main, profiles as prof, settings, watch_store
 
 
 APPLE_HEALTH_MAX_BYTES = 16 * 2**30   # export.xml, unzipped: far above a decade of a watch's records
@@ -112,6 +119,70 @@ def _say_access(a, created, aside):
               f"python -m server.manage share {pid} USERNAME owner.")
     for pid, name in a.get("gone") or ():
         print(f"Profile {pid} ({name}) was made after the backup and isn't in it: its records are in {aside}.")
+
+
+WHERE = {"environment": "set by the environment", "install": "saved in the app", "default": "the default"}
+
+
+def _shown(v):
+    if isinstance(v, bool):
+        return "on" if v else "off"
+    if isinstance(v, (list, tuple)):
+        return ", ".join(map(str, v)) or "(none)"
+    return "(none)" if v in ("", None) else str(v)
+
+
+def _config(db, args):
+    """config show, config reset SETTING|--all (#1006): the way back in when a value saved in the app locks people out."""
+    have = settings.stored(db, "install")
+    defs = [d for d in settings.SETTINGS.values() if d.scope == "install"]
+    if args[:1] == ["show"]:
+        rows = []
+        for name in config.VARS:
+            src, value = config.lookup(name)
+            d = settings.SETTINGS.get(config.VARS[name].setting or "")
+            note = f"  (saved in the app: {_shown(have[d.key])}, not in force)" if d and d.key in have and src != "install" else ""
+            rows.append((name + (f" ({d.key})" if d else ""), _shown(value), WHERE[src] + note))
+        for d in defs:
+            if not d.env:
+                rows.append((d.key, _shown(have.get(d.key, d.default)) if not d.private else "(private)",
+                             WHERE["install" if d.key in have else "default"]))
+        wide = max(len(r[0]) for r in rows)
+        for name, value, src in rows:
+            print(f"{name:<{wide}}  {value[:60]:<20}  {src}")
+        if config.saved_ignored():
+            print("SANGUITY_SAVED_SETTINGS=off: the values saved in the app are left out while it's set.")
+        return
+    if args[:1] != ["reset"] or len(args) != 2:
+        sys.exit(__doc__)
+    if args[1] == "--all":
+        chosen = defs
+    else:
+        name = args[1].strip()
+        d = settings.SETTINGS.get((config.VARS[name].setting if name in config.VARS else name) or "")
+        if d is None or d.scope != "install":
+            if name in config.VARS:
+                print(f"{name} has no value saved in the app (it's {WHERE[config.source(name)]}, and it can only be "
+                      "changed where the server is set up): nothing to reset.")
+                return
+            sys.exit(f"There's no server setting called {name!r}. python -m server.manage config show lists them.")
+        chosen = [d]
+    gone = []
+    with dbm.transaction(db):
+        for d in chosen:
+            if settings.clear(db, [d.key], "install"):
+                activity.log(db, "settings.install", detail={"setting": d.key, "label": d.label, "reset": True,
+                             **({} if d.private else {"from": have[d.key], "to": d.default})}, actor=activity.COMMAND_LINE)
+                gone.append(d)
+    if not gone:
+        print("Nothing to reset: " + ("no setting has a value saved in the app." if args[1] == "--all"
+                                      else f"{chosen[0].key} has no value saved in the app."))
+    for d in gone:
+        src, value = config.lookup(d.env) if d.env else ("default", d.default)
+        print(f"{d.env or d.key}: the value saved in the app ({_shown(have[d.key]) if not d.private else 'private'}) is gone; "
+              f"it's {_shown(value)} now, {WHERE[src]}.")
+    if gone:
+        print("The running app uses it within a few seconds; nothing needs restarting.")
 
 
 def _backup_command(cmd, args):
@@ -299,6 +370,8 @@ def _command(db, argv):
         done = atrest.seal_everything(db)
         print(f"Re-encrypted {done['files']} files and {done['fields']} database fields with the newest key "
               f"({crypto.current_key_id().hex()}). Older keys can now be removed from the key file.")
+    elif cmd == "config" and args:
+        _config(db, args)
     elif cmd == "sync":
         failed = prof.sync_build(db)
         if failed:

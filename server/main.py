@@ -82,12 +82,21 @@ def _setup_code(db):
           f"  first account exists)\n{bar}\n", flush=True)
 
 
+def say_settings():
+    """What the start says about the server's settings: saved values left out (#1006), and a variable left out (#999)."""
+    if config.saved_ignored():   # the way back in when a saved value locked everyone out
+        print("SANGUITY_SAVED_SETTINGS=off: the server's settings saved in the app are left out, each its default or the "
+              "environment's. Change the one that needs it on the Admin page, then take SANGUITY_SAVED_SETTINGS out and "
+              "start the app again.", flush=True)
+    for name, text in config.unreadable():   # left out, as if it weren't set: said, as nothing else would
+        print(f"{name} in the environment ({text[:40]!r}) isn't a number it can be, so it's left out: the value saved "
+              "in the app, or the default, is used instead.", flush=True)
+
+
 @asynccontextmanager
 async def lifespan(app):
     atrest.keep_private()   # readable only by the app's own user, what it makes and what's there (umask 077, #935)
-    for name, text in config.unreadable():   # (#999) left out, as if it weren't set: say so, as nothing else would
-        print(f"{name} in the environment ({text[:40]!r}) isn't a number it can be, so it's left out: the value saved "
-              "in the app, or the default, is used instead.", flush=True)
+    say_settings()
     with backup.app_running_lock():   # held while the app runs, so a restore can tell and refuse
         dbm.init()
         db = dbm.connect()
@@ -1516,6 +1525,7 @@ def change_server_settings(body: ServerSettings, request: Request, s=Depends(adm
     if body.require_2fa != accounts.two_factor_required(db):
         if body.require_2fa and not accounts.has_second_factor(db, s):
             raise HTTPException(409, "Turn on two-factor sign-in for your own account first.")
+        fresh(request, s, "change a server setting")   # (#1006) as every install setting's change
         dbm.meta_set(db, "require_2fa", "1" if body.require_2fa else None)
         activity.log(db, "settings.require_2fa", s, detail={"on": body.require_2fa}, ip=_client_ip(request))
     return {"require_2fa": body.require_2fa}

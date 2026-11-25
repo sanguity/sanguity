@@ -89,7 +89,7 @@ check changes without updating the list, and it exercises this table against a l
 | Rename or delete the profile | No | No | Yes | No | No | No |
 | Outside connections (Admin page) | Empty list | Their profiles' entries | Their profiles' entries | The whole install | No | No |
 | Accounts, require two-factor, sign-in notices, account activity | No | No | No | Yes (with their own second factor) | No | No |
-| Connected-source apps (vendor setup), lab-name matches, install settings, backups | No | No | No | Yes (with their own second factor; the most powerful changes also need a fresh check) | No | No |
+| Connected-source apps (vendor setup), lab-name matches, install settings, backups | No | No | No | Yes (with their own second factor; the most powerful changes, and every change to an install setting (#1006), also need a fresh check) | No | No |
 | The provider directory | Yes | Yes | Yes | Yes | No | No |
 | "What is this test?" pages (#163, `GET /api/lab-test-pages`): the app's own table of links, nothing of anyone's | Yes | Yes | Yes | Yes | No | No |
 
@@ -318,7 +318,7 @@ Not opened as issues; written up here for the owner to file or drop:
 | 4.2.2 | CSRF protection | Met; see A7 | `X-Sanguity` header plus Origin check on every state-changing `/api/` call (`main.guard`), and SameSite=Strict (`test_csrf`). |
 | 4.3.1 | Admin interfaces use multi-factor | Met (#75) | The `admin` dependency refuses every admin route, the Admin page's backups, vendor setup, lab-name matches and install settings included, until the admin has an authenticator app or a passkey, once the server has more than one account. |
 | 4.3.2 | No directory browsing or metadata files | Met | nginx serves an allow-list of paths, with no autoindex. |
-| 4.3.3 | Step-up for lower-value systems | Met (#75); **Fixed (#590)** | Resetting a password, turning off someone's two-factor sign-in, making someone an admin, turning scheduled backups off or keeping fewer (#200), deleting what a restore replaced (#595), and every way an admin could reach a profile's records (#590: disabling its only owner, giving a profile without an owner a new one, removing an account while handing its profiles over) (`main.fresh`) need the password, a code or a passkey within `REAUTH_MINUTES` (5). A passkey must verify the person for it (#930: a PIN or a biometric, asked for and checked, with a challenge issued for the fresh check only), as it does when it signs in without the password. |
+| 4.3.3 | Step-up for lower-value systems | Met (#75); **Fixed (#590)** | Resetting a password, turning off someone's two-factor sign-in, making someone an admin, turning scheduled backups off or keeping fewer (#200), deleting what a restore replaced (#595), every change to a server setting (#1006: the install's settings, Sync defaults among them, and requiring two-factor sign-in for everyone, each logged with its old and new value), and every way an admin could reach a profile's records (#590: disabling its only owner, giving a profile without an owner a new one, removing an account while handing its profiles over) (`main.fresh`) need the password, a code or a passkey within `REAUTH_MINUTES` (5). A passkey must verify the person for it (#930: a PIN or a biometric, asked for and checked, with a challenge issued for the fresh check only), as it does when it signs in without the password. |
 
 ## V5 Validation, sanitization and encoding
 
