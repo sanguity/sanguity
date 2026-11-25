@@ -245,7 +245,9 @@ result, leaves out a duplicate's row with it (#897), and joins the day's lab day
 report's labitem the profile has is placed the same way, row by row (#881): a result its source adds to the report has
 its row in a labitem of the pull's own of that report, so every row sits beside its result, in its result's import. A
 labitem saved before #885 has no `keys`; a connection's take theirs from what it has read, once (schema version 40),
-and an upload's keep none, as nothing left names its rows' records. A text result here is that
+and at a pull the labitems of the days it reads take theirs from what the connection had read (#909): a connection's
+to the same portal, and an upload's where every row is one the portal sent, collected at the same time; another
+source's keep none. A text result here is that
 point, and a point here that text result, where it reads as it (#874: its value read by `common.value_number`,
 whichever decimal mark its file writes, with its comparator), so a file read again after a reading of it changed
 between text and a number (#870: a FHIR bound, a C-CDA's "4,5", the FHIR export's "=<5" and "1,250") adds nothing. A
