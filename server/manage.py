@@ -27,7 +27,8 @@
   check ARCHIVE                          restore a backup into a temporary folder beside it, compare it with what it
                                          says it holds, then delete the copy (the Admin page's Check a backup); safe
                                          while the app runs: the live data isn't touched
-  restore ARCHIVE [--yes]                replace the database, profiles and setup build with a backup's; the app must
+  restore ARCHIVE [--yes]                replace the records (the database, profiles and setup build) with a backup's,
+                                         keeping today's accounts and access, everyone signed out (#917); the app must
                                          be stopped: docker compose run --rm --no-deps app python -m server.manage restore ...
                                          The phone and watch data in it goes to the receiver, which puts it back when
                                          it next starts (#227)
@@ -86,6 +87,31 @@ def _user(db, name):
     return u or sys.exit(f"No account named {name!r}.")
 
 
+ACCESS_WORDS = ("accounts, passwords, passkeys, two-factor sign-in, who may see each profile, share links, calendar feeds "
+                "and phone upload secrets")
+
+
+def _say_access(a, created, aside):
+    """What a restore did with who may get in (#917, backup._ready), in words."""
+    ended = a.get("sessions", 0)
+    out = f"Everyone is signed out ({ended} sign-in{'s' if ended != 1 else ''} ended)."
+    if a.get("kept"):
+        print(f"Today's {ACCESS_WORDS} were kept as they were before the restore; only the records are the backup's. " + out)
+    else:
+        why = ("There was no database here to keep them from" if a.get("why") == "none" else
+               "The database it replaced isn't this install's (another's, or one this key can't read), so they weren't "
+               "kept from it")
+        print(f"{why}: the {ACCESS_WORDS} are the backup's, as they were on {created}. A share link revoked, a member "
+              "removed, an account removed or disabled, or a password or passkey changed since then is as it was then: "
+              f"check Admin > Accounts and each profile's Sharing before you share the address again. {out}")
+    for pid, name in a.get("back") or ():
+        print(f"Profile {pid} ({name}) was deleted after the backup was made and is back, with nobody given access to it: "
+              "an admin gives it an owner on Admin > Accounts (Profiles without an owner), or with "
+              f"python -m server.manage share {pid} USERNAME owner.")
+    for pid, name in a.get("gone") or ():
+        print(f"Profile {pid} ({name}) was made after the backup and isn't in it: its records are in {aside}.")
+
+
 def _backup_command(cmd, args):
     """backup, verify, check and restore: these work on the files, so no database connection is held open meanwhile."""
     try:
@@ -109,15 +135,17 @@ def _backup_command(cmd, args):
                      if w else ", without phone and watch data") + ". The copy was deleted.")
         elif cmd == "restore" and args:
             m = backup.verify(args[0])
-            print(f"Backup from {m['created']}: {len(m['files'])} files. Restoring replaces this install's accounts, "
-                  f"profiles and records with the backup's (the current ones are moved aside, and deleted "
-                  f"{backup.KEEP_DAYS} days later).")
+            print(f"Backup from {m['created']}: {len(m['files'])} files. Restoring replaces this install's profiles and "
+                  f"records with the backup's (the current ones are moved aside, and deleted {backup.KEEP_DAYS} days "
+                  "later), keeping today's accounts, passwords, passkeys, two-factor sign-in, who may see each profile, "
+                  "share links, calendar feeds and phone upload secrets. Everyone is signed out.")
             if "--yes" not in args and (not sys.stdin.isatty() or input("Type yes to restore: ").strip().lower() != "yes"):
                 sys.exit("Nothing changed. (Add --yes to restore without being asked.)")
             m, aside = backup.restore(args[0])
             print(f"Restored. The data it replaced is in {aside}: the app deletes it {backup.KEEP_DAYS} days from now "
                   "(RESTORE_KEEP_DAYS), or sooner with Delete now on Admin > Backups. It may hold profiles deleted "
                   "since the backup was made. Start the app again.")
+            _say_access(m.get("access") or {}, m.get("created"), aside)
             w = m.get("watch_restored")   # the receiver's data (#227)
             if w and w["staged"]:
                 print(f"The phone and watch data is waiting for the watch receiver in {w['folder']}. Restart the receiver "

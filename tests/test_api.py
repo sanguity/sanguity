@@ -2018,9 +2018,11 @@ class Backups(unittest.TestCase):
             if backup.fcntl:   # restoring under a running app is refused
                 with self.assertRaises(backup.BackupError):
                     backup.restore(path)
-            # something that happens after the backup, which restoring takes back
+            # after the backup: a profile, which restoring takes back, and an account, which it keeps (#917: records
+            # only come back, today's access stays)
             db = dbm.connect()
             db.execute("INSERT INTO users(username, pw_hash, created) VALUES('after-backup', 'x', 0)")
+            db.execute("INSERT INTO profiles(name, created) VALUES('after-backup', 0)")
             db.close()
         # damaged or doctored archives are refused
         with open(path, "rb") as f:
@@ -2052,9 +2054,12 @@ class Backups(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(aside, "sanguity.db")))
         db = dbm.connect()
         names = {r[0] for r in db.execute("SELECT username FROM users")}
+        profiles = {r[0] for r in db.execute("SELECT name FROM profiles")}
         db.close()
         self.assertIn("ben", names)
-        self.assertNotIn("after-backup", names)
+        self.assertIn("after-backup", names, "today's accounts are kept (#917)")
+        self.assertNotIn("after-backup", profiles, "the records are the backup's")
+        self.assertEqual([n for _, n in m["access"]["gone"]], ["after-backup"])
         with client() as c:   # and the app starts on it
             self.assertEqual(c.post("/api/login", json={"username": "ben", "password": PW["ben"]}, headers=H).status_code, 200)
         self.assertEqual(good, open(path, "rb").read())   # verifying and restoring never change the archive

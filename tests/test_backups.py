@@ -7,7 +7,7 @@ data in backups (#227): taken as it is, counted by a check, and put back by a re
 
   python3 tests/test_backups.py
 """
-import contextlib, hashlib, importlib.util, io, json, os, shutil, sqlite3, stat, sys, tarfile, tempfile, threading, time, unittest
+import base64, contextlib, hashlib, importlib.util, io, json, os, shutil, sqlite3, stat, sys, tarfile, tempfile, threading, time, unittest
 from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -930,6 +930,133 @@ class Backups(unittest.TestCase):
             os.remove(link)
             shutil.rmtree(made)
             shutil.rmtree(outside)
+
+    # ---------------------------------------------------------------- a restore keeps today's access (#917)
+
+    def restore_into(self, folder, path, today=None, change=None):
+        """server.manage restore of the backup at path into a data folder of its own (the app stopped there), its
+        database a copy of today's (or none: disaster recovery), changed by change(con) first. Returns (what the restore
+        said, the restored database opened)."""
+        os.makedirs(folder)
+        if today:
+            src, dst = sqlite3.connect(os.path.join(DATA, "sanguity.db")), sqlite3.connect(os.path.join(folder, "sanguity.db"))
+            src.backup(dst)
+            src.close()
+            if change:
+                change(dst)
+                dst.commit()
+            dst.close()
+        out = io.StringIO()
+        with mock.patch.object(backup, "_app_is_running", return_value=False), contextlib.redirect_stdout(out), \
+                mock.patch.multiple(config, DATA_DIR=folder, DB_PATH=os.path.join(folder, "sanguity.db")):
+            manage.run(["restore", path, "--yes"])
+        con = sqlite3.connect(os.path.join(folder, "sanguity.db"))
+        self.addCleanup(con.close)
+        return out.getvalue(), con
+
+    def test_13_a_restore_keeps_todays_access(self):
+        """The owner's decision: a restore brings back records only. Access ended after the backup stays ended (a link
+        revoked, a member removed and her calendar feed with it, her password changed and passkey removed, an account
+        removed); access made after it is kept (an account, a member, a link, a feed, two-factor sign-in, the install's
+        two-factor rule, a phone upload secret); every session ends; a profile deleted since is back with nobody's access
+        and one made since isn't, both named. With no database to replace, or another install's, all of it is the
+        backup's, and the restore says so."""
+        pws = {"kim": "kim's fictional passphrase, long enough", "lee": "lee's fictional passphrase, long enough"}
+        db = dbm.connect()
+        uid = {n: accounts.create(db, n, password=pw)[0] for n, pw in pws.items()}
+        robin = self.uids["robin"]
+        pid = prof.create_profile(db, "Shared (fictional)", owner_id=robin)
+        gone_pid = prof.create_profile(db, "Deleted after (fictional)", owner_id=robin)
+        secret = lambda s: crypto.enc(json.dumps({"secret": s, "slot": str(pid), "created": 0, "by": robin}))
+        db.execute("INSERT INTO settings(key, profile_id, sealed, changed) VALUES('_watch.receiver', ?, ?, 0)", (pid, secret("then")))
+        db.close()
+        self.assertEqual(self.robin.put(f"/api/profiles/{pid}/members", json={"username": "kim", "role": "editor"}, headers=H).status_code, 200)
+        kim = client()
+        self.assertEqual(kim.post("/api/login", json={"username": "kim", "password": pws["kim"]}, headers=H).status_code, 200)
+        self.assertEqual(kim.post(f"/api/profiles/{pid}/calendar", json={"tz": "UTC"}, headers=H).status_code, 200)
+        db = dbm.connect()   # a passkey of hers (signed in already: it would ask for it)
+        db.execute("INSERT INTO passkeys(user_id, credential_id, public_key, rp_id, name, created) VALUES(?, 'kim-917', x'00', "
+                   "'testserver', 'Kim''s phone (fictional)', 0)", (uid["kim"],))
+        db.close()
+        r = self.robin.post(f"/api/profiles/{pid}/links", json={"sections": ["journal"], "hours": 168}, headers=H)
+        revoked = r.json()["link"]["id"]
+        note = lambda t: self.robin.post(f"/api/profiles/{pid}/journal", json={"kind": "note", "t": "2026-04-03", "note": t}, headers=H)
+        self.assertEqual(note("Written before the backup (fictional)").status_code, 201)
+        path = backup.create(os.path.join(TMP, "backups-917"))
+
+        # after the backup: access ended...
+        self.assertEqual(self.robin.delete(f"/api/profiles/{pid}/links/{revoked}", headers=H).status_code, 200)
+        self.assertEqual(self.robin.delete(f"/api/profiles/{pid}/members/{uid['kim']}", headers=H).status_code, 200)
+        self.assertEqual(kim.post("/api/me/password", json={"current": pws["kim"], "new": "kim's new fictional passphrase, long"},
+                                  headers=H).status_code, 200)
+        db = dbm.connect()
+        db.execute("DELETE FROM passkeys WHERE user_id=?", (uid["kim"],))
+        accounts.remove(db, uid["lee"])
+        prof.delete_profile(db, gone_pid)
+        # ...and made
+        mx = accounts.create(db, "max", password="max's fictional passphrase, long enough")[0]
+        db.execute("UPDATE users SET totp_secret=? WHERE id=?", (crypto.enc(twofactor.new_secret()), uid["kim"]))
+        new_pid = prof.create_profile(db, "Made after (fictional)", owner_id=robin)
+        today = {r["username"]: dict(r) for r in db.execute("SELECT * FROM users")}
+        db.close()
+        self.assertEqual(self.robin.put(f"/api/profiles/{pid}/members", json={"username": "max", "role": "viewer"}, headers=H).status_code, 200)
+        made = self.robin.post(f"/api/profiles/{pid}/links", json={"sections": ["journal"], "hours": 168}, headers=H).json()["link"]["id"]
+        self.assertEqual(self.robin.post(f"/api/profiles/{pid}/calendar", json={"tz": "UTC"}, headers=H).status_code, 200)
+        self.assertEqual(note("Written after the backup (fictional)").status_code, 201)
+
+        def now(con):   # in today's database, as an admin and an owner would set them
+            con.execute("INSERT OR REPLACE INTO meta(k, v) VALUES('require_2fa', '1')")
+            con.execute("UPDATE settings SET sealed=? WHERE key='_watch.receiver' AND profile_id=?", (secret("now"), pid))
+        said, con = self.restore_into(os.path.join(TMP, "restored-917"), path, today=True, change=now)
+        users = {r[0]: r[1:] for r in con.execute("SELECT username, pw_hash, totp_secret, is_admin, disabled FROM users")}
+        self.assertEqual(set(users), {"ada", "robin", "kim", "max"}, "lee was removed after the backup; max made after it")
+        self.assertEqual(users["kim"][0], today["kim"]["pw_hash"], "her old password doesn't sign in")
+        self.assertEqual(users["kim"][1], today["kim"]["totp_secret"])
+        self.assertIsNotNone(users["kim"][1])
+        self.assertEqual(con.execute("SELECT COUNT(*) FROM passkeys WHERE user_id=?", (uid["kim"],)).fetchone()[0], 0)
+        self.assertEqual(dict(con.execute("SELECT user_id, role FROM memberships WHERE profile_id=?", (pid,)).fetchall()),
+                         {robin: "owner", mx: "viewer"})
+        self.assertEqual(con.execute("SELECT user_id FROM calendar_feeds WHERE profile_id=?", (pid,)).fetchall(), [(robin,)])
+        links = dict(con.execute("SELECT id, revoked IS NOT NULL FROM share_links WHERE profile_id=?", (pid,)).fetchall())
+        self.assertEqual(links, {revoked: 1, made: 0})
+        self.assertEqual(con.execute("SELECT COUNT(*) FROM sessions").fetchone()[0], 0, "everyone is signed out")
+        self.assertEqual(con.execute("SELECT v FROM meta WHERE k='require_2fa'").fetchone(), ("1",))
+        sealed = con.execute("SELECT sealed FROM settings WHERE key='_watch.receiver' AND profile_id=?", (pid,)).fetchone()[0]
+        self.assertEqual(json.loads(crypto.dec(sealed))["secret"], "now")
+        notes = [json.loads(crypto.dec(b)).get("note") for (b,) in con.execute("SELECT body FROM journal WHERE profile_id=?", (pid,))]
+        self.assertEqual(notes, ["Written before the backup (fictional)"], "the records are the backup's")
+        profiles = dict(con.execute("SELECT id, name FROM profiles").fetchall())
+        self.assertEqual((profiles.get(gone_pid), new_pid in profiles), ("Deleted after (fictional)", False))
+        self.assertEqual(con.execute("SELECT COUNT(*) FROM memberships WHERE profile_id=?", (gone_pid,)).fetchone()[0], 0)
+        self.assertEqual(con.execute("PRAGMA foreign_key_check").fetchall(), [])
+        self.assertGreaterEqual(con.execute("SELECT seq FROM sqlite_sequence WHERE name='profiles'").fetchone()[0], new_pid,
+                                "ids never given again (#588)")
+        self.assertIn("Today's accounts, passwords, passkeys, two-factor sign-in, who may see each profile, share links, "
+                      "calendar feeds and phone upload secrets were kept", said)
+        self.assertRegex(said, r"Everyone is signed out \([1-9]\d* sign-ins? ended\)")
+        self.assertIn(f"Profile {gone_pid} (Deleted after (fictional)) was deleted after the backup was made and is back, with "
+                      "nobody given access to it", said)
+        self.assertIn(f"Profile {new_pid} (Made after (fictional)) was made after the backup and isn't in it", said)
+
+        # disaster recovery (no database to replace), and another install's database: all of it the backup's, said so
+        def other(con):
+            con.execute("UPDATE meta SET v=? WHERE k='pepper'", (crypto.enc(base64.b64encode(os.urandom(32)).decode()),))
+        for label, today, change, words in (("none", False, None, "There was no database here to keep them from"),
+                                            ("other", True, other, "The database it replaced isn't this install's")):
+            said, con = self.restore_into(os.path.join(TMP, f"restored-917-{label}"), path, today=today, change=change)
+            self.assertIn(words, said)
+            self.assertIn(": the accounts, passwords, passkeys, two-factor sign-in, who may see each profile, share links, "
+                          "calendar feeds and phone upload secrets are the backup's, as they were on", said)
+            self.assertIn("check Admin > Accounts and each profile's Sharing", said)
+            self.assertEqual(con.execute("SELECT revoked FROM share_links WHERE id=?", (revoked,)).fetchone(), (None,), label)
+            self.assertIn("lee", {r[0] for r in con.execute("SELECT username FROM users")}, label)
+            self.assertEqual(con.execute("SELECT COUNT(*) FROM sessions").fetchone()[0], 0, label)
+        db = dbm.connect()
+        for p in (pid, new_pid):
+            prof.delete_profile(db, p)
+        for n in ("kim", "max"):
+            accounts.remove(db, db.execute("SELECT id FROM users WHERE username=?", (n,)).fetchone()[0])
+        db.close()
 
 
     # ---------------------------------------------------------------- what a restore replaced (#595)

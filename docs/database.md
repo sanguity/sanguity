@@ -736,6 +736,15 @@ keep are in `meta` (`backup.schedule`, `backup.keep`). A backup also holds the w
 [the watch receiver's own database](#the-watch-receivers-own-database)); a check's `result` then has its counts too,
 cycle records compared but not named (only a profile's owners and editors may know they're kept).
 
+**What a restore keeps (#917).** A restore brings back records only: the backup's database is brought up to date in
+the folder below, and given today's `users` (by id and name, so records keep who made them), `devices`,
+`recovery_codes`, `passkeys`, `signin_failures`, `memberships`, `share_links`, `calendar_feeds`, each profile's phone
+upload secret (the `_watch.receiver` settings row), and the `require_2fa`, `setup_code` and `watch_legacy_retired` meta
+rows from the database it replaces, every `sqlite_sequence` count moved past today's (#588); `sessions` is emptied. A
+profile the backup has that today's database hasn't comes back with no memberships, and the restore names it. With no
+database to replace, or one whose pepper isn't the backup's (another install's), all of it is the backup's, everyone
+signed out all the same, and the restore says so (`backup._ready`).
+
 **What a restore replaced (#595).** A restore (`server.manage restore`, with the app stopped) moves the database,
 `profiles/` and `build/` it replaces to `DATA_DIR/before-restore-<time>/` (`-1` added for a second restore in the same
 second). That folder may hold a profile deleted before the restore, or since, so it is deleted `RESTORE_KEEP_DAYS`
