@@ -960,6 +960,72 @@ class Api(unittest.TestCase):
         self.assertEqual((r.status_code, r.json()["handed_over"]), (200, []))
         db.close()
 
+    def test_a_phone_secret_ends_with_its_makers_access(self):   # #929
+        """The profile's phone upload secret, made by an editor, is taken away when they lose access to change the
+        profile: removed, made a viewer, or their account disabled; the receiver is no longer given it, so their phone
+        can't upload; the profile's activity says so, and Sharing's Remove can say it beforehand (members' phone_secret).
+        A secret someone else made stays; one an older version left (its maker without access) goes at start-up."""
+        from unittest import mock
+        from server import accounts, crypto, watch_keys
+        db = dbm.connect()
+        ids = {}
+        for name in ("tova", "ugo"):
+            row = db.execute("SELECT id FROM users WHERE username=?", (name,)).fetchone()
+            ids[name] = row[0] if row else accounts.create(db, name, password=f"{name} keeps a long passphrase")[0]
+        tova, ugo = (self.login(n, f"{n} keeps a long passphrase") for n in ("tova", "ugo"))
+        pid = tova.post("/api/profiles", json={"name": "Tova's (929)"}, headers=H).json()["id"]
+        keys = os.path.join(TMP, "watch-keys-929", "keys.json")
+        os.makedirs(os.path.dirname(keys), exist_ok=True)
+        with mock.patch.object(main.config, "WATCH_KEYS", keys):
+            listed = lambda: {x["profile"]: x["secret"] for x in json.loads(crypto.read_file(keys))["profiles"]}
+            role = lambda r: self.assertEqual(tova.put(f"/api/profiles/{pid}/members", json={"username": "ugo", "role": r}, headers=H).status_code, 200)
+            made = lambda c: c.post(f"/api/profiles/{pid}/watch/receiver/rotate", headers=H).json()["secret"]
+            has = lambda: tova.get(f"/api/profiles/{pid}/watch/receiver").json()["has_secret"]
+            # removed: the secret ugo made goes, and the receiver no longer takes it
+            role("editor")
+            secret = made(ugo)
+            self.assertEqual(listed().get(pid), secret)
+            self.assertEqual({m["username"]: m.get("phone_secret") for m in tova.get(f"/api/profiles/{pid}/members").json()},
+                             {"tova": None, "ugo": True})
+            self.assertTrue(next(m for m in ugo.get(f"/api/profiles/{pid}/members").json() if m["username"] == "ugo")["phone_secret"])
+            self.assertEqual(tova.delete(f"/api/profiles/{pid}/members/{ids['ugo']}", headers=H).status_code, 200)
+            self.assertFalse(has())
+            self.assertNotIn(pid, listed())
+            log = tova.get(f"/api/profiles/{pid}/activity?action=watch.secret").json()
+            rows = log if isinstance(log, list) else log.get("entries", log.get("items", []))
+            self.assertEqual([e["detail"].get("ended") for e in rows][:1], [True])
+            self.assertEqual(rows[0]["detail"]["maker"], "ugo")
+            # one the owner made stays when the editor goes
+            role("editor")
+            own = made(tova)
+            self.assertEqual(tova.delete(f"/api/profiles/{pid}/members/{ids['ugo']}", headers=H).status_code, 200)
+            self.assertEqual((has(), listed().get(pid)), (True, own))
+            # made a viewer: it goes; given editor back, it stays gone
+            role("editor")
+            made(ugo)
+            role("viewer")
+            self.assertFalse(has())
+            role("editor")
+            self.assertFalse(has())
+            # their account disabled: it goes
+            made(ugo)
+            ben = self.login("ben")
+            self.assertEqual(ben.patch(f"/api/users/{ids['ugo']}", json={"disabled": True}, headers=H).status_code, 200)
+            self.assertFalse(has())
+            self.assertNotIn(pid, listed())
+            self.assertEqual(ben.patch(f"/api/users/{ids['ugo']}", json={"disabled": False}, headers=H).status_code, 200)
+            # one an older version left, made by someone without access now: gone at start-up (as main.lifespan does)
+            with dbm.transaction(db):
+                watch_keys.rotate(db, pid, ids["ugo"])
+                db.execute("DELETE FROM memberships WHERE user_id=? AND profile_id=?", (ids["ugo"], pid))
+            self.assertTrue(has())
+            with dbm.transaction(db):
+                accounts.end_lost_access(db)
+            self.assertFalse(has())
+            self.assertNotIn(pid, listed())
+        db.execute("DELETE FROM profiles WHERE id=?", (pid,))
+        db.close()
+
     def test_turning_on_two_factor_needs_the_password(self):   # #590: a session left open can't lock its person out
         import time
         from server import accounts, twofactor

@@ -1064,15 +1064,20 @@ def rename_profile(pid: int, body: ProfileIn, request: Request, s=Depends(user),
 def members(pid: int, s=Depends(user), db=Depends(get_db)):
     """Who has access, and as what: anyone with access may see it (the Sharing page's People, #168); only owners change it.
     Owners also see whose account an admin has disabled ("disabled": true or false): such an owner doesn't count as one
-    (dbm.active_owners), so the page knows when changing your own role would be refused (#314)."""
+    (dbm.active_owners), so the page knows when changing your own role would be refused (#314); and who made the
+    phone upload secret ("phone_secret": true, #929: it goes with their access, which Remove says), as its maker does
+    on their own row."""
     role = need(db, s, pid, "viewer")
     rows = [dict(r) for r in db.execute(
         """SELECT u.id AS user_id, u.username, m.role, u.disabled FROM memberships m JOIN users u ON u.id = m.user_id
            WHERE m.profile_id=? ORDER BY u.username COLLATE NOCASE""", (pid,))]
+    made = watch_keys.maker(db, pid)
     for r in rows:
         disabled = bool(r.pop("disabled"))
         if role == "owner":
             r["disabled"] = disabled
+        if r["user_id"] == made and (role == "owner" or made == s["id"]):
+            r["phone_secret"] = True
     return rows
 
 

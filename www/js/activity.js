@@ -46,7 +46,8 @@ const WHAT = {
   source: d => d.named ? `renamed the import “${d.label}”` : `went back to calling an import “${d.label}”`,   // #38
   settings: d => d.section ? `reset the ${d.label || d.section} settings to their defaults`
     : d.reset ? `reset “${d.label || d.setting}” to its default` : `changed the setting “${d.label || d.setting}”`,
-  "watch.secret": d => d.rotated ? "made a new watch receiver secret (the old one stopped working)" : "made the watch receiver secret",
+  "watch.secret": d => d.ended ? `took away the watch receiver secret ${d.maker || "someone"} made, as they can no longer change this profile (their phone can't upload)`   // (#929)
+    : d.rotated ? "made a new watch receiver secret (the old one stopped working)" : "made the watch receiver secret",
   "settings.user": d => d.section ? `reset their own ${d.label || d.section} settings` : `changed their own setting “${d.label || d.setting}”${d.reset ? " back to its default" : ""}`,
   "settings.install": d => d.section ? `reset the server's ${d.label || d.section} settings` : `changed the server setting “${d.label || d.setting}”${d.reset ? " back to its default" : ""}`,
   calendar: d => ({create: `made a calendar feed (${d.details === "full" ? "full" : "minimal"} details)`, rotate: "gave their calendar feed a new address",

@@ -73,7 +73,7 @@ check changes without updating the list, and it exercises this table against a l
 | Export everything (zip): the activity log in it only for an owner (#589) | No | Yes (no activity log) | Yes | No | No | No |
 | Connected sources: see a profile's | Yes | Yes | Yes | No | No | No |
 | Connected sources: connect, sync now, choose what's pulled, fetch an attachment, disconnect | No | Yes | Yes | No | No | No |
-| Phone and watch: the upload secret and setup | No | Yes (a new secret replaces the old) | Yes | No | No | No |
+| Phone and watch: the upload secret and setup | No | Yes (a new secret replaces the old; one goes when its maker can no longer change the profile, #929) | Yes | No | No | No |
 | Cycle tracking (#183): see its records and setting | No (403; not told it exists) | Yes | Yes | No | Never | No |
 | Cycle tracking: turn on or off, delete all of it | No | No | Yes | No | No | No |
 | A SMART Health Link pasted on Sources | No | Yes (after confirming) | Yes | No | No | No |
