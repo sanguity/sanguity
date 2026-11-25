@@ -3490,6 +3490,11 @@ Everything on `main` so far; it becomes the first tagged release.
   the merged report lists both's results, each with its flag, the lab day is titled for all of them and its badge
   counts what its drawer shows, a lab day left with nothing goes, Export as FHIR sends each result once, and undoing
   the merge puts both back.
+- **A medication renamed by its source keeps its reminders and doses** (#960): a portal's next export, or a connected
+  source's next pull, naming a medication another way (Lisinopril, then Prinivil) updated it in place, but its
+  reminders, its logged doses and the side effects linked to it stayed with the old name, a medication no longer
+  there: the reminder dropped out of the calendar feed and the doses out of its log. Now they go with it, as they do
+  when you rename it yourself, and undoing that import puts them back. A medication you renamed keeps your name.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

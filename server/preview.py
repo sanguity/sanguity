@@ -964,27 +964,33 @@ def change(db, pid, iid, data, dups, stored):
     is here), its body, details and Costs row (a document's file kept by stored(url), as an upload's are), or its entry
     of a list (sync._apply_meta), with what each was kept (sync_changes) so undoing import iid puts it back
     (sync.unapply), as a sync's changes are. -> how many records here it updated"""
-    from . import profiles as prof, sync   # (they import this module)
+    from . import medications, profiles as prof, sync   # (they import this module)
     c, n = dups.get("changed") or {}, 0
+    rows = []   # (the record here, what it'll be: its body, details and Costs row)
     for i in sorted(c.get("events") or ()):
         for rid, body, d, cost, _ in (c.get("rows") or {}).get(i) or []:
             r = db.execute("SELECT id, body, detail, cost FROM events WHERE id=? AND profile_id=?", (rid, pid)).fetchone()
-            if r is None:
-                continue
-            old_b, old_d = records._dec(r["body"]), records._dec(r["detail"])
-            old_c = records._dec(r["cost"]) if r["cost"] is not None else None
-            sent = d
-            d = sync._file_url(old_d, d)   # (the file it points at stays the one here)
-            if isinstance(d, dict) and d.get("type") == "file" and not d.get("url") and isinstance(sent, dict) and sent.get("url"):
-                one = {"x": dict(sent)}
-                keep_docs, _ = prof.index_documents(db, pid, one, stored)
-                prof.link_documents(db, iid, keep_docs)
-                d = one["x"]
-            db.execute("INSERT INTO sync_changes(import_id, event_id, previous) VALUES(?, ?, ?)",
-                       (iid, rid, records._enc({"body": old_b, "detail": old_d, "cost": old_c})))
-            db.execute("UPDATE events SET body=?, detail=?, cost=?, cost_seq=IFNULL(cost_seq, 0) WHERE id=?",
-                       (records._enc(body), None if d is None else records._enc(d), None if cost is None else records._enc(cost), rid))
-            n += 1
+            if r is not None:
+                rows.append((r, body, d, cost))
+    # (#960) a medication its source renames: what hangs on it follows it (medications.follow), as a person's rename
+    meds = medications.of_records(db, pid) if medications.renames((records._dec(r["body"]), body) for r, body, *_ in rows) else None
+    for r, body, d, cost in rows:
+        old_b, old_d = records._dec(r["body"]), records._dec(r["detail"])
+        old_c = records._dec(r["cost"]) if r["cost"] is not None else None
+        sent = d
+        d = sync._file_url(old_d, d)   # (the file it points at stays the one here)
+        if isinstance(d, dict) and d.get("type") == "file" and not d.get("url") and isinstance(sent, dict) and sent.get("url"):
+            one = {"x": dict(sent)}
+            keep_docs, _ = prof.index_documents(db, pid, one, stored)
+            prof.link_documents(db, iid, keep_docs)
+            d = one["x"]
+        db.execute("INSERT INTO sync_changes(import_id, event_id, previous) VALUES(?, ?, ?)",
+                   (iid, r["id"], records._enc({"body": old_b, "detail": old_d, "cost": old_c})))
+        db.execute("UPDATE events SET body=?, detail=?, cost=?, cost_seq=IFNULL(cost_seq, 0) WHERE id=?",
+                   (records._enc(body), None if d is None else records._enc(d), None if cost is None else records._enc(cost), r["id"]))
+        n += 1
+    if meds is not None:
+        sync.moved(db, iid, medications.follow(db, pid, meds))
     entries = [(target, path, key, entry) for (path, k), (target, key, entry, _) in sorted((c.get("entries") or {}).items())
                if k in (c.get("meta") or {}).get(path, ())]
     if entries:

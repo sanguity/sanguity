@@ -31,7 +31,11 @@ A rename (edits.py) groups a record as it's shown: under its new name's key it j
 leaves one it shared a key with. What hangs on a medication's key goes with it (#954, follow(), in the rename's own
 transaction): its reminders (med_reminders.py), its doses (med_log.py) and the side effects linked to it by name
 (journal.py) go to the medication its newest record is in now (its newest listing, which names it, else its newest
-fill), and undoing the rename puts back what it moved (back()).
+fill), and undoing the rename puts back what it moved (back()). A source's rename is the same (#960): a listing or a
+fill its source sends again under another name, updated in place (an upload's, preview.change; a pull's,
+sync._update_in_place), takes what hangs on its medication with it in the import's own transaction, what it moved
+kept with what the record was (sync_changes), so undoing the import puts each back (sync._unapply, history.undo). A
+record the person renamed keeps their name, so it moves nothing.
 
 Nothing here judges a dose, a gap or an overlap; the page shows the spans and the records behind each. Pharmacy
 fills are matched to a medication by the same key and never stretch or start a span. Hidden events (edits.py) are
@@ -162,10 +166,22 @@ def _lay_out(key, g):
 # ---------------------------------------------------------------- what follows a medication through a rename (#954)
 
 def of_records(db, pid):
-    """The profile's medications as its records have them now (records.served: corrections applied)."""
+    """The profile's medications as its records have them now (records.served: corrections applied). Inside a
+    transaction they're put together afresh (records.assemble), never kept: served() keeps what it puts together by
+    the records' revision, and a transaction rolled back gives that revision to the next change, which would be
+    served what was rolled back."""
     from . import records
+    if db.in_transaction:
+        return (records.assemble(db, pid) or {}).get("medications") or []
     body = records.served(db, pid)
     return (json.loads(body).get("medications") or []) if body else []
+
+
+def renames(pairs):
+    """(#960) Whether records a source sends again rename a medication: any (its body here, its body as it'll be) of a
+    listing or a fill whose title's key (med_key) changes, so follow() has something to do."""
+    return any(isinstance(a, dict) and isinstance(b, dict) and (a.get("k") in MED_KINDS or b.get("k") in MED_KINDS)
+               and med_key(a.get("title")) != med_key(b.get("title")) for a, b in pairs)
 
 
 def _newest(m):

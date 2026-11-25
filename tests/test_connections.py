@@ -454,6 +454,49 @@ class Connections(unittest.TestCase):
         # undone records don't come back by themselves at the next pull
         self.assertIsNone(self.pull(cid)["import"])
 
+    def test_a_medication_the_vendor_renames_keeps_what_hangs_on_it(self):   # #960
+        """The vendor names the patient's MedicationRequest another way (Atorvastatin, then Lipitor, then Zocor), and the
+        next pull updates it in place. Its reminder and its doses hang on its key (its shown name's leading words), so
+        each rename left them on a medication no longer there. Now they go with it in the pull's own save, as a person's
+        rename takes them (#954); undoing the pulls in either order puts them back where each found them."""
+        from server import med_reminders   # noqa: F401  (the reminders' table, listed with the records)
+        cid = self.connect(self.source())
+        self.first_pull(cid)
+        P = f"/api/profiles/{self.pid}"
+        r = self.robin.post(P + "/medications/reminders", headers=H, json={"med": "atorvastatin", "times": ["08:00"],
+                            "days": ["mo", "tu", "we", "th", "fr", "sa", "su"], "start": "2026-11-01", "tz": "America/New_York"})
+        self.assertEqual(r.status_code, 201, r.text)
+        self.assertEqual(self.robin.post(P + "/medications/doses", headers=H, json={"med": "atorvastatin", "t": "2026-11-02T08:05", "status": "taken"}).status_code, 201)
+
+        def state():
+            d = self.robin.get(P + "/data").json()
+            return (sorted(m["key"] for m in d.get("medications") or [] if m["key"] != "amoxicillin"),   # (the fake's other)
+                    [x["med"] for x in d.get("reminders") or []], [x["med"] for x in d.get("doses") or []])
+        self.assertEqual(state(), (["atorvastatin"], ["atorvastatin"], ["atorvastatin"]))
+        pulls = []
+        for name in ("Lipitor 20 mg tablet", "Zocor 20 mg tablet"):
+            self.fake.update("MedicationRequest", "med-1", {"medicationCodeableConcept": {"text": name}})
+            res = self.pull(cid)
+            self.assertTrue(res["ok"], res)
+            self.assertGreaterEqual(res["changed"], 1, res)
+            pulls.append(res["import"])
+            key = name.split()[0].lower()
+            self.assertEqual(state(), ([key], [key], [key]), f"with {name}")
+        for order in ((0, 1), (1, 0)):
+            with self.subTest(undone=order):
+                for i in order:
+                    r = self.robin.post(P + f"/imports/{pulls[i]}/undo", headers=H)
+                    self.assertEqual(r.status_code, 200, r.text)
+                    if order == (0, 1) and i == 0:
+                        self.assertEqual(state(), (["zocor"], ["zocor"], ["zocor"]), "the later pull's name kept, and what hangs on it")
+                self.assertEqual(state(), (["atorvastatin"], ["atorvastatin"], ["atorvastatin"]), "both undone: each back on Atorvastatin")
+                if order == (0, 1):   # again, to undo them the other way round
+                    pulls = []
+                    for name in ("Lipitor 20 mg tablet", "Zocor 20 mg tablet"):
+                        self.fake.update("MedicationRequest", "med-1", {"medicationCodeableConcept": {"text": name}})
+                        pulls.append(self.pull(cid)["import"])
+                    self.assertEqual(state(), (["zocor"], ["zocor"], ["zocor"]))
+
     def test_a_result_sent_again_is_updated_in_place(self):   # #869
         """A result the source amends comes back at the next pull: the same result, updated in place, range and flag,
         never a copy. The report's Hemoglobin 12.1 (13.5–17.5, Low) amended to 12.0–15.5 and Normal, its Platelet Count

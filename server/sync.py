@@ -74,7 +74,7 @@ it when its preview is saved.
 """
 import collections, contextlib, hashlib, io, json, logging, os, re, shutil, tempfile, threading, urllib.parse
 
-from . import activity, config, connections as conns, crossmatch, crypto, db as dbm, importers as registry, jobs, labmap
+from . import activity, config, connections as conns, crossmatch, crypto, db as dbm, importers as registry, jobs, labmap, medications
 from . import outside, preview, profiles as prof, records, smart, uploads
 from .importers import common
 
@@ -1180,13 +1180,16 @@ def _update_in_place(db, pid, iid, updates, details, stored, costs=None, cid=Non
     """Change the events whose source key the profile has, where the vendor's version differs; keep what each was.
     A claim's Costs row changes with it (an adjusted claim's new amounts). One whose key is scoped to a day (a lab day:
     a day's labitem has its rows placed, _place) is this connection's (cid) only (#885: _events_with_key); another's is
-    joined (_link_labdays)."""
-    n = 0
-    for e in updates:
+    joined (_link_labdays). (#960) A medication it renames takes what hangs on it along (medications.follow), kept
+    for undoing it (moved())."""
+    n, here = 0, [(e, _events_with_key(db, pid, cid, e["key"], "id, body, detail, cost")) for e in updates]
+    meds = medications.of_records(db, pid) if medications.renames(
+        (records._dec(r["body"]), e) for e, rs in here for r in rs) else None
+    for e, rs in here:
         body = {k: v for k, v in e.items() if k != "id"}
         new_d = details.get(str(e.get("id")))
         new_c = (costs or {}).get(str(e.get("id")))
-        for r in _events_with_key(db, pid, cid, e["key"], "id, body, detail, cost"):
+        for r in rs:
             old_b, old_d = records._dec(r["body"]), records._dec(r["detail"])
             old_c = records._dec(r["cost"]) if r["cost"] is not None else None
             cost = {**new_c, "id": r["id"]} if new_c is not None else old_c   # a row the vendor's version lacks stays
@@ -1207,7 +1210,33 @@ def _update_in_place(db, pid, iid, updates, details, stored, costs=None, cid=Non
             db.execute("UPDATE events SET body=?, detail=?, cost=?, cost_seq=IFNULL(cost_seq, 0) WHERE id=?",
                        (records._enc(body), None if d is None else records._enc(d), None if cost is None else records._enc(cost), r["id"]))
             n += 1
+    if meds is not None:
+        moved(db, iid, medications.follow(db, pid, meds))
     return n
+
+
+def renamed(db, iid):
+    """(#960) Whether undoing import iid renames a medication back: a listing or fill it changed in place under
+    another name (sync_changes), so history.undo lets what hangs on it follow (medications.follow)."""
+    for r in db.execute("""SELECT c.previous, e.body FROM sync_changes c JOIN events e ON e.id = c.event_id
+                           WHERE c.import_id=?""", (iid,)).fetchall():
+        was = (records._dec(r["previous"]) or {}).get("body")
+        if isinstance(was, dict) and was.get("k") in medications.MED_KINDS and medications.renames([(records._dec(r["body"]), was)]):
+            return True
+    return False
+
+
+def moved(db, iid, rec):
+    """(#960) What a source's rename of a medication took along (medications.follow's record), kept with import iid's
+    change of the listing or fill (its sync_changes, "moved"), so undoing iid puts each back (_unapply: medications.back)."""
+    if not rec:
+        return
+    for r in db.execute("SELECT id, previous FROM sync_changes WHERE import_id=? AND event_id IS NOT NULL ORDER BY id", (iid,)).fetchall():
+        prev = records._dec(r["previous"])
+        if ((prev or {}).get("body") or {}).get("k") in medications.MED_KINDS:
+            db.execute("UPDATE sync_changes SET previous=? WHERE id=?",
+                       (records._enc({**prev, "moved": medications.merged(prev.get("moved"), rec)}), r["id"]))
+            return
 
 
 def _source_records(full):
@@ -1550,8 +1579,11 @@ def _unapply(db, iid):
             if later:
                 theirs = records._dec(later["previous"])
                 results = {**dict(theirs.get("results") or []), **dict(prev.get("results") or [])}   # (#869) this one's first
+                # (#960) what a rename of a medication took along: from where this one found it to where the later left it
+                moved = medications.merged(prev.get("moved"), theirs.get("moved"))
                 db.execute("UPDATE sync_changes SET previous=? WHERE id=?",
-                           (records._enc({**prev, **({"results": [[k, v] for k, v in results.items()]} if results else {})}), later["id"]))
+                           (records._enc({**prev, **({"results": [[k, v] for k, v in results.items()]} if results else {}),
+                                          **({"moved": moved} if moved else {})}), later["id"]))
             else:
                 db.execute("UPDATE events SET body=?, detail=? WHERE id=?",
                            (records._enc(prev["body"]), None if prev["detail"] is None else records._enc(prev["detail"]), r["event_id"]))
@@ -1560,6 +1592,8 @@ def _unapply(db, iid):
                                (None if prev["cost"] is None else records._enc(prev["cost"]), r["event_id"]))
                 for rid, body in prev.get("results") or []:   # results it updated in place (#869)
                     db.execute("UPDATE results SET body=? WHERE id=?", (records._enc(body), rid))
+                if prev.get("moved"):   # (#960) what its rename of a medication took along, back where it was
+                    medications.back(db, db.execute("SELECT profile_id FROM imports WHERE id=?", (iid,)).fetchone()[0], prev["moved"])
             continue
         later = None
         for x in db.execute("SELECT id, previous FROM sync_changes WHERE meta_import=? AND id > ? ORDER BY id",

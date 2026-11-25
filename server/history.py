@@ -15,7 +15,8 @@ Undo removes everything the import added, and only that, in one transaction:
   - the lab-name matches its review made (labmap.forget, #500), unless another import has been saved with them since
     or an admin has changed them: the next import of those names asks again. The history entry counts them
     ("lab_matches"), for the question asked first
-It never touches anything else stored apart from the import's rows: settings, other imports, corrections (#33).
+It never touches anything else stored apart from the import's rows: settings, other imports, corrections (#33); but what a
+medication it renamed took along (#960: its reminders, doses and side effects, medications.follow) goes back with it.
 
 By origin:
   upload    undone as above: the profile is as it was before the import; the results it updated in place, sent again
@@ -195,10 +196,13 @@ def undo(db, pid, iid, who, ip=None, at=None):
             ups = [r[0] for r in db.execute("SELECT DISTINCT upload_id FROM jobs WHERE import_id=?", (iid,))]
             ups += [u for u in _document_uploads(db, pid, iid) if u not in ups]   # hand entry's attached files
             # what it changed in place goes back first: a connected source's sync's, an upload's results sent again (#869)
-            from . import sync
+            from . import medications, sync
+            meds = medications.of_records(db, pid) if sync.renamed(db, iid) else None   # (#960) a medication it renamed
             sync.unapply(db, iid)
             forgot = labmap.forget(db, iid)   # before its row goes (labmaps.import_id is set null with it)
             records.drop(db, pid, [iid])   # events, series, results, documents: by cascade
+            if meds is not None:   # (#960) what hangs on a medication its rename made, set since, follows it back
+                medications.follow(db, pid, meds, gone_only=True)
             if imp["origin"] == "dataset":   # what it was loaded from, kept in the profile's folder (#934)
                 from . import profiles as prof
                 sources = prof.forget_dataset(db, pid, iid)

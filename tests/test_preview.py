@@ -683,6 +683,67 @@ class Preview(unittest.TestCase):
                 self.assertEqual(r.status_code, 200, r.text)
                 self.assertEqual(said(assembled(pid)), before, "undone: each as it was")
 
+    def test_a_medication_its_source_renames_keeps_what_hangs_on_it(self):   # #960
+        """A portal's export, then its next one naming the same MedicationRequest another way (Lisinopril, then Prinivil:
+        #920 updates it in place). A medication's reminders, doses and the side effects linked to it hang on its key,
+        its shown name's leading words, so the rename took the key with it and left them on "lisinopril", a medication
+        no longer there: the reminder gone from the calendar feed, the doses from its log. Now what hangs on it goes
+        with it in the same save, as a person's rename takes it (#954); undoing the import puts each back. A listing the
+        person renamed (Zestril) keeps its name, and what hangs on it stays."""
+        from datetime import date
+        from server import journal, med_reminders
+        P = lambda pid: f"/api/profiles/{pid}"   # noqa: E731
+
+        def bundle(name, text, at):
+            med = {"resourceType": "MedicationRequest", "id": "mr-1", "status": "active", "intent": "order", "subject": {"reference": "Patient/p1"},
+                   "medicationCodeableConcept": {"text": text}, "authoredOn": "2026-03-01", "dosageInstruction": [{"text": "1 tablet daily"}],
+                   "meta": {"lastUpdated": at}}
+            other = {**med, "id": "mr-2", "medicationCodeableConcept": {"text": "Metformin 500 mg tablet"}, "meta": {"lastUpdated": "2026-03-01T10:00:00Z"}}
+            pat = {"resourceType": "Patient", "id": "p1", "name": [{"family": "Example", "given": ["Pat"]}], "birthDate": "1980-02-02"}
+            return {name: json.dumps({"resourceType": "Bundle", "type": "collection",
+                                      "entry": [{"fullUrl": f"https://portal.example/fhir/{r['resourceType']}/{r['id']}", "resource": r} for r in (pat, med, other)]})}
+
+        def state(pid):
+            d = self.robin.get(P(pid) + "/data").json()
+            db = dbm.connect()
+            try:
+                feed = len(med_reminders.feed_events(db, pid, False, date(2026, 11, 20))[0])
+                side = [e["med"] for e in journal.listing(db, pid) if e.get("med")]
+            finally:
+                db.close()
+            return (sorted(m["key"] for m in d["medications"]), [r["med"] for r in d.get("reminders") or []],
+                    [x["med"] for x in d.get("doses") or []], feed, side)
+
+        pid = self.profile("A medication renamed at its source")
+        self.assertEqual(self.save(pid, self.previewed(pid, bundle("portal-2026-03.json", "Lisinopril 10 mg tablet", "2026-03-01T10:00:00Z"))[0])["state"], "done")
+        r = self.robin.post(P(pid) + "/medications/reminders", headers=H, json={"med": "lisinopril", "times": ["08:00"],
+                            "days": ["mo", "tu", "we", "th", "fr", "sa", "su"], "start": "2026-11-01", "tz": "America/New_York"})
+        self.assertEqual(r.status_code, 201, r.text)
+        self.assertEqual(self.robin.post(P(pid) + "/medications/doses", headers=H, json={"med": "lisinopril", "t": "2026-11-02T08:05", "status": "taken"}).status_code, 201)
+        r = self.robin.post(P(pid) + "/journal", headers=H, json={"kind": "side_effect", "t": "2026-11-02", "title": "Dry cough", "severity": 3,
+                                                                  "med": "Lisinopril 10 mg tablet"})
+        self.assertEqual(r.status_code, 201, r.text)
+        before = state(pid)
+        self.assertEqual(before, (["lisinopril", "metformin"], ["lisinopril"], ["lisinopril"], 1, ["Lisinopril 10 mg tablet"]))
+        renamed = bundle("portal-2026-11.json", "Prinivil 10 mg tablet", "2026-11-01T10:00:00Z")
+        j, _ = self.previewed(pid, renamed)
+        self.assertEqual({k: j["duplicates"]["changed"][k] for k in ("n", "kinds")}, {"n": 1, "kinds": {"med": 1}})
+        done = self.save(pid, j)
+        self.assertEqual((done["state"], done["counts"].get("changed")), ("done", 1), done)
+        self.assertEqual(state(pid), (["metformin", "prinivil"], ["prinivil"], ["prinivil"], 1, ["Prinivil 10 mg tablet"]),
+                         "its reminder, dose and side effect with it")
+        r = self.robin.post(P(pid) + f"/imports/{done['import_id']}/undo", headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(state(pid), before, "undone: each back on Lisinopril")
+
+        # renamed by the person first: its name is theirs, so the source's rename moves nothing
+        eid = next(e["id"] for e in self.robin.get(P(pid) + "/data").json()["events"] if e["k"] == "med" and e["title"].startswith("Lisinopril"))
+        self.assertEqual(self.robin.post(P(pid) + "/edits", headers=H, json={"event": eid, "action": "rename", "title": "Zestril 10 mg tablet"}).status_code, 201)
+        mine = state(pid)
+        self.assertEqual(mine[:3], (["metformin", "zestril"], ["zestril"], ["zestril"]))
+        self.assertEqual(self.save(pid, self.previewed(pid, renamed)[0])["state"], "done")
+        self.assertEqual(state(pid), mine, "the person's name kept, and what hangs on it")
+
     def test_a_record_is_updated_only_by_its_own_source_and_never_by_an_older_or_smaller_file(self):   # #955
         """#920 updates a record in place when its source sends it again saying something else, and took any difference
         for a change: another portal's export with the same plain FHIR ids (fhir:<type>/<id>) put clinic B's medication
