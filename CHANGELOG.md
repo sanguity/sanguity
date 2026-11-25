@@ -1730,6 +1730,11 @@ Everything on `main` so far; it becomes the first tagged release.
   labels, the medication names on the Timeline and the Medications tab, and Compare's names kept the app's ink, about
   2.3:1 or less against the system's background, and the heatmap's date axis kept the app's background under the
   system's text, a blank bar. They're in the system's text colour on its background now, both ways.
+- **A target of your own readable in forced colours against the opposite theme** (#729): on Body and activity's
+  charts, "Your target" and its dashed edges kept the app's ink (2.27:1 and 1.82:1 against the system's background),
+  the label legible only through its halo. Both are in the system's text colour now, both ways; and the check of
+  every chart's text in forced colours now covers Body and activity, the glucose profile, a lab's panel, a share
+  link's page and the visit summary's preview too.
 - **A chart's value axis says each gridline's number as it is** (#654): Body and activity rounded its gridlines'
   labels to whole numbers, so where the gridlines were 2.5 apart Steps said "3k" and "8k" for 2,500 and 7,500, Weight
   "177" for both 176.5 and 177 lb, and blood oxygen "93%" for 92.5%; Costs' running totals said "$3K" for $2,500, and

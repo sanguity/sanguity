@@ -9898,6 +9898,54 @@ def main():
             check("…and there every chart's text is CanvasText on Canvas, both ways (#346, #657): Labs' charts, the event track, the strip, the "
                   "heatmap's names and its sticky axis, Compare, Costs' claims and running totals, the Timeline's lanes and the Medications tab",
                   all(v["n"] > 0 and not v["bad"] for v in text657.values()), {k: v for k, v in text657.items() if not v["n"] or v["bad"]})
+            # ---- #729: #657's check reached Labs, Costs, the Timeline and the Medications tab; the same on Body and activity
+            # (with a target of the person's own: "Your target" and its dashed edges kept the app's ink, 2.27:1 and 1.82:1,
+            # legible only through the halo), its glucose profile, a lab's panel, a share link's page (its histories open)
+            # and the visit summary's preview, both ways: every chart's text CanvasText on Canvas, and the target's edges
+            # CanvasText. The share link's page and the summary in a page of their own, in the app's theme as it loads
+            TGT729 = r"""() => { const s = document.createElement('span'); s.style.forcedColorAdjust = 'none'; s.style.color = 'CanvasText'; document.body.append(s);
+              const text = getComputedStyle(s).color; s.remove(); const e = [...document.querySelectorAll('#view-health .tgt-edge')].filter(x => x.checkVisibility());
+              return {n: e.length, bad: [...new Set(e.map(x => getComputedStyle(x).stroke))].filter(c => c !== text).map(c => `tgt-edge stroked ${c}`)}; }"""
+            link729 = js("""() => fetch('api/profiles/1/links', {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'},
+              body: JSON.stringify({sections: ['results'], label: 'Forced colours (browser check)', hours: 1})}).then(r => r.json())""")
+            was729 = js("[document.documentElement.dataset.theme || null, matchMedia('(prefers-color-scheme: dark)').matches, state.tab, state.preset]")
+            js("""window._was729 = CFG.person; CFG.person = {...(CFG.person || {}), targets: {...targetsOf(), steps: {low: 8000, high: null, by: "", on: ""}}}""")
+            fc729 = {}
+            for system729 in ("dark", "light"):
+                app729 = "light" if system729 == "dark" else "dark"
+                way729 = f"the system {system729}, the app {app729}"
+                page.emulate_media(color_scheme=system729, forced_colors="active")
+                js("t => { document.documentElement.dataset.theme = t; applyPreset('all'); switchTab('health'); }", app729)
+                settle(600)
+                fc729[f"{way729}: Body and activity"] = js(FC657, "#view-health svg text")
+                fc729[f"{way729}: its glucose profile"] = js(FC657, "#view-health svg.glu-prof text")
+                fc729[f"{way729}: its target's edges"] = js(TGT729)
+                js("openLab(SERIES.find(s => s.name === 'Hemoglobin'))")
+                settle(500)
+                fc729[f"{way729}: a lab's panel"] = js(FC657, "#dbody svg text")
+                js("closeDrawer()")
+                ctx729 = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True, color_scheme=system729, forced_colors="active")   # the same session
+                ctx729.add_cookies(page.context.cookies())
+                ctx729.add_init_script(f"try {{ localStorage.setItem('ht-theme', {app729!r}); }} catch (e) {{}}")   # (its own storage: this browser's choice)
+                pg729 = ctx729.new_page()
+                pg729.goto(base + "/" + link729["path"])
+                pg729.wait_for_selector("#share-results .share-latest", timeout=10000)
+                pg729.locator("#share-results .share-tools button", has_text="Open every history").click()
+                pg729.wait_for_timeout(600)
+                fc729[f"{way729}: a share link's page"] = pg729.evaluate(FC657, "#share-results svg text")
+                pg729.goto(base + "/sharing.html?profile=1#summary")
+                pg729.wait_for_selector("#preview:not([hidden]):not([aria-busy]) h3", timeout=15000)
+                pg729.wait_for_timeout(600)
+                fc729[f"{way729}: the visit summary's preview"] = pg729.evaluate(FC657, "#preview svg text")
+                ctx729.close()
+            js("id => fetch('api/profiles/1/links/' + id, {method: 'DELETE', headers: {'X-Sanguity': '1'}})", link729["link"]["id"])
+            page.emulate_media(forced_colors="none", color_scheme="dark" if was729[1] else "light")
+            js("""([t, , tab, preset]) => { CFG.person = window._was729; if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+              applyPreset(preset); switchTab(tab, tab === 'labs' ? 'chart' : undefined); }""", was729)
+            settle(300)
+            check("…and on Body and activity (a target of one's own drawn), its glucose profile, a lab's panel, a share link's page and the visit "
+                  "summary's preview, both ways (#729): every chart's text CanvasText on Canvas (“Your target” kept the app's ink), and the target's "
+                  "dashed edges CanvasText", all(v["n"] > 0 and not v["bad"] for v in fc729.values()), {k: v for k, v in fc729.items() if not v["n"] or v["bad"]})
             # their labels (#312): at 1400, 375 and 320 px each one on the Timeline and Body and activity is inside its plot
             # with no mark on it; one shortened to fit ends in "…" and keeps the full names in its title; a Body and
             # activity chart's aria-label names them (Labs names them on its event track, #294: TRACK_JS). Body names them
