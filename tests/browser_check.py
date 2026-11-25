@@ -10250,6 +10250,37 @@ def main():
                   "system's black): Labs' charts and their legend's keys, Compare and a lab's panel's strip",
                   all(not v["bad"] and v["n"].get("refband") for v in fc983.values()) and all(v["n"].get("stayband") for k, v in fc983.items() if "panel" not in k),
                   fc983)
+            # ---- #984: …and Body and activity's coloured steps, either theme: the steps' bars (the measure's teal at 30%) were
+            # about 1.5:1 on the system's black, sleep's deep stage (--seq1) 2.5:1 on it and the dark theme's 1.8:1 on white.
+            # In forced colours, the system dark and light, the app light and dark, in 90 days (a bar a night, a bar a day) and
+            # All (the stages' strip, a bar a week): every steps bar, sleep stage and workout calendar day (a --seq* fill) and
+            # its legend key, as it shows over the system's background (its alpha, fill-opacity and opacity), 3:1 or more on it
+            SEQ984 = r"""() => { const probe = c => { const s = document.createElement('span'); s.style.forcedColorAdjust = 'none'; s.style.color = c; document.body.append(s);
+                const v = getComputedStyle(s).color; s.remove(); return v; };
+              const rgba = c => { const n = (c.match(/[\d.]+/g) || []).map(Number); return /^color\(srgb /.test(c) ? [n[0] * 255, n[1] * 255, n[2] * 255, n[3] ?? 1] : [n[0], n[1], n[2], n[3] ?? 1]; };
+              const lum = ([r, g, b]) => [r, g, b].map(v => (v /= 255) <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4).reduce((s, v, i) => s + v * [.2126, .7152, .0722][i], 0);
+              const bg = rgba(probe('Canvas')), out = {n: 0, bad: []};
+              const look = (m, c, a) => { const [r, g, b, k] = rgba(c), t = k * a, on = [r, g, b].map((v, i) => v * t + bg[i] * (1 - t)), l1 = lum(on), l2 = lum(bg);
+                const cr = (Math.max(l1, l2) + .05) / (Math.min(l1, l2) + .05); out.n++;
+                if (cr < 3) out.bad.push(`${m.closest('[id^=h-]')?.id} ${m.tagName.toLowerCase()} ${m.getAttribute('fill') || m.getAttribute('style') || ''}: ${cr.toFixed(2)}:1`); };
+              for (const m of document.querySelectorAll('#view-health svg [fill^="var(--seq"], #h-activity svg.ck path[fill-opacity]')) if (m.checkVisibility()) { const c = getComputedStyle(m); look(m, c.fill, +c.fillOpacity * +c.opacity); }
+              for (const m of document.querySelectorAll('#view-health .legend i[style*="--seq"], #h-activity > .legend > span:first-child > i')) if (m.checkVisibility()) { const c = getComputedStyle(m); look(m, c.backgroundColor, +c.opacity); }
+              out.bad = [...new Set(out.bad)].slice(0, 10); return out; }"""
+            was984, seq984 = js("[document.documentElement.dataset.theme || null, matchMedia('(prefers-color-scheme: dark)').matches, state.tab, state.preset, state.labsView]"), {}
+            for system984 in ("dark", "light"):
+                page.emulate_media(color_scheme=system984, forced_colors="active")
+                for app984 in ("light", "dark"):
+                    for per984 in ("90d", "all"):
+                        js("([t, p]) => { document.documentElement.dataset.theme = t; applyPreset(p); switchTab('health'); }", [app984, per984])
+                        settle(700)
+                        seq984[f"the system {system984}, the app {app984}, {per984}"] = js(SEQ984)
+            page.emulate_media(forced_colors="none", color_scheme="dark" if was984[1] else "light")
+            js("""([t, , tab, preset, view]) => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+              applyPreset(preset); switchTab(tab, tab === 'labs' ? view : undefined); }""", was984)
+            settle(300)
+            check("…and Body and activity's steps bars, sleep's stages and the workout calendar, and their keys, 3:1 or more on the system's background "
+                  "in forced colours, either theme, in 90 days and All (#984: the bars about 1.5:1 on black, the deep stage 2.5:1)",
+                  all(v["n"] >= 20 and not v["bad"] for v in seq984.values()), {k: v for k, v in seq984.items() if v["n"] < 20 or v["bad"]})
             # ---- #729: #657's check reached Labs, Costs, the Timeline and the Medications tab; the same on Body and activity
             # (with a target of the person's own: "Your target" and its dashed edges kept the app's ink, 2.27:1 and 1.82:1,
             # legible only through the halo), its glucose profile, a lab's panel, a share link's page (its histories open)

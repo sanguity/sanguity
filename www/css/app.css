@@ -887,9 +887,14 @@ details.res > div{padding:0 var(--sp-3) var(--sp-2)}
 .legend i:is(.dot,.ring){width:8px;height:8px;border-radius:var(--r-pill)}
 .legend i.ring{border:2px solid}
 .legend i.band{opacity:.2}
+.legend i.tint{opacity:.3}   /* a tint's key (Body's steps) */
 .stay-key{background:var(--stay);border:1px solid var(--stay-line)}   /* a hospital stay's shading, with its edge to be seen (#450) */
 /* forced colours drop a background: the swatches keep theirs, as the charts' marks do, and the stay's and band's edges are the text's (#450) */
 @media (forced-colors:active){ .legend i,.hm-legend i{forced-color-adjust:none} :is(.stay-key,.legend i.refband){border-color:CanvasText} .legend i.refband{background:color-mix(in srgb,CanvasText 6%,transparent)} }
+/* …and a tint at full strength, a sequence's steps (sleep's stages: --seq*) a blue towards the system's text, each
+   3:1 on its background either theme, and --grid a share of the text (#984: 1.5:1 and 2.5:1 on black) */
+@media (forced-colors:active){ :is(.legend i,path).tint{opacity:1;fill-opacity:1}
+  :root{--seq1:color-mix(in srgb,var(--zone3) 30%,CanvasText);--seq2:color-mix(in srgb,var(--zone3) 65%,CanvasText);--seq3:var(--zone3);--grid:color-mix(in srgb,CanvasText 15%,Canvas)} }
 @media (max-width:900px){
   .layout{grid-template-columns:minmax(0,1fr)}
   .series-list{max-height:300px}
