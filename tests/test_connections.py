@@ -512,20 +512,54 @@ class Connections(unittest.TestCase):
         self.assertEqual({k: v for k, v in self.counts().items() if k != "imports"}, {k: v for k, v in n.items() if k != "imports"}, "no result added")
         self.assertEqual(said(self.data()), {"Hemoglobin": [[12.0, 15.5, "", "12.0-15.5", ""]], "Platelet Count": [[150, 400, "H", "150 - 400", "H"]],
                                              "ALT": [[None, None, "A", "", "A"]], "CRP": [[None, 20, "", "<20", ""]]}, "each as sent now, its row agreeing")
-        # amended again (its report's Hemoglobin and Platelet Count one record), then the first pull undone: what the later
-        # one changed again keeps its version (sync.unapply), the rest as before; then the later one: all as before
+        # amended again (the report's Hemoglobin, not its Platelet Count), then the first pull undone: what the later one
+        # changed again keeps its version (sync.unapply), each record its own (#911: the Platelet Count, which it didn't
+        # change, back to no range, as the report's other rows are), the rest as before; then the later one: all as before
         self.fake.update("Observation", "obs-hgb", {"referenceRange": [{"low": {"value": 12.0, "unit": "g/dL"}, "high": {"value": 15.0, "unit": "g/dL"},
                                                                         "text": "12.0-15.0"}]})
         again = self.pull(cid)
         self.assertEqual((again["counts"]["results"], again["counts"].get("updated")), (0, 1), again)
         undo = lambda iid: self.robin.post(f"/api/profiles/{self.pid}/imports/{iid}/undo", headers=H)
         self.assertEqual(undo(res["import"]).status_code, 200)
-        self.assertEqual(said(self.data()), {"Hemoglobin": [[12.0, 15.0, "", "12.0-15.0", ""]], "Platelet Count": [[150, 400, "H", "150 - 400", "H"]],
+        self.assertEqual(said(self.data()), {"Hemoglobin": [[12.0, 15.0, "", "12.0-15.0", ""]], "Platelet Count": [[None, None, "", "", ""]],
                                              "ALT": [[None, None, "H", "", "H"]], "CRP": [[None, 10, "H", "<10", "H"]]},
-                         "the report as the later pull left it, the ALT and the CRP as before")
+                         "the Hemoglobin as the later pull left it, the Platelet Count, the ALT and the CRP as before")
         self.assertEqual(undo(again["import"]).status_code, 200)
         self.assertEqual(said(self.data()), said(before), "both undone: as they were")
         self.assertEqual(self.counts(), n)
+
+    def test_a_later_change_keeps_its_version_only_for_the_record_it_changed(self):   # #911
+        """The portal's export uploaded, then connected; a pull changes the CBC's Hemoglobin (Low, then Normal against
+        12.0–15.5), a later one its Platelet Count (High, then Normal against 150–500), each in the report's lab event
+        the upload made. Undoing the first pull kept the later pull's version of the whole lab event, so the Hemoglobin
+        stayed Normal, result and row, while Import history said the result it updated "gets back the range and flag it
+        had". Now the later change keeps its version only for the record it changed: the Hemoglobin is Low again, the
+        Platelet Count as the later pull left it, until that one is undone too; in either order, as before."""
+        hgb_n = {"interpretation": [{"coding": [{"system": INTERP, "code": "N"}]}],
+                 "referenceRange": [{"low": {"value": 12.0, "unit": "g/dL"}, "high": {"value": 15.5, "unit": "g/dL"}}]}
+        plt_n = {"interpretation": [{"coding": [{"system": INTERP, "code": "N"}]}], "referenceRange": [{"low": {"value": 150}, "high": {"value": 500}}]}
+        hgb, plt = ((13.5, 17.5, "L", "13.5 - 17.5", "L"), (12.0, 15.5, "", "12.0 - 15.5", "")), ((150, 400, "H", "150 - 400", "H"), (150, 500, "", "150 - 500", ""))
+        for order in ((0, 1), (1, 0)):
+            with self.subTest(order=order):
+                self.afresh(f"Undone {order} (fictional)")
+                self.upload_bundle([json.loads(json.dumps(r)) for r in self.fake.resources(patient="pat-1")])
+                cid = self.connect(self.source())
+                self.first_pull(cid)
+                before, n = self.draw(), self.counts()
+                self.assertEqual((before["Hemoglobin"], before["Platelet Count"]), ([hgb[0]], [plt[0]]))
+                self.fake.update("Observation", "obs-hgb", hgb_n)
+                pulls = [self.pull(cid)]
+                self.fake.update("Observation", "obs-plt", plt_n)
+                pulls.append(self.pull(cid))
+                self.assertEqual([p["counts"].get("updated") for p in pulls], [1, 1], pulls)
+                drawn = self.draw()
+                self.assertEqual((drawn["Hemoglobin"], drawn["Platelet Count"], self.faults()), ([hgb[1]], [plt[1]], []))
+                self.undo(pulls[order[0]]["import"])
+                drawn = self.draw()
+                self.assertEqual((drawn["Hemoglobin"], drawn["Platelet Count"], self.faults()),
+                                 ([hgb[order[0] == 1]], [plt[order[0] == 0]], []), "what the undone pull changed back, the other's kept")
+                self.undo(pulls[order[1]]["import"])
+                self.assertEqual((self.draw(), self.counts()), (before, n), "both undone: as before")
 
     def test_another_source_at_one_time_is_never_the_same_record(self):   # #885, #897
         """Only the same record of the same source is updated in place: an Observation by its own id. A hospital's FHIR
