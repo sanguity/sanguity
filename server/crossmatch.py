@@ -514,12 +514,16 @@ def _tidy(data, folded):
             d["same"] = [{**x, "row": at[x["row"]]} for x in d["same"] if x.get("row") in at]
         if not rows and not d.get("report"):
             gone.add(eid)
+    days = set()   # (#889) the lab days that lose a row: said for what they list now
     for k, d in list(details.items()):
+        if isinstance(d, dict) and d.get("type") == "labday" and isinstance(d.get("ids"), list) and set(folded) & set(d["ids"]):
+            days.add(k)
         if isinstance(d, dict) and d.get("type") == "labday" and isinstance(d.get("ids"), list) and gone & set(d["ids"]):
             ids = [i for i in d["ids"] if i not in gone]
             details[k] = {**d, "ids": ids}
             if not ids:
                 gone.add(int(k) if str(k).isdigit() else k)
+    common.lab_days_counted(data["events"], details, days)
     if gone:
         data["events"] = [e for e in data["events"] if e["id"] not in gone]
         for i in gone:

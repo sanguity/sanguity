@@ -409,8 +409,8 @@ def keep(data, dups, refs):
 
 def trim(data, dups):
     """A copy of data without the duplicates: a labitem kept for some of its rows only (#887, find()'s "rows") with
-    those, and a lab day kept with less than it had titled for what it holds ("1 lab result", as util.js labDayTitle
-    counts it), not the 4 of the report it was."""
+    those, its abn their flagged rows, and a lab day kept with less than it had said for what it holds (#889,
+    common.lab_day_counted: "1 lab result · Potassium"), not the 4 of the report it was and their tests."""
     skip, part = dups["events"], dups.get("rows") or {}
     out = {k: copy.deepcopy(v) for k, v in data.items() if k not in ROWS}
     out["events"] = [copy.deepcopy(e) for e in data.get("events") or [] if not (isinstance(e, dict) and str(e.get("id")) in skip)]
@@ -428,11 +428,13 @@ def trim(data, dups):
         details[k] = d
     out["details"] = details
     held = {str(k): d for k, d in details.items()}
-    for e in out["events"]:
-        d = held.get(str(e.get("id"))) if isinstance(e, dict) else None
-        rs = [held.get(str(i)) for i in d["ids"]] if str(e.get("id")) in less else []
-        if rs and all(isinstance(r, dict) and isinstance(r.get("rows"), list) for r in rs) and isinstance(e.get("title"), str):
-            e["title"] = re.sub(r"^\d+ lab results?(?= · |$)", common.lab_day_title(sum(len(r["rows"]) for r in rs)), e["title"])
+    bodies = {str(e.get("id")): e for e in out["events"] if isinstance(e, dict)}
+    for i in part:   # (#887) a labitem kept for some of its rows: its abn their flagged ones (#889)
+        if i in bodies and isinstance(held.get(i), dict) and isinstance(held[i].get("rows"), list):
+            n = sum(1 for r in held[i]["rows"] if isinstance(r, list) and len(r) > 4 and r[4])
+            bodies[i].pop("abn", None)
+            bodies[i].update({"abn": n} if n else {})
+    common.lab_days_counted(out["events"], held, less)
     out["costs"] = [copy.deepcopy(c) for c in data.get("costs") or []
                     if not (isinstance(c, dict) and c.get("id") is not None and str(c["id"]) in skip)]
     labs = []

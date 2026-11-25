@@ -49,6 +49,7 @@ import hashlib, json, os, re, secrets
 from datetime import datetime, timedelta
 
 from . import config, crypto, db as dbm, security as sec
+from .importers import common
 
 ACTIONS = ("hide", "rename", "date", "not_stay", "merge", "kind")
 RULE = "kind_rule"   # not made with add(): add_batch()
@@ -154,6 +155,7 @@ def apply(db, pid, data):
         for k in keys_of(e):
             index.setdefault(k, []).append(e)
     hidden, folded, moved = set(), {}, False   # folded: id of a merged-in event -> the id it went into
+    days = set()   # the lab days whose lists change: one merged into, or listing an event hidden or merged in (#889)
 
     def entry(r, value, hits, found):
         v = {k: x for k, x in (value or {}).items() if k not in ("was", "by")}
@@ -176,6 +178,7 @@ def apply(db, pid, data):
                 continue
             first, second = hits[0], others[0]
             _merge(first, second, details)
+            days.add(str(first["id"]))
             folded[second["id"]] = first["id"]
             listed.append({**entry(r, value, [first], True), "ids": [first["id"]], "other": _was(second)})
             continue
@@ -215,7 +218,7 @@ def apply(db, pid, data):
         events = [e for e in events if e["id"] not in gone]
         for i in gone:
             details.pop(str(i), None)
-        for d in details.values():
+        for k, d in details.items():
             if isinstance(d, dict) and isinstance(d.get("ids"), list) and any(i in gone for i in d["ids"]):
                 ids = []
                 for i in d["ids"]:
@@ -223,8 +226,10 @@ def apply(db, pid, data):
                     if i not in hidden and i not in ids:
                         ids.append(i)
                 d["ids"] = ids
+                days.add(k)
         costs = [c for c in costs if not (isinstance(c, dict) and c.get("id") in hidden)]
         costs = [{**c, "id": folded[c["id"]]} if isinstance(c, dict) and c.get("id") in folded else c for c in costs]
+    common.lab_days_counted(events, details, days)   # (#889) a lab day said for what it lists now
     if moved:
         events.sort(key=lambda e: str(e.get("t") or ""))
     data.update(events=events, details=details, costs=costs, edits=sorted(listed, key=lambda x: x["id"]))

@@ -2219,6 +2219,12 @@ Everything on `main` so far; it becomes the first tagged release.
   without them, streamed and otherwise byte for byte as it was, when cycle tracking is turned off or its data deleted,
   and as it's uploaded: sexual activity always, cycle records and basal body temperature while tracking is off, as the
   watch receiver keeps a phone's uploads. The card's "What deleting reaches" says so.
+- **A lab day lists the tests it holds, not the ones it was imported with** (#889): a lab day kept with fewer results
+  than its file had (some already here) was titled for what it held but kept its file's list of tests: Potassium typed
+  in, then again with Glucose and Sodium, read "2 lab results · Glucose, Potassium, Sodium" on the Timeline; after a
+  pull or an Undo, "1 lab result" sat under "CBC with differential, Lab results" for one ALT. Now wherever a lab day's
+  list changes (duplicates left out of an import, a pull joining it, an Undo, an entry hidden, a result linked as the
+  same as another source's), one rule titles it for its results, lists their tests and counts their flags.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

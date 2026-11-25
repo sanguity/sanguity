@@ -1018,19 +1018,14 @@ def _link_labdays(db, pid, iid, full, keys, cid=None):
 
 
 def _labday_body(db, body, ids):
-    """A lab day's body titled for the rows its labitems (ids) hold (\"5 lab results\", as the importers title one; a
-    title of another form kept), its abn their count of flagged rows."""
-    rows, abn = 0, 0
+    """A lab day's body said for what its labitems (ids) hold (#889, common.lab_day_counted: \"5 lab results\" and
+    their tests, as the importers say one; a title of another form kept), its abn their count of flagged rows."""
+    items = []
     for i in ids:
         r = db.execute("SELECT body, detail FROM events WHERE id=?", (i,)).fetchone()
-        d = records._dec(r["detail"]) if r else None
-        if isinstance(d, dict) and isinstance(d.get("rows"), list):
-            rows += len(d["rows"])
-            abn += (records._dec(r["body"]) or {}).get("abn") or 0
-    out = {k: v for k, v in body.items() if k != "abn"}
-    if rows and isinstance(out.get("title"), str):
-        out["title"] = re.sub(r"^\d+ lab results?(?= · |$)", common.lab_day_title(rows), out["title"])
-    return {**out, **({"abn": abn} if abn else {})}
+        if r:
+            items.append((records._dec(r["body"]) or {}, records._dec(r["detail"])))
+    return common.lab_day_counted(body, items)
 
 
 def _meta_changes(db, pid, delta):
