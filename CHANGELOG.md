@@ -3469,6 +3469,10 @@ Everything on `main` so far; it becomes the first tagged release.
 - **The browser check keeps that tip off the reminder form's controls** (#977, `tests/browser_check.py`): a review
   had it opening below Remove, over Add another time. It opens above, over the form's "Times of day" or the drawer's
   subtitle, at every width and text size tried, by the keyboard and the mouse, and the check now holds it there.
+- **On a phone, tapping a control that's off shows why beside it** (#986): the reason for the reminder's greyed
+  Remove showed only on hover or keyboard focus, so a tap said it only in the form's status line, below the window
+  on a phone with larger text. A tap on any control that's off with a reason (the reminder's Remove, a button that
+  needs the server while offline) now shows its reason beside it, as hovering does, until the next tap.
 - **Adding a reminder's time is said** (#867): after Remove time, "Time 2 removed; 1 time left" stayed at the
   form's foot once Add another time had made it two. Adding a time now says "Time 2 added" there instead.
 - **A period's button keeps focus as the fonts arrive** (#747): the presets' row is fitted again once the app's

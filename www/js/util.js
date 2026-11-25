@@ -759,14 +759,14 @@ function wireDialog(d) {
    date or range. Unlike a title, it shows for the keyboard too (on focus, when focus is shown), stays while the
    pointer moves onto it, never covers its element (above it, or below where there's no room: CSS anchor positioning,
    or placed from here where the browser has none), and Escape puts it away without moving the pointer or focus
-   (WCAG 1.4.13); a press on its element puts it away too, and it has no timer. While shown it is the element's
-   description (aria-describedby), unless the element's name or description already says each line of it (#358: a
-   screen reader would hear it twice). It's for what can take focus, or for hovering what's said elsewhere too: a tip
-   on a span or a cell, which the keyboard, a tap and a screen reader don't reach, has its words in the page as well,
-   as text for screen readers or a focusable control's tip and description (#358). One shared popover="manual", so it
-   never closes an open menu. A title= stays where it's purely a hint beside a name that already says it all, on a
-   disabled control (which gets no focus or pointer events) and on an iframe, whose title is its name. Charts' own
-   readouts (#tip, core.js) are the chart kit's. */
+   (WCAG 1.4.13); a press on its element puts it away too (on one that's off, shows it: #986), and it has no timer.
+   While shown it is the element's description (aria-describedby), unless the element's name or description already
+   says each line of it (#358: a screen reader would hear it twice). It's for what can take focus, or for hovering
+   what's said elsewhere too: a tip on a span or a cell, which the keyboard, a tap and a screen reader don't reach, has
+   its words in the page as well, as text for screen readers or a focusable control's tip and description (#358). One
+   shared popover="manual", so it never closes an open menu. A title= stays where it's purely a hint beside a name that
+   already says it all, on a disabled control (which gets no focus or pointer events) and on an iframe, whose title is
+   its name. Charts' own readouts (#tip, core.js) are the chart kit's. */
 /* placeAt(node, {"--name": px}): where a browser without CSS anchor positioning shows a popover (a tooltip, a menu:
    nav.js), measured by the script, as custom properties app.css's @supports not (anchor-name: --a) rules read */
 const placeAt = (node, at) => { for (const [k, v] of Object.entries(at)) node.style.setProperty(k, v + "px"); };
@@ -832,12 +832,17 @@ const placeAt = (node, at) => { for (const [k, v] of Object.entries(at)) node.st
     if (t.matches && t.matches("[data-tip]:focus-visible")) { t.scrollIntoView({block: "nearest", inline: "nearest"}); show(t, "focus"); }
     else if (on && by === "focus") hide();
   });
-  document.addEventListener("focusout", ev => { if (ev.target === on && by === "focus") hide(); });
+  document.addEventListener("focusout", ev => { if (ev.target === on && by !== "hover") hide(); });
   document.addEventListener("pointerdown", ev => { if (on && !box.contains(ev.target)) hide(); }, true);
-  // Escape: away it goes; one shown by hovering takes the key, so the panel or menu behind stays open
+  // a press on a control that's off (aria-disabled) shows why, its tip, beside it (a tap's until the next one): a tap has
+  // no hover (#986: a reminder's only time's Remove said why in the form's status line, out of sight). Before offline.js
+  // stops a press on what needs the server
+  document.addEventListener("click", ev => { const t = ev.target.closest?.("[aria-disabled=true][data-tip]");
+    if (t && t !== on) show(t, ev.pointerType === "mouse" ? "hover" : "press"); }, true);
+  // Escape: away it goes; one shown by hovering or a press takes the key, so the panel or menu behind stays open
   document.addEventListener("keydown", ev => {
     if (ev.key !== "Escape" || !on) return;
-    const hovered = by === "hover";
+    const hovered = by !== "focus";
     hide();
     if (hovered) ev.stopPropagation();
   }, true);
