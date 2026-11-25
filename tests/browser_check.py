@@ -8232,6 +8232,40 @@ def main():
             check("…hidden from its Timeline row, gone from the list, then Escape: focus on the row now where it was; merged into from its row: on that row (#417)",
                   hide417 is not None and hide417[2] == next417 and merged417 is not None and merged417[2] == str(merge417),
                   [hide417, next417, merged417, merge417])
+            # #950: a lab draw's report hidden from the drawer: its Hide says its results stay in Labs, and they do, on no
+            # lab day: the draw's badge counts what its drawer shows (it counted the hidden report's results too)
+            draw950 = """async id => { await loadDetails(DATA.details[id].ids); const e = byId.get(id), key = (s, p) => s.name + '|' + p.ts;
+                const shown = new Set(DATA.details[id].ids.flatMap(i => (DATA.details[i]?.rows || []).map((_, r) => rowPoint(DATA.details[i], r, byId.get(i)))
+                  .filter(Boolean).map(x => key(x.s, x.p))));
+                return [[...new Set((e.res || []).map(([s, p]) => key(s, p)))].sort(), [...shown].sort()]; }"""
+            pick950 = js("""(async () => { await loadDetails(EV.filter(e => e.k === 'lab').flatMap(e => DATA.details[e.id]?.ids || []));
+                const e = EV.find(e => e.k === 'lab' && (DATA.details[e.id]?.ids || []).filter(i => byId.get(i)?.imp === e.imp).length >= 2);
+                if (!e) return null; const item = DATA.details[e.id].ids.find(i => (DATA.details[i]?.rows || []).length);
+                return [e.id, item, DATA.details[item].rows.map((r, i) => DATA.details[item].series?.[i] ?? r[0])]; })()""")
+            check("a lab draw with two reports of one source to hide one of (#950)", pick950 is not None, pick950)
+            if pick950:
+                day950, item950, names950 = pick950
+                before950 = js(f"({draw950})", day950)
+                js("id => openEvent(byId.get(id))", item950)
+                settle(200)
+                page.click("#dmoreBtn")
+                menu950 = js("""(() => { const b = document.querySelector('#dmoreList button'); return [b.textContent, b.dataset.tip]; })()""")
+                page.click("#dmoreList button:text-is('Hide (results stay in Labs)')")
+                page.wait_for_function("(DATA.edits || []).length === 1 && document.getElementById('dtitle').textContent === 'Edits to these records'", timeout=20000)
+                settle(200)
+                said950 = page.inner_text("#dbody .edits")
+                after950 = js(f"({draw950})", day950)
+                labs950 = js("names => names.filter(n => SERIES.some(s => s.name === n && s.pts.length))", names950)
+                check("…its ⋯ menu's Hide says its results stay in Labs, and once hidden its edit says so (#950)",
+                      menu950[0] == "Hide (results stay in Labs)" and "its results stay in Labs" in (menu950[1] or "")
+                      and "· its results stay in Labs" in said950, [menu950, said950[:200]])
+                check("…its draw's badge counts what its drawer shows, the hidden report's results in Labs still (#950)",
+                      before950[0] == before950[1] and after950[0] == after950[1] and len(after950[0]) < len(before950[0])
+                      and sorted(labs950) == sorted(set(names950)), [before950, after950, labs950, names950])
+                js(undo417)
+                page.wait_for_function("!(DATA.edits || []).length", timeout=20000)
+                settle(300)
+                check("…undone, the draw as it was (#950)", js(f"({draw950})", day950) == before950)
             # #479: opened from a tab's link at 1400 px (the palette leaves focus there), the docked drawer pushes that tab
             # under More; Escape undocks it, More goes as all the tabs fit again, and focus is the tab's, not the page's
             vw479 = page.viewport_size

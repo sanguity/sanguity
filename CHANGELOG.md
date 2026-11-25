@@ -3391,6 +3391,12 @@ Everything on `main` so far; it becomes the first tagged release.
   its documents of the same file names as already here. Each now says its source where the file says it (a C-CDA's
   custodian, a CareSpace export's clinic): the other clinic's is added as its own, and a record is updated only from
   its own clinic.
+- **A lab report hidden by hand is no longer counted on its draw's badge, and Hide says its results stay in Labs**
+  (#950): hiding one of a draw's reports left it out of the draw's drawer, but its results were still counted on the
+  draw's Timeline badge (12 against the drawer's 7), and a draw whose only report was hidden stayed, empty. Now a
+  hidden report's results are on no lab draw, still in Labs, its charts, share links and the visit summary; a draw
+  whose every report is hidden is hidden too, and hiding a draw hides its reports. The ⋯ menu's item for a draw or a
+  report reads "Hide (results stay in Labs)", and the edit says so.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

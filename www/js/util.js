@@ -111,7 +111,8 @@ function savedCats(s) {
    event of its import for is its import's own draw's that day, else every draw's that day, as before. draws: [{id, imp,
    ts, at: its reports' times, items: [[time, import]] of the lab events it lists}]; series: lab series, a point's
    import p.imp where several are joined (same.js), else the series'; a result that came twice shown once (same.js
-   joinSeries, #825) each of its imports' draws' (p.also). ts(p) a point's time, day(t) its day. -> Map(draw id ->
+   joinSeries, #825) each of its imports' draws' (p.also), but those whose copy's reports were hidden by hand (p.off,
+   #950: on no draw, as no draw's drawer shows them). ts(p) a point's time, day(t) its day. -> Map(draw id ->
    [[series, point]]) */
 function labDraws(draws, series, ts, day) {
   const out = new Map(), by = new Map(), held = new Map(), add = (m, k, x) => (m.get(k) || m.set(k, []).get(k)).push(x);
@@ -122,8 +123,9 @@ function labDraws(draws, series, ts, day) {
   const near = (e, t) => Math.min(...(e.at?.length ? e.at : [e.ts]).map(a => Math.abs(a - t)));
   const pick = (mine, t) => mine.length > 1 ? mine.reduce((a, b) => near(b, t) < near(a, t) ? b : a) : mine[0];
   for (const s of series) for (const p of s.pts) {
-    const t = ts(p), d = day(t), imp = p.imp ?? s.imp;
-    const at = new Set([imp, ...(p.also || [])].map(i => held.get(d + "\u001f" + i) || by.get(d + "\u001f" + i)).filter(Boolean).map(m => pick(m, t)));
+    const t = ts(p), d = day(t), imps = [p.imp ?? s.imp, ...(p.also || [])].filter(i => !p.off?.includes(i));
+    if (p.off && !imps.length) continue;   // its reports hidden by hand (#950, same.js p.off): on no lab day, in Labs still
+    const at = new Set(imps.map(i => held.get(d + "\u001f" + i) || by.get(d + "\u001f" + i)).filter(Boolean).map(m => pick(m, t)));
     for (const e of at.size ? at : by.get(d) || []) out.get(e.id).push([s, p]);
   }
   return out;

@@ -129,7 +129,7 @@ const SgPalette = (() => {
     for (const x of d.labs || []) if (x && x.name && (x.pts || []).length) {
       const have = by.get(x.name);
       if (have) have.n += x.pts.length; else by.set(x.name, {name: x.name, shown: nick[x.name] || x.name, panel: x.panel || "", n: x.pts.length});
-      if (x.panel !== "Vitals") lab.push(x);
+      if (x.panel !== "Vitals") { lab.push(x); x.pts.forEach((p, n) => { p.off = x.unlisted?.[n] ? [x.imp] : null; }); }   // (#950, as same.js joinSeries)
     }
     const imp = new Map();
     for (const e of d.events || []) { title.set(e.id, e.title || ""); ts.set(e.id, zParse(e.t)); imp.set(e.id, e.imp); }

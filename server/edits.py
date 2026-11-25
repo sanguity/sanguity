@@ -25,7 +25,10 @@ changed in the source) stays stored, unapplied, and is listed as not found until
 removes the edit.
 
 How each action changes the records:
-  hide      the event is left out, with its row on the Costs tab and its place in any lab day's list
+  hide      the event is left out, with its row on the Costs tab and its place in any lab day's list. A lab day hidden
+            takes the lab events it lists with it, and one all of whose lab events are hidden goes too (#950); their
+            results stay in Labs, charts, share links and summaries, on no lab day (crossmatch.unlisted), and the
+            drawer's Hide says so
   rename    a new title
   date      a new start time; an end moves with it, so the event lasts as long as before
   not_stay  a "stay" becomes a "visit" with no end (so it no longer shades the charts as a hospital stay); its detail
@@ -58,6 +61,7 @@ from . import config, crypto, db as dbm, security as sec
 from .importers import common
 
 ACTIONS = ("hide", "rename", "date", "not_stay", "merge", "kind")
+UNLISTED = "_unlisted"   # (#950) apply()'s lab events hidden, for records._assemble to pop (never served)
 RULE = "kind_rule"   # not made with add(): add_batch()
 # the kinds an entry can move between (#237): their details are free-form, so any of them reads as any other
 MOVABLE = ("visit", "contact", "procedure", "imaging", "study", "message", "appt_msg", "auto_msg", "letter", "document")
@@ -256,6 +260,20 @@ def apply(db, pid, data):
             e["k"] = value["k"]
         listed.append({**entry(r, value, hits, bool(hits)), "was": {"k": value.get("from"), "title": value.get("title")}})
 
+    # (#950) a lab day hidden hides the lab events it lists, and one all of whose lab events are hidden goes with them;
+    # the lab events hidden are kept apart for crossmatch.unlisted, their results in Labs on no lab day
+    kinds = {e["id"]: e.get("k") for e in events}
+    for e in events:
+        ids = (details.get(str(e["id"])) or {}).get("ids") if e.get("k") == "lab" else None
+        if isinstance(ids, list) and e["id"] in hidden:
+            hidden.update(i for i in ids if kinds.get(i) == "labitem")
+    for e in events:
+        ids = (details.get(str(e["id"])) or {}).get("ids") if e.get("k") == "lab" else None
+        if isinstance(ids, list) and ids and all(i in hidden for i in ids):
+            hidden.add(e["id"])
+    off = [e for e in events if e["id"] in hidden and e.get("k") == "labitem"]
+    if off:
+        data[UNLISTED] = {"events": off, "details": {str(e["id"]): details[str(e["id"])] for e in off if str(e["id"]) in details}}
     gone = hidden | set(folded)
     if gone:
         events = [e for e in events if e["id"] not in gone]
