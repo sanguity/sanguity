@@ -3169,6 +3169,14 @@ Everything on `main` so far; it becomes the first tagged release.
   there. The app deletes it 30 days after the restore (`RESTORE_KEEP_DAYS`), at start and hourly, each deletion in the
   install's activity log; **Admin → Backups** says so under Restore, lists each one with when it goes, and has a
   **Delete now** (asked first, with the fresh check). No backup includes it, which a server test now holds to.
+- **A deleted profile leaves no folder behind** (#932): deleting a profile moved its folder to
+  `profiles/.deleting-<id>/` before it had the write lock and removed that once the deletion was saved. Stopped in
+  between, the folder stayed for good, in every backup; a pull or an import saving at that moment wrote a new
+  `profiles/<id>/` that outlived the deletion; and a deletion that then failed couldn't move the folder back onto it,
+  leaving the profile's photos and uploads stranded. The folder is now moved aside only under the write lock, so what
+  a save wrote goes with it, and whatever was written to the profile's folder meanwhile goes once the deletion is
+  saved; a failure puts it back beside anything new, never onto it; and at start the app puts back a live profile's
+  folder a stop left aside and removes a deleted one's, and any `profiles/<id>/` no profile owns.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -729,6 +729,134 @@ class Backups(unittest.TestCase):
         self.robin.delete(f"/api/profiles/{self.pid}/journal/{jid}", headers=H)
         self.clear_folder()
 
+    # ---------------------------------------------------------------- a profile's deletion leaves no folder (#932)
+
+    def doomed(self, name):
+        """A profile with a file in its folder, as a journal photo or an upload leaves one: (its id, the file)."""
+        db = dbm.connect()
+        try:
+            pid = prof.create_profile(db, name, owner_id=self.uids["robin"])
+        finally:
+            db.close()
+        path = os.path.join(prof.profile_dir(pid), "journal", "kept.img")
+        os.makedirs(os.path.dirname(path))
+        with open(path, "wb") as f:
+            f.write(b"a fictional photo, sealed")
+        return pid, path
+
+    def test_11_a_deleted_profiles_folder_goes_with_it(self):
+        """The folder is moved aside only under the write lock: a save holding it writes first, and what it wrote goes
+        with the profile; a deletion that can't get the lock moves nothing; one that fails puts the folder back beside
+        what was written meanwhile, never onto it; and what a stop part-way leaves is put back or removed at the next
+        start, the id count moved past it."""
+        aside = lambda pid: os.path.join(DATA, "profiles", f".deleting-{pid}")
+        # a pull saving what its source sent holds the write lock: the deletion waits, then takes that too
+        pid, _ = self.doomed("Deleted while a pull saves (fictional)")
+        holder = dbm.connect()
+        holder.execute("BEGIN IMMEDIATE")
+        out = {}
+
+        def delete(pid=pid):
+            db = dbm.connect()
+            try:
+                out["gone"] = prof.delete_profile(db, pid)
+            finally:
+                db.close()
+        t = threading.Thread(target=delete)
+        t.start()
+        time.sleep(0.4)
+        moved_early = os.path.exists(aside(pid))
+        store = os.path.join(prof.profile_dir(pid), "connections", "1")
+        os.makedirs(os.path.dirname(store), exist_ok=True)
+        with open(store, "wb") as f:   # as sync._keep_store writes it, inside its transaction
+            f.write(b"what a fictional source sent, sealed")
+        holder.execute("COMMIT")
+        holder.close()
+        t.join(30)
+        self.assertEqual(out["gone"]["name"], "Deleted while a pull saves (fictional)")
+        self.assertFalse(moved_early, "not moved before the deletion has the write lock")
+        self.assertFalse(os.path.exists(prof.profile_dir(pid)), "what the save wrote went with the profile")
+        self.assertFalse(os.path.exists(aside(pid)))
+
+        # it can't get the lock (a save holding it past the busy timeout): nothing is moved, and what the save writes
+        # meanwhile is beside the profile's files
+        pid, kept = self.doomed("Not deleted: busy (fictional)")
+        holder = dbm.connect()
+        holder.execute("BEGIN IMMEDIATE")
+        late = os.path.join(prof.profile_dir(pid), "connections", "1")
+
+        def write_late():
+            time.sleep(0.1)
+            os.makedirs(os.path.dirname(late), exist_ok=True)
+            with open(late, "wb") as f:
+                f.write(b"what a fictional source sent, sealed")
+        w = threading.Thread(target=write_late)
+        w.start()
+        db = dbm.connect()
+        db.execute("PRAGMA busy_timeout=400")
+        try:
+            with self.assertRaises(sqlite3.OperationalError):
+                prof.delete_profile(db, pid)
+        finally:
+            w.join()
+            holder.execute("ROLLBACK")
+            holder.close()
+        self.assertTrue(db.execute("SELECT 1 FROM profiles WHERE id=?", (pid,)).fetchone())
+        db.close()
+        self.assertTrue(os.path.isfile(kept) and os.path.isfile(late), "the profile's files where they were")
+        self.assertFalse(os.path.exists(aside(pid)))
+
+        # it fails once the folder is aside, after an upload's file arrived in a new profiles/<id>/: put back beside it
+        arrived = os.path.join(prof.profile_dir(pid), "uploads", "77", "piece")
+        from server import labmap
+
+        def fail(db, p):
+            os.makedirs(os.path.dirname(arrived))
+            with open(arrived, "wb") as f:
+                f.write(b"a fictional upload's piece, sealed")
+            raise RuntimeError("a fictional failure")
+        db = dbm.connect()
+        try:
+            with mock.patch.object(labmap, "forget_profile", fail), self.assertRaises(RuntimeError):
+                prof.delete_profile(db, pid)
+        finally:
+            db.close()
+        self.assertTrue(all(os.path.isfile(p) for p in (kept, late, arrived)), os.listdir(prof.profile_dir(pid)))
+        self.assertFalse(os.path.exists(aside(pid)), "nothing left aside")
+        self.assertEqual(self.robin.get(f"/api/profiles/{pid}/journal").status_code, 200, "the profile is still there")
+
+        # a stop part-way: a live profile's folder aside (before the deletion was saved) is put back; a deleted one's
+        # (after), and a folder written after its profile was deleted, go; nothing else in profiles/ is touched
+        os.replace(prof.profile_dir(pid), aside(pid))
+        os.makedirs(prof.profile_dir(pid))
+        with open(os.path.join(prof.profile_dir(pid), "new"), "wb") as f:
+            f.write(b"written since, sealed")
+        db = dbm.connect()
+        top = db.execute("SELECT seq FROM sqlite_sequence WHERE name='profiles'").fetchone()[0]
+        gone = [os.path.join(DATA, "profiles", n) for n in (f".deleting-{top + 5}", str(top + 9))]
+        for d in gone:
+            os.makedirs(os.path.join(d, "watch"))
+            with open(os.path.join(d, "watch", "daily.json"), "wb") as f:
+                f.write(b"a deleted profile's watch data, sealed")
+        notes, outside = os.path.join(DATA, "profiles", "notes"), os.path.join(TMP, "outside-932")
+        os.makedirs(notes)
+        os.makedirs(outside)
+        link = os.path.join(DATA, "profiles", str(top + 12))
+        os.symlink(outside, link)
+        try:
+            self.assertEqual(prof.sweep(db), 2)
+            self.assertTrue(all(os.path.isfile(p) for p in (kept, late, arrived, os.path.join(prof.profile_dir(pid), "new"))))
+            self.assertFalse(os.path.exists(aside(pid)))
+            for d in gone:
+                self.assertFalse(os.path.exists(d), d)
+            self.assertTrue(os.path.isdir(notes) and os.path.islink(link) and os.path.isdir(outside))
+            self.assertGreater(prof.create_profile(db, "Made after (fictional)", owner_id=self.uids["robin"]), top + 9,
+                               "never one of their ids")
+        finally:
+            os.remove(link)
+            shutil.rmtree(notes)
+            db.close()
+
 
     # ---------------------------------------------------------------- what a restore replaced (#595)
 
