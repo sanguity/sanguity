@@ -28,8 +28,9 @@ How each action changes the records:
   kind      the event moves to another category (#237): only between the kinds in MOVABLE, whose details are
             free-form; its detail stays as it is
   merge     two events become one. The first (the target) keeps everything it has: kind, title, time, its own detail.
-            The second's detail fills in only the fields the first lacks, its cost row and its place in a lab day
-            move to the first, an abnormal flag on either marks the result, and the drawer lists what was merged
+            The second's detail fills in only the fields the first lacks, as its Costs row does the first's (one
+            row, counted once, #924; the second's becomes the first's where it has none), its place in a lab day
+            moves to the first, an abnormal flag on either marks the result, and the drawer lists what was merged
             in, with the import it came from (details.merged[].imp), so both sources show. Two lab days merged list
             both days' lab events (#915), titled for them. Then the second is left out.
 
@@ -227,13 +228,37 @@ def apply(db, pid, data):
                         ids.append(i)
                 d["ids"] = ids
                 days.add(k)
-        costs = [c for c in costs if not (isinstance(c, dict) and c.get("id") in hidden)]
-        costs = [{**c, "id": folded[c["id"]]} if isinstance(c, dict) and c.get("id") in folded else c for c in costs]
+        costs = _fold_costs([c for c in costs if not (isinstance(c, dict) and c.get("id") in hidden)], folded)
     common.lab_days_counted(events, details, days)   # (#889) a lab day said for what it lists now
     if moved:
         events.sort(key=lambda e: str(e.get("t") or ""))
     data.update(events=events, details=details, costs=costs, edits=sorted(listed, key=lambda x: x["id"]))
     return data
+
+
+def _fold_costs(costs, folded):
+    """The Costs rows once merged events are folded in (#924): one row an event. A merged-in event's row moves to the
+    event it went into (followed through a merge of that one) when that has none; when it has one, that's kept, the
+    merged-in row filling in only the fields it lacks, as its detail does, so the claim's share is counted once."""
+    def into(i):
+        while i in folded:
+            i = folded[i]
+        return i
+    out, own, drop = list(costs), {}, set()   # own: the place of each event's own row
+    for n, c in enumerate(costs):
+        if isinstance(c, dict) and c.get("id") not in folded:
+            own.setdefault(c.get("id"), n)
+    for n, c in enumerate(costs):
+        if not (isinstance(c, dict) and c.get("id") in folded):
+            continue
+        to = into(c["id"])
+        if to in own:
+            have = out[own[to]]
+            out[own[to]] = {**have, **{k: v for k, v in c.items() if k != "id" and have.get(k) in (None, "", [])}}
+            drop.add(n)
+        else:
+            out[n], own[to] = {**c, "id": to}, n
+    return [c for n, c in enumerate(out) if n not in drop]
 
 
 def _merge(first, second, details):
