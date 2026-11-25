@@ -104,8 +104,10 @@ async def lifespan(app):
                 print(f"Encrypted {sealed['files']} files and {sealed['fields']} database fields that weren't yet.", flush=True)
             if (moved := prof.migrate_files(db)):
                 print(f"Moved the records of {moved} profile(s) into the database.", flush=True)
-            if (gone := prof.sweep_imported(db)):   # exports server.manage import loaded, no import's any more (#945)
-                print(f"Removed {gone} unpacked export(s) that no import is loaded from any more.", flush=True)
+            if (gone := prof.sweep_imported(db)):   # exports server.manage import loaded: no import's any more (#945), or
+                # what one loaded before #918 kept (#948)
+                print(f"Removed {gone} folder(s) and file(s) of exports loaded with server.manage import that are no longer "
+                      "kept: what no import is loaded from any more, and their activity logs and cycle records.", flush=True)
             if (moved := settings.migrate_files(db, prof.profile_dir)):
                 print(f"Moved the settings.json of {moved} profile(s) into the database; settings are changed on the "
                       "Settings page now, and each file was deleted.", flush=True)
