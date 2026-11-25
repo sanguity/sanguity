@@ -9236,6 +9236,18 @@ def main():
                 check("…and it's said (“Time 2 removed; 2 times left”), and Enter in the time field focus goes to doesn't save the form (#853: it saved "
                       "the reminder a time short)", "Time 2 removed; 2 times left." in rm853[0] and rm853[1] == ["New reminder", ["08:00", "12:00"], "Time 2"]
                       and "Time 2 removed; 1 time left." in rm853[2] and "Reminder saved" not in rm853[0] + rm853[2], rm853)
+                # #837: the only time's Remove is off (aria-disabled), its reason its tip and, shown on focus, its description;
+                # pressed, it says the reason and the time stays (it did nothing and said nothing)
+                page.focus("#dbody .mr-time button")
+                settle(200)
+                one837 = [js("document.querySelector('#dbody .mr-time button').getAttribute('aria-disabled')"), ax_said(page, "#dbody .mr-time button")]
+                page.keyboard.press("Enter")
+                settle(200)
+                one837 += [js("[document.querySelector('#dbody .jform > .edit-msg').textContent, document.querySelectorAll('#dbody .mr-time').length, document.activeElement.getAttribute('aria-label')]"),
+                           js("document.getElementById('sgStatus').textContent")]
+                check("…the only time's Remove is off, saying why (“A reminder needs a time”) as its description and when pressed, the time kept (#837: it did "
+                      "nothing and said nothing)", one837[:3] == ["true", ["Remove time 1", "A reminder needs a time"], ["A reminder needs a time.", 1, "Remove time 1"]]
+                      and "A reminder needs a time" in one837[3], one837)
                 page.click("#dbody button:text-is('Add another time')")
                 page.locator("#dbody .mr-time input >> nth=1").fill("20:00")
                 page.click("#dbody .mr-days button[aria-label=Saturday]")

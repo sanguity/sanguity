@@ -256,10 +256,12 @@ function medReminderForm(m, r) {
   const uid = Math.random().toString(36).slice(2, 8), id = n => `mr-${n}-${uid}`;
   const msg = el("p", {class: "hint edit-msg", role: "status"});
   const times = el("div", {class: "mr-times"});
-  // each time named, and its id, by its place: one removed, those after it move up (#830: a second "Time 2" after it)
-  const named = () => [...times.children].forEach((row, i) => {
-    const [input, rm] = row.children;
+  // each time named, and its id, by its place: one removed, those after it move up (#830: a second "Time 2" after it).
+  // The only one's Remove is off, its reason its tip and description (#837: it did nothing, and said nothing)
+  const named = () => [...times.children].forEach((row, i, all) => {
+    const [input, rm] = row.children, only = all.length < 2;
     input.id = id("t" + (i + 1)); input.setAttribute("aria-label", `Time ${i + 1}`); rm.setAttribute("aria-label", `Remove time ${i + 1}`);
+    if (only) { rm.setAttribute("aria-disabled", "true"); rm.dataset.tip = "A reminder needs a time"; } else { rm.removeAttribute("aria-disabled"); delete rm.dataset.tip; }
   });
   const addTime = v => {
     // Enter in a time doesn't save the form, Save does (#853: a second Enter on Remove, in the next time's field, saved it)
@@ -268,7 +270,7 @@ function medReminderForm(m, r) {
     // and that's said, as the next one takes its name (#853: "Time 2 removed; 2 times left")
     const row = el("div", {class: "mr-time"}, input, el("button", {class: "btn small", type: "button", text: "Remove", onclick: () => {
       const n = [...times.children].indexOf(row) + 1, left = times.children.length - 1;
-      if (!left) return;
+      if (!left) return sayIn(msg, "A reminder needs a time.");
       const to = row.nextElementSibling || row.previousElementSibling;
       row.remove(); more.hidden = false; named();
       to.querySelector("input").focus();

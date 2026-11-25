@@ -1723,6 +1723,7 @@ svg text.medname{fill:var(--ink2);font-size:var(--fs-1)}
 .mr-acts{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
 .mr-times{display:flex;flex-direction:column;gap:var(--sp-2)}
 .mr-time{display:flex;gap:var(--sp-2);align-items:center}
+.mr-time>.btn[aria-disabled=true]{opacity:.45;cursor:not-allowed}   /* the only time's Remove: its tip says why (#837) */
 .mr-days{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
 .mr-add{align-self:flex-start}
 /* ---- the medication log (#235, medlog.js): marks by shape (● taken, ◆ taken late, ○ skipped), the drawer's list,

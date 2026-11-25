@@ -3446,6 +3446,9 @@ Everything on `main` so far; it becomes the first tagged release.
   browser's note of the last profile picked; its records page view (the lab names picked on Labs among it) and Body
   and activity's options stayed until sign-out, there and in other members' browsers. They go on its Delete, and in
   any browser as soon as a page loads and the profile is no longer among the person's.
+- **A reminder's only time says why it can't be removed** (#837): with one time left in a reminder's form, its
+  Remove did nothing and said nothing. It's now shown as off, with "A reminder needs a time" as its tip and its
+  description, and pressing it says so; the time stays.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
