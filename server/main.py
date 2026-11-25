@@ -772,18 +772,19 @@ def reauth(body: FreshCheck, request: Request, s=Depends(user), db=Depends(get_d
 
 @app.post("/api/me/reauth/passkey/options")
 def reauth_passkey_options(request: Request, s=Depends(user), db=Depends(get_db)):
-    state, options = passkeys.authentication_options(db, request.headers.get("origin"), s["id"])
+    state, options = passkeys.authentication_options(db, request.headers.get("origin"), s["id"], fresh=True)   # verifying the person (#930)
     return {"state": state, "options": options}
 
 
 @app.post("/api/me/reauth/passkey")
 def reauth_passkey(body: PasskeyFinish, request: Request, s=Depends(user), db=Depends(get_db)):
-    """The fresh check with one of the account's own passkeys."""
+    """The fresh check with one of the account's own passkeys, which must verify the person (#930: a PIN or a
+    fingerprint, as the password it stands in for would; a tap alone on a key left plugged in isn't enough)."""
     keys = ("ip:passkey|" + _client_ip(request),)
     if (w := sec.throttle.wait(*keys)):
         raise HTTPException(429, f"Too many failed tries. Try again in {w} seconds.", headers={"Retry-After": str(w)})
     try:
-        uid, _ = passkeys.authenticate(db, body.state[:200], body.credential)
+        uid, _ = passkeys.authenticate(db, body.state[:200], body.credential, fresh=True)
     except passkeys.PasskeyError as e:
         sec.throttle.fail(*keys)
         _audit("reauth.fail", request, s, action="fresh check", step="passkey", reason=str(e)[:200])

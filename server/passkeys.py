@@ -28,6 +28,8 @@ TRANSPORTS = {t.value for t in AuthenticatorTransport}
 
 
 # a passkey the device still has but Sanguity doesn't (removed under Account, or from another install)
+UNVERIFIED = ("Your passkey didn't check it's you: unlock it with its PIN, fingerprint or face when it asks, not just a "
+              "touch, and try again.")   # (#930)
 STALE = ("That passkey isn't registered here: it was probably removed under Account. Delete it from this device's "
          "passkeys (or password manager), then try again; you can pick a passkey on another device, such as your phone.")
 
@@ -180,9 +182,10 @@ def register(db, u, state, credential, name):
 
 # ---------------------------------------------------------------- signing in with one
 
-def authentication_options(db, origin, uid=None):
+def authentication_options(db, origin, uid=None, fresh=False):
     """Options for navigator.credentials.get. With uid (after the password): that account's passkeys at this
-    address. Without: any passkey the browser holds for this site, which must verify the person."""
+    address. Without: any passkey the browser holds for this site, which must verify the person; so must one for the
+    fresh check (fresh, with uid: #930), which stands in for the password, and whose challenge only it takes."""
     rp_id, origin = site(origin, sites(db, uid) if uid is not None else ())
     allow = None
     if uid is not None:
@@ -193,17 +196,22 @@ def authentication_options(db, origin, uid=None):
             raise PasskeyError("None of your passkeys was made at this address." + (f" Open Sanguity at {at} to use one" if at else "")
                                + (", or use your authenticator code." if at and code else " Use your authenticator code." if code
                                   else "." if at else ""), 409)
+    verify = uid is None or fresh
     opts = webauthn.generate_authentication_options(
         rp_id=rp_id, allow_credentials=allow,
-        user_verification=UserVerificationRequirement.PREFERRED if uid is not None else UserVerificationRequirement.REQUIRED)
-    state = challenges.issue(kind="sign-in", uid=uid, challenge=opts.challenge, rp_id=rp_id, origin=origin)
+        user_verification=UserVerificationRequirement.REQUIRED if verify else UserVerificationRequirement.PREFERRED)
+    state = challenges.issue(kind="fresh check" if fresh else "sign-in", uid=uid, challenge=opts.challenge, rp_id=rp_id,
+                             origin=origin, verify=verify)
     return state, json.loads(webauthn.options_to_json(opts))
 
 
-def authenticate(db, state, credential):
-    """Check a sign-in; returns (user id, passkey name). With a state issued for an account, only its passkeys do."""
+def authenticate(db, state, credential, fresh=False):
+    """Check a sign-in, or with fresh the fresh check (a challenge issued for it, #930); returns (user id, passkey
+    name). With a state issued for an account, only its passkeys do. The person must have been verified (a PIN or
+    a fingerprint, not a tap alone) where the challenge asked for it: a sign-in without the password, and the fresh
+    check."""
     c = challenges.take(state)
-    if c["kind"] != "sign-in":
+    if c["kind"] != ("fresh check" if fresh else "sign-in") or fresh and c["uid"] is None:
         raise PasskeyError("That took too long. Try again.", 401)
     cid = credential.get("id") if isinstance(credential, dict) else None
     row = db.execute("SELECT * FROM passkeys WHERE credential_id=? AND rp_id=?", (str(cid)[:1400], c["rp_id"])).fetchone() if cid else None
@@ -217,8 +225,10 @@ def authenticate(db, state, credential):
                                                     expected_rp_id=c["rp_id"], expected_origin=c["origin"],
                                                     credential_public_key=row["public_key"],
                                                     credential_current_sign_count=row["sign_count"],
-                                                    require_user_verification=c["uid"] is None)
+                                                    require_user_verification=bool(c["verify"]))
     except (WebAuthnException, ValueError, KeyError, TypeError) as e:
+        if c["verify"] and "user was not verified" in str(e):   # (py_webauthn's words for the flag clear)
+            raise PasskeyError(UNVERIFIED, 401) from None
         raise PasskeyError(f"The passkey didn't check out ({e}).", 401) from None
     db.execute("UPDATE passkeys SET sign_count=?, last_used=? WHERE id=?", (v.new_sign_count, dbm.now(), row["id"]))
     return row["user_id"], row["name"]

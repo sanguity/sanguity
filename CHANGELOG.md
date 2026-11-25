@@ -3267,6 +3267,11 @@ Everything on `main` so far; it becomes the first tagged release.
   the profile's activity log says so, Sharing's Remove, Leave and a change to viewer say it first, and someone who
   can change the profile makes a new one under Sources → Phone and watch. A secret an older version left behind this
   way goes when the app starts.
+- **The fresh check with a passkey verifies the person** (#930): it asked a passkey for user verification only if it
+  could, and took an answer without it, so a security key left plugged into a computer left signed in passed the
+  check before an admin's most powerful actions with a touch. It now asks for and requires the passkey's PIN,
+  fingerprint or face, saying so if the passkey didn't check, and only a challenge made for the fresh check is taken
+  (not one made for signing in).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
