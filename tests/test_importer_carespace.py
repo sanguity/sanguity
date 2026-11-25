@@ -95,7 +95,8 @@ class Parse(unittest.TestCase):
         hb = series(self.data, "Hemoglobin")
         self.assertEqual((hb["n"], hb["loinc"], hb["key"]), (2, "718-7", "loinc:718-7"))   # same-day repeat counted once
         self.assertEqual(series(self.data, "CRP")["pts"][0][1], 0.5)              # "<0.5"
-        self.assertNotIn("Urine color", [s["name"] for s in self.data["labs"]])   # text results stay in the rows
+        uc = series(self.data, "Urine color")   # a text result: its series' text, as the other importers keep one (#851)
+        self.assertEqual((uc["key"], uc["n"], uc["pts"], uc["txt"]), ("carespace:name|urine color", 0, [], [["2026-03-02T08:40:00-06:00", "Yellow"]]))
         glu = [s for s in self.data["labs"] if s["name"].startswith("Glucose, Blood")]
         self.assertEqual(sorted((s["name"], s["key"]) for s in glu),
                          [("Glucose, Blood", "loinc:2345-7|mg/dL"), (f"Glucose, Blood ({ORG})", "loinc:2345-7|mmol/L")])
@@ -203,6 +204,40 @@ class Edges(unittest.TestCase):
         pts = {n: series(out["data"], n)["pts"][0][4] for n in ("WBC", "Potassium, Blood", "Hematocrit", "Creatinine")}
         self.assertEqual(pts, {"WBC": "A", "Potassium, Blood": "A", "Hematocrit": "L", "Creatinine": ""})
         self.assertEqual(days[0].get("abn"), 3 + 3, "the lab day counts them: HGB, GLUCOSE and HCT were flagged before")
+
+    def test_a_test_it_doesnt_know_is_charted_by_its_own_name(self):
+        """#851: a result whose name lab-aliases.json doesn't know ("C-Reactive Protein", "eGFR") was kept in its
+        report's rows alone: no series, so Labs had nothing of it and the upload said nothing. It's a series of its own
+        name now, as the FHIR, C-CDA and spreadsheet importers name one (its range, flag and source as any other's), so
+        it charts and the review offers to match its name; a value that isn't a number is its text result."""
+        new = [{"id": "lr-901", "name": "C-Reactive Protein", "value": {"value": "12.4", "unit": "mg/L"},
+                "referenceRange": {"upperLimit": 10, "unit": "mg/L"}, "referenceRangeDisplay": "<10.0", "interpretationCode": "H",
+                "observationDateTz": "2026-04-01T07:45:00-05:00", "labPanelRecordId": "pn-103"},
+               {"id": "lr-902", "name": "C-Reactive Protein", "value": {"value": "3,1", "unit": "mg/L"},
+                "referenceRange": {"upperLimit": 10, "unit": "mg/L"}, "referenceRangeDisplay": "<10.0",
+                "observationDateTz": "2026-03-02T08:30:00-06:00", "labPanelRecordId": "pn-101"},
+               {"id": "lr-903", "name": "eGFR", "value": {"value": ">60", "unit": "mL/min/1.73m2"}, "referenceRangeDisplay": ">=60",
+                "observationDateTz": "2026-04-01T07:45:00-05:00", "labPanelRecordId": "pn-103"},
+               {"id": "lr-904", "name": "eGFR", "value": {"value": "See comment", "unit": "mL/min/1.73m2"},
+                "observationDateTz": "2026-03-02T08:30:00-06:00", "labPanelRecordId": "pn-101"}]
+        with tempfile.TemporaryDirectory() as d:
+            dst = copy("full", d)
+            p = os.path.join(dst, "api", "lab_results.json")
+            with open(p, encoding="utf-8") as f:
+                doc = json.load(f)
+            doc["data"] += new
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump(doc, f)
+            out = carespace.parse(reg.files_in(dst))
+            self.assertEqual(reg.check(out, reg.files_in(dst)), [])
+        crp, egfr = series(out["data"], "C-Reactive Protein"), series(out["data"], "eGFR")
+        self.assertEqual((crp["key"], crp["unit"], crp["n"]), ("carespace:name|c-reactive protein", "mg/L", 2))
+        self.assertEqual([p[:7] for p in crp["pts"]], [["2026-03-02T08:30:00-06:00", 3.1, None, 10, "", "3,1", ORG],
+                                                      ["2026-04-01T07:45:00-05:00", 12.4, None, 10, "H", "12.4", ORG]])
+        self.assertEqual((egfr["key"], egfr["n"], [p[1:5] for p in egfr["pts"]], egfr["txt"]),
+                         ("carespace:name|egfr", 1, [[60, 60, None, ""]], [["2026-03-02T08:30:00-06:00", "See comment"]]))
+        self.assertEqual(series(out["data"], "CRP")["n"], 1, "a test it knows keeps its own series")
+        self.assertEqual(out["warnings"], [])
 
     def test_a_range_given_as_text_alone(self):
         """#836: a result whose range is only displayed ("<16.0", no lowerLimit or upperLimit) is read through the one

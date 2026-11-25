@@ -7,8 +7,9 @@ The export is a folder (often zipped, sometimes inside a folder of its own) laid
     carespace_ccd_full.xml      the full-range C-CDA (preferred), or carespace_ccd.xml (the portal's default window)
     documents/<date>_<type>_<title>.pdf
 
-Lab results become one hidden `labitem` per panel and day under a `lab` day event, and chart series for the tests
-lab-aliases.json knows. The C-CDA's narrative tables give visits (future ones become `upcoming`), medications,
+Lab results become one hidden `labitem` per panel and day under a `lab` day event, and a chart series for each test,
+named as lab-aliases.json names it where it knows the test and as the export does where it doesn't (#851: those were
+left in the drawer alone), a value that isn't a number among its text results. The C-CDA's narrative tables give visits (future ones become `upcoming`), medications,
 problems and vitals; weights go to `clinicWeights`. build.py reads a CareSpace export through this module, with
 the clinic's name and tag from sources.json (parse's org= and tag=).
 
@@ -224,14 +225,21 @@ def parse(files, org=None, tag=None):
         unit = v.get("unit") or ref.get("unit") or ""
         pan = (panels.get(r.get("labPanelRecordId")) or {}).get("testName") or "Lab panel"
         by_day[t[:10]][pan].append([r["name"], v.get("value"), unit, r.get("referenceRangeDisplay") or "", flag])
-        canon = canonical_lab(r["name"])
-        if x is None or not canon:
+        # its series: lab-aliases.json's name where it knows the test, else the export's own, as every other importer
+        # names one (#851: one it didn't know was in the drawer alone, with no word); a value that isn't a number is
+        # its series' text result, as theirs are
+        canon = canonical_lab(r["name"]) or r["name"].strip()
+        raw = str(v.get("value") if v.get("value") is not None else "").strip()
+        if x is None and not raw:
             continue
         name = canon
-        if name in labs and unit_key(labs[name]["unit"]) != unit_key(unit):
+        if name in labs and unit_key(labs[name]["unit"]) != unit_key(unit) and (x is not None or unit and labs[name]["unit"]):
             name = f"{canon} ({org})"
-        s = labs.setdefault(name, {"unit": unit, "pts": [], "base": canon})
-        s["pts"].append([iso(t), x, lo, hi, flag, str(v.get("value")), tag] + ([edge] if edge else []))
+        s = labs.setdefault(name, {"unit": unit, "pts": [], "txt": [], "base": canon})
+        if x is not None:
+            s["pts"].append([iso(t), x, lo, hi, flag, str(v.get("value")), tag] + ([edge] if edge else []))
+        else:
+            s["txt"].append([iso(t), raw])
         panel_votes[name][pan] += 1
     if no_date:
         warnings.append(f"{no_date} lab result{'s' if no_date != 1 else ''} had no date and {'were' if no_date != 1 else 'was'} left out.")
@@ -368,7 +376,8 @@ def parse(files, org=None, tag=None):
             key += f"|{s['unit']}"
         panel = panel_votes[name].most_common(1)[0][0] if panel_votes[name] else ""
         series.append({"name": name, "unit": s["unit"], "panel": panel, "n": len(pts),
-                       **({"loinc": loinc_of(name)} if loinc_of(name) else {}), "key": key, "pts": pts, "txt": []})
+                       **({"loinc": loinc_of(name)} if loinc_of(name) else {}), "key": key, "pts": pts,
+                       "txt": sorted(s.get("txt") or [])[-50:]})   # its text results, as the other importers keep them
     series.sort(key=lambda s: (-s["n"], s["name"]))
 
     if dupes:
