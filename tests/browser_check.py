@@ -9341,6 +9341,45 @@ def main():
                 check("…the only time's Remove is off, saying why (“A reminder needs a time”) as its description and when pressed, the time kept (#837: it did "
                       "nothing and said nothing)", one837[:3] == ["true", ["Remove time 1", "A reminder needs a time"], ["A reminder needs a time.", 1, "Remove time 1"]]
                       and "A reminder needs a time" in one837[3], one837)
+                # #977: …and its tip, shown as Remove has focus or the pointer, covers no control (filed as opening below Remove,
+                # over Add another time, until put away): at 360, 412, 900 and 1400 px, as usual and with text at 200%, the
+                # form at rest and scrolled so its times are at the top of the drawer's body, by the keyboard and the mouse
+                TIP977 = r"""() => { const t = document.getElementById('sgTip'); if (!t?.matches(':popover-open')) return 'no tip';
+                  const b = t.getBoundingClientRect(), rm = document.querySelector('#dbody .mr-time > .btn').getBoundingClientRect(), hit = r => r.width && r.left < b.right && b.left < r.right && r.top < b.bottom && b.top < r.bottom;
+                  const over = [...document.querySelectorAll('#drawer :is(button, input, select, textarea, a[href])')].filter(e => e.checkVisibility() && hit(e.getBoundingClientRect()));
+                  return over.length ? `over ${over.map(e => e.getAttribute('aria-label') || e.textContent.trim().slice(0, 24)).join(', ')}, ${b.top >= rm.bottom ? 'below' : 'above'} Remove` : null; }"""
+                bad977, n977 = {}, 0
+                for w977, h977 in ((360, 800), (412, 860), (900, 800), (1400, 900)):
+                    page.set_viewport_size({"width": w977, "height": h977})
+                    settle(400)   # (the drawer docked or not, its move done)
+                    for big977 in (False, True):
+                        js(ADOPT_CSS_JS, BIG_TEXT_CSS if big977 else "")
+                        for top977 in (False, True):
+                            js("""top => { const d = document.getElementById('dbody'), r = document.querySelector('#dbody .mr-time > .btn');
+                              d.scrollTop = top ? d.scrollTop + r.getBoundingClientRect().top - d.getBoundingClientRect().top - 2 : 0; document.activeElement.blur(); }""", top977)
+                            page.mouse.move(1, 1)
+                            settle(250)
+                            page.keyboard.press("Shift")   # (from the keyboard)
+                            page.focus("#dbody .mr-time button")
+                            settle(250)
+                            by977 = {"focus": js(TIP977)}
+                            js("document.activeElement.blur()")
+                            bx977 = page.locator("#dbody .mr-time button").bounding_box()
+                            page.mouse.move(bx977["x"] - 20, bx977["y"] + bx977["height"] / 2)
+                            page.mouse.move(bx977["x"] + bx977["width"] / 2, bx977["y"] + bx977["height"] / 2, steps=3)
+                            settle(700)
+                            by977["hover"] = js(TIP977)
+                            page.mouse.move(1, 1)
+                            n977 += 1
+                            for how977, got977 in by977.items():
+                                if got977:
+                                    bad977[f"{w977}{' 200%' if big977 else ''}{', the times at the top' if top977 else ''}, by {how977}"] = got977
+                js("() => { document.adoptedStyleSheets = []; document.getElementById('dbody').scrollTop = 0; }")
+                page.set_viewport_size({"width": 1400, "height": 900})
+                settle(300)
+                page.focus("#dbody .mr-time button")
+                check("…and that tip covers no control, shown by focus or the pointer, above Remove, at 360, 412, 900 and 1400 px, as usual and with text at "
+                      "200%, the form at rest and its times at the top of the drawer (#977)", n977 == 16 and not bad977, bad977)
                 page.click("#dbody button:text-is('Add another time')")
                 # #867: the time added is said in the form's status line, in place of the last ("1 time left" stayed)
                 add867 = js("[document.querySelector('#dbody .jform > .edit-msg').textContent, document.activeElement.getAttribute('aria-label'), "
