@@ -3375,6 +3375,10 @@ Everything on `main` so far; it becomes the first tagged release.
   after tracking was turned off, the receiver's `cycle.json` kept `{"on": false, "purged": …}` in its data folder for
   good, and its database the deletion's note, though the app had let go of its own record of it (#935). Both go once
   the app no longer asks for that deletion.
+- **Export as FHIR holds one result from several sources once, as the page shows it** (#947): a Potassium 5.2 in a
+  portal's report, a hospital's report of the same draw and a spreadsheet, not linked as the same result, is one result
+  in Labs, the visit summary and share links (#825), but went into the bundle three times. It's one Observation now,
+  in each report that holds it.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
