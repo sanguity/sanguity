@@ -51,6 +51,7 @@ python tests/test_receiver_activity.py # respiratory rate, VO2 max, heart rate z
 python tests/test_import_history.py    # import history and undo
 python tests/test_ids.py               # ids never given again: a deleted profile's phone data, stale pages, views (#588)
 python tests/test_edits.py             # corrections made in the app
+python tests/test_recategorize.py      # chart activity and recategorizing: contact, billing codes named, rules (#236, #237)
 python tests/test_milestones.py        # milestones and workout rules on the Settings page
 python tests/test_lab_mapping.py       # matching unknown lab names
 python tests/test_summary.py           # the visit summary PDF
