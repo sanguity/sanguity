@@ -542,7 +542,12 @@ jobs:
           echo "Schema version $before -> $after (this code's: $want)"
           [ "$after" = "$want" ] && [ "$after" -ge "$before" ] || { echo "the database wasn't upgraded"; exit 1; }
           if [ "$before" -lt 10 ]; then
-            ls "$DATA_DIR"/profiles/*/data-before-v10.json   # each profile's data.json was loaded into the database
+            # each profile's data.json was loaded into the database, and neither it nor a copy of it is kept (#934)
+            n=$(docker compose exec -T app python3 -c "import sqlite3; print(sqlite3.connect('/data/sanguity.db').execute('SELECT COUNT(*) FROM events').fetchone()[0])" | tr -d '\r')
+            echo "Records in the database: $n"
+            [ "$n" -gt 0 ] || { echo "no records were moved into the database"; exit 1; }
+            left=$(docker compose exec -T app sh -c 'ls /data/profiles/*/data.json /data/profiles/*/data-before-v10.json 2>/dev/null' | tr -d '\r')
+            [ -z "$left" ] || { echo "a profile's old data file was kept: $left"; exit 1; }
           fi
           if curl -fsS http://127.0.0.1:8730/api/setup | grep -q '"needed":true'; then
             echo "the upgraded install asks to be set up again"; exit 1
