@@ -7,7 +7,8 @@ once, when the feed is made or rotated. Each feed belongs to one person on one p
 person can still view the profile (role and account checked at every fetch): removing someone's access, or
 disabling their account, deletes their feed, so giving the access back doesn't bring the old address back (#590). So
 do Sign out everywhere else, an admin's password reset and a sign-in with a recovery code: each may follow a lost
-phone, whose calendar app has the address (drop_for).
+phone, whose calendar app has the address (drop_for); and changing one's own password or removing a passkey (#597, the
+owner's decision), which the account page says beforehand, with how many (count_for).
 
 What a feed holds:
   appointments   the records' `upcoming` list (imported or typed in), from today on
@@ -150,8 +151,15 @@ def drop_without_access(db):
 def drop_for(db, uid):
     """Delete every feed of an account (#590): on Sign out everywhere else, an admin's password reset, a sign-in with a
     recovery code and the other ends of every session (accounts.sign_out_everywhere), since each may follow a lost
-    phone, and its calendar app holds the feed's address. Returns how many."""
+    phone, and its calendar app holds the feed's address; and on changing one's own password or removing a passkey
+    (#597, the owner's decision; main.py). Returns how many."""
     return db.execute("DELETE FROM calendar_feeds WHERE user_id=?", (uid,)).rowcount
+
+
+def count_for(db, uid):
+    """How many feeds an account has, in every profile: what Change password and removing a passkey say they'll end
+    (GET /api/me, #597)."""
+    return db.execute("SELECT COUNT(*) FROM calendar_feeds WHERE user_id=?", (uid,)).fetchone()[0]
 
 
 def fetched(db, feed):

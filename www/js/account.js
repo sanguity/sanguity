@@ -33,6 +33,20 @@ pwField($("#pwCur"), {name: "current password"});
 pwField($("#pwNew"), {name: "new password"});
 pwField($("#pwNew2"), {name: "repeated password"});
 const pwSay = (text, bad) => { say("#pwMsg", text, bad); $("#pwMsg").parentElement.scrollIntoView({block: "nearest"}); };
+/* your calendar feeds, which changing your password and removing a passkey end as signing out everywhere does (#597,
+   #590): said beforehand, with how many (GET /api/me), and after, with where to make a new one */
+const feedsWord = n => n === 1 ? "your calendar feed" : `your ${n} calendar feeds`;
+const feedsWhy = n => `as a lost phone's calendar app keeps ${n === 1 ? "its address" : "their addresses"}`;
+const feedsEnd = n => `${n === 1 ? "Your calendar feed is" : `Your ${n} calendar feeds are`} turned off too, ${feedsWhy(n)}: ` +
+  `you can make ${n === 1 ? "a new one" : "new ones"} under Sharing, Calendar feed.`;
+const feedsGone = n => n ? ` ${n === 1 ? "Your calendar feed is" : `Your ${n} calendar feeds are`} turned off too: make ` +
+  `${n === 1 ? "a new one" : "new ones"} under Sharing, Calendar feed.` : "";
+function pwFeeds() {   // the line beside Change password, while there are some
+  const n = ME.calendar_feeds || 0;
+  $("#pwFeeds").textContent = n ? `Changing it signs out your other devices and turns off ${feedsWord(n)}, ${feedsWhy(n)}. ` +
+    `You can make ${n === 1 ? "a new one" : "new ones"} under Sharing, Calendar feed.` : "";
+  $("#pwFeeds").hidden = !n;
+}
 $("#pwForm").onsubmit = async ev => {
   ev.preventDefault();
   if ($("#pwNew").value !== $("#pwNew2").value) return pwSay("The new passwords don't match.", true);
@@ -41,7 +55,9 @@ $("#pwForm").onsubmit = async ev => {
     const r = await call("me/password", "POST", {current: $("#pwCur").value, new: $("#pwNew").value});
     $("#pwForm").reset();
     if (ME.user.must_change_pw) { location.replace("./"); return; }
-    pwSay("Password changed." + (r.signed_out_elsewhere ? ` Signed out ${r.signed_out_elsewhere} other device${r.signed_out_elsewhere > 1 ? "s" : ""}.` : ""));
+    pwSay("Password changed." + (r.signed_out_elsewhere ? ` Signed out ${r.signed_out_elsewhere} other device${r.signed_out_elsewhere > 1 ? "s" : ""}.` : "") +
+      feedsGone(r.calendar_feeds));   // (#597)
+    ME.calendar_feeds = 0; pwFeeds();
     loadSessions();
   } catch (e) { pwSay(e.message, true); }
 };
@@ -76,10 +92,10 @@ $("#sessOthers").onclick = async () => {
   if (!await ask({title: "Sign out all other devices?", action: "Sign out others",
                   message: "Your calendar feeds are turned off too, as a lost phone's calendar app keeps their addresses. You can make new ones under Sharing."})) return;
   try {
-    const r = await call("sessions/revoke-others", "POST"), f = r.calendar_feeds;
+    const r = await call("sessions/revoke-others", "POST");
     // the calendar feeds that went with them (#590), said, with where to make a new one
-    say("#sessMsg", `Signed out ${r.revoked} device${r.revoked === 1 ? "" : "s"}.` + (f ? ` ${f === 1 ? "Your calendar feed is" : `Your ${f} calendar feeds are`} ` +
-      "turned off too: make a new one under Sharing, Calendar feed." : ""));
+    say("#sessMsg", `Signed out ${r.revoked} device${r.revoked === 1 ? "" : "s"}.` + feedsGone(r.calendar_feeds));
+    if (r.calendar_feeds) { ME.calendar_feeds = 0; pwFeeds(); }
     await loadSessions(); sessFocus();
   }
   catch (e) { say("#sessMsg", e.message, true); }
@@ -218,14 +234,17 @@ async function loadPasskeys() {
               const label = el("label", {}, "Your password", pw);
               pwField(pw);
               if (!await ask({title: `Remove the passkey “${k.name}”?`, message: ["Remove it from the device too, in its passwords or passkeys settings.",
-                                "Every other device signed in to your account is signed out.", label],
+                                "Every other device signed in to your account is signed out." + (ME.calendar_feeds ? " " + feedsEnd(ME.calendar_feeds) : ""), label],
                               action: "Remove passkey", danger: true, field: pw})) return;
               const at = st.passkeys.indexOf(k);
               try {
                 const r = await call("me/passkeys/" + k.id, "DELETE", {password: pw.value});
                 if (r.must_change_pw) { location.replace("account.html#password"); location.reload(); return; }
                 await Promise.all([loadPasskeys(), loadSessions()]);
-                if (r.signed_out_elsewhere) say("#pkMsg", `Removed. Signed out ${r.signed_out_elsewhere} other device${r.signed_out_elsewhere === 1 ? "" : "s"}.`);
+                if (r.signed_out_elsewhere || r.calendar_feeds)   // and the calendar feeds that went with it (#597)
+                  say("#pkMsg", "Removed." + (r.signed_out_elsewhere ? ` Signed out ${r.signed_out_elsewhere} other device${r.signed_out_elsewhere === 1 ? "" : "s"}.` : "") +
+                    feedsGone(r.calendar_feeds));
+                if (r.calendar_feeds) { ME.calendar_feeds = 0; pwFeeds(); }
               } catch (e) { e.status === 404 ? pkGone(at, e.message) : say("#pkMsg", e.message, true); return; }
               pkFocus(at); }})));
     }))) : emptyState("No passkeys yet: each one you add is listed here, with when it was last used.", null, {cls: ""}));   // (#494)
@@ -290,6 +309,7 @@ const lockNav = () => { locked = true; AcctNav.hide(); AcctNav.follow(); };
   $("#who").textContent = ME.user.username;
   { const w = plainHttpWarning(); if (w) { $("#insecure").textContent = w; $("#insecure").hidden = false; } }
   $("#pwHint").textContent = `At least ${ME.password_min} characters. A few unrelated words make a strong password you can remember.`;
+  pwFeeds();   // (#597)
   if (ME.user.must_change_pw) {   // nothing else is available until the one-time password is replaced
     $("#mustChange").hidden = false; SgNav.lock(); lockNav();
     for (const id of ["#sessions", "#twofa", "#passkeys"]) $(id).hidden = true;

@@ -2305,6 +2305,12 @@ Everything on `main` so far; it becomes the first tagged release.
   public keys), were fetched as well, each learning this server's address and when the link was read. Now the page
   says beforehand that it asks about any other server, and the fetch stops before contacting one: the page names
   each and what for, and Contact them too and fetch fetches the link again with them confirmed.
+- **Changing your password, or removing a passkey, turns off your calendar feeds** (#597, the owner's decision): since
+  #590 signing out everywhere, an admin's reset and a recovery-code sign-in end the account's calendar feeds, but a
+  password change and a passkey's removal signed every other device out and kept them, so an address someone else
+  copied, or a lost phone's calendar app, kept getting updates. Both end them now. Change password says beforehand how
+  many it will turn off, and so does Remove passkey's question; each says after that they went and where to make new
+  ones (Sharing, Calendar feed). Turning off your own authenticator app keeps them, as before.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
