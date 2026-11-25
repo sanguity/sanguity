@@ -2239,6 +2239,10 @@ Everything on `main` so far; it becomes the first tagged release.
   coming inside a report (or the other way round) was taken for another source's result: kept as a second copy with
   a lab day of its own beside the report's, or, with its range corrected, added as a second result. Now it's found by
   its own id: the same again adds nothing, and corrected it's updated in place, its row with it, with an Undo.
+- **A vital sign keeps the range and flag another source gives it** (#880): a hospital's heart rate with no range, then
+  a portal's FHIR file of the same reading with its range and High, left the portal's copy out (since #868 a copy is
+  kept only with its own row, and a visit's vitals have none), so the reading showed neither. Now the copy is kept,
+  and the reading is shown once with the range and flag.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
