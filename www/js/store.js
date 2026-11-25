@@ -56,8 +56,11 @@ function inSight(x, whole) {
   const r = x.getBoundingClientRect(), pad = getComputedStyle(document.documentElement), t = parseFloat(pad.scrollPaddingTop), b = innerHeight - parseFloat(pad.scrollPaddingBottom);
   return whole ? r.top >= t - 1 && r.bottom <= b + 1 : r.bottom > t && r.top < b;
 }
-function keepFocus(draw) {
-  const a = document.activeElement, key = a && a !== document.body ? focusKey(a) : null, open = aboutOpen(), seen = key && inSight(a), top = seen ? a.getBoundingClientRect().top : 0;
+/* draw: as below; was: where focus was in sight before a resize ([control, its top], null: it wasn't), for a draw after one
+   (sightHold) */
+function keepFocus(draw, was) {
+  const a = document.activeElement, key = a && a !== document.body ? focusKey(a) : null, open = aboutOpen();
+  const seen = key && (was === undefined ? inSight(a) : was?.[0] === a), top = seen ? (was ? was[1] : a.getBoundingClientRect().top) : 0;
   draw();
   aboutWire();   // the ⓘ drawn with it, there now to be found (util.js, #280)
   // one shown: a tab not shown keeps its controls, and a twin of the same name there can't take focus (#455)
@@ -70,6 +73,7 @@ function keepFocus(draw) {
   if (seen && f !== document.body) { keepAt(f, top); keepSight(f, top); }
   aboutKeep(open);   // and one left open, open still (#447)
   drawerBack();   // and what opened the drawer, found again (drawer.js, #404)
+  if (was !== undefined) { sightHeld = 0; sightNote(); }
 }
 /* f back where it was (top, its box's top before), then into sight if it isn't wholly */
 function keepAt(f, top) {
@@ -77,6 +81,19 @@ function keepAt(f, top) {
   if (Math.abs(d) >= 1) scrollBy(0, d);
   if (!inSight(f, true)) f.scrollIntoView({block: "nearest"});
 }
+/* where focus is in sight, as last seen (#738): a phone turned (412×900 to 900×412) has moved what has focus, a Timeline
+   row 10,000 px, by the time its "resize" comes, so the redraw after it (timeline.js) can't ask keepFocus to measure
+   "in sight before" then. Noted as focus moves and as the page scrolls; held from a resize (sightHold) until its redraw
+   (or a second), so the browser's own scrolling as the page reflows doesn't count */
+let sightWas = null, sightHeld = 0;
+function sightNote() {
+  if (performance.now() < sightHeld) return;
+  const a = document.activeElement;
+  sightWas = a && a !== document.body && inSight(a) ? [a, a.getBoundingClientRect().top] : null;
+}
+addEventListener("focusin", sightNote);
+addEventListener("scroll", sightNote, {passive: true});
+const sightHold = () => { sightHeld = performance.now() + 1000; return sightWas; };
 /* charts are drawn a frame after the page around them (health.js hChart, the workouts' calendar…), placeholders till
    then: as they take their heights, f, in sight as it's drawn, goes down, past the window's foot or under the phone's
    tab bar (#720, 2.4.11). Once they're drawn (this frame's callbacks run in turn, theirs first) it goes back to where it

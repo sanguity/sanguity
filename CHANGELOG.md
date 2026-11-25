@@ -3463,6 +3463,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - **The Timeline's month heading no longer covers the row Shift+Tab reaches, with larger text** (#739): a row given
   focus was scrolled a fixed 44 px clear of the month heading stuck above it, but at 200% text the heading is 62 px
   tall, so the row's top and its focus ring were under it. The room now grows with the heading's text.
+- **Turning a phone keeps what has focus in sight** (#738): from upright to sideways and back, the page kept focus on
+  a chart, a button or a Timeline row but left it out of sight, a row thousands of pixels away. What has focus and
+  was in sight before the turn is brought back into sight after it.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
