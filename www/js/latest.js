@@ -4,25 +4,50 @@
    the latest time both said, as the chart's readout says them (chartkit.js ckLast, #904). A row is a link to its lab's
    chart: activating it charts the lab on Labs, focus on its chart, and Back returns to the row. It follows the period:
    a lab with no result in it isn't listed, and how many aren't is said. Grouped by panel, with a name filter and
-   Flagged only (#994). Plain script; all files share one scope. */
+   Flagged only (#994); each result's change since the one before and how long ago it was taken (#995). Plain script;
+   all files share one scope. */
 "use strict";
 /* the period in the view's line: "in the last 2 years", "since diagnosis (…)", "on file" for All */
 function ltPeriod() {
   const p = periodLabel("");
   return state.preset === "all" || !p ? "on file" : /^since /.test(p) ? p : /^(the |\d{4}$)/.test(p) ? "in " + p : "from " + p;
 }
-/* a lab's row: [{s, pts: its results in the period, last: those at its latest time, the flagged first}] -> an <a> */
-function ltRow({s, last}, id) {
+/* how long ago a result was taken (#995), by the days between its day and today in this person's time zone (dates.js
+   isoDay, zToday): "today", "yesterday", "12 days ago", "6 weeks ago", "5 months ago", "2 years ago" (whole years by
+   the calendar); old: a year or more */
+function ltAge(t) {
+  const day = isoDay(t), today = zToday(), n = Math.round((dayTs(today) - dayTs(day)) / DAY);
+  const years = +today.slice(0, 4) - +day.slice(0, 4) - (today.slice(5) < day.slice(5) ? 1 : 0);
+  return {old: years >= 1, words: n < 0 ? "dated ahead of today" : !n ? "today" : n === 1 ? "yesterday" : n < 14 ? `${n} days ago` : n < 61 ? `${Math.round(n / 7)} weeks ago`
+    : years < 1 ? `${Math.floor(n / 30.44)} months ago` : `${years} year${years === 1 ? "" : "s"} ago`};
+}
+/* the change to each result at the latest time from the result before that time (#995), in its unit and to the places
+   they're printed with, as a key lab's tile says it (overview.js ovPrev, util.js chgWords: "↑ 0.4", "↓ 12", "no
+   change") and as the lab panel works out its change (lab-panel.js labDec, labSure: never from a value given as "<5",
+   "not worked out"); "–" with no result before it in the period. Two at the latest time each have theirs, in the order
+   they're said (#982's rule for the lab panel's First to latest: the change to each) */
+function ltChange(pts, last) {
+  const prev = pts.findLast(p => p.ts < last[0].ts);
+  if (!prev) return {words: "–", said: "no result before it in this period"};
+  const each = last.map(q => !labSure(prev) || !labSure(q) ? "change not worked out"
+    : chgWords(q[1] - prev[1], Math.abs(q[1] - prev[1]).toFixed(Math.max(labDec(prev), labDec(q)))));
+  return {words: each.join("; "), said: `since ${fmtD(prev.ts)}`, prev};
+}
+/* a lab's row: [{s, pts: its results in the period, last: those at its latest time, the flagged first}] -> an <a>; its
+   change since the result before (ltChange) and how long ago it was taken (ltAge), a year or more ago dimmed (.old, its
+   words ink that keeps 4.5:1) and said "last taken 2 years ago" */
+function ltRow({s, pts, last}, id) {
   const ranges = last.map(p => refText(p) || "no range on its report"), from = last.map(p => ucOrig(s, p)).filter(Boolean);
-  const sep = () => el("span", {class: "vh", text: ", "});
-  return el("a", {class: "ov-row lt-row", id, href: "#labs", "data-lab": s.name, "data-unit": s.unit, onclick: ev => {
+  const sep = () => el("span", {class: "vh", text: ", "}), age = ltAge(last[0].ts), chg = ltChange(pts, last);
+  return el("a", {class: "ov-row lt-row" + (age.old ? " old" : ""), id, href: "#labs", "data-lab": s.name, "data-unit": s.unit, onclick: ev => {
       if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.altKey || ev.button) return;   // a new tab or window: the browser's
       ev.preventDefault(); ltOpen(s, id); }},
     el("span", {class: "n", text: nice(s.name)}), sep(),
     el("span", {class: "v"}, ...last.map((p, i) => { const f = FLAG_OF(p[4]);
       return el("span", {class: "lt-v"}, i ? el("span", {class: "vh", text: "; "}) : null, readText(s, p)[0],
         f ? el("span", {class: "st " + f.cls}, el("span", {"aria-hidden": "true", text: f.mark}), " " + f.word) : null); })), sep(),
-    el("span", {class: "s", text: [ranges.join("; "), from.length ? "reported " + from.join("; ") : "", fmtD(last[0].ts)].filter(Boolean).join(" · ")}));
+    el("span", {class: "s", text: [ranges.join("; "), from.length ? "reported " + from.join("; ") : "", fmtD(last[0].ts), (age.old ? "last taken " : "") + age.words].filter(Boolean).join(" · ")}), sep(),
+    el("span", {class: "c", "data-tip": chg.prev ? `Since ${fmtD(chg.prev.ts)}: ${readText(s, chg.prev)[0]}` : null}, chg.words, el("span", {class: "vh", text: " " + chg.said})));
 }
 /* ---- its filters (#994): a name and Flagged only, kept per profile in this browser (ht-latest:<profile>, every read
    and write guarded: with storage blocked they're kept for the page). ltKept(): what's kept, {} for nothing;

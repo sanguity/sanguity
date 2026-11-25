@@ -3572,6 +3572,11 @@ Everything on `main` so far; it becomes the first tagged release.
   `lab-aliases.json`'s new `panels` table names (blood count, metabolic, liver, …), everywhere labs are grouped,
   where it was under Other. A name typed in the filter goes at sign-out, as the labs picked on Labs do, and the
   filters go with the profile when it's deleted or no longer yours.
+- **Latest says each result's change since the one before, and how long ago it was taken** (#995): each row gives
+  the change from the lab's result before ("↑ 0.4", "↓ 12", "no change", "–" for its only one), in its unit, as
+  the key-lab tiles say it, and "12 days ago" by your own time zone. Two results at the latest time each have their
+  change from the result before them. A result a year or more old is dimmed, still easy to read, and says "last
+  taken 2 years ago".
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

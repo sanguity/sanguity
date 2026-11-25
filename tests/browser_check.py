@@ -48,6 +48,7 @@ on any script error, console error, failed request, request to another host or N
   python3 tests/browser_check.py
 """
 import json, os, re, shutil, socket, subprocess, sys, tempfile, threading, time, urllib.parse, urllib.request
+from decimal import Decimal
 
 from playwright.sync_api import sync_playwright
 
@@ -1869,7 +1870,7 @@ LATEST993_JS = r"""async () => {
   const latest = [...document.querySelectorAll('#ltRows .lt-row')].map(a => [a.dataset.lab, a.dataset.unit,
     [...a.querySelectorAll('.lt-v')].map(v => [[...v.childNodes].filter(n => !n.matches?.('.st, .vh')).map(n => n.textContent).join('').trim(),
       (v.querySelector('.st')?.textContent || '').replace(/[▲▼◆]/g, '').trim()]),
-    a.querySelector('.s').textContent, a.querySelector('.c')?.textContent ?? null]);
+    a.querySelector('.s').textContent, (c => c && [...c.childNodes].filter(n => !n.matches?.('.vh')).map(n => n.textContent).join(''))(a.querySelector('.c'))]);
   state.sel = new Set(SERIES.filter(s => !s.watch).map(s => s.name)); state.tables = new Set(state.sel); switchTab('labs', 'chart'); await frame();
   const charts = [...document.querySelectorAll('#charts .chart')].map(c => [c.dataset.lab, c._s ? c._s.unit : c.querySelector('.hd-sub .unit')?.textContent.split(' ')[0],
     [...c.querySelectorAll('table.data tbody tr')].map(r => [...r.cells].map(x => x.textContent))]);
@@ -1877,10 +1878,35 @@ LATEST993_JS = r"""async () => {
   return {latest, charts}; }"""
 
 
+def change993(said, cur, prev):
+    """What's wrong with Latest's change (#995) to a result its chart's table gives as cur (its value cell) from the result
+    before (prev's, None for none): "–" with none; "change not worked out" from or to a value given as a bound; else the
+    difference of the two as printed, to the places either is printed with, "↑ 0.4", "↓ 12" or "no change" (a converted
+    value's number has more places than it's printed with, and the change is of the numbers: within what printing each
+    and the change rounds off), else None"""
+    if prev is None:
+        return None if said == "–" else f"“{said}” with no result before it"
+    conv, cur, prev = " (reported " in cur + prev, cur.split(" (reported ")[0], prev.split(" (reported ")[0]
+    if any(re.match(r"[<>≤≥=]", x) for x in (cur, prev)):
+        return None if said == "change not worked out" else f"“{said}” from {prev} to {cur}"
+    a, b = (re.match(r"-?\d+(?:\.\d+)?", x.replace(",", ".")) for x in (cur, prev))
+    if not a or not b:
+        return f"“{said}”: {prev} to {cur} not read"
+    places = [len(x[0].partition(".")[2]) for x in (a, b)]
+    dec = max(places)
+    d, tol = Decimal(a[0]) - Decimal(b[0]), sum(Decimal(5).scaleb(-k - 1) for k in places + [dec]) if conv else 0
+    m = re.fullmatch(r"([↑↓]) (\d+(?:\.(\d+))?)", said)
+    got = Decimal(0) if said == "no change" else m and Decimal(m[2]) * (1 if m[1] == "↑" else -1)
+    if got is None or not got and said != "no change" or m and len(m[3] or "") != dec or abs(got - d) > tol:
+        return f"“{said}” from {prev} to {cur} (by {d})"
+    return None
+
+
 def latest993(got):
     """What's wrong with Labs' Latest (LATEST993_JS's) against each lab's chart (#993): every lab with a result in the
     period listed once, with none none; each the results at its chart's latest time (the top of its table, two at one
-    time both, in any order), each its value and unit, flag and range as the table gives them, and its day"""
+    time both, in any order), each its value and unit, flag and range as the table gives them, and its day; and each
+    one's change from the result before that time, the next row of the table (#995, change993: those say "change of")"""
     bad, rows = [] if got["charts"] else ["no chart to hold it against"], {(n, u): r for n, u, *r in got["latest"]}
     if len(rows) != len(got["latest"]):
         bad.append(f"a lab listed twice: {[r[:2] for r in got['latest']]}")
@@ -1891,10 +1917,13 @@ def latest993(got):
                 bad.append(f"{n} ({u}): {'listed' if r else 'not listed'}, with {len(trs)} results in the period")
             continue
         at = [t for t in trs if t[0] == trs[0][0]]   # its latest time's
-        ranges = r[1].split(" · ")[0].split("; ")
-        want = sorted([t[1].split(" (reported ")[0], re.sub(r"[▲▼◆]\s*", "", t[3]).strip(), "ref " + t[2].split(" · ")[0] if t[2].split(" · ")[0] else "no range on its report"] for t in at)
-        if len(ranges) != len(r[0]) or sorted([v, f, g] for (v, f), g in zip(r[0], ranges)) != want or not any(trs[0][0].startswith(p) for p in r[1].split(" · ")[1:]):
-            bad.append(f"{n} ({u}): {r[0]} {r[1]!r}, its chart's latest {want} on {trs[0][0]}")
+        ranges, said = r[1].split(" · ")[0].split("; "), r[2].split("; ") if r[2] not in (None, "–") else [r[2]] * len(r[0])
+        got_t = sorted([v, f, g, c] for (v, f), g, c in zip(r[0], ranges, said))
+        want_t = sorted([t[1].split(" (reported ")[0], re.sub(r"[▲▼◆]\s*", "", t[3]).strip(), "ref " + t[2].split(" · ")[0] if t[2].split(" · ")[0] else "no range on its report", t[1]] for t in at)
+        if len(ranges) != len(r[0]) or len(said) != len(r[0]) or [x[:3] for x in got_t] != [x[:3] for x in want_t] or not any(trs[0][0].startswith(p) for p in r[1].split(" · ")[1:]):
+            bad.append(f"{n} ({u}): {r[0]} {r[1]!r}, its chart's latest {[x[:3] for x in want_t]} on {trs[0][0]}")
+        elif r[2] is not None:
+            bad += [f"change of {n} ({u}): {w}" for x, y in zip(got_t, want_t) if (w := change993(x[3], y[3], trs[len(at)][1] if len(trs) > len(at) else None))]
     return bad + [f"{n} ({u}) listed with no chart" for n, u in rows]
 
 
@@ -22781,7 +22810,15 @@ def main():
             check("#993: Labs' Latest gives each lab's latest as its chart does (value and unit, flag, range, day) in every case of the ranges matrix: "
                   "ranges from reports and Settings, bounds, one-sided ranges, a period ending before the latest, SI units, copies before and after "
                   "Same result, through uploads, typed in and sent again, one result twice at its latest and Not the same, and two results at the "
-                  "latest time, both", not bad993m and len([r for r in two993["latest"] if r[0] == "Potassium"]) == 1, bad993m[:8])
+                  "latest time, both", not [b for b in bad993m if "change of" not in b] and len([r for r in two993["latest"] if r[0] == "Potassium"]) == 1,
+                  [b for b in bad993m if "change of" not in b][:8])
+            # #995: and each one's change from the result before that time (its chart's next row) in every one of those
+            # cases, the two at the latest time each theirs from the result before them (the lab panel's First to latest,
+            # #982: 4.1, then 5.6 and 5.0 at one time, "↑ 1.5; ↑ 0.9", never from the other at that time)
+            check("#995: Latest's change since the result before is its chart's, in every case of the ranges matrix (bounds “not worked out”, a converted "
+                  "unit's, copies, Not the same), the two at the latest time each theirs: “↑ 1.5; ↑ 0.9”",
+                  not [b for b in bad993m if "change of" in b] and [r[4] for r in two993["latest"] if r[0] == "Potassium"] == ["↑ 1.5; ↑ 0.9"],
+                  [[b for b in bad993m if "change of" in b][:8], [r for r in two993["latest"] if r[0] == "Potassium"]])
             db = dbm.connect()
             prof_r.delete_profile(db, apid)
             db.close()
@@ -22955,6 +22992,67 @@ def main():
             check("…both kept for the profile in this browser: a reload keeps Flagged only (and the name, emptied here, empty), another profile's are its own "
                   "(none kept); Reset filters clears both, focus on the name's box", kept994 == {"q": "", "flagged": True} and reload994 == [flagged994[0], flagged994[1], ["", True]]
                   and other994 == ["", False, None] and reset994[1] == f"{n994} labs" and reset994[2] == "" and reset994[3] == ["ltQ", False, False], [kept994, reload994, other994, reset994])
+            # ---- #995: each row's change since the result before (its chart's previous point: latest993, here and over the
+            # ranges matrix after #904's) and how long ago it was taken, by the days between its day and today in the
+            # person's time zone, its day in their date format: a profile of a result 30 hours ago (an instant), 40 days
+            # ago and two and three years ago, in a zone 14 hours ahead of UTC (dmy) and one 11 behind (ymd). One taken a
+            # year or more ago dimmed, said "last taken 2 years ago", its words 4.5:1 in light and dark; axe-core on them
+            from datetime import datetime as dt995, timedelta as td995, timezone as tz995
+            from zoneinfo import ZoneInfo as zi995
+            now995 = dt995.now(tz995.utc).replace(microsecond=0)
+            at995 = {"recent": now995 - td995(hours=30), "month": now995 - td995(days=40), "old": now995 - td995(days=2 * 365 + 30), "older": now995 - td995(days=3 * 365 + 30)}
+            iso995 = {k: v.strftime("%Y-%m-%dT%H:%M:%SZ") for k, v in at995.items()}
+            db = dbm994.connect()
+            apid995 = prof994.create_profile(db, "Latest's ages (fictional)", owner_id=db.execute("SELECT id FROM users WHERE username=?", (USER,)).fetchone()["id"])
+            with dbm994.transaction(db):
+                rec994.store(db, apid995, {"built": "2026-11-15", "source": "fictional", "events": [{"id": i + 1, "t": t, "k": "lab", "title": "Lab results"} for i, t in enumerate(iso995.values())],
+                                           "details": {}, "costs": [], "upcoming": [], "labs": [
+                                               {"name": "Hemoglobin", "unit": "g/dL", "panel": "CBC", "n": 2, "txt": [], "pts": [[iso995["month"], 13.1, 13.5, 17.5, "L", "13.1"], [iso995["recent"], 14.2, 13.5, 17.5, "", "14.2"]]},
+                                               {"name": "Ferritin", "unit": "ng/mL", "panel": "Iron", "n": 2, "txt": [], "pts": [[iso995["older"], 210, 20, 200, "H", "210"], [iso995["old"], 180, 20, 200, "", "180"]]}]}, "upload")
+            db.close()
+            page.goto(base + f"/?profile={apid995}#labs-latest")
+            page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {apid995}", timeout=20000)
+            was995 = js("[DATES.zone, DATES.format]")
+
+            def ago995(d, today):
+                n = (today - d).days
+                years = today.year - d.year - ((today.month, today.day) < (d.month, d.day))
+                return (n < 14 and ("today" if not n else "yesterday" if n == 1 else f"{n} days ago") or n < 61 and f"{round(n / 7)} weeks ago"
+                        or years < 1 and f"{int(n / 30.44)} months ago" or f"last taken {years} year{'s' if years > 1 else ''} ago")
+            bad995 = []
+            for zone995, fmt995 in (("Pacific/Kiritimati", "dmy"), ("Pacific/Pago_Pago", "ymd")):
+                js("([z, f]) => { useDates(z, f); applyPreset('all'); switchTab('labs', 'latest'); }", [zone995, fmt995])
+                settle(300)
+                got995 = {r[0]: r for r in js("[...document.querySelectorAll('#ltRows .lt-row')].map(a => [a.dataset.lab, a.classList.contains('old'), a.querySelector('.s').textContent])")}
+                bad995 += [f"{zone995}: {b}" for b in latest993(js(LATEST993_JS))]
+                today995 = now995.astimezone(zi995(zone995)).date()
+                for lab995, key995 in (("Hemoglobin", "recent"), ("Ferritin", "old")):
+                    d995 = at995[key995].astimezone(zi995(zone995)).date()
+                    day995 = {"dmy": f"{d995.day} {d995:%b %Y}", "ymd": f"{d995:%Y-%m-%d}"}[fmt995]
+                    want995 = [lab995, key995 == "old", f"· {day995} · {ago995(d995, today995)}"]
+                    if not got995.get(lab995) or got995[lab995][:2] != want995[:2] or not got995[lab995][2].endswith(want995[2]):
+                        bad995.append(f"{zone995}, {fmt995}: {got995.get(lab995)} not {want995}")
+            js("w => { useDates(...w); switchTab('labs', 'latest'); }", was995)
+            settle(300)
+            dim995, seen995, theme995 = {}, [], js("document.documentElement.dataset.theme || null")
+            for mode in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", mode)
+                settle(300)
+                for k995, fg995, bg995 in js("""() => { const a = document.querySelector('#ltRows .lt-row.old');
+                    return a ? [...a.querySelectorAll(':scope > :is(.n, .v, .s, .c)')].map(x => [x.className, getComputedStyle(x).color, getComputedStyle(a.closest('.card')).backgroundColor]) : []; }"""):
+                    dim995[f"{mode} {k995}"] = contrast(fg995, bg995)
+                seen995 += axe_check(page, f"Labs' Latest with a result years old, {mode}")[0]
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme995)
+            page.goto(base + "/?profile=1#labs-latest")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
+            db = dbm994.connect()
+            prof994.delete_profile(db, apid995)
+            db.close()
+            check("Latest's change and age (#995): each row's change since the result before, as its chart's table gives both (in its unit, to the places "
+                  "they're printed with); how long ago it was taken by the day in the person's time zone, its day in their date format (UTC+14 and "
+                  "UTC−11, dmy and ymd)", not bad995, bad995)
+            check("…one taken a year or more ago dimmed and said “last taken 2 years ago”, its words still 4.5:1 in light and dark; axe-core finds nothing",
+                  len(dim995) == 8 and all(v >= 4.5 for v in dim995.values()) and not seen995, [dim995, seen995])
             # …#900: and whatever it says, at the width it's shown. The room held the widest three it says as one line, and
             # wrapped, a narrower one could take a line more: on profiles of many times with two results (the review's 20,
             # ranges_matrix.many) Compare dropped 18 px at 803–818 px and 36 px at 461–467 px with 200% text, Labs 40.6 px at
