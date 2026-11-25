@@ -9,22 +9,33 @@
    The window keeps touching the data (#382): a gesture moves it as far as the first or last record, or where it was
    when the gesture began if that was further; past that it goes on as a rubber band does, a quarter of itself at
    most, and springs back when let go. Zooming out stops at all of it.
-   twin(p) -> the plot p as it's drawn now (another element once end() has drawn the view anew): given it, the plot
-   under the gesture stays where it was on the screen through its frames and as it's drawn anew once it's let go, the
-   window scrolled by what grew or shrank over it (#895: Labs' period bar turning to custom dates, its event track's
-   names in another row, moved the plot under the pointer; the browser's scroll anchoring doesn't at the page's top) */
+   twin(p) -> the plot p as it's drawn now (another element once end() has drawn the view anew): given it, what grows
+   or shrinks over the plot under the gesture through its frames and as it's drawn anew once it's let go is made up for,
+   the window scrolled by as much (#895: Labs' period bar turning to custom dates, its event track's names in another
+   row, moved the plot under the pointer). By its place in the page (top + scrollY), not on the screen, so a scroll the
+   person makes meanwhile is theirs (#985: one straight after a zoom, a drag or a finger's pan was scrolled back); the
+   browser's own scroll anchoring off meanwhile (app.css .ck-held), which would make up for it twice, and doesn't at
+   the page's top. And a scroll the browser makes as the view's drawn (a page drawn shorter for a moment, its charts
+   placeholders, scrolled up at its foot) is put back: it's the scroll of a redraw, made in the same task, which a
+   person's can't be */
 function panZoom(box, {plot, span, get, set, draw, end, reset, start, data, twin, minSpan = 2 * DAY}) {
   const ptrs = new Map(); let drag = null, pinch = null, raf = 0, dirty = false, finT = 0, justDragged = false;
   let lim = null, want = null, anim = 0, rest = null;   // the gesture's limits, the window it asks for, the spring back
-  let held = null;   // the plot under the gesture and its top on the screen as it began (twin)
-  const hold = p => { if (twin && !held && p?.isConnected) held = {p, top: p.getBoundingClientRect().top}; };
-  const keep = (h = held) => {
+  let held = null;   // the plot under the gesture and its place in the page as last kept (twin)
+  const pageY = q => q.getBoundingClientRect().top + scrollY, root = document.documentElement;
+  const hold = p => { if (twin && !held && p?.isConnected) { held = {p, y: pageY(p)}; root.classList.add("ck-held"); } };
+  const keep = (h = held, back = 0) => {   // back: what the redraw scrolled
     const q = h && twin(h.p); if (!q?.isConnected) return;
-    const d = q.getBoundingClientRect().top - h.top;
+    const y = pageY(q), d = y - h.y + back;   // what grew or shrank over it since
+    h.y = y;
     if (Math.abs(d) >= .5) scrollBy(0, d);
   };
-  const drawn = () => { draw(); keep(); };
-  const ended = () => { const h = held; held = null; end(); if (h) requestAnimationFrame(() => keep(h)); };   // (after the charts' own frames, end()'s)
+  const letGo = () => { held = null; root.classList.remove("ck-held"); };
+  const drawn = () => { const sy = scrollY; draw(); keep(held, sy - scrollY); };
+  const ended = () => {   // (kept after the charts' own frames, end()'s)
+    const h = held, sy = scrollY; held = null; end(); const back = sy - scrollY;
+    requestAnimationFrame(() => { if (h) keep(h, back); if (!held) letGo(); });
+  };
   const timeAt = (p, cx) => { const [l, w] = span(p), [a, b] = get(); return a + (cx - l) / w * (b - a); };
   const limits = () => {
     if (!lim) { const [a, b] = get(), d = data?.(); lim = d && d[0] <= d[1] ? [Math.min(a, d[0]), Math.max(b, d[1])] : [-Infinity, Infinity]; }
@@ -47,13 +58,13 @@ function panZoom(box, {plot, span, get, set, draw, end, reset, start, data, twin
   };
   // let go: back inside the limits, eased over 200 ms (at once with reduced motion), then the full render
   const finish = () => {
-    clearTimeout(finT); if (!dirty) { held = null; return; } dirty = false; cancelAnimationFrame(raf);
+    clearTimeout(finT); if (!dirty) return letGo(); dirty = false; cancelAnimationFrame(raf);
     const from = get(); rest = inside(...from); lim = want = null;
     if (from[0] === rest[0] && from[1] === rest[1]) return ended();
     const t0 = performance.now(), dur = matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 200;
     let was = from;
     const step = now => {
-      const [a, b] = get(); if (Math.abs(a - was[0]) + Math.abs(b - was[1]) > 1) { held = null; return anim = 0; }   // a period picked meanwhile: that one stays
+      const [a, b] = get(); if (Math.abs(a - was[0]) + Math.abs(b - was[1]) > 1) { letGo(); return anim = 0; }   // a period picked meanwhile: that one stays
       const k = dur ? Math.min(1, (now - t0) / dur) : 1, e = 1 - (1 - k) ** 3;
       set(...(was = [from[0] + (rest[0] - from[0]) * e, from[1] + (rest[1] - from[1]) * e])); drawn();
       if (k < 1) anim = requestAnimationFrame(step); else { anim = 0; ended(); }
@@ -97,7 +108,7 @@ function panZoom(box, {plot, span, get, set, draw, end, reset, start, data, twin
   };
   box.addEventListener("pointerup", up); box.addEventListener("pointercancel", up);
   box.addEventListener("click", ev => { if (justDragged) { ev.stopPropagation(); ev.preventDefault(); } }, true);
-  box.addEventListener("dblclick", ev => { if (plot(ev)) { ev.preventDefault(); clearTimeout(finT); cancelAnimationFrame(anim); anim = 0; dirty = false; lim = want = held = null; reset(); } });
+  box.addEventListener("dblclick", ev => { if (plot(ev)) { ev.preventDefault(); clearTimeout(finT); cancelAnimationFrame(anim); anim = 0; dirty = false; lim = want = null; letGo(); reset(); } });
   box.addEventListener("wheel", ev => {
     const p = plot(ev); if (!p) return;
     settle(); hold(p);

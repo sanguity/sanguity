@@ -9896,6 +9896,84 @@ def main():
             check("#895: a drag moves nothing above the plot: Labs' first chart dragged, at 900×1400 with 150% text, at 412 and 360 px with 200% text and at "
                   "1400 px, the period bar, Labs' head and the event track keep their heights through it and the plot stays under the pointer, and once "
                   "it's let go and drawn for custom dates the plot is where it was on the screen", not bad895 and n895 == 40, bad895)
+            # ---- #985: and a scroll the person makes around a gesture is theirs: #895 made up for how far the plot moved on
+            # the screen since the gesture began, the person's scrolling with it, so a wheel's zoom then the page scrolled
+            # 600 px within 300 ms went back to where it was, a drag past the records' end then a scroll at once didn't
+            # scroll at all (its spring back put it back each frame), and on a phone a finger's pan then a swipe lost most
+            # of it. Only what grows or shrinks over the plot is made up for now. Labs' second chart in the window's
+            # middle: zoomed by the wheel and the page wheeled 600 px off the charts straight after; dragged past the
+            # records' end and the page wheeled 600 px as it's let go; at 412 px by touch, panned past the end and the page
+            # swiped at once. The scroll goes as far as the page lets it (one ends at the page's foot), and once all's drawn
+            # the plot is where the scroll left it on the screen (what grew over it, the period bar turned custom, made up
+            # for; the page drawn shorter for a moment at its foot, which scrolled it up, put back), at 1400 px as usual and
+            # with 200% text
+            PLOT985 = "() => { const s = document.querySelectorAll('#charts .chart svg.ck')[1], r = s.getBoundingClientRect(); return [Math.round(scrollY), r.top, r.left, r.width, r.height, document.documentElement.scrollHeight - innerHeight]; }"
+            GO985 = r"""() => { state.tables.clear(); state.sel = new Set(['Hemoglobin', 'WBC', 'Platelet Count']); applyPreset('1y'); switchTab('labs', 'chart'); renderLabs();
+              return new Promise(r => setTimeout(() => { const s = document.querySelectorAll('#charts .chart svg.ck')[1]; scrollBy(0, s.getBoundingClientRect().top - 350); r(); }, 600)); }"""
+            bad985, sel985 = [], js("[...state.sel]")
+            for k985 in (1, 2):
+                js(ADOPT_CSS_JS, BIG895[k985])
+                for how985 in ("a wheel's zoom", "a drag past the records' end"):
+                    page.set_viewport_size({"width": 1400, "height": 900})
+                    js(GO985)
+                    settle(400)
+                    _, _, x985, w985, h985, _ = js(PLOT985)
+                    y985 = 350 + h985 / 2
+                    if how985 == "a wheel's zoom":
+                        page.mouse.move(x985 + w985 / 2, y985)
+                        page.mouse.wheel(0, -120)
+                        settle(60)
+                        page.mouse.wheel(0, -120)
+                        settle(60)
+                    else:
+                        page.mouse.move(x985 + w985 * .3, y985)
+                        page.mouse.down()
+                        for i985 in range(1, 9):
+                            page.mouse.move(x985 + w985 * .3 - i985 * 60, y985)
+                            settle(30)
+                        page.mouse.up()
+                    page.mouse.move(1396, 450)   # off the charts, at the page's edge
+                    s0, mx985 = js(PLOT985)[::5]
+                    page.mouse.wheel(0, 300)
+                    settle(30)
+                    page.mouse.wheel(0, 300)
+                    settle(80)
+                    s1, t1 = js(PLOT985)[:2]
+                    settle(900)
+                    s2, t2 = js(PLOT985)[:2]
+                    if s1 < min(s0 + 600, mx985) - 10 or abs(t2 - t1) > 2:
+                        bad985.append(f"{how985}, then the page scrolled 600 px, text at {k985:.0%}: scrolled {s0} → {s1} → {s2}, the plot at {t1:.0f} → {t2:.0f} px")
+                # a finger on a phone, in a context of its own (the same session)
+                ctx985 = browser.new_context(viewport={"width": 412, "height": 900}, has_touch=True, is_mobile=True, bypass_csp=True)
+                ctx985.add_cookies(page.context.cookies())
+                pg985 = ctx985.new_page()
+                pg985.goto(base + "/?profile=1#labs")
+                pg985.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+                pg985.evaluate(ADOPT_CSS_JS, BIG895[k985])
+                pg985.evaluate(GO985)
+                pg985.wait_for_timeout(400)
+                cdp985 = ctx985.new_cdp_session(pg985)
+                _, _, x985, w985, h985, _ = pg985.evaluate(PLOT985)
+                sx985, sy985 = x985 + w985 / 2, 350 + h985 / 2
+                cdp985.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": sx985, "y": sy985}]})
+                for i985 in range(1, 9):
+                    cdp985.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": sx985 - 900 * i985 / 8, "y": sy985}]})
+                    pg985.wait_for_timeout(25)
+                cdp985.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+                s0, mx985 = pg985.evaluate(PLOT985)[::5]
+                cdp985.send("Input.synthesizeScrollGesture", {"x": 6, "y": 600, "yDistance": -500, "speed": 2500, "preventFling": True})
+                s1, t1 = pg985.evaluate(PLOT985)[:2]
+                pg985.wait_for_timeout(1000)
+                s2, t2 = pg985.evaluate(PLOT985)[:2]
+                if s1 < min(s0 + 300, mx985) - 10 or abs(t2 - t1) > 2:
+                    bad985.append(f"a finger's pan past the records' end at 412 px, then the page swiped, text at {k985:.0%}: scrolled {s0} → {s1} → {s2}, the plot at {t1:.0f} → {t2:.0f} px")
+                ctx985.close()
+            js("s => { document.adoptedStyleSheets = []; state.sel = new Set(s); applyPreset('all'); switchTab('labs', 'chart'); scrollTo(0, 0); }", sel985)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(300)
+            check("#985: a scroll the person makes around a chart's gesture is theirs: the page scrolled straight after a wheel's zoom and after a drag "
+                  "past the records' end, and swiped after a finger's pan on a phone, isn't scrolled back (only what grows over the plot is made up "
+                  "for), as usual and with 200% text", not bad985, bad985)
             # #382: dragging far past the data left nothing to drag back. Labs' charts and heatmap and Body and activity,
             # from the last year: dragged three widths past each end with the mouse, a touch and a horizontal wheel, the
             # window goes a quarter of itself past the data at most and springs back to it when let go, data in it.
