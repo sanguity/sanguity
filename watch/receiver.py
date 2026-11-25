@@ -1030,7 +1030,9 @@ def cycle_file(slot):
 
 def cycle_sweep(stores):
     """Carry out what the app asked: a profile that turned tracking off keeps nothing (its records and every archived
-    upload's go, once), and a deletion asked for is done once, and said back in cycle.json."""
+    upload's go, once), and a deletion asked for is done once, and said back in cycle.json. Once the app no longer asks
+    for it (it has seen it done, and forgotten it: cycle_tracking.forget_done, #935), what says it was done goes too
+    (#946): the store's note of it, and cycle.json where tracking is off, so nothing here says it was ever on."""
     st = cycle_state()
     if st is None:
         return
@@ -1042,6 +1044,10 @@ def cycle_sweep(stores):
                 store.cycle_purge(token)
             elif slot not in on and store.meta("cycle_clean") != "1":
                 store.cycle_purge()
+            elif not token and store.meta("cycle_purged") is not None:   # (#946) seen done by the app
+                store.db.execute("DELETE FROM meta WHERE k IN ('cycle_purged', 'cycle_purged_at')")
+                store.save()
+                store._cycle_write()
         elif token:   # nothing ever received for it: nothing to delete, but say it's done
             path = cycle_file(slot)
             try:
@@ -1052,6 +1058,18 @@ def cycle_sweep(stores):
                 os.makedirs(os.path.dirname(path), exist_ok=True)
                 crypto.write_file(path, json.dumps({"on": slot in on, "purged": token, "records": [],
                                                     "purged_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}).encode())
+    # (#946) a deletion said done for a slot that never received anything (just above), no longer asked for: it goes
+    top = os.path.join(DATA, "public", "profiles")
+    for slot in [""] + sorted(n for n in (os.listdir(top) if os.path.isdir(top) else ()) if n.isdigit()):
+        path = cycle_file(slot)
+        if slot in stores or slot in purge or slot in on or os.path.isfile(os.path.join(slot_dir(slot), "watch.db")) or not os.path.isfile(path):
+            continue
+        try:
+            doc = json.loads(crypto.read_file(path))
+        except Exception:
+            continue
+        if isinstance(doc, dict) and doc.get("purged") and not doc.get("records"):
+            os.remove(path)
 
 
 DELETED_DONE = "deleted-slots.json"   # in $DATA: the deletion of slot "" done last (#588); a profile slot: its absence

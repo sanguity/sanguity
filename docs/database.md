@@ -858,7 +858,8 @@ records go to the app in `cycle.json` beside `daily.json` (sealed, never in `dai
 only the setting (a sealed `settings` row, `_cycle`). Turning tracking off, or "Delete all cycle data", asks the
 receiver (a new `"cycle_purge"` token) to empty the table, vacuum the database and rewrite every upload in `raw/`
 without them; `cycle.json` says which deletion was done. Turned off, the `_cycle` row goes once the receiver has
-done that deletion (#935), so nothing in `sanguity.db` says tracking was ever on. [`server/cycle.py`](../server/cycle.py) has the record types
+done that deletion (#935), so nothing in `sanguity.db` says tracking was ever on; the receiver then removes
+`cycle.json` and its own note of the deletion, as the app no longer asks for it (#946). [`server/cycle.py`](../server/cycle.py) has the record types
 and the rules.
 **ECGs and irregular rhythm notifications (#182)** are `ecg(key, start, meta, wave)`: one row each, from Health Auto
 Export, by its key (`ecg:` or `rhythm:` and a hash of its start in UTC, [`server/ecg.py`](../server/ecg.py)), so one
@@ -931,5 +932,5 @@ sorting), and your original exports in `RECORDS_DIR`, which Sanguity only reads.
 | An import (undo) | its events, series, results and documents; its upload's raw files unless another import uses them | edits, same-result links, journal entries, medication reminders and doses, and cost marks (they belong to the profile) |
 | An upload | its files and jobs (a job's saved import stays) | the import it became |
 | A connection (disconnect) | its tokens, key, patient id and stored resources; its imports too, if chosen; its hosts from "may contact" | the row, as disconnected; its outside contacts, listed as earlier ones |
-| A profile's cycle records (#183: Delete all cycle data, or turning cycle tracking off) | the watch receiver's rows, and the records in every upload it archived (rewritten without them); `cycle.json` keeps only which deletion was done; what imported Apple Health exports brought (`watch/cycle/`, #223), a waiting preview's, and the uploaded exports themselves, each `export.xml` written again without them (#555; one uploaded while tracking is off is kept without them, and never with sexual activity) | backups made before, exports and visit summaries already downloaded, the phone's own |
+| A profile's cycle records (#183: Delete all cycle data, or turning cycle tracking off) | the watch receiver's rows, and the records in every upload it archived (rewritten without them); `cycle.json` keeps only which deletion was done, until the app has seen it (then it goes, tracking off, #946); what imported Apple Health exports brought (`watch/cycle/`, #223), a waiting preview's, and the uploaded exports themselves, each `export.xml` written again without them (#555; one uploaded while tracking is off is kept without them, and never with sexual activity) | backups made before, exports and visit summaries already downloaded, the phone's own |
 | An account | sessions, devices, passkeys, recovery codes, memberships, its own settings, its visit summary drafts, its calendar feeds, pending sign-ins | activity, uploads, jobs, journal entries, lab-name matches and share links it made (their links become `NULL`; such a share link stops working) |
