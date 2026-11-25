@@ -14,7 +14,7 @@ import anyio
 from fastapi import APIRouter, Depends, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 
-from . import activity, config, uploads
+from . import activity, config, cycle_tracking, uploads
 from .main import _client_ip, get_db, need, user
 
 router = APIRouter()
@@ -73,6 +73,8 @@ def finish_upload(pid: int, upload_id: int, request: Request, s=Depends(user), d
         done = uploads.finish(db, pid, upload_id)
     except uploads.UploadError as e:
         raise _refused(e) from None
+    # an Apple Health export is kept without what isn't (#555): sexual activity, and cycle records while tracking is off
+    cycle_tracking.strip_uploads(db, pid, upload_id, on=cycle_tracking.is_on(db, pid))
     activity.log(db, "upload", s, pid, {"upload": upload_id, **done}, _client_ip(request))
     return done
 

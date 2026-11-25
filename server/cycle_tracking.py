@@ -21,13 +21,15 @@ Uploaded Apple Health exports (#223): an export's cycle records are read only fo
 summary: <profile_dir>/watch/cycle/<import id>.json, a list of records in cycle.json's shape (from Health Auto Export,
 app "Apple Health", so a record both sent is shown once). They are never in daily.json. The page gets them with the
 receiver's (status()); undoing the import takes them away (watch_store.forget_import); turning tracking off, or
-asking for everything to be deleted, deletes them all at once, here in the app (drop_imported). The uploaded export
-itself is kept as it came, like any upload: deleting can't reach it, as the page says, but an import still waiting
-for review that held nothing else is cancelled, and its upload with it (#539).
+asking for everything to be deleted, deletes them all at once, here in the app (drop_imported), and an import still
+waiting for review that held nothing else is cancelled, and its upload with it (#539). The uploaded export itself is
+written again without them then (#555: it kept them until its review was cancelled or its import undone), as the
+receiver rewrites its archived uploads, and as it's uploaded while tracking is off (strip_uploads): an upload holds
+cycle records only while tracking is on, and sexual activity never.
 """
 import json, os, secrets, shutil
 
-from . import crypto, cycle, db as dbm
+from . import crypto, cycle, db as dbm, uploads
 
 KEY = "_cycle"
 
@@ -182,6 +184,43 @@ def imported(db, pid):
     return out
 
 
+def strip_uploads(db, pid, upload_id=None, on=False):
+    """Write a profile's uploaded Apple Health exports again without what isn't kept (#555): sexual activity always,
+    and while tracking is off (on False) every cycle record and basal body temperature, as the receiver leaves them out
+    of a phone's upload (cycle.strip): each export.xml among its ready uploads (or upload_id's alone), streamed, the
+    rest of it as it was. Called when tracking is turned off or everything deleted (drop_imported), and as an upload is
+    finished (routes_uploads.py, export.py), so an upload holds none while it's off. One that can't be read (not
+    well-formed, entities) is left as it came: its import refuses it, and the upload goes with that (#547). Returns
+    how many records were left out."""
+    from .importers import apple_health
+    types = cycle.HAE_NEVER | (set() if on else set(cycle.HAE) | cycle.HAE_ALSO)
+    q = "SELECT id FROM uploads WHERE profile_id=? AND state='ready'" + (" AND id=?" if upload_id is not None else "") + " ORDER BY id"
+    n = 0
+    for (uid,) in db.execute(q, (pid,) + ((upload_id,) if upload_id is not None else ())).fetchall():
+        for rel in uploads.manifest(db, pid, uid):
+            if rel.rsplit("/", 1)[-1].lower() != "export.xml":
+                continue
+            try:
+                n += uploads.rewrite(db, pid, uid, rel, lambda pieces, write: apple_health.without(_health_data(pieces), write, types))
+            except (ValueError, uploads.UploadError, crypto.KeyError_, OSError):
+                continue
+    return n
+
+
+def _health_data(pieces):
+    """An export.xml's pieces, refused (ValueError) unless it's an Apple Health export: <HealthData in its head."""
+    head, it = bytearray(), iter(pieces)
+    for piece in it:
+        head += piece
+        if b"<HealthData" in head:
+            yield bytes(head)
+            yield from it
+            return
+        if len(head) > 256 * 1024:   # (apple_health.HEAD_BYTES: Apple's DTD is ~10 KB)
+            break
+    raise ValueError("not an Apple Health export")
+
+
 def drop_imported(db, pid, who=None, ip=None):
     """Delete every cycle record uploaded exports brought this profile: the imports' own, and those in an import's
     preview still waiting to be confirmed (its sealed file is written again without them; one that held nothing else
@@ -189,7 +228,8 @@ def drop_imported(db, pid, who=None, ip=None):
     (routes_cycle.py), since a preview read again holds its lock while it waits to write (jobs.freshen): each preview
     is written again under that lock, so neither writes back what the other took out, and not for a job saved or
     cancelled meanwhile (jobs.rewrite_preview, #526). An export still being read asks again under the same lock
-    before its preview is written (jobs._import), so one that gets there meanwhile is seen here (#539)."""
+    before its preview is written (jobs._import), so one that gets there meanwhile is seen here (#539). Then every
+    Apple Health export the profile's uploads hold is written again without them (strip_uploads, #555)."""
     from . import jobs
     shutil.rmtree(imported_dir(pid), ignore_errors=True)
     for (jid,) in db.execute("SELECT id FROM jobs WHERE profile_id=? AND (state='preview' OR state='running' AND stage IS NOT 'saving')",
@@ -212,6 +252,7 @@ def drop_imported(db, pid, who=None, ip=None):
                     # and read again without them (#534): what's new then
                     db.execute("UPDATE jobs SET summary=? WHERE id=? AND state='preview'", (crypto.enc(json.dumps({**report, "stamp": None})), jid))
                     jobs.freshen_held(db, pid, jid)
+    strip_uploads(db, pid)   # and the exports uploaded, written again without them (#555)
 
 
 def summary_rows(db, pid, data, since, now):

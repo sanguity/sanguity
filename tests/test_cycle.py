@@ -89,6 +89,11 @@ def archived(slot):
 
 
 CYCLE_WORDS = ("menstruation", "menstrual", "ovulation", "cervical", "intermenstrual", "sexual", "basal_body", "hc-flow", "LH surge")
+# an Apple Health export.xml's record types, lower-cased: cycle records, and what's never kept (#555)
+HK_CYCLE = (b"hkcategorytypeidentifiermenstrualflow", b"hkcategorytypeidentifierovulationtestresult",
+            b"hkcategorytypeidentifiercervicalmucusquality", b"hkcategorytypeidentifierintermenstrualbleeding",
+            b"hkquantitytypeidentifierbasalbodytemperature")
+HK_NEVER = (b"hkcategorytypeidentifiersexualactivity",)
 
 
 class Records(unittest.TestCase):
@@ -420,11 +425,11 @@ class App(unittest.TestCase):
         cycle_dir = cycle_tracking.imported_dir(pid)
 
         def on_disk():
-            """Everything the profile's folder holds, as bytes, decrypted where sealed, but the uploaded files
-            themselves (kept as they came, as the page says)."""
+            """Everything the profile's folder holds, as bytes, decrypted where sealed, the uploaded files too (#555:
+            they were kept as they came, cycle records and all)."""
             out = b""
             for p in glob.glob(os.path.join(prof.profile_dir(pid), "**", "*"), recursive=True):
-                if os.path.isfile(p) and f"{os.sep}uploads{os.sep}" not in p:
+                if os.path.isfile(p):
                     out += crypto.read_file(p) if crypto.file_is_encrypted(p) else open(p, "rb").read()
             return out
         # off: an export's cycle records are never read; nothing kept, not even in the preview, and not counted
@@ -434,7 +439,7 @@ class App(unittest.TestCase):
         self.assertEqual(preview["counts"]["bp_readings"], 3, "the new kinds are counted")
         self.assertEqual((preview["counts"]["cgm_days"], preview["counts"]["heights"]), (1, 2))
         self.assertFalse(os.path.exists(cycle_dir))
-        for w in (b"menstru", b"ovulation", b"egg white", b"spotting", b'"flow"'):
+        for w in (b"menstru", b"ovulation", b"egg white", b"spotting", b'"flow"', *HK_NEVER):
             self.assertNotIn(w, on_disk().lower())
         self.assertEqual(self.c["robin"].get(url).json()["spans"], [])
         watch = self.c["robin"].get(f"/api/profiles/{pid}/watch").json()
@@ -461,11 +466,13 @@ class App(unittest.TestCase):
         _, done = self.import_export(pid)
         waiting, _ = self.import_export(pid, confirm=False)
         self.assertEqual(waiting["counts"]["cycle"], 5)
+        self.assertIn(HK_CYCLE[0], on_disk().lower(), "while it's on, the uploaded export keeps them")
+        self.assertNotIn(HK_NEVER[0], on_disk().lower(), "never sexual activity")
         self.assertEqual(self.c["robin"].put(url, json={"on": False}, headers=H).status_code, 200)
         self.assertFalse(os.path.exists(cycle_dir))
         self.assertNotIn("cycle", self.c["robin"].get(f"/api/profiles/{pid}/jobs/{waiting['id']}").json()["counts"])
-        for w in (b"menstru", b"ovulation", b"egg white", b'"spotting"'):
-            self.assertNotIn(w, on_disk().lower(), "nothing left anywhere in the profile's folder")
+        for w in (b"menstru", b"ovulation", b"egg white", b'"spotting"', *HK_CYCLE, *HK_NEVER):
+            self.assertNotIn(w, on_disk().lower(), "nothing left anywhere in the profile's folder, its uploads included")
         self.assertEqual(self.c["robin"].post(f"/api/profiles/{pid}/jobs/{waiting['id']}/confirm", headers=H).status_code, 202)
 
     def test_8_deleted_while_a_preview_is_read_again_or_cancelled(self):   # #526
@@ -694,6 +701,95 @@ class App(unittest.TestCase):
         self.assertEqual(done.get("cycle"), 1, done)
         self.assertEqual(self.c["robin"].put(url, json={"on": False}, headers=H).status_code, 200)
         self.assertNotIn("cycle", self.c["robin"].get(f"/api/profiles/{pid}/jobs/{done['id']}").json(), "deleted: not named")
+
+    def test_9d_an_uploaded_export_holds_them_only_while_on(self):   # #555
+        """An uploaded Apple Health export was kept as it came, its cycle records (and sexual activity) in it, until its
+        review was cancelled or its import undone, whatever was deleted; the card said deleting couldn't reach it. Now
+        its export.xml is written again without them, streamed, the rest byte for byte: as it's uploaded (sexual
+        activity always, cycle records and basal body temperature while tracking is off), and when tracking is turned
+        off or everything deleted. One that isn't Apple Health's, or can't be read, is left as it came."""
+        from server import uploads
+        from server.importers import apple_health
+        with open(os.path.join(ROOT, "tests", "fixtures", "apple_health", "apple_health_export", "export.xml"), "rb") as f:
+            src = f.read()
+        # the filter alone: a piece at a time of any size, the same; the rest of the file as it was
+        off, on = cycle.HAE_NEVER | set(cycle.HAE) | cycle.HAE_ALSO, cycle.HAE_NEVER
+        outs = []
+        for size in (1, 13, 4096, 1 << 20):
+            out = bytearray()
+            self.assertEqual(apple_health.without((src[i:i + size] for i in range(0, len(src), size)), out.extend, off), 7)
+            outs.append(bytes(out))
+        self.assertEqual(len(set(outs)), 1)
+        lines, cut, inside = src.decode().splitlines(True), [], False
+        for line in lines:   # the same file with each of those records' lines taken out
+            low = line.lower().encode()
+            if line.lstrip().startswith("<Record") and any(t in low for t in HK_CYCLE + HK_NEVER):
+                inside = not line.rstrip().endswith("/>")
+            elif inside:
+                inside = line.strip() != "</Record>"
+            else:
+                cut.append(line)
+        self.assertEqual(outs[0], "".join(cut).encode())
+        kept = bytearray()
+        self.assertEqual(apple_health.without([src], kept.extend, on), 1, "on: sexual activity alone")
+        self.assertIn(HK_CYCLE[0], bytes(kept).lower())
+        same = bytearray()
+        self.assertEqual((apple_health.without([src], same.extend, {"hkquantitytypeidentifiernone"}), bytes(same)), (0, src))
+        for bad in (src.replace(b"<HealthData", b'<!ENTITY x "y"><HealthData', 1), src[:len(src) // 2]):
+            with self.assertRaises(ValueError):
+                apple_health.without([bad], bytearray().extend, off)
+        # uploaded, as the page uploads it
+        db = dbm.connect()
+        try:
+            pid = prof.create_profile(db, "Kit (fictional)", owner_id=self.uid["robin"])
+        finally:
+            db.close()
+        c, url = self.c["robin"], f"/api/profiles/{pid}/cycle"
+
+        def upload(files):
+            up = c.post(f"/api/profiles/{pid}/uploads", headers=H).json()["id"]
+            for rel, body in files.items():
+                self.assertEqual(c.put(f"/api/profiles/{pid}/uploads/{up}/files", params={"path": rel}, content=body,
+                                       headers={**H, "Content-Type": "application/octet-stream"}).status_code, 200)
+            self.assertEqual(c.post(f"/api/profiles/{pid}/uploads/{up}/finish", headers=H).status_code, 200)
+            return up
+
+        def stored(up):
+            d = dbm.connect()
+            try:
+                files = {rel: crypto.read_file(p) for u, rel, p in uploads.stored_files(d, pid) if u == up}
+                info = uploads.info(d, pid, up)
+            finally:
+                d.close()
+            self.assertEqual(info["bytes"], sum(len(b) for b in files.values()), "the upload's size as it's kept")
+            return files
+        other = b'<?xml version="1.0"?>\n<Notes><Record type="HKCategoryTypeIdentifierMenstrualFlow"/></Notes>\n'
+        off_up = upload({"apple_health_export/export.xml": src, "notes/export.xml": other, "export_cda.xml": b"<x/>"})
+        got = stored(off_up)
+        self.assertEqual(got["apple_health_export/export.xml"], outs[0], "tracking off: written again without them")
+        self.assertEqual((got["notes/export.xml"], got["export_cda.xml"]), (other, b"<x/>"), "not Apple Health's: as it came")
+        short = upload({"export.xml": src[:len(src) // 2]})
+        self.assertEqual(stored(short)["export.xml"], src[:len(src) // 2], "one that can't be read: as it came")
+        self.assertEqual(c.put(url, json={"on": True}, headers=H).status_code, 200)
+        on_up = upload({"apple_health_export/export.xml": src})
+        self.assertEqual(stored(on_up)["apple_health_export/export.xml"], bytes(kept), "on: its cycle records kept, sexual activity not")
+        # read the same way as before, cycle records aside
+        d = tempfile.mkdtemp(dir=TMP)
+        with open(os.path.join(d, "export.xml"), "wb") as f:
+            f.write(outs[0])
+        with open(os.path.join(d, "whole.xml"), "wb") as f:
+            f.write(src)
+        self.assertEqual(apple_health.parse({"export.xml": os.path.join(d, "export.xml")}, cycle=True)["data"]["watch"],
+                         apple_health.parse({"export.xml": os.path.join(d, "whole.xml")})["data"]["watch"])
+        # everything deleted while on, then turned on again with a new upload and turned off: each written again
+        self.assertEqual(c.post(f"{url}/delete", headers=H).status_code, 200)
+        self.assertEqual(stored(on_up)["apple_health_export/export.xml"], outs[0])
+        again = upload({"apple_health_export/export.xml": src})
+        self.assertEqual(stored(again)["apple_health_export/export.xml"], bytes(kept))
+        self.assertEqual(c.put(url, json={"on": False}, headers=H).status_code, 200)
+        self.assertEqual(stored(again)["apple_health_export/export.xml"], outs[0])
+        for up in (off_up, on_up, again):
+            self.assertFalse([w for w in HK_CYCLE + HK_NEVER if w in stored(up)["apple_health_export/export.xml"].lower()])
 
 
 def watch_store_own(pid):

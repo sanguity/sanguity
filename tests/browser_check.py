@@ -7634,6 +7634,9 @@ def main():
             check("…Sources → Phone and watch has a Cycle tracking card saying it's off and nothing is kept",
                   page.inner_text("#cycleState").startswith("Off.") and "left out of every upload before anything is kept" in page.inner_text("#cycleState")
                   and "Not reached: backups" in page.inner_text("#cycle"), page.inner_text("#cycle")[:200])
+            reach555 = page.inner_text("#cycle .cy-reach")
+            check("…deleting reaches the Apple Health exports uploaded, written again without them; nothing says one is kept as uploaded (#555)",
+                  "the exports you uploaded too (each written again without them)" in reach555 and "kept as uploaded" not in reach555, reach555)
             for theme in ("light", "dark"):
                 js("t => { document.documentElement.dataset.theme = t; }", theme)
                 for width in (1400, 375):
