@@ -721,9 +721,19 @@ async function saveSections(cards, msg, had) {
     const value = it.value(), before = {key: it.st.key, label: it.st.label, value: it.st.value, from: it.st.from};
     try { await putSet(`${base}/${encodeURIComponent(it.st.key)}`, value, it.st.value); }
     catch (e) {
-      if (e.status === 409) {   // (#923) changed since: its section read again, as it is now, to make the change on
-        sayIn(msg, (done.length ? `Saved ${quoted(done)}. ` : "") + e.message, true);
-        await load({sections: [card.sgSec.id], text: e.message}, [card.sgSec.id]);
+      if (e.status === 409) {   // (#923) changed elsewhere since: that setting alone read again, as it is now, to make the
+        // change on, the others in its section kept as changed (#957); the refusal said under the section's heading,
+        // and focus there, as a save puts it, the bar staying for what's left
+        const now = (await stored(base).catch(() => null) || {})[it.st.key];
+        if (now) { it.back(now.value, now.from); it.put(now.value, false); }
+        for (const c of cards) c.sgChanged();
+        let said = card.querySelector(".set-refused");
+        if (!said) { said = el("p", {class: "msg set-refused"}); card.querySelector(".set-hd").after(said); }
+        sayIn(msg, "");
+        sayIn(said, (done.length ? `Saved ${quoted(done)}. ` : "") + e.message, true);
+        const hd = document.getElementById(`sec-${card.sgSec.id}-hd`);
+        hd?.focus({preventScroll: true});
+        hd?.scrollIntoView({block: "nearest"});
         return false;
       }
       // the ones before it are saved; this one and the rest stay as changed, to put right and save again

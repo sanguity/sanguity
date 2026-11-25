@@ -2342,6 +2342,10 @@ Everything on `main` so far; it becomes the first tagged release.
   summary's measures, the Admin page's kinds of attachment, on a connection taking 0.4 s an answer) was refused as
   changed "in another tab or by someone else", its box unticked again. Now one helper saves every such list, one save
   of it at a time, each going on from the page's own save before it.
+- **A Settings save refused as changed in another tab keeps your other changes, and says so where focus is** (#957):
+  the section was read again whole, so the person's other changes in it were lost, focus fell to the page and the
+  refusal sat at the foot of a long card, out of sight. Now only the refused setting is read again, as it is now, the
+  others stay as changed in the bar, and focus goes to the section's heading with the refusal under it.
 - **A medication renamed takes its reminders, doses and side effects with it** (#921, #954): renamed in its drawer
   ("Lisinopril 10 mg tablet" to "Zestril 10 mg tablet"), a medication was grouped under its new name, but its
   reminders left the calendar feed and were listed under no medication, its doses stayed behind under the old name,

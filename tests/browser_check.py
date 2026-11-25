@@ -17024,6 +17024,47 @@ def main():
             js(api_put, ["profiles/1/settings/trends.defaultLabs", labs0])
             page.reload()
             page.wait_for_selector("[data-key='trends.defaultLabs'] .set-labs button", timeout=10000)
+            # #957: two tabs. This one takes a lab out of Labs selected at first and adds a saved view (both waiting in the
+            # bar); the other, opened after, takes another lab out and saves. This one's Save by keyboard: Labs selected at
+            # first is refused as changed elsewhere (#923) and read again alone, as it is now, the view still a change not
+            # saved, the bar saying so; focus on the section's heading with the refusal under it (it fell to the page, the
+            # section read again whole and the view lost, the words at the card's foot); its Save then keeps the view
+            views957 = js(api_get, "profiles/1/settings")["trends"]["views"]
+            ctx957 = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)   # the same session, another tab
+            ctx957.add_cookies(page.context.cookies())
+            tab957 = ctx957.new_page()
+            tab957.goto(base + "/settings.html?profile=1#sec-trends")
+            tab957.wait_for_selector("[data-key='trends.defaultLabs'] .set-labs button", timeout=20000)
+            drop()
+            view957 = {"name": "Two tabs (#957)", "labs": labs0[:2], "default": False}
+            js("v => SET_ITEMS['trends.views'].put([...SET_ITEMS['trends.views'].value(), v])", view957)
+            tab957.evaluate("SET_ITEMS['trends.defaultLabs'].put(SET_ITEMS['trends.defaultLabs'].value().slice(0, -1))")
+            tab957.click("#setBar button:text-is('Save')")
+            tab957.wait_for_function("document.querySelector('#sec-trends .set-msg').textContent.startsWith('Saved')", timeout=10000)
+            ctx957.close()
+            seen957 = len(problems)
+            page.focus("#setBar button:text-is('Save')")
+            page.keyboard.press("Enter")
+            page.wait_for_function("!!document.querySelector('#sec-trends .set-refused')?.textContent", timeout=10000)
+            settle(200)
+            problems[seen957:] = [x for x in problems[seen957:] if not re.search(r"HTTP 409: \S+/settings/trends\.defaultLabs$|status of 409 \(Conflict\)", x)]   # (refused on purpose: the point)
+            got957 = js("""[document.activeElement.id, document.querySelector('#sec-trends .set-refused').textContent, SET_ITEMS['trends.defaultLabs'].value(),
+              SET_ITEMS['trends.defaultLabs'].dirty(), SET_ITEMS['trends.views'].dirty(), document.getElementById('setBar').hidden,
+              document.querySelector('#setBar .sg-bar-n').textContent]""")
+            check("Settings in two tabs (#957): a list saved here after the other tab changed it is refused, read again alone as it is now, the "
+                  "section's other change kept in the bar; focus on the section's heading, the refusal under it",
+                  got957 == ["sec-trends-hd", "“Labs selected at first” was changed since this page read it, in another tab or by someone else. "
+                             "It's shown as it is now: make your change again.", labs0[:-1], False, True, False, "1 change"], got957)
+            page.click("#setBar button:text-is('Save')")
+            page.wait_for_function(f"{tr_msg}.startsWith('Saved')", timeout=10000)
+            now957 = js(api_get, "profiles/1/settings")["trends"]
+            check("…and its Save then keeps the view, Labs selected at first as the other tab left it",
+                  view957 in now957["views"] and now957["defaultLabs"] == labs0[:-1], now957)
+            js(api_put, ["profiles/1/settings/trends.defaultLabs", labs0])   # as it was
+            js(api_put, ["profiles/1/settings/trends.views", views957])
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            page.reload()
+            page.wait_for_selector("[data-key='trends.defaultLabs'] .set-labs button", timeout=10000)
             # #368: the bar's Save by keyboard redraws the section: focus on its heading, not the page, and back there after
             # the toast's Undo (Alt+N, Enter), which redraws it again; Discard gives it the heading too
             drop()
