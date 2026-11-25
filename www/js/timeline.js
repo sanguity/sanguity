@@ -183,7 +183,12 @@ tlSvg.addEventListener("click", ev => {
 });
 tlSvg.addEventListener("pointerleave", hideTip);
 let lastW = innerWidth;
-addEventListener("resize", () => { if (innerWidth === lastW) return; lastW = innerWidth; clearTimeout(window._rz); window._rz = setTimeout(() => keepFocus(renderAll), 120); });   // focus kept (store.js, #271)
+addEventListener("resize", () => {   // focus kept (store.js, #271), and in sight if it was before the resize (#738)
+  if (innerWidth === lastW) return;
+  lastW = innerWidth; clearTimeout(window._rz);
+  const was = sightHold();
+  window._rz = setTimeout(() => keepFocus(renderAll, was), 120);
+});
 
 /* ---------------------------------------------------------------- the tab: the timeline, or the journal (#277)
    The chart and its Events card, or the journal's card (journal.js, in #tlJournal), switched as Labs' Chart | Heatmap

@@ -5013,6 +5013,36 @@ def main():
                   "with the records loaded again at 360 px with text at 200%; and each of its controls that draws the tab again, Chart | Table and the options, "
                   "pressed and pressed back at 1400×800, 412×860 and 360×800",
                   not far720 and all(v >= 12 for v in n720.values()) and all(v >= 20 for v in ctl720.values()), far720 or [n720, ctl720])
+            # #738: a phone turned (412×900 to 900×412, and back) keeps what has focus in sight, wholly where it fits, if it was
+            # before: a Timeline row far down the list, a chart on Labs, a button on the Overview (keepFocus measured "in sight
+            # before" once the page had reflowed, after the resize, and left a row about 10,000 px away)
+            SEEN738 = r"""() => { const a = document.activeElement; if (!a || a === document.body) return ['the page'];
+              const r = a.getBoundingClientRect(), p = getComputedStyle(document.documentElement), room = innerHeight - parseFloat(p.scrollPaddingTop) - parseFloat(p.scrollPaddingBottom);
+              return [(a.getAttribute('aria-label') || a.textContent || a.id).trim().slice(0, 30), r.height > room ? inSight(a) : inSight(a, true), Math.round(r.top)]; }"""
+            turn738, sel738 = {}, js("[...state.sel]")
+            js("state.sel = new Set(SERIES.filter(s => !s.watch && s.n >= 2).map(s => s.name))")   # (charts enough to scroll through)
+            for what, tab, pick in (("a Timeline row", "switchTab('timeline', 'timeline')", "(r => r[Math.min(60, r.length - 1)])(document.querySelectorAll('#list .tl-row'))"),
+                                    ("a chart on Labs", "switchTab('labs', 'chart')", "(c => c[Math.min(6, c.length - 1)])(document.querySelectorAll('#view-labs svg.ck[tabindex]'))"),
+                                    ("a button on the Overview", "switchTab('overview')", "[...document.querySelectorAll('#view-overview button')].filter(b => b.checkVisibility()).at(-3)")):
+                for a, b in (((412, 900), (900, 412)), ((900, 412), (412, 900))):
+                    page.set_viewport_size({"width": a[0], "height": a[1]})
+                    settle(400)
+                    js(f"() => {{ {tab}; scrollTo(0, 0); }}")
+                    settle(500)
+                    page.keyboard.press("Tab")   # (from the keyboard, as a person would get there)
+                    js(f"() => ({pick}).focus()")
+                    settle(300)
+                    before738 = js(SEEN738)
+                    page.set_viewport_size({"width": b[0], "height": b[1]})
+                    settle(700)
+                    after738 = js(SEEN738)
+                    if before738[:2] != [after738[0], True] or after738[1] is not True:
+                        turn738[f"{what}, {a[0]}×{a[1]} to {b[0]}×{b[1]}"] = [before738, after738]
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("s => { document.activeElement.blur(); scrollTo(0, 0); state.sel = new Set(s); state.tables.clear(); applyPreset('all'); switchTab('labs', 'chart'); }", sel738)
+            settle(300)
+            check("…and a phone turned, 412×900 to 900×412 and back, keeps what has focus in sight, wholly where it fits: a Timeline row far down the list, "
+                  "a chart on Labs, a button on the Overview (#738: left out of sight, a row about 10,000 px away)", not turn738, turn738)
             # #300: the heatmap on the kit. Each row's count of results outside their range, at its end, is its ▲s and ▼s
             # and the table's; a panel with one row is in Other; the hint says the columns are draw days, not even time
             hm300 = js("""(() => { const t = document.querySelector('#hmTable table'), rows = [...t.querySelectorAll('tbody tr:not(.grp)')];
@@ -9650,6 +9680,10 @@ def main():
                         settle(250)
                         if width < 400:
                             bad275.extend(phone_fits(page, f"Medications tab ({theme})"))
+                        # axe at the top: the Past row that has focus is kept in sight as the window narrows (#738), and
+                        # scrolled there, a Today button passing under the top bar is "partly obscured"
+                        js("scrollTo(0, 0)")
+                        settle(100)
                         axe275.extend(axe_check(page, f"Medications tab, {width} px, {theme}")[0])
                 page.set_viewport_size({"width": 1400, "height": 900})
                 js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme275)
