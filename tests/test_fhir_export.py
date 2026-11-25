@@ -25,7 +25,7 @@ import browser_check as bc   # noqa: E402  (its builders of the demo's extra rec
 import fhir_schema_check   # noqa: E402
 from fastapi.testclient import TestClient   # noqa: E402
 
-from server import (accounts, atrest, cycle_tracking, db as dbm, fhir_export, importers, journal, main, profiles,   # noqa: E402
+from server import (accounts, atrest, cycle_tracking, db as dbm, export, fhir_export, importers, journal, main, profiles,   # noqa: E402
                     records, settings, watch_store)
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
@@ -392,6 +392,73 @@ class FhirExport(unittest.TestCase):
         for kind in ("point", "labitem", "labday"):
             with self.subTest(kind=kind):
                 self.assertEqual(back.get(kind), want.get(kind))
+        profiles.delete_profile(self.db, pid)
+
+    # ---------------------------------------------------------------- the corrections made in Sanguity
+    def test_the_records_as_the_app_shows_them(self):
+        """#916: the bundle holds the records with every correction made in Sanguity applied, as the page shows them: a
+        hidden visit is left out, a merged one is one Encounter (with what the other added), a renamed one has its new
+        title, a re-dated one its new time, a stay marked "Not a hospital stay" is an ambulatory visit, a visit moved to
+        Procedures a Procedure, and a result two sources gave, linked as the same result, one Observation. It was built
+        from the records as imported (export.plan's, raw since #589, for Export everything's data.json, which carries
+        the corrections beside them and still does), so all of them went out as they were imported."""
+        d = lambda day, hm="09:00": f"2026-{day}T{hm}:00"
+        file = {"built": "2026-05-01", "source": "fictional file", "costs": [],
+                "events": [{"id": 1, "t": d("03-02"), "k": "visit", "title": "Annual physical (fictional)", "sub": "", "key": "f:v1"},
+                           {"id": 2, "t": d("03-10"), "k": "visit", "title": "Follow-up (fictional)", "sub": "", "key": "f:v2"},
+                           {"id": 3, "t": d("03-10", "09:05"), "k": "visit", "title": "Clinic visit (fictional)", "sub": "", "key": "f:v3"},
+                           {"id": 4, "t": d("03-20", "10:00"), "k": "visit", "title": "Telehealth (fictional)", "sub": "", "key": "f:v4"},
+                           {"id": 5, "t": d("04-01", "10:00"), "k": "visit", "title": "Dated wrong (fictional)", "sub": "", "key": "f:v5"},
+                           {"id": 6, "t": d("04-05", "08:00"), "end": d("04-05", "18:00"), "k": "stay",
+                            "title": "Day unit · Fictional Hospital", "sub": "Observation", "key": "f:s1"},
+                           {"id": 7, "t": d("04-09", "11:00"), "k": "visit", "title": "Skin biopsy (fictional)", "sub": "", "key": "f:v7"}],
+                "details": {"2": {"type": "visit", "note": "Fictional follow-up"}, "3": {"type": "visit", "who": "Dr Example (fictional)"},
+                            "6": {"type": "stay", "admit": d("04-05", "08:00"), "discharge": d("04-05", "18:00")}},
+                "labs": [{"name": "Hemoglobin", "unit": "g/dL", "loinc": "718-7", "key": "f:hgb", "panel": "CBC",
+                          "pts": [[d("03-02"), 13.5, 12, 16, "", "13.5"]]}]}
+        pull = {"events": [], "details": {}, "costs": [],   # the same result from a portal, in other units
+                "labs": [{"name": "Hemoglobin", "unit": "g/L", "loinc": "718-7", "key": "p:hgb", "panel": "CBC",
+                          "pts": [[d("03-02"), 135, 120, 160, "", "135"]]}]}
+        pid = profiles.create_profile(self.db, "Corrected (fictional)", owner_id=self.uids["robin"])
+        with dbm.transaction(self.db):
+            records.store(self.db, pid, file, "dataset")
+            records.store(self.db, pid, pull, "upload", fmt="fhir")
+        robin, p = self.login("robin"), f"/api/profiles/{pid}"
+        ev = {e["title"]: e["id"] for e in records.assemble(self.db, pid)["events"]}
+        for body in ({"event": ev["Annual physical (fictional)"], "action": "hide"},
+                     {"event": ev["Follow-up (fictional)"], "action": "merge", "other": ev["Clinic visit (fictional)"]},
+                     {"event": ev["Telehealth (fictional)"], "action": "rename", "title": "Video visit (fictional)"},
+                     {"event": ev["Dated wrong (fictional)"], "action": "date", "t": "2026-04-02T14:30"},
+                     {"event": ev["Day unit · Fictional Hospital"], "action": "not_stay"},
+                     {"event": ev["Skin biopsy (fictional)"], "action": "kind", "k": "procedure"}):
+            r = robin.post(p + "/edits", json=body, headers=H)
+            self.assertEqual(r.status_code, 201, r.text)
+        ref = records.assemble(self.db, pid)["possible"][0]["ref"]
+        self.assertEqual(robin.post(p + "/same", json={"ref": ref, "same": True}, headers=H).status_code, 201)
+
+        bundle = self.bundle(robin.get(p + "/export?format=fhir").content)[0]
+        res = [e["resource"] for e in bundle["entry"]]
+        enc = {r["type"][0]["text"]: r for r in res if r["resourceType"] == "Encounter"}
+        self.assertEqual(sorted(enc), ["Dated wrong (fictional)", "Day unit · Fictional Hospital", "Follow-up (fictional)",
+                                       "Video visit (fictional)"],
+                         "not the hidden visit, the one merged in, the renamed one's old title, nor the one moved to Procedures")
+        follow = enc["Follow-up (fictional)"]
+        self.assertEqual([x["individual"]["display"] for x in follow["participant"]], ["Dr Example (fictional)"],
+                         "the merged visit, with who saw them from the one merged into it")
+        self.assertTrue(enc["Dated wrong (fictional)"]["period"]["start"].startswith("2026-04-02T14:30:00"), enc["Dated wrong (fictional)"])
+        stay = enc["Day unit · Fictional Hospital"]
+        self.assertEqual((stay["class"]["code"], stay["period"].get("end")), ("AMB", None), "not a hospital stay: a visit, with no end")
+        self.assertEqual([r["code"]["text"] for r in res if r["resourceType"] == "Procedure"], ["Skin biopsy (fictional)"])
+        hgb = [r for r in res if r["resourceType"] == "Observation" and r["code"].get("text") == "Hemoglobin"]
+        self.assertEqual(len(hgb), 1, "the result both sources gave, linked as the same result: once")
+        self.assertNotIn("Annual physical", json.dumps(bundle))
+        self.assertNotIn("Clinic visit", json.dumps(bundle))
+        self.assertNotIn("Telehealth", json.dumps(bundle))
+        # Export everything's data.json stays as imported, with the corrections beside it (#589)
+        raw = export.plan(self.db, pid)["data"]
+        self.assertEqual(len(raw["events"]), 7)
+        self.assertEqual(sorted(x["action"] for x in raw["corrections"]["edits"]), ["date", "hide", "kind", "merge", "not_stay", "rename"])
+        self.assertEqual(len(raw["corrections"]["same"]), 1)
         profiles.delete_profile(self.db, pid)
 
     # ---------------------------------------------------------------- the bundle itself

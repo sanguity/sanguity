@@ -38,10 +38,12 @@ REF = re.compile(r"""(?:src|href)\s*=\s*["']([^"'#?]+)""", re.I)
 STORED = ("pdf", "jpg", "jpeg", "png", "gif", "webp", "zip", "gz")   # already compressed
 
 
-def plan(db, pid, cycle=False, activity=False):
+def plan(db, pid, cycle=False, activity=False, shown=False):
     """Everything the export needs, gathered now: the stream runs after the request's database connection closes.
     cycle: the cycle records too, ticked in for this export (#183). activity: the activity log too, for an owner's
-    export only (#589: an editor can't read it, GET .../activity)."""
+    export only (#589: an editor can't read it, GET .../activity). shown: the records as the app shows them instead
+    (records.served: every correction and same-result link applied, no "corrections" beside them), for the FHIR export
+    (#916), which has nowhere to carry the corrections and nothing on the other side to apply them."""
     p = db.execute("SELECT name, watch_file FROM profiles WHERE id=?", (pid,)).fetchone()
     docs = {r["id"]: (crypto.dec(r["path"]), r["ext"]) for r in db.execute("SELECT id, path, ext FROM documents WHERE profile_id=?", (pid,))}
     log = None
@@ -50,12 +52,15 @@ def plan(db, pid, cycle=False, activity=False):
         for e in log:
             e["detail"] = json.loads(crypto.dec(e["detail"])) if e["detail"] else {}
             e["detail"].pop("key", None)
-    data = records.assemble(db, pid, raw=True)   # as imported: what loading the export stores again (#589)
-    if data is None:   # nothing imported, but what people wrote or decided still goes (#589)
+    if shown:
+        data = json.loads(records.served(db, pid) or b"null")   # a copy of what the page reads, its own to change
+    else:
+        data = records.assemble(db, pid, raw=True)   # as imported: what loading the export stores again (#589)
+    if data is None and not shown:   # nothing imported, but what people wrote or decided still goes (#589)
         own = {k: v for k, v in (("journal", journal.listing(db, pid)), ("reminders", med_reminders.listing(db, pid)),
                                  ("doses", med_log.listing(db, pid))) if v}
         data = {"events": [], "details": {}, "labs": [], "costs": [], **own} if own or _has_corrections(db, pid) else None
-    if data is not None and (fixes := corrections(db, pid, data["events"])):
+    if data is not None and not shown and (fixes := corrections(db, pid, data["events"])):
         data["corrections"] = fixes
     watch =watch_store.load(db, pid)   # the merged summary (receiver + imports), or None
     waves = {}   # ECG samples (#225): file name -> where they are, for each recording the summary lists
