@@ -3457,6 +3457,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - **A menu's tick is clear of its words with larger text** (#746): a picked item's ✓ in the period's sheet, More…
   and the profile menu grows with the text, but the room for it didn't, so at 200% it covered the item's first
   letter ("✓Last 2 years"). The room now grows with the text too; at the usual size nothing moves.
+- **On a phone, what Tab brings into view clears the tab bar, ring and all** (#767): the page kept focus clear of
+  the tab bar by exactly the bar's height, so a focus ring's bottom edge was under the bar, on every tab. It now
+  leaves 8 px more, as it does under the top bar.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
