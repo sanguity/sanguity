@@ -733,6 +733,20 @@
      ]
     ],
     "txt": []
+   },
+   {
+    "name": "Urine color",
+    "unit": "",
+    "panel": "Lab panel",
+    "n": 0,
+    "key": "carespace:name|urine color",
+    "pts": [],
+    "txt": [
+     [
+      "2026-03-02T08:40:00-06:00",
+      "Yellow"
+     ]
+    ]
    }
   ],
   "upcoming": [
