@@ -698,7 +698,9 @@ keeps the newest N, deleting older `sanguity-backup-*.tar.gz` files from the fol
 backup** restores one into a temporary folder beside it, compares it with what its manifest says it holds (every
 file's checksum, the database's row counts, that this install's key opens it, that every journal photo, uploaded file
 and document the database names is in it), says whether it's good, and deletes
-the copy; the live data isn't touched. The backups go to `BACKUP_DIR`, so copy that folder off this machine too.
+the copy; the live data isn't touched. The backups go to `BACKUP_DIR`, so copy that folder off this machine too. The
+row counts are sealed with the encryption key: a backup made where the key file can't be read (a cron job without it)
+is written without them, says so, and Check a backup reports it.
 
 **The phone and watch data** (#227) is in every backup: for each profile, the watch receiver's database (`watch.db`,
 copied as the receiver last saved it, still encrypted) and every upload it archived (`raw/`), so readings that came
