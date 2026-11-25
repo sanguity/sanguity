@@ -3466,6 +3466,10 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Turning a phone keeps what has focus in sight** (#738): from upright to sideways and back, the page kept focus on
   a chart, a button or a Timeline row but left it out of sight, a row thousands of pixels away. What has focus and
   was in sight before the turn is brought back into sight after it.
+- **A record's results fit a narrow drawer, the flag beside the value** (#829): on a phone with larger text, or at
+  320 px, the drawer's results table scrolled sideways with its flag ("▼ Low") off to the right, only the red value
+  showing. Where its four columns don't fit, each result is now a few lines: the test, its value with the flag beside
+  it, and its reference range. A screen reader still reads it as a table; wider drawers are as before.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

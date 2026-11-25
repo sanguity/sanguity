@@ -12765,6 +12765,42 @@ def main():
             settle(300)
             check("…and a pick-one menu's ✓ clear of its item's first letter, with text at 200% and as usual: the period's sheet at 360 px and More… "
                   "at 1400 px (#746)", not bad746, bad746)
+            # ---- #829: the drawer's results where four columns don't fit, at 360 px with text at 200% and at 320 px as usual,
+            # light and dark: each result a few lines, its flag beside its value, its range under them, nothing off to the
+            # right (the Flag column was, the table scrolling sideways); at 360, 412 and 1400 px as usual, the four columns
+            RES829 = r"""() => { const out = {rows: 0, flags: 0, bad: []};
+              for (const w of document.querySelectorAll('#dbody .tablewrap')) {
+                if (!w.checkVisibility() || ![...w.querySelectorAll('th')].some(h => h.textContent === 'Ref range')) continue;
+                const W = w.getBoundingClientRect(), cols = getComputedStyle(w.querySelector('thead')).position !== 'absolute';
+                out.cols = cols;
+                if (w.scrollWidth > w.clientWidth + 1) out.bad.push(`scrolls sideways: ${w.scrollWidth} in ${w.clientWidth}`);
+                for (const tr of w.querySelectorAll('tbody tr')) {
+                  out.rows++;
+                  const [n, v, , f] = [...tr.cells].map(c => c.getBoundingClientRect());
+                  if (!tr.cells[3].textContent.trim()) continue;
+                  out.flags++;
+                  if (f.right > W.right + 1 || f.left < W.left - 1) out.bad.push(`${tr.cells[0].firstChild.textContent}: its flag outside, ${Math.round(f.left)}–${Math.round(f.right)} of ${Math.round(W.left)}–${Math.round(W.right)}`);
+                  else if (!cols && (f.left < v.right - 1 || Math.abs(f.top - v.top) > 2)) out.bad.push(`${tr.cells[0].firstChild.textContent}: its flag not beside its value`);
+                }
+              }
+              return out; }"""
+            js("closeDrawer(); openEvent(EV.filter(e => e.k === 'lab' && !e.hidden && (e.res || []).some(([s, p]) => p[4])).at(-1))")
+            page.wait_for_selector("#dbody .tablewrap table.data", timeout=10000)
+            theme829, bad829 = js("document.documentElement.dataset.theme || null"), {}
+            for w, big, cols in ((360, True, False), (320, False, False), (360, False, True), (412, False, True), (1400, False, True)):
+                page.set_viewport_size({"width": w, "height": 800})
+                for mode in ("light", "dark") if not cols else ("light",):
+                    js("([t, css]) => { document.documentElement.dataset.theme = t; const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = css ? [s] : []; }",
+                       [mode, BIG622 if big else ""])
+                    settle(300)
+                    got = js(RES829)
+                    if got["bad"] or not got["flags"] or got.get("cols") is not cols:
+                        bad829[f"{w} {mode}{' 200%' if big else ''}"] = got
+            js("t => { closeDrawer(); document.adoptedStyleSheets = []; if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme829)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(300)
+            check("…and the drawer's results where four columns don't fit (360 px with text at 200%, 320 px), light and dark: each result's flag beside "
+                  "its value, nothing off to the right; four columns at 360, 412 and 1400 px as usual (#829)", not bad829, bad829)
             # ---- #785: #622's check above 700 px, where the tabs are in the top bar, all under More where they don't fit: at
             # 701, 768, 900, 1024 and 1100 px and on a phone on its side (844×390, 915×412, a touch screen), with text as
             # usual and at 130%, 150% and 200%, on the records page (Body and activity, the longest tab's name) and every
@@ -24376,8 +24412,11 @@ def main():
                 if not spaced:   # and the drawer's tables: a lab's results, a claim's services, a medication's listings and fills
                     def drawer_wraps(px):
                         out = []
-                        for k in ("lab", "claim", "med"):
-                            js("k => openEvent(EV.find(e => e.k === k && !e.hidden && (k !== 'claim' || (DATA.details[e.id] || {}).lines?.length)) || EV.find(e => e.k === k && !e.hidden))", k)
+                        for k in ("lab", "claim", "med", "history"):   # (history: a medication's, its listings and fills)
+                            if k == "history":
+                                js("openMedication(MEDS.find(m => m.spans.length > 1) || MEDS[0])")
+                            else:
+                                js("k => openEvent(EV.find(e => e.k === k && !e.hidden && (k !== 'claim' || (DATA.details[e.id] || {}).lines?.length)) || EV.find(e => e.k === k && !e.hidden))", k)
                             settle(300)
                             out += [[f"the drawer, {k}, {px} px"] + w for w in js(SCROLL_TABLES_JS, "#drawer .tablewrap")]
                             page.keyboard.press("Escape")
@@ -24397,7 +24436,8 @@ def main():
                     unreached = scroll_table_faults(wraps335)
                     check("…and at 320 and 1400 px every table wrapper that scrolls takes focus and is named, a region, and every "
                           "one that doesn't is neither (the tabs and the drawer, #340)",
-                          # one that scrolls at 320 px: a lab's results in the drawer (Costs' tables stack instead, #443)
+                          # one that scrolls at 320 px: a medication's listings in the drawer (Costs' tables stack instead, #443,
+                          # and a lab's results, #829)
                           any(w[0].endswith("320 px") and w[1] for w in wraps335) and any(w[0].endswith("1400 px") and not w[1] for w in wraps335)
                           and not unreached, unreached[:8] or wraps335)
                 for path in (f"sources.html?profile={conn_pid}", "sharing.html?profile=1", "settings.html?profile=1", "account.html", "admin.html"):
