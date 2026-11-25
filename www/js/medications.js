@@ -31,7 +31,7 @@ function medReminds(m) {
 /* the drug's pharmacy claims, on Costs (#55): its claims listed there, in a period that has them. Its link's address
    names them (#452: #costs?drug=metformin, Costs' claims, the drug's), so one opened in a new window or tab (Ctrl, ⌘
    or Shift) is the browser's, and opens on them too (medCostsArrive) */
-const medClaims = m => (DATA.costs || []).filter(c => c.kind === "pharmacy" && c.d && medHas(m, medKeyOf(c.title)));
+const medClaims = m => (DATA.costs || []).filter(c => c.kind === "pharmacy" && c.d && medKeyOf(c.title) === m.key);
 const medCostsHref = m => "#costs?drug=" + encodeURIComponent(m.key);
 function medCostsSet(m) {
   const ds = medClaims(m).map(c => dayTs(c.d));

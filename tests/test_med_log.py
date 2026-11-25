@@ -181,11 +181,11 @@ class Log(unittest.TestCase):
         self.assertEqual([(d["status"], d["note"]) for d in exported["doses"]], [("taken", NOTE)])
         self.assertIn('"doses": 1 logged', z.read("README.txt").decode())
 
-    def test_a_dose_follows_its_medication_through_a_rename(self):   # #921
-        """Fictionamide renamed to its brand name in the drawer: the medication took the new name's key, its dose stayed
-        under "fictionamide", by no medication, and no dose could be logged under its old key. Now it keeps its key, its
-        doses with it, and a dose is logged for it as before; one logged under the new name's key (a page from before
-        the rename's reload) is still its. Undone, as before."""
+    def test_a_dose_follows_its_medication_through_a_rename(self):   # #921, #954
+        """Fictionamide renamed to its brand name: the medication is shown and grouped by its new name (as before #921),
+        and its doses go with it in the same save (#954), so a dose is logged for it under the new key; undone, the doses
+        it moved go back, and the one logged since under the new name, whose medication is gone, follows it back. A
+        second listing of it under the brand name, renamed to the generic, merges into it with its doses."""
         did = self.log(note=NOTE)["id"]
         listing = next(e["id"] for e in self.data()["events"] if e["k"] == "med")
         r = self.c["robin"].post(f"/api/profiles/{self.pid}/edits", json={"event": listing, "action": "rename", "title": "Brandamide 10 mg tablet"}, headers=H)
@@ -194,19 +194,38 @@ class Log(unittest.TestCase):
         try:
             data = self.data()
             (m,) = data["medications"]
-            self.assertEqual((m["key"], m["name"], m.get("aka")), ("fictionamide", "Brandamide 10 mg tablet", ["brandamide"]))
-            self.assertEqual([d["med"] for d in data["doses"] if d["id"] == did], ["fictionamide"], "the dose stays its")
-            self.log(t=D(-1) + "T20:00")   # under its key, as before
-            self.log(med="brandamide", t=D(-2) + "T08:00")   # under its new name's
-            db = dbm.connect()
-            try:
-                self.assertEqual(med_log.medications(db, self.pid), {"fictionamide": "Brandamide 10 mg tablet", "brandamide": "Brandamide 10 mg tablet"})
-            finally:
-                db.close()
+            self.assertEqual((m["key"], m["name"]), ("brandamide", "Brandamide 10 mg tablet"))
+            self.assertEqual([d["med"] for d in data["doses"] if d["id"] == did], ["brandamide"], "the dose went with it")
+            later = self.log(med="brandamide", t=D(-1) + "T20:00")["id"]
+            self.log(code=400, t=D(-2) + "T08:00")   # its old key is no medication's now
         finally:
             self.assertEqual(self.c["robin"].delete(f"/api/profiles/{self.pid}/edits/{edit}", headers=H).status_code, 200)
-        (m,) = self.data()["medications"]
-        self.assertEqual((m["key"], m["name"], m.get("aka")), ("fictionamide", "Fictionamide 10 mg tablet", None), "undone: as before")
+        data = self.data()
+        (m,) = data["medications"]
+        self.assertEqual((m["key"], m["name"]), ("fictionamide", "Fictionamide 10 mg tablet"), "undone: as before")
+        self.assertEqual(sorted(d["med"] for d in data["doses"] if d["id"] in (did, later)), ["fictionamide", "fictionamide"],
+                         "the dose it moved back, and the one logged since with it")
+        # another listing of it under the brand name, renamed to the generic: one medication, its dose with it
+        db = dbm.connect()
+        with dbm.transaction(db):
+            iid = records.store(db, self.pid, {"events": [{"id": 9, "t": D(-50), "k": "med", "title": "Brandamide 10 mg tablet"}],
+                                               "details": {"9": {"type": "med", "instructions": "One tablet by mouth, with breakfast"}}}, "upload")
+        db.close()
+        try:
+            brand = self.log(med="brandamide", t=D(-3) + "T08:00")["id"]
+            eid = next(e["id"] for e in self.data()["events"] if e.get("title") == "Brandamide 10 mg tablet")
+            r = self.c["robin"].post(f"/api/profiles/{self.pid}/edits", json={"event": eid, "action": "rename", "title": "Fictionamide 10 mg tablet"}, headers=H)
+            self.assertEqual(r.status_code, 201, r.text)
+            data = self.data()
+            self.assertEqual([m["key"] for m in data["medications"]], ["fictionamide"], "merged")
+            self.assertEqual([d["med"] for d in data["doses"] if d["id"] == brand], ["fictionamide"])
+            self.assertEqual(self.c["robin"].delete(f"/api/profiles/{self.pid}/edits/{r.json()['id']}", headers=H).status_code, 200)
+            self.assertEqual([d["med"] for d in self.data()["doses"] if d["id"] == brand], ["brandamide"], "undone: back")
+        finally:
+            db = dbm.connect()
+            with dbm.transaction(db):
+                records.drop(db, self.pid, [iid])
+            db.close()
 
     def test_counts_say_what_was_logged(self):
         c = med_log.counts([{"status": s} for s in ["taken"] * 11 + ["late", "skipped", "skipped"]])

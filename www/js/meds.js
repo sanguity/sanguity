@@ -156,7 +156,7 @@ function openMedication(m) {
   }
   body.append(...medReminderSection(m));   // reminders through the calendar feed (#162)
   body.append(...medLogSection(m));        // the doses logged (medlog.js, #235)
-  const notes = JOURNAL.filter(e => e.j.med && medHas(m, medKeyOf(e.j.med)));
+  const notes = JOURNAL.filter(e => e.j.med && medKeyOf(e.j.med) === m.key);
   if (notes.length) body.append(el("div", {class: "sect", text: "Journal entries linked to it"}),
     ...notes.sort((a, b) => a.ts - b.ts).map(e => el("button", {class: "btn", type: "button", text: `${fmtD(e.ts)} · ${e.title}`, onclick: () => openEvent(e)})));
   body.append(el("p", {class: "hint", style: {color: "var(--ink2)"}, text: "What the records say, in order: a listing's dates may not be when a medication started or ended. This isn't medical advice."}),
@@ -182,8 +182,6 @@ function medKeyOf(name) {
   const head = (m ? name.slice(0, m.index) : name).replace(/^[\s,;:\-/]+|[\s,;:\-/]+$/g, "").toLowerCase();
   return (head.match(/[a-z][a-z'-]*/g) || []).join(" ") || name.toLowerCase();
 }
-/* whether a key (a reminder's, a dose's, a name's) is medication m's: its own, or a name's a rename gave it (#921) */
-const medHas = (m, k) => k === m.key || (m.aka || []).includes(k);
 /* in a medication listing's or fill's drawer: its whole history */
 function medHistoryAction(e) {
   if (!e || (e.k !== "med" && e.k !== "rx")) return null;
@@ -199,7 +197,7 @@ function medHistoryAction(e) {
    change is put in the records in place (store.js, #271) and this medication's drawer is drawn again. */
 const MR_DAYS = [["mo", "Mon", "Monday"], ["tu", "Tue", "Tuesday"], ["we", "Wed", "Wednesday"], ["th", "Thu", "Thursday"],
   ["fr", "Fri", "Friday"], ["sa", "Sat", "Saturday"], ["su", "Sun", "Sunday"]];
-const mrOf = m => (Array.isArray(DATA.reminders) ? DATA.reminders : []).filter(r => r && medHas(m, r.med));
+const mrOf = m => (Array.isArray(DATA.reminders) ? DATA.reminders : []).filter(r => r && r.med === m.key);
 const mrCurrent = m => !!m.spans.length && !!m.spans[m.spans.length - 1].open;
 /* "8:00 AM" in this person's language, for a wall-clock "HH:MM" (no zone: it is the reminder's own) */
 const mrTime = t => { const [h, n] = t.split(":").map(Number); return _fmt(Date.UTC(2000, 0, 1, h, n), {hour: "numeric", minute: "2-digit", timeZone: "UTC"}); };

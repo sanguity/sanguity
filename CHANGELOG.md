@@ -2337,12 +2337,13 @@ Everything on `main` so far; it becomes the first tagged release.
   key labs, tabs or milestones, Labs' saved views, the visit summary's measures ticked, the Admin page's attachment
   kinds) is saved with the one it was made from, and refused if it changed since: the page reads it again, shows it
   as it is now and says so, and the change is made again on that.
-- **A medication renamed keeps its reminders, doses and fills** (#921): renamed in its drawer ("Lisinopril 10 mg
-  tablet" to "Zestril 10 mg tablet"), a medication was grouped under its new name, so its reminders left the calendar
-  feed and were listed under no medication, its doses stayed behind, and with pharmacy fills the old name lived on as
-  a medication of fills alone holding the reminders while Today dropped the slot. Now a medication keeps what the
-  records first called it as its key, shown by its new name, its fills, reminders and doses with it; a side effect or
-  a dose linked to it by its new name finds it too.
+- **A medication renamed takes its reminders, doses and side effects with it** (#921, #954): renamed in its drawer
+  ("Lisinopril 10 mg tablet" to "Zestril 10 mg tablet"), a medication was grouped under its new name, but its
+  reminders left the calendar feed and were listed under no medication, its doses stayed behind under the old name,
+  and with pharmacy fills the old name lived on as a medication of fills alone holding the reminders while Today
+  dropped the slot. Now a rename still groups a medication as it's shown (it joins a medication of its new name, or
+  leaves one it shared a name with), and its reminders, doses and the side effects linked to it go with it in the same
+  save, to the medication its newest listing is in now; undoing the rename puts them back.
 - **A record uploaded again with something changed at its source is updated, whatever its kind** (#920): a portal's
   next FHIR export, after the doctor stopped a medication and resolved a problem, was left out as "already here", so the
   medication stayed current (its reminders and Today's dose buttons carried on) and the problem Active; an insurer's

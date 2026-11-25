@@ -8,11 +8,7 @@ groups both by medication and lays each one out as what the records say, in orde
 
   {"name": what it's shown as (the newest listing's title),
    "key": the grouping key (the drug's leading words, before any strength: "tacrolimus" for "Tacrolimus 1 mg
-          capsule" and "TACROLIMUS 0.5MG CAP"), of each record's title as imported: a medication renamed in the app
-          (edits.py) is shown by its new name and keeps its key, so its reminders, doses and fills, which name it by
-          its key, stay with it (#921),
-   "aka": [the keys of the names it's shown by, where a rename gave it another (no other medication's)], only then:
-          what a name typed or picked as shown (a side effect's medication, a phone's dose) finds it by,
+          capsule" and "TACROLIMUS 0.5MG CAP"),
    "rxnorm": [the RxNorm codes its listings carry],
    "spans": [{"from": YYYY-MM-DD, "to": YYYY-MM-DD | null, "open": the records give no end, "stopped": a listing
               says it was stopped (a status like Stopped, Completed or Discontinued, or an end date),
@@ -31,11 +27,17 @@ How listings become spans, as plainly as the records allow:
   - consecutive listings with the same instructions and title are one span (a medication listed again unchanged)
   - where the instructions or the title (the strength) differ from the span before, that's a dose change
 
+A rename (edits.py) groups a record as it's shown: under its new name's key it joins a medication of that name, or
+leaves one it shared a key with. What hangs on a medication's key goes with it (#954, follow(), in the rename's own
+transaction): its reminders (med_reminders.py), its doses (med_log.py) and the side effects linked to it by name
+(journal.py) go to the medication its newest record is in now (its newest listing, which names it, else its newest
+fill), and undoing the rename puts back what it moved (back()).
+
 Nothing here judges a dose, a gap or an overlap; the page shows the spans and the records behind each. Pharmacy
 fills are matched to a medication by the same key and never stretch or start a span. Hidden events (edits.py) are
 left out. records._assemble adds the result as "medications", only when the profile has medication records.
 """
-import re
+import json, re
 
 MED_KINDS = ("med", "rx")
 STOPPED = {"stopped", "completed", "discontinued", "inactive", "ended", "cancelled", "canceled", "aborted",
@@ -78,10 +80,9 @@ def _supply(d, e):
     return int(m.group(1)) if m else None
 
 
-def history(data, imported=None):
-    """The profile's medications as spans, changes and fills (see above), sorted by name. data: the assembled records;
-    imported: {event id: its title as imported, before any correction} (records._assemble), whose key groups it."""
-    details, groups, imported = data.get("details") or {}, {}, imported or {}
+def history(data):
+    """The profile's medications as spans, changes and fills (see above), sorted by name. data: the assembled records."""
+    details, groups = data.get("details") or {}, {}
     for e in data.get("events") or []:
         if not isinstance(e, dict) or e.get("k") not in MED_KINDS or e.get("hidden"):
             continue
@@ -90,7 +91,7 @@ def history(data, imported=None):
             continue
         d = details.get(str(e.get("id")))
         d = d if isinstance(d, dict) else {}
-        g = groups.setdefault(med_key(_text(imported.get(e.get("id"))) or title), {"listings": [], "fills": []})
+        g = groups.setdefault(med_key(title), {"listings": [], "fills": []})
         if e["k"] == "rx":
             g["fills"].append({"t": day, "id": e.get("id"), "title": title,
                                "pharmacy": _text(d.get("provider") or d.get("pharmacy")) or None, "supply": _supply(d, e)})
@@ -100,11 +101,6 @@ def history(data, imported=None):
                               "prescriber": _text(d.get("prescriber")) or None, "source": _text(d.get("src")) or None,
                               "rxnorm": _text(d.get("rxnorm")) or None})
     out = [_lay_out(key, g) for key, g in groups.items()]
-    for m in out:   # (#921) the keys of the names a rename gave it, none another medication's own
-        g = groups[m["key"]]
-        aka = sorted({med_key(x["title"]) for x in g["listings"] + g["fills"]} - set(groups))
-        if aka:
-            m["aka"] = aka
     return sorted(out, key=lambda m: (m["name"].lower(), m["key"]))
 
 
@@ -161,3 +157,93 @@ def _lay_out(key, g):
     return {"name": name, "key": key, "rxnorm": sorted({s["rxnorm"] for s in spans if s["rxnorm"]}),
             "spans": spans, "changes": changes, "fills": fills, "start": min(starts) if starts else None,
             "stop": last["to"] if last and last["stopped"] else None}
+
+
+# ---------------------------------------------------------------- what follows a medication through a rename (#954)
+
+def of_records(db, pid):
+    """The profile's medications as its records have them now (records.served: corrections applied)."""
+    from . import records
+    body = records.served(db, pid)
+    return (json.loads(body).get("medications") or []) if body else []
+
+
+def _newest(m):
+    """The record that names medication m: its newest listing, else its newest fill."""
+    if m.get("spans") and m["spans"][-1].get("ids"):
+        return m["spans"][-1]["ids"][-1]
+    return m["fills"][-1]["id"] if m.get("fills") else None
+
+
+def follow(db, pid, before, gone_only=False):
+    """(#954) After a rename (or its undoing, gone_only: only medications no longer there), what hung on each
+    medication of before (of_records() then) whose newest record is now in another goes with it to that one: its
+    reminders and doses (by key) and the side effects linked to it (by name, given the other's name). Call inside the
+    transaction that changed the records. -> what it moved, for back(): {"reminders" | "doses": [[id, from key, to
+    key]], "journal": [[id, from name, to name]]}"""
+    after = of_records(db, pid)
+    where, now = {}, {m["key"] for m in after}
+    for m in after:
+        for i in [i for sp in m.get("spans") or [] for i in sp.get("ids") or []] + [f["id"] for f in m.get("fills") or []]:
+            where[i] = m
+    to = {}
+    for m in before:
+        if gone_only and m["key"] in now:
+            continue
+        there = where.get(_newest(m))
+        if there is not None and there["key"] != m["key"]:
+            to[m["key"]] = there
+    return _move(db, pid, to) if to else {}
+
+
+def _move(db, pid, to):
+    from . import crypto, journal, med_log, med_reminders, records
+    out = {"reminders": [], "doses": [], "journal": []}
+    for table, field, enc in (("med_reminders", "reminders", med_reminders._enc), ("med_doses", "doses", med_log._enc)):
+        for r in db.execute(f"SELECT id, body FROM {table} WHERE profile_id=?", (pid,)).fetchall():
+            b = json.loads(crypto.dec(r["body"]))
+            if b.get("med") in to:
+                out[field].append([r["id"], b["med"], to[b["med"]]["key"]])
+                db.execute(f"UPDATE {table} SET body=? WHERE id=?", (enc({**b, "med": to[b["med"]]["key"]}), r["id"]))
+    for r in db.execute("SELECT id, body FROM journal WHERE profile_id=?", (pid,)).fetchall():
+        b = json.loads(crypto.dec(r["body"]))
+        k = med_key(b["med"]) if b.get("med") else None
+        if k in to and b["med"] != to[k]["name"]:
+            out["journal"].append([r["id"], b["med"], to[k]["name"]])
+            db.execute("UPDATE journal SET body=? WHERE id=?", (journal._enc({**b, "med": to[k]["name"]}), r["id"]))
+    out = {k: v for k, v in out.items() if v}
+    if out:
+        records._bump(db, pid)
+    return out
+
+
+def merged(a, b):
+    """Two of follow()'s records as one: each item's first "from" and last "to" (a rename of a rename)."""
+    out = {}
+    for rec in (a or {}, b or {}):
+        for field, items in rec.items():
+            have = {x[0]: x for x in out.setdefault(field, [])}
+            for i, frm, t in items:
+                if i in have:
+                    have[i][2] = t
+                else:
+                    have[i] = [i, frm, t]
+                    out[field].append(have[i])
+    return out
+
+
+def back(db, pid, moved):
+    """(#954) Undoing a rename: what follow() moved goes back, each where it was, if it's still where it went."""
+    from . import crypto, journal, med_log, med_reminders, records
+    n = 0
+    for table, field, enc in (("med_reminders", "reminders", med_reminders._enc), ("med_doses", "doses", med_log._enc),
+                              ("journal", "journal", journal._enc)):
+        for i, frm, t in (moved or {}).get(field) or []:
+            r = db.execute(f"SELECT body FROM {table} WHERE id=? AND profile_id=?", (i, pid)).fetchone()
+            b = json.loads(crypto.dec(r["body"])) if r else None
+            if b and b.get("med") == t:
+                db.execute(f"UPDATE {table} SET body=? WHERE id=?", (enc({**b, "med": frm}), i))
+                n += 1
+    if n:
+        records._bump(db, pid)
+    return n
