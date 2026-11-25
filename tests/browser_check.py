@@ -10218,6 +10218,38 @@ def main():
             check("…and there every chart's text is CanvasText on Canvas, both ways (#346, #657): Labs' charts, the event track, the strip, the "
                   "heatmap's names and its sticky axis, Compare, Costs' claims and running totals, the Timeline's lanes and the Medications tab",
                   all(v["n"] > 0 and not v["bad"] for v in text657.values()), {k: v for k, v in text657.items() if not v["n"] or v["bad"]})
+            # ---- #983: …and Labs' bands, both ways: the reference band (the app's ink at 6%) and a hospital stay's (at 7%)
+            # vanished on the system's black. Labs' charts and Compare in All (a stay among them), a lab's panel's strip, and
+            # the Labs legend's keys for both: each band's fill, and each key's colour, CanvasText's (at its share)
+            BAND983 = r"""sel => { const probe = c => { const s = document.createElement('span'); s.style.forcedColorAdjust = 'none'; s.style.color = c; document.body.append(s);
+                const v = getComputedStyle(s).color; s.remove(); return v; };
+              const rgb = c => /^color\(srgb /.test(c) ? c.slice(11).split(/[\s/)]+/).slice(0, 3).map(v => Math.round(v * 255)).join() : (c.match(/[\d.]+/g) || []).slice(0, 3).join();
+              const text = rgb(probe('CanvasText')), out = {n: {}, bad: []};
+              for (const m of document.querySelectorAll(sel)) { if (m.tagName !== 'I' && !m.checkVisibility()) continue;
+                const k = m.getAttribute('class'), c = m.tagName === 'I' ? getComputedStyle(m).backgroundColor : getComputedStyle(m).fill;
+                out.n[k] = (out.n[k] || 0) + 1; if (rgb(c) !== text) out.bad.push(`${k}: ${c}`); }
+              out.bad = [...new Set(out.bad)]; return out; }"""
+            was983, fc983 = js("[document.documentElement.dataset.theme || null, matchMedia('(prefers-color-scheme: dark)').matches, [...state.sel], state.preset, state.tab, state.labsView]"), {}
+            for system983 in ("dark", "light"):
+                way983 = f"the system {system983}, the app {'light' if system983 == 'dark' else 'dark'}"
+                page.emulate_media(color_scheme=system983, forced_colors="active")
+                js("t => { document.documentElement.dataset.theme = t; applyPreset('all'); state.sel = new Set(['Hemoglobin']); switchTab('labs', 'chart'); }", "light" if system983 == "dark" else "dark")
+                settle(500)
+                fc983[f"{way983}: Labs' charts and legend"] = js(BAND983, "#charts :is(.refband, .stayband), #legendList :is(i.refband, i.stay-key)")
+                js("openLab(SERIES.find(s => s.name === 'Hemoglobin'))")
+                settle(500)
+                fc983[f"{way983}: a lab's panel"] = js(BAND983, "#dbody .refband")
+                js("closeDrawer(); switchTab('labs', 'compare')")
+                settle(500)
+                fc983[f"{way983}: Compare"] = js(BAND983, "#labsCompare :is(.refband, .stayband)")
+            page.emulate_media(forced_colors="none", color_scheme="dark" if was983[1] else "light")
+            js("""([t, , sel, preset, tab, view]) => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+              state.sel = new Set(sel); applyPreset(preset); switchTab(tab, tab === 'labs' ? view : undefined); }""", was983)
+            settle(300)
+            check("…and Labs' reference bands and hospital stays are CanvasText at their share, both ways (#983: the app's ink at 6% and 7%, gone on the "
+                  "system's black): Labs' charts and their legend's keys, Compare and a lab's panel's strip",
+                  all(not v["bad"] and v["n"].get("refband") for v in fc983.values()) and all(v["n"].get("stayband") for k, v in fc983.items() if "panel" not in k),
+                  fc983)
             # ---- #729: #657's check reached Labs, Costs, the Timeline and the Medications tab; the same on Body and activity
             # (with a target of the person's own: "Your target" and its dashed edges kept the app's ink, 2.27:1 and 1.82:1,
             # legible only through the halo), its glucose profile, a lab's panel, a share link's page (its histories open)
