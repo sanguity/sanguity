@@ -62,7 +62,9 @@ Account events (no profile), readable by admins:
                 (connections.py; change is "add", "edit" or "remove")
   outside       {"host", "purpose"}: Sanguity contacted a vendor with no profile involved (an admin's "Test this
                 connection", connections.py)
-  settings.user / settings.install   like a profile's settings entry: someone's own setting, or the install's (admin)
+  settings.user / settings.install   like a profile's settings entry: someone's own setting, or the install's (admin,
+                or actor COMMAND_LINE: server.manage config reset); an install setting's has its "from" and "to" values,
+                and a section reset's "changes", [{"setting", "label", "from", "to"}] (#1006; none is a secret)
   backup.create {"name", "size", "removed"} / backup.check {"name", "ok"} / backup.fail {"error"} / backup.schedule
                 {"schedule", "keep", "from"}: a backup made (Back up now, or actor SCHEDULED_BACKUP), checked by
                 restoring a copy, failing, or the schedule changed (backup_jobs.py, #200)

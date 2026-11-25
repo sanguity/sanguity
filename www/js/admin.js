@@ -504,8 +504,12 @@ async function loadRequireTf() {
           "An account without one can't open any records until it has one: Sanguity asks it to set one up first. " +
           "You can turn this off again at any time."]})) { req.checked = false; return; }
     }
-    try { await call("settings", "PATCH", {require_2fa: req.checked}); say("#reqTfMsg", req.checked ? "Everyone now needs two-factor sign-in." : "Two-factor sign-in is now optional."); }
+    try {   // (#1006: the fresh check, as every server setting's change)
+      await fresh(() => call("settings", "PATCH", {require_2fa: req.checked}));
+      say("#reqTfMsg", req.checked ? "Everyone now needs two-factor sign-in." : "Two-factor sign-in is now optional.");
+    }
     catch (e) { req.checked = !req.checked; say("#reqTfMsg", e.message, true); }
+    if (!document.activeElement || document.activeElement === document.body) req.focus({preventScroll: true});   // (the check's form gone)
   };
 }
 /* account events only: who created, disabled or reset which account, and the server's own changes (no records) */

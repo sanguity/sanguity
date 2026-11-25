@@ -202,6 +202,22 @@ The compose files pass each one as `${NAME:-}`, empty unless `.env` sets it, and
 templates pass none unless you fill it in, so an install with no `.env` has none set by the environment. An `.env`
 copied from an older `.env.example` sets them all: comment out the ones you'd rather change in the app.
 
+Every change to one in the app asks the admin to confirm it's them (the password, a code or a passkey, unless they did
+within the last few minutes), and goes in the install's activity log with who made it and its old and new value.
+
+**When a value saved in the app locks everyone out** (public addresses that leave out the one people open it at, a sign-in
+that ends at once), there are two ways back in without the page:
+
+| Command | What it does |
+|---|---|
+| `docker compose exec app python -m server.manage config show` | Each setting's value, and whether the environment sets it, it was saved in the app or it's the default |
+| `docker compose exec app python -m server.manage config reset SETTING` | Takes away the value saved in the app for one (its variable, like `PUBLIC_ORIGINS`, or a key like `sync.staleDays`); the running app uses the environment's or the default within seconds |
+| `docker compose exec app python -m server.manage config reset --all` | The same for every one |
+
+Or start the app with `SANGUITY_SAVED_SETTINGS=off` in `.env` (TrueNAS: Additional Environment Variables; Unraid: add
+the variable): every value saved in the app is left out, each setting the environment's or its default, until it's
+taken out again. Sign in, put the setting right in the app, then take the line out and `docker compose up -d`.
+
 ### Updating
 
 **Database migrations run at start-up.** Each time the app starts, it upgrades its database to the version it
