@@ -15,6 +15,11 @@ event a new id):
 
 Edits made in the app always use the first two. When a rebuild gives a build event a new title (a new build.py
 reads its source differently), follow_rebuild() moves its edits to it, matched by kind and start time.
+A lab event's key is its day's or its report's ("fhir:labitem:2025-03-04"), shared by every import's lab event of it
+(an upload's, each pull's, another source's file of that day), and a lab day's by every lab day of its date. So an edit
+of either also keeps what it holds (holds(): a lab event's rows, each by its own record, else its test; a lab day's,
+those of the lab events it lists), and finds only the one holding them (#937): hiding the ALT's lab event hides it
+alone, not the upload's of that day too.
 An edit whose event is gone (the import was undone, or the event
 changed in the source) stays stored, unapplied, and is listed as not found until its event comes back or someone
 removes the edit.
@@ -94,6 +99,37 @@ def key_of(e):
     return keys_of(e)[0]
 
 
+def _rows_held(d):
+    if not (isinstance(d, dict) and isinstance(d.get("rows"), list)):
+        return set()
+    keys = d.get("keys") if isinstance(d.get("keys"), list) else []
+    out = set()
+    for j, r in enumerate(d["rows"]):
+        k = keys[j] if j < len(keys) else None
+        if isinstance(k, str) and k.strip():
+            out.add(k)
+        elif isinstance(r, list) and r and isinstance(r[0], str) and r[0].strip():
+            out.add("test:" + " ".join(r[0].split()).casefold())
+    return out
+
+
+def holds(kind, detail, detail_of):
+    """What an event holds, by which an edit of it finds this one of the events that share its key (#937): a lab
+    event's rows, each by its own record (its details' "keys": the Observation it is) or else its test's name; a lab
+    day's, those of the lab events it lists (detail_of(id): a listed event's details). Empty for any other kind."""
+    if kind == "labitem":
+        return _rows_held(detail)
+    if kind == "lab" and isinstance(detail, dict) and isinstance(detail.get("ids"), list):
+        return set().union(*(_rows_held(detail_of(i)) for i in detail["ids"] if isinstance(i, int)))
+    return set()
+
+
+def _held(value, field="holds"):
+    """What an edit keeps of what its event held, or None (an edit of any other kind, or made before #937)."""
+    h = value.get(field) if isinstance(value, dict) else None
+    return ({x for x in h if isinstance(x, str)} or None) if isinstance(h, list) else None
+
+
 def target_hash(key):
     """A keyed hash of an event's key, so the table can be searched by it without holding the key in the clear."""
     return sec.pepper_mac(b"sanguity edit target\x00" + key.encode("utf-8")).hex()[:32]
@@ -164,16 +200,22 @@ def apply(db, pid, data):
                 "was": (value or {}).get("was") or (_was(hits[0]) if hits else None),
                 "by": r["username"] or (value or {}).get("by"), "at": r["at"]}   # by: an export's, by name (#589)
 
+    def found(key, held):   # the events an edit finds: by its key and, of those sharing it, the one holding what it held (#937)
+        out = [e for e in index.get(key, []) if e["id"] not in hidden and e["id"] not in folded]
+        if held is None:
+            return out
+        return [e for e in out if held & holds(e.get("k"), details.get(str(e["id"])), lambda i: details.get(str(i)))]
+
     kind_set, rules = set(), []   # kind_set: events moved on their own, which a rule leaves alone
     for r in sorted(rows, key=lambda r: (r["action"] == "merge", r["id"])):
         value = _dec(r["value"]) or {}
         if r["action"] == RULE:
             rules.append((r, value))
             continue
-        hits = [e for e in index.get(crypto.dec(r["target_key"]), []) if e["id"] not in hidden and e["id"] not in folded]
+        hits = found(crypto.dec(r["target_key"]), _held(value))
         a = r["action"]
         if a == "merge":
-            others = [e for e in index.get(crypto.dec(r["other_key"] or ""), []) if e["id"] not in hidden and e["id"] not in folded]
+            others = found(crypto.dec(r["other_key"] or ""), _held(value, "other_holds"))
             if not hits or not others or hits[0] is others[0]:
                 listed.append(entry(r, value, hits[:1], False))
                 continue
@@ -337,6 +379,17 @@ def follow_rebuild(db, pid, before, after):
     return moved
 
 
+def _holds_now(db, pid, event_id, e):
+    """holds() of an event as stored, sorted, for an edit to keep (#937)."""
+    if e.get("k") not in ("lab", "labitem"):
+        return []
+
+    def detail_of(i):
+        r = db.execute("SELECT detail FROM events WHERE id=? AND profile_id=?", (i, pid)).fetchone()
+        return _dec(r["detail"]) if r else None
+    return sorted(holds(e.get("k"), detail_of(event_id), detail_of))
+
+
 def add(db, pid, uid, action, event_id, title=None, t=None, other_id=None, k=None, batch=None):
     """Record an edit of the event with this id (as the page has it now). A second edit of the same kind to the same
     event replaces the first. `batch`: the id shared by the edits made at once to similar entries. Call inside a
@@ -345,6 +398,9 @@ def add(db, pid, uid, action, event_id, title=None, t=None, other_id=None, k=Non
         raise EditError("Unknown kind of edit.")
     e = _event(db, pid, event_id)
     key, value, other = key_of(e), {"was": _was(e)}, None
+    held = _holds_now(db, pid, event_id, e)
+    if held:
+        value["holds"] = held
     if batch:
         value["batch"] = batch
     if action == "kind":
@@ -372,9 +428,17 @@ def add(db, pid, uid, action, event_id, title=None, t=None, other_id=None, k=Non
         other, value["other"] = key_of(o), _was(o)
         if other == key:
             raise EditError("These two events can't be told apart, so they can't be merged.")
-    same = "SELECT id FROM edits WHERE profile_id=? AND target=? AND action=?" + (" AND other=?" if other else "")
+        other_held = _holds_now(db, pid, other_id, o)
+        if other_held:
+            value["other_holds"] = other_held
+    same = "SELECT id, value FROM edits WHERE profile_id=? AND target=? AND action=?" + (" AND other=?" if other else "")
     args = (pid, target_hash(key), action) + ((target_hash(other),) if other else ())
-    db.executemany("DELETE FROM edits WHERE id=?", [(r[0],) for r in db.execute(same, args).fetchall()])
+    mine = _held(value)   # (#937) another import's lab event of that day keeps its own edit
+
+    def replaced(v):
+        theirs = _held(_dec(v))
+        return not mine or not theirs or bool(mine & theirs)
+    db.executemany("DELETE FROM edits WHERE id=?", [(r[0],) for r in db.execute(same, args).fetchall() if replaced(r[1])])
     eid = _insert(db, pid, uid, action, key, value, other)
     _bump(db, pid)
     return eid, e

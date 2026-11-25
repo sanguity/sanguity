@@ -2319,6 +2319,11 @@ Everything on `main` so far; it becomes the first tagged release.
   insurer's same claim in its drawer, left both Costs rows under the insurer's, so its share was counted twice in
   "Your share" and out of pocket. Now the insurer's row is kept, the merged-in one filling in only what it lacks, as
   the drawer does; undoing the merge gives both back.
+- **Hiding one lab event hides only it** (#937): a lab event shares its day's key with every other import's lab event
+  of that day (the uploaded export's, each pull's, another source's file), and a lab day with every lab day of its
+  date, so hiding the ALT a pull added hid the whole day's results from the lab day's drawer, and hiding a hospital's
+  lab day hid the portal's too; the same went for renaming one or fixing its date. Now an edit of a lab event or a lab
+  day finds only the one holding what it held, and hiding it again replaces only its own edit.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
