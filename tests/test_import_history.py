@@ -227,6 +227,40 @@ class History(unittest.TestCase):
         self.assertEqual(self.state(pid)["watch"][0], 204)
         self.assertNotEqual(merged["watch"][0], 204)
 
+    def test_an_undo_rebuilds_the_watch_file_under_the_write_lock(self):   # #938
+        """An undo sets its import's watch summary aside in its transaction, and once that's committed rebuilt the
+        merged file without the write lock: an import saving at that moment (its summary written and the merged file
+        rebuilt with it, its row not yet committed) had its days written over by a merged file without them, hidden
+        until the next rebuild. Now the rebuild waits for the lock, so it sees the import that held it."""
+        import threading
+        pid = self.profile()
+        with dbm.transaction(self.db):
+            a = records.store(self.db, pid, {"events": []}, "upload", fmt="apple-health")
+            watch_store.save_import(self.db, pid, summary({"steps": {"2024-06-01": 100}}), import_id=a)
+        other, real = dbm.connect(), watch_store.forget_import
+
+        def forget(db, p, iid):   # the undo's, with an import saved on another connection as it commits
+            done = real(db, p, iid)
+
+            def finish(committed):
+                other.execute("BEGIN IMMEDIATE")
+                b = records.store(other, pid, {"events": []}, "upload", fmt="apple-health")
+                watch_store.save_import(other, pid, summary({"steps": {"2024-06-02": 200}}), import_id=b)
+                threading.Timer(0.5, lambda: other.execute("COMMIT")).start()
+                done(committed)
+            return finish
+        watch_store.forget_import = forget
+        try:
+            history.undo(self.db, pid, a, {"id": self.uids["ines"], "username": "ines"})
+        finally:
+            watch_store.forget_import = real
+            while other.in_transaction:
+                time.sleep(0.05)
+            other.close()
+        got = self.state(pid)["watch"]
+        self.assertEqual(got[0], 200)
+        self.assertEqual(dict(got[1]["metrics"][0]["pts"]), {"2024-06-02": 200}, "the import saved meanwhile is shown")
+
     def test_watch_data_from_before_is_kept_and_cant_be_undone(self):
         pid = self.profile()
         own = watch_store.own_path(pid)
