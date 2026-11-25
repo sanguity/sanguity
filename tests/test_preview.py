@@ -26,6 +26,7 @@ import logging   # noqa: E402
 from fastapi.testclient import TestClient   # noqa: E402
 
 from server import accounts, activity, crossmatch, crypto, db as dbm, importers as reg, jobs, main, preview, profiles as prof, ranges, records, uploads   # noqa: E402
+from server.importers import common   # noqa: E402
 
 sys.path.insert(0, os.path.join(ROOT, "tests"))
 import ranges_matrix as M   # noqa: E402  (#752's matrix: RESENT, #869)
@@ -439,6 +440,62 @@ class Preview(unittest.TestCase):
         done = self.save(pid, j, keep=[refs["lab"]])
         self.assertEqual((done["state"], done["counts"]["results"]), ("done", len(rows)), done)
         self.assertEqual(days(), [("1 lab result", [["ALT", "45"]]), every, every])
+
+    def test_a_lab_day_says_what_it_holds_wherever_its_list_changes(self):   # #889
+        """A lab day kept with less than it had, or more, is titled for what it holds and lists only its tests, by one
+        function (common.lab_day_counted) wherever its list changes: an import's duplicates left out (preview.trim), a
+        sync's lab day joined or undone (sync._labday_body), an event hidden (edits.apply), a result said to be the same
+        as another (crossmatch._tidy). preview.trim counted its title (#887) but kept the importer's list of tests:
+        Potassium typed in, then again with Glucose and Sodium, said "2 lab results · Glucose, Potassium, Sodium"; sync's
+        "1 lab result" sat under "CBC with differential, Lab results" for the ALT alone. A title of another form (a
+        build's "Lab draw") is kept, its list with it."""
+        pid, c = self.profile("Typed, one here already"), self.robin
+        row = lambda test, v, u, r: {"date": "2025-11-13", "time": "07:45", "test": test, "value": v, "unit": u, "range": r}   # noqa: E731
+        k = row("Potassium", "5.1", "mmol/L", "3.5-5.1")
+        typed = lambda rows: c.post(f"/api/profiles/{pid}/manual", json={"rows": rows, "save": True}, headers=H)   # noqa: E731
+        self.assertEqual(typed([k]).status_code, 200)
+        r = typed([k, row("Glucose", "99", "mg/dL", "70-99"), row("Sodium", "140", "mmol/L", "135-145")])
+        self.assertEqual((r.status_code, r.json().get("skipped")), (200, 1), r.text)
+        days = lambda pid: sorted((e["title"], e.get("sub"), e.get("abn")) for e in assembled(pid)["events"] if e["k"] == "lab")   # noqa: E731
+        self.assertEqual(days(pid), [("1 lab result", "Potassium", None), ("2 lab results", "Glucose, Sodium", None)], "typed in")
+        sodium = next(e["id"] for e in assembled(pid)["events"] if e["k"] == "labitem" and e["title"] == "Sodium")
+        r = c.post(f"/api/profiles/{pid}/edits", json={"event": sodium, "action": "hide"}, headers=H)
+        self.assertEqual(r.status_code, 201, r.text)
+        self.assertEqual(days(pid), [("1 lab result", "Glucose", None), ("1 lab result", "Potassium", None)], "an event hidden")
+        up = self.profile("Uploaded, one here already")
+        sheet = "Date,Time,Test,Value,Unit,Reference range,Panel\n2025-11-13,07:45,Potassium,5.1,mmol/L,3.5-5.1,BMP\n"
+        self.save(up, self.previewed(up, {"a.csv": sheet})[0])
+        self.save(up, self.previewed(up, {"b.csv": sheet + "2025-11-13,07:45,Glucose,120,mg/dL,70-99,Glucose\n"})[0])
+        self.assertEqual(days(up), [("1 lab result", "BMP", None), ("1 lab result", "Glucose", 1)], "an upload")
+        # a sync's lab day (sync._labday_body: joined by a pull, handed over or put back on Undo) said for the labitems
+        # it lists, and a lab day whose row is folded into another source's (crossmatch._tidy)
+        from server import sync
+        t = "2025-11-13T07:45:00"
+        cbc = [["Hemoglobin", "12.1", "g/dL", "13.5-17.5", "L"], ["Platelet Count", "455", "10*3/uL", "150-400", "H"]]
+        data = {"events": [{"id": 1, "t": t, "k": "lab", "title": "3 lab results", "sub": "CBC with differential, Lab results", "abn": 3, "key": "x:labday:1"},
+                           {"id": 2, "t": t, "k": "labitem", "title": "CBC with differential", "hidden": 1, "abn": 2, "key": "x:r1"},
+                           {"id": 3, "t": t, "k": "labitem", "title": "Lab results", "hidden": 1, "abn": 1, "key": "x:r2"}],
+                "details": {"1": {"type": "labday", "ids": [2, 3]},
+                            "2": {"type": "result", "order": "CBC with differential", "rows": cbc},
+                            "3": {"type": "result", "order": "Lab results", "rows": [["ALT", "60", "U/L", "7-56", "H"]]}},
+                "labs": [], "costs": []}
+        sp, db = self.profile("A sync's lab day"), dbm.connect()
+        try:
+            with dbm.transaction(db):
+                records.store(db, sp, data, "sync", fmt="fhir")
+            ev = {(b := json.loads(crypto.dec(r["body"])))["title"]: (r["id"], b) for r in db.execute("SELECT id, body FROM events WHERE profile_id=?", (sp,))}
+            said = sync._labday_body(db, ev["3 lab results"][1], [ev["Lab results"][0]])
+        finally:
+            db.close()
+        self.assertEqual((said["title"], said["sub"], said["abn"]), ("1 lab result", "Lab results", 1), "a sync's")
+        folded = json.loads(json.dumps(data))
+        folded["details"]["2"]["rows"][1] = None   # (crossmatch._fold_row: the Platelets' row folded into another's)
+        crossmatch._tidy(folded, {2})
+        self.assertEqual([(e["title"], e["sub"], e.get("abn")) for e in folded["events"] if e["k"] == "lab"],
+                         [("2 lab results", "CBC with differential, Lab results", 2)], "a row folded into another source's")
+        built = {**data, "events": [{**data["events"][0], "title": "Lab draw", "sub": "3 results"}] + data["events"][1:]}
+        self.assertEqual({k: v for k, v in common.lab_day_counted(built["events"][0], [(data["events"][2], data["details"]["3"])]).items() if k != "abn"},
+                         {k: v for k, v in built["events"][0].items() if k != "abn"}, "a title of another form kept, its list with it")
 
     def test_a_trimmed_lab_day_still_holds_together(self):
         data = {"events": [{"id": 1, "t": "2025-05-01", "k": "lab", "title": "2 results", "key": "x:labday:2025-05-01"},

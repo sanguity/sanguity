@@ -224,7 +224,8 @@ whose row in the upload's lab day is new, is added as a copy, read as one result
 with its own row, whose labitem and lab day are kept with it even where their keys are known (#868: the same rule for
 Type them in and a sync; a copy the upload gives no row of its own is left out, never a result without its lab day),
 a labitem the profile has by its key holding only the rows of the results kept, as one kept anyway (ticked on the
-review) holds only its own: never its report's others (#887).
+review) holds only its own: never its report's others (#887). A lab day kept with fewer or more lab events is titled
+for their rows and lists their orders (#889, `common.lab_day_counted`), as the importers make one.
 A point its source sends again saying something else of its range or flag (#869: the same series key, time and value,
 its row and its point's row here one record of one source, #885: each row's own key in its labitem's `keys` the same,
 else the labitem's key the same and one record's, a report's; never a `:h:` hash, which a copy typed or in a

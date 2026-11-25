@@ -369,6 +369,43 @@ def lab_day_sub(orders, limit=LAB_DAY_SUB):
     return ", ".join(out)
 
 
+LAB_DAY_COUNTED = re.compile(r"^\d+ lab results?(?= · |$)")   # a lab day's title as lab_day_title words it
+
+
+def lab_day_counted(body, items):
+    """A lab day's body (an event without its id) said for what it holds now (#889), wherever its list changes (an
+    import's duplicates left out, preview.trim; a pull's rows joined or an import undone, sync._labday_body; an event
+    hidden or a lab day merged in, edits.apply): items, [(body, details)] of each labitem it lists. Titled as the
+    importers title one, "2 lab results" for their rows, and its sub their orders (lab_day_sub), where its title is of
+    that form (one of another form, a build's "Lab draw", is kept, its sub with it); its abn their flagged rows. A
+    trimmed day said "4 lab results · ALT, C-Reactive Protein, Potassium, Sodium" over the 2 it held. Unchanged where
+    none of them has a row. A new dict."""
+    rows = [r for _, d in items if isinstance(d, dict) and isinstance(d.get("rows"), list) for r in d["rows"] if r is not None]
+    if not rows:
+        return dict(body)
+    out = {k: v for k, v in body.items() if k != "abn"}
+    abn = sum(1 for r in rows if isinstance(r, list) and len(r) > 4 and r[4])
+    if isinstance(out.get("title"), str) and LAB_DAY_COUNTED.match(out["title"]):
+        out["title"] = LAB_DAY_COUNTED.sub(lab_day_title(len(rows)), out["title"])
+        if all(isinstance(d, dict) and "order" in d for _, d in items):   # (each saying its order, as an importer's do)
+            out["sub"] = lab_day_sub(sorted({str(d["order"]) for _, d in items if d.get("order")}))
+    return {**out, **({"abn": abn} if abn else {})}
+
+
+def lab_days_counted(events, details, days):
+    """lab_day_counted for the lab days days (their ids) of a set of records (events: [event with its id], details:
+    {event id as text: its details}): each said, in place, for the labitems its details list now."""
+    by = {str(e.get("id")): e for e in events if isinstance(e, dict)}
+    for k in days:
+        e, d = by.get(str(k)), details.get(str(k))
+        if e is None or not (isinstance(d, dict) and d.get("type") == "labday" and isinstance(d.get("ids"), list)):
+            continue
+        said = lab_day_counted({f: v for f, v in e.items() if f != "id"}, [(by.get(str(i)) or {}, details.get(str(i))) for i in d["ids"]])
+        eid = e["id"]
+        e.clear()
+        e.update({"id": eid, **said})
+
+
 # ------------------------------------------------------------------ hospital stays
 # Each returns event fields for a "stay" event: {"t", "title", "sub", "detail", "end"} (add "id" and "k": "stay").
 
