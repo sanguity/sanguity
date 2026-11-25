@@ -109,23 +109,27 @@ function savedCats(s) {
    not the clinic's too (#470). Its search words, its badge and ▲ under a search read them (store.js labDayWords,
    timeline.js tlAbn, palette.js). Of several, the one with a report nearest it in time. A result no draw lists a lab
    event of its import for is its import's own draw's that day, else every draw's that day, as before. draws: [{id, imp,
-   ts, at: its reports' times, items: [[time, import]] of the lab events it lists}]; series: lab series, a point's
+   ts, at: its reports' times, items: [[time, import]] of the lab events it lists, folded: [[import, time, [series]]] of
+   the lab events merged into those (#972: a result whose row one holds, by its import, day and series, is this draw's,
+   not its import's other draw's that day)}]; series: lab series, a point's
    import p.imp where several are joined (same.js), else the series'; a result that came twice shown once (same.js
    joinSeries, #825) each of its imports' draws' (p.also), but those whose copy's reports were hidden by hand (p.off,
    #950: on no draw, as no draw's drawer shows them). ts(p) a point's time, day(t) its day. -> Map(draw id ->
    [[series, point]]) */
 function labDraws(draws, series, ts, day) {
-  const out = new Map(), by = new Map(), held = new Map(), add = (m, k, x) => (m.get(k) || m.set(k, []).get(k)).push(x);
+  const out = new Map(), by = new Map(), held = new Map(), fold = new Map(), add = (m, k, x) => (m.get(k) || m.set(k, []).get(k)).push(x);
   for (const e of draws) {
     out.set(e.id, []); add(by, day(e.ts) + "\u001f" + e.imp, e); add(by, day(e.ts), e);
     for (const k of new Set((e.items || []).map(([t, i]) => day(t) + "\u001f" + i))) add(held, k, e);
+    for (const k of new Set((e.folded || []).flatMap(([i, t, names]) => (names || []).map(n => day(t) + "\u001f" + i + "\u001f" + n)))) add(fold, k, e);
   }
   const near = (e, t) => Math.min(...(e.at?.length ? e.at : [e.ts]).map(a => Math.abs(a - t)));
   const pick = (mine, t) => mine.length > 1 ? mine.reduce((a, b) => near(b, t) < near(a, t) ? b : a) : mine[0];
   for (const s of series) for (const p of s.pts) {
     const t = ts(p), d = day(t), imps = [p.imp ?? s.imp, ...(p.also || [])].filter(i => !p.off?.includes(i));
     if (p.off && !imps.length) continue;   // its reports hidden by hand (#950, same.js p.off): on no lab day, in Labs still
-    const at = new Set(imps.map(i => held.get(d + "\u001f" + i) || by.get(d + "\u001f" + i)).filter(Boolean).map(m => pick(m, t)));
+    const at = new Set(imps.map(i => fold.get(d + "\u001f" + i + "\u001f" + s.name) || held.get(d + "\u001f" + i) || by.get(d + "\u001f" + i))
+      .filter(Boolean).map(m => pick(m, t)));
     for (const e of at.size ? at : by.get(d) || []) out.get(e.id).push([s, p]);
   }
   return out;

@@ -40,7 +40,12 @@ How each action changes the records:
             row, counted once, #924; the second's becomes the first's where it has none), its place in a lab day
             moves to the first, an abnormal flag on either marks the result, and the drawer lists what was merged
             in, with the import it came from (details.merged[].imp), so both sources show. Two lab days merged list
-            both days' lab events (#915), titled for them. Then the second is left out.
+            both days' lab events (#915), titled for them. A lab event merged into another gives it its rows too
+            (#972), each saying the import and time of the lab event it came in (details' ROWS_FROM), where its
+            result finds it (crossmatch._rows, drawer.js rowPoint); the event says those lab events (FOLDED, with
+            the series their rows' results are in, records._row_series), so its lab day's badge counts their results
+            (util.js labDraws); it's listed by its own lab day alone, and a lab day left listing nothing goes. Then
+            the second is left out.
 
 Edits apply in the order they were made, merges last, so a merged event's own corrections are made first. One edit
 may match several events (two keyless events with the same kind, minute and title): it applies to each, except a
@@ -276,18 +281,38 @@ def apply(db, pid, data):
         data[UNLISTED] = {"events": off, "details": {str(e["id"]): details[str(e["id"])] for e in off if str(e["id"]) in details}}
     gone = hidden | set(folded)
     if gone:
-        events = [e for e in events if e["id"] not in gone]
         for i in gone:
             details.pop(str(i), None)
-        for k, d in details.items():
-            if isinstance(d, dict) and isinstance(d.get("ids"), list) and any(i in gone for i in d["ids"]):
+        into = {}
+        for i in folded:
+            j = folded[i]
+            while j in folded:
+                j = folded[j]
+            into[i] = j
+        lists = [(k, d) for k, d in details.items() if isinstance(d, dict) and isinstance(d.get("ids"), list)]
+        # (#972) a lab event merged into another is listed where that one is: each listed by one lab day, its own (or
+        # the first to list one merged into it), and a lab day left listing nothing goes (as one whose are hidden, #950)
+        lister = {}
+        for k, d in lists:
+            for i in d["ids"]:
+                if i not in gone:
+                    lister.setdefault(i, k)
+        emptied, targets = set(), set(into.values())
+        for k, d in lists:
+            if any(i in gone or i in targets for i in d["ids"]):   # (one merged into: said for what it holds now)
                 ids = []
                 for i in d["ids"]:
-                    i = folded.get(i, i)
-                    if i not in hidden and i not in ids:
+                    i = into.get(i, i)
+                    if i not in hidden and i not in ids and lister.setdefault(i, k) == k:
                         ids.append(i)
+                if d["ids"] and not ids and d.get("type") == "labday":
+                    emptied.add(int(k) if str(k).isdigit() else k)
                 d["ids"] = ids
                 days.add(k)
+        for i in emptied:
+            details.pop(str(i), None)
+        gone |= emptied
+        events = [e for e in events if e["id"] not in gone]
         costs = _fold_costs([c for c in costs if not (isinstance(c, dict) and c.get("id") in hidden)], folded)
     common.lab_days_counted(events, details, days)   # (#889) a lab day said for what it lists now
     if moved:
@@ -321,17 +346,50 @@ def _fold_costs(costs, folded):
     return [c for n, c in enumerate(out) if n not in drop]
 
 
+ROWS_FROM = "rowsFrom"   # (#972) a result's details: [import, time] of the lab event each row came in, where not its own
+FOLDED = "folded"        # (#972) an event: [[import, time]] of the lab events merged into it, whose rows it holds (and
+#                          the series their results are in, records._row_series)
+
+
+def rows_from(e, d):
+    """(#972) Where each of a result's rows came in, (import, time): the lab event's own, else the one merged into it
+    whose row it is (its details' ROWS_FROM). The drawer finds a row's result in that import on that day (drawer.js
+    rowPoint, crossmatch._rows)."""
+    rows = d.get("rows") if isinstance(d, dict) and isinstance(d.get("rows"), list) else []
+    at = d.get(ROWS_FROM) if isinstance(d, dict) and isinstance(d.get(ROWS_FROM), list) else []
+    return [tuple(at[r]) if r < len(at) and isinstance(at[r], list) and len(at[r]) == 2 else (e.get("imp"), e.get("t"))
+            for r in range(len(rows))]
+
+
+def _padded(x, n):
+    x = list(x)[:n] if isinstance(x, list) else []
+    return x + [None] * (n - len(x))
+
+
 def _merge(first, second, details):
+    counted = [x.get("abn") for x in (first, second)]
     if second.get("abn") and not first.get("abn"):
         first["abn"] = second["abn"]
     a, b = details.get(str(first["id"])), details.get(str(second["id"]))
     d = dict(a) if isinstance(a, dict) else {}
     if isinstance(b, dict):
+        theirs = b.get("rows") if isinstance(b.get("rows"), list) else []
         for k, v in b.items():
-            if k not in d or d[k] in (None, "", []):
+            if (k not in d or d[k] in (None, "", [])) and not (theirs and k in ("rows", "keys", ROWS_FROM)):
                 d[k] = v
         if isinstance(d.get("ids"), list) and isinstance(b.get("ids"), list):   # (#915) a lab day merged in: its list too
             d["ids"] = d["ids"] + [i for i in b["ids"] if i not in d["ids"]]
+        if theirs:   # (#972) a lab event merged in: its rows too, each saying where it came in, so its result finds it
+            mine = d.get("rows") if isinstance(d.get("rows"), list) else []
+            if isinstance(d.get("keys"), list) or isinstance(b.get("keys"), list):
+                d["keys"] = _padded(d.get("keys"), len(mine)) + _padded(b.get("keys"), len(theirs))
+            d[ROWS_FROM] = _padded(d.get(ROWS_FROM), len(mine)) + [list(x) for x in rows_from(second, b)]
+            d["rows"] = mine + theirs
+            # and the event the times and imports of the lab events it holds rows of, for its lab day's badge
+            # (crossmatch._draws, util.js labDraws): their results are its lab day's
+            first[FOLDED] = [*(first.get(FOLDED) or []), [second.get("imp"), second.get("t")], *(second.get(FOLDED) or [])]
+            if all(isinstance(n, int) and not isinstance(n, bool) for n in counted):   # its flagged rows, both's
+                first["abn"] = counted[0] + counted[1]
     d["merged"] = (d.get("merged") or []) + [{**_was(second), "imp": second.get("imp")}]   # imp: its source (#100)
     details[str(first["id"])] = d
 

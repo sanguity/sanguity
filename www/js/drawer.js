@@ -256,13 +256,15 @@ function docFrame(html, h = 420, title = "The record as it was sent") {   // tit
 /* the result a drawer row shows, {s, p}, or null (a text result): of the series the server matched the row to (d.series,
    server/records.py _row_series: by the row's name or its canonical one, so a report's "Glucose" is Labs' "Glucose,
    Blood", #782), else the one with the row's name; in the row's import, on its day, with its value as reported (or
-   its one result that day) */
+   its one result that day). A row of a lab event merged into this one is in the import and on the day it came in
+   (d.rowsFrom, #972: server/edits.py) */
 const rowSaid = t => { const r = valueRead(t); return r ? r.c + r.x : String(t ?? "").trim(); };   // (ranges.js's one reader, #874)
 function rowPoint(d, i, ev) {
   if (!ev) return null;
-  const row = d.rows[i], name = d.series?.[i] ?? row[0], v = rowSaid(row.orig ? row.orig[0] : row[1]), day = isoDay(ev.ts);
+  const row = d.rows[i], name = d.series?.[i] ?? row[0], v = rowSaid(row.orig ? row.orig[0] : row[1]), from = d.rowsFrom?.[i];
+  const imp = from ? from[0] : ev.imp, day = from ? isoDay(zParse(from[1])) : isoDay(ev.ts);
   for (const s of DATA.labs) {
-    if (s.watch || s.name !== name || (ev.imp != null && s.imp != null && s.imp !== ev.imp)) continue;
+    if (s.watch || s.name !== name || (imp != null && s.imp != null && s.imp !== imp)) continue;
     const on = s.pts.filter(p => isoDay(p.ts) === day), p = on.find(p => rowSaid(p.orig ? p.orig.v : p[5] || p[1]) === v) || (on.length === 1 ? on[0] : null);
     if (p) return {s, p};
   }

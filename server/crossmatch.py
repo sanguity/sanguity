@@ -59,7 +59,7 @@ import collections, json, re
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from . import crypto, db as dbm, ranges, security as sec, units
+from . import crypto, db as dbm, edits, ranges, security as sec, units
 from .importers import common
 
 LISTED = 500   # possible matches listed for the page, at most
@@ -223,7 +223,8 @@ def _imp_order(s):
 # ---------------------------------------------------------------- the drawer's rows
 
 def _rows(data):
-    """{(import, day): [(labitem event id, row index, row)]} for the result rows in the drawer."""
+    """{(import, day): [(labitem event id, row index, row)]} for the result rows in the drawer: each in its lab event's
+    import and day, or the one's merged into it that it came in (#972: edits.rows_from)."""
     out = collections.defaultdict(list)
     details = data.get("details") or {}
     for e in data.get("events") or []:
@@ -231,9 +232,11 @@ def _rows(data):
             continue
         d = details.get(str(e["id"]))
         if isinstance(d, dict) and isinstance(d.get("rows"), list):
+            at = edits.rows_from(e, d) if d.get(edits.ROWS_FROM) else None
+            own = (e.get("imp"), _day(e.get("t")))
             for r, row in enumerate(d["rows"]):
                 if isinstance(row, list) and len(row) >= 2:
-                    out[(e.get("imp"), _day(e.get("t")))].append((e["id"], r, row))
+                    out[(at[r][0], _day(at[r][1])) if at else own].append((e["id"], r, row))
     return out
 
 
@@ -359,11 +362,18 @@ def lab_faults(data, day=None):
     return out
 
 
+def _folded(e):
+    """(#972) Each lab event merged into event e, whose rows it holds (edits.FOLDED, named by records._row_series):
+    [(import, day, the series its rows' results are in)]."""
+    return [(x[0], _day(x[1]), x[2]) for x in e.get(edits.FOLDED) or () if isinstance(x, list) and len(x) == 3 and isinstance(x[2], list)]
+
+
 def _draws(events, details, days, labs):
     """util.js labDraws over the records, as the page counts a lab day's results (its badge, #905): {lab day id:
-    {(series index, point index)}}. A result is the lab day's (the nearest in time of several) that lists a lab event
-    of its import on its day, else one of its import that day, else every lab day of its day; one whose reports were
-    hidden by hand (#950: unlisted) is no lab day's."""
+    {(series index, point index)}}. A result whose row a lab event merged into another holds (#972: _folded, by its
+    import, day and series) is the lab day's that lists that one; else the lab day's (the nearest in time of several)
+    that lists a lab event of its import on its day, else one of its import that day, else every lab day of its day;
+    one whose reports were hidden by hand (#950: unlisted) is no lab day's."""
     def when(t):
         try:
             x = datetime.fromisoformat(str(t).replace("Z", "+00:00"))
@@ -372,12 +382,14 @@ def _draws(events, details, days, labs):
         return (x if x.tzinfo else x.replace(tzinfo=timezone.utc)).timestamp()
     items = {e["id"]: [events[i] for i in (details.get(str(e["id"])) or {}).get("ids") or [] if i in events and when(events[i].get("t")) is not None]
              for e in days}
-    by, held = collections.defaultdict(list), collections.defaultdict(list)
+    by, held, fold = collections.defaultdict(list), collections.defaultdict(list), collections.defaultdict(list)
     for e in days:
         by[(_day(e.get("t")), e.get("imp"))].append(e)
         by[_day(e.get("t"))].append(e)
         for k in dict.fromkeys((_day(x.get("t")), x.get("imp")) for x in items[e["id"]]):
             held[k].append(e)
+        for k in dict.fromkeys((d, imp, name) for x in items[e["id"]] for imp, d, names in _folded(x) for name in names):
+            fold[k].append(e)
 
     def near(e, t):
         return min(abs(a - t) for a in ([when(x.get("t")) for x in items[e["id"]]] or [when(e.get("t")) or 0]))
@@ -387,7 +399,7 @@ def _draws(events, details, days, labs):
             if not (isinstance(p, list) and p) or _unlisted(s, "pts", k):
                 continue
             t, d = when(p[0]) or 0, _day(p[0])
-            mine = held.get((d, s.get("imp"))) or by.get((d, s.get("imp")))
+            mine = fold.get((d, s.get("imp"), s.get("name"))) or held.get((d, s.get("imp"))) or by.get((d, s.get("imp")))
             for e in ([min(mine, key=lambda e: near(e, t))] if mine else by.get(d) or []):
                 out[e["id"]].add((n, k))
     return out
@@ -645,7 +657,9 @@ def _tidy(data, folded):
         old = d.get("rows") or []
         at = {n: len([r for r in old[:n] if r is not None]) for n, r in enumerate(old) if r is not None}
         rows = [r for r in old if r is not None]
-        d = details[str(eid)] = {**d, "rows": rows}
+        # its lists of one item a row with them: each row's record, and where it came in (#972, edits.ROWS_FROM)
+        d = details[str(eid)] = {**d, "rows": rows, **{f: [x for n, x in enumerate(d[f]) if n in at] for f in ("keys", edits.ROWS_FROM)
+                                                       if isinstance(d.get(f), list) and len(d[f]) == len(old)}}
         if d.get("same"):   # its own rows linked to others' (three sources): where they are now
             d["same"] = [{**x, "row": at[x["row"]]} for x in d["same"] if x.get("row") in at]
         if not rows and not d.get("report"):

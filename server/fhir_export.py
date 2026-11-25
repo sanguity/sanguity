@@ -53,7 +53,7 @@ Written as it's sent, a resource at a time, like Export everything (export.py).
 """
 import collections, datetime, html, json, math, os, re, urllib.parse, uuid, zipfile
 
-from . import crypto, ecg, export, profiles as prof, settings
+from . import crypto, ecg, edits, export, profiles as prof, settings
 from .importers import common
 
 # what can be ticked, in the order the page lists them (www/js/sharing.js asks for them: GET .../export/fhir)
@@ -535,10 +535,11 @@ def _labs(b, data, used):
         if not t:
             continue
         who, lab = b.party("Practitioner", d.get("provider")), b.party("Organization", d.get("lab"))
-        results = []
+        results, came = [], edits.rows_from(e, d)   # (#972) a row of a lab event merged into this one: where it came in
         for n, row in enumerate(d.get("rows") or []):
             if not isinstance(row, list) or not row:
                 continue
+            imp, at = came[n]
             row = (row + [""] * 5)[:5]
             name = _text(row[0]) or "Result"
             same = lambda s, p: str(p[5] if len(p) > 5 else "") == str(row[1]) or _num(row[1]) == p[1]
@@ -550,16 +551,16 @@ def _labs(b, data, used):
             # at its event's minute; else on its event's day, of its own import, the nearest (#876: a C-CDA organizer's
             # results at their own times, the organizer's lab event at the first, went out twice: as the row at the
             # event's time and as the result at its own)
-            hit = find(series.get(str(e.get("t"))[:16], [])) or find(sorted(
-                ((s, i) for s, i in by_day.get(str(e.get("t"))[:10], []) if e.get("imp") is None or s.get("imp") in (None, e.get("imp"))),
-                key=lambda x: _apart(x[0]["pts"][x[1]][0], e.get("t"))))
+            hit = find(series.get(str(at)[:16], [])) or find(sorted(
+                ((s, i) for s, i in by_day.get(str(at)[:10], []) if imp is None or s.get("imp") in (None, imp)),
+                key=lambda x: _apart(x[0]["pts"][x[1]][0], at)))
             s, p = (hit[0], hit[0]["pts"][hit[1]]) if hit else (None, None)
             if hit:
                 used.add((id(s), hit[1]))
                 if (copy := _copy(s, hit[1])) in sent:   # (#947) its copy from another source, sent already
                     results.append(sent[copy])
                     continue
-            num = p[1] if p else row_number(str(e.get("t"))[:16], name, row[1])   # the number it was imported as (#870)
+            num = p[1] if p else row_number(str(at)[:16], name, row[1])   # the number it was imported as (#870)
             # at its result's own time where it has one, as the importers read an Observation's (the report's is the event's)
             o = _lab_obs(b, (b.keyed(e), "row", n), name, _loinc(s, name), b.t(p[0]) or t if p else t, row[1], num, row[2] or (s or {}).get("unit"),
                          p[2] if p and len(p) > 2 else None, p[3] if p and len(p) > 3 else None, row[3], row[4], False,
