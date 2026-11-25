@@ -36,7 +36,7 @@ const stateKey = () => "ht-state" + (PROFILE ? ":" + PROFILE.id : "");
 // DATA, EV, STAYS, SERIES, byId, WATCH, STEPS: the records and what's worked out from them, in store.js (#271)
 const hasLane = c => EV.some(e => CAT_OF[e.k] === c) || (c.k === "watch" && STEPS.length > 0);
 /* preset: the records bar's period (#171), shared by every tab with time ("period" below); labsView: the Labs tab's
-   "chart" or "heatmap" (#172); tlView: the Timeline tab's "timeline" or "journal", and tlWork: its list has the
+   "chart", "heatmap" (#172), "compare" (#297) or "latest" (#993); tlView: the Timeline tab's "timeline" or "journal", and tlWork: its list has the
    workouts too (#277, timeline.js) */
 const state = { from: 0, to: 0, min: 0, max: 0, last: 0, preset: "2y", cats: savedCats(null), q: "", tab: "overview", labsView: "chart", tlView: "timeline", tlWork: false, marks: true, smooth: false, sel: new Set(), selEv: null, tables: new Set(), asc: false };
 
@@ -352,6 +352,8 @@ const msKey = m => m ? "m" + MILESTONES.indexOf(m) : "all";
 const isMsKey = k => k === "dx" || /^m\d+$/.test(k || "");
 const msOf = k => k === "dx" ? primaryMs() : isMsKey(k) ? MILESTONES[+k.slice(1)] || null : null;
 const lcLabel = s => /^[A-Z][a-z]/.test(s) ? s[0].toLowerCase() + s.slice(1) : s;   // "Treatment start" -> "treatment start", "CAR-T" stays
-/* the old tab ids (#172): Trends and Lab heatmap are the Labs tab's chart and heatmap. -> [tab, labsView] */
+/* the old tab ids (#172): Trends and Lab heatmap are the Labs tab's chart and heatmap. -> [tab, labsView]. LABS_VIEWS:
+   Labs' views, Latest the fourth (#993) */
 const TAB_ALIAS = {trends: ["labs", "chart"], heatmap: ["labs", "heatmap"]};
-const tabAlias = (t, view) => TAB_ALIAS[t] || [t, view === "heatmap" || view === "compare" ? view : "chart"];
+const LABS_VIEWS = ["chart", "heatmap", "compare", "latest"];
+const tabAlias = (t, view) => TAB_ALIAS[t] || [t, LABS_VIEWS.includes(view) ? view : "chart"];

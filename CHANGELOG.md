@@ -3559,6 +3559,12 @@ Everything on `main` so far; it becomes the first tagged release.
   form's dates were cut ("11/25/202", "mm/dd/yy"), and so were a dose's and a journal entry's date and time, which
   share that row. Each is now at least as wide as its date or time, the second on a line of its own where both don't
   fit; a reminder's time does the same beside its Remove at 320 px. At the usual size they're side by side as before.
+- **Labs → Latest: every lab's most recent result in one list** (#993): to see where each lab stood, you opened its
+  chart, one at a time. Labs has a fourth view beside Chart, Heatmap and Compare, **Latest** (`#labs-latest`): a row
+  for each lab with a result in the period, its latest value and unit as Labs shows it, its ▲, ▼ or ◆ with its word,
+  its range and its day, both of two results at that time; how many labs have none in the period is said. A row opens
+  its lab's chart, and Back returns to the row. It reads each result as Chart, the heatmap, the Overview and the
+  summary do.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

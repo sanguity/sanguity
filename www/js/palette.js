@@ -203,6 +203,7 @@ const SgPalette = (() => {
      view, its # after the tab's, title, words]; a tab itself opens its first view, as its address does */
   const TAB_VIEWS = [["labs", "heatmap", "-heatmap", "Heatmap", "grid colors colours every result table"],
     ["labs", "compare", "-compare", "Compare", "side by side within ranges milestone before after"],
+    ["labs", "latest", "-latest", "Latest", "latest results newest last every lab list now"],
     ["timeline", "journal", "-journal", "Journal", "notes diary entries photos symptoms"],
     ["costs", "paid", "-paid", "What you paid", "out of pocket spent spending payments total hsa fsa premiums"]];
   const FIRST_VIEW = {labs: "chart", timeline: "timeline", costs: "claims"};

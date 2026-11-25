@@ -193,6 +193,7 @@ function rangeNote(s, pts, table) {
 }
 function chartCard(s) {
   const card = el("div", {class: "chart card", "data-lab": s.name});   // the card (#353)
+  card._s = s;   // (its series: a lab in two units is two cards, charts.js showSeries)
   const pts = s.pts.filter(p => p.ts >= state.from && p.ts <= state.to);
   const nAbn = pts.filter(p => p[4]).length;
   const read = el("span", {class: "read"});
