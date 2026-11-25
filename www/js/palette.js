@@ -131,11 +131,11 @@ const SgPalette = (() => {
       if (have) have.n += x.pts.length; else by.set(x.name, {name: x.name, shown: nick[x.name] || x.name, panel: x.panel || "", n: x.pts.length});
       if (x.panel !== "Vitals") { lab.push(x); x.pts.forEach((p, n) => { p.off = x.unlisted?.[n] ? [x.imp] : null; }); }   // (#950, as same.js joinSeries)
     }
-    const imp = new Map();
-    for (const e of d.events || []) { title.set(e.id, e.title || ""); ts.set(e.id, zParse(e.t)); imp.set(e.id, e.imp); }
+    const imp = new Map(), folded = new Map();
+    for (const e of d.events || []) { title.set(e.id, e.title || ""); ts.set(e.id, zParse(e.t)); imp.set(e.id, e.imp); if (e.folded) folded.set(e.id, e.folded); }
     const listed = e => (d.details?.[e.id]?.ids || []).filter(i => isFinite(ts.get(i)));   // (the lab events it lists, #905)
     const draws = (d.events || []).filter(e => e.k === "lab").map(e => ({id: e.id, imp: e.imp, ts: ts.get(e.id), at: listed(e).map(i => ts.get(i)),
-      items: listed(e).map(i => [ts.get(i), imp.get(i)])}));
+      items: listed(e).map(i => [ts.get(i), imp.get(i)]), folded: listed(e).flatMap(i => (folded.get(i) || []).map(([x, t, n]) => [x, zParse(t), n]))}));   // (#972)
     const own = labDraws(draws, lab, p => zParse(p[0]), isoDay);
     const labDay = e => { const names = [...new Set(own.get(e.id).map(([x]) => x.name))]; return [...(d.details?.[e.id]?.ids || []).map(i => title.get(i)), ...names, ...names.map(n => nick[n])]; };
     const ev = (e, words, t = zParse(e.t)) => ({id: e.id, k: e.k, title: e.title || "", ts: t, hidden: !!e.hidden, _q: words.filter(Boolean).join(" ").toLowerCase()});

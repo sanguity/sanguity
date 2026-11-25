@@ -3484,6 +3484,12 @@ Everything on `main` so far; it becomes the first tagged release.
   "03/14/2"), and Type records in's time was cut on a wide screen too ("10:45 AN"). Each is now at least as wide as
   its date or time: the column grows, the second date goes on a line of its own, or the date and the time each take
   a line on a narrow phone.
+- **Merging two lab reports by hand keeps both reports' results** (#972): merging one lab event into another (results
+  typed in, merged into the portal's report of that day or the day before) kept only the first one's rows, so the
+  merged-in results had no row in the drawer, and their own lab day listed the portal's report a second time. Now
+  the merged report lists both's results, each with its flag, the lab day is titled for all of them and its badge
+  counts what its drawer shows, a lab day left with nothing goes, Export as FHIR sends each result once, and undoing
+  the merge puts both back.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

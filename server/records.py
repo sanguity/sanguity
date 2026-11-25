@@ -431,6 +431,15 @@ def _row_series(data):
         d = details.get(str(eid))
         if isinstance(d, dict) and isinstance(d.get("rows"), list):
             details[str(eid)] = {**d, "series": [names.get(r) for r in range(len(d["rows"]))]}
+    # (#972) a lab event others were merged into: each of those named with the series its rows' results are in, so its
+    # lab day's badge counts them (util.js labDraws, crossmatch._draws), not their own import's other lab day of that day
+    for e in data.get("events") or []:
+        if isinstance(e, dict) and e.get(edits.FOLDED) and e.get("k") == "labitem":
+            at, names = edits.rows_from(e, details.get(str(e["id"]))), collections.defaultdict(set)
+            for r, (imp, t) in enumerate(at):
+                if by[e["id"]].get(r):
+                    names[(imp, t)].add(by[e["id"]][r])
+            e[edits.FOLDED] = [[imp, t, sorted(names[(imp, t)])] for imp, t, *_ in e[edits.FOLDED]]
 
 
 # the page asks for a profile's records on every load; putting them together decrypts every row, so the result

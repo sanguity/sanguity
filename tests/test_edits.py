@@ -6,7 +6,7 @@ rest, and corrections.json moving into edits once. Fictional data only.
 
   python3 tests/test_edits.py
 """
-import json, os, shutil, sys, tempfile, time, unittest
+import io, json, os, shutil, sys, tempfile, time, unittest, zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-edits-test-")
@@ -22,7 +22,7 @@ sys.path.insert(0, ROOT)
 
 from fastapi.testclient import TestClient   # noqa: E402
 
-from server import accounts, crypto, db as dbm, edits, main, profiles as prof, records   # noqa: E402
+from server import accounts, crypto, db as dbm, edits, fhir_export, main, profiles as prof, records   # noqa: E402
 from tests.whole_records import whole   # noqa: E402  records with every record's details (#217)
 import logging   # noqa: E402
 
@@ -220,6 +220,86 @@ class Edits(unittest.TestCase):
         after = whole(self.robin, pid)
         self.assertEqual(([e for e in after["events"] if e["k"] == "lab"], crossmatch.lab_faults(after)),
                          ([e for e in before["events"] if e["k"] == "lab"], []), "undone: both lab days as they were")
+
+    def test_a_lab_event_merged_into_another_keeps_both_rows(self):   # #972
+        """Merging a lab event (a report) into another, not a lab day: results typed in (their own lab event and lab
+        day) merged by hand into a portal's lab event of that day, or of the day before. _merge filled in only what the
+        first lacked, so the merged lab event kept the portal's rows alone: the typed results lost their row in the
+        drawer (crossmatch.lab_faults: "no row"), and their lab day, listing the portal's lab event in its place, listed
+        it twice. Now the lab event lists both's rows, each found by its own result (its import and day, "rowsFrom"),
+        the typed lab day that listed nothing else is gone, the portal's lab day is titled for the four, and its badge
+        counts what its drawer shows, never another lab day of that day (the event's "folded": util.js labDraws). Undone,
+        both as they were."""
+        from server import crossmatch, importers as reg
+        db = dbm.connect()
+        uid = db.execute("SELECT id FROM users WHERE username='robin'").fetchone()[0]
+        t = "2025-03-04T09:45:00"
+        obs = lambda oid, code, name, v, unit, lo, hi, flag: {"resource": {   # noqa: E731
+            "resourceType": "Observation", "id": oid, "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
+            "code": {"coding": [{"system": "http://loinc.org", "code": code}], "text": name}, "effectiveDateTime": t,
+            "valueQuantity": {"value": v, "unit": unit}, "referenceRange": [{"low": {"value": lo}, "high": {"value": hi}, "text": f"{lo}-{hi}"}],
+            **({"interpretation": [{"coding": [{"system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation", "code": flag}]}]} if flag else {})}}
+        path = os.path.join(TMP, "portal-972.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"resourceType": "Bundle", "type": "collection", "entry": [obs("hgb", "718-7", "Hemoglobin", 12.1, "g/dL", 13.5, 17.5, "L"),
+                                                                                  obs("plt", "777-3", "Platelet Count", 255, "10*3/uL", 150, 400, None)]}, f)
+        data = reg.run({"portal.json": path})["data"]
+        try:
+            pids = {}
+            for day in (t[:10], "2025-03-05"):
+                pids[day] = prof.create_profile(db, f"Merged lab events, typed {day} (fictional)", owner_id=uid)
+                with dbm.transaction(db):
+                    records.store(db, pids[day], data, "upload", fmt="fhir")
+        finally:
+            db.close()
+        for day, pid in pids.items():
+            with self.subTest(typed=day):
+                typed = [{"date": day, "time": "10:30", "test": "Potassium", "value": "5.4", "unit": "mmol/L", "range": "3.5-5.1"},
+                         {"date": day, "time": "10:30", "test": "Sodium", "value": "139", "unit": "mmol/L", "range": "135-145"}]
+                later = [{"date": t[:10], "time": "16:00", "test": "Glucose", "value": "98", "unit": "mg/dL", "range": "70-99"}]
+                for rows in (typed, later):   # each its own import: its own lab event and lab day
+                    r = self.robin.post(f"/api/profiles/{pid}/manual", json={"rows": rows, "save": True}, headers=H)
+                    self.assertEqual(r.status_code, 200, r.text)
+                before = whole(self.robin, pid)
+                self.assertEqual(crossmatch.lab_faults(before), [])
+                items = {}   # import -> its lab events (a typed result is one each)
+                for e in before["events"]:
+                    if e["k"] == "labitem":
+                        items.setdefault(e["imp"], []).append(e)
+                (portal,), mine, (other,) = (items[i] for i in sorted(items))
+                self.assertEqual(len(mine), 2)
+                made = []
+                for n, x in enumerate(mine):   # Potassium's, then Sodium's
+                    r = self.robin.post(f"/api/profiles/{pid}/edits", json={"event": portal["id"], "action": "merge", "other": x["id"]}, headers=H)
+                    self.assertEqual(r.status_code, 201, r.text)
+                    made.append(r.json()["id"])
+                    d = whole(self.robin, pid)
+                    self.assertNotIn(x["id"], [e["id"] for e in d["events"]], "one lab event")
+                    held = d["details"][str(portal["id"])]
+                    self.assertEqual([row[0] for row in held["rows"]], ["Hemoglobin", "Platelet Count", "Potassium", "Sodium"][:3 + n], "both's rows")
+                    self.assertTrue(all(held["series"]), f"each row its result's: {held['series']}")
+                    self.assertEqual(crossmatch.lab_faults(d), [], "each result with its row, badge and drawer agreeing")
+                    labdays = {e["imp"]: e for e in d["events"] if e["k"] == "lab"}
+                    self.assertEqual(labdays[portal["imp"]]["title"], f"{3 + n} lab results")
+                    self.assertEqual(d["details"][str(labdays[other["imp"]]["id"])]["ids"], [other["id"]], "the other lab day as it was")
+                self.assertEqual(sorted(labdays), sorted([portal["imp"], other["imp"]]), "the typed lab day, listing nothing else, gone")
+                db = dbm.connect()   # Export as FHIR: each result once, in the lab event that holds its row
+                try:
+                    blob = b"".join(fhir_export.stream(fhir_export.plan(db, pid, {"labs"}), "robin", zone="America/New_York"))
+                finally:
+                    db.close()
+                with zipfile.ZipFile(io.BytesIO(blob)) as z:
+                    sent = [x["resource"] for x in json.loads(z.read("bundle.json"))["entry"]]
+                obs = sorted(o["code"].get("text") or o["code"]["coding"][0].get("display") for o in sent if o["resourceType"] == "Observation")
+                self.assertEqual(len(obs), 5, obs)
+                report = next(r for r in sent if r["resourceType"] == "DiagnosticReport" and len(r.get("result") or []) == 4)
+                self.assertEqual(len({x["reference"] for x in report["result"]}), 4)
+                for i in made:
+                    self.robin.delete(f"/api/profiles/{pid}/edits/{i}", headers=H)
+                after = whole(self.robin, pid)
+                self.assertEqual((sorted(e["id"] for e in after["events"]), crossmatch.lab_faults(after)),
+                                 (sorted(e["id"] for e in before["events"]), []), "undone: as they were")
+                self.assertEqual([e for e in after["events"] if e["k"] in ("lab", "labitem")], [e for e in before["events"] if e["k"] in ("lab", "labitem")])
 
     def test_hiding_one_lab_event_hides_only_it(self):   # #937
         """A lab event's key is its day's ("fhir:labitem:2025-03-04"), and a lab day's too, the same in every import of
