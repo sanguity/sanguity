@@ -3346,6 +3346,10 @@ Everything on `main` so far; it becomes the first tagged release.
   backup's row counts with the key, `server.manage backup` run where the key file can't be read (a cron job without
   it mounted) ended in a raw error and wrote nothing. It now writes the backup, its files as they are, without the row
   counts, and says so and how to fix it; **Check a backup** says the counts weren't written and can't be compared.
+- **An undo no longer hides the watch data of an import saved at the same moment** (#938): once an undo had committed,
+  it rebuilt the merged watch file without the write lock, so an import saving its watch data meanwhile (its summary
+  written, its import not yet committed) had the merged file written over without its days, which stayed hidden until
+  the next rebuild. The rebuild now waits for the write lock, as the import holds it until it's saved.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

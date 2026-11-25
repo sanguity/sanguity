@@ -368,7 +368,9 @@ def forget_import(db, pid, import_id):
     """Take an import's watch data away, inside the undo's transaction and after its import row is deleted: its own
     summary is set aside and the merged file rebuilt without it. Returns None when it brought none, else a function
     to call once the transaction ends: finish(True) after the commit removes what was set aside; finish(False) after
-    a rollback puts it back and rebuilds again."""
+    a rollback puts it back and rebuilds again. Either rebuild takes the write lock (#938): an import saving meanwhile
+    holds it from writing its summary to its commit, so the rebuild sees its row and keeps its days, rather than
+    writing the merged file over its own without them."""
     path = layer_path(pid, import_id)
     if not os.path.isfile(path):
         return None
@@ -392,12 +394,12 @@ def forget_import(db, pid, import_id):
             _remove(aside)
             if cyc_aside:
                 _remove(cyc_aside)
-            rebuild(db, pid)   # the ECG samples only the undone import listed go now (#182)
         else:
             os.replace(aside, path)
             if cyc_aside and os.path.isfile(cyc_aside):   # unless tracking was turned off meanwhile
                 os.replace(cyc_aside, cyc)
-            rebuild(db, pid)
+        with dbm.transaction(db):   # under the write lock (#938)
+            rebuild(db, pid)   # the ECG samples only the undone import listed go now (#182)
     return finish
 
 
