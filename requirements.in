@@ -2,9 +2,9 @@
 # (pip install uv), resolving for Python 3.12 (the Docker image's) and later on every platform:
 #   uv pip compile --universal --python-version 3.12 --generate-hashes requirements.in -o requirements.txt
 #   uv pip compile --universal --python-version 3.12 --generate-hashes requirements-dev.in -o requirements-dev.txt
-fastapi>=0.163
+fastapi>=0.165.0
 uvicorn>=0.54
 argon2-cffi>=25.1
 cryptography>=44     # AES-256-GCM for encryption at rest; passkeys need it too (Rust to build on 32-bit ARM)
 webauthn>=2.5       # passkeys (WebAuthn): checks registrations and sign-ins
-pypdf>=6.1         # text of PDF lab reports (pdf_labs importer): pure Python, so 32-bit ARM installs it as it is
+pypdf>=7.1.1         # text of PDF lab reports (pdf_labs importer): pure Python, so 32-bit ARM installs it as it is
