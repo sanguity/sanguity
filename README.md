@@ -533,6 +533,12 @@ logged in the profile's activity, with the address it came from. The link is sho
 of its token, which sits after the `#` so it never reaches a server log. The person you send it to needs to reach
 your Sanguity, so outside your home network or tailnet that means HTTPS from the internet.
 
+**The address links are given at.** With a public address set (`PUBLIC_ORIGINS`), share links, calendar feed addresses
+and their QR codes are made from it, its first `https://` address (by name; else its first), whatever address you
+opened Sanguity at: a link made on the server's home-network address still opens for the clinician you send it to.
+Without one, they're made from the address you opened it at. The link back in each calendar event, and connected
+sources' return address, come from the same public address.
+
 ## Privacy and security
 
 - **Self-hosted only.** Your data stays on your server; Sanguity makes no outside requests and has no telemetry.
