@@ -22433,6 +22433,26 @@ def main():
             check("#904: at rest with two results at the period's latest time, Labs' readout and Compare's say both, “Latest: 2 results: …” as a hover "
                   "says them, and so do the charts' names, at 360, 412, 900 and 1400 px with text as usual and at 200%, no chart moving as each time is "
                   "hovered", not bad904, bad904)
+            # ---- #974: and a lab's panel says both too, as ckEach does: its Latest named one of two results at the period's
+            # latest time (lab-panel.js st.last), and its First one of two at the first. Potassium's panel for 90 to 20 days
+            # back (the two its latest time) and for 40 days back to today (the two its first), at 360 and 1400 px: that row
+            # "2 results: 5.6 mmol/L ▲ High (3.5–5.3); 5.0 mmol/L (3.5–5.1) · <day>", the other as before, one result
+            PANEL974 = r"""([from, to]) => { state.preset = 'custom'; state.from = zParse(from); state.to = zParse(to); openLab(SERIES.find(s => s.name === 'Potassium'));
+              return Object.fromEntries([...document.querySelectorAll('#dbody .lab-kv dd[data-k]')].map(d => [d.dataset.k, d.textContent])); }"""
+            one974 = js("ds => { const s = SERIES.find(s => s.name === 'Potassium'); return ds.map(d => s.pts.find(p => isoDay(p.ts) === d)).map(p => `${readText(s, p)[0]} · ${fmtD(p.ts)}`); }",
+                        [M752.day(M752.AT_ONCE_DAYS[i])[:10] for i in (0, 2)])
+            two974, bad974 = f"2 results: {'; '.join(M752.AT_ONCE_SAID['each'])} · {day904}", []
+            for w974 in (360, 1400):
+                page.set_viewport_size({"width": w974, "height": 900})
+                for (from974, to974), want974 in (((M752.day(90), M752.day(20)), {"first": one974[0], "latest": two974}),
+                                                  ((M752.day(40), M752.day(0)), {"first": two974, "latest": one974[1]})):
+                    got974 = js(PANEL974, [from974, to974])
+                    bad974 += [f"{w974} px, {from974[:10]} to {to974[:10]}: its {k} “{got974.get(k)}”, not “{v}”" for k, v in want974.items() if got974.get(k) != v]
+            js("() => { closeDrawer(); applyPreset('all'); }")
+            page.set_viewport_size(size865)
+            settle(300)
+            check("#974: …and a lab's panel says both of two results at one time in its Latest and its First, “2 results: …” as the charts say them "
+                  "(it named one), the other row one result as before, at 360 and 1400 px", not bad974, bad974)
             db = dbm.connect()
             prof_r.delete_profile(db, apid)
             db.close()

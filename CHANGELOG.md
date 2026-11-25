@@ -2152,6 +2152,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - **At rest a chart's readout says both of two results at the latest time** (#904): with two results at the period's
   latest time, Labs' "Latest" and Compare's named one of them, and so did each chart's name for screen readers. Both
   now say both, as hovering that time does: "Latest: 2 results: 5.6 mmol/L ▲ High (3.5–5.3); 5.0 mmol/L (3.5–5.1)".
+- **A lab's panel says both of two results at one time too** (#974): its Latest named one of two results at the
+  period's latest time, and its First one of two at the first. Each now says both, as the charts do: "2 results:
+  5.6 mmol/L ▲ High (3.5–5.3); 5.0 mmol/L (3.5–5.1) · Oct 26, 2026".
 - **The browser check hears each keyboard step of every kind of chart** (#913, `tests/browser_check.py`): a review
   read the page's live regions empty once after a chart's arrow key, which nothing checked. Every kind of chart (Labs'
   charts and event track, a lab's panel's strip, Compare and its before and after, Costs' two, Body and activity's

@@ -63,7 +63,10 @@ function openLab(s) {
   const pts = s.pts.filter(p => p.ts >= state.from && p.ts <= state.to), st = labStats(pts), u = s.unit;
   const body = drawerHead("labitem", nice(s.name), `${labPeriod()} · ${u}`);
   drawer.dataset.lab = s.name; drawer.dataset.labUnit = s.unit;   // (labShown)
+  // a result and its day; the first and the latest, every result at their time, told apart (chartkit.js ckEach, ckOne):
+  // "2 results: 5.6 mmol/L ▲ High (3.5–5.3); 5.0 mmol/L (3.5–5.1) · Oct 26, 2026" (#974: it said one of the two)
   const val = p => readText(s, p)[0], at = p => `${val(p)} · ${fmtD(p.ts)}`;
+  const atAll = p => { const ps = ckAt(pts, p.ts); return ps.length > 1 ? `${ckEach(ps, q => ckOne(q, val(q)))} · ${fmtD(p.ts)}` : at(p); };
   const row = (k, v, key) => v ? [el("dt", {text: k}), el("dd", {"data-k": key, text: v})] : [];
   if (!st) body.append(note("No results in this period. A longer period shows them."));
   else {
@@ -76,7 +79,7 @@ function openLab(s) {
     ].map(([k, v, key]) => el("div", {}, el("dt", {text: k}), el("dd", {"data-k": key, text: v})))));
     body.append(el("div", {class: "sect", text: "Every result against its range"}), labStrip(s, pts));
     body.append(el("dl", {class: "kv lab-kv"},
-      ...row("First", at(st.first), "first"), ...row("Latest", at(st.last), "latest"),
+      ...row("First", atAll(st.first), "first"), ...row("Latest", atAll(st.last), "latest"),
       ...row("Lowest", at(st.low.p) + (st.low.more ? `, and ${st.low.more} more time${st.low.more > 1 ? "s" : ""}` : ""), "low"),
       ...row("Highest", at(st.high.p) + (st.high.more ? `, and ${st.high.more} more time${st.high.more > 1 ? "s" : ""}` : ""), "high"),
       ...row("Latest inside its range", st.ranged ? (st.lastIn ? at(st.lastIn) : "None in this period") : "", "lastin"),
