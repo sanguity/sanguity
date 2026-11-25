@@ -693,7 +693,9 @@ def _stage_watch(archive, manifest, stamp):
 # secret, the install's two-factor rule, and the connected sources' sign-ins (the vendors' apps and each connection's
 # tokens, _keep_sources). Everyone is signed out.
 # ACCESS_TABLES: tables taken whole from today's database, for the profiles the backup has (a row's profile_id) and the
-# accounts kept (user_id). A new table of access state (who may get in, or how) belongs here.
+# accounts kept (user_id). A new table of access state (who may get in, or how) belongs here; a new column of users
+# (as totp_fails, #928) is today's with the rest of the row (_merge). labmaps, a profile's own lab-name matches since
+# #927, are records: what an import of the profile chose, forgotten with its Undo, so the backup's.
 ACCESS_TABLES = ("devices", "recovery_codes", "passkeys", "signin_failures", "memberships", "share_links", "calendar_feeds")
 PULLED = ("cursor", "pending_cursor", "first_job", "last_sync", "report", "attach_bytes")   # a connection's place in what
 # it pulled, which goes with the records: the backup's, so it pulls again what came since
