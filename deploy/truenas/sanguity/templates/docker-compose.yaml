@@ -44,6 +44,8 @@
   {% do app.environment.add_env("PUBLIC_ORIGINS", values.sanguity.public_origins) %}
 {% endif %}
 {% do app.environment.add_env("FORWARDED_ALLOW_IPS", "*") %}
+{# the receiver's published port, for the phone upload address (#1007): the app can't see what's published #}
+{% do app.environment.add_env("RECEIVER_PORT", values.network.receiver_port.port_number) %}
 {% do app.environment.add_user_envs(values.sanguity.additional_envs) %}
 {% do app.add_storage("/tmp", app_tmp) %}
 {% do app.add_storage(values.consts.key_path, key_ro) %}

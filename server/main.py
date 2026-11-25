@@ -249,6 +249,12 @@ def _client_ip(request):
     return request.client.host if request.client else "?"
 
 
+def _request_host(request):
+    """The host this request was sent to: the one a reverse proxy in front says it served (X-Forwarded-Host, which our
+    nginx passes on), else Host. For the addresses the app gives out where no public address is set (#1007)."""
+    return (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").split(",")[0].strip()
+
+
 def _lifetime(db, u):
     """How long, in seconds, a session of account u lasts from sign-in: SESSION_DAYS with a second factor, and
     SESSION_HOURS_WITHOUT_2FA (if shorter) without one."""
