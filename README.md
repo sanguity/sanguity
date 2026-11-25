@@ -303,7 +303,8 @@ one: see [docs/anonymising-exports.md](docs/anonymising-exports.md)), or write a
 
 Each profile has its own receiver secret, so each person's phone uploads to their own profile. Under **Sources →
 Phone and watch**, a profile's owners and editors see the upload address to give the phone app (each
-`PUBLIC_ORIGINS` host on `RECEIVER_PORT`, or `WATCH_UPLOAD_URL` if the receiver is behind your own HTTPS proxy) and
+`PUBLIC_ORIGINS` host on `RECEIVER_PORT`, else the host the page was opened at, behind a reverse proxy the one it says
+it served; or `WATCH_UPLOAD_URL` if the receiver is behind your own HTTPS proxy) and
 **Make a secret**, and when the phone last sent something. The secret is shown once, to copy into the app; **Make a new secret** replaces it (the old one
 stops working). A secret goes when the person who made it can no longer change the profile (removed, made a viewer, or
 their account disabled), so their phone stops uploading; Sharing's Remove says so first, and someone who can change the

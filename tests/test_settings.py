@@ -1032,6 +1032,26 @@ class Settings(unittest.TestCase):
         self.assertEqual(r.status_code, 200, r.text)
         self.assertNotIn(made["secret"], [p["secret"] for p in self.keys_file()["profiles"]])
 
+    def test_watch_upload_address_behind_a_proxy(self):
+        """#1007: with no public address, the phone upload address is the host this page was reached at: behind a reverse
+        proxy the one it says it served (X-Forwarded-Host, as the calendar's and Find your provider's addresses take it),
+        not the Host it sent on; on RECEIVER_PORT, which the TrueNAS, Unraid and CasaOS templates now pass (deploy/check.py)
+        and the app reads at each use."""
+        url = f"/api/profiles/{self.fresh_profile('Behind a proxy (fictional)')}/watch/receiver"   # (its own: a secret is made)
+        with mock.patch.dict(os.environ, {"PUBLIC_ORIGINS": ""}):
+            got = lambda **h: self.c["robin"].get(url, headers=h).json()["addresses"]   # noqa: E731
+            self.assertEqual(got(), ["http://testserver:8731/ingest"])   # the Host (TestClient's)
+            self.assertEqual(got(**{"Host": "app:8000", "X-Forwarded-Host": "health.example.org"}), ["http://health.example.org:8731/ingest"])
+            self.assertEqual(got(**{"X-Forwarded-Host": "health.example.org:8443, proxy.lan"}), ["http://health.example.org:8731/ingest"])
+            with mock.patch.dict(os.environ, {"RECEIVER_PORT": "9731"}):
+                self.assertEqual(got(**{"X-Forwarded-Host": "health.example.org"}), ["http://health.example.org:9731/ingest"])
+            # and the answer that makes a secret says the same
+            r = self.c["robin"].post(url + "/rotate", headers={**H, "X-Forwarded-Host": "health.example.org"})
+            self.assertEqual((r.status_code, r.json()["addresses"]), (200, ["http://health.example.org:8731/ingest"]), r.text)
+        # a public address set: its host, whatever the request says
+        self.assertEqual(self.c["robin"].get(url, headers={"X-Forwarded-Host": "health.example.org"}).json()["addresses"],
+                         ["http://health.example.test:8731/ingest"])
+
     def test_watch_two_profiles_with_the_real_receiver(self):
         import hashlib, hmac, socket, subprocess, time, urllib.error, urllib.request
         top = os.path.dirname(os.path.dirname(config.WATCH_KEYS))   # the receiver's DATA (WATCH_DIR)
