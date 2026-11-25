@@ -646,6 +646,8 @@ What each added, and how it keeps to the rules above. Each file named has its ow
 - What a restore replaced (#595), `DATA_DIR/before-restore-<time>/`, is listed by name and time only, deleted 30 days
   after the restore (at start and hourly), or by **Delete now**: by name only, matching the names a restore gives, never
   a link or a path, with the fresh check; each deletion an account event (`backup.replaced`). No backup includes it.
+  The phone and watch data a restore leaves in `DATA_DIR/watch-restored-<time>/` to be moved in by hand (#603) is
+  listed and deleted the same way.
 
 ### Big records stay fast (#201) and the anonymiser (#34)
 - Performance budgets change no access or storage. The anonymiser is out of scope (see the top of this document).

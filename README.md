@@ -731,7 +731,10 @@ the receiver puts it back when it starts, moving what it had to `WATCH_DIR/befor
 30 days later (`RESTORE_KEEP_DAYS` on the receiver; it may hold a profile deleted since); if the receiver
 was left running, `docker compose restart receiver`. On the all-in-one container (Unraid), stop it, run the restore
 with the same folders, and start it again. A backup from before #227 has no phone and watch data, and the receiver's
-is left as it is.
+is left as it is. Where the app can't write `WATCH_DIR/keys/`, the restore leaves the phone and watch data in
+`DATA_DIR/watch-restored-<time>/` and says how to move it in by hand; **Admin → Backups** lists it beside the
+`before-restore-<time>/` folders, and the app deletes it 30 days after the restore too, or sooner with **Delete now**
+(the backup still has it).
 
 **Restoring on another machine** needs the `auth/data_key` the backup was made with: put it in place first.
 A restore checks the backup opens with the key before replacing anything.

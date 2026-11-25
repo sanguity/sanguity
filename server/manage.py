@@ -126,7 +126,9 @@ def _backup_command(cmd, args):
             elif w:
                 print(f"The phone and watch data is in {w['folder']}: the receiver's keys folder ({os.path.dirname(config.WATCH_KEYS)}) "
                       "can't be written here. With the receiver stopped, move its watch.db, raw/ and profiles/ aside in "
-                      "WATCH_DIR, move the ones from that folder in, then start the receiver.")
+                      "WATCH_DIR, move the ones from that folder in, then start the receiver. The app deletes that folder "
+                      f"{backup.KEEP_DAYS} days from now, or sooner with Delete now on Admin > Backups, where it's listed: "
+                      "it may hold profiles deleted since, and the backup still has it.")
             else:
                 print("This backup has no phone and watch data (made by an older version, or there was none): the "
                       "watch receiver's data was left as it is.")

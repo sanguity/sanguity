@@ -10,6 +10,7 @@ the live data: restoring stays a command-line step with the app stopped (README,
   POST /api/backups/check      {"name"}: check that backup by restoring a copy into a temporary folder (202)
   PUT  /api/backups/schedule   {"schedule": "off" | "daily" | "weekly", "keep": 1..365}
   DELETE /api/backups/replaced/{name}   Delete now: what a restore replaced (DATA_DIR/before-restore-<time>/, #595),
+                               or the phone and watch data it left to move in by hand (watch-restored-<time>/, #603),
                                by its name only, with the fresh check; otherwise deleted 30 days after the restore
 """
 import os
@@ -54,7 +55,8 @@ def check_backup(body: CheckIn, request: Request, s=Depends(admin), db=Depends(g
 
 @router.delete("/api/backups/replaced/{name}")
 def delete_replaced(name: str, request: Request, s=Depends(admin), db=Depends(get_db)):
-    """By name only, one of the before-restore-<time>/ folders restore() leaves in DATA_DIR: never a path or a link."""
+    """By name only, one of the before-restore-<time>/ or watch-restored-<time>/ folders restore() leaves in DATA_DIR:
+    never a path or a link."""
     if not backup._replaced_dir(name):
         raise HTTPException(404, "There's nothing a restore replaced of that name in the data folder.")
     fresh(request, s, "delete what a restore replaced")
