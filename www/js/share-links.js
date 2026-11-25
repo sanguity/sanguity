@@ -110,7 +110,7 @@ function shareLinksPanel(p, {open = false} = {}) {
       ev.preventDefault();
       try {
         const j = await call(`profiles/${p.id}/links`, "POST", chosen());
-        const url = new URL(j.path, location.href).href;
+        const url = new URL(j.path, j.base || location.href).href;   // the server's public address, where one is set (#1009)
         const field = el("input", {value: url, readonly: true, "aria-label": "The share link", class: "share-url", onfocus: e => e.target.select()});
         const copy = copyBtn(url, {what: "the share link", sel: field}), qr = slQr(url);   // the app's one Copy and one QR code (#495)
         shown = {id: j.link.id, label: j.link.label};   // named, as there may be others listed beside it (#535)
