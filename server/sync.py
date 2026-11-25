@@ -44,7 +44,10 @@ removes the store (connections.disconnect), so nothing a pull read outlives a Di
     - records whose source key the profile doesn't have are added, as an upload's would be; lab results the
       profile has already are skipped, and remembered lab-name matches applied (labmap.py)
     - records whose source key it has are updated in place (the row keeps its id, import and corrections), when
-      what the vendor sends now differs (a claim's Costs row with it); sync_changes keeps what each was, so undoing
+      what the vendor sends now differs (a claim's Costs row with it), its own source's only (#971: never another
+      server's export uploaded with the same plain ids, by their "ver", else the connection that pulled them; a record
+      of the pull whose plain id only another source's holds is keyed naming its server, as an upload's is, #967, and
+      added beside it, its lab rows never placed in that one's lab events); sync_changes keeps what each was, so undoing
       the sync puts it back. A key scoped to a day (a lab day's, the labitem of a day's results on their own,
       preview.day_key) names no one source's record (#885): an upload's or another source's labitem of that day is
       never replaced by the pull's, whose rows it lost. Each of its rows is its own record (its Observation, the
@@ -1006,13 +1009,21 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
         return {"ok": True, "import": None, "counts": None, "changed": 0}
     full = full or delta
     touched = _touched(delta, got["resources"], store)
-    full_by_key = {e["key"]: e for e in full["events"] if isinstance(e, dict) and isinstance(e.get("key"), str)}
-    delta_by_key = {e["key"]: e for e in delta["events"] if isinstance(e, dict) and isinstance(e.get("key"), str)}
 
     # under the write lock from here (#592): which of these records the profile has already (the duplicates, the rows
     # to update in place) is asked where nothing else can save, so the same record saved meanwhile by an import, records
     # typed in or another pull is found, and not saved twice
     with dbm.transaction(db):
+        # (#971) a record of the pull whose plain id another source's record here holds (another server's export
+        # uploaded, with the same ids) is its own: keyed naming its server, as an upload's is (#967, preview._own_keys),
+        # in the whole set read so far and in what this pull read alike, so it's added beside that one, never put in its
+        # place, and found by that key at the next pull
+        if (keyed := preview._own_keys(db, pid, full)):
+            if delta is not full:
+                preview.named(delta, keyed)
+            touched = {keyed.get((None, k), k) for k in touched}
+        full_by_key = {e["key"]: e for e in full["events"] if isinstance(e, dict) and isinstance(e.get("key"), str)}
+        delta_by_key = {e["key"]: e for e in delta["events"] if isinstance(e, dict) and isinstance(e.get("key"), str)}
         # labs and the profile-wide lists come from what this pull read; lab names matched as remembered
         lab_plan = labmap.plan(db, pid, "fhir", delta)
         delta = labmap.apply(delta, lab_plan["auto"])
@@ -1027,6 +1038,7 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
             labitems = _items_here(db, pid, hashes_on.values())
         if _apart(db, pid, labitems, _connected(db, c)):   # (#881) a row saved apart from its result, moved beside it first
             labitems = _items_here(db, pid, hashes_on.values())
+        labitems = _of_source(db, pid, labitems, full, c)   # (#971) this source's alone
         dups = preview.find(db, pid, "fhir", delta, whole=full)   # (#869: a result sent again found by its rows in the whole set)
         keyless_new = [e for e in delta["events"] if isinstance(e, dict) and not isinstance(e.get("key"), str)
                        and str(e.get("id")) not in dups["events"]]
@@ -1110,7 +1122,7 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
             p = sealed.get(url.split("#", 1)[0]) if isinstance(url, str) else None
             return os.path.realpath(p) if p and os.path.isfile(p) else None
 
-        meta_changes = _meta_changes(db, pid, delta)
+        meta_changes = _meta_changes(db, pid, delta, c["fhir_base"])
         if not (preview.adds_anything(data) or updates or meta_changes or preview.updates(dups) or _differ(labitems, rows_here, fields)):
             _keep_store(db, c, store)
             _done(db, c, got, report)
@@ -1123,7 +1135,7 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
         prof.link_documents(db, iid, keepdocs)
         db.execute("UPDATE imports SET connection_id=? WHERE id=?", (cid, iid))
         labmap.used(db, lab_plan["ids"].values())   # the lab-name matches it was saved with (#500)
-        changed = _update_in_place(db, pid, iid, updates, {**full.get("details", {}), **src}, stored, costs, cid)
+        changed = _update_in_place(db, pid, iid, updates, {**full.get("details", {}), **src}, stored, costs, cid, c["fhir_base"])
         changed += _set_rows(db, pid, iid, rows_here, fields)   # (#899, #881) a day's rows and a report's, where each is
         changed += _apply_meta(db, iid, meta_changes)
         # results the source sent again, amended (#869): updated in place, after their rows (above: a report's labitem
@@ -1176,13 +1188,41 @@ def _costs_by_id(full, delta):
     return out
 
 
-def _update_in_place(db, pid, iid, updates, details, stored, costs=None, cid=None):
+def _bases(db, pid):
+    """{import id: the server of the connection whose pull saved it} of the profile's connections' imports."""
+    return {r[0]: r[1] for r in db.execute("""SELECT i.id, c.fhir_base FROM imports i JOIN connections c ON c.id = i.connection_id
+                                              WHERE i.profile_id=?""", (pid,))}
+
+
+def _theirs(sent, here, base, bases, imp):
+    """(#971) Whether a record here (its body, its import imp) is another source's than the pull's record sent: both say
+    their source (their VER's server or source; else the server of the connection that pulled it: base, bases) and they
+    differ. One saying none (saved before #955) is this source's, as before."""
+    a, b = preview._source(sent or {}, base), preview._source(here or {}, bases.get(imp))
+    return bool(a and b and a != b)
+
+
+def _of_source(db, pid, items, full, c):
+    """(#971) Of the labitems here (_items_here), those of this source: one saying another source than the whole set's
+    labitems (as _theirs) is left out, so a report or day of another server's export with the same ids holds no row of
+    this pull's, nor has its report's details replaced."""
+    mine = {preview._source(e, c["fhir_base"]) for e in full.get("events") or [] if _labitem(e)} - {""}
+    if not mine:
+        return items
+    bases = _bases(db, pid)
+    return {i: li for i, li in items.items() if (s := preview._source(li["body"], bases.get(li["import_id"]))) in mine or not s}
+
+
+def _update_in_place(db, pid, iid, updates, details, stored, costs=None, cid=None, base=None):
     """Change the events whose source key the profile has, where the vendor's version differs; keep what each was.
     A claim's Costs row changes with it (an adjusted claim's new amounts). One whose key is scoped to a day (a lab day:
     a day's labitem has its rows placed, _place) is this connection's (cid) only (#885: _events_with_key); another's is
-    joined (_link_labdays). (#960) A medication it renames takes what hangs on it along (medications.follow), kept
-    for undoing it (moved())."""
-    n, here = 0, [(e, _events_with_key(db, pid, cid, e["key"], "id, body, detail, cost")) for e in updates]
+    joined (_link_labdays). (#971) Only this source's (base: the connection's server), never another's with the same
+    plain id (_theirs). (#960) A medication it renames takes what hangs on it along (medications.follow), kept for
+    undoing it (moved())."""
+    bases = _bases(db, pid)
+    n, here = 0, [(e, [r for r in _events_with_key(db, pid, cid, e["key"], "id, import_id, body, detail, cost")
+                       if not _theirs(e, records._dec(r["body"]), base, bases, r["import_id"])]) for e in updates]
     meds = medications.of_records(db, pid) if medications.renames(
         (records._dec(r["body"]), e) for e, rs in here for r in rs) else None
     for e, rs in here:
@@ -1346,22 +1386,23 @@ def _labday_body(db, body, ids):
     return common.lab_day_counted(body, items)
 
 
-def _meta_changes(db, pid, delta):
-    """Entries of the profile-wide lists (problems, upcoming...) with a source key some import has, that now differ:
+def _meta_changes(db, pid, delta, base=None):
+    """Entries of the profile-wide lists (problems, upcoming...) with a source key some import of this source has (the
+    latest's; #971: never another's with the same plain id, _theirs; base: the connection's server), that now differ:
     [(import id, path, key, new entry)]."""
-    have = {}
+    have, bases = collections.defaultdict(list), _bases(db, pid)
     for r in db.execute("SELECT id, meta FROM imports WHERE profile_id=? ORDER BY id", (pid,)):
         for path, items in preview._meta_lists(records._dec(r["meta"]) or {}).items():
             for x in items:
                 if isinstance(x, dict) and isinstance(x.get("key"), str):
-                    have[(path, x["key"])] = (r["id"], x)
+                    have[(path, x["key"])].append((r["id"], x))
     out = []
     for path, items in preview._meta_lists(delta).items():
         for x in items:
-            if isinstance(x, dict) and isinstance(x.get("key"), str) and (path, x["key"]) in have:
-                iid, old = have[(path, x["key"])]
-                if not _same(old, x):
-                    out.append((iid, path, x["key"], x))
+            mine = [(iid, old) for iid, old in have.get((path, x.get("key"))) or () if not _theirs(x, old, base, bases, iid)] \
+                if isinstance(x, dict) and isinstance(x.get("key"), str) else []
+            if mine and not _same(mine[-1][1], x):
+                out.append((mine[-1][0], path, x["key"], x))
     return out
 
 

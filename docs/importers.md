@@ -230,7 +230,9 @@ would change and what changes, with a box to leave it out. A record whose plain 
 (#967: another server's, by their `ver`) isn't that one: the preview gives it its key naming its server,
 `fhir:<server>|<type>/<id>` as an upload mixing servers has it, so it's added beside the other and found by that key
 when its file comes again; one here from the same server, or one saying none (saved before #955), is the same record,
-as before. Other importers say a record's source in `ver` too where the file says it (#968: `{"source": ...}`, a
+as before. A connected source's pull keeps to the same rule (#971): it updates only its own source's records (by
+their `ver`, else the server of the connection that pulled them), keys a record whose plain id only another source's
+holds naming its server, and places no row of its own in another source's lab event. Other importers say a record's source in `ver` too where the file says it (#968: `{"source": ...}`, a
 C-CDA's custodian on each entry named by its own id, a CareSpace export's clinic on its documents), so another
 clinic's with the same id is added as its own (`ccda:<source>|<root>^<extension>`), and a record is updated in place
 only from its own source where both say one. `ver` is stored, never served; a series adds only the
