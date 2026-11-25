@@ -12357,6 +12357,34 @@ def main():
             check("A lab chart's header on a phone (#621), at 360 and 412 px, light and dark: Chart | Table and ✕ together at its name's line's end (under "
                   "a name too long for it), the unit, counts and ? one muted line, Latest last; three lines for Hemoglobin, WBC, Creatinine and Magnesium, "
                   "nothing overlapping", not bad621, bad621)
+            # ---- #634: and Tab follows those lines as shown: on a phone the name, ✎, Chart | Table and ✕ on its line, then the
+            # "?" on the line under it, then the chart (the "?" came before Chart | Table, the page keeping the desktop's
+            # order); wider, the header's one line in its order, the "?" after ✎ as before. Every lab with a test page
+            # charted, at 360 and 412 px and at 1400, each header walked by Tab from its name
+            TAB634 = r"""() => { const a = document.activeElement, h = a.closest?.('#charts .chart > .hd');
+              const what = a.matches('.lab-open') ? 'name' : a.matches('.rename-btn') ? '✎' : a.matches('.test-page') ? '?' : a.matches('[aria-label^=Remove]') ? '✕'
+                : a.closest('.view-seg') ? a.textContent : a.matches('svg.ck') ? 'chart' : a.tagName + '.' + a.className;
+              return h || what === 'chart' ? what : 'out: ' + what; }"""
+            sel634, bad634, n634 = js("[...state.sel]"), {}, 0
+            js("state.tables.clear(); state.sel = new Set(SERIES.filter(s => !s.watch && s.n >= 2 && testPage(s.name)).map(s => s.name)); renderLabs()")
+            for w634 in (360, 412, 1400):
+                page.set_viewport_size({"width": w634, "height": 800 if w634 < 700 else 900})
+                settle(500)
+                want634 = ["name", "✎", "Chart", "Table", "✕", "?", "chart"] if w634 < 700 else ["name", "✎", "?", "Chart", "Table", "✕", "chart"]
+                for lab634 in js("[...document.querySelectorAll('#charts .chart')].map(c => c.dataset.lab)"):
+                    js("l => [...document.querySelectorAll('#charts .chart')].find(c => c.dataset.lab === l).querySelector('.hd .lab-open').focus()", lab634)
+                    got634 = [js(TAB634)]
+                    for _ in range(len(want634) - 1):
+                        page.keyboard.press("Tab")
+                        got634.append(js(TAB634))
+                    n634 += 1
+                    if got634 != want634:
+                        bad634[f"{lab634} at {w634} px"] = got634
+            page.set_viewport_size({"width": 412, "height": 800})
+            js("s => { state.sel = new Set(s); renderLabs(); }", sel634)
+            settle(300)
+            check("…and on a phone Tab follows its lines as shown (#634): the name, ✎, Chart | Table and ✕, then the “?” under them, then the chart, for "
+                  "every lab with a test page at 360 and 412 px; at 1400 px its one line in order, the “?” after ✎ as before", not bad634 and n634 >= 15, bad634 or n634)
             # ---- #622: text at 200% (the font tokens doubled, as #615's) at 360 and 412 px, light and dark (1.4.4): each tab
             # of the phone's tab bar inside its place, its icon alone where its name doesn't fit, the bar as tall as the
             # room the page leaves it (--tabbar), every tab still named; the profile's name whole (on a row of its own at

@@ -200,18 +200,20 @@ function chartCard(s) {
   const legend = hasStages ? ckLegend([["var(--seq1)", "Deep"], ["var(--seq2)", "REM"], ["var(--seq3)", "Light"]], "span")
     : s.kind === "band" ? ckLegend([["var(--c-lab)", "Daily average", "line"], ["var(--c-lab)", "Low–high", "band"]], "span") : null;
   // its name in the records, when renamed, on the screen beside the unit, not in a tip only a mouse finds (#358). On a
-  // phone (#621) three lines: the name with Chart | Table and ✕, then the unit, counts and "?" (.hd-sub), then Latest
-  card.append(el("div", {class: "hd"}, s.watch ? el("span", {class: "name", text: nice(s.name)}) : labOpener(s, "name"), s.watch ? null : renameButton("lab", s.name),
-    el("span", {class: "hd-sub"}, el("span", {class: "unit", text: `${s.unit}${!s.watch && nice(s.name) !== s.name ? " · " + renamedTitle("lab", s.name).replace(/^In/, "in") : ""}${s.uc ? ` (converted from ${s.uc.from})` : ""}${s.watch ? (s.key === "weight" ? " · scale + clinic visits" : s.panel.startsWith("Body") ? " · smart scale" : " · watch, daily") : ""} · ${pts.length} ${s.watch ? "day" : "result"}${pts.length === 1 ? "" : "s"}${nAbn ? ` · ${nAbn} ${flaggedWords(pts.map(p => p[4]))}` : ""}${pts.some(p => p.rs === "settings") ? " · " + RANGE_FROM_SETTINGS + " for results without one" : ""}`}), testLink(s.name)), legend, read,   // "What is this test?" (#163, test-pages.js)
-    viewSeg(s.name, nice(s.name), renderCharts),   // Chart | Table (#60)
+  // phone (#621) three lines: the name with Chart | Table and ✕, then the unit, counts and "?" (.hd-sub), then Latest;
+  // in that order there, so Tab follows the lines (#634: the "?" came before Chart | Table). The header is drawn anew
+  // as the window crosses 700 px (timeline.js: a resize draws the tab again)
+  const sub = el("span", {class: "hd-sub"}, el("span", {class: "unit", text: `${s.unit}${!s.watch && nice(s.name) !== s.name ? " · " + renamedTitle("lab", s.name).replace(/^In/, "in") : ""}${s.uc ? ` (converted from ${s.uc.from})` : ""}${s.watch ? (s.key === "weight" ? " · scale + clinic visits" : s.panel.startsWith("Body") ? " · smart scale" : " · watch, daily") : ""} · ${pts.length} ${s.watch ? "day" : "result"}${pts.length === 1 ? "" : "s"}${nAbn ? ` · ${nAbn} ${flaggedWords(pts.map(p => p[4]))}` : ""}${pts.some(p => p.rs === "settings") ? " · " + RANGE_FROM_SETTINGS + " for results without one" : ""}`}), testLink(s.name));   // "What is this test?" (#163, test-pages.js)
+  const acts = [viewSeg(s.name, nice(s.name), renderCharts),   // Chart | Table (#60)
     el("button", {class: "btn quiet small", type: "button", "data-tip": `Remove ${nice(s.name)}`, "aria-label": `Remove ${nice(s.name)}`, onclick: () => {
       // focus to the next chart's ×, else to this lab's box in the list (or Other, closed, it's in), else to the
       // filter that hides it, not <body> (#462)
       const cs = [...$("#charts").querySelectorAll(".chart")], next = cs.slice(cs.indexOf(card) + 1).find(c => c.dataset.lab !== s.name)?.dataset.lab;
       state.sel.delete(s.name); renderLabs();
       const box = [...$("#seriesRows").querySelectorAll("input[data-lab]")].find(c => c.dataset.lab === s.name);
-      ([...$("#charts").querySelectorAll(".chart")].find(c => c.dataset.lab === next)?.querySelector(".hd > [aria-label^=Remove]") || [box, box?.closest("details")?.querySelector("summary"), $("#labQ"), $("#labsPick")].find(x => x?.checkVisibility()))?.focus(); }}, icon("x")),   // (on a phone, the list folded: Choose labs, #615)
-    rangeNote(s, pts, showTable)));
+      ([...$("#charts").querySelectorAll(".chart")].find(c => c.dataset.lab === next)?.querySelector(".hd > [aria-label^=Remove]") || [box, box?.closest("details")?.querySelector("summary"), $("#labQ"), $("#labsPick")].find(x => x?.checkVisibility()))?.focus(); }}, icon("x"))];   // (on a phone, the list folded: Choose labs, #615)
+  card.append(el("div", {class: "hd"}, s.watch ? el("span", {class: "name", text: nice(s.name)}) : labOpener(s, "name"), s.watch ? null : renameButton("lab", s.name),
+    ...(PHONE.matches ? [legend, ...acts, sub, read] : [sub, legend, read, ...acts]), rangeNote(s, pts, showTable)));
   { const v = vitalLink(s); if (v) card.append(v); }   // a vital's readings at home, on Body and activity (#180, health.js)
   if (showTable) {
     card.append(scrollBox({class: "tablewrap", "aria-label": `${nice(s.name)}, as a table`}, el("table", {class: "data"}, el("thead", {}, el("tr", {}, ["Date", "Value", s.watch ? "Detail" : "Ref range"].map(h => el("th", {scope: "col", text: h})), el("th", {scope: "col"}, el("span", {class: "vh", text: "Flag"})))),
