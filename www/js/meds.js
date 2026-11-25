@@ -32,7 +32,6 @@ const medFrom = m => Math.min(...m.spans.map(s => s.ts), ...m.fills.map(f => f.t
 const medTo = m => Math.max(...m.spans.map(medEnd), ...m.fills.map(f => f.ts + (f.supply || 0) * DAY));
 /* q: the Timeline's search; the Labs charts show every medication, whatever was searched there (#192) */
 const medsShown = (a, b, q = state.q) => MEDS.filter(m => (m.spans.length || m.fills.length) && medTo(m) >= a && medFrom(m) <= b && (!q || m._q.includes(q)));
-const medShort = (n, max) => n.length > max ? n.slice(0, max - 1) + "…" : n;
 /* "5 Jan 2026 – 3 Mar 2026", "5 Jan 2026 – no end in the records", "stopped 5 Jan 2026 (no start or end date)" */
 function medSpanWhen(s) {
   if (s.open) return `${fmtD(s.ts)} – no end in the records`;
@@ -119,20 +118,27 @@ function medTip(m, ds, ev) {
 
 /* ---------------------------------------------------------------- Labs: the same rows on the event track, when ticked */
 /* once, over the charts (event-track.js, #294): each medication's name over its spans, clear of the fills of the row
-   above (MED_TRACK px a row) */
+   above (MED_TRACK px a row), whole: broken into lines no wider than the plot from L to R (medLines, as the Timeline's,
+   #643), its row as tall as them (#978: cut to the plot and to 40 letters) */
 let medsOnTrends = false;
 try { medsOnTrends = localStorage.getItem("sg-meds-trends") === "1"; } catch (e) {}
 const medsInWindow = () => medsOnTrends && state.cats.has("med") ? medsShown(state.from, state.to, "") : [];
 const MED_TRACK = 30;
+const medTrackRows = (L, R) => medsInWindow().map(m => {
+  const lines = medLines(m.name, R - L - 2) || [ckFit(m.name, "medname", R - L - 2)];
+  return {m, lines, h: (MED_TRACK + (lines.length - 1) * MED_LH) * ckK()};
+});
 CHART_LAYERS.push({
   name: "Medications",
-  space: () => { const n = medsInWindow().length; return n ? 4 + n * MED_TRACK * ckK() : 0; },
+  space: (L = 0, R = Infinity) => { const rows = medTrackRows(L, R); return rows.length ? 4 + rows.reduce((a, r) => a + r.h, 0) : 0; },
   rows: () => medsInWindow().flatMap(m => m.spans.filter(s => medEnd(s) >= state.from && s.ts <= state.to).map(s => [s.ts, "Medication", `${m.name} · ${medSpanWhen(s)}`, () => openMedication(m), "med"])),
   draw(g, x, top, R, L) {   // each name over its row's spans, as tall as the text (#633)
     const k = ckK();
-    medsInWindow().forEach((m, n) => {
-      const y = top + 4 + (n + 1) * MED_TRACK * k - 10, name = ckFit(medShort(m.name, 40), "medname", R - L - 2);
-      g.push(el("svg:text", {class: "medname", x: Math.max(L + 2, Math.min(x(medFrom(m)), R - labelW(name, "medname"))), y: y - 8, text: name}));
+    let y0 = top + 4;
+    for (const {m, lines, h} of medTrackRows(L, R)) {
+      const y = y0 + h - 10, wide = Math.max(...lines.map(l => labelW(l, "medname")));
+      g.push(medName(m, lines, Math.max(L + 2, Math.min(x(medFrom(m)), R - wide)), y - 8 - (lines.length - 1) * MED_LH * k, k));
+      y0 += h;
       const before = g.length;
       medRow(g, m, x, y, L, R, CAT_OF.med.color);
       for (const node of g.slice(before)) if (node.dataset?.med != null) {
@@ -141,7 +147,7 @@ CHART_LAYERS.push({
         node.addEventListener("click", ev => { ev.stopPropagation(); hideTip(); node.dataset.fill ? openEvent(byId.get(+node.dataset.fill)) : openMedication(m); });
         node.style.cursor = "pointer";
       }
-    });
+    }
   },
 });
 {

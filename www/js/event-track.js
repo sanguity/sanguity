@@ -66,8 +66,9 @@ function trackTable(items, layers) {
    over the charts while they're dragged (#895: a row more, 30 px at 200% text, moved them under the pointer) */
 function drawTrack(live) {
   const svg = $("#evTrack svg.ev-svg"); if (!svg?.isConnected) return;
-  const items = trackItems(), shown = trackLayers(), layers = shown.map(l => [l, l.space()]), geo = $("#charts .chart svg.ck")?._geom;
+  const items = trackItems(), shown = trackLayers(), geo = $("#charts .chart svg.ck")?._geom;
   const w = labW(svg.parentElement), L = geo?.L ?? 52, R = geo ? w - (geo.w - geo.R) : w - 12, x = ckScale(state.from, state.to, L, R), held = live ? svg._rows : 0;
+  const layers = shown.map(l => [l, l.space(L, R)]);   // (as tall as their words need at this width: medications' names, #978)
   const flags = ckFlagRows(items.map(i => ({x: x(i.t), text: i.k === "milestone" ? i.words : shortTitle(i.words), cls: i.k === "milestone" ? "mslabel" : "evlabel", rank: i.k === "milestone" ? 0 : 1, i})), L, R, held || 3);
   const k = ckK(), RH = 15 * k, nRows = held || (flags.length ? Math.max(...flags.map(f => f.row)) + 1 : 0), named = items.length || held, yM = named ? 6 + nRows * RH + 8 : 0;   // (rows as tall as larger text, #622)
   if (!live) svg._rows = nRows;

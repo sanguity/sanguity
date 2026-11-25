@@ -13194,6 +13194,36 @@ def main():
             settle(300)
             check("…and each medication's name whole on the Timeline's Medications lane and the Medications tab's (#643: cut to “Acyclo…”), a long one "
                   "among them, at 360 and 412 px, light and dark, with text at 200% and as usual, inside the chart and none over another", not bad643, bad643)
+            # ---- #978: …and on Labs' event track, whose Medications row draws each name over its spans: it was cut to the
+            # plot and to 40 letters ("Amoxicillin 875 mg and clavulanate pota…"), the whole name nowhere a touch screen could
+            # reach. At 360, 412 and 1400 px, light and dark, with text at 200% and as usual, the medications ticked on Labs
+            # with the long name put in (and taken out): each name whole, in lines over its row, the long one among them,
+            # every label inside the track and none over another (#633's L633)
+            was978 = js("[MEDS[0].name, state.preset, document.documentElement.dataset.theme || null, medsOnTrends, [...state.cats], [...state.sel], state.labsView]")
+            js("""n => { MEDS[0].name = n; medsOnTrends = true; state.cats.add('med'); state.tables.clear();
+              state.sel = new Set(SERIES.filter(s => !s.watch && s.n >= 2).slice(0, 2).map(s => s.name)); applyPreset('all'); }""", LONG643)
+            bad978 = {}
+            for w in (360, 412, 1400):
+                page.set_viewport_size({"width": w, "height": 800})
+                for mode in ("light", "dark"):
+                    for big in (False, True):
+                        js("([t, css]) => { document.documentElement.dataset.theme = t; const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = css ? [s] : []; }",
+                           [mode, BIG622 if big else ""])
+                        js("() => { switchTab('labs', 'chart'); renderAll(); }")
+                        settle(400)
+                        names = js(NAMES643, "#evTrack svg.ev-svg")
+                        got = [f"“{n}” not whole" for n in names if n not in js("MEDS.map(m => m.name)")]
+                        got += [f"no “{LONG643}”"] if LONG643 not in names else []
+                        got += js(L633, "#evTrack svg.ev-svg")
+                        if got:
+                            bad978[f"{w} {mode}{' 200%' if big else ''}"] = got[:8]
+            js("""w => { MEDS[0].name = w[0]; medsOnTrends = w[3]; state.cats = new Set(w[4]); state.sel = new Set(w[5]); document.adoptedStyleSheets = [];
+              if (w[2]) document.documentElement.dataset.theme = w[2]; else delete document.documentElement.dataset.theme; applyPreset(w[1]); switchTab('labs', w[6]); renderAll(); }""", was978)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(300)
+            check("…and on Labs' event track, each medication's name whole in lines over its row (#978: cut to the plot and to 40 letters), a long one "
+                  "among them, at 360, 412 and 1400 px, light and dark, with text at 200% and as usual, inside the track and none over another",
+                  not bad978, bad978)
             # ---- #641: #622's check for the overview strip (#295) on Labs, Body and activity and the Timeline, at 360 and
             # 412 px, light and dark, at the usual size and with text at 200% (1.4.4), in All and in a year (the window then
             # inside the strip, its grips with it): its dates inside it, none over another, under the bars' foot, clear of
