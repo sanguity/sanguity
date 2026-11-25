@@ -72,6 +72,8 @@ def lab_obs(oid, code, name, v, unit, flag=None, rng=None, t="2025-03-04T09:45:0
 
 
 class Connections(unittest.TestCase):
+    made = 0   # sources made so far, each named apart (source())
+
     @classmethod
     def setUpClass(cls):
         cls.no_thread = mock.patch.object(sync, "start", lambda: None)   # tests pull when they choose; one test runs it
@@ -120,7 +122,10 @@ class Connections(unittest.TestCase):
         cid = f"app-{auth}-{self.fake.port}"
         if register:
             self.fake.register_client(cid, [RETURN], secret=secret)
-        body = {"name": f"Fake {auth} {self.fake.port}", "vendor": vendor, "issuer": self.fake.fhir_base, "client_id": cid,
+        # a name of its own (seen in PR #953's CI): a fake given a port an earlier test's fake had would otherwise share
+        # that source's name, and the admins' notice, which counts by name, would add the earlier source's warnings
+        Connections.made += 1
+        body = {"name": f"Fake {auth} {self.fake.port} ({Connections.made})", "vendor": vendor, "issuer": self.fake.fhir_base, "client_id": cid,
                 "auth": auth, **({"secret": secret} if secret else {}), **({"scopes": scopes} if scopes else {})}
         r = self.robin.post("/api/connect/sources", json=body, headers=H)
         self.assertEqual(r.status_code, 201, r.text)
