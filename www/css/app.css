@@ -773,18 +773,17 @@ table.data tr.link{cursor:pointer}
 table.data tr.link:hover td{background:var(--hover)}
 .tablewrap{max-height:320px;overflow:auto;margin:var(--sp-2) 0 var(--sp-2)}
 /* a result's rows in the drawer (drawer.js resultTable) where four columns don't fit (320 px, or larger text on a phone):
-   each a few lines, the test, its value and flag, its range; still a table to a screen reader (#829: the flag was off
-   to the right, the table scrolling sideways) */
+   each a few lines, the test, its value and flag, its range; still a table to a screen reader, four cells a row, an
+   empty one hidden from sight only (#829: the flag was off to the right; #988) */
 .res-wrap{container-type:inline-size}
 @container (width < 21em){
   .res-wrap :is(table,tbody){display:block}
-  .res-wrap thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  .res-wrap :is(thead,.data td:empty){position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
   .res-wrap tr{display:flex;flex-wrap:wrap;align-items:baseline;border-bottom:1px solid var(--grid);padding:var(--sp-1) 0}
   .res-wrap .data td{border:0;padding:0 var(--sp-2)}
   .res-wrap .data td:is(:first-child,:nth-child(3)){flex:1 1 100%}
   .res-wrap .data td:nth-child(3){order:1}
   .res-wrap td:nth-child(3)::before{content:"Ref range " / "";color:var(--muted)}
-  .res-wrap .data td:empty{display:none}
 }
 .empty{color:var(--muted);padding:var(--sp-6);text-align:center}
 /* detail drawer, one layout for every record (#270, drawer.js): the head (the kind's icon in its colour, the title, a
