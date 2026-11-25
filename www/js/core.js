@@ -46,7 +46,12 @@ let periodKept = null;
 /* and their own kinds, saved in place of those a link shows for this visit (kindsVisit, #475), until they change them */
 let catsKept = null, catsVisit = "";
 const catsKey = s => [...s].sort().join();
-function save() { if (state.preset !== "all") periodKept = null; if (catsKept && catsKey(state.cats) !== catsVisit) catsKept = null; const P = periodKept || state; try { localStorage.setItem(stateKey(), JSON.stringify({preset: P.preset, from: P.from, to: P.to, cats: [...(catsKept || state.cats)], known: CATS.map(c => c.k), tab: state.tab, labsView: state.labsView, tlView: state.tlView, costView: typeof costState === "object" ? costState.view : undefined, tlWork: state.tlWork, sel: [...state.sel], marks: state.marks, smooth: state.smooth, asc: state.asc, v: 2})); } catch (e) {} }
+/* the Labs view the person last picked with its switch (#997), kept with the rest; null till they pick one. labsHome():
+   where Labs opens from its tab's address (another page's bar, #labs): the view picked, else Latest on a phone (700 px
+   and under) and Chart wider */
+let labsPicked = null;
+const labsHome = () => labsPicked || (PHONE.matches ? "latest" : "chart");
+function save() { if (state.preset !== "all") periodKept = null; if (catsKept && catsKey(state.cats) !== catsVisit) catsKept = null; const P = periodKept || state; try { localStorage.setItem(stateKey(), JSON.stringify({preset: P.preset, from: P.from, to: P.to, cats: [...(catsKept || state.cats)], known: CATS.map(c => c.k), tab: state.tab, labsView: state.labsView, labsPicked, tlView: state.tlView, costView: typeof costState === "object" ? costState.view : undefined, tlWork: state.tlWork, sel: [...state.sel], marks: state.marks, smooth: state.smooth, asc: state.asc, v: 2})); } catch (e) {} }
 function restore() {
   try {
     let raw = localStorage.getItem(stateKey());
@@ -56,6 +61,9 @@ function restore() {
     if (s.cats) state.cats = savedCats(s);   // (util.js: the command palette counts by them too, #470)
     if (s.sel) state.sel = new Set(s.sel);
     if (s.tab && s.v === 2) [state.tab, state.labsView] = tabAlias(s.tab, s.labsView);   // Trends and Lab heatmap are Labs now (#172)
+    // (#997) the view picked; one kept before it was kept apart, a heatmap or Compare (the old Lab heatmap tab's too,
+    // #172), was one picked
+    labsPicked = LABS_VIEWS.includes(s.labsPicked) ? s.labsPicked : !("labsPicked" in s) && ["heatmap", "compare"].includes(state.labsView) ? state.labsView : null;
     if (s.preset) state.preset = s.preset;
     if (s.tlView === "journal") state.tlView = "journal";
     if (s.costView === "paid" && typeof costState === "object") costState.view = "paid";   // Costs' What you paid (#452), as Labs' and the Timeline's views

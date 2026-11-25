@@ -3582,6 +3582,9 @@ Everything on `main` so far; it becomes the first tagged release.
   when they came), with a count in the heading; the marks go the next time the page is loaded. What was last shown
   is kept in this browser for each profile and never sent anywhere; with the browser's storage blocked, nothing is
   marked.
+- **Labs opens on Latest on a phone** (#997): on a phone Labs' charts are harder to read than a list. At phone widths
+  Labs now opens on Latest, wider screens on Chart as before; Chart, Heatmap and Compare are a tap away. Once you
+  pick a view, Labs opens there, from the tab bar on any page and after a reload, for that profile.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
