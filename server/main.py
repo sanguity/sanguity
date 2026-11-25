@@ -177,6 +177,8 @@ def _audit(event, request=None, user=None, warn=True, **fields):
     audit.log(logging.WARNING if warn else logging.INFO, "security %s", json.dumps(line, separators=(",", ":")))
     if event == "login.fail":   # also kept, so admins see bursts (alerts.py)
         alerts.record(line.get("ip"), line.get("uid"), fields.get("step"))
+    elif event == "reauth.fail" and fields.get("step") != "passkey":   # a signed-in session's wrong password or code (#931)
+        alerts.record(line.get("ip"), line.get("uid"), alerts.CHECK + (fields.get("step") or "password"))
 
 
 @app.exception_handler(passkeys.PasskeyError)
@@ -714,7 +716,7 @@ class PasswordChange(BaseModel):
 
 @app.post("/api/me/password")
 def change_password(body: PasswordChange, request: Request, s=Depends(any_user), db=Depends(get_db)):
-    keys = ("pair:pw|" + s["username"].lower() + "|" + _client_ip(request),)
+    keys = sec.password_keys(s["username"], _client_ip(request))   # per account too (#931)
     if (w := sec.throttle.wait(*keys)):
         raise HTTPException(429, f"Too many wrong passwords. Try again in {w} seconds.")
     if not sec.verify_password(s["pw_hash"], body.current[:config.PASSWORD_MAX]):
@@ -759,7 +761,7 @@ def reauth(body: FreshCheck, request: Request, s=Depends(user), db=Depends(get_d
             _audit("reauth.fail", request, s, action="fresh check", step="code")
             raise HTTPException(403, "That code isn't right, or it was used already. Wait for the next one.")
     else:
-        keys = ("pair:pw|" + s["username"].lower() + "|" + _client_ip(request),)
+        keys = sec.password_keys(s["username"], _client_ip(request))   # per account too (#931)
         if (w := sec.throttle.wait(*keys)):
             raise HTTPException(429, f"Too many wrong passwords. Try again in {w} seconds.", headers={"Retry-After": str(w)})
         if not sec.verify_password(s["pw_hash"], body.secret[:config.PASSWORD_MAX]):
@@ -816,7 +818,7 @@ class TwoFactorConfirm(BaseModel):
 def _password(request, s, password, action):
     """The person's password, checked before a change to how they sign in (#590): throttled as sign-in is, and a wrong
     one is in the security log as reauth.fail."""
-    keys = ("pair:pw|" + s["username"].lower() + "|" + _client_ip(request),)
+    keys = sec.password_keys(s["username"], _client_ip(request))   # per account too (#931)
     if (w := sec.throttle.wait(*keys)):
         raise HTTPException(429, f"Too many wrong passwords. Try again in {w} seconds.")
     if not sec.verify_password(s["pw_hash"], password[:config.PASSWORD_MAX]):

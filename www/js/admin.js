@@ -45,6 +45,9 @@ async function loadNotice() {
   const msg = el("span", {class: "msg"});   // a Dismiss that didn't work says so here (#210: not in a pop-up)
   box.replaceChildren(
     el("b", {text: `${n.total} failed sign-in${n.total === 1 ? "" : "s"} since ${when(n.since)}`}), " (last at ", when(n.last), "). ",
+    // #931: a wrong password or code from a device already signed in to the account (the fresh check, a password change...)
+    n.checks ? `${n.checks === n.total ? "All" : n.checks.toLocaleString("en-US")} of them ${n.checks === 1 && n.total !== 1 ? "was" : "were"} a wrong password or code ` +
+      "from a device already signed in to the account: someone there may be guessing it. Resetting its password signs it out everywhere. " : "",
     n.addresses.length ? `From: ${list(n.addresses, "ip")}. ` : "",
     n.accounts.length ? `Accounts tried: ${list(n.accounts, "username")}. ` : "",
     "Throttling slows guessing down; if you don't recognise this, check that the accounts tried have strong passwords " +
