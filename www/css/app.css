@@ -747,6 +747,8 @@ svg text.db-name{fill:var(--ink);font-size:var(--fs-2)}
 .lt-row>.v{text-align:right}
 .lt-v{display:block}
 .lt-v>.st{margin-left:var(--sp-2)}
+.lt-list+.lab-panel{margin-top:var(--sp-4)}
+#labsLatest .lab-find{flex-wrap:wrap}#labsLatest .lab-find input{flex-basis:12em}   /* its count under the box where both don't fit (#994) */
 @media (min-width:701px){.lt-row{grid-template-columns:1fr 1fr 2fr}.lt-row>.v{text-align:left}.lt-row>.s{grid-column:auto}}
 @media (max-width:900px){.ov-cols{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:600px){ .ov-h{flex-wrap:wrap} }
@@ -1518,8 +1520,8 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
 .lab-find{display:flex;gap:var(--sp-2);align-items:center;min-width:0}
 .lab-find input{flex:1 1 auto;width:100%}
 .lab-find .n{flex:none;font-size:var(--fs-2);color:var(--ink2);font-variant-numeric:tabular-nums;white-space:nowrap}
-#labsHeatmap .list-hd{margin-bottom:var(--sp-2)}
-#labsHeatmap .lab-find{flex:0 1 300px;margin-left:var(--sp-2)}
+:is(#labsHeatmap,#labsLatest) .list-hd{margin-bottom:var(--sp-2)}
+:is(#labsHeatmap,#labsLatest) .lab-find{flex:0 1 300px;margin-left:var(--sp-2)}
 .lab-none{padding:var(--sp-2) var(--sp-4);margin:0!important}
 .lab-none .btn{margin:var(--sp-1) 0 0}
 /* the charts' one header (#279: Labs'; #442: Body and activity's too): the view (Labs'), Show on charts, then its
@@ -1575,7 +1577,7 @@ body.offline :is(header,dialog.sheet) a.acct[aria-disabled="true"],body.offline 
 }
 .sets .set-grp{margin:var(--sp-3) 0 0}
 .sets .set-groups>.set-grp:first-child{margin-top:0}   /* level with its row's name (#494) */
-@media (max-width:700px){#labsHeatmap .lab-find{flex:1 1 100%;margin-left:0}}
+@media (max-width:700px){:is(#labsHeatmap,#labsLatest) .lab-find{flex:1 1 100%;margin-left:0}}
 .sets .set-view{border:1px solid var(--grid);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3);margin:var(--sp-2) 0;max-width:560px}
 .sets .set-view .row{display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-2);align-items:center}
 .sets .set-view .row input:not([type=radio]){flex:1 1 140px;min-width:0}

@@ -80,26 +80,29 @@ if (SgOffline.works()) navigator.serviceWorker.register(new URL("sw.js", SgOffli
   .catch(e => console.warn("offline use unavailable:", e.message));
 
 /* (#220) the lab series picked on Labs, by name (sel in each profile's view, ht-state:<id>, core.js), go at sign-out
-   too; the rest of the view (period, tab, kinds) is kept */
+   too, and the lab name typed in Labs' Latest filter (q in ht-latest:<id>, latest.js, #994); the rest of each (period,
+   tab, kinds; Flagged only and what Latest last showed) is kept */
 function forgetPicks() {
   try {
     const keys = [];
-    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k === "ht-state" || k.startsWith("ht-state:")) keys.push(k); }
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k === "ht-state" || k.startsWith("ht-state:") || k.startsWith("ht-latest:")) keys.push(k); }
     for (const k of keys) {
       let s = null;
       try { s = JSON.parse(localStorage.getItem(k)); } catch (e) {}
-      if (s && typeof s === "object" && "sel" in s) { delete s.sel; localStorage.setItem(k, JSON.stringify(s)); }
+      const name = k.startsWith("ht-latest:") ? "q" : "sel";
+      if (s && typeof s === "object" && name in s) { delete s[name]; localStorage.setItem(k, JSON.stringify(s)); }
     }
   } catch (e) {}
 }
 /* (#936) what this browser keeps of a profile (its view on the records page, ht-state:<id>, with the lab names picked;
-   Body and activity's options, ht-health:<id> and ht-glucose:<id>; the last one picked, ht-profile) goes with it: on its
-   Delete here (profile-card.js), and as any page hears from the server which profiles are the person's (nav.js), for
-   those it doesn't list (deleted elsewhere, or left). gone(id) -> whether that profile's go */
+   Body and activity's options, ht-health:<id> and ht-glucose:<id>; Labs' Latest's filters, ht-latest:<id>, #994; the
+   last one picked, ht-profile) goes with it: on its Delete here (profile-card.js), and as any page hears from the
+   server which profiles are the person's (nav.js), for those it doesn't list (deleted elsewhere, or left). gone(id) ->
+   whether that profile's go */
 function forgetProfiles(gone) {
   try {
     const keys = [];
-    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i), m = /^ht-(?:state|health|glucose):(\d+)$/.exec(k || ""); if (m && gone(+m[1])) keys.push(k); }
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i), m = /^ht-(?:state|health|glucose|latest):(\d+)$/.exec(k || ""); if (m && gone(+m[1])) keys.push(k); }
     if (/^\d+$/.test(localStorage.getItem("ht-profile") || "") && gone(+localStorage.getItem("ht-profile"))) keys.push("ht-profile");
     for (const k of keys) localStorage.removeItem(k);
   } catch (e) {}

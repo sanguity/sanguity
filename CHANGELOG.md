@@ -3565,6 +3565,13 @@ Everything on `main` so far; it becomes the first tagged release.
   its range and its day, both of two results at that time; how many labs have none in the period is said. A row opens
   its lab's chart, and Back returns to the row. It reads each result as Chart, the heatmap, the Overview and the
   summary do.
+- **Latest grouped by panel, with Flagged only and a name filter** (#994): Latest's rows are under their panels, as
+  every list of labs is, Other last; **Flagged only** and a name filter narrow them, the heading saying how many
+  ("3 of 12 labs, flagged only"), and both are kept for the profile in this browser. A lab whose report named no
+  panel (typed in, or from a spreadsheet) now takes the panel another report gave the same lab, else the one
+  `lab-aliases.json`'s new `panels` table names (blood count, metabolic, liver, …), everywhere labs are grouped,
+  where it was under Other. A name typed in the filter goes at sign-out, as the labs picked on Labs do, and the
+  filters go with the profile when it's deleted or no longer yours.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

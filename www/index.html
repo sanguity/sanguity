@@ -149,7 +149,10 @@
     </div>
     <!-- each lab's latest result in the period, a row each that opens its chart (#993, latest.js) -->
     <div class="card" id="labsLatest" hidden>
-      <div class="list-hd"><h2>Latest results</h2></div>
+      <div class="list-hd" id="ltHd"><h2>Latest results</h2>
+        <div class="lab-find"><input type="search" id="ltQ" placeholder="Filter lab names…" aria-label="Filter lab names" aria-describedby="ltQn" autocomplete="off" spellcheck="false"><span class="n" id="ltQn"></span></div>
+        <label class="toggle"><input type="checkbox" id="ltFlag"> Flagged only</label></div>
+      <p class="fsum" id="ltSum" hidden></p>
       <p class="hint" id="ltSays"></p>
       <div id="ltRows"></div>
     </div>

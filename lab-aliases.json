@@ -1,5 +1,5 @@
 {
- "_about": "Canonical lab series names, their LOINC codes where known, and other spellings that map onto them. Matching is case-insensitive. Add a lab by adding an entry; add a spelling by appending to its aliases.",
+ "_about": "Canonical lab series names, their LOINC codes where known, and other spellings that map onto them. Matching is case-insensitive. Add a lab by adding an entry; add a spelling by appending to its aliases. \"panels\" puts each lab (by its name here) in the panel it's grouped under on the pages where the report it came in gives none (#994); a lab in no panel is under Other.",
  "labs": {
   "Albumin": {
    "loinc": "1751-7",
@@ -334,5 +334,76 @@
     "WHITE BLOOD CELL COUNT"
    ]
   }
+ },
+ "panels": {
+  "Blood count": [
+   "Hemoglobin",
+   "Hematocrit",
+   "RBC",
+   "MCV",
+   "MCH",
+   "MCHC",
+   "WBC",
+   "Platelet Count",
+   "NRBC",
+   "Automated Abs Neutrophil Cnt",
+   "Neutrophils %",
+   "Lymphocytes Absolute",
+   "Lymphocytes %",
+   "Monocytes Absolute",
+   "Monocytes %",
+   "Eosinophils Absolute",
+   "Eosinophils %",
+   "Basophils Absolute",
+   "Basophils %",
+   "Immature Granulocytes Absolute",
+   "Immature Granulocytes %",
+   "Bands Relative",
+   "Segs Relative",
+   "Metamyelocytes Relative",
+   "Myelocytes Relative"
+  ],
+  "Metabolic": [
+   "Sodium, Blood",
+   "Potassium, Blood",
+   "Chloride, Blood",
+   "CO2",
+   "BUN",
+   "Creatinine",
+   "CKD-EPI eGFR",
+   "Glucose, Blood",
+   "Calcium",
+   "Magnesium"
+  ],
+  "Liver": [
+   "ALT",
+   "AST",
+   "Alkaline Phosphatase",
+   "Total Bilirubin",
+   "Albumin",
+   "Total Protein"
+  ],
+  "Pancreas": [
+   "Amylase",
+   "Lipase"
+  ],
+  "Coagulation": [
+   "INR",
+   "PTT",
+   "Fibrinogen",
+   "D-Dimer",
+   "Antithrombin Activity"
+  ],
+  "Inflammation": [
+   "CRP",
+   "Ferritin"
+  ],
+  "Lipids": [
+   "Triglycerides"
+  ],
+  "Viral load": [
+   "CMV PCR",
+   "CMV PCR (log)"
+  ]
  }
 }

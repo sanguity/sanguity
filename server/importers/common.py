@@ -257,10 +257,28 @@ LAB_ALIASES_FILE = os.environ.get("SANGUITY_LAB_ALIASES") or os.path.join(
 
 
 @functools.lru_cache(maxsize=None)
+def _aliases_file():
+    with open(LAB_ALIASES_FILE, encoding="utf-8") as f:
+        return json.load(f)
+
+
 def lab_defs():
     """lab-aliases.json's "labs": {canonical name: {"loinc": ..., "aliases": [...]}}."""
-    with open(LAB_ALIASES_FILE, encoding="utf-8") as f:
-        return json.load(f)["labs"]
+    return _aliases_file()["labs"]
+
+
+@functools.lru_cache(maxsize=None)
+def _panels():
+    """{lower-case canonical name: its panel}, from lab-aliases.json's "panels" ({panel: [canonical names]})."""
+    return {n.lower(): p for p, names in (_aliases_file().get("panels") or {}).items() for n in names}
+
+
+def lab_panel(name):
+    """The panel lab-aliases.json's "panels" puts a lab in (#994), by its name or the canonical name it's a spelling
+    of; "" for none."""
+    if not isinstance(name, str) or not name.strip():
+        return ""
+    return _panels().get(name.strip().lower()) or _panels().get((canonical_lab(name) or "").lower(), "")
 
 
 @functools.lru_cache(maxsize=None)
