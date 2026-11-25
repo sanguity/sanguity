@@ -9771,6 +9771,50 @@ def main():
             settle(700)
             z = js("state.to - state.from")
             check("Trends wheel zooms", z < span * 0.95, f"{span / 864e5:.0f} -> {z / 864e5:.0f} days")
+            # ---- #895: a drag moves nothing above the plot: Labs' first chart dragged by the mouse, 8 px a frame for ten frames,
+            # with the period 2 years: through the drag what's over the plot keeps its height (the period bar, Labs' head,
+            # the event track: its names regrouped into a row more, 30 px at 200% text) and the plot stays under the
+            # pointer, and once it's let go and drawn again for custom dates it's where it was on the screen (the period
+            # bar turning custom takes a line more at 900 px with 150% text, and on a phone at 200% the pill two lines
+            # and Reset one: the window scrolls by it, as the browser's scroll anchoring does, at the page's top too).
+            # At 900×1400 with 150% text from the page's top, at 412×860 and 360×800 with 200% text with the event track
+            # at the window's top, and at 1400×900 as usual
+            ABOVE895 = r"""() => { const s = document.querySelector('#charts .chart svg.ck'), h = e => e ? Math.round(e.getBoundingClientRect().height) : 0;
+              return [s.getBoundingClientRect().top, h(document.querySelector('.filters')), h(document.querySelector('#view-labs .labs-head')), h(document.getElementById('evTrack'))]; }"""
+            BIG895 = {1: "", 1.5: ":root{--fs-1:17.25px;--fs-2:18.75px;--fs-3:21px;--fs-4:23.25px;--fs-5:27px;--fs-6:33px;--fs-7:42px} html{font-size:150%}", 2: BIG_TEXT_CSS}
+            sel895, bad895, n895 = js("[...state.sel]"), [], 0
+            for w895, h895, k895, at895 in ((900, 1400, 1.5, "top"), (412, 860, 2, "track"), (360, 800, 2, "track"), (1400, 900, 1, "top")):
+                page.set_viewport_size({"width": w895, "height": h895})
+                js(ADOPT_CSS_JS, BIG895[k895])
+                js("() => { state.tables.clear(); state.marks = true; state.sel = new Set(['Hemoglobin', 'WBC']); applyPreset('2y'); switchTab('labs', 'chart'); renderLabs(); scrollTo(0, 0); }")
+                settle(700)
+                if at895 == "track":
+                    js("() => { const r = document.querySelector('#evTrack').getBoundingClientRect(); scrollBy(0, r.top + r.height / 2 - 80); }")
+                    settle(300)
+                was895 = js(ABOVE895)
+                x895, y895 = js("() => { const r = document.querySelector('#charts .chart svg.ck').getBoundingClientRect(); return [r.left + r.width / 2, Math.min(innerHeight - 40, r.top + r.height / 2)]; }")
+                page.mouse.move(x895, y895)
+                page.mouse.down()
+                for i895 in range(1, 11):
+                    page.mouse.move(x895 - i895 * 8, y895)
+                    settle(50)
+                    now895 = js(ABOVE895)
+                    n895 += 1
+                    if abs(now895[0] - was895[0]) > 1 or now895[1:] != was895[1:]:
+                        bad895.append(f"{w895} px, text at {k895:.0%}, frame {i895} of the drag: the plot at {now895[0] - was895[0]:+.0f} px, the bar, Labs' head and "
+                                      f"the event track {was895[1:]} → {now895[1:]}")
+                        break
+                page.mouse.up()
+                settle(800)
+                end895 = js(ABOVE895)
+                if abs(end895[0] - was895[0]) > 1:
+                    bad895.append(f"{w895} px, text at {k895:.0%}, let go: the plot moved {end895[0] - was895[0]:+.0f} px (the bar, Labs' head and the event track {was895[1:]} → {end895[1:]})")
+            js("s => { document.adoptedStyleSheets = []; state.sel = new Set(s); applyPreset('all'); switchTab('labs', 'chart'); scrollTo(0, 0); }", sel895)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(300)
+            check("#895: a drag moves nothing above the plot: Labs' first chart dragged, at 900×1400 with 150% text, at 412 and 360 px with 200% text and at "
+                  "1400 px, the period bar, Labs' head and the event track keep their heights through it and the plot stays under the pointer, and once "
+                  "it's let go and drawn for custom dates the plot is where it was on the screen", not bad895 and n895 == 40, bad895)
             # #382: dragging far past the data left nothing to drag back. Labs' charts and heatmap and Body and activity,
             # from the last year: dragged three widths past each end with the mouse, a touch and a horizontal wheel, the
             # window goes a quarter of itself past the data at most and springs back to it when let go, data in it.

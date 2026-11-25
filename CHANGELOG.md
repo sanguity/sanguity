@@ -1603,6 +1603,13 @@ Everything on `main` so far; it becomes the first tagged release.
   further it goes, and springs back when let go; zooming out stops at all of them. Dates typed in past the records
   still leave each chart a plot to drag back toward them and double-click, and above them "No lab draws in these
   dates" (or results, or readings) with **Back to** the period before and **Show all**.
+- **Labs' charts stay under the pointer as they're dragged** (#895): what's over them grew during a drag and moved
+  them down from under the pointer: the event track's names regrouped into a row more (30 px with text at 200% on a
+  phone), and a font loading mid-drag redrew the period bar with its date boxes, a line more at 900 px with 150% text
+  (50 px). The event track now keeps its rows through a drag, the period bar waits for the drag's end, and the chart
+  dragged on Labs, its heatmap or Compare stays where it was on the screen through the drag and once it's drawn for
+  its new dates, the window scrolled by whatever grew over it (the period bar turned to custom dates, Labs' head on a
+  phone), at the page's top too.
 - **Body and Labs on a phone: the charts start on the first screen** (#615): the top took three or four rows before
   any record, and Labs put its whole list of labs above the charts. On a phone the period now sits in one row with
   Labs' Chart | Heatmap and **Show**, which opens what the charts also show, the legend and the ⓘ under the row.

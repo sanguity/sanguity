@@ -191,7 +191,7 @@ function presetsFit() {
   while (presetsCut < MILESTONES.length && over()) { presetsCut++; renderPeriod(false); }
   presetsFor = key;
 }
-document.fonts.addEventListener("loadingdone", () => { presetsFor = ""; if (typeof booted !== "undefined" && booted) presetsFit(); });   // (Inter's widths, once it's in)
+document.fonts.addEventListener("loadingdone", () => { presetsFor = ""; if (typeof booted !== "undefined" && booted && !document.querySelector(".dragging")) presetsFit(); });   // (Inter's widths, once it's in; not in a drag, whose end draws the bar for its dates, #895: mid-drag it grew a line over the charts)
 /* back from custom dates to the period before (lastPeriod), or to p: Reset, and a chart's way back (#382). Focus
    goes to the period's control, which says which it is */
 const backWords = () => { const lp = lastPeriod, lm = msOf(lp); return "Back to " + (lp === "all" ? "everything on file" : lm ? "since " + lcLabel(lm.label) : PRESET_TEXT[lp] || lp); };
