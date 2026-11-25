@@ -740,7 +740,11 @@ cycle records compared but not named (only a profile's owners and editors may kn
 the folder below, and given today's `users` (by id and name, so records keep who made them), `devices`,
 `recovery_codes`, `passkeys`, `signin_failures`, `memberships`, `share_links`, `calendar_feeds`, each profile's phone
 upload secret (the `_watch.receiver` settings row), and the `require_2fa`, `setup_code` and `watch_legacy_retired` meta
-rows from the database it replaces, every `sqlite_sequence` count moved past today's (#588); `sessions` is emptied. A
+rows from the database it replaces, every `sqlite_sequence` count moved past today's (#588); `sessions` is emptied.
+`smart_clients` is today's (by id and issuer, client secrets included), and so is each connection but its place in
+what it pulled (`cursor`, `pending_cursor`, `first_job`, `last_sync`, `report`, `attach_bytes`, the backup's, so it
+pulls again what came since); one today's database hasn't, or has disconnected, is disconnected, its tokens and store
+gone; one connected since is added with nothing pulled. A
 profile the backup has that today's database hasn't comes back with no memberships, and the restore names it. With no
 database to replace, or one whose pepper isn't the backup's (another install's), all of it is the backup's, everyone
 signed out all the same, and the restore says so (`backup._ready`).

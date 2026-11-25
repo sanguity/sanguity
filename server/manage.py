@@ -87,8 +87,8 @@ def _user(db, name):
     return u or sys.exit(f"No account named {name!r}.")
 
 
-ACCESS_WORDS = ("accounts, passwords, passkeys, two-factor sign-in, who may see each profile, share links, calendar feeds "
-                "and phone upload secrets")
+ACCESS_WORDS = ("accounts, passwords, passkeys, two-factor sign-in, who may see each profile, share links, calendar feeds, "
+                "phone upload secrets and connected sources' sign-ins")
 
 
 def _say_access(a, created, aside):
@@ -137,8 +137,7 @@ def _backup_command(cmd, args):
             m = backup.verify(args[0])
             print(f"Backup from {m['created']}: {len(m['files'])} files. Restoring replaces this install's profiles and "
                   f"records with the backup's (the current ones are moved aside, and deleted {backup.KEEP_DAYS} days "
-                  "later), keeping today's accounts, passwords, passkeys, two-factor sign-in, who may see each profile, "
-                  "share links, calendar feeds and phone upload secrets. Everyone is signed out.")
+                  f"later), keeping today's {ACCESS_WORDS}. Everyone is signed out.")
             if "--yes" not in args and (not sys.stdin.isatty() or input("Type yes to restore: ").strip().lower() != "yes"):
                 sys.exit("Nothing changed. (Add --yes to restore without being asked.)")
             m, aside = backup.restore(args[0])

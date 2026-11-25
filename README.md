@@ -727,9 +727,10 @@ docker compose up -d
 ```
 
 **A restore brings back records only.** Who may get in stays as it is now, taken from the database being replaced:
-accounts and their passwords, passkeys and two-factor sign-in, who may see each profile, share links, calendar feeds
-and phone upload secrets, so a link revoked, a member removed or a password changed after the backup was made stays
-so. Everyone is signed out. A profile deleted since comes back with nobody given access to it (an admin gives it an
+accounts and their passwords, passkeys and two-factor sign-in, who may see each profile, share links, calendar feeds,
+phone upload secrets and connected sources' sign-ins, so a link revoked, a member removed, a password changed or a
+source disconnected after the backup was made stays so. A source still connected pulls again what it brought since,
+and one connected since pulls from the start, with its review. Everyone is signed out. A profile deleted since comes back with nobody given access to it (an admin gives it an
 owner under **Admin → Accounts**, Profiles without an owner), and one made since isn't in the backup (its records are
 in the `before-restore-<time>/` folder); the restore names both. With no database to replace (a new machine, disaster
 recovery), or one of another install, all of it comes from the backup as it was then, and the restore says so: check

@@ -29,7 +29,7 @@ in the background.
 
 Restoring needs the app stopped (it holds a lock on DATA_DIR/app.lock while running). It brings back records only
 (#917, the owner's decision): accounts, passwords, passkeys, two-factor sign-in, who may see each profile, share links,
-calendar feeds and phone upload secrets stay as they are now, taken from the database it replaces, and everyone is
+calendar feeds, phone upload secrets and connected sources' sign-ins stay as they are now, taken from the database it replaces, and everyone is
 signed out; with no database to replace (disaster recovery) they're the backup's, and the restore says so (_ready).
 The data it replaces is moved to DATA_DIR/before-restore-<time>/, and an older backup's database is brought up to
 date as it's restored. That folder
@@ -690,8 +690,13 @@ def _stage_watch(archive, manifest, stamp):
 # The owner's decision: a restore brings back records only. Who may get in, and how, stays as it is now, taken from the
 # database being replaced: accounts (their passwords, two-factor sign-in, recovery codes, known devices and failed
 # sign-ins with them), passkeys, who may see each profile, share links, calendar feeds, each profile's phone upload
-# secret and the install's two-factor rule. Everyone is signed out.
+# secret, the install's two-factor rule, and the connected sources' sign-ins (the vendors' apps and each connection's
+# tokens, _keep_sources). Everyone is signed out.
+# ACCESS_TABLES: tables taken whole from today's database, for the profiles the backup has (a row's profile_id) and the
+# accounts kept (user_id). A new table of access state (who may get in, or how) belongs here.
 ACCESS_TABLES = ("devices", "recovery_codes", "passkeys", "signin_failures", "memberships", "share_links", "calendar_feeds")
+PULLED = ("cursor", "pending_cursor", "first_job", "last_sync", "report", "attach_bytes")   # a connection's place in what
+# it pulled, which goes with the records: the backup's, so it pulls again what came since
 ACCESS_SETTINGS = ("_watch.receiver",)   # a profile's phone upload secret (watch_keys.KEY)
 ACCESS_META = ("require_2fa", "setup_code")   # the install's two-factor rule; first-time setup's code, while there's no account
 RETIRED = "watch_legacy_retired"   # the install's one phone secret, retired for good (watch_keys): kept retired either way
@@ -719,15 +724,57 @@ def _copy(con, table, where="", columns=None):
         con.execute(f'INSERT INTO main."{table}"({cols}) SELECT {cols} FROM now."{table}"{where}')
 
 
-def _keep_access(con, now_tables):
-    """Inside the restore's transaction, the restored database (main) given today's access (now): see above."""
-    # accounts by id and name (one id given again before schema version 39 is another account): gone since, they go,
-    # as a removed account does (its records kept, nameless); there both, as they are now; made since, added
-    con.execute("DELETE FROM main.users WHERE NOT EXISTS(SELECT 1 FROM now.users n WHERE n.id = users.id AND n.username = users.username)")
-    cols = [c for c in _columns(con, "main", "users") if c != "id" and c in set(_columns(con, "now", "users"))]
+def _merge(con, table, key, now_tables):
+    """A table as it is now, its rows matched by id and key (an id given again before schema version 39 is another
+    row): gone since, deleted, as they were (what points at them set to nothing or deleted, as the schema says);
+    there both, today's values; new since, added."""
+    if table not in now_tables:
+        con.execute(f'DELETE FROM main."{table}"')
+        return
+    con.execute(f'DELETE FROM main."{table}" WHERE NOT EXISTS(SELECT 1 FROM now."{table}" n '
+                f'WHERE n.id = "{table}".id AND n."{key}" = "{table}"."{key}")')
+    cols = [c for c in _columns(con, "main", table) if c != "id" and c in set(_columns(con, "now", table))]
     if cols:
-        con.execute("UPDATE main.users SET " + ", ".join(f'"{c}" = (SELECT n."{c}" FROM now.users n WHERE n.id = users.id)' for c in cols))
-    _copy(con, "users", " WHERE id NOT IN (SELECT id FROM main.users)")
+        con.execute(f'UPDATE main."{table}" SET ' + ", ".join(
+            f'"{c}" = (SELECT n."{c}" FROM now."{table}" n WHERE n.id = "{table}".id)' for c in cols))
+    _copy(con, table, f' WHERE id NOT IN (SELECT id FROM main."{table}")')
+
+
+def _keep_sources(con, now_tables):
+    """Connected sources: the vendors' apps (smart_clients, with their client secrets) as they are now, and each
+    connection's sign-in. One in both takes today's tokens, state and choices, and keeps the backup's PULLED (the
+    records it brought are the backup's, so it pulls again what came since); one today's database hasn't (its profile
+    deleted since) is disconnected, its tokens gone, as one disconnected since is; one connected since is added with
+    nothing pulled, so it pulls from the start (its first pull, with a review). Returns [(profile, connection)] of
+    the disconnected ones, whose store of what they read (sync.store_path) goes, as Disconnect's does."""
+    _merge(con, "smart_clients", "issuer", now_tables)
+    if "connections" in now_tables:
+        have = set(_columns(con, "now", "connections"))
+        cols = [c for c in _columns(con, "main", "connections") if c not in ("id", "profile_id") + PULLED and c in have]
+        same = "SELECT 1 FROM now.connections n WHERE n.id = connections.id AND n.profile_id = connections.profile_id"
+        con.execute("UPDATE main.connections SET " + ", ".join(
+            f'"{c}" = (SELECT n."{c}" FROM now.connections n WHERE n.id = connections.id)' for c in cols) + f" WHERE EXISTS({same})")
+        con.execute(f"""UPDATE main.connections SET state='disconnected', secret=NULL, patient=NULL, expires=NULL, next_sync=NULL,
+                        pending_cursor=NULL, disconnected=COALESCE(disconnected, ?) WHERE NOT EXISTS({same})""", (dbm.now(),))
+        new = ",".join(str(int(r[0])) for r in con.execute(
+            "SELECT id FROM now.connections WHERE id NOT IN (SELECT id FROM main.connections) "
+            "AND profile_id IN (SELECT id FROM main.profiles)"))
+        if new:
+            _copy(con, "connections", f" WHERE id IN ({new})", [c for c in _columns(con, "main", "connections") if c not in PULLED])
+            con.execute(f"UPDATE main.connections SET next_sync=? WHERE state='active' AND id IN ({new})", (dbm.now(),))
+    else:
+        con.execute("UPDATE main.connections SET state='disconnected', secret=NULL, patient=NULL, expires=NULL, "
+                    "next_sync=NULL, pending_cursor=NULL, disconnected=COALESCE(disconnected, ?)", (dbm.now(),))
+    return [tuple(r) for r in con.execute("SELECT profile_id, id FROM main.connections WHERE state='disconnected'")]
+
+
+def _keep_access(con, now_tables):
+    """Inside the restore's transaction, the restored database (main) given today's access (now): see above. Returns
+    _keep_sources' connections whose stores go."""
+    # accounts by id and name: gone since, they go, as a removed account does (its records kept, nameless); there both,
+    # as they are now; made since, added
+    _merge(con, "users", "username", now_tables)
+    stores = _keep_sources(con, now_tables)
     profiles = " WHERE profile_id IN (SELECT id FROM main.profiles)"   # a profile made since isn't in the backup
     for t in ACCESS_TABLES:
         con.execute(f'DELETE FROM main."{t}"')
@@ -747,6 +794,7 @@ def _keep_access(con, now_tables):
     for name, seq in seqs:
         if name in tables and not con.execute("UPDATE main.sqlite_sequence SET seq=MAX(seq, ?) WHERE name=?", (seq, name)).rowcount:
             con.execute("INSERT INTO main.sqlite_sequence(name, seq) VALUES(?, ?)", (name, seq))
+    return stores
 
 
 def _ready(path, now_path):
@@ -755,8 +803,9 @@ def _ready(path, now_path):
     backup's, so its accounts aren't this backup's), the backup's as it is; everyone signed out either way. Returns
     what happened, for the restore to say: {"kept", "why" (None, "none" or "other"), "sessions" (ended), "back" ([[id,
     name]]: profiles the backup has that today's database hasn't, deleted since, back with nobody's access), "gone" (
-    [[id, name]]: profiles made since, not in the backup)}."""
-    out = {"kept": False, "why": "none", "sessions": 0, "back": [], "gone": []}
+    [[id, name]]: profiles made since, not in the backup), "stores" ([[profile, connection]]: disconnected sources whose
+    store of what they read the restore removes once it has put the files back)}."""
+    out = {"kept": False, "why": "none", "sessions": 0, "back": [], "gone": [], "stores": []}
     con = sqlite3.connect(path, isolation_level=None)
     try:
         con.execute("PRAGMA foreign_keys=ON")
@@ -770,7 +819,7 @@ def _ready(path, now_path):
         con.execute("BEGIN IMMEDIATE")
         try:
             if out["why"] is None:
-                _keep_access(con, now_tables)
+                out["stores"] = [list(x) for x in _keep_access(con, now_tables)]
                 out["kept"] = True
                 if "profiles" in now_tables:
                     out["back"] = [list(r) for r in con.execute(
@@ -835,6 +884,9 @@ def restore(archive):
                 continue
             _extract(tar, m, os.path.join(config.DATA_DIR, *m.name.split("/")))
     os.replace(ready, live)
+    for pid, cid in manifest["access"].pop("stores", ()):   # a disconnected source's store of what it read (#917)
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(os.path.join(config.DATA_DIR, "profiles", str(int(pid)), "connections", str(int(cid))))
     dbm.init()
     if staged:   # complete: the receiver takes it when it next starts
         os.replace(watch, watch[:-len(".part")])
