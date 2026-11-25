@@ -302,7 +302,7 @@ function viewSeg(key, what, redraw, graphic = "Chart") {
     if (want) state.tables.add(key); else state.tables.delete(key);
     hideTip(); redraw();
     const b = [...document.querySelectorAll(".view-seg")].find(s => s.dataset.key === key)?.querySelector("[aria-pressed=true]");
-    if (b) { b.focus(); keepSight(b, top); }
+    if (b) { b.focus({preventScroll: true}); keepAt(b, top); keepSight(b, top); }   // where it was at once, and once its charts are drawn (#766)
   };
   const seg = el("div", {class: "seg view-seg", role: "group", "aria-label": `Show ${what} as`},
     el("button", {type: "button", "aria-pressed": !table, text: graphic, onclick: () => pick(false)}),

@@ -62,23 +62,27 @@ function keepFocus(draw) {
   aboutWire();   // the ⓘ drawn with it, there now to be found (util.js, #280)
   // one shown: a tab not shown keeps its controls, and a twin of the same name there can't take focus (#455)
   if (key && !a.isConnected) [...document.querySelectorAll(a.tagName)].find(x => focusKey(x) === key && x.checkVisibility())?.focus({preventScroll: true});
-  // in sight before, wholly in sight after: a page that grew shorter, scrolled up by the browser, can't leave it above
-  // the top, or half over it (#469, 2.4.11); and again once the charts are drawn (#720)
+  // in sight before: where it was after, and wholly in sight: a page that grew shorter, scrolled up by the browser,
+  // can't leave it above the top, or half over it (#469, 2.4.11); and again once the charts are drawn (#720). Put back
+  // where it was first, and only then into sight if it isn't: brought into sight on the layout drawn now, its charts
+  // placeholders, it went to the window's foot and stayed there, or showed there a frame (#766)
   const f = document.activeElement;
-  if (seen && f !== document.body) { if (!inSight(f, true)) f.scrollIntoView({block: "nearest"}); keepSight(f, top); }
+  if (seen && f !== document.body) { keepAt(f, top); keepSight(f, top); }
   aboutKeep(open);   // and one left open, open still (#447)
   drawerBack();   // and what opened the drawer, found again (drawer.js, #404)
 }
+/* f back where it was (top, its box's top before), then into sight if it isn't wholly */
+function keepAt(f, top) {
+  const d = f.getBoundingClientRect().top - top;
+  if (Math.abs(d) >= 1) scrollBy(0, d);
+  if (!inSight(f, true)) f.scrollIntoView({block: "nearest"});
+}
 /* charts are drawn a frame after the page around them (health.js hChart, the workouts' calendar…), placeholders till
    then: as they take their heights, f, in sight as it's drawn, goes down, past the window's foot or under the phone's
-   tab bar (#720, 2.4.11). Once they're drawn (this frame's callbacks run in turn, theirs first), if it isn't wholly in
-   sight it goes back to where it was (top, its box's top before), or into sight */
+   tab bar (#720, 2.4.11). Once they're drawn (this frame's callbacks run in turn, theirs first) it goes back to where it
+   was, or into sight (#766: in sight, it was left where the charts above it had moved it, 50 to 130 px down) */
 function keepSight(f, top) {
-  requestAnimationFrame(() => {
-    if (document.activeElement !== f || inSight(f, true)) return;
-    scrollBy(0, f.getBoundingClientRect().top - top);
-    if (!inSight(f, true)) f.scrollIntoView({block: "nearest"});
-  });
+  requestAnimationFrame(() => { if (document.activeElement === f) keepAt(f, top); });
 }
 
 /* ---------------------------------------------------------------- the records */

@@ -1850,6 +1850,11 @@ Everything on `main` so far; it becomes the first tagged release.
   low–high" or "Show lab glucose results alongside", pressed, went under the window's foot or the phone's tab bar.
   Once the charts are drawn it goes back where it was, wholly in sight; Chart | Table and Show more do the same (WCAG
   2.4.11).
+- **A control on Body and activity stays where it was as the tab's drawn again** (#766): pressed, "Show the day's
+  average and low–high" was brought into sight while the charts were still placeholders, so it went to the window's
+  foot (346 px down on ten years at 412 px), its focus ring under the phone's tab bar, and stayed there, or showed there
+  for a frame; Chart | Table was left 14 to 220 px lower where the charts above it had grown. Each now stays where it
+  was, as it's pressed and once the charts are drawn, brought into sight only if it isn't.
 - **Body and activity's All holds every reading, and its weekly charts count weeks** (#721): All began at the phone's
   or scale's first day, so a weight or vitals taken at a visit before it were on 2 years and not on All: on the demo
   the Nov 2024 clinic weight (Weight 271 readings for 272, its change ↓ 6.3 lb for 5.3) and the Jan 2025 visit's blood
