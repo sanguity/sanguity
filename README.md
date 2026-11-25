@@ -242,7 +242,8 @@ stay on `compose.yaml` until they're imported.
 
 **Records move into the database:** each profile's records used to be one file, `DATA_DIR/profiles/<id>/data.json`.
 On the first start after updating they are loaded into the database, with nothing to do and nothing that looks
-different; the file stays beside them as `data-before-v10.json`, and can be deleted once you've checked the app.
+different, and the file is then deleted (a version before #934 kept it as `data-before-v10.json`, which the next
+start deletes too).
 
 ### Supported sources today
 
