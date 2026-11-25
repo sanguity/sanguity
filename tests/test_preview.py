@@ -625,6 +625,64 @@ class Preview(unittest.TestCase):
         self.assertEqual(({s["name"]: s["pts"] for s in after["labs"]}, after["details"]), ({s["name"]: s["pts"] for s in before["labs"]}, before["details"]),
                          "undone: its results and rows as they were")
 
+    def test_a_record_its_source_changed_is_updated_whatever_its_kind(self):   # #920
+        """A portal's FHIR export uploaded, then its next one after the doctor stopped a medication and resolved a problem
+        (the same MedicationRequest and Condition, changed); an insurer's claims spreadsheet, then the next month's with a
+        pending claim processed (the same claim number, you owe $45 now). Each was left out as "already here": the
+        medication still current, the problem Active, the Costs row Pending at $0. Now each is updated in place, said in
+        the review by kind ("changed", not among the duplicates skipped), counted once saved ("changed") in an import to
+        undo; the same file again is all duplicates, and Undo puts back what each said."""
+        def bundle(*resources):
+            return json.dumps({"resourceType": "Bundle", "type": "collection",
+                               "entry": [{"fullUrl": f"https://portal.example/fhir/{r['resourceType']}/{r['id']}", "resource": r} for r in resources]})
+        status = lambda code: {"coding": [{"system": "http://terminology.hl7.org/CodeSystem/condition-clinical", "code": code}]}   # noqa: E731
+        pat = {"resourceType": "Patient", "id": "p1", "name": [{"family": "Example", "given": ["Pat"]}], "birthDate": "1980-02-02"}
+        med = {"resourceType": "MedicationRequest", "id": "mr-1", "status": "active", "intent": "order", "subject": {"reference": "Patient/p1"},
+               "medicationCodeableConcept": {"text": "Metoprolol succinate 25 mg tablet"}, "authoredOn": "2026-03-01",
+               "dosageInstruction": [{"text": "1 tablet daily"}]}
+        cond = {"resourceType": "Condition", "id": "c-1", "subject": {"reference": "Patient/p1"}, "code": {"text": "Atrial fibrillation"},
+                "clinicalStatus": status("active"), "onsetDateTime": "2026-02-20", "recordedDate": "2026-02-20"}
+        head = "Claim Number,Date of Service,Provider,Description,Amount Billed,Plan Paid,You Owe,Claim Status,Insurer\n"
+        claim = lambda paid, owe, st: f"C-1001,2026-09-28,Lakeside Family Medicine (fictional),Office visit,180.00,{paid},{owe},{st},Example Health Plan (fictional)\n"   # noqa: E731
+        lab = "C-1000,2026-09-02,Lakeside Family Medicine (fictional),Lab work,90.00,70.00,20.00,Processed,Example Health Plan (fictional)\n"
+        cases = {"fhir": ({"portal-2026-03.json": bundle(pat, med, cond)},
+                          {"portal-2026-11.json": bundle(pat, {**med, "status": "stopped"},
+                                                         {**cond, "clinicalStatus": status("resolved"), "abatementDateTime": "2026-10-15"})},
+                          {"med": 1, "problem": 1}),
+                 "claims": ({"claims-2026-10.csv": head + claim("0.00", "0.00", "Pending") + lab},
+                            {"claims-2026-11.csv": head + claim("120.00", "45.00", "Processed") + lab}, {"claim": 1})}
+
+        def said(d):
+            meds = [(m["name"], m["spans"][-1]["open"], m["spans"][-1]["status"]) for m in d.get("medications") or []]
+            probs = [(x.get("name"), x.get("status")) for x in d.get("problems") or []]
+            return meds, probs, [(c["title"], c["paid"], c["owe"], c["status"]) for c in d.get("costs") or []]
+
+        for name, (first, second, kinds) in cases.items():
+            with self.subTest(name):
+                pid = self.profile(f"Changed at the source, {name}")
+                self.assertEqual(self.save(pid, self.previewed(pid, first)[0])["state"], "done")
+                before, n = said(assembled(pid)), count(pid)
+                j, _ = self.previewed(pid, second)
+                self.assertEqual((j["new"], j["duplicates"]["changed"]), (True, {"n": sum(kinds.values()), "kinds": kinds}), j["duplicates"])
+                self.assertFalse([x for x in j["duplicates"]["items"] if x["title"] in ("Metoprolol succinate 25 mg tablet", "Atrial fibrillation", "Office visit")],
+                                 "not among the duplicates skipped")
+                done = self.save(pid, j)
+                self.assertEqual((done["state"], done["counts"].get("changed")), ("done", sum(kinds.values())), done)
+                self.assertEqual({k: v for k, v in count(pid).items() if k != "imports"}, {k: v for k, v in n.items() if k != "imports"}, "nothing added")
+                after = said(assembled(pid))
+                if name == "fhir":
+                    self.assertEqual(after[:2], ([("Metoprolol succinate 25 mg tablet", False, "Stopped")], [("Atrial fibrillation", "Resolved")]),
+                                     "the medication stopped, the problem resolved")
+                else:
+                    self.assertEqual(sorted(after[2]), [("Lab work", 70.0, 20.0, "Processed"), ("Office visit", 120.0, 45.0, "Processed")],
+                                     "the claim processed, its Costs row with it")
+                j2, _ = self.previewed(pid, second)   # the same again: nothing it says isn't here now
+                self.assertEqual((j2["new"], j2["duplicates"]["changed"]["n"]), (False, 0), j2["duplicates"])
+                self.assertEqual(self.robin.post(f"/api/profiles/{pid}/jobs/{j2['id']}/discard", headers=H).status_code, 200)
+                r = self.robin.post(f"/api/profiles/{pid}/imports/{done['import_id']}/undo", headers=H)
+                self.assertEqual(r.status_code, 200, r.text)
+                self.assertEqual(said(assembled(pid)), before, "undone: each as it was")
+
     def test_an_observation_is_found_by_its_id_whichever_bundle_it_comes_in(self):   # #879
         """A FHIR Observation is the same record by its id whichever bundle it comes in: inside a DiagnosticReport (its
         labitem keyed by the report), or on its own (keyed by its day). Uploaded alone after coming in a report, it was

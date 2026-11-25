@@ -477,7 +477,8 @@ def _save(db, j):
                 summary["restored"] = restored
             # all of it here by now (#547: the same file in two reviews, one added): no import, and nothing to undo or
             # remove the upload by, so it's cancelled with it, saying so; a first pull is saved, its upload removed below
-            amended = preview.updates(dups)   # results here their source sends again, updated in place (#869)
+            # results here their source sends again, updated in place (#869), and records of any kind (#920)
+            amended = preview.updates(dups) + preview.changes(dups)
             if not (preview.adds_anything(new) or watch or restored or amended) and not _first_pull(db, jid):
                 cancelled = _cancelled(db, pid, jid, who, _ips.get(jid), "running", NOTHING_NEW)
                 if cancelled and cancelled[1]:   # another job uses the upload: kept
@@ -491,7 +492,11 @@ def _save(db, j):
                 summary["counts"]["documents"] = n
                 iid = records.store(db, pid, new, "upload", fmt=name)
                 prof.link_documents(db, iid, keepdocs)
-                if amended:
+                # (#920) a medication stopped, a problem resolved, a claim processed: first, so a record's results
+                # updated after it add to what it was (one "before" an event, as update() keeps them)
+                if preview.changes(dups):
+                    summary["counts"]["changed"] = preview.change(db, pid, iid, data, dups, stored)
+                if preview.updates(dups):
                     summary["counts"]["updated"] = preview.update(db, pid, iid, data, dups)
             if watch:   # last, so a failure before it leaves no file behind
                 kept = watch_store.save_import(db, pid, watch, import_id=iid)   # all of it, as it came: undone with its import
