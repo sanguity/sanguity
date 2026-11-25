@@ -3533,6 +3533,10 @@ Everything on `main` so far; it becomes the first tagged release.
   the portal's Atorvastatin, stopped, was put in place of A's Metformin, and its Hyperlipidemia, resolved, in place of
   A's diabetes, while the portal's own records stayed as they were. Now a pull updates only its own source's records:
   the portal's are changed, A's stay as they are, and Undo puts the portal's back.
+- **A reminder's From and Until keep their year with larger text** (#987): on a phone at 200% text the reminder
+  form's dates were cut ("11/25/202", "mm/dd/yy"), and so were a dose's and a journal entry's date and time, which
+  share that row. Each is now at least as wide as its date or time, the second on a line of its own where both don't
+  fit; a reminder's time does the same beside its Remove at 320 px. At the usual size they're side by side as before.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

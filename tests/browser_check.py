@@ -13031,6 +13031,34 @@ def main():
             c797.close()
             check("…and no date or time field narrower than its date or time, with text at 130% to 200%: Settings → Milestones above 700 px and on a "
                   "phone on its side, the period's custom dates on a phone, Type records in at 320 to 412 px and wider (#797)", not bad797 and seen797 >= 20, bad797 or seen797)
+            # #987: …and the drawer's forms whose date and time share a row (.jwhen): a reminder's From and Until were cut at
+            # 412 px with 200% text ("11/25/202", "mm/dd/yy"), a dose's and a journal entry's date and time too, and a
+            # reminder's time beside its Remove at 320 px. At 320, 360 and 412 px with text at 200%, and from 320 to 1400 px as
+            # usual: none narrower than its date or time (CUT797, in the drawer); as usual from 360 px, each row's two side by
+            # side as before
+            CUT987 = CUT797.replace("'input[type=date], input[type=time]'", "'#dbody :is(input[type=date], input[type=time])'")
+            med987 = js("(() => { const m = MEDS.find(m => m.spans.length && m.spans.at(-1).open); return m && m.key; })()")
+            FORMS987 = {"a reminder": "k => { openMedication(MEDS.find(m => m.key === k)); [...document.querySelectorAll('#dbody button')].find(b => /^Add (a|another) reminder$/.test(b.textContent)).click(); }",
+                        "a dose": "k => { openMedication(MEDS.find(m => m.key === k)); [...document.querySelectorAll('#dbody button')].find(b => b.textContent.startsWith('Log a dose')).click(); }",
+                        "a journal entry": "() => journalNew()"}
+            bad987, seen987 = {}, 0
+            for w987, big987 in ((320, True), (360, True), (412, True), (320, False), (360, False), (412, False), (900, False), (1400, False)):
+                page.set_viewport_size({"width": w987, "height": 860})
+                js(ADOPT_CSS_JS, BIG_TEXT_CSS if big987 else "")
+                for form987, open987 in FORMS987.items():
+                    js(open987, med987)
+                    settle(400)
+                    got987 = js(CUT987)
+                    rows987 = js("() => [...document.querySelectorAll('#dbody .jwhen')].map(r => [...r.querySelectorAll('input')].map(i => Math.round(i.getBoundingClientRect().top)))")
+                    seen987 += len(got987)
+                    cut987 = [f"{n} {b} px of {c}" for n, b, c in got987 if c > b + 0.5] + [f"its two on {len(set(r))} lines" for r in rows987 if not big987 and w987 >= 360 and len(set(r)) > 1]
+                    if cut987 or len(got987) < 2 or not rows987:
+                        bad987[f"{form987} at {w987} px{', text at 200%' if big987 else ''}"] = cut987 or got987
+            js("() => { closeDrawer(); document.adoptedStyleSheets = []; }")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(300)
+            check("…and none in a reminder's, a dose's or a journal entry's form, its From and Until or its date and time, nor a reminder's times: at 320, 360 "
+                  "and 412 px with text at 200% and from 320 to 1400 px as usual, two side by side as before from 360 px (#987)", not bad987 and seen987 >= 50, bad987 or seen987)
             # ---- #785: #622's check above 700 px, where the tabs are in the top bar, all under More where they don't fit: at
             # 701, 768, 900, 1024 and 1100 px and on a phone on its side (844×390, 915×412, a touch screen), with text as
             # usual and at 130%, 150% and 200%, on the records page (Body and activity, the longest tab's name) and every
