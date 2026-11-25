@@ -2330,6 +2330,12 @@ Everything on `main` so far; it becomes the first tagged release.
   back leaves out what's here again, as the source sends it now, and brings back the rest (a condition no pull sent
   again, the draw's other results, in its one lab day). And the server refuses to remove a kind that's still
   pulled, as the page only offers it once the kind is off.
+- **A list saved from a page loaded earlier no longer wipes out changes made since** (#923): the symptom groups were
+  saved as a whole list from the page's own copy, so with one page adding "Asthma flare" and another, loaded before,
+  deleting "Migraine day", the server was left with neither. Now a list (or any value saved whole: the Settings page's
+  key labs, tabs or milestones, Labs' saved views, the visit summary's measures ticked, the Admin page's attachment
+  kinds) is saved with the one it was made from, and refused if it changed since: the page reads it again, shows it
+  as it is now and says so, and the change is made again on that.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

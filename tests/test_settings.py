@@ -363,6 +363,42 @@ class Settings(unittest.TestCase):
         self.assertEqual((r.status_code, r.json()["reset"]), (200, ["sync.staleDays"]), r.text)
         self.assertEqual(self.merged(1, "robin")["sync"]["staleDays"], 3)
 
+    def test_a_whole_value_saved_from_an_old_read_is_refused(self):   # #923
+        """A list a page saves whole, sent with the value it read ("was", its version): refused (409) and left as it is
+        when it's changed since, in another tab or by someone else, so that change isn't lost under it; saved when it
+        hasn't. A profile's (the symptom groups, two people), a person's own (Units, two tabs) and the install's (the
+        attachment kinds, an admin). Sent without it, saved as before."""
+        pid = self.fresh_profile("Whole values (fictional)")
+        url = f"/api/profiles/{pid}/settings/journal.groups"
+        put = lambda who, value, **kw: self.c[who].put(url, json={"value": value, **kw}, headers=H)   # noqa: E731
+        migraine, asthma = {"name": "Migraine day", "symptoms": ["Headache"]}, {"name": "Asthma flare", "symptoms": ["Wheeze"]}
+        self.assertEqual(put("robin", [migraine], was=[]).status_code, 200)
+        read = self.merged(pid, "lee")["journal"]["groups"]   # lee's page reads them
+        self.assertEqual(put("robin", [migraine, asthma], was=[migraine]).status_code, 200)   # robin adds one
+        r = put("lee", [], was=read)   # lee deletes Migraine day from the list read before
+        self.assertEqual(r.status_code, 409, r.text)
+        self.assertIn("changed since", r.json()["detail"])
+        self.assertEqual(self.merged(pid)["journal"]["groups"], [migraine, asthma], "robin's group kept")
+        now = self.merged(pid, "lee")["journal"]["groups"]
+        self.assertEqual(put("lee", [asthma], was=now).status_code, 200, "made again on the groups as they are")
+        self.assertEqual(self.merged(pid)["journal"]["groups"], [asthma])
+        self.assertEqual(put("lee", [migraine], was=None).status_code, 409, "null read: none then, some now")
+        self.assertEqual(put("lee", [migraine]).status_code, 200, "without it, as before")
+        # a person's own: Units from two tabs
+        units = self.c["robin"].get("/api/settings/user").json()["units"]
+        r = self.c["robin"].put("/api/settings/user/units", json={"value": {**units, "weight": "lb"}, "was": units}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        r = self.c["robin"].put("/api/settings/user/units", json={"value": {**units, "height": "cm"}, "was": units}, headers=H)
+        self.assertEqual(r.status_code, 409, r.text)
+        self.assertEqual(self.c["robin"].get("/api/settings/user").json()["units"]["weight"], "lb", "the first tab's kept")
+        self.c["robin"].put("/api/settings/user/units", json={"value": units}, headers=H)
+        # the install's: the attachment kinds, ticked on the Admin page
+        ada = self.c["ada"]
+        kinds = {st["key"]: st for sec in ada.get("/api/settings/install").json()["sections"] for st in sec["settings"]}["sync.attachTypes"]["value"]
+        self.assertEqual(ada.put("/api/settings/install/sync.attachTypes", json={"value": kinds[:1], "was": kinds}, headers=H).status_code, 200)
+        self.assertEqual(ada.put("/api/settings/install/sync.attachTypes", json={"value": kinds[:2], "was": kinds}, headers=H).status_code, 409)
+        ada.post("/api/settings/install/reset", json={"section": "sync"}, headers=H)
+
     def test_rename_one_name(self):
         """#38: one name of a name map changed where it's shown, the rest of the map kept"""
         pid = self.fresh_profile()

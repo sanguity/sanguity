@@ -271,15 +271,15 @@ async function tickSave(st, input) {
   const pid = PID, msg = $("#sumTickedMsg"), name = $("#profile").selectedOptions[0]?.textContent.replace(/ \([^)]*\)$/, "");
   const value = [...document.querySelectorAll("#sumTickedBoxes input:checked")].map(i => i.value), was = {value: st.value, from: st.from};
   const path = `profiles/${pid}/settings/summary.ticked`, said = `Saved “${st.label}”.`, same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  try { await call(path, "PUT", {value}); }
-  catch (e) { input.checked = !input.checked; sayIn(msg, e.message, true); return; }
+  try { await call(path, "PUT", {value, was: st.value}); }   // (#923) refused if changed since, and drawn again as it is
+  catch (e) { input.checked = !input.checked; if (e.status === 409) { await ticked(); $("#" + input.id)?.focus(); } sayIn(msg, e.message, true); return; }
   Object.assign(st, {value, from: "profile"});
   const box = document.querySelector(`#sections input[value="${input.value}"]`);
   if (box) { box.checked = input.checked; pvKeep = input.id; previewSoon(); }
   sayIn(msg, said, false, {say: false});
   toast(said, {action: "Undo", onAction: async () => {   // what it was, if it's still as ticked here
     const now = await tickedSetting(pid), back = !!now && same(now.value, value);
-    if (back) { if (was.from === "default") await call(path, "DELETE"); else await call(path, "PUT", {value: was.value}); }
+    if (back) { if (was.from === "default") await call(path, "DELETE"); else await call(path, "PUT", {value: was.value, was: now.value}); }
     const text = back ? `Undone: “${st.label}” is as before.` : `“${st.label}” was changed since, so it's left as it is.`;
     if (PID !== pid) { toast(`${name}: ${text}`); return; }   // another profile shown now (#367)
     if (back && box) { box.checked = !input.checked; pvKeep = input.id; previewSoon(); }
