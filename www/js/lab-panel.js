@@ -20,8 +20,10 @@ const labOpener = (s, cls, text = nice(s.name)) => el("button", {class: `cell-bt
    counted as not inside; and a flagged result with no range as one with a range) */
 const labRanged = p => p[2] != null || p[3] != null;
 const labIn = p => labRanged(p) && !flagOut(p[4]);
-/* the decimals a result is printed with, so a median or a change is said to the same places ("14.8", "0.91") */
-const labDec = p => (/\.(\d+)/.exec(String(p[5] || p[1]))?.[1].length) || 0;
+/* the decimals a result is printed with, so a median or a change is said to the same places ("14.8", "0.91", "4,5"), by
+   the page's one reader of a value (ranges.js valueRead, #888: its own pattern read "4,5" with none, so "4,5" to "4,9" was
+   "+0"); its number's where what's printed isn't one */
+const labDec = p => (valueRead(String(p[5] ?? "")) || numberRead(p[1]))?.dec || 0;
 /* a result given as the value measured, not as a bound ("<0.5", ">90", ranges.js rangeCmp): a change is worked out only
    between two such, here and on the Overview's tiles (#718), and Compare's medians are of these (#752) */
 const labSure = p => !rangeCmp(p[5]);

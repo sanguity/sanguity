@@ -39,14 +39,16 @@ const rangeCmp = t => { const m = RANGE_BOUND.exec(t ?? ""), c = m ? m[1].replac
    (thousands, or a decimal comma? never a guess). c its comparator (rangeCmp: "=<5", "≤ 5" and "> OR = 60" are bounds),
    b its bound as printed ("> OR = ", "" for none), x its number ("4,5" and "0,500" are 4.5 and 0.5, "1,234.5" 1234.5,
    "1.2E-3" 0.0012), sig the significant figures it's written with ("0.50" 2, "120" 3: a converted value keeps them,
-   units.js). A number given as one is read as it is. units.js and drawer.js read a value by it, and nothing else on the
+   units.js), dec its decimal places (numberRead). A number given as one is read as it is. units.js and drawer.js read a value by it, and nothing else on the
    page reads one (tests/test_ranges.py test_numbers_read_in_one_place_on_the_page): their own patterns read "=<5",
    "> OR = 60" and "4,5" as no number, so a converted unit said "=<5" as "0.500" and a drawer row "> OR = 60" as text. */
 function valueRead(t) {
   const m = typeof t === "string" ? RANGE_BOUND.exec(t) : null, rest = m ? t.slice(m[0].length) : t, n = numberRead(rest);
   return n && {c: m ? rangeCmp(t) : "", b: m ? m[1] + rest.slice(0, rest.length - rest.trimStart().length) : "", ...n};
 }
-/* {x, sig} of a number as printed (common.number_text, a file's decimal mark not known), else null: valueRead's */
+/* {x, sig, dec} of a number as printed (common.number_text, a file's decimal mark not known), else null: valueRead's.
+   dec, the decimal places it's written to ("4,5" 1, "0.50" 2, "1.2E-3" 4, "120" 0), so a median or a change is said to
+   the same places (lab-panel.js labDec, #888: "4,5" had none, its change "+0") */
 function numberRead(t) {
   let s = String(t ?? "").trim().replace(/[\u00a0\u202f']/g, "");
   if (!/^[-+]?(?:[\d.,]*\d(?:e[-+]?\d+)?|[\d.,]*[.,]\d+)$/i.test(s)) return null;
@@ -60,8 +62,8 @@ function numberRead(t) {
     if (thousands(",") || s.split(",").length > 2) return null;
     s = s.replace(",", ".");
   } else if (s.split(".").length > 2) return null;
-  const x = +s, [whole, frac = ""] = s.replace(/^[-+]/, "").split(/e/i)[0].split(".");
-  return Number.isFinite(x) ? {x, sig: Math.max(1, (whole + frac).replace(/^0+/, "").length)} : null;
+  const x = +s, [num, exp = 0] = s.replace(/^[-+]/, "").split(/e/i), [whole, frac = ""] = num.split(".");
+  return Number.isFinite(x) ? {x, sig: Math.max(1, (whole + frac).replace(/^0+/, "").length), dec: Math.max(0, frac.length - exp)} : null;
 }
 /* a comparator as Labs words a limit (rangeWords: "≤ 5", "< 5"): "<", "≤", ">", "≥"; boundWords(c, v): a value given as a
    bound said so ("≤ 5", "> 10"), else the value alone (#875: Type them in's check line said "=<5" as "5") */
