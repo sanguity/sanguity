@@ -3637,6 +3637,16 @@ Everything on `main` so far; it becomes the first tagged release.
 - **The charts' hover ring is in the system's colours in forced colours** (#1035): on Labs, Compare and a lab's panel
   the ring round the point under the pointer kept the app's ink, a light ring on the system's white with the app dark.
   It's the system's text colour there now; elsewhere it looks as before.
+- **A server setting is the environment's only when someone set it there** (#999): both compose files passed every
+  setting with its default filled in (`SESSION_DAYS: ${SESSION_DAYS:-30}`), CasaOS and Unraid passed `auto` and an
+  empty `PUBLIC_ORIGINS`, and TrueNAS always passed its Secure cookie field, so with the environment winning over
+  what the app saves, every setting would have been fixed on every install. The compose files now pass each as
+  `${NAME:-}` (empty unless `.env` sets it), every one of them, so `.env` can set any (ten weren't passed at all),
+  and the templates pass a setting only when it's changed; `.env.example` has them all commented out. In the server
+  one accessor, `config.setting(NAME)`, reads each where it's used: the environment's value when set, else the value
+  saved in the app, else the default, so a change applies at once (the journal photo and attachment limits too). The
+  server's list of its settings says which the environment sets, naming the variable, and a change to one is
+  refused. `deploy/check.py` checks every template, and the docker job that an install with no `.env` sets none.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
@@ -3707,6 +3717,12 @@ From an install whose profiles with a phone were deleted (before #588):
 From an install that was ever restored from a backup (before #595):
 - On its first start after updating, the app deletes each `DATA_DIR/before-restore-<time>/` folder made more than 30
   days ago. To keep one, copy it out of `DATA_DIR` before updating, or set `RESTORE_KEEP_DAYS` on the app.
+
+From an install whose `.env` sets the server's settings (copied from `.env.example` before #999):
+- Each setting `.env` sets stays as it is, and is now shown in the app as set by the environment, so it can't be
+  changed there. To change one in the app instead (Admin), take its line out of `.env` (the new `.env.example` has
+  them commented out) and run `docker compose up -d`. On TrueNAS, a Secure cookie of Auto and an empty Public Origins
+  are no longer passed; values under Additional Environment Variables still are.
 
 Moving an install from a git checkout to the published image: see [Upgrading to a release](README.md#upgrading-to-a-release).
 

@@ -17,7 +17,7 @@ entry's own encrypted body. Served only to people who can view the profile (rout
 Checked and cleaned before anything is stored:
   - only JPEG, PNG and WebP pictures, by what the file is, never by its name; anything else, or a file that isn't a
     whole picture of its type, is refused. HEIC (iPhone) is refused with a word on how to send a JPEG instead.
-  - at most MAX_BYTES (JOURNAL_PHOTO_MAX_MB), MAX_PER_ENTRY to an entry, MAX_PENDING waiting at once per profile.
+  - at most max_bytes() (JOURNAL_PHOTO_MAX_MB), MAX_PER_ENTRY to an entry, MAX_PENDING waiting at once per profile.
   - metadata removed (strip()), most importantly where it was taken:
       JPEG  every EXIF block (GPS location, camera make, model and serial number, date and time taken, the embedded
             thumbnail, maker notes), XMP (which can repeat the location), IPTC and Photoshop blocks, comments, every
@@ -36,9 +36,15 @@ import os, secrets, struct
 from . import config, crypto, db as dbm
 
 TYPES = {"jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
-MAX_BYTES = config.JOURNAL_PHOTO_MAX
 MAX_PER_ENTRY, MAX_PENDING, ALT_MAX = 6, 30, 300
 PENDING_SECONDS = 86400
+
+
+def max_bytes():
+    """JOURNAL_PHOTO_MAX_MB, read at each photo (#998: a change applies at once)."""
+    return config.setting("JOURNAL_PHOTO_MAX_MB") * config.MB
+
+
 REMOVED = {"location": "where it was taken (GPS location)", "camera": "the camera or phone it was taken with",
            "time": "when it was taken", "other": "other details saved in the file"}
 
@@ -54,7 +60,7 @@ NOT_A_PHOTO = "That file isn't a picture Sanguity can keep: attach a JPEG, PNG o
 
 
 def too_big():
-    return PhotoError(f"That photo is too big: a photo can be at most {MAX_BYTES // config.MB} MB.", 413)
+    return PhotoError(f"That photo is too big: a photo can be at most {max_bytes() // config.MB} MB.", 413)
 
 
 # ---------------------------------------------------------------- what kind of picture
@@ -303,7 +309,7 @@ def _unlink(pid, file):
 
 def add(db, pid, user_id, data):
     """Check, clean and store a photo for an entry not saved yet. Returns {"id", "type", "bytes", "removed"}."""
-    if len(data) > MAX_BYTES:
+    if len(data) > max_bytes():
         raise too_big()
     if not data:
         raise PhotoError("That file is empty.")

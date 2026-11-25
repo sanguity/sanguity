@@ -100,12 +100,12 @@ async def add_photo(pid: int, request: Request, s=Depends(user), db=Depends(get_
     from starlette.concurrency import run_in_threadpool
     await run_in_threadpool(need, db, s, pid, "editor")
     try:
-        if int(request.headers.get("content-length") or 0) > photos.MAX_BYTES:
+        if int(request.headers.get("content-length") or 0) > photos.max_bytes():
             raise photos.too_big()
         data = bytearray()
         async for chunk in request.stream():
             data += chunk
-            if len(data) > photos.MAX_BYTES:
+            if len(data) > photos.max_bytes():
                 raise photos.too_big()
         return await run_in_threadpool(_store_photo, db, pid, s["id"], bytes(data))
     except ValueError as x:   # PhotoError, or a content-length that isn't a number

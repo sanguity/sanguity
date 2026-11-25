@@ -48,9 +48,16 @@ def _size(n):
     return f"{n} bytes"
 
 
+def max_file():
+    return config.setting("UPLOAD_MAX_FILE_MB") * config.MB   # (read at each use, as every limit here: config.setting)
+
+
+def max_total():
+    return config.setting("UPLOAD_MAX_TOTAL_MB") * config.MB
+
+
 def limits():
-    return {"file_bytes": config.UPLOAD_MAX_FILE, "total_bytes": config.UPLOAD_MAX_TOTAL,
-            "files": config.UPLOAD_MAX_FILES}
+    return {"file_bytes": max_file(), "total_bytes": max_total(), "files": config.setting("UPLOAD_MAX_FILES")}
 
 
 def folder(pid, upload_id):
@@ -160,8 +167,8 @@ def _pieces(stream):
 
 
 def too_big(file_limit_binds):
-    return UploadError(f"A file can be at most {_size(config.UPLOAD_MAX_FILE)}." if file_limit_binds else
-                       f"An upload can hold at most {_size(config.UPLOAD_MAX_TOTAL)} altogether.", 413)
+    return UploadError(f"A file can be at most {_size(max_file())}." if file_limit_binds else
+                       f"An upload can hold at most {_size(max_total())} altogether.", 413)
 
 
 def _new_file():
@@ -174,27 +181,27 @@ def add_file(db, pid, upload_id, relpath, stream):
     path that's already in it, or once the upload is finished."""
     rel = clean_path(relpath)
     r = _receiving(db, pid, upload_id)
-    if r["files"] >= config.UPLOAD_MAX_FILES:
-        raise UploadError(f"An upload can hold at most {config.UPLOAD_MAX_FILES} files.", 413)
+    if r["files"] >= config.setting("UPLOAD_MAX_FILES"):
+        raise UploadError(f"An upload can hold at most {config.setting('UPLOAD_MAX_FILES')} files.", 413)
     key, dest = _key(upload_id, rel), folder(pid, upload_id)
     if db.execute("SELECT 1 FROM upload_files WHERE upload_id=? AND name=?", (upload_id, key)).fetchone():
         raise UploadError(f"{rel} is in this upload already.", 409)
-    room = config.UPLOAD_MAX_TOTAL - r["bytes"]
-    limit = min(config.UPLOAD_MAX_FILE, room)
+    room = max_total() - r["bytes"]
+    limit = min(max_file(), room)
     name = _new_file()
     path = os.path.join(dest, name)
     os.makedirs(dest, mode=0o700, exist_ok=True)
     with crypto.StreamWriter(path) as w:
         for piece in _pieces(stream):
             if w.size + len(piece) > limit:
-                raise too_big(config.UPLOAD_MAX_FILE <= room)
+                raise too_big(max_file() <= room)
             w.write(piece)
     try:
         with dbm.transaction(db):   # counted under the write lock, so files sent at once can't pass the limits together
             r = _receiving(db, pid, upload_id)
-            if r["files"] >= config.UPLOAD_MAX_FILES:
-                raise UploadError(f"An upload can hold at most {config.UPLOAD_MAX_FILES} files.", 413)
-            if r["bytes"] + w.size > config.UPLOAD_MAX_TOTAL:
+            if r["files"] >= config.setting("UPLOAD_MAX_FILES"):
+                raise UploadError(f"An upload can hold at most {config.setting('UPLOAD_MAX_FILES')} files.", 413)
+            if r["bytes"] + w.size > max_total():
                 raise too_big(False)
             try:
                 db.execute("INSERT INTO upload_files(upload_id, name, file, path, bytes) VALUES(?, ?, ?, ?, ?)",
@@ -236,7 +243,7 @@ def _unzip(upload_id, dest, entry, prefix, files_left, bytes_left, out):
             infos = [i for i in zf.infolist() if not i.is_dir() and not i.filename.startswith(UNPACKED)]
             if len(infos) > files_left:
                 raise UploadError(f"{zname} holds {len(infos)} files: more than an upload can hold "
-                                  f"({config.UPLOAD_MAX_FILES} files).", 413)
+                                  f"({config.setting('UPLOAD_MAX_FILES')} files).", 413)
             for i in infos:
                 if stat.S_ISLNK(i.external_attr >> 16):
                     raise UploadError(f"{zname} holds a symbolic link ({i.filename[:200]}), which isn't allowed.")
@@ -248,13 +255,13 @@ def _unzip(upload_id, dest, entry, prefix, files_left, bytes_left, out):
                     raise UploadError(f"{zname}: {e}") from None
                 name = _new_file()
                 path = os.path.join(dest, name)
-                limit, denom = min(config.UPLOAD_MAX_FILE, bytes_left), max(min(i.compress_size, zsize), 1)
+                limit, denom = min(max_file(), bytes_left), max(min(i.compress_size, zsize), 1)
                 with crypto.StreamWriter(path) as w, zf.open(i) as src:
                     while piece := src.read(crypto.CHUNK):
                         n = w.size + len(piece)
                         if n > limit:
-                            raise too_big(config.UPLOAD_MAX_FILE <= bytes_left)
-                        if n > RATIO_FROM and n > config.UPLOAD_MAX_ZIP_RATIO * denom:
+                            raise too_big(max_file() <= bytes_left)
+                        if n > RATIO_FROM and n > config.setting("UPLOAD_MAX_ZIP_RATIO") * denom:
                             raise UploadError(f"{zname} unpacks to far more than its size (at {i.filename[:200]}): "
                                               "it looks like a zip bomb, so it was refused.", 413)
                         w.write(piece)
@@ -281,8 +288,8 @@ def finish(db, pid, upload_id, unzip=True):
     unpacked = []
     try:
         kept = [e for e in pending if e["f"] not in zipped]
-        files_left = config.UPLOAD_MAX_FILES - len(kept)
-        bytes_left = config.UPLOAD_MAX_TOTAL - sum(e["n"] for e in kept)
+        files_left = config.setting("UPLOAD_MAX_FILES") - len(kept)
+        bytes_left = max_total() - sum(e["n"] for e in kept)
         for z in zips:
             prefix = "" if len(pending) == 1 else z["p"][:-4] + "/"
             before = len(unpacked)
@@ -291,10 +298,10 @@ def finish(db, pid, upload_id, unzip=True):
         with dbm.transaction(db):
             _receiving(db, pid, upload_id)
             final = [e for e in _pending(db, upload_id) if e["f"] not in zipped] + unpacked   # files sent meanwhile too
-            if len(final) > config.UPLOAD_MAX_FILES:
-                raise UploadError(f"An upload can hold at most {config.UPLOAD_MAX_FILES} files.", 413)
+            if len(final) > config.setting("UPLOAD_MAX_FILES"):
+                raise UploadError(f"An upload can hold at most {config.setting('UPLOAD_MAX_FILES')} files.", 413)
             total = sum(e["n"] for e in final)
-            if total > config.UPLOAD_MAX_TOTAL:
+            if total > max_total():
                 raise too_big(False)
             if (clash := _conflict([e["p"] for e in final])):
                 raise UploadError(f"{clash} clashes with another file in this upload (the same name, or a file "

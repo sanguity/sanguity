@@ -118,7 +118,7 @@ def _prune_now_and_then(db):
     last = int(dbm.meta_get(db, "activity_pruned") or 0)
     if now - last < 86400:
         return
-    db.execute("DELETE FROM activity WHERE at < ?", (now - config.ACTIVITY_DAYS * 86400,))
+    db.execute("DELETE FROM activity WHERE at < ?", (now - config.setting("ACTIVITY_DAYS") * 86400,))
     dbm.meta_set(db, "activity_pruned", str(now))
 
 

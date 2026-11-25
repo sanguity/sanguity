@@ -7,6 +7,7 @@ backups, deleting the profile and start-up tidying. Fictional data only, in a te
   python3 tests/test_uploads.py
 """
 import atexit, io, json, os, shutil, stat, sys, tempfile, time, unittest, zipfile
+from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-uploads-")
@@ -67,12 +68,23 @@ class Uploads(unittest.TestCase):
 
     def setUp(self):
         self.db = dbm.connect()
-        self.saved = {k: getattr(config, k) for k in dir(config) if k.startswith("UPLOAD_")}
+        # a test's own limits: the environment's (read at each use, config.setting), and the byte limits' own helpers
+        env = mock.patch.dict(os.environ)
+        env.start()
+        self.addCleanup(env.stop)
 
     def tearDown(self):
-        for k, v in self.saved.items():
-            setattr(config, k, v)
         self.db.close()
+
+    def limit(self, name, value):
+        """UPLOAD_MAX_FILES or UPLOAD_MAX_ZIP_RATIO as the environment would set it; the file and total limits in
+        bytes (below a megabyte), through uploads' max_file and max_total."""
+        if name in ("max_file", "max_total"):
+            p = mock.patch.object(uploads, name, lambda: value)
+            p.start()
+            self.addCleanup(p.stop)
+            return p
+        os.environ[name] = str(value)
 
     # ---- helpers
 
@@ -212,9 +224,9 @@ class Uploads(unittest.TestCase):
             self.assertEqual(len(self.folder_files(u)), 1, what)
             self.assertEqual(self.c["edna"].get(f"/api/profiles/{self.pid}/uploads/{u}").json()["state"], "receiving")
         # a lower ratio is a setting; something under 1 MB is never a bomb
-        config.UPLOAD_MAX_ZIP_RATIO = 5000
+        self.limit("UPLOAD_MAX_ZIP_RATIO", 5000)
         self.assertEqual(self.upload({"export.zip": zip_bytes({"zeros.bin": b"\0" * (8 << 20)})})[1].status_code, 200)
-        config.UPLOAD_MAX_ZIP_RATIO = self.saved["UPLOAD_MAX_ZIP_RATIO"]
+        del os.environ["UPLOAD_MAX_ZIP_RATIO"]
         self.assertEqual(self.upload({"small.zip": zip_bytes({"zeros.bin": b"\0" * (512 << 10)})})[1].status_code, 200)
         # not a zip after all: kept as a file
         u, r = self.upload({"not-really.zip": b"just text"})
@@ -225,16 +237,16 @@ class Uploads(unittest.TestCase):
 
     def test_limits(self):
         # files per upload: sent one by one, and inside a zip
-        config.UPLOAD_MAX_FILES = 3
+        self.limit("UPLOAD_MAX_FILES", 3)
         u = self.new()
         for i in range(3):
             self.assertEqual(self.put(u, f"f{i}.csv", LAB_CSV).status_code, 200)
         self.assertEqual(self.put(u, "f3.csv", LAB_CSV).status_code, 413)
         u, r = self.upload({"many.zip": zip_bytes({f"f{i}.csv": LAB_CSV for i in range(4)})})
         self.assertEqual(r.status_code, 413, r.text)
-        config.UPLOAD_MAX_FILES = self.saved["UPLOAD_MAX_FILES"]
+        del os.environ["UPLOAD_MAX_FILES"]
         # bytes per file: refused as it streams (or by its length before), and nothing is left on disk
-        config.UPLOAD_MAX_FILE = 1000
+        file_limit = self.limit("max_file", 1000)
         u = self.new()
         r = self.put(u, "big.bin", b"x" * 1001)
         self.assertEqual(r.status_code, 413, r.text)
@@ -245,9 +257,9 @@ class Uploads(unittest.TestCase):
         self.assertEqual(self.put(u, "ok.bin", b"x" * 1000).status_code, 200)
         u, r = self.upload({"big.zip": zip_bytes({"big.txt": b"\0" * 3000})})   # unpacked files count too
         self.assertEqual(r.status_code, 413, r.text)
-        config.UPLOAD_MAX_FILE = self.saved["UPLOAD_MAX_FILE"]
+        file_limit.stop()
         # bytes per upload, altogether
-        config.UPLOAD_MAX_TOTAL = 2500
+        self.limit("max_total", 2500)
         u = self.new()
         self.assertEqual(self.put(u, "a.bin", b"x" * 1500).status_code, 200)
         r = self.put(u, "b.bin", b"x" * 1500)

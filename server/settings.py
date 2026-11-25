@@ -18,12 +18,18 @@ Adding a setting (#36-#46): one define() call below, with its section (add one t
 editor for its kind on the Settings screen (www/js/settings.js; "labs", "tiles", "names", "rules", "tabs",
 "theme" and "units" exist).
 
+A server setting the environment can also set (#999): an install setting with env="NAME", a variable of config.VARS,
+private=False and the variable's default. Where NAME is used, config.setting("NAME") gives the value in force: the
+environment's when it's set (then shown "set by the environment", and a change to it refused), else the one saved
+here, else the default. Its value and where it comes from (in_force) are the same everywhere: the API, effective(),
+install_values() and the server's own use.
+
 settings.json, before schema version 18: each profile's copy (profiles/<id>/settings.json) is loaded into the
 table once at start-up (migrate_files), then deleted (#934). A setup build's settings.json
 only seeds a linked profile's settings the first time the build is loaded into it, filling what isn't set; after
 that a rebuild never changes settings, and says so in the log when the build's settings.json differs from them.
 """
-import contextlib, datetime, json, os, re
+import contextlib, datetime, json, os, re, sqlite3, threading, time, urllib.parse
 
 from . import config, crypto, db as dbm
 
@@ -36,9 +42,10 @@ class SettingError(ValueError):
 
 class Setting:
     def __init__(self, key, section, label, default, check, scope="profile", private=True, kind=None, help="",
-                 merge=False, reread=False, screen=True):
+                 merge=False, reread=False, screen=True, env=None):
         self.key, self.section, self.label, self.default, self.check = key, section, label, default, check
         self.scope, self.private, self.kind, self.help, self.merge = scope, private, kind, help, merge
+        self.env = env   # the variable of config.VARS it stands for (#999): the environment's value wins over it
         self.reread = reread   # a stored value is checked again when read: its check gives older values in today's terms
         self.screen = screen   # shown on the Settings screen (False: kept for a page of its own, like the guide's, #199)
 
@@ -46,7 +53,8 @@ class Setting:
         return self.check(value)
 
     def public(self):
-        return {"key": self.key, "section": self.section, "label": self.label, "help": self.help, "kind": self.kind,
+        help = self.help() if callable(self.help) else self.help   # a function: words with a limit read at each use
+        return {"key": self.key, "section": self.section, "label": self.label, "help": help, "kind": self.kind,
                 "scope": self.scope, "default": self.default, **({"choices": CHOICES[self.key]} if self.key in CHOICES else {})}
 
 
@@ -66,7 +74,17 @@ def define(key, section, label, default, check, **kw):
         raise ValueError(f"setting {key}: no section {section}")
     if kw.get("scope", "profile") not in SCOPES:
         raise ValueError(f"setting {key}: scope must be one of {SCOPES}")
+    if (env := kw.get("env")):   # (#999) a variable's own: the install's, plain, with the variable's default
+        v = config.VARS.get(env)
+        if v is None or v.setting not in (None, key):
+            raise ValueError(f"setting {key}: {env} isn't a variable of config.VARS, or another setting stands for it")
+        if kw.get("scope") != "install" or kw.get("private", True):
+            raise ValueError(f"setting {key}: a variable's setting is scope='install', private=False")
+        if v.keep(check(default)) != v.default:
+            raise ValueError(f"setting {key}: its default isn't {env}'s ({v.default!r})")
     s = SETTINGS[key] = Setting(key, section, label, check(default), check, **kw)
+    if s.env:
+        config.VARS[s.env].setting = key
     return s
 
 
@@ -222,9 +240,11 @@ def workout_rules(most=50):
 
 
 def whole(lo, hi, what):
+    """hi may be a function, read at each check (a limit of the server's that can change: ceiling_mb)."""
     def check(v):
-        if isinstance(v, bool) or not isinstance(v, (int, float)) or v != int(v) or not lo <= v <= hi:
-            raise SettingError(f"{what} must be a whole number from {lo} to {hi}.")
+        top = hi() if callable(hi) else hi
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or v != int(v) or not lo <= v <= top:
+            raise SettingError(f"{what} must be a whole number from {lo} to {top}.")
         return int(v)
     return check
 
@@ -281,16 +301,21 @@ define("labNicknames", "names", "Lab names", {
 define("sources", "names", "Result sources", {}, name_map(), kind="names", merge=True,
        help="The short source tag on lab results (like EXT), and the name to show for it.")
 ATTACHMENT_TYPES = {"pdf": "PDF", "image": "Images", "text": "Text", "html": "Web pages (HTML)"}
-CEILING_MB = max(1, config.SYNC_MAX_ATTACHMENT // config.MB)   # SYNC_MAX_ATTACHMENT_MB: no setting goes above it
+
+
+def ceiling_mb():
+    """SYNC_MAX_ATTACHMENT_MB, read at each use: no setting goes above it."""
+    return max(1, config.setting("SYNC_MAX_ATTACHMENT_MB"))
+
 
 section("sync", "Sync defaults", "Defaults for every connection on this server; each connection can change its own.\n"
         "Attachments are the files records point at: visit notes, scans, reports.")
 define("sync.attachAuto", "sync", "Fetch attachments automatically", True, yes_no("Fetching attachments automatically"),
        scope="install", private=False, kind="toggle",
        help="Off: each sync lists the attachments it left out, and you fetch the ones you want.")
-define("sync.attachMaxMB", "sync", "Largest attachment fetched (MB)", min(20, CEILING_MB),
-       whole(1, CEILING_MB, "The largest attachment"), scope="install", private=False, kind="number",
-       help=f"Bigger ones are left out and listed. At most {CEILING_MB} MB (SYNC_MAX_ATTACHMENT_MB in .env).")
+define("sync.attachMaxMB", "sync", "Largest attachment fetched (MB)", min(20, ceiling_mb()),
+       whole(1, ceiling_mb, "The largest attachment"), scope="install", private=False, kind="number",
+       help=lambda: f"Bigger ones are left out and listed. At most {ceiling_mb()} MB (SYNC_MAX_ATTACHMENT_MB in .env).")
 define("sync.attachTypes", "sync", "Kinds of attachment fetched", list(ATTACHMENT_TYPES),
        some_of(ATTACHMENT_TYPES, "Kinds of attachment"), scope="install", private=False, kind="choices",
        help="Other kinds (and these, when unticked) are left out and listed, to fetch if you want them.")
@@ -694,6 +719,8 @@ def put(db, key, value, scope=None, pid=None, uid=None, by=None):
                   ON CONFLICT(key, IFNULL(profile_id, 0), IFNULL(user_id, 0))
                   DO UPDATE SET value=excluded.value, sealed=excluded.sealed, changed=excluded.changed, changed_by=excluded.changed_by""",
                (key, p, u, None if s.private else text, crypto.enc(text) if s.private else None, dbm.now(), by))
+    if scope == "install":
+        _changed(db)
     return value
 
 
@@ -703,6 +730,8 @@ def clear(db, keys, scope, pid=None, uid=None):
     gone = [r["key"] for r in db.execute(f"SELECT key FROM settings WHERE {where} AND key IN (SELECT value FROM json_each(?))",
                                          (*args, json.dumps(list(keys))))]
     db.execute(f"DELETE FROM settings WHERE {where} AND key IN (SELECT value FROM json_each(?))", (*args, json.dumps(gone)))
+    if scope == "install" and gone:
+        _changed(db)
     return gone
 
 
@@ -721,12 +750,82 @@ def stored(db, scope, pid=None, uid=None):
 
 
 def effective(db, pid, uid):
-    """{key: (value, where it came from: "default" or a scope)} for every setting, as seen by user uid on profile pid."""
+    """{key: (value, where it came from: "default", a scope or "environment")} for every setting, as seen by user uid
+    on profile pid."""
     out = {k: (s.default, "default") for k, s in SETTINGS.items()}
     for scope in SCOPES:
         for k, v in stored(db, scope, pid, uid).items():
             out[k] = (v, scope)
+    for k, s in SETTINGS.items():
+        if s.env:
+            out[k] = in_force(k)
     return out
+
+
+# ---------------------------------------------------------------- the server's own settings, as config.setting reads them (#999)
+# config.setting(NAME) asks here for the values saved in the app (config.saved), on every use: they are read from
+# the database at most every SAVED_SECONDS, and at once after a change made in this process (put, clear). A change
+# made by another (python -m server.manage config reset) applies within SAVED_SECONDS. Read over a connection of
+# their own, read-only, so a process with no database (the watch receiver, which imports config) never makes one.
+
+SAVED_SECONDS = 2
+_saved = {"values": None, "at": 0.0, "db": None}
+_saved_lock = threading.Lock()
+
+
+def _read_saved():
+    keys = [k for k, s in SETTINGS.items() if s.env]
+    if not keys:
+        return {}
+    try:
+        db = sqlite3.connect(f"file:{urllib.parse.quote(config.DB_PATH)}?mode=ro", uri=True, timeout=10)
+    except sqlite3.Error:   # no database yet
+        return {}
+    try:
+        rows = db.execute("SELECT key, value FROM settings WHERE profile_id IS NULL AND user_id IS NULL AND key IN "
+                          "(SELECT value FROM json_each(?))", (json.dumps(keys),)).fetchall()
+    except sqlite3.Error:   # not made yet (a database before schema version 18), or busy past the timeout
+        return {}
+    finally:
+        db.close()
+    out = {}
+    for key, value in rows:
+        try:
+            out[key] = SETTINGS[key].clean(json.loads(value))   # a value no longer accepted is left at its default
+        except (ValueError, TypeError):
+            continue
+    return out
+
+
+def saved_values():
+    """{key: value} of the install settings saved in the app that a variable's setting stands for (config.saved)."""
+    with _saved_lock:
+        c = _saved
+        if c["values"] is None or c["db"] != config.DB_PATH or time.monotonic() - c["at"] > SAVED_SECONDS:
+            c.update(values=_read_saved(), at=time.monotonic(), db=config.DB_PATH)
+        return c["values"]
+
+
+def forget_saved():
+    with _saved_lock:
+        _saved["values"] = None
+
+
+def _changed(db):
+    """An install value changed: read again from now (a read meanwhile may still see the one before), and once it's
+    committed."""
+    forget_saved()
+    dbm.after_commit(db, forget_saved)
+
+
+config.saved = saved_values
+
+
+def in_force(key):
+    """(value, where it comes from) of an install setting that stands for a variable: "environment" when it's set,
+    "install" when saved here, else "default"."""
+    src, value = config.lookup(SETTINGS[key].env)
+    return (list(value) if isinstance(value, tuple) else value), src
 
 
 def nest(flat):
@@ -742,9 +841,11 @@ def nest(flat):
 
 
 def install_values(db, prefix=""):
-    """{key: value} of the install-wide settings (the install's value, else the default)."""
+    """{key: value} of the install-wide settings (the install's value, else the default; a variable's, its value in
+    force)."""
     have = stored(db, "install")
-    return {k: have.get(k, s.default) for k, s in SETTINGS.items() if s.scope == "install" and k.startswith(prefix)}
+    return {k: in_force(k)[0] if s.env else have.get(k, s.default)
+            for k, s in SETTINGS.items() if s.scope == "install" and k.startswith(prefix)}
 
 
 def merged(db, pid, uid):
