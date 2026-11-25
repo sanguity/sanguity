@@ -891,6 +891,13 @@ def confirm_its_you(page, done, timeout=10000):
     return asked
 
 
+def fresh_check(page):
+    """(#1006) The fresh check made through the API, as an admin would once before changing a server setting: for a
+    check that changes one for its own setup, not to check the change. Returns the answer's status."""
+    return page.evaluate("pw => fetch('api/me/reauth', {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': "
+                         "'application/json'}, body: JSON.stringify({secret: pw})}).then(r => r.status)", PW)
+
+
 # ---- axe-core (#202): Deque's accessibility engine, from the axe-playwright-python package (requirements-dev.txt), which
 # bundles a pinned axe.min.js. Only that script is used: put into the page under test by page.evaluate, which the
 # Content-Security-Policy doesn't apply to, so the strict pages are checked as they are; the app never loads it.
@@ -16852,6 +16859,9 @@ def main():
             page.goto(base + "/settings.html#sources")
             page.wait_for_url(re.compile(r"/admin\.html(\?[^#]*)?#apps$"), timeout=10000)
             page.wait_for_selector("#sec-sync .set", timeout=10000)
+            # (#1006) each change to a server setting asks for the fresh check once the sign-in is older than
+            # REAUTH_MINUTES: made here, as the admin would once, so the saves below go straight through (it's asked for below)
+            fresh_check(page)
             check("Admin: an old Settings address opens its new place, the sync defaults (#167)",
                   js(display, "sec-sync") != "none" and js(display, "admin") != "none" and js(display, "users") == "none")
             check("…as a switch, numbers and choices, no Save of its own, and neither “set for this server” nor Reset to defaults while all are Sanguity's own (#101, #102, #272)",
@@ -16899,6 +16909,32 @@ def main():
             check("Admin: two kinds of attachment unticked quickly on a slow connection (0.4 s an answer) both save, the second going on from "
                   "the first, not refused as changed elsewhere (#956)", all(on for _, on in had956) and got956 == want956, [had956, got956])
             cdp956.detach()
+            js("fetch('api/settings/install/reset', {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, body: JSON.stringify({section: 'sync'})}).then(r => r.status)")
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            # #1006: with the sign-in older than REAUTH_MINUTES, a sync default's change asks for the fresh check in its
+            # card; confirmed, it's saved, focus is back on the switch, and the install log says what it was and is now
+            from server import db as dbm1006
+            db1006, refused1006 = dbm1006.connect(), len(problems)
+            try:
+                js("loadSync()")
+                page.wait_for_selector("#sec-sync [data-key='sync.attachAuto'] input:checked", timeout=10000)
+                db1006.execute("UPDATE sessions SET verified_at=0")
+                page.focus("#sec-sync [data-key='sync.attachAuto'] input")
+                page.keyboard.press("Space")
+                page.wait_for_selector("#syncReauth input[type=password]", state="visible", timeout=10000)
+                asked1006 = page.inner_text("#syncReauth")
+                page.fill("#syncReauth input[type=password]", PW)
+                page.locator("#syncReauth").get_by_role("button", name="Confirm").click()
+                page.wait_for_function("document.querySelector('#sec-sync .set-msg').textContent === 'Saved “Fetch attachments automatically”.'", timeout=10000)
+                settle(200)
+                got1006 = [js(auto), js("document.activeElement.id"), js("document.getElementById('syncReauth').hidden"),
+                           js("fetch('api/activity').then(r => r.json()).then(l => WHAT['settings.install'](l.find(e => e.action === 'settings.install').detail))")]
+            finally:
+                db1006.close()
+            problems[refused1006:] = [x for x in problems[refused1006:] if "403" not in x]   # the refusal that asks
+            check("Admin: a sync default's change asks for the fresh check in its card, then is saved with focus back on its switch, and the "
+                  "install log says what it was and what it is (#1006)", "Confirm it's you" in asked1006 and got1006 == [
+                      False, "sync.attachAuto", True, "changed the server setting “Fetch attachments automatically” (from on to off)"], [asked1006[:160], got1006])
             js("fetch('api/settings/install/reset', {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, body: JSON.stringify({section: 'sync'})}).then(r => r.status)")
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             page.click("#admNav a[data-group=directory]")
@@ -23818,6 +23854,7 @@ def main():
             check("the same results from a file are in the profile before the source connects", job_state() == "done", job_state())
             csv_label = js(f"fetch('api/profiles/{conn_pid}/jobs/{csv_job}').then(r => r.json()).then(j => j.label)")
             # the install's attachment rules (#101, settings registry): only text attachments are fetched by themselves
+            fresh_check(page)   # (#1006: a server setting's change needs it)
             check("the attachment defaults are install settings", js(f"api('profiles/{conn_pid}/settings/sync.attachTypes', "
                   "{method: 'PUT', body: JSON.stringify({value: ['text']})}).then(r => r.status)") == 200)
             page.click("#sourceButtons button")   # choose what to pull (#99), then on to the fake's sign-in
@@ -24021,6 +24058,7 @@ def main():
             page.set_viewport_size({"width": 375, "height": 800})
             check("…and the warning fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
             page.set_viewport_size({"width": 1400, "height": 900})
+            fresh_check(page)   # (#1006)
             js(f"api('profiles/{conn_pid}/settings/sync.attachTypes', {{method: 'DELETE'}})")
             js(f"localStorage.setItem('ht-profile', {json.dumps(prev_profile)} || '')")
             check("only the source's own host was contacted", fake.hosts() == {f"127.0.0.1:{fake.port}"}, fake.hosts())
@@ -26321,12 +26359,14 @@ def main():
                   and asked[1].startswith("1 account doesn't" if lacking == 1 else f"{lacking} accounts don't")
                   and mine_has and "yours" not in asked[1].lower() and tf_focus == ["alertdialog", "Cancel"], [asked, tf_focus, lacking, mine_has])
             check("…Cancel leaves it off", not page.is_checked("#reqTf") and required() is False)
+            before1006 = len(problems)
             page.click("#reqTf")
             answer_ask(page)
-            page.wait_for_function("document.getElementById('reqTfMsg').textContent === 'Everyone now needs two-factor sign-in.'", timeout=10000)
+            confirm_its_you(page, "document.getElementById('reqTfMsg').textContent === 'Everyone now needs two-factor sign-in.'")   # (#1006: if it's due)
             check("…confirming turns it on", page.is_checked("#reqTf") and required() is True)
             page.click("#reqTf")
-            page.wait_for_function("document.getElementById('reqTfMsg').textContent === 'Two-factor sign-in is now optional.'", timeout=10000)
+            confirm_its_you(page, "document.getElementById('reqTfMsg').textContent === 'Two-factor sign-in is now optional.'")
+            problems[before1006:] = [x for x in problems[before1006:] if "403" not in x]   # the refusal that asks, if it was due
             check("…and turning it off isn't asked", not js("document.querySelector('dialog.sg-ask')") and required() is False)
             # #536: Turn off two-factor sign-in… for an account whose second factor is only its passkeys names them, and not a
             # phone or recovery codes it never had; Cancel. One with two passkeys, made up here and removed after

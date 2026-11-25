@@ -56,6 +56,11 @@ settings.define("test.server", "testing", "Server-wide", 10, lambda v: int(v), s
 settings.section("testing-env", "Testing the environment")   # (its own: the reset test counts the section above's)
 settings.define("testEnv.syncHours", "testing-env", "Sync every (hours)", 12, settings.whole(1, 168, "Hours"), scope="install",
                 private=False, env="SYNC_HOURS")
+# (#1006) one that can lock everyone out: 0 days ends every sign-in at once (General's own will be bounded)
+settings.define("testEnv.sessionDays", "testing-env", "Sign-in lasts (days)", 30, settings.whole(0, 365, "Days"), scope="install",
+                private=False, env="SESSION_DAYS")
+# (#1006) an install setting that could hold health information: logged by name only
+settings.define("testEnv.sealed", "testing-env", "Sealed", "", lambda v: str(v), scope="install")
 
 
 def flat(obj, prefix=""):
@@ -330,8 +335,8 @@ class Settings(unittest.TestCase):
         self.assertEqual((log[0]["actor"], log[0]["detail"]), ("lee", {"setting": "sources", "label": "Result sources"}))
         self.assertNotIn("Editor's", json.dumps(log))
         acct = {e["action"]: e["detail"] for e in reversed(self.c["ada"].get("/api/activity").json())}
-        self.assertEqual((acct["settings.user"], acct["settings.install"]),
-                         ({"setting": "test.mine", "label": "Just mine"}, {"setting": "test.server", "label": "Server-wide"}))
+        self.assertEqual((acct["settings.user"], acct["settings.install"]),   # (#1006: an install setting's with its values)
+                         ({"setting": "test.mine", "label": "Just mine"}, {"setting": "test.server", "label": "Server-wide", "from": 10, "to": 30}))
         for who, key in (("kim", "test.mine"), ("ada", "test.server")):
             self.c[who].delete(f"/api/profiles/1/settings/{key}", headers=H)
         self.c["robin"].delete("/api/profiles/1/settings/sources", headers=H)
@@ -361,7 +366,8 @@ class Settings(unittest.TestCase):
         self.assertEqual(ada.put("/api/settings/install/labNicknames", json={"value": {}}, headers=H).status_code, 404)
         self.assertEqual(ada.put("/api/settings/install/no.such", json={"value": 1}, headers=H).status_code, 404)
         acct = [e for e in self.c["ada"].get("/api/activity").json() if e["action"] == "settings.install"]
-        self.assertEqual((acct[0]["actor"], acct[0]["detail"]), ("ada", {"setting": "sync.staleDays", "label": "Warn when a connection hasn't synced for (days)"}))
+        self.assertEqual((acct[0]["actor"], acct[0]["detail"]), ("ada", {"setting": "sync.staleDays", "label": "Warn when a connection hasn't synced for (days)",
+                                                                       "from": 3, "to": 9}))   # (#1006: its values)
         # Reset to defaults: the section's install values go
         self.assertEqual(ada.post("/api/settings/install/reset", json={"section": "names"}, headers=H).status_code, 404)
         r = ada.post("/api/settings/install/reset", json={"section": "sync"}, headers=H)
@@ -421,6 +427,150 @@ class Settings(unittest.TestCase):
                                 scope="install", **{"private": False, **kw})
             self.assertIn(why, str(e.exception))
         self.assertNotIn("test.bad", settings.SETTINGS)
+
+    def stale(self, who="ada"):
+        """this person's sign-in more than REAUTH_MINUTES old, and no fresh check since"""
+        with contextlib.closing(dbm.connect()) as db:
+            db.execute("UPDATE sessions SET verified_at=0 WHERE user_id=?", (self.uid[who],))
+
+    def install_log(self):
+        return [e for e in self.c["ada"].get("/api/activity").json() if e["action"] == "settings.install"]
+
+    def test_install_changes_need_the_fresh_check_and_are_logged(self):
+        """#1006: every change to an install setting asks for the admin's fresh check (403 reauth_required), on the
+        install's route and a profile page's, a reset of one with a value saved, and the two-factor rule; one that
+        changes nothing doesn't. Each is in the install log with who, what, the old value and the new (none a secret);
+        one that could hold health information, by name only."""
+        ada, key = self.c["ada"], "sync.staleDays"
+
+        def held():
+            with contextlib.closing(dbm.connect()) as db:
+                return settings.install_values(db, "sync.")[key]
+        self.stale()
+        refused = [ada.put(f"/api/settings/install/{key}", json={"value": 9}, headers=H),
+                   ada.put(f"/api/profiles/1/settings/{key}", json={"value": 9}, headers=H),
+                   ada.patch("/api/settings", json={"require_2fa": True}, headers=H)]
+        self.assertEqual([(r.status_code, r.json()["detail"]) for r in refused], [(403, "reauth_required")] * 3)
+        self.assertEqual((held(), self.c["ada"].get("/api/settings").json()["require_2fa"]), (3, False))
+        self.assertEqual(ada.put(f"/api/settings/install/{key}", json={"value": 3}, headers=H).status_code, 200, "no change: not asked")
+        self.assertEqual(ada.post("/api/settings/install/reset", json={"section": "sync"}, headers=H).json()["reset"], [], "nothing saved: not asked")
+        self.assertEqual(ada.put(f"/api/settings/install/{key}", json={"value": 0}, headers=H).status_code, 400, "a bad value says so first")
+        before = len(self.install_log())
+        # the fresh check: then it's saved, and logged with its old value and its new
+        self.assertEqual(ada.post("/api/me/reauth", json={"secret": PW["ada"]}, headers=H).status_code, 200)
+        self.assertEqual(ada.put(f"/api/settings/install/{key}", json={"value": 9}, headers=H).status_code, 200)
+        self.assertEqual(ada.put(f"/api/profiles/1/settings/{key}", json={"value": 11}, headers=H).status_code, 200)
+        log = self.install_log()
+        self.assertEqual(len(log), before + 2)
+        label = settings.SETTINGS[key].label
+        self.assertEqual([(e["actor"], e["detail"]) for e in log[:2]],
+                         [("ada", {"setting": key, "label": label, "from": 9, "to": 11}), ("ada", {"setting": key, "label": label, "from": 3, "to": 9})])
+        # a reset of one, or of the section, with a value saved: asked for, and logged with what it held
+        self.stale()
+        self.assertEqual(ada.delete(f"/api/profiles/1/settings/{key}", headers=H).json()["detail"], "reauth_required")
+        self.assertEqual(ada.post("/api/settings/install/reset", json={"section": "sync"}, headers=H).json()["detail"], "reauth_required")
+        self.assertEqual(ada.post("/api/profiles/1/settings/reset", json={"section": "sync"}, headers=H).json()["detail"], "reauth_required")
+        self.assertEqual(held(), 11)
+        ada.post("/api/me/reauth", json={"secret": PW["ada"]}, headers=H)
+        self.assertEqual(ada.delete(f"/api/profiles/1/settings/{key}", headers=H).status_code, 200)
+        self.assertEqual(self.install_log()[0]["detail"], {"setting": key, "label": label, "from": 11, "to": 3, "reset": True})
+        ada.put(f"/api/settings/install/{key}", json={"value": 5}, headers=H)
+        r = ada.post("/api/settings/install/reset", json={"section": "sync"}, headers=H)
+        self.assertEqual(r.json()["reset"], [key])
+        self.assertEqual(self.install_log()[0]["detail"], {"section": "sync", "label": "Sync defaults", "settings": [key], "reset": True,
+                                                           "changes": [{"setting": key, "label": label, "from": 5, "to": 3}]})
+        # the two-factor rule too (turned on and off again: everyone else has none)
+        self.stale()
+        self.assertEqual(ada.patch("/api/settings", json={"require_2fa": False}, headers=H).status_code, 200, "no change: not asked")
+        ada.post("/api/me/reauth", json={"secret": PW["ada"]}, headers=H)
+        self.assertEqual(ada.patch("/api/settings", json={"require_2fa": True}, headers=H).status_code, 200)
+        self.assertEqual(ada.patch("/api/settings", json={"require_2fa": False}, headers=H).status_code, 200)
+        # one that could hold health information: by name only
+        self.assertEqual(ada.put("/api/settings/install/testEnv.sealed", json={"value": "fictional words"}, headers=H).status_code, 200)
+        self.assertEqual(self.install_log()[0]["detail"], {"setting": "testEnv.sealed", "label": "Sealed"})
+        self.assertNotIn("fictional words", json.dumps(self.install_log()))
+        ada.delete("/api/profiles/1/settings/testEnv.sealed", headers=H)
+        self.assertNotIn("fictional words", json.dumps(self.install_log()))
+
+    def test_command_line_shows_and_resets_server_settings(self):
+        """#1006: python -m server.manage config show lists every server setting, its value and where it comes from;
+        config reset SETTING (its variable or its key) and --all take away what's saved in the app, logged as the
+        command line's; the running app reads it again within SAVED_SECONDS (here at once), with no restart."""
+        from server import manage
+        ada = self.c["ada"]
+        ada.post("/api/me/reauth", json={"secret": PW["ada"]}, headers=H)
+        for key, value in (("testEnv.syncHours", 6), ("sync.staleDays", 5)):
+            self.assertEqual(ada.put(f"/api/settings/install/{key}", json={"value": value}, headers=H).status_code, 200)
+
+        def run(*args):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                manage.run(["config", *args])
+            return out.getvalue()
+        shown = {line.split()[0]: line for line in run("show").splitlines()}
+        self.assertRegex(shown["SYNC_HOURS"], r"^SYNC_HOURS \(testEnv\.syncHours\)\s+6\s+saved in the app$")
+        self.assertRegex(shown["SESSION_DAYS"], r"30\s+the default$")
+        self.assertRegex(shown["PUBLIC_ORIGINS"], r"https://health\.example\.test\s+set by the environment$")
+        self.assertRegex(shown["sync.staleDays"], r"5\s+saved in the app$")
+        self.assertEqual(set(config.VARS) - set(shown), set(), "every variable")
+        with mock.patch.dict(os.environ, {"SYNC_HOURS": "24"}):
+            self.assertRegex(run("show"), r"SYNC_HOURS \(testEnv\.syncHours\)\s+24\s+set by the environment  \(saved in the app: 6, not in force\)")
+        # one by its variable, one by its key
+        with mock.patch.object(settings, "SAVED_SECONDS", 0):   # (as the running app sees it a moment later)
+            said = run("reset", "SYNC_HOURS")
+            self.assertIn("SYNC_HOURS: the value saved in the app (6) is gone; it's 12 now, the default.", said)
+            self.assertEqual((config.setting("SYNC_HOURS"), config.source("SYNC_HOURS")), (12, "default"))
+        self.assertIn("Nothing to reset: testEnv.syncHours has no value saved in the app.", run("reset", "testEnv.syncHours"))
+        self.assertIn("nothing to reset", run("reset", "SHL_TIMEOUT"))   # a variable no setting stands for
+        with self.assertRaises(SystemExit) as e:
+            run("reset", "no.such")
+        self.assertIn("no server setting called 'no.such'", str(e.exception))
+        log = self.install_log()[0]
+        self.assertEqual((log["actor"], log["detail"]), ("command line", {"setting": "testEnv.syncHours", "label": "Sync every (hours)",
+                                                                         "reset": True, "from": 6, "to": 12}))
+        # all of them
+        ada.put("/api/settings/install/testEnv.syncHours", json={"value": 7}, headers=H)
+        said = run("reset", "--all")
+        self.assertIn("sync.staleDays: the value saved in the app (5) is gone; it's 3 now, the default.", said)
+        self.assertIn("SYNC_HOURS: the value saved in the app (7) is gone", said)
+        with contextlib.closing(dbm.connect()) as db:
+            self.assertEqual(settings.stored(db, "install"), {})
+        self.assertIn("Nothing to reset: no setting has a value saved in the app.", run("reset", "--all"))
+        self.assertEqual(ada.get("/api/settings/install").json()["sections"][0]["settings"][0]["from"], "default")
+
+    def test_saved_settings_off_lets_a_locked_out_install_back_in(self):
+        """#1006: a value saved in the app that ends every sign-in at once (here 0 days: General's own are bounded) locks
+        everyone out; SANGUITY_SAVED_SETTINGS=off leaves saved values out, so people sign in again and an admin puts it
+        right; server.manage config reset does too, without the page."""
+        key = "testEnv.sessionDays"
+        signed_in = lambda: self.login("zed").get("/api/me").status_code   # noqa: E731  (a new sign-in, then a request)
+
+        def lock():   # as if saved by mistake
+            with contextlib.closing(dbm.connect()) as db:
+                settings.put(db, key, 0)
+        self.assertEqual(signed_in(), 200)
+        lock()
+        self.assertEqual(signed_in(), 401, "locked out: every sign-in ends at once")
+        with mock.patch.dict(os.environ, {"SANGUITY_SAVED_SETTINGS": "off"}):
+            self.assertEqual(signed_in(), 200, "saved values left out")
+            got = self.c["ada"].get("/api/settings/install").json()
+            st = {s["key"]: s for sec in got["sections"] for s in sec["settings"]}[key]
+            self.assertEqual((got["saved_ignored"], st["value"], st["from"], st["saved"], got["variables"]["SESSION_DAYS"]["from"]),
+                             (True, 30, "default", 0, "default"))
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                main.say_settings()   # what the app's start says
+            self.assertIn("SANGUITY_SAVED_SETTINGS=off: the server's settings saved in the app are left out", out.getvalue())
+            self.c["ada"].post("/api/me/reauth", json={"secret": PW["ada"]}, headers=H)
+            self.assertEqual(self.c["ada"].put(f"/api/settings/install/{key}", json={"value": 30}, headers=H).status_code, 200, "put right")
+        self.assertEqual(signed_in(), 200, "and with it taken out again")
+        # without the page: the command line
+        from server import manage
+        lock()
+        self.assertEqual(signed_in(), 401)
+        with contextlib.redirect_stdout(io.StringIO()):
+            manage.run(["config", "reset", "SESSION_DAYS"])
+        self.assertEqual(signed_in(), 200)
 
     def test_a_whole_value_saved_from_an_old_read_is_refused(self):   # #923
         """A list a page saves whole, sent with the value it read ("was", its version): refused (409) and left as it is

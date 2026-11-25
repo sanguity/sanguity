@@ -138,8 +138,10 @@ def compose_settings(name):
     them and one it doesn't set is empty (#999); a service that gets one at all gets it the same way."""
     compose = load_yaml(os.path.join(ROOT, name))
     app = env_of(compose["services"]["app"])
-    missing = sorted(SETTINGS - set(app))
+    missing = sorted((SETTINGS | {"SANGUITY_SAVED_SETTINGS"}) - set(app))   # and the way back in (#1006)
     check(f"{name}: the app gets every one of the server's settings, so .env can set it", not missing, missing)
+    check(f"{name}: the app gets SANGUITY_SAVED_SETTINGS only as .env sets it (#1006)",
+          app.get("SANGUITY_SAVED_SETTINGS") == "${SANGUITY_SAVED_SETTINGS:-}", app.get("SANGUITY_SAVED_SETTINGS"))
     for svc_name, svc in compose["services"].items():
         for k, v in env_of(svc).items():
             if k in SETTINGS:
