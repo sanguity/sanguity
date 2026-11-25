@@ -3367,6 +3367,10 @@ Everything on `main` so far; it becomes the first tagged release.
   in it is no longer shown), one that fails leaves it as it was, undoing it deletes it, and what a stop leaves goes at
   the next start. An export loaded again keeps its documents' ids. What an older version unpacked into `imported/`
   itself goes with the next import that replaces it.
+- **An export loaded with `server.manage import` before #918 loses its activity log at the next start** (#948): #918
+  stopped the command line keeping an export's activity log (who opened the old profile, from where; owners only
+  there) and cycle records in the profile's `imported/`, but one loaded before still held them, in every backup. The
+  start's sweep removes them, and nothing else of what it was loaded from.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -23,7 +23,7 @@ import logging   # noqa: E402
 
 from fastapi.testclient import TestClient   # noqa: E402
 
-from server import accounts, db as dbm, export, main, profiles as prof, records, uploads   # noqa: E402
+from server import accounts, crypto, db as dbm, export, main, profiles as prof, records, uploads   # noqa: E402
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
 H = {"X-Sanguity": "1"}
@@ -353,6 +353,37 @@ class Export(unittest.TestCase):
             self.assertEqual(self.robin.put(f"/api/profiles/{pid}/cycle", json={"on": False}, headers=H).status_code, 200)
             self.assertNotIn("cycle/cycle.json", uploads.manifest(db, pid, up))
             self.assertIn("data.json", uploads.manifest(db, pid, up))
+        finally:
+            db.close()
+
+    def test_an_export_loaded_before_loses_its_activity_log_at_start(self):   # #948
+        """Since #918 an export loaded with the command line keeps neither its activity log nor its cycle records; one
+        loaded before still held them in the profile's imported/ (its old one's history, owners only where it came from,
+        in every backup). The start's sweep removes them, from an older version's imported/ and from an import's own
+        folder, and nothing else of what it was loaded from."""
+        archive = os.path.join(TMP, "for-948.zip")
+        with open(archive, "wb") as f:
+            f.write(self.export())
+        older, newer = self.new_profile("Loaded long ago (fictional)"), self.new_profile("Loaded before #918 (fictional)")
+        db = dbm.connect()
+        try:
+            for pid in (older, newer):
+                export.import_archive(db, pid, archive)
+            old = prof.imported_dir(older)   # as an older version unpacked it: straight into imported/
+            for n in os.listdir(prof.imported_dir(older, records.imports(db, older)[0])):
+                os.replace(os.path.join(prof.imported_dir(older, records.imports(db, older)[0]), n), os.path.join(old, n))
+            os.rmdir(prof.imported_dir(older, records.imports(db, older)[0]))
+            folders = [old, prof.imported_dir(newer, records.imports(db, newer)[0])]
+            for d in folders:   # what #918 left out, as it was kept before
+                crypto.write_file(os.path.join(d, "activity.json"), b'[{"action": "view", "actor": "someone"}]')
+                os.makedirs(os.path.join(d, "cycle"), exist_ok=True)
+                crypto.write_file(os.path.join(d, "cycle", "cycle.json"), b'{"records": []}')
+            had = {d: sorted(os.listdir(d)) for d in folders}
+            self.assertGreaterEqual(prof.sweep_imported(db), 2)
+            for d in folders:
+                self.assertFalse(os.path.exists(os.path.join(d, "activity.json")), d)
+                self.assertFalse(os.path.exists(os.path.join(d, "cycle", "cycle.json")), d)
+                self.assertEqual(sorted(os.listdir(d)), [n for n in had[d] if n not in ("activity.json", "cycle")], "the rest kept")
         finally:
             db.close()
 

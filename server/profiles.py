@@ -215,7 +215,10 @@ def sweep_imported(db):
     """At start-up (#945): what a stop left in each profile's imported/ that no import is loaded from (left_behind): the
     folder of an import replaced or undone, and one half unpacked. What an older version unpacked into imported/ itself
     goes where an import's own folder is there (it replaced that one), or no command-line import is left; else it may be
-    the one that's left's, and stays until that one is replaced or undone. Returns how many were removed."""
+    the one that's left's, and stays until that one is replaced or undone. And in what's kept, what an export loaded
+    before #918 kept that's never kept now (#948, export.LEFT_OUT: its activity log, its cycle records). Returns how
+    many folders and files were removed."""
+    from . import export
     n = 0
     for (pid,) in db.execute("SELECT id FROM profiles ORDER BY id").fetchall():
         if not os.path.isdir(imported_dir(pid)):
@@ -226,6 +229,15 @@ def sweep_imported(db):
             gone = left_behind(db, pid, keep=own, older=bool(own) or not live)
         remove(gone)
         n += len(gone)
+        for d in own + ([imported_dir(pid)] if live and not own else []):
+            for name in sorted(export.LEFT_OUT):
+                p = os.path.join(d, *name.split("/"))
+                if os.path.isfile(p) and not os.path.islink(p):
+                    os.remove(p)
+                    n += 1
+                    with contextlib.suppress(OSError):   # its folder too, cycle/, left empty
+                        if os.path.dirname(p) != d:
+                            os.rmdir(os.path.dirname(p))
     return n
 
 
