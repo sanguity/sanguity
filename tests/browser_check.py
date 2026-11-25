@@ -1516,6 +1516,9 @@ ALL721_JS = r"""async () => {
 # charts are drawn a frame after the tab: keepFocus (store.js) measured them as placeholders 150 px tall, and as they
 # took their heights the control went down past the window's foot, or under the phone's tab bar. After both frames, the
 # control has focus and is wholly in sight, clear of the top bar and the tab bar (html's scroll-padding, its box read).
+# #766: and where it was, 1.5 px at most, as the press is answered and once the charts are drawn: keepFocus brought it
+# into sight on the placeholders' layout, so it went to the window's foot (326 px on the ten years at 412 px) and stayed,
+# or showed there a frame; in sight, it was left where the charts above had moved it.
 # {n: presses, problems}. Async. test_performance.py reads it to check the ten years the same way
 FOCUS720_JS = r"""async () => {
   const frames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))), out = {n: 0, problems: []};
@@ -1529,12 +1532,13 @@ FOCUS720_JS = r"""async () => {
     const c = k === 'seg' ? seg(n)?.querySelector('button:not([aria-pressed=true])') : chip(n)?.querySelector('input');
     if (!c) { out.problems.push(`${n}${back}: not there`); break; }
     c.scrollIntoView({block: 'center'}); await frames();
-    c.focus(); c.click(); await frames(); await frames();
+    c.focus(); const t0 = c.getBoundingClientRect().top; c.click(); const t1 = document.activeElement.getBoundingClientRect().top; await frames(); await frames();
     const a = document.activeElement, r = a.getBoundingClientRect();
     out.n++;
     if (!(k === 'seg' ? a.closest('.view-seg') === seg(n) && a.getAttribute('aria-pressed') === 'true' : a.closest('label') === chip(n)))
       out.problems.push(`${n}${back}: focus on ${a === document.body ? 'the page' : a.tagName + ' ' + a.textContent.trim().slice(0, 30)}`);
     else if (!seen(a)) out.problems.push(`${n}${back}: at ${Math.round(r.top)} to ${Math.round(r.bottom)} in a window ${innerHeight} px tall, not wholly in sight`);
+    else if (Math.abs(t1 - t0) > 1.5 || Math.abs(r.top - t0) > 1.5) out.problems.push(`${n}${back}: at ${Math.round(t0)}, then ${Math.round(t1)} as it's drawn and ${Math.round(r.top)} once its charts are (#766)`);
   }
   return out;
 }"""
