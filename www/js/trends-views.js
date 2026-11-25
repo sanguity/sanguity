@@ -20,7 +20,7 @@ let tvMsg = "", tvBad = false, tvFormOpen = false, tvQuiet = false;
 async function tvStore(views, said, {quiet = false, was = CFG.trends.views} = {}) {   // quiet: shown beside the views, said by a toast instead (#263)
   let ok = false;
   try {
-    const r = await api(`profiles/${PROFILE.id}/settings/trends.views`, {method: "PUT", body: JSON.stringify({value: views, was})});
+    const r = await saveWhole(`profiles/${PROFILE.id}/settings/trends.views`, views, was);   // (util.js, #956)
     const j = await r.json().catch(() => ({}));
     if (r.status === 409) { const now = await api(`profiles/${PROFILE.id}/settings`).then(x => x.ok ? x.json() : null).catch(() => null); if (now) applySettings(now); }
     if (!r.ok) { tvMsg = typeof j.detail === "string" ? j.detail : `Couldn't save the views (${r.status}).`; tvBad = true; renderSeriesList(); return false; }

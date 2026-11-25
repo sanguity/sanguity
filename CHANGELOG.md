@@ -2337,6 +2337,11 @@ Everything on `main` so far; it becomes the first tagged release.
   key labs, tabs or milestones, Labs' saved views, the visit summary's measures ticked, the Admin page's attachment
   kinds) is saved with the one it was made from, and refused if it changed since: the page reads it again, shows it
   as it is now and says so, and the change is made again on that.
+- **A quick second tick of a list saves, even on a slow connection** (#956): since #923 a list saved whole is refused if
+  it changed elsewhere since the page read it, but a second tick made before the first was answered (the visit
+  summary's measures, the Admin page's kinds of attachment, on a connection taking 0.4 s an answer) was refused as
+  changed "in another tab or by someone else", its box unticked again. Now one helper saves every such list, one save
+  of it at a time, each going on from the page's own save before it.
 - **A medication renamed takes its reminders, doses and side effects with it** (#921, #954): renamed in its drawer
   ("Lisinopril 10 mg tablet" to "Zestril 10 mg tablet"), a medication was grouped under its new name, but its
   reminders left the calendar feed and were listed under no medication, its doses stayed behind under the old name,

@@ -271,15 +271,23 @@ async function tickSave(st, input) {
   const pid = PID, msg = $("#sumTickedMsg"), name = $("#profile").selectedOptions[0]?.textContent.replace(/ \([^)]*\)$/, "");
   const value = [...document.querySelectorAll("#sumTickedBoxes input:checked")].map(i => i.value), was = {value: st.value, from: st.from};
   const path = `profiles/${pid}/settings/summary.ticked`, said = `Saved “${st.label}”.`, same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  try { await call(path, "PUT", {value, was: st.value}); }   // (#923) refused if changed since, and drawn again as it is
-  catch (e) { input.checked = !input.checked; if (e.status === 409) { await ticked(); $("#" + input.id)?.focus(); } sayIn(msg, e.message, true); return; }
+  // (#923, #956: util.js saveWhole) refused if changed elsewhere since, and drawn again as it is; a second tick made
+  // before the first is answered goes on from it
+  const r = await saveWhole(path, value, st.value).catch(e => ({ok: false, status: 0, json: async () => ({detail: e.message})}));
+  if (!r.ok) {
+    const j = await r.json().catch(() => ({}));
+    input.checked = !input.checked;
+    if (r.status === 409) { await ticked(); $("#" + input.id)?.focus(); }
+    sayIn(msg, typeof j.detail === "string" ? j.detail : `Not saved (${r.status}).`, true);
+    return;
+  }
   Object.assign(st, {value, from: "profile"});
   const box = document.querySelector(`#sections input[value="${input.value}"]`);
   if (box) { box.checked = input.checked; pvKeep = input.id; previewSoon(); }
   sayIn(msg, said, false, {say: false});
   toast(said, {action: "Undo", onAction: async () => {   // what it was, if it's still as ticked here
     const now = await tickedSetting(pid), back = !!now && same(now.value, value);
-    if (back) { if (was.from === "default") await call(path, "DELETE"); else await call(path, "PUT", {value: was.value, was: now.value}); }
+    if (back) { if (was.from === "default") await call(path, "DELETE"); else await saveWhole(path, was.value, now.value); }
     const text = back ? `Undone: “${st.label}” is as before.` : `“${st.label}” was changed since, so it's left as it is.`;
     if (PID !== pid) { toast(`${name}: ${text}`); return; }   // another profile shown now (#367)
     if (back && box) { box.checked = !input.checked; pvKeep = input.id; previewSoon(); }

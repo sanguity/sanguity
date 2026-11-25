@@ -15991,6 +15991,28 @@ def main():
             page.wait_for_function("document.querySelector('#sec-sync .set-msg').textContent.includes('back to')", timeout=10000)
             check("…and Reset to defaults puts them back at once, asking nothing (#272), with an Undo", js(stale) == 3 and not js("!!document.querySelector('dialog[open]')")
                   and js("document.querySelector('#sgToasts .sg-toast:last-child .sg-toast-text').textContent") == "The sync defaults are back to Sanguity's own.", js(stale))
+            # #956: two kinds of attachment unticked quickly on a slow connection (each answer 0.4 s), the second before
+            # the first is answered: it goes on from the first (util.js saveWhole), not refused as changed elsewhere (#923)
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            kinds956 = "#sec-sync [data-key='sync.attachTypes'] input[type=checkbox]"
+            had956 = page.locator(kinds956).evaluate_all("bs => bs.map(b => [b.value, b.checked])")
+            cdp956 = page.context.new_cdp_session(page)
+            cdp956.send("Network.enable")
+            cdp956.send("Network.emulateNetworkConditions", {"offline": False, "latency": 400, "downloadThroughput": -1, "uploadThroughput": -1})
+            page.locator(kinds956).nth(0).click()
+            page.wait_for_timeout(300)
+            page.locator(kinds956).nth(1).click()
+            page.wait_for_timeout(3000)   # (both answered, and the page drawn again)
+            cdp956.send("Network.emulateNetworkConditions", {"offline": False, "latency": 0, "downloadThroughput": -1, "uploadThroughput": -1})
+            types956 = "fetch('api/settings/install').then(r => r.json()).then(d => d.sections.find(s => s.id === 'sync').settings.find(s => s.key === 'sync.attachTypes').value)"
+            got956 = [js(types956), js("document.querySelector('#sec-sync .set-msg').textContent"),
+                      page.locator(kinds956).evaluate_all("bs => bs.map(b => [b.value, b.checked])")]
+            want956 = [[v for v, on in had956[2:] if on], "Saved “Kinds of attachment fetched”.", [[v, False] for v, _ in had956[:2]] + had956[2:]]
+            check("Admin: two kinds of attachment unticked quickly on a slow connection (0.4 s an answer) both save, the second going on from "
+                  "the first, not refused as changed elsewhere (#956)", all(on for _, on in had956) and got956 == want956, [had956, got956])
+            cdp956.detach()
+            js("fetch('api/settings/install/reset', {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, body: JSON.stringify({section: 'sync'})}).then(r => r.status)")
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             page.click("#admNav a[data-group=directory]")
             dir_text = page.inner_text("#directory")
             check("Admin: a group picked in the sidebar is the one shown, and the address says so",
@@ -16709,6 +16731,31 @@ def main():
             check("…each measure ticked there by keyboard, at 1400×900, 1100×600, 844×390 and 390×844, leaves its box in view and not under "
                   "a toast, the preview above it drawn again (#571: off screen, or under the toasts)",
                   len(tick571) == 4 and redrawn571 >= 4 and not any(tick571.values()), [redrawn571, tick571])
+            # #956: two measures ticked quickly on a slow connection (each answer 0.4 s), the second before the first is
+            # answered: it goes on from the first (util.js saveWhole), not refused as changed elsewhere (#923)
+            page.reload()
+            page.wait_for_selector("#sumTicked:not([hidden]) #sumTickedBoxes input", timeout=10000)
+            settle(300)
+            cdp956 = page.context.new_cdp_session(page)
+            cdp956.send("Network.enable")
+            cdp956.send("Network.emulateNetworkConditions", {"offline": False, "latency": 400, "downloadThroughput": -1, "uploadThroughput": -1})
+            ticks956 = js("[...document.querySelectorAll('#sumTickedBoxes input')].slice(0, 2).map(i => i.value)")
+            for k956, v956 in enumerate(ticks956):
+                page.click(f"#sumTick-{v956}")
+                if not k956:
+                    page.wait_for_timeout(300)
+            page.wait_for_function("vs => vs.every(v => document.getElementById('sumTick-' + v).checked) && document.getElementById('sumTickedMsg').textContent === 'Saved “Measures ticked at first”.'",
+                                   arg=ticks956, timeout=10000)
+            page.wait_for_timeout(1500)   # (the second's answer)
+            cdp956.send("Network.emulateNetworkConditions", {"offline": False, "latency": 0, "downloadThroughput": -1, "uploadThroughput": -1})
+            got956 = [js(api_get, "profiles/1/settings")["summary"]["ticked"], js("document.getElementById('sumTickedMsg').textContent"),
+                      js("[...document.querySelectorAll('#sumTickedBoxes input:checked')].map(i => i.value)")]
+            check("the visit summary's measures ticked twice quickly on a slow connection (0.4 s an answer) both save, the second going on "
+                  "from the first, not refused as changed in another tab (#956)",
+                  got956 == [ticks956, "Saved “Measures ticked at first”.", ticks956], got956)
+            cdp956.detach()
+            js("fetch('api/profiles/1/settings/summary.ticked', {method: 'DELETE', headers: {'X-Sanguity': '1'}}).then(r => r.status)")   # as it was
+            js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             presets_open()   # back on Settings for the checks below
             check("…(the Labs view and the key labs' order put back as they were, for the checks below)",
                   js(api_put, ["profiles/1/settings/trends.views", saved_views]) == 200 and js(api_put, ["profiles/1/settings/overview.keyLabs", p2]) == 200)

@@ -466,7 +466,7 @@ function journalForm(j, preset, back) {
 async function jStoreGroups(groups, msg, was = CFG.journal?.groups, stale = null) {
   sayIn(msg, "Saving…");
   try {
-    const r = await api(`profiles/${PROFILE.id}/settings/journal.groups`, {method: "PUT", body: JSON.stringify({value: groups, was})});
+    const r = await saveWhole(`profiles/${PROFILE.id}/settings/journal.groups`, groups, was);   // (util.js, #956)
     const j = await r.json().catch(() => ({}));
     const said = typeof j.detail === "string" ? j.detail : `Couldn't save the groups (${r.status}).`;
     if (r.status === 409) {

@@ -361,6 +361,22 @@ const chgWords = (d, m, u = "") => +String(m).replace(/[^\d.]/g, "") === 0 ? "no
 const api = (path, opts = {}) => fetch("api/" + path, {cache: "no-store", credentials: "same-origin", ...opts,
   headers: {...(opts.method && opts.method !== "GET" ? {"X-Sanguity": "1", "Content-Type": "application/json"} : {}), ...opts.headers}});
 
+/* A whole-value setting (a list, a map) saved as the page made it from the value it read (read), which the server
+   refuses (409) if the setting holds another by then: a change made in another tab or by someone else (#923). One save
+   of a setting at a time from this page (#956), and one made while another of this page's is still on its way is sent
+   with what that one saves, not the read from before it: a second tick made before the first is answered goes on from
+   the first. -> the Response, as api() gives it */
+const WHOLE = new Map();   // path -> {q: the saves on their way, n: how many, value: what the last of them saves}
+function saveWhole(path, value, read, opts = {}) {
+  const s = WHOLE.get(path) || {q: Promise.resolve(), n: 0, value: undefined};
+  WHOLE.set(path, s);
+  const was = s.n ? s.value : read;
+  s.n++; s.value = value;
+  const run = s.q.then(() => api(path, {method: "PUT", body: JSON.stringify({value, was}), ...opts})).finally(() => { s.n--; });
+  s.q = run.catch(() => {});
+  return run;
+}
+
 /* The theme (#45): this browser's own choice (the light/dark toggle) wins, then the account's default (light, dark or
    "system"), remembered here so theme.js can apply it before the next page draws, then the system's. */
 function applyTheme(accountDefault) {

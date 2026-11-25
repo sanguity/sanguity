@@ -583,7 +583,7 @@ async function undoSave(base, secs, was, pid) {
     if (!w.wrote || !now[w.key] || !same(now[w.key].value, w.wrote.value)) { since.push(w.label); continue; }
     const path = `${base}/${encodeURIComponent(w.key)}`;
     if ((w.from === "default" || w.from === "install") && !base.startsWith("settings/")) await call(path, "DELETE");
-    else await call(path, "PUT", {value: w.value, ...wasOf(now[w.key].value)});
+    else await putSet(path, w.value, now[w.key].value);
     back.push(w);
   }
   const text = [back.length ? `Undone: ${quoted(back.map(w => w.label))} ${back.length === 1 ? "is" : "are"} as before.` : "",
@@ -608,9 +608,17 @@ async function undoSave(base, secs, was, pid) {
   if (clean.length) await load({sections: clean, text}, clean);
 }
 
-/* (#923) a whole value (a list, a map) is saved with the one it was made from: changed since, in another tab or by
-   someone else, the server refuses it (409) rather than lose that change under it */
-const wasOf = v => v !== null && typeof v === "object" ? {was: v} : {};
+/* a setting saved, as call() does: a whole value (a list, a map) by util.js saveWhole, with the one it was made from
+   (read), so one changed since in another tab or by someone else is refused (409, #923) rather than lost under it, and
+   this page's own saves of it go on from each other (#956) */
+async function putSet(path, value, read) {
+  if (read === null || typeof read !== "object") return call(path, "PUT", {value});
+  const r = await saveWhole(path, value, read);
+  if (r.status === 401) { location.replace("login.html"); throw new Error("signed out"); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error((typeof j.detail === "string" && j.detail) || (Array.isArray(j.detail) ? "Please check the fields." : r.status + " " + r.statusText)), {status: r.status});
+  return j;
+}
 /* “A”, “A” and “B”, “A”, “B” and “C” */
 const quoted = labels => labels.map((l, i) => (i === 0 ? "" : i === labels.length - 1 ? " and " : ", ") + `“${l}”`).join("");
 
@@ -711,7 +719,7 @@ async function saveSections(cards, msg, had) {
   const base = setBase(), pid = PID, done = [], was = [], secs = [];
   for (const card of cards) for (const it of card.sgItems.filter(x => x.counts())) {
     const value = it.value(), before = {key: it.st.key, label: it.st.label, value: it.st.value, from: it.st.from};
-    try { await call(`${base}/${encodeURIComponent(it.st.key)}`, "PUT", {value, ...wasOf(it.st.value)}); }
+    try { await putSet(`${base}/${encodeURIComponent(it.st.key)}`, value, it.st.value); }
     catch (e) {
       if (e.status === 409) {   // (#923) changed since: its section read again, as it is now, to make the change on
         sayIn(msg, (done.length ? `Saved ${quoted(done)}. ` : "") + e.message, true);
