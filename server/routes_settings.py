@@ -2,16 +2,19 @@
 resetting values. Who may change a value depends on its setting's scope: a profile's settings its owners and
 editors, a user's settings that user (on any profile shared with them), the install's settings admins. Every
 change passes main.guard's CSRF check like any other, and is logged: a profile's in its activity log, the others
-as account events. Values are never logged (they can hold lab names); only which setting changed. A whole value (a
-list, a map) that a page made from the one it read is sent with that one, its version ("was", #923), and refused (409)
-if the setting holds another by then: a change made since in another tab, or by someone else, is never lost under it."""
+as account events. A profile's or a person's values are never logged (they can hold lab names); only which setting
+changed. An install setting's change (#1006) asks for the admin's fresh check (main.fresh: 403 reauth_required), on
+either route, and its entry in the install log has the old and new values: none of the install's holds health
+information or a secret (one that could, private, would be logged by name only). A whole value (a list, a map) that a
+page made from the one it read is sent with that one, its version ("was", #923), and refused (409) if the setting
+holds another by then: a change made since in another tab, or by someone else, is never lost under it."""
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from . import accounts, activity, config, db as dbm, presets, settings
-from .main import _client_ip, admin, get_db, need, user
+from .main import _client_ip, admin, fresh, get_db, need, user
 
 router = APIRouter()
 
@@ -32,6 +35,54 @@ def _not_set_by_environment(d):
         raise HTTPException(409, f"“{d.label}” is set by the server's environment ({d.env}), so it can't be changed here. "
                                  f"To change it here, take {d.env} out of where the server is set up (.env, or the app's "
                                  "settings on TrueNAS or Unraid) and start it again.")
+
+
+def _held(db, d):
+    """(#1006) What an install setting holds in the app: its saved value, else its default (the one in force can be the
+    environment's instead, or the default while saved values are left out)."""
+    return settings.stored(db, "install").get(d.key, d.default)
+
+
+def _values(d, old, new):
+    """(#1006) The old and new value for the install log: by name only for a setting that could hold health
+    information (private); none of the install's does, and none is a secret."""
+    return {} if d.private else {"from": old, "to": new}
+
+
+def _save_install(db, s, d, body, request, now):
+    """(#1006) A change to an install setting, from either route: refused if the value isn't one it takes (400), nothing
+    to do if it holds that one already, else the fresh check (403 reauth_required), then saved and logged with the old
+    value and the new. now(): the value as a page shows it, for "was" (#923)."""
+    try:
+        value = d.clean(body.value)
+    except settings.SettingError as e:
+        raise HTTPException(400, str(e))
+    if value == _held(db, d):
+        return
+    fresh(request, s, "change a server setting")
+    with dbm.transaction(db):
+        _unchanged(body, now(), d)
+        old = _held(db, d)
+        settings.put(db, d.key, value, by=s["id"])
+        _log(db, s, None, "install", {"setting": d.key, "label": d.label, **_values(d, old, value)}, request)
+
+
+def _reset_install(db, s, defs, request, section=None, label=None):
+    """(#1006) Install settings back to their defaults: the fresh check when one has a saved value (403
+    reauth_required); logged with what each held and goes back to. Returns the keys that had one."""
+    have = settings.stored(db, "install")
+    if not any(d.key in have for d in defs):
+        return []
+    fresh(request, s, "reset a server setting")
+    with dbm.transaction(db):
+        have = settings.stored(db, "install")
+        gone = settings.clear(db, [d.key for d in defs], "install")
+        changes = [{"setting": d.key, "label": d.label, **_values(d, have.get(d.key), d.default)} for d in defs if d.key in gone]
+        if section and gone:
+            _log(db, s, None, "install", {"section": section, "label": label, "settings": gone, "reset": True, "changes": changes}, request)
+        elif gone:
+            _log(db, s, None, "install", {**changes[0], "reset": True}, request)
+    return gone
 
 
 def _log(db, s, pid, scope, detail, request):
@@ -91,6 +142,9 @@ def change(pid: int, key: str, body: Value, request: Request, s=Depends(user), d
         raise HTTPException(404, str(e))
     _check(db, s, pid, d, role)
     _not_set_by_environment(d)
+    if d.scope == "install":
+        _save_install(db, s, d, body, request, lambda: settings.effective(db, pid, s["id"])[key][0])
+        return settings.merged(db, pid, s["id"])
     try:
         with dbm.transaction(db):
             _unchanged(body, settings.effective(db, pid, s["id"])[key][0], d)
@@ -110,6 +164,9 @@ def reset_one(pid: int, key: str, request: Request, s=Depends(user), db=Depends(
     except settings.SettingError as e:
         raise HTTPException(404, str(e))
     _check(db, s, pid, d, role)
+    if d.scope == "install":
+        _reset_install(db, s, [d], request)
+        return settings.merged(db, pid, s["id"])
     with dbm.transaction(db):
         if settings.clear(db, [key], d.scope, pid, s["id"]):
             _log(db, s, pid, d.scope, {"setting": key, "label": d.label, "reset": True}, request)
@@ -133,9 +190,9 @@ def reset_section(pid: int, body: Section, request: Request, s=Depends(user), db
                and not (d.scope == "install" and accounts.admin_needs_second_factor(db, s))]
     if not allowed:
         raise HTTPException(403, "You can't change the settings in this section.")
-    reset = []
+    reset = _reset_install(db, s, [d for d in allowed if d.scope == "install"], request, body.section, titles[body.section])
     with dbm.transaction(db):
-        for scope in settings.SCOPES:
+        for scope in ("profile", "user"):
             gone = settings.clear(db, [d.key for d in allowed if d.scope == scope], scope, pid, s["id"])
             if gone:
                 _log(db, s, pid, scope, {"section": body.section, "label": titles[body.section], "settings": gone, "reset": True}, request)
@@ -237,9 +294,10 @@ def reset_user_section(body: Section, request: Request, s=Depends(user), db=Depe
 # setting that stands for it, if one does (none of them is a secret).
 
 def _install_item(d, have):
-    if d.env:
+    if d.env:   # (#1006) "saved": a value saved here that isn't the one in force (the environment's is, or it's left out)
         value, src = settings.in_force(d.key)
-        return {**d.public(), "value": value, "from": src, "env": d.env, "can_change": src != "environment"}
+        return {**d.public(), "value": value, "from": src, "env": d.env, "can_change": src != "environment",
+                **({"saved": have[d.key]} if d.key in have and src != "install" else {})}
     return {**d.public(), "value": have.get(d.key, d.default), "from": "install" if d.key in have else "default", "can_change": True}
 
 
@@ -259,7 +317,7 @@ def _install_sections(db):
         items = [_install_item(d, have) for d in settings.SETTINGS.values() if d.section == sid and d.scope == "install"]
         if items:
             out.append({"id": sid, "title": title, "help": help, "settings": items})
-    return {"sections": out, "variables": _variables()}
+    return {"sections": out, "variables": _variables(), "saved_ignored": config.saved_ignored()}
 
 
 @router.get("/api/settings/install")
@@ -277,13 +335,7 @@ def change_install_value(key: str, body: Value, request: Request, s=Depends(admi
     if d.scope != "install":
         raise HTTPException(404, "That setting isn't one of the server's.")
     _not_set_by_environment(d)
-    try:
-        with dbm.transaction(db):
-            _unchanged(body, _install_item(d, settings.stored(db, "install"))["value"], d)
-            settings.put(db, key, body.value, by=s["id"])
-            _log(db, s, None, "install", {"setting": key, "label": d.label}, request)
-    except settings.SettingError as e:
-        raise HTTPException(400, str(e))
+    _save_install(db, s, d, body, request, lambda: _install_item(d, settings.stored(db, "install"))["value"])
     return _install_sections(db)
 
 
@@ -291,13 +343,10 @@ def change_install_value(key: str, body: Value, request: Request, s=Depends(admi
 def reset_install_section(body: Section, request: Request, s=Depends(admin), db=Depends(get_db)):
     """Back to the defaults: every install-wide setting of the section."""
     titles = {sid: title for sid, title, _ in settings.SECTIONS}
-    keys = [k for k, d in settings.SETTINGS.items() if d.section == body.section and d.scope == "install"]
-    if not keys:
+    defs = [d for d in settings.SETTINGS.values() if d.section == body.section and d.scope == "install"]
+    if not defs:
         raise HTTPException(404, "There's no such section.")
-    with dbm.transaction(db):
-        gone = settings.clear(db, keys, "install")
-        if gone:
-            _log(db, s, None, "install", {"section": body.section, "label": titles[body.section], "settings": gone, "reset": True}, request)
+    gone = _reset_install(db, s, defs, request, body.section, titles[body.section])
     return {"reset": gone, **_install_sections(db)}
 
 

@@ -35,7 +35,8 @@ CONNECT_ALLOW_HTTP = os.environ.get("CONNECT_ALLOW_HTTP", "") == "1"
 # when the variable is set (not empty: the compose files pass "${NAME:-}", which is empty while .env doesn't set it),
 # else the value an admin saved in the app, else the default below. Only a variable that an install setting of
 # settings.py's registry stands for (define(..., env=NAME), which sets Var.setting) can have a saved value; the rest
-# are the environment's or their default. source(NAME) says which it is.
+# are the environment's or their default. source(NAME) says which it is. With SANGUITY_SAVED_SETTINGS=off, saved values
+# are left out (#1006): the way back in when one locks everyone out (python -m server.manage config reset, too).
 #
 # Adding one: a var() line below, then setting("NAME") where it's used, its line in both compose files' app service
 # ("NAME: ${NAME:-}", deploy/check.py checks), and in .env.example and the README's configuration. To let admins change
@@ -115,6 +116,12 @@ var("RESTORE_KEEP_DAYS", 30, _days, about="what a restore replaced is deleted th
                                           "reads its own, watch/receiver.py)")
 
 saved = None   # settings.py sets it: () -> {key: value} of the install settings saved in the app
+SAVED_OFF = ("off", "0", "no", "false")
+
+
+def saved_ignored():
+    """SANGUITY_SAVED_SETTINGS=off: the values saved in the app are left out, for as long as it's set (#1006)."""
+    return os.environ.get("SANGUITY_SAVED_SETTINGS", "").strip().lower() in SAVED_OFF
 
 
 def lookup(name):
@@ -126,7 +133,7 @@ def lookup(name):
             return "environment", v.read(text.strip())
         except ValueError:   # unreadable: as if it weren't set (unreadable() says so at start)
             pass
-    if v.setting and saved is not None:
+    if v.setting and saved is not None and not saved_ignored():
         have = saved()
         if v.setting in have:
             return "install", v.keep(have[v.setting])

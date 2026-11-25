@@ -823,7 +823,7 @@ config.saved = saved_values
 
 def in_force(key):
     """(value, where it comes from) of an install setting that stands for a variable: "environment" when it's set,
-    "install" when saved here, else "default"."""
+    "install" when saved here (and not left out: SANGUITY_SAVED_SETTINGS=off, #1006), else "default"."""
     src, value = config.lookup(SETTINGS[key].env)
     return (list(value) if isinstance(value, tuple) else value), src
 
