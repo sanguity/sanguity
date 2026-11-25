@@ -4,6 +4,9 @@
 "use strict";
 const KIND_NAME = {visit: "Visits", contact: "Chart activity", procedure: "Procedures", imaging: "Imaging", study: "Reports & studies",
   message: "Messages", appt_msg: "Appointment messages", auto_msg: "Automated messages", letter: "Letters", document: "Documents"};   // #237
+/* a server setting's value in the install log (#1006): on or off, a list, a number or some text */
+const setVal = v => v === true ? "on" : v === false ? "off" : Array.isArray(v) ? (v.length ? v.join(", ") : "none")
+  : v === "" || v == null ? "none" : String(v);
 const WHAT = {
   view: () => "opened the records",
   document: d => d.title ? `opened the document “${d.title}”` : `opened ${d.name || "a document"}`,   // its record's title (#342); before, its file's name
@@ -49,7 +52,8 @@ const WHAT = {
   "watch.secret": d => d.ended ? `took away the watch receiver secret ${d.maker || "someone"} made, as they can no longer change this profile (their phone can't upload)`   // (#929)
     : d.rotated ? "made a new watch receiver secret (the old one stopped working)" : "made the watch receiver secret",
   "settings.user": d => d.section ? `reset their own ${d.label || d.section} settings` : `changed their own setting “${d.label || d.setting}”${d.reset ? " back to its default" : ""}`,
-  "settings.install": d => d.section ? `reset the server's ${d.label || d.section} settings` : `changed the server setting “${d.label || d.setting}”${d.reset ? " back to its default" : ""}`,
+  "settings.install": d => d.section ? `reset the server's ${d.label || d.section} settings` + (d.changes?.length ? ` (${d.changes.map(c => `“${c.label}” from ${setVal(c.from)} to ${setVal(c.to)}`).join("; ")})` : "")
+    : `${d.reset ? "put" : "changed"} the server setting “${d.label || d.setting}”${d.reset ? " back to its default" : ""}` + ("to" in d ? ` (from ${setVal(d.from)} to ${setVal(d.to)})` : ""),   // (#1006: its values)
   calendar: d => ({create: `made a calendar feed (${d.details === "full" ? "full" : "minimal"} details)`, rotate: "gave their calendar feed a new address",
     change: `changed their calendar feed to ${d.details === "full" ? "full" : "minimal"} details${d.labs ? ", with expected labs" : ", without expected labs"}`,
     revoke: d.username ? `turned off ${d.username}’s calendar feed` : "turned off their calendar feed"}[d.change] || "changed a calendar feed"),
