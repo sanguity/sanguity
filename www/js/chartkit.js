@@ -466,10 +466,12 @@ function ckReadFit(boxes) {
     return [box, at, whole, sizer];
   });
   const wide = e => e.getBoundingClientRect().width;
-  for (const job of jobs) job.push(wide(job[0]._ckProbe)), job[1] &&= new Map([...job[1]].map(([key, e]) => [key, wide(e)])), job[2] &&= job[2].map(wide);
-  jobs.forEach(([box, w, whole, sizer, p], j) => {
+  for (const job of jobs) job.push(job[0]._ckProbe.getBoundingClientRect()), job[1] &&= new Map([...job[1]].map(([key, e]) => [key, wide(e)])), job[2] &&= job[2].map(wide);
+  jobs.forEach(([box, w, whole, sizer, r], j) => {
     sizer?.remove();
+    const p = r.width, lines = box._ckProbe.childElementCount + 1;
     if (!p) return;
+    box._ckW = p; box._ckLh = r.height / lines;   // what it was fitted to (ckRooms)
     if (w) {
       box._ckKey = keys[j];
       box._ckWide = box._ckToks.map((ws, t) => {
@@ -486,16 +488,23 @@ function ckReadFit(boxes) {
     }
     let n = 1;
     for (const ws of box._ckWide) n = Math.max(n, ckWrap(ws, p));
-    if (n !== box._ckProbe.childElementCount + 1) box._ckProbe.replaceChildren("\u200b", ...Array.from({length: n - 1}, () => [el("br"), "\u200b"]).flat());   // (each line the box's)
+    if (n !== lines) box._ckProbe.replaceChildren("\u200b", ...Array.from({length: n - 1}, () => [el("br"), "\u200b"]).flat());   // (each line the box's)
   });
 }
 /* fitted again as the window's resized (before it's laid out, so it's drawn so), as a font loads, and in the next frame
-   as a probe's size changes otherwise (a scroll bar shown, the text's size): never inside the observer's own, which
-   would change the page under the page's other observers (util.js sgFoot) */
+   as a probe's width or line changes otherwise (a scroll bar shown, the text's size), all of them once: never inside
+   the observer's own, which would change the page under the page's other observers (util.js sgFoot), and never for
+   its own lines written, which change only its height (each fit was followed by another, a frame later, after every
+   draw and resize: on a slow machine, more for the page to do as a tab's first drawn, #900's CI failure) */
 const ckReadAll = () => ckReadFit([...document.querySelectorAll(".ck-read")]);
+const ckLater = new Set();
+let ckLaterRaf = 0;
 const ckRooms = new ResizeObserver(es => {
-  const bs = es.filter(e => e.target.isConnected || ckRooms.unobserve(e.target)).map(e => e.target.parentElement);   // (one taken out: no longer watched)
-  if (bs.length) requestAnimationFrame(() => ckReadFit(bs));
+  for (const {target: p, contentRect: r} of es) {
+    if (!p.isConnected) { ckRooms.unobserve(p); continue; }   // (one taken out: no longer watched)
+    if (r.width && (r.width !== p.parentElement._ckW || Math.abs(r.height / (p.childElementCount + 1) - p.parentElement._ckLh) > .01)) ckLater.add(p.parentElement);
+  }
+  if (ckLater.size && !ckLaterRaf) ckLaterRaf = requestAnimationFrame(() => { const bs = [...ckLater]; ckLater.clear(); ckLaterRaf = 0; ckReadFit(bs); });
 });
 addEventListener("resize", ckReadAll);
 document.fonts.addEventListener("loadingdone", () => { ckFonts++; ckReadAll(); });

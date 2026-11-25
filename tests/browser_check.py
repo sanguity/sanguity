@@ -635,19 +635,23 @@ def tab_click(pg, sel):
     four and More since #275) is picked from it, More opened first, as a person would. Asked once the bar has fitted its
     tabs to the room it has, a few frames after a resize or the drawer closing (till then a tab can still look to be in
     the bar, or be under More with More put away), and More clicked when the tab is under it twice running, 150 ms
-    apart (a resized window switches its menus between a phone's sheets and popovers as it settles)."""
+    apart (a resized window switches its menus between a phone's sheets and popovers as it settles). A tab in More's
+    sheet or popover is there only while it's open: as it closes, after a tab was picked from it, it slides away and is
+    drawn till its transition ends, later as the tab picked draws on a slow machine, and a click sent it then found it
+    gone and waited 30 s (CI's runner, after Labs: #900's room made Labs' first draw longer)."""
     tab, more, last = pg.locator(sel), pg.locator("#tabMoreBtn"), None
     frames = "() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r))))"
     pg.evaluate(frames)
     under = "s => !!document.querySelector(s).closest('#tabMoreList')"
+    there = lambda: tab.is_visible() and pg.evaluate("s => !document.querySelector(s).closest('dialog:not([open]), [popover]:not(:popover-open)')", sel)
     for _ in range(40):
-        if tab.is_visible():
+        if there():
             break
         now = "more" if pg.evaluate(under, sel) and more.is_visible() else "wait"
         if now == last == "more":
             more.click()
             for _ in range(20):
-                if tab.is_visible():
+                if there():
                     break
                 pg.wait_for_timeout(150)
             else:
@@ -19592,6 +19596,61 @@ def main():
                     reach[f"{w}: focus under the tabs"] = js("() => [document.activeElement.textContent, document.activeElement.getBoundingClientRect().bottom]")
             check("…every tab reached from it and opened, at 390, 375 and 320 px; from the keyboard the tabs come after the profile menu and before Add; "
                   "a control under the bar is scrolled clear of it as it takes focus (#268)", not reach, reach)
+            # …and with the CPU four times slower, as on CI's runner, where this check stopped (#900's room): Labs picked
+            # from More, then Costs, and the click on Costs waited 30 s for it. tab_click took Costs, in More's sheet as it
+            # slid away after Labs was picked from it, for there (it's drawn till the sheet's closing transition ends, later
+            # as Labs draws), and the sheet had gone when the click came. And each readout's room was fitted again a frame
+            # after every fit, its own lines written changing its probe's size: after a resize or a draw, twice. At 390,
+            # 375 and 320 px with the CPU four times slower: the Timeline, Labs and Costs, each from More, four times
+            # each, each opened; and from a resize, on Labs, each readout fitted once (by the resize, or drawn again by
+            # the page), the page still for a second within a second of it
+            # (each readout's fits counted, and what's on the page, from just before the resize, SETTLE900_ON, for ms after it)
+            SETTLE900_ON = r"""() => { const fits = window.__fits900 = new Map(), was = window.__was900 = ckReadFit; window.__t900 = performance.now();
+              ckReadFit = bs => { for (const b of bs) if (b._ckProbe?.isConnected) fits.set(b, (fits.get(b) || 0) + 1); return was(bs); }; }"""
+            SETTLE900 = r"""async ms => {
+              const snap = () => JSON.stringify([document.documentElement.scrollHeight,
+                ...[...document.querySelectorAll('#charts .chart, .ck-read, #tabMoreBtn')].map(e => (r => [r.top, r.height, r.width].map(Math.round))(e.getBoundingClientRect())),
+                ...[...document.querySelectorAll('.ck-probe')].map(p => p.childElementCount)]);
+              let last = snap(), moved = 0;
+              try { while (performance.now() - __t900 < ms) { await new Promise(r => requestAnimationFrame(r)); const s = snap(); if (s !== last) { last = s; moved = performance.now() - __t900; } } }
+              finally { ckReadFit = __was900; }
+              return [Math.max(0, ...__fits900.values()), Math.round(moved)]; }"""
+            cdp900s = page.context.new_cdp_session(page)
+            was900s, bad900s = js("location.pathname + location.search + location.hash"), {}
+            cdp900s.send("Emulation.setCPUThrottlingRate", {"rate": 4})
+            try:
+                for w in (390, 375, 320):
+                    page.set_viewport_size({"width": w, "height": 800})
+                    page.goto(base + "/")
+                    page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+                    for n in range(4):
+                        for t in ("timeline", "labs", "costs"):
+                            try:
+                                tab_click(page, "#tab-" + t)
+                                settle(200)
+                                if js("state.tab") != t:
+                                    bad900s[f"{w}: {t}, round {n + 1}"] = js("state.tab")
+                            except Exception as e:   # (the click waited 30 s)
+                                bad900s[f"{w}: {t}, round {n + 1}"] = str(e).splitlines()[0][:120]
+                                page.keyboard.press("Escape")
+                    tab_click(page, "#tab-labs")
+                    settle(1500)
+                    page.set_viewport_size({"width": w + 30, "height": 800})
+                    settle(1500)
+                    js(SETTLE900_ON)
+                    page.set_viewport_size({"width": w, "height": 800})
+                    fitted, moved = js(SETTLE900, 2500)
+                    if fitted != 1 or moved > 1500:
+                        bad900s[f"{w}: a resize"] = f"a readout fitted {fitted} times, the page last moved {moved} ms after it"
+            finally:
+                cdp900s.send("Emulation.setCPUThrottlingRate", {"rate": 1})
+                cdp900s.detach()
+            page.set_viewport_size({"width": 320, "height": 800})
+            page.goto(base + was900s)
+            page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+            check("…and with the CPU four times slower, at 390, 375 and 320 px: the Timeline, Labs and Costs, each picked from More four times, "
+                  "each opened (a tab in More's sheet as it slid away was clicked, gone by then: #900's CI failure); after a resize each Labs "
+                  "readout's room fitted once, not again for its own lines, and the page still within 1.5 s", not bad900s, bad900s)
             # under 500 px tall (a phone on its side, 400% zoom) the bar would take too much of the screen: the tabs are a
             # row in the top bar again, scrolling sideways, and the top bar scrolls away with the page (#308)
             page.set_viewport_size({"width": 375, "height": 450})
