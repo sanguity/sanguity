@@ -9380,6 +9380,39 @@ def main():
                 page.focus("#dbody .mr-time button")
                 check("…and that tip covers no control, shown by focus or the pointer, above Remove, at 360, 412, 900 and 1400 px, as usual and with text at "
                       "200%, the form at rest and its times at the top of the drawer (#977)", n977 == 16 and not bad977, bad977)
+                # #986: …and a tap on it shows that reason beside it, its tip, as hovering does: on a phone it went only to the
+                # form's status line, under the window's foot (y=1111 at 412 px with 200% text). A touch screen at 412 px with
+                # text at 200% and 360 px as usual, light and dark: tapped, the tip says it, within 12 px of Remove (above or
+                # below it, overlapping it across) and in the window, the button described by it, the time kept; a tap
+                # elsewhere puts it away
+                c986 = browser.new_context(storage_state=page.context.storage_state(), bypass_csp=True, has_touch=True, is_mobile=True, viewport={"width": 412, "height": 860})
+                p986, bad986 = c986.new_page(), {}
+                TAP986 = r"""() => { const t = document.getElementById('sgTip'), rm = document.querySelector('#dbody .mr-time > .btn'), r = rm.getBoundingClientRect();
+                  if (!t?.matches(':popover-open')) return ['no tip', document.querySelector('#dbody .jform > .edit-msg').textContent];
+                  const b = t.getBoundingClientRect(), gap = b.bottom <= r.top + 1 ? r.top - b.bottom : b.top >= r.bottom - 1 ? b.top - r.bottom : -1;
+                  return [t.textContent, gap >= 0 && gap <= 12 && b.left < r.right && r.left < b.right && b.top >= 0 && b.bottom <= innerHeight && b.left >= 0 && b.right <= innerWidth,
+                    (rm.getAttribute('aria-describedby') || '').split(' ').includes('sgTip'), document.querySelectorAll('#dbody .mr-time').length]; }"""
+                for w986, big986, theme986 in ((412, True, "light"), (412, True, "dark"), (360, False, "light"), (360, False, "dark")):
+                    p986.set_viewport_size({"width": w986, "height": 860})
+                    p986.goto(f"{base}/?profile=1")
+                    p986.wait_for_function("() => typeof booted !== 'undefined' && booted", timeout=20000)
+                    p986.evaluate("([t, css]) => { document.documentElement.dataset.theme = t; const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = css ? [s] : []; }",
+                                  [theme986, BIG_TEXT_CSS if big986 else ""])
+                    p986.evaluate("k => { openMedication(MEDS.find(m => m.key === k)); [...document.querySelectorAll('#dbody button')].find(b => /^Add (a|another) reminder$/.test(b.textContent)).click(); }", cur["key"])
+                    p986.wait_for_timeout(800)   # (the sheet's rise)
+                    bx986 = p986.locator("#dbody .mr-time > .btn").bounding_box()
+                    p986.touchscreen.tap(bx986["x"] + bx986["width"] / 2, bx986["y"] + bx986["height"] / 2)
+                    p986.wait_for_timeout(300)
+                    got986 = p986.evaluate(TAP986)
+                    bx986 = p986.locator("#dbody .jform .jlabel >> nth=1").bounding_box()   # ("Days")
+                    p986.touchscreen.tap(bx986["x"] + 4, bx986["y"] + bx986["height"] / 2)
+                    p986.wait_for_timeout(300)
+                    gone986 = p986.evaluate("() => !document.getElementById('sgTip')?.matches(':popover-open')")
+                    if got986 != ["A reminder needs a time", True, True, 1] or not gone986:
+                        bad986[f"{w986} px{', text at 200%' if big986 else ''}, {theme986}"] = [got986, "" if gone986 else "kept after a tap elsewhere"]
+                c986.close()
+                check("…and a tap on it shows that reason beside it, as its tip, in the window, on a touch screen at 412 px with text at 200% and 360 px as "
+                      "usual, light and dark, a tap elsewhere putting it away (#986: said only in the form's status line, out of sight)", not bad986, bad986)
                 page.click("#dbody button:text-is('Add another time')")
                 # #867: the time added is said in the form's status line, in place of the last ("1 time left" stayed)
                 add867 = js("[document.querySelector('#dbody .jform > .edit-msg').textContent, document.activeElement.getAttribute('aria-label'), "
