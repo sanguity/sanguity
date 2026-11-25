@@ -173,10 +173,10 @@ def ready():
 
 def addresses(request_host=""):
     """The upload addresses to give the phone app."""
-    if config.WATCH_UPLOAD_URL:
-        return [config.WATCH_UPLOAD_URL]
+    if (url := config.setting("WATCH_UPLOAD_URL")):
+        return [url]
     hosts = []
-    for o in sorted(config.PUBLIC_ORIGINS):
+    for o in sorted(config.setting("PUBLIC_ORIGINS")):
         h = urlsplit(o).hostname
         if h and h not in hosts:
             hosts.append(h)
@@ -184,7 +184,7 @@ def addresses(request_host=""):
         h = urlsplit("//" + request_host).hostname
         if h:
             hosts.append(h)
-    return [f"http://{'[' + h + ']' if ':' in h else h}:{config.RECEIVER_PORT}/ingest" for h in hosts]
+    return [f"http://{'[' + h + ']' if ':' in h else h}:{config.setting('RECEIVER_PORT')}/ingest" for h in hosts]
 
 
 def mask(secret):

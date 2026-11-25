@@ -594,7 +594,7 @@ def start_app():
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]
     from server import config
-    config.PUBLIC_ORIGINS.add(f"http://127.0.0.1:{port}")   # the return address connected sources sign in back to
+    os.environ["PUBLIC_ORIGINS"] = f"http://127.0.0.1:{port}"   # the return address connected sources sign in back to
     config.CONNECT_ALLOW_HTTP = True                         # the fake SMART on FHIR server is plain HTTP on this machine
     global SHL
     sys.path.insert(0, os.path.join(ROOT, "tests"))

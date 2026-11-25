@@ -407,13 +407,13 @@ class Links(unittest.TestCase):
 
     def test_size_and_file_caps(self):
         link = self.srv.share({"resourceType": "Bundle", "type": "collection", "entry": [], "pad": "x" * 200_000})
-        with mock.patch.object(config, "SHL_MAX_BYTES", 50_000):
+        with mock.patch.object(shl, "max_bytes", lambda: 50_000):
             r = self.post("import", {"link": link, "confirm": True})
         self.assertEqual(r.status_code, 413, r.text)
         key = os.urandom(32)
         jwe = shl.encrypt(json.dumps(shl_server.bundle()).encode(), key)
         self.srv.manifest("/shl/many", [(shl.FHIR, jwe)] * 3)
-        with mock.patch.object(config, "SHL_MAX_FILES", 2):
+        with mock.patch.dict(os.environ, {"SHL_MAX_FILES": "2"}):
             r = self.post("import", {"link": shl.encode(self.srv.base + "/shl/many", key), "confirm": True})
         self.assertEqual(r.status_code, 413, r.text)
 

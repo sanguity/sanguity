@@ -5,7 +5,8 @@
   python3 tests/docker_smoke.py --code "$(docker compose logs app | grep -o 'Setup code: [A-Z0-9-]*' | tail -1 | cut -d' ' -f3)"
 
 Options: --base URL (default http://127.0.0.1:8730), --receiver URL (also check the watch receiver answers),
---code CODE (the setup code from the app's log; required while no account exists). Standard library only.
+--code CODE (the setup code from the app's log; required while no account exists). Standard library only. It expects
+an install whose .env sets none of the server's settings (.env.example's commented-out ones), as CI's.
 Exits non-zero, listing what failed, if anything did.
 """
 import argparse, http.cookiejar, json, sys, urllib.error, urllib.request
@@ -105,6 +106,13 @@ def main():
         st, _, body = req("/api/backups")
         watch = (json.loads(body).get("watch") or {}) if st == 200 else {}
         check("backups can see the watch receiver's folder", watch.get("visible") is True, (st, watch))
+        # (#999) an install with no .env sets none of the server's settings: none shows as set by the environment (so
+        # fixed), as the compose files pass each as ${NAME:-}, the all-in-one container none, unless given
+        st, _, body = req("/api/settings/install")
+        variables = (json.loads(body).get("variables") or {}) if st == 200 else {}
+        set_here = sorted(k for k, v in variables.items() if v.get("from") == "environment")
+        check("none of the server's settings is set by the environment without a .env (#999)",
+              st == 200 and len(variables) > 20 and not set_here, (st, set_here))
 
         # ---- an upload through nginx: one file far above the 64 KB every other API request is held to
         check("the import page is served", req("/import.html", signed_in=False)[0] == 200)
