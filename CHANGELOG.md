@@ -3474,6 +3474,11 @@ Everything on `main` so far; it becomes the first tagged release.
   Timeline's gutter and beside the Medications tab's lane was cut to fit ("Acyclo…" at 200% text on a phone, and
   shortened at the usual size too), the whole name only in a tooltip a touch screen can't show. Each name is now
   whole: on as many lines as it needs beside its row, or over its row where a word of it doesn't fit beside it.
+- **Date and time fields show their whole date with larger text** (#797): Settings → Milestones' date column, the
+  period's custom dates on a phone and Type records in's date and time cut their year with larger text ("04/14/20",
+  "03/14/2"), and Type records in's time was cut on a wide screen too ("10:45 AN"). Each is now at least as wide as
+  its date or time: the column grows, the second date goes on a line of its own, or the date and the time each take
+  a line on a narrow phone.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
