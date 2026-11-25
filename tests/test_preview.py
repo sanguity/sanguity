@@ -1054,6 +1054,75 @@ class Preview(unittest.TestCase):
         self.assertEqual(said(pid), {**before, "Potassium, Blood": [(3.5, 5.1, "", "3.5-5.1", ""), (3.5, 5.2, "", "3.5-5.2", "")]},
                          "the hospital's updated in place, the plan's copy as it was")
 
+    def test_another_servers_result_with_the_same_ids_is_never_updated_in_place(self):   # #970
+        """The rows rule (#869, #885) took a result for the same record by its own id alone (a FHIR Observation's, a
+        report's, a C-CDA organizer's), never asking whose: hospital A's FHIR export (Potassium 5.05, 3.5–5.0, High, in
+        report bmp-1), then clinic B's with the same ids and its own range (3.5–5.2, no flag) was taken for A's sent
+        again, and A's result and row were updated in its place, its High gone; two clinics' C-CDAs with the same
+        organizer id the same. Now a lab event says its source (its server, a C-CDA's custodian: its "ver"), and a
+        result is updated in place only from its own: B's is a copy with its own row, A's as it was; A's file again,
+        amended, updates A's alone."""
+        t = "2025-09-03T08:30:00"
+
+        def fhir_file(base, hi, flag=None):
+            obs = {"resourceType": "Observation", "id": "k-1", "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
+                   "code": {"coding": [{"system": "http://loinc.org", "code": "2823-3"}], "text": "Potassium"}, "effectiveDateTime": t,
+                   "valueQuantity": {"value": 5.05, "unit": "mmol/L"},
+                   "referenceRange": [{"low": {"value": 3.5}, "high": {"value": hi}, "text": f"3.5-{hi}"}]}
+            if flag:
+                obs["interpretation"] = [{"coding": [{"system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation", "code": flag}]}]
+            rep = {"resourceType": "DiagnosticReport", "id": "bmp-1", "status": "final", "code": {"text": "Basic metabolic panel"},
+                   "effectiveDateTime": t, "result": [{"reference": "Observation/k-1"}]}
+            return {f"{base.split('//')[1].split('.')[0]}.json": json.dumps({"resourceType": "Bundle", "type": "collection", "entry": [
+                {"fullUrl": f"{base}/{r['resourceType']}/{r['id']}", "resource": r} for r in (obs, rep)]})}
+
+        def ccda_file(custodian, hi, flag=None):
+            return {f"{custodian.split()[0].lower()}.xml": f"""<?xml version="1.0" encoding="UTF-8"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <typeId root="2.16.840.1.113883.1.3" extension="POCD_HD000040"/><templateId root="2.16.840.1.113883.10.20.22.1.2"/>
+  <id root="2.16.840.1.113883.19.5" extension="doc-1"/><code code="34133-9" codeSystem="2.16.840.1.113883.6.1"/>
+  <effectiveTime value="20250903"/>
+  <recordTarget><patientRole><id extension="1" root="2.16.840.1.113883.19.5.2"/><patient><name><given>Pat</given><family>Example</family></name></patient></patientRole></recordTarget>
+  <custodian><assignedCustodian><representedCustodianOrganization><name>{custodian}</name></representedCustodianOrganization></assignedCustodian></custodian>
+  <component><structuredBody><component><section><code code="30954-2" codeSystem="2.16.840.1.113883.6.1"/><title>Results</title>
+    <entry><organizer classCode="BATTERY" moodCode="EVN"><id root="2.16.840.1.113883.19.5.7" extension="org-1"/>
+      <code code="24321-2" codeSystem="2.16.840.1.113883.6.1" displayName="Basic metabolic panel"/><statusCode code="completed"/>
+      <effectiveTime value="20250903083000"/>
+      <component><observation classCode="OBS" moodCode="EVN"><id root="2.16.840.1.113883.19.5.8" extension="obs-1"/>
+        <code code="2823-3" codeSystem="2.16.840.1.113883.6.1" displayName="Potassium"/><statusCode code="completed"/>
+        <effectiveTime value="20250903083000"/><value xsi:type="PQ" value="5.05" unit="mmol/L"/>
+        {f'<interpretationCode code="{flag}" codeSystem="2.16.840.1.113883.5.83"/>' if flag else ''}
+        <referenceRange><observationRange><value xsi:type="IVL_PQ"><low value="3.5" unit="mmol/L"/><high value="{hi}" unit="mmol/L"/></value></observationRange></referenceRange>
+      </observation></component>
+    </organizer></entry>
+  </section></component></structuredBody></component>
+</ClinicalDocument>"""}
+
+        def said(pid):   # each Potassium result: its range and flag, and its row's range as printed and flag as read
+            got = assembled(pid)
+            drawer = crossmatch._rows(got)
+            self.assertEqual(rowless(got), [], "every result with its own row")
+            return sorted((p[2], p[3], p[4], row[3], ranges.read_flag(row[4], p[1], p[2], p[3], p[5])) for s in got["labs"]
+                          for p in s["pts"] for at in [crossmatch._row_of(drawer, s, p)] for row in [got["details"][str(at[0])]["rows"][at[1]]])
+        cases = {"fhir": (lambda hi, flag=None: fhir_file("https://hospital-a.example/fhir", hi, flag),
+                          lambda hi, flag=None: fhir_file("https://clinic-b.example/fhir", hi, flag), "3.5-5.0", "3.5-5.2", "3.5-5.1"),
+                 "ccda": (lambda hi, flag=None: ccda_file("Harbor Clinic (fictional)", hi, flag),
+                          lambda hi, flag=None: ccda_file("Lakeside Clinic (fictional)", hi, flag), "3.5 - 5.0", "3.5 - 5.2", "3.5 - 5.1")}
+        for name, (a, b, ra, rb, ra2) in cases.items():
+            with self.subTest(name):
+                pid = self.profile(f"Two sources' results with the same ids, {name}")
+                self.assertEqual(self.save(pid, self.previewed(pid, a(5.0, "H"))[0])["state"], "done")
+                self.assertEqual(said(pid), [(3.5, 5.0, "H", ra, "H")])
+                j, _ = self.previewed(pid, b(5.2))   # the other source's, the same ids, its own range: a copy, its own row
+                self.assertEqual((j["duplicates"].get("updates", 0), j["duplicates"].get("copies", 0), j["duplicates"].get("brings")),
+                                 (0, 1, {"range": 1}), j["duplicates"])
+                self.assertEqual(self.save(pid, j)["counts"].get("updated"), None)
+                self.assertEqual(said(pid), [(3.5, 5.0, "H", ra, "H"), (3.5, 5.2, "", rb, "")], "each source's, its own range and row")
+                j, _ = self.previewed(pid, a(5.1))   # the first source's own, amended: it alone updated
+                self.assertEqual((j["duplicates"].get("updates", 0), j["duplicates"].get("copies", 0)), (1, 0), j["duplicates"])
+                self.assertEqual(self.save(pid, j)["counts"].get("updated"), 1)
+                self.assertEqual(said(pid), [(3.5, 5.1, "", ra2, ""), (3.5, 5.2, "", rb, "")], "the first's updated, the other's as it was")
+
     def test_a_value_its_source_amends_is_updated_in_place(self):   # #877
         """A FHIR Observation sent again with its value amended (the hospital's Potassium 5.05, then 5.25, the same id)
         was added beside the old one, a second result with a second row, the old (wrong) value shown beside the

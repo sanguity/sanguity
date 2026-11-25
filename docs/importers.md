@@ -253,7 +253,10 @@ spreadsheet has too, nor a key scoped to a day, `<NAME>:labitem:<YYYY-MM-DD>`, w
 day have too) is that result, updated in place with its row, never a copy, and so is one at the time of a point here
 with its value amended (#877: LDL 162, then 165, the same Observation; the old value kept for Undo): so give a labitem the key of the report it
 comes in, and where it holds a day's results on their own, each row's own record's key in `keys`, as the FHIR
-importer does. Another source's copy of it is a copy or a duplicate, never an update. A sync never replaces an event
+importer does. Another source's copy of it is a copy or a duplicate, never an update: a labitem says its source in
+its `ver` (#970: the FHIR importer's its server, a C-CDA's its custodian), and one of another source, by its `ver` (or,
+here, the server of the connection that saved it), holds no record of this one's, whatever their ids; one saying
+none (saved before #970) is the same, as before. A sync never replaces an event
 with a key scoped to a day that an upload or another source saved; it finds each row of its own day's labitem by the
 row's own record in `keys`, wherever it is (#899: in an upload of the portal's own export, or a connection made before
 to the same portal), and updates that row there, puts a row new to the profile in a labitem of its own beside its

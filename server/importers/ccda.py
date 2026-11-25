@@ -695,9 +695,10 @@ def parse(files):
         _allergies(doc, out)
         _immunizations(doc, out)
         # (#968) each record named by its own id says whose it is, where the document says it: its custodian (else its
-        # author's organisation), so another clinic's with the same id is told apart (server/preview.py _own_keys)
+        # author's organisation), so another clinic's with the same id is told apart (server/preview.py _own_keys), a
+        # lab event (an organizer) among them (#970: preview._same_records)
         for x in out.events[had[0]:] + out.problems[had[1]:]:
-            if doc.org and x.get("k") not in ("lab", "labitem") and str(x.get("key") or "").startswith("ccda:") and ":h:" not in x["key"]:
+            if doc.org and x.get("k") != "lab" and str(x.get("key") or "").startswith("ccda:") and ":h:" not in x["key"]:
                 x["ver"] = {"source": doc.org}
     series = []
     for name, s in out.labs.items():

@@ -44,7 +44,8 @@ One rule for a result already here (#868), an upload's, a sync's and Type them i
     added, with an Undo
   - the same record sent again by its source, saying something else of its range and flag (#869: its row and its
     result's row here one record of one source, #885: the same Observation by its id, or the same report; never by a
-    key scoped to a day nor a hash of the result's content, which another source's copy has too), isn't a copy: it's
+    key scoped to a day nor a hash of the result's content, which another source's copy has too; #970: nor another
+    server's or clinic's with the same ids, by the lab events' sources, _same_lab_source), isn't a copy: it's
     updated in place ("updates"), its range and flag (#877: its value too) and its row as the source gives them now
     (update(), with what each was kept, so undoing the import puts them back). A re-pull or a re-sent FHIR Observation
     with its range corrected added a copy, one result shown twice beside a drawer row reading the other's flag
@@ -534,6 +535,16 @@ def _same_record(a, b):
     return _record_key(a[0]) and a[0] == b[0]
 
 
+def _same_lab_source(sent, here, base=None):
+    """(#970) Whether a lab event of the upload and one here can hold one record of one source: not where both say their
+    source (their VER's server or source: a FHIR file's server, a C-CDA's custodian; else, here, the server of the
+    connection whose pull saved it, base) and they differ. Two servers' Observations, reports or C-CDA organizers with
+    the same ids were one record: the other's range and flag put in place of this one's. One saying none (saved before
+    #970) is the same, as before."""
+    a, b = _source(sent or {}), _source(here or {}, base)
+    return not (a and b and a != b)
+
+
 def _same_records(db, pid, data, dups, olds, whole=None):
     """(#869) A result here sent again by its source saying something else of its range and flag (the source amended
     it) is the same result: updated in place ("updates"), never added as a copy, nor left out a duplicate. It's the same
@@ -588,11 +599,14 @@ def _same_records(db, pid, data, dups, olds, whole=None):
         here += [e for e in records.labitems_of(db, pid, away) if e["id"] not in had]
         rows = crossmatch._rows({"events": here, "details": {str(e["id"]): e["detail"] for e in here}})
     keyed = {e["id"]: e for e in here}
+    bases = {r[0]: r[1] for r in db.execute("""SELECT i.id, c.fhir_base FROM imports i JOIN connections c ON c.id = i.connection_id
+                                               WHERE i.profile_id=?""", (pid,))}   # (#970: a connection's records, its server)
     for (i, n), (row, rec) in want.items():
         p, found = labs[i]["pts"][n], []
         for rid, s, q in results[(i, n)]:
             at = crossmatch._row_of(rows, s, q)
-            if at and _same_record(rec, _row_record(keyed[at[0]], keyed[at[0]].get("detail"), at[1])):
+            if at and _same_record(rec, _row_record(keyed[at[0]], keyed[at[0]].get("detail"), at[1])) \
+                    and _same_lab_source(events.get(row[0]), keyed[at[0]], bases.get(keyed[at[0]]["imp"])):
                 found.append(({"result": rid, "event": at[0], "row": at[1], "at": None if whole else row}, q))
         if not found:
             continue
