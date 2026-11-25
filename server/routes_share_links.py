@@ -27,7 +27,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from . import activity, db as dbm, profiles as prof, share_links as links
+from . import activity, config, db as dbm, profiles as prof, share_links as links
 from .main import _audit, _client_ip, get_db, need, user
 
 router = APIRouter()
@@ -62,7 +62,9 @@ def make(pid: int, body: LinkIn, request: Request, s=Depends(user), db=Depends(g
                                               "from": scope["from"], "to": scope["to"], "hours": body.hours}, _client_ip(request))
     except links.LinkError as e:
         raise HTTPException(400, str(e)) from None
-    return {"path": "share.html#" + token, "link": links.get(db, pid, lid)}
+    # (#1009) base: the public address, which the page makes the link from in place of its own, when one is set, so a
+    # link made at the server's home-network address or a dev name opens for the clinician it's sent to
+    return {"path": "share.html#" + token, **config.given_base(), "link": links.get(db, pid, lid)}
 
 
 @router.delete("/api/profiles/{pid}/links/{lid}")

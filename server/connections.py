@@ -387,8 +387,8 @@ def return_address():
     """Where the vendor sends a sign-in back: this install's /connect/return, at its first https:// address in
     PUBLIC_ORIGINS (else its first address there). None until PUBLIC_ORIGINS is set. Under option 2 this would be
     the relay's address instead; it is the only thing that would change."""
-    origins = sorted(config.setting("PUBLIC_ORIGINS"), key=lambda o: (not o.startswith("https://"), o))
-    return origins[0] + RETURN_PATH if origins else None
+    origin = config.public_address()   # (the address the app gives out everywhere, #1009)
+    return origin + RETURN_PATH if origin else None
 
 
 def address_warnings(uri):
