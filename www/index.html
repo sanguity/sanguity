@@ -78,7 +78,7 @@
          mean) and an ⓘ behind buttons, then the caption beside the out-of-range flags (#57) -->
     <div class="labs-head">
       <div class="toolbar chart-bar">
-        <div class="seg wrap" id="labsView" role="group" aria-label="Show the lab results as"><button type="button" data-view="chart" aria-pressed="true">Chart</button><button type="button" data-view="heatmap" aria-pressed="false">Heatmap</button><button type="button" data-view="compare" aria-pressed="false">Compare</button></div>
+        <div class="seg wrap" id="labsView" role="group" aria-label="Show the lab results as"><button type="button" data-view="chart" aria-pressed="true">Chart</button><button type="button" data-view="heatmap" aria-pressed="false">Heatmap</button><button type="button" data-view="compare" aria-pressed="false">Compare</button><button type="button" data-view="latest" aria-pressed="false">Latest</button></div>
         <!-- on a phone (#615, core.js): Show, one button opening the overlays, the legend and the ⓘ under the row -->
         <button class="btn show-btn chart-only" id="showBtn" type="button" aria-expanded="false" aria-controls="showBox">Show<svg class="icon i-chevron-down" aria-hidden="true" focusable="false"><use href="icons/sprite.svg#i-chevron-down"/></svg></button>
         <div class="show-box chart-only" id="showBox">
@@ -147,6 +147,12 @@
         <div id="cmpMsBody"></div>
       </div>
     </div>
+    <!-- each lab's latest result in the period, a row each that opens its chart (#993, latest.js) -->
+    <div class="card" id="labsLatest" hidden>
+      <div class="list-hd"><h2>Latest results</h2></div>
+      <p class="hint" id="ltSays"></p>
+      <div id="ltRows"></div>
+    </div>
   </section>
 </main>
 <footer class="notice" id="notice"><strong>Not medical advice.</strong> Sanguity shows what your records say. It doesn't diagnose, interpret results or recommend treatment; your care team interprets them in context.</footer>
@@ -196,6 +202,7 @@
 <script src="js/overview.js"></script>
 <script src="js/heatmap.js"></script>
 <script src="js/compare.js"></script>
+<script src="js/latest.js"></script>
 <script src="js/costs.js"></script>
 <script src="js/health.js"></script>
 <script src="js/app.js"></script>

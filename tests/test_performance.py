@@ -419,10 +419,10 @@ READY_JS = "() => { const m = performance.getEntriesByName('sanguity:ready')[0];
 # a tab's first draw: from choosing it to the frame after (style, layout and paint included), and how many elements
 # the tab has then (each tab's own; tabs not shown keep theirs, as they were last drawn)
 DRAW_JS = """async t => { const [tab, view] = t.split("-");
-  const s = performance.now(); switchTab(tab, view === "heatmap" ? "heatmap" : "chart", true);
+  const s = performance.now(); switchTab(tab, view || "chart", true);
   await new Promise(r => requestAnimationFrame(() => setTimeout(r)));
   return [performance.now() - s, document.getElementById("view-" + tab).getElementsByTagName("*").length]; }"""
-TABS = ("overview", "health", "medications", "timeline", "labs", "labs-heatmap", "costs")   # Medications since #275
+TABS = ("overview", "health", "medications", "timeline", "labs", "labs-heatmap", "labs-latest", "costs")   # Medications since #275, Labs' Latest #993
 # every card of Body and activity's with Chart | Table, shown as a table (#460): each its latest 200 rows, Show more for
 # the rest; {all: every card's choice is Table, more: the Show more buttons}
 H_TABLES = ["#h-body", "#h-heart", "#h-bp", "#h-glucose", "#h-temp", "#h-oxygen", "#h-resp", "#h-sleep", "#h-activity", "#h-zones", "#h-vo2", "#h-growth"]
