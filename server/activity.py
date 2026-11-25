@@ -49,6 +49,7 @@ Account events (no profile), readable by admins:
   account.create / account.disable / account.enable / account.admin / account.unadmin / account.reset   {"username"}
   2fa.on / 2fa.off / 2fa.codes (new recovery codes) / 2fa.recovery (signed in with one, {"left"})
   2fa.reset {"username"}: an admin turned someone's off            settings.require_2fa {"on"}
+  2fa.stopped {"wrong"}: the account's authenticator codes stopped working after that many wrong ones in a row (#928)
   profile.delete {"name", "members"}: a profile and all its records deleted (its own log goes with it)
   account.remove {"username", "handed_over"}: an account deleted; profiles it alone owned went to someone else
   profile.repair {"name", "username"}: an admin gave a profile with no active owner a new one (also logged on the
@@ -78,7 +79,7 @@ PROFILE_ACTIONS = ("view", "document", "create", "rename", "share", "unshare", "
                    "settings", "connect", "disconnect", "calendar", "journal", "summary", "watch.secret", "source", "link", "cycle",
                    "medication")
 ACCOUNT_ACTIONS = ("setup", "password", "account.create", "account.disable", "account.enable", "account.admin",
-                   "account.unadmin", "account.reset", "2fa.on", "2fa.off", "2fa.codes", "2fa.recovery", "2fa.reset",
+                   "account.unadmin", "account.reset", "2fa.on", "2fa.off", "2fa.codes", "2fa.recovery", "2fa.reset", "2fa.stopped",
                    "settings.require_2fa", "profile.delete", "account.remove", "profile.repair", "labmap.change",
                    "labmap.remove", "settings.user", "settings.install", "connect.source", "outside",
                    "backup.create", "backup.check", "backup.fail", "backup.schedule", "backup.replaced")

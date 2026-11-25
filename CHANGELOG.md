@@ -3253,6 +3253,13 @@ Everything on `main` so far; it becomes the first tagged release.
   Admin → Lab name matches says which are for one profile. At the upgrade (schema version 41) each match a review made
   becomes its import's profile's; one whose import is gone stays for every profile but is to check, unless it's the
   same name written another way.
+- **Authenticator codes stop after 100 wrong ones in a row** (#928): the sign-in throttle forgets after 15 minutes,
+  and a ticket's five wrong codes cost only the password again, so someone who knew a password could try about 2,200
+  codes a day from new addresses: a 0.7% chance a day of getting in, 91% in a year. Wrong codes are now counted per
+  account since its last right one (schema version 42), at sign-in, the fresh check and new recovery codes alike; at
+  100 the account's codes stop working, a right one too, until a recovery code is used or an admin resets two-factor
+  sign-in. The sign-in and Account pages tell the person (a recovery code or a passkey still signs them in), and admins
+  see it on Admin, beside the account in Accounts and in the install's activity log.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

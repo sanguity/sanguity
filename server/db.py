@@ -1155,6 +1155,11 @@ SCHEMA = [
     UPDATE labmaps SET checked = NULL WHERE changed IS NULL AND profile_id IS NULL;
     INSERT OR REPLACE INTO meta(k, v) VALUES('labmaps_scope', '1');
     """,
+    # version 42: wrong authenticator codes since the last right one (#928; accounts.code_try). At twofactor.STOP_AFTER
+    # the account's sign-in with a code stops until a recovery code is used or an admin resets two-factor sign-in.
+    """
+    ALTER TABLE users ADD COLUMN totp_fails INTEGER NOT NULL DEFAULT 0;
+    """,
 ]
 
 

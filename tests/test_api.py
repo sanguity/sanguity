@@ -983,6 +983,94 @@ class Api(unittest.TestCase):
         self.assertTrue(gus.get("/api/me/2fa").json()["on"])
         db.close()
 
+    def test_wrong_codes_since_the_last_right_one_stop_code_sign_in(self):   # #928
+        """Someone who knows the password guesses the authenticator code, a new ticket every five codes: each wrong
+        code counts towards the account's own limit, since its last right one (a right one starts it again), and at
+        100 sign-in with a code stops, a right code refused too, until a recovery code is used or an admin resets
+        two-factor sign-in. The person is told at sign-in and on Account, the admins in their notice, the accounts
+        list and the install's log; the fresh check and new recovery codes take no code meanwhile."""
+        import time
+        from server import accounts, crypto, twofactor
+        PWW = "wyn keeps a long passphrase"
+        step = lambda: int(time.time() // twofactor.PERIOD)
+        db = dbm.connect()
+        if not db.execute("SELECT 1 FROM users WHERE username='wyn'").fetchone():
+            accounts.create(db, "wyn", password=PWW)
+        uid = db.execute("SELECT id FROM users WHERE username='wyn'").fetchone()[0]
+        secret = twofactor.new_secret()
+        db.execute("UPDATE users SET totp_secret=?, totp_last_step=0 WHERE id=?", (crypto.enc(secret), uid))
+        recovery = accounts.new_recovery_codes(db, uid)
+        fails = lambda: db.execute("SELECT totp_fails FROM users WHERE id=?", (uid,)).fetchone()[0]
+        wrong = lambda: "%06d" % ((int(twofactor._code(secret, step())) + 500000) % 1000000)   # never the code of a step near now
+
+        def ticket():
+            r = client().post("/api/login", json={"username": "wyn", "password": PWW}, headers=H)
+            self.assertEqual(r.status_code, 200, r.text)
+            return r.json()
+
+        def tries(n):   # n wrong codes, a new ticket every five, the sign-in throttle's window gone by each time
+            out = None
+            for i in range(n):
+                if i % 5 == 0:
+                    sec.throttle.clear(*list(sec.throttle._fails))
+                    t = ticket()["ticket"]
+                out = client().post("/api/login/code", json={"ticket": t, "code": wrong()}, headers=H)
+            return out
+
+        def right(c=None):
+            db.execute("UPDATE users SET totp_last_step=0 WHERE id=?", (uid,))   # (each code once: the same step again)
+            sec.throttle.clear(*list(sec.throttle._fails))
+            return (c or client()).post("/api/login/code", json={"ticket": ticket()["ticket"], "code": twofactor._code(secret, step())}, headers=H)
+
+        keep = client()   # a device signed in before the guessing
+        self.assertEqual(right(keep).status_code, 200)
+        self.assertEqual(fails(), 0)
+        self.assertEqual(tries(12).status_code, 401)
+        self.assertEqual(fails(), 12)
+        self.assertEqual(right().status_code, 200)   # a right code: counted from nought again
+        self.assertEqual(fails(), 0)
+        db.execute("UPDATE users SET totp_fails=96 WHERE id=?", (uid,))   # (as after 96 more wrong ones)
+        self.assertEqual(tries(3).status_code, 401)
+        self.assertFalse(ticket()["methods"].get("codes_stopped"))
+        with self.assertLogs("sanguity.security", "WARNING"):
+            r = tries(1)   # the 100th
+        self.assertEqual(r.status_code, 401)
+        self.assertIn("stopped", r.json()["detail"])
+        self.assertEqual(fails(), 100)
+        # stopped: a right code is refused, the sign-in says so at once, the fresh check takes no code either
+        r = right()
+        self.assertEqual(r.status_code, 401)
+        self.assertIn("recovery code", r.json()["detail"])
+        self.assertEqual(fails(), 100)
+        self.assertTrue(ticket()["methods"]["codes_stopped"])
+        self.assertTrue(keep.get("/api/me/2fa").json()["codes_stopped"])
+        db.execute("UPDATE users SET totp_last_step=0 WHERE id=?", (uid,))
+        r = keep.post("/api/me/reauth", json={"secret": twofactor._code(secret, step())}, headers=H)
+        self.assertEqual(r.status_code, 403)
+        self.assertIn("stopped", r.json()["detail"])
+        self.assertEqual(keep.post("/api/me/2fa/recovery-codes", json={"code": twofactor._code(secret, step())}, headers=H).status_code, 409)
+        self.assertEqual(keep.post("/api/me/reauth", json={"secret": PWW}, headers=H).status_code, 200)   # the password still does
+        # the admins: in their notice, the accounts list and the install's log
+        ben = self.login("ben")
+        self.assertEqual([x["username"] for x in ben.get("/api/security/notice").json()["codes_stopped"]], ["wyn"])
+        self.assertTrue(next(u for u in ben.get("/api/users").json() if u["username"] == "wyn")["codes_stopped"])
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM activity WHERE action='2fa.stopped' AND actor_id=?", (uid,)).fetchone()[0], 1)
+        # a recovery code signs in and lets codes work again
+        sec.throttle.clear(*list(sec.throttle._fails))
+        r = client().post("/api/login/code", json={"ticket": ticket()["ticket"], "code": recovery[0]}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(fails(), 0)
+        self.assertEqual(right().status_code, 200)
+        self.assertEqual(ben.get("/api/security/notice").json()["codes_stopped"], [])
+        # stopped again; an admin's reset of two-factor sign-in starts it afresh
+        db.execute("UPDATE users SET totp_fails=99 WHERE id=?", (uid,))
+        with self.assertLogs("sanguity.security", "WARNING"):
+            self.assertIn("stopped", tries(1).json()["detail"])
+        self.assertEqual(ben.patch(f"/api/users/{uid}", json={"disable_2fa": True}, headers=H).status_code, 200)
+        self.assertEqual(fails(), 0)
+        self.assertFalse(next(u for u in ben.get("/api/users").json() if u["username"] == "wyn")["codes_stopped"])
+        db.close()
+
     def test_removing_a_passkey_needs_the_password_and_signs_out_elsewhere(self):   # #590
         from server import accounts
         db = dbm.connect()

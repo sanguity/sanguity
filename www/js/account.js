@@ -129,7 +129,11 @@ async function loadTwoFactor(focus = false) {
     return;
   }
   tfHint(`On. You have ${st.recovery_codes_left} recovery code${st.recovery_codes_left === 1 ? "" : "s"} left` +
-    (st.recovery_codes_left <= 3 ? ": make new ones soon." : "."));
+    (st.recovery_codes_left <= 3 ? ": make new ones soon." : ".") +
+    // #928: stopped after 100 wrong codes since the last right one, which someone who knows the password may have made
+    (st.codes_stopped ? " But codes from your authenticator app are stopped: too many wrong ones were entered since the last right one, " +
+      "so someone may know your password. Change your password, then sign in once with a recovery code to use codes again, " +
+      "or ask an admin to reset your two-factor sign-in." : ""));
   const code = el("input", {inputmode: "numeric", autocomplete: "one-time-code", placeholder: "Code from the app", "aria-label": "Code from your authenticator app"});
   const pw = el("input", {type: "password", autocomplete: "current-password", placeholder: "Your password", "aria-label": "Your password"});
   body.replaceChildren(

@@ -1,7 +1,7 @@
 """Creating accounts, shared by the API (setup wizard, admin page) and the command line (server.manage)."""
 import os, secrets, sqlite3
 
-from . import calendar, config, db as dbm, security as sec
+from . import calendar, config, db as dbm, security as sec, twofactor
 
 
 class AccountError(ValueError):
@@ -117,14 +117,47 @@ def short_password_check(db, uid):
 
 def turn_off_2fa(db, uid, passkeys_too=False):
     """The authenticator app off (and with passkeys_too, every passkey: an admin's reset for a lost phone): secret
-    and recovery codes gone, signed out everywhere, and a password that was only allowed because of a second factor
-    has to be replaced at the next sign-in."""
-    db.execute("UPDATE users SET totp_secret=NULL, totp_pending=NULL, totp_last_step=0 WHERE id=?", (uid,))
+    and recovery codes gone, its count of wrong codes too (#928), signed out everywhere, and a password that was only
+    allowed because of a second factor has to be replaced at the next sign-in."""
+    db.execute("UPDATE users SET totp_secret=NULL, totp_pending=NULL, totp_last_step=0, totp_fails=0 WHERE id=?", (uid,))
     db.execute("DELETE FROM recovery_codes WHERE user_id=?", (uid,))
     if passkeys_too:
         db.execute("DELETE FROM passkeys WHERE user_id=?", (uid,))
     short_password_check(db, uid)
     sign_out_everywhere(db, uid, feeds=passkeys_too)   # an admin's reset may follow a lost phone; turning one's own off doesn't
+
+
+# ---------------------------------------------------------------- wrong authenticator codes (#928)
+
+CODES_STOPPED = ("Sign-in with codes from your authenticator app is stopped for this account: "
+                 f"{twofactor.STOP_AFTER} wrong codes were entered since its last right one, so someone may know your "
+                 "password. Sign in with a recovery code or a passkey, then change your password; or ask an admin to "
+                 "reset your two-factor sign-in.")
+
+
+def codes_stopped(u):
+    """Whether account row u's authenticator codes have stopped working (#928)."""
+    return bool(u["totp_secret"]) and (u["totp_fails"] or 0) >= twofactor.STOP_AFTER
+
+
+def code_try(db, uid):
+    """An authenticator code about to be checked, counted first, under the write lock (#928): how many tries since the
+    last right code, this one included (the one that makes STOP_AFTER is the last); None once STOP_AFTER wrong ones
+    have been made, when nothing is checked."""
+    with dbm.transaction(db):
+        r = db.execute("SELECT totp_fails FROM users WHERE id=?", (uid,)).fetchone()
+        if not r or r[0] >= twofactor.STOP_AFTER:
+            return None
+        db.execute("UPDATE users SET totp_fails=? WHERE id=?", (r[0] + 1, uid))
+        return r[0] + 1
+
+
+def code_right(db, uid, step=None):
+    """A right code (its step, so it's never taken again) or a recovery code (step None): the count starts again."""
+    if step is None:
+        db.execute("UPDATE users SET totp_fails=0 WHERE id=?", (uid,))
+    else:
+        db.execute("UPDATE users SET totp_last_step=?, totp_fails=0 WHERE id=?", (step, uid))
 
 
 def sole_owned(db, uid):

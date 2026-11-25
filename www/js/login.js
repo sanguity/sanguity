@@ -46,6 +46,11 @@ function codeStep(on, methods = {code: true}) {
   const away = !!on && passkeysWork() && sites.length > 0 && !sites.includes(location.hostname);
   document.getElementById("step1").hidden = !!on; document.getElementById("step2").hidden = !on;
   document.getElementById("codeBox").hidden = !on || !code; btn.hidden = !code;
+  // #928: the account's codes stopped after too many wrong ones: said under the box, which takes a recovery code still
+  document.getElementById("cn").textContent = on && methods.codes_stopped
+    ? "Codes from your authenticator app are stopped for this account: too many wrong ones were entered. Enter one of your recovery codes" +
+      (methods.passkey ? ", or use a passkey." : ".")
+    : "Lost your phone? Enter one of your recovery codes instead.";
   document.getElementById("u").readOnly = !!on; document.getElementById("p").required = !on;
   btn.textContent = on ? "Continue" : "Sign in";
   // after the password: a passkey is the other way to finish, if the account has one; before it, one signs in alone
