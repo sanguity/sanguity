@@ -356,6 +356,119 @@ class Export(unittest.TestCase):
         finally:
             db.close()
 
+    def test_an_upload_with_both_exports_keeps_only_what_its_profile_imports(self):
+        """#918 with #555: an upload holding an export of Sanguity's (its activity log and cycle records) beside an Apple
+        Health export.xml (sexual activity, cycle records): wherever an upload is kept or changed, both strips run.
+        Finished with cycle tracking off here, it keeps neither the log nor sexual activity, nor either's cycle records;
+        with tracking on, both's cycle records stay until it's turned off; put back from an export loaded with the
+        command line (import_archive), as an older version kept it whole, it keeps none of them either."""
+        from server import cycle_tracking
+        with open(os.path.join(ROOT, "tests", "fixtures", "apple_health", "apple_health_export", "export.xml"), "rb") as f:
+            health = f.read()
+        cycle_hk, never_hk = b"hkcategorytypeidentifiermenstrualflow", b"hkcategorytypeidentifiersexualactivity"
+        self.assertTrue(cycle_hk in health.lower() and never_hk in health.lower())
+        db = dbm.connect()
+
+        def held(pid, up):
+            with uploads.open_plain(db, pid, up) as plain:
+                out = {}
+                for k, v in plain.items():
+                    with open(v, "rb") as f:
+                        out[k] = f.read()
+                return out
+
+        def says(files):   # what an upload holds of each: the log, the export's cycle records, the export.xml's
+            xml = files["apple_health_export/export.xml"].lower()
+            return {"log": any(p.endswith("activity.json") for p in files), "cycle": any(p.endswith("cycle.json") for p in files),
+                    "hk cycle": cycle_hk in xml, "hk sexual activity": never_hk in xml}
+        try:
+            src = self.new_profile("Both exports' source (fictional)")   # (turned off again, its cycle data would be
+            with dbm.transaction(db):                                    # waiting to be deleted, so never exported)
+                records.store(db, src, FILE, "dataset")
+                cycle_tracking.turn(db, src, True, self.uid["robin"])
+            r = self.robin.get(f"/api/profiles/{src}/export?cycle=1")   # an owner's, with the cycle records ticked
+            self.assertEqual(r.status_code, 200, r.text[:300])
+            self.assertTrue({"activity.json", "cycle/cycle.json"} <= set(zipfile.ZipFile(io.BytesIO(r.content)).namelist()))
+            both = {"sanguity-export.zip": r.content, "apple_health_export/export.xml": health}
+            pid = self.new_profile("Both exports (fictional)")
+            # off here: finished, it keeps neither the log nor sexual activity, nor any cycle record
+            _, off = self.upload(pid, both)
+            self.assertIn("sanguity-export/data.json", off)
+            self.assertEqual(says(off), {"log": False, "cycle": False, "hk cycle": False, "hk sexual activity": False})
+            # on: the cycle records of both stay, never the log nor sexual activity; turned off, they go from both
+            with dbm.transaction(db):
+                cycle_tracking.turn(db, pid, True, self.uid["robin"])
+            up, on = self.upload(pid, both)
+            self.assertEqual(says(on), {"log": False, "cycle": True, "hk cycle": True, "hk sexual activity": False})
+            self.assertEqual(self.robin.put(f"/api/profiles/{pid}/cycle", json={"on": False}, headers=H).status_code, 200)
+            self.assertEqual(says(held(pid, up)), {"log": False, "cycle": False, "hk cycle": False, "hk sexual activity": False})
+            # an upload an older version kept whole, in an export loaded with the command line: put back without them
+            whole = uploads.create(db, pid, None)
+            for path, blob in both.items():
+                uploads.add_file(db, pid, whole, path, io.BytesIO(blob))
+            uploads.finish(db, pid, whole)
+            self.assertEqual(says(held(pid, whole)), {"log": True, "cycle": True, "hk cycle": True, "hk sexual activity": True})
+            with dbm.transaction(db):   # (an export holds a data.json once something's imported)
+                records.store(db, pid, {"events": [FILE["events"][0]], "details": {}, "labs": [], "costs": []}, "dataset")
+            archive = os.path.join(TMP, "with-both-uploads.zip")
+            with open(archive, "wb") as f:
+                f.write(self.robin.get(f"/api/profiles/{pid}/export").content)
+            moved = self.new_profile("Both exports, moved (fictional)")
+            export.import_archive(db, moved, archive)
+            back = [held(moved, u) for (u,) in db.execute("SELECT id FROM uploads WHERE profile_id=? AND state='ready'", (moved,))]
+            self.assertEqual(len(back), 3)
+            for files in back:
+                self.assertEqual(says(files), {"log": False, "cycle": False, "hk cycle": False, "hk sexual activity": False})
+        finally:
+            db.close()
+
+    def test_an_export_uploaded_again_updates_its_records_in_place(self):
+        """#920 beside #918: a profile's export uploaded on another profile's import page (kept without its activity log),
+        then its next export, after the first profile's portal file stopped a medication and resolved a problem: the
+        same records, from the same source, are updated in place there too, nothing added beside them, and the upload
+        still keeps no activity log."""
+        def bundle(*resources):
+            return json.dumps({"resourceType": "Bundle", "type": "collection",
+                               "entry": [{"fullUrl": f"https://portal.example/fhir/{r['resourceType']}/{r['id']}", "resource": r} for r in resources]})
+        status = lambda code: {"coding": [{"system": "http://terminology.hl7.org/CodeSystem/condition-clinical", "code": code}]}   # noqa: E731
+        pat = {"resourceType": "Patient", "id": "p1", "name": [{"family": "Example", "given": ["Pat"]}], "birthDate": "1980-02-02"}
+        med = {"resourceType": "MedicationRequest", "id": "mr-1", "status": "active", "intent": "order", "subject": {"reference": "Patient/p1"},
+               "medicationCodeableConcept": {"text": "Metoprolol succinate 25 mg tablet"}, "authoredOn": "2026-03-01"}
+        cond = {"resourceType": "Condition", "id": "c-1", "subject": {"reference": "Patient/p1"}, "code": {"text": "Atrial fibrillation"},
+                "clinicalStatus": status("active"), "onsetDateTime": "2026-02-20", "recordedDate": "2026-02-20"}
+
+        def imported(pid, files):   # uploaded and saved, as the import page does: the job
+            up, kept = self.upload(pid, files)
+            r = self.robin.post(f"/api/profiles/{pid}/uploads/{up}/import", json={}, headers=H)
+            self.assertEqual(r.status_code, 202, r.text)
+            jid, end = r.json()["id"], time.time() + 30
+            while time.time() < end:
+                j = self.robin.get(f"/api/profiles/{pid}/jobs/{jid}").json()
+                if j["state"] == "preview":
+                    self.assertEqual(self.robin.post(f"/api/profiles/{pid}/jobs/{jid}/confirm", json={"keep": []}, headers=H).status_code, 202)
+                elif j["state"] in ("done", "failed", "discarded"):
+                    break
+                time.sleep(0.05)
+            self.assertEqual(j["state"], "done", j)
+            return j, kept
+
+        def said(pid):
+            d = self.data(pid)
+            return ([(m["name"], m["spans"][-1]["open"]) for m in d.get("medications") or []],
+                    [(x.get("name"), x.get("status")) for x in d.get("problems") or []])
+        src, dst = self.new_profile("Portal's (fictional)"), self.new_profile("Moved by upload again (fictional)")
+        imported(src, {"portal-2026-03.json": bundle(pat, med, cond).encode()})
+        _, kept = imported(dst, {"sanguity-export.zip": self.robin.get(f"/api/profiles/{src}/export").content})
+        self.assertNotIn("activity.json", kept)
+        self.assertEqual(said(dst), ([("Metoprolol succinate 25 mg tablet", True)], [("Atrial fibrillation", "Active")]))
+        imported(src, {"portal-2026-11.json": bundle(pat, {**med, "status": "stopped"},
+                                                     {**cond, "clinicalStatus": status("resolved"), "abatementDateTime": "2026-10-15"}).encode()})
+        job, kept = imported(dst, {"sanguity-export.zip": self.robin.get(f"/api/profiles/{src}/export").content})
+        self.assertNotIn("activity.json", kept)
+        self.assertEqual(job["counts"].get("changed"), 2, job["counts"])
+        self.assertEqual(said(dst), ([("Metoprolol succinate 25 mg tablet", False)], [("Atrial fibrillation", "Resolved")]),
+                         "updated in place: the medication stopped, the problem resolved, nothing added beside")
+
 
 if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

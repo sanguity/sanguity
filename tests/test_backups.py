@@ -1130,6 +1130,184 @@ class Backups(unittest.TestCase):
         db.execute("DELETE FROM smart_clients WHERE id IN (?, ?)", (kept_app, new_app))
         db.close()
 
+    def test_15_a_restore_and_the_access_the_pass_made(self):
+        """#917's restore beside the pass's other access fixes. An account's wrong authenticator codes since its last
+        right one (users.totp_fails, #928) are today's, as the rest of its row is: codes stopped since stay stopped, and
+        working again since (a recovery code used) stay working. A phone upload secret taken away since with its
+        maker's access (#929: the profile's _watch.receiver settings row, which the receiver's secrets file is written
+        from) stays away, in the database and in that file. The lab-name matches reviews made (labmaps, each its
+        profile's own since #927, keyed with it) are records, not access: each is what an import of that profile chose,
+        forgotten with that import's Undo, and only the backup's imports are restored, so they're the backup's, each
+        still its own profile's."""
+        from server import labmap, watch_keys
+        pws = {"noa": "noa's fictional passphrase, long enough", "uri": "uri's fictional passphrase, long enough"}
+        robin = self.uids["robin"]
+        db = dbm.connect()
+        uid = {n: accounts.create(db, n, password=pw)[0] for n, pw in pws.items()}
+        for n in pws:
+            db.execute("UPDATE users SET totp_secret=? WHERE id=?", (crypto.enc(twofactor.new_secret()), uid[n]))
+        db.execute("UPDATE users SET totp_fails=? WHERE id=?", (twofactor.STOP_AFTER, uid["uri"]))   # stopped at the backup
+        pid = prof.create_profile(db, "Phone and matches (fictional)", owner_id=robin)
+        other = prof.create_profile(db, "Another's matches (fictional)", owner_id=robin)
+        db.close()
+        self.assertEqual(self.robin.put(f"/api/profiles/{pid}/members", json={"username": "noa", "role": "editor"}, headers=H).status_code, 200)
+        db = dbm.connect()   # the secret noa made (as watch_keys.rotate keeps it), for her phone
+        db.execute("INSERT INTO settings(key, profile_id, sealed, changed) VALUES('_watch.receiver', ?, ?, 0)",
+                   (pid, crypto.enc(json.dumps({"secret": "noa's", "slot": str(pid), "created": 0, "by": uid["noa"]}))))
+
+        def match(p, name):   # a review's choice, as labmap.remember keeps it: the profile's own, keyed with it
+            return db.execute("""INSERT INTO labmaps(lookup, importer, source, target, created_by, created_name, created, checked,
+                                 profile_id) VALUES(?, 'fhir', ?, ?, ?, 'robin', 0, 0, ?)""",
+                              (labmap.lookup("fhir", name, "mg/dL", "", p), crypto.enc(json.dumps({"name": name, "unit": "mg/dL", "loinc": ""})),
+                               crypto.enc("Glucose"), robin, p)).lastrowid
+        kept = match(pid, "Glucose, fasting (fictional)")
+        db.close()
+        path = backup.create(os.path.join(TMP, "backups-917a"))
+
+        # after the backup: noa's codes stop and uri's work again; noa is removed, and her secret goes with her access;
+        # the match is forgotten, and another profile's made
+        db = dbm.connect()
+        db.execute("UPDATE users SET totp_fails=? WHERE id=?", (twofactor.STOP_AFTER, uid["noa"]))
+        accounts.code_right(db, uid["uri"])
+        db.close()
+        live_keys = os.path.join(TMP, "keys-917a", "receiver-secrets.json")
+        os.makedirs(os.path.dirname(live_keys))
+        with mock.patch.object(config, "WATCH_KEYS", live_keys):
+            self.assertEqual(self.robin.delete(f"/api/profiles/{pid}/members/{uid['noa']}", headers=H).status_code, 200)
+        self.assertNotIn(pid, {x["profile"] for x in json.loads(crypto.read_file(live_keys))["profiles"]})
+        db = dbm.connect()
+        self.assertIsNone(watch_keys.maker(db, pid))
+        labmap.remove(db, kept)
+        since = match(other, "Glucose (fictional)")
+        db.close()
+
+        folder = os.path.join(TMP, "restored-917a")
+        said, con = self.restore_into(folder, path, today=True)
+        self.assertIn("phone upload secrets", said)
+        self.assertEqual(dict(con.execute("SELECT username, totp_fails FROM users WHERE username IN ('noa', 'uri')").fetchall()),
+                         {"noa": twofactor.STOP_AFTER, "uri": 0}, "today's: noa's codes stay stopped, uri's working")
+        self.assertIsNone(con.execute("SELECT 1 FROM settings WHERE key='_watch.receiver' AND profile_id=?", (pid,)).fetchone(),
+                          "the secret noa made, gone with her access, isn't brought back")
+        keys = os.path.join(TMP, "restored-917a-keys", "receiver-secrets.json")
+        os.makedirs(os.path.dirname(keys))
+        with mock.patch.multiple(config, DB_PATH=os.path.join(folder, "sanguity.db"), WATCH_KEYS=keys):
+            restored = dbm.connect()
+            try:
+                watch_keys.publish(restored)   # as the app writes it when it starts on the restored database
+            finally:
+                restored.close()
+        self.assertNotIn(pid, {x["profile"] for x in json.loads(crypto.read_file(keys))["profiles"]})
+        mine = lambda c: {r[0]: tuple(r[1:]) for r in c.execute("SELECT id, profile_id, lookup FROM labmaps WHERE profile_id IN (?, ?)",
+                                                                 (pid, other))}
+        self.assertEqual(mine(con), {kept: (pid, labmap.lookup("fhir", "Glucose, fasting (fictional)", "mg/dL", "", pid))},
+                         "the backup's matches, each its own profile's: records, not access")
+        self.assertNotIn(since, mine(con))
+        self.assertEqual(con.execute("PRAGMA foreign_key_check").fetchall(), [])
+        # what the backup itself holds, as a restore with no database to keep access from shows: her secret, uri's
+        # codes stopped and noa's working
+        _, con = self.restore_into(os.path.join(TMP, "restored-917a-none"), path)
+        self.assertIsNotNone(con.execute("SELECT 1 FROM settings WHERE key='_watch.receiver' AND profile_id=?", (pid,)).fetchone())
+        self.assertEqual(dict(con.execute("SELECT username, totp_fails FROM users WHERE username IN ('noa', 'uri')").fetchall()),
+                         {"noa": 0, "uri": twofactor.STOP_AFTER})
+        db = dbm.connect()
+        for p in (pid, other):
+            prof.delete_profile(db, p)
+        for n in pws:
+            accounts.remove(db, uid[n])
+        db.close()
+
+    def test_16_a_restore_and_records_updated_in_place(self):
+        """#920 beside #917's restore (records only, the backup's): a portal's FHIR export and an insurer's claims
+        spreadsheet uploaded, the backup made, then their next files, the medication stopped, the problem resolved and the
+        claim processed, each updated in place (sync_changes keeping what they were, for the Undo). Restored, the records
+        are the backup's: the medication current, the problem active, the claim pending, nothing of the later imports
+        left, their changes' rows with them. And those next files, read against the restored database, again update the
+        three in place, nothing added beside them."""
+        from server import importers, preview, records
+        robin = self.uids["robin"]
+
+        def bundle(*resources):
+            return json.dumps({"resourceType": "Bundle", "type": "collection",
+                               "entry": [{"fullUrl": f"https://portal.example/fhir/{r['resourceType']}/{r['id']}", "resource": r} for r in resources]})
+        status = lambda code: {"coding": [{"system": "http://terminology.hl7.org/CodeSystem/condition-clinical", "code": code}]}   # noqa: E731
+        pat = {"resourceType": "Patient", "id": "p1", "name": [{"family": "Example", "given": ["Pat"]}], "birthDate": "1980-02-02"}
+        med = {"resourceType": "MedicationRequest", "id": "mr-1", "status": "active", "intent": "order", "subject": {"reference": "Patient/p1"},
+               "medicationCodeableConcept": {"text": "Metoprolol succinate 25 mg tablet"}, "authoredOn": "2026-03-01"}
+        cond = {"resourceType": "Condition", "id": "c-1", "subject": {"reference": "Patient/p1"}, "code": {"text": "Atrial fibrillation"},
+                "clinicalStatus": status("active"), "onsetDateTime": "2026-02-20", "recordedDate": "2026-02-20"}
+        head = "Claim Number,Date of Service,Provider,Description,Amount Billed,Plan Paid,You Owe,Claim Status,Insurer\n"
+        claim = lambda paid, owe, st: f"C-1001,2026-09-28,Lakeside Family Medicine (fictional),Office visit,180.00,{paid},{owe},{st},Example Health Plan (fictional)\n"   # noqa: E731
+        later_files = {"portal-2026-11.json": bundle(pat, {**med, "status": "stopped"},
+                                                     {**cond, "clinicalStatus": status("resolved"), "abatementDateTime": "2026-10-15"}),
+                       "claims-2026-11.csv": head + claim("120.00", "45.00", "Processed")}
+        db = dbm.connect()
+        pid = prof.create_profile(db, "Updated in place (fictional)", owner_id=robin)
+        db.close()
+
+        def imported(name, body):   # uploaded, read and saved, as the import page does
+            p = f"/api/profiles/{pid}"
+            up = self.robin.post(p + "/uploads", headers=H).json()["id"]
+            self.assertEqual(self.robin.put(f"{p}/uploads/{up}/files", params={"path": name}, content=body.encode(),
+                                            headers={**H, "Content-Type": "application/octet-stream"}).status_code, 200)
+            self.assertEqual(self.robin.post(f"{p}/uploads/{up}/finish", headers=H).status_code, 200)
+            jid = self.robin.post(f"{p}/uploads/{up}/import", json={}, headers=H).json()["id"]
+
+            def until(states):
+                end = time.time() + 30
+                while time.time() < end:
+                    j = self.robin.get(f"{p}/jobs/{jid}").json()
+                    if j["state"] in states:
+                        return j
+                    time.sleep(0.05)
+                self.fail(f"job {jid} never reached {states}")
+            self.assertEqual(until(("preview", "failed"))["state"], "preview")
+            self.assertEqual(self.robin.post(f"{p}/jobs/{jid}/confirm", json={"keep": []}, headers=H).status_code, 202)
+            j = until(("done", "failed", "discarded"))
+            self.assertEqual(j["state"], "done", j)
+            return j
+
+        def said(d):
+            return ([(m["name"], m["spans"][-1]["open"]) for m in d.get("medications") or []],
+                    [(x.get("name"), x.get("status")) for x in d.get("problems") or []],
+                    [(c["title"], c["paid"], c["owe"], c["status"]) for c in d.get("costs") or []])
+        imported("portal-2026-03.json", bundle(pat, med, cond))
+        imported("claims-2026-10.csv", head + claim("0.00", "0.00", "Pending"))
+        path = backup.create(os.path.join(TMP, "backups-920"))
+        later = [imported(name, body) for name, body in later_files.items()]
+        self.assertEqual([j["counts"].get("changed") for j in later], [2, 1], later)
+        sent = []   # each later file as its importer reads it
+        for name, body in later_files.items():
+            d = tempfile.mkdtemp(dir=TMP)
+            with open(os.path.join(d, name), "w", encoding="utf-8") as f:
+                f.write(body)
+            out = importers.run(importers.files_in(d))
+            sent.append((out["importer"], out["data"]))
+        db = dbm.connect()
+        self.assertEqual(said(records.assemble(db, pid)), ([("Metoprolol succinate 25 mg tablet", False)], [("Atrial fibrillation", "Resolved")],
+                                                           [("Office visit", 120.0, 45.0, "Processed")]))
+        self.assertEqual([preview.changes(preview.find(db, pid, fmt, data)) for fmt, data in sent], [0, 0], "today: they say it already")
+        db.close()
+
+        folder = os.path.join(TMP, "restored-920")
+        _, con = self.restore_into(folder, path, today=True)
+        for j in later:
+            self.assertIsNone(con.execute("SELECT 1 FROM imports WHERE id=?", (j["import_id"],)).fetchone(), "the later imports aren't the backup's")
+            self.assertEqual(con.execute("SELECT COUNT(*) FROM sync_changes WHERE import_id=?", (j["import_id"],)).fetchone()[0], 0)
+        self.assertEqual(con.execute("PRAGMA foreign_key_check").fetchall(), [])
+        with mock.patch.multiple(config, DB_PATH=os.path.join(folder, "sanguity.db"), DATA_DIR=folder):
+            restored = dbm.connect()
+            try:
+                self.assertEqual(said(records.assemble(restored, pid)), ([("Metoprolol succinate 25 mg tablet", True)], [("Atrial fibrillation", "Active")],
+                                                                         [("Office visit", 0.0, 0.0, "Pending")]),
+                                 "the backup's records: the medication current, the problem active, the claim pending")
+                self.assertEqual([preview.changes(preview.find(restored, pid, fmt, data)) for fmt, data in sent], [2, 1],
+                                 "the next files update the three in place again, nothing added beside")
+            finally:
+                restored.close()
+        db = dbm.connect()
+        prof.delete_profile(db, pid)
+        db.close()
+
 
     # ---------------------------------------------------------------- what a restore replaced (#595)
 
