@@ -24223,6 +24223,36 @@ def main():
                 kbad += focus_walk(page, f"{path.split('.')[0]}#{g}") + focus_walk(page, f"{path.split('.')[0]}#{g}", back=True)
             check("keyboard at 375 px: Tab and Shift+Tab through each records tab and a group of each page, every stop showing focus "
                   "and none hidden under the top bar or a sticky header (2.4.7, 2.4.11, #202)", not kbad, kbad[:8] or f"{time.time() - t_keys:.0f} s")
+            # #767: …and on a phone, what Tab brings into view has its ring (outline and offset) clear of the tab bar, not only
+            # its box (the scroll padding was the bar's 57 px exactly, the ring's 5 px under it): Tab from each records tab's
+            # start and Shift+Tab from its end, at 412, 360 and 320 px
+            RING767 = r"""async () => { await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+              const a = document.activeElement, bar = document.querySelector('header.topbar .tabs');
+              if (!a || a === document.body || !bar || getComputedStyle(bar).position !== 'fixed' || bar.contains(a)) return null;
+              for (let p = a; p && p !== document.body; p = p.parentElement) { const cs = getComputedStyle(p); if (cs.position === 'fixed' || cs.position === 'sticky' || p.matches('dialog')) return null; }
+              const r = a.getBoundingClientRect(), cs = getComputedStyle(a), b = bar.getBoundingClientRect().top;
+              if (!r.height || cs.outlineStyle === 'none' || r.top >= b || r.height > b - 100) return null;   // (wholly under it, or taller than the room: #202's)
+              const ring = r.bottom + Math.max(0, parseFloat(cs.outlineOffset) + parseFloat(cs.outlineWidth));
+              return ring > b + 0.5 ? `${a.tagName.toLowerCase()}${a.id ? '#' + a.id : ''} "${(a.getAttribute('aria-label') || a.textContent || '').trim().slice(0, 24)}" ${Math.round(ring - b)} px under` : null; }"""
+            bad767, n767 = {}, 0
+            page.goto(base + "/?profile=1#overview")   # (the walk ended on Admin)
+            page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted", timeout=20000)
+            for w, h in ((412, 860), (360, 760), (320, 640)):
+                page.set_viewport_size({"width": w, "height": h})
+                for t in ("overview", "health", "timeline", "labs", "costs", "medications"):
+                    for back in (False, True):
+                        js("([t, back]) => { switchTab(t); scrollTo(0, back ? document.documentElement.scrollHeight : 0); "
+                           "const s = document.createElement('span'); s.tabIndex = -1; document.querySelector('main')[back ? 'append' : 'prepend'](s); s.focus(); s.remove(); }", [t, back])
+                        settle(250)
+                        for _ in range(10 if back else 25):
+                            page.keyboard.press("Shift+Tab" if back else "Tab")
+                            got = js(RING767)
+                            n767 += 1
+                            if got:
+                                bad767.setdefault(f"{w} {t}{' from its end' if back else ''}", []).append(got)
+            page.set_viewport_size({"width": 375, "height": 800})
+            check("…and on a phone (412, 360 and 320 px), what Tab and Shift+Tab bring into view on each records tab has its focus ring clear of the "
+                  "tab bar (#767, 2.4.11)", n767 > 500 and not bad767, {k: v[:3] for k, v in list(bad767.items())[:8]})
             # #831: …and each date, time and date-and-time box in the drawer's forms, Shift+Tab from what follows it onto its
             # last part (its picker's button, focused inside the box), shows focus: a dose's date and time, and Fix date's
             # date and time (a datetime-local box, which #202's rule for that state left out), in light and dark
