@@ -467,7 +467,7 @@ const MOVABLE = ["visit", "contact", "procedure", "imaging", "study", "message",
 const batchOf = x => (x.value || {}).batch ? (DATA.edits || []).filter(y => (y.value || {}).batch === x.value.batch).length : 1;
 function describeEdit(x) {
   const was = x.was || {}, v = x.value || {};
-  if (x.action === "hide") return `Hidden: ${quoted(was.title)}`;
+  if (x.action === "hide") return `Hidden: ${quoted(was.title)}` + (was.k === "lab" || was.k === "labitem" ? " · its results stay in Labs" : "");   // (#950)
   if (x.action === "rename") return `Renamed ${quoted(was.title)} to ${quoted(v.title)}`;
   if (x.action === "date") return `Date of ${quoted(was.title)} changed${was.t ? " from " + fmtDT(was.t) : ""} to ${fmtDT(v.t)}`;
   if (x.action === "not_stay") return `${quoted(was.title)} marked as not a hospital stay`;
@@ -550,8 +550,11 @@ function editPanel(e) {
         el("button", {class: "btn", type: "button", text: "Cancel", onclick: () => { forms.replaceChildren(); $("#dmoreBtn").focus(); }})));
     $("#dbody").scrollTop = 0; input.focus();
   };
+  // a lab draw's or report's Hide says its results stay in Labs (#950: on no lab day, server/edits.py)
+  const draw = e.k === "lab" ? "this lab draw and its reports out of the Timeline" : e.k === "labitem" ? "this report out of its lab draw" : null;
   drawerMenu([
-    {text: "Hide", tip: "Leave this event out of the records", run: () => post({action: "hide"}, {edits: true})},
+    {text: draw ? "Hide (results stay in Labs)" : "Hide", run: () => post({action: "hide"}, {edits: true}),
+      tip: draw ? `Leave ${draw}; its results stay in Labs, its charts, share links and the visit summary` : "Leave this event out of the records"},
     {text: "Rename", run: () => {
       const i = el("input", {type: "text", maxlength: 300, "aria-label": "New title"}); i.value = e.title;
       const [box, got] = similarChoice(e, false);

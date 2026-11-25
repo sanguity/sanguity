@@ -20,7 +20,8 @@ function joinSeries(labs) {
   const out = [], by = new Map();
   for (const s of labs) {
     s.pts.forEach((p, n) => { p.imp = s.imp; p.same = (s.same && s.same[n]) || null; p.also = null; p.apart = s.apart?.[n] ?? null;
-      p.rangeFrom = s.rangeFrom?.[n] ?? null; });   // (#834: the import whose copy's report gave its range, drawer.js resultTable)
+      p.rangeFrom = s.rangeFrom?.[n] ?? null;   // (#834: the import whose copy's report gave its range, drawer.js resultTable)
+      p.off = s.unlisted?.[n] ? [s.imp] : null; });   // (#950: the imports whose copy's reports were hidden by hand, util.js labDraws)
     const k = s.name + "\u001f" + (s.unit || "");
     const have = by.get(k);
     if (!have) { const c = {...s, imps: [s.imp]}; by.set(k, c); out.push(c); continue; }
@@ -31,7 +32,7 @@ function joinSeries(labs) {
     const at = new Map(), pts = s.watch ? s.pts : s.pts.filter(p => {   // at: the points kept at a time
       const there = at.get(p.ts), was = there?.find(q => isCopy(q, p));
       if (!there) at.set(p.ts, [p]); else if (!was) there.push(p);
-      if (was) (was.also ||= []).push(p.imp);
+      if (was) { (was.also ||= []).push(p.imp); if (p.off) (was.off ||= []).push(p.imp); }
       return !was;
     });
     if (s.imps.length > 1 || pts.length < s.pts.length) { s.pts = pts; s.n = pts.length; }

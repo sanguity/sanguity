@@ -264,6 +264,37 @@ def _rows_of(rows, s, p):
     return named, alike
 
 
+def _at(rows, s, p):
+    """The drawer rows (event id, row index) that show point p of series s: by its name, else the one by its unit
+    alone (_rows_of), as lab_faults finds a result's row."""
+    named, alike = _rows_of(rows, s, p)
+    return named or (alike if len(alike) == 1 else [])
+
+
+def unlisted(data, hidden):
+    """(#950) The results whose rows are all in lab events hidden by hand (edits.apply's, a lab day's hidden with it:
+    hidden, {"events", "details"} of them), no other lab event's row showing them: still in Labs, its charts, share
+    links and summaries (the drawer's Hide says so), but on no lab day, as no lab day's drawer shows them. Marked in
+    their series, "unlisted": {point index: 1}, and "t<index>" for a text result, so the page counts them on no lab
+    day's badge (util.js labDraws, same.js joinSeries) and lab_faults takes them as having no row. A lab day's badge
+    counted them as its import's results that day: 4 against its drawer's 2."""
+    gone = _rows(hidden or {})
+    if not gone:
+        return
+    shown, labs = _rows(data), data.get("labs") or []
+    for i, s in enumerate(labs):
+        if not isinstance(s, dict) or s.get("watch"):
+            continue
+        marks = {("" if field == "pts" else "t") + str(n): 1 for field in ("pts", "txt") for n, p in enumerate(s.get(field) or [])
+                 if isinstance(p, list) and p and _at(gone, s, p) and not _at(shown, s, p)}
+        if marks:
+            labs[i] = {**s, "unlisted": marks}
+
+
+def _unlisted(s, field, n):
+    return bool((s.get("unlisted") or {}).get(("" if field == "pts" else "t") + str(n)))
+
+
 # ---------------------------------------------------------------- what every lab day keeps to (#878, #909–#914)
 
 def lab_faults(data, day=None):
@@ -309,8 +340,8 @@ def lab_faults(data, day=None):
                     continue
                 named, alike = _rows_of(rows, s, p)   # (one result in two reports of its day: CareSpace's, a row in each)
                 at = named or (alike if len(alike) == 1 else [])
-                if not at:
-                    if on(p[0]) and not any(_rows_of(other, s, p)):
+                if not at:   # (#950: one whose reports were hidden by hand has none, on purpose: unlisted)
+                    if on(p[0]) and not any(_rows_of(other, s, p)) and not _unlisted(s, field, k):
                         out.append(f"{s.get('name')} at {p[0]} (import {s.get('imp')}): no row")
                     continue
                 found.update(at)
@@ -331,7 +362,8 @@ def lab_faults(data, day=None):
 def _draws(events, details, days, labs):
     """util.js labDraws over the records, as the page counts a lab day's results (its badge, #905): {lab day id:
     {(series index, point index)}}. A result is the lab day's (the nearest in time of several) that lists a lab event
-    of its import on its day, else one of its import that day, else every lab day of its day."""
+    of its import on its day, else one of its import that day, else every lab day of its day; one whose reports were
+    hidden by hand (#950: unlisted) is no lab day's."""
     def when(t):
         try:
             x = datetime.fromisoformat(str(t).replace("Z", "+00:00"))
@@ -352,7 +384,7 @@ def _draws(events, details, days, labs):
     out = {e["id"]: set() for e in days}
     for n, s in labs:
         for k, p in enumerate(s.get("pts") or []):
-            if not (isinstance(p, list) and p):
+            if not (isinstance(p, list) and p) or _unlisted(s, "pts", k):
                 continue
             t, d = when(p[0]) or 0, _day(p[0])
             mine = held.get((d, s.get("imp"))) or by.get((d, s.get("imp")))

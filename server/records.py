@@ -386,11 +386,13 @@ def _assemble(db, pid, raw=False):
     else:
         encounters.tidy(events, details)   # chart activity, plain visit titles, reminders (#236); corrections have the last word
         out = edits.apply(db, pid, {**out, "events": events, "details": details, "labs": labs, "costs": costs})
+        hidden = out.pop(edits.UNLISTED, None)   # (#950) the lab events hidden by hand
         for e in out.get("events") or []:
             e.pop("orig", None)            # what tidy() changed, kept only for the corrections to find their events
         out = crossmatch.apply(db, pid, out)
         crossmatch.copies(out, crossmatch.not_same(db, pid))   # one result twice, not linked: each copy with the one
                                                                # result's range and flag (#825), never two said not the same (#833)
+        crossmatch.unlisted(out, hidden)   # their results, on no lab day (#950)
         _row_series(out)   # each result row's series, for the drawer to read its flag from (#782)
         out = oop.annotate(db, pid, out, pay_imps)   # out-of-pocket: sources, HSA/FSA, matched to claims, counted once (#55)
     if (entries := journal.listing(db, pid)):   # only when there are some, like edits

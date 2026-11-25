@@ -291,6 +291,7 @@ class Edits(unittest.TestCase):
         d = whole(self.robin, pid)
         self.assertEqual(sorted(sum(rows(d).values(), [])), ["Hemoglobin", "Platelet Count"], "the ALT's alone is hidden")
         self.assertEqual([x["ids"] for x in d["edits"]], [[alt]])
+        self.assertEqual(crossmatch.lab_faults(d), [], "its lab day, listing nothing else, hidden with it (#950)")
         again = edit(event=alt, action="hide")   # the same lab event hidden again: its own edit replaced
         self.assertEqual([x["id"] for x in whole(self.robin, pid)["edits"]], [again])
         self.robin.delete(f"/api/profiles/{pid}/edits/{again}", headers=H)
@@ -308,6 +309,7 @@ class Edits(unittest.TestCase):
         d = whole(self.robin, pid)
         self.assertEqual(sorted(sum(rows(d).values(), [])), ["Hemoglobin", "Platelet Count"],
                          "the hospital's lab day hidden, the portal's shown, the ALT's lab event hidden still")
+        self.assertEqual(crossmatch.lab_faults(d), [], "the hospital's results on no lab day (#950)")
         self.robin.delete(f"/api/profiles/{pid}/edits/{hide}", headers=H)
         d = whole(self.robin, pid)
         self.assertEqual(sorted(sum(rows(d).values(), [])), ["Hemoglobin", "Platelet Count", "Potassium", "Sodium"])
@@ -315,6 +317,91 @@ class Edits(unittest.TestCase):
             self.robin.delete(f"/api/profiles/{pid}/edits/{x['id']}", headers=H)
         d = whole(self.robin, pid)
         self.assertEqual((rows(d), crossmatch.lab_faults(d)), (rows(both), []))
+
+    def test_a_hidden_lab_events_results_stay_in_labs_on_no_lab_day(self):   # #950
+        """Hiding a lab event (a report) by hand left it out of its lab day's drawer, but its results stayed in Labs (as
+        they still do: Hide says so) and were still counted on its lab day's badge, its import's results that day being
+        the lab day's (util.js labDraws): 4 against the drawer's 2. Now a result whose every row is in a lab event hidden
+        is marked ("unlisted", by the drawer's own match of a row to its result) and counted on no lab day; a lab day all
+        of whose lab events are hidden is hidden too, and hiding a lab day hides the lab events it lists. Each time the
+        badge counts what the drawer shows (crossmatch.lab_faults: none), every result still in Labs; undone, as it was."""
+        from server import crossmatch, uploads
+        db = dbm.connect()
+        uid = db.execute("SELECT id FROM users WHERE username='robin'").fetchone()[0]
+        pid = prof.create_profile(db, "A hidden report (fictional)", owner_id=uid)
+        db.close()
+        t = "2025-06-03T08:15:00"
+
+        def obs(oid, code, name, v, unit, lo, hi):
+            return {"resourceType": "Observation", "id": oid, "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
+                    "code": {"coding": [{"system": "http://loinc.org", "code": code}], "text": name}, "effectiveDateTime": t,
+                    "valueQuantity": {"value": v, "unit": unit}, "referenceRange": [{"low": {"value": lo}, "high": {"value": hi}}]}
+
+        def report(rid, name, *ids):
+            return {"resourceType": "DiagnosticReport", "id": rid, "status": "final", "code": {"text": name}, "effectiveDateTime": t,
+                    "result": [{"reference": f"Observation/{i}"} for i in ids]}
+
+        def upload(name, resources):
+            body = json.dumps({"resourceType": "Bundle", "type": "collection", "entry": [{"resource": r} for r in resources]}).encode()
+            db = dbm.connect()
+            try:
+                up = uploads.create(db, pid, uid)
+                uploads.add_file(db, pid, up, name, __import__("io").BytesIO(body))
+                uploads.finish(db, pid, up)
+            finally:
+                db.close()
+            jid = self.robin.post(f"/api/profiles/{pid}/uploads/{up}/import", json={}, headers=H).json()["id"]
+            end = time.time() + 30
+            while time.time() < end:
+                j = self.robin.get(f"/api/profiles/{pid}/jobs/{jid}").json()
+                if j["state"] == "preview":
+                    self.robin.post(f"/api/profiles/{pid}/jobs/{jid}/confirm", json={"keep": []}, headers=H)
+                elif j["state"] in ("done", "failed"):
+                    self.assertEqual(j["state"], "done", j)
+                    return
+                time.sleep(0.05)
+            self.fail("the upload never finished")
+
+        def edit(**body):
+            r = self.robin.post(f"/api/profiles/{pid}/edits", json=body, headers=H)
+            self.assertEqual(r.status_code, 201, r.text)
+            return r.json()["id"]
+
+        def seen(d):   # (each lab day's rows, what's wrong with them, the results on no lab day, every result in Labs)
+            days = {}
+            for e in d["events"]:
+                if e["k"] == "lab":
+                    days[e["imp"]] = sorted(r[0] for i in d["details"][str(e["id"])]["ids"] for r in d["details"][str(i)]["rows"])
+            off = sorted(s["name"] for s in d["labs"] for n in (s.get("unlisted") or {}))
+            return days, crossmatch.lab_faults(d), off, sorted(s["name"] for s in d["labs"] if s["pts"])
+        upload("portal.json", [obs("hgb", "718-7", "Hemoglobin", 12.1, "g/dL", 13.5, 17.5), obs("plt", "777-3", "Platelet Count", 255, "10*3/uL", 150, 400),
+                               obs("alt", "1742-6", "ALT", 60, "U/L", 7, 56), obs("ast", "1920-8", "AST", 30, "U/L", 8, 33),
+                               report("cbc", "CBC", "hgb", "plt"), report("lft", "Liver panel", "alt", "ast")])
+        upload("hospital.json", [obs("h-na", "2951-2", "Sodium", 139, "mmol/L", 135, 145), report("bmp", "BMP", "h-na")])
+        before = whole(self.robin, pid)
+        labs = ["ALT", "AST", "Hemoglobin", "Platelet Count", "Sodium, Blood"]
+        portal, hospital = sorted({e["imp"] for e in before["events"] if e["k"] == "lab"})
+        self.assertEqual(seen(before), ({portal: ["ALT", "AST", "Hemoglobin", "Platelet Count"], hospital: ["Sodium"]}, [], [], labs))
+        lft = next(e["id"] for e in before["events"] if e["k"] == "labitem" and [r[0] for r in before["details"][str(e["id"])]["rows"]] == ["ALT", "AST"])
+        bmp = next(e["id"] for e in before["events"] if e["k"] == "labitem" and e["imp"] == hospital)
+        day = lambda imp: next(e["id"] for e in before["events"] if e["k"] == "lab" and e["imp"] == imp)   # noqa: E731
+
+        one = edit(event=lft, action="hide")   # one of the portal's two reports
+        self.assertEqual(seen(whole(self.robin, pid)), ({portal: ["Hemoglobin", "Platelet Count"], hospital: ["Sodium"]}, [], ["ALT", "AST"], labs),
+                         "its results on no lab day, still in Labs")
+        edit(event=bmp, action="hide")   # the hospital's only report: its lab day goes with it
+        d = whole(self.robin, pid)
+        self.assertEqual(seen(d), ({portal: ["Hemoglobin", "Platelet Count"]}, [], ["ALT", "AST", "Sodium, Blood"], labs))
+        for x in d["edits"]:
+            self.robin.delete(f"/api/profiles/{pid}/edits/{x['id']}", headers=H)
+        edit(event=day(portal), action="hide")   # a lab day: its reports with it
+        d = whole(self.robin, pid)
+        self.assertEqual(seen(d), ({hospital: ["Sodium"]}, [], ["ALT", "AST", "Hemoglobin", "Platelet Count"], labs))
+        self.assertFalse([e for e in d["events"] if e["k"] == "labitem" and e["imp"] == portal], "its lab events hidden with it")
+        for x in whole(self.robin, pid)["edits"]:
+            self.robin.delete(f"/api/profiles/{pid}/edits/{x['id']}", headers=H)
+        self.assertEqual(seen(whole(self.robin, pid)), seen(before), "undone, as it was")
+        self.assertTrue(one)
 
     def test_replies_carry_the_records(self):
         """#271: an edit, and its undo, answer with the records as the page loads them, so it draws them in place"""
