@@ -1388,7 +1388,8 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .jfield{display:flex;flex-direction:column;gap:var(--sp-1);color:var(--ink2);font-size:var(--fs-3);min-width:0}
 .jfield textarea{resize:vertical}
 .jwhen{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
-.jwhen .jfield{flex:1 1 140px}
+.jwhen .jfield{flex:1 1 140px;min-width:auto}
+:is(.jwhen,.mr-time) input{min-width:max-content}   /* never narrower than its date or time: the second on a line of its own where both don't fit (#987, as #797) */
 .jkinds{align-self:flex-start;max-width:100%}
 .jsev-in{display:flex;align-items:center;gap:var(--sp-2)}
 .jsev-in input{flex:1;min-width:0;accent-color:var(--c-journal)}
@@ -1741,7 +1742,7 @@ svg text.medname{fill:var(--ink2);font-size:var(--fs-1)}
 .mr-item.off .mr-says,.mr-item.ended .mr-says{color:var(--ink2)}
 .mr-acts{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
 .mr-times{display:flex;flex-direction:column;gap:var(--sp-2)}
-.mr-time{display:flex;gap:var(--sp-2);align-items:center}
+.mr-time{display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center}
 .mr-time>.btn[aria-disabled=true]{opacity:.45;cursor:not-allowed}   /* the only time's Remove: its tip says why (#837) */
 .mr-days{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
 .mr-add{align-self:flex-start}
