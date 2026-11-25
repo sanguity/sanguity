@@ -318,11 +318,12 @@ class PortalEverything(Shape, unittest.TestCase):
         by = {p["substance"]: p for p in self.data["problems"] if p["type"] == "Allergy"}
         self.assertEqual(sorted(by), ["Peanuts", "Penicillin G"])   # not the refuted one
         pcn = by["Penicillin G"]
-        self.assertEqual({k: v for k, v in pcn.items() if k not in ("key", "src", "date")},
+        self.assertEqual({k: v for k, v in pcn.items() if k not in ("key", "src", "date", "ver")},
                          {k: v for k, v in self.ccda["problems"][0].items() if k not in ("key", "src", "date")})
         self.assertEqual((pcn["name"], pcn["reactions"], pcn["severity"], pcn["criticality"], pcn["status"], pcn["code"], pcn["system"]),
                          ("Allergy: Penicillin G (Hives)", ["Hives"], "Moderate", "High", "Active", "7980", "RxNorm"))
-        self.assertEqual(set(pcn), set(self.ccda["problems"][0]))
+        self.assertEqual(set(pcn) - {"ver"}, set(self.ccda["problems"][0]))
+        self.assertEqual(pcn["ver"], {"server": "https://fhir.harborview.example/r4"})   # (#955: its server, for the file uploaded again)
         self.assertEqual((by["Peanuts"]["reactions"], by["Peanuts"]["severity"]), (["Anaphylaxis", "Rash"], "Severe"))   # the worst reaction's
 
     def test_pharmacy_fills(self):
@@ -340,9 +341,9 @@ class PortalEverything(Shape, unittest.TestCase):
     def test_appointments(self):
         self.assertEqual(self.data["upcoming"], [{"t": "2027-02-12T09:30:00-06:00", "title": "Annual physical", "who": "Dr. Priya Lindqvist",
                                                   "where": "Harbor View Clinic, Building B", "dx": "Yearly check-up", "procs": [],
-                                                  "key": "fhir:Appointment/hv-ap-1"}])   # not the fulfilled or cancelled ones
-        # the fields a planned Encounter's and an appointment typed in have (manual_items._upcoming)
-        self.assertEqual(set(self.data["upcoming"][0]), {"t", "title", "who", "where", "dx", "procs", "key"})
+                                                  "key": "fhir:Appointment/hv-ap-1", "ver": {"server": "https://fhir.harborview.example/r4"}}])   # not the fulfilled or cancelled ones
+        # the fields a planned Encounter's and an appointment typed in have (manual_items._upcoming), and its version (#955)
+        self.assertEqual(set(self.data["upcoming"][0]) - {"ver"}, {"t", "title", "who", "where", "dx", "procs", "key"})
 
     def test_imaging_studies(self):
         x = {e["title"]: e for e in by_kind(self.data, "imaging")}

@@ -2350,6 +2350,15 @@ Everything on `main` so far; it becomes the first tagged release.
   with the same id that says something else is updated in place, as lab results are (#869, #877): the review says so
   by kind ("1 medication and 1 problem or diagnosis already here from the same source are updated…", "Update 2
   records"), and undoing the import puts back what each said.
+- **A record is updated only by its own source's newer file, and the review names each** (#955): #920 took any
+  difference for a change, so another portal's export with the same plain FHIR ids replaced hospital A's medication
+  and problem with clinic B's, November's export then March's put a stopped medication and a resolved problem back to
+  Active, and a smaller export of the same portal wiped a visit's doctor, place and diagnosis. Now a record is updated
+  only from the same server, never from an older version (its FHIR lastUpdated where given, else the date of the file
+  it came in: a bundle's timestamp, else the latest date it holds), and never emptied of what a file leaves out. The
+  review lists each record it would change and what changes ("status: Active → Stopped"), with a box to leave it as it
+  is. Records uploaded before this change don't say their server, so a FHIR file uploaded again leaves them as they
+  are (as before #920).
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

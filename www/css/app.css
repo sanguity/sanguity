@@ -1062,10 +1062,10 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .imp-labs .before{font-weight:var(--fw-semibold)}
 .imp-labs .err{color:var(--crit)}
 @container (width < 560px){ .imp-labs td:last-child{flex-basis:100%} }
-.import-job :is(.imp-dups,.imp-same) ul{list-style:none;margin:var(--sp-2) 0 0;padding:0;font-size:var(--fs-3)}
-.import-job :is(.imp-dups,.imp-same) li{border-top:1px solid var(--grid);padding:var(--sp-1) 0;overflow-wrap:anywhere}
+.import-job :is(.imp-dups,.imp-same,.imp-changes) ul{list-style:none;margin:var(--sp-2) 0 0;padding:0;font-size:var(--fs-3)}
+.import-job :is(.imp-dups,.imp-same,.imp-changes) li{border-top:1px solid var(--grid);padding:var(--sp-1) 0;overflow-wrap:anywhere}
 .import-job .imp-dups ul{max-height:300px;overflow-y:auto}
-.import-job :is(.imp-dups,.imp-same) label{display:block;cursor:pointer}
+.import-job :is(.imp-dups,.imp-same,.imp-changes) label{display:block;cursor:pointer}
 .import-job .imp-dup-none{display:inline-block;inline-size:20px}   /* a list's entry, with no box: lined up as if it had one (#497) */
 .import-job .imp-same li{display:grid;gap:var(--sp-1)}
 .imp .off{display:none !important}

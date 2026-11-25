@@ -663,7 +663,7 @@ class Preview(unittest.TestCase):
                 self.assertEqual(self.save(pid, self.previewed(pid, first)[0])["state"], "done")
                 before, n = said(assembled(pid)), count(pid)
                 j, _ = self.previewed(pid, second)
-                self.assertEqual((j["new"], j["duplicates"]["changed"]), (True, {"n": sum(kinds.values()), "kinds": kinds}), j["duplicates"])
+                self.assertEqual((j["new"], {k: j["duplicates"]["changed"][k] for k in ("n", "kinds")}), (True, {"n": sum(kinds.values()), "kinds": kinds}), j["duplicates"])
                 self.assertFalse([x for x in j["duplicates"]["items"] if x["title"] in ("Metoprolol succinate 25 mg tablet", "Atrial fibrillation", "Office visit")],
                                  "not among the duplicates skipped")
                 done = self.save(pid, j)
@@ -682,6 +682,100 @@ class Preview(unittest.TestCase):
                 r = self.robin.post(f"/api/profiles/{pid}/imports/{done['import_id']}/undo", headers=H)
                 self.assertEqual(r.status_code, 200, r.text)
                 self.assertEqual(said(assembled(pid)), before, "undone: each as it was")
+
+    def test_a_record_is_updated_only_by_its_own_source_and_never_by_an_older_or_smaller_file(self):   # #955
+        """#920 updates a record in place when its source sends it again saying something else, and took any difference
+        for a change: another portal's export with the same plain FHIR ids (fhir:<type>/<id>) put clinic B's medication
+        and problem in place of hospital A's; November's export, then March's, put the medication stopped since and the
+        problem resolved since back to Active; a smaller export of the same portal (the visit alone, without the
+        Practitioner, Location and Condition it names) wiped the visit's who, where and diagnosis to "". And the review
+        said only how many of each kind. Now a record is updated only from its own server (its VER, the FHIR importer's),
+        never from an older version (its meta.lastUpdated where given, else the date of the upload it came in: a FHIR
+        bundle's timestamp, else the latest date it holds), never emptying a field the upload leaves out, and the review
+        names each record it would change and what changes ("changed": "items"), each with a box to leave it out ("x:"
+        refs, sent with the duplicates kept)."""
+        status = lambda code: {"coding": [{"system": "http://terminology.hl7.org/CodeSystem/condition-clinical", "code": code}]}   # noqa: E731
+        pat = {"resourceType": "Patient", "id": "1", "name": [{"family": "Example", "given": ["Pat"]}], "birthDate": "1980-02-02"}
+
+        def med(mid, text, st="active", at=None):
+            return {"resourceType": "MedicationRequest", "id": mid, "status": st, "intent": "order", "subject": {"reference": "Patient/1"},
+                    "medicationCodeableConcept": {"text": text}, "authoredOn": "2026-03-01", "dosageInstruction": [{"text": "1 tablet daily"}],
+                    **({"meta": {"lastUpdated": at}} if at else {})}
+
+        def cond(cid, text, st="active", at=None):
+            return {"resourceType": "Condition", "id": cid, "subject": {"reference": "Patient/1"}, "code": {"text": text},
+                    "clinicalStatus": status(st), "onsetDateTime": "2026-02-20", **({"meta": {"lastUpdated": at}} if at else {})}
+
+        def bundle(name, base, *rs, made=None):
+            return {name: json.dumps({"resourceType": "Bundle", "type": "collection", **({"timestamp": made} if made else {}),
+                                      "entry": [{"fullUrl": f"{base}/{r['resourceType']}/{r['id']}", "resource": r} for r in rs]})}
+
+        def said(pid):
+            d = assembled(pid)
+            self.assertEqual(rowless(d), [])
+            self.assertFalse([x for x in d["events"] + (d.get("problems") or []) if "ver" in x], "a record's version kept, never served")
+            return ([(m["name"], m["spans"][-1]["status"]) for m in d.get("medications") or []], [(p["name"], p["status"]) for p in d.get("problems") or []])
+
+        def again(pid, first, second, changed):   # first saved, second reviewed: its changes ("n", "kinds") -> the review
+            self.assertEqual(self.save(pid, self.previewed(pid, first)[0])["state"], "done")
+            j, _ = self.previewed(pid, second)
+            self.assertEqual({k: j["duplicates"]["changed"][k] for k in ("n", "kinds")}, changed, j["duplicates"])
+            return j
+        a = "https://hospital-a.example/fhir"
+        # another portal's export with the same plain ids: not the same records, hospital A's left as they were
+        pid = self.profile("Two portals, the same ids")
+        j = again(pid, bundle("hospital-a.json", a, pat, med("1", "Metformin 500 mg tablet"), cond("1", "Type 2 diabetes")),
+                  bundle("clinic-b.json", "https://clinic-b.example/fhir", pat, med("1", "Lisinopril 10 mg tablet", "stopped"), cond("1", "Hypertension", "resolved")),
+                  {"n": 0, "kinds": {}})
+        self.assertEqual(said(pid), ([("Metformin 500 mg tablet", "Active")], [("Type 2 diabetes", "Active")]), "hospital A's as they were")
+        # an older version: by lastUpdated, then by the date of the upload (a bundle's timestamp; else the latest it holds)
+        nov, mar = ([med("mr-1", "Metoprolol 25 mg tablet", "stopped"), cond("c-1", "Atrial fibrillation", "resolved")],
+                    [med("mr-1", "Metoprolol 25 mg tablet"), cond("c-1", "Atrial fibrillation")])
+        visit = lambda day: {"resourceType": "Encounter", "id": f"e-{day}", "status": "finished", "class": {"code": "AMB"}, "type": [{"text": "Office visit"}],   # noqa: E731
+                             "subject": {"reference": "Patient/1"}, "period": {"start": f"{day}T09:00:00"}}
+        stamped = lambda rs, at: [{**r, "meta": {"lastUpdated": at}} for r in rs]   # noqa: E731
+        older = {"its lastUpdated": (stamped(nov, "2026-11-02T10:00:00Z"), stamped(mar, "2026-03-05T10:00:00Z"), {}, {}),
+                 "its bundle's timestamp": (nov, mar, {"made": "2026-11-20T08:00:00Z"}, {"made": "2026-03-10T08:00:00Z"}),
+                 "the latest it holds": (nov + [visit("2026-11-05")], mar + [visit("2026-03-01")], {}, {})}
+        for how, (n, m, made_n, made_m) in older.items():
+            with self.subTest(older=how):
+                pid = self.profile(f"An older file, {how}")
+                again(pid, bundle("portal-2026-11.json", a, pat, *n, **made_n), bundle("portal-2026-03.json", a, pat, *m, **made_m), {"n": 0, "kinds": {}})
+                self.assertEqual(said(pid), ([("Metoprolol 25 mg tablet", "Stopped")], [("Atrial fibrillation", "Resolved")]), "November's as it was")
+                pid = self.profile(f"A newer file, {how}")   # the other way round: updated, as #920 has it
+                j = again(pid, bundle("portal-2026-03.json", a, pat, *m, **made_m), bundle("portal-2026-11.json", a, pat, *n, **made_n),
+                          {"n": 2, "kinds": {"med": 1, "problem": 1}})
+                self.assertEqual(self.save(pid, j)["counts"].get("changed"), 2)
+                self.assertEqual(said(pid), ([("Metoprolol 25 mg tablet", "Stopped")], [("Atrial fibrillation", "Resolved")]), "November's")
+        # a smaller export of the same portal: the visit alone, without whom and where it names; then with its type changed
+        pr = {"resourceType": "Practitioner", "id": "pr-1", "name": [{"family": "Okafor", "given": ["Ada"], "prefix": ["Dr."]}]}
+        loc = {"resourceType": "Location", "id": "l-1", "name": "Lakeside Family Medicine (fictional)"}
+        enc = {**visit("2026-05-04"), "id": "e-1", "participant": [{"individual": {"reference": "Practitioner/pr-1"}}],
+               "location": [{"location": {"reference": "Location/l-1"}}], "diagnosis": [{"condition": {"reference": "Condition/c-9"}}]}
+
+        def seen(pid):
+            d = assembled(pid)
+            return [(e["title"], e.get("sub"), {k: d["details"][str(e["id"])].get(k) for k in ("who", "where", "dx")}) for e in d["events"] if e["k"] == "visit"]
+        pid = self.profile("A smaller file")
+        whole = ("Dr. Ada Okafor · Lakeside Family Medicine (fictional)", {"who": "Dr. Ada Okafor", "where": "Lakeside Family Medicine (fictional)", "dx": "Seasonal allergic rhinitis"})
+        j = again(pid, bundle("everything.json", a, pat, pr, loc, cond("c-9", "Seasonal allergic rhinitis"), enc), bundle("visits-may.json", a, pat, enc), {"n": 0, "kinds": {}})
+        self.assertFalse(j["new"], "nothing it says that isn't here")
+        self.assertEqual(seen(pid), [("Office visit", *whole)], "its who, where and diagnosis as they were")
+        j, _ = self.previewed(pid, bundle("visits-may.json", a, pat, {**enc, "type": [{"text": "Follow-up visit"}]}))
+        self.assertEqual([(x["kind"], x["title"], x["what"]) for x in j["duplicates"]["changed"]["items"]],
+                         [("visit", "Follow-up visit", [["title", "Office visit", "Follow-up visit"]])], "named, with what changes")
+        self.save(pid, j)
+        self.assertEqual(seen(pid), [("Follow-up visit", *whole)], "updated, what the file leaves out kept")
+        # the review names each, with what changes, and one ticked is left out
+        pid = self.profile("One left out")
+        j = again(pid, bundle("portal-2026-03.json", a, pat, *mar), bundle("portal-2026-11.json", a, pat, *nov), {"n": 2, "kinds": {"med": 1, "problem": 1}})
+        items = j["duplicates"]["changed"]["items"]
+        self.assertEqual([(x["kind"], x["title"], x["what"]) for x in items],
+                         [("med", "Metoprolol 25 mg tablet", [["status", "Active", "Stopped"]]), ("problem", "Atrial fibrillation", [["status", "Active", "Resolved"]])])
+        self.assertTrue(all(x["ref"].startswith("x:") for x in items), items)
+        done = self.save(pid, j, keep=[items[0]["ref"]])
+        self.assertEqual((done["state"], done["counts"].get("changed")), ("done", 1), done)
+        self.assertEqual(said(pid), ([("Metoprolol 25 mg tablet", "Active")], [("Atrial fibrillation", "Resolved")]), "the medication left as it was")
 
     def test_an_observation_is_found_by_its_id_whichever_bundle_it_comes_in(self):   # #879
         """A FHIR Observation is the same record by its id whichever bundle it comes in: inside a DiagnosticReport (its

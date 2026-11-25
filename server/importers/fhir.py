@@ -227,17 +227,28 @@ def _load(files, warnings):
     return out
 
 
-def _unbundle(r):
+def _unbundle(r, made=None):
+    """A Bundle's resources, each with its entry's fullUrl ("_fullUrl") and the date the bundle says it was made
+    ("_bundled": its timestamp, else its meta.lastUpdated, #955), nested bundles too."""
     if r.get("resourceType") != "Bundle":
-        return [r]
+        return [dict(r, _bundled=made) if made and "_bundled" not in r else r]
+    made = r.get("timestamp") or (r.get("meta") or {}).get("lastUpdated") or made
     out = []
     for e in r.get("entry") or []:
         res = (e or {}).get("resource")
         if isinstance(res, dict) and res.get("resourceType"):
             if e.get("fullUrl"):
                 res = dict(res, _fullUrl=e["fullUrl"])
-            out += _unbundle(res)
+            out += _unbundle(res, made if isinstance(made, str) else None)
     return out
+
+
+def _ver(r):
+    """(#955) Which version of its record a resource is: {"server": the server it came from (_server), "at": its
+    meta.lastUpdated, "of": the date its bundle says it was made}, each where it's given. The import's preview updates
+    a record here in place only from the same server, never from an older version (preview._changed)."""
+    out = {"server": _server(r), "at": (r.get("meta") or {}).get("lastUpdated"), "of": r.get("_bundled")}
+    return {k: v for k, v in out.items() if isinstance(v, str) and v}
 
 
 # ------------------------------------------------------------------ small FHIR helpers
@@ -1219,6 +1230,11 @@ def parse(files):
             if seen.get(s.get("key"), 0) > 1:
                 s["key"] += f"|{extra(s)}"
     series.sort(key=lambda s: (-s["n"], s["name"]))
+    # (#955) each record of one resource says which version of it this is: its server, its lastUpdated, its bundle's date
+    vers = {rkey(r): v for r, _ in resources if (v := _ver(r))}
+    for x in [e for e in b.events if e.get("k") not in ("lab", "labitem")] + problems + upcoming:
+        if isinstance(x.get("key"), str) and (v := vers.get(x["key"].split("#", 1)[0])):
+            x["ver"] = v
     b.events.sort(key=lambda e: e["t"])
     problems.sort(key=lambda p: (p["date"] or "", p["name"]))
     upcoming.sort(key=lambda u: u["t"])

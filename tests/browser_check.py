@@ -21369,7 +21369,7 @@ def main():
             cond920 = {"resourceType": "Condition", "id": "c-920", "subject": {"reference": "Patient/p920"}, "code": {"text": "Atrial fibrillation"},
                        "clinicalStatus": clinical920("active"), "onsetDateTime": "2026-02-20"}
             files920 = [[med920, cond920], [{**med920, "status": "stopped"}, {**cond920, "clinicalStatus": clinical920("resolved"), "abatementDateTime": "2026-10-15"}]]
-            bad920 = []
+            bad920, bad955 = [], []
             for k920, res920 in enumerate(files920):
                 body920 = json.dumps({"resourceType": "Bundle", "type": "collection", "entry": [
                     {"fullUrl": f"https://portal.example/fhir/{r['resourceType']}/{r['id']}", "resource": r}
@@ -21387,6 +21387,16 @@ def main():
                                "Update 2 records", "Nothing is saved until you update the records with the button at the foot."]
                     if got920 != want920:
                         bad920.append(f"the second's review {got920} not {want920}")
+                    # (#955) each record it would change named with what changes, a box to leave it out: the button follows
+                    named955 = js(f"""(c => {{ const lis = [...c.querySelectorAll('.imp-changes li')], b = c.querySelector('.imp-actions .primary');
+                      const box = lis[0]?.querySelector('input[type=checkbox]'),
+                        out = [lis.map(li => [...li.querySelector('label').childNodes].filter(n => !n.matches?.('.d')).map(n => n.textContent).join('').trim())];
+                      if (box) {{ box.click(); out.push(b.textContent); box.click(); }}
+                      return [...out, b.textContent]; }})({card846})""")
+                    want955 = [["medication: Metoprolol succinate 25 mg tablet · status: Active → Stopped",
+                                "problem or diagnosis: Atrial fibrillation · status: Active → Resolved"], "Update 1 record", "Update 2 records"]
+                    if named955 != want955:
+                        bad955.append(f"the second's review names {named955} not {want955}")
                 js(f"{card846}.querySelector('.imp-actions .primary').click()")
                 page.wait_for_function(f"/^(Imported|Not imported)/.test({card846}.textContent)", timeout=30000)
                 if k920:
@@ -21406,6 +21416,8 @@ def main():
             check("#920: a portal's FHIR export uploaded again after the doctor stopped a medication and resolved a problem updates them in "
                   "place: its review says so by kind (“Update 2 records”), its card and toast too, with an Undo, and the records say the "
                   "medication stopped and the problem resolved", not bad920, bad920)
+            check("#955: the review names each record a file uploaded again would change, with what changes (“status: Active → Stopped”), "
+                  "and one ticked to leave it out isn't counted (“Update 1 record”)", not bad955, bad955)
             # ---- #887: one duplicate ticked to add anyway adds only that result. A C-CDA of four results at one time (ALT,
             # CRP, Potassium, Sodium) uploaded on the import page, then again: ALT ticked in the second's review, its button
             # says "Add 1 lab result", and its save adds that one ("1 lab result in 1 test"), with its own row in a lab day of

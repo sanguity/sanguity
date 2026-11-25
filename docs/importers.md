@@ -221,7 +221,13 @@ records it has seen before without decrypting every row. Before anything is save
 ticks it to keep anyway, unless its source says something else of it now (#920: a key naming one record, never a
 `:h:` hash nor a key scoped to a day; its body, details or Costs row differ, as a medication stopped, a problem
 resolved, a claim processed do), when it's updated in place, the review saying so by kind, and an entry of the
-profile-wide lists the same, both with what they were kept for Undo; a series adds only the points (time and value as reported) the profile doesn't have, and a
+profile-wide lists the same, both with what they were kept for Undo. Only from the same source (#955: a FHIR
+resource's plain id `fhir:<type>/<id>` on the same server, from the event's or entry's `ver`, which the FHIR importer
+gives as `{"server", "at": meta.lastUpdated, "of": the bundle's timestamp}` and the preview gives the date of the upload,
+the latest it holds, where it says none; a claim of the same insurer), never from an older version (by `at` where both
+say it, else `of`), and never emptying a field the upload leaves out or sends empty; the review names each record it
+would change and what changes, with a box to leave it out. `ver` is stored, never served; a series adds only the
+points (time and value as reported) the profile doesn't have, and a
 point it has already, but whose copy in the upload says something of its range or flag that no copy there says, or
 whose row in the upload's lab day is new, is added as a copy, read as one result with the copy there (#846), always
 with its own row, whose labitem and lab day are kept with it even where their keys are known (#868: the same rule for
