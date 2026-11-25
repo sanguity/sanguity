@@ -95,6 +95,8 @@ async def lifespan(app):
                 print(f"Removed {gone} folder(s) of deleted profiles that a stop part-way left.", flush=True)
             sealed = atrest.seal_everything(db)
             records.backfill_key_hashes(db)   # source keys' hashes for rows from before schema version 13
+            from . import labmap   # lab-name matches reviews made before schema version 41: their profile's own (#927)
+            labmap.scope_old(db)
             if (given := sync.backfill_keys(db)):   # a lab event's rows' own records, from before #885 (schema version 40)
                 print(f"Gave {given} lab event(s) a connected source saved before the rows' own records were kept "
                       "theirs, from what the source has sent.", flush=True)

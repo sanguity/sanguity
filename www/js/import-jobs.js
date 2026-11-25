@@ -198,7 +198,7 @@
     const part = node("details", {class: "imp-labs", open: ""},
       node("summary", {text: `${plural(listed.length, ["lab name", "lab names"])} to match`}),
       node("p", {class: "howto"}, "Sanguity doesn't know these test names. Type or pick the series each belongs to, or leave it empty to keep it " +
-        "separate; your choice is used for later imports from this source, on every profile of this server. ",
+        "separate; your choice is used for this profile's later imports from this source. ",
         about("matching lab names", "In a series, a result is charted with the same test from other labs. Only the series changes: each result keeps the " +
         "name the lab gave it. A match made before can be changed here for this import; to change it for good, ask an admin (Admin, Lab name matches).")),
       node("table", {class: "data stack"},

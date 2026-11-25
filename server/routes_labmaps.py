@@ -1,9 +1,12 @@
-"""The lab names matched during imports (labmap.py, #23), for admins: they apply to every profile on the install, so
-only an admin may change or remove one. Owners and editors make them by confirming an import's preview. Each entry
-names a test as a lab reported it and the series it goes to; never anyone's results, nor which profile it came from.
+"""The lab names matched during imports (labmap.py, #23), for admins: only an admin may change or remove one. Owners
+and editors make them by confirming an import's preview, each for that profile (#927); one an admin made before is
+for every profile. Each entry names a test as a lab reported it and the series it goes to; never anyone's results,
+nor which profile it came from.
 
-  GET    /api/labmaps          [{id, importer, label, name, unit, loinc, target, check, created, created_by, changed, changed_by}]
-                               (check: remembered before #546 and not applied until kept; listed first, #569)
+  GET    /api/labmaps          [{id, importer, label, name, unit, loinc, target, check, one_profile, created, created_by,
+                                 changed, changed_by}]
+                               (check: remembered before #546 and not applied until kept; listed first, #569;
+                                one_profile: a profile's own, else for every profile, #927)
   PATCH  /api/labmaps/{id}     {"target": series name, or null to keep it as a series of its own}; the same target: Keep
                                ({"target": the one shown, "keep": true}: refused with 409 if it isn't the match's now, #575)
   DELETE /api/labmaps/{id}     forget it: the next import with that name asks again

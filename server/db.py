@@ -1142,6 +1142,19 @@ SCHEMA = [
     """
     INSERT OR REPLACE INTO meta(k, v) VALUES('labitem_keys', '1');
     """,
+    # version 41: a review's lab-name match is its profile's (#927; labmap.py). profile_id: the profile whose review
+    # made it, whose imports alone it's applied to, its lookup keyed with it; NULL, an admin's, for every profile. One a
+    # review made before is its import's profile's: labmap.scope_old keys its lookup with it at start-up (that needs
+    # the pepper) and clears the mark. One whose import is gone (undone, or its profile deleted, after another import
+    # used it) has no profile to be: for every profile, but to check (#569) unless #546's rule would make it. One an
+    # admin changed is the admin's, for every profile, as it was.
+    """
+    ALTER TABLE labmaps ADD COLUMN profile_id INTEGER REFERENCES profiles(id) ON DELETE CASCADE;
+    CREATE INDEX labmaps_profile ON labmaps(profile_id);
+    UPDATE labmaps SET profile_id = (SELECT profile_id FROM imports WHERE imports.id = labmaps.import_id) WHERE changed IS NULL;
+    UPDATE labmaps SET checked = NULL WHERE changed IS NULL AND profile_id IS NULL;
+    INSERT OR REPLACE INTO meta(k, v) VALUES('labmaps_scope', '1');
+    """,
 ]
 
 

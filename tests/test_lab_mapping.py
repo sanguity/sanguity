@@ -2,10 +2,10 @@
 """Lab names matched during import (#23): a lab spelled in a way lab-aliases.json doesn't know is suggested an
 existing series, by LOINC code first and then by a similar name with a compatible unit (filled in only for the same
 code or the same name written another way, #546; a similar name is only offered); confirming saves its points
-under that series (the results' own rows keep the name as reported); the choice is remembered, so the next import of
-that spelling is matched by itself; "keep as a new series" is remembered too, as a choice to keep it separate; only
-admins change or remove what's remembered, and it's logged; the names are encrypted at rest; and results typed in
-use the remembered matches.
+under that series (the results' own rows keep the name as reported); the choice is remembered for that profile (#927:
+only a series the review offered), so its next import of that spelling is matched by itself; "keep as a new series" is
+remembered too, as a choice to keep it separate; only admins change or remove what's remembered, and it's logged; the
+names are encrypted at rest; and results typed in use the remembered matches.
 
 lab-aliases.json lists Hemoglobin's LOINC code (718-7), so an importer would name "HGB-X" with that code Hemoglobin
 by itself. Here it runs with a copy of the list without that code, standing for the many codes the list doesn't have.
@@ -245,16 +245,108 @@ class LabMapping(unittest.TestCase):
         done = self.save(pid, j)   # nothing sent: the remembered match applies
         self.assertEqual(done["lab_names"], {"matched": 1, "remembered": 0})
         self.assertEqual(self.points(pid, "Hemoglobin"), [("2026-01-05", 13.1), ("2026-02-05", 12.0), ("2026-03-05", 12.6)])
-        # ...also in another profile, which never had the name (matches are per install)
+        # ...but not in another profile, which never had the name: asked there (#927: the match is this profile's)
         other = self.profile("Elsewhere")
         j = self.previewed(other, csv(["2026-03-05", "HGB-XX", "12.6", "g/dL", "13.5 - 17.5", "L", "CBC", "718-7"]))
-        self.assertEqual(self.entry(j, "HGB-XX")["before"], {"target": "Hemoglobin"})
+        self.assertIsNone(self.entry(j, "HGB-XX")["before"])
         self.save(other, j)
-        self.assertEqual(self.points(other, "Hemoglobin"), [("2026-03-05", 12.6)])
+        self.assertEqual((self.points(other, "HGB-XX"), self.points(other, "Hemoglobin")), ([("2026-03-05", 12.6)], []))
         # a duplicate is still a duplicate: the series keeps its key, so the same file again adds nothing
         j = self.previewed(pid, csv(["2026-03-05", "HGB-XX", "12.6", "g/dL", "13.5 - 17.5", "L", "CBC", "718-7"]))
         self.assertFalse(j["new"])
         self.assertEqual(j["duplicates"]["results"], 1)
+
+    def test_a_reviews_choice_is_its_profiles_and_one_it_offered(self):   # #927
+        """A choice made at one profile's review is remembered for that profile only: another profile, which its
+        chooser has no role on, is asked about the same name, and results typed in there aren't matched by it; an
+        admin's match for every profile still is. A series the review didn't offer, and no test Sanguity's list knows,
+        is refused with nothing saved; one it offered is taken in its own spelling."""
+        theirs = self.profile("Ash edits 927")   # robin's, ash an editor
+        db = dbm.connect()
+        try:
+            mine = prof.create_profile(db, "Robin alone 927 (fictional)", owner_id=self.uids["robin"])   # ash has no role here
+        finally:
+            db.close()
+        name = "Zorblatt Thyro Index 927"
+        row = lambda day, v: csv([day, name, v, "ng/dL", "0.8-1.8", "", "", ""])
+        j = self.previewed(theirs, row("2026-03-01", "1.9"), c=self.ash)
+        ref = self.entry(j, name)["ref"]
+        r = self.ash.post(f"/api/profiles/{theirs}/jobs/{j['id']}/confirm", json={"labs": {ref: "Hemoglobin A1c"}}, headers=H)
+        self.assertEqual(r.status_code, 400, r.text)
+        self.assertIn("isn't a series this review offered", r.json()["detail"])
+        self.assertEqual(self.robin.get(f"/api/profiles/{theirs}/jobs/{j['id']}").json()["state"], "preview")
+        done = self.save(theirs, j, {ref: "hemoglobin"}, c=self.ash)   # a test Sanguity's list knows, in its spelling
+        self.assertEqual(done["lab_names"], {"matched": 1, "remembered": 1})
+        self.assertEqual(self.points(theirs, "Hemoglobin"), [("2026-03-01", 1.9)])
+        m = next(x for x in self.ada.get("/api/labmaps").json() if x["name"] == name)
+        self.assertEqual((m["target"], m["one_profile"]), ("Hemoglobin", True))
+        self.assertNotIn("for", m)   # (which profile isn't said)
+        # the other profile: asked, nothing applied; typed in, the name stays
+        j = self.previewed(mine, row("2026-03-02", "1.4"))
+        self.assertIsNone(self.entry(j, name)["before"])
+        self.save(mine, j)
+        self.assertEqual((self.points(mine, name), self.points(mine, "Hemoglobin")), ([("2026-03-02", 1.4)], []))
+        typed = {"date": "2026-03-03", "test": name, "value": "1.2", "unit": "ng/dL", "range": "0.8-1.8"}
+        self.assertEqual(self.robin.post(f"/api/profiles/{mine}/manual", json={"rows": [typed], "save": False}, headers=H).json()["rows"][0]["name"], name)
+        # its own profile: matched as before, typed in too
+        j = self.previewed(theirs, row("2026-03-04", "1.3"))
+        self.assertEqual(self.entry(j, name)["before"], {"target": "Hemoglobin"})
+        self.robin.post(f"/api/profiles/{theirs}/jobs/{j['id']}/discard", headers=H)
+        self.assertEqual(self.robin.post(f"/api/profiles/{theirs}/manual", json={"rows": [typed], "save": False}, headers=H).json()["rows"][0]["name"],
+                         "Hemoglobin")
+        # an admin's match, for every profile, applies to both
+        mid = self.remembered_as("Zorblatt Other 927", "Hemoglobin", checked=1, changed=1, unit="ng/dL")
+        for pid in (theirs, mine):
+            j = self.previewed(pid, csv(["2026-03-05", "Zorblatt Other 927", "1.1", "ng/dL", "0.8-1.8", "", "", ""]))
+            self.assertEqual(self.entry(j, "Zorblatt Other 927")["before"], {"target": "Hemoglobin"})
+            self.robin.post(f"/api/profiles/{pid}/jobs/{j['id']}/discard", headers=H)
+        self.assertFalse(next(x for x in self.ada.get("/api/labmaps").json() if x["id"] == mid)["one_profile"])
+        self.ada.delete(f"/api/labmaps/{mid}", headers=H)
+        self.ada.delete(f"/api/labmaps/{m['id']}", headers=H)
+
+    def test_version_41_gives_a_reviews_match_its_profile(self):   # #927
+        """The upgrade to schema version 41: a match a review made is its import's profile's, keyed with it at start-up
+        (labmap.scope_old), so it's applied there only; an admin's stays for every profile; one whose import is gone
+        is for every profile but to check, unless #546's rule would make it."""
+        import sqlite3
+        d = tempfile.mkdtemp(prefix="sanguity-schema41-")
+        self.addCleanup(shutil.rmtree, d, True)
+        old = sqlite3.connect(os.path.join(d, "schema-40.db"), isolation_level=None)
+        old.row_factory = sqlite3.Row
+        for v, sql in enumerate(dbm.SCHEMA[:40], start=1):
+            old.executescript("BEGIN;" + sql + f"PRAGMA user_version={v};COMMIT;")
+        old.execute("INSERT INTO profiles(id, name, created) VALUES(7, 'p', 1)")
+        old.execute("INSERT INTO imports(id, profile_id, at, origin, format) VALUES(70, 7, 1, 'upload', 'csv')")
+        for lookup, imp, changed in (("review", 70, None), ("admin", 70, 50), ("gone", None, None)):
+            old.execute("INSERT INTO labmaps(lookup, importer, source, target, created_name, created, import_id, changed, checked)"
+                        " VALUES(?, 'csv', 's', 't', 'ines', 1, ?, ?, 1)", (lookup, imp, changed))
+        dbm.upgrade(old)
+        self.assertEqual([tuple(r) for r in old.execute("SELECT lookup, profile_id, checked FROM labmaps ORDER BY lookup")],
+                         [("admin", None, 1), ("gone", None, None), ("review", 7, 1)])
+        self.assertEqual(old.execute("SELECT v FROM meta WHERE k='labmaps_scope'").fetchone()[0], "1")
+        old.close()
+        # at start-up: a review's match made before, now its profile's, keyed with it
+        theirs, mine = self.profile("Scoped 927"), self.profile("Unscoped 927")
+        done = self.save(theirs, self.previewed(theirs, csv(["2026-01-05", "Hemoglobin", "13.1", "g/dL", "13.5 - 17.5", "L", "CBC", "718-7"])))
+        db = dbm.connect()
+        try:
+            from server import atrest
+            atrest.load_pepper(db)
+            mid = db.execute("INSERT INTO labmaps(lookup, importer, source, target, created_name, created, checked, import_id, profile_id)"
+                             " VALUES(?, 'csv', ?, ?, 'robin', 1, 1, ?, ?)",
+                             (labmap.lookup("csv", "HGB-927", "g/dL", ""), crypto.enc(json.dumps({"name": "HGB-927", "unit": "g/dL", "loinc": ""})),
+                              crypto.enc("Hemoglobin"), done["import_id"], theirs)).lastrowid
+            dbm.meta_set(db, "labmaps_scope", "1")
+            self.assertEqual(labmap.scope_old(db), 1)   # (the matches since are keyed with their profile already)
+            self.assertIsNone(dbm.meta_get(db, "labmaps_scope"))
+            self.assertEqual(labmap.scope_old(db), 0)   # once
+        finally:
+            db.close()
+        for pid, before in ((theirs, {"target": "Hemoglobin"}), (mine, None)):
+            j = self.previewed(pid, csv(["2026-02-05", "HGB-927", "12.0", "g/dL", "13.5 - 17.5", "L", "CBC", ""]))
+            self.assertEqual(self.entry(j, "HGB-927")["before"], before, pid)
+            self.robin.post(f"/api/profiles/{pid}/jobs/{j['id']}/discard", headers=H)
+        self.ada.delete(f"/api/labmaps/{mid}", headers=H)
 
     def test_keep_as_new_is_remembered_as_kept_separate(self):
         pid = self.with_hemoglobin("Separate")
@@ -311,57 +403,53 @@ class LabMapping(unittest.TestCase):
         self.assertEqual(r.status_code, 200, r.text)
         j = self.previewed(pid, csv(["2026-02-05", "HGB-U", "12.0", "g/dL", "13.5 - 17.5", "L", "CBC", "718-7"]))
         self.assertIsNone(self.entry(j, "HGB-U")["before"])   # asked again
-        # matched again, then used by another import (in another profile) before the first is undone: it stays
+        # matched again, then used by another of its imports before the first is undone: it stays
         done = self.save(pid, j, {self.entry(j, "HGB-U")["ref"]: "Hemoglobin"})
-        other = self.profile("Undone elsewhere")
-        k = self.previewed(other, csv(["2026-03-05", "HGB-U", "12.4", "g/dL", "13.5 - 17.5", "L", "CBC", "718-7"]))
-        self.save(other, k)
-        self.assertEqual(hist()["lab_matches"], 0)
+        k = self.previewed(pid, csv(["2026-03-05", "HGB-U", "12.4", "g/dL", "13.5 - 17.5", "L", "CBC", "718-7"]))
+        self.save(pid, k)
+        self.assertEqual(next(i for i in self.robin.get(f"/api/profiles/{pid}/imports").json()["imports"]
+                              if i["id"] == done["import_id"])["lab_matches"], 0)
         self.robin.post(f"/api/profiles/{pid}/imports/{done['import_id']}/undo", headers=H)
         j = self.previewed(pid, csv(["2026-04-05", "HGB-U", "12.8", "g/dL", "13.5 - 17.5", "L", "CBC", "718-7"]))
         self.assertEqual(self.entry(j, "HGB-U")["before"], {"target": "Hemoglobin"})
         self.robin.post(f"/api/profiles/{pid}/jobs/{j['id']}/discard", headers=H)
 
-    def test_deleting_a_profile_forgets_the_matches_its_imports_made(self):   # #591
+    def test_deleting_a_profile_forgets_the_matches_its_imports_made(self):   # #591, #927
         """A profile deleted takes the lab-name matches its own reviews made with it (the name as reported, who
-        confirmed it), so they're no longer listed or applied: unless another profile has been saved with one since,
-        an admin has kept or changed one, or another profile's review made it."""
+        confirmed it), so they're no longer listed: each is that profile's own (#927), applied nowhere else, one an
+        admin has kept too. Another profile's own, and an admin's for every profile, stay."""
         gone = self.with_hemoglobin("Deleted")
         other = self.with_hemoglobin("Staying")
         j = self.previewed(gone, csv(["2026-02-05", "HGB-D1", "12.0", "g/dL", "13.5 - 17.5", "L", "CBC", "718-7"],
                                      ["2026-02-05", "HGB-D2", "12.0", "g/dL", "13.5 - 17.5", "L", "CBC", "718-8"],
-                                     ["2026-02-05", "HGB-D3", "12.0", "g/dL", "13.5 - 17.5", "L", "CBC", "718-9"],
-                                     ["2026-02-05", "HGB-D4", "12.0", "g/dL", "13.5 - 17.5", "L", "CBC", "718-6"]))
-        self.save(gone, j, {self.entry(j, n)["ref"]: "Hemoglobin" for n in ("HGB-D1", "HGB-D2", "HGB-D3", "HGB-D4")})
-        # HGB-D2: another profile saved with it since; HGB-D3: kept by an admin; HGB-D5: the other profile's own
+                                     ["2026-02-05", "HGB-D3", "12.0", "g/dL", "13.5 - 17.5", "L", "CBC", "718-9"]))
+        self.save(gone, j, {self.entry(j, n)["ref"]: "Hemoglobin" for n in ("HGB-D1", "HGB-D2", "HGB-D3")})
+        # HGB-D2: the other profile has it too, and is asked; HGB-D3: kept by an admin; HGB-D5: the other profile's own;
+        # HGB-D6: an admin's, for every profile
         k = self.previewed(other, csv(["2026-03-05", "HGB-D2", "12.4", "g/dL", "13.5 - 17.5", "L", "CBC", "718-8"],
                                       ["2026-03-05", "HGB-D5", "12.4", "g/dL", "13.5 - 17.5", "L", "CBC", "718-5"]))
+        self.assertIsNone(self.entry(k, "HGB-D2")["before"])
         self.save(other, k, {self.entry(k, "HGB-D5")["ref"]: "Hemoglobin"})
+        everyone = self.remembered_as("HGB-D6", "Hemoglobin", checked=1, changed=1, unit="g/dL")
         mine = lambda: {m["name"]: m for m in self.ada.get("/api/labmaps").json() if m["name"].startswith("HGB-D")}
-        self.assertEqual(sorted(mine()), ["HGB-D1", "HGB-D2", "HGB-D3", "HGB-D4", "HGB-D5"])
+        self.assertEqual(sorted(mine()), ["HGB-D1", "HGB-D2", "HGB-D3", "HGB-D5", "HGB-D6"])
         self.assertEqual(self.ada.patch(f"/api/labmaps/{mine()['HGB-D3']['id']}", json={"target": "Hemoglobin", "keep": True},
                                         headers=H).status_code, 200)
-        # HGB-D4: saved with again only by the profile itself, later (no other profile's import since it was made)
-        db = dbm.connect()
-        try:
-            later = dbm.now() + 3600   # past every other profile's import here
-            db.execute("UPDATE labmaps SET created=?, used=? WHERE id=?", (later, later + 5, mine()["HGB-D4"]["id"]))
-        finally:
-            db.close()
         r = self.robin.request("DELETE", f"/api/profiles/{gone}", json={"confirm_name": "Deleted (fictional)"}, headers=H)
         self.assertEqual(r.status_code, 200, r.text)
-        self.assertEqual(r.json()["lab_matches"], 2)
-        self.assertEqual(sorted(mine()), ["HGB-D2", "HGB-D3", "HGB-D5"])
+        self.assertEqual(r.json()["lab_matches"], 3)
+        self.assertEqual(sorted(mine()), ["HGB-D5", "HGB-D6"])
         db = dbm.connect()
         try:   # and the activity log says how many went
             d = json.loads(crypto.dec(db.execute("SELECT detail FROM activity WHERE action='profile.delete' ORDER BY id DESC").fetchone()[0]))
         finally:
             db.close()
-        self.assertEqual(d["lab_matches"], 2)
-        # no longer applied: the next import of that name, anywhere, asks again
-        k = self.previewed(other, csv(["2026-04-05", "HGB-D1", "12.4", "g/dL", "13.5 - 17.5", "L", "CBC", "718-7"]))
-        self.assertIsNone(self.entry(k, "HGB-D1")["before"])
+        self.assertEqual(d["lab_matches"], 3)
+        # the admin's still applies to the other profile
+        k = self.previewed(other, csv(["2026-04-05", "HGB-D6", "12.4", "g/dL", "13.5 - 17.5", "L", "CBC", ""]))
+        self.assertEqual(self.entry(k, "HGB-D6")["before"], {"target": "Hemoglobin"})
         self.robin.post(f"/api/profiles/{other}/jobs/{k['id']}/discard", headers=H)
+        self.ada.delete(f"/api/labmaps/{everyone}", headers=H)
 
     def test_a_match_remembered_before_546_is_checked_first(self):   # #569
         """A match remembered before #546 (checked NULL) that #546's rule wouldn't make, Vitamin B6 filled in as
@@ -414,16 +502,17 @@ class LabMapping(unittest.TestCase):
         for k in old.values():
             self.ada.delete(f"/api/labmaps/{k}", headers=H)
 
-    def remembered_as(self, name, target, checked=None, changed=None, unit="nmol/L"):
-        """A remembered choice made up here: checked None and not one #546's rule makes, it's to check (#569)."""
+    def remembered_as(self, name, target, checked=None, changed=None, unit="nmol/L", pid=None):
+        """A remembered choice made up here: checked None and not one #546's rule makes, it's to check (#569). pid:
+        that profile's own (#927), else for every profile."""
         db = dbm.connect()
         try:
             from server import atrest
             atrest.load_pepper(db)
-            return db.execute("INSERT INTO labmaps(lookup, importer, source, target, created_name, created, checked, changed, changed_name)"
-                              " VALUES(?, 'csv', ?, ?, 'robin', 1, ?, ?, ?)",
-                              (labmap.lookup("csv", name, unit, ""), crypto.enc(json.dumps({"name": name, "unit": unit, "loinc": ""})),
-                               crypto.enc(target), checked, changed, changed and "ada")).lastrowid
+            return db.execute("INSERT INTO labmaps(lookup, importer, source, target, created_name, created, checked, changed, changed_name,"
+                              " profile_id) VALUES(?, 'csv', ?, ?, 'robin', 1, ?, ?, ?, ?)",
+                              (labmap.lookup("csv", name, unit, "", pid), crypto.enc(json.dumps({"name": name, "unit": unit, "loinc": ""})),
+                               crypto.enc(target), checked, changed, changed and "ada", pid)).lastrowid
         finally:
             db.close()
 
@@ -555,12 +644,14 @@ class LabMapping(unittest.TestCase):
         self.assertEqual([tuple(r) for r in db.execute("SELECT lookup, checked FROM labmaps ORDER BY lookup")], [("a", None), ("b", 50)])
         db.close()
 
-    def test_a_reviews_choice_for_a_name_to_check_is_remembered(self):   # #575
-        """The review says a choice is used for later imports: one for a name whose match is to check replaces it,
-        checked, and undone with its import; one an admin has kept meanwhile stays the admin's."""
+    def test_a_reviews_choice_for_a_name_to_check_is_remembered(self):   # #575, #927
+        """The review says a choice is used for later imports: one for a name whose match of the profile's own is to
+        check (remembered before #546, given its profile by the upgrade to schema version 41) replaces it, checked, and
+        undone with its import; one for a name whose match for every profile is to check is remembered as the
+        profile's own (#927), that match left for admins to check; one an admin has kept meanwhile stays the admin's."""
         pid = self.profile("Chosen over")
         self.save(pid, self.previewed(pid, csv(["2026-01-05", "Vitamin B1", "120", "nmol/L", "70-180", "", "", ""])))
-        mid = self.remembered_as("Vitamin B6 pick", "Vitamin B1")
+        mid = self.remembered_as("Vitamin B6 pick", "Vitamin B1", pid=pid)
         j = self.previewed(pid, csv(["2026-02-05", "Vitamin B6 pick", "40", "nmol/L", "20-125", "", "", ""]))
         e = self.entry(j, "Vitamin B6 pick")
         self.assertEqual(e["check"], {"target": "Vitamin B1"})
@@ -573,9 +664,27 @@ class LabMapping(unittest.TestCase):
         self.assertEqual(e["before"], {"target": None})
         self.assertNotIn("check", e)
         self.robin.post(f"/api/profiles/{pid}/jobs/{j['id']}/discard", headers=H)
-        # an admin keeps it while a review is waiting: the admin's stays
         self.ada.delete(f"/api/labmaps/{mid}", headers=H)
-        mid = self.remembered_as("Vitamin B6 pick", "Vitamin B1")
+        # one for every profile, to check: the review's choice is the profile's own, the admins' to check stays
+        everyone = self.remembered_as("Vitamin B6 pick", "Vitamin B1")
+        j = self.previewed(pid, csv(["2026-03-06", "Vitamin B6 pick", "43", "nmol/L", "20-125", "", "", ""]))
+        e = self.entry(j, "Vitamin B6 pick")
+        self.assertEqual(e["check"], {"target": "Vitamin B1"})
+        done = self.save(pid, j, {e["ref"]: None})
+        self.assertEqual(done["lab_names"], {"matched": 0, "remembered": 1})
+        row = self.labmap_row(everyone)
+        self.assertEqual((row["target"], row["checked"], row["profile_id"]), ("Vitamin B1", None, None))
+        db = dbm.connect()
+        try:
+            own = db.execute("SELECT id, target, profile_id FROM labmaps WHERE import_id=?", (done["import_id"],)).fetchone()
+        finally:
+            db.close()
+        self.assertEqual((own["target"], own["profile_id"]), (None, pid))
+        self.assertTrue(next(m for m in self.ada.get("/api/labmaps").json() if m["id"] == everyone)["check"])
+        self.ada.delete(f"/api/labmaps/{own['id']}", headers=H)
+        self.ada.delete(f"/api/labmaps/{everyone}", headers=H)
+        # an admin keeps it while a review is waiting: the admin's stays
+        mid = self.remembered_as("Vitamin B6 pick", "Vitamin B1", pid=pid)
         j = self.previewed(pid, csv(["2026-04-05", "Vitamin B6 pick", "44", "nmol/L", "20-125", "", "", ""]))
         self.assertEqual(self.ada.patch(f"/api/labmaps/{mid}", json={"target": "Vitamin B1", "keep": True}, headers=H).status_code, 200)
         done = self.save(pid, j, {self.entry(j, "Vitamin B6 pick")["ref"]: None})

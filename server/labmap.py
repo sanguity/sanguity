@@ -18,14 +18,17 @@ own; confirm sends {"labs": {"s:<series index>": "<series name>" | null}} and th
 Only the series' name changes: its source key (LOINC or source based) stays, so duplicates are still found by it, and
 the results' own rows (a lab day's details) keep the name as reported.
 
-Each choice is remembered for the install (table labmaps, schema version 16), keyed by the importer and the name,
-unit and LOINC code as reported, normalised: "keep as a series of its own" too (target NULL), so the next import
-doesn't ask again. Remembered choices are applied as soon as an import is parsed, before its duplicates are found,
-and to results typed in (routes_manual.py); the preview shows them as "matched as before", and changing one there
-changes that import only. They affect every profile, so only admins change or remove them (routes_labmaps.py), but
-for one way: undoing the import whose review made a choice forgets it, unless another import has been saved with it
-since or an admin has changed it (labmaps.import_id and used, schema version 36; history.undo, #500); and deleting a
-profile forgets those its reviews made, unless another profile has been saved with one since (forget_profile, #591).
+Each choice is remembered (table labmaps, schema version 16), keyed by the importer and the name, unit and LOINC code
+as reported, normalised: "keep as a series of its own" too (target NULL), so the next import doesn't ask again. A
+review's choice is its profile's (#927, schema version 41: labmaps.profile_id, and its lookup keyed with the profile):
+applied to that profile's later imports only, never to another person's, and only a series the review offered or a
+test Sanguity's list knows (offered, check_sent: never any text sent). One an admin made before is for every
+profile (profile_id NULL), and stays so; a profile's own is used before it. Remembered choices are applied as soon as
+an import is parsed, before its duplicates are found, to a pull (sync.py) and to results typed in (routes_manual.py);
+the preview shows them as "matched as before", and changing one there changes that import only. Only admins change or
+remove them (routes_labmaps.py), but for one way: undoing the import whose review made a choice forgets it, unless
+another import has been saved with it since or an admin has changed it (labmaps.import_id and used, schema version
+36; history.undo, #500); and deleting a profile forgets those its reviews made (forget_profile, #591).
 
 The name, unit and code (source) and the target are health details, so encrypted (crypto.enc); rows are found by
 lookup, a keyed hash of the normalised identity (security.pepper_mac), never by decrypting them all.
@@ -119,10 +122,10 @@ def compatible(target, u1, u2):
     return common.unit_for(target, u1) == common.unit_for(target, u2)
 
 
-def lookup(importer, name, unit, loinc):
-    """The keyed hash a remembered choice is found by."""
-    ident = json.dumps([str(importer), norm(name), common.unit_norm(unit), str(loinc or "").strip()], ensure_ascii=False)
-    return sec.pepper_mac(b"sanguity lab map\x00" + ident.encode("utf-8")).hex()[:32]
+def lookup(importer, name, unit, loinc, pid=None):
+    """The keyed hash a remembered choice is found by: a profile's own (#927) keyed with the profile too."""
+    ident = [str(importer), norm(name), common.unit_norm(unit), str(loinc or "").strip()] + ([int(pid)] if pid is not None else [])
+    return sec.pepper_mac(b"sanguity lab map\x00" + json.dumps(ident, ensure_ascii=False).encode("utf-8")).hex()[:32]
 
 
 def _known(name):
@@ -219,7 +222,7 @@ def plan(db, pid, importer, data, keep=()):
     for i, s in enumerate(data.get("labs") or []):
         if isinstance(s, dict) and isinstance(s.get("name"), str) and s["name"].strip() and not _known(s["name"]):
             candidates[f"s:{i}"] = s
-    found = remembered(db, [importer], {ref: _ident(s) for ref, s in candidates.items()}, flagged=True)
+    found = remembered(db, pid, [importer], {ref: _ident(s) for ref, s in candidates.items()}, flagged=True)
     listed, auto, ids = [], {}, {}
     for ref, s in candidates.items():
         before, same = found.get(ref), lower.get(s["name"].strip().lower())
@@ -246,12 +249,57 @@ def _ident(s):
 
 def choices(lab_plan, sent):
     """The names to save the import's series under: the remembered ones, overridden by what was sent for series the
-    preview listed. A series the preview listed but nothing was sent for keeps its own name."""
+    preview listed, each one it offered (#927; one it didn't is left out). A series the preview listed but nothing
+    was sent for keeps its own name."""
     out = dict((lab_plan or {}).get("auto") or {})
-    listed = {e["ref"] for e in (lab_plan or {}).get("listed") or []}
+    listed = {e["ref"]: e for e in (lab_plan or {}).get("listed") or []}
     for ref, target in (sent or {}).items():
         if ref in listed:
-            out[ref] = clean_target(target)
+            ok, target = _chosen(listed[ref], (lab_plan or {}).get("targets"), target)
+            if ok:
+                out[ref] = target
+    return out
+
+
+class NotOffered(ValueError):
+    """A review's choice of a series it didn't offer (#927)."""
+
+
+def offered(entry, targets):
+    """{lower-case name: name} of the series a review offered for a listed series (#927): its own name, the match
+    made before or to check, its suggestions, every series in the list (the profile's, then Sanguity's list of tests
+    it doesn't chart yet), and any test that list knows."""
+    names = [entry.get("name")] + [x.get("target") for x in (entry.get("before"), entry.get("check")) if x]
+    names += [x.get("name") for x in entry.get("suggestions") or []] + [entry.get("same")] + [t.get("name") for t in targets or []]
+    names += sorted(set(common.lab_alias().values()))
+    out = {}
+    for n in names:
+        if isinstance(n, str) and n.strip():
+            out.setdefault(n.lower(), n)
+    return out
+
+
+def _chosen(entry, targets, target):
+    """(whether the review offered it, the name in its own spelling); None (a series of its own) is always offered."""
+    target = clean_target(target)
+    if target is None:
+        return True, None
+    named = offered(entry, targets).get(target.lower())
+    return named is not None, named
+
+
+def check_sent(listed, targets, sent):
+    """The choices sent with a confirm, checked against what the review offered (its listed series and its list of
+    targets, as the job's summary has them): {ref: name in its own spelling, or None}. Raises NotOffered."""
+    by = {e["ref"]: e for e in listed or [] if isinstance(e, dict)}
+    out = {}
+    for ref, target in (sent or {}).items():
+        e = by.get(ref)
+        ok, named = _chosen(e, targets, target) if e else (True, clean_target(target))
+        if not ok:
+            raise NotOffered(f"“{clean_target(target)}” isn't a series this review offered for {e['name']}. Pick one "
+                             "from its list, or leave it empty to keep it a series of its own.")
+        out[ref] = named
     return out
 
 
@@ -276,12 +324,14 @@ def apply(data, picked):
     return out
 
 
-def remember(db, importer, lab_plan, sent, data, who, import_id=None):
-    """Keep the choices sent for series the preview listed and nothing was remembered for. Inside the import's
-    transaction. A choice remembered meanwhile (by another import, or an admin) wins. A choice for a name whose match
-    is to check replaces it (#575: the review says it's used for later imports), unless an admin has kept or changed
-    it since. Returns how many were kept. Made by hand or by #546's rule, they're checked (#569).
-    import_id: the import saved with them, whose Undo forgets them (forget, #500)."""
+def remember(db, pid, importer, lab_plan, sent, data, who, import_id=None):
+    """Keep the choices sent for series the preview listed and nothing was remembered for, as profile pid's own
+    (#927), each a series the review offered. Inside the import's transaction. A choice the profile remembered
+    meanwhile (by another of its imports, or an admin's change of it) wins. A choice for a name whose match of the
+    profile's own is to check replaces it (#575: the review says it's used for later imports), unless an admin has
+    kept or changed it since; one for every profile to check stays for admins to check. Returns how many were kept.
+    Made by hand or by #546's rule, they're checked (#569). import_id: the import saved with them, whose Undo forgets
+    them (forget, #500)."""
     listed = {e["ref"]: e for e in (lab_plan or {}).get("listed") or [] if not e.get("before")}
     labs = data.get("labs") or []
     n = 0
@@ -289,14 +339,17 @@ def remember(db, importer, lab_plan, sent, data, who, import_id=None):
         e = listed.get(ref)
         if not e or not ref[2:].isdigit() or int(ref[2:]) >= len(labs):
             continue
+        ok, target = _chosen(e, lab_plan.get("targets"), target)
+        if not ok:
+            continue
         name, unit, code = _ident(labs[int(ref[2:])])
         n += db.execute("""INSERT INTO labmaps(lookup, importer, source, target, created_by, created_name, created, import_id,
-                                              checked)
-                           VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(lookup) """ + (_REPLACE if e.get("check") else "DO NOTHING"),
-                        (lookup(importer, name, unit, code), importer,
+                                              checked, profile_id)
+                           VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(lookup) """ + (_REPLACE if e.get("check") else "DO NOTHING"),
+                        (lookup(importer, name, unit, code, pid), importer,
                          crypto.enc(json.dumps({"name": name, "unit": unit, "loinc": code}, ensure_ascii=False)),
-                         _enc_target(clean_target(target)), who["id"] if who else None,
-                         who["username"] if who else "removed account", dbm.now(), import_id, dbm.now())).rowcount
+                         _enc_target(target), who["id"] if who else None,
+                         who["username"] if who else "removed account", dbm.now(), import_id, dbm.now(), pid)).rowcount
     if n:
         _changed(db)
     return n
@@ -308,9 +361,10 @@ _REPLACE = """DO UPDATE SET source=excluded.source, target=excluded.target, crea
               checked=excluded.checked WHERE labmaps.checked IS NULL"""
 
 
-def recheck(db, lab_plan):
+def recheck(db, pid, lab_plan):
     """A stored plan (a preview's, planned when it was read) with its remembered choices checked against labmaps as
-    they are now: one is applied only while its row is there, isn't to check and goes to the same series (#583). One
+    they are now: one is applied only while its row is there, isn't to check, goes to the same series (#583) and is
+    profile pid's or every profile's (#927: one planned before the upgrade to schema version 41 may be another's). One
     forgotten or changed since (an admin's Forget or Change) is out of auto and ids, so its series keeps its own name
     unless a choice was sent for it, and it isn't marked used; its entry keeps "before", so what's sent for it is for
     this import only, as the review said. One now to check (#569; as after the upgrade to schema version 38) is offered,
@@ -321,7 +375,8 @@ def recheck(db, lab_plan):
     rows = {r["id"]: _row(r) for r in db.execute(f"SELECT * FROM labmaps WHERE id IN ({','.join('?' * len(ids))})",
                                                 [int(i) for i in ids.values()])}
     auto = lab_plan.get("auto") or {}
-    gone = {ref for ref, i in ids.items() if int(i) not in rows or rows[int(i)]["target"] != auto.get(ref)}
+    gone = {ref for ref, i in ids.items() if int(i) not in rows or rows[int(i)]["target"] != auto.get(ref)
+            or rows[int(i)]["for"] not in (None, pid)}
     flagged = {ref for ref, i in ids.items() if ref not in gone and rows[int(i)]["check"]}
     if not gone and not flagged:
         return lab_plan
@@ -368,20 +423,11 @@ def forget(db, import_id):
     return n
 
 
-# what deleting a profile forgets (#591): the choices its own reviews made, as an Undo of each of its imports would,
-# and also one another import has been saved with since, if that was only one of the profile's own (none of another
-# profile's was saved between the choice being made and its last use, imports.at; used holds the last). One an admin
-# has kept or changed is the admin's; one another profile's review made is that profile's.
-_PROFILE_OWN = """FROM labmaps WHERE changed IS NULL AND import_id IN (SELECT id FROM imports WHERE profile_id=:pid)
-                  AND (used IS NULL OR NOT EXISTS (SELECT 1 FROM imports o WHERE o.profile_id != :pid
-                                                   AND o.at BETWEEN labmaps.created AND labmaps.used))"""
-
-
 def forget_profile(db, pid):
-    """Forget the choices a profile's reviews made, inside its delete's transaction (before its imports go, which sets
-    labmaps.import_id null), so they're no longer listed on Admin with the name as reported and who confirmed it, nor
-    applied to another profile's imports. Returns how many."""
-    n = db.execute("DELETE " + _PROFILE_OWN, {"pid": pid}).rowcount
+    """Forget the choices a profile's reviews made (#591), its own (#927: applied to nobody else, an admin's change of
+    one too), inside its delete's transaction, so they're no longer listed on Admin with the name as reported and who
+    confirmed it. Returns how many. (The profile's row going would take them too: profile_id cascades.)"""
+    n = db.execute("DELETE FROM labmaps WHERE profile_id=?", (pid,)).rowcount
     if n:
         _changed(db)
     return n
@@ -404,24 +450,26 @@ def _enc_target(t):
     return None if t is None else crypto.enc(t)
 
 
-def remembered(db, importers, idents, flagged=False):
-    """{ref: {"id", "target", "check"}} for the identities ({ref: (name, unit, loinc)}) a choice was remembered for,
-    under the first of importers that has one. One to check (#569: never checked, and #546's rule wouldn't make it)
-    is left out unless flagged."""
+def remembered(db, pid, importers, idents, flagged=False):
+    """{ref: {"id", "target", "check"}} for the identities ({ref: (name, unit, loinc)}) a choice was remembered for
+    in profile pid, under the first of importers that has one: the profile's own (#927), else one for every profile.
+    One to check (#569: never checked, and #546's rule wouldn't make it) is left out unless flagged."""
     if not idents:
         return {}
-    keys = {(ref, imp): lookup(imp, *ident) for ref, ident in idents.items() for imp in importers}
+    keys = {(ref, imp, own): lookup(imp, *ident, pid if own else None) for ref, ident in idents.items() for imp in importers
+            for own in (True, False)}
     rows = {}
     hashes = sorted(set(keys.values()))
     for i in range(0, len(hashes), 500):
         part = hashes[i:i + 500]
-        for r in db.execute(f"SELECT id, lookup, target, checked FROM labmaps WHERE lookup IN ({','.join('?' * len(part))})",
+        for r in db.execute(f"SELECT id, lookup, target, checked, profile_id FROM labmaps WHERE lookup IN ({','.join('?' * len(part))})",
                             part):
-            rows[r["lookup"]] = r
+            if r["profile_id"] in (None, pid):   # (another's never: its lookup is keyed with its profile)
+                rows[r["lookup"]] = r
     out = {}
     for ref in idents:
         for imp in importers:
-            r = rows.get(keys[(ref, imp)])
+            r = rows.get(keys[(ref, imp, True)]) or rows.get(keys[(ref, imp, False)])
             if r is not None:
                 target = crypto.dec(r["target"]) if r["target"] else None
                 check = r["checked"] is None and not fits(idents[ref][0], idents[ref][2], target)
@@ -431,12 +479,12 @@ def remembered(db, importers, idents, flagged=False):
     return out
 
 
-def apply_remembered(db, importers, data):
-    """data with the remembered choices applied to its series (hand entry): (data, {old name: new name}, [their ids],
-    marked used once it's saved)."""
+def apply_remembered(db, pid, importers, data):
+    """data with profile pid's remembered choices applied to its series (hand entry): (data, {old name: new name},
+    [their ids], marked used once it's saved)."""
     idents = {f"s:{i}": _ident(s) for i, s in enumerate(data.get("labs") or [])
               if isinstance(s, dict) and isinstance(s.get("name"), str) and not _known(s["name"])}
-    found = remembered(db, importers, idents)
+    found = remembered(db, pid, importers, idents)
     picked = {ref: f["target"] for ref, f in found.items()}
     renamed = {idents[ref][0]: t for ref, t in picked.items() if t}
     return apply(data, picked), renamed, [f["id"] for f in found.values()]
@@ -445,24 +493,53 @@ def apply_remembered(db, importers, data):
 # ---------------------------------------------------------------- the list, for admins
 
 def _row(r):
+    """A labmaps row read; "for": the profile whose own it is, None for every profile (#927)."""
     src = json.loads(crypto.dec(r["source"]))
     target = crypto.dec(r["target"]) if r["target"] else None
     return {"id": r["id"], "importer": r["importer"], "name": src.get("name"), "unit": src.get("unit") or "",
             "loinc": src.get("loinc") or "", "target": target,
             "check": r["checked"] is None and not fits(src.get("name"), src.get("loinc"), target),
+            "one_profile": r["profile_id"] is not None,   # (#927: which one isn't said)
+            "for": r["profile_id"],
             "created": r["created"], "created_by": r["created_name"], "changed": r["changed"], "changed_by": r["changed_name"]}
+
+
+def _shown(m):
+    """A match as admins see it: without which profile is its own."""
+    return {k: v for k, v in m.items() if k != "for"}
 
 
 def listing(db):
     """Every remembered choice, those to check (#569) first, then last changed first: [{"id", "importer", "name",
-    "unit", "loinc", "target", "check", "created", "created_by", "changed", "changed_by"}]."""
-    rows = [_row(r) for r in db.execute("SELECT * FROM labmaps ORDER BY IFNULL(changed, created) DESC, id DESC")]
+    "unit", "loinc", "target", "check", "one_profile", "created", "created_by", "changed", "changed_by"}]."""
+    rows = [_shown(_row(r)) for r in db.execute("SELECT * FROM labmaps ORDER BY IFNULL(changed, created) DESC, id DESC")]
     return sorted(rows, key=lambda m: not m["check"])
 
 
 def get(db, mid):
     r = db.execute("SELECT * FROM labmaps WHERE id=?", (mid,)).fetchone()
-    return _row(r) if r else None
+    return _shown(_row(r)) if r else None
+
+
+SCOPE_OLD = "labmaps_scope"   # meta, set by schema step 41: scope_old hasn't run yet
+
+
+def scope_old(db):
+    """At start-up, once (#927): the choices reviews made before schema version 41, given their import's profile by
+    that step, keyed with it, so they're found for that profile only (the lookup needs the pepper, which the step
+    hasn't). Returns how many."""
+    if not dbm.meta_get(db, SCOPE_OLD):
+        return 0
+    n = 0
+    with dbm.transaction(db):
+        for r in db.execute("SELECT id, lookup, importer, source, profile_id FROM labmaps WHERE profile_id IS NOT NULL").fetchall():
+            src = json.loads(crypto.dec(r["source"]))
+            key = lookup(r["importer"], src.get("name"), src.get("unit"), src.get("loinc"), r["profile_id"])
+            if key != r["lookup"]:
+                n += db.execute("UPDATE labmaps SET lookup=? WHERE id=?", (key, r["id"])).rowcount
+        db.execute("DELETE FROM meta WHERE k=?", (SCOPE_OLD,))
+        _changed(db)   # a review waiting since plans again (recheck also leaves another profile's out)
+    return n
 
 
 def change(db, mid, target, who):

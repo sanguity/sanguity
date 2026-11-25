@@ -400,7 +400,8 @@ $("#userNew").onsubmit = async ev => {
 };
 
 /* ---------------------------------------------------------------- lab name matches */
-/* lab names matched during imports (#23): install-wide, so admins change or remove them; never shows results. Those
+/* lab names matched during imports (#23): a review's for its profile, an admin's before for every profile (#927, said
+   under From, never which profile); admins change or remove them; never shows results. Those
    to check (#569: remembered before #546 could fill in a look-alike as sure, and not applied until kept) come first,
    marked, with Keep and Forget */
 async function loadLabmaps() {
@@ -430,7 +431,7 @@ async function loadLabmaps() {
       return el("tr", {"data-labmap": m.id},
         el("td", {}, el("b", {text: m.name}), el("span", {class: "muted", text: [m.unit, m.loinc && "LOINC " + m.loinc].filter(Boolean).map(x => " · " + x).join("")})),
         goes,
-        el("td", {text: m.label}),
+        el("td", {}, m.label, el("div", {class: "muted", text: m.one_profile ? "for one profile" : "for every profile"})),
         el("td", {}, `${when(m.created)} by ${m.created_by}`, m.changed ? el("div", {class: "muted", text: `changed ${when(m.changed)} by ${m.changed_by}`}) : null),
         el("td", {class: "acts"},
           m.check ? el("button", {class: "btn small primary", type: "button", text: "Keep", onclick: async () => {

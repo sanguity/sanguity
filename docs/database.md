@@ -372,16 +372,19 @@ decrypting anything; it is unique per profile, and a second decision on a pair r
 are put together, a "same result" whose two results are both there shows once (the older import's), with the other's
 source listed; when either import is undone the decision stays, unapplied, until it comes back.
 
-## Lab-name matches (install-wide)
+## Lab-name matches (a profile's own, or an admin's for every profile)
 
 When an import's preview finds a lab name that `lab-aliases.json` doesn't know, the person importing matches it to
-an existing series or keeps it as its own (`server/labmap.py`). The choice is remembered in **labmaps** and applied to
-later imports on every profile of the install, so it belongs to no profile. Rows are looked up by a keyed hash of the
-importer, the name as reported, its unit and LOINC code; the name and the series it goes to are encrypted. Only admins
-can change or remove one, but for undoing the import whose review made it (`import_id`, schema version 36, #500): that
-forgets it, unless another import has been saved with it since (`used`) or an admin has changed it. Deleting a profile
-forgets those its imports' reviews made (#591), unless an import of another profile was saved between the match being
-made and its last use (`created` to `used`, by `imports.at`) or an admin has changed it.
+an existing series the review offers, or a test that list knows, or keeps it as its own (`server/labmap.py`). The
+choice is remembered in **labmaps** as that profile's own (`profile_id`, schema version 41, #927) and applied to that
+profile's later imports, pulls and results typed in only; a match an admin made before is for every profile
+(`profile_id` NULL), and a profile's own is used before it. Rows are looked up by a keyed hash of the importer, the
+name as reported, its unit and LOINC code, and the profile for a profile's own; the name and the series it goes to are
+encrypted. Only admins can change or remove one, but for undoing the import whose review made it (`import_id`, schema
+version 36, #500): that forgets it, unless another import has been saved with it since (`used`) or an admin has
+changed it. Deleting a profile forgets its own (#591, #927). At the upgrade to version 41 a review's match became its
+import's profile's (keyed with it at the next start), an admin's stayed for every profile, and one whose import was
+gone was left for every profile but to check, unless #546's rule would make it.
 
 ```mermaid
 erDiagram
@@ -402,6 +405,7 @@ erDiagram
         int changed
         int import_id FK "its import, until undone"
         int used "another import saved with it"
+        int profile_id FK "whose own; NULL: every profile's (an admin's)"
     }
 ```
 

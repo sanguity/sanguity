@@ -24031,8 +24031,8 @@ def main():
             page.wait_for_url(re.compile(r"/admin\.html(\?[^#]*)?#labmaps$"), timeout=10000)
             page.wait_for_function("document.querySelector('#labmapList tr[data-labmap]')", timeout=10000)
             lm = js("[...document.querySelectorAll('#labmapList tr[data-labmap]')].map(tr => tr.textContent)")
-            check("Admin lists the lab name match, who made it and from what, with Change and Remove (#23)",
-                  any("Hemoglobin Lvl" in t and "Hemoglobin" in t and "demo" in t and "CSV" in t and "Change" in t and "Remove" in t for t in lm)
+            check("Admin lists the lab name match, who made it and from what, for one profile (#927), with Change and Remove (#23)",
+                  any("Hemoglobin Lvl" in t and "Hemoglobin" in t and "demo" in t and "CSV" in t and "for one profile" in t and "Change" in t and "Remove" in t for t in lm)
                   and "only admins can change or remove" in js("[...document.querySelectorAll('.about-words')].find(w => w.getAttribute('aria-label') === 'About Lab name matches').textContent")   # (behind its ⓘ, #280)
                   and js(display, "labmaps") != "none", lm)
             # #528: at 375×667 a match's Save (by Enter in its box) leaves focus on its Change, and Remove → Forget match on the
