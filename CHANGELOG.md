@@ -1693,6 +1693,11 @@ Everything on `main` so far; it becomes the first tagged release.
   rows under Labs' event track (journal, mood, cycle, doses, medications) kept fixed heights. Their gutters, rows and
   offsets now grow with the text; the Timeline's lane names go over their lanes where a gutter would take too much of
   a phone's width, and the event track's row names over their rows where they don't fit beside them (WCAG 1.4.4).
+- **Larger text: a child's growth charts' labels fit** (#709): with text at 200% on a phone, Body and activity's
+  growth charts cut their values at the left ("120" as ".20"), their percentile names ran out at the right and over
+  each other, and the age axis's numbers and title overlapped. Their gutters, the rows under the plot and the space
+  between the percentile names now grow with the text, and the plot is as tall as its names need (WCAG 1.4.4). As
+  usual, the names are 14 px apart where the curves end close together (they were 10, and touched).
 - **Larger text: the overview strip's dates fit** (#641): with text at 200% on a phone the strip's years ran over its
   bars, its milestone flags and its window's grips, and out past its foot. Its row of dates now grows with the text,
   the strip with it (40 px as usual, 55 at 200%), the grips stay over the bars, and its dates keep inside the window's

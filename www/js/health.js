@@ -1298,29 +1298,37 @@ function growthChart(host, sex, set, key, pts) {
     el("div", {class: "s", text: `${fmtD(m.t)} · aged ${gAgeText(m.age)}`}), el("div", {class: "s", text: `From ${m.src} · ${set === "who" ? "WHO" : "CDC"} chart`})];
   const draw = () => {
     if (!svg.isConnected) return;
-    const w = Math.max(260, host.clientWidth), h = 230, L = 40, R = w - 40, T = 10, B = h - 36;
-    svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("height", h); svg.style.width = "100%"; svg._geom = {L, R, w};
+    // its fixed sizes grow with the labels (chartkit.js ckK, #709: at 200% text its names fell outside it and over each
+    // other): the gutters as wide as the values and the curves' names they hold (40 px at least), the rows under it, and
+    // the names as far apart as they're tall (gap), the plot as tall as all of them at least
+    const k = ckK(), gap = 14 * k, w = Math.max(260, host.clientWidth), T = 10 * k, B = T + Math.max(184, lines.filter(([, ln]) => ln.length > 1).length * gap), h = B + 36 * k;
     let lo = Infinity, hi = -Infinity;
     for (const [, ln] of lines) for (const p of ln) { lo = Math.min(lo, p[1]); hi = Math.max(hi, p[1]); }
     for (const m of pts) { lo = Math.min(lo, m.x * f); hi = Math.max(hi, m.x * f); }
     const pad = (hi - lo) * 0.05 || 1; lo -= pad; hi += pad;
+    const vals = niceTicks(lo, hi, 5), wide = (ts, cls) => Math.ceil(Math.max(0, ...ts.map(t => labelW(t, cls))));
+    const L = Math.max(40, wide(vals.map(v => ckNum(v)), "") + 10), R = w - Math.max(40, wide(curves.map(pctText), "growth-pct") + 8);
+    svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("height", h); svg.style.width = "100%"; svg._geom = {L, R, w};
     const x = ckScale(from, to, L, R), y = ckScale(lo, hi, B, T);
     const g = [];
-    ckGrid(g, y, niceTicks(lo, hi, 5), L, R);
+    ckGrid(g, y, vals, L, R);
     g.push(el("svg:line", {x1: L, x2: R, y1: B, y2: B, stroke: "var(--axis)"}));
     const yrs = (to - from) / Y, step = set === "who" ? (w < 420 ? 6 : 3) * MONTH_DAYS : (yrs > 9 || w < 420 ? 2 : 1) * Y;
-    for (let d = from; d <= to + 1; d += step) g.push(el("svg:text", {x: x(d), y: B + 15, "text-anchor": "middle", text: String(Math.round(set === "who" ? d / MONTH_DAYS : d / Y))}));
-    g.push(el("svg:text", {x: (L + R) / 2, y: h - 3, "text-anchor": "middle", text: set === "who" ? "Age (months)" : "Age (years)"}));
-    const labels = [];   // each curve named at its end, moved apart where the curves end close together
+    for (let d = from; d <= to + 1; d += step) {   // (the first clear of the values' gutter, its numbers' ends 6 px left of L)
+      const t = String(Math.round(set === "who" ? d / MONTH_DAYS : d / Y));
+      g.push(el("svg:text", {x: Math.max(x(d), L - 4 + labelW(t, "") / 2), y: B + 15 * k, "text-anchor": "middle", text: t}));
+    }
+    g.push(el("svg:text", {x: (L + R) / 2, y: B + 33 * k, "text-anchor": "middle", text: set === "who" ? "Age (months)" : "Age (years)"}));
+    const labels = [], foot = B + 4 * k;   // each curve named at its end, moved apart where the curves end close together
     for (const [c, ln] of lines) {
       if (ln.length < 2) continue;
       g.push(el("svg:path", {class: "growth-curve" + (c === 50 ? " mid" : ""), d: "M" + ln.map(p => `${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join("L")}));
-      labels.push([y(ln[ln.length - 1][1]) + 4, pctText(c)]);
+      labels.push([y(ln[ln.length - 1][1]) + 4 * k, pctText(c)]);
     }
     labels.sort((p, q) => p[0] - q[0]);
-    for (let i = 1; i < labels.length; i++) labels[i][0] = Math.max(labels[i][0], labels[i - 1][0] + 10);
-    const over = labels.length ? labels[labels.length - 1][0] - (B + 4) : 0;
-    if (over > 0) for (let i = labels.length - 1; i >= 0; i--) labels[i][0] = Math.min(labels[i][0], (i === labels.length - 1 ? B + 4 : labels[i + 1][0] - 10));
+    for (let i = 1; i < labels.length; i++) labels[i][0] = Math.max(labels[i][0], labels[i - 1][0] + gap);
+    const over = labels.length ? labels[labels.length - 1][0] - foot : 0;
+    if (over > 0) for (let i = labels.length - 1; i >= 0; i--) labels[i][0] = Math.min(labels[i][0], (i === labels.length - 1 ? foot : labels[i + 1][0] - gap));
     for (const [ly, text] of labels) g.push(el("svg:text", {class: "growth-pct", x: R + 4, y: ly, text}));
     if (pts.length > 1) g.push(el("svg:path", {d: "M" + pts.map(m => `${x(m.age.days).toFixed(1)},${y(m.x * f).toFixed(1)}`).join("L"), fill: "none", stroke: "var(--measure)", "stroke-width": 1.4, opacity: .7}));
     for (const m of pts) g.push(el("svg:circle", {cx: x(m.age.days), cy: y(m.x * f), r: pts.length > 60 ? 2.4 : 3.6, fill: "var(--measure)", stroke: "var(--surface)", "stroke-width": 1}));
