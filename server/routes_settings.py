@@ -10,7 +10,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from . import accounts, activity, db as dbm, presets, settings
+from . import accounts, activity, config, db as dbm, presets, settings
 from .main import _client_ip, admin, get_db, need, user
 
 router = APIRouter()
@@ -23,6 +23,15 @@ def _check(db, s, pid, setting, role):
                                   "install": "Only an admin can change this."}[setting.scope])
     if setting.scope == "install" and accounts.admin_needs_second_factor(db, s):
         raise HTTPException(403, "admin_two_factor_required")
+
+
+def _not_set_by_environment(d):
+    """(#999) A server setting whose variable is set in the server's environment can't be changed here: the
+    environment's value is the one in force, and a value saved here would be a promise that isn't kept."""
+    if d.env and config.source(d.env) == "environment":
+        raise HTTPException(409, f"“{d.label}” is set by the server's environment ({d.env}), so it can't be changed here. "
+                                 f"To change it here, take {d.env} out of where the server is set up (.env, or the app's "
+                                 "settings on TrueNAS or Unraid) and start it again.")
 
 
 def _log(db, s, pid, scope, detail, request):
@@ -81,6 +90,7 @@ def change(pid: int, key: str, body: Value, request: Request, s=Depends(user), d
     except settings.SettingError as e:
         raise HTTPException(404, str(e))
     _check(db, s, pid, d, role)
+    _not_set_by_environment(d)
     try:
         with dbm.transaction(db):
             _unchanged(body, settings.effective(db, pid, s["id"])[key][0], d)
@@ -221,16 +231,35 @@ def reset_user_section(body: Section, request: Request, s=Depends(user), db=Depe
 # ---------------------------------------------------------------- the install's own settings, without a profile (#167)
 # The Admin page shows these (connected sources' sync defaults): an admin may have no profile at all. Admins only,
 # with their own second factor once the server has more than one account (main.admin).
+# A setting that stands for a variable (#999) says which ("env"), and its value is the one in force: "from" is
+# "environment" when the variable is set, and then it can't be changed here ("can_change" false, a change refused, 409).
+# "variables": every variable of config.VARS, its value in force, where it comes from and its default, and the
+# setting that stands for it, if one does (none of them is a secret).
+
+def _install_item(d, have):
+    if d.env:
+        value, src = settings.in_force(d.key)
+        return {**d.public(), "value": value, "from": src, "env": d.env, "can_change": src != "environment"}
+    return {**d.public(), "value": have.get(d.key, d.default), "from": "install" if d.key in have else "default", "can_change": True}
+
+
+def _variables():
+    out = {}
+    for name, v in config.VARS.items():
+        src, value = config.lookup(name)
+        out[name] = {"value": list(value) if isinstance(value, tuple) else value, "from": src,
+                     "default": list(v.default) if isinstance(v.default, tuple) else v.default, "setting": v.setting}
+    return out
+
 
 def _install_sections(db):
     have = settings.stored(db, "install")
     out = []
     for sid, title, help in settings.SECTIONS:
-        items = [{**d.public(), "value": have.get(k, d.default), "from": "install" if k in have else "default", "can_change": True}
-                 for k, d in settings.SETTINGS.items() if d.section == sid and d.scope == "install"]
+        items = [_install_item(d, have) for d in settings.SETTINGS.values() if d.section == sid and d.scope == "install"]
         if items:
             out.append({"id": sid, "title": title, "help": help, "settings": items})
-    return {"sections": out}
+    return {"sections": out, "variables": _variables()}
 
 
 @router.get("/api/settings/install")
@@ -247,9 +276,10 @@ def change_install_value(key: str, body: Value, request: Request, s=Depends(admi
         raise HTTPException(404, str(e))
     if d.scope != "install":
         raise HTTPException(404, "That setting isn't one of the server's.")
+    _not_set_by_environment(d)
     try:
         with dbm.transaction(db):
-            _unchanged(body, settings.stored(db, "install").get(key, d.default), d)
+            _unchanged(body, _install_item(d, settings.stored(db, "install"))["value"], d)
             settings.put(db, key, body.value, by=s["id"])
             _log(db, s, None, "install", {"setting": key, "label": d.label}, request)
     except settings.SettingError as e:

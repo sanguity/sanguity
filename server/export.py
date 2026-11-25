@@ -611,7 +611,7 @@ def restore(db, pid, data, photo, written):
             if raw is None:
                 n["photos_missing"] += 1
                 continue
-            if len(raw) > journal_photos.MAX_BYTES:
+            if len(raw) > journal_photos.max_bytes():
                 raise ValueError(f"A photo in the export's journal ({ph['file']}) is larger than this server keeps.")
             try:
                 clean, kind, _ = journal_photos.strip(raw)   # checked as a picture, its metadata out (again)

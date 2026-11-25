@@ -575,12 +575,8 @@ class Journal(unittest.TestCase):
         r = self.robin.put(f"/api/profiles/{self.pid}/journal/photos", content=PNG)
         self.assertEqual(r.status_code, 403, "CSRF")
         self.assertEqual(self.photo(b"GIF89a fictional", status=400)["detail"], "A GIF isn't kept as a photo: attach a JPEG, PNG or WebP picture.")
-        old = journal_photos.MAX_BYTES
-        journal_photos.MAX_BYTES = 500
-        try:
+        with unittest.mock.patch.object(journal_photos, "max_bytes", lambda: 500):
             self.assertIn("too big", self.photo(JPEG, status=413)["detail"])
-        finally:
-            journal_photos.MAX_BYTES = old
         alt = "Fictional red patch on the left forearm"
         jid = self.add(kind="symptom", t="2026-04-03", title="Rash", severity=4, where=["l-forearm"],
                        photos=[{"id": sent["id"], "alt": alt}])["id"]

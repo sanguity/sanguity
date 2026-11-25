@@ -58,7 +58,7 @@ async def upload_file(pid: int, upload_id: int, path: str, request: Request, s=D
         size = int(request.headers.get("content-length") or 0)
     except ValueError:
         size = 0
-    if size > config.UPLOAD_MAX_FILE:   # refused before any of it is read
+    if size > uploads.max_file():   # refused before any of it is read
         raise _refused(uploads.too_big(True))
     try:
         return await run_in_threadpool(uploads.add_file, db, pid, upload_id, path, _Body(request))
