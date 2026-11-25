@@ -22648,6 +22648,26 @@ def main():
             settle(300)
             check("#974: …and a lab's panel says both of two results at one time in its Latest and its First, “2 results: …” as the charts say them "
                   "(it named one), the other row one result as before, at 360 and 1400 px", not bad974, bad974)
+            # ---- #982: …and a lab's panel's "First to latest" with two results at its first or latest time: it took the one
+            # last in the file's order ("+1.5 mmol/L (+37%)", 4.1 to 5.6, 5.0 at that time unsaid). Potassium's panel for 90
+            # to 20 days back (the two its latest time), 40 days back to today (the two its first) and 35 to 25 days back (the
+            # two alone), at 360 and 1400 px: each change with the result it's to or from, the flagged one first as the charts
+            # say them (ckAt), and none between two at one time
+            CHG982 = r"""([from, to]) => { state.preset = 'custom'; state.from = zParse(from); state.to = zParse(to); openLab(SERIES.find(s => s.name === 'Potassium'));
+              return document.querySelector('#dbody .lab-facts dd[data-k=change]')?.textContent; }"""
+            want982, bad982 = {(90, 20): "+1.5 mmol/L (+37%) to 5.6 mmol/L; +0.9 mmol/L (+22%) to 5.0 mmol/L",
+                               (40, 0): "−1.2 mmol/L (−21%) from 5.6 mmol/L; −0.6 mmol/L (−12%) from 5.0 mmol/L", (35, 25): "Both at one time"}, []
+            for w982 in (360, 1400):
+                page.set_viewport_size({"width": w982, "height": 900})
+                for (from982, to982), v982 in want982.items():
+                    got982 = js(CHG982, [M752.day(from982), M752.day(to982)])
+                    if got982 != v982:
+                        bad982.append(f"{w982} px, {from982} to {to982} days back: “{got982}”, not “{v982}”")
+            js("() => { closeDrawer(); applyPreset('all'); }")
+            page.set_viewport_size(size865)
+            settle(300)
+            check("…and a lab's panel's “First to latest” with two results at its first or latest time says each change, to or from each of them (it "
+                  "took the one last in the file), and none between two at one time, at 360 and 1400 px (#982)", not bad982, bad982)
             db = dbm.connect()
             prof_r.delete_profile(db, apid)
             db.close()
@@ -22975,7 +22995,7 @@ def main():
             got888 = js("""() => [[['4,5', 4.5], ['4,9', 4.9]], [['4,5', 4.5], ['4,6', 4.6]], [['1.2E-3', 0.0012], ['1.5E-3', 0.0015]],
                 [['0,50', 0.5], ['0,75', 0.75]], [['14.8', 14.8], ['15', 15]]].map(([a, b]) => {
                   const pt = ([t, v], d) => Object.assign([`2026-0${d}-01T08:00:00`, v, null, null, '', t], {ts: d});
-                  const st = labStats([pt(a, 1), pt(b, 2)]); return [st.change.text + st.change.pct, st.median]; })""")
+                  const st = labStats([pt(a, 1), pt(b, 2)]); return [st.change[0].text + st.change[0].pct, st.median]; })""")   # (its one change: labStats gives each, #982)
             check("#888: the lab panel's change and median are said to their results' decimals as printed, “4,5” to “4,9” as "
                   "“+0.4 (+9%)” (it was “+0”), by the page's one reader of a value",
                   got888 == [["+0.4 (+9%)", "4.7"], ["+0.1 (+2%)", "4.55"], ["+0.0003 (+25%)", "0.00135"], ["+0.25 (+50%)", "0.625"], ["+0.2 (+1%)", "14.9"]], got888)

@@ -40,16 +40,27 @@ function labStats(pts) {
   if (m && m % 2 === 0) { const v = (mid[1] + by[m >> 1][1]) / 2, t = v.toFixed(dec + 1); median = t.endsWith("0") ? v.toFixed(dec) : t; }
   const where = {above: 0, below: 0, flagged: 0};   // by mark: ▲, ▼, ◆
   for (const p of pts) if (FLAG_OF(p[4])) where[FLAG_OF(p[4]).place]++;
-  // the change from the first to the latest, as printed; not worked out from a value given as "<0.5" or ">90"
-  const d = last[1] - first[1], pct = first[1] ? Math.round(d / Math.abs(first[1]) * 100) : null;
+  // the change from the first to the latest, as printed; not worked out from a value given as "<0.5" or ">90". Each
+  // result at the first time to each at the latest, as ckAt orders them (#982: it took the one last in the file of
+  // two at one time, #848); none where every result is at one time. [{a, b, text, pct}], text and pct "" where it isn't
   const signed = (v, t) => (v > 0 ? "+" : v < 0 ? "−" : "") + t;   // a minus sign, not a hyphen
-  const change = n < 2 || !labSure(first) || !labSure(last) ? null
-    : {text: signed(d, Math.abs(d).toFixed(Math.max(labDec(first), labDec(last)))), pct: pct == null ? "" : ` (${signed(pct, Math.abs(pct))}%)`};
+  const chg = (a, b, d = b[1] - a[1], pct = a[1] ? Math.round(d / Math.abs(a[1]) * 100) : null) => labSure(a) && labSure(b)
+    ? {a, b, text: signed(d, Math.abs(d).toFixed(Math.max(labDec(a), labDec(b)))), pct: pct == null ? "" : ` (${signed(pct, Math.abs(pct))}%)`} : {a, b, text: "", pct: ""};
+  const change = first.ts === last.ts ? null : ckAt(pts, first.ts).flatMap(a => ckAt(pts, last.ts).map(b => chg(a, b)));
   return {n, first, last, low: ext(Math.min), high: ext(Math.max), median, bounds: n - m, where, ranged: pts.filter(labRanged).length,
     inside: pts.filter(labIn).length, flagged: pts.filter(p => FLAG_OF(p[4])).length, change,
     lastIn: pts.findLast(labIn) || null, fromSettings: pts.filter(p => p.rs === "settings").length};
 }
 const labPct = (a, b) => b ? ` (${Math.round(a / b * 100)}%)` : "";
+/* "First to latest" (labStats' change): "+0.4 g/dL (+3%)"; with two results at the first or the latest time, each
+   change with the result it's from or to: "+1.5 mmol/L (+37%) to 5.6 mmol/L; +0.9 mmol/L (+22%) to 5.0 mmol/L" (#982);
+   val(p): a result's value as the panel says it */
+function labChange(st, u, val) {
+  const c = st.change, many = k => new Set(c.map(x => x[k])).size > 1, ends = x => (many("a") ? ` from ${val(x.a)}` : "") + (many("b") ? ` to ${val(x.b)}` : "");
+  if (!c) return st.n < 2 ? "One result" : `${st.n === 2 ? "Both" : `All ${st.n}`} at one time`;
+  if (!c.some(x => x.text)) return "Not worked out";
+  return c.map(x => (x.text ? `${x.text} ${u}${x.pct}` : "not worked out") + ends(x)).join("; ");
+}
 /* the period in the panel's line: "Results in the last 2 years", "Results since diagnosis (…)", "Every result on file" */
 function labPeriod() {
   const p = periodLabel("");
@@ -75,8 +86,8 @@ function openLab(s) {
       ["Results", String(st.n), "n"],
       ["Median", st.median == null ? `None: ${st.n > 1 ? `all ${st.n}` : "its one"} given as a bound` : `${st.median} ${u}` + (st.bounds ? ` (${st.bounds} given as a bound left out)` : ""), "median"],
       ["Inside own range", st.ranged ? `${st.inside} of ${st.ranged}${labPct(st.inside, st.ranged)}` : "None has a range", "in"],
-      ["First to latest", st.change ? `${st.change.text} ${u}${st.change.pct}` : st.n < 2 ? "One result" : "Not worked out", "change"],
-    ].map(([k, v, key]) => el("div", {}, el("dt", {text: k}), el("dd", {"data-k": key, text: v})))));
+      ["First to latest", labChange(st, u, val), "change"],
+    ].map(([k, v, key]) => el("div", {class: key === "change" && st.change?.length > 1 ? "wide" : null}, el("dt", {text: k}), el("dd", {"data-k": key, text: v})))));   // two changes: a row of their own (#982)
     body.append(el("div", {class: "sect", text: "Every result against its range"}), labStrip(s, pts));
     body.append(el("dl", {class: "kv lab-kv"},
       ...row("First", atAll(st.first), "first"), ...row("Latest", atAll(st.last), "latest"),
@@ -97,7 +108,7 @@ function openLab(s) {
     onLabs && table ? null : goBtn("Show them as a table", () => go(true))),
     el("p", {class: "hint dnote", text: "Counts and positions from the lab's table for this period. This isn't medical advice."}),
     aboutWords({title: "How these are counted"}, "Every result the lab's table lists for the period, against each result's own reference range on its report (or one you set in Settings, where the report gives none), the range the chart's band steps with.",
-      "A result counts as outside its range when its report flags it high or low, or when its value is past the range (one given as “<15”, when every value it stands for is); one its report flags without saying which way (◆) is counted as flagged on its report, and as inside its range where it has one; the median is the middle result, or the mean of the two in the middle, of those given as the value measured (one given as “<15” left out). The change is the latest result less the first, as printed; it doesn't say how the results in between went."));
+      "A result counts as outside its range when its report flags it high or low, or when its value is past the range (one given as “<15”, when every value it stands for is); one its report flags without saying which way (◆) is counted as flagged on its report, and as inside its range where it has one; the median is the middle result, or the mean of the two in the middle, of those given as the value measured (one given as “<15” left out). The change is the latest result less the first, as printed (with two at the first or the latest time, each one's); it doesn't say how the results in between went."));
   showDrawer();
 }
 /* the panel drawn again as the period or the records change (app.js renderAll), in place: its scroll and focus kept */
