@@ -323,7 +323,8 @@ each time. **Delete all cycle data** (or turning it off) deletes the receiver's 
 card says what it can't reach (backups made before, files already downloaded, the phone). An uploaded Apple Health
 export's cycle records (#223) are read only while it's on, kept as that import's own (undoing the import removes
 them) and deleted with the rest; the uploaded file itself is written again without them then (#555), and one uploaded
-while it's off is kept without them, sexual activity never. Nothing predicts periods or fertile days.
+while it's off is kept without them, sexual activity never (one an older version kept is written so at the first
+start after updating). Nothing predicts periods or fertile days.
 ECG recordings and irregular rhythm notifications (#182) from an Apple Watch come through Health Auto Export, or in
 an uploaded Apple Health export (its `electrocardiograms/` folder and `export.xml`); Health Connect has no ECG type,
 so Android watches' ECGs don't reach it. Each is an event on the Timeline ("ECG & rhythm"), and the same recording

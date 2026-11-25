@@ -815,6 +815,53 @@ class App(unittest.TestCase):
         for up in (off_up, on_up, again):
             self.assertFalse([w for w in HK_CYCLE + HK_NEVER if w in stored(up)["apple_health_export/export.xml"].lower()])
 
+    def test_9e_an_older_versions_uploads_are_written_so_once_at_start(self):   # #555
+        """An upload an older version kept as it came (before #555, or brought back by a backup made by one) held its
+        sexual activity, and its cycle records whatever tracking was, until tracking was turned off: nothing wrote it
+        again at start-up. Now the first start writes each of them once as strip_uploads does as an upload is finished,
+        by its profile's tracking, going on where a stop part-way left off; a later start reads none, and a database
+        without the mark (a backup's from before) has them read again."""
+        import inspect
+        from server import uploads
+        with open(os.path.join(ROOT, "tests", "fixtures", "apple_health", "apple_health_export", "export.xml"), "rb") as f:
+            src = f.read()
+        db = dbm.connect()
+        try:
+            off, on = (prof.create_profile(db, f"{n} (fictional)", owner_id=self.uid["robin"]) for n in ("Wren", "Yara"))
+            with dbm.transaction(db):
+                cycle_tracking.turn(db, on, True, self.uid["robin"])
+
+            def old(pid):   # as an older version kept it: finished, never written again
+                up = uploads.create(db, pid, self.uid["robin"])
+                uploads.add_file(db, pid, up, "apple_health_export/export.xml", io.BytesIO(src))
+                uploads.finish(db, pid, up)
+                return pid, up
+
+            def holds(pid_up):
+                pid, up = pid_up
+                xml = next(crypto.read_file(p) for u, rel, p in uploads.stored_files(db, pid) if u == up).lower()
+                return [w in xml for w in (HK_CYCLE[0], HK_NEVER[0])]
+            a1, b1, a2 = old(off), old(on), old(off)
+            self.assertEqual([holds(x) for x in (a1, b1, a2)], [[True, True]] * 3)
+            # a stop part-way, after a1: the start goes on from b1, by each profile's tracking
+            dbm.meta_set(db, cycle_tracking.STRIPPED, f"{a2[1]}:{a1[1]}")
+            self.assertGreater(cycle_tracking.strip_old(db), 0)
+            self.assertEqual([holds(x) for x in (a1, b1, a2)], [[True, True], [True, False], [False, False]],
+                             "off: neither; on: its cycle records, never sexual activity; a1 done before the stop")
+            self.assertEqual(dbm.meta_get(db, cycle_tracking.STRIPPED), f"{a2[1]}:{a2[1]}")
+            # a later start reads none, an upload finished since among them (written so as it was finished)
+            later = old(off)
+            self.assertEqual(cycle_tracking.strip_old(db), 0)
+            self.assertEqual(holds(later), [True, True], "not read again: one finished since was written as it was")
+            # a database without the mark, as a backup's from before is: its uploads read again at the next start
+            dbm.meta_set(db, cycle_tracking.STRIPPED, None)
+            self.assertGreater(cycle_tracking.strip_old(db), 0)
+            self.assertEqual([holds(x) for x in (a1, b1, a2, later)], [[False, False], [True, False], [False, False], [False, False]])
+            self.assertEqual(cycle_tracking.strip_old(db), 0)
+            self.assertTrue("cycle_tracking.strip_old(db)" in inspect.getsource(main.lifespan), "run at each start")
+        finally:
+            db.close()
+
 
 def watch_store_own(pid):
     from server import watch_store
