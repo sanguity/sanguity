@@ -813,6 +813,7 @@ html.sg-docked #drawer{width:var(--dock)}
 ::view-transition-old(root),::view-transition-new(root){animation:none}   /* the page moving over at once, under it */
 .facts{display:grid;grid-template-columns:repeat(auto-fill,minmax(7.5rem,1fr));gap:var(--sp-2);margin:0 0 var(--sp-4)}
 .facts>div{background:var(--raised);border:1px solid var(--ring);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3);min-width:0;overflow-wrap:anywhere}
+.facts>.wide{grid-column:1/-1}
 .facts dt{color:var(--muted);font-size:var(--fs-2)}
 .facts dd{margin:0;font-weight:var(--fw-medium)}
 .facts dd.abn,.denied,.tip .s.abn{color:var(--crit)}
