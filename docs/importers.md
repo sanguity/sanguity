@@ -226,8 +226,9 @@ Type them in and a sync; a copy the upload gives no row of its own is left out, 
 a labitem the profile has by its key holding only the rows of the results kept, as one kept anyway (ticked on the
 review) holds only its own: never its report's others (#887). A result new to the profile, a text result too, is kept
 with its row the same way (#878), its labitem holding that row where the labitem's key is known (a report sent again
-with a result added, another source's results under a key scoped to their day). A lab day kept with fewer or more lab
-events is titled for their rows and lists their orders (#889, `common.lab_day_counted`), as the importers make one.
+with a result added, another source's results under a key scoped to their day). A visit's vitals have no row: a copy
+of one is kept without one (#880). A lab day kept with fewer or more lab events is titled for their rows and lists
+their orders (#889, `common.lab_day_counted`), as the importers make one.
 A point its source sends again saying something else of its range or flag (#869: the same series key, time and value,
 its row and its point's row here one record of one source, #885: each row's own key in its labitem's `keys` the same,
 wherever its labitem is (#879: an Observation that came in a report, uploaded on its own, is that record), else the

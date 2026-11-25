@@ -869,6 +869,36 @@ class Preview(unittest.TestCase):
                     self.save(pid, self.previewed(pid, files)[0])
                     self.assertEqual(rowless(assembled(pid)), [], "uploaded again")
 
+    def test_a_vitals_copy_keeps_what_it_brings(self):   # #880
+        """A vital sign already here whose copy from another source brings a range or a flag is kept as a copy (#846),
+        with no row: a visit's Vitals have none, no lab day lists them (#868's rule is for lab results). A hospital's
+        heart rate of 112 with no range, then a portal's of it with 60–100 and High: the copy was left out as a
+        duplicate, so Body and activity and Labs said 112 with no range and no flag. Now it's kept, the reading is read
+        as one with the range and flag (crossmatch.copies), and the same again is a duplicate."""
+        t = "2025-08-20T10:15:00"
+
+        def vital(oid, rng=None, flag=None):
+            r = {"resourceType": "Observation", "id": oid, "status": "final", "category": [{"coding": [{"code": "vital-signs"}]}],
+                 "code": {"coding": [{"system": "http://loinc.org", "code": "8867-4"}], "text": "Heart rate"}, "effectiveDateTime": t,
+                 "valueQuantity": {"value": 112, "unit": "/min"}}
+            if rng:
+                r["referenceRange"] = [{"low": {"value": rng[0]}, "high": {"value": rng[1]}, "text": f"{rng[0]}-{rng[1]}"}]
+            if flag:
+                r["interpretation"] = [{"coding": [{"system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation", "code": flag}]}]
+            return {"vitals.json": json.dumps({"resourceType": "Bundle", "type": "collection", "entry": [{"resource": r}]})}
+        pid = self.profile("A vital's copy")
+        self.assertEqual(self.save(pid, self.previewed(pid, vital("hosp-hr"))[0])["state"], "done")
+        portal = vital("portal-hr", (60, 100), "H")
+        j, _ = self.previewed(pid, portal)
+        self.assertEqual((j["new"], j["duplicates"]["results"], j["duplicates"]["copies"], j["duplicates"]["brings"]), (True, 0, 1, {"range": 1}), j["duplicates"])
+        self.assertEqual(self.save(pid, j)["state"], "done")
+        got = assembled(pid)
+        pts = [p for s in got["labs"] if s.get("panel") == "Vitals" for p in s["pts"]]
+        self.assertEqual([(p[1], p[2], p[3], p[4]) for p in pts], [(112, 60, 100, "H")] * 2, "the reading with its range and flag, either copy")
+        self.assertEqual(rowless(got), [])
+        j, _ = self.previewed(pid, portal)   # the same again
+        self.assertEqual((j["new"], j["duplicates"]["results"], j["duplicates"]["copies"]), (False, 1, 0), j["duplicates"])
+
     def test_a_file_read_again_after_its_reading_changed(self):   # #874
         """A file imported before #870 changed how it reads (a FHIR Quantity's bound, "<=5" or ">60", kept as text; a
         C-CDA document's "4,5", "=<5" or "1.2E-3" too), uploaded again: its review says each result is already here

@@ -336,9 +336,10 @@ def _settle(data, dups, kept, anyway=None):
     """What's kept of the results already here, and the rows and lab days that go with them (#868). Each copy comes
     with its own row: the row's labitem is kept with it (its key here or not, so a typed row, keyed by its test, time
     and value, is kept with the range it brings), and its lab day with that; a copy the upload gives no row is left
-    out, a duplicate, so no point is kept without its lab day (one was, its row left out by key: Type them in's
-    "won't be saved again" saved it, and util.js labDraws put it in every lab day of its date). anyway: {series index:
-    {point index}}, results here kept anyway (keep()), whose rows are kept too, none left out. Then the lab days
+    out, a duplicate, so no point is kept without its lab day (one was, its row left out by key: Type them in's "won't
+    be saved again" saved it, and util.js labDraws put it in every lab day of its date); a vital's is kept, as no vital
+    has a row (_vital, #880). anyway: {series index: {point index}}, results here kept anyway (keep()), whose rows are
+    kept too, none left out. Then the results new to the profile with their rows (_new_with_rows, #878), the lab days
     (_settle_labdays, kept: events kept anyway), and the rows kept bring their results here as copies (_with_rows).
     A labitem the profile has already (a duplicate) is kept with those rows only (#887: "rows", {labitem id: {row
     index}}, trim() leaving out the rest): ticking one result of a report uploaded again added its others too, each
@@ -367,7 +368,7 @@ def _settle(data, dups, kept, anyway=None):
                 if row[0] in dups["events"] or row[0] in rows:   # (#887) a duplicate, kept for this row
                     rows.setdefault(row[0], set()).add(row[1])
                 dups["events"].discard(row[0])   # its row with it
-            else:   # no row of its own here: left out
+            elif not _vital(labs[i]):   # no row of its own here: left out (a vital has none, #880: kept)
                 leave_out(dups, i, n)
     _new_with_rows(data, dups, drawer)
     _settle_labdays(data, dups, kept)
@@ -392,6 +393,14 @@ def _new_with_rows(data, dups, drawer):
                 if row and (row[0] in dups["events"] or row[0] in rows):
                     rows.setdefault(row[0], set()).add(row[1])
                     dups["events"].discard(row[0])
+
+
+def _vital(s):
+    """(#880) Whether series s is a visit's Vitals (a heart rate, a blood pressure): readings no lab day lists, with no
+    row of their own (records.py, the page's labDraws, and crossmatch.lab_faults leave them out alike). A copy of one
+    already here is kept with what it brings without a row: left out, a portal's heart rate with its range and High
+    beside a hospital's with none left the reading with neither."""
+    return isinstance(s, dict) and s.get("panel") == "Vitals"
 
 
 def leave_out(dups, i, n):
