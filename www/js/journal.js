@@ -460,13 +460,22 @@ function journalForm(j, preset, back) {
 
 /* ---------------------------------------------------------------- symptom groups (#161)
    The person's own named sets of symptoms, kept as the profile setting journal.groups. Logged in one go: one symptom
-   entry each, with its own severity (and place), the same date and note, each saying which group it was logged with. */
-async function jStoreGroups(groups, msg) {
+   entry each, with its own severity (and place), the same date and note, each saying which group it was logged with.
+   Saved with the groups they were made from (was, #923): changed since, in another tab or by someone else, the server
+   says so (409), the groups are read again, and stale(its words) draws them as they are now, to make the change on. */
+async function jStoreGroups(groups, msg, was = CFG.journal?.groups, stale = null) {
   sayIn(msg, "Saving…");
   try {
-    const r = await api(`profiles/${PROFILE.id}/settings/journal.groups`, {method: "PUT", body: JSON.stringify({value: groups})});
+    const r = await api(`profiles/${PROFILE.id}/settings/journal.groups`, {method: "PUT", body: JSON.stringify({value: groups, was})});
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) { sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save the groups (${r.status}).`, true); return false; }
+    const said = typeof j.detail === "string" ? j.detail : `Couldn't save the groups (${r.status}).`;
+    if (r.status === 409) {
+      const now = await api(`profiles/${PROFILE.id}/settings`).then(x => x.ok ? x.json() : null).catch(() => null);
+      if (now) { applySettings(now); journalHomeCard(); }
+      if (stale) stale(said); else sayIn(msg, said, true);
+      return false;
+    }
+    if (!r.ok) { sayIn(msg, said, true); return false; }
     applySettings(j);
     journalHomeCard();
     return true;
@@ -491,7 +500,7 @@ async function jPutBack(g, order, back) {
   const after = order.slice(i + 1).map(at).find(k => k >= 0), before = order.slice(0, i).reverse().map(at).find(k => k >= 0);
   const next = [...now];
   next.splice(after ?? (before == null ? next.length : before + 1), 0, g);
-  if (!await jStoreGroups(next, shown() ? $("#dbody .edit-msg") : null)) throw new Error("it couldn't be saved");
+  if (!await jStoreGroups(next, shown() ? $("#dbody .edit-msg") : null, j.journal?.groups)) throw new Error("it couldn't be saved");
   if (shown()) journalGroups(back, `Undone: “${g.name}” is back.`);
 }
 function journalGroups(back, said, quiet) {   // quiet: said in a toast, so only shown here (sayIn's say: false)
@@ -509,7 +518,7 @@ function journalGroups(back, said, quiet) {   // quiet: said in a toast, so only
           // at once, with an Undo that puts it back next to its old neighbours among the groups there are then (#363,
           // #367; it asked first before): the entries logged with it stay as they are either way
           const said = `Deleted “${g.name}”. The entries logged with it stay.`, order = groups.map(x => x.name);
-          if (!await jStoreGroups(groups.filter((_, k) => k !== i), msg)) return;
+          if (!await jStoreGroups(groups.filter((_, k) => k !== i), msg, groups, text => journalGroups(back, text))) return;
           journalGroups(back, said, true);
           toast(said, {action: "Undo", onAction: () => jPutBack(g, order, back)});
         }})) : null))) : el("p", {class: "empty", text: w ? "No groups yet." : "No one has made a symptom group for this profile."}),
@@ -533,8 +542,10 @@ function journalGroupEdit(i, back) {
     const next = {name: name.value.trim(), symptoms: syms.value.split("\n").map(s => s.trim()).filter(Boolean)};
     if (!next.name) { sayIn(msg, "Give the group a name.", true); name.focus(); return; }
     if (!next.symptoms.length) { sayIn(msg, "List at least one symptom.", true); syms.focus(); return; }
-    const all = groups.slice(); if (i < 0) all.push(next); else all[i] = next;
-    if (await jStoreGroups(all, msg)) back();
+    // the groups as this page has them now (read again after a refusal, #923), this one found by its name
+    const now = jGroups(), at = i < 0 ? -1 : now.findIndex(x => x.name.toLowerCase() === g.name.toLowerCase());
+    const all = now.slice(); if (at < 0) all.push(next); else all[at] = next;
+    if (await jStoreGroups(all, msg, CFG.journal?.groups)) back();
   };
   body.append(form);
   showDrawer();

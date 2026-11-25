@@ -8612,6 +8612,35 @@ def main():
             check("…a group made since under its name is left as it is, said so, and the toast goes",
                   js(names_on_server) == ["Alpha", "Gamma", "beta"] and js("document.querySelector('#dbody .edit-msg').textContent") == "A group called “Beta” was made since: it's left as it is."
                   and not js("document.querySelector('#sgToasts .sg-toast')"), [js(names_on_server), js("document.querySelector('#dbody .edit-msg').textContent")])
+            # #923: two pages (two tabs) with the groups as each read them: this one adds "Delta", the other, loaded
+            # before, deletes "Alpha" from its list. Saved whole, its list wiped out "Delta"; now it's refused (409), its
+            # groups read again and drawn as they are now, said so, and its delete then made on those keeps both
+            other_ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)   # the same session, another tab
+            other_ctx.add_cookies(page.context.cookies())
+            other = other_ctx.new_page()
+            other.on("pageerror", lambda e: problems.append(f"second page script error: {e}"))
+            other.goto(base + "/index.html?profile=1#timeline")
+            other.wait_for_function("typeof EV !== 'undefined' && typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=60000)
+            other.evaluate("switchTab('timeline', 'journal')")
+            other.click("#journalHome .jgroup-btns button:text-matches('^Symptom groups')")
+            other.wait_for_selector("#dbody .jgroups button[aria-label='Delete Alpha']", timeout=10000)
+            page.click("#dbody .btns button:text-is('New group')")
+            page.fill("#dbody .jform input[type=text]", "Delta")
+            page.fill("#dbody .jform textarea", "Cough")
+            page.click("#dbody .jform button[type=submit]")
+            page.wait_for_function("CFG.journal.groups.some(g => g.name === 'Delta') && !!document.querySelector('#dbody .jgroups-home')", timeout=10000)
+            other.click("#dbody .jgroups button[aria-label='Delete Alpha']")
+            other.wait_for_function("(document.querySelector('#dbody .edit-msg')?.textContent || '').includes('changed since')", timeout=10000)
+            stale = [js(names_on_server), other.evaluate("[...document.querySelectorAll('#dbody .jgroups b')].map(b => b.textContent)"),
+                     other.evaluate("document.querySelector('#dbody .edit-msg').textContent")]
+            check("symptom groups from two pages (#923): one adds a group, the other, loaded before, deletes another: refused, the first's group "
+                  "kept, the other's list read again and drawn as it is now, said so",
+                  stale[0] == ["Alpha", "Gamma", "beta", "Delta"] and stale[1] == stale[0]
+                  and stale[2] == "“Symptom groups” was changed since this page read it, in another tab or by someone else. It's shown as it is now: make your change again.", stale)
+            other.click("#dbody .jgroups button[aria-label='Delete Alpha']")
+            other.wait_for_function("!CFG.journal.groups.some(g => g.name === 'Alpha')", timeout=10000)
+            check("…and its delete made again on the groups as they are: both changes kept", js(names_on_server) == ["Gamma", "beta", "Delta"], js(names_on_server))
+            other_ctx.close()
             js("v => api('profiles/1/settings/journal.groups', {method: 'PUT', body: JSON.stringify({value: v})}).then(r => r.json()).then(applySettings)", json.loads(kept_groups))
             page.click("#dbody .btns button:text-is('Back')")
             page.click("#journalHome .jgroup-btns button:text-matches('^Symptom groups')")
@@ -16647,8 +16676,9 @@ def main():
             check("…a tick there has an Undo (#272), focus back on the tick it undid, drawn again (#419)", undone_ticks == ["home_bp"]
                   and js("document.querySelector('#sumTickedBoxes input[value=home_bp]').checked") and js("document.activeElement.id") == "sumTick-home_bp",
                   [undone_ticks, js("document.activeElement.id")])
-            js("fetch('api/profiles/1/settings/summary.ticked', {method: 'DELETE', headers: {'X-Sanguity': '1'}}).then(r => r.status)")   # as it was
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
+            # (as it was again once #571's below are done, which put it back each time: changed here first, from outside the
+            # page, a tick saved there would be refused as made on ticks read before it, #923)
             # #571: each measure ticked by keyboard, at 1400×900, 1100×600, 844×390 and 390×844, leaves its box in view and
             # not under a toast: once the preview above it is drawn again (which moved it down, off the screen or under
             # the toasts) and as a fourth toast takes the first's place; seen where the box is drawn (its corners and middle)

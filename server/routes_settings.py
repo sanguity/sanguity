@@ -2,7 +2,9 @@
 resetting values. Who may change a value depends on its setting's scope: a profile's settings its owners and
 editors, a user's settings that user (on any profile shared with them), the install's settings admins. Every
 change passes main.guard's CSRF check like any other, and is logged: a profile's in its activity log, the others
-as account events. Values are never logged (they can hold lab names); only which setting changed."""
+as account events. Values are never logged (they can hold lab names); only which setting changed. A whole value (a
+list, a map) that a page made from the one it read is sent with that one, its version ("was", #923), and refused (409)
+if the setting holds another by then: a change made since in another tab, or by someone else, is never lost under it."""
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -58,6 +60,17 @@ def sections(pid: int, s=Depends(user), db=Depends(get_db)):
 
 class Value(BaseModel):
     value: Any
+    # (#923) the value as the page read it, its version: sent with a whole value (a list, a map) that the page made
+    # from it, so a change made since, in another tab or by someone else, isn't lost under it
+    was: Any = None
+
+
+def _unchanged(body, now, d):
+    """(#923) Refuse (409) a change sent with the value it was read at ("was") when the setting holds another now: the
+    page shows it as it is (it reads it again) and the change is made again on that. Call inside the transaction."""
+    if "was" in body.model_fields_set and body.was != now:
+        raise HTTPException(409, f"“{d.label}” was changed since this page read it, in another tab or by someone else. "
+                                 "It's shown as it is now: make your change again.")
 
 
 @router.put("/api/profiles/{pid}/settings/{key}")
@@ -70,6 +83,7 @@ def change(pid: int, key: str, body: Value, request: Request, s=Depends(user), d
     _check(db, s, pid, d, role)
     try:
         with dbm.transaction(db):
+            _unchanged(body, settings.effective(db, pid, s["id"])[key][0], d)
             settings.put(db, key, body.value, pid=pid, uid=s["id"], by=s["id"])
             _log(db, s, pid, d.scope, {"setting": key, "label": d.label}, request)
     except settings.SettingError as e:
@@ -168,6 +182,7 @@ def change_user_value(key: str, body: UserValue, request: Request, s=Depends(use
                 if key not in settings.stored(db, "user", uid=s["id"]):
                     settings.put(db, key, body.value, uid=s["id"], by=s["id"])
             else:
+                _unchanged(body, settings.effective(db, None, s["id"])[key][0], d)
                 settings.put(db, key, body.value, uid=s["id"], by=s["id"])
                 _log(db, s, None, "user", {"setting": key, "label": d.label}, request)
     except settings.SettingError as e:
@@ -234,6 +249,7 @@ def change_install_value(key: str, body: Value, request: Request, s=Depends(admi
         raise HTTPException(404, "That setting isn't one of the server's.")
     try:
         with dbm.transaction(db):
+            _unchanged(body, settings.stored(db, "install").get(key, d.default), d)
             settings.put(db, key, body.value, by=s["id"])
             _log(db, s, None, "install", {"setting": key, "label": d.label}, request)
     except settings.SettingError as e:

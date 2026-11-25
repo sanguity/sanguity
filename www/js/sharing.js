@@ -19,7 +19,7 @@ async function call(path, method = "GET", body) {
   const j = r.status === 204 ? null : await r.json().catch(() => ({}));
   if (!r.ok) {
     const d = j && j.detail, e = new Error(Array.isArray(d) ? "Please check the fields." : (d && d.message) || d || r.status + " " + r.statusText);
-    e.detail = d; throw e;
+    e.detail = d; e.status = r.status; throw e;
   }
   return j;
 }

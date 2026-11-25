@@ -13,7 +13,7 @@ async function call(path, method = "GET", body, opts = {}) {   // opts: fetch's 
   const r = await api(path, {method, body: body === undefined ? undefined : JSON.stringify(body), ...opts});
   if (r.status === 401) { location.replace("login.html"); throw new Error("signed out"); }
   const j = r.status === 204 ? null : await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error((typeof j.detail === "string" && j.detail) || (Array.isArray(j.detail) ? "Please check the fields." : r.status + " " + r.statusText));
+  if (!r.ok) throw Object.assign(new Error((typeof j.detail === "string" && j.detail) || (Array.isArray(j.detail) ? "Please check the fields." : r.status + " " + r.statusText)), {status: r.status});
   return j;
 }
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -583,7 +583,7 @@ async function undoSave(base, secs, was, pid) {
     if (!w.wrote || !now[w.key] || !same(now[w.key].value, w.wrote.value)) { since.push(w.label); continue; }
     const path = `${base}/${encodeURIComponent(w.key)}`;
     if ((w.from === "default" || w.from === "install") && !base.startsWith("settings/")) await call(path, "DELETE");
-    else await call(path, "PUT", {value: w.value});
+    else await call(path, "PUT", {value: w.value, ...wasOf(now[w.key].value)});
     back.push(w);
   }
   const text = [back.length ? `Undone: ${quoted(back.map(w => w.label))} ${back.length === 1 ? "is" : "are"} as before.` : "",
@@ -608,6 +608,9 @@ async function undoSave(base, secs, was, pid) {
   if (clean.length) await load({sections: clean, text}, clean);
 }
 
+/* (#923) a whole value (a list, a map) is saved with the one it was made from: changed since, in another tab or by
+   someone else, the server refuses it (409) rather than lose that change under it */
+const wasOf = v => v !== null && typeof v === "object" ? {was: v} : {};
 /* “A”, “A” and “B”, “A”, “B” and “C” */
 const quoted = labels => labels.map((l, i) => (i === 0 ? "" : i === labels.length - 1 ? " and " : ", ") + `“${l}”`).join("");
 
@@ -708,8 +711,13 @@ async function saveSections(cards, msg, had) {
   const base = setBase(), pid = PID, done = [], was = [], secs = [];
   for (const card of cards) for (const it of card.sgItems.filter(x => x.counts())) {
     const value = it.value(), before = {key: it.st.key, label: it.st.label, value: it.st.value, from: it.st.from};
-    try { await call(`${base}/${encodeURIComponent(it.st.key)}`, "PUT", {value}); }
+    try { await call(`${base}/${encodeURIComponent(it.st.key)}`, "PUT", {value, ...wasOf(it.st.value)}); }
     catch (e) {
+      if (e.status === 409) {   // (#923) changed since: its section read again, as it is now, to make the change on
+        sayIn(msg, (done.length ? `Saved ${quoted(done)}. ` : "") + e.message, true);
+        await load({sections: [card.sgSec.id], text: e.message}, [card.sgSec.id]);
+        return false;
+      }
       // the ones before it are saved; this one and the rest stay as changed, to put right and save again
       sayIn(it.msg, e.message, true, {say: false});
       for (const c of cards) c.sgChanged();

@@ -341,7 +341,7 @@ async function syncUndo(was) {
   const now = syncSec(await call("settings/install")).settings, back = [], since = [];
   for (const w of was) {
     if (!same(now.find(st => st.key === w.key)?.value, w.wrote)) { since.push(w.label); continue; }
-    await call(`settings/install/${encodeURIComponent(w.key)}`, "PUT", {value: w.value});
+    await call(`settings/install/${encodeURIComponent(w.key)}`, "PUT", {value: w.value, ...(Array.isArray(w.wrote) ? {was: w.wrote} : {})});
     back.push(w.label);
   }
   const text = [back.length ? `Undone: ${syncList(back)} ${back.length === 1 ? "is" : "are"} as before.` : "",
@@ -355,8 +355,10 @@ function syncNow(e) {
     if (!e.dirty()) return;
     const value = e.get(), was = [{key: e.st.key, label: e.st.label, value: e.st.value, wrote: value}];
     let d;
-    try { d = await call(`settings/install/${encodeURIComponent(e.st.key)}`, "PUT", {value}); }
+    // (#923) the kinds ticked, a list: saved with the one they were made from, refused if it's changed since, and read again
+    try { d = await call(`settings/install/${encodeURIComponent(e.st.key)}`, "PUT", {value, ...(Array.isArray(value) ? {was: e.st.value} : {})}); }
     catch (err) {
+      if (err.status === 409) { drawSync(syncSec(await call("settings/install")), err.message, SYNC.filter(x => x !== e && x.dirty())); return; }
       const now = SYNC.find(x => x.st.key === e.st.key && x.dirty()) || e;   // (drawn again meanwhile: that one)
       sayIn($("#sec-sync .set-msg"), `“${e.st.label}” isn't saved: ${err.message}`, true); now.held = true; now.mark(); return;
     }

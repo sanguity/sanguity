@@ -16,11 +16,13 @@ function tvCurrent() {
   return CFG.trends.views.find(v => { const l = tvLabs(v); return l.length === sel.length && l.every(n => state.sel.has(n)); }) || null;
 }
 let tvMsg = "", tvBad = false, tvFormOpen = false, tvQuiet = false;
-async function tvStore(views, said, {quiet = false} = {}) {   // quiet: shown beside the views, said by a toast instead (#263)
+/* saved with the views they were made from (was, #923): changed since elsewhere, refused (409), and read again */
+async function tvStore(views, said, {quiet = false, was = CFG.trends.views} = {}) {   // quiet: shown beside the views, said by a toast instead (#263)
   let ok = false;
   try {
-    const r = await api(`profiles/${PROFILE.id}/settings/trends.views`, {method: "PUT", body: JSON.stringify({value: views})});
+    const r = await api(`profiles/${PROFILE.id}/settings/trends.views`, {method: "PUT", body: JSON.stringify({value: views, was})});
     const j = await r.json().catch(() => ({}));
+    if (r.status === 409) { const now = await api(`profiles/${PROFILE.id}/settings`).then(x => x.ok ? x.json() : null).catch(() => null); if (now) applySettings(now); }
     if (!r.ok) { tvMsg = typeof j.detail === "string" ? j.detail : `Couldn't save the views (${r.status}).`; tvBad = true; renderSeriesList(); return false; }
     applySettings(j);
     tvMsg = said; tvQuiet = quiet; ok = true;
@@ -56,7 +58,7 @@ async function tvPutBack(gone, order) {
   const after = order.slice(i + 1).map(at).find(k => k >= 0), before = order.slice(0, i).reverse().map(at).find(k => k >= 0);
   const next = [...now];
   next.splice(after ?? (before == null ? next.length : before + 1), 0, {...gone, default: gone.default && !now.some(v => v.default)});
-  if (!await tvStore(next, `Undone: “${gone.name}” is back.`)) throw new Error("it couldn't be saved");
+  if (!await tvStore(next, `Undone: “${gone.name}” is back.`, {was: j.trends?.views})) throw new Error("it couldn't be saved");
 }
 /* the bar at the top of the lab list: pick a view; save, make default, delete */
 function viewsBar() {
