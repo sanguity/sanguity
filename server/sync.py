@@ -54,9 +54,10 @@ removes the store (connections.disconnect), so nothing a pull read outlives a Di
       row (#881): every row sits beside its result, in a labitem of its result's own import (one saved apart before is
       moved beside it, _apart). The day's lab day is joined, never a second added beside it: the connection's own,
       else its source's (#912: one listing the portal's records, an upload's of its export), else the earliest,
-      keeping every labitem it lists (_draw_day, _link_labdays). Lab events saved before #885 take their rows' records
-      from the connection's store once (backfill_keys, schema version 40), and those of the days a pull reads as it
-      goes (_give_keys, #909: an upload of the portal's own export, the portal connected again)
+      keeping every labitem it lists, each lab event listed by one lab day (_draw_day, _link_labdays, #910; the first
+      pull's lab day joins it too, _fold_first). Lab events saved before #885 take their rows' records from the
+      connection's store once (backfill_keys, schema version 40), and those of the days a pull reads as it goes
+      (_give_keys, #909: an upload of the portal's own export, the portal connected again)
     - only records that come from what this pull read count: one undone from the history doesn't come back
       unless the vendor changes it
   Each is recorded in the import history (#24) with a done job, and can be undone there.
@@ -565,16 +566,58 @@ def first_saved(db, jid, iid):
     """jobs._save, in its transaction: the first pull of a connection was saved. Its cursor becomes the
     connection's, and its import belongs to the connection. Disconnected since (#592): Disconnected, so the save is
     rolled back, nothing from the pull kept (Disconnect cancels the job too: this is for one it couldn't)."""
-    c = db.execute("SELECT id, state FROM connections WHERE first_job=? AND cursor IS NULL", (jid,)).fetchone()
+    c = db.execute("SELECT * FROM connections WHERE first_job=? AND cursor IS NULL", (jid,)).fetchone()
     if not c:
         return
     if c["state"] == "disconnected":
         raise Disconnected(DISCONNECTED)
     if iid is not None:
         db.execute("UPDATE imports SET connection_id=?, synced=? WHERE id=?", (c["id"], dbm.now(), iid))
+        _fold_first(db, c, jid, iid)
     db.execute("""UPDATE connections SET cursor=IFNULL(pending_cursor, '{}'), pending_cursor=NULL,
                   next_sync=CASE WHEN state='active' THEN ? ELSE NULL END WHERE id=?""",
                (dbm.now() + config.SYNC_HOURS * 3600, c["id"]))
+
+
+def _fold_first(db, c, jid, iid):
+    """(#910) The first pull's lab days (import iid, of job jid), each joining the lab day of its source's draw where the
+    profile has one (_draw_day: one listing a lab event that holds a record of what the connection has read, an
+    upload's of part of the portal's export), as a later pull joins it: one lab day a draw from the first pull too. Its
+    own lab day held only what the upload hadn't (the LDL and the urine colour beside the upload's CBC), and a later
+    pull's lab day then listed the upload's CBC as well. The lab day joined is kept as it was (sync_changes), for
+    undoing iid; the job's counts lose the lab day it didn't keep."""
+    pid = c["profile_id"]
+    mine = [r for r in db.execute("SELECT id, key_hash, detail FROM events WHERE import_id=?", (iid,)).fetchall()
+            if (d := records._dec(r["detail"])) and isinstance(d, dict) and d.get("type") == "labday"]
+    store = _load_store(pid, c["id"]) if mine else {"resources": {}}
+    # the records it has read, as the FHIR importer keys them (one server's: "fhir:<type>/<id>"), without reading them
+    # all again (the preview did)
+    src = {f"fhir:{k}" for k in store["resources"] if k.split("/")[0] in ("Observation", "DiagnosticReport")}
+    if not src:
+        return
+    n = 0
+    for r in mine:
+        day = _draw_day(db, pid, set(), r["key_hash"], src, but=r["id"], earliest=False)
+        if day is None:
+            continue
+        old = day["detail"].get("ids") or []
+        ids = old + [i for i in records._dec(r["detail"]).get("ids") or [] if i not in old]
+        ids = [i for i in ids if i in _there(db, ids)]
+        _changing(db, iid, {"id": day["id"], "import_id": day["import_id"], "body": records._enc(day["body"]), "detail": records._enc(day["detail"])})
+        db.execute("UPDATE events SET body=?, detail=? WHERE id=?",
+                   (records._enc(_labday_body(db, day["body"], ids)), records._enc({**day["detail"], "ids": ids}), day["id"]))
+        db.execute("DELETE FROM events WHERE id=?", (r["id"],))
+        n += 1
+    if n:
+        j = db.execute("SELECT summary FROM jobs WHERE id=?", (jid,)).fetchone()
+        s = json.loads(crypto.dec(j["summary"])) if j and j["summary"] else None
+        counts = (s or {}).get("counts") or {}
+        if isinstance(counts.get("kinds"), dict) and counts["kinds"].get("lab"):
+            counts["kinds"]["lab"] -= n
+            counts["kinds"] = {k: v for k, v in counts["kinds"].items() if v}
+            counts["events"] = max(0, (counts.get("events") or 0) - n)
+            db.execute("UPDATE jobs SET summary=? WHERE id=?", (crypto.enc(json.dumps(s)), jid))
+        records._bump(db, pid)
 
 
 # ---------------------------------------------------------------- a later pull: new records added, changed ones updated in place
@@ -1011,8 +1054,8 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
         # events come from the whole set read so far (a lab day groups results across pulls), ids as it numbers them;
         # one only this pull's records have (keyless, or not in the whole set) keeps its own, marked apart
         new_events, updates, src, rows_here, fields = [], [], {}, {}, {}
-        # (#912) each draw's lab day: the connection's own, else its source's (one listing its records), else the
-        # earliest, else the pull's own, new
+        # (#912, #910) each draw's lab day: the connection's own, else its source's (one listing its records), else
+        # the earliest, else the pull's own, new
         mine_src = _source_records(full)
         labdays = {k for k in touched if (full_by_key.get(k) or {}).get("k") == "lab"
                    and ((full.get("details") or {}).get(str(full_by_key[k].get("id"))) or {}).get("type") == "labday"}
@@ -1200,27 +1243,28 @@ def _holds(db, pid, ids, mine):
     return False
 
 
-def _draw_day(db, pid, ours, h, mine, but=None):
+def _draw_day(db, pid, ours, h, mine, but=None, earliest=True):
     """(#912, #910) The lab day a pull of this source joins for the draw of the day whose lab day key hash is h: the
     connection's own (ours: its imports), the latest, where it has one; else the earliest that lists a lab event holding
     one of this source's records (mine: _source_records), an upload's of the portal's own export or a connection's to it
     made before, rather than another source's of that date (a hospital's FHIR file of the day, whose lab day it joined
-    as the earliest, the portal's draw split across two); else the earliest there is (#897: the source's copy of a
-    hospital's result is that draw's); else None, and the pull's is its own, new. but: a lab day not to take. -> the lab
-    day ({"id", "import_id", "body", "detail"}) or None"""
+    as the earliest, the portal's draw split across two); else (earliest) the earliest there is (#897: the source's copy
+    of a hospital's result is that draw's); else None, and the pull's is its own, new. but: a lab day not to take. ->
+    the lab day ({"id", "import_id", "body", "detail"}) or None"""
     days = [x for x in _labday_rows(db, pid, h) if x["id"] != but]
     own = [x for x in days if x["import_id"] in ours]
     if own:
         return own[-1]
-    return next((x for x in days if _holds(db, pid, x["detail"].get("ids") or [], mine)), days[0] if days else None)
+    return next((x for x in days if _holds(db, pid, x["detail"].get("ids") or [], mine)), days[0] if days and earliest else None)
 
 
 def _link_labdays(db, pid, iid, full, keys, cid=None, chosen=None):
     """Point each lab day this pull touched at its results' rows, across this connection's pulls and imports: one lab
     day a draw, whoever's came first (#899, #897), the one _draw_day chose (chosen: {its key: that lab day, or None for
-    the pull's own, new}), never a second beside it. The connection's own lists its labitems of that day (a report's
-    wherever it is, as one record's); another's keeps every labitem it lists, none taken out, and is joined by the
-    connection's (#885: never pointed at the pull's alone). Its title counts the rows it holds (\"5 lab results\")."""
+    the pull's own, new}), never a second beside it. It keeps the lab events it lists (#885: never pointed at the pull's
+    alone), and is joined by the connection's of that draw that no other lab day lists (#910: each lab event is listed
+    by one lab day; the connection's own took a report's lab event another import's lab day listed, its rows in both
+    drawers, the badge and the drawer apart). Its title counts the rows it holds (\"5 lab results\")."""
     events = {str(e.get("id")): e for e in full["events"] if isinstance(e, dict)}
     ours = _ours(db, pid, cid)
     for e in full["events"]:
@@ -1235,16 +1279,16 @@ def _link_labdays(db, pid, iid, full, keys, cid=None, chosen=None):
         day = next((x for x in days if x["id"] == pick["id"]), None) if pick else next((x for x in days if x["import_id"] == iid), None)
         if day is None:
             continue
-        own = day["import_id"] in ours
+        elsewhere = {i for x in days if x["id"] != day["id"] for i in x["detail"].get("ids") or []}
         members = [events[str(i)]["key"] for i in d.get("ids") or [] if str(i) in events and events[str(i)].get("key")]
         mh = records.key_hashes(db, members)
-        old, ids = day["detail"].get("ids") or [], []
+        old = day["detail"].get("ids") or []
+        ids = list(old)
         for k in members:
-            rs = db.execute("SELECT id, import_id FROM events WHERE profile_id=? AND key_hash=? ORDER BY id", (pid, mh[k])).fetchall()
-            got = [r["id"] for r in rs if r["import_id"] in ours] or ([rs[-1]["id"]] if own and rs and not preview.day_key(k) else [])
-            ids += [i for i in got if i not in ids]
-        if not own or not ids:
-            ids = old + [i for i in ids if i not in old]
+            for r in db.execute("SELECT id, import_id FROM events WHERE profile_id=? AND key_hash=? ORDER BY id", (pid, mh[k])).fetchall():
+                if r["import_id"] in ours and r["id"] not in elsewhere and r["id"] not in ids:
+                    ids.append(r["id"])
+        ids = [i for i in ids if i in _there(db, ids)]
         body = _labday_body(db, day["body"], ids)
         if old == ids and _same(body, day["body"]):
             continue
@@ -1445,6 +1489,7 @@ def unapply(db, iid):
     changed = [r[0] for r in db.execute("SELECT DISTINCT event_id FROM sync_changes WHERE import_id=? AND event_id IS NOT NULL", (iid,))]
     _unapply(db, iid)
     gone = {r[0] for r in db.execute("SELECT id FROM events WHERE import_id=?", (iid,))}
+    changed += [x["id"] for x in _listing(db, iid, gone) if x["id"] not in changed]   # (#910) any lab day listing them
     for ch in records._chunks(changed):   # (a later pull's version kept, or what it was put back: iid's labitems go from it)
         for r in db.execute(f"SELECT id, body, detail FROM events WHERE import_id != ? AND id IN ({','.join('?' * len(ch))})", (iid, *ch)).fetchall():
             d = records._dec(r["detail"])
@@ -1459,6 +1504,18 @@ def unapply(db, iid):
                            (records._enc(_labday_body(db, records._dec(r["body"]), ids)), records._enc({**d, "ids": ids}), r["id"]))
             else:
                 db.execute("DELETE FROM events WHERE id=?", (r["id"],))
+
+
+def _listing(db, iid, ids):
+    """(#910) The FHIR lab days of other imports than iid that list one of these events (iid's): those of their days."""
+    r = db.execute("SELECT profile_id FROM imports WHERE id=?", (iid,)).fetchone()
+    if not r or not ids:
+        return []
+    days = set()
+    for ch in records._chunks(sorted(ids)):
+        days |= {str((records._dec(x["body"]) or {}).get("t") or "")[:10]
+                 for x in db.execute(f"SELECT body FROM events WHERE id IN ({','.join('?' * len(ch))})", ch)}
+    return [x for x in _lab_days_listing(db, r["profile_id"], days) if x["import_id"] != iid and set(x["detail"].get("ids") or []) & ids]
 
 
 def _hand_over(db, iid):

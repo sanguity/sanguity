@@ -2264,6 +2264,12 @@ Everything on `main` so far; it becomes the first tagged release.
   portal's export of the same day uploaded, each its own lab day, a pull's new result that day joined the earliest
   lab day of its date, the hospital's, so the portal's draw was split across two lab days. Now it joins the lab day of
   its own source's draw, the one listing the portal's records, and the hospital's stays as it was.
+- **Each lab result is listed by one lab day, from the first pull on** (#910): part of the portal's export uploaded (a
+  CBC report), then the portal connected: its first pull's new results made a lab day of their own beside the
+  upload's, two for one draw, and a later pull then listed the upload's CBC in the connection's as well, its results
+  in both drawers and the badge ("2 out of range") apart from the drawer's 3. Now a first pull's results join the lab
+  day of their source's draw as a later pull's do, each lab event is listed by one lab day, and a lab day no longer
+  lists an upload's results once that upload is undone.
 - **A result its source amends in value is updated, not added beside the old one** (#877): LDL corrected at the source
   from 162 to 165 (the same Observation), pulled again or in a FHIR file uploaded again, was added as a second result
   with a row of its own, so the old value showed beside the corrected one in Labs and in the lab day. Now the same record

@@ -206,6 +206,16 @@ class Connections(unittest.TestCase):
     def data(self):
         return whole(self.robin, self.pid)
 
+    def afresh(self, name):
+        """A fake FHIR server and a profile of their own, within one test (#909–#914: each case its own): earlier sources
+        at its address moved aside, as setUp does."""
+        self.fake = FakeFHIR(patients=["robin-example"]).start()
+        self.addCleanup(self.fake.stop)
+        db = dbm.connect()
+        db.execute("UPDATE smart_clients SET issuer = issuer || '/earlier-test-' || id WHERE issuer = ?", (self.fake.fhir_base,))
+        self.pid = prof.create_profile(db, name, owner_id=self.uids["robin"])
+        db.close()
+
     def faults(self, day="2025-03-04"):
         """(#909–#914) What's wrong with that day's lab days, by the one check of them (crossmatch.lab_faults): none
         where each result has its row in one lab day, each lab day lists what there is, titled for it, its badge and
@@ -768,6 +778,58 @@ class Connections(unittest.TestCase):
         self.undo(alt["import"])
         self.assertEqual((self.draw(), self.counts()), (before, n), "undone: as before")
 
+    def test_each_lab_event_is_listed_by_one_lab_day_from_the_first_pull(self):   # #910
+        """Part of the portal's export uploaded (the CBC report alone), then the portal connected: its first pull's new
+        results (the LDL, the urine colour) made a lab day of their own beside the upload's, two for one draw, and a
+        later pull then listed the upload's CBC in the connection's lab day as well: its rows in both drawers, the badge
+        2 out of range against the drawer's 3. Now the first pull's results join the upload's lab day, one for the draw,
+        and so do the later pulls'; each lab event is listed by one lab day, whichever is undone. Saved before (two lab
+        days for the draw, as the first pull left them), a later pull lists none of the upload's in the connection's lab
+        day, and one listing the upload's CBC lists it no more once the upload is undone."""
+        from server import records
+        hgb_n = {"interpretation": [{"coding": [{"system": INTERP, "code": "N"}]}],
+                 "referenceRange": [{"low": {"value": 12.0, "unit": "g/dL"}, "high": {"value": 15.5, "unit": "g/dL"}}]}
+        part = lambda: [json.loads(json.dumps(r)) for r in self.fake.resources(patient="pat-1") if r["id"] in ("pat-1", "dr-cbc", "obs-hgb", "obs-plt")]   # noqa: E731
+        up = self.upload_bundle(part())["import_id"]
+        cid = self.connect(self.source())
+        p0 = self.first_pull(cid)
+        drawn = self.draw()
+        self.assertEqual(([(t, len(rows)) for t, rows in drawn["lab days"]], self.faults()), ([("4 lab results", 4)], []), "one lab day for the draw")
+        self.assertNotIn("lab", p0["counts"]["kinds"], "the first pull's lab day joined the upload's: none of its own")
+        self.fake.update("Observation", "obs-hgb", hgb_n)
+        p1 = self.pull(cid)["import"]
+        self.fake.add(lab_obs("obs-alt-910", "1742-6", "ALT", 60, "U/L", "H", (7, 56)), patient="pat-1")
+        p2 = self.pull(cid)["import"]
+        drawn = self.draw()
+        self.assertEqual(([(t, len(rows)) for t, rows in drawn["lab days"]], self.faults()), ([("5 lab results", 5)], []))
+        self.undo(up)
+        self.assertEqual(([(t, len(rows)) for t, rows in self.draw()["lab days"]], self.faults()), ([("3 lab results", 3)], []), "handed over, holding the pulls'")
+        self.undo(p2, p1, p0["import_id"])
+        self.assertEqual({k: v for k, v in self.counts().items() if k != "imports"}, {"events": 0, "series": 0, "results": 0})
+        # as saved before: the first pull's lab day its own, beside the upload's
+        self.afresh("Two lab days for one draw (fictional)")
+        up = self.upload_bundle(part())["import_id"]
+        cid = self.connect(self.source())
+        with mock.patch.object(sync, "_fold_first", lambda *a: None):
+            self.first_pull(cid)
+        self.assertEqual(len(self.draw()["lab days"]), 2)
+        self.fake.add(lab_obs("obs-alt-910", "1742-6", "ALT", 60, "U/L", "H", (7, 56)), patient="pat-1")
+        self.pull(cid)
+        self.assertEqual(self.faults(), [], "each lab event listed by one of the two")
+        db = dbm.connect()
+        try:   # the connection's lab day listing the upload's CBC too, as a pull left it before
+            labdays = {r["import_id"]: r for r in db.execute("SELECT id, import_id, detail FROM events WHERE profile_id=?", (self.pid,)).fetchall()
+                       if (records._dec(r["detail"]) or {}).get("type") == "labday"}
+            ours, theirs = [records._dec(labdays[i]["detail"]) for i in sorted(labdays)][::-1][0], records._dec(labdays[up]["detail"])
+            mine = [i for i in labdays if i != up][0]
+            db.execute("UPDATE events SET detail=? WHERE id=?", (records._enc({**ours, "ids": ours["ids"] + theirs["ids"]}), labdays[mine]["id"]))
+            records._bump(db, self.pid)
+        finally:
+            db.close()
+        self.assertTrue(any("listed by 2 lab days" in f for f in self.faults()))
+        self.undo(up)
+        self.assertEqual(self.faults(), [], "the upload's CBC gone from the connection's lab day with it")
+
     def test_connected_again_a_pull_updates_the_first_connections_rows(self):   # #899
         """Connected and pulled, disconnected keeping its records, connected again (a new connection, whose first pull
         finds them already here). LDL corrected at the source updated the result, but its row, in the first connection's
@@ -812,11 +874,7 @@ class Connections(unittest.TestCase):
         where they are (the uploaded export's, or the connection's own), nothing added; undone, the old value is back."""
         for upload in (True, False):
             with self.subTest(upload=upload):
-                self.fake = FakeFHIR(patients=["robin-example"]).start()
-                self.addCleanup(self.fake.stop)
-                db = dbm.connect()
-                self.pid = prof.create_profile(db, f"LDL amended, upload {upload} (fictional)", owner_id=self.uids["robin"])
-                db.close()
+                self.afresh(f"LDL amended, upload {upload} (fictional)")
                 if upload:
                     self.upload_bundle([json.loads(json.dumps(r)) for r in self.fake.resources(patient="pat-1")])
                 cid = self.connect(self.source())
@@ -849,11 +907,7 @@ class Connections(unittest.TestCase):
                  "referenceRange": [{"low": {"value": 12.0, "unit": "g/dL"}, "high": {"value": 15.5, "unit": "g/dL"}}]}
         for upload in (True, False):
             with self.subTest(upload=upload):
-                self.fake = FakeFHIR(patients=["robin-example"]).start()
-                self.addCleanup(self.fake.stop)
-                db = dbm.connect()
-                self.pid = prof.create_profile(db, f"GGT added, upload {upload} (fictional)", owner_id=self.uids["robin"])
-                db.close()
+                self.afresh(f"GGT added, upload {upload} (fictional)")
                 if upload:
                     self.upload_bundle([json.loads(json.dumps(r)) for r in self.fake.resources(patient="pat-1")])
                 cid = self.connect(self.source())
@@ -878,11 +932,7 @@ class Connections(unittest.TestCase):
                 self.assertEqual((self.draw(), self.counts()), (before, n), "undone: as before")
         # a row apart from its result, as saved before #899: the ALT's in the first pull's labitem of that day
         from server import records
-        self.fake = FakeFHIR(patients=["robin-example"]).start()
-        self.addCleanup(self.fake.stop)
-        db = dbm.connect()
-        self.pid = prof.create_profile(db, "ALT apart (fictional)", owner_id=self.uids["robin"])
-        db.close()
+        self.afresh("ALT apart (fictional)")
         cid = self.connect(self.source())
         p0 = self.first_pull(cid)["import_id"]
         self.fake.add(lab_obs("obs-alt-881", "1742-6", "ALT", 60, "U/L", "H", (7, 56)), patient="pat-1")
@@ -899,6 +949,7 @@ class Connections(unittest.TestCase):
                 d = records._dec(r["detail"])
                 if isinstance(d, dict) and d.get("type") == "labday":
                     db.execute("UPDATE events SET detail=? WHERE id=?", (records._enc({**d, "ids": [i for i in d["ids"] if i != pulled["id"]]}), r["id"]))
+            records._bump(db, self.pid)
         finally:
             db.close()
         self.assertIn("ALT at 2025-03-04T09:45:00-06:00 (import %d): no row" % alt, self.faults())
@@ -1014,11 +1065,7 @@ class Connections(unittest.TestCase):
         from server import records
         for case in ("uploaded", "connected again"):
             with self.subTest(case=case):
-                self.fake = FakeFHIR(patients=["robin-example"]).start()
-                self.addCleanup(self.fake.stop)
-                db = dbm.connect()
-                self.pid = prof.create_profile(db, f"Before #885, {case} (fictional)", owner_id=self.uids["robin"])
-                db.close()
+                self.afresh(f"Before #885, {case} (fictional)")
                 sid = self.source()
                 if case == "uploaded":
                     self.upload_bundle([json.loads(json.dumps(r)) for r in self.fake.resources(patient="pat-1")])
