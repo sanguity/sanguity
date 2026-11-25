@@ -3460,6 +3460,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - **On a phone, what Tab brings into view clears the tab bar, ring and all** (#767): the page kept focus clear of
   the tab bar by exactly the bar's height, so a focus ring's bottom edge was under the bar, on every tab. It now
   leaves 8 px more, as it does under the top bar.
+- **The Timeline's month heading no longer covers the row Shift+Tab reaches, with larger text** (#739): a row given
+  focus was scrolled a fixed 44 px clear of the month heading stuck above it, but at 200% text the heading is 62 px
+  tall, so the row's top and its focus ring were under it. The room now grows with the heading's text.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

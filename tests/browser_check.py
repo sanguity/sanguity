@@ -5893,6 +5893,35 @@ def main():
             settle(200)
             check("…and on a short screen (667×375), where the bar scrolls away, a month heading sticks at the top of the screen (#308)",
                   bool(short_month) and isinstance(short_month[0], str) and short_month[1] is True, short_month)
+            # #739: Shift+Tab up the list brings each row clear of its month's heading stuck over it, ring and all, with text at
+            # 200% too (the rows' 44 px scroll margin against a 62 px heading left a row's top and ring under it): at 360 and
+            # 412 px, 20 rows up from the 40th
+            UNDER739 = r"""async () => { await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+              const a = document.activeElement; if (!a?.matches('#list .tl-row')) return 'not a row: ' + (a?.id || a?.tagName);
+              const h = a.closest('.tl-month').querySelector('.month'), m = h.getBoundingClientRect(), r = a.getBoundingClientRect(), cs = getComputedStyle(a);
+              const ring = r.top - Math.max(0, parseFloat(cs.outlineOffset) + parseFloat(cs.outlineWidth)), stuck = Math.abs(m.top - parseFloat(getComputedStyle(h).top)) < 1;
+              return stuck && ring < m.bottom - 0.5 ? `${a.textContent.trim().slice(0, 24)}: ${Math.round(m.bottom - ring)} px under` : null; }"""
+            bad739, n739 = {}, 0
+            for w, h in ((360, 760), (412, 860)):
+                page.set_viewport_size({"width": w, "height": h})
+                for big in (False, True):
+                    js("css => { const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = css ? [s] : []; }",
+                       ":root{--fs-1:23px;--fs-2:25px;--fs-3:28px;--fs-4:31px;--fs-5:36px;--fs-6:44px;--fs-7:56px} html{font-size:200%}" if big else "")
+                    settle(300)
+                    page.keyboard.press("Tab")   # (from the keyboard, as a person would get there)
+                    js("(r => r[Math.min(40, r.length - 1)].focus())(document.querySelectorAll('#list .tl-row'))")
+                    settle(200)
+                    for _ in range(20):
+                        page.keyboard.press("Shift+Tab")
+                        got = js(UNDER739)
+                        n739 += 1
+                        if got:
+                            bad739.setdefault(f"{w}{' 200%' if big else ''}", []).append(got)
+            js("() => { document.adoptedStyleSheets = []; document.activeElement.blur(); scrollTo(0, 0); }")
+            page.set_viewport_size(size_before)
+            settle(200)
+            check("…and Shift+Tab up the list brings each row clear of its month's heading stuck over it, its ring too, as usual and with text at 200%, "
+                  "at 360 and 412 px (#739)", n739 == 80 and not bad739, {k: v[:3] for k, v in bad739.items()})
             tl_abn = js("""(() => { const days = [...document.querySelectorAll('#tl circle.ev')].filter(m => (m.dataset.g ? tlSvg._groups[+m.dataset.g].items : [byId.get(+m.dataset.id)]).some(e => e?.k === 'lab' && tlAbn(e)));   // (by the one rule, #782: the outside lab's 1.25 H stored no count)
                 const tri = [...document.querySelectorAll('#tl path.tl-abn')];
                 return {days: days.length, badges: tri.length, shapes: tri.every(p => (p.getAttribute('d').match(/L/g) || []).length === 2 && getComputedStyle(p).pointerEvents === 'none'),
