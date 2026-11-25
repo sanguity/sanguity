@@ -178,7 +178,7 @@ function hChart(host, a, b, {h = 190, layers, fmtY = ckNum, unit = "", zero = fa
         const sl = slot(l), bw = Math.max(1, Math.min(18, sl >= 4 ? sl - 2 : sl + .5)), tot = p => l.keys.reduce((s, _, i) => s + (p[i + 1] || 0), 0), d = l.keys.map(() => "");
         for (const p of ckDecimate(pts, p => x(p[0]), 1, {lo: null, hi: tot})) { let acc = 0; l.keys.forEach((k, i) => { const v = p[i + 1] || 0; if (v <= 0) return;
           d[i] += `M${(x(p[0]) - bw / 2).toFixed(1)},${y(acc + v).toFixed(1)}h${bw.toFixed(1)}v${Math.max(0.5, y(acc) - y(acc + v) - (acc > 0 ? 2 : 0)).toFixed(1)}h${(-bw).toFixed(1)}Z`; acc += v; }); }
-        d.forEach((d, i) => d && g.push(el("svg:path", {d, fill: l.colors[i], "fill-opacity": l.opacity})));
+        d.forEach((d, i) => d && g.push(el("svg:path", {class: l.opacity ? "tint" : null, d, fill: l.colors[i], "fill-opacity": l.opacity})));   // (a tint: full in forced colours, #984)
       } else if (l.type === "strip") {   // each point's parts as shares of a thin strip under the plot, B to the axis's labels (#298)
         const sw = Math.max(1, slot(l) + .5), d = l.colors.map(() => "");   // (touching: one strip)
         for (const p of pts) { const parts = p.slice(1, l.colors.length + 1), sum = parts.reduce((s, v) => s + (v || 0), 0); if (!(sum > 0)) continue;
@@ -456,7 +456,7 @@ function renderHealth() {
         byDay(stBars, exPts).map(({t, v: [p, e]}) => [long ? weekOf(t) : fmtD(t), p && sSide(p) ? [f0(p), sSide(p), TGT_WORDS[sSide(p)]] : f0(p),
           (exBy.get(e ? e[0] : NaN) || []).map(x => x.pt ? `${x.rule} appointment, counted as ${x.min} min` : `${x.name || "Workout"} ${x.min} min`).join("; ")])));
     } else {   // a pale tint under the ink of its average (#298), the loudest thing on the page before
-      act.append(legend([[`color-mix(in srgb, ${C.steps} 30%, transparent)`, long ? "Steps / day (weekly avg)" : "Steps"], [C.avg, long ? "30-day average" : "7-day average", "line"]]));
+      act.append(legend([[C.steps, long ? "Steps / day (weekly avg)" : "Steps", "tint"], [C.avg, long ? "30-day average" : "7-day average", "line"]]));
       if (sT) act.lastChild.append(tgtKey());
     }
     if (!state.tables.has("#h-activity")) hChart(act, a, b, {h: 190, fmtY: v => v >= 1000 ? ckNum(v / 1000) + "k" : ckNum(v), label: long ? "Steps, weekly averages" : "Steps", noun: long ? "week" : "day", nav: stBars, layers: [
