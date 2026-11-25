@@ -407,8 +407,42 @@ class Uploads(unittest.TestCase):
         self.assertFalse(os.path.exists(uploads.folder(self.pid, stale)))
         self.assertIsNone(self.db.execute("SELECT 1 FROM uploads WHERE id=?", (stale,)).fetchone())
         self.assertFalse(os.path.exists(orphan))
-        for kept in (fresh, ready):   # a day-old finished upload is kept: it is the import's raw files
-            self.assertTrue(os.path.isdir(uploads.folder(self.pid, kept)))
+        self.assertTrue(os.path.isdir(uploads.folder(self.pid, fresh)))
+        # a day-old finished upload no job ever read, nor any record holds, goes too (#933: see the test below)
+        self.assertFalse(os.path.exists(uploads.folder(self.pid, ready)))
+
+    def test_an_unclaimed_typed_in_file_goes_a_day_on(self):   # #933
+        """A file sent for a record typed in that was never saved (the page closed, or Leave chosen) is an upload no job
+        reads: at the first start a day on it goes, as one still receiving does, and is no longer in Export everything
+        or a backup. Kept: one a saved record holds, one put back from an export, and one sent within the day."""
+        pdf = b"%PDF-1.4\n% a fictional scan\n%%EOF\n"
+        left, _ = self.upload({"scan.pdf": pdf})   # the page sends the file at once (import-records.js send)
+        saved, _ = self.upload({"letter.pdf": pdf})
+        r = self.c["edna"].post(f"/api/profiles/{self.pid}/manual", headers=H, json={"save": True, "items": [
+            {"kind": "document", "date": "2026-07-01", "title": "Referral letter (fictional)", "doctype": "letter",
+             "upload": str(saved), "file": "letter.pdf"}]})
+        self.assertEqual(r.status_code, 200, r.text)
+        today, _ = self.upload({"today.pdf": pdf})
+        put_back = uploads.create(self.db, self.pid, None)   # as export.import_archive puts an export's back
+        uploads.add_file(self.db, self.pid, put_back, "portal/labs.csv", io.BytesIO(LAB_CSV))
+        uploads.finish(self.db, self.pid, put_back, unzip=False)
+        self.db.execute("UPDATE uploads SET created=created-2*86400 WHERE id IN (?, ?, ?)", (left, saved, put_back))
+
+        def exported():
+            z = zipfile.ZipFile(io.BytesIO(self.c["edna"].get(f"/api/profiles/{self.pid}/export").content))
+            return {n.split("/")[1] for n in z.namelist() if n.startswith("uploads/")}
+        self.assertIn(str(left), exported())
+        uploads.cleanup(self.db)
+        state = dict(self.db.execute("SELECT id, state FROM uploads WHERE id IN (?, ?, ?, ?)", (left, saved, today, put_back)).fetchall())
+        self.assertEqual(state, {left: "discarded", saved: "ready", today: "ready", put_back: "ready"})
+        self.assertFalse(os.path.exists(uploads.folder(self.pid, left)))
+        for kept in (saved, today, put_back):
+            self.assertTrue(os.path.isdir(uploads.folder(self.pid, kept)), kept)
+        self.assertNotIn(str(left), exported())
+        self.assertTrue({str(saved), str(today), str(put_back)} <= exported())
+        from server import backup
+        path = backup.create(dest=os.path.join(TMP, "backups-933"))
+        self.assertFalse([n for n in backup.verify(path)["files"] if n.startswith(f"profiles/{self.pid}/uploads/{left}/")])
 
     def test_key_rotation_reseals_uploads(self):
         u, _ = self.upload({"rotate/labs.csv": LAB_CSV})

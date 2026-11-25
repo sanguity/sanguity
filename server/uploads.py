@@ -4,7 +4,9 @@ An upload belongs to a profile. The browser creates one, sends its files one req
 file), then finishes it; a zip it sent is unpacked here, on the server, at that point. From then on the upload is
 "ready", and its files stay as the import's raw files: they are in "Export everything", in backups, and go with
 the profile when it is deleted. Once an import job has read it, it goes when no job holds it any more (#547): with
-the job that ends without an import (jobs.py), or else at the next start (cleanup).
+the job that ends without an import (jobs.py), or else at the next start (cleanup). One sent from the page that no job
+ever read and no record holds (a file attached to a record typed in that was never saved, an upload whose import was
+never started) goes at the first start a day on, as one still receiving does (#933).
 
 On disk, profiles/<id>/uploads/<upload id>/ holds each file sealed as an encrypted stream (crypto.StreamWriter)
 under a random name. Which name holds which path is in the database, encrypted: while receiving, one row per file
@@ -433,14 +435,18 @@ def discard(db, pid, upload_id):
     _rmtree(folder(pid, upload_id))
 
 
-def orphaned(db):
+def orphaned(db, now=None):
     """The ready uploads nothing holds any more (#547), by id: read by an import job once, and now used by none
-    (queued, being read, in review, or saved as an import; jobs.py), with no document stored in them. An upload no
-    job ever read is kept: one put back from an export, or a file sent to type records in."""
+    (queued, being read, in review, or saved as an import; jobs.py), with no document stored in them; and those sent
+    from the page (by an account) that no job ever read, with no document stored in them, a day on (#933): a file
+    attached to a record typed in that was never saved, or an upload whose import was never started. One put back
+    from an export (made by the command line) is kept, as is a typed-in record's file once it's saved (its document)."""
+    now = now or dbm.now()
     rows = db.execute("""SELECT u.id, u.profile_id FROM uploads u WHERE u.state='ready'
-                         AND EXISTS(SELECT 1 FROM jobs j WHERE j.upload_id=u.id)
+                         AND (EXISTS(SELECT 1 FROM jobs j WHERE j.upload_id=u.id)
+                              OR u.created_by IS NOT NULL AND u.created < ?)
                          AND NOT EXISTS(SELECT 1 FROM jobs j WHERE j.upload_id=u.id AND (j.state IN ('queued', 'running', 'preview')
-                                        OR j.state='done' AND j.import_id IS NOT NULL))""").fetchall()
+                                        OR j.state='done' AND j.import_id IS NOT NULL))""", (now - STALE,)).fetchall()
     docs, out = {}, []
     for r in rows:
         if r["profile_id"] not in docs:
@@ -453,15 +459,15 @@ def orphaned(db):
 
 
 def cleanup(db, now=None):
-    """At start-up: remove uploads still receiving after a day (abandoned), uploads nothing holds (orphaned), and any
-    upload folder that no live upload owns (a discarded one, or one left by a crash). Returns how many uploads still
-    receiving were removed."""
+    """At start-up: remove uploads still receiving after a day (abandoned), uploads nothing holds (orphaned: an
+    import's no job holds, one no job read a day on), and any upload folder that no live upload owns (a discarded one,
+    or one left by a crash). Returns how many uploads still receiving were removed."""
     now = now or dbm.now()
     stale = db.execute("SELECT id, profile_id FROM uploads WHERE state='receiving' AND created < ?", (now - STALE,)).fetchall()
     for r in stale:
         db.execute("DELETE FROM uploads WHERE id=?", (r["id"],))
         _rmtree(folder(r["profile_id"], r["id"]))
-    for r in orphaned(db):
+    for r in orphaned(db, now):
         db.execute("UPDATE uploads SET state='discarded', manifest=NULL WHERE id=?", (r,))
         db.execute("DELETE FROM upload_files WHERE upload_id=?", (r,))
     live = {(r["profile_id"], r["id"]) for r in db.execute("SELECT id, profile_id FROM uploads WHERE state != 'discarded'")}

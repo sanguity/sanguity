@@ -3177,6 +3177,11 @@ Everything on `main` so far; it becomes the first tagged release.
   a save wrote goes with it, and whatever was written to the profile's folder meanwhile goes once the deletion is
   saved; a failure puts it back beside anything new, never onto it; and at start the app puts back a live profile's
   folder a stop left aside and removes a deleted one's, and any `profiles/<id>/` no profile owns.
+- **A file attached to a record typed in that's never saved no longer kept for good** (#933): the page sends the
+  file as an upload at once, and an upload no import read was kept, listed nowhere, yet in **Export everything** and
+  every backup. One no record holds is now removed at the first start a day on, as an upload left unfinished is, and
+  so is an upload whose import was never started; a saved record's file, and an export's uploads put back with
+  `server.manage import`, are kept.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
