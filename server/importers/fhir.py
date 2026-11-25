@@ -1235,6 +1235,15 @@ def parse(files):
     for x in [e for e in b.events if e.get("k") not in ("lab", "labitem")] + problems + upcoming:
         if isinstance(x.get("key"), str) and (v := vers.get(x["key"].split("#", 1)[0])):
             x["ver"] = v
+    # (#970) a lab event says its server alone (its report's, else its rows' Observations'), each row being its own
+    # record: another server's result with the same ids is told apart from this one's (preview._same_records)
+    for e in b.events:
+        if e.get("k") == "labitem":
+            d = b.details.get(e["id"]) or {}
+            srv = next((v["server"] for k in [e.get("key"), *(d.get("keys") or [])] if isinstance(k, str)
+                        and (v := vers.get(k.split("#", 1)[0])) and v.get("server")), None)
+            if srv:
+                e["ver"] = {"server": srv}
     b.events.sort(key=lambda e: e["t"])
     problems.sort(key=lambda p: (p["date"] or "", p["name"]))
     upcoming.sort(key=lambda u: u["t"])

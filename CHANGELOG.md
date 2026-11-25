@@ -3500,6 +3500,12 @@ Everything on `main` so far; it becomes the first tagged release.
   (#917), it now keeps each profile's tracking on or off as it is, and where it's off now, or the cycle records were
   deleted after the backup, the backup's aren't brought back (an uploaded export's, and those in an Apple Health
   export uploaded; the watch receiver deletes its copy when it starts). The restore says so, naming no profile.
+- **Another server's lab result with the same ids is never put in place of this one's** (#970): a lab result is
+  updated in place when its source sends it again amended (#869), but the record was found by its own id alone, so
+  clinic B's FHIR export with hospital A's Observation and report ids (or a second clinic's C-CDA with the same
+  organizer id) was taken for A's sent again: B's range and flag replaced A's, a High gone. Now each lab report says
+  its source (its server, a C-CDA's custodian), and a result is updated only from its own: B's is kept as a copy with
+  its own row, and A's file again updates A's alone.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
