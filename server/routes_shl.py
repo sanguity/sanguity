@@ -2,15 +2,21 @@
 
   POST /api/profiles/{pid}/shl/inspect  {"link"}                          what the link says (host, label, flags,
                                                                          expiry): nothing is fetched
-  POST /api/profiles/{pid}/shl/import   {"link", "passcode"?, "confirm": true}   fetch it (the one outside request,
-                                         made through net.py and recorded), decrypt, store the files as an upload and queue
+  POST /api/profiles/{pid}/shl/import   {"link", "passcode"?, "confirm": true, "hosts"?: [...]}   fetch it (made
+                                         through net.py and recorded), decrypt, store the files as an upload and queue
                                          its import: {"upload", "job", "host", "cards", "notes"}
+
+What's contacted is what the person confirmed (#919): the link's host, or a pasted Health Card's issuer, as the page
+names it; and "hosts", the others the link itself names that the page named and they confirmed. A file's location on
+another host, or a Health Card's issuer (for its keys), not among them is never contacted: the answer is 409,
+{"detail": {"message", "hosts", "files", "issuers"}}, naming them, and the page asks, then sends the link again with
+them in "hosts".
 
 The import then goes as any upload's does (jobs.py): the page polls the job to its preview, then saves or cancels.
 Owners and editors only; changes need the X-Sanguity header like every API write. The key and the passcode are
 never logged or stored: only the host goes into the activity log.
 """
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -28,6 +34,7 @@ class Pasted(BaseModel):
 class Fetch(Pasted):
     passcode: Optional[str] = Field(None, max_length=200)
     confirm: bool = False
+    hosts: List[str] = Field(default_factory=list, max_length=40)   # others the page named and they confirmed (#919)
 
 
 def _refused(e):
@@ -56,10 +63,13 @@ def import_link(pid: int, body: Fetch, request: Request, s=Depends(user), db=Dep
         raise HTTPException(400, "Nothing was fetched: confirm first.")
     ip = _client_ip(request)
 
-    permit = outside.for_link(db, pid, shl.describe(link)["host"] if link.kind == "link" else None, s, ip)
+    # the link's host (a pasted card's issuer), as the page named it, and what else it named that was confirmed
+    permit = outside.for_link(db, pid, shl.describe(link)["host"], s, ip, also=[h[:300] for h in body.hosts])
     try:
         items = shl.card_items(link) if link.kind == "card" else shl.fetch(link, body.passcode, permit)
         got = shl.prepare(items, permit)
+    except shl.Ask as e:   # hosts the link names that weren't confirmed: none of them contacted (#919)
+        raise HTTPException(409, {"message": str(e), "hosts": e.hosts, "files": e.files, "issuers": e.issuers}) from None
     except shl.Refused as e:
         raise _refused(e) from None
     host = shl.describe(link)["host"]

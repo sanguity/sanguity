@@ -15533,6 +15533,35 @@ def main():
             js(f"{last_card}.querySelector('.imp-actions .primary').click()")
             page.wait_for_function(f"/^(Imported|Not imported)/.test({last_card}.textContent)", timeout=30000)
             check("…and saves it", js(f"{last_card}.textContent").startswith("Imported."), js(f"{last_card}.textContent")[:200])
+            # #919: a link whose file is on another server. The page says beforehand that it asks about one; Fetch names it
+            # and what for, sending nothing there; Contact it too fetches it. (Cancelled after: profile 2 keeps its records)
+            from server import shl as shl919
+            key919, other919 = os.urandom(32), f"127.0.0.1:{SHL.port}"   # the same test server, by another name
+            jwe919 = shl919.encrypt(json.dumps(shl_server.bundle("2026-11-11", 14.1)).encode(), key919)
+            SHL.routes["/files/919"] = lambda m, q, b: (200, "application/jose", jwe919.encode())
+            SHL.routes["/shl/919"] = lambda m, q, b: (200, "application/json", json.dumps(
+                {"files": [{"contentType": shl919.FHIR, "location": f"https://{other919}/files/919"}]}).encode())
+            SHL.seen.clear()
+            had919 = len(problems)
+            page.fill("#shlText", shl919.encode(SHL.base + "/shl/919", key919, label="Fictional lab 919"))
+            page.wait_for_function("document.getElementById('shlFacts').textContent.includes('Fictional lab 919')", timeout=5000)
+            who919 = page.inner_text("#shlWho")
+            page.click("#shlGo")
+            page.wait_for_selector("#shlWho .shl-hosts li", timeout=15000)
+            asked919 = [page.inner_text("#shlWho"), js("document.getElementById('shlGo').textContent"), [s[1] for s in SHL.seen]]
+            check("a Health Link naming another server: said before Fetch, then named with what for and asked about, nothing sent to it (#919)",
+                  "names each and asks you first" in who919 and other919 in asked919[0] and "This link names another server" in asked919[0] and "where some of its files are" in asked919[0]
+                  and asked919[1] == "Contact it too and fetch" and asked919[2] == ["/shl/919"]
+                  and js("document.activeElement === document.getElementById('shlGo')"), [who919, asked919])
+            n919 = js("document.querySelectorAll('.import-job').length")
+            page.click("#shlGo")
+            page.wait_for_function(f"document.querySelectorAll('.import-job').length > {n919} && /^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            check("…and confirmed, fetches the file there too and shows the preview",
+                  js(f"{last_card}.textContent").startswith("Ready to import") and [s[1] for s in SHL.seen] == ["/shl/919", "/shl/919", "/files/919"],
+                  (js(f"{last_card}.textContent")[:200], [s[1] for s in SHL.seen]))
+            js(f"[...{last_card}.querySelectorAll('.imp-actions button')].find(b => b.textContent === 'Cancel').click()")
+            page.wait_for_function(f"{last_card}.textContent.startsWith('Cancelled.')", timeout=10000)
+            problems[had919:] = [x for x in problems[had919:] if not re.search(r"HTTP 409: .*/shl/import$|status of 409", x)]   # (the asking: the point)
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE && PROFILE.name === 'Second person'", timeout=20000)
             pick_profile(page, label="My records (owner)")
