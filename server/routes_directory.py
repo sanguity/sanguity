@@ -34,7 +34,7 @@ def _local(host):
 
 
 def return_addresses(request):
-    seen = list(config.PUBLIC_ORIGINS)
+    seen = list(config.setting("PUBLIC_ORIGINS"))
     proto = (request.headers.get("x-forwarded-proto") or request.url.scheme).split(",")[0].strip().lower()
     host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").split(",")[0].strip().lower()
     here = f"{proto}://{host}" if host else None

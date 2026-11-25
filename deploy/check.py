@@ -7,6 +7,11 @@ Every template must parse, use the released image, and run the same services wit
 compose.release.yaml: TrueNAS and CasaOS as the same four services, Unraid as the all-in-one container
 (docker/allinone.py), which has every folder those services mount and both published ports.
 
+No template passes one of the server's settings (server/config.py's VARS) unless it was given (#999): a setting the
+environment sets is shown in the app as set there, fixed, so a default filled in would fix every setting on every
+install. Both compose files pass each one as "${NAME:-}" (empty unless .env sets it), and TrueNAS, Unraid and CasaOS
+none of them, unless changed from its default.
+
 --truenas-lib DIR       also render the TrueNAS app with TrueNAS's app library (library/<version> of
                         github.com/truenas/apps), as their CI does, and compare the rendered compose file
 
@@ -30,6 +35,24 @@ SERVICES = {"setup", "app", "web", "receiver"}
 # for backups, #227) and keys/ (#46, written by the app)
 TRUENAS_SAME = {("app", "/watch"): ("/watch", "/watch/keys")}
 failed, passed = [], []
+
+
+def _settings():
+    """The names of the server's settings: server/config.py's VARS (it needs nothing but the standard library)."""
+    spec = importlib.util.spec_from_file_location("sanguity_config", os.path.join(ROOT, "server", "config.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return set(mod.VARS)
+
+
+SETTINGS = _settings()
+# passed whatever it is (#1007): the receiver's published port, which the app can't see, for the phone upload address
+ALWAYS_PASSED = set()
+
+
+def env_of(svc):
+    env = svc.get("environment") or {}
+    return dict(e.split("=", 1) if "=" in e else (e, "") for e in env) if isinstance(env, list) else env
 
 
 def check(name, ok, detail=""):
@@ -110,6 +133,20 @@ def image_ok(label, image):
 
 # ---------------------------------------------------------------- compose.release.yaml
 
+def compose_settings(name):
+    """compose.yaml or compose.release.yaml: the app gets every setting, each as ${NAME:-}, so .env can set any of
+    them and one it doesn't set is empty (#999); a service that gets one at all gets it the same way."""
+    compose = load_yaml(os.path.join(ROOT, name))
+    app = env_of(compose["services"]["app"])
+    missing = sorted(SETTINGS - set(app))
+    check(f"{name}: the app gets every one of the server's settings, so .env can set it", not missing, missing)
+    for svc_name, svc in compose["services"].items():
+        for k, v in env_of(svc).items():
+            if k in SETTINGS:
+                check(f"{name}: {svc_name} gets {k} only as .env sets it (${{{k}:-}}, no default filled in)",
+                      v == "${" + k + ":-}", v)
+
+
 def release_shape():
     compose = load_yaml(os.path.join(ROOT, "compose.release.yaml"))
     check("compose.release.yaml: four services", set(compose["services"]) == SERVICES, sorted(compose["services"]))
@@ -184,8 +221,14 @@ def truenas(want, lib_dir):
         check(f"truenas: {t} sets only what questions.yaml asks", not extra, sorted(extra))
     storage = next(q for q in files["questions.yaml"]["questions"] if q["variable"] == "storage")
     have = {a["variable"] for a in storage["schema"]["attrs"]}
-    need = set(re.findall(r"values\.storage\.(\w+)", open(os.path.join(app_dir, "templates", "docker-compose.yaml"), encoding="utf-8").read()))
+    template = open(os.path.join(app_dir, "templates", "docker-compose.yaml"), encoding="utf-8").read()
+    need = set(re.findall(r"values\.storage\.(\w+)", template))
     check("truenas: questions.yaml asks for every storage the template mounts", need <= have, sorted(need - have))
+    depth, plain = 0, []   # (#999) a setting's add_env outside any {% if %}: passed with its default, so fixed
+    for line in template.splitlines():
+        depth += len(re.findall(r"{%-?\s*(?:if|for)\b", line)) - len(re.findall(r"{%-?\s*end(?:if|for)\b", line))
+        plain += [k for k in re.findall(r'add_env\("(\w+)"', line) if k in SETTINGS - ALWAYS_PASSED and depth <= 0]
+    check("truenas: the app's settings are passed only when changed from their default (each add_env inside an if)", not plain, plain)
     if not lib_dir:
         return
     lib = os.path.join(lib_dir, str(app["lib_version"])) if os.path.isdir(os.path.join(lib_dir, str(app["lib_version"]))) else lib_dir
@@ -204,6 +247,13 @@ def truenas(want, lib_dir):
         compare(f"truenas ({t})", want, shape(rendered), TRUENAS_SAME)
         env = rendered["services"]["receiver"]["environment"]
         check("truenas: the receiver gets the time zone", env.get("TZ_DEFAULT") == "Etc/UTC", env.get("TZ_DEFAULT"))
+        tv = load_yaml(os.path.join(app_dir, "templates", "test_values", t))
+        app_env = env_of(rendered["services"]["app"])
+        given = {k: v for k, v in app_env.items() if k in SETTINGS - ALWAYS_PASSED}
+        want_env = {k: str(v) for k, v in (("COOKIE_SECURE", tv["sanguity"]["cookie_secure"]),
+                                            ("PUBLIC_ORIGINS", tv["sanguity"]["public_origins"])) if v not in ("", "auto")}
+        check(f"truenas ({t}): the app gets a setting only when it was changed from its default", given == want_env,
+              (given, want_env))
         ports = {p["published"] for s in rendered["services"].values() for p in s.get("ports", [])}
         check("truenas: published on 8730 and 8731", ports == {8730, 8731}, ports)
 
@@ -246,6 +296,9 @@ def unraid(want):
     check("unraid: publishes the web app on 8730 and the receiver on 8731", ports == {8080: 8730, 8081: 8731}, ports)
     variables = {c.get("Target") for c in configs if c.get("Type") == "Variable"}
     check("unraid: sets PUID, PGID and TZ", {"PUID", "PGID", "TZ"} <= variables, sorted(variables))
+    filled = sorted(c.get("Target") for c in configs if c.get("Type") == "Variable" and c.get("Target") in SETTINGS - ALWAYS_PASSED
+                    and (c.get("Default") or (c.text or "")))
+    check("unraid: the app's settings are empty unless filled in (#999: a value given is fixed in the app)", not filled, filled)
     key = next((c for c in configs if c.get("Target") == "/run/secrets/sanguity"), None)
     data = next((c for c in configs if c.get("Target") == "/data"), None)
     if key is not None and data is not None:
@@ -293,6 +346,8 @@ def casaos(want):
     check("casaos: published on 8730 and 8731", ports == {"8730", "8731"}, ports)
     check("casaos: the receiver gets the time zone",
           compose["services"]["receiver"].get("environment", {}).get("TZ_DEFAULT") == "$TZ")
+    given = sorted(k for s in compose["services"].values() for k in env_of(s) if k in SETTINGS - ALWAYS_PASSED)
+    check("casaos: no service is given one of the app's settings (#999: they're changed in the app)", not given, given)
     vols = {target(v): source(v) for s in compose["services"].values() for v in s.get("volumes", [])}
     key, data = vols.get("/run/secrets/sanguity", ""), vols.get("/data", "")
     check("casaos: the key folder isn't inside the data folder", key and data and not key.startswith(data + "/"), (key, data))
@@ -303,6 +358,8 @@ def main():
     ap.add_argument("--truenas-lib")
     a = ap.parse_args()
     try:
+        for name in ("compose.yaml", "compose.release.yaml"):
+            compose_settings(name)
         _, want = release_shape()
         truenas(want, a.truenas_lib)
         unraid(want)

@@ -49,6 +49,13 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from . import config, net
 
 RECIPIENT = "Sanguity (self-hosted personal health records)"   # who is asking; never the person's name
+
+
+def max_bytes():
+    """SHL_MAX_MB, read at each use: what one link may bring in all (the manifest and every file in it)."""
+    return config.setting("SHL_MAX_MB") * config.MB
+
+
 FHIR, CARD = "application/fhir+json", "application/smart-health-card"
 FLAGS = {"L": "long-term link", "P": "passcode needed", "U": "a single file"}
 # tests only: a local test server (loopback address, its own certificate). Never set from the environment.
@@ -234,7 +241,7 @@ def _inflate(data, limit):
 
 def decrypt(jwe, key, limit=None):
     """A compact JWE (alg dir, enc A256GCM) decrypted with the link's key: (bytes, content type or None)."""
-    limit = limit or config.SHL_MAX_BYTES
+    limit = limit or max_bytes()
     parts = jwe.strip().split(".") if isinstance(jwe, str) else []
     if len(parts) != 5:
         raise Refused("A file in this link isn't encrypted the way SMART Health Links are.")
@@ -313,7 +320,7 @@ def check_url(url):
 def _request(method, url, body=None, headers=None, limit=None, permit=None, purpose="SMART Health Link"):
     """One HTTPS request under the rules above: (status, content type, body bytes). permit: a net.Permit for the
     host (none: nothing is allowed)."""
-    limit = limit or config.SHL_MAX_BYTES
+    limit = limit or max_bytes()
     permit = permit or net.NOTHING
     for _ in range(4):   # the request and up to three redirects on the same host
         host, port, path = check_url(url)
@@ -321,7 +328,7 @@ def _request(method, url, body=None, headers=None, limit=None, permit=None, purp
         conn, err = None, None
         for ip in ips:
             try:   # net records the host once the address is allowed, before anything is sent
-                conn = net.connection(permit, url, purpose, ip, config.SHL_TIMEOUT, _context())
+                conn = net.connection(permit, url, purpose, ip, config.setting("SHL_TIMEOUT"), _context())
             except net.Refused as e:
                 raise Refused(str(e)) from None
             try:
@@ -377,7 +384,7 @@ def fetch(link, passcode=None, permit=None, now=None):
         raise Refused("This SMART Health Link has expired. Ask whoever shared it for a new one.", 410)
     if "P" in link.flags and not passcode:
         raise Refused("This link needs its passcode.", 401)
-    budget = [config.SHL_MAX_BYTES]
+    budget = [max_bytes()]
 
     def get(method, url, body=None, headers=None, purpose="SMART Health Link"):
         status, ctype, data = _request(method, url, body, headers, budget[0], permit, purpose)
@@ -391,7 +398,7 @@ def fetch(link, passcode=None, permit=None, now=None):
         plain, cty = decrypt(data.decode("ascii", "replace"), link.key)
         return [{"cty": cty, "data": plain}]
 
-    ask = {"recipient": RECIPIENT, "embeddedLengthMax": config.SHL_MAX_BYTES}
+    ask = {"recipient": RECIPIENT, "embeddedLengthMax": max_bytes()}
     if passcode:
         ask["passcode"] = str(passcode)[:200]
     status, _, data = get("POST", link.url, json.dumps(ask).encode(), {"Content-Type": "application/json"})
@@ -410,8 +417,8 @@ def fetch(link, passcode=None, permit=None, now=None):
         assert isinstance(files, list)
     except (ValueError, KeyError, TypeError, AssertionError):
         raise Refused(f"{host_of(link.url)} didn't answer with a SMART Health Link manifest.", 502) from None
-    if len(files) > config.SHL_MAX_FILES:
-        raise Refused(f"This link holds {len(files)} files; Sanguity takes at most {config.SHL_MAX_FILES} from a link.", 413)
+    if len(files) > config.setting("SHL_MAX_FILES"):
+        raise Refused(f"This link holds {len(files)} files; Sanguity takes at most {config.setting('SHL_MAX_FILES')} from a link.", 413)
     out, elsewhere = [], set()
     for f in files:
         if not isinstance(f, dict):
@@ -465,7 +472,7 @@ def _jws_parts(jws):
     if not isinstance(header, dict):
         raise Refused("A Health Card in this link is damaged: it can't be read.")
     if header.get("zip") == "DEF":
-        payload = _inflate(payload, config.SHL_MAX_BYTES)
+        payload = _inflate(payload, max_bytes())
     return header, payload, sig, (parts[0] + "." + parts[1]).encode("ascii")
 
 
@@ -558,8 +565,8 @@ def read_cards(data, permit=None, jwks_cache=None):
         assert isinstance(vcs, list) and all(isinstance(v, str) for v in vcs)
     except (ValueError, KeyError, TypeError, AssertionError, UnicodeDecodeError):
         raise Refused("A Health Card file in this link is damaged: it can't be read.") from None
-    if len(vcs) > config.SHL_MAX_FILES:
-        raise Refused(f"A Health Card file holds {len(vcs)} cards; Sanguity takes at most {config.SHL_MAX_FILES}.", 413)
+    if len(vcs) > config.setting("SHL_MAX_FILES"):
+        raise Refused(f"A Health Card file holds {len(vcs)} cards; Sanguity takes at most {config.setting('SHL_MAX_FILES')}.", 413)
     cache = {} if jwks_cache is None else jwks_cache
     return [check_card(v, permit, cache) for v in vcs]
 
@@ -572,7 +579,7 @@ def issuers(data):
     except (ValueError, KeyError, TypeError, UnicodeDecodeError):
         return set()
     out = set()
-    for v in vcs[:config.SHL_MAX_FILES] if isinstance(vcs, list) else []:
+    for v in vcs[:config.setting("SHL_MAX_FILES")] if isinstance(vcs, list) else []:
         try:
             iss = _jws_payload(v).get("iss") if isinstance(v, str) else None
         except Refused:

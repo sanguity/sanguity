@@ -17,7 +17,7 @@ _ph = PasswordHasher()   # Argon2id with the library's current recommended param
 # would otherwise run one per worker thread at once and could exhaust a small server's memory, so only a few run
 # at once. The rest wait briefly, then give up with Busy (the API answers 503 "try again"): waiting longer would
 # hold the worker threads every other request needs.
-_slots = threading.BoundedSemaphore(max(1, config.HASH_PARALLEL))
+_slots = threading.BoundedSemaphore(max(1, config.setting("HASH_PARALLEL")))
 _DUMMY = _ph.hash(secrets.token_urlsafe(24))   # verified against when the username doesn't exist, so timing doesn't tell
 
 
@@ -138,7 +138,7 @@ def password_problem(pw, username="", minimum=None):
     """Why a new password is refused, or None. Per NIST SP 800-63B: a minimum length (shorter with two-factor
     sign-in on), no composition rules, and nothing from lists of breached passwords or built from this service's
     name or the username."""
-    minimum = minimum or config.PASSWORD_MIN
+    minimum = minimum or config.setting("PASSWORD_MIN_LENGTH")
     if not isinstance(pw, str) or len(pw) < minimum:
         return f"Use at least {minimum} characters. A few unrelated words make a strong, memorable password."
     if len(pw) > config.PASSWORD_MAX:

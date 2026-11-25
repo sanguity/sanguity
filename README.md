@@ -186,6 +186,22 @@ and aren't read from the file after that (see `corrections.example.json`).
 | `docker compose exec app python -m server.manage disable-2fa NAME` | Turn off two-factor sign-in for someone who lost their phone and recovery codes |
 | `git pull && docker compose pull --ignore-buildable && docker compose build --pull && docker compose up -d` | Update a checkout install, and the images it runs on |
 
+### The server's settings
+
+The settings that tune the server (how long a sign-in lasts, the public address, upload limits... every one is in
+[`.env.example`](.env.example), with its default) are read where they're used, so a change applies at once. Each
+one's value is, in this order:
+
+1. **the environment's**, when it's set: a line in `.env`, TrueNAS's Additional Environment Variables, or an Unraid
+   variable. The app shows it as set by the environment, naming the variable, and can't change it; take the line out
+   and run `docker compose up -d` (or update the app) to manage it in the app instead;
+2. else **the value an admin saved in the app** (Admin);
+3. else **the default**.
+
+The compose files pass each one as `${NAME:-}`, empty unless `.env` sets it, and the TrueNAS, Unraid and CasaOS
+templates pass none unless you fill it in, so an install with no `.env` has none set by the environment. An `.env`
+copied from an older `.env.example` sets them all: comment out the ones you'd rather change in the app.
+
 ### Updating
 
 **Database migrations run at start-up.** Each time the app starts, it upgrades its database to the version it

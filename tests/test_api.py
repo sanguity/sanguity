@@ -6,6 +6,7 @@ a profile is shared with. Uses the fictional demo data in a temporary folder.
   python3 tests/test_api.py
 """
 import atexit, base64, json, os, shutil, subprocess, sys, tempfile, unittest
+from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-test-")
@@ -194,7 +195,7 @@ class Api(unittest.TestCase):
     def test_a_flow(self):   # runs first: it does the first-run setup the other tests rely on
         anon = client()
         self.assertTrue(anon.get("/api/setup").json()["needed"])
-        self.assertEqual(anon.get("/api/setup").json()["password_min"], main.config.PASSWORD_MIN)   # setup's live count (#290)
+        self.assertEqual(anon.get("/api/setup").json()["password_min"], main.config.setting("PASSWORD_MIN_LENGTH"))   # setup's live count (#290)
         self.assertTrue(anon.get("/api/setup").json()["records"])   # the setup build's, which the first account will own (#498)
         self.assertEqual(anon.get("/api/me").status_code, 401)
         self.assertEqual(anon.get("/api/profiles/1/data").status_code, 401)
@@ -850,7 +851,7 @@ class Api(unittest.TestCase):
         self.assertFalse(ada.get("/api/me").json()["user"]["admin_needs_two_factor"])
 
         # the most powerful actions need a fresh check; signing in counts, for REAUTH_MINUTES
-        stale = lambda: db.execute("UPDATE sessions SET verified_at=? WHERE user_id=?", (dbm.now() - config.REAUTH_MINUTES * 60 - 1, ada_id))
+        stale = lambda: db.execute("UPDATE sessions SET verified_at=? WHERE user_id=?", (dbm.now() - config.setting("REAUTH_MINUTES") * 60 - 1, ada_id))
         stale()
         powerful = ({"reset_password": True}, {"disable_2fa": True}, {"is_admin": True})
         for body in powerful:
@@ -869,7 +870,7 @@ class Api(unittest.TestCase):
         self.assertIn('"event":"reauth.fail"', logged.output[0])
         r = ada.post("/api/me/reauth", json={"secret": "ada keeps a long passphrase"}, headers=H)
         self.assertEqual(r.status_code, 200, r.text)
-        self.assertAlmostEqual(r.json()["until"], dbm.now() + config.REAUTH_MINUTES * 60, delta=5)
+        self.assertAlmostEqual(r.json()["until"], dbm.now() + config.setting("REAUTH_MINUTES") * 60, delta=5)
         r = ada.patch(f"/api/users/{ivo_id}", json={"reset_password": True}, headers=H)
         self.assertEqual(r.status_code, 200, r.text)
         self.assertIn("temporary_password", r.json())
@@ -940,7 +941,7 @@ class Api(unittest.TestCase):
         pid = prof.create_profile(db, "Wes's (590)", owner_id=ids["wes"])
         ben = self.login("ben")
         ben_id = db.execute("SELECT id FROM users WHERE username='ben'").fetchone()[0]
-        stale = lambda: db.execute("UPDATE sessions SET verified_at=? WHERE user_id=?", (dbm.now() - config.REAUTH_MINUTES * 60 - 1, ben_id))
+        stale = lambda: db.execute("UPDATE sessions SET verified_at=? WHERE user_id=?", (dbm.now() - config.setting("REAUTH_MINUTES") * 60 - 1, ben_id))
         refused = lambda r: self.assertEqual((r.status_code, r.json()["detail"]), (403, "reauth_required"), r.text)
         renew = lambda: self.assertEqual(ben.post("/api/me/reauth", json={"secret": PW["ben"]}, headers=H).status_code, 200)
         # disabling a profile's only owner (force): asked first as before, then the fresh check
@@ -1242,13 +1243,12 @@ class Api(unittest.TestCase):
         self.assertEqual(kim.post("/api/login", json={"username": "kim", "password": PW["sam"]}, headers=H).status_code, 429)
 
     def test_short_idle_timeout_keeps_active_sessions(self):
-        from server import config
         db = dbm.connect()
         if not db.execute("SELECT 1 FROM users WHERE username='idle'").fetchone():
             db.execute("INSERT INTO users(username, pw_hash, created) VALUES('idle', ?, 0)", (sec.hash_password(PW["ben"]),))
         c = self.login("idle", PW["ben"])
-        old = config.SESSION_IDLE_MINUTES
-        config.SESSION_IDLE_MINUTES = 1
+        env = mock.patch.dict(os.environ, {"SESSION_IDLE_MINUTES": "1"})   # read at each request (config.setting)
+        env.start()
         try:
             db.execute("UPDATE sessions SET last_seen=? WHERE user_id=(SELECT id FROM users WHERE username='idle')", (dbm.now() - 50,))
             self.assertEqual(c.get("/api/me").status_code, 200)   # used 50 s ago: still signed in, and that use counts...
@@ -1257,7 +1257,7 @@ class Api(unittest.TestCase):
             db.execute("UPDATE sessions SET last_seen=? WHERE user_id=(SELECT id FROM users WHERE username='idle')", (dbm.now() - 61,))
             self.assertEqual(c.get("/api/me").status_code, 401)   # unused for over a minute: signed out
         finally:
-            config.SESSION_IDLE_MINUTES = old
+            env.stop()
             db.close()
 
     def test_session_lifetime_follows_second_factor(self):
@@ -1296,14 +1296,14 @@ class Api(unittest.TestCase):
             db.execute("UPDATE users SET totp_secret=NULL, totp_last_step=0 WHERE username='lasting'")
             self.assertEqual(c.get("/api/me").status_code, 401)
             # SESSION_HOURS_WITHOUT_2FA=0: SESSION_DAYS for everyone, as before
-            old = config.SESSION_HOURS_WITHOUT_2FA
-            config.SESSION_HOURS_WITHOUT_2FA = 0
+            env = mock.patch.dict(os.environ, {"SESSION_HOURS_WITHOUT_2FA": "0"})
+            env.start()
             try:
                 r = client().post("/api/login", json={"username": "lasting", "password": PW["ben"]}, headers=H)
                 self.assertIn("Max-Age=2592000", r.headers["set-cookie"])
                 self.assertEqual(client().get("/api/setup").json()["session"], {"days": 30, "hours_without_2fa": 0, "idle_minutes": 0})
             finally:
-                config.SESSION_HOURS_WITHOUT_2FA = old
+                env.stop()
             self.assertEqual(client().get("/api/setup").json()["session"]["hours_without_2fa"], 12)
         finally:
             db.execute("UPDATE users SET totp_secret=NULL, totp_last_step=0 WHERE username='lasting'")
@@ -1369,7 +1369,7 @@ class Api(unittest.TestCase):
         finally:
             sec._ph = real
         self.assertGreater(peak[0], 0)
-        self.assertLessEqual(peak[0], config.HASH_PARALLEL)
+        self.assertLessEqual(peak[0], config.setting("HASH_PARALLEL"))
         # when every slot stays taken, a sign-in waits briefly and then hears "busy" instead of tying up a worker
         old_wait, held = config.HASH_WAIT, 0
         config.HASH_WAIT = 0.2
@@ -1607,7 +1607,7 @@ class Api(unittest.TestCase):
         ben = self.login("ben")
         r = ben.post("/api/users", json={"username": "late"}, headers=H)
         self.assertEqual(r.status_code, 200, r.text)
-        self.assertEqual(r.json()["temporary_days"], config.TEMP_PASSWORD_DAYS)
+        self.assertEqual(r.json()["temporary_days"], config.setting("TEMP_PASSWORD_DAYS"))
         temp = r.json()["temporary_password"]
         db = dbm.connect()
         db.execute("UPDATE users SET temp_pw_expires=? WHERE username='late'", (dbm.now() - 1,))

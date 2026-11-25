@@ -85,6 +85,9 @@ def _setup_code(db):
 @asynccontextmanager
 async def lifespan(app):
     atrest.keep_private()   # readable only by the app's own user, what it makes and what's there (umask 077, #935)
+    for name, text in config.unreadable():   # (#999) left out, as if it weren't set: say so, as nothing else would
+        print(f"{name} in the environment ({text[:40]!r}) isn't a number it can be, so it's left out: the value saved "
+              "in the app, or the default, is used instead.", flush=True)
     with backup.app_running_lock():   # held while the app runs, so a restore can tell and refuse
         dbm.init()
         db = dbm.connect()
@@ -165,7 +168,7 @@ def _same_site(origin, request):
     """The browser's Origin names this site: the Host it reached us on, the host a reverse proxy in front says it
     served (X-Forwarded-Host, passed on by our nginx), or an address listed in PUBLIC_ORIGINS."""
     origin = origin.lower().rstrip("/")
-    if origin in config.PUBLIC_ORIGINS:
+    if origin in config.setting("PUBLIC_ORIGINS"):
         return True
     plain = lambda h: h.removesuffix(":443").removesuffix(":80")   # browsers leave default ports out of Origin
     host = plain(origin.split("://", 1)[-1])
@@ -241,7 +244,7 @@ def _client_ip(request):
 def _lifetime(db, u):
     """How long, in seconds, a session of account u lasts from sign-in: SESSION_DAYS with a second factor, and
     SESSION_HOURS_WITHOUT_2FA (if shorter) without one."""
-    days, hours = config.SESSION_DAYS * 86400, config.SESSION_HOURS_WITHOUT_2FA * 3600
+    days, hours = config.setting("SESSION_DAYS") * 86400, config.setting("SESSION_HOURS_WITHOUT_2FA") * 3600
     if hours and hours < days and not accounts.has_second_factor(db, u):
         return hours
     return days
@@ -257,7 +260,7 @@ def _session(request, db):
     now = dbm.now()
     if not s:
         return None
-    idle = config.SESSION_IDLE_MINUTES * 60
+    idle = config.setting("SESSION_IDLE_MINUTES") * 60
     # judged from sign-in as well as from the stored end, so a session from before the second factor went (or from
     # before this limit existed) ends on the shorter limit too
     if (s["expires"] <= now or now - s["s_created"] >= _lifetime(db, s)
@@ -308,7 +311,7 @@ def admin(request: Request, s=Depends(user), db=Depends(get_db)):
 def fresh(request, s, action):
     """Before the most powerful admin actions (ASVS 4.3.3): this session's person proved it was them within
     REAUTH_MINUTES, by signing in or with POST /api/me/reauth (password or code) or /api/me/reauth/passkey."""
-    if (s["verified_at"] or 0) <= dbm.now() - config.REAUTH_MINUTES * 60:
+    if (s["verified_at"] or 0) <= dbm.now() - config.setting("REAUTH_MINUTES") * 60:
         _audit("reauth.needed", request, s, warn=False, action=action)
         raise HTTPException(403, "reauth_required")
 
@@ -332,9 +335,10 @@ def need(db, u, pid, at_least):
 
 
 def _secure(request):
-    if config.COOKIE_SECURE in ("1", "true", "yes", "on"):
+    secure = config.setting("COOKIE_SECURE")
+    if secure in ("1", "true", "yes", "on"):
         return True
-    if config.COOKIE_SECURE in ("0", "false", "no", "off"):
+    if secure in ("0", "false", "no", "off"):
         return False
     return request.url.scheme == "https"
 
@@ -374,10 +378,10 @@ def setup_state(db=Depends(get_db)):
     and how long a sign-in lasts (for the note on the sign-in page). records: while setup is due, whether there are
     records here that the first account will own (claim_unowned; #498: setup says so only then, not on an empty install)."""
     needed = db.execute("SELECT 1 FROM users LIMIT 1").fetchone() is None
-    return {"needed": needed, "password_min": config.PASSWORD_MIN,
+    return {"needed": needed, "password_min": config.setting("PASSWORD_MIN_LENGTH"),
             "records": needed and db.execute("SELECT 1 FROM profiles WHERE id NOT IN (SELECT profile_id FROM memberships) LIMIT 1").fetchone() is not None,
-            "session": {"days": config.SESSION_DAYS, "hours_without_2fa": config.SESSION_HOURS_WITHOUT_2FA,
-                        "idle_minutes": config.SESSION_IDLE_MINUTES}}
+            "session": {"days": config.setting("SESSION_DAYS"), "hours_without_2fa": config.setting("SESSION_HOURS_WITHOUT_2FA"),
+                        "idle_minutes": config.setting("SESSION_IDLE_MINUTES")}}
 
 
 class SetupRefused(Exception):
@@ -693,12 +697,12 @@ def me(s=Depends(any_user), db=Depends(get_db)):
     return {"user": {"id": s["id"], "username": s["username"], "is_admin": bool(s["is_admin"]),
                      "must_change_pw": bool(s["must_change_pw"]), "two_factor": second,
                      "needs_two_factor": needs_2fa, "admin_needs_two_factor": accounts.admin_needs_second_factor(db, s)},
-            "two_factor_required": required, "reauth_minutes": config.REAUTH_MINUTES,
+            "two_factor_required": required, "reauth_minutes": config.setting("REAUTH_MINUTES"),
             "profiles": _profiles_for(db, s["id"]) if not (s["must_change_pw"] or needs_2fa) else [],
             "password_min": _password_min(db, s), "session_ends": _session_ends(db, s),
             "calendar_feeds": calendar.count_for(db, s["id"]),   # what changing the password or removing a passkey ends (#597)
             # the install's HTTPS address (PUBLIC_ORIGINS), for "install from this address" on a plain-HTTP page (#56)
-            "https_address": next((o for o in sorted(config.PUBLIC_ORIGINS) if o.startswith("https://")), None),
+            "https_address": next((o for o in sorted(config.setting("PUBLIC_ORIGINS")) if o.startswith("https://")), None),
             # backups late or failing (#200): the Admin menu item says so, for admins who may use it
             "backups_late": bool(s["is_admin"]) and not (s["must_change_pw"] or needs_2fa)
                             and not accounts.admin_needs_second_factor(db, s) and backup_jobs.late(db)}
@@ -708,13 +712,13 @@ def _session_ends(db, s):
     """When this sign-in ends at the latest (epoch seconds), if it stays in use: the offline copy of records a device
     may keep (#56, www/js/offline.js) is deleted at this time even if the device never reaches the server again."""
     ends = min(s["expires"], s["s_created"] + _lifetime(db, s))
-    if config.SESSION_IDLE_MINUTES:
-        ends = min(ends, dbm.now() + config.SESSION_IDLE_MINUTES * 60)
+    if (idle := config.setting("SESSION_IDLE_MINUTES")):
+        ends = min(ends, dbm.now() + idle * 60)
     return ends
 
 
 def _password_min(db, s):
-    return config.PASSWORD_MIN_2FA if accounts.has_second_factor(db, s) else config.PASSWORD_MIN
+    return config.setting("PASSWORD_MIN_LENGTH_2FA" if accounts.has_second_factor(db, s) else "PASSWORD_MIN_LENGTH")
 
 
 class PasswordChange(BaseModel):
@@ -738,7 +742,7 @@ def change_password(body: PasswordChange, request: Request, s=Depends(any_user),
     pw = sec.hash_password(body.new)
     with dbm.transaction(db):
         db.execute("UPDATE users SET pw_hash=?, must_change_pw=0, temp_pw_expires=NULL, pw_short=? WHERE id=?",
-                   (pw, int(len(body.new) < config.PASSWORD_MIN), s["id"]))
+                   (pw, int(len(body.new) < config.setting("PASSWORD_MIN_LENGTH")), s["id"]))
         n = db.execute("DELETE FROM sessions WHERE user_id=? AND id<>?", (s["id"], s["sid"])).rowcount
         # its calendar feeds end too (#597, the owner's decision), as signing out everywhere ends them (#590): a password
         # is changed when someone else may have had it, and so may a feed's address; the page said how many beforehand
@@ -754,7 +758,7 @@ class FreshCheck(BaseModel):
 def _verified(db, s):
     now = dbm.now()
     db.execute("UPDATE sessions SET verified_at=? WHERE id=?", (now, s["sid"]))
-    return {"ok": True, "until": now + config.REAUTH_MINUTES * 60}
+    return {"ok": True, "until": now + config.setting("REAUTH_MINUTES") * 60}
 
 
 @app.post("/api/me/reauth")
@@ -1342,7 +1346,7 @@ def new_user(body: UserIn, request: Request, s=Depends(admin), db=Depends(get_db
         raise HTTPException(e.status, str(e))
     activity.log(db, "account.create", s, detail={"username": body.username.strip(), **({"admin": True} if body.is_admin else {})},
                  ip=_client_ip(request))
-    return {"id": uid, "username": body.username.strip(), "temporary_password": pw, "temporary_days": config.TEMP_PASSWORD_DAYS,
+    return {"id": uid, "username": body.username.strip(), "temporary_password": pw, "temporary_days": config.setting("TEMP_PASSWORD_DAYS"),
             "admin_needs_two_factor": accounts.admin_needs_second_factor(db, s)}   # no longer the only account
 
 
@@ -1477,7 +1481,7 @@ def edit_user(uid: int, body: UserPatch, request: Request, s=Depends(admin), db=
         note("account.disable" if body.disabled else "account.enable")
     if body.reset_password:
         out["temporary_password"] = accounts.set_temp_password(db, uid)   # signs out everywhere: it may follow a lost device
-        out["temporary_days"] = config.TEMP_PASSWORD_DAYS
+        out["temporary_days"] = config.setting("TEMP_PASSWORD_DAYS")
         note("account.reset")
     if body.disable_2fa:
         accounts.turn_off_2fa(db, uid, passkeys_too=True)

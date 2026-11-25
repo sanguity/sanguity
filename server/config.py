@@ -1,12 +1,6 @@
-"""Settings from the environment. Defaults are the container paths set up by compose.yaml."""
+"""The server's settings: its folders and files, from the environment (defaults are the container paths set up by
+compose.yaml), and the settings that tune it (VARS), each read through setting(NAME) where it's used."""
 import os
-
-
-def _int(name, default):
-    try:
-        return int(os.environ.get(name, default))
-    except ValueError:
-        return default
 
 
 DATA_DIR = os.environ.get("SANGUITY_DATA", "/data")              # sanguity.db and profiles/<id>/
@@ -23,56 +17,146 @@ KEY_FILE = os.environ.get("SANGUITY_KEY_FILE", "/run/secrets/sanguity/data_key")
 SETUP_CODE_FILE = os.path.join(DATA_DIR, "setup-code.txt")
 BACKUP_DIR = os.environ.get("SANGUITY_BACKUPS", os.path.join(DATA_DIR, "backups"))   # where server.manage backup writes
 
-SESSION_DAYS = _int("SESSION_DAYS", 30)                 # a session ends this long after sign-in...
-# ...or this many hours after it, while the account has no second factor (0 = SESSION_DAYS for everyone)
-SESSION_HOURS_WITHOUT_2FA = _int("SESSION_HOURS_WITHOUT_2FA", 12)
-SESSION_IDLE_MINUTES = _int("SESSION_IDLE_MINUTES", 0)  # also end it after this long unused (0 = off)
-COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "auto").lower()   # auto = Secure when the request came over HTTPS
 COOKIE = "sg_session"
 # over HTTPS the session cookie is named with the __Host- prefix, so the browser holds it to Secure, Path=/ and
 # this exact host (no subdomain can set or overwrite it); plain HTTP can't carry that prefix, so it keeps COOKIE
 COOKIE_HOST = "__Host-" + COOKIE
-TEMP_PASSWORD_DAYS = _int("TEMP_PASSWORD_DAYS", 7)   # a one-time password from an admin stops working after this
-# the fresh check before an admin resets a password, turns off someone's two-factor sign-in or makes someone an
-# admin: the password, a code or a passkey within this many minutes (signing in counts)
-REAUTH_MINUTES = _int("REAUTH_MINUTES", 5)
 DEVICE_COOKIE, DEVICE_DAYS = "sg_device", 365   # marks a browser that has signed in to an account before
-# Addresses people open Sanguity at, when a reverse proxy in front changes the Host header and doesn't send
-# X-Forwarded-Host, e.g. "https://health.example.com" (comma-separated)
-PUBLIC_ORIGINS = {o.strip().lower().rstrip("/") for o in os.environ.get("PUBLIC_ORIGINS", "").split(",") if o.strip()}
-
-# NIST SP 800-63B-4: at least 15 characters while a password is the only factor; no composition rules
-PASSWORD_MIN = _int("PASSWORD_MIN_LENGTH", 15)
 PASSWORD_MAX = 256
-PASSWORD_MIN_2FA = _int("PASSWORD_MIN_LENGTH_2FA", 8)   # with two-factor sign-in on (NIST SP 800-63B)
-HASH_PARALLEL = _int("HASH_PARALLEL", 2)   # password hashes run at once (64 MiB each); more wait their turn
-HASH_WAIT = 2
-ACTIVITY_DAYS = _int("ACTIVITY_DAYS", 365)   # how long the activity log keeps entries   # seconds a sign-in waits for its turn before the API answers 503 "busy, try again"
+HASH_WAIT = 2   # seconds a sign-in waits for its turn before the API answers 503 "busy, try again"
+MB = 2**20
+# plain-HTTP issuers (only for a test server on this machine, like tests/fakefhir): never for a real vendor, so it is
+# the environment's alone, never a setting, and no compose file passes it
+CONNECT_ALLOW_HTTP = os.environ.get("CONNECT_ALLOW_HTTP", "") == "1"
 
+
+# ---------------------------------------------------------------- the settings that tune the server (#999)
+# Each is read where it's used, through setting(NAME), so a change applies at once. Its value is the environment's
+# when the variable is set (not empty: the compose files pass "${NAME:-}", which is empty while .env doesn't set it),
+# else the value an admin saved in the app, else the default below. Only a variable that an install setting of
+# settings.py's registry stands for (define(..., env=NAME), which sets Var.setting) can have a saved value; the rest
+# are the environment's or their default. source(NAME) says which it is.
+#
+# Adding one: a var() line below, then setting("NAME") where it's used, its line in both compose files' app service
+# ("NAME: ${NAME:-}", deploy/check.py checks), and in .env.example and the README's configuration. To let admins change
+# it in the app, define() it in settings.py with scope="install", private=False and env="NAME".
+
+class Var:
+    def __init__(self, name, default, read, keep, about):
+        self.name, self.default, self.read, self.keep, self.about = name, default, read, keep, about
+        self.setting = None   # the key of the registry's install setting that stands for it, if one does
+
+
+VARS = {}   # name -> Var
+
+
+def var(name, default, read=int, keep=None, about=""):
+    """read: the variable's text -> its value (ValueError: unreadable, so left out); keep: a saved value -> the same
+    kind of value (the registry has checked it)."""
+    VARS[name] = Var(name, default, read, keep or (lambda v: v), about)
+
+
+def _origins(items):
+    out = []
+    for o in items:
+        o = str(o).strip().lower().rstrip("/")
+        if o and o not in out:
+            out.append(o)
+    return tuple(out)
+
+
+def _days(text):
+    v = float(text)
+    if not 0 <= v < 1e6:   # (NaN isn't; nor is inf, which would never be reached)
+        raise ValueError(text)
+    return v
+
+
+var("SESSION_DAYS", 30, about="a session ends this long after sign-in...")
+var("SESSION_HOURS_WITHOUT_2FA", 12, about="...or this many hours after it, while the account has no second factor "
+                                           "(0 = SESSION_DAYS for everyone)")
+var("SESSION_IDLE_MINUTES", 0, about="also end it after this long unused (0 = off)")
+var("COOKIE_SECURE", "auto", str.lower, about="auto = Secure when the request came over HTTPS; 1 always, 0 never")
+var("TEMP_PASSWORD_DAYS", 7, about="a one-time password from an admin stops working after this")
+var("REAUTH_MINUTES", 5, about="the fresh check before the most powerful admin actions: the password, a code or a "
+                               "passkey within this many minutes (signing in counts)")
+var("PUBLIC_ORIGINS", (), lambda t: _origins(t.split(",")), _origins,
+    about="the addresses people open Sanguity at, comma-separated, e.g. https://health.example.com: for a reverse proxy "
+          "that changes the Host header and sends no X-Forwarded-Host, and the address the app gives out (public_address)")
+var("PASSWORD_MIN_LENGTH", 15, about="NIST SP 800-63B-4: at least 15 characters while a password is the only factor; "
+                                     "no composition rules")
+var("PASSWORD_MIN_LENGTH_2FA", 8, about="with two-factor sign-in on (NIST SP 800-63B)")
+var("HASH_PARALLEL", 2, about="password hashes run at once (64 MiB each); more wait their turn. Read once, at start "
+                              "(security.py's semaphore), so never a setting")
+var("ACTIVITY_DAYS", 365, about="how long the activity log keeps entries")
 # uploads from the import page (uploads.py). A file is one the browser sent or one unpacked from a zip; an upload's
 # total counts what it holds after unpacking. nginx.conf caps one file sent at 4 GB too: raise both to go higher.
-MB = 2**20
-UPLOAD_MAX_FILE = _int("UPLOAD_MAX_FILE_MB", 4096) * MB
-UPLOAD_MAX_TOTAL = _int("UPLOAD_MAX_TOTAL_MB", 16384) * MB
-UPLOAD_MAX_FILES = _int("UPLOAD_MAX_FILES", 20000)
-# a file unpacked from a zip may be at most this many times its compressed size (a zip bomb is thousands)
-UPLOAD_MAX_ZIP_RATIO = _int("UPLOAD_MAX_ZIP_RATIO", 200)
-# a photo attached to a journal entry (#161, journal_photos.py); nginx.conf caps one sent at 25 MB: raise both to go higher
-JOURNAL_PHOTO_MAX = _int("JOURNAL_PHOTO_MAX_MB", 20) * MB
-
+var("UPLOAD_MAX_FILE_MB", 4096)
+var("UPLOAD_MAX_TOTAL_MB", 16384)
+var("UPLOAD_MAX_FILES", 20000)
+var("UPLOAD_MAX_ZIP_RATIO", 200, about="a file unpacked from a zip may be at most this many times its compressed size "
+                                       "(a zip bomb is thousands)")
+var("JOURNAL_PHOTO_MAX_MB", 20, about="a photo attached to a journal entry (#161, journal_photos.py); nginx.conf caps "
+                                      "one sent at 25 MB: raise both to go higher")
 # connected sources (#32, #91: connections.py, smart.py, sync.py). Nothing is contacted until someone connects a
 # source an admin has set up; then only that source's issuer, and the hosts its discovery names.
-SYNC_HOURS = _int("SYNC_HOURS", 12)                  # how often each connection pulls what's new
-SYNC_MAX_RESOURCES = _int("SYNC_MAX_RESOURCES", 20000)   # the most one pull fetches; the rest come next time
-SYNC_MAX_ATTACHMENT = _int("SYNC_MAX_ATTACHMENT_MB", 50) * MB   # a bigger attachment is left out, with a warning
-CONNECT_TIMEOUT = _int("CONNECT_TIMEOUT", 30)        # seconds to wait for a vendor's answer
-# plain-HTTP issuers (only for a test server on this machine, like tests/fakefhir): never for a real vendor
-CONNECT_ALLOW_HTTP = os.environ.get("CONNECT_ALLOW_HTTP", "") == "1"
+var("SYNC_HOURS", 12, about="how often each connection pulls what's new")
+var("SYNC_MAX_RESOURCES", 20000, about="the most one pull fetches; the rest come next time")
+var("SYNC_MAX_ATTACHMENT_MB", 50, about="a bigger attachment is left out, with a warning; the Sync defaults' ceiling")
+var("CONNECT_TIMEOUT", 30, about="seconds to wait for a vendor's answer")
 # SMART Health Links (shl.py): the one fetch a pasted link makes, after the person confirms. Everything it brings
-# (the manifest and every file in it) counts toward SHL_MAX_BYTES; each request gives up after SHL_TIMEOUT seconds.
-SHL_MAX_BYTES = _int("SHL_MAX_MB", 64) * MB
-SHL_MAX_FILES = _int("SHL_MAX_FILES", 50)
-SHL_TIMEOUT = _int("SHL_TIMEOUT", 20)
+# (the manifest and every file in it) counts toward SHL_MAX_MB; each request gives up after SHL_TIMEOUT seconds.
+var("SHL_MAX_MB", 64)
+var("SHL_MAX_FILES", 50)
+var("SHL_TIMEOUT", 20)
+var("RECEIVER_PORT", 8731, about="the watch receiver's published port, for the upload address (watch_keys.py)")
+var("WATCH_UPLOAD_URL", "", str.strip, about="the upload address, when the receiver is behind a reverse proxy")
+var("RESTORE_KEEP_DAYS", 30, _days, about="what a restore replaced is deleted this long after (backup.py; the receiver "
+                                          "reads its own, watch/receiver.py)")
+
+saved = None   # settings.py sets it: () -> {key: value} of the install settings saved in the app
+
+
+def lookup(name):
+    """(where it comes from, the value in force) of the variable name: ("environment" | "install" | "default", value)."""
+    v = VARS[name]
+    text = os.environ.get(v.name, "")
+    if text.strip():
+        try:
+            return "environment", v.read(text.strip())
+        except ValueError:   # unreadable: as if it weren't set (unreadable() says so at start)
+            pass
+    if v.setting and saved is not None:
+        have = saved()
+        if v.setting in have:
+            return "install", v.keep(have[v.setting])
+    return "default", v.default
+
+
+def setting(name):
+    """The value in force of the variable name (a key of VARS): the environment's, else the one saved in the app,
+    else the default."""
+    return lookup(name)[1]
+
+
+def source(name):
+    """Where setting(name) comes from: "environment", "install" (saved in the app) or "default"."""
+    return lookup(name)[0]
+
+
+def unreadable():
+    """[(name, text)] of the variables set to something they can't be read as (left out, as if unset)."""
+    out = []
+    for v in VARS.values():
+        text = os.environ.get(v.name, "").strip()
+        if text:
+            try:
+                v.read(text)
+            except ValueError:
+                out.append((v.name, text))
+    return out
+
+
 # the watch receiver, one secret per profile (#46: watch_keys.py). The app writes the profiles' secrets here, sealed,
 # for the receiver (compose: WATCH_DIR/keys); each profile's summary is <dirname(WATCH_FILE)>/profiles/<id>/daily.json,
 # except the first profile's, which stays WATCH_FILE. Setup instructions give the upload address: WATCH_UPLOAD_URL
@@ -82,5 +166,3 @@ WATCH_KEYS = os.environ.get("SANGUITY_WATCH_KEYS", "/srv/watch-keys/receiver-sec
 # the receiver's whole folder, read-only (#227: compose WATCH_DIR at /srv/watch-store, the released image's /watch): its
 # databases and archived uploads go in backups. Unset, or not there: backups have no phone and watch data.
 WATCH_STORE = os.environ.get("SANGUITY_WATCH_STORE", "")
-RECEIVER_PORT = _int("RECEIVER_PORT", 8731)
-WATCH_UPLOAD_URL = os.environ.get("WATCH_UPLOAD_URL", "").strip()
