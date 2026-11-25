@@ -1032,7 +1032,7 @@ class Backups(unittest.TestCase):
         self.assertGreaterEqual(con.execute("SELECT seq FROM sqlite_sequence WHERE name='profiles'").fetchone()[0], new_pid,
                                 "ids never given again (#588)")
         self.assertIn("Today's accounts, passwords, passkeys, two-factor sign-in, who may see each profile, share links, "
-                      "calendar feeds and phone upload secrets were kept", said)
+                      "calendar feeds, phone upload secrets and connected sources' sign-ins were kept", said)
         self.assertRegex(said, r"Everyone is signed out \([1-9]\d* sign-ins? ended\)")
         self.assertIn(f"Profile {gone_pid} (Deleted after (fictional)) was deleted after the backup was made and is back, with "
                       "nobody given access to it", said)
@@ -1046,7 +1046,7 @@ class Backups(unittest.TestCase):
             said, con = self.restore_into(os.path.join(TMP, f"restored-917-{label}"), path, today=today, change=change)
             self.assertIn(words, said)
             self.assertIn(": the accounts, passwords, passkeys, two-factor sign-in, who may see each profile, share links, "
-                          "calendar feeds and phone upload secrets are the backup's, as they were on", said)
+                          "calendar feeds, phone upload secrets and connected sources' sign-ins are the backup's, as they were on", said)
             self.assertIn("check Admin > Accounts and each profile's Sharing", said)
             self.assertEqual(con.execute("SELECT revoked FROM share_links WHERE id=?", (revoked,)).fetchone(), (None,), label)
             self.assertIn("lee", {r[0] for r in con.execute("SELECT username FROM users")}, label)
@@ -1056,6 +1056,78 @@ class Backups(unittest.TestCase):
             prof.delete_profile(db, p)
         for n in ("kim", "max"):
             accounts.remove(db, db.execute("SELECT id FROM users WHERE username=?", (n,)).fetchone()[0])
+        db.close()
+
+    def test_14_a_restore_keeps_todays_connected_sources(self):
+        """A connected source's sign-in is access too (#917): a restore takes the connections and the vendors' apps as
+        they are now. One disconnected since stays so, its refresh token not brought back and what it read (its store)
+        dropped; one still connected keeps today's tokens and choices and the backup's place in what it pulled (its
+        cursor), so it pulls again what came since; one connected since is kept, to pull from the start (what it
+        brought isn't in the backup); a deleted profile's comes back disconnected, its store dropped; a vendor's app
+        removed since is gone, one added since is there, each with today's client secret."""
+        from server import sync
+        robin, far = self.uids["robin"], dbm.now() + 10**6   # never due: the app's sync thread leaves them alone
+        token = lambda refresh: crypto.enc(json.dumps({"refresh": refresh, "access": "a", "token_url": "https://fhir.example.test/token"}))
+        db = dbm.connect()
+        pid = prof.create_profile(db, "Connected (fictional)", owner_id=robin)
+        gone_pid = prof.create_profile(db, "Connected, deleted after (fictional)", owner_id=robin)
+
+        def app(n, secret):
+            return db.execute("""INSERT INTO smart_clients(name, vendor, issuer, client_id, secret, auth, scopes, created)
+                                 VALUES(?, 'epic', ?, ?, ?, 'confidential', 'patient/*.read', 0)""",
+                              (f"Fictional portal {n}", f"https://fhir-{n}.example.test/r4", f"app-{n}", crypto.enc(secret))).lastrowid
+
+        def connect(p, k, refresh):
+            return db.execute("""INSERT INTO connections(profile_id, client_id, source, issuer, fhir_base, patient, credential,
+                                 secret, scopes, expires, state, cursor, next_sync, created, created_by)
+                                 VALUES(?, ?, 'Fictional portal', 'https://fhir.example.test/r4', 'https://fhir.example.test/r4', ?,
+                                 'refresh', ?, 'patient/*.read', 0, 'active', '{"at": "then"}', ?, 0, ?)""",
+                              (p, k, crypto.enc("pat-1"), token(refresh), far, robin)).lastrowid
+        kept_app, removed_app = app("a", "app secret then"), app("b", "app secret then")
+        dropped, kept, with_profile = connect(pid, kept_app, "refresh one"), connect(pid, kept_app, "refresh two"), \
+            connect(gone_pid, removed_app, "refresh three")
+        db.close()
+        for p, c in ((pid, dropped), (pid, kept), (gone_pid, with_profile)):
+            sync._save_store(p, c, {"resources": {"Observation/1": {"resourceType": "Observation", "id": "1"}}})
+        path = backup.create(os.path.join(TMP, "backups-917c"))
+
+        # after the backup: one disconnected, one's refresh token rotated and pulled on, a profile with one deleted, a
+        # vendor's app removed, another's secret changed, a new app and a new connection
+        db = dbm.connect()
+        db.execute("UPDATE connections SET state='disconnected', secret=NULL, patient=NULL, disconnected=? WHERE id=?", (dbm.now(), dropped))
+        sync.forget_store(pid, dropped)
+        db.execute("""UPDATE connections SET secret=?, cursor='{"at": "now"}', last_sync=?, kinds='["labs"]' WHERE id=?""",
+                   (token("refresh two, rotated"), dbm.now(), kept))
+        prof.delete_profile(db, gone_pid)
+        db.execute("DELETE FROM smart_clients WHERE id=?", (removed_app,))
+        db.execute("UPDATE smart_clients SET secret=? WHERE id=?", (crypto.enc("app secret now"), kept_app))
+        new_app = app("c", "app secret new")
+        new = connect(pid, new_app, "refresh new")
+        db.execute("""UPDATE connections SET cursor='{"at": "now"}', last_sync=? WHERE id=?""", (dbm.now(), new))
+        db.close()
+
+        said, con = self.restore_into(os.path.join(TMP, "restored-917c"), path, today=True)
+        rows = {r[0]: r[1:] for r in con.execute("SELECT id, state, secret, patient, cursor, kinds, last_sync, first_job FROM connections")}
+        refresh = lambda v: json.loads(crypto.dec(v))["refresh"] if v else None
+        self.assertEqual((rows[dropped][0], rows[dropped][1], rows[dropped][2]), ("disconnected", None, None),
+                         "disconnected since: its refresh token not brought back")
+        self.assertEqual((rows[kept][0], refresh(rows[kept][1]), rows[kept][3], rows[kept][4]),
+                         ("active", "refresh two, rotated", '{"at": "then"}', '["labs"]'),
+                         "today's tokens and choices, the backup's cursor: it pulls again what came since")
+        self.assertEqual((rows[new][0], refresh(rows[new][1]), rows[new][3], rows[new][5], rows[new][6]),
+                         ("active", "refresh new", None, None, None), "connected since: kept, to pull from the start")
+        self.assertEqual((rows[with_profile][0], rows[with_profile][1]), ("disconnected", None), "a deleted profile's")
+        apps = {r[0]: crypto.dec(r[1]) for r in con.execute("SELECT id, secret FROM smart_clients")}
+        self.assertEqual(apps, {kept_app: "app secret now", new_app: "app secret new"})
+        store = lambda p, c: os.path.join(TMP, "restored-917c", "profiles", str(p), "connections", str(c))
+        self.assertTrue(os.path.isfile(store(pid, kept)))
+        for p, c in ((pid, dropped), (gone_pid, with_profile)):
+            self.assertFalse(os.path.exists(store(p, c)), (p, c))
+        self.assertEqual(con.execute("PRAGMA foreign_key_check").fetchall(), [])
+        self.assertIn("connected sources' sign-ins were kept", said)
+        db = dbm.connect()
+        prof.delete_profile(db, pid)
+        db.execute("DELETE FROM smart_clients WHERE id IN (?, ?)", (kept_app, new_app))
         db.close()
 
 

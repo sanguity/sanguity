@@ -3205,7 +3205,9 @@ Everything on `main` so far; it becomes the first tagged release.
   backup's database back whole, so every access ended since it was made came back with it: a revoked share link, a
   calendar feed, a removed member, an old session and a replaced password all worked again, and nothing said so. Now
   accounts and their passwords, passkeys and two-factor sign-in, who may see each profile, share links, calendar
-  feeds and phone upload secrets stay as they are, taken from the database being replaced, and everyone is signed out;
+  feeds, phone upload secrets and connected sources' sign-ins stay as they are, taken from the database being replaced,
+  and everyone is signed out (a source disconnected since stays so, its refresh token and what it read not brought
+  back; one still connected pulls again what it brought since; one connected since is kept, to pull from the start);
   a profile deleted since comes back with nobody given access (an admin gives it an owner) and one made since isn't in
   the backup, and the restore names both. With no database to replace (a new machine), or another install's, all of it
   comes from the backup as it was then, and the restore says so and what to check. README's Backup and restore says so.

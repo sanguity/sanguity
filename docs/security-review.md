@@ -644,7 +644,8 @@ What each added, and how it keeps to the rules above. Each file named has its ow
   profile's owners and editors may know they're kept. A restore writes the receiver's data to its `keys/restore/`,
   which the receiver takes at start, keeping what it had aside; nothing in the API reaches either.
 - A restore brings back records only (#917): accounts, passwords, passkeys, two-factor sign-in, memberships, share
-  links, calendar feeds and phone upload secrets stay as they are, from the database it replaces, so access ended
+  links, calendar feeds, phone upload secrets and connected sources' sign-ins (the vendors' client secrets and each
+  connection's tokens) stay as they are, from the database it replaces, so access ended
   after the backup stays ended; everyone is signed out. With no database to replace (disaster recovery), or another
   install's, they're the backup's, and the restore says so and what to check.
 - What a restore replaced (#595), `DATA_DIR/before-restore-<time>/`, is listed by name and time only, deleted 30 days
