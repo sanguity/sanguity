@@ -2206,6 +2206,10 @@ Everything on `main` so far; it becomes the first tagged release.
   own (08:30, 08:45, 09:10), the export looked for a report's results only at its lab event's time, so each later one
   went out twice, as the report's row at the panel's time, without its range, and as the result at its own time, and
   came back as two. Each result now goes out once, in its report, at its own time.
+- **A lab's panel says a change to its results' own decimals, a decimal comma's too** (#888): results printed "4,5"
+  and "4,9" read as having no decimals, so "First to latest" said "+0 mmol/L (+9%)" and the median of "4,5" and "4,6"
+  "4.5"; "1.2E-3" read as having one. Each result's decimals are now read by the page's one reader of a value, so
+  they're "+0.4 mmol/L (+9%)" and "4.55".
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

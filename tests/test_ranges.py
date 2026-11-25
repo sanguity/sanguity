@@ -301,10 +301,11 @@ class Rules(unittest.TestCase):
             self.assertEqual(len(self.FLAG_READS.findall(t)), want, t)   # (the search itself)
 
     # #874: the page reads a value as printed, its number and its bound, by ranges.js valueRead (and rangeCmp) only.
-    # Every other pattern in www/js of a number's digits with a decimal mark (#870's, test_importers NUMBER_SHAPE) or of a
-    # bound ("[<>", "≤|≥", "<=|"), by (file, the piece found): how many, and why it reads no value
+    # Every other pattern in www/js of a number's digits with a decimal mark (#870's, test_importers NUMBER_SHAPE), of a
+    # decimal mark before digits (#888: lab-panel.js labDec's "\.(\d+)" read a result's decimals, so "4,5" had none), or
+    # of a bound ("[<>", "≤|≥", "<=|"), by (file, the piece found): how many, and why it reads no value
     NUMBER_SHAPE = re.compile(r"\\d[+*]?\)?\(?(?:\?:)?(?:\\\.|\[[^\]]*[.,][^\]]*\])|\\d[+*]?,\\d|\[(?:\\d|0-9)[^\]]*[.,]|\\d\{1,3\}\(\?:[,.]"
-                              r"|\[<>|≤\|≥|<=\||=<\|")
+                              r"|\[<>|≤\|≥|<=\||=<\||(?:\\\.|\[[^\]]*[.,][^\]]*\])\(?(?:\?:)?\\d")
     PAGE_NUMBERS = {
         ("drawer.js", r"\d+(?:[.,]"): (1, "factSays: a fact's one number as written, matched to a key fact's value as written"),
         ("trends.js", "[<>"): (1, "rangeNote: a range as rangeWords writes it, kept on one line"),
@@ -331,7 +332,8 @@ class Rules(unittest.TestCase):
         self.assertEqual(dict(found), {k: c for k, (c, _) in self.PAGE_NUMBERS.items()},
                          "a value read outside ranges.js: read it with valueRead (its number, bound and figures) or rangeCmp")
         for t, want in ((r"/^\s*([<>]=?|≤|≥)?\s*(-?\d+(?:\.\d+)?)\s*$/", 3), (r"/^\s*-?\d+(\.\d+)?\s*$/", 1), (r"/[\d.-]+/", 1),
-                        (r"/^\s*[<>≤≥]/", 1), (r"/(<=|>=|=<|=>)/", 2), (r"/^\d{4}-\d{2}-\d{2}$/", 0), (r"/\d+/", 0), (r"/^(\d+)px$/", 0)):
+                        (r"/^\s*[<>≤≥]/", 1), (r"/(<=|>=|=<|=>)/", 2), (r"/^\d{4}-\d{2}-\d{2}$/", 0), (r"/\d+/", 0), (r"/^(\d+)px$/", 0),
+                        (r"/\.(\d+)/", 1), (r"/[.,](\d+)$/", 1), (r"/\.\d/", 1)):
             self.assertEqual(len(self.NUMBER_SHAPE.findall(t)), want, t)   # (the search itself)
 
 

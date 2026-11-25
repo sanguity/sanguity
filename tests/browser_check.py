@@ -21785,6 +21785,16 @@ def main():
             check("#874: the page reads a value as printed as the server does, by one reader (ranges.js valueRead: “=<5”, “> OR = 60”, “4,5”, "
                   "“1.2E-3”, “1,250” unread), a converted unit keeps a bound (“=<5” was “0.500”) and a drawer row finds its result by it",
                   not bad874, bad874)
+            # ---- #888: the lab panel's change and median said to its results' own decimals, read by the one reader
+            # (ranges.js numberRead's dec): lab-panel.js labDec had a pattern of its own, so "4,5" to "4,9" was "+0 mmol/L
+            # (+9%)" and the median of "4,5" and "4,6" was "4.5"; "1.2E-3" read as one place
+            got888 = js("""() => [[['4,5', 4.5], ['4,9', 4.9]], [['4,5', 4.5], ['4,6', 4.6]], [['1.2E-3', 0.0012], ['1.5E-3', 0.0015]],
+                [['0,50', 0.5], ['0,75', 0.75]], [['14.8', 14.8], ['15', 15]]].map(([a, b]) => {
+                  const pt = ([t, v], d) => Object.assign([`2026-0${d}-01T08:00:00`, v, null, null, '', t], {ts: d});
+                  const st = labStats([pt(a, 1), pt(b, 2)]); return [st.change.text + st.change.pct, st.median]; })""")
+            check("#888: the lab panel's change and median are said to their results' decimals as printed, “4,5” to “4,9” as "
+                  "“+0.4 (+9%)” (it was “+0”), by the page's one reader of a value",
+                  got888 == [["+0.4 (+9%)", "4.7"], ["+0.1 (+2%)", "4.55"], ["+0.0003 (+25%)", "0.00135"], ["+0.25 (+50%)", "0.625"], ["+0.2 (+1%)", "14.9"]], got888)
             # ---- #886: the drawer reads a row's number only as its import read it. ranges_matrix COMMAS' numbers ("0,500",
             # "0,05", "1,250", "12,500", "1.2E-3", "5,0E3"), each a Creatinine value and in a range ("<0,500" beside 5), in each
             # mode of #859 (where a file's decimal mark isn't known, a CareSpace export's; where its commas group thousands, a
