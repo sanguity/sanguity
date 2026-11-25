@@ -3449,6 +3449,8 @@ Everything on `main` so far; it becomes the first tagged release.
 - **A reminder's only time says why it can't be removed** (#837): with one time left in a reminder's form, its
   Remove did nothing and said nothing. It's now shown as off, with "A reminder needs a time" as its tip and its
   description, and pressing it says so; the time stays.
+- **Adding a reminder's time is said** (#867): after Remove time, "Time 2 removed; 1 time left" stayed at the
+  form's foot once Add another time had made it two. Adding a time now says "Time 2 added" there instead.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
