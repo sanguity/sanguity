@@ -60,16 +60,19 @@ function renderSeriesList() {
       let id = base;
       for (let k = 2; ids.has(id); k++) id = base + "_" + k;
       ids.add(id);
-      // the name's and the latest value's tips: the checkbox's too, shown when it has focus, and its description (#358)
+      // the name's and the latest value's tips: the checkbox's too, shown when it has focus, and its description (#358).
+      // Its name the lab's and its latest alone, "Hemoglobin, 14.4 g/dL": the row's "?" is in its label, and the words
+      // of a link inside a label are in its name ("Hemoglobin What is this test? …, opens in a new tab 14.4 g/dL", #872)
       const nmTip = `${renamedTitle("lab", s.name)} · ${s.n} results`, lvTip = L ? `Latest ${fmtD(L[0])}${ucOrig(s, L) ? " · reported " + ucOrig(s, L) : ""}` : "";
       box.append(el("label", {class: "srow" + (tq ? " has-tq" : ""), for: id},
-        el("input", {type: "checkbox", id, "data-lab": s.name, checked: state.sel.has(s.name) || null, "aria-describedby": id + "_about", "data-tip": [nmTip, lvTip].filter(Boolean).join("\n"),
+        el("input", {type: "checkbox", id, "data-lab": s.name, checked: state.sel.has(s.name) || null, "aria-label": [nice(s.name), lv, fl?.word].filter(Boolean).join(", "),
+          "aria-describedby": id + "_about", "data-tip": [nmTip, lvTip].filter(Boolean).join("\n"),
           onchange: ev => { ev.target.checked ? state.sel.add(s.name) : state.sel.delete(s.name);
             for (const c of wrap.querySelectorAll("input[data-lab]")) if (c.dataset.lab === s.name) c.checked = ev.target.checked;   // its other unit's row too (#438)
             renderCharts(); save(); $("#seriesSel b").textContent =`${state.sel.size} selected`; otherSays(); tvRefresh(); }}),
         el("span", {class: "nm", "data-tip": nmTip, text: nice(s.name)}), tq,
-        // its mark as its chart's (ranges.js, #845: a ◆ was ▼); in the box's name its word: "20 U/L, Flagged", not
-        // "black diamond 20 U/L" (#866)
+        // its mark as its chart's (ranges.js, #845: a ◆ was ▼); in the box's name and the row as it's read its word:
+        // "20 U/L, Flagged", not "black diamond 20 U/L" (#866)
         el("span", {class: "lv" + (fl ? " abn" : ""), "data-tip": lvTip, "aria-hidden": fl ? "true" : null, text: fl ? `${fl.mark} ${lv}` : lv}),
         fl ? el("span", {class: "vh", text: `${lv}, ${fl.word}`}) : null,
         el("span", {id: id + "_about", hidden: "", text: [nmTip, lvTip].filter(Boolean).join(". ")})));
