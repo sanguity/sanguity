@@ -756,7 +756,10 @@ backup.
   `SANGUITY_KEY_FILE` at it for both services in a `compose.override.yaml`. The key is still read into the app's
   memory while it runs; Sanguity doesn't use a hardware security module.
 - **Not covered:** account and profile names; your original exports in `RECORDS_DIR` (only read, never copied in
-  plaintext); downloads from **Export everything** (portable on purpose).
+  plaintext); downloads from **Export everything** (portable on purpose). A backup's `manifest.json` lists its files
+  and their checksums in plain text, and keeps how many rows each table holds sealed.
+- **On the host,** what the app keeps in `DATA_DIR` is readable only by the user it runs as (`PUID`): the database
+  0600, the folders 0700, an older install's made so at its first start.
 - **For a stolen disk or server,** also encrypt the disk, which covers those too: an encrypted ZFS dataset (TrueNAS),
   LUKS (Linux), FileVault (macOS) or BitLocker (Windows). The key file sits in the Sanguity folder, so on a disk that
   isn't encrypted it is next to the data.

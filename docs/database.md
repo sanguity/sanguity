@@ -781,7 +781,8 @@ daily summary it writes (`daily.json`), and, for backups (#227), the receiver's 
 **In backups (#227).** Each `watch.db` is copied byte for byte, still sealed: the receiver replaces the file whole
 (`os.replace`) when it saves, so the file is always one consistent snapshot and there's nothing to lock. Then every
 upload in `raw/`, so those that came after the last save (its `meta` row `saved`) are there too. The manifest has, per
-profile, every table's rows, when it was saved and how many uploads came after; **Check a backup** opens each copy
+profile, every table's rows (sealed with the data key, #935: the plain manifest names no table), when it was saved
+and how many uploads came after; **Check a backup** opens each copy
 with the key, runs `integrity_check` and compares the rows. `public/` and `keys/` aren't copied: they're written again
 from the database and from the app's. A restore leaves the copy in `keys/restore/` (with `restore.json`); the
 receiver, at start, moves `watch.db`, `raw/`, `profiles/` and the files of `public/` (not the folder, which the app
@@ -823,7 +824,8 @@ before it's archived, so they reach neither this table nor `raw/`. Sexual activi
 records go to the app in `cycle.json` beside `daily.json` (sealed, never in `daily.json`), and `sanguity.db` holds
 only the setting (a sealed `settings` row, `_cycle`). Turning tracking off, or "Delete all cycle data", asks the
 receiver (a new `"cycle_purge"` token) to empty the table, vacuum the database and rewrite every upload in `raw/`
-without them; `cycle.json` says which deletion was done. [`server/cycle.py`](../server/cycle.py) has the record types
+without them; `cycle.json` says which deletion was done. Turned off, the `_cycle` row goes once the receiver has
+done that deletion (#935), so nothing in `sanguity.db` says tracking was ever on. [`server/cycle.py`](../server/cycle.py) has the record types
 and the rules.
 **ECGs and irregular rhythm notifications (#182)** are `ecg(key, start, meta, wave)`: one row each, from Health Auto
 Export, by its key (`ecg:` or `rhythm:` and a hash of its start in UTC, [`server/ecg.py`](../server/ecg.py)), so one

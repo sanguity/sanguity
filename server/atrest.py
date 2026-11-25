@@ -1,9 +1,28 @@
 """Keeping everything at rest encrypted with the current key: the start-up check and migration, and
 server.manage reencrypt after a key rotation (see crypto.py). Also the pepper for password and recovery-code
-hashes (load_pepper)."""
-import base64, glob, os, secrets
+hashes (load_pepper), and the files kept readable only by the app's own user (keep_private, #935)."""
+import base64, glob, os, secrets, stat
 
 from . import config, crypto, db as dbm, security as sec
+
+
+def keep_private(walk=True):
+    """Everything the app keeps readable only by its own user (#935): what it makes from now on (umask 077: files
+    0600, folders 0700, the database and its -wal and -shm among them, which SQLite makes as umask allows), and with
+    walk what DATA_DIR holds already, as an older version left it (0644 and 0755), DATA_DIR itself included. Links are
+    passed over, never followed. Returns how many it changed."""
+    os.umask(0o077)
+    n = 0
+    for root, dirs, files in os.walk(config.DATA_DIR) if walk else ():
+        for p in [root] + [os.path.join(root, f) for f in files]:
+            try:
+                st = os.lstat(p)
+                if not stat.S_ISLNK(st.st_mode) and st.st_mode & 0o077:
+                    os.chmod(p, stat.S_IMODE(st.st_mode) & 0o700)
+                    n += 1
+            except OSError:   # gone meanwhile, or not the app's to change (a mount point's owner): left as it is
+                pass
+    return n
 
 
 def _files():

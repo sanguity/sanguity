@@ -10,7 +10,7 @@ a share link; in an export and the visit summary only when ticked. All data here
 
   python3 tests/test_cycle.py
 """
-import datetime, glob, hashlib, hmac, importlib.util, io, json, os, re, sys, tempfile, threading, unittest, urllib.request, zipfile
+import datetime, glob, hashlib, hmac, importlib.util, io, json, os, re, sqlite3, sys, tarfile, tempfile, threading, unittest, urllib.request, zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-cycle-test-")
@@ -356,23 +356,47 @@ class App(unittest.TestCase):
         self.assertEqual(r.json()["spans"], [])
         doc = json.loads(crypto.read_file(rx.KEYS_FILE))
         self.assertEqual(doc["cycle"], [])
+        token = doc["cycle_purge"][self.slot]
+        self.assertFalse(self.c["robin"].get(self.url()).json()["deletion"]["done"])
+        db = dbm.connect()
+        try:   # kept, sealed, while it holds the deletion the receiver is asked for, until it's done
+            row = db.execute("SELECT value, sealed FROM settings WHERE key=? AND profile_id=?", (cycle_tracking.KEY, self.pid)).fetchone()
+            self.assertNotIn("_cycle", json.dumps(settings.to_file(db, self.pid)), "not in a settings export")
+            self.assertIsNone(row["value"])
+            self.assertTrue(row["sealed"].startswith(crypto.FIELD), "the setting is sealed")
+        finally:
+            db.close()
         rx.cycle_sweep(self.stores)
         self.assertEqual(self.stores[self.slot].db.execute("SELECT COUNT(*) FROM cycle").fetchone()[0], 0)
         self.assertFalse(any("menstru" in t for t in archived(self.slot)))
-        self.assertTrue(self.c["robin"].get(self.url()).json()["deletion"]["done"])
-        self.post(ldc(seq=4))
-        self.assertFalse(any("menstru" in t for t in archived(self.slot)), "off again: left out again")
+        self.assertEqual(json.loads(crypto.read_file(rx.cycle_file(self.slot)))["purged"], token)
+        st = self.c["robin"].get(self.url()).json()
+        self.assertTrue(st["deletion"]["done"], "said once it's done...")
+        # ...and then the setting goes (#935): nothing the app keeps, a backup included, says it was ever on
         db = dbm.connect()
         try:
+            self.assertIsNone(db.execute("SELECT 1 FROM settings WHERE key=? AND profile_id=?", (cycle_tracking.KEY, self.pid)).fetchone())
             log = [json.loads(crypto.dec(r["detail"])) for r in db.execute(
                 "SELECT detail FROM activity WHERE profile_id=? AND action='cycle' ORDER BY id", (self.pid,))]
-            row = db.execute("SELECT value, sealed FROM settings WHERE key=? AND profile_id=?", (cycle_tracking.KEY, self.pid)).fetchone()
-            self.assertNotIn("_cycle", json.dumps(settings.to_file(db, self.pid)), "not in a settings export")
         finally:
             db.close()
+        doc = json.loads(crypto.read_file(rx.KEYS_FILE))
+        self.assertEqual((doc["cycle"], doc["cycle_purge"]), ([], {}), "the receiver has nothing more to do for it")
+        st = self.c["robin"].get(self.url()).json()
+        self.assertEqual((st["on"], st["deletion"], st["can_change"]), (False, None, True), "off, as if never on")
+        with tempfile.TemporaryDirectory() as t:
+            from server import backup
+            with tarfile.open(backup.create(dest=t)) as tar:
+                with open(os.path.join(t, "db"), "wb") as f:
+                    f.write(tar.extractfile("sanguity.db").read())
+            con = sqlite3.connect(os.path.join(t, "db"))
+            self.assertEqual(con.execute("SELECT COUNT(*) FROM settings WHERE key=?", (cycle_tracking.KEY,)).fetchone()[0], 0)
+            con.close()
+        rx.cycle_sweep(self.stores)
+        self.post(ldc(seq=4))
+        self.assertFalse(any("menstru" in t for t in archived(self.slot)), "off again: left out again")
+        self.assertEqual(self.stores[self.slot].db.execute("SELECT COUNT(*) FROM cycle").fetchone()[0], 0)
         self.assertEqual(log, [{"change": "on"}, {"change": "delete"}, {"change": "off"}], "logged, never a record")
-        self.assertIsNone(row["value"])
-        self.assertTrue(row["sealed"].startswith(crypto.FIELD), "the setting is sealed")
         self.assertNotIn("_cycle", json.dumps(self.c["robin"].get(f"/api/profiles/{self.pid}/settings").json()))
 
     # ---- uploaded Apple Health exports (#223): read only while tracking is on, kept apart, deleted with the rest

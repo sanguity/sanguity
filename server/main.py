@@ -84,6 +84,7 @@ def _setup_code(db):
 
 @asynccontextmanager
 async def lifespan(app):
+    atrest.keep_private()   # readable only by the app's own user, what it makes and what's there (umask 077, #935)
     with backup.app_running_lock():   # held while the app runs, so a restore can tell and refuse
         dbm.init()
         db = dbm.connect()
@@ -107,6 +108,8 @@ async def lifespan(app):
             if (kept := watch_store.migrate(db)):
                 print(f"Kept the imported watch data of {kept} profile(s) as an import that can't be undone.", flush=True)
             pid = prof.bootstrap(db)
+            from . import cycle_tracking   # cycle tracking turned off, its deletion done: its setting goes (#935)
+            cycle_tracking.forget_done(db)
             watch_keys.publish(db)   # the watch receiver's secrets, from the database (#46)
             if pid:
                 print(f"Loaded the existing records into profile {pid} (\"My records\").", flush=True)

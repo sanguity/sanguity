@@ -7,7 +7,7 @@ data in backups (#227): taken as it is, counted by a check, and put back by a re
 
   python3 tests/test_backups.py
 """
-import contextlib, hashlib, importlib.util, io, json, os, shutil, sqlite3, sys, tarfile, tempfile, threading, time, unittest
+import contextlib, hashlib, importlib.util, io, json, os, shutil, sqlite3, stat, sys, tarfile, tempfile, threading, time, unittest
 from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -24,7 +24,7 @@ sys.path.insert(0, ROOT)
 
 from fastapi.testclient import TestClient   # noqa: E402
 
-from server import accounts, backup, backup_jobs, crypto, db as dbm, main, manage, profiles as prof, twofactor, uploads   # noqa: E402
+from server import accounts, atrest, backup, backup_jobs, crypto, db as dbm, main, manage, profiles as prof, twofactor, uploads   # noqa: E402
 import logging   # noqa: E402
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
@@ -204,7 +204,8 @@ class Backups(unittest.TestCase):
         self.assertTrue(backup.NAME.match(run["file"]))
         manifest = backup.verify(os.path.join(FOLDER, run["file"]))
         self.assertTrue(any(n.startswith("profiles/") for n in manifest["files"]), "the profile's files are in it")
-        self.assertGreater(manifest["counts"]["events"], 0)   # what a check expects, recorded at backup time
+        self.assertGreater(backup.counts_of(manifest["counts"])["events"], 0)   # what a check expects, recorded at backup time
+        self.assertTrue(manifest["counts"].startswith(crypto.FIELD), "sealed (#935): the plain manifest names no table")
         logged = self.actions("backup.create")
         self.assertEqual((logged[0]["actor"], logged[0]["detail"]["name"]), ("ada", run["file"]), logged)
         self.assertEqual(os.listdir(FOLDER), [run["file"]], "nothing but the backup is left in the folder")
@@ -560,9 +561,16 @@ class Backups(unittest.TestCase):
         self.assertNotIn(b"Fictional Cuff", data)
         w = manifest["watch"]
         self.assertEqual(set(w), {"", "5"})
-        self.assertEqual(w[""]["counts"], backup._tables(first.db))   # every table's rows, as the receiver had them
+        # the plain manifest names none of their tables (#935): their rows are sealed
+        with tarfile.open(path) as tar:
+            plain = tar.extractfile("manifest.json").read().decode()
+        for t in ("cycle", "samples", "events", "journal", "share_links"):
+            self.assertNotIn(f'"{t}"', plain, t)
+        self.assertTrue(all(v["counts"].startswith(crypto.FIELD) for v in w.values()), w)
+        counts = backup.counts_of(w[""]["counts"])
+        self.assertEqual(counts, backup._tables(first.db))   # every table's rows, as the receiver had them
         self.assertEqual((w[""]["uploads"], w[""]["after"], w["5"]["uploads"], w["5"]["after"]), (2, 1, 1, 0), w)
-        self.assertEqual(w[""]["counts"]["cycle"], 1, "a backup made while tracking is on has the cycle records")
+        self.assertEqual(counts["cycle"], 1, "a backup made while tracking is on has the cycle records")
         self.assertTrue(w[""]["saved"].endswith("+00:00"))
 
         # Check a backup counts them, beside the live data
@@ -580,6 +588,24 @@ class Backups(unittest.TestCase):
         with contextlib.redirect_stdout(out):
             manage.run(["check", path])
         self.assertIn(f"the phone and watch data of 2 profiles ({live} readings, 3 archived uploads)", out.getvalue())
+        # a backup from before #935, its counts plain, is checked as before
+        with tarfile.open(path, "r:gz") as tar:
+            items = [(m.name, tar.extractfile(m).read()) for m in tar.getmembers()]
+        old = json.loads(dict(items)["manifest.json"])
+        old["counts"] = backup.counts_of(old["counts"])
+        for v in old["watch"].values():
+            v["counts"] = backup.counts_of(v["counts"])
+        before935 = os.path.join(TMP, "before-935.tar.gz")
+        with tarfile.open(before935, "w:gz") as tar:
+            for n, body in items:
+                body = json.dumps(old).encode() if n == "manifest.json" else body
+                info = tarfile.TarInfo(n)
+                info.size = len(body)
+                tar.addfile(info, io.BytesIO(body))
+        got = backup.check(before935)
+        self.assertTrue(got["ok"], got["problems"])
+        self.assertEqual(got["watch"]["counts"]["readings"], {"backup": live, "expected": live})
+        os.remove(before935)
 
         # damage a checksum can't see: a database with a reading fewer, one that isn't a database, one another key sealed
         def fewer(name, data):
@@ -856,6 +882,45 @@ class Backups(unittest.TestCase):
             os.remove(link)
             shutil.rmtree(notes)
             db.close()
+
+    # ---------------------------------------------------------------- readable only by the app's own user (#935)
+
+    def test_12_readable_only_by_the_apps_user(self):
+        """The app makes what it keeps with umask 077: the database and its WAL 0600, the data folder and the profiles'
+        0700; what an older version left (0644, 0755) is made so at start; a link is never followed."""
+        mode = lambda p: stat.S_IMODE(os.lstat(p).st_mode)
+        db = dbm.connect()   # (open, after a write: the WAL is there)
+        try:
+            db.execute("INSERT OR REPLACE INTO meta(k, v) VALUES('test.935', '1')")
+            for p in (DATA, os.path.join(DATA, "profiles"), prof.profile_dir(self.pid)):
+                self.assertEqual(mode(p), 0o700, p)
+            for n in ("sanguity.db", "sanguity.db-wal", "sanguity.db-shm"):
+                self.assertEqual(mode(os.path.join(DATA, n)), 0o600, n)
+        finally:
+            db.close()
+        made = os.path.join(prof.profile_dir(self.pid), "made-935")
+        os.makedirs(made)
+        with open(os.path.join(made, "f"), "wb") as f:
+            f.write(b"x")
+        self.assertEqual((mode(made), mode(os.path.join(made, "f"))), (0o700, 0o600), "the process's umask is 077")
+        # as an older version left them: made the app's user's alone at the next start
+        outside = os.path.join(TMP, "outside-935")
+        os.makedirs(outside)
+        os.chmod(outside, 0o755)
+        link = os.path.join(DATA, "profiles", "link-935")
+        os.symlink(outside, link)
+        try:
+            for p, m in ((DATA, 0o755), (os.path.join(DATA, "sanguity.db"), 0o644), (made, 0o755), (os.path.join(made, "f"), 0o644)):
+                os.chmod(p, m)
+            self.assertGreaterEqual(atrest.keep_private(), 4)
+            self.assertEqual([mode(p) for p in (DATA, os.path.join(DATA, "sanguity.db"), made, os.path.join(made, "f"))],
+                             [0o700, 0o600, 0o700, 0o600])
+            self.assertEqual(mode(outside), 0o755, "a link's target is never changed")
+            self.assertEqual(atrest.keep_private(), 0, "once")
+        finally:
+            os.remove(link)
+            shutil.rmtree(made)
+            shutil.rmtree(outside)
 
 
     # ---------------------------------------------------------------- what a restore replaced (#595)
