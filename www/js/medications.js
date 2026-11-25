@@ -121,20 +121,28 @@ function renderMedications() {
   if (rows.length) drawMedLane(svg, rows, a, b);
 }
 
-/* a row per medication, from a to b, the names in a column of their own as wide as they need, a third of the lane at
-   most (cut to it), on the kit's time axis (chartkit.js, #300); its rows and axis growing with larger text (#633) */
+/* a row per medication, from a to b, on the kit's time axis (chartkit.js, #300), its rows and axis growing with larger
+   text (#633): the names in a column of their own as wide as they need, a third of the lane at most (a quarter on a
+   wide screen), each whole, broken into lines that fit it; or, where a word of one doesn't fit it (larger text on a
+   phone), each over its row's bars, broken to the lane's width (#643: cut to "Acyclo…") */
 function drawMedLane(svg, rows, a, b) {
-  const w = Math.max(280, Math.round(svg.getBoundingClientRect().width) || 600), k = ckK(), ROW = 24 * k;
-  const L = Math.min(Math.max(...rows.map(m => labelW(m.name, "medname"))) + 12, w * (w < 600 ? .34 : .25)), R = w - 8, top = 4, plotB = top + rows.length * ROW;
-  const x = ckScale(a, b, L, R), tk = ckTimeTicks(a, b, x, w), g = [];
+  const w = Math.max(280, Math.round(svg.getBoundingClientRect().width) || 600), k = ckK(), R = w - 8, top = 4;
+  const col = Math.min(Math.max(...rows.map(m => labelW(m.name, "medname"))) + 12, w * (w < 600 ? .34 : .25)), over = !rows.every(m => medLines(m.name, col - 8)), L = over ? 8 : col;
+  const lay = rows.map(m => {
+    const lines = medLines(m.name, over ? R - L : L - 8) || [ckFit(m.name, "medname", R - L)];
+    return {m, lines, h: over ? (12 + (lines.length - 1) * MED_LH) * k + 14 : Math.max(24, lines.length * MED_LH + 8) * k};
+  });
+  const plotB = top + lay.reduce((s, r) => s + r.h, 0), x = ckScale(a, b, L, R), tk = ckTimeTicks(a, b, x, w), g = [];
   svg.setAttribute("viewBox", `0 0 ${w} ${plotB + ckAxisH(tk.rows)}`); svg.setAttribute("height", plotB + ckAxisH(tk.rows));
   for (const t of tk.ticks) g.push(el("svg:line", {class: "gridline", x1: x(t.t), x2: x(t.t), y1: top, y2: plotB}));
   ckAxis(g, tk, L, R, plotB, plotB + 16);
-  rows.forEach((m, n) => {
-    const y = top + n * ROW + ROW / 2;
-    g.push(el("svg:text", {class: "medname", x: 0, y: y + 4 * k, text: ckFit(m.name, "medname", L - 8)}, el("svg:title", {text: m.name})));
+  let y0 = top;
+  for (const {m, lines, h} of lay) {
+    const y = over ? y0 + h - 7 : y0 + h / 2, wide = Math.max(...lines.map(l => labelW(l, "medname")));
+    g.push(medName(m, lines, over ? Math.max(L, Math.min(x(medFrom(m)), R - wide)) : 0, over ? y0 + 11 * k : y + 4 * k - (lines.length - 1) * MED_LH * k / 2, k));
     medRow(g, m, x, y, L, R, CAT_OF.med.color, {selectable: true});
-  });
+    y0 += h;
+  }
   svg.replaceChildren(...g);
 }
 {

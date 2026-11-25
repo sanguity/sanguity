@@ -9207,8 +9207,9 @@ def main():
                     const bars = [...svg.querySelectorAll('.medbar[data-med="{med["i"]}"]')].map(b => b.getBoundingClientRect());
                     return {{fits: document.documentElement.scrollWidth <= 375 && r.right <= 375, bars: bars.length, inside: bars.every(b => b.left >= r.left - 1 && b.right <= r.right + 1),
                       names: [...svg.querySelectorAll('text.medname')].every(t => t.getBBox().x + t.getBBox().width <= svg._geom.L - 4)
-                        && [...svg.querySelectorAll('text.medname')].some(t => t.firstChild.textContent.endsWith('…'))}}; }})()""")
-                check("the Medications lane fits 375 px, names shortened to the gutter's width (#300)", narrow["fits"] and narrow["bars"] == 2 and narrow["inside"] and narrow["names"], narrow)
+                        && [...svg.querySelectorAll('text.medname')].every(t => MEDS.some(m => m.name === [...(t.querySelector('tspan') ? t.querySelectorAll('tspan') : [t])].map(l => l.firstChild.textContent).join(' ')))}}; }})()""")
+                check("the Medications lane fits 375 px, names in the gutter, broken into lines that fit it, whole (#300, #643: shortened to its width)",
+                      narrow["fits"] and narrow["bars"] == 2 and narrow["inside"] and narrow["names"], narrow)
                 page.set_viewport_size({"width": 1400, "height": 900})
                 settle(200)
                 tab_click(page, "#tab-labs")
@@ -12971,6 +12972,38 @@ def main():
             check("With text at 200% at 360 and 412 px, light and dark, and at the usual size (#633, 1.4.4): Costs' charts, the Timeline, the Medications "
                   "lane and the event track's rows (journal, mood, cycle, doses, medications) keep every label inside their chart, none over another",
                   not bad633 and layers633 == ["Journal", "Mood", "Cycle tracking", "Medications", "Doses logged"], [layers633, bad633])
+            # ---- #643: each medication's name whole on the Timeline's Medications lane and the Medications tab's lane (it was cut
+            # to "Acyclo…" at 200%, its title no help on a touch screen): in the gutter broken into lines, or over its row where a
+            # word doesn't fit there, at 360 and 412 px, light and dark, with text at 200% and as usual, a long name put in for
+            # the check (and taken out); every label inside its chart, none over another (#633's L633)
+            NAMES643 = r"""sel => [...document.querySelectorAll(sel + ' text.medname')].filter(t => t.checkVisibility())
+              .map(t => [...(t.querySelector('tspan') ? t.querySelectorAll('tspan') : [t])].map(l => l.firstChild.textContent).join(' '))"""
+            LONG643 = "Amoxicillin 875 mg and clavulanate potassium 125 mg tablet"
+            was643 = js("[MEDS[0].name, state.preset, document.documentElement.dataset.theme || null]")
+            js("n => { MEDS[0].name = n; applyPreset('all'); }", LONG643)
+            bad643 = {}
+            for w in (360, 412):
+                page.set_viewport_size({"width": w, "height": 800})
+                for mode in ("light", "dark"):
+                    for big in (False, True):
+                        js("([t, css]) => { document.documentElement.dataset.theme = t; const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = css ? [s] : []; }",
+                           [mode, BIG622 if big else ""])
+                        got = []
+                        for tab, sel in (("timeline", "#tl"), ("medications", "#view-medications svg.med-lane")):
+                            js("t => { tlSvg._key = null; switchTab(t, t === 'timeline' ? 'timeline' : undefined); renderAll(); }", tab)
+                            settle(400)
+                            names = js(NAMES643, sel)
+                            got += [f"{tab}: “{n}” not whole" for n in names if n not in js("MEDS.map(m => m.name)")]
+                            got += [f"{tab}: no “{LONG643}”"] if LONG643 not in names else []
+                            got += [f"{tab}: {p}" for p in js(L633, sel)]
+                        if got:
+                            bad643[f"{w} {mode}{' 200%' if big else ''}"] = got[:8]
+            js("""w => { MEDS[0].name = w[0]; document.adoptedStyleSheets = []; if (w[2]) document.documentElement.dataset.theme = w[2]; else delete document.documentElement.dataset.theme;
+              tlSvg._key = null; applyPreset(w[1]); switchTab('labs', 'chart'); renderAll(); }""", was643)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(300)
+            check("…and each medication's name whole on the Timeline's Medications lane and the Medications tab's (#643: cut to “Acyclo…”), a long one "
+                  "among them, at 360 and 412 px, light and dark, with text at 200% and as usual, inside the chart and none over another", not bad643, bad643)
             # ---- #641: #622's check for the overview strip (#295) on Labs, Body and activity and the Timeline, at 360 and
             # 412 px, light and dark, at the usual size and with text at 200% (1.4.4), in All and in a year (the window then
             # inside the strip, its grips with it): its dates inside it, none over another, under the bars' foot, clear of

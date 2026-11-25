@@ -65,20 +65,43 @@ function medRow(g, m, x, y, L, R, color, opts = {}) {
       "data-id": opts.selectable ? f.id : null, "data-med": m.i, "data-fill": f.id}));
   }
 }
+/* a medication's name whole (#643: cut to "Acyclo…" with larger text, its title no help on a touch screen): broken
+   into lines no wider than room, each word whole; null where a word is wider than room. Drawn as one label, a line
+   MED_LH px under another (ckK), the first's baseline at y; cut only where a word is wider than a whole lane */
+const MED_LH = 13;
+const medLines = (name, room) => name.split(" ").every(w => labelW(w, "medname") <= room) ? ckLines(name, "medname", room) : null;
+function medName(m, lines, x, y, k) {
+  return el("svg:text", {class: "medname", x, y}, lines.length > 1 ? lines.map((l, i) => el("svg:tspan", {x, dy: i ? MED_LH * k : null, text: l})) : lines[0],
+    lines.join(" ") !== m.name ? el("svg:title", {text: m.name}) : null);
+}
 /* the Timeline's Medications lane (timeline.js asks TL_LANES for its height and drawing): a row a medication, its name in
-   the gutter under the lane's, or over its bars where the lanes' names are over them (larger text, #633) */
-const medLaneRow = S => S.over ? 12 * S.k + 14 : MED_ROW * S.k;
+   the gutter under the lane's, broken into lines that fit it; or over its bars, broken to the plot's width, where the
+   lanes' names are over them, or a word of one doesn't fit the gutter (larger text, #633, #643). Each row as tall as
+   its name's lines */
+function medLaneRows(S) {
+  const ms = medsShown(state.from, state.to), over = S.over || !ms.every(m => medLines(m.name, S.L - 14)), k = S.k;
+  return {over, rows: ms.map(m => {
+    const lines = medLines(m.name, over ? S.R - S.L : S.L - 14) || [ckFit(m.name, "medname", S.R - S.L)];
+    return {m, lines, h: over ? (12 + (lines.length - 1) * MED_LH) * k + 14 : Math.max(MED_ROW, lines.length * MED_LH + 5) * k};
+  })};
+}
 TL_LANES.med = {
   shows: () => medsShown(state.from, state.to).length > 0,
   labelY: S => 11 * S.k,
-  height: (w, S) => MEDS.length ? (S.over ? 0 : 20 * S.k) + Math.max(1, medsShown(state.from, state.to).length) * medLaneRow(S) : 0,
+  height(w, S) {
+    if (!MEDS.length) return 0;
+    const rows = medLaneRows(S).rows;
+    return (S.over ? 0 : 20 * S.k) + (rows.length ? rows.reduce((a, r) => a + r.h, 0) : S.over ? 12 * S.k + 14 : MED_ROW * S.k);
+  },
   draw(g, S, top, h, c) {
-    const {L, R, x, k, over} = S, rh = medLaneRow(S);
-    medsShown(state.from, state.to).forEach((m, n) => {
-      const y0 = top + (over ? 0 : 20 * k) + n * rh, name = ckFit(m.name, "medname", over ? R - L : L - 14), y = over ? y0 + rh - 7 : y0 + rh / 2;
-      g.push(el("svg:text", {class: "medname", x: over ? Math.max(L, Math.min(x(medFrom(m)), R - labelW(name, "medname"))) : 8, y: over ? y0 + 11 * k : y + 4 * k, text: name}, el("svg:title", {text: m.name})));
+    const {L, R, x, k} = S, {over, rows} = medLaneRows(S);
+    let y0 = top + (S.over ? 0 : 20 * k);
+    for (const {m, lines, h: rh} of rows) {
+      const y = over ? y0 + rh - 7 : y0 + rh / 2, wide = Math.max(...lines.map(l => labelW(l, "medname")));
+      g.push(medName(m, lines, over ? Math.max(L, Math.min(x(medFrom(m)), R - wide)) : 8, over ? y0 + 11 * k : y + 4 * k - (lines.length - 1) * MED_LH * k / 2, k));
       medRow(g, m, x, y, L, R, c.color, {selectable: true});
-    });
+      y0 += rh;
+    }
   },
 };
 function medTip(m, ds, ev) {

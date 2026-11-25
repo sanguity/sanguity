@@ -3470,6 +3470,10 @@ Everything on `main` so far; it becomes the first tagged release.
   320 px, the drawer's results table scrolled sideways with its flag ("▼ Low") off to the right, only the red value
   showing. Where its four columns don't fit, each result is now a few lines: the test, its value with the flag beside
   it, and its reference range. A screen reader still reads it as a table; wider drawers are as before.
+- **Medication names are whole on the Timeline and the Medications tab** (#643): a medication's name in the
+  Timeline's gutter and beside the Medications tab's lane was cut to fit ("Acyclo…" at 200% text on a phone, and
+  shortened at the usual size too), the whole name only in a tooltip a touch screen can't show. Each name is now
+  whole: on as many lines as it needs beside its row, or over its row where a word of it doesn't fit beside it.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
