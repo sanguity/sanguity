@@ -241,7 +241,9 @@ importer does. Another source's copy of it is a copy or a duplicate, never an up
 with a key scoped to a day that an upload or another source saved; it finds each row of its own day's labitem by the
 row's own record in `keys`, wherever it is (#899: in an upload of the portal's own export, or a connection made before
 to the same portal), and updates that row there, puts a row new to the profile in a labitem of its own beside its
-result, leaves out a duplicate's row with it (#897), and joins the day's lab day rather than adding a second. A
+result, leaves out a duplicate's row with it (#897), and joins the day's lab day rather than adding a second: its
+own, else its source's (#912: one listing the portal's records, an upload's of its export, never another source's of
+that date while there's one), else the earliest. A
 report's labitem the profile has is placed the same way, row by row (#881): a result its source adds to the report has
 its row in a labitem of the pull's own of that report, so every row sits beside its result, in its result's import. A
 labitem saved before #885 has no `keys`; a connection's take theirs from what it has read, once (schema version 40),
