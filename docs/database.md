@@ -756,8 +756,13 @@ cycle records compared but not named (only a profile's owners and editors may kn
 the folder below, and given today's `users` (by id and name, so records keep who made them; every column of the
 row today's, the wrong authenticator codes since the last right one, `totp_fails`, #928, among them), `devices`,
 `recovery_codes`, `passkeys`, `signin_failures`, `memberships`, `share_links`, `calendar_feeds`, each profile's phone
-upload secret (the `_watch.receiver` settings row), and the `require_2fa`, `setup_code` and `watch_legacy_retired` meta
+upload secret (the `_watch.receiver` settings row) and its cycle tracking (the `_cycle` row, #964: none where today's
+has none), and the `require_2fa`, `setup_code` and `watch_legacy_retired` meta
 rows from the database it replaces, every `sqlite_sequence` count moved past today's (#588); `sessions` is emptied.
+A profile whose cycle records the backup holds and today's tracking doesn't keep (off now, or a deletion asked for
+since) is noted in the `cycle_restored` meta row, sealed, and its records deleted as turning tracking off deletes them
+once the files are back (`cycle_tracking.restored`, again at the next start if a stop came between), the note with
+them.
 `smart_clients` is today's (by id and issuer, client secrets included), and so is each connection but its place in
 what it pulled (`cursor`, `pending_cursor`, `first_job`, `last_sync`, `report`, `attach_bytes`, the backup's, so it
 pulls again what came since); one today's database hasn't, or has disconnected, is disconnected, its tokens and store

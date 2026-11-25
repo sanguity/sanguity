@@ -1403,6 +1403,83 @@ class Backups(unittest.TestCase):
         os.utime(d, (t, t))
         return d
 
+    def test_19_a_restore_keeps_todays_cycle_tracking(self):   # #964
+        """#917 kept today's access through a restore but brought back each profile's cycle tracking with the records:
+        turned off after the backup, it was on again once restored, the backup's cycle records with it. As the owner's
+        decision extends, each profile's tracking is today's, on or off (its setting, none where today's has none), and
+        where today's doesn't keep the cycle records the backup holds (off now, its deletion done or not, or everything
+        deleted since) they aren't brought back: an uploaded export's own and those in an Apple Health export uploaded,
+        as turning it off deletes them (the receiver deletes its copy, a slot with tracking off, when it starts). One on
+        in both keeps them; one turned on since is on. The restore says so, naming no profile. With no database to replace,
+        the backup's, said so too."""
+        from server import cycle_tracking as ct, records
+        with open(os.path.join(ROOT, "tests", "fixtures", "apple_health", "apple_health_export", "export.xml"), "rb") as f:
+            src = f.read()
+        flow = b"hkcategorytypeidentifiermenstrualflow"
+        self.assertIn(flow, src.lower())
+        robin = self.uids["robin"]
+        visit = {"events": [{"id": 1, "t": "2026-05-01T09:00:00", "k": "visit", "title": "Visit (fictional)"}]}
+        db = dbm.connect()
+        try:
+            pids = {n: prof.create_profile(db, f"Cycle {n} (fictional)", owner_id=robin) for n in ("off", "done", "deleted", "on", "kept")}
+            iids = {}
+            for n in ("off", "done", "deleted", "kept"):   # tracking on at the backup, an export's records kept, one uploaded
+                with dbm.transaction(db):
+                    ct.turn(db, pids[n], True, robin)
+                    iids[n] = records.store(db, pids[n], visit, "upload")
+                    self.assertEqual(ct.save_imported(db, pids[n], iids[n], [{"kind": "flow", "day": "2026-05-01", "value": "medium", "app": "Apple Health"}]), 1)
+                up = uploads.create(db, pids[n], robin)
+                uploads.add_file(db, pids[n], up, "apple_health_export/export.xml", io.BytesIO(src))
+                uploads.finish(db, pids[n], up)
+        finally:
+            db.close()
+        path = backup.create(os.path.join(TMP, "backups-964"))
+        db = dbm.connect()   # after it: turned off, twice (one's deletion done since, its row gone: #935), everything deleted, on
+        try:
+            with dbm.transaction(db):
+                for n in ("off", "done"):
+                    ct.turn(db, pids[n], False, robin)
+                ct.delete_all(db, pids["deleted"], robin)
+                ct.turn(db, pids["on"], True, robin)
+            for n in ("off", "done", "deleted"):
+                ct.drop_imported(db, pids[n])
+            today = {n: ct.setting(db, p) for n, p in pids.items()}
+        finally:
+            db.close()
+        self.assertEqual({n: v.get("on") for n, v in today.items()}, {"off": False, "done": False, "deleted": True, "on": True, "kept": True})
+
+        def held(folder, con):   # each profile's tracking as restored, and whether its import's and its upload's cycle records are there
+            rows = {p: json.loads(crypto.dec(s)) for p, s in con.execute("SELECT profile_id, sealed FROM settings WHERE key='_cycle' AND user_id IS NULL")}
+            out = {}
+            for n, p in pids.items():
+                ups = os.path.join(folder, "profiles", str(p), "uploads")
+                files = [os.path.join(d, f) for d, _, fs in os.walk(ups) for f in fs]
+                out[n] = (rows.get(p, {}).get("on"), n in iids and os.path.isfile(os.path.join(folder, "profiles", str(p), "watch", "cycle", f"{iids[n]}.json")),
+                          any(flow in crypto.read_file(f).lower() for f in files))
+            return rows, out
+        folder = os.path.join(TMP, "restored-964")
+        said, con = self.restore_into(folder, path, today=True,   # its deletion done since: its row gone, as forget_done does
+                                      change=lambda c: c.execute("DELETE FROM settings WHERE key='_cycle' AND profile_id=?", (pids["done"],)))
+        rows, got = held(folder, con)
+        self.assertEqual(got, {"off": (False, False, False), "done": (None, False, False), "deleted": (True, False, False), "on": (True, False, False),
+                               "kept": (True, True, True)}, "today's tracking, and the backup's cycle records only where it keeps them")
+        self.assertEqual({n: rows.get(p) for n, p in pids.items() if n != "done"}, {n: v for n, v in today.items() if n != "done"}, "today's settings, as they were")
+        self.assertIsNone(con.execute("SELECT v FROM meta WHERE k=?", (ct.RESTORED,)).fetchone(), "nothing left to do, nor saying which profiles")
+        self.assertIn(manage.CYCLE_KEPT, said)
+        self.assertFalse([p for p in pids.values() if f"Profile {p} " in said], "no profile named")
+
+        said, con = self.restore_into(os.path.join(TMP, "restored-964-none"), path)   # disaster recovery: the backup's
+        self.assertEqual(held(os.path.join(TMP, "restored-964-none"), con)[1],
+                         {"off": (True, True, True), "done": (True, True, True), "deleted": (True, True, True), "on": (None, False, False),
+                          "kept": (True, True, True)})
+        self.assertIn(manage.CYCLE_THEN, said)
+        db = dbm.connect()
+        try:
+            for p in pids.values():
+                prof.delete_profile(db, p)
+        finally:
+            db.close()
+
     def test_9b_what_a_restore_replaced(self):
         """What a restore moved aside (it may hold a profile deleted since) is deleted RESTORE_KEEP after the restore,
         at start and now and then while the app runs, or by an admin's Delete now; only folders named as restore()

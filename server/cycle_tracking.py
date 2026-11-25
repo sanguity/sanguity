@@ -303,6 +303,29 @@ def drop_imported(db, pid, who=None, ip=None):
     strip_uploads(db, pid)   # and the exports uploaded, written again without them (#555)
 
 
+RESTORED = "cycle_restored"   # meta, sealed: the profiles a restore brought back cycle records of that it doesn't keep (#964)
+
+
+def restored(db):
+    """(#964) A restore keeps each profile's tracking as it is today (backup._keep_access), and notes, sealed (nothing
+    plain may say which profiles track their cycle, #935), the profiles whose cycle records the backup holds that
+    today's tracking doesn't keep: off now, or a deletion asked for since. Those records go here as turning tracking
+    off deletes them (drop_imported: an uploaded export's, every upload's, a review's), then the note. Run by the
+    restore once its files are back, and at each start (a restore a stop cut short). Returns how many profiles."""
+    v = dbm.meta_get(db, RESTORED)
+    if not v:
+        return 0
+    try:
+        pids = [int(p) for p in json.loads(crypto.dec(v))]
+    except (ValueError, TypeError, crypto.KeyError_):
+        pids = []
+    for pid in pids:
+        if db.execute("SELECT 1 FROM profiles WHERE id=?", (pid,)).fetchone():
+            drop_imported(db, pid)
+    db.execute("DELETE FROM meta WHERE k=?", (RESTORED,))
+    return len(pids)
+
+
 def summary_rows(db, pid, data, since, now):
     """The visit summary's "Cycle tracking" section (offered to owners and editors while tracking is on, unticked
     every time: routes_summary.py): the periods and other records since the "since" day, as recorded."""

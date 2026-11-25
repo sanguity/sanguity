@@ -115,6 +115,7 @@ async def lifespan(app):
                 print(f"Kept the imported watch data of {kept} profile(s) as an import that can't be undone.", flush=True)
             pid = prof.bootstrap(db)
             from . import cycle_tracking   # cycle tracking turned off, its deletion done: its setting goes (#935)
+            cycle_tracking.restored(db)   # (#964) cycle records a restore a stop cut short brought back and doesn't keep
             cycle_tracking.forget_done(db)
             watch_keys.publish(db)   # the watch receiver's secrets, from the database (#46)
             if pid:
