@@ -27,6 +27,16 @@ own FHIR importer reads files beside the bundle and skips inline ones (with a wa
 Export everything, [docs/performance.md](performance.md)): a profile with ten years of phone data never sits in
 memory or on disk as a whole.
 
+## The records as the app shows them
+
+The bundle holds the records with every correction made in Sanguity applied (#916), as the page shows them: a hidden
+record is left out, two merged records are one resource (the first's, with what the other added), a renamed or
+re-dated one has its new title or time, a change of category and "Not a hospital stay" are made, and a result two
+sources gave that was linked as the same result goes once. A bundle has nowhere to carry the corrections apart, and
+another app has nothing to apply them with. Sanguity's own zip is the other way round: its `data.json` holds the
+records as they were imported, with the corrections beside them (#589), so another Sanguity loads them and they can
+still be undone there.
+
 ## Ids
 
 Every resource's id is a version 5 UUID made from the profile and what names the record: its source key when the

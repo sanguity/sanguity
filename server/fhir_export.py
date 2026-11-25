@@ -41,6 +41,9 @@ units, CVX vaccine codes, the HL7 category and status code systems):
                         height Observations
   cycle records         only when ticked for this export (#183, as Export everything): Observations
 
+The records go as the app shows them, every correction made in Sanguity applied (#916): a hidden record is left out, a
+merged one is one resource, a renamed or re-dated one has its new title or time, a change of category or "Not a hospital
+stay" is made, and a result two sources gave, linked as the same result, goes once.
 Ids are stable: a uuid5 of the profile and of each record's source key (else its kind, time and title), so the same
 record exported again has the same id, and fullUrls are urn:uuid: of them.
 Not in it, as FHIR has no place for them: the journal, settings (other than About this person), workouts,
@@ -152,8 +155,11 @@ def parts_of(spec):
 
 def plan(db, pid, parts, cycle=False):
     """Everything the export needs, gathered now (the stream runs after the request's database connection closes),
-    as export.plan gathers it. parts: the keys of PARTS ticked; cycle: the cycle records too, ticked for this export."""
-    base = export.plan(db, pid, cycle=cycle)
+    as export.plan gathers it. parts: the keys of PARTS ticked; cycle: the cycle records too, ticked for this export.
+    The records as the app shows them (#916): hidden ones left out, merged ones once, each rename, date, category and
+    "Not a hospital stay" made, and a result two sources linked as the same result once. A bundle has nowhere to carry
+    the corrections apart, as Export everything's data.json does (#589), and nothing on the other side applies them."""
+    base = export.plan(db, pid, cycle=cycle, shown=True)
     have = settings.stored(db, "profile", pid)
     created = db.execute("SELECT created FROM profiles WHERE id=?", (pid,)).fetchone()["created"]
     return {**base, "parts": set(parts), "created": created,

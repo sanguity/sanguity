@@ -2287,6 +2287,12 @@ Everything on `main` so far; it becomes the first tagged release.
   with a row of its own, so the old value showed beside the corrected one in Labs and in the lab day. Now the same record
   from the same source is updated in place whatever changes, its value too, result and row where they are; undoing the
   pull or the upload puts the old value back. The review and the Undo say "the value, range and flag".
+- **Export as FHIR holds the records as the app shows them** (#916): since #589 the bundle was made from the records
+  as imported, as Export everything's data.json is, but with nowhere to carry the corrections: a hidden visit went out
+  as an Encounter, a merged-in one as one of its own, a renamed one under its old title, a date fix, "Not a hospital
+  stay" and a change of category were lost, and one result two sources gave, linked as the same result, went twice.
+  Now every correction and same-result link is applied first. Sanguity's own zip still holds the records as imported,
+  with the corrections beside them.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other
