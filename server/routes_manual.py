@@ -140,11 +140,12 @@ def read(rows):
     return out
 
 
-def _matched(db, got):
-    """{row number: series name} for rows whose test name was matched to a series before (labmap.remembered)."""
+def _matched(db, pid, got):
+    """{row number: series name} for rows whose test name was matched to a series before, in this profile or for
+    every profile (labmap.remembered, #927)."""
     idents = {n: (r["test"], r["unit"], r["loinc"] or "") for n, r, _, _ in got
               if r and not common.canonical_lab(r["test"], r["loinc"])}
-    return {n: f["target"] for n, f in labmap.remembered(db, MATCHED_AS, idents).items() if f["target"]}
+    return {n: f["target"] for n, f in labmap.remembered(db, pid, MATCHED_AS, idents).items() if f["target"]}
 
 
 def _describe(n, r, problems, notes, matched=None, dup=False, copy=None):
@@ -289,10 +290,10 @@ def manual(pid: int, body: Rows, request: Request, s=Depends(user), db=Depends(g
     nothing."""
     need(db, s, pid, "editor")
     got = read(body.rows)
-    matched = _matched(db, got)
+    matched = _matched(db, pid, got)
     recs = read_items(db, pid, body.items)
     results = [r for _, r, p, _ in got if r and not p]
-    lab, _, matches = labmap.apply_remembered(db, MATCHED_AS, csv_labs.build(results, source=SOURCE, sub=SOURCE)) if results else ({}, {}, [])
+    lab, _, matches = labmap.apply_remembered(db, pid, MATCHED_AS, csv_labs.build(results, source=SOURCE, sub=SOURCE)) if results else ({}, {}, [])
     base = max([e["id"] for e in lab.get("events") or []], default=0)
     found_heights = _heights(db, pid, recs)   # #224, before building: one refused isn't built
     built, origin = manual_items.build([r for r in recs if r["ok"]], base_id=base)

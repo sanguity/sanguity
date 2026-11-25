@@ -3244,6 +3244,15 @@ Everything on `main` so far; it becomes the first tagged release.
   sign-in started at the old address is used up by the change; and a connection whose source was moved before is
   contacted only at its own address, its Disconnect sending its tokens nowhere else (the page says to end access in
   the portal).
+- **A review's lab-name match is its profile's own, and only a series it offered** (#927): a lab name matched at an
+  import's review was remembered for the whole install and applied, without asking, to every other profile's uploads,
+  pulls and results typed in ("Matched as before"), and any text sent was taken as the series: an editor of their own
+  new profile filed another account's results under a name of their choosing. Now a review's choice applies to that
+  profile's later imports only, and must be a series the review offered or a test Sanguity's list knows (anything
+  else is refused, with nothing saved). A match an admin made or changed before applies to every profile, as it did;
+  Admin → Lab name matches says which are for one profile. At the upgrade (schema version 41) each match a review made
+  becomes its import's profile's; one whose import is gone stays for every profile but is to check, unless it's the
+  same name written another way.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

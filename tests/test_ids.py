@@ -493,10 +493,11 @@ class Schema(unittest.TestCase):
         self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], len(dbm.SCHEMA))
         self.assertEqual(db.execute("PRAGMA foreign_keys").fetchone()[0], 1, "foreign keys on again")
         self.assertEqual({t: db.execute(f"SELECT {cols[t]} FROM {t} ORDER BY 1, 2").fetchall() for t in KEPT}, before)
-        self.assertEqual({t: ", ".join(r[1] for r in db.execute(f"PRAGMA table_info({t})")) for t in KEPT}, cols, "the same columns")
+        now = {t: ", ".join(r[1] for r in db.execute(f"PRAGMA table_info({t})")) for t in KEPT}
+        self.assertEqual({t: now[t][:len(cols[t])] for t in KEPT}, cols, "the same columns (a later version may add its own after them)")
         self.assertEqual(db.execute("PRAGMA foreign_key_check").fetchall(), [])
-        self.assertEqual({r[0]: r[1] for r in db.execute("SELECT name, sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL")},
-                         indexes, "every index again")
+        now = {r[0]: r[1] for r in db.execute("SELECT name, sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL")}
+        self.assertEqual({k: now.get(k) for k in indexes}, indexes, "every index again")
         schema = "".join(r[0] or "" for r in db.execute("SELECT sql FROM sqlite_master"))
         self.assertNotIn("_39", schema)
         for t in TABLES:

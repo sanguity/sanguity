@@ -418,7 +418,7 @@ def _save(db, j):
     name = held["importer"]
     mod = registry.get(name)
     label = mod.LABEL if mod else name
-    held["labs"] = labmap.recheck(db, held.get("labs"))   # one now to check, forgotten or changed isn't applied (#575, #583)
+    held["labs"] = labmap.recheck(db, pid, held.get("labs"))   # one now to check, forgotten, changed or another's isn't applied (#575, #583, #927)
     data, watch, names = held["data"], held.get("watch"), set(held.get("paths") or ())
     keep = json.loads(j["keep"]) if j["keep"] else []
     sent = json.loads(crypto.dec(j["labs"])) if j["labs"] else {}
@@ -505,7 +505,7 @@ def _save(db, j):
             for x in same if iid else ():
                 crossmatch.decide(db, pid, who["id"] if who else None, x["other_key"], x["key"], True,
                                   [x["other"], {k: x[k] for k in ("name", "t", "value", "unit")}])
-            remembered = labmap.remember(db, name, held.get("labs"), sent, raw, who, import_id=iid)   # undone with it (#500)
+            remembered = labmap.remember(db, pid, name, held.get("labs"), sent, raw, who, import_id=iid)   # undone with it (#500)
             labmap.used(db, labmap.applied(held.get("labs"), sent))   # ...unless another import used them since
             matched = sum(1 for t in labmap.choices(held.get("labs"), sent).values() if t)
             summary["lab_names"] = {"matched": matched, "remembered": remembered}
@@ -549,9 +549,17 @@ def confirm(db, pid, jid, uid, keep=None, ip=None, labs=None, same=None):
     """Save a previewed import, in the background like the parse: duplicates are skipped, except those whose refs
     (preview.keep) are in keep; lab series the preview listed go under the names in labs ({ref: series name or
     None}, labmap.py); the possible matches from other sources whose refs are in same are linked as the same result
-    once it's saved (crossmatch.py). Refused unless the job is waiting in "preview"."""
+    once it's saved (crossmatch.py). Refused unless the job is waiting in "preview", and (400) when a series named
+    in labs isn't one its review offered (#927: never any text sent)."""
     keep = [str(r)[:40] for r in keep or []][:20000]
     labs = {str(k)[:20]: labmap.clean_target(v) for k, v in list((labs or {}).items())[:5000]}
+    held = db.execute("SELECT summary FROM jobs WHERE id=? AND profile_id=? AND state='preview'", (jid, pid)).fetchone() if labs else None
+    if held and held["summary"]:   # (not waiting in preview: refused below)
+        shown = json.loads(crypto.dec(held["summary"]))
+        try:
+            labs = labmap.check_sent(shown.get("labs"), shown.get("lab_targets"), labs)
+        except labmap.NotOffered as e:
+            raise Refused(str(e), 400) from None
     same = [str(r)[:40] for r in same or [] if str(r).startswith("m:")][:crossmatch.LISTED]
     n = db.execute("""UPDATE jobs SET state='queued', stage='saving', confirmed_by=?, keep=?, labs=?, same=? WHERE id=?
                       AND profile_id=? AND state='preview'""",
