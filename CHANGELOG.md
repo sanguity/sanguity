@@ -3201,6 +3201,14 @@ Everything on `main` so far; it becomes the first tagged release.
   since. **Admin → Backups** now lists it beside what restores replaced, said as the phone and watch data to move in,
   deletes it 30 days after the restore (`RESTORE_KEEP_DAYS`) at start and hourly, logged, and has a **Delete now**;
   the restore says so. A second such restore in the same second leaves its own folder rather than failing.
+- **A restore brings back records only, keeping today's access** (#917, the owner's decision): a restore put the
+  backup's database back whole, so every access ended since it was made came back with it: a revoked share link, a
+  calendar feed, a removed member, an old session and a replaced password all worked again, and nothing said so. Now
+  accounts and their passwords, passkeys and two-factor sign-in, who may see each profile, share links, calendar
+  feeds and phone upload secrets stay as they are, taken from the database being replaced, and everyone is signed out;
+  a profile deleted since comes back with nobody given access (an admin gives it an owner) and one made since isn't in
+  the backup, and the restore names both. With no database to replace (a new machine), or another install's, all of it
+  comes from the backup as it was then, and the restore says so and what to check. README's Backup and restore says so.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

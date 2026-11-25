@@ -27,8 +27,12 @@ check() is the Admin page's "Check a backup" (#200): it restores a backup into a
 into DATA_DIR, compares what came out with the manifest, and deletes the copy. backup_jobs.py runs it, and create(),
 in the background.
 
-Restoring needs the app stopped (it holds a lock on DATA_DIR/app.lock while running). The data it replaces is
-moved to DATA_DIR/before-restore-<time>/, and an older backup's database is upgraded on the next start. That folder
+Restoring needs the app stopped (it holds a lock on DATA_DIR/app.lock while running). It brings back records only
+(#917, the owner's decision): accounts, passwords, passkeys, two-factor sign-in, who may see each profile, share links,
+calendar feeds and phone upload secrets stay as they are now, taken from the database it replaces, and everyone is
+signed out; with no database to replace (disaster recovery) they're the backup's, and the restore says so (_ready).
+The data it replaces is moved to DATA_DIR/before-restore-<time>/, and an older backup's database is brought up to
+date as it's restored. That folder
 may hold a profile deleted before the restore, or since, so it is deleted RESTORE_KEEP_DAYS (30) after the restore
 (#595): at start and hourly while the app runs (backup_jobs.sweep_replaced), or by an admin's Delete now on Admin ->
 Backups (replaced(), delete_replaced()). No backup takes it: a backup holds only the database, profiles/ and build/.
@@ -682,10 +686,120 @@ def _stage_watch(archive, manifest, stamp):
     return where, staged
 
 
+# ---------------------------------------------------------------- today's access, kept by a restore (#917)
+# The owner's decision: a restore brings back records only. Who may get in, and how, stays as it is now, taken from the
+# database being replaced: accounts (their passwords, two-factor sign-in, recovery codes, known devices and failed
+# sign-ins with them), passkeys, who may see each profile, share links, calendar feeds, each profile's phone upload
+# secret and the install's two-factor rule. Everyone is signed out.
+ACCESS_TABLES = ("devices", "recovery_codes", "passkeys", "signin_failures", "memberships", "share_links", "calendar_feeds")
+ACCESS_SETTINGS = ("_watch.receiver",)   # a profile's phone upload secret (watch_keys.KEY)
+ACCESS_META = ("require_2fa", "setup_code")   # the install's two-factor rule; first-time setup's code, while there's no account
+RETIRED = "watch_legacy_retired"   # the install's one phone secret, retired for good (watch_keys): kept retired either way
+
+
+def _pepper(con, schema):
+    """A database's pepper, opened (security.py): None if it has none, False if it can't be read. It's made once per
+    install and never changed, so two databases with the same one are the same install's."""
+    try:
+        r = con.execute(f"SELECT v FROM {schema}.meta WHERE k='pepper'").fetchone()
+        return crypto.dec(r[0]) if r and r[0] else None
+    except (sqlite3.Error, crypto.KeyError_, ValueError, TypeError):
+        return False
+
+
+def _columns(con, schema, table):
+    return [r[1] for r in con.execute(f'PRAGMA {schema}.table_info("{table}")')]
+
+
+def _copy(con, table, where="", columns=None):
+    """Today's rows of a table (now.<table>) into the restored database's, the columns both have."""
+    have = set(_columns(con, "now", table))
+    cols = ", ".join(f'"{c}"' for c in (columns or _columns(con, "main", table)) if c in have)
+    if cols:
+        con.execute(f'INSERT INTO main."{table}"({cols}) SELECT {cols} FROM now."{table}"{where}')
+
+
+def _keep_access(con, now_tables):
+    """Inside the restore's transaction, the restored database (main) given today's access (now): see above."""
+    # accounts by id and name (one id given again before schema version 39 is another account): gone since, they go,
+    # as a removed account does (its records kept, nameless); there both, as they are now; made since, added
+    con.execute("DELETE FROM main.users WHERE NOT EXISTS(SELECT 1 FROM now.users n WHERE n.id = users.id AND n.username = users.username)")
+    cols = [c for c in _columns(con, "main", "users") if c != "id" and c in set(_columns(con, "now", "users"))]
+    if cols:
+        con.execute("UPDATE main.users SET " + ", ".join(f'"{c}" = (SELECT n."{c}" FROM now.users n WHERE n.id = users.id)' for c in cols))
+    _copy(con, "users", " WHERE id NOT IN (SELECT id FROM main.users)")
+    profiles = " WHERE profile_id IN (SELECT id FROM main.profiles)"   # a profile made since isn't in the backup
+    for t in ACCESS_TABLES:
+        con.execute(f'DELETE FROM main."{t}"')
+        if t in now_tables:
+            _copy(con, t, profiles if "profile_id" in _columns(con, "main", t) else "")
+    keys = ", ".join("'" + k.replace("'", "''") + "'" for k in ACCESS_SETTINGS)   # (constants, above)
+    con.execute(f"DELETE FROM main.settings WHERE key IN ({keys}) AND user_id IS NULL")
+    if "settings" in now_tables:   # (its id left out: the restored database's own rows have theirs)
+        _copy(con, "settings", f"{profiles} AND key IN ({keys}) AND user_id IS NULL",
+              [c for c in _columns(con, "main", "settings") if c != "id"])
+    for k in ACCESS_META + ((RETIRED,) if con.execute("SELECT 1 FROM now.meta WHERE k=?", (RETIRED,)).fetchone() else ()):
+        con.execute("DELETE FROM main.meta WHERE k=?", (k,))
+        con.execute("INSERT INTO main.meta(k, v) SELECT k, v FROM now.meta WHERE k=?", (k,))
+    # ids never given again (#588): each count past the highest today's database gave, for records too
+    tables = {r[0] for r in con.execute("SELECT name FROM main.sqlite_master WHERE type='table'")}
+    seqs = con.execute("SELECT name, seq FROM now.sqlite_sequence").fetchall() if "sqlite_sequence" in now_tables else []
+    for name, seq in seqs:
+        if name in tables and not con.execute("UPDATE main.sqlite_sequence SET seq=MAX(seq, ?) WHERE name=?", (seq, name)).rowcount:
+            con.execute("INSERT INTO main.sqlite_sequence(name, seq) VALUES(?, ?)", (name, seq))
+
+
+def _ready(path, now_path):
+    """Make the backup's database at path (brought up to date already) the one to restore: today's access kept from the
+    database at now_path, or, with none there (disaster recovery) or one of another install (its pepper isn't the
+    backup's, so its accounts aren't this backup's), the backup's as it is; everyone signed out either way. Returns
+    what happened, for the restore to say: {"kept", "why" (None, "none" or "other"), "sessions" (ended), "back" ([[id,
+    name]]: profiles the backup has that today's database hasn't, deleted since, back with nobody's access), "gone" (
+    [[id, name]]: profiles made since, not in the backup)}."""
+    out = {"kept": False, "why": "none", "sessions": 0, "back": [], "gone": []}
+    con = sqlite3.connect(path, isolation_level=None)
+    try:
+        con.execute("PRAGMA foreign_keys=ON")
+        now_tables = set()
+        if now_path:
+            con.execute("ATTACH DATABASE ? AS now", (now_path,))
+            now_tables = {r[0] for r in con.execute("SELECT name FROM now.sqlite_master WHERE type='table'")}
+            pepper = _pepper(con, "main")
+            out["why"] = None if {"users", "meta"} <= now_tables and pepper is not False and _pepper(con, "now") == pepper else "other"
+        before = set(map(tuple, con.execute("PRAGMA main.foreign_key_check")))   # (one an old backup has already)
+        con.execute("BEGIN IMMEDIATE")
+        try:
+            if out["why"] is None:
+                _keep_access(con, now_tables)
+                out["kept"] = True
+                if "profiles" in now_tables:
+                    out["back"] = [list(r) for r in con.execute(
+                        "SELECT id, name FROM main.profiles WHERE id NOT IN (SELECT id FROM now.profiles) ORDER BY id")]
+                    out["gone"] = [list(r) for r in con.execute(
+                        "SELECT id, name FROM now.profiles WHERE id NOT IN (SELECT id FROM main.profiles) ORDER BY id")]
+            out["sessions"] = con.execute("DELETE FROM main.sessions").rowcount   # everyone signs in again
+            broken = sorted(set(map(tuple, con.execute("PRAGMA main.foreign_key_check"))) - before)
+            if broken:
+                raise BackupError(f"Keeping today's access would leave rows pointing at nothing ({broken[:3]}): nothing was "
+                                  "replaced.")
+            con.execute("COMMIT")
+        except BaseException:
+            con.execute("ROLLBACK")
+            raise
+        if now_path:
+            con.execute("DETACH DATABASE now")
+        con.execute("PRAGMA journal_mode=DELETE")   # one file, moved into place whole; the app makes it WAL again
+    finally:
+        con.close()
+    return out
+
+
 def restore(archive):
-    """Replace DATA_DIR's database, profiles and build with the archive's, and hand the receiver its data (#227).
-    Returns (manifest, where the old data went); manifest["watch_restored"] is {"folder", "staged"} when the backup
-    has the receiver's data (staged: in the receiver's keys/restore/, which it moves in when it next starts)."""
+    """Replace DATA_DIR's records (its database, profiles and build) with the archive's, keeping today's access (#917:
+    _ready), and hand the receiver its data (#227). The backup's database is made ready first, in the folder what it
+    replaces is moved to, so a failure there replaces nothing. Returns (manifest, where the old data went);
+    manifest["access"] is what _ready says; manifest["watch_restored"] is {"folder", "staged"} when the backup has the
+    receiver's data (staged: in the receiver's keys/restore/, which it moves in when it next starts)."""
     if _app_is_running():
         raise BackupError("The app is running. Stop it first (docker compose stop app, or stop the app in TrueNAS), "
                           "then restore with: docker compose run --rm --no-deps app python -m server.manage restore ...")
@@ -699,15 +813,29 @@ def restore(archive):
     while os.path.lexists(aside):   # a second restore in the same second (REPLACED's -1)
         aside += "-1"
     os.makedirs(aside)
+    live, ready = os.path.join(config.DATA_DIR, "sanguity.db"), os.path.join(aside, ".restoring.db")
+    try:   # the backup's database, brought up to date and given today's access, before anything is replaced
+        with tarfile.open(archive, "r:gz") as tar:
+            _extract(tar, tar.getmember("sanguity.db"), ready)
+        con = sqlite3.connect(ready, isolation_level=None)
+        try:
+            dbm.upgrade(con)   # an older backup's schema
+        finally:
+            con.close()
+        manifest["access"] = _ready(ready, live if os.path.isfile(live) else None)
+    except BaseException:
+        shutil.rmtree(aside, ignore_errors=True)
+        raise
     for n in ("sanguity.db", "sanguity.db-wal", "sanguity.db-shm", *CONTENTS):
         if os.path.exists(os.path.join(config.DATA_DIR, n)):
             shutil.move(os.path.join(config.DATA_DIR, n), os.path.join(aside, n))
     with tarfile.open(archive, "r:gz") as tar:
         for m in tar.getmembers():
-            if m.name == "manifest.json" or m.name.startswith(WATCH + "/"):
+            if m.name in ("manifest.json", "sanguity.db") or m.name.startswith(WATCH + "/"):
                 continue
             _extract(tar, m, os.path.join(config.DATA_DIR, *m.name.split("/")))
-    dbm.init()   # an older backup's schema is brought up to date
+    os.replace(ready, live)
+    dbm.init()
     if staged:   # complete: the receiver takes it when it next starts
         os.replace(watch, watch[:-len(".part")])
         watch = watch[:-len(".part")]
