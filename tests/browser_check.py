@@ -5952,6 +5952,39 @@ def main():
             settle(200)
             check("…and Shift+Tab up the list brings each row clear of its month's heading stuck over it, its ring too, as usual and with text at 200%, "
                   "at 360 and 412 px (#739)", n739 == 80 and not bad739, {k: v[:3] for k, v in bad739.items()})
+            # #976: …and a heading not stuck covers no ring either: a month's first row given focus had its ring's top under
+            # its heading (the ring 2 px outside the row, the heading painted over its 2 px), and its last row's ring's foot
+            # under the next month's heading. At 360, 412, 900 and 1400 px, as usual and with text at 200%, the first and the
+            # last row of three months given focus from the keyboard, each in the window's middle: the ring's top at or below
+            # its heading's foot, its foot at or above the next heading's top, and neither heading what's painted at its edge
+            RING976 = r"""async () => { const out = [], ms = [...document.querySelectorAll('#list .tl-month')].slice(0, 4);
+              for (const [i, m] of ms.slice(0, 3).entries()) for (const [which, r] of [['first', m.querySelector('.tl-row')], ['last', [...m.querySelectorAll('.tl-row')].at(-1)]]) {
+                r.scrollIntoView({block: 'center'}); r.focus();
+                await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
+                if (!r.matches(':focus-visible')) { out.push(`month ${i + 1}'s ${which} row: no ring`); continue; }
+                const c = getComputedStyle(r), b = r.getBoundingClientRect(), o = Math.max(0, parseFloat(c.outlineOffset) + parseFloat(c.outlineWidth)), top = b.top - o, foot = b.bottom + o;
+                const head = m.querySelector('.month').getBoundingClientRect(), next = ms[i + 1]?.querySelector('.month').getBoundingClientRect();
+                const over = y => !!document.elementFromPoint(b.left + b.width / 2, y)?.closest('.month');
+                if (top < head.bottom - .5 || over(top + .5)) out.push(`month ${i + 1}'s ${which} row: its ring's top ${(head.bottom - top).toFixed(1)} px under its heading`);
+                if (next && (foot > next.top + .5 || over(foot - .5))) out.push(`month ${i + 1}'s ${which} row: its ring's foot ${(foot - next.top).toFixed(1)} px under the next heading`);
+              }
+              return out; }"""
+            bad976 = {}
+            for w, h in ((360, 760), (412, 860), (900, 800), (1400, 900)):
+                page.set_viewport_size({"width": w, "height": h})
+                for big in (False, True):
+                    js(ADOPT_CSS_JS, BIG_TEXT_CSS if big else "")
+                    settle(300)
+                    page.keyboard.press("Tab")   # (from the keyboard)
+                    got976 = js(RING976)
+                    if got976:
+                        bad976[f"{w}{' 200%' if big else ''}"] = got976
+            js("() => { document.adoptedStyleSheets = []; document.activeElement.blur(); scrollTo(0, 0); }")
+            page.set_viewport_size(size_before)
+            settle(200)
+            check("…and a month's first and last rows given focus have their rings whole, clear of its heading and the next month's, the headings not "
+                  "stuck, as usual and with text at 200%, at 360, 412, 900 and 1400 px (#976: the heading covered the ring's top, and the next one its foot)",
+                  not bad976, bad976)
             tl_abn = js("""(() => { const days = [...document.querySelectorAll('#tl circle.ev')].filter(m => (m.dataset.g ? tlSvg._groups[+m.dataset.g].items : [byId.get(+m.dataset.id)]).some(e => e?.k === 'lab' && tlAbn(e)));   // (by the one rule, #782: the outside lab's 1.25 H stored no count)
                 const tri = [...document.querySelectorAll('#tl path.tl-abn')];
                 return {days: days.length, badges: tri.length, shapes: tri.every(p => (p.getAttribute('d').match(/L/g) || []).length === 2 && getComputedStyle(p).pointerEvents === 'none'),

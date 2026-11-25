@@ -604,6 +604,7 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 /* the Timeline list's row (timeline.js); its own class, so the pages' rows of buttons (.acct .row) aren't styled like it (#246) */
 .tl-row{position:relative;padding:var(--sp-2) var(--sp-2) var(--sp-2) calc(var(--sp-2) + 1em + var(--sp-2));cursor:pointer;border-radius:var(--r-sm);overflow-wrap:anywhere}
 .tl-row:hover,.tl-row.sel{background:var(--hover)}
+.tl-row:focus-visible{outline-offset:-2px}   /* its ring inside it: outside, a month's heading hid its top, the next month's its foot (#976) */
 .tl-row>.key{position:absolute;left:var(--sp-2);top:calc(var(--sp-2) + .3em)}   /* its kind's icon, in its lane's colour (#354) */
 .tl-row .t{margin-right:var(--sp-2);font-weight:var(--fw-medium)}
 .tl-row .k{display:inline-block;color:var(--muted);font-size:var(--fs-1);font-weight:var(--fw-medium)}   /* on the title's line, or whole on the next */
