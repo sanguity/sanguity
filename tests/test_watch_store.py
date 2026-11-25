@@ -145,8 +145,9 @@ class Store(unittest.TestCase):
     def test_days_typed_in_are_marked(self):
         """#783: a daily measure's days typed in on Sources (an import of origin "manual") are listed as its "typed", so
         a weight typed in is never judged as a scale's: rebuild marks them from the import's origin, and a merge keeps
-        the mark with the day's value (a later import's day, or the receiver's, takes it away). At start-up, a merged
-        file from before is marked, once."""
+        the mark with the day's value. #822: a day typed in is the one shown, over the receiver's of that day and a later
+        import's (the receiver's won, and a later import's took the mark away: the weight typed was shown nowhere). At
+        start-up, a merged file from before is marked, once."""
         def imp(origin, s):   # an import of its own, as jobs.py and routes_manual save one
             with dbm.transaction(self.db):
                 iid = records.store(self.db, pid, {"events": [], "labs": [], "details": {}, "costs": []}, origin, fmt=origin)
@@ -155,10 +156,12 @@ class Store(unittest.TestCase):
         pid = self.profile(watch_file=self.receiver_file(summary({"weight": {"2024-03-05": 180.0}})))
         imp("upload", summary({"weight": {"2024-03-01": 176.0, "2024-03-02": 176.2}}))
         imp("manual", summary({"weight": {"2024-03-02": 150.0, "2024-03-03": 151.0, "2024-03-05": 152.0}, "steps": {"2024-03-03": 4000}}))
-        self.assertEqual(pts(watch_store.load(self.db, pid), "weight"), {"2024-03-01": 176.0, "2024-03-02": 150.0, "2024-03-03": 151.0, "2024-03-05": 180.0})
-        self.assertEqual((typed(), typed("steps")), (["2024-03-02", "2024-03-03"], ["2024-03-03"]), "the receiver's day isn't typed in")
-        imp("upload", summary({"weight": {"2024-03-03": 177.0}}))
-        self.assertEqual(typed(), ["2024-03-02"], "a later import's day takes the mark away")
+        self.assertEqual(pts(watch_store.load(self.db, pid), "weight"), {"2024-03-01": 176.0, "2024-03-02": 150.0, "2024-03-03": 151.0, "2024-03-05": 152.0})
+        self.assertEqual((typed(), typed("steps")), (["2024-03-02", "2024-03-03", "2024-03-05"], ["2024-03-03"]), "over the receiver's day too")
+        imp("upload", summary({"weight": {"2024-03-03": 177.0, "2024-03-04": 177.2}}))
+        self.assertEqual(typed(), ["2024-03-02", "2024-03-03", "2024-03-05"], "a later import's day leaves a typed one")
+        self.assertEqual(pts(watch_store.load(self.db, pid), "weight"),
+                         {"2024-03-01": 176.0, "2024-03-02": 150.0, "2024-03-03": 151.0, "2024-03-04": 177.2, "2024-03-05": 152.0})
         # a merged file from before #783, its days not marked: at start-up they're marked, once
         side = watch_store.side_path(pid)
         old = watch_store._read(side)
@@ -167,7 +170,7 @@ class Store(unittest.TestCase):
         dbm.meta_set(self.db, watch_store.TYPED_MARKED, None)
         self.assertIsNone(typed())
         watch_store.migrate(self.db)
-        self.assertEqual((typed(), dbm.meta_get(self.db, watch_store.TYPED_MARKED)), (["2024-03-02"], "1"))
+        self.assertEqual((typed(), dbm.meta_get(self.db, watch_store.TYPED_MARKED)), (["2024-03-02", "2024-03-03", "2024-03-05"], "1"))
         watch_store._write(side, old)
         watch_store.migrate(self.db)
         self.assertIsNone(typed(), "once only")

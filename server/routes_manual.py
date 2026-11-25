@@ -42,7 +42,8 @@ documents and the uploads holding their files, and the watch data. Owners and ed
 main.guard covers the POST like every other change.
 
 Readings typed in at home (#224) are watch data too; one the phone or an earlier save has already is a duplicate, one
-typed again for its minute with other values says it replaces it. A height typed in goes into About this person's
+typed again for its minute with other values says it replaces it, as does a weight or a step count typed in for a day
+the profile has another for (#822: the phone's scale's, an export's, or one typed in before), which it's shown over. A height typed in goes into About this person's
 history (routes_person.apply, in the same transaction, logged as that setting's change), not the import: undo leaves
 it; a save of heights alone makes no import (import_id None). One dated before the birth date is refused here.
 """
@@ -300,8 +301,8 @@ def manual(pid: int, body: Rows, request: Request, s=Depends(user), db=Depends(g
     dups, dup_rows, found, copy_rows = _duplicates(db, pid, data, lab, got, origin, have_watch)
     seen = (dups, dict(found))   # asked again under the write lock before saving (#592)
     found.update(found_heights)
-    for n, note in manual_items.watch_replaces(have_watch, origin["watch"]).items():   # typed again, other values (#224)
-        next(r for r in recs if r["n"] == n)["notes"].append(note)
+    for n, notes in manual_items.watch_replaces(have_watch, origin["watch"]).items():   # typed again, other values (#224);
+        next(r for r in recs if r["n"] == n)["notes"].extend(notes)   # a weight or steps for a day there's one (#822)
 
     shown = [_describe(*x, matched, dup_rows.get(x[0], False), copy_rows.get(x[0])) for x in got]
     items = [_item(r, found.get(r["n"])) for r in recs]

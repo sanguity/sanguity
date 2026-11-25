@@ -17,6 +17,7 @@ Where it is kept, in the profile's own folder (so encryption at rest, deletion a
                                          profiles.watch_file is pointed at it (and back to none when nothing is left)
   <profile_dir>/watch/apple-health.json  the imports merged, for a profile that already reads another file (a
                                          receiver's), kept beside it and merged in when read, the receiver winning
+                                         (but over a day typed in, #822)
   <profile_dir>/watch/ecg/<16 hex>.json.gz  an imported ECG recording's samples (#182, server/ecg.py), one file per
                                          recording by its key (so the same recording in two exports is one file),
                                          read only when its drawer opens; rebuild removes those no import lists any more
@@ -26,7 +27,10 @@ The merged file is rebuilt (rebuild) from the imports' own files, legacy first a
 winning per day and workout as it did when it came in; only files whose import still exists count. All are sealed
 with the app's key (crypto.write_file). A daily measure's days typed in on Sources (weight or steps at home, an import
 of origin "manual") are listed as its "typed" (#783): rebuild marks them, and a merge keeps the mark with the day's
-value, so a weight typed in is never judged as a scale's (measures.scale_left_out) and is said as typed in.
+value, so a weight typed in is never judged as a scale's (measures.scale_left_out) and is said as typed in. A day
+typed in is the one shown, over the phone's (the receiver's file) or an export's of that day, whichever came first
+(#822: it was saved and shown nowhere), until another typed in replaces it or its save is undone; the save says what
+it replaces (manual_items.watch_replaces).
 """
 import json, os, secrets
 from datetime import datetime, timezone
@@ -86,7 +90,9 @@ def _by_start(x):
 
 def merge(low, high):
     """`high` laid over `low`: its points win per (metric key, day), with their mark of a day typed in (a metric's
-    "typed", #783), its workouts per key and then per start time. Either may be None. Top-level fields (updated, tz,
+    "typed", #783), but over a day typed in only another typed in (#822: a weight typed in on a day the phone's scale,
+    or an export, has one is the one shown, whichever came first, and undoing its save shows the scale's again), its
+    workouts per key and then per start time. Either may be None. Top-level fields (updated, tz,
     last_payload...) come from `high` where it has them, but for the lists of readings (READINGS), which keep both,
     `high`'s winning per minute, source and app (#224: a reading typed in again for its minute replaces the one
     before)."""
@@ -102,11 +108,12 @@ def merge(low, high):
                 metrics[k], typed[k] = {**{f: x for f, x in m.items() if f != "typed"}, "pts": {}}, set()
             else:
                 metrics[k].update({f: m[f] for f in ("name", "unit", "group") if f in m})   # high names win
-            metrics[k]["pts"].update((d, v) for d, v in m.get("pts") or [])
-            mine = set(m.get("typed") or ())   # a day typed in keeps its mark with its value; one laid over it, not (#783)
-            if mine or typed[k]:
-                for d, _ in m.get("pts") or []:
-                    (typed[k].add if d in mine else typed[k].discard)(d)
+            mine = set(m.get("typed") or ())   # a day typed in keeps its mark with its value (#783)
+            for d, v in m.get("pts") or []:
+                if d in typed[k] and d not in mine:   # typed in on Sources: the day's, over the phone's or an export's (#822)
+                    continue
+                metrics[k]["pts"][d] = v
+                (typed[k].add if d in mine else typed[k].discard)(d)
     out["metrics"] = [{**metrics[k], "pts": [[d, v] for d, v in sorted(metrics[k]["pts"].items())],
                        **({"typed": sorted(typed[k])} if typed[k] else {})} for k in order]
     hi = list(high.get("exercise") or [])
@@ -453,7 +460,7 @@ def exists(db, pid):
 
 def load(db, pid):
     """What the Health tab reads: the profile's watch file with any import kept beside it merged in (the watch
-    file winning), or None when there is neither."""
+    file winning, but over a day typed in on Sources, #822), or None when there is neither."""
     r = db.execute("SELECT watch_file FROM profiles WHERE id=?", (pid,)).fetchone()
     if r is None:
         return None

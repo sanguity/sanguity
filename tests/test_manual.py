@@ -685,6 +685,58 @@ class Manual(unittest.TestCase):
                          (phone["bp_readings"], phone["temp_readings"], None, None))
         self.assertEqual(len(self.person(pid)["heights"]), 1)
 
+    def test_a_weight_typed_on_a_day_the_phones_scale_has_is_shown_said_so(self):
+        """#822: a weight typed in for a day the phone's scale has one was saved, and shown nowhere: the receiver's file
+        won the merge, drawn, tabled and sent with the scale's, and the check line said nothing. Now the one typed is
+        the day's (and a step count's), the check line says what it replaces and that undoing the save brings it back,
+        whichever came first (an export of that day saved after it leaves it shown); typed again, the later; undone,
+        the scale's again."""
+        from server import measures, records, watch_store
+        phone = {"tz": "America/Chicago", "exercise": [], "metrics": [
+            {"key": "weight", "name": "Weight", "unit": "lb", "group": "Body", "pts": [["2026-10-20", 160.4], ["2026-10-21", 160.6]]},
+            {"key": "steps", "name": "Steps", "unit": "steps", "group": "Activity", "pts": [["2026-10-20", 6000]]}]}
+        pid = self.home_profile("scale day", phone)
+        day = lambda key, d: dict(map(tuple, next(m["pts"] for m in self.watch(pid)["metrics"] if m["key"] == key))).get(d)   # noqa: E731
+        typed = [{"kind": "home", "date": "2026-10-20", "weight": "175.0", "weight_unit": "lb", "steps": "7,000"},
+                 {"kind": "home", "date": "2026-10-22", "weight": "79.5", "weight_unit": "kg"}]   # a day the scale hasn't
+        j = self.items(typed, save=False, pid=pid).json()
+        self.assertEqual([(x["ok"], x["duplicate"], x["notes"]) for x in j["items"]], [
+            (True, False, ["replaces the smart scale's 160.4 lb for that day (undoing this save brings it back)",
+                           "replaces the phone's 6,000 steps for that day (undoing this save brings it back)"]), (True, False, [])])
+        r = self.items(typed, pid=pid)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual((day("weight", "2026-10-20"), day("steps", "2026-10-20"), day("weight", "2026-10-21"), day("weight", "2026-10-22")),
+                         (175.0, 7000, 160.6, 175.3), "the one typed shown on its day, the scale's on the others")
+        w = self.watch(pid)
+        self.assertEqual(next(m.get("typed") for m in w["metrics"] if m["key"] == "weight"), ["2026-10-20", "2026-10-22"])
+        db = dbm.connect()
+        try:   # what's sent and printed (the visit summary's, a share link's weights) is the same, said as typed in
+            weights = measures._weights(measures.context(db, pid, {}, {}))
+            # an Apple Health export of that day saved after it: the one typed is still the one shown
+            with dbm.transaction(db):
+                iid = records.store(db, pid, {"events": [], "labs": [], "details": {}, "costs": []}, "upload", fmt="apple-health")
+                watch_store.save_import(db, pid, {"metrics": [{"key": "weight", "name": "Weight", "unit": "lb", "group": "Body",
+                                                               "pts": [["2026-10-20", 161.0], ["2026-10-23", 161.2]]}], "exercise": []}, import_id=iid)
+        finally:
+            db.close()
+        self.assertEqual([(d, round(kg / 0.45359237, 1), where) for d, kg, where in weights],
+                         [("2026-10-20", 175.0, "typed in"), ("2026-10-21", 160.6, "smart scale"), ("2026-10-22", 175.3, "typed in")])
+        self.assertEqual((day("weight", "2026-10-20"), day("weight", "2026-10-23")), (175.0, 161.2))
+        # typed again for that day: the later, said so
+        again = [{"kind": "home", "date": "2026-10-20", "weight": "174.2", "weight_unit": "lb"}]
+        self.assertEqual(self.items(again, save=False, pid=pid).json()["items"][0]["notes"],
+                         ["replaces the weight typed in before for that day (175 lb) (undoing this save brings it back)"])
+        r2 = self.items(again, pid=pid)
+        self.assertEqual(r2.status_code, 200, r2.text)
+        self.assertEqual(day("weight", "2026-10-20"), 174.2)
+        # undone, newest first: the first typed, then the export's for that day (it came after the scale's), then the scale's
+        self.assertEqual(self.robin.post(f"/api/profiles/{pid}/imports/{r2.json()['import_id']}/undo", headers=H).status_code, 200)
+        self.assertEqual(day("weight", "2026-10-20"), 175.0)
+        self.assertEqual(self.robin.post(f"/api/profiles/{pid}/imports/{r.json()['import_id']}/undo", headers=H).status_code, 200)
+        self.assertEqual((day("weight", "2026-10-20"), day("steps", "2026-10-20"), day("weight", "2026-10-22")), (160.4, 6000, None),
+                         "the phone's file wins over an export, as before")
+        self.assertIsNone(next(m.get("typed") for m in self.watch(pid)["metrics"] if m["key"] == "weight"))
+
     def test_a_reading_typed_again_for_its_time_corrects_it(self):
         pid = self.home_profile("corrected")
         first = {"kind": "home_bp", "date": "2026-06-01", "time": "21:10", "sys": "141", "dia": "92"}
