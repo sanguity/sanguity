@@ -47,7 +47,7 @@ def _settings():
 
 SETTINGS = _settings()
 # passed whatever it is (#1007): the receiver's published port, which the app can't see, for the phone upload address
-ALWAYS_PASSED = set()
+ALWAYS_PASSED = {"RECEIVER_PORT"}
 
 
 def env_of(svc):
@@ -257,7 +257,11 @@ def truenas(want, lib_dir):
         check(f"truenas ({t}): the app gets a setting only when it was changed from its default", given == want_env,
               (given, want_env))
         ports = {p["published"] for s in rendered["services"].values() for p in s.get("ports", [])}
-        check("truenas: published on 8730 and 8731", ports == {8730, 8731}, ports)
+        want_ports = {tv["network"]["web_port"]["port_number"], tv["network"]["receiver_port"]["port_number"]}
+        check(f"truenas ({t}): published on its web and receiver ports", ports == want_ports, (ports, want_ports))
+        rx = {p["published"] for p in rendered["services"]["receiver"].get("ports", [])}
+        check(f"truenas ({t}): the app gets the receiver's published port, for the phone upload address (#1007)",
+              {int(app_env.get("RECEIVER_PORT", 0))} == rx, (app_env.get("RECEIVER_PORT"), rx))
 
 
 # ---------------------------------------------------------------- Unraid
@@ -296,6 +300,9 @@ def unraid(want):
             check(f"unraid: {t} is {'read-only' if ro else 'writable'}", (paths[t] == "ro") == ro, paths[t])
     ports = {int(c.get("Target")): int(c.get("Default")) for c in configs if c.get("Type") == "Port"}
     check("unraid: publishes the web app on 8730 and the receiver on 8731", ports == {8080: 8730, 8081: 8731}, ports)
+    rp = next((c for c in configs if c.get("Type") == "Variable" and c.get("Target") == "RECEIVER_PORT"), None)
+    check("unraid: the app gets the receiver's published port, the same default, for the phone upload address (#1007)",
+          rp is not None and rp.get("Default") == str(ports.get(8081)) and rp.get("Required") == "true", rp is not None and rp.attrib)
     variables = {c.get("Target") for c in configs if c.get("Type") == "Variable"}
     check("unraid: sets PUID, PGID and TZ", {"PUID", "PGID", "TZ"} <= variables, sorted(variables))
     filled = sorted(c.get("Target") for c in configs if c.get("Type") == "Variable" and c.get("Target") in SETTINGS - ALWAYS_PASSED
@@ -346,6 +353,9 @@ def casaos(want):
     ports = {str(p["published"]) if isinstance(p, dict) else str(p).split(":")[0]
              for s in compose["services"].values() for p in s.get("ports", [])}
     check("casaos: published on 8730 and 8731", ports == {"8730", "8731"}, ports)
+    rx = {str(p["published"]) if isinstance(p, dict) else str(p).split(":")[0] for p in compose["services"]["receiver"].get("ports", [])}
+    got = str(env_of(compose["services"]["app"]).get("RECEIVER_PORT"))
+    check("casaos: the app gets the receiver's published port, for the phone upload address (#1007)", {got} == rx, (got, rx))
     check("casaos: the receiver gets the time zone",
           compose["services"]["receiver"].get("environment", {}).get("TZ_DEFAULT") == "$TZ")
     given = sorted(k for s in compose["services"].values() for k in env_of(s) if k in SETTINGS - ALWAYS_PASSED)

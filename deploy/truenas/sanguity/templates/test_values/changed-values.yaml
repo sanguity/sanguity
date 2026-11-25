@@ -16,7 +16,7 @@ network:
     port_number: 8730
   receiver_port:
     bind_mode: published
-    port_number: 8731
+    port_number: 9731
 
 run_as:
   user: 568

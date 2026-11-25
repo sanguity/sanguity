@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from . import activity, calendar, config, db as dbm, security as sec
-from .main import _client_ip, get_db, need, user
+from .main import _client_ip, _request_host, get_db, need, user
 
 router = APIRouter()
 
@@ -26,7 +26,7 @@ def _base_url(request):
     address this request reached (uvicorn applies X-Forwarded-Proto from nginx)."""
     if (origins := config.setting("PUBLIC_ORIGINS")):
         return sorted(origins)[0]
-    host = request.headers.get("x-forwarded-host", "").split(",")[0].strip() or request.headers.get("host", "")
+    host = _request_host(request)
     return f"{request.url.scheme}://{host}" if host else str(request.base_url)
 
 

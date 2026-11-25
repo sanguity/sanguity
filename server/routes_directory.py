@@ -18,7 +18,7 @@ import ipaddress
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from . import config, directory
-from .main import user
+from .main import _request_host, user
 
 router = APIRouter()
 LIST_MAX = 60   # names and places shown for one entry
@@ -36,7 +36,7 @@ def _local(host):
 def return_addresses(request):
     seen = list(config.setting("PUBLIC_ORIGINS"))
     proto = (request.headers.get("x-forwarded-proto") or request.url.scheme).split(",")[0].strip().lower()
-    host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").split(",")[0].strip().lower()
+    host = _request_host(request).lower()
     here = f"{proto}://{host}" if host else None
     if here and here not in seen:
         seen.append(here)
