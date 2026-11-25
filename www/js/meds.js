@@ -279,7 +279,8 @@ function medReminderForm(m, r) {
     times.append(row); more.hidden = times.children.length >= 6; named();
     return input;
   };
-  const more = el("button", {class: "btn small mr-add", type: "button", text: "Add another time", onclick: () => addTime("").focus()});
+  // the time added said, in place of what was said last ("Time 2 removed; 1 time left" stayed, #867)
+  const more = el("button", {class: "btn small mr-add", type: "button", text: "Add another time", onclick: () => { addTime("").focus(); sayIn(msg, `Time ${times.children.length} added.`); }});
   const days = new Set(r ? r.days : MR_DAYS.map(d => d[0]));
   const dayBox = el("div", {class: "chips mr-days", role: "group", "aria-label": "Days of the week"}, ...MR_DAYS.map(([k, short, long]) => {
     const b = el("button", {type: "button", class: "toggle", "aria-pressed": days.has(k), "aria-label": long, text: short, onclick: () => {

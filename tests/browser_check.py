@@ -9249,6 +9249,11 @@ def main():
                       "nothing and said nothing)", one837[:3] == ["true", ["Remove time 1", "A reminder needs a time"], ["A reminder needs a time.", 1, "Remove time 1"]]
                       and "A reminder needs a time" in one837[3], one837)
                 page.click("#dbody button:text-is('Add another time')")
+                # #867: the time added is said in the form's status line, in place of the last ("1 time left" stayed)
+                add867 = js("[document.querySelector('#dbody .jform > .edit-msg').textContent, document.activeElement.getAttribute('aria-label'), "
+                            "[...document.querySelectorAll('#dbody .mr-time button')].map(b => b.getAttribute('aria-disabled'))]")
+                check("…Add another time says “Time 2 added.” in the form, in place of “1 time left”, focus on Time 2, neither Remove off (#867)",
+                      add867 == ["Time 2 added.", "Time 2", [None, None]], add867)
                 page.locator("#dbody .mr-time input >> nth=1").fill("20:00")
                 page.click("#dbody .mr-days button[aria-label=Saturday]")
                 page.click("#dbody .mr-days button[aria-label=Sunday]")
