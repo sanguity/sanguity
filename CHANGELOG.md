@@ -3656,6 +3656,10 @@ Everything on `main` so far; it becomes the first tagged release.
   calendar's and Find your provider's addresses take the host a reverse proxy says it served. TrueNAS passes its
   receiver port, CasaOS its fixed 8731, and Unraid has a second field for the same number (an Unraid template can't
   copy a port into a variable; change both together); the address takes X-Forwarded-Host as the others do.
+- **The Sync defaults' help names a place that sets the attachment ceiling** (#1008): it said
+  "SYNC_MAX_ATTACHMENT_MB in .env", which no compose file passed, so setting it there did nothing. Both compose files
+  pass it now (#999), the help says where it's set on TrueNAS and Unraid too, and the ceiling is read at each use; a
+  check keeps every variable a help or message sends someone to `.env` for one the compose files read.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

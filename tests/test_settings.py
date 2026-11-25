@@ -572,6 +572,31 @@ class Settings(unittest.TestCase):
             manage.run(["config", "reset", "SESSION_DAYS"])
         self.assertEqual(signed_in(), 200)
 
+    def test_every_variable_a_page_names_is_one_compose_reads(self):
+        """#1008: a variable a setting's help names (the Sync defaults' ceiling, SYNC_MAX_ATTACHMENT_MB), or any text the
+        app shows sends someone to .env for ("NAME in .env"), is one both compose files read from .env (${NAME:-...}):
+        the help said SYNC_MAX_ATTACHMENT_MB in .env, which no compose file passed, so setting it there did nothing."""
+        import glob, re
+        var = re.compile(r"\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b")
+        named = {}
+        for d in settings.SETTINGS.values():
+            for v in var.findall(d.public()["help"] or ""):
+                named[v] = f"{d.key}'s help"
+        for sid, _, help in settings.SECTIONS:
+            for v in var.findall(help or ""):
+                named[v] = f"section {sid}'s help"
+        for path in glob.glob(os.path.join(ROOT, "server", "*.py")) + glob.glob(os.path.join(ROOT, "www", "js", "*.js")) + glob.glob(os.path.join(ROOT, "www", "*.html")):
+            with open(path, encoding="utf-8") as f:
+                for m in re.finditer(r"\b([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)\b[^.\n]{0,12}\bin \.env\b", f.read()):
+                    named[m.group(1)] = os.path.relpath(path, ROOT)
+        self.assertIn("SYNC_MAX_ATTACHMENT_MB", named)
+        self.assertIn("SYNC_MAX_ATTACHMENT_MB", settings.SETTINGS["sync.attachMaxMB"].public()["help"])
+        for name in ("compose.yaml", "compose.release.yaml"):
+            with open(os.path.join(ROOT, name), encoding="utf-8") as f:
+                text = f.read()
+            missing = {v: where for v, where in named.items() if "${" + v + ":-" not in text}
+            self.assertEqual(missing, {}, f"named, but {name} doesn't read it from .env")
+
     def test_a_whole_value_saved_from_an_old_read_is_refused(self):   # #923
         """A list a page saves whole, sent with the value it read ("was", its version): refused (409) and left as it is
         when it's changed since, in another tab or by someone else, so that change isn't lost under it; saved when it
