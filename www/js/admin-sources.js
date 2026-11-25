@@ -274,7 +274,7 @@ $("#srcForm").onsubmit = async ev => {
    them (syncSave) or puts them back (syncDiscard). One saved as it's changed isn't counted while it's on its way,
    only once the server refuses it (held, #407). "set for this server" and Reset to defaults show only when one
    isn't Sanguity's own default, and a Reset has an Undo too. A connection can change its own on the Connected
-   sources page. */
+   sources page. Each change asks for the fresh check when the server does (#1006, admin.js fresh), in the card. */
 /* a whole number, on or off, some of a few choices (the install's sync.* settings, #101); each control has an id, for
    focus to come back to once the card is drawn again (a toast's Undo) */
 function numberEditor(value, changed, ro, setting) {
@@ -296,6 +296,13 @@ const SYNC_NOW = new Set(["toggle", "choices"]);   // saved as they're changed
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const syncList = labels => labels.map((l, i) => (i === 0 ? "" : i === labels.length - 1 ? " and " : ", ") + `“${l}”`).join("");
 let SYNC = [];   // the settings drawn: {st, dirty(), counts(), held, get(), put(value)}
+let SYNC_REAUTH = null;   // where the card asks for the fresh check (#1006): kept as the card is drawn again
+const syncReauth = () => SYNC_REAUTH || (SYNC_REAUTH = el("div", {id: "syncReauth", class: "reauth", hidden: true}));
+const syncFresh = async action => {   // focus back where it was once it's answered (it fell to the page with the form)
+  const had = document.activeElement?.id;
+  try { return await fresh(action, syncReauth()); }
+  finally { if (had && (!document.activeElement || document.activeElement === document.body)) document.getElementById(had)?.focus({preventScroll: true}); }
+};
 
 async function loadSync(note) {
   const box = $("#sec-sync");
@@ -330,7 +337,7 @@ function drawSync(sec, note, keep = []) {
   if (note) sayIn(msg, note, false, {say: false});
   card.replaceChildren(...present(
     el("div", {class: "set-hd"}, el("h2", {id: "sec-sync-hd", tabindex: -1, text: sec.title}), reset),
-    helpNodes(sec.help), msg,
+    helpNodes(sec.help), msg, syncReauth(),
     ...SYNC.map(e => e.node)));
   count();
   if (back && !card.contains(document.activeElement)) document.getElementById(back)?.focus({preventScroll: true});   // (a control saved as it's changed)
@@ -340,10 +347,12 @@ const syncSec = d => d.sections.find(s => s.id === "sync");
    changed elsewhere since (409, #923), this page's quick second tick going on from its first (#956) */
 async function syncPut(key, value, read) {
   const path = `settings/install/${encodeURIComponent(key)}`;
-  if (!Array.isArray(value)) return call(path, "PUT", {value});
-  const r = await saveWhole(path, value, read), j = await r.json().catch(() => ({}));
-  if (!r.ok) throw Object.assign(new Error(typeof j.detail === "string" ? j.detail : `${r.status} ${r.statusText}`), {status: r.status});
-  return j;
+  if (!Array.isArray(value)) return syncFresh(() => call(path, "PUT", {value}));
+  return syncFresh(async () => {
+    const r = await saveWhole(path, value, read), j = await r.json().catch(() => ({}));
+    if (!r.ok) throw Object.assign(new Error(typeof j.detail === "string" ? j.detail : `${r.status} ${r.statusText}`), {status: r.status, detail: j.detail});
+    return j;
+  });
 }
 /* an Undo: each setting put back as it was (was: [{key, label, value, wrote}]), only one still as written */
 async function syncUndo(was) {
@@ -386,7 +395,7 @@ async function syncSave(msg, had) {
   let last = null;
   for (const e of todo) {
     const value = e.get();
-    try { last = await call(`settings/install/${encodeURIComponent(e.st.key)}`, "PUT", {value}); }
+    try { last = await syncFresh(() => call(`settings/install/${encodeURIComponent(e.st.key)}`, "PUT", {value})); }
     catch (err) {
       sayIn(msg, (done.length ? `Saved ${syncList(done)}. ` : "") + `“${e.st.label}” isn't saved: ${err.message}`, true);
       if (last) drawSync(syncSec(last), "", SYNC.filter(x => x.dirty() && !done.includes(x.st.label)));
@@ -411,7 +420,7 @@ async function syncReset(sec) {
       message: "They go back to Sanguity's own, for every connection that doesn't set its own, and your changes not saved yet are lost."})) return;
   const was = sec.settings.filter(st => !same(st.value, st.default)).map(st => ({key: st.key, label: st.label, value: st.value, wrote: st.default}));
   let d;
-  try { d = await call("settings/install/reset", "POST", {section: "sync"}); }
+  try { d = await syncFresh(() => call("settings/install/reset", "POST", {section: "sync"})); }
   catch (e) { sayIn($("#sec-sync .set-msg"), e.message, true); return; }
   const said = "The sync defaults are back to Sanguity's own.";
   drawSync(syncSec(d), said);

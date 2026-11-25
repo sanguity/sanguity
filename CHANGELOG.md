@@ -3647,6 +3647,16 @@ Everything on `main` so far; it becomes the first tagged release.
   saved in the app, else the default, so a change applies at once (the journal photo and attachment limits too). The
   server's list of its settings says which the environment sets, naming the variable, and a change to one is
   refused. `deploy/check.py` checks every template, and the docker job that an install with no `.env` sets none.
+- **Every change to a server setting asks for the fresh check, the log has its old and new value, and the command
+  line can put one back** (#1006): turning on two-factor sign-in for everyone and the Sync defaults were changed
+  without the admin's fresh check, and the install's activity log named the setting but not what it was or became.
+  Each change to an install setting, its reset and the two-factor rule now asks for it (the password, a code or a
+  passkey within `REAUTH_MINUTES`), in the Sync defaults' card or above the switch, with focus back on the control
+  after; a change that changes nothing doesn't. Its log entry has the old and new value ("from on to off"), a
+  section's reset each setting's. `python -m server.manage config show` lists every server setting, its value and
+  where it comes from, and `config reset SETTING` or `--all` takes away what was saved in the app, which the running
+  app follows within seconds; `SANGUITY_SAVED_SETTINGS=off` in `.env` leaves everything saved in the app out until
+  it's taken out again, the way back in when a saved value locks everyone out (README, The server's settings).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
