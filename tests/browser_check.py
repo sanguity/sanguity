@@ -24981,6 +24981,28 @@ def main():
                   n597 >= 1 and ("your calendar feed," if n597 == 1 else f"your {n597} calendar feeds,") in line597
                   and line597.startswith("Changing it signs out your other devices and turns off") and "under Sharing, Calendar feed." in line597,
                   [n597, line597])
+            # ---- #962: …and that line is the password form's description, and Change password's, which a screen reader hears
+            # (nothing pointed to it); and its count is the one as focus comes into the form, not the page load's: a feed
+            # made after the page loaded (another tab's, made here through the API, on a profile with none of this
+            # account's) is said once focus comes back into the form, "your 2 calendar feeds", and once it's turned off
+            # it isn't, each time the line the form's and the button's description
+            STATE962 = """async n => { document.activeElement.blur(); document.getElementById('pwCur').focus();
+              for (let i = 0; i < 30 && ME.calendar_feeds !== n; i++) await new Promise(r => setTimeout(r, 100));
+              await new Promise(r => setTimeout(r, 100)); const l = document.getElementById('pwFeeds'); return [ME.calendar_feeds, l.hidden ? '' : l.textContent]; }"""
+            pid962 = js("""async () => { for (const p of (await (await api('me')).json()).profiles) if (!(await (await api(`profiles/${p.id}/calendar`)).json()).mine) return p.id; return null; }""")
+            said962, line962 = [], {}
+            for step962, n962 in (("as loaded", n597), ("a feed made since", n597 + 1), ("that feed turned off", n597)):
+                if step962 == "a feed made since":
+                    js("p => api(`profiles/${p}/calendar`, {method: 'POST', body: JSON.stringify({tz: 'UTC'})}).then(r => r.status)", pid962)
+                elif step962 == "that feed turned off":
+                    js("p => api(`profiles/${p}/calendar`, {method: 'DELETE'}).then(r => r.status)", pid962)
+                got962 = js(STATE962, n962)
+                line962[step962] = got962[1]
+                said962.append([step962, got962[0], got962[1][:60], ax_said(page, "#pwForm button[type=submit]")[1] == got962[1], ax_said(page, "#pwForm")[1] == got962[1]])
+            check("#962: …that line is the password form's description, and Change password's (nothing pointed to it), and it says the feeds there are as "
+                  "focus comes into the form: one made since the page loaded counted, and gone once it's turned off (it said the page load's count)",
+                  pid962 and [s_[1] for s_ in said962] == [n597, n597 + 1, n597] and all(s_[3] and s_[4] for s_ in said962)
+                  and f"your {n597 + 1} calendar feeds," in line962["a feed made since"] and line962["that feed turned off"] == line962["as loaded"] != "", said962)
             # #544: Password's replies (the current one wrong, the new ones not matching, too short, changed) in sight with
             # Change password, clear of a phone's tabs, at 375×667 and 844×390, focus kept on Repeat new password where
             # Enter was pressed (they were under the tabs, or below the screen). "Wrong" and "changed" are answered here:
@@ -26534,10 +26556,13 @@ def main():
                   all(v[0] == [] and v[1] <= 0 and v[2] <= 2 and v[3] == 6 and v[4] == 1 and v[5] >= 7 for v in fit519.values()), fit519)
             pk502, said590 = [], []
             # #597: a passkey's removal ends the account's calendar feeds too, said in its question with how many (one made
-            # here if there's none)
+            # here if there's none), and (#962) as many as there are as it asks: one more made after the page loaded, as
+            # another tab would, not told to the page (it said the page load's count)
             if not pk.evaluate("api('me').then(r => r.json()).then(j => j.calendar_feeds)"):
                 pk.evaluate("api('profiles/1/calendar', {method: 'POST', body: JSON.stringify({tz: 'UTC'})}).then(r => r.status)")
-            feeds597 = pk.evaluate("api('me').then(r => r.json()).then(j => ME.calendar_feeds = j.calendar_feeds)")
+            pk.evaluate("""async () => { for (const p of (await (await api('me')).json()).profiles) if (!(await (await api(`profiles/${p.id}/calendar`)).json()).mine)
+              return api(`profiles/${p.id}/calendar`, {method: 'POST', body: JSON.stringify({tz: 'UTC'})}).then(r => r.status); }""")
+            feeds597 = pk.evaluate("api('me').then(r => r.json()).then(j => j.calendar_feeds)")
             for n in ("Old key 502", "Old phone 502"):
                 pk.locator("#pkList tbody tr").nth(pk.evaluate(f"{pk_names}.indexOf('{n}')")).get_by_role("button", name="Remove").click()
                 if not said590:   # #590: it asks for your password, with Show and focus on it, and says other devices are signed out
@@ -26555,7 +26580,8 @@ def main():
                   len(pk_left) == 1 and pk502 == [["Remove", "Old phone 502", True], ["Remove", pk_left[0], True]], [pk502, pk_left])
             check("…(#590) Remove asks for your password, focus on it, with Show, and says every other device is signed out (it asked neither)",
                   said590[:3] == [True, "Show password", True] and "Every other device signed in to your account is signed out." in said590[3], said590)
-            check("…(#597) and that your calendar feeds are turned off too, with how many, which they are once it's removed",
+            check("…(#597) and that your calendar feeds are turned off too, with how many as it asks (#962: one made since the page loaded too), which "
+                  "they are once it's removed",
                   feeds597 >= 1 and ("Your calendar feed is turned off too" if feeds597 == 1 else f"Your {feeds597} calendar feeds are turned off too") in said590[3]
                   and pk.evaluate("api('me').then(r => r.json()).then(j => j.calendar_feeds)") == 0, [feeds597, said590[3:]])
             # #524: Enter in a passkey's name renames it, as its Rename does, and Remove then asks about the new name (it

@@ -37,13 +37,14 @@
     <!-- a setting row (#286, app.css .set-row): its name on the left, the control on the right, under the card's head (#494) -->
     <div class="set-row">
       <div class="set-row-lbl"><p class="set-row-name">Change your password</p></div>
-      <div class="set-row-ctl"><form id="pwForm" class="form">
+      <div class="set-row-ctl"><form id="pwForm" class="form" aria-describedby="pwFeeds">
         <label>Current password <input type="password" id="pwCur" autocomplete="current-password" required></label>
         <label>New password <input type="password" id="pwNew" autocomplete="new-password" required></label>
         <label>Repeat new password <input type="password" id="pwNew2" autocomplete="new-password" required></label>
-        <!-- what changing it ends besides other devices' sign-ins, said beforehand (#597, account.js) -->
+        <!-- what changing it ends besides other devices' sign-ins, said beforehand (#597, account.js): the form's
+             description and its button's, heard there (#962) -->
         <p class="howto" id="pwFeeds" hidden></p>
-        <div class="row"><button class="btn primary" type="submit">Change password</button><span class="msg" id="pwMsg" role="status"></span></div>
+        <div class="row"><button class="btn primary" type="submit" aria-describedby="pwFeeds">Change password</button><span class="msg" id="pwMsg" role="status"></span></div>
       </form></div>
     </div>
   </section>

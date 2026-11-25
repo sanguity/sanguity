@@ -2369,6 +2369,11 @@ Everything on `main` so far; it becomes the first tagged release.
   copied, or a lost phone's calendar app, kept getting updates. Both end them now. Change password says beforehand how
   many it will turn off, and so does Remove passkey's question; each says after that they went and where to make new
   ones (Sharing, Calendar feed). Turning off your own authenticator app keeps them, as before.
+- **Change password's word about your calendar feeds is read with it, and counts them as you get there** (#962): the
+  line saying how many feeds a password change turns off wasn't tied to the form, so a screen reader reaching Change
+  password heard nothing of it, and it counted the feeds as the page loaded, so one made or turned off since, in
+  another tab, went unsaid or was still said. It's now the form's and its button's description, counted again as you
+  come into the form; Remove passkey's question counts them as it asks too.
 - **Two moods for one day saved at once save one** (#925): the journal checked that a day had no mood yet before
   taking the write, so two saved at the same moment (a double tap, or two people) both saved, and then neither could
   be changed ("There's a mood entry for that day already"). Now the check is made inside the write, the second is
