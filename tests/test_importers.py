@@ -331,6 +331,7 @@ class Common(unittest.TestCase):
         ("importers/apple_health.py", "_number", 'float("inf")'): "infinity, to leave it out",
         ("fhir_export.py", "adj", "float(amount or 0)"): "a claim's amount as stored, a number (_claims.money)",
         ("fhir_export.py", "_claims", "float(paid or 0)"): "a claim's amount as stored, a number (_claims.money)",
+        ("fhir_export.py", "_apart", 'float("inf")'): "infinity, for a time that can't be read: never the nearest",
         ("crossmatch.py", "_value", "Decimal(str(x))"): "a value value_number read (or its number as imported), as a decimal",
         ("crossmatch.py", "_carry", "Decimal(str(x))"): "a range's limit as stored, a number, changed by an exact factor",
         ("crossmatch.py", "_carry", "float(Decimal(str(x)) * f)"): "a range's limit as stored, a number, changed by an exact factor",

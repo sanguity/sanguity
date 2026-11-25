@@ -2202,6 +2202,10 @@ Everything on `main` so far; it becomes the first tagged release.
   Labs and no word at the upload, as was a result given as words ("Yellow"). Each is now a lab of its own name, with its
   range, flag and source, offered at the review for matching to a lab you have, as the FHIR, C-CDA and spreadsheet
   importers do; a value that isn't a number is that lab's text result.
+- **Export as FHIR writes each of a C-CDA organizer's results once** (#876): where a panel's results had times of their
+  own (08:30, 08:45, 09:10), the export looked for a report's results only at its lab event's time, so each later one
+  went out twice, as the report's row at the panel's time, without its range, and as the result at its own time, and
+  came back as two. Each result now goes out once, in its report, at its own time.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

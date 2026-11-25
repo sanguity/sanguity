@@ -362,6 +362,38 @@ class FhirExport(unittest.TestCase):
         self.assertEqual([rows.get(name(i)) for i in range(len(cases))], want, "each row's flag back, by the one rule")
         profiles.delete_profile(self.db, pid)
 
+    def test_an_organizers_results_at_their_own_times_go_out_once(self):
+        """#876: a C-CDA organizer's results each at their own time (08:30, 08:45 and 09:10, the organizer's lab event at
+        the first): the export found a report's rows' results only at its event's minute, so the two later went out
+        twice, as the report's row at 08:30 (no range, the row's text alone) and as their result at its own time, and
+        came back as two results each. Now a row's result is found on its event's day too, in the same import, and goes
+        out once, at its own time, in its report; read back, the same results, rows and lab day."""
+        from server.importers import ccda
+        import ranges_matrix as M
+        rows = [("ALT", "U/L", "2026-10-01T08:30:00", "41", "7-35"), ("AST", "U/L", "2026-10-01T08:45:00", "30", "8-33"),
+                ("Glucose", "mg/dL", "2026-10-01T09:10:00", "99", "70-99"), ("Albumin", "g/dL", "2026-10-01T09:10:00", "4.4", "3.5-5.0")]
+        d = tempfile.mkdtemp(dir=TMP)
+        with open(os.path.join(d, "organizer.xml"), "w", encoding="utf-8") as f:
+            f.write(M.ccda(rows))
+        data = ccda.parse(importers.files_in(d))["data"]
+        self.assertEqual([(e["k"], e["t"]) for e in data["events"] if e["k"] == "labitem"], [("labitem", "2026-10-01T08:30:00")])
+        pid = profiles.create_profile(self.db, "Organizer (fictional)", owner_id=self.uids["robin"])
+        with dbm.transaction(self.db):
+            records.store(self.db, pid, data, "upload", fmt="ccda")
+        blob = self.export(pid, {"labs"})
+        obs = [e["resource"] for e in self.bundle(blob)[0]["entry"] if e["resource"]["resourceType"] == "Observation"]
+        said = sorted((o["code"]["text"], o["effectiveDateTime"][:19]) for o in obs)
+        self.assertEqual(said, [("ALT", "2026-10-01T08:30:00"), ("AST", "2026-10-01T08:45:00"), ("Albumin", "2026-10-01T09:10:00"),
+                                ("Glucose", "2026-10-01T09:10:00")], "each result once, at its own time")
+        report = next(e["resource"] for e in self.bundle(blob)[0]["entry"] if e["resource"]["resourceType"] == "DiagnosticReport")
+        self.assertEqual(len(report["result"]), 4, "each in its report")
+        have, _, got = self.round_trip(pid, blob)
+        want, back = project(have), project(got["data"])
+        for kind in ("point", "labitem", "labday"):
+            with self.subTest(kind=kind):
+                self.assertEqual(back.get(kind), want.get(kind))
+        profiles.delete_profile(self.db, pid)
+
     # ---------------------------------------------------------------- the bundle itself
     def test_valid_against_the_fhir_r4_schema(self):
         bundle, _, _ = self.bundle(self.export(cycle=True))

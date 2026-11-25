@@ -452,15 +452,25 @@ def _vital_profile(loinc, value):
 # ---------------------------------------------------------------- the records
 
 def _series_index(data):
-    """Each lab series' points by their minute: to find a report's results in them."""
-    by = {}
+    """Each lab series' points by their minute, and by their day: to find a report's results in them."""
+    by, days = {}, {}
     for s in data.get("labs") or []:
         if not isinstance(s, dict):
             continue
         for i, p in enumerate(s.get("pts") or []):
             if isinstance(p, list) and len(p) >= 2:
                 by.setdefault(str(p[0])[:16], []).append((s, i))
-    return by
+                days.setdefault(str(p[0])[:10], []).append((s, i))
+    return by, days
+
+
+def _apart(a, b):
+    """How far apart two times are, in seconds (as written, their offsets aside: one day's), for the nearest."""
+    try:
+        x, y = (datetime.datetime.fromisoformat(str(t)[:19]) for t in (a, b))
+    except ValueError:
+        return float("inf")
+    return abs((x - y).total_seconds())
 
 
 def _named(series, name):
@@ -495,7 +505,7 @@ def _lab_obs(b, key, name, loinc, t, rep, num, unit, lo, hi, rtext, flag, vital,
 def _labs(b, data, used):
     """DiagnosticReports for the lab reports, their results as Observations; then every lab series' point that no
     report holds, and the clinic weights."""
-    series, row_number = _series_index(data), _row_number(data)
+    (series, by_day), row_number = _series_index(data), _row_number(data)
     details = data.get("details") or {}
     for e in data.get("events") or []:
         d = details.get(str(e.get("id")))
@@ -512,15 +522,23 @@ def _labs(b, data, used):
             row = (row + [""] * 5)[:5]
             name = _text(row[0]) or "Result"
             same = lambda s, p: str(p[5] if len(p) > 5 else "") == str(row[1]) or _num(row[1]) == p[1]
-            at = series.get(str(e.get("t"))[:16], [])
-            hit = next(((s, i) for s, i in at if (id(s), i) not in used and same(s, s["pts"][i]) and str(s.get("name") or "").strip().lower()
-                        == name.lower()), None) or next(((s, i) for s, i in at if (id(s), i) not in used and same(s, s["pts"][i])
-                                                          and _named(s, name)), None)
+
+            def find(at):
+                return next(((s, i) for s, i in at if (id(s), i) not in used and same(s, s["pts"][i]) and str(s.get("name") or "").strip().lower()
+                             == name.lower()), None) or next(((s, i) for s, i in at if (id(s), i) not in used and same(s, s["pts"][i])
+                                                              and _named(s, name)), None)
+            # at its event's minute; else on its event's day, of its own import, the nearest (#876: a C-CDA organizer's
+            # results at their own times, the organizer's lab event at the first, went out twice: as the row at the
+            # event's time and as the result at its own)
+            hit = find(series.get(str(e.get("t"))[:16], [])) or find(sorted(
+                ((s, i) for s, i in by_day.get(str(e.get("t"))[:10], []) if e.get("imp") is None or s.get("imp") in (None, e.get("imp"))),
+                key=lambda x: _apart(x[0]["pts"][x[1]][0], e.get("t"))))
             s, p = (hit[0], hit[0]["pts"][hit[1]]) if hit else (None, None)
             if hit:
                 used.add((id(s), hit[1]))
             num = p[1] if p else row_number(str(e.get("t"))[:16], name, row[1])   # the number it was imported as (#870)
-            o = _lab_obs(b, (b.keyed(e), "row", n), name, _loinc(s, name), t, row[1], num, row[2] or (s or {}).get("unit"),
+            # at its result's own time where it has one, as the importers read an Observation's (the report's is the event's)
+            o = _lab_obs(b, (b.keyed(e), "row", n), name, _loinc(s, name), b.t(p[0]) or t if p else t, row[1], num, row[2] or (s or {}).get("unit"),
                          p[2] if p and len(p) > 2 else None, p[3] if p and len(p) > 3 else None, row[3], row[4], False,
                          [x for x in (lab,) if x], d.get("status"), _edge(p), imported=p is not None)
             results.append(o)
