@@ -51,7 +51,7 @@ function profileDelete(p) {
     action: "Delete it and everything in it",
     run: async typed => {
       const r = await call(`profiles/${p.id}`, "DELETE", {confirm_name: typed});
-      try { if (localStorage.getItem("ht-profile") === String(p.id)) localStorage.removeItem("ht-profile"); } catch (e) {}
+      forgetProfiles(id => id === p.id);   // what this browser kept of it (pwa.js, #936)
       toast(`Deleted “${p.name}”.` + (r && r.unlinked_build ? " Its records came from the setup build, which won't be loaded into a profile again unless an admin asks for it." : ""));
       await profileGone();
     }}).node;

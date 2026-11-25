@@ -3397,6 +3397,10 @@ Everything on `main` so far; it becomes the first tagged release.
   hidden report's results are on no lab draw, still in Labs, its charts, share links and the visit summary; a draw
   whose every report is hidden is hidden too, and hiding a draw hides its reports. The ⋯ menu's item for a draw or a
   report reads "Hide (results stay in Labs)", and the edit says so.
+- **A deleted profile's saved page state leaves the browser with it** (#936): deleting a profile removed only this
+  browser's note of the last profile picked; its records page view (the lab names picked on Labs among it) and Body
+  and activity's options stayed until sign-out, there and in other members' browsers. They go on its Delete, and in
+  any browser as soon as a page loads and the profile is no longer among the person's.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

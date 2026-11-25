@@ -25072,12 +25072,19 @@ def main():
             check("…and the server refuses a delete whose name doesn't match", refused == 400 and js("fetch('api/profiles/2/data').then(r => r.status)") != 404, refused)
             problems[refused_from:] = [x for x in problems[refused_from:] if "400" not in x]   # that refusal was the point
             second.get_by_label("Type Second person to confirm").fill("Second person")
+            keys936 = ["ht-state:2", "ht-health:2", "ht-glucose:2"]   # what this browser keeps of profile 2 (#936)
+            js("ks => ks.forEach(k => localStorage.setItem(k, JSON.stringify({sel: ['Ferritin'], stays: true, v: 2})))", keys936)
             go.click()
             page.wait_for_function("![...document.querySelectorAll('#profile option')].some(o => o.textContent.includes('Second person')) && "
                                    "[...document.querySelectorAll('#sgToasts .sg-toast-text')].some(t => t.textContent.startsWith('Deleted “Second person”.'))", timeout=10000)
             check("…and another profile is shown after it", js("document.getElementById('profile').value") != "2")
+            left936 = js("ks => ks.filter(k => localStorage.getItem(k) !== null)", keys936)
+            check("…and what this browser kept of it goes with it: its view with the lab names picked, Body and activity's options (#936)",
+                  left936 == [], left936)
             settle(300)
             check("…with focus on the page's heading, in sight (#417)", (js(IN_SIGHT) or [0, 0])[1] == "groupTitle", js(IN_SIGHT))
+            mine936 = js("localStorage.getItem('ht-state:1')")
+            js(f"localStorage.setItem('ht-state:{third}', JSON.stringify({{sel: ['Ferritin'], v: 2}}))")   # deleted elsewhere, as by another member
             js(f"api('profiles/{third}', {{method: 'DELETE', body: JSON.stringify({{confirm_name: 'Third person, renamed'}})}}).then(r => r.status)")
             js("localStorage.setItem('ht-profile', '1')")
             gone_from = len(problems)
@@ -25089,6 +25096,13 @@ def main():
             db.execute("UPDATE sessions SET verified_at=0")
             page.goto(base + "/admin.html#accounts")
             page.wait_for_function("document.querySelector('#userList').textContent.includes('alex')", timeout=10000)
+            try:   # (#936) the next page loaded hears which profiles are the person's: the deleted one's state goes
+                page.wait_for_function(f"localStorage.getItem('ht-state:{third}') === null", timeout=5000)
+            except Exception:
+                pass
+            left936 = [js(f"localStorage.getItem('ht-state:{third}')"), js("localStorage.getItem('ht-state:1')") == mine936]
+            check("…and one deleted elsewhere: the next page it loads forgets its view here, and keeps the others' (#936)",
+                  left936 == [None, True], left936)
             before = len(problems)
             alex_row = lambda: page.locator("#userList tr", has_text="alex")  # noqa: E731
             def alex_do(item):   # each change is in the row's ⋯ menu now (#287)
