@@ -271,6 +271,18 @@ def drop(db, pid, import_ids):
         _bump(db, pid)
 
 
+VER = "ver"   # (#955) which version of its record an event or a list's entry is (its server, its lastUpdated, the date
+             # of the upload it came in): kept for the import's preview, never served (an export keeps it: raw)
+
+
+def _unversioned(meta):
+    """An import's meta without its lists' entries' VER (the problem list's, upcoming visits'...), one level down as
+    preview._meta_lists reads them."""
+    def strip(v):
+        return [{k: y for k, y in x.items() if k != VER} if isinstance(x, dict) else x for x in v] if isinstance(v, list) else v
+    return {k: ({k2: strip(v2) for k2, v2 in v.items()} if isinstance(v, dict) else strip(v)) for k, v in meta.items()}
+
+
 def _merge(into, meta):
     for k, v in meta.items():
         have = into.get(k)
@@ -350,11 +362,11 @@ def _assemble(db, pid, raw=False):
             meta.pop(k, None)
         pays = (meta.get("outOfPocket") or {}).get("payments") if isinstance(meta.get("outOfPocket"), dict) else None
         pay_imps += [r["id"]] * (len(pays) if isinstance(pays, list) else 0)   # which import each payment came from (#55)
-        _merge(out, meta)
+        _merge(out, meta if raw else _unversioned(meta))
     out["imports"] = {str(r["id"]): _source(r) for r in imps}
     events, details = [], {}
     for r in db.execute("SELECT id, import_id, body, detail, cost, cost_seq FROM events WHERE profile_id=? ORDER BY id", (pid,)):
-        events.append({"id": r["id"], **_dec(r["body"]), "imp": r["import_id"]})
+        events.append({"id": r["id"], **{k: v for k, v in _dec(r["body"]).items() if raw or k != VER}, "imp": r["import_id"]})
         if r["detail"] is not None:
             details[str(r["id"])] = _dec(r["detail"])
         if r["cost"] is not None:

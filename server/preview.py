@@ -54,6 +54,7 @@ One rule for a result already here (#868), an upload's, a sync's and Type them i
   change(db, pid, iid, data, dups, stored) -> how many records here it updated (#920), once import iid is saved
 """
 import collections, copy, json, re
+from datetime import datetime, timezone
 
 from . import crossmatch, ranges, records
 from .importers import common
@@ -230,7 +231,7 @@ def find(db, pid, fmt, data, whole=None):
     dups = {"events": dup, "points": points, "txt": txt, "series": empty, "meta": meta, "copies": copies, "brings": brings}
     _same_records(db, pid, data, dups, {i: o for i, o in olds.items() if isinstance(o, tuple) and o[1]}, whole)
     _settle(data, dups, set())
-    dups["changed"] = _changed(db, pid, data, dups, old_meta)
+    dups["changed"] = _changed(db, pid, data, dups)
     return dups
 
 
@@ -239,42 +240,185 @@ def _comparable(d):
     return {k: v for k, v in d.items() if k not in ("url", "ids")} if isinstance(d, dict) else d
 
 
-def _changed(db, pid, data, dups, old_meta):
+VER = records.VER   # (#955) which version of its record an event or a list's entry is: {"server", "at", "of"}
+EMPTY = (None, "", [], {})
+FLAGS = ("abn", "hidden")   # an event's marks whose absence says no (a claim no longer denied), not a field left out
+PLAIN_FHIR = re.compile(r"fhir:[A-Za-z]+/[^|?#]+$")   # a FHIR resource's plain id: one server's, not every server's
+DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _bare(body):
+    """An event's body or a list's entry as compared for a change: not its id, import or version (#955)."""
+    return {k: v for k, v in body.items() if k not in ("id", "imp", VER)} if isinstance(body, dict) else body
+
+
+def _kept(here, sent, flags=()):
+    """(#955) What its source sends of a record now, with what's here of each field it leaves out or sends empty: a
+    smaller export of the same portal (a visit without the Practitioner and Location it names) wiped a visit's who,
+    where and diagnosis to "". flags: fields whose absence says no, taken as sent."""
+    if not isinstance(sent, dict):
+        return here if sent in EMPTY else sent
+    out = dict(sent)
+    for k, v in (here.items() if isinstance(here, dict) else ()):
+        if k not in flags and out.get(k) in EMPTY and v not in EMPTY:
+            out[k] = v
+    return out
+
+
+def _server(x):
+    return str(x or "").strip().rstrip("/").lower()
+
+
+def _same_source(key, sent, here, base=None, sent_d=None, here_d=None):
+    """(#955) Whether a record here and the upload's under its key are one record of one source: a FHIR resource's
+    plain id ("fhir:<type>/<id>", which another portal's resource can have too) on the same server (its VER's, else the
+    server of the connection that pulled the one here: base), never where either's is unknown; a claim of the same
+    insurer. Two portals' exports with the same plain ids put clinic B's medication and problem in place of hospital
+    A's."""
+    if PLAIN_FHIR.match(str(key).split("#", 1)[0]):
+        a, b = _server((sent.get(VER) or {}).get("server")), _server((here.get(VER) or {}).get("server") or base)
+        if not a or a != b:
+            return False
+    if isinstance(sent_d, dict) and isinstance(here_d, dict) and sent_d.get("insurer") and here_d.get("insurer"):
+        return str(sent_d["insurer"]).strip().lower() == str(here_d["insurer"]).strip().lower()
+    return True
+
+
+def _before(a, b):
+    """Whether time a is before time b (ISO, a date or an instant: by the day where either is a date)."""
+    a, b = str(a), str(b)
+    if len(a) > 10 and len(b) > 10:
+        try:
+            x, y = (datetime.fromisoformat(v.replace("Z", "+00:00")) for v in (a, b))
+            return (x if x.tzinfo else x.replace(tzinfo=timezone.utc)) < (y if y.tzinfo else y.replace(tzinfo=timezone.utc))
+        except ValueError:
+            pass
+    return a[:10] < b[:10]
+
+
+def _older(sent, here):
+    """(#955) Whether the upload's version of a record is older than the one here: by their lastUpdated where both
+    say it (VER "at"), else by the dates of the uploads they came in ("of": what the upload says of its own date, a
+    FHIR bundle's timestamp, else the latest date it holds, _own_date). November's export, then March's, put back the
+    medication stopped since and the problem resolved since. Where neither tells, not older."""
+    a, b = sent.get(VER) or {}, here.get(VER) or {}
+    for f in ("at", "of"):
+        if a.get(f) and b.get(f):
+            return _before(a[f], b[f])
+    return False
+
+
+def _own_date(data):
+    """(#955) An upload's own date where it doesn't say one: the latest date it holds (its events' and results'), as
+    an export made later holds later records. None where it holds none."""
+    days = [str(x)[:10] for e in data.get("events") or [] if isinstance(e, dict) for x in (e.get("t"), e.get("end")) if x]
+    days += [str(p[0])[:10] for s in data.get("labs") or [] if isinstance(s, dict) for p in s.get("pts") or [] if isinstance(p, list) and p and p[0]]
+    days = [d for d in days if DAY.match(d)]
+    return max(days) if days else None
+
+
+def _versioned(x, own):
+    """A record of the upload (an event's body, a list's entry) with its VER's "of", the upload's own date, where its
+    importer gave none (_own_date): so a later upload can tell whether it's older (_older)."""
+    v = x.get(VER) if isinstance(x.get(VER), dict) else {}
+    return {**x, VER: {**v, "of": own}} if own and not v.get("of") else x
+
+
+def _said(v):
+    """A field's value as the review says it: text as it is, a number without a trailing .0, a list of words joined."""
+    if v is None:
+        return ""
+    if isinstance(v, bool):
+        return "yes" if v else "no"
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    if isinstance(v, (int, float, str)):
+        return str(v)[:120]
+    if isinstance(v, list) and all(isinstance(y, (str, int, float)) for y in v):
+        return ", ".join(map(str, v))[:120]
+    return "…"
+
+
+def _what(pairs):
+    """(#955) What a change changes, for the review: [[field, before, after]] of each field that differs, its details'
+    first, then the event's own, then its Costs row's (never its key, version, file or list of lab events; its subtitle
+    only where nothing else differs, as it's made of the rest). pairs: [(here, as it'd be)]."""
+    out, sub = [], None
+    for old, new in pairs:
+        old, new = old if isinstance(old, dict) else {}, new if isinstance(new, dict) else {}
+        for k in list(new) + [k for k in old if k not in new]:
+            if k in ("id", "imp", "key", VER, "url", "ids", "src", "seq") or _canon(old.get(k)) == _canon(new.get(k)):
+                continue
+            w = [k, _said(old.get(k)), _said(new.get(k))]
+            if k == "sub":
+                sub = w
+            elif w not in out:
+                out.append(w)
+    return (out or ([sub] if sub else []))[:8]
+
+
+def _changed(db, pid, data, dups):
     """(#920) The upload's records already here (by their source key: find()'s duplicates) that their source sends again
-    saying something else: {"events": {event id}, "meta": {path: {index}}}. An event whose key names its record
-    (_record_key: never a day's, nor a hash of its content, which a change makes another), not a lab day's or a lab
-    event's (their results and rows have their own rule, #869), whose body, details or Costs row differ from the one here;
-    an entry of the profile-wide lists (the problem list, upcoming visits) with another one under its key."""
+    saying something else: {"events": {event id}, "meta": {path: {index}}, "rows": {event id: [(the record here's id,
+    its body, details and Costs row as they'd be, what changes)]}, "entries": {(path, index): (the import whose entry
+    it is, its key, the entry as it'd be, what changes)}}. An event whose key names its record (_record_key: never a
+    day's, nor a hash of its content, which a change makes another), not a lab day's or a lab event's (their results
+    and rows have their own rule, #869), whose body, details or Costs row differ from the one here; an entry of the
+    profile-wide lists (the problem list, upcoming visits) with another one under its key.
+
+    (#955) Only from the same source (_same_source: a FHIR resource's plain id on the same server, never another
+    portal's with the same id), never from an older version (_older), and never emptying a field the upload leaves out
+    or sends empty (_kept): what it would be, kept from what's here, is what's compared with what's here. Each says
+    what it changes (_what), for the review to name, with a tick to leave it out (keep(): its "x:" ref)."""
     events = {str(e["id"]): e for e in data.get("events") or [] if isinstance(e, dict) and "id" in e}
     details = {str(k): d for k, d in (data.get("details") or {}).items()}
     costs = {str(c["id"]): c for c in data.get("costs") or [] if isinstance(c, dict) and c.get("id") is not None}
+    own = _own_date(data)
     keyed = {i: events[i]["key"] for i in dups["events"] if i in events and _record_key(events[i].get("key"))
              and events[i].get("k") not in ("lab", "labitem")}
+    bases = {r[0]: r[1] for r in db.execute("""SELECT i.id, c.fhir_base FROM imports i JOIN connections c ON c.id = i.connection_id
+                                               WHERE i.profile_id=?""", (pid,))}   # (a connection's records: its server)
     hashes = records.key_hashes(db, keyed.values())
     here = collections.defaultdict(list)
     for h in records._chunks(sorted(set(hashes.values()))):
-        q = f"SELECT id, key_hash, body, detail, cost FROM events WHERE profile_id=? AND key_hash IN ({','.join('?' * len(h))})"
+        q = f"SELECT id, import_id, key_hash, body, detail, cost FROM events WHERE profile_id=? AND key_hash IN ({','.join('?' * len(h))})"
         for r in db.execute(q, (pid, *h)):
             here[r["key_hash"]].append(r)
-    out = set()
+    out, rows = set(), {}
     for i, k in keyed.items():
-        body = {x: v for x, v in events[i].items() if x not in ("id", "imp")}
+        body = _versioned({x: v for x, v in events[i].items() if x not in ("id", "imp")}, own)
         for r in here.get(hashes[k]) or []:
+            old_b, old_d = records._dec(r["body"]) or {}, records._dec(r["detail"])
             old_c = records._dec(r["cost"]) if r["cost"] is not None else None
-            cost = {**costs[i], "id": r["id"]} if i in costs else old_c   # a Costs row the new one lacks stays
-            if (_canon(records._dec(r["body"])), _canon(_comparable(records._dec(r["detail"]))), _canon(old_c)) != \
-                    (_canon(body), _canon(_comparable(details.get(i))), _canon(cost)):
+            if not _same_source(k, body, old_b, bases.get(r["import_id"]), details.get(i), old_d) or _older(body, old_b):
+                continue
+            b, d = _kept(old_b, body, FLAGS), _kept(old_d, details.get(i))
+            c = _kept(old_c, {**costs[i], "id": r["id"]}) if i in costs else old_c   # a Costs row the new one lacks stays
+            if (_canon(_bare(old_b)), _canon(_comparable(old_d)), _canon(old_c)) != (_canon(_bare(b)), _canon(_comparable(d)), _canon(c)):
                 out.add(i)
-                break
-    have = {(path, x["key"]): x for path, items in old_meta.items() for x in items
-            if isinstance(x, dict) and _record_key(x.get("key"))}
-    meta = {}
+                rows.setdefault(i, []).append((r["id"], b, d, c, _what([(_comparable(old_d), _comparable(d)), (old_b, b), (old_c, c)])))
+    have = collections.defaultdict(list)   # (path, key) -> [(import id, its entry, its connection's server)], the latest first
+    for r in db.execute("SELECT id, meta FROM imports WHERE profile_id=? ORDER BY id DESC", (pid,)):
+        for path, items in _meta_lists(records._dec(r["meta"]) or {}).items():
+            for x in items:
+                if isinstance(x, dict) and _record_key(x.get("key")):
+                    have[(path, x["key"])].append((r["id"], x, bases.get(r["id"])))
+    meta, entries = {}, {}
     for path, items in _meta_lists(data).items():
-        ns = {n for n in dups["meta"].get(path, ()) if n < len(items) and isinstance(items[n], dict)
-              and (path, items[n].get("key")) in have and _canon(have[(path, items[n]["key"])]) != _canon(items[n])}
-        if ns:
-            meta[path] = ns
-    return {"events": out, "meta": meta}
+        for n in sorted(dups["meta"].get(path, ())):
+            x = items[n] if n < len(items) and isinstance(items[n], dict) else None
+            if x is None:
+                continue
+            sent = _versioned(x, own)
+            for target, old, base in have.get((path, x.get("key"))) or []:
+                if not _same_source(x["key"], sent, old, base) or _older(sent, old):
+                    continue
+                now = _kept(old, sent)
+                if _canon(_bare(old)) != _canon(_bare(now)):
+                    meta.setdefault(path, set()).add(n)
+                    entries[(path, n)] = (target, x["key"], now, _what([(old, now)]))
+                break   # (the latest of its source's)
+    return {"events": out, "meta": meta, "rows": rows, "entries": entries}
 
 
 # a source key scoped to a day (docs/importers.md, "Source keys": "<NAME>:labitem:<YYYY-MM-DD>", with "|<org>" or a
@@ -502,9 +646,20 @@ def _settle_labdays(data, dups, kept):
 
 
 def keep(data, dups, refs):
-    """dups less the duplicates chosen to save anyway: refs "e:<event id>" and "s:<series index>"."""
+    """dups less the duplicates chosen to save anyway: refs "e:<event id>" and "s:<series index>"; and less the
+    changes ticked to leave out (#955): refs "x:<event id>" and "x:<path>#<index>" (an entry of a list), each record
+    here kept as it is, a duplicate."""
     dups = copy.deepcopy(dups)
     refs = {str(r) for r in refs or ()}
+    c = dups.get("changed") or {}
+    for r in refs:
+        if r.startswith("x:") and "#" in r and r.rsplit("#", 1)[1].isdigit():
+            path, n = r[2:].rsplit("#", 1)
+            (c.get("meta") or {}).get(path, set()).discard(int(n))
+            (c.get("entries") or {}).pop((path, int(n)), None)
+        elif r.startswith("x:"):
+            (c.get("events") or set()).discard(r[2:])
+            (c.get("rows") or {}).pop(r[2:], None)
     days = _labdays(data)
     kept = {r[2:] for r in refs if r.startswith("e:")}
     for day, ids in days.items():
@@ -583,6 +738,12 @@ def trim(data, dups):
         name = sub or top
         if isinstance(holder, dict) and isinstance(holder.get(name), list):
             holder[name] = [x for n, x in enumerate(holder[name]) if n not in drop]
+    # (#955) each record saved says the date of the upload it came in where its importer says none (VER's "of")
+    own = _own_date(data)
+    mine = lambda x: isinstance(x, dict) and _record_key(x.get("key")) and x.get("k") not in ("lab", "labitem")   # noqa: E731
+    out["events"] = [_versioned(e, own) if mine(e) else e for e in out["events"]]
+    for items in _meta_lists(out).values():
+        items[:] = [_versioned(x, own) if mine(x) else x for x in items]
     return out
 
 
@@ -684,11 +845,19 @@ def report(data, dups, summarise):
     # (#920) what's updated in place, by kind: "1 medication and 1 problem already here ... updated"
     said = collections.Counter(str(events[i].get("k")) for i in changed["events"] if i in events)
     said.update(listed(path, lists[path][n]) for path, ns in changed["meta"].items() for n in ns)
+    # (#955) and each by name, with what it changes and its ref to leave it out ("x:"), as here it reads
+    named = [{"ref": "x:" + i, "kind": str(events[i].get("k")), "t": str(events[i].get("t") or "")[:10],
+              "title": str(events[i].get("title") or ""),
+              "what": [w for row in (changed.get("rows") or {}).get(i) or [] for w in row[4]][:8]}
+             for i in sorted(changed["events"], key=lambda i: (str(events[i].get("t") or ""), i)) if i in events]
+    named += [{"ref": f"x:{path}#{n}", "kind": listed(path, lists[path][n]), "t": str(lists[path][n].get("date") or lists[path][n].get("t") or "")[:10],
+               "title": str(lists[path][n].get("name") or lists[path][n].get("title") or ""), "what": (changed.get("entries") or {}).get((path, n), (0, 0, 0, []))[3]}
+              for path, ns in sorted(changed["meta"].items()) for n in sorted(ns) if n < len(lists.get(path, []))]
     items.sort(key=lambda x: (x["t"], x["title"]))
     out["duplicates"] = {"events": sum(kinds.values()), "kinds": dict(sorted(kinds.items())), "results": results,
                          "other": sum(len(v) for v in dups["meta"].values()) - sum(len(v) for v in changed["meta"].values()),
                          # (#920) records here their source sends again saying something else, updated in place
-                         "changed": {"n": sum(said.values()), "kinds": dict(sorted(said.items()))},
+                         "changed": {"n": sum(said.values()), "kinds": dict(sorted(said.items())), "items": named[:ITEMS_SHOWN]},
                          "items": items[:ITEMS_SHOWN], "more": max(0, len(items) - ITEMS_SHOWN),
                          # (#846) results already here, added with what this upload's report says of them, which the review says,
                          # and what each brings (#868: its report's range, its flag, or its own lab day's row)
@@ -714,20 +883,35 @@ def changes(dups):
 
 def change(db, pid, iid, data, dups, stored):
     """Save find()'s "changed" (#920), once import iid is saved: each record here that its source sent again saying
-    something else takes what it says now, its body, details and Costs row (sync._update_in_place, a document's file
-    kept by stored(url) as an upload's are), or its entry of a list (sync._apply_meta), with what each was kept
-    (sync_changes) so undoing import iid puts it back (sync.unapply), as a sync's changes are.
-    -> how many records here it updated"""
-    from . import sync   # (it imports this module)
-    c = dups.get("changed") or {}
-    ids, lists = c.get("events") or set(), _meta_lists(data)
-    events = [e for e in data.get("events") or [] if isinstance(e, dict) and str(e.get("id")) in ids]
-    details = {str(k): d for k, d in (data.get("details") or {}).items()}
-    costs = {str(x["id"]): x for x in data.get("costs") or [] if isinstance(x, dict) and x.get("id") is not None}
-    n = sync._update_in_place(db, pid, iid, events, details, stored, costs) if events else 0
-    want = {(path, lists[path][k].get("key")) for path, ks in (c.get("meta") or {}).items() for k in ks}
-    if want:
-        n += sync._apply_meta(db, iid, [x for x in sync._meta_changes(db, pid, data) if (x[1], x[2]) in want])
+    something else takes what it says now (#955: what _changed worked out, a field the upload leaves out kept as it
+    is here), its body, details and Costs row (a document's file kept by stored(url), as an upload's are), or its entry
+    of a list (sync._apply_meta), with what each was kept (sync_changes) so undoing import iid puts it back
+    (sync.unapply), as a sync's changes are. -> how many records here it updated"""
+    from . import profiles as prof, sync   # (they import this module)
+    c, n = dups.get("changed") or {}, 0
+    for i in sorted(c.get("events") or ()):
+        for rid, body, d, cost, _ in (c.get("rows") or {}).get(i) or []:
+            r = db.execute("SELECT id, body, detail, cost FROM events WHERE id=? AND profile_id=?", (rid, pid)).fetchone()
+            if r is None:
+                continue
+            old_b, old_d = records._dec(r["body"]), records._dec(r["detail"])
+            old_c = records._dec(r["cost"]) if r["cost"] is not None else None
+            sent = d
+            d = sync._file_url(old_d, d)   # (the file it points at stays the one here)
+            if isinstance(d, dict) and d.get("type") == "file" and not d.get("url") and isinstance(sent, dict) and sent.get("url"):
+                one = {"x": dict(sent)}
+                keep_docs, _ = prof.index_documents(db, pid, one, stored)
+                prof.link_documents(db, iid, keep_docs)
+                d = one["x"]
+            db.execute("INSERT INTO sync_changes(import_id, event_id, previous) VALUES(?, ?, ?)",
+                       (iid, rid, records._enc({"body": old_b, "detail": old_d, "cost": old_c})))
+            db.execute("UPDATE events SET body=?, detail=?, cost=?, cost_seq=IFNULL(cost_seq, 0) WHERE id=?",
+                       (records._enc(body), None if d is None else records._enc(d), None if cost is None else records._enc(cost), rid))
+            n += 1
+    entries = [(target, path, key, entry) for (path, k), (target, key, entry, _) in sorted((c.get("entries") or {}).items())
+               if k in (c.get("meta") or {}).get(path, ())]
+    if entries:
+        n += sync._apply_meta(db, iid, entries)
     if n:
         records._bump(db, pid)
     return n

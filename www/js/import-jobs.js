@@ -283,9 +283,32 @@
     return node("p", {class: "hint imp-updates", text: `${cap(said.length > 1 ? said.slice(0, -1).join(", ") + " and " + said.at(-1) : said[0])} ` +
       `already here from the same source ${n === 1 ? "is" : "are"} updated with what this file says of ${n === 1 ? "it" : "them"} now, not added again.`});
   };
-  // what saving it only updates (#869 results, #920 records), in the button's words: "Update 4 lab results", "Update 3 records"
-  const updateWords = j => { const r = updatesHere(j), n = r + changedHere(j);
+  // what saving it only updates (#869 results, #920 records, less those ticked to leave out: left, #955), in the button's
+  // words: "Update 4 lab results", "Update 3 records"
+  const updateWords = (j, left = 0) => { const r = updatesHere(j), n = r + changedHere(j) - left;
     return n ? "Update " + plural(n, n === r ? ["lab result", "lab results"] : ["record", "records"]) : null; };
+  /* (#955) each record here this file updates in place, by name, with what it changes (the server's changed.items:
+     [field, as it is, as it'd be]), and a box to leave it as it is ("x:" refs, sent with the duplicates kept) */
+  const FIELD = {title: "name", sub: "summary", t: "date", end: "end", date: "date", status: "status", who: "who", where: "where",
+    dx: "diagnosis", instructions: "instructions", billed: "billed", paid: "plan paid", owe: "you owe", note: "note"};
+  const fieldSaid = (f, v) => !v ? "none" : ["t", "end", "date"].includes(f) && /^\d{4}-\d{2}-\d{2}/.test(v) ? day(v.slice(0, 10)) : v;
+  function changeChoices(j) {
+    const items = ((j.duplicates || {}).changed || {}).items || [], boxes = new Map();
+    const part = items.length ? node("details", {class: "imp-changes", open: ""},
+      node("summary", {text: `Updated from this file: ${plural(items.length, ["record", "records"])}, unless ticked`}),
+      node("p", {class: "hint", text: "Each is updated with what this file says of it now; what it leaves out stays as it is. Tick any to leave it as it is."}),
+      node("ul", {}, items.map(it => {
+        const b = node("input", {type: "checkbox", value: it.ref});
+        boxes.set(it, b);
+        const kind = (KIND[it.kind] || LISTED[it.kind] || [it.kind])[0];
+        const what = (it.what || []).map(([f, was, now]) => `${FIELD[f] || f.replace(/_/g, " ")}: ${fieldSaid(f, was)} → ${fieldSaid(f, now)}`).join("; ");
+        return node("li", {}, node("label", {}, b, " ", node("span", {class: "d"}, it.t ? keepDates(day(it.t)) : "Undated"), " ",
+          `${kind}: ${it.title}`, what ? ` · ${what}` : ""));
+      }))) : null;
+    const picked = () => items.filter(it => boxes.get(it)?.checked).map(it => it.ref);
+    const tick = refs => { for (const [it, b] of boxes) if (refs.includes(it.ref)) b.checked = true; };
+    return {part, picked, tick};
+  }
   // what saving it does, in the button's words: "update" where it updates results here and adds nothing ("Update 4 lab
   // results", #869), else "add" (it said "until you add it with the button" beside "Update 4 lab results")
   const saveVerb = j => !j.restores && !addWords(j.counts || {}) && updateWords(j) ? `update the ${changedHere(j) ? "records" : "results"}` : "add it";
@@ -431,9 +454,9 @@
       let shown = null;   // the choices drawn: kept when it's drawn again (#497)
       function draw(j, again) {
         const range = j.range ? (j.range.from === j.range.to ? day(j.range.from) : `${day(j.range.from)} – ${day(j.range.to)}`) : "";
-        const labs = labTable(j), same = sameChoices(j), dups = dupChoices(j);
-        if (shown) { labs.put(shown.labs.kept()); dups.tick(shown.dups.kept()); same.tick(shown.same.picked()); }
-        shown = {labs, same, dups};
+        const labs = labTable(j), same = sameChoices(j), dups = dupChoices(j), changes = changeChoices(j);
+        if (shown) { labs.put(shown.labs.kept()); dups.tick(shown.dups.kept()); same.tick(shown.same.picked()); changes.tick(shown.changes.picked()); }
+        shown = {labs, same, dups, changes};
         const msg = node("span", {class: "msg", role: "status"});
         const add = node("button", {class: "btn primary", type: "button"});
         const cancel = node("button", {class: "btn", type: "button", text: "Cancel"});
@@ -446,12 +469,13 @@
             else c.kinds[it.kind] = (c.kinds[it.kind] || 0) + 1;
           }
           // (#589: its journal... only; #869: results here updated in place, only)
-          const w = addWords(c) || (j.restores ? "Add from the export" : updateWords(j));
+          const w = addWords(c) || (j.restores ? "Add from the export" : updateWords(j, changes.picked().length));
           add.textContent = w || "Nothing to add";
           add.disabled = !w;
         };
         words();
         if (dups.part) dups.part.addEventListener("change", words);
+        if (changes.part) changes.part.addEventListener("change", words);   // (#955: a change left out)
         const say = t => { msg.textContent = t; };
         const busy = on => { cancel.disabled = on; if (on) add.disabled = true; else words(); };
         // the card while it's saved, until it says it's saved (poll, showDone)
@@ -489,7 +513,7 @@
           if (bad) { say("A lab name has a series that isn't there: pick one from its list, or leave it empty."); bad.focus(); return; }
           f.held = card.contains(document.activeElement);
           busy(true); say("Adding…");
-          const ok = await act("confirm", {keep: dups.picked(), labs: labs.picked(), same: same.picked()});
+          const ok = await act("confirm", {keep: [...dups.picked(), ...changes.picked()], labs: labs.picked(), same: same.picked()});
           if (ok === null) return;
           if (!ok) { busy(false); back(add); return; }
           saving();
@@ -509,7 +533,7 @@
           node("p", {class: "hint", text: j.new ? `Nothing is saved until you ${saveVerb(j)} with the button at the foot.`
             : sgNothing(j) ? "Nothing in this upload is left to add to this profile. Cancel it to remove the upload."
             : "Everything in this upload is in this profile already. Tick a duplicate to add it again anyway, or cancel."}),
-          j.new ? tiles(j) : null, restoredLine(j.restores, false), split(j), labs.part, same.part, dups.part, copiesLine(j), updatesLine(j), changedLine(j), notes(j),
+          j.new ? tiles(j) : null, restoredLine(j.restores, false), split(j), labs.part, same.part, dups.part, copiesLine(j), updatesLine(j), changedLine(j), changes.part, notes(j),
           node("div", {class: "sg-bar imp-actions", role: "region", "aria-label": "Add or cancel this import"},
             node("span", {class: "sg-bar-what"}, node("span", {class: "sg-bar-n", text: "Not saved yet"}), msg),
             node("span", {class: "sg-bar-acts"}, cancel, add)));
