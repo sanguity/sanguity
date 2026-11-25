@@ -1363,6 +1363,30 @@ class Backups(unittest.TestCase):
             self.assertEqual(sorted(os.listdir(folder)), ["sanguity.db"], "nothing left in the data folder")
             self.assertEqual(os.listdir(keys), [], "nothing staged for the receiver")
 
+    def test_18_a_backup_made_without_the_key(self):   # #959
+        """server.manage backup with the encryption key missing (a cron line without the key file): the backup is written
+        with its files as they are, its row counts left out, as they can't be sealed (#935), and it says so; Check a
+        backup, with the key, then says the counts aren't there."""
+        saved, dest, out = (config.KEY_FILE, crypto.keyring.path), os.path.join(TMP, "backups-959"), io.StringIO()
+        config.KEY_FILE = crypto.keyring.path = os.path.join(TMP, "keys", "no-such-key")
+        crypto.keyring.reset()
+        try:
+            with contextlib.redirect_stdout(out):
+                manage.run(["backup", dest])
+        finally:
+            config.KEY_FILE, crypto.keyring.path = saved
+            crypto.keyring.reset()
+        [path] = backup.list_backups(dest)
+        m = backup.verify(path)
+        self.assertIn("counts", m)
+        self.assertIsNone(m["counts"])
+        self.assertTrue(out.getvalue().startswith("Backup written"), out.getvalue())
+        self.assertIn("without its row counts", out.getvalue())
+        got = backup.check(path)
+        self.assertFalse(got["ok"], got)
+        self.assertTrue(any("doesn't say how many rows its database had" in p for p in got["problems"]), got["problems"])
+        self.assertTrue(backup.check(backup.create(os.path.join(TMP, "backups-959b")))["ok"], "with the key, as before")
+
 
     # ---------------------------------------------------------------- what a restore replaced (#595)
 

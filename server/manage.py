@@ -122,6 +122,10 @@ def _backup_command(cmd, args):
             dest = next((a for a in args if not a.startswith("--") and a != str(keep)), None)
             path = backup.create(dest, keep)
             print(f"Backup written: {path}")
+            if backup.verify(path).get("counts", 0) is None:   # (#959)
+                print(f"It was written without its row counts: the encryption key at {config.KEY_FILE} couldn't be read, "
+                      "and they're sealed with it. Its files are all in it as they are, but Check a backup will say the "
+                      "counts can't be compared. Put the key file in place (or set SANGUITY_KEY_FILE) for the next backup.")
         elif cmd == "verify" and args:
             m = backup.verify(args[0])
             print(f"OK: backup from {m['created']}, {len(m['files'])} files, database schema {m['schema']}.")

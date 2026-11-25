@@ -3323,6 +3323,10 @@ Everything on `main` so far; it becomes the first tagged release.
   by hand. Now a database that can't be read is taken as none: the restore goes ahead with the backup's access, says
   so, and keeps the damaged file with what it replaced; and the phone data is handed over only once the restore will
   go ahead, so one that fails leaves none of it.
+- **A backup made without the encryption key is written, and says what it lacks** (#959): since #935 sealed a
+  backup's row counts with the key, `server.manage backup` run where the key file can't be read (a cron job without
+  it mounted) ended in a raw error and wrote nothing. It now writes the backup, its files as they are, without the row
+  counts, and says so and how to fix it; **Check a backup** says the counts weren't written and can't be compared.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

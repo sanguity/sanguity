@@ -126,8 +126,14 @@ def _tables(con):
 
 def _seal_counts(counts):
     """{table: rows} as a manifest keeps them (#935): sealed with the data key, so the plain manifest.json names no
-    table (a phone database's would say whose profile keeps cycle records or a dose log)."""
-    return crypto.enc(json.dumps(counts, separators=(",", ":"), sort_keys=True))
+    table (a phone database's would say whose profile keeps cycle records or a dose log). None when the key can't be
+    read (#959: a backup run where the key file isn't): the backup is still made, its files as they are, without
+    them, and Check a backup says so."""
+    try:
+        return crypto.enc(json.dumps(counts, separators=(",", ":"), sort_keys=True))
+    except crypto.KeyError_ as e:
+        log.warning("backup: its row counts are left out: %s", e)
+        return None
 
 
 def counts_of(v):
@@ -1171,6 +1177,10 @@ def check(archive, progress=None):
         except (crypto.KeyError_, ValueError, TypeError):
             return bad("The backup's manifest says how many rows its database had, but this install's key can't read it.")
         out["counts"] = {t: {"backup": n, "expected": (expected or {}).get(t)} for t, n in got.items()}
+        if expected is None and "counts" in manifest:   # left out, the key not there to seal them (#959); a backup from
+            # before #200 has no "counts" at all
+            bad("The backup's manifest doesn't say how many rows its database had: the encryption key couldn't be read "
+                "when it was made, so they were left out and can't be compared. Make a backup with the key in place.")
         if expected is not None:
             for t in sorted(set(got) | set(expected)):
                 if got.get(t) != expected.get(t):
