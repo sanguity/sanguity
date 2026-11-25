@@ -1751,6 +1751,10 @@ Everything on `main` so far; it becomes the first tagged release.
   column and the visit summary's trends drew their latest result's dot in the app's ink, 1.18:1 against the system's
   background, so the dot was lost; their line was 2.84:1 and a red ▲ 2.46:1 with the system light. A sparkline's
   line, latest dot and ▲ or ▼ are in the system's text colour now, on the Overview's tiles too.
+- **Everything Body and activity draws in ink is readable in forced colours against the opposite theme** (#975):
+  past its target (#729), the tab kept the app's ink for the steps' average line (1.18:1 against the system's
+  background), the day's heart rate, clinic and meter readings, a target's band, BMI's categories, the stays, the
+  dots' rims, a child's growth curves and their legend keys. They're all in the system's colours now, both ways.
 - **A chart's value axis says each gridline's number as it is** (#654): Body and activity rounded its gridlines'
   labels to whole numbers, so where the gridlines were 2.5 apart Steps said "3k" and "8k" for 2,500 and 7,500, Weight
   "177" for both 176.5 and 177 lb, and blood oxygen "93%" for 92.5%; Costs' running totals said "$3K" for $2,500, and

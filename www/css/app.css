@@ -2257,6 +2257,8 @@ th>.cell-btn{font-weight:inherit;white-space:nowrap}
 .h-secbar{margin:0 0 var(--sp-2)}
 .h-sec>h2{margin:var(--sp-5) 0 var(--sp-3)}
 .h-sec .tile .delta{min-height:2lh}   /* a delta that wraps in one font only moves nothing (#329), as in one row of all */
+/* forced colours miss SVG: its marks in the app's ink in the system's (#975: 1.18:1, the theme opposite) */
+@media (forced-colors:active){ #view-health{--ink:CanvasText;--ink2:CanvasText;--muted:CanvasText;--surface:Canvas;--stay:color-mix(in srgb,CanvasText 7%,transparent)} }
 
 /* ---- menstrual cycle tracking, opt-in (#183, cycle.js and sources-cycle.js): its own colour (--c-cycle in
    tokens.css), the lane's and charts' marks (their shapes: util.js KIND_SHAPE), and the Sources card's lists */
@@ -2345,7 +2347,7 @@ svg text.growth-pct{font-size:var(--fs-1)}
 .about .tgt-who{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
 .about .tgt-who input[type=text]{width:14em}
 .about .tgt-form>.about-row{margin-top:0;flex-basis:100%}
-@media (forced-colors:active){ .tgt-key{forced-color-adjust:none;border-color:CanvasText} .tgt-edge{stroke:CanvasText} .tgt-label{fill:CanvasText;stroke:Canvas} }   /* (SVG keeps the app's ink, #729) */
+@media (forced-colors:active){ .tgt-key{forced-color-adjust:none} }   /* in the system's colours with the rest of Body's ink (#729, #975) */
 
 
 /* ---- Start from a condition (#186, presets.js): Settings → Dashboard's picker, searchable and grouped by body

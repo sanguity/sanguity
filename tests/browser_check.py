@@ -10178,6 +10178,43 @@ def main():
             check("…and their sparklines, both ways (#728): on the Overview's tiles, a share link's Trend column and the visit summary's trends, their "
                   "line, latest dot and ▲ or ▼ CanvasText (the dot kept the app's ink, 1.18:1)", all(v["n"] > 0 and not v["bad"] for v in fc728.values()),
                   {k: v for k, v in fc728.items() if not v["n"] or v["bad"]})
+            # ---- #975: …and every mark Body and activity draws in the app's ink is in a system colour, both ways: #729 took
+            # the target's edges and label; the steps' average stayed a line in --ink (1.18:1 on the system's black), the
+            # day's heart rate, clinic and meter readings in --ink2 and --muted, the dots' rims and the hollow ones' fill in
+            # --surface, a target's band, BMI's categories and a stay's band in a share of the ink, and the legend's keys and
+            # the glucose bar beside them. In All and in 90 days, with the day's heart rate, BMI's categories, the stays and
+            # a target drawn: no mark's fill, stroke or key in --ink, --ink2, --muted or --surface (at any opacity)
+            INK975 = r"""() => { const probe = c => { const s = document.createElement('span'); s.style.forcedColorAdjust = 'none'; s.style.color = c; document.body.append(s);
+                const v = getComputedStyle(s).color; s.remove(); return v; };
+              const rgb = c => /^color\(srgb /.test(c) ? c.slice(11).split(/[\s/)]+/).slice(0, 3).map(v => Math.round(v * 255)).join() : (c.match(/[\d.]+/g) || []).slice(0, 3).join();
+              const clear = c => !c || c === 'none' || /(, 0| \/ 0)\)$/.test(c), sys = new Set(['Canvas', 'CanvasText', 'Highlight', 'HighlightText', 'GrayText'].map(c => rgb(probe(c))));
+              const ink = new Map(['--ink', '--ink2', '--muted', '--surface'].map(n => [rgb(probe(`var(${n})`)), n]).filter(([c]) => !sys.has(c)));   // the app's, as the page has them
+              const out = {n: 0, bad: []}, name = m => `${m.closest('[id^=h-]')?.id || ''} ${m.tagName.toLowerCase()}${[...m.classList].map(c => '.' + c).join('')}`;
+              const look = (m, props) => { const c = getComputedStyle(m); out.n++;
+                for (const p of props) if (!clear(c[p]) && ink.has(rgb(c[p])) && !(p.startsWith('border') && c.borderTopStyle === 'none')) out.bad.push(`${name(m)}: ${p} ${ink.get(rgb(c[p]))} ${c[p]}`); };
+              for (const m of document.querySelectorAll('#view-health svg:not(.icon) :is(path, line, polyline, polygon, circle, ellipse, rect)'))
+                if (m.checkVisibility() && !m.closest('defs, clipPath, mask')) look(m, ['fill', 'stroke']);
+              for (const m of document.querySelectorAll('#view-health :is(.legend i, .glu-bar span, .glu-tir li i)')) if (m.checkVisibility()) look(m, ['backgroundColor', 'borderTopColor', 'borderBottomColor']);
+              out.bad = [...new Set(out.bad)].slice(0, 12); return out; }"""
+            was975 = js("[document.documentElement.dataset.theme || null, matchMedia('(prefers-color-scheme: dark)').matches, state.tab, state.preset, hState.hrDay, hState.bmiWho, hState.stays]")
+            js("""() => { window._was975 = CFG.person; CFG.person = {...(CFG.person || {}), targets: {...targetsOf(), steps: {low: 8000, high: null, by: "", on: ""}}};
+              hState.hrDay = hState.bmiWho = hState.stays = true; }""")
+            ink975 = {}
+            for system975 in ("dark", "light"):
+                app975 = "light" if system975 == "dark" else "dark"
+                page.emulate_media(color_scheme=system975, forced_colors="active")
+                for per975 in ("all", "90d"):
+                    js("([t, p]) => { document.documentElement.dataset.theme = t; applyPreset(p); switchTab('health'); }", [app975, per975])
+                    settle(600)
+                    ink975[f"the system {system975}, the app {app975}, {per975}"] = js(INK975)
+            page.emulate_media(forced_colors="none", color_scheme="dark" if was975[1] else "light")
+            js("""([t, , tab, preset, hr, bmi, stays]) => { CFG.person = window._was975; [hState.hrDay, hState.bmiWho, hState.stays] = [hr, bmi, stays];
+              if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; applyPreset(preset); switchTab(tab, tab === 'labs' ? 'chart' : undefined); }""", was975)
+            settle(300)
+            check("…and every mark Body and activity draws in the app's ink is in a system colour, both ways (#975): the steps' average (--ink, 1.18:1 "
+                  "on the system's black), the day's heart rate, clinic and meter readings, the dots' rims, a target's band, BMI's categories, the "
+                  "stays and their legend keys, in All and in 90 days", all(v["n"] > 0 and not v["bad"] for v in ink975.values()),
+                  {k: v for k, v in ink975.items() if not v["n"] or v["bad"]})
             # their labels (#312): at 1400, 375 and 320 px each one on the Timeline and Body and activity is inside its plot
             # with no mark on it; one shortened to fit ends in "…" and keeps the full names in its title; a Body and
             # activity chart's aria-label names them (Labs names them on its event track, #294: TRACK_JS). Body names them
@@ -23203,6 +23240,21 @@ def main():
             settle(300)
             check("…and with text at 200% at 360 and 412 px, light and dark, and at the usual size (#709, #622, 1.4.4): both sets' growth charts keep every "
                   "label inside them, none over another", not g709, g709)
+            # #975: and in forced colours with the app's theme the opposite of the system's, both ways, both sets: the curves
+            # (in --ink2) and her measurements' rims in the system's colours, as the rest of the tab's ink (INK975, above)
+            g975, was975g = {}, js("[document.documentElement.dataset.theme || null, matchMedia('(prefers-color-scheme: dark)').matches]")
+            for system975 in ("dark", "light"):
+                page.emulate_media(color_scheme=system975, forced_colors="active")
+                for set975 in ("cdc", "who"):
+                    js("([t, s]) => { document.documentElement.dataset.theme = t; grState.set = s; state.tables.clear(); renderHealth(); }", ["light" if system975 == "dark" else "dark", set975])
+                    settle(300)
+                    g975[f"{set975}, the system {system975}"] = js(INK975)
+                    g975[f"{set975}, the system {system975}"]["curves"] = js("document.querySelectorAll('#h-growth path.growth-curve').length")
+            page.emulate_media(forced_colors="none", color_scheme="dark" if was975g[1] else "light")
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; grState.set = null; renderHealth(); }", was975g[0])
+            settle(300)
+            check("…and in forced colours against the opposite theme, both ways, both sets' curves and her measurements' rims are in the system's colours "
+                  "(#975: the curves kept the app's --ink2)", all(v["curves"] > 0 and not v["bad"] for v in g975.values()), {k: v for k, v in g975.items() if v["bad"] or not v["curves"]})
             # the due date is About this person's, changed by owners and editors
             page.goto(base + f"/settings.html?profile={cpid}#about")
             page.wait_for_selector(f"#about[data-profile='{cpid}'] #aboutDue", timeout=10000)
