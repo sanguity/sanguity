@@ -67,14 +67,12 @@ def assembled(pid):
 
 
 def rowless(data):
-    """The lab results with no row of their own (#868): [(series, time, import)] for each point no labitem of its own
-    import lists on its day, in a lab day (crossmatch._row_of, as the drawer finds a row's result, drawer.js rowPoint).
-    data: the records as assembled, every record's details with them."""
-    from server import crossmatch
-    listed = {str(i) for e in data["events"] if e["k"] == "lab" for i in (data["details"].get(str(e["id"])) or {}).get("ids") or []}
-    rows = crossmatch._rows({"events": [e for e in data["events"] if str(e["id"]) in listed], "details": data["details"]})
-    return [(s["name"], p[0], s.get("imp")) for s in data["labs"] if not s.get("watch") and s.get("panel") != "Vitals"
-            for p in s["pts"] if not crossmatch._row_of(rows, s, p)]
+    """What's wrong with the records' lab days (crossmatch.lab_faults, the one check of what every lab day keeps to,
+    #878): a lab result, a text result too, with no row of its own in a lab day (#868), or its row in two; a lab day
+    listing an event that isn't there, titled or listing tests for other than what it holds (#889), or counting other
+    results in its badge than its drawer shows. [] where none. data: the records as assembled, every record's details
+    with them."""
+    return crossmatch.lab_faults(data)
 
 
 def folder_files(path):
@@ -707,6 +705,94 @@ class Preview(unittest.TestCase):
         self.assertEqual((j["duplicates"]["copies"], j["duplicates"]["brings"], j["duplicates"]["results"]), (2, {"flag": 1, "row": 1}, 0), j["duplicates"])
         self.assertEqual(self.save(pid, j)["state"], "done")
         self.assertEqual(rowless(assembled(pid)), [], "each copy with its row")
+
+    def test_no_result_without_its_row(self):   # #878
+        """No lab result is saved without its row, a text result neither, whatever the upload: after every save the
+        records keep to what every lab day keeps to (rowless: crossmatch.lab_faults). A result new to the profile whose
+        labitem the profile has by key was saved with no row and no lab day, the Timeline's badge counting it while no
+        drawer listed it: a FHIR file's results on their own, then a health plan's of that day with a Glucose and a urine
+        colour new (one key names a day's results); a report sent again with two Observations added; the portal's export
+        after a hospital's file of that day (its LDL and urine colour on their own); a CareSpace panel, an Epic order and a
+        C-CDA organizer sent again with a result added. Each is kept with its own row, in a lab day holding it, the rest
+        duplicates as before. A spreadsheet and Type them in, keyed by result, alike. And each importer's fixtures,
+        uploaded into a profile of their own and again."""
+        t = "2025-12-02T08:30:00"
+
+        def obs(oid, code, name, v, unit=""):
+            return {"resourceType": "Observation", "id": oid, "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
+                    "code": {"coding": [{"system": "http://loinc.org", "code": code}], "text": name}, "effectiveDateTime": t,
+                    **({"valueQuantity": {"value": v, "unit": unit}} if isinstance(v, (int, float)) else {"valueString": v})}
+
+        def fhir(*loose, report=None):   # report: (its id, [its Observations])
+            rs = list(loose) + (report[1] if report else [])
+            if report:
+                rs.append({"resourceType": "DiagnosticReport", "id": report[0], "status": "final", "code": {"text": "Basic panel"},
+                           "effectiveDateTime": t, "result": [{"reference": f"Observation/{o['id']}"} for o in report[1]]})
+            return {"labs.json": json.dumps({"resourceType": "Bundle", "type": "collection", "entry": [{"resource": r} for r in rs]})}
+        k, g = lambda oid: obs(oid, "2823-3", "Potassium", 4.1, "mmol/L"), lambda oid: obs(oid, "2345-7", "Glucose", 95, "mg/dL")   # noqa: E731
+        colour = lambda oid: obs(oid, "5778-6", "Color of Urine", "Yellow")   # noqa: E731
+
+        def epic(*parts):   # one order at one time, each part (test, unit, value) a component of its result
+            details = {"r0": {"orderName": "Basic panel", "results": [{"name": "Basic panel", "orderMetadata": {"prioritizedInstantISO": t, "resultType": "LAB"},
+                       "resultComponents": [{"componentInfo": {"name": n, "units": u}, "componentResultInfo": {"value": str(v), "numericValue": v if isinstance(v, (int, float)) else None,
+                                                                                                              "referenceRange": {"formattedReferenceRange": ""}}} for n, u, v in parts]}]}}
+            return {"test-results/fictional_test_results_raw.json": json.dumps({"groups": [{"resultList": ["r0"]}], "details": details})}
+
+        def carespace(*rows):
+            with tempfile.TemporaryDirectory() as into:
+                out = {}
+                for rel, path in M.carespace([(n, u, t, v, "") for n, u, v in rows], into).items():
+                    with open(path, "rb") as f:
+                        out[rel] = f.read()
+                return out
+        ccda = lambda *rows: {"labs.xml": M.ccda([(n, u, t, str(v), "") for n, u, v in rows]).replace(   # noqa: E731
+            '<organizer classCode="BATTERY" moodCode="EVN">', '<organizer classCode="BATTERY" moodCode="EVN"><id root="2.16.840.1.113883.19.5.99" extension="panel-1"/>')}
+        sheet = lambda *rows: {"labs.csv": "Date,Time,Test,Value,Unit\n" + "".join(f"2025-12-02,08:30,{n},{v},{u}\n" for n, u, v in rows)}   # noqa: E731
+        K, G, C = ("Potassium", "mmol/L", 4.1), ("Glucose", "mg/dL", 95), ("Color of Urine", "", "Yellow")
+        cases = {   # kind: (the first file, the second, the results the second adds: (series, value))
+            "FHIR, another source's of the day": (fhir(k("hosp-k")), fhir(k("plan-k"), g("plan-g"), colour("plan-c")), {("Glucose, Blood", 95), ("Color of Urine", "Yellow")}),
+            "FHIR, a report sent again": (fhir(report=("rep-1", [k("k1")])), fhir(report=("rep-1", [k("k1"), g("g1"), colour("c1")])),
+                                          {("Glucose, Blood", 95), ("Color of Urine", "Yellow")}),
+            "FHIR, a portal's export after a hospital's file": (fhir(k("h-k"), obs("h-na", "2951-2", "Sodium", 140, "mmol/L")),
+                                                                 fhir(obs("p-ldl", "13457-7", "LDL Cholesterol", 162, "mg/dL"), colour("p-c"),
+                                                                      report=("p-cbc", [obs("p-hgb", "718-7", "Hemoglobin", 12.1, "g/dL")])),
+                                                                 {("LDL Cholesterol", 162), ("Color of Urine", "Yellow"), ("Hemoglobin", 12.1)}),
+            "CareSpace, a panel sent again": (carespace(K), carespace(K, G), {("Glucose, Blood", 95)}),
+            "Epic, an order sent again": (epic(K), epic(K, G, C), {("Glucose, Blood", 95), ("Color of Urine", "Yellow")}),
+            "C-CDA, an organizer sent again": (ccda(K), ccda(K, G, C), {("Glucose, Blood", 95), ("Color of Urine", "Yellow")}),
+            "a spreadsheet": (sheet(K), sheet(K, G, C), {("Glucose, Blood", 95), ("Color of Urine", "Yellow")}),
+        }
+        got = lambda d: {(s["name"], x[1]) for s in d["labs"] for x in s["pts"] + (s.get("txt") or [])}   # noqa: E731
+        for kind, (first, second, adds) in cases.items():
+            with self.subTest(kind):
+                pid = self.profile(kind)
+                self.assertEqual(self.save(pid, self.previewed(pid, first)[0])["state"], "done")
+                self.assertEqual(rowless(assembled(pid)), [], "the first")
+                before = got(assembled(pid))
+                j, _ = self.previewed(pid, second)
+                self.assertEqual(self.save(pid, j)["state"], "done", j)
+                after = assembled(pid)
+                self.assertEqual(rowless(after), [], "the second: each new result with its row")
+                self.assertEqual({(n, float(v) if isinstance(v, (int, float)) else v) for n, v in got(after) - before},
+                                 {(n, float(v) if isinstance(v, (int, float)) else v) for n, v in adds}, "what it adds, no more")
+        pid, c = self.profile("Typed in"), self.robin   # Type them in: a row keyed by its result, as a spreadsheet's
+        typed = lambda rows: c.post(f"/api/profiles/{pid}/manual", json={"rows": [{"date": t[:10], "time": t[11:16], "test": n, "value": str(v), "unit": u}   # noqa: E731
+                                                                                  for n, u, v in rows], "save": True}, headers=H)
+        self.assertEqual(typed([K]).status_code, 200)
+        self.assertEqual(typed([K, G, C]).status_code, 200)
+        self.assertEqual(rowless(assembled(pid)), [], "typed in")
+        for name in sorted(os.listdir(FIX)):   # every importer's fixtures, uploaded and again
+            for case in sorted(os.listdir(os.path.join(FIX, name))):
+                root = os.path.join(FIX, name, case)
+                if not os.path.isdir(root) or case.startswith(("_", ".")):
+                    continue
+                with self.subTest(f"{name}/{case}"):
+                    pid, files = self.profile(f"{name}/{case}"), folder_files(root)
+                    j, _ = self.previewed(pid, files)
+                    self.assertEqual(self.save(pid, j)["state"], "done", j)
+                    self.assertEqual(rowless(assembled(pid)), [], "uploaded")
+                    self.save(pid, self.previewed(pid, files)[0])
+                    self.assertEqual(rowless(assembled(pid)), [], "uploaded again")
 
     def test_a_file_read_again_after_its_reading_changed(self):   # #874
         """A file imported before #870 changed how it reads (a FHIR Quantity's bound, "<=5" or ">60", kept as text; a

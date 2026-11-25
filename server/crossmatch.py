@@ -239,6 +239,15 @@ def _rows(data):
 
 def _row_of(rows, s, p):
     """The drawer row (event id, row index) showing point p of series s, or None when it can't be told apart."""
+    named, alike = _rows_of(rows, s, p)
+    if len(named) == 1:
+        return named[0]
+    return alike[0] if not named and len(alike) == 1 else None
+
+
+def _rows_of(rows, s, p):
+    """The drawer rows that may show point p of series s: ([(event id, row index)] by its name, [...] by its unit alone),
+    each in its import, on its day, with its value."""
     v = _value(p)
     canon = _canon_name(s)
     name = str(s.get("name") or "").strip().lower()
@@ -252,9 +261,101 @@ def _row_of(rows, s, p):
             named.append((eid, r))
         elif len(row) > 2 and common.unit_for(canon, row[2]) == common.unit_for(canon, s.get("unit")):
             alike.append((eid, r))
-    if len(named) == 1:
-        return named[0]
-    return alike[0] if not named and len(alike) == 1 else None
+    return named, alike
+
+
+# ---------------------------------------------------------------- what every lab day keeps to (#878)
+
+def lab_faults(data):
+    """What's wrong with a set of records' lab days, as the import, sync, Undo, Remove and Put back paths keep them
+    (#878): [] where every lab result, a text result too, has its row in exactly one lab day (in a labitem of its own
+    import on its day, _row_of, as the drawer finds a row's result: drawer.js rowPoint), every lab day lists only events
+    there are and is said for them (common.lab_day_counted: its title and its list of tests), and the results it counts
+    (its badge, util.js labDraws: _draws) are the ones its rows show (its drawer). A visit's Vitals and the watch's are
+    no lab day's. data: the records as assembled (records.assemble), every record's details with them. Each fault:
+      ("no row", series, time, import)                 a result no lab day lists a row of
+      ("in two lab days", series, time, [lab day ids])  a result whose row two lab days list
+      ("row without its result", lab day, labitem, row index, row)
+      ("gone", lab day, event id)                       a lab day listing an event that isn't there
+      ("said", lab day, (title, sub), (title, sub) for what it lists)
+      ("badge", lab day, [its results by labDraws], [its rows' results])   (series names, each a result)"""
+    events = {e["id"]: e for e in data.get("events") or [] if isinstance(e, dict) and "id" in e}
+    details = data.get("details") or {}
+    days = [e for e in events.values() if e.get("k") == "lab"]
+    out, listed = [], collections.defaultdict(list)   # listed: labitem id -> the lab days listing it
+    for e in days:
+        ids = (details.get(str(e["id"])) or {}).get("ids") or []
+        out += [("gone", e["id"], i) for i in ids if i not in events]
+        for i in dict.fromkeys(i for i in ids if i in events):
+            listed[i].append(e["id"])
+        said = common.lab_day_counted({k: v for k, v in e.items() if k != "id"}, [(events[i], details.get(str(i))) for i in ids if i in events])
+        if (said.get("title"), said.get("sub")) != (e.get("title"), e.get("sub")):
+            out.append(("said", e["id"], (e.get("title"), e.get("sub")), (said.get("title"), said.get("sub"))))
+    rows = _rows({"events": [events[i] for i in listed], "details": details})
+    # a procedure's or a study's own results (Epic's bone marrow biopsy, its Cellularity) are in its rows, no lab day's
+    other = _rows({"events": [{**e, "k": "labitem"} for e in events.values() if e.get("k") not in ("lab", "labitem")], "details": details})
+    labs = [(n, s) for n, s in enumerate(data.get("labs") or []) if isinstance(s, dict) and not s.get("watch") and s.get("panel") != "Vitals"]
+    shown, found = collections.defaultdict(set), set()   # shown: lab day id -> {(series index, point index)} its rows show
+    for n, s in labs:
+        for field in ("pts", "txt"):
+            for k, p in enumerate(s.get(field) or []):
+                if not (isinstance(p, list) and p):
+                    continue
+                named, alike = _rows_of(rows, s, p)   # (one result in two reports of its day: CareSpace's, a row in each)
+                at = named or (alike if len(alike) == 1 else [])
+                if not at:
+                    if not any(_rows_of(other, s, p)):
+                        out.append(("no row", s.get("name"), p[0], s.get("imp")))
+                    continue
+                found.update(at)
+                held = sorted({d for eid, _ in at for d in listed[eid]})
+                if len(held) > 1:
+                    out.append(("in two lab days", s.get("name"), p[0], held))
+                if field == "pts":
+                    for d in held:
+                        shown[d].add((n, k))
+    for e in days:
+        for i in (details.get(str(e["id"])) or {}).get("ids") or []:
+            for r, row in enumerate((details.get(str(i)) or {}).get("rows") or [] if i in events else []):
+                if isinstance(row, list) and len(row) >= 2 and (i, r) not in found and ranges.read_flag(row[4] if len(row) > 4 else "", None, None, None):
+                    out.append(("row without its result", e["id"], i, r, row[:5]))   # (flagged: its drawer says it, its badge doesn't)
+    drawn = _draws(events, details, days, labs)
+    name = lambda pts: sorted(str(data["labs"][n].get("name")) for n, _ in pts)   # noqa: E731
+    out += [("badge", e["id"], name(drawn[e["id"]]), name(shown[e["id"]])) for e in days if drawn[e["id"]] != shown[e["id"]]]
+    return out
+
+
+def _draws(events, details, days, labs):
+    """util.js labDraws over the records, as the page counts a lab day's results (its badge, #905): {lab day id:
+    {(series index, point index)}}. A result is the lab day's (the nearest in time of several) that lists a lab event
+    of its import on its day, else one of its import that day, else every lab day of its day."""
+    def when(t):
+        try:
+            x = datetime.fromisoformat(str(t).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return (x if x.tzinfo else x.replace(tzinfo=timezone.utc)).timestamp()
+    items = {e["id"]: [events[i] for i in (details.get(str(e["id"])) or {}).get("ids") or [] if i in events and when(events[i].get("t")) is not None]
+             for e in days}
+    by, held = collections.defaultdict(list), collections.defaultdict(list)
+    for e in days:
+        by[(_day(e.get("t")), e.get("imp"))].append(e)
+        by[_day(e.get("t"))].append(e)
+        for k in dict.fromkeys((_day(x.get("t")), x.get("imp")) for x in items[e["id"]]):
+            held[k].append(e)
+
+    def near(e, t):
+        return min(abs(a - t) for a in ([when(x.get("t")) for x in items[e["id"]]] or [when(e.get("t")) or 0]))
+    out = {e["id"]: set() for e in days}
+    for n, s in labs:
+        for k, p in enumerate(s.get("pts") or []):
+            if not (isinstance(p, list) and p):
+                continue
+            t, d = when(p[0]) or 0, _day(p[0])
+            mine = held.get((d, s.get("imp"))) or by.get((d, s.get("imp")))
+            for e in ([min(mine, key=lambda e: near(e, t))] if mine else by.get(d) or []):
+                out[e["id"]].add((n, k))
+    return out
 
 
 # ---------------------------------------------------------------- stored decisions
