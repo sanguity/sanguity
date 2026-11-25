@@ -25,7 +25,10 @@ class Turn(BaseModel):
 @router.get("/api/profiles/{pid}/cycle")
 def cycle_status(pid: int, s=Depends(user), db=Depends(get_db)):
     role = need(db, s, pid, "editor")
-    return ct.status(db, pid, role)
+    out = ct.status(db, pid, role)
+    if not out["on"] and ct.forget_done(db, pid):   # turned off and its deletion done: the row goes (#935), said once
+        watch_keys.publish(db)
+    return out
 
 
 @router.put("/api/profiles/{pid}/cycle")

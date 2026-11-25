@@ -3188,6 +3188,13 @@ Everything on `main` so far; it becomes the first tagged release.
   import removed its records but neither file, which stayed in every backup. Undoing it now deletes the unpacked export,
   its watch data no longer shown (an upload's kept), and the history entry says so; the records file from before
   version 10 is deleted once it's loaded, and one an earlier version kept is deleted at the next start.
+- **A backup's manifest no longer says whose profile tracks their cycle, and the data is readable only by the app's
+  user** (#935): a backup's plain `manifest.json` counted each profile's phone database's rows by table name
+  (`"cycle": 37`, a dose log's), readable without the key; a profile's cycle tracking setting stayed in the database,
+  and its backups, after tracking was turned off; and the database and its WAL were 0644 and the data folders 0755,
+  readable by other users on the host. The row counts are now sealed with the data key (a check reads them, and a
+  backup's from before as they are); the setting goes once its deletion is done; and the app makes what it keeps with
+  umask 077 (database 0600, folders 0700), an older install's made so at its first start.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

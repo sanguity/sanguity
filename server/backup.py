@@ -9,7 +9,9 @@ A backup is one archive, sanguity-backup-YYYYMMDD-HHMMSS.tar.gz:
                    profile's database, watch.db or profiles/<slot>/watch.db, and every upload it archived, raw/...
   manifest.json    format, time, database schema version, the SHA-256 of every file above, and the number of rows
                    in each of the database's tables (from #200; older backups have no counts); and for the receiver's
-                   data, each database's rows, when the receiver last saved it, and the uploads archived since (#227)
+                   data, each database's rows, when the receiver last saved it, and the uploads archived since (#227).
+                   The rows per table are sealed with the data key (#935): the plain manifest names no table, as a
+                   phone database's would say whose profile keeps cycle records
 
 Each file is read once and hashed from those same bytes, so the manifest always matches what was archived. Not in
 it (back these up yourself, see the README): the record exports themselves, auth/ and your .env and *.json
@@ -111,6 +113,23 @@ def _tables(con):
     """{table: number of rows} for every table of a database."""
     names = [r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")]
     return {n: con.execute(f'SELECT COUNT(*) FROM "{n}"').fetchone()[0] for n in names}
+
+
+def _seal_counts(counts):
+    """{table: rows} as a manifest keeps them (#935): sealed with the data key, so the plain manifest.json names no
+    table (a phone database's would say whose profile keeps cycle records or a dose log)."""
+    return crypto.enc(json.dumps(counts, separators=(",", ":"), sort_keys=True))
+
+
+def counts_of(v):
+    """A manifest's {table: rows}: sealed (#935), or as a backup from before kept them, plain; None if it has none.
+    Raises crypto.KeyError_ when this install's key doesn't open them, ValueError when they can't be read."""
+    if v is None or isinstance(v, dict):
+        return v
+    out = json.loads(crypto.dec(v)) if isinstance(v, str) else None
+    if not isinstance(out, dict):
+        raise ValueError("the manifest's row counts aren't readable")
+    return out
 
 
 def _size(path):
@@ -482,8 +501,10 @@ def create(dest=None, keep=None, name=None, progress=None):
                             slot["after"] += 1   # came after the receiver's last save: folded in when it starts
             for slot in slots.values():
                 slot["saved"] = _iso(slot["saved"])
+                if slot["counts"] is not None:
+                    slot["counts"] = _seal_counts(slot["counts"])   # (#935)
             add("manifest.json", json.dumps({"format": FORMAT, "created": now.isoformat(timespec="seconds"),
-                                             "schema": schema, "files": hashes, "counts": counts,
+                                             "schema": schema, "files": hashes, "counts": _seal_counts(counts),
                                              **({"watch": slots} if slots else {})}, indent=1).encode())
         os.replace(part, final)
     except BaseException:
@@ -803,6 +824,13 @@ def _check_watch(work, manifest, out, bad):
     if not expected and not found:
         out["watch"] = None
         return
+    sealed, expected = expected, {}
+    for slot, v in sealed.items():   # each profile's rows, sealed since #935
+        try:
+            expected[slot] = {**v, "counts": counts_of(v.get("counts"))} if isinstance(v, dict) else {}
+        except (crypto.KeyError_, ValueError, TypeError):
+            bad("The backup's manifest says how many rows the phone and watch data had, but this install's key can't read it.")
+            expected[slot] = {**v, "counts": None}
     got, uploads = {}, 0
     for slot in sorted(set(expected) | set(found), key=lambda s: int(s) if s.isdigit() else -1):
         who = "the first profile's" if slot == "" else f"profile {slot}'s"
@@ -928,7 +956,10 @@ def check(archive, progress=None):
                 crypto.dec(pepper[0])
             except crypto.KeyError_ as e:
                 return bad(f"This install's encryption key doesn't open the backup's database ({e})")
-        expected = manifest.get("counts")
+        try:
+            expected = counts_of(manifest.get("counts"))   # sealed since #935
+        except (crypto.KeyError_, ValueError, TypeError):
+            return bad("The backup's manifest says how many rows its database had, but this install's key can't read it.")
         out["counts"] = {t: {"backup": n, "expected": (expected or {}).get(t)} for t, n in got.items()}
         if expected is not None:
             for t in sorted(set(got) | set(expected)):

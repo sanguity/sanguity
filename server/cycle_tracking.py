@@ -4,9 +4,10 @@ the routes.
 
 The setting is a settings-table row, key "_cycle" (profile scope, sealed with crypto.enc like any private setting, so
 it goes with the profile when it's deleted; not in the settings registry, so it's never in the merged settings, an
-export or a reset): {"on", "since", "changed", "by", "purge", "purge_at"}. Off is the default: no row. Only the
-profile's owners change it; its owners and editors see the records; viewers neither, and the page doesn't tell them
-it exists.
+export or a reset): {"on", "since", "changed", "by", "purge", "purge_at"}. Off is the default: no row. Turned off,
+the row stays only until the receiver says it has done the deletion that asks for, then goes (forget_done, #935: the
+page's status read and each start). Only the profile's owners change it; its owners and editors see the records;
+viewers neither, and the page doesn't tell them it exists.
 
 The app never keeps the records. The receiver keeps them (in its sealed database and archive) for a profile it's told
 has tracking on, and writes them to cycle.json beside the profile's daily.json; the app reads that file when a page
@@ -50,10 +51,11 @@ def is_on(db, pid):
 
 
 def mark(db, pid):
-    """How tracking stands: (on, the latest deletion asked for). Turning it off or deleting changes it (#539: an
-    export read meanwhile leaves out what it read, jobs._import)."""
+    """How tracking stands: (on, the latest deletion asked for, when it was last turned). Turning it off or deleting
+    changes it (#539: an export read meanwhile leaves out what it read, jobs._import), and so does turning it on again
+    after the row went (forget_done)."""
     v = setting(db, pid)
-    return bool(v.get("on")), v.get("purge")
+    return bool(v.get("on")), v.get("purge"), v.get("changed")
 
 
 def changed_by(db, pid):
@@ -92,6 +94,23 @@ def delete_all(db, pid, by):
     v = setting(db, pid)
     v.update(purge=secrets.token_hex(12), purge_at=dbm.now())
     _store(db, pid, v, by)
+
+
+def forget_done(db, pid=None):
+    """Tracking off and the deletion it asked for done (the receiver says so in cycle.json): the setting's row goes
+    (#935), so nothing the app keeps, its backups included, says the profile ever tracked its cycle. Until then the row
+    holds the deletion the receiver is asked for. pid None: every profile's (at start-up). Returns how many went; the
+    caller publishes after (the receiver has nothing more to do for it)."""
+    q = "SELECT profile_id AS pid FROM settings WHERE key=? AND user_id IS NULL AND profile_id IS NOT NULL"
+    rows = db.execute(q + ("" if pid is None else " AND profile_id=?"), (KEY,) + (() if pid is None else (pid,))).fetchall()
+    gone = 0
+    for r in rows:
+        v = setting(db, r["pid"])
+        if v.get("on") or (v.get("purge") and (read(db, r["pid"]) or {}).get("purged") != v["purge"]):
+            continue
+        db.execute("DELETE FROM settings WHERE key=? AND profile_id=? AND user_id IS NULL", (KEY, r["pid"]))
+        gone += 1
+    return gone
 
 
 def keys_doc(db):

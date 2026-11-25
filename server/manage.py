@@ -137,6 +137,7 @@ def _backup_command(cmd, args):
 
 
 def run(argv):
+    atrest.keep_private(walk=False)   # what a command makes is the app's user's alone, as the app's is (#935)
     if argv and argv[0] in ("backup", "verify", "check", "restore"):
         return _backup_command(argv[0], argv[1:])
     dbm.init()
