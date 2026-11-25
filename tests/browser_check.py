@@ -22825,6 +22825,91 @@ def main():
             check("#905: a pull's new result whose lab event joins a lab day another import made (#899: the portal's export uploaded, then its "
                   "ALT pulled) is that lab day's alone: a C-CDA's lab day of the same date doesn't count it, and each lab day's Timeline badge "
                   "counts its own rows' results, as its drawer does", not bad905, bad905 or got905)
+            # ---- #881: a result the portal adds to a report it sent before (a GGT in the CBC), pulled as test_connections
+            # pulls it. The report's labitem was updated whole where it was, the upload's, so the GGT's row sat in another
+            # import's labitem than its result: drawer.js rowPoint, finding a row's result in the row's own import, found
+            # none, and the row read its report's flag as printed, not its result's. Now its row sits beside its result, in
+            # a labitem of the pull's own of that report, in the draw's one lab day; each row of the drawer finds its result
+            # and shows its flag, and the badge counts them
+            db = dbm.connect()
+            jpid881 = prof_r.create_profile(db, "A report's added result (fictional)", owner_id=owner)
+            db.close()
+            bad881, said881 = [], []
+            db = dbm.connect()
+            try:
+                from server import uploads as up_881
+                up881 = up_881.create(db, jpid881, None)
+                up_881.add_file(db, jpid881, up881, "portal-export.json", io.BytesIO(json.dumps({"resourceType": "Bundle", "type": "collection", "entry": [
+                    {"fullUrl": f"{fake.fhir_base}/{r['resourceType']}/{r['id']}", "resource": r} for r in fake.resources(patient="pat-1")]}).encode()))
+                up_881.finish(db, jpid881, up881)
+            finally:
+                db.close()
+            said881.append(js(import_905, [jpid881, up881, write905]))
+            url881 = js("([pid, s, w]) => fetch(`api/profiles/${pid}/connect/start`, {...w, body: JSON.stringify({source: s})}).then(r => r.json()).then(j => j.url)", [jpid881, src905, write905])
+            back881 = fake.authorize(url881, patient="pat-1")
+            cid881 = js("([b, w]) => fetch('api/connect/return', {...w, body: JSON.stringify(b)}).then(r => r.json()).then(j => j.connection)",
+                        [{"code": back881.code, "state": back881.state, "error": back881.error, "error_description": back881.error_description}, write905])
+            for _ in range(300):   # its first pull, its preview saved as the person would
+                db = dbm.connect()
+                job881 = db.execute("SELECT j.id, j.state FROM connections c JOIN jobs j ON j.id = c.first_job WHERE c.id=?", (cid881,)).fetchone()
+                db.close()
+                if job881 and job881["state"] == "preview":
+                    js("([pid, j, w]) => fetch(`api/profiles/${pid}/jobs/${j}/confirm`, {...w, body: '{}'})", [jpid881, job881["id"], write905])
+                elif job881 and job881["state"] in ("done", "failed", "discarded"):
+                    break
+                settle(100)
+            said881.append(job881 and job881["state"])
+            fake.add({"resourceType": "Observation", "id": "obs-ggt-881", "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
+                      "code": {"coding": [{"system": "http://loinc.org", "code": "2324-2"}], "text": "GGT"}, "effectiveDateTime": "2025-03-04T09:45:00-06:00",
+                      "valueQuantity": {"value": 70, "unit": "U/L"}, "referenceRange": [{"low": {"value": 8}, "high": {"value": 61}, "text": "8-61"}]}, patient="pat-1")
+            fake.update("DiagnosticReport", "dr-cbc", {"result": fake.get("DiagnosticReport", "dr-cbc")["result"] + [{"reference": "Observation/obs-ggt-881"}]})
+            def imports881():
+                db = dbm.connect()
+                try:
+                    return db.execute("SELECT COUNT(*) FROM imports WHERE connection_id=?", (cid881,)).fetchone()[0]
+                finally:
+                    db.close()
+            had881 = imports881()   # (the first pull's, where it kept anything: the export holds it all)
+            js("([pid, c, w]) => fetch(`api/profiles/${pid}/connections/${c}/sync`, {...w, body: '{}'})", [jpid881, cid881, write905])
+            for _ in range(300):
+                n881 = imports881() - had881
+                if n881:
+                    break
+                settle(100)
+            said881.append(n881)
+            if said881 != ["done", "done", 1]:
+                bad881.append(f"the upload, the first pull and the pull: {said881}")
+            page.goto(base + f"/?profile={jpid881}")
+            page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {jpid881}", timeout=20000)
+            js("() => { setPeriod('all'); pickTab('timeline'); }")
+            settle(600)
+            got881 = js("""async day => { const out = [];
+              const badge = Object.fromEntries([...document.querySelectorAll('#list .tl-row[data-id]')].map(r => [r.dataset.id, r.querySelector('.badge.abn')?.textContent || null]));
+              for (const e of DATA.events.filter(e => e.k === 'lab' && e.t.slice(0, 10) === day)) {
+                await openEvent(e);
+                const rows = DATA.details[e.id].ids.flatMap(id => (DATA.details[id]?.rows || []).map((row, i) => {
+                  const at = rowPoint(DATA.details[id], i, byId.get(id)); return [row[0], row[1], at ? at.p[4] || '' : null]; }));
+                out.push([parseInt(badge[e.id]) || 0, rows, [...document.querySelectorAll('#drawer table.data tbody tr')].map(r => [r.cells[0].firstChild.textContent, r.cells[3].textContent.trim()])]);
+              }
+              closeDrawer(); return out; }""", "2025-03-04")
+            if len(got881) != 1:
+                bad881.append(f"{len(got881)} lab days for the draw, not one")
+            for n881, rows881, shown881 in got881:
+                if not any(r[0] == "GGT" for r in rows881):
+                    bad881.append(f"no GGT row in the draw's lab day: {rows881}")
+                bad881 += [f"{r[0]} {r[1]}: its row finds no result (rowPoint)" for r in rows881 if r[2] is None and re.match(r"^[<>=]*\s*\d", str(r[1]))]
+                if len(shown881) != len(rows881):
+                    bad881.append(f"the drawer shows {len(shown881)} rows of the {len(rows881)} its lab events hold")
+                bad881 += [f"{r[0]}: its row shows {s[1]!r}, its result's flag is {r[2]!r}" for r, s in zip(rows881, shown881)   # (in the drawer's order)
+                           if r[2] is not None and bool(s[1]) != bool(r[2])]
+                if n881 != sum(1 for _, f in shown881 if f):
+                    bad881.append(f"its badge {n881} out of range, its drawer {sum(1 for _, f in shown881 if f)}")
+            db = dbm.connect()
+            prof_r.delete_profile(db, jpid881)
+            db.close()
+            check("#881: a result the portal adds to a report it sent before (a GGT in the CBC, the portal's export uploaded, then connected and "
+                  "pulled) has its row beside its result, in the draw's one lab day: each of the drawer's rows finds its result (rowPoint) and shows "
+                  "its flag, and the Timeline badge counts them", not bad881, bad881 or got881)
             allowed.discard(origin(fake.fhir_base))
             fake.stop()
             js("(p => p == null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', p))", profile_before_96)   # as before #96's visit

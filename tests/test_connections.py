@@ -77,6 +77,18 @@ def unpaired(data, day):
     return rowless, [(eid, r) for (_, d), rs in rows.items() if d == day for eid, r, _ in rs if (eid, r) not in found]
 
 
+def lab_obs(oid, code, name, v, unit, flag=None, rng=None, t="2025-03-04T09:45:00-06:00"):
+    """A fictional lab Observation on the fake's draw day (2025-03-04, the CBC's and LDL's), High where flag says."""
+    r = {"resourceType": "Observation", "id": oid, "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
+         "code": {"coding": [{"system": "http://loinc.org", "code": code}], "text": name}, "effectiveDateTime": t,
+         "valueQuantity": {"value": v, "unit": unit}}
+    if flag:
+        r["interpretation"] = [{"coding": [{"system": INTERP, "code": flag}]}]
+    if rng:
+        r["referenceRange"] = [{"low": {"value": rng[0]}, "high": {"value": rng[1]}, "text": f"{rng[0]}-{rng[1]}"}]
+    return r
+
+
 class Connections(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -193,6 +205,16 @@ class Connections(unittest.TestCase):
 
     def data(self):
         return whole(self.robin, self.pid)
+
+    def faults(self, day="2025-03-04"):
+        """(#909–#914) What's wrong with that day's lab days, by the one check of them (crossmatch.lab_faults): none
+        where each result has its row in one lab day, each lab day lists what there is, titled for it, its badge and
+        drawer agreeing."""
+        from server import crossmatch
+        try:
+            return crossmatch.lab_faults(self.data(), day)
+        except AssertionError:   # (nothing left: the records answer 204)
+            return []
 
     def draw(self, day="2025-03-04"):
         """A draw as the page has it (#899): each lab result of that day ({name: [(low, high, flag, its row's range as
@@ -756,6 +778,79 @@ class Connections(unittest.TestCase):
         self.assertEqual(drawn["unpaired"], ([], []), "each result with its row, each row with its result")
         self.undo(ldl["import"], alt["import"])
         self.assertEqual(self.draw(), before)
+
+    def test_a_result_a_pull_adds_to_a_report_has_its_row_beside_it(self):   # #881
+        """A GGT the portal adds to the CBC report it sent before: the report's labitem was updated whole where it was,
+        the upload's (the portal's export uploaded first) or the first pull's, so the GGT's row sat in another import's
+        labitem than its result, and the drawer, finding a row's result in the row's own import (drawer.js rowPoint,
+        crossmatch._row_of), found none: a result with no row, a row with no result. Now the report's rows are placed
+        each by its own record: the GGT's goes in a labitem of the pull's own of that report, beside its result, in the
+        draw's lab day; the next pull changing Hemoglobin's flag and the GGT's range finds each where it is; undone, as
+        before. A row saved apart from its result before (a pull's ALT whose row went in the first pull's labitem, as
+        before #899) is moved beside it when a pull reads that day again, so its corrected range updates the result too."""
+        hgb_n = {"interpretation": [{"coding": [{"system": INTERP, "code": "N"}]}],
+                 "referenceRange": [{"low": {"value": 12.0, "unit": "g/dL"}, "high": {"value": 15.5, "unit": "g/dL"}}]}
+        for upload in (True, False):
+            with self.subTest(upload=upload):
+                self.fake = FakeFHIR(patients=["robin-example"]).start()
+                self.addCleanup(self.fake.stop)
+                db = dbm.connect()
+                self.pid = prof.create_profile(db, f"GGT added, upload {upload} (fictional)", owner_id=self.uids["robin"])
+                db.close()
+                if upload:
+                    self.upload_bundle([json.loads(json.dumps(r)) for r in self.fake.resources(patient="pat-1")])
+                cid = self.connect(self.source())
+                self.first_pull(cid)
+                before, n = self.draw(), self.counts()
+                self.fake.add(lab_obs("obs-ggt-881", "2324-2", "GGT", 70, "U/L", "H", (8, 61)), patient="pat-1")
+                cbc = self.fake.get("DiagnosticReport", "dr-cbc")
+                self.fake.update("DiagnosticReport", "dr-cbc", {"result": cbc["result"] + [{"reference": "Observation/obs-ggt-881"}]})
+                ggt = self.pull(cid)
+                self.assertEqual(ggt["counts"]["results"], 1, ggt)
+                drawn = self.draw()
+                self.assertEqual((drawn["GGT"], self.faults()), ([(8, 61, "H", "8-61", "H")], []), "its row beside its result, in the draw's lab day")
+                self.assertEqual([(t, len(rows)) for t, rows in drawn["lab days"]], [("5 lab results", 5)])
+                self.fake.update("Observation", "obs-hgb", hgb_n)
+                self.fake.update("Observation", "obs-ggt-881", {"referenceRange": [{"low": {"value": 8}, "high": {"value": 75}, "text": "8-75"}],
+                                                                "interpretation": [{"coding": [{"system": INTERP, "code": "N"}]}]})
+                more = self.pull(cid)
+                drawn = self.draw()
+                self.assertEqual((more["counts"]["results"], drawn["GGT"], drawn["Hemoglobin"], self.faults()),
+                                 (0, [(8, 75, "", "8-75", "")], [(12.0, 15.5, "", "12.0 - 15.5", "")], []), "each updated where it is")
+                self.undo(more["import"], ggt["import"])
+                self.assertEqual((self.draw(), self.counts()), (before, n), "undone: as before")
+        # a row apart from its result, as saved before #899: the ALT's in the first pull's labitem of that day
+        from server import records
+        self.fake = FakeFHIR(patients=["robin-example"]).start()
+        self.addCleanup(self.fake.stop)
+        db = dbm.connect()
+        self.pid = prof.create_profile(db, "ALT apart (fictional)", owner_id=self.uids["robin"])
+        db.close()
+        cid = self.connect(self.source())
+        p0 = self.first_pull(cid)["import_id"]
+        self.fake.add(lab_obs("obs-alt-881", "1742-6", "ALT", 60, "U/L", "H", (7, 56)), patient="pat-1")
+        alt = self.pull(cid)["import"]
+        db = dbm.connect()
+        try:   # its row moved into the first pull's labitem of that day, its own labitem gone, as #899 found them
+            mine = [r for r in db.execute("SELECT id, import_id, body, detail FROM events WHERE profile_id=?", (self.pid,)).fetchall()
+                    if (records._dec(r["body"]) or {}).get("k") == "labitem" and str((records._dec(r["body"]) or {}).get("key")).startswith("fhir:labitem:")]
+            first, pulled = [r for r in mine if r["import_id"] == p0][0], [r for r in mine if r["import_id"] == alt][0]
+            a, b = records._dec(first["detail"]), records._dec(pulled["detail"])
+            db.execute("UPDATE events SET detail=? WHERE id=?", (records._enc({**a, "rows": a["rows"] + b["rows"], "keys": a["keys"] + b["keys"]}), first["id"]))
+            db.execute("DELETE FROM events WHERE id=?", (pulled["id"],))
+            for r in db.execute("SELECT id, detail FROM events WHERE profile_id=?", (self.pid,)).fetchall():
+                d = records._dec(r["detail"])
+                if isinstance(d, dict) and d.get("type") == "labday":
+                    db.execute("UPDATE events SET detail=? WHERE id=?", (records._enc({**d, "ids": [i for i in d["ids"] if i != pulled["id"]]}), r["id"]))
+        finally:
+            db.close()
+        self.assertIn("ALT at 2025-03-04T09:45:00-06:00 (import %d): no row" % alt, self.faults())
+        self.fake.update("Observation", "obs-alt-881", {"referenceRange": [{"low": {"value": 7}, "high": {"value": 65}, "text": "7-65"}],
+                                                        "interpretation": [{"coding": [{"system": INTERP, "code": "N"}]}]})
+        fixed = self.pull(cid)
+        drawn = self.draw()
+        self.assertEqual((fixed["counts"]["results"], drawn["ALT"], self.faults()), (0, [(7, 65, "", "7-65", "")], []),
+                         "one ALT, its result and its row both corrected, side by side")
 
     def strip_keys(self, pid=None):
         """Each labitem as saved before #885: no "keys". -> {event id: its keys as they were}"""

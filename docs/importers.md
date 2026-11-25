@@ -241,6 +241,8 @@ with a key scoped to a day that an upload or another source saved; it finds each
 row's own record in `keys`, wherever it is (#899: in an upload of the portal's own export, or a connection made before
 to the same portal), and updates that row there, puts a row new to the profile in a labitem of its own beside its
 result, leaves out a duplicate's row with it (#897), and joins the day's lab day rather than adding a second. A
+report's labitem the profile has is placed the same way, row by row (#881): a result its source adds to the report has
+its row in a labitem of the pull's own of that report, so every row sits beside its result, in its result's import. A
 labitem saved before #885 has no `keys`; a connection's take theirs from what it has read, once (schema version 40),
 and an upload's keep none, as nothing left names its rows' records. A text result here is that
 point, and a point here that text result, where it reads as it (#874: its value read by `common.value_number`,
