@@ -319,10 +319,10 @@ class PortalEverything(Shape, unittest.TestCase):
         self.assertEqual(sorted(by), ["Peanuts", "Penicillin G"])   # not the refuted one
         pcn = by["Penicillin G"]
         self.assertEqual({k: v for k, v in pcn.items() if k not in ("key", "src", "date", "ver")},
-                         {k: v for k, v in self.ccda["problems"][0].items() if k not in ("key", "src", "date")})
+                         {k: v for k, v in self.ccda["problems"][0].items() if k not in ("key", "src", "date", "ver")})
         self.assertEqual((pcn["name"], pcn["reactions"], pcn["severity"], pcn["criticality"], pcn["status"], pcn["code"], pcn["system"]),
                          ("Allergy: Penicillin G (Hives)", ["Hives"], "Moderate", "High", "Active", "7980", "RxNorm"))
-        self.assertEqual(set(pcn) - {"ver"}, set(self.ccda["problems"][0]))
+        self.assertEqual(set(pcn), set(self.ccda["problems"][0]))   # (each says whose it is: its server, the C-CDA its custodian, #968)
         self.assertEqual(pcn["ver"], {"server": "https://fhir.harborview.example/r4"})   # (#955: its server, for the file uploaded again)
         self.assertEqual((by["Peanuts"]["reactions"], by["Peanuts"]["severity"]), (["Anaphylaxis", "Rash"], "Severe"))   # the worst reaction's
 

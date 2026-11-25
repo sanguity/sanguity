@@ -275,9 +275,10 @@ def _server(x):
 
 def _said_source(x):
     """(#967) Where a record of an upload (an event's body, a list's entry) says it came from, as given: its VER's server
-    (the FHIR importer's: its server's base). "" where it doesn't say."""
+    (the FHIR importer's: its server's base), else its source (#968: a C-CDA's custodian, a CareSpace export's clinic).
+    "" where it doesn't say."""
     v = x.get(VER) if isinstance(x, dict) and isinstance(x.get(VER), dict) else {}
-    return str(v.get("server") or "").strip()
+    return str(v.get("server") or v.get("source") or "").strip()
 
 
 def _source(x, base=None):
@@ -288,8 +289,10 @@ def _source(x, base=None):
 
 def _plain(key):
     """(#967) Whether a source key names its record by an id that another source's record can have too, and doesn't
-    say the source: a FHIR resource's plain id (fhir:<type>/<id>)."""
-    return isinstance(key, str) and bool(PLAIN_FHIR.match(key))
+    say the source: a FHIR resource's plain id (fhir:<type>/<id>), a C-CDA entry's (ccda:<root>^<extension>), a
+    CareSpace document's file name (#968). Any record key (_record_key) whose part after the importer's name says no
+    source ("|"); only a record that says its source (_said_source) is keyed by it."""
+    return _record_key(key) and "|" not in key.split(":", 1)[-1]
 
 
 def _named(key, source):
@@ -345,11 +348,14 @@ def _same_source(key, sent, here, base=None, sent_d=None, here_d=None):
     plain id ("fhir:<type>/<id>", which another portal's resource can have too) on the same server (its VER's, else the
     server of the connection that pulled the one here: base), never where either's is unknown; a claim of the same
     insurer. Two portals' exports with the same plain ids put clinic B's medication and problem in place of hospital
-    A's."""
+    A's. (#968) Any other record whose VER says its source both here and in the upload (a C-CDA's custodian, a
+    CareSpace export's clinic), the same one; where either doesn't, its importer (the key's prefix), as before."""
     if PLAIN_FHIR.match(str(key).split("#", 1)[0]):
         a, b = _server((sent.get(VER) or {}).get("server")), _server((here.get(VER) or {}).get("server") or base)
         if not a or a != b:
             return False
+    elif (a := _source(sent)) and (b := _source(here)) and a != b:
+        return False
     if isinstance(sent_d, dict) and isinstance(here_d, dict) and sent_d.get("insurer") and here_d.get("insurer"):
         return str(sent_d["insurer"]).strip().lower() == str(here_d["insurer"]).strip().lower()
     return True

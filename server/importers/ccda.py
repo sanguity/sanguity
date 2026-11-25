@@ -686,6 +686,7 @@ def parse(files):
         raise ValueError("None of the C-CDA documents could be read. " + " ".join(errors))
     out.warnings += errors
     for doc in docs:
+        had = (len(out.events), len(out.problems))
         _visits(doc, out)
         _results(doc, out)
         _vitals(doc, out)
@@ -693,6 +694,11 @@ def parse(files):
         _problems(doc, out)
         _allergies(doc, out)
         _immunizations(doc, out)
+        # (#968) each record named by its own id says whose it is, where the document says it: its custodian (else its
+        # author's organisation), so another clinic's with the same id is told apart (server/preview.py _own_keys)
+        for x in out.events[had[0]:] + out.problems[had[1]:]:
+            if doc.org and x.get("k") not in ("lab", "labitem") and str(x.get("key") or "").startswith("ccda:") and ":h:" not in x["key"]:
+                x["ver"] = {"source": doc.org}
     series = []
     for name, s in out.labs.items():
         pts = sorted(s["pts"], key=lambda p: p[0])

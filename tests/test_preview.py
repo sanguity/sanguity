@@ -830,6 +830,62 @@ class Preview(unittest.TestCase):
         self.assertEqual(said(pid)[0], [("Lisinopril 10 mg tablet", "Active"), ("Metformin 500 mg tablet", "Active")])
         self.assertEqual(rowless(assembled(pid)), [])
 
+    def test_another_clinics_record_with_the_same_id_is_its_own(self):   # #968
+        """#955 takes a record's source to be its key's importer prefix for every importer but FHIR (and a claim's
+        insurer), so two C-CDA documents from two clinics whose ids collide (one root and extension) were one record: the
+        second clinic's medication was put in the first's place, or left out as already here; and two CareSpace exports
+        with a document of the same file name, the second clinic's left out. Now each says its source where the file says
+        it (a C-CDA's custodian, a CareSpace export's clinic: its record's VER "source"), so the other clinic's is added
+        as its own, its key naming it, and a record is updated only from its own clinic."""
+        def ccd(custodian, med, status="active"):
+            return {f"{custodian.split()[0].lower()}.xml": f"""<?xml version="1.0" encoding="UTF-8"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3">
+  <typeId root="2.16.840.1.113883.1.3" extension="POCD_HD000040"/><templateId root="2.16.840.1.113883.10.20.22.1.2"/>
+  <id root="2.16.840.1.113883.19.5" extension="doc-1"/><code code="34133-9" codeSystem="2.16.840.1.113883.6.1"/>
+  <effectiveTime value="20260310"/>
+  <recordTarget><patientRole><id extension="1" root="2.16.840.1.113883.19.5.2"/><patient><name><given>Pat</given><family>Example</family></name></patient></patientRole></recordTarget>
+  <custodian><assignedCustodian><representedCustodianOrganization><name>{custodian}</name></representedCustodianOrganization></assignedCustodian></custodian>
+  <component><structuredBody><component><section><code code="10160-0" codeSystem="2.16.840.1.113883.6.1"/><title>Medications</title>
+    <entry><substanceAdministration classCode="SBADM" moodCode="EVN"><id root="2.16.840.1.113883.19.5.9" extension="med-1"/>
+      <statusCode code="{status}"/><effectiveTime><low value="20260301"/></effectiveTime>
+      <consumable><manufacturedProduct><manufacturedMaterial><code code="1" codeSystem="2.16.840.1.113883.6.88" displayName="{med}"/></manufacturedMaterial></manufacturedProduct></consumable>
+    </substanceAdministration></entry>
+  </section></component></structuredBody></component>
+</ClinicalDocument>"""}
+
+        def meds(pid):
+            return sorted((m["name"], m["spans"][-1]["status"]) for m in assembled(pid).get("medications") or [])
+        pid = self.profile("Two clinics' C-CDAs, the same ids")
+        self.assertEqual(self.save(pid, self.previewed(pid, ccd("Harbor Clinic (fictional)", "Metformin 500 mg tablet"))[0])["state"], "done")
+        lakeside = ccd("Lakeside Clinic (fictional)", "Lisinopril 10 mg tablet", "completed")
+        j, _ = self.previewed(pid, lakeside)
+        self.assertEqual((j["counts"]["events"], j["duplicates"]["events"], j["duplicates"]["changed"]["n"]), (1, 0, 0), "Lakeside's is new")
+        self.save(pid, j)
+        self.assertEqual(meds(pid), [("Lisinopril 10 mg tablet", "Completed"), ("Metformin 500 mg tablet", "Active")])
+        j, _ = self.previewed(pid, lakeside)
+        self.assertFalse(j["new"], "Lakeside's file again: its own, here")
+        j, _ = self.previewed(pid, ccd("Lakeside Clinic (fictional)", "Lisinopril 10 mg tablet", "active"))
+        self.assertEqual({k: j["duplicates"]["changed"][k] for k in ("n", "kinds")}, {"n": 1, "kinds": {"med": 1}})
+        self.save(pid, j)
+        self.assertEqual(meds(pid), [("Lisinopril 10 mg tablet", "Active"), ("Metformin 500 mg tablet", "Active")], "Harbor's as it was")
+
+    def test_another_clinics_carespace_document_of_the_same_name_is_its_own(self):   # #968
+        """Two CareSpace exports from two clinics, each with a document of the same file name (its key, carespace:
+        document/<name>): the second clinic's were left out as already here. Each says its clinic now (its CCD's
+        custodian), so they're added as its own, and found again by their key naming it."""
+        full = folder_files(os.path.join(FIX, "carespace", "full"))
+        other = {**full, "carespace_ccd_full.xml": full["carespace_ccd_full.xml"].replace(b"Lakeshore Oncology Associates", b"Pinecrest Oncology (fictional)")}
+        self.assertNotEqual(other, full)
+        pid = self.profile("Two clinics' CareSpace exports")
+        self.assertEqual(self.save(pid, self.previewed(pid, full)[0])["state"], "done")
+        j, _ = self.previewed(pid, other)
+        self.assertEqual(j["counts"].get("documents"), 2, "Pinecrest's documents are its own")
+        self.save(pid, j)
+        docs = [e for e in assembled(pid)["events"] if e["k"] == "document"]
+        self.assertEqual(sorted(e["sub"].split(" · ")[-1] for e in docs), ["Lakeshore Oncology Associates"] * 2 + ["Pinecrest Oncology (fictional)"] * 2)
+        j, _ = self.previewed(pid, other)
+        self.assertEqual(j["counts"].get("documents"), 0, "Pinecrest's again: here")
+
     def test_an_observation_is_found_by_its_id_whichever_bundle_it_comes_in(self):   # #879
         """A FHIR Observation is the same record by its id whichever bundle it comes in: inside a DiagnosticReport (its
         labitem keyed by the report), or on its own (keyed by its day). Uploaded alone after coming in a report, it was
