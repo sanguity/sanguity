@@ -18,7 +18,7 @@
   const KEPT = "Periods, flow, ovulation tests, cervical mucus and spotting";
   const WHO = "Only this profile's owners and editors see them, on the Timeline (a lane of their own) and, when you tick it, on the Labs charts. Viewers don't, and aren't told cycle tracking is on.";
   const NEVER = "They're never in a share link. An export or a visit summary has them only if you tick them in, each time.";
-  const SEX = "Sexual activity is never kept, on or off: it's taken out of every upload before anything is stored, as nothing here needs it.";
+  const SEX = "Sexual activity is never kept, on or off: it's taken out of every upload, an Apple Health export you upload too, as nothing here needs it.";
   const WORDS = "Sanguity shows what the phone app recorded. It doesn't predict periods or fertile days, or say what a record means.";
 
   async function load() {
@@ -33,9 +33,9 @@
   const reach = () => el("details", {class: "more cy-reach"}, el("summary", {text: "What deleting reaches"}), reachList());
   const reachList = () => el("ul", {class: "cy-list"},
       el("li", {text: "Deleted: what the watch receiver keeps (its database, every upload it archived, rewritten without them, and its summary for this page). Sanguity's own database never holds the records."}),
-      el("li", {text: "Deleted: what imported Apple Health exports brought, and an import waiting for review that held only cycle records (it's cancelled, and its upload removed)."}),   // #539
+      el("li", {text: "Deleted: what imported Apple Health exports brought, the exports you uploaded too (each written again without them), and an import waiting for review that held only cycle records (it's cancelled, and its upload removed)."}),   // #539, #555
       el("li", {text: "Not reached: backups of the server or of the receiver's folder made before you delete. A backup can't be rewritten: it keeps what it had until it's deleted itself."}),
-      el("li", {text: "Not reached: exports and visit summaries already downloaded with them ticked in, and an Apple Health export you uploaded (it's kept as uploaded and may hold cycle records Sanguity doesn't read; cancel its review, or undo its import under Import history, to delete it)."}),
+      el("li", {text: "Not reached: exports and visit summaries already downloaded with them ticked in."}),
       el("li", {text: "Not reached: your phone. Health Connect or Apple Health, and the app that sends them, keep their own."}));
   /* deleting what's kept, or turning it off (which deletes it too): neither can be undone, so they're in the danger zone
      (util.js dangerZone, #495), as deleting a profile or removing an account is: each button opens it saying what goes
@@ -44,7 +44,7 @@
     let off = false;
     const z = dangerZone({title: "Delete cycle data", hint: "What's kept for this profile goes for good, the receiver's copies too.", action: "Delete all",
       says: () => [off ? "Turning it off deletes everything kept for this profile, and from then on cycle records are left out of every upload again."
-        : "Everything kept for this profile is deleted: the receiver's database, every upload it archived, and what imported Apple Health exports brought. " +
+        : "Everything kept for this profile is deleted: the receiver's database, every upload it archived, what imported Apple Health exports brought, and the exports themselves. " +
           "Cycle tracking stays on, so new records from the phone are kept again.",   // #223
         el("p", {}, el("b", {text: "What deleting reaches"})), reachList()],
       run: async typed => {

@@ -686,6 +686,7 @@ def import_archive(db, pid, archive):
                     with zf.open(i) as src:
                         uploads.add_file(db, pid, upload_id, rel, src)
                 uploads.finish(db, pid, upload_id, unzip=False)   # unpacked already: zips left in it stay zips
+                cycle_tracking.strip_uploads(db, pid, upload_id, on=cycle_tracking.is_on(db, pid))   # (#555)
             except uploads.UploadError as e:
                 uploads.discard(db, pid, upload_id)
                 raise ValueError(f"an upload in the zip can't be kept: {e}") from None

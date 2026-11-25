@@ -48,7 +48,8 @@ and the app give the same days, and a reading in both counts once (the same keys
     only for a profile with cycle tracking on): flow, ovulation tests, cervical mucus and spotting, read as Health
     Auto Export's (cycle.from_hae), in the summary's "cycle" list, which watch_store.save_import takes out and keeps
     apart (cycle_tracking.py), never in daily.json. Otherwise they are skipped as they stream past: not kept, not
-    even in the preview. Sexual activity and basal body temperature are never read.
+    even in the preview. Sexual activity and basal body temperature are never read. The uploaded export.xml itself is
+    written again without what isn't kept (without(), #555: cycle_tracking.strip_uploads), the rest byte for byte.
 
 Standard library only.
 """
@@ -191,6 +192,90 @@ class _Guarded:
                              "it was refused rather than expanded.")
         self.tail = chunk[-(len(self.BAD) - 1):] if chunk else b""
         return chunk
+
+
+def without(pieces, write, types):
+    """An export.xml written again without its <Record>s of these types (HealthKit identifiers, lower-cased; cycle.py's
+    never-kept and cycle records, #555), each with what it holds and the line it stands on; everything else byte for
+    byte as it was. pieces: the file's bytes, a piece at a time; write(bytes). Streamed, so an export of gigabytes needs
+    no more memory than a piece and a record. Returns how many records were left out (0: nothing changed). An entity
+    declaration, or XML that isn't well-formed, is refused (ValueError) before the end: what was written then is no
+    copy to keep."""
+    from xml.parsers import expat
+    p = expat.ParserCreate()
+    p.SetParamEntityParsing(expat.XML_PARAM_ENTITY_PARSING_NEVER)
+    buf, at = bytearray(), {"base": 0, "out": 0, "final": 0, "depth": 0, "gap": None, "cut": None, "opened": False, "n": 0}
+
+    def bytes_at(a, b):
+        return bytes(buf[a - at["base"]:b - at["base"]])
+
+    def start(name, attrs):
+        i = p.CurrentByteIndex
+        at["depth"] += 1
+        if at["cut"] is None and at["depth"] == 2 and name == "Record" and str(attrs.get("type") or "").lower() in types:
+            begin = at["gap"] if at["gap"] is not None else i   # with the whitespace before it: its line
+            if begin > at["out"]:
+                write(bytes_at(at["out"], begin))
+            at["cut"], at["out"] = at["depth"], begin
+        elif at["cut"] is None:
+            at["final"] = i
+        at["gap"], at["opened"] = None, True
+
+    def end(name):
+        i, opened = p.CurrentByteIndex, at["opened"]
+        at["opened"] = False
+        if at["cut"] == at["depth"]:   # its end: right after "/>", or its end tag's ">"
+            stop = i if opened and bytes_at(i - 2, i) == b"/>" else buf.index(b">", i - at["base"]) + 1 + at["base"]
+            at["cut"], at["out"], at["final"] = None, stop, stop
+            at["n"] += 1
+        elif at["cut"] is None:
+            at["final"] = i
+        at["depth"] -= 1
+        at["gap"] = None
+
+    def text(data):
+        at["opened"] = False
+        if at["cut"] is not None:
+            return
+        i = p.CurrentByteIndex
+        if at["depth"] == 1 and not data.strip():   # between the root's records: kept with the next one, or not
+            if at["gap"] is None:
+                at["gap"] = i
+        else:
+            at["gap"] = None
+            at["final"] = i
+
+    def other(*_):   # a comment or a processing instruction: kept where it is, never with a record left out
+        at["opened"] = False
+        if at["cut"] is None:
+            at["gap"], at["final"] = None, p.CurrentByteIndex
+
+    def refused(*_):
+        raise ValueError("This export.xml declares XML entities, which Apple Health exports never do.")
+    p.StartElementHandler, p.EndElementHandler, p.CharacterDataHandler = start, end, text
+    p.CommentHandler = p.ProcessingInstructionHandler = p.StartCdataSectionHandler = other
+    p.EntityDeclHandler = refused
+    tail = b""
+    try:
+        for piece in pieces:
+            if _Guarded.BAD in tail + piece:
+                refused()
+            tail = piece[-(len(_Guarded.BAD) - 1):]
+            buf += piece
+            p.Parse(piece, False)
+            keep = max(at["out"], at["final"] if at["cut"] is None else at["out"])
+            if at["cut"] is None and at["gap"] is not None:
+                keep = max(at["out"], min(keep, at["gap"]))
+            if keep > at["out"]:
+                write(bytes_at(at["out"], keep))
+                at["out"] = keep
+            del buf[:at["out"] - at["base"]]
+            at["base"] = at["out"]
+        p.Parse(b"", True)
+    except expat.ExpatError as e:
+        raise ValueError(f"export.xml isn't well-formed XML ({e}).") from None
+    write(bytes(buf[at["out"] - at["base"]:]))
+    return at["n"]
 
 
 # ------------------------------------------------------------------ dates

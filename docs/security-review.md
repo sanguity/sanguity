@@ -618,10 +618,12 @@ What each added, and how it keeps to the rules above. Each file named has its ow
   the activity log says so (never a record).
 - Delete all cycle data and turning it off hide them at once and ask the receiver, through the secrets file, to empty
   its table (then `VACUUM`, so no free page keeps them) and rewrite every archived upload without them; `cycle.json`
-  says which deletion was done. What can't be reached is said on the card: backups made before (they can't be
-  rewritten), files already downloaded, an uploaded Apple Health export (kept as uploaded; its cycle records are read only while tracking is on,
-  #223, kept sealed as the import's own in `watch/cycle/<import id>.json`, never in a summary, and deleted with the
-  rest at once by the app, waiting previews included), and the phone. Tests: `tests/test_cycle.py`.
+  says which deletion was done. An uploaded Apple Health export's cycle records are read only while tracking is on
+  (#223), kept sealed as the import's own in `watch/cycle/<import id>.json`, never in a summary, and deleted with the
+  rest at once by the app, waiting previews included; the export itself is written again without them then, streamed
+  (`cycle_tracking.strip_uploads`, #555), and one uploaded while tracking is off is kept without them, as the receiver
+  keeps a phone's upload, sexual activity never. What can't be reached is said on the card: backups made before (they
+  can't be rewritten), files already downloaded, and the phone. Tests: `tests/test_cycle.py`.
 
 ### Offline records and installing the app (#56)
 - The service worker keeps only the app's own pages, styles, scripts and icons, never `/api/`, documents or the

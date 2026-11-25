@@ -21,7 +21,7 @@ in upload_files; once ready, the upload's manifest. So the folder says nothing a
 Limits (config.UPLOAD_*): bytes per file, bytes and files per upload (counted after unpacking), and how much a
 file unpacked from a zip may be bigger than it was compressed.
 """
-import contextlib, errno, json, os, re, secrets, shutil, sqlite3, stat, tempfile, unicodedata, zipfile, zlib
+import contextlib, errno, json, os, re, secrets, shutil, sqlite3, stat, tempfile, threading, unicodedata, zipfile, zlib
 
 from . import config, crypto, db as dbm, profiles as prof
 
@@ -363,6 +363,42 @@ def no_room(need, free):
             f"temporary folder ({tempfile.gettempdir()}) has {_size(free)} free. Nothing was saved. In the TrueNAS app, "
             "raise Sanguity's memory limit (its temporary folder is half of it); elsewhere, give the app's /tmp more room "
             "(the README's Uploading records in the app says how).")
+
+
+_rewriting = threading.Lock()   # one file written again at a time (rewrite)
+
+
+def rewrite(db, pid, upload_id, rel, fn):
+    """One of a ready upload's files written again through fn(pieces, write) -> how many things it left out (#555: an
+    Apple Health export without its cycle records): the file's plaintext a piece at a time in, sealed out; with
+    nothing left out, the file is left as it was. The new copy takes the old one's name (os.replace: a reader already
+    reading it reads it as it was), and the manifest its size. Returns fn's count; fn's ValueError leaves it as it was."""
+    with _rewriting:
+        r, entries = _entries(db, pid, upload_id)
+        e = next((x for x in entries if x["p"] == rel), None) if r["state"] == "ready" else None
+        if e is None:
+            return 0
+        path = os.path.join(folder(pid, upload_id), e["f"])
+        w = crypto.StreamWriter(path)
+        try:
+            n = fn(crypto.iter_file(path), w.write)
+        except BaseException:
+            w.abort()
+            raise
+        if not n:
+            w.abort()
+            return 0
+        w.close()
+        with dbm.transaction(db):
+            r = _row(db, pid, upload_id)
+            if r["state"] == "ready" and r["manifest"]:
+                now = json.loads(crypto.dec(r["manifest"]))
+                for x in now:
+                    if x["f"] == e["f"]:
+                        x["n"] = w.size
+                db.execute("UPDATE uploads SET manifest=?, bytes=? WHERE id=?",
+                           (crypto.enc(json.dumps(now, separators=(",", ":"))), sum(x["n"] for x in now), upload_id))
+        return n
 
 
 def stored_files(db, pid):
