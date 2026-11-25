@@ -2275,6 +2275,13 @@ Everything on `main` so far; it becomes the first tagged release.
   pull's version of the whole report, so the Hemoglobin stayed Normal while Import history said it "gets back the
   range and flag it had". Now a later change keeps its version only for the result it changed itself: the Hemoglobin
   is Low again, result and row, and the Platelet Count as the later pull left it.
+- **Remove, Put back and Undo in any order leave every lab result in its lab day** (#914): removing what a connected
+  source brought left its lab events listed by the upload's lab day so Put back could bring them back, and undoing a
+  pull meanwhile dropped them from it for good; removing the connection's own lab day took the pulls' records of what
+  it was with it, so after Put back undoing a pull left it saying "6 lab results" over 5; and undoing the upload
+  meanwhile took its lab day with it, Put back bringing the ALT and the GGT back with none. Now the lab events taken
+  out leave the lab days that stay and go back in them, or in one made again as it was, the records of what each was
+  come back with them, and an Undo meanwhile is undone in what's kept, whatever the order.
 - **A result its source amends in value is updated, not added beside the old one** (#877): LDL corrected at the source
   from 162 to 165 (the same Observation), pulled again or in a FHIR file uploaded again, was added as a second result
   with a row of its own, so the old value showed beside the corrected one in Labs and in the lab day. Now the same record

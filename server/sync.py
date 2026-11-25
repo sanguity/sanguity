@@ -753,13 +753,14 @@ def _connected(db, c):
 
 
 def _lab_days_listing(db, pid, days):
-    """The FHIR lab days of these days (key "fhir:labday:<day>", any import's): [{"id", "import_id", "body", "detail"}]."""
+    """The FHIR lab days of these days (key "fhir:labday:<day>", any import's): [{"id", "import_id", "key_hash", "body",
+    "detail"}]."""
     hs = records.key_hashes(db, [f"fhir:labday:{d}" for d in days])
     out = []
     for h in records._chunks(sorted(set(hs.values()))):
-        q = f"SELECT id, import_id, body, detail FROM events WHERE profile_id=? AND key_hash IN ({','.join('?' * len(h))}) ORDER BY id"
-        out += [{"id": r["id"], "import_id": r["import_id"], "body": records._dec(r["body"]) or {}, "detail": records._dec(r["detail"])}
-                for r in db.execute(q, (pid, *h)).fetchall()]
+        q = f"SELECT id, import_id, key_hash, body, detail FROM events WHERE profile_id=? AND key_hash IN ({','.join('?' * len(h))}) ORDER BY id"
+        out += [{"id": r["id"], "import_id": r["import_id"], "key_hash": r["key_hash"], "body": records._dec(r["body"]) or {},
+                 "detail": records._dec(r["detail"])} for r in db.execute(q, (pid, *h)).fetchall()]
     return [x for x in out if isinstance(x["detail"], dict) and x["detail"].get("type") == "labday"]
 
 
@@ -1489,6 +1490,7 @@ def unapply(db, iid):
     _hand_over(db, iid)
     changed = [r[0] for r in db.execute("SELECT DISTINCT event_id FROM sync_changes WHERE import_id=? AND event_id IS NOT NULL", (iid,))]
     _unapply(db, iid)
+    _unapply_out(db, iid)
     gone = {r[0] for r in db.execute("SELECT id FROM events WHERE import_id=?", (iid,))}
     changed += [x["id"] for x in _listing(db, iid, gone) if x["id"] not in changed]   # (#910) any lab day listing them
     for ch in records._chunks(changed):   # (a later pull's version kept, or what it was put back: iid's labitems go from it)
@@ -1520,10 +1522,10 @@ def _listing(db, iid, ids):
 
 
 def _hand_over(db, iid):
-    """(#899) Undoing import iid: a lab day of its own that a later pull joined (changed in place: sync_changes) goes to
-    the latest import whose labitems it lists, holding only those, so they keep their lab day when iid's records go."""
-    for r in db.execute("""SELECT id, body, detail FROM events e WHERE import_id=? AND EXISTS
-                           (SELECT 1 FROM sync_changes s WHERE s.event_id = e.id AND s.import_id != ?)""", (iid, iid)).fetchall():
+    """(#899) Undoing import iid: a lab day of its own that lists another import's labitems (a later pull joined it, a
+    first pull's joined it, #910, or Put back made it again for the lab events it brought back, #914) goes to the
+    latest import whose labitems it lists, holding only those, so they keep their lab day when iid's records go."""
+    for r in db.execute("SELECT id, body, detail FROM events WHERE import_id=? AND detail IS NOT NULL", (iid,)).fetchall():
         d = records._dec(r["detail"])
         if not (isinstance(d, dict) and d.get("type") == "labday" and d.get("ids")):
             continue
@@ -1577,6 +1579,39 @@ def _unapply(db, iid):
                 items[i] = prev["entry"]
         db.execute("UPDATE imports SET meta=? WHERE id=?", (records._enc(meta), r["meta_import"]))
     db.execute("DELETE FROM sync_changes WHERE import_id=?", (iid,))
+
+
+def _unapply_out(db, iid):
+    """(#914) What import iid changed in place of a lab event taken out by a removal (remove_kind keeps what its pulls
+    kept of it, "_changes") put back in the copy kept, as _unapply does where it's here: Put back then brings it back as
+    it was before iid, its results too. A later change of it keeps its version (the event as a whole)."""
+    r = db.execute("SELECT profile_id FROM imports WHERE id=?", (iid,)).fetchone()
+    if not r:
+        return
+    held = db.execute("""SELECT x.id, x.what, x.row FROM sync_removed x JOIN imports i ON i.id = x.import_id
+                         WHERE i.profile_id=? ORDER BY x.id""", (r["profile_id"],)).fetchall()
+    rows = {x["id"]: records._dec(x["row"]) for x in held}
+    series = {x["id"]: rows[x["id"]] for x in held if x["what"] == "series"}
+    for x in held:
+        row = rows[x["id"]]
+        changes = row.get("_changes") if x["what"] == "event" else None
+        if not changes or not any(imp == iid for imp, _ in changes):
+            continue
+        for k in [k for k, (imp, _) in enumerate(changes) if imp == iid][::-1]:
+            prev = records._dec(changes[k][1])
+            if k + 1 < len(changes):   # a later one keeps its version: what it found becomes what this one found
+                changes[k + 1] = [changes[k + 1][0], changes[k][1]]
+            else:
+                row["body"] = records._enc(prev["body"])
+                row["detail"] = None if prev.get("detail") is None else records._enc(prev["detail"])
+                for rid, body in prev.get("results") or []:
+                    db.execute("UPDATE results SET body=? WHERE id=?", (records._enc(body), rid))
+                    for sid, s in series.items():
+                        if rid in (s.get("rids") or []):
+                            s["results"][s["rids"].index(rid)] = records._enc(body)
+                            db.execute("UPDATE sync_removed SET row=? WHERE id=?", (records._enc(s), sid))
+            del changes[k]
+        db.execute("UPDATE sync_removed SET row=? WHERE id=?", (records._enc({**row, "_changes": changes}), x["id"]))
 
 
 def _row_ids(d):
@@ -1649,22 +1684,41 @@ def _rows_back(db, r, prev):
 
 
 def _put_back(db, iid):
-    """Undoing a removal (remove_kind): its rows go back where they were, with their ids where those are free."""
+    """Undoing a removal (remove_kind): its rows go back where they were, with their ids where those are free (#914:
+    what its pulls kept of each for Undo too, theirs that are still here), its results with theirs. A lab event goes
+    back in each lab day it was taken out of (_lab_days_out's "_in"), or, that lab day undone meanwhile (the upload
+    whose it was), in one made again as it was, of the latest import whose lab events it lists; each lab day it
+    touches lists only lab events there are, titled for them."""
+    back, days = {}, set()
     for x in db.execute("SELECT * FROM sync_removed WHERE import_id=? ORDER BY id", (iid,)).fetchall():
         row = records._dec(x["row"])
         if x["what"] == "event":
             cols = ["profile_id", "import_id", "body", "detail", "cost", "cost_seq", "key_hash"]
             free = not db.execute("SELECT 1 FROM events WHERE id=?", (row["id"],)).fetchone()
             names = (["id"] if free else []) + cols
-            db.execute(f"INSERT INTO events({', '.join(names)}) VALUES({', '.join('?' * len(names))})",
-                       [row[k] for k in names])
+            eid = db.execute(f"INSERT INTO events({', '.join(names)}) VALUES({', '.join('?' * len(names))})",
+                             [row[k] for k in names]).lastrowid
+            for imp, prev in row.get("_changes") or []:
+                if db.execute("SELECT 1 FROM imports WHERE id=?", (imp,)).fetchone():
+                    db.execute("INSERT INTO sync_changes(import_id, event_id, previous) VALUES(?, ?, ?)", (imp, eid, prev))
+            for snap in row.get("_in") or []:
+                back.setdefault(snap["id"], (snap, []))[1].append(eid)
+            d = records._dec(row["detail"]) if row.get("detail") else None
+            if isinstance(d, dict) and d.get("type") == "labday":
+                days.add(eid)
         elif x["what"] == "series":
             free = not db.execute("SELECT 1 FROM series WHERE id=?", (row["id"],)).fetchone()
             names = (["id"] if free else []) + ["profile_id", "import_id", "body", "key_hash"]
             sid = db.execute(f"INSERT INTO series({', '.join(names)}) VALUES({', '.join('?' * len(names))})",
                              [row[k] for k in names]).lastrowid
-            db.executemany("INSERT INTO results(profile_id, import_id, series_id, body) VALUES(?, ?, ?, ?)",
-                           [(row["profile_id"], row["import_id"], sid, b) for b in row["results"]])
+            rids = row.get("rids") or [None] * len(row["results"])
+            for b, rid in zip(row["results"], rids):
+                if rid is not None and not db.execute("SELECT 1 FROM results WHERE id=?", (rid,)).fetchone():
+                    db.execute("INSERT INTO results(id, profile_id, import_id, series_id, body) VALUES(?, ?, ?, ?, ?)",
+                               (rid, row["profile_id"], row["import_id"], sid, b))
+                else:
+                    db.execute("INSERT INTO results(profile_id, import_id, series_id, body) VALUES(?, ?, ?, ?)",
+                               (row["profile_id"], row["import_id"], sid, b))
         else:
             m = db.execute("SELECT meta FROM imports WHERE id=?", (x["home_import"],)).fetchone()
             meta = records._dec(m["meta"]) or {}
@@ -1674,6 +1728,34 @@ def _put_back(db, iid):
             holder[sub or top] = row["items"] + (have if isinstance(have, list) else [])
             db.execute("UPDATE imports SET meta=? WHERE id=?", (records._enc(meta), x["home_import"]))
     db.execute("DELETE FROM sync_removed WHERE import_id=?", (iid,))
+    listed = {}   # (#914) each lab day the lab events were taken out of: they go back in it, or in one made again
+    for ld_id, (snap, eids) in back.items():
+        r = db.execute("SELECT body, detail FROM events WHERE id=?", (ld_id,)).fetchone()
+        was = snap["detail"].get("ids") or []
+        if r:
+            now = (records._dec(r["detail"]) or {}).get("ids") or []
+            want = set(now) | set(eids)
+            listed[ld_id] = ([i for i in was if i in want] + [i for i in now if i not in was] + [i for i in eids if i not in was and i not in now]), None
+            continue
+        imps = {x[0]: x[1] for ch in records._chunks(sorted(eids)) for x in db.execute(
+            f"SELECT id, import_id FROM events WHERE id IN ({','.join('?' * len(ch))})", ch)}
+        imp = snap["imp"] if db.execute("SELECT 1 FROM imports WHERE id=?", (snap["imp"],)).fetchone() else max(imps.values())
+        db.execute("INSERT INTO events(id, profile_id, import_id, body, detail, key_hash) SELECT ?, profile_id, ?, ?, ?, ? FROM imports WHERE id=?",
+                   (ld_id, imp, records._enc(snap["body"]), records._enc(snap["detail"]), snap["key_hash"], imp))
+        listed[ld_id] = (was, snap["body"])
+        days.add(ld_id)
+    for ld_id in days - set(listed):
+        r = db.execute("SELECT body, detail FROM events WHERE id=?", (ld_id,)).fetchone()
+        listed[ld_id] = ((records._dec(r["detail"]) or {}).get("ids") or [], None)
+    for ld_id, (ids, body) in listed.items():
+        r = db.execute("SELECT body, detail FROM events WHERE id=?", (ld_id,)).fetchone()
+        ids = [i for i in ids if i in _there(db, ids) and i != ld_id]
+        d = records._dec(r["detail"]) or {}
+        if not ids:
+            db.execute("DELETE FROM events WHERE id=?", (ld_id,))
+            continue
+        db.execute("UPDATE events SET body=?, detail=? WHERE id=?",
+                   (records._enc(_labday_body(db, body or records._dec(r["body"]) or {}, ids)), records._enc({**d, "ids": ids}), ld_id))
 
 
 # ---------------------------------------------------------------- taking out what a kind brought (#99)
@@ -1708,9 +1790,44 @@ def _in_list(kind, path, entry):
     return True
 
 
+def _lab_days_out(db, pid, events):
+    """(#914) Taking out a connection's lab events (events: their rows, its lab days and labitems), the lab days that
+    list them and stay: another import's (the uploaded export's that its pulls joined, #899), or one of its own that
+    lists another's lab events too (one it was handed, #899, or its first pull's own beside an upload's): each lists
+    them no more, titled for what it still holds, and the lab events taken out keep it as it was, for Put back (_in).
+    One left listing nothing goes with them, to come back whole. A removed one listed nowhere else had kept their ids
+    while they were out, and an Undo meanwhile (#908's filter) dropped them for good. -> (the rows to take out, {lab day
+    id: what it is now: its id, body and detail}, {lab event id: [each lab day it was taken out of, as it was]}, how
+    many of the connection's own lab days stay)"""
+    removing = {r["id"]: r for r in events}
+    days = {str((records._dec(r["body"]) or {}).get("t") or "")[:10] for r in events}
+    lds = _lab_days_listing(db, pid, days)
+    there = _there(db, [i for x in lds for i in x["detail"].get("ids") or []])
+    stays, outside, staying = {}, collections.defaultdict(list), 0
+    for ld in lds:
+        ids = [i for i in ld["detail"].get("ids") or [] if i in there]
+        rest = [i for i in ids if i not in removing]
+        snap = {"id": ld["id"], "imp": ld["import_id"], "key_hash": ld["key_hash"], "body": ld["body"], "detail": ld["detail"]}
+        if ld["id"] in removing and rest:   # one of its own listing another's lab events too: it stays
+            del removing[ld["id"]]
+            staying += 1
+        gone = [i for i in ids if i in removing]
+        for i in gone:   # (one taken out whole comes back whole; its import undone meanwhile, its lab events make it again)
+            outside[i].append(snap)
+        if not gone or ld["id"] in removing:
+            continue
+        if not rest:   # another's left holding nothing: out too, to come back whole
+            removing[ld["id"]] = db.execute("SELECT * FROM events WHERE id=?", (ld["id"],)).fetchone()
+            continue
+        stays[ld["id"]] = {"id": ld["id"], "body": _labday_body(db, ld["body"], rest), "detail": {**ld["detail"], "ids": rest}}
+    return [r for r in events if r["id"] in removing] + [r for i, r in removing.items() if i not in {e["id"] for e in events}], stays, outside, staying
+
+
 def remove_kind(db, who, pid, cid, kind, ip=None):
     """Take out the records of one kind that this connection brought, as one entry in the import history: undoing
-    it there puts them back (_put_back). Records of that kind from elsewhere (uploads, other sources) stay.
+    it there puts them back (_put_back). Records of that kind from elsewhere (uploads, other sources) stay. Its lab
+    events leave the lab days that stay (_lab_days_out, #914), and what its pulls kept of each for Undo goes and comes
+    back with it, so Remove, Put back and Undo in any order leave each result its row in one lab day.
     Returns {"import", "counts"}."""
     c = conns.get(db, pid, cid)
     if kind not in conns.KINDS:
@@ -1738,6 +1855,10 @@ def remove_kind(db, who, pid, cid, kind, ip=None):
                     lists.append((h, path, taken))
                     items[:] = [x for x in items if not _in_list(kind, path, x)]
                     db.execute("UPDATE imports SET meta=? WHERE id=?", (records._enc(meta), h))
+        events, kept, outside, staying = _lab_days_out(db, pid, events) if kind == "labs" else (events, {}, {}, 0)
+        if staying:   # (a lab day of its own listing another's lab events stays, holding those)
+            kinds["lab"] -= staying
+            kinds = {k: v for k, v in kinds.items() if v}
         results = sum(db.execute("SELECT COUNT(*) FROM results WHERE series_id=?", (r["id"],)).fetchone()[0] for r in series)
         counts = {"kinds": kinds, "series": len(series), "results": results,
                   **({"entries": sum(len(x[2]) for x in lists)} if lists else {})}
@@ -1748,13 +1869,19 @@ def remove_kind(db, who, pid, cid, kind, ip=None):
         note = {"removed": kind, "label": f"{label} from {c['source']}, removed", "counts": counts}
         db.execute("UPDATE imports SET connection_id=?, note=? WHERE id=?", (cid, records._enc(note), rid))
         for r in events:
+            # (#914) what its pulls kept of it for Undo (sync_changes, which go with its row), and the lab days it was
+            # taken out of, for Put back to give back
+            changes = [[x["import_id"], x["previous"]] for x in db.execute("SELECT import_id, previous FROM sync_changes WHERE event_id=? ORDER BY id", (r["id"],))]
             db.execute("INSERT INTO sync_removed(import_id, home_import, what, row) VALUES(?, ?, 'event', ?)",
-                       (rid, r["import_id"], records._enc(dict(r))))
+                       (rid, r["import_id"], records._enc({**dict(r), **({"_changes": changes} if changes else {}),
+                                                            **({"_in": outside[r["id"]]} if r["id"] in outside else {})})))
             db.execute("DELETE FROM events WHERE id=?", (r["id"],))
+        for x in kept.values() if kind == "labs" else ():
+            db.execute("UPDATE events SET body=?, detail=? WHERE id=?", (records._enc(x["body"]), records._enc(x["detail"]), x["id"]))
         for r in series:
-            pts = [x[0] for x in db.execute("SELECT body FROM results WHERE series_id=? ORDER BY id", (r["id"],))]
+            got = db.execute("SELECT id, body FROM results WHERE series_id=? ORDER BY id", (r["id"],)).fetchall()
             db.execute("INSERT INTO sync_removed(import_id, home_import, what, row) VALUES(?, ?, 'series', ?)",
-                       (rid, r["import_id"], records._enc({**dict(r), "results": pts})))
+                       (rid, r["import_id"], records._enc({**dict(r), "results": [x["body"] for x in got], "rids": [x["id"] for x in got]})))
             db.execute("DELETE FROM series WHERE id=?", (r["id"],))   # its results by cascade
         for h, path, items in lists:
             db.execute("INSERT INTO sync_removed(import_id, home_import, what, row) VALUES(?, ?, 'meta', ?)",

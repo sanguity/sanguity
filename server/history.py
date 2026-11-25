@@ -24,8 +24,8 @@ By origin:
   sync      a connected source's scheduled pull (sync.py): what it added goes, and the records it updated in place
             get back what they were (sync_changes); the connection keeps pulling what's new from then on. Two
             more come from a connection (imports.note says which, #99, #101): taking out the records of a kind it
-            brought (undone, they come back) and an attachment fetched on request (undone, the file goes and the
-            attachment is listed as left out again).
+            brought (undone, they come back, each lab result in its lab day, whatever was undone meanwhile: #914) and
+            an attachment fetched on request (undone, the file goes and the attachment is listed as left out again).
   dataset   undone, but it replaced the profile's records when it was loaded, and those can't be brought back.
   build     refused: the profile is kept in step with the setup build, so the next rebuild would bring it back.
 """

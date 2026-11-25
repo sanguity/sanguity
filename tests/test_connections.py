@@ -1690,6 +1690,69 @@ class Connections(unittest.TestCase):
         self.assertEqual(self.kim.post(f"/api/profiles/{self.pid}/connections/{cid}/remove", json={"kind": "labs"},
                                        headers=H).status_code, 403)   # viewers can't
 
+    def joined_draw(self, first):
+        """(#914) The draw's lab day, the upload's (first "U": the portal's export uploaded first) or the connection's
+        own (first "P0": its first pull), joined by two pulls (P1: LDL corrected, an ALT new; P2: the Platelet Count
+        given a range, a GGT new). -> (connection, {name: import})"""
+        self.afresh(f"Joined draw, {first} (fictional)")
+        imps = {"U": self.upload_bundle([json.loads(json.dumps(r)) for r in self.fake.resources(patient="pat-1")])["import_id"]} if first == "U" else {}
+        cid = self.connect(self.source())
+        imps["P0"] = self.first_pull(cid)["import_id"]
+        self.fake.update("Observation", "obs-ldl", self.LDL_CORRECTED)
+        self.fake.add(lab_obs("obs-alt-914", "1742-6", "ALT", 60, "U/L", "H", (7, 56)), patient="pat-1")
+        imps["P1"] = self.pull(cid)["import"]
+        self.fake.update("Observation", "obs-plt", {"referenceRange": [{"low": {"value": 150}, "high": {"value": 500}}],
+                                                    "interpretation": [{"coding": [{"system": INTERP, "code": "N"}]}]})
+        self.fake.add(lab_obs("obs-ggt-914", "2324-2", "GGT", 70, "U/L", "H", (8, 61)), patient="pat-1")
+        imps["P2"] = self.pull(cid)["import"]
+        self.assertTrue(all(imps[k] for k in (first, "P1", "P2")), imps)
+        return cid, imps
+
+    def test_remove_put_back_and_undo_in_any_order(self):   # #914
+        """The draw's lab day (the upload's, or the connection's own) joined by two pulls; the connection's labs removed
+        (R), put back (B, undoing the removal), and the three imports undone, in every order with R before B. A removal
+        left the removed lab events' ids in the upload's lab day so that Put back brought them back, and an Undo of a
+        pull meanwhile (#908's filter) dropped them for good; it took out the connection's own lab day with its pulls'
+        "before" records (sync_changes, by cascade), so after Put back an Undo no longer saw it ("6 lab results" over 5);
+        and the upload undone meanwhile took its lab day with it, Put back bringing the ALT and the GGT back with none.
+        Now after each step every result has its row in one lab day, each lab day lists what there is, titled for it, its
+        badge and drawer agreeing (lab_faults), and once put back the records are what the same undos alone leave."""
+        import itertools
+        state = lambda: ((self.draw() if self.counts()["events"] else None), {x: v for x, v in self.counts().items() if x != "imports"})   # noqa: E731
+        for first in ("U", "P0"):
+            undos = (first, "P1", "P2")
+            seen = {}   # {imports undone: the records they leave, without a removal}
+            for k in range(4):
+                for done in itertools.combinations(undos, k):
+                    _, imps = self.joined_draw(first)
+                    self.undo(*[imps[x] for x in done])
+                    seen[frozenset(done)] = state()
+            for order in itertools.permutations(undos + ("R", "B")):
+                if order.index("R") > order.index("B"):
+                    continue
+                with self.subTest(first=first, order=order):
+                    cid, imps = self.joined_draw(first)
+                    done = set()
+                    for step in order:
+                        if step == "R":
+                            r = self.robin.post(f"/api/profiles/{self.pid}/connections/{cid}/remove", json={"kind": "labs"}, headers=H)
+                            if r.status_code == 409:   # nothing of it left to remove: no removal to put back
+                                imps["R"] = None
+                                continue
+                            self.assertEqual(r.status_code, 200, r.text)
+                            imps["R"] = r.json()["import"]
+                        elif step == "B":
+                            if imps["R"]:
+                                self.undo(imps["R"])
+                        else:
+                            self.undo(imps[step])
+                            done.add(step)
+                        self.assertEqual(self.faults(), [], f"after {order[:order.index(step) + 1]}")
+                        if "R" not in order[:order.index(step) + 1] or "B" in order[:order.index(step) + 1]:
+                            self.assertEqual(state(), seen[frozenset(done)],
+                                             f"after {order[:order.index(step) + 1]}: as the undos alone leave it")
+                    self.assertEqual({x: v for x, v in self.counts().items() if x != "imports"}, {"events": 0, "series": 0, "results": 0})
+
     # ---------------------------------------------------------------- immunizations, allergies, fills, appointments (#228)
 
     OLD_SCOPES = ("launch/patient offline_access patient/Patient.read patient/Observation.read patient/Condition.read "
