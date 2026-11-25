@@ -722,7 +722,7 @@ def import_archive(db, pid, archive):
             db.execute("UPDATE profiles SET watch_file=? WHERE id=? AND (watch_file IS NULL OR watch_file LIKE ?)",
                        (watch, pid, os.path.join(prof.profile_dir(pid), "%")))
         for _, entries in sorted(sent.items()):
-            upload_id = uploads.create(db, pid, None)
+            upload_id = uploads.create(db, pid, None, put_back=True)   # kept though no job reads it (#944)
             try:
                 for rel, i in entries:
                     with zf.open(i) as src:

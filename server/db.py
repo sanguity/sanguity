@@ -1160,6 +1160,14 @@ SCHEMA = [
     """
     ALTER TABLE users ADD COLUMN totp_fails INTEGER NOT NULL DEFAULT 0;
     """,
+    # version 43: an upload put back from an export by server.manage import says so (#944; uploads.orphaned keeps it).
+    # Its maker was NULL, and so is the maker of an upload whose account was removed: one sent for a record typed in
+    # that was never saved was then kept for good. One from before that no account made and no job read may be either:
+    # kept, as it was.
+    """
+    ALTER TABLE uploads ADD COLUMN put_back INTEGER NOT NULL DEFAULT 0;
+    UPDATE uploads SET put_back=1 WHERE created_by IS NULL AND NOT EXISTS(SELECT 1 FROM jobs j WHERE j.upload_id=uploads.id);
+    """,
 ]
 
 
