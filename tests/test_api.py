@@ -889,6 +889,20 @@ class Api(unittest.TestCase):
         o = ada.post("/api/me/reauth/passkey/options", headers=O).json()
         self.assertEqual(ada.post("/api/me/reauth/passkey", json={"state": o["state"], "credential": SoftKey().get(o["options"])},
                                   headers=O).status_code, 401)   # a passkey Sanguity doesn't know
+        # it must verify the person (#930): the options ask for it, and a bare tap (user verification clear) isn't taken
+        o = ada.post("/api/me/reauth/passkey/options", headers=O).json()
+        self.assertEqual(o["options"]["userVerification"], "required")
+        r = ada.post("/api/me/reauth/passkey", json={"state": o["state"], "credential": key.get(o["options"], verified=False)}, headers=O)
+        self.assertEqual(r.status_code, 401, r.text)
+        self.assertIn("check it's you", r.json()["detail"])
+        self.assertEqual(ada.post("/api/users", json={"username": "new-admin-930", "is_admin": True}, headers=H).json()["detail"], "reauth_required")
+        # nor with a sign-in's challenge, which after the password asks for it only where the passkey can
+        t = client().post("/api/login", json={"username": "ada", "password": "ada keeps a long passphrase"}, headers=H).json()["ticket"]
+        o = client().post("/api/login/passkey/options", json={"ticket": t}, headers=O).json()
+        self.assertEqual(o["options"]["userVerification"], "preferred")
+        r = ada.post("/api/me/reauth/passkey", json={"state": o["state"], "credential": key.get(o["options"], verified=False)}, headers=O)
+        self.assertEqual(r.status_code, 401, r.text)
+        self.assertEqual(ada.post("/api/users", json={"username": "new-admin-930", "is_admin": True}, headers=H).json()["detail"], "reauth_required")
         o = ada.post("/api/me/reauth/passkey/options", headers=O).json()
         r = ada.post("/api/me/reauth/passkey", json={"state": o["state"], "credential": key.get(o["options"])}, headers=O)
         self.assertEqual(r.status_code, 200, r.text)
