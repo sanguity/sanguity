@@ -469,7 +469,10 @@ names as the new ones.
 Edits (#33) gained two actions in **schema version 34** (#237), which made the table again with a wider `CHECK` and
 copied every row: `kind` moves an entry to another category, and `kind_rule` keeps doing it for a source's new
 imports; a rule's `target` is the HMAC of `"rule:"` and a hash of the source, kind and title, not of an event's key.
-Edits made at once to similar entries share a `batch` id in their sealed `value`, and are undone together.
+Edits made at once to similar entries share a `batch` id in their sealed `value`, and are undone together. Since #937 an
+edit of a lab event or a lab day also keeps, in its `value`, what it held (`holds`, and a merge's `other_holds`: its
+rows' records, else their tests), as every import's lab event of a day shares the day's key; it finds only the one
+holding them. An edit from before keeps finding every event with its key.
 
 Until schema version 31 one key outside the registry lived here too: `summary.questions`, a profile's draft of
 questions for the visit summary (#48), shared by everyone the profile was shared with. Each person now keeps their own,

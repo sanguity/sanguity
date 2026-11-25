@@ -221,6 +221,101 @@ class Edits(unittest.TestCase):
         self.assertEqual(([e for e in after["events"] if e["k"] == "lab"], crossmatch.lab_faults(after)),
                          ([e for e in before["events"] if e["k"] == "lab"], []), "undone: both lab days as they were")
 
+    def test_hiding_one_lab_event_hides_only_it(self):   # #937
+        """A lab event's key is its day's ("fhir:labitem:2025-03-04"), and a lab day's too, the same in every import of
+        that day. A portal's export uploaded (Hemoglobin, Platelets), then downloaded again with an ALT added: the ALT
+        has its row in a lab event of the second import's own (#878), under the same key. Hiding the ALT's lab event
+        hid both, so the day's lab day showed no rows at all. Now it hides the ALT's alone; the upload's keeps its
+        rows. And with a hospital's file of that day too, hiding the hospital's lab day leaves the portal's. Undoing
+        each brings back what was there (crossmatch.lab_faults: none). An edit made again of the same lab event
+        replaces its own, never the other one's; a lab event that holds nothing it held is no longer found."""
+        from server import crossmatch, uploads
+        db = dbm.connect()
+        uid = db.execute("SELECT id FROM users WHERE username='robin'").fetchone()[0]
+        pid = prof.create_profile(db, "One lab event hidden (fictional)", owner_id=uid)
+        db.close()
+        t = "2025-03-04T09:45:00"
+
+        def obs(oid, code, name, v, unit, lo, hi, flag=None):
+            return {"resourceType": "Observation", "id": oid, "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
+                    "code": {"coding": [{"system": "http://loinc.org", "code": code}], "text": name}, "effectiveDateTime": t,
+                    "valueQuantity": {"value": v, "unit": unit}, "referenceRange": [{"low": {"value": lo}, "high": {"value": hi}, "text": f"{lo}-{hi}"}],
+                    **({"interpretation": [{"coding": [{"system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation", "code": flag}]}]} if flag else {})}
+
+        def upload(name, resources):
+            body = json.dumps({"resourceType": "Bundle", "type": "collection", "entry": [{"resource": r} for r in resources]}).encode()
+            db = dbm.connect()
+            try:
+                up = uploads.create(db, pid, uid)
+                uploads.add_file(db, pid, up, name, __import__("io").BytesIO(body))
+                uploads.finish(db, pid, up)
+            finally:
+                db.close()
+            r = self.robin.post(f"/api/profiles/{pid}/uploads/{up}/import", json={}, headers=H)
+            self.assertEqual(r.status_code, 202, r.text)
+            jid, end = r.json()["id"], time.time() + 30
+            while time.time() < end:
+                j = self.robin.get(f"/api/profiles/{pid}/jobs/{jid}").json()
+                if j["state"] == "preview":
+                    self.assertEqual(self.robin.post(f"/api/profiles/{pid}/jobs/{jid}/confirm", json={"keep": []}, headers=H).status_code, 202)
+                elif j["state"] in ("done", "failed"):
+                    self.assertEqual(j["state"], "done", j)
+                    return j
+                time.sleep(0.05)
+            self.fail("the upload never finished")
+
+        def rows(d):   # each lab day's rows, by its import
+            out = {}
+            for e in d["events"]:
+                if e["k"] == "lab":
+                    out[e["imp"]] = sorted(r[0] for i in d["details"][str(e["id"])]["ids"]
+                                           for r in d["details"][str(i)]["rows"])
+            return out
+
+        def edit(**body):
+            r = self.robin.post(f"/api/profiles/{pid}/edits", json=body, headers=H)
+            self.assertEqual(r.status_code, 201, r.text)
+            return r.json()["id"]
+
+        portal = [obs("hgb", "718-7", "Hemoglobin", 12.1, "g/dL", 13.5, 17.5, "L"), obs("plt", "777-3", "Platelet Count", 255, "10*3/uL", 150, 400)]
+        upload("portal-export.json", portal)
+        upload("portal-export-2.json", portal + [obs("alt", "1742-6", "ALT", 60, "U/L", 7, 56, "H")])
+        before = whole(self.robin, pid)
+        items = [e for e in before["events"] if e["k"] == "labitem"]
+        self.assertEqual(len({edits.key_of(e) for e in items}), 1, "the day's lab events share its key")
+        alt = next(e["id"] for e in items if [r[0] for r in before["details"][str(e["id"])]["rows"]] == ["ALT"])
+        self.assertEqual(sorted(sum(rows(before).values(), [])), ["ALT", "Hemoglobin", "Platelet Count"])
+        self.assertEqual(crossmatch.lab_faults(before), [])
+
+        hide = edit(event=alt, action="hide")
+        d = whole(self.robin, pid)
+        self.assertEqual(sorted(sum(rows(d).values(), [])), ["Hemoglobin", "Platelet Count"], "the ALT's alone is hidden")
+        self.assertEqual([x["ids"] for x in d["edits"]], [[alt]])
+        again = edit(event=alt, action="hide")   # the same lab event hidden again: its own edit replaced
+        self.assertEqual([x["id"] for x in whole(self.robin, pid)["edits"]], [again])
+        self.robin.delete(f"/api/profiles/{pid}/edits/{again}", headers=H)
+        d = whole(self.robin, pid)
+        self.assertEqual((rows(d), crossmatch.lab_faults(d)), (rows(before), []), "shown again: as it was")
+
+        # a hospital's file of the same day: its own lab day, under the same key as the portal's
+        upload("hospital.json", [obs("h-na", "2951-2", "Sodium", 139, "mmol/L", 135, 145), obs("h-k", "2823-3", "Potassium", 5.4, "mmol/L", 3.5, 5.1, "H")])
+        both = whole(self.robin, pid)
+        days = [e for e in both["events"] if e["k"] == "lab"]
+        self.assertEqual(len({edits.key_of(e) for e in days}), 1, "the day's lab days share its key")
+        hospital = next(e for e in days if "Sodium" in rows(both)[e["imp"]])
+        edit(event=alt, action="hide")
+        hide = edit(event=hospital["id"], action="hide")
+        d = whole(self.robin, pid)
+        self.assertEqual(sorted(sum(rows(d).values(), [])), ["Hemoglobin", "Platelet Count"],
+                         "the hospital's lab day hidden, the portal's shown, the ALT's lab event hidden still")
+        self.robin.delete(f"/api/profiles/{pid}/edits/{hide}", headers=H)
+        d = whole(self.robin, pid)
+        self.assertEqual(sorted(sum(rows(d).values(), [])), ["Hemoglobin", "Platelet Count", "Potassium", "Sodium"])
+        for x in d["edits"]:
+            self.robin.delete(f"/api/profiles/{pid}/edits/{x['id']}", headers=H)
+        d = whole(self.robin, pid)
+        self.assertEqual((rows(d), crossmatch.lab_faults(d)), (rows(both), []))
+
     def test_replies_carry_the_records(self):
         """#271: an edit, and its undo, answer with the records as the page loads them, so it draws them in place"""
         d = self.data()
