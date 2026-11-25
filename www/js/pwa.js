@@ -92,6 +92,18 @@ function forgetPicks() {
     }
   } catch (e) {}
 }
+/* (#936) what this browser keeps of a profile (its view on the records page, ht-state:<id>, with the lab names picked;
+   Body and activity's options, ht-health:<id> and ht-glucose:<id>; the last one picked, ht-profile) goes with it: on its
+   Delete here (profile-card.js), and as any page hears from the server which profiles are the person's (nav.js), for
+   those it doesn't list (deleted elsewhere, or left). gone(id) -> whether that profile's go */
+function forgetProfiles(gone) {
+  try {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i), m = /^ht-(?:state|health|glucose):(\d+)$/.exec(k || ""); if (m && gone(+m[1])) keys.push(k); }
+    if (/^\d+$/.test(localStorage.getItem("ht-profile") || "") && gone(+localStorage.getItem("ht-profile"))) keys.push("ht-profile");
+    for (const k of keys) localStorage.removeItem(k);
+  } catch (e) {}
+}
 /* (#429) what the sign-in left waiting on the device, for the account or for the next page, goes too, so the next
    person to sign in here doesn't get it: a theme picked offline, to be saved for the account once online (nav.js,
    sg-theme-later), with this browser's stand-in for it meanwhile (ht-theme, while it's the same), and what the

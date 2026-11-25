@@ -608,7 +608,10 @@ const SgNav = (() => {
   document.addEventListener("DOMContentLoaded", () => {
     api("me").then(r => r.ok ? r.json() : null).then(me => {
       if (me && (!own || me.profiles?.length === 0) && !locked) profiles(me.profiles);
-      if (me && !me.offline) saveLater();   // a theme picked offline (#414)
+      if (me && !me.offline) {
+        saveLater();   // a theme picked offline (#414)
+        if (Array.isArray(me.profiles)) forgetProfiles(id => !me.profiles.some(p => p.id === id));   // a profile no longer theirs (pwa.js, #936)
+      }
       if (me && me.user && me.user.is_admin && !locked) {
         const a = document.getElementById("adminLink");
         a.hidden = false;
