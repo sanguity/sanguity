@@ -545,6 +545,65 @@ class Calendar(unittest.TestCase):
         self.assertEqual(self.c["robin"].delete(f"/api/profiles/{self.pid}/members/{nell}", headers=H).status_code, 200)   # as it was
         self.fetch(path, 404)
 
+    def test_a_feed_ends_with_a_password_change_and_a_passkeys_removal(self):   # #597, the owner's decision
+        """Changing your own password signed every other device out but kept the account's calendar feeds, so an address
+        someone else copied kept working; removing a passkey (whose device may be lost, its calendar app holding the
+        addresses) the same. Both end them now, as Sign out everywhere else does (#590), and the account page is told how
+        many beforehand (GET /api/me) and after. Turning off your own authenticator app keeps them, as before."""
+        import time
+        from server import twofactor
+        pw, pw2 = "otto keeps a long passphrase", "otto keeps another long passphrase"
+        db = dbm.connect()
+        otto = accounts.create(db, "otto", password=pw)[0]
+        db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'viewer')", (otto, self.pid))
+        db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'viewer')", (otto, self.other))
+        db.close()
+        c = client()
+        self.assertEqual(c.post("/api/login", json={"username": "otto", "password": pw}, headers=H).status_code, 200)
+
+        def feeds():   # one in each profile, fetched once each
+            paths = []
+            for pid in (self.pid, self.other):
+                r = c.post(f"/api/profiles/{pid}/calendar", json={"tz": "UTC"}, headers=H)
+                self.assertEqual(r.status_code, 200, r.text)
+                self.fetch(r.json()["path"])
+                paths.append(r.json()["path"])
+            self.assertEqual(c.get("/api/me").json()["calendar_feeds"], 2, "said beforehand: how many there are")
+            return paths
+
+        # a password change
+        paths = feeds()
+        r = c.post("/api/me/password", json={"current": pw, "new": pw2}, headers=H)
+        self.assertEqual((r.status_code, r.json().get("calendar_feeds")), (200, 2), r.text)
+        for p in paths:
+            self.fetch(p, 404)
+        self.assertEqual(c.get("/api/me").json()["calendar_feeds"], 0)
+        # a wrong current password changes nothing, feeds included
+        paths = feeds()
+        self.assertEqual(c.post("/api/me/password", json={"current": "not otto's password at all", "new": pw}, headers=H).status_code, 403)
+        self.fetch(paths[0])
+        # a passkey's removal
+        db = dbm.connect()
+        pk = db.execute("INSERT INTO passkeys(user_id, credential_id, public_key, rp_id, name, created) VALUES(?, 'otto-597', x'00', 'localhost', ?, 1)",
+                        (otto, "Otto's phone (fictional)")).lastrowid
+        db.close()
+        r = c.request("DELETE", f"/api/me/passkeys/{pk}", json={"password": pw2}, headers=H)
+        self.assertEqual((r.status_code, r.json().get("calendar_feeds")), (200, 2), r.text)
+        for p in paths:
+            self.fetch(p, 404)
+        # turning off your own authenticator app keeps them (accounts.turn_off_2fa, deliberate)
+        secret = c.post("/api/me/2fa/start", json={"password": pw2}, headers=H).json()["secret"]
+        code = twofactor._code(secret, int(time.time() // twofactor.PERIOD))
+        self.assertEqual(c.post("/api/me/2fa/confirm", json={"code": code, "password": pw2}, headers=H).status_code, 200)
+        paths = feeds()
+        self.assertEqual(c.post("/api/me/2fa/off", json={"password": pw2}, headers=H).status_code, 200)
+        for p in paths:
+            self.fetch(p)
+        for pid in (self.pid, self.other):
+            self.assertEqual(self.c["robin"].delete(f"/api/profiles/{pid}/members/{otto}", headers=H).status_code, 200)   # as it was
+        for p in paths:
+            self.fetch(p, 404)
+
     def test_change_details(self):
         j = self.make()
         try:

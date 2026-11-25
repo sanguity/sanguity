@@ -647,6 +647,7 @@ def me(s=Depends(any_user), db=Depends(get_db)):
             "two_factor_required": required, "reauth_minutes": config.REAUTH_MINUTES,
             "profiles": _profiles_for(db, s["id"]) if not (s["must_change_pw"] or needs_2fa) else [],
             "password_min": _password_min(db, s), "session_ends": _session_ends(db, s),
+            "calendar_feeds": calendar.count_for(db, s["id"]),   # what changing the password or removing a passkey ends (#597)
             # the install's HTTPS address (PUBLIC_ORIGINS), for "install from this address" on a plain-HTTP page (#56)
             "https_address": next((o for o in sorted(config.PUBLIC_ORIGINS) if o.startswith("https://")), None),
             # backups late or failing (#200): the Admin menu item says so, for admins who may use it
@@ -685,11 +686,16 @@ def change_password(body: PasswordChange, request: Request, s=Depends(any_user),
         raise HTTPException(400, p)
     if sec.verify_password(s["pw_hash"], body.new):
         raise HTTPException(400, "Choose a password different from the current one.")
-    db.execute("UPDATE users SET pw_hash=?, must_change_pw=0, temp_pw_expires=NULL, pw_short=? WHERE id=?",
-               (sec.hash_password(body.new), int(len(body.new) < config.PASSWORD_MIN), s["id"]))
-    n = db.execute("DELETE FROM sessions WHERE user_id=? AND id<>?", (s["id"], s["sid"])).rowcount
-    activity.log(db, "password", s, ip=_client_ip(request))
-    return {"ok": True, "signed_out_elsewhere": n}
+    pw = sec.hash_password(body.new)
+    with dbm.transaction(db):
+        db.execute("UPDATE users SET pw_hash=?, must_change_pw=0, temp_pw_expires=NULL, pw_short=? WHERE id=?",
+                   (pw, int(len(body.new) < config.PASSWORD_MIN), s["id"]))
+        n = db.execute("DELETE FROM sessions WHERE user_id=? AND id<>?", (s["id"], s["sid"])).rowcount
+        # its calendar feeds end too (#597, the owner's decision), as signing out everywhere ends them (#590): a password
+        # is changed when someone else may have had it, and so may a feed's address; the page said how many beforehand
+        feeds = calendar.drop_for(db, s["id"])
+        activity.log(db, "password", s, ip=_client_ip(request))
+    return {"ok": True, "signed_out_elsewhere": n, "calendar_feeds": feeds}
 
 
 class FreshCheck(BaseModel):
@@ -923,7 +929,9 @@ def passkey_remove(pk: int, body: PasskeyRemove, request: Request, s=Depends(set
     """Remove one. The password always still signs in; but where the server requires two-factor sign-in, the last
     second factor can't go (that would leave the account unable to use anything until an admin stepped in). Needs the
     password and signs out everywhere else (#590), as turning off the authenticator app does: a session left signed in
-    can't take away its person's way in, nor keep a device it signed in on."""
+    can't take away its person's way in, nor keep a device it signed in on. The account's calendar feeds end too (#597,
+    the owner's decision): a passkey is removed when its device is lost, and that device's calendar app holds their
+    addresses (turning off one's own authenticator app keeps them: accounts.turn_off_2fa)."""
     _password(request, s, body.password, "remove a passkey")
     with dbm.transaction(db):
         r = db.execute("SELECT name FROM passkeys WHERE id=? AND user_id=?", (pk, s["id"])).fetchone()
@@ -935,9 +943,11 @@ def passkey_remove(pk: int, body: PasskeyRemove, request: Request, s=Depends(set
         db.execute("DELETE FROM passkeys WHERE id=?", (pk,))
         accounts.short_password_check(db, s["id"])
         n = db.execute("DELETE FROM sessions WHERE user_id=? AND id<>?", (s["id"], s["sid"])).rowcount
+        feeds = calendar.drop_for(db, s["id"])   # (#597)
         activity.log(db, "passkey.remove", s, detail={"name": r["name"]}, ip=_client_ip(request))
     after = db.execute("SELECT must_change_pw FROM users WHERE id=?", (s["id"],)).fetchone()
-    return {"ok": True, "left": passkeys.count(db, s["id"]), "must_change_pw": bool(after["must_change_pw"]), "signed_out_elsewhere": n}
+    return {"ok": True, "left": passkeys.count(db, s["id"]), "must_change_pw": bool(after["must_change_pw"]), "signed_out_elsewhere": n,
+            "calendar_feeds": feeds}
 
 
 @app.get("/api/sessions")
