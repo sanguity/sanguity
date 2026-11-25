@@ -3359,6 +3359,14 @@ Everything on `main` so far; it becomes the first tagged release.
   by none for one of them, so a file whose account was removed within the day was kept for good. An upload put back
   from an export now says so (schema version 43), and every other one no import read and no record holds goes at the
   first start a day on. Ones from before that no account made and no import read are kept, as they may be an export's.
+- **Each export loaded with `server.manage import` keeps its own folder, deleted with its import** (#945): an export
+  was unpacked into the profile's `imported/`, which a later export loaded emptied before its own import was saved (one
+  that then failed left the earlier records' documents without their files), and a folder loaded later left the
+  earlier export there, its `data.json` holding every record, until that later import was undone. Now each is unpacked
+  into a folder of its import's own: once a later import replacing its records is saved, it goes (and the watch data
+  in it is no longer shown), one that fails leaves it as it was, undoing it deletes it, and what a stop leaves goes at
+  the next start. An export loaded again keeps its documents' ids. What an older version unpacked into `imported/`
+  itself goes with the next import that replaces it.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
