@@ -21158,9 +21158,31 @@ def main():
                 said866 = ax_said(page, "#" + ids866[n866]) if n866 in ids866 else None
                 if not said866 or not said866[0].endswith(want866) or re.search(r"[▲▼◆]", said866[0]):
                     bad866.append(f"{n866}: named “{said866 and said866[0]}”, not ending “{want866}”")
-            js("document.querySelectorAll('#seriesRows details').forEach(d => d.open = false)")
             check("#866: Labs' list names each lab's latest result with its flag's word (“20 U/L, Flagged”, “High”, “Low”), the ▲, ▼ or ◆ hidden from "
                   "the name (a screen reader said “black diamond”), as the accessibility tree gives it", not bad866, bad866)
+            # ---- #872: and that name is the lab's and its latest alone, "Hemoglobin, 14.4 g/dL" ("ALT, 20 U/L, Flagged"):
+            # the "What is this test?" link was inside the box's label, so a screen reader heard "Hemoglobin What is this
+            # test? Hemoglobin: “Hemoglobin Test” on MedlinePlus, opens in a new tab 14.4 g/dL". The link beside it, named
+            # on its own, as the accessibility tree gives them, for every lab of the matrix with a row
+            bad872, links872 = [], 0
+            for n872, j872 in M752.JUDGED.items():
+                if len(j872) < 2 or n872 not in ids866:
+                    continue
+                f872, row872 = j872[-1][0], f"document.getElementById('{ids866[n872]}').closest('.srow')"
+                shown872 = js(f"{row872}.querySelector('.nm').textContent")
+                want872 = f"{shown872}, {M752.CASES[n872][-1][5]} {M752.UNITS[n872]}" + (f", {FLAG752[f872].split(' ', 1)[1]}" if f872 else "")
+                said872 = ax_said(page, "#" + ids866[n872])
+                tq872 = js(f"(() => {{ const a = {row872}.querySelector('a.test-page'); if (!a) return null; a.id ||= '{ids866[n872]}_tq'; return a.id; }})()")
+                link872 = ax_said(page, "#" + tq872) if tq872 else None
+                if not said872 or said872[0] != want872:
+                    bad872.append(f"{n872}: named “{said872 and said872[0]}”, not “{want872}”")
+                if tq872:
+                    links872 += 1
+                    if not (link872 and link872[0].startswith(f"What is this test? {shown872}: ") and link872[0].endswith(", opens in a new tab")):
+                        bad872.append(f"{n872}: its link named “{link872 and link872[0]}”")
+            js("document.querySelectorAll('#seriesRows details').forEach(d => d.open = false)")
+            check("#872: each lab's box in Labs' list is named by the lab and its latest alone (“Hemoglobin, 14.4 g/dL”, “ALT, 20 U/L, Flagged”), its "
+                  "“What is this test?” link beside it with its own name, not in the box's (as the accessibility tree gives them)", not bad872 and links872 >= 5, bad872 or links872)
             db = dbm.connect()
             prof_r.delete_profile(db, mpid)
             db.close()

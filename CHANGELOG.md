@@ -2089,6 +2089,10 @@ Everything on `main` so far; it becomes the first tagged release.
   and that result's mark was in the name as a symbol, so a screen reader said "black diamond 20 U/L" for ALT's ◆, and
   read ▲ and ▼ as symbols too. The name now says "20 U/L, Flagged" ("High", "Low"), the mark hidden from it and shown
   as before.
+- **Labs' list names each lab's checkbox by the lab and its latest alone** (#872): the "What is this test?" link sat
+  inside the checkbox's label, so a screen reader heard "Hemoglobin What is this test? Hemoglobin: “Hemoglobin Test”
+  on MedlinePlus, opens in a new tab 14.4 g/dL". The checkbox is now "Hemoglobin, 14.4 g/dL", the link beside it
+  with its own name.
 - **A readout's room holds two results at one time as it says them, so the chart doesn't move at any width** (#894):
   #865 laid each readout out for the longest it can say, but held two results at one time in the file's order while it
   says the flagged one first; wrapped, what it said could take a line more, and the chart still dropped from under the
