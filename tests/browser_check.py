@@ -1859,6 +1859,43 @@ TEXT_IN849_JS = r"""([sel, box]) => { const out = {n: 0, past: [], said: []}, V 
 TILE_SIZES753 = [(320, 800), (360, 800), (375, 800), (412, 800), (700, 800), (768, 800), (900, 800), (1100, 900), (1400, 900), (844, 390)]
 BIG_TEXT_CSS = ":root{--fs-1:23px;--fs-2:25px;--fs-3:28px;--fs-4:31px;--fs-5:36px;--fs-6:44px;--fs-7:56px} html{font-size:200%}"
 ADOPT_CSS_JS = "css => { const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = css ? [s] : []; }"
+# Labs' Latest (#993) beside the charts' tables, for the period shown: {latest: each row's [lab, unit, its values each
+# [as shown, its flag's word], its line under them (ranges · reported · day …), its change (#995) or null], charts:
+# each lab's chart's [lab, unit, its table's rows, newest first, each its cells' words]}; Labs' view, its labs and
+# tables as they were after
+LATEST993_JS = r"""async () => {
+  const frame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r))), was = [state.labsView, new Set(state.sel), new Set(state.tables), state.tab];
+  switchTab('labs', 'latest'); await frame();
+  const latest = [...document.querySelectorAll('#ltRows .lt-row')].map(a => [a.dataset.lab, a.dataset.unit,
+    [...a.querySelectorAll('.lt-v')].map(v => [[...v.childNodes].filter(n => !n.matches?.('.st, .vh')).map(n => n.textContent).join('').trim(),
+      (v.querySelector('.st')?.textContent || '').replace(/[▲▼◆]/g, '').trim()]),
+    a.querySelector('.s').textContent, a.querySelector('.c')?.textContent ?? null]);
+  state.sel = new Set(SERIES.filter(s => !s.watch).map(s => s.name)); state.tables = new Set(state.sel); switchTab('labs', 'chart'); await frame();
+  const charts = [...document.querySelectorAll('#charts .chart')].map(c => [c.dataset.lab, c._s ? c._s.unit : c.querySelector('.hd-sub .unit')?.textContent.split(' ')[0],
+    [...c.querySelectorAll('table.data tbody tr')].map(r => [...r.cells].map(x => x.textContent))]);
+  [state.labsView, state.sel, state.tables] = was; switchTab(was[3]);
+  return {latest, charts}; }"""
+
+
+def latest993(got):
+    """What's wrong with Labs' Latest (LATEST993_JS's) against each lab's chart (#993): every lab with a result in the
+    period listed once, with none none; each the results at its chart's latest time (the top of its table, two at one
+    time both, in any order), each its value and unit, flag and range as the table gives them, and its day"""
+    bad, rows = [] if got["charts"] else ["no chart to hold it against"], {(n, u): r for n, u, *r in got["latest"]}
+    if len(rows) != len(got["latest"]):
+        bad.append(f"a lab listed twice: {[r[:2] for r in got['latest']]}")
+    for n, u, trs in got["charts"]:
+        r = rows.pop((n, u), None)
+        if not trs or not r:
+            if r or trs:
+                bad.append(f"{n} ({u}): {'listed' if r else 'not listed'}, with {len(trs)} results in the period")
+            continue
+        at = [t for t in trs if t[0] == trs[0][0]]   # its latest time's
+        ranges = r[1].split(" · ")[0].split("; ")
+        want = sorted([t[1].split(" (reported ")[0], re.sub(r"[▲▼◆]\s*", "", t[3]).strip(), "ref " + t[2].split(" · ")[0] if t[2].split(" · ")[0] else "no range on its report"] for t in at)
+        if len(ranges) != len(r[0]) or sorted([v, f, g] for (v, f), g in zip(r[0], ranges)) != want or not any(trs[0][0].startswith(p) for p in r[1].split(" · ")[1:]):
+            bad.append(f"{n} ({u}): {r[0]} {r[1]!r}, its chart's latest {want} on {trs[0][0]}")
+    return bad + [f"{n} ({u}) listed with no chart" for n, u in rows]
 
 
 def tiles_big753(page, settle, show):
@@ -9968,15 +10005,6 @@ def main():
             ABOVE895 = r"""() => { const s = document.querySelector('#charts .chart svg.ck'), h = e => e ? Math.round(e.getBoundingClientRect().height) : 0;
               return [s.getBoundingClientRect().top, h(document.querySelector('.filters')), h(document.querySelector('#view-labs .labs-head')), h(document.getElementById('evTrack'))]; }"""
             BIG895 = {1: "", 1.5: ":root{--fs-1:17.25px;--fs-2:18.75px;--fs-3:21px;--fs-4:23.25px;--fs-5:27px;--fs-6:33px;--fs-7:42px} html{font-size:150%}", 2: BIG_TEXT_CSS}
-            # the page still (#985): the window's scroll, the nth chart's top and the page's height the same for 12 frames in
-            # a row, no gesture's plot held (charts.js panZoom), 5 s at most; -> [scrollY, its top, the most the page scrolls].
-            # A redraw's charts are drawn a frame after the page around them, placeholders for that frame, so a read then
-            # (on CI's slower machine, 80 ms after a scroll) found the plot 45 px lower than it rests
-            STILL985 = r"""async n => { const frame = () => new Promise(r => requestAnimationFrame(r)), t0 = performance.now(), root = document.documentElement;
-              const snap = () => { const s = document.querySelectorAll('#charts .chart svg.ck')[n]; return JSON.stringify([Math.round(scrollY), s ? s.getBoundingClientRect().top : null, root.scrollHeight, root.classList.contains('ck-held')]); };
-              let last = snap(), same = 0;
-              while (performance.now() - t0 < 5000 && (same < 12 || JSON.parse(last)[3])) { await frame(); const now = snap(); if (now === last) same++; else { last = now; same = 0; } }
-              const [y, top, h] = JSON.parse(last); return [y, top, h - innerHeight]; }"""
             sel895, bad895, n895 = js("[...state.sel]"), [], 0
             for w895, h895, k895, at895 in ((900, 1400, 1.5, "top"), (412, 860, 2, "track"), (360, 800, 2, "track"), (1400, 900, 1, "top")):
                 page.set_viewport_size({"width": w895, "height": h895})
@@ -9985,7 +10013,7 @@ def main():
                 settle(700)
                 if at895 == "track":
                     js("() => { const r = document.querySelector('#evTrack').getBoundingClientRect(); scrollBy(0, r.top + r.height / 2 - 80); }")
-                js(STILL985, 0)   # (on a slower machine the page scrolled 9 px after a fixed wait, at 412 px with 200% text)
+                    settle(300)
                 was895 = js(ABOVE895)
                 x895, y895 = js("() => { const r = document.querySelector('#charts .chart svg.ck').getBoundingClientRect(); return [r.left + r.width / 2, Math.min(innerHeight - 40, r.top + r.height / 2)]; }")
                 page.mouse.move(x895, y895)
@@ -10000,7 +10028,7 @@ def main():
                                       f"the event track {was895[1:]} → {now895[1:]}")
                         break
                 page.mouse.up()
-                js(STILL985, 0)
+                settle(800)
                 end895 = js(ABOVE895)
                 if abs(end895[0] - was895[0]) > 1:
                     bad895.append(f"{w895} px, text at {k895:.0%}, let go: the plot moved {end895[0] - was895[0]:+.0f} px (the bar, Labs' head and the event track {was895[1:]} → {end895[1:]})")
@@ -10017,10 +10045,10 @@ def main():
             # of it. Only what grows or shrinks over the plot is made up for now. Labs' second chart in the window's
             # middle: zoomed by the wheel and the page wheeled 600 px off the charts straight after; dragged past the
             # records' end and the page wheeled 600 px as it's let go; at 412 px by touch, panned past the end and the page
-            # swiped at once. Once the page is still (STILL985) the scroll has gone as far as the page lets it (one ends at
-            # the page's foot), and the plot stays where the scroll left it on the screen (what grew over it, the period bar
-            # turned custom, made up for; the page drawn shorter for a moment at its foot, which scrolled it up, put back),
-            # at 1400 px as usual and with 200% text
+            # swiped at once. The scroll goes as far as the page lets it (one ends at the page's foot), and once all's drawn
+            # the plot is where the scroll left it on the screen (what grew over it, the period bar turned custom, made up
+            # for; the page drawn shorter for a moment at its foot, which scrolled it up, put back), at 1400 px as usual and
+            # with 200% text
             PLOT985 = "() => { const s = document.querySelectorAll('#charts .chart svg.ck')[1], r = s.getBoundingClientRect(); return [Math.round(scrollY), r.top, r.left, r.width, r.height, document.documentElement.scrollHeight - innerHeight]; }"
             GO985 = r"""() => { state.tables.clear(); state.sel = new Set(['Hemoglobin', 'WBC', 'Platelet Count']); applyPreset('1y'); switchTab('labs', 'chart'); renderLabs();
               return new Promise(r => setTimeout(() => { const s = document.querySelectorAll('#charts .chart svg.ck')[1]; scrollBy(0, s.getBoundingClientRect().top - 350); r(); }, 600)); }"""
@@ -10030,7 +10058,7 @@ def main():
                 for how985 in ("a wheel's zoom", "a drag past the records' end"):
                     page.set_viewport_size({"width": 1400, "height": 900})
                     js(GO985)
-                    js(STILL985, 1)
+                    settle(400)
                     _, _, x985, w985, h985, _ = js(PLOT985)
                     y985 = 350 + h985 / 2
                     if how985 == "a wheel's zoom":
@@ -10047,13 +10075,14 @@ def main():
                             settle(30)
                         page.mouse.up()
                     page.mouse.move(1396, 450)   # off the charts, at the page's edge
-                    s0 = js("Math.round(scrollY)")
+                    s0, mx985 = js(PLOT985)[::5]
                     page.mouse.wheel(0, 300)
                     settle(30)
                     page.mouse.wheel(0, 300)
-                    s1, t1, mx985 = js(STILL985, 1)
-                    settle(500)
-                    s2, t2, _ = js(STILL985, 1)
+                    settle(80)
+                    s1, t1 = js(PLOT985)[:2]
+                    settle(900)
+                    s2, t2 = js(PLOT985)[:2]
                     if s1 < min(s0 + 600, mx985) - 10 or abs(t2 - t1) > 2:
                         bad985.append(f"{how985}, then the page scrolled 600 px, text at {k985:.0%}: scrolled {s0} → {s1} → {s2}, the plot at {t1:.0f} → {t2:.0f} px")
                 # a finger on a phone, in a context of its own (the same session)
@@ -10064,7 +10093,7 @@ def main():
                 pg985.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
                 pg985.evaluate(ADOPT_CSS_JS, BIG895[k985])
                 pg985.evaluate(GO985)
-                pg985.evaluate(STILL985, 1)
+                pg985.wait_for_timeout(400)
                 cdp985 = ctx985.new_cdp_session(pg985)
                 _, _, x985, w985, h985, _ = pg985.evaluate(PLOT985)
                 sx985, sy985 = x985 + w985 / 2, 350 + h985 / 2
@@ -10073,11 +10102,11 @@ def main():
                     cdp985.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": sx985 - 900 * i985 / 8, "y": sy985}]})
                     pg985.wait_for_timeout(25)
                 cdp985.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
-                s0 = pg985.evaluate("Math.round(scrollY)")
+                s0, mx985 = pg985.evaluate(PLOT985)[::5]
                 cdp985.send("Input.synthesizeScrollGesture", {"x": 6, "y": 600, "yDistance": -500, "speed": 2500, "preventFling": True})
-                s1, t1, mx985 = pg985.evaluate(STILL985, 1)
-                pg985.wait_for_timeout(500)
-                s2, t2, _ = pg985.evaluate(STILL985, 1)
+                s1, t1 = pg985.evaluate(PLOT985)[:2]
+                pg985.wait_for_timeout(1000)
+                s2, t2 = pg985.evaluate(PLOT985)[:2]
                 if s1 < min(s0 + 300, mx985) - 10 or abs(t2 - t1) > 2:
                     bad985.append(f"a finger's pan past the records' end at 412 px, then the page swiped, text at {k985:.0%}: scrolled {s0} → {s1} → {s2}, the plot at {t1:.0f} → {t2:.0f} px")
                 ctx985.close()
@@ -21627,6 +21656,7 @@ def main():
                     bad.append(f"band said {got['ref']}, its steps {sorted(said)}")
                 return bad
             bad752, bad819 = [], []   # (#819: flagged results said one way, checked with these and at the end)
+            bad993m = []   # (#993: Labs' Latest against each lab's chart, on the matrix's profiles; checked after #904's)
             page.goto(base + f"/?profile={mpid}")
             page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {mpid}", timeout=20000)
             got752 = js("Object.fromEntries(SERIES.filter(s => !s.watch).map(s => [s.name, s.pts.map(p => [p[4] || '', p[2], p[3], p.rs || 'report'])]))")
@@ -21646,6 +21676,10 @@ def main():
                         for (f, lo, hi, src), e in zip(j, M752.edges(n))][::-1]
                 if [[r[0].split(" · ")[0], r[1]] for r in rows] != want:
                     bad752.append(f"Labs' {n} table: {rows} not {want}")
+            bad993m += [f"the matrix, every result: {b}" for b in latest993(js(LATEST993_JS))]
+            js("([a, b]) => { state.preset = 'custom'; state.from = zParse(a); state.to = zParse(b); }", [M752.day(95), M752.day(35)])   # (the latest in it not the lab's latest)
+            bad993m += [f"the matrix, 95 to 35 days back: {b}" for b in latest993(js(LATEST993_JS))]
+            js("applyPreset('all')")
             js("labs => { for (const n of labs) state.tables.delete(n); switchTab('labs', 'heatmap'); }", list(M752.CASES))
             settle(400)
             hm752 = js("Object.fromEntries(SERIES.filter(s => !s.watch).map(s => [s.name, s.pts.map(p => Math.sign(hmLevel(p) || 0))]))")
@@ -21757,6 +21791,8 @@ def main():
                 page.goto(base + f"/?profile={mpid}")
                 page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {mpid}", timeout=20000)
                 si782 = js("Object.fromEntries(SERIES.filter(s => s.uc).map(s => [s.name, s.pts.map(p => ucOrig(s, p))]))")
+                js("applyPreset('all')")
+                bad993m += [f"the matrix in SI units: {b}" for b in latest993(js(LATEST993_JS))]
                 want782 = {n: [f"{v} {u}" + (f", ref {w}" if w else "") for v, w in pts] for n, (u, pts) in said782.items() if n in si782}
                 if si782 != want782 or "Creatinine" not in si782:
                     bad782.append(f"“Reported … ref” in SI units: {si782} not {want782}")
@@ -22079,6 +22115,7 @@ def main():
                   [...c.querySelectorAll('table.data tbody tr')].map(r => [r.cells[2].textContent.split(' · ')[0], r.cells[3].textContent]).reverse()])""")}
                 if got != {k: [[words752(lo, hi, *e), FLAG752[f]] for f, lo, hi, *e in v] for k, v in seen.items()}:
                     bad.append(f"{when}: Labs' tables {got}")
+                bad993m.extend(f"{when}: {x}" for x in latest993(js(LATEST993_JS)))   # (#993, its check after #904's)
                 js("state.tables.clear()")
                 # the Timeline's badge on each import's lab day, and the drawer's Out of range and rows' flags
                 js("() => { state.q = ''; setPeriod('all'); pickTab('timeline'); }")
@@ -22185,6 +22222,7 @@ def main():
                 if ov825[1] != M752.LATEST_OUT:
                     bad825.append(f"the Overview's out-of-range list {ov825[1]} not {M752.LATEST_OUT}")
                 js("labs => { state.tables.clear(); state.sel = new Set(labs); applyPreset('all'); switchTab('labs', 'chart'); renderLabs(); }", M752.LATEST_LABS)
+                bad993m.extend(f"#825's, {'once' if also else 'apart'}: {x}" for x in latest993(js(LATEST993_JS)))   # (#993, its check after #904's)
                 settle(600)
                 for n, j in judged.items():   # each mark [x, flagged] in the order drawn, and the header's counts
                     got = js("""n => { const c = [...document.querySelectorAll('#charts .chart')].find(c => c.dataset.lab === n);
@@ -22731,9 +22769,124 @@ def main():
             settle(300)
             check("…and a lab's panel's “First to latest” with two results at its first or latest time says each change, to or from each of them (it "
                   "took the one last in the file), and none between two at one time, at 360 and 1400 px (#982)", not bad982, bad982)
+            # #993: Labs' Latest against each lab's chart on the matrix's profiles (bad993m: every case of #752's, a period
+            # ending before the latest, in SI units; #781's copies before and after Same result, #846's uploads, #868's
+            # typed in again, #869's sent again; #825's one result twice at its latest, and #833's Not the same), and here
+            # with two results at the latest time (the period 90 to 20 days back) and one (All)
+            js("([a, b]) => { state.preset = 'custom'; state.from = zParse(a); state.to = zParse(b); }", [M752.day(90), M752.day(20)])
+            two993 = js(LATEST993_JS)
+            bad993m += [f"two at the latest time: {b}" for b in latest993(two993)] + [f"two at the latest time: {r}" for r in two993["latest"] if r[0] == "Potassium" and len(r[2]) != 2]
+            js("applyPreset('all')")
+            bad993m += [f"at one time, All: {b}" for b in latest993(js(LATEST993_JS))]
+            check("#993: Labs' Latest gives each lab's latest as its chart does (value and unit, flag, range, day) in every case of the ranges matrix: "
+                  "ranges from reports and Settings, bounds, one-sided ranges, a period ending before the latest, SI units, copies before and after "
+                  "Same result, through uploads, typed in and sent again, one result twice at its latest and Not the same, and two results at the "
+                  "latest time, both", not bad993m and len([r for r in two993["latest"] if r[0] == "Potassium"]) == 1, bad993m[:8])
             db = dbm.connect()
             prof_r.delete_profile(db, apid)
             db.close()
+            # ---- Labs' Latest (#993, latest.js): Labs' fourth view, at #labs-latest. A row for each lab with a result in the
+            # period, its latest as its chart's table gives it (latest993: value and unit, flag, range and day), a line
+            # saying how many have none in it; a list of links, each named by its lab and its latest. Activating a row (a
+            # click, Enter, a tap) charts the lab, focus on its chart, the address #labs; Back returns to Latest, focus on
+            # the row. axe-core at 1400, 375 and 320 px, light and dark; a phone's width; with text at 200% at 360 and 412
+            # px every word inside its row and the view switch whole; in forced colours each row's words and focus ring drawn
+            # (here, after the ranges matrix's checks, which move the page between profiles too: Latest's do, and the checks
+            # before #712 keep what the page holds between them, window._was60's selection and period among it)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.goto(base + "/?profile=1#labs")
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
+            settle(300)
+            page.click("#labsView button[data-view=latest]")
+            js("applyPreset('2y')")
+            settle(400)
+            view993 = js("""[location.hash, document.querySelector('#labsView [aria-pressed=true]').dataset.view, ['labsChart', 'labsHeatmap', 'labsCompare', 'labsLatest'].map(id => document.getElementById(id).hidden),
+              document.querySelectorAll('#ltRows ul > li > a.lt-row[href]').length, document.querySelectorAll('#ltRows .lt-row').length, [...document.querySelectorAll('#view-labs .chart-only')].every(x => x.hidden)]""")
+            bad993 = latest993(js(LATEST993_JS))
+            names993 = {}
+            for a993 in js("[...document.querySelectorAll('#ltRows .lt-row')].map(a => [a.id, nice(a.dataset.lab), a.querySelector('.v').textContent, a.querySelector('.s').textContent.split(' · ').at(-1)])"):
+                said = (ax_said(page, "#" + a993[0]) or [""])[0]
+                if not said.startswith(a993[1]) or a993[3] not in said or re.sub(r"[▲▼◆]", "", a993[2]).split()[0] not in said or re.search(r"[▲▼◆]", said):
+                    names993[a993[0]] = said
+            js("applyPreset('6m'); renderLabs()")
+            settle(300)
+            bad993 += latest993(js(LATEST993_JS))
+            out993 = js("""[document.getElementById('ltSays').textContent, SERIES.filter(s => !s.watch && s.pts.length && !s.pts.some(p => p.ts >= state.from && p.ts <= state.to)).length]""")
+            js("applyPreset('2y'); renderLabs()")
+            settle(300)
+            back993 = {}
+            for how993 in ("click", "Enter"):
+                row993 = js("document.querySelectorAll('#ltRows .lt-row')[2].id")
+                if how993 == "click":
+                    page.click("#" + row993)
+                else:
+                    page.focus("#" + row993)
+                    page.keyboard.press("Enter")
+                settle(600)
+                got993 = [js("[location.hash, state.labsView, document.activeElement.matches('#charts .chart svg.ck') && document.activeElement.closest('.chart')._s.name, document.getElementById('sgStatus').textContent]")]
+                page.go_back()
+                page.wait_for_function("state.labsView === 'latest'", timeout=5000)
+                settle(400)
+                got993.append(js("[location.hash, document.activeElement.id]"))
+                back993[how993] = [got993, js("id => document.getElementById(id)?.dataset.lab", row993), row993]
+            tctx993 = browser.new_context(viewport={"width": 412, "height": 860}, is_mobile=True, has_touch=True, bypass_csp=True)
+            tctx993.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
+            tp993 = tctx993.new_page()
+            tp993.goto(base + "/?profile=1#labs-latest")
+            tp993.wait_for_function("typeof booted !== 'undefined' && booted && state.labsView === 'latest'", timeout=20000)
+            tp993.wait_for_timeout(400)
+            row993 = tp993.evaluate("document.querySelectorAll('#ltRows .lt-row')[1].id")
+            tp993.tap("#" + row993)
+            tp993.wait_for_timeout(700)
+            got993 = [tp993.evaluate("[location.hash, state.labsView, document.activeElement.matches('#charts .chart svg.ck') && document.activeElement.closest('.chart')._s.name]")]
+            tp993.go_back()
+            tp993.wait_for_function("state.labsView === 'latest'", timeout=5000)
+            tp993.wait_for_timeout(400)
+            got993.append(tp993.evaluate("[location.hash, document.activeElement.id]"))
+            back993["tap"] = [got993, tp993.evaluate("id => document.getElementById(id)?.dataset.lab", row993), row993]
+            tctx993.close()
+            check("Labs' Latest (#993): a fourth view at #labs-latest, a row a lab with its latest as its chart's table gives it (value and unit, flag, range, "
+                  "day; with the period 2 years and 6 months), those with none in the period not listed and counted; a list of links, each named by its lab "
+                  "and its latest, marks as words",
+                  view993 == ["#labs-latest", "latest", [True, True, True, False], view993[4], view993[4], True] and view993[4] > 0 and not bad993 and not names993
+                  and (f"{out993[1]} more" in out993[0] if out993[1] else "more" not in out993[0]), [view993, bad993, out993, names993])
+            check("…a row activated by a click, Enter or a tap charts its lab, focus on its chart, the address #labs; Back returns to Latest, focus on the row",
+                  len(back993) == 3 and all(g[0][:3] == ["#labs", "chart", lab] and g[1] == ["#labs-latest", row] for g, lab, row in back993.values())
+                  and all(js("n => `${nice(n)} charted on Labs.`", lab) in g[0][3] for how, (g, lab, row) in back993.items() if how != "tap"), back993)
+            seen993, theme993 = [], js("document.documentElement.dataset.theme || null")
+            for mode in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", mode)
+                for width in (1400, 375, 320):
+                    page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                    js("switchTab('labs', 'latest'); scrollTo(0, 0)")
+                    settle(400)
+                    seen993 += axe_check(page, f"Labs' Latest, {width} px, {mode}")[0]
+                    if width < 400:
+                        seen993 += phone_fits(page, f"Labs' Latest, {width} px ({mode})")
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme993)
+            for width in (360, 412):
+                page.set_viewport_size({"width": width, "height": 800})
+                js(ADOPT_CSS_JS, BIG_TEXT_CSS)
+                js("renderLabs()")
+                settle(500)
+                in993 = js(TEXT_IN849_JS, ["#ltRows .lt-row > *", ".lt-row"])
+                seen993 += [f"{width} px, 200% text: {p}" for p in in993["past"]] + ([] if in993["n"] else [f"{width} px, 200% text: no row"]) \
+                    + phone_fits(page, f"Labs' Latest at 200% text, {width} px") \
+                    + ([f"{width} px, 200% text: the view switch cut"] if js("(v => v.scrollWidth > v.clientWidth + 1)(document.getElementById('labsView'))") else [])
+                js(ADOPT_CSS_JS, "")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.emulate_media(forced_colors="active")
+            js("scrollTo(0, 0)")
+            page.focus("#ltRows .lt-row")
+            settle(300)
+            fc993 = js("""(a => { const c = getComputedStyle(a), s = getComputedStyle(a.querySelector('.s')), st = a.closest('ul').querySelector('.st'), f = st && getComputedStyle(st);
+              return [c.outlineStyle !== 'none' && parseFloat(c.outlineWidth) >= 2, c.color !== c.backgroundColor && s.color !== s.backgroundColor, !f || f.color !== f.backgroundColor]; })(document.activeElement)""")
+            page.emulate_media(forced_colors="none")
+            js("applyPreset('all'); switchTab('labs', 'chart')")
+            settle(300)
+            check("…axe-core and a phone's width find nothing in it at 1400, 375 and 320 px, light and dark; with text at 200% at 360 and 412 px every word "
+                  "inside its row and the view switch whole; in forced colours a row's words and its focus ring drawn", not seen993 and fc993 == [True, True, True],
+                  [seen993[:6], fc993])
             # …#900: and whatever it says, at the width it's shown. The room held the widest three it says as one line, and
             # wrapped, a narrower one could take a line more: on profiles of many times with two results (the review's 20,
             # ranges_matrix.many) Compare dropped 18 px at 803–818 px and 36 px at 461–467 px with 200% text, Labs 40.6 px at

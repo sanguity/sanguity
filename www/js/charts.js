@@ -378,16 +378,16 @@ function chartKeys(svg, label, times, show, clear) {
 const svgPoint = (svg, x, y) => { const r = svg.getBoundingClientRect(), k = r.width / svg._geom.w; return {clientX: r.left + x * k, clientY: r.top + y * k}; };
 const tipWords = nodes => nodes.filter(Boolean).map(n => n.textContent.trim()).filter(Boolean).join(". ");
 function median(a) { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; }
-/* the Labs tab (#172): the chosen labs as charts (each with its table), every lab with ranges as a heatmap, or up to
-   three labs compared within their own ranges (#297, compare.js) */
+/* the Labs tab (#172): the chosen labs as charts (each with its table), every lab with ranges as a heatmap, up to
+   three labs compared within their own ranges (#297, compare.js), or each lab's latest result (#993, latest.js) */
 function renderLabs() {
-  const hm = state.labsView === "heatmap", cmp = state.labsView === "compare";
+  const hm = state.labsView === "heatmap", cmp = state.labsView === "compare", lt = state.labsView === "latest";
   // no lab results at all (#199): what would be here, and where they come from, in place of the charts and heatmap
   const none = !SERIES.some(s => !s.watch && s.pts.length);
   $("#labsNone")?.remove();
   $(".labs-head").hidden = none;
-  $("#labsChart").hidden = hm || cmp || none; $("#labsHeatmap").hidden = !hm || none; $("#labsCompare").hidden = !cmp || none;
-  for (const x of document.querySelectorAll("#view-labs .chart-only")) x.hidden = hm || cmp;   // the header's overlays, Legend and ⓘ (#279)
+  $("#labsChart").hidden = hm || cmp || lt || none; $("#labsHeatmap").hidden = !hm || none; $("#labsCompare").hidden = !cmp || none; $("#labsLatest").hidden = !lt || none;
+  for (const x of document.querySelectorAll("#view-labs .chart-only")) x.hidden = hm || cmp || lt;   // the header's overlays, Legend and ⓘ (#279)
   if (none) {
     const e = emptyState("Lab results appear here, each charted over time against its reference range.",
       canEdit() ? {href: `sources.html?profile=${PROFILE.id}#manual`, text: "Add lab results"} : null);
@@ -396,17 +396,19 @@ function renderLabs() {
     return save();
   }
   for (const b of $("#labsView").children) b.setAttribute("aria-pressed", b.dataset.view === state.labsView);
-  if (hm) renderHeatmap(); else if (cmp) renderCompare(); else { renderSeriesList(); renderCharts(); }
+  if (hm) renderHeatmap(); else if (cmp) renderCompare(); else if (lt) renderLatest(); else { renderSeriesList(); renderCharts(); }
   save();
 }
-$("#labsView").onclick = ev => { const b = ev.target.closest("button[data-view]"); if (!b || b.dataset.view === state.labsView) return; hideTip(); state.labsView = b.dataset.view; renderLabs(); tabAddress(true); };   // #labs, #labs-heatmap or #labs-compare (#208, #297), Back returning to the view before (#442)
+$("#labsView").onclick = ev => { const b = ev.target.closest("button[data-view]"); if (!b || b.dataset.view === state.labsView) return; hideTip(); state.labsView = b.dataset.view; renderLabs(); tabAddress(true); };   // #labs, #labs-heatmap, #labs-compare or #labs-latest (#208, #297, #993), Back returning to the view before (#442)
 /* a lab on Labs as a chart, or as its table, from the drawer (a lab's panel's Chart these results or Show them as a
-   table, a result's row): the drawer closes, taking with it what had focus, so focus goes to its chart once it's drawn,
-   or to its name over its table, and that's said (#652: it fell to the page, and nothing said the lab was charted) */
-function showSeries(name) {
+   table, a result's row) or a row of Latest (#993): the drawer closes, taking with it what had focus, so focus goes to
+   its chart once it's drawn, or to its name over its table, and that's said (#652: it fell to the page, and nothing
+   said the lab was charted). s: the series, where the lab is kept in two units (#438): its own chart */
+function showSeries(name, s) {
   state.sel.add(name); state.labsView = "chart"; closeDrawer(); pickTab("labs");
   requestAnimationFrame(() => {
-    const t = state.tables.has(name), x = [...$("#charts").querySelectorAll(".chart")].find(c => c.dataset.lab === name)?.querySelector(t ? ".hd .lab-open" : "svg.ck");
+    const cs = [...$("#charts").querySelectorAll(".chart")].filter(c => c.dataset.lab === name);
+    const t = state.tables.has(name), x = (cs.find(c => c._s === s) || cs[0])?.querySelector(t ? ".hd .lab-open" : "svg.ck");
     if (!x) return;
     x.focus();
     announce(`${nice(name)} ${t ? "shown as a table" : "charted"} on Labs.`);
