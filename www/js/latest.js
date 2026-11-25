@@ -4,8 +4,8 @@
    the latest time both said, as the chart's readout says them (chartkit.js ckLast, #904). A row is a link to its lab's
    chart: activating it charts the lab on Labs, focus on its chart, and Back returns to the row. It follows the period:
    a lab with no result in it isn't listed, and how many aren't is said. Grouped by panel, with a name filter and
-   Flagged only (#994); each result's change since the one before and how long ago it was taken (#995). Plain script;
-   all files share one scope. */
+   Flagged only (#994); each result's change since the one before and how long ago it was taken (#995); the results
+   added since this browser last showed it marked New (#996). Plain script; all files share one scope. */
 "use strict";
 /* the period in the view's line: "in the last 2 years", "since diagnosis (…)", "on file" for All */
 function ltPeriod() {
@@ -33,16 +33,31 @@ function ltChange(pts, last) {
     : chgWords(q[1] - prev[1], Math.abs(q[1] - prev[1]).toFixed(Math.max(labDec(prev), labDec(q)))));
   return {words: each.join("; "), said: `since ${fmtD(prev.ts)}`, prev};
 }
+/* ---- New (#996): results added since this browser last showed Latest for this profile (an upload, a sync, typed in:
+   from an import newer than the newest it had shown; imports' ids only grow, server/db.py), marked "New · today" (when
+   its import came) and counted in the heading. The newest import shown is kept with the filters (ltKeep's seen), read
+   once a page, so what's new stays marked while the page is open and not once it's loaded again; nothing is marked on
+   a first look or with storage blocked. Never sent anywhere */
+let ltSince;   // the newest import shown before this page showed Latest: undefined till it does, null for none kept
+const ltIsNew = p => ltSince != null && p.imp > ltSince;
+function ltSeen() {
+  let m = 0;
+  for (const s of SERIES) if (!s.watch) for (const p of s.pts) if (p.imp > m) m = p.imp;
+  const was = ltKept().seen;
+  if (!(m <= was)) ltKeep({seen: m});
+}
+const ltNew = p => { const at = sourceOf(p.imp)?.at;
+  return el("span", {class: "badge"}, "New", at ? el("span", {"aria-hidden": "true", text: " · "}) : null, at ? el("span", {class: "vh", text: ", added "}) : null, at ? ltAge(at * 1000).words : null); };
 /* a lab's row: [{s, pts: its results in the period, last: those at its latest time, the flagged first}] -> an <a>; its
    change since the result before (ltChange) and how long ago it was taken (ltAge), a year or more ago dimmed (.old, its
-   words ink that keeps 4.5:1) and said "last taken 2 years ago" */
+   words ink that keeps 4.5:1) and said "last taken 2 years ago"; marked New where its latest is (ltNew, #996) */
 function ltRow({s, pts, last}, id) {
   const ranges = last.map(p => refText(p) || "no range on its report"), from = last.map(p => ucOrig(s, p)).filter(Boolean);
   const sep = () => el("span", {class: "vh", text: ", "}), age = ltAge(last[0].ts), chg = ltChange(pts, last);
   return el("a", {class: "ov-row lt-row" + (age.old ? " old" : ""), id, href: "#labs", "data-lab": s.name, "data-unit": s.unit, onclick: ev => {
       if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.altKey || ev.button) return;   // a new tab or window: the browser's
       ev.preventDefault(); ltOpen(s, id); }},
-    el("span", {class: "n", text: nice(s.name)}), sep(),
+    el("span", {class: "n"}, nice(s.name), ...(last.some(ltIsNew) ? [" ", ltNew(last.find(ltIsNew))] : [])), sep(),
     el("span", {class: "v"}, ...last.map((p, i) => { const f = FLAG_OF(p[4]);
       return el("span", {class: "lt-v"}, i ? el("span", {class: "vh", text: "; "}) : null, readText(s, p)[0],
         f ? el("span", {class: "st " + f.cls}, el("span", {"aria-hidden": "true", text: f.mark}), " " + f.word) : null); })), sep(),
@@ -78,6 +93,7 @@ function ltReset() { ltF.q = ""; ltF.flagged = false; $("#ltQ").value = ""; ltKe
    labGroups, #279), the most measured first in each (as Labs' list), Other last; its count in its heading ("12 of 60
    labs, flagged only") */
 function renderLatest() {
+  if (ltSince === undefined) { const v = ltKept().seen; ltSince = Number.isInteger(v) ? v : null; }   // (#996)
   const f = ltFilters(), rows = [], ids = new Map();
   let none = 0;
   for (const s of SERIES) {
@@ -90,7 +106,8 @@ function renderLatest() {
     if (pts.length) rows.push({s, pts, last: ckLast(pts)}); else none++;
   }
   const shown = rows.filter(r => ltMatch(r.s, f.q) && (!f.flagged || ltFlagged(r))), n = rows.length, k = shown.length;
-  $("#ltQn").textContent = (k < n ? `${k || "None"} of ${n} lab${n === 1 ? "" : "s"}` : `${n} lab${n === 1 ? "" : "s"}`) + (f.flagged ? ", flagged only" : "");
+  const fresh = shown.filter(r => r.last.some(ltIsNew)).length;
+  $("#ltQn").textContent = (k < n ? `${k || "None"} of ${n} lab${n === 1 ? "" : "s"}` : `${n} lab${n === 1 ? "" : "s"}`) + (f.flagged ? ", flagged only" : "") + (fresh ? ` · ${fresh} new` : "");
   filterLine([f.flagged && "Showing flagged labs only", f.q && `${f.flagged ? "" : "Showing labs "}matching “${ltF.q.trim()}”`], ltReset, () => $("#ltQ"), $("#ltSum"));
   $("#ltSays").textContent = `Each lab's latest result ${ltPeriod()}.` + (none ? ` ${none} more ${none === 1 ? "has" : "have"} none in it.` : "");
   const by = new Map(shown.map(r => [r.s, r])), groups = labGroups(byFrequency(shown.map(r => r.s)));
@@ -98,6 +115,7 @@ function renderLatest() {
     : !k ? [el("p", {class: "hint", text: f.flagged && !f.q ? "No lab's latest result in this period is flagged." : "No lab matches these filters."})]
     : groups.flatMap(({panel, labs}) => [groups.length > 1 ? el("h3", {class: "lab-panel", text: panel}) : null,
       el("ul", {class: "lt-list"}, ...labs.map(s => el("li", {}, ltRow(by.get(s), ids.get(s)))))].filter(Boolean)));
+  ltSeen();   // shown: what's new now isn't, the next time the page is loaded (#996)
 }
 /* a row's lab charted on Labs, focus on its chart (charts.js showSeries), the address a new entry (#labs), so Back
    returns to Latest: focus then on the row again (ltBack, as the address changes back, below) */
