@@ -892,7 +892,7 @@ RESENT = {"Hemoglobin": ("718-7", "g/dL", 12.1, [("13.5-17.5", 13.5, 17.5, "L"),
           "Potassium": ("2823-3", "mmol/L", 5.2, [("3.5-5.3", 3.5, 5.3, None), ("3.5-5.1", 3.5, 5.1, None)], None),
           "ALT": ("1742-6", "U/L", 60, [(None, None, None, "H"), (None, None, None, "A")], None)}
 RESENT_HERE = {"updates": 4, "copies": 0, "results": 0}
-RESENT_SAID = "4 lab results already here from the same source are updated with the range and flag this file gives now, not added again."
+RESENT_SAID = "4 lab results already here from the same source are updated with the value, range and flag this file gives now, not added again."
 RESENT_SEEN = {("ALT", "U/L"): [["A", None, None]], ("Hemoglobin", "g/dL"): [["", 12, 15.5]], ("WBC", "10*3/uL"): [["H", 4.5, 11]],
                ("Potassium, Blood", "mmol/L"): [["H", 3.5, 5.1]]}
 RESENT_DAYS = {(1, RESENT_BACK): [("Hemoglobin", ""), ("WBC", "H"), ("ALT", "A"), ("Potassium", "H")]}

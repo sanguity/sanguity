@@ -760,8 +760,7 @@ class Connections(unittest.TestCase):
     def test_a_result_new_on_a_day_the_connection_has_gets_its_row_beside_it(self):   # #899
         """A pull's result new on a day its connection has: its row went in the first pull's labitem of that day, updated
         whole in its own import (sync._update_in_place), so the drawer, reading a row's result from the row's own import
-        (drawer.js rowPoint), found none for it; and LDL's value corrected at the source (162, then 165: a result of its
-        own, #877) left both LDL results without a row. Now each new row goes in the pull's own labitem, beside its result,
+        (drawer.js rowPoint), found none for it. Now each new row goes in the pull's own labitem, beside its result,
         joining the day's lab day; undone, as before."""
         cid = self.connect(self.source())
         self.first_pull(cid)
@@ -770,14 +769,43 @@ class Connections(unittest.TestCase):
                        "code": {"coding": [{"system": "http://loinc.org", "code": "1742-6"}], "text": "ALT"}, "effectiveDateTime": "2025-03-04T09:45:00-06:00",
                        "valueQuantity": {"value": 60, "unit": "U/L"}}, patient="pat-1")
         alt = self.pull(cid)
-        self.fake.update("Observation", "obs-ldl", {"valueQuantity": {"value": 165, "unit": "mg/dL"}})
-        ldl = self.pull(cid)
-        self.assertEqual((alt["counts"]["results"], ldl["counts"]["results"]), (1, 1))
+        self.assertEqual(alt["counts"]["results"], 1)
         drawn = self.draw()
-        self.assertEqual(drawn["lab days"], [("6 lab results", before["lab days"][0][1] + [["ALT", "60", "U/L", "", ""], ["LDL Cholesterol", "165", "mg/dL", "<130 mg/dL", "H"]])])
+        self.assertEqual(drawn["lab days"], [("5 lab results", before["lab days"][0][1] + [["ALT", "60", "U/L", "", ""]])])
         self.assertEqual(drawn["unpaired"], ([], []), "each result with its row, each row with its result")
-        self.undo(ldl["import"], alt["import"])
+        self.undo(alt["import"])
         self.assertEqual(self.draw(), before)
+
+    def test_a_value_its_source_amends_is_updated_in_place(self):   # #877
+        """LDL's value amended at the source (162, then 165, the same Observation): a pull added it as a second result,
+        with a row of its own beside the old one, so the old (wrong) value showed beside the corrected one, in Labs and
+        in the lab day. Now the same record from the same source is updated in place whatever changes, result and row,
+        where they are (the uploaded export's, or the connection's own), nothing added; undone, the old value is back."""
+        for upload in (True, False):
+            with self.subTest(upload=upload):
+                self.fake = FakeFHIR(patients=["robin-example"]).start()
+                self.addCleanup(self.fake.stop)
+                db = dbm.connect()
+                self.pid = prof.create_profile(db, f"LDL amended, upload {upload} (fictional)", owner_id=self.uids["robin"])
+                db.close()
+                if upload:
+                    self.upload_bundle([json.loads(json.dumps(r)) for r in self.fake.resources(patient="pat-1")])
+                cid = self.connect(self.source())
+                self.first_pull(cid)
+                before, n = self.draw(), self.counts()
+                self.fake.update("Observation", "obs-ldl", {"valueQuantity": {"value": 165, "unit": "mg/dL"}})
+                ldl = self.pull(cid)
+                self.assertEqual((ldl["counts"]["results"], ldl["counts"].get("updated")), (0, 1), ldl)
+                drawn = self.draw()
+                self.assertEqual((drawn["LDL Cholesterol"], self.faults()), ([(None, 130, "H", "<130 mg/dL", "H")], []), "one LDL, with its row")
+                self.assertEqual(drawn["lab days"], [(t, [r if r[0] != "LDL Cholesterol" else [r[0], "165", *r[2:]] for r in rows])
+                                                     for t, rows in before["lab days"]], "its row says 165, where it was")
+                ldl_pts = [p[1] for s in self.data()["labs"] if s["name"] == "LDL Cholesterol" for p in s["pts"]]
+                self.assertEqual((ldl_pts, {k: v for k, v in self.counts().items() if k != "imports"}),
+                                 ([165], {k: v for k, v in n.items() if k != "imports"}), "updated, nothing added")
+                self.undo(ldl["import"])
+                self.assertEqual((self.draw(), [p[1] for s in self.data()["labs"] if s["name"] == "LDL Cholesterol" for p in s["pts"]]),
+                                 (before, [162]), "undone: 162 again")
 
     def test_a_result_a_pull_adds_to_a_report_has_its_row_beside_it(self):   # #881
         """A GGT the portal adds to the CBC report it sent before: the report's labitem was updated whole where it was,

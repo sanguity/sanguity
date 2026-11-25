@@ -732,6 +732,49 @@ class Preview(unittest.TestCase):
         self.assertEqual(said(pid), {**before, "Potassium, Blood": [(3.5, 5.1, "", "3.5-5.1", ""), (3.5, 5.2, "", "3.5-5.2", "")]},
                          "the hospital's updated in place, the plan's copy as it was")
 
+    def test_a_value_its_source_amends_is_updated_in_place(self):   # #877
+        """A FHIR Observation sent again with its value amended (the hospital's Potassium 5.05, then 5.25, the same id)
+        was added beside the old one, a second result with a second row, the old (wrong) value shown beside the
+        corrected one. Now the same record from the same source is updated in place whatever changes, its value too,
+        result and row, the old value kept for Undo; another source's result at that time with another value (a health
+        plan's 5.4, another Observation) is its own result, never taken for the hospital's amended."""
+        t = "2025-09-03T08:30:00"
+        k = lambda oid, v, rng=(3.5, 5.0): {"resourceType": "Observation", "id": oid, "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],   # noqa: E731
+                                            "code": {"coding": [{"system": "http://loinc.org", "code": "2823-3"}], "text": "Potassium"}, "effectiveDateTime": t,
+                                            "valueQuantity": {"value": v, "unit": "mmol/L"}, "referenceRange": [{"low": {"value": rng[0]}, "high": {"value": rng[1]}}]}
+        sent = lambda name, *rs: {name: json.dumps({"resourceType": "Bundle", "type": "collection", "entry": [{"resource": r} for r in rs]})}   # noqa: E731
+
+        def said(pid):   # each Potassium result: its value, and its row's value as printed
+            got = assembled(pid)
+            drawer, out = crossmatch._rows(got), []
+            for s in got["labs"]:
+                for p in s["pts"]:
+                    at = crossmatch._row_of(drawer, s, p)
+                    out.append((p[1], p[4], at and got["details"][str(at[0])]["rows"][at[1]][1]))
+            self.assertEqual(crossmatch.lab_faults(got), [], "each result with its row, in one lab day")
+            return sorted(out)
+
+        pid = self.profile("A value amended")
+        self.assertEqual(self.save(pid, self.previewed(pid, sent("hospital.json", k("hosp-k", 5.05)))[0])["state"], "done")
+        before, n = said(pid), count(pid)
+        self.assertEqual(before, [(5.05, "H", "5.05")])
+        j, _ = self.previewed(pid, sent("hospital.json", k("hosp-k", 5.25)))
+        self.assertEqual((j["new"], j["counts"]["results"], j["duplicates"].get("updates", 0)), (True, 0, 1), j["duplicates"])
+        done = self.save(pid, j)
+        self.assertEqual((done["state"], done["counts"]["results"], done["counts"].get("updated")), ("done", 0, 1), done)
+        self.assertEqual((said(pid), {x: v for x, v in count(pid).items() if x != "imports"}), ([(5.25, "H", "5.25")], {x: v for x, v in n.items() if x != "imports"}),
+                         "one result, its value and its row's as sent now, nothing added")
+        report = {"resourceType": "DiagnosticReport", "id": "plan-bmp", "status": "final", "category": [{"coding": [{"code": "LAB"}]}],
+                  "code": {"text": "Basic metabolic panel"}, "effectiveDateTime": t, "result": [{"reference": "Observation/plan-78"}]}
+        j, _ = self.previewed(pid, sent("plan.json", report, k("plan-78", 5.4, (3.5, 5.1))))   # another source's report, at that time
+        self.assertEqual((j["counts"]["results"], j["duplicates"].get("updates", 0)), (1, 0), j["duplicates"])
+        plan = self.save(pid, j)
+        self.assertEqual(said(pid), [(5.25, "H", "5.25"), (5.4, "H", "5.4")], "its own result, the hospital's as it was")
+        for iid in (plan["import_id"], done["import_id"]):
+            r = self.robin.post(f"/api/profiles/{pid}/imports/{iid}/undo", headers=H)
+            self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(said(pid), before, "undone: 5.05 again, its row with it")
+
     def test_a_copy_only_with_its_own_row(self):   # #868
         """One rule for a result already here, an upload's and Type them in's alike (preview.find): kept as a copy only
         with its own row, its lab day with it, and said by what it brings. Potassium 5.3 typed with no range, then again
