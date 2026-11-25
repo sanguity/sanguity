@@ -2300,6 +2300,11 @@ Everything on `main` so far; it becomes the first tagged release.
   neither its activity.json nor, unless cycle tracking is on there, its cycle/cycle.json (until it's turned off or the
   cycle data deleted); the command line's import doesn't keep the activity log either, and uploads an older version
   kept whole lose them at the next start.
+- **A Health Link contacts only the servers its page named** (#919): Paste a Health Link said "Fetch and preview
+  contacts <its host> once", but a file its manifest kept on another server, and a Health Card's issuer (for its
+  public keys), were fetched as well, each learning this server's address and when the link was read. Now the page
+  says beforehand that it asks about any other server, and the fetch stops before contacting one: the page names
+  each and what for, and Contact them too and fetch fetches the link again with them confirmed.
 - **The Timeline's search says what its list says, and List workouts reads on while workouts are listed** (#444): a
   search only workouts matched ("walking") was said as "No events match.", while the list said 56 workouts were left
   out of it; now it's said as "Only workouts match: 56 workouts, left out of the list.", and a search that finds other

@@ -25,10 +25,14 @@ the same format:
   fetch(link, passcode, permit) -> [{"cty", "data"}]   the one outbound fetch (plus a GET per file the manifest
                                                        doesn't embed), decrypted
   read_cards(data, permit) -> [card]   Health Cards: payload, FHIR bundle, signature verified / invalid / unchecked
+  issuers(data) -> {host}             the hosts a Health Card file's cards would have their issuers' keys fetched from
   sign_card(payload, private_key, kid) -> JWS   for tests and #47
 
-Outbound requests (_request) go through net.py under a permit (outside.for_link: the host of the link the person
-confirmed, plus the file locations and Health Card issuers that link itself names): HTTPS only; the host's addresses
+Outbound requests (_request) go through net.py under a permit (outside.for_link: the hosts the person confirmed).
+The page names the link's host (or a pasted card's issuer) before Fetch and preview; a host the link itself names
+beyond those (a file's location on another server, a Health Card's issuer, whose /.well-known/jwks.json would learn
+this server's address and when the link was read) is never contacted unconfirmed: the fetch stops before it with Ask,
+naming each, and the page asks, then fetches again with them confirmed (#919). HTTPS only; the host's addresses
 must all be public (no loopback, private, link-local or reserved address: SSRF), and the connection goes to the
 address that was checked, so a DNS answer can't change in between; redirects only to the same host; a timeout and a
 size cap (config.SHL_*). net.py records each host before anything is sent to it (outside.record). The key and the
@@ -58,6 +62,21 @@ class Refused(Exception):
         super().__init__(message)
         self.status = status
         self.remaining = remaining   # passcode attempts left, when the link's server says
+
+
+class Ask(Refused):
+    """The fetch stopped before contacting hosts the person hasn't confirmed (#919): files: the hosts of files the
+    manifest lists by location; issuers: of Health Cards' issuers, whose keys check their signatures. Nothing has been
+    sent to any of them. 409: the page names them and asks, then asks for the link again with them confirmed."""
+    def __init__(self, files=(), issuers=()):
+        self.files, self.issuers = sorted(set(files)), sorted(set(issuers) - set(files))
+        self.hosts = self.files + self.issuers
+        super().__init__(f"This link also names {_listed(self.hosts)}, which Sanguity hasn't contacted: confirm "
+                         f"{'it' if len(self.hosts) == 1 else 'them'} first.", 409)
+
+
+def _listed(xs):
+    return xs[0] if len(xs) == 1 else ", ".join(xs[:-1]) + " and " + xs[-1]
 
 
 # ---------------------------------------------------------------- base64url
@@ -393,7 +412,7 @@ def fetch(link, passcode=None, permit=None, now=None):
         raise Refused(f"{host_of(link.url)} didn't answer with a SMART Health Link manifest.", 502) from None
     if len(files) > config.SHL_MAX_FILES:
         raise Refused(f"This link holds {len(files)} files; Sanguity takes at most {config.SHL_MAX_FILES} from a link.", 413)
-    out = []
+    out, elsewhere = [], set()
     for f in files:
         if not isinstance(f, dict):
             continue
@@ -401,8 +420,10 @@ def fetch(link, passcode=None, permit=None, now=None):
         if isinstance(f.get("embedded"), str):
             jwe = f["embedded"]
         elif isinstance(f.get("location"), str):
-            if permit:   # a file the confirmed link's own manifest points to
-                permit.also(host_of(f["location"]))
+            where = host_of(f["location"])
+            if where and not (permit or net.NOTHING).allows(where):   # a host not confirmed: asked about first (#919)
+                elsewhere.add(where)
+                continue
             status, _, body = get("GET", f["location"], purpose="SMART Health Link file")
             _status_ok(status, link)
             jwe = body.decode("ascii", "replace")
@@ -410,6 +431,8 @@ def fetch(link, passcode=None, permit=None, now=None):
             continue
         plain, inner = decrypt(jwe, link.key, budget[0] + len(jwe))
         out.append({"cty": cty or inner, "data": plain})
+    if elsewhere:   # with the issuers of the cards fetched so far, so it's asked once for all it knows of
+        raise Ask(elsewhere, _unconfirmed(out, permit))
     if not out:
         raise Refused("This link's manifest lists no files.", 404)
     return out
@@ -509,9 +532,7 @@ def check_card(jws, permit=None, jwks_cache=None):
         return card
     cache = jwks_cache if jwks_cache is not None else {}
     if iss not in cache:
-        try:
-            if permit:   # the issuer the confirmed card itself names
-                permit.also(host_of(iss))
+        try:   # (an issuer the person confirmed: prepare asks about one they haven't first, #919)
             status, _, data = _request("GET", iss.rstrip("/") + "/.well-known/jwks.json", limit=256 * 1024,
                                        permit=permit, purpose="Health Card issuer's keys")
             cache[iss] = json.loads(data) if status == 200 else f"its issuer's keys weren't available ({int(status)})"
@@ -543,6 +564,34 @@ def read_cards(data, permit=None, jwks_cache=None):
     return [check_card(v, permit, cache) for v in vcs]
 
 
+def issuers(data):
+    """The hosts of the issuers of the Health Cards in an application/smart-health-card file, read without checking
+    anything or contacting anyone: where check_card would fetch their keys. Empty for a file that can't be read."""
+    try:
+        vcs = json.loads(data)["verifiableCredential"]
+    except (ValueError, KeyError, TypeError, UnicodeDecodeError):
+        return set()
+    out = set()
+    for v in vcs[:config.SHL_MAX_FILES] if isinstance(vcs, list) else []:
+        try:
+            iss = _jws_payload(v).get("iss") if isinstance(v, str) else None
+        except Refused:
+            continue
+        if isinstance(iss, str) and host_of(iss):
+            out.add(host_of(iss))
+    return out
+
+
+def _is_card(it):
+    return (it.get("cty") or "").split(";")[0].strip().lower() == CARD
+
+
+def _unconfirmed(items, permit):
+    """The hosts the Health Cards among items would have their issuers' keys fetched from that permit doesn't allow."""
+    permit = permit or net.NOTHING
+    return {h for it in items if _is_card(it) for h in issuers(it["data"]) if not permit.allows(h)}
+
+
 # ---------------------------------------------------------------- what a link brought, as files to import
 
 def prepare(items, permit=None):
@@ -551,6 +600,8 @@ def prepare(items, permit=None):
     (as .smart-health-card, which the FHIR importer doesn't read) and the bundle of each card whose signature isn't
     invalid goes beside it as JSON. A card with an invalid signature is left out: its contents were changed after
     it was signed, or it wasn't signed by its issuer. Other content types are left out, with a note."""
+    if permit is not None and (ask := _unconfirmed(items, permit)):   # an issuer the person hasn't confirmed (#919)
+        raise Ask((), ask)
     files, cards, notes, cache = {}, [], [], {}
     for n, it in enumerate(items, 1):
         cty, data = (it.get("cty") or "").split(";")[0].strip().lower(), it["data"]

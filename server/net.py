@@ -9,8 +9,8 @@ calling code asks for. A permit's hosts are read again before each request: disc
 removing it, stops the next request even in the middle of a pull.
 
   Permit(purpose, hosts, record=None)     hosts: a set of "host[:port]", or a function giving the current set
-  permit.also(host)                       a host the confirmed request itself names (a Health Link's file location,
-                                          a Health Card's issuer); only for one-off fetches, never for sources
+  permit.also(host)                       a host the confirmed request itself names; only for one-off fetches, never
+                                          for sources (a Health Link's other hosts are confirmed first, #919)
   resolve(permit, url) -> [ip]            the host's addresses (getaddrinfo), for a caller that checks them (shl.py)
   connection(permit, url, purpose=None, ip=None, timeout=..., context=None) -> http.client connection, not yet
                                           connected; with ip, it connects to that address (checked beforehand)

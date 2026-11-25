@@ -270,6 +270,66 @@ class Links(unittest.TestCase):
         self.assertEqual([s[:2] for s in self.srv.seen], [("POST", "/shl/located"), ("GET", "/files/one")])
         self.assertEqual(self.wait(r["job"])["state"], "done")
 
+    # ---------------------------------------------------------------- other hosts the link names: asked first (#919)
+
+    def contacted(self):
+        db = dbm.connect()
+        try:
+            return {(o["host"], o["purpose"]) for o in outside.recent(db, self.pid)}
+        finally:
+            db.close()
+
+    def test_a_file_on_another_host_is_asked_about_first(self):
+        """#919: the page said "Fetch and preview contacts <the link's host> once", and a manifest's file at a location
+        on another host was fetched as well, that host learning this server's address and when the link was read. Now
+        the fetch stops before it, contacting none, and names it (409); fetched again with it confirmed, it's fetched."""
+        key, other = os.urandom(32), f"127.0.0.1:{self.srv.port}"   # the same test server, by another name
+        jwe = shl.encrypt(json.dumps(shl_server.bundle("2026-02-06")).encode(), key)
+        self.srv.routes["/files/elsewhere"] = lambda m, q, b: (200, "application/jose", jwe.encode())
+        self.srv.routes["/shl/elsewhere"] = lambda m, q, b: (200, "application/json", json.dumps(
+            {"files": [{"contentType": shl.FHIR, "location": f"https://{other}/files/elsewhere"}]}).encode())
+        link = shl.encode(self.srv.base + "/shl/elsewhere", key)
+        before = self.contacted()
+        r = self.post("import", {"link": link, "confirm": True})
+        self.assertEqual(r.status_code, 409, r.text)
+        self.assertEqual((r.json()["detail"]["hosts"], r.json()["detail"]["files"], r.json()["detail"]["issuers"]), ([other], [other], []))
+        self.assertIn(other, r.json()["detail"]["message"])
+        self.assertEqual([s[:2] for s in self.srv.seen], [("POST", "/shl/elsewhere")], "only the link's own host")
+        self.assertNotIn(other, {h for h, _ in self.contacted() - before}, "nothing sent to the other host")
+        # a host the person confirmed that isn't the one named changes nothing
+        self.assertEqual(self.post("import", {"link": link, "confirm": True, "hosts": ["records.example.org"]}).status_code, 409)
+        self.srv.seen.clear()
+        r = self.post("import", {"link": link, "confirm": True, "hosts": [other]})
+        self.assertEqual(r.status_code, 202, r.text)
+        self.assertEqual([s[:2] for s in self.srv.seen], [("POST", "/shl/elsewhere"), ("GET", "/files/elsewhere")])
+        self.assertIn((other, "SMART Health Link file"), self.contacted())
+        self.assertEqual(self.wait(r.json()["job"])["state"], "done")
+
+    def test_a_health_card_issuer_on_another_host_is_asked_about_first(self):
+        """#919: a Health Card in a link had its issuer's /.well-known/jwks.json fetched to check its signature, a host
+        the page never named. Now it's named and asked about first (nothing sent to it), and checked once confirmed."""
+        other = f"127.0.0.1:{self.srv.port}"
+        link = self.card_link(self.issuer_key, "2026-03-05", iss=f"https://{other}/issuer")
+        before = self.contacted()
+        r = self.post("import", {"link": link, "confirm": True})
+        self.assertEqual(r.status_code, 409, r.text)
+        self.assertEqual((r.json()["detail"]["hosts"], r.json()["detail"]["files"], r.json()["detail"]["issuers"]), ([other], [], [other]))
+        self.assertNotIn("/issuer/.well-known/jwks.json", [s[1] for s in self.srv.seen])
+        self.assertNotIn(other, {h for h, _ in self.contacted() - before}, "nothing sent to the issuer")
+        r = self.post("import", {"link": link, "confirm": True, "hosts": [other]})
+        self.assertEqual(r.status_code, 202, r.text)
+        self.assertEqual([c["signature"] for c in r.json()["cards"]], ["verified"])
+        self.assertIn("/issuer/.well-known/jwks.json", [s[1] for s in self.srv.seen])
+        self.assertIn((other, "Health Card issuer's keys"), self.contacted())
+        self.assertEqual(self.wait(r.json()["job"])["state"], "done")
+        # a pasted card's issuer is the host the page names before Fetch: confirmed by fetching, never asked about again
+        payload = {"iss": f"https://{other}/issuer", "vc": {"credentialSubject": {"fhirBundle": shl_server.bundle("2026-03-06")}}}
+        pasted = "shc:/" + "".join(f"{ord(c) - 45:02d}" for c in shl.sign_card(payload, self.issuer_key, "issuer-1"))
+        self.assertEqual(self.post("inspect", {"link": pasted}).json()["host"], other)
+        r = self.imported(pasted)
+        self.assertEqual(r["cards"][0]["signature"], "verified")
+        self.assertEqual(self.wait(r["job"])["state"], "done")
+
     # ---------------------------------------------------------------- Health Cards
 
     def test_health_card_with_a_valid_signature(self):

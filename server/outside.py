@@ -10,9 +10,10 @@ way out, under a permit made here from what the install was told to contact:
   for_connection(db, connection_id, purpose, who, ip)
         a profile's connection (a sync, or revoking on disconnect): the hosts of its source, and none once it is
         disconnected, even in the middle of a pull.
-  for_link(db, pid, host, who, ip)
-        a SMART Health Link someone pasted and confirmed (shl.py): its host, plus the file locations and Health
-        Card issuers the link itself names (permit.also).
+  for_link(db, pid, host, who, ip, also=())
+        a SMART Health Link someone pasted and confirmed (shl.py): its host (a pasted Health Card's issuer), and also
+        the hosts the link itself names (file locations, Health Card issuers) that the page named and they confirmed
+        (#919): one it names beyond those is asked about before it's contacted, never contacted unconfirmed.
 
 Each contact is recorded before the request is sent, so an attempt that fails is listed too:
   - as a profile activity entry "outside" with {"host", "purpose"} (account-level when no profile is involved);
@@ -86,8 +87,8 @@ def for_connection(db, connection_id, purpose, who=None, ip=None):
     return net.Permit(purpose, lambda: _connection_hosts(db, connection_id), _recorder(db, c["profile_id"] if c else None, who, ip))
 
 
-def for_link(db, pid, host, who=None, ip=None):
-    return net.Permit(LINK, {host} if host else set(), _recorder(db, pid, who, ip))
+def for_link(db, pid, host, who=None, ip=None, also=()):
+    return net.Permit(LINK, {h for h in (host, *also) if h}, _recorder(db, pid, who, ip))
 
 
 # ---------------------------------------------------------------- the view

@@ -1079,6 +1079,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .imp .shl-facts dd{margin:0;overflow-wrap:anywhere}
 .imp .shl-pass{display:grid;gap:var(--sp-1);max-width:260px;margin:var(--sp-2) 0}
 .imp .shl-card{font-size:var(--fs-3);margin:var(--sp-2) 0}
+.imp .shl-hosts{margin:var(--sp-1) 0 0;padding-left:var(--sp-5);overflow-wrap:anywhere}   /* the other hosts a link names, asked about first (#919) */
 .imp .shl-card .bad{color:var(--crit)}
 /* Type records in (#285): a chip per kind, in groups, each adding its form (a card) at the end of the list */
 .imp .man-h{font-size:var(--fs-3);margin:var(--sp-4) 0 var(--sp-2)}

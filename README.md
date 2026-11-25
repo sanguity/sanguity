@@ -503,7 +503,9 @@ your Sanguity, so outside your home network or tailnet that means HTTPS from the
   (A "What is this test?" link beside a lab is opened by your browser, in a new tab, only when you follow it, and is
   the page's own address alone: nothing about the result or the person goes with it.)
   Outside contact happens only when you ask for it: importing a pasted SMART Health Link fetches it from its host
-  (and, for a Health Card, the issuer's public keys) after you confirm, HTTPS only; and once you connect a source
+  (and, for a Health Card, the issuer's public keys) after you confirm, HTTPS only, and any other server the link
+  names (its files elsewhere, a card's issuer) only once the page has named it and you've confirmed that too (#919);
+  and once you connect a source
   ([Connected sources](#connected-sources)), the server talks to that vendor only, through an app your install
   registers with it (see [docs/connected-sources-oauth.md](docs/connected-sources-oauth.md)). **Admin →
   [Outside connections](www/admin.html)** (`admin.html#outside` on your install) lists every host the install
