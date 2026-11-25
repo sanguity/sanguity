@@ -461,6 +461,39 @@ class FhirExport(unittest.TestCase):
         self.assertEqual(len(raw["corrections"]["same"]), 1)
         profiles.delete_profile(self.db, pid)
 
+    def test_copies_of_one_result_go_once(self):
+        """#947: one result that came from three sources, not linked as the same result (a portal's report, a
+        hospital's report of the same draw, a spreadsheet with no range), is one result on the page (#825: Labs, the
+        summary and share links show it once, with the range and flag its reports give it). The export joined only
+        results linked as the same, so it went out three times, one Observation each. Now it's one, in each report that
+        holds it, as the page shows it (records.served, #916)."""
+        t = "2026-06-02T08:30:00"
+
+        def report(eid, order, key):
+            return ({"events": [{"id": eid, "t": t, "k": "lab", "title": "Lab results", "sub": "1 lab result"},
+                                {"id": eid + 1, "t": t, "k": "labitem", "title": order, "sub": "", "key": key}],
+                     "details": {str(eid): {"type": "labday", "ids": [eid + 1]},
+                                 str(eid + 1): {"type": "result", "order": order, "rows": [["Potassium", "5.2", "mmol/L", "3.5-5.1", "H"]]}}})
+        k = lambda key, lo=3.5, hi=5.1, flag="H": {"name": "Potassium", "unit": "mmol/L", "loinc": "2823-3", "key": key, "panel": "BMP",   # noqa: E731
+                                                   "pts": [[t, 5.2, lo, hi, flag, "5.2"]]}
+        portal, hospital = report(1, "Basic metabolic panel", "p:bmp"), report(1, "BMP", "h:bmp")
+        pid = profiles.create_profile(self.db, "Three copies (fictional)", owner_id=self.uids["robin"])
+        with dbm.transaction(self.db):
+            records.store(self.db, pid, {**portal, "costs": [], "labs": [k("p:k")]}, "upload", fmt="fhir")
+            records.store(self.db, pid, {**hospital, "costs": [], "labs": [k("h:k")]}, "upload", fmt="ccda")
+            records.store(self.db, pid, {"events": [], "details": {}, "costs": [], "labs": [k("c:k", None, None, "")]}, "upload", fmt="csv")
+        shown = records.assemble(self.db, pid)
+        self.assertEqual(len({(s["name"], s["unit"]) for s in shown["labs"]}), 1)
+        self.assertFalse(shown.get("same"), "not linked as the same result")
+        res = [e["resource"] for e in self.bundle(self.export(pid, {"labs"}))[0]["entry"]]
+        obs = [r for r in res if r["resourceType"] == "Observation" and r["code"].get("text") == "Potassium"]
+        self.assertEqual(len(obs), 1, "one result, once")
+        self.assertEqual((obs[0]["valueQuantity"]["value"], obs[0]["interpretation"][0]["coding"][0]["code"]), (5.2, "H"))
+        reports = [r for r in res if r["resourceType"] == "DiagnosticReport"]
+        self.assertEqual(sorted(x["code"]["text"] for x in reports), ["BMP", "Basic metabolic panel"])
+        self.assertEqual([[x["reference"] for x in r["result"]] for r in reports], [[f"urn:uuid:{obs[0]['id']}"]] * 2, "in each report")
+        profiles.delete_profile(self.db, pid)
+
     # ---------------------------------------------------------------- the bundle itself
     def test_valid_against_the_fhir_r4_schema(self):
         bundle, _, _ = self.bundle(self.export(cycle=True))

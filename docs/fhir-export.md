@@ -32,7 +32,8 @@ memory or on disk as a whole.
 The bundle holds the records with every correction made in Sanguity applied (#916), as the page shows them: a hidden
 record is left out, two merged records are one resource (the first's, with what the other added), a renamed or
 re-dated one has its new title or time, a change of category and "Not a hospital stay" are made, and a result two
-sources gave that was linked as the same result goes once. A bundle has nowhere to carry the corrections apart, and
+sources gave goes once, linked as the same result or not (#947: copies the page shows once, as one Observation in each
+report that holds it). A bundle has nowhere to carry the corrections apart, and
 another app has nothing to apply them with. Sanguity's own zip is the other way round: its `data.json` holds the
 records as they were imported, with the corrections beside them (#589), so another Sanguity loads them and they can
 still be undone there.

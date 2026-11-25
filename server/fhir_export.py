@@ -43,7 +43,8 @@ units, CVX vaccine codes, the HL7 category and status code systems):
 
 The records go as the app shows them, every correction made in Sanguity applied (#916): a hidden record is left out, a
 merged one is one resource, a renamed or re-dated one has its new title or time, a change of category or "Not a hospital
-stay" is made, and a result two sources gave, linked as the same result, goes once.
+stay" is made, and a result two sources gave goes once, linked as the same result or not (#947: as the page shows
+copies once, one Observation in each report that holds it).
 Ids are stable: a uuid5 of the profile and of each record's source key (else its kind, time and title), so the same
 record exported again has the same id, and fullUrls are urn:uuid: of them.
 Not in it, as FHIR has no place for them: the journal, settings (other than About this person), workouts,
@@ -508,11 +509,24 @@ def _lab_obs(b, key, name, loinc, t, rep, num, unit, lo, hi, rtext, flag, vital,
                 referenceRange=_range(rtext, lo, hi, unit, edge, imported), note=_range_note(rtext, lo, hi, imported))
 
 
+def _copy(s, i):
+    """(#947) Which result a series' point is, as the page shows results once (same.js joinSeries, isCopy): its series'
+    name and unit, its time, number and value as given, range, flag and edge, and which of its time's results it is
+    where they're more than one (crossmatch.copies' "apart"). Copies from several imports not linked as the same
+    result are one: records.served gave each the one result's range and flag (#825)."""
+    p = s["pts"][i] + [None] * (8 - len(s["pts"][i]))
+    apart = s.get("apart").get(str(i)) if isinstance(s.get("apart"), dict) else None
+    return (str(s.get("name")), s.get("unit") or "", str(p[0]), p[1], str(p[5] if p[5] is not None else "").strip(), p[2], p[3],
+            p[4] or "", p[7] or "", apart)
+
+
 def _labs(b, data, used):
     """DiagnosticReports for the lab reports, their results as Observations; then every lab series' point that no
-    report holds, and the clinic weights."""
+    report holds, and the clinic weights. A result that came from several sources goes once, as the page shows it
+    (#947: _copy), in each report that holds it."""
     (series, by_day), row_number = _series_index(data), _row_number(data)
     details = data.get("details") or {}
+    sent = {}   # (#947) a result's copy (_copy) -> its Observation, once sent
     for e in data.get("events") or []:
         d = details.get(str(e.get("id")))
         if e.get("k") not in ("labitem", "lab") or not isinstance(d, dict) or d.get("type") != "result" or not d.get("rows"):
@@ -542,12 +556,17 @@ def _labs(b, data, used):
             s, p = (hit[0], hit[0]["pts"][hit[1]]) if hit else (None, None)
             if hit:
                 used.add((id(s), hit[1]))
+                if (copy := _copy(s, hit[1])) in sent:   # (#947) its copy from another source, sent already
+                    results.append(sent[copy])
+                    continue
             num = p[1] if p else row_number(str(e.get("t"))[:16], name, row[1])   # the number it was imported as (#870)
             # at its result's own time where it has one, as the importers read an Observation's (the report's is the event's)
             o = _lab_obs(b, (b.keyed(e), "row", n), name, _loinc(s, name), b.t(p[0]) or t if p else t, row[1], num, row[2] or (s or {}).get("unit"),
                          p[2] if p and len(p) > 2 else None, p[3] if p and len(p) > 3 else None, row[3], row[4], False,
                          [x for x in (lab,) if x], d.get("status"), _edge(p), imported=p is not None)
             results.append(o)
+            if hit:
+                sent[_copy(s, hit[1])] = o
             yield o
         report = [x for x in d.get("report") or [] if isinstance(x, list) and len(x) >= 2 and _text(x[1])]
         yield _clean({"resourceType": "DiagnosticReport", "id": b.rid("DiagnosticReport", b.keyed(e)),
@@ -571,10 +590,13 @@ def _labs(b, data, used):
             t = b.t(p[0])
             if not t:
                 continue
+            if (copy := _copy(s, i)) in sent:   # (#947) its copy from another source, sent already
+                continue
             src = p[6] if len(p) > 6 else None
-            yield _lab_obs(b, ("series", s.get("key") or name, p[0], p[5] if len(p) > 5 else p[1]), name, loinc, t,
-                           p[5] if len(p) > 5 and _text(p[5]) else p[1], p[1], unit, p[2] if len(p) > 2 else None,
-                           p[3] if len(p) > 3 else None, None, p[4] if len(p) > 4 else "", vital, _performer(b, src), edge=_edge(p))
+            sent[copy] = o = _lab_obs(b, ("series", s.get("key") or name, p[0], p[5] if len(p) > 5 else p[1]), name, loinc, t,
+                                      p[5] if len(p) > 5 and _text(p[5]) else p[1], p[1], unit, p[2] if len(p) > 2 else None,
+                                      p[3] if len(p) > 3 else None, None, p[4] if len(p) > 4 else "", vital, _performer(b, src), edge=_edge(p))
+            yield o
     yield from _clinic_bp(b, data, used)
     for w in data.get("clinicWeights") or []:
         if isinstance(w, list) and len(w) >= 2 and isinstance(_num(w[1]), (int, float)) and b.t(w[0]):
