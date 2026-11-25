@@ -3272,6 +3272,12 @@ Everything on `main` so far; it becomes the first tagged release.
   check before an admin's most powerful actions with a touch. It now asks for and requires the passkey's PIN,
   fingerprint or face, saying so if the passkey didn't check, and only a challenge made for the fresh check is taken
   (not one made for signing in).
+- **A signed-in session's password checks have a limit per account, and admins see them** (#931): the fresh check,
+  a password change and the password asked before a change to how someone signs in were throttled only per account
+  and address, so a session left signed in could guess its person's password from many addresses: 60 wrong ones
+  from 12, never slowed, and the admins' notice said nothing. They now share a per-account limit as sign-in has (30
+  free tries, from any address, then waits), and each wrong password or code is in the admins' notice of failed
+  sign-ins, which says how many came from a device already signed in and that resetting its password signs it out.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

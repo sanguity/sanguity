@@ -235,6 +235,14 @@ class Throttle:
                 self._fails.pop(k, None)
 
 
+def password_keys(username, address):
+    """Throttle keys for the password asked of a signed-in session (the fresh check, a password change, turning
+    two-factor sign-in on or off, adding or removing a passkey): this account at this address, and this account from
+    any address (#931: the per-account limit sign-in has, so a session left signed in can't guess from many)."""
+    u = username.strip().lower()
+    return ("pair:pw|" + u + "|" + address, "user:pw|" + u)
+
+
 def login_keys(username, address, device=None):
     """Throttle keys for a sign-in. A browser that has signed in to this account before (device = its cookie's
     hash) is counted on its own: other people's failures, from the same address behind a reverse proxy or

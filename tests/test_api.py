@@ -2125,6 +2125,42 @@ class Api(unittest.TestCase):
             db.commit()
             db.close()
 
+    def test_a_sessions_password_checks_are_limited_per_account(self):   # #931
+        """A session left signed in guesses its person's password through the fresh check, a password change and the
+        password turning on two-factor sign-in asks for, from a new address every five tries: after the account's 30
+        free tries (as sign-in has), every address waits, the right password too; and the admins' notice counts them."""
+        from server import accounts, alerts
+        PWK = "kai keeps a long passphrase"
+        db = dbm.connect()
+        if not db.execute("SELECT 1 FROM users WHERE username='kai'").fetchone():
+            accounts.create(db, "kai", password=PWK)
+        dbm.meta_set(db, alerts.SEEN, str(dbm.now() - 1))   # (other tests fail sign-ins too)
+        kai = self.login("kai", PWK)
+        at = lambda n: TestClient(main.app, base_url="http://testserver", client=(f"198.51.100.{n}", 5000), cookies=kai.cookies)
+        tries = (lambda g: ("/api/me/reauth", {"secret": g}), lambda g: ("/api/me/password", {"current": g, "new": g + " and more"}),
+                 lambda g: ("/api/me/2fa/start", {"password": g}))
+        wrong, waited = 0, None
+        for n in range(1, 13):
+            c = at(n)
+            for _ in range(5):
+                path, body = tries[wrong % 3](f"wrong guess number {wrong:04d} for kai")
+                r = c.post(path, json=body, headers=H)
+                if r.status_code == 429:
+                    waited = r
+                    break
+                self.assertEqual(r.status_code, 403, r.text)
+                wrong += 1
+            if waited:
+                break
+        self.assertEqual(wrong, 30)   # the account's free tries, from any address
+        self.assertEqual(at(99).post("/api/me/reauth", json={"secret": PWK}, headers=H).status_code, 429)
+        n = self.login("ben").get("/api/security/notice").json()["notice"]
+        self.assertGreaterEqual(n["checks"], 30)   # (a check another test just failed may be in the window too)
+        self.assertEqual(next(a for a in n["accounts"] if a["username"] == "kai")["failures"], 30)
+        sec.throttle.clear(*list(sec.throttle._fails))
+        self.assertEqual(at(99).post("/api/me/reauth", json={"secret": PWK}, headers=H).status_code, 200)
+        db.close()
+
     def test_failed_sign_in_notice(self):   # ASVS 8.1.4: admins see bursts of failed sign-ins
         from server import accounts, alerts
         db = dbm.connect()

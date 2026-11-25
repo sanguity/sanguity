@@ -3,7 +3,9 @@ after too many wrong ones (#928), and connected sources that stopped syncing (#1
 
 Every failed sign-in is also written to the log (main._audit); here it is kept for KEEP_DAYS in the database too:
 when, from which address, and which account if the name was a real one (a typed name that matches no account is
-not kept: people sometimes type a password there). Admins get a notice on the Account page when, since the last
+not kept: people sometimes type a password there). So is a signed-in session's wrong password or code (#931: the
+fresh check, a password change, turning two-factor sign-in on or off, a passkey added or removed), step
+"check: ..." (CHECK), which the notice counts apart as "checks". Admins get a notice on the Account page when, since the last
 dismissal and within the past WINDOW seconds, one address or one account reaches PER_SOURCE failures, or all of
 them together reach TOTAL. Nothing is sent anywhere.
 """
@@ -12,6 +14,7 @@ import logging
 from . import db as dbm
 
 KEEP_DAYS, WINDOW, PER_SOURCE, TOTAL, TOP = 30, 86400, 10, 30, 5
+CHECK = "check: "   # a signed-in session's wrong password or code, not a sign-in's (#931)
 SEEN = "signin_notice_seen"
 log = logging.getLogger("sanguity")
 
@@ -46,7 +49,8 @@ def notice(db):
     peak = max([a["failures"] for a in addresses] + [a["failures"] for a in accounts] + [0])
     if total < TOTAL and peak < PER_SOURCE:
         return None
-    return {"since": since, "last": last, "total": total, "addresses": addresses, "accounts": accounts}
+    checks = db.execute("SELECT COUNT(*) FROM signin_failures WHERE at>? AND step LIKE ?", (since, CHECK + "%")).fetchone()[0]
+    return {"since": since, "last": last, "total": total, "checks": checks, "addresses": addresses, "accounts": accounts}
 
 
 def codes_stopped(db):
