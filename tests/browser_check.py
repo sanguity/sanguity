@@ -4864,6 +4864,43 @@ def main():
             check("…a chart with focus keeps it as it's drawn anew, on Labs, Compare (both), Body and Costs (both), at 1400→1200 and 412→360 px and with the "
                   "records loaded again (#652: it fell to the page)", len(keep652) == 18 and all(a == b and a != "the page" and a.startswith("svg") for a, b in keep652.values()),
                   {k: v for k, v in keep652.items() if v[0] != v[1]} or keep652)
+            # ---- #712: the lab panel's strip in the drawer is a tab stop from when it's made, named (charts.js chartSvg, as
+            # #652's charts): it was made with neither and given both a frame later, so focus on it went to the drawer's
+            # Close when the panel was drawn anew (a resize: keepFocus found no twin). Its strip made, before it's drawn; and
+            # stepped to a result, at 1400→1200 px and 412→360 px, focus on the strip drawn anew. And the heatmap's grid,
+            # one picture and no tab stop, says that its table is how it's read: its Table, in reach by keyboard, shows it so
+            made712 = js("""() => { closeDrawer(); state.tables.clear(); switchTab('labs', 'chart'); openLab(SERIES.find(s => s.name === 'Hemoglobin'));
+              const s = document.querySelector('#dbody svg.lab-strip'); return s && [s.getAttribute('tabindex'), s.getAttribute('role'), (s.getAttribute('aria-label') || '').split(':')[0], s._geom === undefined]; }""")
+            keep712 = {}
+            for how712, w0, w1 in (("1400→1200 px", 1400, 1200), ("412→360 px", 412, 360)):
+                page.set_viewport_size({"width": w0, "height": 900})
+                js("() => { closeDrawer(); openLab(SERIES.find(s => s.name === 'Hemoglobin')); }")
+                settle(500)
+                page.focus("#dbody svg.lab-strip")
+                page.keyboard.press("ArrowRight")
+                settle(150)
+                was712 = js(FOCUS652)
+                page.set_viewport_size({"width": w1, "height": 900})
+                settle(700)
+                keep712[how712] = [was712, js(FOCUS652)]
+                page.keyboard.press("Escape")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            js("closeDrawer()")
+            js("() => { state.tables.clear(); applyPreset('all'); switchTab('labs', 'heatmap'); }")
+            settle(500)
+            hm712 = js("() => { const s = document.getElementById('hm'); return [s.getAttribute('tabindex'), s.getAttribute('role'), s.getAttribute('aria-label')]; }")
+            page.focus("#hmHd .view-seg button:not([aria-pressed=true])")
+            page.keyboard.press("Enter")
+            settle(400)
+            hm712 += js("() => [document.activeElement.textContent, document.activeElement.closest('#hmHd') !== null, !document.getElementById('hmTable').hidden, document.querySelectorAll('#hmTable tbody tr:not(.grp)').length]")
+            js("() => { state.tables.clear(); switchTab('labs', 'chart'); }")
+            settle(300)
+            check("#712: the lab panel's strip is a tab stop, named, from when it's made, and focus on it stays on it as the panel's drawn anew at "
+                  "1400→1200 and 412→360 px (it went to the drawer's Close); the heatmap's grid says its table is how it's read, and its Table shows it",
+                  made712 and made712[:2] == ["0", "application"] and made712[2] == "Hemoglobin" and made712[3]
+                  and all(a == b and a.startswith("svg") and "Hemoglobin" in a for a, b in keep712.values())
+                  and hm712[0] is None and hm712[1] == "img" and re.search(r"\bTable\b.* every result", hm712[2])
+                  and hm712[3:6] == ["Table", True, True] and hm712[6] > 10, [made712, keep712, hm712])
             # #720: and wholly in sight once the tab's charts are drawn, a frame after it: every chart on Body and activity,
             # stepped to a point in the middle of the window, at 1400→1200 px, 412→360 px and with the records loaded again
             # at 360 px with text at 200% (Heart rate, HRV, Sleep and Steps and the cards under them went below the window:

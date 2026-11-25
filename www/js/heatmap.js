@@ -40,6 +40,10 @@ const hmDraw = (p, k) => EV.filter(e => e.k === "lab" && isoDay(e.ts) === k && e
 const hmAlso = (s, p) => `Also at ${fmtTime(p.ts)}: ${p[5] || fmtNum(p[1])} ${s.unit}${statusOf(p) ? " · " + statusOf(p).text : ""}`;
 /* the labs the heatmap has a row for: twenty results or more, with ranges */
 const hmLabs = () => SERIES.filter(s => !s.watch && s.n >= 20 && s.pts.some(p => p[2] != null || p[3] != null));
+/* the grid's name (#712): one picture, its cells hovered or pressed but no tab stop (#202); by keyboard and to a screen
+   reader its table is how it's read, every result in it (Grid | Table, renderHeatmap), and its name says so */
+const hmSays = (n, m) => `Heatmap of lab values against reference ranges: ${n && m ? `${n} lab${n === 1 ? "" : "s"} on ${m} draw day${m === 1 ? "" : "s"}` : "none in these dates"}. `
+  + "Table, beside Grid above it, shows every result as a table.";
 const hmCut = new Map();   // a panel's name as it fits the names' column, by its width (below)
 document.fonts.addEventListener("loadingdone", () => hmCut.clear());
 function renderHeatmap(live) {   // live: a frame of a drag (charts.js), at the width it had (#292)
@@ -70,7 +74,7 @@ function renderHeatmap(live) {   // live: a frame of a drag (charts.js), at the 
   if (!rows.length || !cols.length) {   // a plot kept to drag back to where the draws are, and double-click (#382)
     svg.replaceChildren(el("svg:rect", {width: avail, height: 96, fill: "transparent"}),
       el("svg:text", {x: avail / 2, y: 52, "text-anchor": "middle", text: !rows.length && state.labQ ? "No lab names match the filter." : "No lab draws in this date range."}));
-    svg.setAttribute("viewBox", `0 0 ${avail} 96`); svg.setAttribute("width", avail); svg.setAttribute("height", 96);
+    svg.setAttribute("viewBox", `0 0 ${avail} 96`); svg.setAttribute("width", avail); svg.setAttribute("height", 96); svg.setAttribute("aria-label", hmSays(0, 0));
     svg._geom = {L: LW, R: avail - 8, w: avail}; axis.replaceChildren(); axis.setAttribute("height", 0); return;
   }
   const cellPts = rows.map(hmDays);   // each row's results by day (#471)
@@ -98,7 +102,7 @@ function renderHeatmap(live) {   // live: a frame of a drag (charts.js), at the 
   let lastPanel = null;
   for (const s of rows) { const p = grp.get(s); if (p !== lastPanel) { groups.push([p, gy]); gy += GH; lastPanel = p; } yOf.set(s, gy); gy += rowH; }
   const W = Math.max(R + RW, LW + 8 + Math.max(...heads.map(h => labelW(h, "")))), H = gy + 4;   // (room for the counts' heading over a narrow grid)
-  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("width", W); svg.setAttribute("height", H);
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("width", W); svg.setAttribute("height", H); svg.setAttribute("aria-label", hmSays(rows.length, cols.length));
   svg._geom = {L: LW, R, w: W};
   const g = [];
   // hospital stay strip + procedure markers (the procedures by day once, not the records once a column: #292)

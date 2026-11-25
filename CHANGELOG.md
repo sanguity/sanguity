@@ -1772,6 +1772,10 @@ Everything on `main` so far; it becomes the first tagged release.
   to the new one. A lab's panel's **Chart these results** and **Show them as a table** closed the drawer and left
   focus nowhere; focus now goes to the lab's chart, or to its name over its table, and a screen reader is told
   ("Hemoglobin charted on Labs.").
+- **Focus stays on a lab panel's strip as the panel's drawn anew, and the heatmap says how it's read** (#712): the
+  strip of a lab's results in its panel got its tab stop and name a moment after it was made, so on a resize focus on
+  it went to the drawer's Close; it now has both from the start, as the charts have (#652). The heatmap's grid, one
+  picture with no tab stop, now says in its name that Table, beside Grid, shows every result as a table.
 - **Compare's before and after no longer pair a median value with a place it doesn't have** (#653): each side's
   median value and median place were worked out apart and said as one ("12.85 g/dL, −14% of its range"); where a
   lab's range changed within that side, the value wasn't at that place in either range (12.85 is −16% of 12–16 and
