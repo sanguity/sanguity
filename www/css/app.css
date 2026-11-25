@@ -908,8 +908,8 @@ details.res > div{padding:0 var(--sp-3) var(--sp-2)}
   #tlEvents .spacer{display:none}
   .tl-filters{display:none}   /* the kinds and the search: in the Filters sheet (core.js) */
   .search{min-width:0;width:100%}
-  .dates{width:100%}
-  .dates input{flex:1;min-width:0}
+  .dates{width:100%;flex-wrap:wrap}
+  .dates input{flex:1;min-width:max-content}   /* never narrower than its date: the second on a line of its own where both don't fit (#797) */
   .toolbar{gap:var(--sp-2) var(--sp-3)}
   .ov-cols{grid-template-columns:minmax(0,1fr)!important}   /* the screen's width, its content wrapping: fits 320 px (#202) */
   .series-list{max-height:260px}
@@ -1119,12 +1119,13 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
   .imp .man-row .f-unit{grid-column:3 / 5}
   .imp .man-row .f-lab{grid-column:3 / 7}
 }
+@container (width < 17em){ .imp .man-row :is(.f-date,.f-time){grid-column:1 / -1} }   /* each on a line of its own where both don't fit */
 @container (36em <= width < 55em){
-  .imp .man-row{grid-template-columns:8.6em 7em repeat(3,minmax(0,1fr)) auto}
+  .imp .man-row{grid-template-columns:minmax(8.6em,max-content) minmax(7em,max-content) repeat(3,minmax(0,1fr)) auto}
   .imp .man-row .f-test{grid-column:3 / -1}
 }
 @container (width >= 55em){
-  .imp .man-row{grid-template-columns:8.6em 7em minmax(7em,1.6fr) 4.6em 4.6em 6.4em 4.6em minmax(4.6em,1fr) auto;padding:var(--sp-1) 0}
+  .imp .man-row{grid-template-columns:minmax(8.6em,max-content) minmax(7em,max-content) minmax(7em,1.6fr) 4.6em 4.6em 6.4em 4.6em minmax(4.6em,1fr) auto;padding:var(--sp-1) 0}
   .imp .man-row:not(:first-child) .cap{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 }
 .imp .man-check{grid-column:1 / -1;font-size:var(--fs-2);color:var(--muted);min-height:0}
@@ -1229,7 +1230,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .sets .set-lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 .sets .set-line input{width:100%}
 /* #39 milestones and #43 workout rules (settings.js): a checkbox column */
-.sets .ms{grid-template-columns:170px minmax(0,1fr) 64px auto}
+.sets .ms{grid-template-columns:minmax(170px,max-content) minmax(0,1fr) 64px auto}   /* the date's column as wide as its date, larger text too (#797) */
 .sets .rules{grid-template-columns:minmax(0,2fr) minmax(0,1.4fr) 80px 96px auto}
 .sets .set-line .set-tick{align-self:center}
 .sets .set-line .set-tick input{width:auto;justify-self:start}   /* its native size, not stretched across the column (#353) */

@@ -12802,6 +12802,40 @@ def main():
             settle(300)
             check("…and the drawer's results where four columns don't fit (360 px with text at 200%, 320 px), light and dark: each result's flag beside "
                   "its value, nothing off to the right; four columns at 360, 412 and 1400 px as usual (#829)", not bad829, bad829)
+            # ---- #797: a date or time field never narrower than its date or time ("04/14/20", "03/14/2"): each one shown, as
+            # wide as the same field laid out on its own (its own width, a copy beside it), on Settings → Milestones above 700
+            # px and on a phone on its side with text at 150% and 200%, the period's sheet's custom dates on a phone at 200%,
+            # and Type records in at 320 to 412 px with text at 130% to 200% and wider as usual. Each page in a tab of its own
+            CUT797 = r"""() => [...document.querySelectorAll('input[type=date], input[type=time]')].filter(i => i.checkVisibility()).map(i => {
+              const c = i.cloneNode(); c.removeAttribute('id'); c.style.cssText = 'position:absolute;left:0;top:0;width:max-content;min-width:0;max-width:none;visibility:hidden';
+              i.parentElement.append(c); const need = c.getBoundingClientRect().width; c.remove();
+              return [i.id || i.dataset.f || i.getAttribute('aria-label'), Math.round(i.getBoundingClientRect().width), Math.round(need)]; })"""
+            big797 = lambda k: "" if k == 1 else ":root{" + ";".join(f"--fs-{n}:{v * k:.2f}px" for n, v in enumerate((11.5, 12.5, 14, 15.5, 18, 22, 28), 1)) + f"}} html{{font-size:{int(k * 100)}%}}"
+            c797, bad797, seen797 = browser.new_context(storage_state=page.context.storage_state(), bypass_csp=True), {}, 0
+            p797 = c797.new_page()
+            for path, sizes, then, drawn in (("settings.html?profile=1#milestones", ((900, 800, 1.5), (900, 800, 2), (844, 390, 1.5), (1400, 900, 1)), None, "#sec-milestones .set-hd"),
+                                             ("?profile=1#labs", ((360, 800, 2), (412, 860, 2)), "#periodPill", "#presets button"),
+                                             ("sources.html?profile=1#manual", ((320, 640, 1.3), (360, 800, 1.5), (412, 860, 2), (360, 800, 2), (900, 800, 1), (1400, 900, 1)), None, ".man-row input[type=date]")):
+                for w, h, k in sizes:
+                    p797.set_viewport_size({"width": w, "height": h})
+                    p797.goto(f"{base}/{path}")
+                    p797.wait_for_selector(drawn, state="attached", timeout=15000)
+                    p797.evaluate("css => { const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = css ? [s] : []; }", big797(k))
+                    p797.wait_for_timeout(400)
+                    if then:
+                        p797.wait_for_function("() => typeof booted !== 'undefined' && booted", timeout=20000)
+                        p797.click(then)
+                        p797.wait_for_timeout(400)
+                    got = p797.evaluate(CUT797)
+                    if then:
+                        p797.keyboard.press("Escape")
+                    seen797 += len(got)
+                    cut = [f"{n} {b} px of {c}" for n, b, c in got if c > b + 0.5]
+                    if cut or not got:
+                        bad797[f"{path.split('#')[1]} {w}×{h} at {int(k * 100)}%"] = cut or "none shown"
+            c797.close()
+            check("…and no date or time field narrower than its date or time, with text at 130% to 200%: Settings → Milestones above 700 px and on a "
+                  "phone on its side, the period's custom dates on a phone, Type records in at 320 to 412 px and wider (#797)", not bad797 and seen797 >= 20, bad797 or seen797)
             # ---- #785: #622's check above 700 px, where the tabs are in the top bar, all under More where they don't fit: at
             # 701, 768, 900, 1024 and 1100 px and on a phone on its side (844×390, 915×412, a touch screen), with text as
             # usual and at 130%, 150% and 200%, on the records page (Body and activity, the longest tab's name) and every
