@@ -2260,6 +2260,10 @@ Everything on `main` so far; it becomes the first tagged release.
   events of the days it reads their rows' records from what the portal has sent, a connection's to the same portal and
   an upload of its export where every row is the portal's, and the corrected LDL is updated in place, result and row.
   Another source's results of that day keep none.
+- **A pull joins its own source's lab day of the draw** (#912): with a hospital's lab results of a day and the
+  portal's export of the same day uploaded, each its own lab day, a pull's new result that day joined the earliest
+  lab day of its date, the hospital's, so the portal's draw was split across two lab days. Now it joins the lab day of
+  its own source's draw, the one listing the portal's records, and the hospital's stays as it was.
 - **A result its source amends in value is updated, not added beside the old one** (#877): LDL corrected at the source
   from 162 to 165 (the same Observation), pulled again or in a FHIR file uploaded again, was added as a second result
   with a row of its own, so the old value showed beside the corrected one in Labs and in the lab day. Now the same record

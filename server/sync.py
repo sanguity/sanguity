@@ -52,11 +52,11 @@ removes the store (connections.disconnect), so nothing a pull read outlives a Di
       before this one), updated there; a row new to the profile goes in a labitem of the pull's own beside its result,
       and one whose result is a duplicate is left out with it (#897). A report's labitem is placed the same way, row by
       row (#881): every row sits beside its result, in a labitem of its result's own import (one saved apart before is
-      moved beside it, _apart). The day's lab day is joined, never a second
-      added beside it: the connection's own, else the earliest (an upload's), keeping every labitem it lists
-      (_link_labdays). Lab events saved before #885 take their rows' records from the connection's store once
-      (backfill_keys, schema version 40), and those of the days a pull reads as it goes (_give_keys, #909: an upload
-      of the portal's own export, the portal connected again)
+      moved beside it, _apart). The day's lab day is joined, never a second added beside it: the connection's own,
+      else its source's (#912: one listing the portal's records, an upload's of its export), else the earliest,
+      keeping every labitem it lists (_draw_day, _link_labdays). Lab events saved before #885 take their rows' records
+      from the connection's store once (backfill_keys, schema version 40), and those of the days a pull reads as it
+      goes (_give_keys, #909: an upload of the portal's own export, the portal connected again)
     - only records that come from what this pull read count: one undone from the history doesn't come back
       unless the vendor changes it
   Each is recorded in the import history (#24) with a done job, and can be undone there.
@@ -1011,6 +1011,12 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
         # events come from the whole set read so far (a lab day groups results across pulls), ids as it numbers them;
         # one only this pull's records have (keyless, or not in the whole set) keeps its own, marked apart
         new_events, updates, src, rows_here, fields = [], [], {}, {}, {}
+        # (#912) each draw's lab day: the connection's own, else its source's (one listing its records), else the
+        # earliest, else the pull's own, new
+        mine_src = _source_records(full)
+        labdays = {k for k in touched if (full_by_key.get(k) or {}).get("k") == "lab"
+                   and ((full.get("details") or {}).get(str(full_by_key[k].get("id"))) or {}).get("type") == "labday"}
+        chosen = {k: _draw_day(db, pid, ours, hashes.get(k), mine_src) for k in labdays}
         for k in sorted(touched):
             e, details = full_by_key.get(k), full.get("details", {})
             if e is None:
@@ -1029,6 +1035,11 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
                     rows_here.setdefault(eid, {}).update(rs)
                 if e:
                     new_events.append(e)
+            elif k in chosen:   # the connection's own updated, another's joined (_link_labdays), or the pull's own
+                if chosen[k] is None:
+                    new_events.append(e)
+                elif chosen[k]["import_id"] in ours:
+                    updates.append(e)
             elif hashes.get(k) in have:
                 updates.append(e)
             else:
@@ -1075,7 +1086,7 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
         # whole, a day's rows where each is)
         if (amended := preview.update(db, pid, iid, delta, dups, rows=False)):
             summary["counts"]["updated"] = amended
-        _link_labdays(db, pid, iid, full, set(full_by_key) & (touched | {e.get("key") for e in new_events}), cid)
+        _link_labdays(db, pid, iid, full, set(full_by_key) & (touched | {e.get("key") for e in new_events}), cid, chosen)
         summary["counts"]["documents"] = n_docs
         summary["changed"] = changed
         summary["connection"] = c["source"]
@@ -1155,13 +1166,61 @@ def _update_in_place(db, pid, iid, updates, details, stored, costs=None, cid=Non
     return n
 
 
-def _link_labdays(db, pid, iid, full, keys, cid=None):
+def _source_records(full):
+    """(#912) The records the whole set read so far (full) holds in its lab events: its reports' keys and its rows' own
+    (an Observation's), each naming one record of this source."""
+    out, details = set(), full.get("details") or {}
+    for e in full.get("events") or []:
+        if isinstance(e, dict) and e.get("k") == "labitem":
+            if preview._record_key(e.get("key")):
+                out.add(e["key"])
+            d = details.get(str(e.get("id")))
+            out |= {k for k in (d.get("keys") if isinstance(d, dict) and isinstance(d.get("keys"), list) else []) if preview._record_key(k)}
+    return out
+
+
+def _labday_rows(db, pid, h):
+    """The profile's lab days with key hash h, any import's: [{"id", "import_id", "body", "detail"}], earliest first."""
+    out = []
+    for r in db.execute("SELECT id, import_id, body, detail FROM events WHERE profile_id=? AND key_hash=? ORDER BY id", (pid, h)).fetchall():
+        d = records._dec(r["detail"])
+        if isinstance(d, dict) and d.get("type") == "labday":
+            out.append({"id": r["id"], "import_id": r["import_id"], "body": records._dec(r["body"]) or {}, "detail": d})
+    return out
+
+
+def _holds(db, pid, ids, mine):
+    """Whether any of these lab events holds one of the source's records (mine: _source_records)."""
+    for ch in records._chunks([i for i in ids if isinstance(i, int)]):
+        marks = ",".join("?" * len(ch))
+        for r in db.execute(f"SELECT body, detail FROM events WHERE profile_id=? AND id IN ({marks})", (pid, *ch)).fetchall():
+            b, d = records._dec(r["body"]) or {}, records._dec(r["detail"])
+            if b.get("key") in mine or any(k in mine for k in (d.get("keys") if isinstance(d, dict) and isinstance(d.get("keys"), list) else [])):
+                return True
+    return False
+
+
+def _draw_day(db, pid, ours, h, mine, but=None):
+    """(#912, #910) The lab day a pull of this source joins for the draw of the day whose lab day key hash is h: the
+    connection's own (ours: its imports), the latest, where it has one; else the earliest that lists a lab event holding
+    one of this source's records (mine: _source_records), an upload's of the portal's own export or a connection's to it
+    made before, rather than another source's of that date (a hospital's FHIR file of the day, whose lab day it joined
+    as the earliest, the portal's draw split across two); else the earliest there is (#897: the source's copy of a
+    hospital's result is that draw's); else None, and the pull's is its own, new. but: a lab day not to take. -> the lab
+    day ({"id", "import_id", "body", "detail"}) or None"""
+    days = [x for x in _labday_rows(db, pid, h) if x["id"] != but]
+    own = [x for x in days if x["import_id"] in ours]
+    if own:
+        return own[-1]
+    return next((x for x in days if _holds(db, pid, x["detail"].get("ids") or [], mine)), days[0] if days else None)
+
+
+def _link_labdays(db, pid, iid, full, keys, cid=None, chosen=None):
     """Point each lab day this pull touched at its results' rows, across this connection's pulls and imports: one lab
-    day a draw, whoever's came first (#899, #897). The day's lab day is the connection's own where it has one, else the
-    earliest there is (an upload's of the portal's own export, a connection's made before this one), never a second
-    beside it. The connection's own lists its labitems of that day (a report's wherever it is, as one record's); another's
-    keeps every labitem it lists, none taken out, and is joined by the connection's (#885: never pointed at the pull's
-    alone). Its title counts the rows it holds (\"5 lab results\")."""
+    day a draw, whoever's came first (#899, #897), the one _draw_day chose (chosen: {its key: that lab day, or None for
+    the pull's own, new}), never a second beside it. The connection's own lists its labitems of that day (a report's
+    wherever it is, as one record's); another's keeps every labitem it lists, none taken out, and is joined by the
+    connection's (#885: never pointed at the pull's alone). Its title counts the rows it holds (\"5 lab results\")."""
     events = {str(e.get("id")): e for e in full["events"] if isinstance(e, dict)}
     ours = _ours(db, pid, cid)
     for e in full["events"]:
@@ -1171,27 +1230,35 @@ def _link_labdays(db, pid, iid, full, keys, cid=None):
         if not (isinstance(d, dict) and d.get("type") == "labday"):
             continue
         h = records.key_hashes(db, [e["key"]])[e["key"]]
-        days = db.execute("SELECT id, import_id, body, detail FROM events WHERE profile_id=? AND key_hash=? ORDER BY id", (pid, h)).fetchall()
-        mine = [r for r in days if r["import_id"] in ours]
-        if not days:
+        days = _labday_rows(db, pid, h)
+        pick = (chosen or {}).get(e["key"])
+        day = next((x for x in days if x["id"] == pick["id"]), None) if pick else next((x for x in days if x["import_id"] == iid), None)
+        if day is None:
             continue
-        day, own = (mine[-1], True) if mine else (days[0], False)
+        own = day["import_id"] in ours
         members = [events[str(i)]["key"] for i in d.get("ids") or [] if str(i) in events and events[str(i)].get("key")]
         mh = records.key_hashes(db, members)
-        ids = []
+        old, ids = day["detail"].get("ids") or [], []
         for k in members:
             rs = db.execute("SELECT id, import_id FROM events WHERE profile_id=? AND key_hash=? ORDER BY id", (pid, mh[k])).fetchall()
             got = [r["id"] for r in rs if r["import_id"] in ours] or ([rs[-1]["id"]] if own and rs and not preview.day_key(k) else [])
             ids += [i for i in got if i not in ids]
-        old = records._dec(day["detail"]) or {}
         if not own or not ids:
-            ids = (old.get("ids") or []) + [i for i in ids if i not in (old.get("ids") or [])]
-        body = _labday_body(db, records._dec(day["body"]), ids)
-        if old.get("ids") == ids and _same(body, records._dec(day["body"])):
+            ids = old + [i for i in ids if i not in old]
+        body = _labday_body(db, day["body"], ids)
+        if old == ids and _same(body, day["body"]):
             continue
-        _changing(db, iid, day)
+        _changing(db, iid, {"id": day["id"], "import_id": day["import_id"], "body": records._enc(day["body"]), "detail": records._enc(day["detail"])})
         db.execute("UPDATE events SET body=?, detail=? WHERE id=?",
-                   (records._enc(body), records._enc({**old, "type": "labday", "ids": ids}), day["id"]))
+                   (records._enc(body), records._enc({**day["detail"], "type": "labday", "ids": ids}), day["id"]))
+
+
+def _there(db, ids):
+    """Which of these event ids there are."""
+    out = set()
+    for ch in records._chunks(sorted({i for i in ids if isinstance(i, int)})):
+        out |= {x[0] for x in db.execute(f"SELECT id FROM events WHERE id IN ({','.join('?' * len(ch))})", ch)}
+    return out
 
 
 def _labday_body(db, body, ids):

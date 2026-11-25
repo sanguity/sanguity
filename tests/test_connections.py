@@ -739,6 +739,35 @@ class Connections(unittest.TestCase):
                         self.assertEqual(("ALT" in tests, "GGT" in tests, "Hemoglobin" in tests),
                                          ("P1" not in undone, "P2" not in undone, first not in undone), f"after {undone}: {tests}")
 
+    def test_a_pull_joins_its_own_sources_lab_day_of_the_draw(self):   # #912
+        """A hospital's FHIR report of the day (a metabolic panel, its own lab day) uploaded, then the portal's export,
+        then the portal connected: a pull's new result (an ALT) joined the earliest lab day of its date, the hospital's,
+        so the portal's draw was split across two lab days and the hospital's listed the portal's ALT. Now it joins its
+        own source's lab day, the one listing the portal's records (its export's), and the hospital's is as it was;
+        undone, as before."""
+        bmp = [{"resourceType": "DiagnosticReport", "id": "hosp-bmp", "status": "final", "category": [{"coding": [{"code": "LAB"}]}],
+                "code": {"text": "Basic metabolic panel"}, "effectiveDateTime": "2025-03-04T07:10:00-06:00",
+                "result": [{"reference": "Observation/hosp-k"}, {"reference": "Observation/hosp-na"}]},
+               lab_obs("hosp-k", "2823-3", "Potassium", 5.3, "mmol/L", "H", (3.5, 5.1), t="2025-03-04T07:10:00-06:00"),
+               lab_obs("hosp-na", "2951-2", "Sodium", 140, "mmol/L", None, (135, 145), t="2025-03-04T07:10:00-06:00")]
+        self.upload_bundle(bmp)
+        hospital = self.draw()["lab days"]
+        self.upload_bundle([json.loads(json.dumps(r)) for r in self.fake.resources(patient="pat-1")])
+        cid = self.connect(self.source())
+        self.first_pull(cid)
+        before, n = self.draw(), self.counts()
+        self.assertEqual(sorted(t for t, _ in before["lab days"]), ["2 lab results", "4 lab results"])
+        self.fake.add(lab_obs("obs-alt-912", "1742-6", "ALT", 60, "U/L", "H", (7, 56)), patient="pat-1")
+        alt = self.pull(cid)
+        self.assertEqual(alt["counts"]["results"], 1, alt)
+        drawn = self.draw()
+        portal = [rows for t, rows in before["lab days"] if (t, rows) not in hospital][0]
+        self.assertEqual(sorted(drawn["lab days"]), sorted(hospital + [("5 lab results", portal + [["ALT", "60", "U/L", "7-56", "H"]])]),
+                         "the ALT in the portal's lab day, the hospital's as it was")
+        self.assertEqual(self.faults(), [])
+        self.undo(alt["import"])
+        self.assertEqual((self.draw(), self.counts()), (before, n), "undone: as before")
+
     def test_connected_again_a_pull_updates_the_first_connections_rows(self):   # #899
         """Connected and pulled, disconnected keeping its records, connected again (a new connection, whose first pull
         finds them already here). LDL corrected at the source updated the result, but its row, in the first connection's
