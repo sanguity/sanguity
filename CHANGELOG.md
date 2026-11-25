@@ -1610,6 +1610,11 @@ Everything on `main` so far; it becomes the first tagged release.
   dragged on Labs, its heatmap or Compare stays where it was on the screen through the drag and once it's drawn for
   its new dates, the window scrolled by whatever grew over it (the period bar turned to custom dates, Labs' head on a
   phone), at the page's top too.
+- **A scroll you make around a chart's gesture is yours** (#985): #895 kept the chart dragged where it was on the
+  screen, and so it scrolled back the page scrolled straight after: a zoom with the wheel then a scroll of the page
+  went back to where it was, a drag past the records' end then a scroll didn't scroll at all, and on a phone a pan
+  then a swipe lost most of it. Only what grows or shrinks over the chart is made up for now, by the chart's place in
+  the page, so a scroll of yours stays.
 - **Body and Labs on a phone: the charts start on the first screen** (#615): the top took three or four rows before
   any record, and Labs put its whole list of labs above the charts. On a phone the period now sits in one row with
   Labs' Chart | Heatmap and **Show**, which opens what the charts also show, the legend and the ⓘ under the row.

@@ -662,6 +662,7 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 :is(.chart svg:not(.icon),.ev-svg){width:100%;display:block}
 .pz{touch-action:pan-y;user-select:none;-webkit-user-select:none;cursor:grab}
 .dragging .pz,.dragging .pz *{cursor:grabbing!important}
+.ck-held{overflow-anchor:none}   /* a chart's gesture makes up for what grows over it itself (charts.js panZoom, #985) */
 .list-hd{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;margin-bottom:2px}
 .list-hd :is(h2,h3){margin:0!important}
 /* a heading wraps beside its one control: no font swap pushes that under it (#426) */
