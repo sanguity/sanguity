@@ -37,7 +37,7 @@ def create(db, username, is_admin=False, password=None):
 
 
 def temp_expiry():
-    return dbm.now() + config.TEMP_PASSWORD_DAYS * 86400
+    return dbm.now() + config.setting("TEMP_PASSWORD_DAYS") * 86400
 
 
 def set_temp_password(db, uid):

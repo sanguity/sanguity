@@ -116,7 +116,7 @@ def setUpModule():
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
     BASE = f"http://127.0.0.1:{port}"
-    config.PUBLIC_ORIGINS.add(BASE)       # the return address a connected source signs in back to
+    os.environ["PUBLIC_ORIGINS"] = BASE   # the return address a connected source signs in back to
     config.CONNECT_ALLOW_HTTP = True      # the fake SMART on FHIR server is plain HTTP on this machine
     SYNC_PATCH = mock.patch.object(sync, "start", lambda: None)   # the pull is started by the test, and timed
     SYNC_PATCH.start()

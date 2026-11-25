@@ -24,8 +24,8 @@ router = APIRouter()
 def _base_url(request):
     """Where the app is opened, for the link back in each event: the first PUBLIC_ORIGINS entry if set, else the
     address this request reached (uvicorn applies X-Forwarded-Proto from nginx)."""
-    if config.PUBLIC_ORIGINS:
-        return sorted(config.PUBLIC_ORIGINS)[0]
+    if (origins := config.setting("PUBLIC_ORIGINS")):
+        return sorted(origins)[0]
     host = request.headers.get("x-forwarded-host", "").split(",")[0].strip() or request.headers.get("host", "")
     return f"{request.url.scheme}://{host}" if host else str(request.base_url)
 

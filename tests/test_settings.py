@@ -12,6 +12,7 @@ Fictional data only.
   python3 tests/test_settings.py
 """
 import contextlib, copy, io, json, os, shutil, sys, tempfile, unittest, zipfile
+from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-settings-test-")
@@ -51,6 +52,10 @@ OLD_FILE = {"trends": {"defaultLabs": ["Glucose"]}, "labNicknames": {"Glucose": 
 settings.section("testing", "Testing")
 settings.define("test.mine", "testing", "Just mine", "light", lambda v: settings._text(v, "It"), scope="user", private=False)
 settings.define("test.server", "testing", "Server-wide", 10, lambda v: int(v), scope="install", private=False)
+# (#999) a server setting the environment can set too, as General's are: SYNC_HOURS, read where it's used
+settings.section("testing-env", "Testing the environment")   # (its own: the reset test counts the section above's)
+settings.define("testEnv.syncHours", "testing-env", "Sync every (hours)", 12, settings.whole(1, 168, "Hours"), scope="install",
+                private=False, env="SYNC_HOURS")
 
 
 def flat(obj, prefix=""):
@@ -362,6 +367,60 @@ class Settings(unittest.TestCase):
         r = ada.post("/api/settings/install/reset", json={"section": "sync"}, headers=H)
         self.assertEqual((r.status_code, r.json()["reset"]), (200, ["sync.staleDays"]), r.text)
         self.assertEqual(self.merged(1, "robin")["sync"]["staleDays"], 3)
+
+    def test_the_environment_wins_only_when_set(self):
+        """#999: a server setting's variable set in the environment is the value in force, shown so, naming it, and a
+        change to it is refused (409); set to nothing (the compose files pass ${NAME:-}) or to something unreadable, it
+        isn't set, and the value saved in the app is in force, else the default. config.setting reads it at each use:
+        a change applies without a restart."""
+        from server import sync
+        ada, key = self.c["ada"], "testEnv.syncHours"
+        item = lambda: {st["key"]: st for sec in ada.get("/api/settings/install").json()["sections"] for st in sec["settings"]}[key]   # noqa: E731
+        variable = lambda: ada.get("/api/settings/install").json()["variables"]["SYNC_HOURS"]   # noqa: E731
+        hours = lambda: round((sync._due_after_failure(100) - dbm.now()) / 3600)   # noqa: E731  (a pull's wait, at most SYNC_HOURS)
+        with mock.patch.dict(os.environ):
+            os.environ.pop("SYNC_HOURS", None)
+            st = item()
+            self.assertEqual((st["value"], st["from"], st["env"], st["can_change"]), (12, "default", "SYNC_HOURS", True))
+            self.assertEqual(variable(), {"value": 12, "from": "default", "default": 12, "setting": key})
+            # every variable is listed, with where its value comes from: none is the environment's here
+            got = ada.get("/api/settings/install").json()
+            self.assertEqual(set(got["variables"]), set(config.VARS))
+            self.assertEqual(got["variables"]["PUBLIC_ORIGINS"]["from"], "environment")   # this test sets it
+            # saved in the app: in force at once, everywhere it's read
+            r = ada.put(f"/api/settings/install/{key}", json={"value": 6}, headers=H)
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertEqual((config.setting("SYNC_HOURS"), config.source("SYNC_HOURS"), hours()), (6, "install", 6))
+            self.assertEqual((item()["from"], variable()["from"], self.merged(1, "robin")["testEnv"]["syncHours"]), ("install", "install", 6))
+            # set by the environment: that wins, said so and named; a change to it is refused, and the saved value kept
+            os.environ["SYNC_HOURS"] = "24"
+            st = item()
+            self.assertEqual((st["value"], st["from"], st["env"], st["can_change"], hours()), (24, "environment", "SYNC_HOURS", False, 24))
+            self.assertEqual(self.merged(1, "robin")["testEnv"]["syncHours"], 24)
+            for r in (ada.put(f"/api/settings/install/{key}", json={"value": 8}, headers=H),
+                      ada.put(f"/api/profiles/1/settings/{key}", json={"value": 8}, headers=H)):   # a profile page's too
+                self.assertEqual(r.status_code, 409, r.text)
+                self.assertIn("set by the server's environment (SYNC_HOURS)", r.json()["detail"])
+            with contextlib.closing(dbm.connect()) as db:
+                self.assertEqual(settings.stored(db, "install")[key], 6)
+            # set to nothing, as "${SYNC_HOURS:-}" passes it when .env doesn't: not set
+            os.environ["SYNC_HOURS"] = ""
+            self.assertEqual((item()["from"], item()["value"], hours()), ("install", 6, 6))
+            # something it can't be read as: left out (as before, when it was the default), and said at start
+            os.environ["SYNC_HOURS"] = "twelve"
+            self.assertEqual((config.source("SYNC_HOURS"), config.setting("SYNC_HOURS")), ("install", 6))
+            self.assertIn(("SYNC_HOURS", "twelve"), config.unreadable())
+            os.environ.pop("SYNC_HOURS")
+            self.assertEqual(ada.delete(f"/api/profiles/1/settings/{key}", headers=H).status_code, 200)
+            self.assertEqual((config.setting("SYNC_HOURS"), item()["from"], hours()), (12, "default", 12))
+        # the registry keeps a variable's setting to what the variable can be: the install's, plain, its default
+        for kw, why in (({"env": "NO_SUCH_VARIABLE"}, "isn't a variable"), ({"env": "SYNC_HOURS"}, "another setting"),
+                        ({"env": "SHL_TIMEOUT", "private": True}, "private=False"), ({"env": "SHL_TIMEOUT", "default": 5}, "its default")):
+            with self.assertRaises(ValueError) as e:
+                settings.define("test.bad", "testing-env", "Bad", kw.pop("default", 20), settings.whole(1, 99, "It"),
+                                scope="install", **{"private": False, **kw})
+            self.assertIn(why, str(e.exception))
+        self.assertNotIn("test.bad", settings.SETTINGS)
 
     def test_a_whole_value_saved_from_an_old_read_is_refused(self):   # #923
         """A list a page saves whole, sent with the value it read ("was", its version): refused (409) and left as it is
