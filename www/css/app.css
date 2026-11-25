@@ -599,7 +599,8 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .tl-day>.dd>b{display:block;color:var(--ink2);font-size:var(--fs-4);font-weight:var(--fw-semibold);font-variant-numeric:tabular-nums}
 .tl-more{margin:var(--sp-3) 0 0;align-self:flex-start}
 .month{font-weight:var(--fw-semibold);font-size:var(--fs-3);color:var(--ink2);padding:var(--sp-4) 0 var(--sp-1);border-bottom:1px solid var(--grid);position:sticky;top:var(--bar-h,0px);z-index:1;background:var(--surface)}   /* under the top bar (--bar-h, nav.js), not behind it (#247) */
-#list .tl-row{scroll-margin-top:44px}   /* a row given focus is scrolled clear of the month heading stuck above it */
+#list .tl-row{scroll-margin-top:calc(1.45 * var(--fs-3) + var(--sp-5))}   /* a row given focus is scrolled clear of the month heading stuck above
+   it: its line (body's 1.45) grows with the text, as the heading's does (44 px as usual; #739: 62 px at 200% over a 44 px margin) */
 /* the Timeline list's row (timeline.js); its own class, so the pages' rows of buttons (.acct .row) aren't styled like it (#246) */
 .tl-row{position:relative;padding:var(--sp-2) var(--sp-2) var(--sp-2) calc(var(--sp-2) + 1em + var(--sp-2));cursor:pointer;border-radius:var(--r-sm);overflow-wrap:anywhere}
 .tl-row:hover,.tl-row.sel{background:var(--hover)}
