@@ -497,6 +497,49 @@ class Connections(unittest.TestCase):
                         pulls.append(self.pull(cid)["import"])
                     self.assertEqual(state(), (["zocor"], ["zocor"], ["zocor"]))
 
+    def test_a_pull_matches_only_its_own_sources_records(self):   # #971
+        """Hospital A's FHIR export uploaded first, its MedicationRequest, Condition and Observation with the ids the
+        connected portal (server B) gives its own (med-1, cond-1, obs-hgb). The first pull, reviewed as an upload, keys
+        B's as its own (#967), but a later pull looked its records up by their plain ids among every import's: B's
+        Atorvastatin stopped at the vendor was put in place of A's Metformin, B's Hyperlipidemia resolved in place of
+        A's diabetes, each never reaching B's own. Now a pull matches only its own source's records (by their "ver",
+        else the connection whose pull saved them): B's are updated, A's as they were, and a pull again finds B's by
+        the keys naming its server."""
+        a = "https://hospital-a.example/fhir"
+        pat = {"resourceType": "Patient", "id": "pat-1", "name": [{"family": "Example", "given": ["Robin"]}], "birthDate": "1980-02-02"}
+        status = lambda code: {"coding": [{"system": "http://terminology.hl7.org/CodeSystem/condition-clinical", "code": code}]}   # noqa: E731
+        hospital = [pat, {"resourceType": "MedicationRequest", "id": "med-1", "status": "active", "intent": "order", "subject": {"reference": "Patient/pat-1"},
+                          "medicationCodeableConcept": {"text": "Metformin 500 mg tablet"}, "authoredOn": "2025-01-10", "dosageInstruction": [{"text": "1 tablet twice daily"}]},
+                    {"resourceType": "Condition", "id": "cond-1", "subject": {"reference": "Patient/pat-1"}, "code": {"text": "Type 2 diabetes"},
+                     "clinicalStatus": status("active"), "category": [{"coding": [{"code": "problem-list-item"}]}], "onsetDateTime": "2025-01-05"},
+                    lab_obs("obs-hgb", "718-7", "Hemoglobin", 12.1, "g/dL", rng=(12.0, 16.0))]   # the same id, time and value: its own range
+        self.upload_bundle(hospital, base=a)
+        cid = self.connect(self.source())
+        self.first_pull(cid)
+
+        def said():
+            d = self.data()
+            return (sorted((m["name"], m["spans"][-1]["status"]) for m in d.get("medications") or [] if m["key"] != "amoxicillin"),
+                    sorted((p["name"], p["status"]) for p in d.get("problems") or [] if p.get("name") in ("Type 2 diabetes", "Hyperlipidemia")),
+                    sorted((p[2], p[3], p[4]) for s in d["labs"] if s["name"].startswith("Hemoglobin") for p in s["pts"]))
+        before = said()
+        self.assertEqual(before, ([("Atorvastatin 20 mg tablet", "Active"), ("Metformin 500 mg tablet", "Active")],
+                                  [("Hyperlipidemia", "Active"), ("Type 2 diabetes", "Active")], [(12.0, 16.0, ""), (13.5, 17.5, "L")]), "each source's own")
+        self.fake.update("MedicationRequest", "med-1", {"status": "stopped"})
+        self.fake.update("Condition", "cond-1", {"clinicalStatus": {"coding": [{"code": "resolved"}]}})
+        self.fake.update("Observation", "obs-hgb", {"referenceRange": [{"low": {"value": 12.0}, "high": {"value": 15.5}, "text": "12.0-15.5"}],
+                                                    "interpretation": None})
+        res = self.pull(cid)
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(said(), ([("Atorvastatin 20 mg tablet", "Stopped"), ("Metformin 500 mg tablet", "Active")],
+                                  [("Hyperlipidemia", "Resolved"), ("Type 2 diabetes", "Active")], [(12.0, 15.5, ""), (12.0, 16.0, "")]),
+                         "the portal's records updated, the hospital's as they were")
+        self.assertEqual(self.faults(), [])
+        self.assertIsNone(self.pull(cid)["import"], "again: nothing new, its own found by their keys")
+        r = self.robin.post(f"/api/profiles/{self.pid}/imports/{res['import']}/undo", headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(said(), before, "undone: as they were")
+
     def test_a_result_sent_again_is_updated_in_place(self):   # #869
         """A result the source amends comes back at the next pull: the same result, updated in place, range and flag,
         never a copy. The report's Hemoglobin 12.1 (13.5–17.5, Low) amended to 12.0–15.5 and Normal, its Platelet Count
@@ -1852,11 +1895,12 @@ class Connections(unittest.TestCase):
                 "allergies": [x.get("key") for x in d.get("problems") or [] if x.get("type") == "Allergy"],
                 "appointments": [x.get("key") for x in d.get("upcoming") or [] if str(x.get("key")).startswith("fhir:Appointment/")]}
 
-    def upload_bundle(self, resources):
-        """Upload the resources as a FHIR bundle file, as someone would from their portal's export, and save it."""
+    def upload_bundle(self, resources, base=None):
+        """Upload the resources as a FHIR bundle file, as someone would from their portal's export (or another server's,
+        base), and save it."""
         from server import uploads
         body = json.dumps({"resourceType": "Bundle", "type": "collection",
-                           "entry": [{"fullUrl": f"{self.fake.fhir_base}/{r['resourceType']}/{r['id']}", "resource": r}
+                           "entry": [{"fullUrl": f"{base or self.fake.fhir_base}/{r['resourceType']}/{r['id']}", "resource": r}
                                      for r in resources]}).encode()
         db = dbm.connect()
         try:

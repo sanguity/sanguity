@@ -310,8 +310,10 @@ def _own_keys(db, pid, data):
     #920 put it in hospital A's place before #955), and clinic B's file sent again finds its own by that key. A record
     here under its key naming its source is its own already; one under the plain key from the same source, or from one
     it doesn't say (a record saved before #955), is the same record, as before. Events (not lab days nor lab events,
-    whose results have their own rule: #869, #885) and the profile-wide lists' entries."""
-    cands = []   # (the record, its plain key, its source as given, its list's path or None)
+    whose results have their own rule: #869, #885) and the profile-wide lists' entries. A pull's (#971: sync._save)
+    are keyed so too, in the whole set it has read and in what it read now alike (named()). -> {(its list's path or
+    None, the plain key): the key naming its source} of those keyed so."""
+    cands, out = [], {}   # (the record, its plain key, its source as given, its list's path or None)
     for e in data.get("events") or []:
         if isinstance(e, dict) and e.get("k") not in ("lab", "labitem") and _plain(e.get("key")) and (s := _said_source(e)):
             cands.append((e, e["key"], s, None))
@@ -320,7 +322,7 @@ def _own_keys(db, pid, data):
             if isinstance(x, dict) and _plain(x.get("key")) and (s := _said_source(x)):
                 cands.append((x, x["key"], s, path))
     if not cands:
-        return
+        return out
     bases = {r[0]: r[1] for r in db.execute("""SELECT i.id, c.fhir_base FROM imports i JOIN connections c ON c.id = i.connection_id
                                                WHERE i.profile_id=?""", (pid,))}   # (a connection's records: its server)
     held = collections.defaultdict(list)   # (list path or None, key) -> [the source of each record here under it]
@@ -341,7 +343,20 @@ def _own_keys(db, pid, data):
     for x, key, s, path in cands:
         own, plain = held.get((path, _named(key, s))), held.get((path, key))
         if own or plain and all(h and h != _server(s) for h in plain):
-            x["key"] = _named(key, s)
+            x["key"] = out[(path, key)] = _named(key, s)
+    return out
+
+
+def named(data, keys):
+    """(#971) _own_keys' keys given to the same records in another set of them (a pull's, read now, beside the whole
+    set read so far): keys, {(list path or None, plain key): key naming its source}."""
+    for e in data.get("events") or []:
+        if isinstance(e, dict) and e.get("k") not in ("lab", "labitem") and (None, e.get("key")) in keys:
+            e["key"] = keys[(None, e["key"])]
+    for path, items in _meta_lists(data).items():
+        for x in items:
+            if isinstance(x, dict) and (path, x.get("key")) in keys:
+                x["key"] = keys[(path, x["key"])]
 
 
 def _same_source(key, sent, here, base=None, sent_d=None, here_d=None):

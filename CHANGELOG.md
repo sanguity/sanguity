@@ -3506,6 +3506,11 @@ Everything on `main` so far; it becomes the first tagged release.
   organizer id) was taken for A's sent again: B's range and flag replaced A's, a High gone. Now each lab report says
   its source (its server, a C-CDA's custodian), and a result is updated only from its own: B's is kept as a copy with
   its own row, and A's file again updates A's alone.
+- **A connected source's pull never changes another server's records with the same ids** (#971): with hospital A's
+  FHIR export uploaded first, a later pull from a connected portal whose records have the same plain ids changed A's:
+  the portal's Atorvastatin, stopped, was put in place of A's Metformin, and its Hyperlipidemia, resolved, in place of
+  A's diabetes, while the portal's own records stayed as they were. Now a pull updates only its own source's records:
+  the portal's are changed, A's stay as they are, and Undo puts the portal's back.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
