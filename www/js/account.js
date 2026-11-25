@@ -41,12 +41,19 @@ const feedsEnd = n => `${n === 1 ? "Your calendar feed is" : `Your ${n} calendar
   `you can make ${n === 1 ? "a new one" : "new ones"} under Sharing, Calendar feed.`;
 const feedsGone = n => n ? ` ${n === 1 ? "Your calendar feed is" : `Your ${n} calendar feeds are`} turned off too: make ` +
   `${n === 1 ? "a new one" : "new ones"} under Sharing, Calendar feed.` : "";
-function pwFeeds() {   // the line beside Change password, while there are some
+function pwFeeds() {   // the line beside Change password, while there are some: its form's and button's description (#962)
   const n = ME.calendar_feeds || 0;
   $("#pwFeeds").textContent = n ? `Changing it signs out your other devices and turns off ${feedsWord(n)}, ${feedsWhy(n)}. ` +
     `You can make ${n === 1 ? "a new one" : "new ones"} under Sharing, Calendar feed.` : "";
   $("#pwFeeds").hidden = !n;
 }
+/* how many, counted as it's asked (#962: page load's count, so a feed made or turned off since, in another tab, went
+   unsaid or was said): as focus comes into Change password's form, and before a passkey's removal asks. -> the count */
+async function feedsNow() {
+  try { ME.calendar_feeds = (await call("me")).calendar_feeds || 0; pwFeeds(); } catch (e) {}   // (kept as it was offline)
+  return ME?.calendar_feeds || 0;
+}
+$("#pwForm").addEventListener("focusin", ev => { if (!ev.currentTarget.contains(ev.relatedTarget)) feedsNow(); });
 $("#pwForm").onsubmit = async ev => {
   ev.preventDefault();
   if ($("#pwNew").value !== $("#pwNew2").value) return pwSay("The new passwords don't match.", true);
@@ -235,10 +242,10 @@ async function loadPasskeys() {
               // your password, as adding one asks (#590: a device left signed in could take it away); every other
               // device is signed out, as turning off the authenticator app does
               const pw = el("input", {type: "password", autocomplete: "current-password", required: true});
-              const label = el("label", {}, "Your password", pw);
+              const label = el("label", {}, "Your password", pw), feeds = await feedsNow();
               pwField(pw);
               if (!await ask({title: `Remove the passkey “${k.name}”?`, message: ["Remove it from the device too, in its passwords or passkeys settings.",
-                                "Every other device signed in to your account is signed out." + (ME.calendar_feeds ? " " + feedsEnd(ME.calendar_feeds) : ""), label],
+                                "Every other device signed in to your account is signed out." + (feeds ? " " + feedsEnd(feeds) : ""), label],
                               action: "Remove passkey", danger: true, field: pw})) return;
               const at = st.passkeys.indexOf(k);
               try {
