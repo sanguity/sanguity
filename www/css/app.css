@@ -744,12 +744,15 @@ svg text.db-name{fill:var(--ink);font-size:var(--fs-2)}
 /* Labs' Latest (#993, latest.js): a row a lab (.ov-row), a link to its chart, edge to edge; wider, in columns */
 .lt-list{list-style:none;margin:0 calc(-1*var(--card-pad));padding:0}
 .lt-row{grid-template-columns:1fr auto;padding:var(--sp-2) var(--card-pad);border-radius:0;color:inherit;text-decoration:none;outline-offset:-2px!important}
-.lt-row>.v{text-align:right}
+.lt-row>:is(.v,.c){text-align:right}
+.lt-row>.s{grid-column:auto}
+.lt-row>.c{font-size:var(--fs-2);font-variant-numeric:tabular-nums}
+.lt-row.old,.lt-row.old>.s{color:var(--muted)}   /* taken a year or more ago (#995): still 4.5:1 */
 .lt-v{display:block}
 .lt-v>.st{margin-left:var(--sp-2)}
 .lt-list+.lab-panel{margin-top:var(--sp-4)}
 #labsLatest .lab-find{flex-wrap:wrap}#labsLatest .lab-find input{flex-basis:12em}   /* its count under the box where both don't fit (#994) */
-@media (min-width:701px){.lt-row{grid-template-columns:1fr 1fr 2fr}.lt-row>.v{text-align:left}.lt-row>.s{grid-column:auto}}
+@media (min-width:701px){.lt-row{grid-template-columns:1fr 1fr 2fr 1fr}.lt-row>.v{text-align:left}}
 @media (max-width:900px){.ov-cols{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:600px){ .ov-h{flex-wrap:wrap} }
 .line{fill:none;stroke:var(--c-lab);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
