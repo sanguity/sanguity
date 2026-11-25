@@ -777,6 +777,59 @@ class Preview(unittest.TestCase):
         self.assertEqual((done["state"], done["counts"].get("changed")), ("done", 1), done)
         self.assertEqual(said(pid), ([("Metoprolol 25 mg tablet", "Active")], [("Atrial fibrillation", "Resolved")]), "the medication left as it was")
 
+    def test_another_servers_record_with_the_same_id_is_added_as_its_own(self):   # #967
+        """A FHIR resource's key is its plain id, fhir:<type>/<id>, unless one upload mixes servers: clinic B's export
+        after hospital A's, with the same ids, was taken for hospital A's records, left out as duplicates (#955 stops it
+        replacing them). Now a record whose plain key a record of another server holds here (each says its server: its
+        VER, the importer's) is added as its own, its key naming its server (fhir:<server>|<type>/<id>, as an upload
+        mixing servers keys it); clinic B's file again is all duplicates, its newer one updates clinic B's records and
+        never hospital A's, and hospital A's again finds its own."""
+        status = lambda code: {"coding": [{"system": "http://terminology.hl7.org/CodeSystem/condition-clinical", "code": code}]}   # noqa: E731
+        pat = {"resourceType": "Patient", "id": "1", "name": [{"family": "Example", "given": ["Pat"]}], "birthDate": "1980-02-02"}
+        med = lambda text, st="active", at="2026-03-01T10:00:00Z": {   # noqa: E731
+            "resourceType": "MedicationRequest", "id": "1", "status": st, "intent": "order", "subject": {"reference": "Patient/1"},
+            "medicationCodeableConcept": {"text": text}, "authoredOn": "2026-03-01", "dosageInstruction": [{"text": "1 tablet daily"}],
+            "meta": {"lastUpdated": at}}
+        cond = lambda text, st="active": {"resourceType": "Condition", "id": "1", "subject": {"reference": "Patient/1"}, "code": {"text": text},   # noqa: E731
+                                          "clinicalStatus": status(st), "onsetDateTime": "2026-02-20"}
+
+        def bundle(name, base, *rs):
+            return {name: json.dumps({"resourceType": "Bundle", "type": "collection",
+                                      "entry": [{"fullUrl": f"{base}/{r['resourceType']}/{r['id']}", "resource": r} for r in rs]})}
+
+        def said(pid):
+            d = assembled(pid)
+            return (sorted((m["name"], m["spans"][-1]["status"]) for m in d.get("medications") or []),
+                    sorted((p["name"], p["status"]) for p in d.get("problems") or []))
+        a, b = "https://hospital-a.example/fhir", "https://clinic-b.example/fhir"
+        hospital = bundle("hospital-a.json", a, pat, med("Metformin 500 mg tablet"), cond("Type 2 diabetes"))
+        clinic = bundle("clinic-b.json", b, pat, med("Lisinopril 10 mg tablet", "stopped"), cond("Hypertension", "resolved"))
+        pid = self.profile("Two portals, the same ids, both kept")
+        self.assertEqual(self.save(pid, self.previewed(pid, hospital)[0])["state"], "done")
+        j, _ = self.previewed(pid, clinic)
+        self.assertEqual((j["counts"]["events"], j["duplicates"]["events"], j["duplicates"]["other"], j["duplicates"]["changed"]["n"]), (1, 0, 0, 0),
+                         "clinic B's medication and problem are new")
+        self.assertEqual(self.save(pid, j)["state"], "done")
+        self.assertEqual(said(pid), ([("Lisinopril 10 mg tablet", "Stopped"), ("Metformin 500 mg tablet", "Active")],
+                                     [("Hypertension", "Resolved"), ("Type 2 diabetes", "Active")]), "both portals'")
+        db = dbm.connect()
+        try:
+            keys = sorted(e["key"] for e in records.assemble(db, pid, raw=True)["events"] if e.get("k") == "med")
+        finally:
+            db.close()
+        self.assertEqual(keys, sorted([f"fhir:{b}|MedicationRequest/1", "fhir:MedicationRequest/1"]), "clinic B's key names its server")
+        for files in (clinic, hospital):   # each portal's file again: its own records, nothing new
+            j, _ = self.previewed(pid, files)
+            self.assertFalse(j["new"], j["counts"])
+            self.assertEqual((j["duplicates"]["events"], j["duplicates"]["other"]), (1, 1))
+        # clinic B's newer file: its own medication updated, hospital A's as it was
+        j, _ = self.previewed(pid, bundle("clinic-b-2.json", b, pat, med("Lisinopril 10 mg tablet", "active", "2026-09-01T10:00:00Z"),
+                                          cond("Hypertension", "resolved")))
+        self.assertEqual({k: j["duplicates"]["changed"][k] for k in ("n", "kinds")}, {"n": 1, "kinds": {"med": 1}})
+        self.save(pid, j)
+        self.assertEqual(said(pid)[0], [("Lisinopril 10 mg tablet", "Active"), ("Metformin 500 mg tablet", "Active")])
+        self.assertEqual(rowless(assembled(pid)), [])
+
     def test_an_observation_is_found_by_its_id_whichever_bundle_it_comes_in(self):   # #879
         """A FHIR Observation is the same record by its id whichever bundle it comes in: inside a DiagnosticReport (its
         labitem keyed by the report), or on its own (keyed by its day). Uploaded alone after coming in a report, it was

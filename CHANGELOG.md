@@ -3379,6 +3379,12 @@ Everything on `main` so far; it becomes the first tagged release.
   portal's report, a hospital's report of the same draw and a spreadsheet, not linked as the same result, is one result
   in Labs, the visit summary and share links (#825), but went into the bundle three times. It's one Observation now,
   in each report that holds it.
+- **Another portal's FHIR records with the same ids are added as their own** (#967): a FHIR record's key is its plain
+  id unless one upload mixes servers, so clinic B's export after hospital A's, with the same ids, had clinic B's
+  Lisinopril and Hypertension left out as already here (since #955 no longer put in place of hospital A's). Now a
+  record whose id a record of another server holds is added beside it, its key naming its server; clinic B's file
+  again is already here, its newer one updates clinic B's records, never hospital A's. A record saved before #955,
+  which doesn't say its server, is taken for the same record, as before.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
