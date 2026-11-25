@@ -542,7 +542,9 @@ Schema version 21 adds what a connection pulls and how it warns (#99, #101, #102
   fetched anyway, by that import, and goes back to NULL (listed again) when that import is undone.
 - **sync_removed**: the rows "remove the records of a kind" took out (events, a series with its results, or the
   entries of an import's profile-wide list), encrypted, under the import that removed them. Undoing that import from
-  the history puts them back in their own imports, with their ids where those are free.
+  the history puts them back in their own imports, with their ids where those are free (a result's too). An event's
+  row keeps its `sync_changes` (what pulls kept of it for Undo, which go with it) and, for a lab event, the lab days it
+  was taken out of as they were (#914), so it goes back in them, or in one made again.
 - **imports.note**: what a sync import that isn't a pull did (removed a kind, or fetched an attachment), encrypted,
   for the history's label and counts.
 
