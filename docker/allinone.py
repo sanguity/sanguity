@@ -65,7 +65,8 @@ def main():
 
     base = {k: v for k, v in os.environ.items() if k not in ("HOST", "PORT")}
     services = {
-        "app": (["python3", "-m", "server"], {**base, "HOST": "127.0.0.1", "PORT": "8000",
+        # SANGUITY_DEPLOYMENT: how it's deployed, for Settings → General → About (#1004); Unraid's template sets its own
+        "app": (["python3", "-m", "server"], {"SANGUITY_DEPLOYMENT": "allinone", **base, "HOST": "127.0.0.1", "PORT": "8000",
                                                "FORWARDED_ALLOW_IPS": "127.0.0.1"}),
         "web": (["nginx", "-e", "stderr", "-c", os.path.join(NGINX_TMP, "nginx.conf"), "-g", "daemon off;"], base),
         "receiver": (["python3", "-I", "/app/receiver.py"], {**base, "DATA": WATCH, "PORT": "8081", "TZ_DEFAULT": tz,
