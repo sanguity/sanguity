@@ -282,7 +282,7 @@ function drawChart(svg, s, pts, read, live) {   // live: a frame of a drag, at t
   const tallest = () => ckDecimate(pts, p => x(p.ts), 1, {lo: null});
   if (s.kind === "bars") {
     for (const p of tallest()) { const top = y(p[1]); g.push(el("svg:rect", {x: x(p.ts) - barW / 2, y: top, width: barW, height: Math.max(0, B - top), rx: Math.min(2, barW / 2), fill: "var(--c-lab)", "fill-opacity": smoothOn ? .45 : .85})); }
-    if (smoothOn) g.push(line(smooth7(pts).map((v, i) => [x(pts[i].ts), y(v)]), "line", {stroke: "var(--ink2)"}));
+    if (smoothOn) g.push(line(smooth7(pts).map((v, i) => [x(pts[i].ts), y(v)]), "line", {stroke: INK2}));
   } else if (s.kind === "stack") {
     for (const p of tallest()) {
       const pr = p.parts || {}, cx = x(p.ts) - barW / 2; let acc = 0;
@@ -290,7 +290,7 @@ function drawChart(svg, s, pts, read, live) {   // live: a frame of a drag, at t
       for (const [k, c] of segs) { const v = pr[k] || 0; if (!v) continue; const y1 = y(acc + v), y0 = y(acc); g.push(el("svg:rect", {x: cx, y: y1, width: barW, height: Math.max(0, y0 - y1 - (acc + v < p[1] - .01 ? 1 : 0)), fill: `var(${c})`, "fill-opacity": smoothOn ? .55 : 1})); acc += v; }
       if (!segs.length) g.push(el("svg:rect", {x: cx, y: y(p[1]), width: barW, height: Math.max(0, B - y(p[1])), fill: "var(--seq2)", "fill-opacity": smoothOn ? .55 : 1}));
     }
-    if (smoothOn) g.push(line(smooth7(pts).map((v, i) => [x(pts[i].ts), y(v)]), "line", {stroke: "var(--ink2)"}));
+    if (smoothOn) g.push(line(smooth7(pts).map((v, i) => [x(pts[i].ts), y(v)]), "line", {stroke: INK2}));
   } else if (s.kind === "band") {
     const bp = pts.filter(p => p.lo != null && p.hi != null);
     if (bp.length > 1) {

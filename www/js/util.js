@@ -27,7 +27,7 @@ const KIND_LABEL = {lab:"Lab draw",imaging:"Imaging",procedure:"Procedure",study
 /* the app's neutral inks for a mark JS colours: the system's text in forced colours (--fc-ink, app.css), where SVG
    keeps the app's, under 3:1 on the system's background with the app's theme opposite (#1053). Not --ink2 itself:
    the heatmap's marks keep the app's ink on cells in its colours */
-const INK2 = "var(--fc-ink,var(--ink2))", MUTED = "var(--fc-ink,var(--muted))";
+const INK = "var(--fc-ink,var(--ink))", INK2 = "var(--fc-ink,var(--ink2))", MUTED = "var(--fc-ink,var(--muted))";
 /* the Timeline's kinds (core.js, the records page) and each kind's icon, here for the command palette on every page
    too (#470): its events off the records page, counted as the Timeline lists them and shown with their kinds' icons.
    Each kind's colour is the same in its chip, its Timeline lane, its rows and the drawer. Eight kinds have a colour of
