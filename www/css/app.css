@@ -743,7 +743,7 @@ svg text.db-name{fill:var(--ink);font-size:var(--fs-2)}
 @media (max-width:700px){#labsCompare>.card{--card-pad:var(--sp-2)}}   /* a chart's card's padding on a phone, as Labs' charts' (#615) */
 /* Labs' Latest (#993, latest.js): a row a lab (.ov-row), a link to its chart, edge to edge; wider, in columns */
 .lt-list{list-style:none;margin:0 calc(-1*var(--card-pad));padding:0}
-.lt-row{grid-template-columns:1fr auto;padding:var(--sp-2) var(--card-pad);border-radius:0;color:inherit;text-decoration:none;outline-offset:-2px!important}
+.lt-row{grid-template-columns:1fr auto;padding:var(--sp-2) var(--card-pad);border-radius:0;color:inherit;text-decoration:none;outline-offset:-2px!important;overflow-wrap:anywhere}   /* a long unit broken, not past the card, at 320 px with 200% text (#1027) */
 .lt-row>:is(.v,.c){text-align:right}
 .lt-row>.s{grid-column:auto}
 .lt-row>.c{font-size:var(--fs-2);font-variant-numeric:tabular-nums}

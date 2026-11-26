@@ -3590,6 +3590,12 @@ Everything on `main` so far; it becomes the first tagged release.
   you picked when the page reloaded, and Type them in's **See them on Labs** didn't chart the labs typed. The charts
   are now at `#labs-chart`, beside `#labs-heatmap`, `#labs-compare` and `#labs-latest`, and `#labs` alone opens Labs
   where it opens; a reload, Back and Forward and a row opened in a new tab each land on the same view.
+- **Latest's New marks what it hasn't shown you yet, and its rough edges** (#1027): a result was taken as seen as soon
+  as Latest was drawn, even outside the period, hidden by Flagged only, below the fold or passed on the way to a chart,
+  so it was never marked. A result is now marked New until its row has been on screen, and the count is in the
+  heading. Back returns to the row you opened only from that chart, and again after Forward (which focuses the
+  chart); a long unit no longer runs past the card at 320 px with larger text; two results at one time with no
+  range say so once, and a period with no results says so in one line.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

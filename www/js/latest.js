@@ -33,26 +33,49 @@ function ltChange(pts, last) {
     : chgWords(q[1] - prev[1], Math.abs(q[1] - prev[1]).toFixed(Math.max(labDec(prev), labDec(q)))));
   return {words: each.join("; "), said: `since ${fmtD(prev.ts)}`, prev};
 }
-/* ---- New (#996): results added since this browser last showed Latest for this profile (an upload, a sync, typed in:
-   from an import newer than the newest it had shown; imports' ids only grow, server/db.py), marked "New · today" (when
-   its import came) and counted in the heading. The newest import shown is kept with the filters (ltKeep's seen), read
-   once a page, so what's new stays marked while the page is open and not once it's loaded again; nothing is marked on
-   a first look or with storage blocked. Never sent anywhere */
-let ltSince;   // the newest import shown before this page showed Latest: undefined till it does, null for none kept
-const ltIsNew = p => ltSince != null && p.imp > ltSince;
-function ltSeen() {
-  let m = 0;
-  for (const s of SERIES) if (!s.watch) for (const p of s.pts) if (p.imp > m) m = p.imp;
-  const was = ltKept().seen;
-  if (!(m <= was)) ltKeep({seen: m});
+/* ---- New (#996): a lab's latest result added since this browser's first look at Latest for this profile (an upload,
+   a sync, typed in: from an import newer than the newest then, seen; imports' ids only grow, server/db.py) that Latest
+   hasn't shown since, its row drawn in view (#1027: what Latest last drew was taken as shown, a result outside the
+   period, hidden by Flagged only or below the fold, or Latest only passed through on the way to a chart, never
+   marked). Marked "New · today" (when its import came), counted in the heading. What's shown is kept with the filters
+   (ltKeep's seen and shown, each result by ltKey) and read once a page, so a result stays marked while the page is
+   open and not once it's loaded again after its row was in view; once every lab's latest since seen has been shown,
+   seen moves on and the list starts again. Nothing is marked on a first look or with storage blocked. Never sent
+   anywhere */
+let ltBase;   // {seen, shown: Set} as this page found them: undefined till Latest is drawn, null on a first look (or blocked)
+const ltKey = p => `${p.imp}|${p[0]}|${p[1]}`;
+const ltIsNew = p => ltBase != null && p.imp > ltBase.seen && !ltBase.shown.has(ltKey(p));
+const ltNewest = () => { let m = 0; for (const s of SERIES) if (!s.watch) for (const p of s.pts) if (p.imp > m) m = p.imp; return m; };
+function ltRead() {
+  const k = ltKept();
+  if (Number.isInteger(k.seen)) ltBase = {seen: k.seen, shown: new Set(Array.isArray(k.shown) ? k.shown : [])};
+  else { ltBase = null; ltKeep({seen: ltNewest(), shown: []}); }   // (a first look: what's here now isn't new)
 }
+/* results shown (their rows drawn in view): kept, and seen moved on once every lab's latest since it has been */
+function ltShown(keys) {
+  const k = ltKept();
+  if (!Number.isInteger(k.seen)) return;
+  const shown = new Set([...(Array.isArray(k.shown) ? k.shown : []), ...keys]), live = new Set(), last = [];
+  for (const s of SERIES) if (!s.watch && s.pts.length) {
+    for (const p of s.pts) if (p.imp > k.seen) live.add(ltKey(p));
+    for (const p of ckLast(s.pts)) if (p.imp > k.seen) last.push(ltKey(p));
+  }
+  ltKeep(last.every(x => shown.has(x)) ? {seen: Math.max(k.seen, ltNewest()), shown: []} : {shown: [...shown].filter(x => live.has(x))});
+}
+const ltInView = new IntersectionObserver(es => {
+  const keys = es.filter(e => e.isIntersecting && e.target.isConnected && $("#labsLatest").checkVisibility()).flatMap(e => e.target._new);
+  for (const e of es) if (e.isIntersecting) ltInView.unobserve(e.target);
+  if (keys.length) ltShown(keys);
+}, {threshold: .75});
 const ltNew = p => { const at = sourceOf(p.imp)?.at;
   return el("span", {class: "badge"}, "New", at ? el("span", {"aria-hidden": "true", text: " · "}) : null, at ? el("span", {class: "vh", text: ", added "}) : null, at ? ltAge(at * 1000).words : null); };
 /* a lab's row: [{s, pts: its results in the period, last: those at its latest time, the flagged first}] -> an <a>; its
    change since the result before (ltChange) and how long ago it was taken (ltAge), a year or more ago dimmed (.old, its
-   words ink that keeps 4.5:1) and said "last taken 2 years ago"; marked New where its latest is (ltNew, #996) */
+   words ink that keeps 4.5:1) and said "last taken 2 years ago"; marked New where its latest is (ltNew, #996), and
+   watched till it's drawn in view (ltInView). Its ranges said once where two at one time have one (#1027) */
 function ltRow({s, pts, last}, id) {
-  const ranges = last.map(p => refText(p) || "no range on its report"), from = last.map(p => ucOrig(s, p)).filter(Boolean);
+  const ranges = [...new Set(last.map(p => refText(p) || "no range"))].map((r, i, all) => r !== "no range" ? r
+    : all.length === 1 && last.length > 1 ? "no range on their reports" : "no range on its report"), from = last.map(p => ucOrig(s, p)).filter(Boolean);
   const sep = () => el("span", {class: "vh", text: ", "}), age = ltAge(last[0].ts), chg = ltChange(pts, last);
   // at its charts' own address (#1026); opened in a new tab or window (the browser's), the lab is among those charted there
   const elsewhere = () => { state.sel.add(s.name); save(); };
@@ -66,6 +89,7 @@ function ltRow({s, pts, last}, id) {
     el("span", {class: "s", text: [ranges.join("; "), from.length ? "reported " + from.join("; ") : "", fmtD(last[0].ts), (age.old ? "last taken " : "") + age.words].filter(Boolean).join(" · ")}), sep(),
     el("span", {class: "c", "data-tip": chg.prev ? `Since ${fmtD(chg.prev.ts)}: ${readText(s, chg.prev)[0]}` : null}, chg.words, el("span", {class: "vh", text: " " + chg.said})));
 }
+const ltWatch = a => { a._new = a._last.filter(ltIsNew).map(ltKey); if (a._new.length) ltInView.observe(a); return a; };
 /* ---- its filters (#994): a name and Flagged only, kept per profile in this browser (ht-latest:<profile>, every read
    and write guarded: with storage blocked they're kept for the page). ltKept(): what's kept, {} for nothing;
    ltKeep(part): part kept with it */
@@ -95,7 +119,8 @@ function ltReset() { ltF.q = ""; ltF.flagged = false; $("#ltQ").value = ""; ltKe
    labGroups, #279), the most measured first in each (as Labs' list), Other last; its count in its heading ("12 of 60
    labs, flagged only") */
 function renderLatest() {
-  if (ltSince === undefined) { const v = ltKept().seen; ltSince = Number.isInteger(v) ? v : null; }   // (#996)
+  if (ltBase === undefined) ltRead();   // (#996)
+  ltInView.disconnect();
   const f = ltFilters(), rows = [], ids = new Map();
   let none = 0;
   for (const s of SERIES) {
@@ -109,25 +134,33 @@ function renderLatest() {
   }
   const shown = rows.filter(r => ltMatch(r.s, f.q) && (!f.flagged || ltFlagged(r))), n = rows.length, k = shown.length;
   const fresh = shown.filter(r => r.last.some(ltIsNew)).length;
-  $("#ltQn").textContent = (k < n ? `${k || "None"} of ${n} lab${n === 1 ? "" : "s"}` : `${n} lab${n === 1 ? "" : "s"}`) + (f.flagged ? ", flagged only" : "") + (fresh ? ` · ${fresh} new` : "");
+  $("#ltQn").textContent = (k < n ? `${k || "None"} of ${n} lab${n === 1 ? "" : "s"}` : `${n} lab${n === 1 ? "" : "s"}`) + (f.flagged ? ", flagged only" : "");
+  $("#ltNew").textContent = fresh ? ` · ${fresh} new` : "";   // in the heading (#1027)
   filterLine([f.flagged && "Showing flagged labs only", f.q && `${f.flagged ? "" : "Showing labs "}matching “${ltF.q.trim()}”`], ltReset, () => $("#ltQ"), $("#ltSum"));
-  $("#ltSays").textContent = `Each lab's latest result ${ltPeriod()}.` + (none ? ` ${none} more ${none === 1 ? "has" : "have"} none in it.` : "");
+  // (with none in the period, said once: #1027)
+  $("#ltSays").textContent = !n ? `No lab has a result ${ltPeriod()}. A longer period shows the ${none === 1 ? "one lab" : `${none} labs`}.`
+    : `Each lab's latest result ${ltPeriod()}.` + (none ? ` ${none} more ${none === 1 ? "has" : "have"} none in it.` : "");
   const by = new Map(shown.map(r => [r.s, r])), groups = labGroups(byFrequency(shown.map(r => r.s)));
-  $("#ltRows").replaceChildren(...!n ? [el("p", {class: "hint", text: "No lab results in this period. A longer period shows them."})]
+  $("#ltRows").replaceChildren(...!n ? []
     : !k ? [el("p", {class: "hint", text: f.flagged && !f.q ? "No lab's latest result in this period is flagged." : "No lab matches these filters."})]
     : groups.flatMap(({panel, labs}) => [groups.length > 1 ? el("h3", {class: "lab-panel", text: panel}) : null,
-      el("ul", {class: "lt-list"}, ...labs.map(s => el("li", {}, ltRow(by.get(s), ids.get(s)))))].filter(Boolean)));
-  ltSeen();   // shown: what's new now isn't, the next time the page is loaded (#996)
+      el("ul", {class: "lt-list"}, ...labs.map(s => el("li", {}, ltWatch(Object.assign(ltRow(by.get(s), ids.get(s)), {_last: by.get(s).last})))))].filter(Boolean)));
 }
 /* a row's lab charted on Labs, focus on its chart (charts.js showSeries), the address a new entry (#labs-chart), so Back
-   returns to Latest: focus then on the row again (ltBack, as the address changes back, below) */
-let ltBack = null;
-function ltOpen(s, id) { ltBack = id; showSeries(s.name, s); }
-addEventListener("hashchange", () => {
-  if (!ltBack) return;
-  requestAnimationFrame(() => {   // (after app.js has shown the view the address names)
-    const a = state.tab === "labs" && state.labsView === "latest" && document.getElementById(ltBack);
-    if (!a) return;
-    ltBack = null; a.focus();
-  });
-});
+   returns to Latest: focus then on the row again, and Forward on the chart. Each kept with its own entry of the history
+   (history.state's ltRow on Latest's, ltChart on the chart's; #1027: a row kept for the page came back on a later
+   Back, after Latest was left another way, and a Back after Forward had none) */
+function ltOpen(s, id) {
+  try { history.replaceState({...history.state, ltRow: id}, ""); } catch (e) {}
+  showSeries(s.name, s);
+  try { history.replaceState({...history.state, ltChart: [s.name, s.unit]}, ""); } catch (e) {}
+}
+addEventListener("hashchange", () => requestAnimationFrame(() => {   // (after app.js has shown the view the address names)
+  const h = history.state || {};
+  if (state.tab !== "labs") return;
+  if (state.labsView === "latest" && h.ltRow) document.getElementById(h.ltRow)?.focus();
+  else if (state.labsView === "chart" && h.ltChart) {
+    const c = [...$("#charts").querySelectorAll(".chart")].find(c => c._s?.name === h.ltChart[0] && c._s.unit === h.ltChart[1]);
+    c?.querySelector(state.tables.has(h.ltChart[0]) ? ".hd .lab-open" : "svg.ck")?.focus();
+  }
+}));
