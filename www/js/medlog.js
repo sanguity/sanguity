@@ -103,7 +103,7 @@ function doseForm(m, d, preset = {}) {
   const uid = Math.random().toString(36).slice(2, 8), id = n => `dose-${n}-${uid}`;
   const msg = el("p", {class: "hint edit-msg", role: "status"});
   let status = d ? d.status : preset.status || "taken";
-  const seg = el("div", {class: "seg dose-st", role: "radiogroup", "aria-label": "What happened"});
+  const seg = el("div", {class: "seg wrap dose-st", role: "radiogroup", "aria-label": "What happened"});
   const set = s => { status = s; for (const b of seg.children) { b.setAttribute("aria-checked", b.dataset.st === s); b.tabIndex = b.dataset.st === s ? 0 : -1; } };
   seg.append(...DOSE_ST.map(([s, t]) => el("button", {type: "button", role: "radio", "data-st": s, text: t, onclick: () => set(s),
     onkeydown: ev => { const i = DOSE_ST.findIndex(([x]) => x === status), k = {ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1}[ev.key];

@@ -13406,6 +13406,40 @@ def main():
             settle(300)
             check("…and none in a reminder's, a dose's or a journal entry's form, its From and Until or its date and time, nor a reminder's times: at 320, 360 "
                   "and 412 px with text at 200% and from 320 to 1400 px as usual, two side by side as before from 360 px (#987)", not bad987 and seen987 >= 50, bad987 or seen987)
+            # ---- #1024: …and their switches: a journal entry's Kind (Symptom to Mood) and a dose's What happened (Taken to
+            # Skipped) scrolled inside their box under 700 px, which hides its scrollbar, so with larger text their last
+            # options were cut ("Side effect" and "Mood" at 360 px from 130% and 412 px from 160%, "Skipped" at 360 px at
+            # 200%). At 320, 360 and 412 px with text at 100%, 130%, 160% and 200%: every option whole inside its switch, the
+            # switch not scrolling and inside the drawer; as usual from 360 px, each switch one line as before
+            SEG1024 = r"""() => { const r = e => e.getBoundingClientRect(), d = r(document.getElementById('dbody')), out = {n: 0, bad: [], lines: []};
+              for (const s of document.querySelectorAll('#dbody .seg')) { if (!s.checkVisibility()) continue; const S = r(s), tops = new Set();
+                if (s.scrollWidth > s.clientWidth + 1) out.bad.push(`${s.className} scrolls ${s.scrollWidth} in ${s.clientWidth}`);
+                if (S.left < d.left - 1 || S.right > d.right + 1) out.bad.push(`${s.className} past the drawer`);
+                for (const b of s.children) { const B = r(b); out.n++; tops.add(Math.round(B.top));
+                  if (B.left < S.left - 1 || B.right > S.right + 1 || B.top < S.top - 1 || B.bottom > S.bottom + 1 || b.scrollWidth > b.clientWidth + 1)
+                    out.bad.push(`${b.textContent} ${Math.round(B.left)}–${Math.round(B.right)} of ${Math.round(S.left)}–${Math.round(S.right)}`); }
+                out.lines.push(tops.size); }
+              return out; }"""
+            big1024 = lambda f: "" if f == 1 else ":root{%s} html{font-size:%d%%}" % (
+                ";".join(f"--fs-{i}:{round(v * f, 2)}px" for i, v in enumerate((11.5, 12.5, 14, 15.5, 18, 22, 28), 1)), round(f * 100))
+            bad1024, n1024 = {}, 0
+            for w1024 in (320, 360, 412):
+                page.set_viewport_size({"width": w1024, "height": 860})
+                for f1024 in (1, 1.3, 1.6, 2):
+                    js(ADOPT_CSS_JS, big1024(f1024))
+                    for form1024 in ("a dose", "a journal entry"):
+                        js(FORMS987[form1024], med987)
+                        settle(400)
+                        got1024 = js(SEG1024)
+                        n1024 += got1024["n"]
+                        if got1024["bad"] or len(got1024["lines"]) != 1 or (f1024 == 1 and w1024 >= 360 and got1024["lines"] != [1]):
+                            bad1024[f"{form1024} at {w1024} px, text at {round(f1024 * 100)}%"] = got1024
+            js("() => { closeDrawer(); document.adoptedStyleSheets = []; }")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(300)
+            check("…and a journal entry's Kind and a dose's What happened, every option whole inside its switch, at 320, 360 and 412 px with text at 100% "
+                  "to 200%, one line as usual from 360 px (#1024: “Side effect”, “Mood” and “Skipped” were cut, the switch scrolling with no scrollbar)",
+                  not bad1024 and n1024 == 3 * 4 * 7, bad1024 or n1024)
             # ---- #785: #622's check above 700 px, where the tabs are in the top bar, all under More where they don't fit: at
             # 701, 768, 900, 1024 and 1100 px and on a phone on its side (844×390, 915×412, a touch screen), with text as
             # usual and at 130%, 150% and 200%, on the records page (Body and activity, the longest tab's name) and every
