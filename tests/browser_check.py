@@ -23719,6 +23719,9 @@ def main():
                 page.goto(base + f"/settings.html?profile={pid}#overview")
                 page.wait_for_selector(".set-preview .tile", timeout=15000)
                 pv = js(TILES845, ".set-preview .tile")
+                # (#1079: About this person's GET …/person comes after the preview; under load it came once the caller had
+                # deleted the profile, a 404. Its card drawn, the page asks nothing more of it; and left before it's deleted)
+                page.wait_for_selector("#aboutBody .seg", state="attached", timeout=15000)   # (in its own group, out of sight)
                 want = {n: FLAG752[judged[k][-1][0]] for n, k in tiles.items()}
                 if {n: v[0] for n, v in pv.items()} != want or pv != ov:
                     bad.append(f"Settings' preview of the key-lab tiles: {pv} not {want}, the Overview's {ov}")
@@ -23882,6 +23885,8 @@ def main():
                   "twice once with any range and flag either copy has, each unit its own row; after “Same result”, once everywhere with them; a "
                   "one-sided range's edge with its range (#780); each lab day's Timeline badge and drawer flags as Labs shows its results (#782)",
                   not bad781, bad781)
+            page.goto(base + "/?profile=1")   # (#1079: no page of it left asking for it; an app page for #825's fetch below)
+            page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
             db = dbm.connect()
             prof_r.delete_profile(db, cpid)
             db.close()
@@ -23985,6 +23990,7 @@ def main():
                   "only, the lab's first series) and the lab panel's counts (a ◆ inside its range counted outside it, a flagged result with no range "
                   "as one with a range) read each result's flag as Labs does, for the matrix's “A”, Settings, stored-flag and copies cases "
                   "(before and after Same result, at one time and Not the same)", not bad845, bad845)
+            page.goto("about:blank")   # (#1079: no page of it left asking for it)
             db = dbm.connect()
             prof_r.delete_profile(db, lpid)
             db.close()
