@@ -301,6 +301,82 @@ class Edits(unittest.TestCase):
                                  (sorted(e["id"] for e in before["events"]), []), "undone: as they were")
                 self.assertEqual([e for e in after["events"] if e["k"] in ("lab", "labitem")], [e for e in before["events"] if e["k"] in ("lab", "labitem")])
 
+    def test_only_kinds_that_can_be_one_are_merged(self):   # #1023
+        """Merge with… listed every event within a week: a lab event merged into a lab day or a visit left its results
+        with no row, a lab day merged into a lab event left its lab events listed by no lab day, and a lab day's badge
+        counted what its drawer didn't show. Now a lab day merges only with a lab day and a lab event only with a lab
+        event (edits.mergeable, which the drawer offers alone); any other pair is refused, saying so. Every merge of
+        every two events here within a week: one allowed leaves crossmatch.lab_faults clean, nothing lost, undone as
+        it was; and one of those kinds made before is not applied."""
+        from server import crossmatch, importers as reg
+        db = dbm.connect()
+        uid = db.execute("SELECT id FROM users WHERE username='robin'").fetchone()[0]
+        pid = prof.create_profile(db, "Merges of kinds (fictional)", owner_id=uid)
+        t = "2025-03-04T09:45:00"
+        obs = lambda oid, code, name, v, unit, lo, hi: {"resource": {   # noqa: E731
+            "resourceType": "Observation", "id": oid, "status": "final", "category": [{"coding": [{"code": "laboratory"}]}],
+            "code": {"coding": [{"system": "http://loinc.org", "code": code}], "text": name}, "effectiveDateTime": t,
+            "valueQuantity": {"value": v, "unit": unit}, "referenceRange": [{"low": {"value": lo}, "high": {"value": hi}, "text": f"{lo}-{hi}"}]}}
+        visit = lambda eid, day: {"resource": {"resourceType": "Encounter", "id": eid, "status": "finished",   # noqa: E731
+                                               "class": {"code": "AMB"}, "period": {"start": f"{day}T10:00:00"}}}
+        path = os.path.join(TMP, "portal-1023.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"resourceType": "Bundle", "type": "collection", "entry": [
+                obs("hgb", "718-7", "Hemoglobin", 12.1, "g/dL", 13.5, 17.5), obs("plt", "777-3", "Platelet Count", 255, "10*3/uL", 150, 400),
+                visit("v1", "2025-03-02"), visit("v2", "2025-03-03")]}, f)
+        try:
+            with dbm.transaction(db):
+                records.store(db, pid, reg.run({"portal.json": path})["data"], "upload", fmt="fhir")
+        finally:
+            db.close()
+        typed = [{"date": "2025-03-06", "time": "10:30", "test": "Potassium", "value": "5.4", "unit": "mmol/L", "range": "3.5-5.1"},
+                 {"date": "2025-03-06", "time": "10:30", "test": "Sodium", "value": "139", "unit": "mmol/L", "range": "135-145"}]
+        r = self.robin.post(f"/api/profiles/{pid}/manual", json={"rows": typed, "save": True}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        results = lambda d: sorted((s["name"], p[0]) for s in d["labs"] for p in s["pts"])   # noqa: E731
+        before = whole(self.robin, pid)
+        evs = sorted(before["events"], key=lambda e: (e["t"], e["k"], e["id"]))
+        self.assertEqual(sorted(e["k"] for e in evs), ["lab", "lab", "labitem", "labitem", "labitem", "visit", "visit"])
+        self.assertEqual(crossmatch.lab_faults(before), [])
+        made = {}
+        for a in evs:
+            for b in evs:
+                if a is b:
+                    continue
+                with self.subTest(into=(a["k"], a["title"]), merged=(b["k"], b["title"])):
+                    r = self.robin.post(f"/api/profiles/{pid}/edits", json={"event": a["id"], "action": "merge", "other": b["id"]}, headers=H)
+                    can = a["k"] == b["k"] or "lab" not in a["k"] and "lab" not in b["k"]
+                    made[(a["k"], b["k"])] = r.status_code
+                    if not can:
+                        if r.status_code == 201:   # made after all: what it did said, then undone so the next starts as before
+                            print("\n  merged", (a["k"], a["title"]), "<-", (b["k"], b["title"]), crossmatch.lab_faults(whole(self.robin, pid))[:2])
+                            self.robin.delete(f"/api/profiles/{pid}/edits/{r.json()['id']}", headers=H)
+                        self.assertEqual((r.status_code, r.json().get("detail")), (400, "A lab draw can be merged only with another lab draw, "
+                                                                                    "and a lab result only with another lab result."))
+                        continue
+                    self.assertEqual(r.status_code, 201, r.text)
+                    d = whole(self.robin, pid)
+                    self.assertNotIn(b["id"], [e["id"] for e in d["events"]], "merged in")
+                    self.assertEqual((crossmatch.lab_faults(d), results(d)), ([], results(before)), "each result with its row, nothing lost")
+                    self.robin.delete(f"/api/profiles/{pid}/edits/{r.json()['id']}", headers=H)
+                    after = whole(self.robin, pid)
+                    self.assertEqual(([(e["id"], e["k"], e["title"]) for e in after["events"]], crossmatch.lab_faults(after)),
+                                     ([(e["id"], e["k"], e["title"]) for e in before["events"]], []), "undone: as it was")
+        self.assertEqual(sorted(k for k, s in made.items() if s == 201), [("lab", "lab"), ("labitem", "labitem"), ("visit", "visit")])
+        item, day = next(e for e in evs if e["k"] == "labitem"), next(e for e in evs if e["k"] == "lab" and e["t"][:10] == "2025-03-06")
+        db = dbm.connect()   # one made before: a lab event merged into a lab day
+        try:
+            with dbm.transaction(db):
+                edits._insert(db, pid, uid, "merge", edits.key_of(edits._event(db, pid, day["id"])), {"was": edits._was(day)},
+                              edits.key_of(edits._event(db, pid, item["id"])))
+                edits._bump(db, pid)
+        finally:
+            db.close()
+        d = whole(self.robin, pid)
+        self.assertEqual(([(e["id"], e["k"]) for e in d["events"]], crossmatch.lab_faults(d)), ([(e["id"], e["k"]) for e in before["events"]], []),
+                         "not applied")
+        self.assertEqual([(x["action"], x["found"]) for x in d["edits"]], [("merge", False)], "listed, to undo")
+
     def test_hiding_one_lab_event_hides_only_it(self):   # #937
         """A lab event's key is its day's ("fhir:labitem:2025-03-04"), and a lab day's too, the same in every import of
         that day. A portal's export uploaded (Hemoglobin, Platelets), then downloaded again with an ALT added: the ALT
