@@ -44,9 +44,9 @@ class Setting:
     def __init__(self, key, section, label, default, check, scope="profile", private=True, kind=None, help="",
                  merge=False, reread=False, screen=True, env=None, confirm=None):
         self.key, self.section, self.label, self.default, self.check = key, section, label, default, check
-        # (#1002) an install setting whose change can delete something: confirm(db, before, after) -> None when nothing
-        # goes, else {"count": how many go, "message": what goes, in words}; the change is made only once the admin has
-        # typed the count (routes_settings._confirmed)
+        # (#998) an install setting whose change is confirmed first: confirm(db, before, after, request, session) ->
+        # None when there's nothing to ask, else {"count", "message", "type", "title", "action"}; the change is made
+        # only once the admin has typed "type" (the count unless it says) back (routes_settings._confirmed, one rule)
         self.confirm = confirm
         self.scope, self.private, self.kind, self.help, self.merge = scope, private, kind, help, merge
         self.env = env   # the variable of config.VARS it stands for (#999): the environment's value wins over it
@@ -854,7 +854,7 @@ section("logging", "Logging", "What the server keeps of who did what.")
 _entries = lambda k: f"{k:,} {'entry' if k == 1 else 'entries'}"   # noqa: E731
 
 
-def _activity_goes(db, before, after):
+def _activity_goes(db, before, after, request=None, s=None):
     """(#1002) Fewer days of activity kept: the entries the next daily clean-up then deletes (activity.py), every
     profile's and the install's own, counted."""
     if after >= before:
@@ -863,7 +863,8 @@ def _activity_goes(db, before, after):
                                    "FROM activity WHERE at < ?", (dbm.now() - after * 86400,)).fetchone()
     if not profiles + install:
         return None
-    return {"count": profiles + install,
+    n = profiles + install
+    return {"count": n, "title": f"Delete {n:,} activity {'entry' if n == 1 else 'entries'}?", "action": "Keep fewer days",
             "message": f"Keeping {after} days of activity instead of {before} deletes {_entries(profiles + install)} older "
                        f"than {after} days at the next daily clean-up: {_entries(profiles)} of the profiles' activity "
                        f"and {_entries(install)} of the install's own. They can't be brought back."}

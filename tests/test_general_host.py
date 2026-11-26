@@ -109,22 +109,31 @@ class Host(unittest.TestCase):
         self.assertEqual(self.c.get("/api/settings/host?origin=http://testserver").json()["request"]["accepted_by"], "host")
 
     def test_c_guarded(self):
-        """Typed confirmation; a list this page's own address wouldn't pass refused (behind a proxy that changes the Host,
-        dropping the page's address would lock it out); a reset refused; the environment's value locked."""
+        """Typed confirmation, asked as every install setting's (#998: 409 {code: confirm, confirm: {type, ...}}); a list
+        this page's own address wouldn't pass refused outright, with nothing to confirm (behind a proxy that changes the
+        Host, dropping the page's address would lock it out); a reset asked the same way; the environment's value
+        locked."""
         self.set_to([OLD])
-        self.assertEqual(self.put([NEW], confirm=None).status_code, 400)
-        self.assertEqual(self.put([NEW], confirm="change").status_code, 400)
+        for typed in (None, "change"):
+            r = self.put([NEW], confirm=typed)
+            self.assertEqual(r.status_code, 409, r.text)
+            c = r.json()["detail"]["confirm"]
+            self.assertEqual((r.json()["detail"]["code"], c["type"], c["count"], c["effects"]["given_out"]),
+                             ("confirm", "change addresses", 2, [OLD, NEW]))
         r = self.put([NEW], Origin=OLD, **BEHIND)
         self.assertEqual(r.status_code, 409, r.text)
-        self.assertIn("cross-site check", r.json()["detail"])
+        self.assertIn("cross-site check", r.json()["detail"])   # (words alone: refused, nothing to confirm)
         self.assertFalse(self.effects([NEW], Origin=OLD, **BEHIND).json()["accepted"])
         self.assertEqual(config.setting("PUBLIC_ORIGINS"), (OLD,))
         self.assertEqual(self.put([OLD, NEW], Origin=OLD, **BEHIND).status_code, 200)   # with it kept: saved
         self.assertEqual(self.put([NEW], Origin="http://testserver").status_code, 200)   # a page the Host lets in: saved
         for r in (self.c.post("/api/settings/install/reset", json={"section": "host"}, headers=H),
                   self.c.delete(f"/api/profiles/{self.pid}/settings/{KEY}", headers=H)):
-            self.assertEqual(r.status_code, 409, r.text)
+            self.assertEqual((r.status_code, r.json()["detail"]["confirm"]["type"]), (409, "change addresses"), r.text)
         self.assertEqual(config.setting("PUBLIC_ORIGINS"), (NEW,))
+        r = self.c.request("DELETE", f"/api/profiles/{self.pid}/settings/{KEY}", json={"confirm": "change addresses"}, headers=H)
+        self.assertEqual((r.status_code, config.setting("PUBLIC_ORIGINS")), (200, ()), r.text)   # a reset, confirmed
+        self.set_to([NEW])
         self.set_to([])   # emptied, through the guard
         os.environ["PUBLIC_ORIGINS"] = OLD
         try:
@@ -138,7 +147,7 @@ class Host(unittest.TestCase):
         db = dbm.connect()
         db.execute("UPDATE sessions SET verified_at=0")
         db.close()
-        self.assertEqual(self.put([NEW], confirm=None).status_code, 400)
+        self.assertEqual(self.put([NEW], confirm=None).json()["detail"]["code"], "confirm")
         self.assertEqual(self.put([NEW]).json()["detail"], "reauth_required")
         self.assertEqual(self.c.post("/api/me/reauth", json={"secret": PW}, headers=H).status_code, 200)
         self.assertEqual(self.put([NEW]).status_code, 200)

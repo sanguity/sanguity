@@ -83,6 +83,25 @@ async function fresh(action, box = $("#reauth")) {
   await confirmIdentity(box);
   return action();
 }
+/* (#998) an install setting's change the server asks to be confirmed first, one rule for all (routes_settings.py
+   _confirmed: 409 {confirm: {count, message, type, title, action}}; the days of activity kept, a shorter sign-in, the
+   public addresses): asked in the app's dialog, what it says to type typed in, then sent again with it; asked again,
+   saying so, if that isn't it (or a count has grown since). send(typed) sends the change with what's typed; typed:
+   one the page asked for itself (Host's box). Gives back what send does, or null when the answer was no */
+async function confirmed(send, typed) {
+  for (let again = false; ; again = true) {
+    try { return await send(typed); }
+    catch (e) {
+      const c = e.status === 409 && e.detail?.confirm;
+      if (!c) throw e;
+      const field = el("input", {autocomplete: "off", autocapitalize: "none", spellcheck: "false", required: true,
+        ...(/^\d+$/.test(c.type) ? {inputmode: "numeric"} : {})});
+      if (!await ask({title: c.title, danger: true, field, action: c.action,
+          message: [again ? "That isn't it: type it as it's shown." : null, c.message, el("label", {}, `Type ${c.type} to confirm`, field)]})) return null;
+      typed = field.value;
+    }
+  }
+}
 /* its Use a passkey only where one can work (#528: at an IP address, or with none made here, it could only say so once
    pressed): a browser that has them, at a name with HTTPS (util.js passkeysWork), and a passkey of yours made here; a
    code asked for only from someone with an authenticator app (#532: an admin whose second factor is a passkey has none) */
