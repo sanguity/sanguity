@@ -68,6 +68,9 @@ function medRow(g, m, x, y, L, R, color, opts = {}) {
    into lines no wider than room, each word whole; null where a word is wider than room. Drawn as one label, a line
    MED_LH px under another (ckK), the first's baseline at y; cut only where a word is wider than a whole lane */
 const MED_LH = 13;
+/* a row's height where its name, of n lines, is over its bars: its bar under the name's last line, clear of its letters'
+   tails with larger text (#1074: drawn over the bar at 200%) */
+const medOverH = (n, k) => (19 + (n - 1) * MED_LH) * k + 7;
 const medLines = (name, room) => name.split(" ").every(w => labelW(w, "medname") <= room) ? ckLines(name, "medname", room) : null;
 function medName(m, lines, x, y, k) {
   return el("svg:text", {class: "medname", x, y}, lines.length > 1 ? lines.map((l, i) => el("svg:tspan", {x, dy: i ? MED_LH * k : null, text: l})) : lines[0],
@@ -81,7 +84,7 @@ function medLaneRows(S) {
   const ms = medsShown(state.from, state.to), over = S.over || !ms.every(m => medLines(m.name, S.L - 14)), k = S.k;
   return {over, rows: ms.map(m => {
     const lines = medLines(m.name, over ? S.R - S.L : S.L - 14) || [ckFit(m.name, "medname", S.R - S.L)];
-    return {m, lines, h: over ? (12 + (lines.length - 1) * MED_LH) * k + 14 : Math.max(MED_ROW, lines.length * MED_LH + 5) * k};
+    return {m, lines, h: over ? medOverH(lines.length, k) : Math.max(MED_ROW, lines.length * MED_LH + 5) * k};
   })};
 }
 TL_LANES.med = {
