@@ -25614,6 +25614,7 @@ def main():
             page.wait_for_selector("#links .share-links button:has-text('New share link')", timeout=10000)
             page.click("#links button:has-text('New share link')")
             box_ = page.locator("#links .share-form input[value=about]")
+            box_.wait_for(state="attached", timeout=10000)   # (the form drawn before it's read: count() doesn't wait)
             check("…a share link offers it, unticked", box_.count() == 1 and not box_.is_checked()
                   and "About this person" in page.inner_text("#links .share-sections") and "About this person" not in page.inner_text("#links .share-sees"))
             page.click("#links .share-form button:text-is('Cancel')")
