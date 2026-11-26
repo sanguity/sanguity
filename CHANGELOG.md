@@ -3559,6 +3559,11 @@ Everything on `main` so far; it becomes the first tagged release.
   form's dates were cut ("11/25/202", "mm/dd/yy"), and so were a dose's and a journal entry's date and time, which
   share that row. Each is now at least as wide as its date or time, the second on a line of its own where both don't
   fit; a reminder's time does the same beside its Remove at 320 px. At the usual size they're side by side as before.
+- **A server that stamps each write's source is one source** (#1022): a FHIR server that marks each record it saves
+  with that write's request (HAPI FHIR's `meta.source` "#<request id>") had its records taken for many servers': at
+  the next pull, a medication it stopped, a problem it resolved and a result it amended were each added as a copy
+  beside the old one, the result with no row in the drawer. A server is now named by the part of its `meta.source`
+  that stays the same (before any "#", else its address), so each is updated in place.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
