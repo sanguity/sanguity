@@ -45,7 +45,9 @@ sign-in's autofill and paste (#202, docs/accessibility.md), and fails
 on any script error, console error, failed request, request to another host or NaN written into an SVG attribute.
 
   pip install -r requirements-dev.txt && playwright install chromium
-  python3 tests/browser_check.py
+  python3 tests/browser_check.py                       # every check, one after another (about 50 minutes)
+  python3 tests/browser_check.py --part records        # what every part shares, then one part's checks (--parts lists them)
+  BROWSER_CHECK_FULL=1 python3 tests/browser_check.py  # the size sweeps at every width, not their sample (#1029)
 """
 import json, os, re, shutil, socket, subprocess, sys, tempfile, threading, time, urllib.parse, urllib.request
 from decimal import Decimal
@@ -73,6 +75,26 @@ def sweep(every, sample):
     assert keep <= set(every), sorted(keep - set(every))
     kept = every if FULL else [x for x in every if x in keep]
     return kept, "" if FULL else f" (on this run {len(kept)} of those {len(every)} widths, a fixed sample; BROWSER_CHECK_FULL=1 for all, #1029)"
+
+
+# #1029: the checks in parts, run at once on CI (check.yml's browser jobs), each with its own app: `--part NAME` runs
+# what every part shares (the app, the pages under the CSP, the sign-in), then only the try blocks main() begins with
+# a start_part(…) naming it, each to the next start_part(…); no --part runs them all, in order, as one. A check is in
+# the part (or parts) of the start_part(…) above it.
+PARTS = ("records", "views", "pages")
+PART = None   # this run's --part
+
+
+class Skip(Exception):
+    """A part this run leaves out (start_part()), caught where its try block ends."""
+
+
+def start_part(*names):
+    """#1029: a part's try block's first line: the block is skipped unless this run is one of those parts', or all of
+    them. A block of two parts makes what a later part's checks need of an earlier one's: run in each."""
+    assert set(names) <= set(PARTS), names
+    if PART is not None and PART not in names:
+        raise Skip(names)
 
 
 HTML_RECORD = 990001
@@ -2078,6 +2100,67 @@ def font_swap(browser, state, url, width):
     return changed, len(before), round(shift, 4), fonts_before, fonts_after
 
 
+# Used by checks in more than one part (#1029: each part runs alone on CI, so what a later part's checks use of
+# an earlier part's is kept here): What you paid at 667×375 (#476) and a claim's row once the drawer has docked
+# (#473), both again in a French browser (#342); the marks of Body and activity in the system's colours (#975),
+# #622's text at 200% and #633's labels inside their charts, again for the growth charts (#709); the last import's
+# card (#281), again for a health plan's export (#92); a part of a page shown or not (Settings), again on Account;
+# each lab's panel and the panels' names (#279, #441), again on Settings
+SEEN476 = """() => { const a = document.activeElement, r = a.getBoundingClientRect(), hit = document.elementFromPoint(Math.min(innerWidth - 2, r.left + 4), r.top + Math.min(r.height / 2, 8));
+    return [a.matches('#paidTable tbody .cell-btn'), a.textContent.trim(), Math.round(r.top), !!hit && (hit === a || a.contains(hit))]; }"""
+ROW473 = """b => { const r = b.closest('tr').getBoundingClientRect(), th = b.closest('table').tHead?.rows[0].cells[0],
+    top = Math.max(0, document.querySelector('header.topbar').getBoundingClientRect().bottom, th?.checkVisibility() ? th.getBoundingClientRect().bottom : 0);
+    return [Math.round(r.top - top), Math.round(innerHeight - r.bottom), !!b.closest('table.fold'), document.documentElement.classList.contains('sg-docked')]; }"""
+INK975 = r"""() => { const probe = c => { const s = document.createElement('span'); s.style.forcedColorAdjust = 'none'; s.style.color = c; document.body.append(s);
+    const v = getComputedStyle(s).color; s.remove(); return v; };
+  const rgb = c => /^color\(srgb /.test(c) ? c.slice(11).split(/[\s/)]+/).slice(0, 3).map(v => Math.round(v * 255)).join() : (c.match(/[\d.]+/g) || []).slice(0, 3).join();
+  const clear = c => !c || c === 'none' || /(, 0| \/ 0)\)$/.test(c), sys = new Set(['Canvas', 'CanvasText', 'Highlight', 'HighlightText', 'GrayText'].map(c => rgb(probe(c))));
+  const ink = new Map(['--ink', '--ink2', '--muted', '--surface'].map(n => [rgb(probe(`var(${n})`)), n]).filter(([c]) => !sys.has(c)));   // the app's, as the page has them
+  const out = {n: 0, bad: []}, name = m => `${m.closest('[id^=h-]')?.id || ''} ${m.tagName.toLowerCase()}${[...m.classList].map(c => '.' + c).join('')}`;
+  const look = (m, props) => { const c = getComputedStyle(m); out.n++;
+    for (const p of props) if (!clear(c[p]) && ink.has(rgb(c[p])) && !(p.startsWith('border') && c.borderTopStyle === 'none')) out.bad.push(`${name(m)}: ${p} ${ink.get(rgb(c[p]))} ${c[p]}`); };
+  for (const m of document.querySelectorAll('#view-health svg:not(.icon) :is(path, line, polyline, polygon, circle, ellipse, rect)'))
+    if (m.checkVisibility() && !m.closest('defs, clipPath, mask')) look(m, ['fill', 'stroke']);
+  for (const m of document.querySelectorAll('#view-health :is(.legend i, .glu-bar span, .glu-tir li i)')) if (m.checkVisibility()) look(m, ['backgroundColor', 'borderTopColor', 'borderBottomColor']);
+  out.bad = [...new Set(out.bad)].slice(0, 12); return out; }"""
+BIG622 = ":root{--fs-1:23px;--fs-2:25px;--fs-3:28px;--fs-4:31px;--fs-5:36px;--fs-6:44px;--fs-7:56px} html{font-size:200%}"
+L633 = r"""sel => { const r = e => e.getBoundingClientRect(), out = [];
+  for (const s of document.querySelectorAll(sel)) {
+    if (!s.checkVisibility()) continue;
+    const R = r(s), name = s.id || s.getAttribute('class'), bs = [...s.querySelectorAll('text')].filter(t => t.textContent.trim() && t.checkVisibility()).map(t => [t.textContent.slice(0, 20), r(t)]);
+    for (const [t, b] of bs) if (b.left < R.left - 1 || b.right > R.right + 1 || b.top < R.top - 1 || b.bottom > R.bottom + 1) out.push(`${name}: ${t} outside`);
+    bs.forEach(([t, a], i) => bs.slice(i + 1).forEach(([u, b]) => { if (a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1) out.push(`${name}: ${t} over ${u}`); }));
+  }
+  return out; }"""
+last_card = "[...document.querySelectorAll('.import-job')].pop()"
+display = "id => getComputedStyle(document.getElementById(id)).display"
+PANELS279_JS = "Object.fromEntries(labGroups(SERIES.filter(s => !s.watch).map(s => s.name)).flatMap(g => g.labs.map(n => [n, g.panel])))"   # each lab's panel (#279)
+want441 = ["CBC with differential", "Comprehensive metabolic panel", "Other"]   # the demo's panels, from capitals (#441)
+walk476_ok = lambda up, shut: len(up) == 8 and len(shut) == 3 and all(v[0] and v[3] for v in up + shut)
+
+
+def walk476(pg):
+    """What you paid at 667×375: Shift+Tab up eight dates from the 13th, then three rows' editors closed by Close"""
+    pg.set_viewport_size({"width": 667, "height": 375})
+    pg.evaluate("paidState.open = null; switchTab('costs', 'paid')")
+    pg.wait_for_timeout(400)
+    pg.evaluate("(b => { b.scrollIntoView({block: 'end'}); b.focus({preventScroll: true}); })(document.querySelectorAll('#paidTable tbody tr[data-oop] .cell-btn')[12])")
+    up, shut = [], []
+    for _ in range(8):
+        pg.keyboard.press("Shift+Tab")
+        pg.wait_for_timeout(120)
+        up.append(pg.evaluate(SEEN476))
+    for i in (0, 3, 7):
+        pg.evaluate("i => (b => { b.scrollIntoView({block: 'center'}); b.focus(); })(document.querySelectorAll('#paidTable tbody tr[data-oop] .cell-btn')[i])", i)
+        pg.keyboard.press("Enter")
+        pg.wait_for_timeout(400)
+        pg.locator("#oopEdit button", has_text="Close").focus()
+        pg.keyboard.press("Enter")
+        pg.wait_for_timeout(400)
+        shut.append(pg.evaluate(SEEN476))
+    return up, shut
+
+
 def sections_of_main():
     """#1029: main()'s sections, by its "# ---- " comments: [(first line, title)], for the time each took."""
     first = main.__code__.co_firstlineno
@@ -3984,6 +4067,7 @@ def main():
         view_of = lambda t: "labs" if t == "heatmap" else t
 
         try:
+            start_part("records")   # #1029: --part records runs from here to the next start_part(…): the records tabs, their charts and drawer
             # ---- every tab renders its main content (Labs as a heatmap first, so it's left showing charts)
             expect = {
                 "overview": "document.querySelectorAll('#view-overview .tile').length",
@@ -5854,34 +5938,9 @@ def main():
             # up the dates left 2 of 8 under them, and in a French browser (below) the editor's Close gave focus back to a
             # date half under them. The margin is the headings' measured height: every date Shift+Tab reaches, and the one
             # Close returns to, is uncovered
-            SEEN476 = """() => { const a = document.activeElement, r = a.getBoundingClientRect(), hit = document.elementFromPoint(Math.min(innerWidth - 2, r.left + 4), r.top + Math.min(r.height / 2, 8));
-                return [a.matches('#paidTable tbody .cell-btn'), a.textContent.trim(), Math.round(r.top), !!hit && (hit === a || a.contains(hit))]; }"""
-            def walk476(pg):
-                """What you paid at 667×375: Shift+Tab up eight dates from the 13th, then three rows' editors closed by Close"""
-                pg.set_viewport_size({"width": 667, "height": 375})
-                pg.evaluate("paidState.open = null; switchTab('costs', 'paid')")
-                pg.wait_for_timeout(400)
-                pg.evaluate("(b => { b.scrollIntoView({block: 'end'}); b.focus({preventScroll: true}); })(document.querySelectorAll('#paidTable tbody tr[data-oop] .cell-btn')[12])")
-                up, shut = [], []
-                for _ in range(8):
-                    pg.keyboard.press("Shift+Tab")
-                    pg.wait_for_timeout(120)
-                    up.append(pg.evaluate(SEEN476))
-                for i in (0, 3, 7):
-                    pg.evaluate("i => (b => { b.scrollIntoView({block: 'center'}); b.focus(); })(document.querySelectorAll('#paidTable tbody tr[data-oop] .cell-btn')[i])", i)
-                    pg.keyboard.press("Enter")
-                    pg.wait_for_timeout(400)
-                    pg.locator("#oopEdit button", has_text="Close").focus()
-                    pg.keyboard.press("Enter")
-                    pg.wait_for_timeout(400)
-                    shut.append(pg.evaluate(SEEN476))
-                return up, shut
             walk476en = walk476(page)
             # #473: a claim opened at 1300 and 1400 px, its name's button at the window's bottom: once the drawer has docked,
             # its whole row is in sight (the button was, ending at the window's edge, its row's second line cut)
-            ROW473 = """b => { const r = b.closest('tr').getBoundingClientRect(), th = b.closest('table').tHead?.rows[0].cells[0],
-                top = Math.max(0, document.querySelector('header.topbar').getBoundingClientRect().bottom, th?.checkVisibility() ? th.getBoundingClientRect().bottom : 0);
-                return [Math.round(r.top - top), Math.round(innerHeight - r.bottom), !!b.closest('table.fold'), document.documentElement.classList.contains('sg-docked')]; }"""
             js("costState.view = 'claims'; renderCosts()")
             dock473 = {}
             for w473 in (1300, 1400):
@@ -5915,7 +5974,6 @@ def main():
             check("…Enter on a payment's date at 568×320 and 667×375 leaves the date in sight, the editor's top under it, as much of the editor as fits (#473)",
                   len(open473) == 4 and all(v[0] and v[1] >= 0 and v[2] <= v[3] < v[5] and v[6] for v in open473.values())
                   and open473["568×320 row 0"][4] > 320, open473)
-            walk476_ok = lambda up, shut: len(up) == 8 and len(shut) == 3 and all(v[0] and v[3] for v in up + shut)
             check("…at 667×375, its headings wrapped to 63 px, Shift+Tab up eight of its dates and the editor's Close leave the date uncovered (#476, 2.4.11)",
                   walk476_ok(*walk476en), walk476en)
             check("…and a claim opened at 1300 and 1400 px from the window's bottom has its whole row in sight once the drawer has docked (#473)",
@@ -9494,6 +9552,16 @@ def main():
                 tab_click(page, "#tab-timeline")
                 settle()
 
+        except Skip:   # #1029: a part this run leaves out
+            pass
+        except Exception as e:   # report what was caught so far instead of a bare traceback
+            problems.append(f"check stopped: {stopped(e)}")
+        try:
+            start_part("records", "pages")   # #1029: in pages too, alone: the reminder and the dose it makes are in pages' calendar feed, visit summary and share links
+            if PART == "pages":   # (run alone: Labs as charts, then the Timeline, as records leaves them)
+                js("switchTab('labs', 'chart')")
+                tab_click(page, "#tab-timeline")
+                settle(300)
             # ---- medication reminders through the calendar feed (#162): set on a current medication's drawer (two times,
             # weekdays, an until day), listed there as on; turned off and on again; a stopped medication's reminder says it
             # ended when the records say it stopped, and none can be added; 1400 and 375 px, light and dark, axe clean.
@@ -10136,6 +10204,12 @@ def main():
                 js("setRange(dayTs('2025-01-01'), dayTs('2025-12-31')); switchTab('timeline')")
                 settle()
 
+        except Skip:   # #1029: a part this run leaves out
+            pass
+        except Exception as e:   # report what was caught so far instead of a bare traceback
+            problems.append(f"check stopped: {stopped(e)}")
+        try:
+            start_part("records")   # #1029: records again
             # ---- where each record came from (#100): a Source line in the drawer, linking to the import in the history
             visit = js("EV.find(e => e.k === 'visit' && !e.hidden).id")
             js("id => openEvent(byId.get(id))", visit)
@@ -10602,18 +10676,6 @@ def main():
             # --surface, a target's band, BMI's categories and a stay's band in a share of the ink, and the legend's keys and
             # the glucose bar beside them. In All and in 90 days, with the day's heart rate, BMI's categories, the stays and
             # a target drawn: no mark's fill, stroke or key in --ink, --ink2, --muted or --surface (at any opacity)
-            INK975 = r"""() => { const probe = c => { const s = document.createElement('span'); s.style.forcedColorAdjust = 'none'; s.style.color = c; document.body.append(s);
-                const v = getComputedStyle(s).color; s.remove(); return v; };
-              const rgb = c => /^color\(srgb /.test(c) ? c.slice(11).split(/[\s/)]+/).slice(0, 3).map(v => Math.round(v * 255)).join() : (c.match(/[\d.]+/g) || []).slice(0, 3).join();
-              const clear = c => !c || c === 'none' || /(, 0| \/ 0)\)$/.test(c), sys = new Set(['Canvas', 'CanvasText', 'Highlight', 'HighlightText', 'GrayText'].map(c => rgb(probe(c))));
-              const ink = new Map(['--ink', '--ink2', '--muted', '--surface'].map(n => [rgb(probe(`var(${n})`)), n]).filter(([c]) => !sys.has(c)));   // the app's, as the page has them
-              const out = {n: 0, bad: []}, name = m => `${m.closest('[id^=h-]')?.id || ''} ${m.tagName.toLowerCase()}${[...m.classList].map(c => '.' + c).join('')}`;
-              const look = (m, props) => { const c = getComputedStyle(m); out.n++;
-                for (const p of props) if (!clear(c[p]) && ink.has(rgb(c[p])) && !(p.startsWith('border') && c.borderTopStyle === 'none')) out.bad.push(`${name(m)}: ${p} ${ink.get(rgb(c[p]))} ${c[p]}`); };
-              for (const m of document.querySelectorAll('#view-health svg:not(.icon) :is(path, line, polyline, polygon, circle, ellipse, rect)'))
-                if (m.checkVisibility() && !m.closest('defs, clipPath, mask')) look(m, ['fill', 'stroke']);
-              for (const m of document.querySelectorAll('#view-health :is(.legend i, .glu-bar span, .glu-tir li i)')) if (m.checkVisibility()) look(m, ['backgroundColor', 'borderTopColor', 'borderBottomColor']);
-              out.bad = [...new Set(out.bad)].slice(0, 12); return out; }"""
             was975 = js("[document.documentElement.dataset.theme || null, matchMedia('(prefers-color-scheme: dark)').matches, state.tab, state.preset, hState.hrDay, hState.bmiWho, hState.stays]")
             js("""() => { window._was975 = CFG.person; CFG.person = {...(CFG.person || {}), targets: {...targetsOf(), steps: {low: 8000, high: null, by: "", on: ""}}};
               hState.hrDay = hState.bmiWho = hState.stays = true; }""")
@@ -10720,6 +10782,15 @@ def main():
             check("hovering a Trends point shows its source and import date", "From Setup build, imported" in tipped, tipped[:200])
             page.mouse.move(0, 0)
 
+        except Skip:   # #1029: a part this run leaves out
+            pass
+        except Exception as e:   # report what was caught so far instead of a bare traceback
+            problems.append(f"check stopped: {stopped(e)}")
+        try:
+            start_part("views")   # #1029: --part views runs from here to the next start_part(…): saved views, the period and the strip, filters, Labs' list, the phone's text sizes
+            if PART == "views":   # (run alone: Labs' charts, as records leaves them)
+                js("switchTab('labs', 'chart')")
+                settle(300)
             # ---- saved Trends views (#37): save what's charted as a view, switch between views, make one the default
             # (Trends starts with it when this browser has chosen nothing), on Settings too, at 375 px; deleted again
             kept = js("localStorage.getItem(stateKey())")
@@ -12945,7 +13016,7 @@ def main():
             # "More about this" behind the ⓘ
             open_tab("labs")
             settle(300)
-            want279 = js("Object.fromEntries(labGroups(SERIES.filter(s => !s.watch).map(s => s.name)).flatMap(g => g.labs.map(n => [n, g.panel])))")
+            want279 = js(PANELS279_JS)
             list279 = js("""(() => { const id = new Map(SERIES.filter(s => !s.watch).map(s => ['s_' + s.name.replace(/\\W/g, '_'), s])), out = []; let g = null;
               for (const x of document.querySelectorAll('#seriesRows .grp, #seriesRows .srow'))
                 if (x.classList.contains('grp')) g = x.firstChild.textContent.trim();
@@ -13283,7 +13354,6 @@ def main():
                 named: tabs.every(a => (a.getAttribute('aria-label') || a.textContent).trim().length > 3), icons: tabs.every(a => a.querySelector('.icon').checkVisibility()),
                 barH: Math.round(bar.height), room: parseFloat(getComputedStyle(document.body).paddingBottom), profWhole: name.scrollWidth <= name.clientWidth + 1 && r(name).right <= innerWidth,
                 profRow: document.querySelector('header.topbar').classList.contains('prof-row'), labels, charts: document.querySelectorAll('#view-labs svg.ck').length}; }"""
-            BIG622 = ":root{--fs-1:23px;--fs-2:25px;--fs-3:28px;--fs-4:31px;--fs-5:36px;--fs-6:44px;--fs-7:56px} html{font-size:200%}"
             sel622, theme622, bad622 = js("[...state.sel]"), js("document.documentElement.dataset.theme || null"), {}
             open_tab("labs")
             js("state.tables.clear(); state.sel = new Set(SERIES.filter(s => !s.watch && s.n >= 2).map(s => s.name))")
@@ -13654,14 +13724,6 @@ def main():
             # size and with text at 200% (1.4.4): Costs' two charts, the Timeline, the Medications tab's lane and the event
             # track over Labs' charts with every layer's row (a journal entry, a mood, a cycle mark, a dose and the
             # medications, put in for the check and taken out again): each label inside its chart, none over another
-            L633 = r"""sel => { const r = e => e.getBoundingClientRect(), out = [];
-              for (const s of document.querySelectorAll(sel)) {
-                if (!s.checkVisibility()) continue;
-                const R = r(s), name = s.id || s.getAttribute('class'), bs = [...s.querySelectorAll('text')].filter(t => t.textContent.trim() && t.checkVisibility()).map(t => [t.textContent.slice(0, 20), r(t)]);
-                for (const [t, b] of bs) if (b.left < R.left - 1 || b.right > R.right + 1 || b.top < R.top - 1 || b.bottom > R.bottom + 1) out.push(`${name}: ${t} outside`);
-                bs.forEach(([t, a], i) => bs.slice(i + 1).forEach(([u, b]) => { if (a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1) out.push(`${name}: ${t} over ${u}`); }));
-              }
-              return out; }"""
             was633 = js("[[...state.sel], state.preset, state.from, state.to, [...state.cats], costState.view, document.documentElement.dataset.theme || null]")
             js("""(() => { const day = isoDay(state.to - 40 * DAY), m = MEDS.find(m => m.spans.length);
               window._was633 = [DATA.journal, DATA.doses, CYCLE, medsOnTrends, dosesOnCharts, jOnTrends, cycleOnCharts];
@@ -13913,7 +13975,6 @@ def main():
             # list and charts) and the heatmap (its grid and table; Settings: with #36's checks); a key lab's change line
             # keeps two lines' height under its panel's name (#338); Labs' chart view has headings (the list's and the
             # charts' h2, their panels h3s), its charts in the list's order; the heatmap's names stay out of its grid
-            want441 = ["CBC with differential", "Comprehensive metabolic panel", "Other"]   # the demo's, from capitals
             ov441 = js("""[[...document.querySelectorAll('#view-overview .ov-panel')].map(h => [h.tagName, h.innerText]),
               (s => [s.fontSize, s.fontWeight, s.color])(getComputedStyle(document.querySelector('#view-overview .ov-panel'))),
               [...document.querySelectorAll('#view-overview :is(.ov-panel, .ov-out) + .tiles .tile > .delta')].map(d => parseFloat(getComputedStyle(d).minHeight) / parseFloat(getComputedStyle(d).lineHeight)),
@@ -14241,6 +14302,18 @@ def main():
             nan = js("window.__nan")
             check("no NaN SVG attributes", not nan, nan[:5] if nan else "")
 
+        except Skip:   # #1029: a part this run leaves out
+            pass
+        except Exception as e:   # report what was caught so far instead of a bare traceback
+            problems.append(f"check stopped: {stopped(e)}")
+        try:
+            start_part("pages")   # #1029: --part pages runs from here to the next start_part(…): profiles, imports, Sources, Settings, Admin, the visit summary, ranges, connected sources, every page's accessibility, Account and Sharing
+            if PART == "pages":   # (run alone: the panels and the Overview's panel names' style, as #279 and #441 found them, for Settings'
+                tab_click(page, "#tab-overview")   # checks; then the Timeline, as views leaves it)
+                settle(300)
+                want279, ov441 = js(PANELS279_JS), [None, js("(s => [s.fontSize, s.fontWeight, s.color])(getComputedStyle(document.querySelector('#view-overview .ov-panel')))")]
+                tab_click(page, "#tab-timeline")
+                settle(300)
             # ---- profile switcher: the second profile has no records yet, and its own saved view
             check("profile switcher shown", page.is_visible("#profileMenuBtn") and js("document.getElementById('profile').options.length === 2"))
             js("applyPreset('30d')")
@@ -14378,7 +14451,6 @@ def main():
                "if (s && s !== window._steps281.at(-1)) window._steps281.push(s); }).observe(document.getElementById('step-records'), {subtree: true, attributes: true, childList: true})")
             page.set_input_files("#step-records .up-btns input:not([webkitdirectory])", files=[{"name": "portal-export.zip", "mimeType": "application/zip", "buffer": buf.getvalue()}])
             page.wait_for_selector("#step-records .import-job", timeout=5000)   # the job's part of its card, under the stage line
-            last_card = "[...document.querySelectorAll('.import-job')].pop()"
             page.wait_for_function(f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
             settle(600)   # (the card scrolled to the top)
             one281 = js(f"""(c => [c.querySelector('.job-hd').textContent, [...c.querySelectorAll('.job-steps li')].map(li => [li.textContent, li.className]),
@@ -16843,7 +16915,6 @@ def main():
             check("…but not the server's sync defaults or outside connections: those are on the Admin page (#167)",
                   js("!document.getElementById('sec-sync') && !document.getElementById('outside') && !document.querySelector('.set-nav-list a[data-group=sources], .set-nav-list a[data-group=outside]')"))
             # ---- the Settings sidebar (settings-nav.js) and the top bar's menus (nav.js)
-            display = "id => getComputedStyle(document.getElementById(id)).display"
             check("Settings: a sidebar of groups, one shown at a time (an owner's ending This profile with Rename or delete, #402)",
                   js("[...document.querySelectorAll('.set-nav-list a')].map(a => a.textContent)")[:7] == ["Dashboard", "About this person", "Labs and ranges", "Milestones", "Workouts", "Rename or delete", "Display"]
                   and js(display, "sec-overview") != "none" and js(display, "sec-units") == "none", js("[...document.querySelectorAll('.set-nav-list a')].map(a => a.textContent)"))
@@ -28255,6 +28326,8 @@ def main():
             pk.click("#other")
             problems[before:] = [x for x in problems[before:] if "401" not in x]   # signed out on the way, on purpose
             ctx.close()
+        except Skip:   # #1029: a part this run leaves out
+            pass
         except Exception as e:   # report what was caught so far instead of a bare traceback
             problems.append(f"check stopped: {stopped(e)}")
             try:   # what the page showed when it stopped, for failures that only happen on CI's machines
@@ -28271,6 +28344,7 @@ def main():
         # available; turned on, the last profile opens read-only with the time it was loaded; turning it off, the
         # sign-in's end time and signing out each delete the copy. Signed in with a session of its own.
         try:
+            start_part("pages")   # #1029
             before = len(problems)
             from server import config as sg_config, db as sg_db, security as sg_sec
             db = sg_db.connect()
@@ -29019,6 +29093,8 @@ def main():
             # offline, the browser reports each request it couldn't make; signing out ends in 401s
             problems[before:] = [x for x in problems[before:] if "ERR_INTERNET_DISCONNECTED" not in x and "401" not in x]
             ctx.close()
+        except Skip:   # #1029: a part this run leaves out
+            pass
         except Exception as e:   # report what was caught so far instead of a bare traceback
             problems.append(f"PWA check stopped: {stopped(e)}")
             if "ph" in locals():
@@ -29031,6 +29107,7 @@ def main():
         # a visit), Sources' Overview and Import history; at 375 px in light and dark, the guide's steps too
         fresh = None
         try:
+            start_part("pages")   # #1029
             before = len(problems)
             fdir = os.path.join(TMP, "fresh")
             for d in ("keys", "watch-keys"):
@@ -29387,6 +29464,8 @@ def main():
                   "another profile keeps its own name (#492)",
                   sorted(named492) == [[1, "casey", "owner"], [pid2, "Sam Example", "owner"]], named492)
             fctx.close()
+        except Skip:   # #1029: a part this run leaves out
+            pass
         except Exception as e:   # report what was caught so far instead of a bare traceback
             problems.append(f"first-run check stopped: {stopped(e)}")
             if "fp" in locals():
@@ -29413,4 +29492,14 @@ def main():
 
 
 if __name__ == "__main__":
+    import argparse
+    ap = argparse.ArgumentParser(description="The browser check (BROWSER_CHECK_FULL=1: every width of the size sweeps, #1029).")
+    ap.add_argument("--part", choices=PARTS, help="only this part's checks, after what every part shares (CI runs each in a job of its own); all of them without it")
+    ap.add_argument("--parts", action="store_true", help="print the parts' names, a line each, and stop")
+    args = ap.parse_args()
+    if args.parts:
+        print("\n".join(PARTS))
+        shutil.rmtree(TMP, ignore_errors=True)
+        sys.exit(0)
+    PART = args.part
     main()
