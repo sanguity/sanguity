@@ -450,10 +450,26 @@ def _rmtree(path):
     shutil.rmtree(aside, ignore_errors=True)
 
 
-def discard(db, pid, upload_id):
-    """Remove an upload's files. The row stays, as "discarded", with its counts."""
+def in_use(db, pid, upload_id):
+    """(#1057) Why the upload can't be removed by a person, or None: a saved record's document is stored in it, or an
+    import job uses it (queued, being read or waiting in review). The server's own rule; the page's is only a hint."""
+    if db.execute("""SELECT 1 FROM jobs WHERE upload_id=? AND profile_id=? AND state IN ('queued', 'running', 'preview')
+                     LIMIT 1""", (upload_id, pid)).fetchone():
+        return "An import is reading this upload, or waiting in review: cancel it first."
+    root = os.path.realpath(folder(pid, upload_id))
+    for d in db.execute("SELECT path FROM documents WHERE profile_id=? AND path IS NOT NULL", (pid,)):
+        if os.path.realpath(crypto.dec(d["path"])).startswith(root + os.sep):
+            return "A saved record's document is stored in this upload: remove the record first."
+    return None
+
+
+def discard(db, pid, upload_id, asked=False):
+    """Remove an upload's files. The row stays, as "discarded", with its counts. asked: a person's Remove (the API),
+    refused (409, in_use) while a saved record's document or an import job uses it, checked under the write lock."""
     _row(db, pid, upload_id)
     with dbm.transaction(db):
+        if asked and (why := in_use(db, pid, upload_id)):
+            raise UploadError(why, 409)
         db.execute("UPDATE uploads SET state='discarded', manifest=NULL WHERE id=?", (upload_id,))
         db.execute("DELETE FROM upload_files WHERE upload_id=?", (upload_id,))
     _rmtree(folder(pid, upload_id))
