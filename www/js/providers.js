@@ -96,7 +96,12 @@
     for (const b of document.querySelectorAll(".dir-hit")) b.classList.toggle("sel", b.dataset.id === id);
     const u = new URL(location.href); u.searchParams.set("id", id); history.replaceState(null, "", u);
     show(j);
-    if (scroll) $("#detail").scrollIntoView({behavior: smoothly(), block: "start"});
+    if (!scroll) return;
+    const box = $("#detail"), h = box.querySelector("h3");
+    box.scrollIntoView({behavior: smoothly(), block: "start"});
+    // the details under the list, not beside it: focus to their heading, as the result chosen is scrolled off the screen
+    // and the next Tab went back to the list (#1067)
+    if (box.getBoundingClientRect().top >= $("#results").getBoundingClientRect().bottom - 1) { h.tabIndex = -1; h.focus({preventScroll: true}); }
   }
 
   /* the sources set up on this server that reach this entry's FHIR base (connect.js lists them) */

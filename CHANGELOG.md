@@ -3758,6 +3758,9 @@ Everything on `main` so far; it becomes the first tagged release.
   answer says yes.
 - **A menu's items wrap where they don't fit** (#1060): with larger text on a phone the drawer's ⋯ cut "Hide (results
   stay in Labs)" and scrolled sideways; every menu's items now wrap within it.
+- **Sources fits a phone with larger text** (#1067): an upload's review widened Upload files past the screen (its
+  Cancel and Add side by side), and in Find your provider focus stayed on the result chosen, scrolled off the screen;
+  the bar's buttons wrap, and focus goes to the provider's details.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
