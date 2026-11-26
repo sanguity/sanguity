@@ -97,6 +97,8 @@ const WHAT = {
     return "read the provider directory's lists (" + [...Object.entries(d.read || {}).map(([id, n]) => `${name(id)}: ${n.toLocaleString("en-US")} entries`),
       ...Object.entries(d.failed || {}).map(([id, why]) => `${name(id)} not read: ${why}`)].join("; ") + ")";
   },
+  // records saved before #1022 that start-up couldn't key as they are now (#1044): left as they were, tried again
+  "records.rekey": d => `couldn't key ${(d.left || []).length} older record${(d.left || []).length === 1 ? "" : "s"} as they are now, so left them as they were: ${(d.left || []).join(", ")}`,
 };
 const FILTERS = [["", "Everything"], ["view", "Opened the records"], ["document", "Opened documents"],
   ["share", "Sharing"], ["unshare", "Removed access"], ["rename", "Renames"], ["import", "Imports"], ["reload", "Reloads"],

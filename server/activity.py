@@ -72,6 +72,8 @@ Account events (no profile), readable by admins:
                 Delete now, or by actor TIME_LIMIT days after the restore (backup_jobs.sweep_replaced, #595)
   directory.update {"origin", "read": {list: entries}, "failed": {list: why}}: the provider directory's lists read
                 by an admin's Add the lists / Update now, or by actor WEEKLY_DIRECTORY (directory/update.py, #992)
+  records.rekey {"left": [what]}: records saved before #1022 that start-up couldn't key as they are now, left as they
+                were, by actor START_UP (records.rekey_stamped, #1044)
 
 Entries keep the actor's username as it was, so they read the same after an account is gone. A profile's entries
 go with the profile. Entries older than ACTIVITY_DAYS are pruned (at most once a day, when something is logged).
@@ -87,7 +89,8 @@ ACCOUNT_ACTIONS = ("setup", "password", "account.create", "account.disable", "ac
                    "account.unadmin", "account.reset", "2fa.on", "2fa.off", "2fa.codes", "2fa.recovery", "2fa.reset", "2fa.stopped",
                    "settings.require_2fa", "profile.delete", "account.remove", "profile.repair", "labmap.change",
                    "labmap.remove", "settings.user", "settings.install", "connect.source", "outside",
-                   "backup.create", "backup.check", "backup.fail", "backup.schedule", "backup.replaced", "directory.update")
+                   "backup.create", "backup.check", "backup.fail", "backup.schedule", "backup.replaced", "directory.update",
+                   "records.rekey")
 COMMAND_LINE, SETUP_BUILD = "command line", "setup build"
 SCHEDULED_SYNC = "scheduled sync"   # a connected source's pull on its schedule (sync.py)
 SHARE_LINK = "share link"           # whoever holds a share link, opening it (share_links.py)
@@ -95,7 +98,8 @@ SCHEDULED_BACKUP = "scheduled backup"   # a backup on the Admin page's schedule 
 TIME_LIMIT = "time limit"   # something deleted when its time is up: what a restore replaced (backup_jobs.py, #595)
 ACCESS_ENDED = "access ended"   # what ends with its maker's access: a phone upload secret (watch_keys.end_lost, #929)
 WEEKLY_DIRECTORY = "weekly directory update"   # the provider directory's lists read again (directory/update.py, #992)
-SYSTEM = (COMMAND_LINE, SETUP_BUILD, SCHEDULED_SYNC, SHARE_LINK, SCHEDULED_BACKUP, TIME_LIMIT, ACCESS_ENDED, WEEKLY_DIRECTORY)
+START_UP = "start-up"   # what the app does as it starts (records.rekey_stamped, #1044)
+SYSTEM = (COMMAND_LINE, SETUP_BUILD, SCHEDULED_SYNC, SHARE_LINK, SCHEDULED_BACKUP, TIME_LIMIT, ACCESS_ENDED, WEEKLY_DIRECTORY, START_UP)
 
 
 def log(db, action, who=None, profile_id=None, detail=None, ip=None, session_id=None, actor=None, item=None):
