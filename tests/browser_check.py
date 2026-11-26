@@ -2437,7 +2437,8 @@ def general_security_check(check, browser, base, cookies):
     fresh_check(page)
     gone = js("fetch('api/settings/install/reset', {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, "
               "body: JSON.stringify({section: 'security'})}).then(r => r.json()).then(j => j.reset)")
-    check("…and put back as it was", sorted(gone or []) == ["security.idleMinutes", "security.profiles"], gone)
+    # (every security.* setting saved by now, this check's two and any an earlier check saved, as #1049's)
+    check("…and put back as it was", {"security.idleMinutes", "security.profiles"} <= set(gone or []) and all(k.startswith("security.") for k in gone or []), gone)
     ctx.close()
 
 
