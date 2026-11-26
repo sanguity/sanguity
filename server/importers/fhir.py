@@ -474,9 +474,11 @@ def _value(o):
 
 
 def _server(r):
-    """The server a resource came from: meta.source, else the base of an absolute fullUrl; "" when unknown."""
-    src = (r.get("meta") or {}).get("source")
-    if isinstance(src, str) and src:
+    """The server a resource came from: meta.source, else the base of an absolute fullUrl; "" when unknown. Only its
+    stable part (#1022, common.stable_source): a server that stamps meta.source per write (HAPI FHIR's "#<request id>")
+    is one source, never a new one for each record it changes."""
+    src = common.stable_source((r.get("meta") or {}).get("source"))
+    if src:
         return src
     m = re.match(r"(https?://.+?)/[A-Za-z]+/[^/]+/?$", r.get("_fullUrl") or "")
     return m.group(1) if m else ""
