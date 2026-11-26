@@ -25422,8 +25422,13 @@ def main():
             check("the admin's note links to Settings → Sign-in and security (#991: Account's before)", js("document.querySelector('#adminTf a').getAttribute('href')") == "#security")
             page.click("#adminTf a")
             page.wait_for_url(re.compile(r"/settings\.html(\?[^#]*)?#security$"), timeout=10000)
-            page.wait_for_function("document.getElementById('tfHint').textContent.length > 0", timeout=10000)
-            check("which opens it", js(display, "twofa") != "none")
+            # (the same page since #991: the address changes as the link's followed, the group a task later, as its
+            # hashchange is heard; with the window just resized, after the check had read it)
+            try:
+                page.wait_for_function("document.querySelector('main').dataset.group === 'security' && document.getElementById('tfHint').textContent.length > 0", timeout=10000)
+            except Exception:
+                pass
+            check("which opens it", js(display, "twofa") != "none", js("[document.querySelector('main').dataset.group, location.hash]"))
             # #499: each of its buttons that draws it again (Cancel, Confirm, I've saved them) took itself away, focus
             # falling to the page: focus then on what's there in its place, in sight, clear of the bar and a phone's tabs.
             # At 375×667, on a phone (Cancel), and back at 1400×900 for the setup's own checks (Confirm, I've saved them)
