@@ -3759,6 +3759,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - **A restore that fails part-way puts today's data back** (#1055): one failing after today's files were moved
   aside (the disk filling while profiles are written, say) left the install empty; now what it wrote goes, today's
   files are moved back, and it says what happened and names the folder.
+- **`server.manage import` says what an upload it can't keep changed** (#1056): an upload past this server's limits
+  is refused before anything is replaced; one failing after the records were replaced says they were imported, and
+  the profile is no longer the setup build's, so a rebuild doesn't overwrite them.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
