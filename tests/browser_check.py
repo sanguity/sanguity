@@ -7508,6 +7508,61 @@ def main():
             db.close()
             for wf783 in files783:
                 shutil.rmtree(os.path.dirname(wf783), ignore_errors=True)
+
+            # ---- every result in the records' span (#841): store.js storeSpan counted the events and the watch's days
+            # alone, so a profile of lab results with no event didn't open ("Invalid time value"), and All ended where
+            # the events end, a result before or after them on no period, shown nowhere on Labs. Two profiles of their
+            # own: results alone (Hemoglobin twice, a Ferritin), and results either side of a visit's day. Each opens,
+            # its span is its results', every tab draws without an error, and Labs' tables on All have every result.
+            # Each deleted after
+            from server import profiles as prof841, records as rec841
+
+            def ser841(name, unit, loinc, pts):
+                return {"name": name, "unit": unit, "panel": "", "key": f"loinc:{loinc}", "n": len(pts), "txt": [],
+                        "pts": [[t, v, lo, hi, f, str(v), "Typed in"] for t, v, lo, hi, f in pts]}
+            hgb841 = [("2025-01-10T08:00:00", 13.9, 13.5, 17.5, ""), ("2025-06-12T08:00:00", 12.8, 13.5, 17.5, "L")]
+            visit841 = {"id": 1, "t": "2025-03-05T09:00:00", "k": "visit", "title": "Office visit", "sub": "Lakeside Clinic (fictional)"}
+            cases841 = [("Results alone (fictional)", [], [ser841("Hemoglobin", "g/dL", "718-7", hgb841),
+                                                         ser841("Ferritin", "ng/mL", "2276-4", [("2024-09-02T08:00:00", 88, 30, 400, "")])]),
+                        ("Results either side of a visit (fictional)", [visit841],
+                         [ser841("Hemoglobin", "g/dL", "718-7", [("2024-11-20T08:00:00", 14.2, 13.5, 17.5, ""), hgb841[1]])])]
+            was841, pids841 = js("localStorage.getItem('ht-profile')"), []
+            db = dbm.connect()
+            for name841, ev841, labs841 in cases841:
+                pid841 = prof841.create_profile(db, name841, owner_id=db.execute("SELECT id FROM users WHERE username=?", (USER,)).fetchone()["id"])
+                with dbm.transaction(db):
+                    rec841.store(db, pid841, {"source": "fictional", "events": ev841, "details": {str(e["id"]): {"type": "visit"} for e in ev841},
+                                              "labs": labs841, "costs": [], "upcoming": []}, "upload", fmt="sanguity")
+                pids841.append(pid841)
+            db.close()
+            seen841, errs841 = [], []
+            on841 = lambda e: errs841.append(str(e))
+            page.on("pageerror", on841)
+            for pid841 in pids841:
+                page.goto(base + f"/?profile={pid841}")
+                try:
+                    page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {pid841}", timeout=20000)
+                except Exception as e:
+                    seen841.append(f"didn't open: {str(e)[:80]}")
+                    continue
+                for tab841 in ("overview", "timeline", "health", "costs"):
+                    js("t => { setPeriod('all'); switchTab(t); }", tab841)
+                    settle(300)
+                js("() => { const labs = SERIES.filter(s => !s.watch).map(s => s.name); state.tables.clear(); labs.forEach(n => state.tables.add(n)); state.sel = new Set(labs); applyPreset('all'); switchTab('labs', 'chart'); renderLabs(); }")
+                settle(500)
+                seen841.append(js("""[[isoDay(state.min), isoDay(state.max)], SERIES.filter(s => !s.watch).map(s => [s.name, s.pts.length]).sort(),
+                    [...document.querySelectorAll('#charts .chart')].map(c => [c.dataset.lab, c.querySelectorAll('table.data tbody tr').length]).sort()]"""))
+                js("state.tables.clear()")
+            page.remove_listener("pageerror", on841)
+            check("every result in the records' span (#841): a profile of lab results with no event opens, every tab with no error, and on All Labs' tables have every "
+                  "result; a profile's results before and after its one visit too",
+                  not errs841 and seen841 == [[["2024-09-02", "2025-06-12"], [["Ferritin", 1], ["Hemoglobin", 2]], [["Ferritin", 1], ["Hemoglobin", 2]]],
+                                             [["2024-11-20", "2025-06-12"], [["Hemoglobin", 2]], [["Hemoglobin", 2]]]], [seen841, errs841[:3]])
+            js("v => v === null ? localStorage.removeItem('ht-profile') : localStorage.setItem('ht-profile', v)", was841)
+            db = dbm.connect()
+            for pid841 in pids841:
+                prof841.delete_profile(db, pid841)
+            db.close()
             page.goto(base + "/?profile=1")
             page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
             settle(300)
