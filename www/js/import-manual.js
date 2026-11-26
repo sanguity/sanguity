@@ -222,8 +222,9 @@
   }};
   $("#manAdd").onclick = () => { const r = addRow(); if (r) r.querySelector("[data-f=test]").focus(); soon(); };
 
-  /* the links below name the profile and the tab in the address (index.html?profile=2#labs, #208); Labs also charts
-     the labs just typed in, added to the ones its saved view shows (core.js: ht-state:<id>) */
+  /* the links below name the profile and the tab in the address (index.html?profile=2#labs-chart, #208); Labs charts
+     the labs just typed in, added to the ones its saved view shows (core.js: ht-state:<id>), at its charts' own address
+     whichever view Labs opens on (#1026) */
   const recordsLink = (p, tab) => `index.html?profile=${p}#${tab}`;
   function openTrends(p, names) {
     try {
@@ -261,7 +262,7 @@
       // a check of what was there before (a field's change event as Save was clicked, 350 ms) has nothing to say about
       // the new form: not run, or not shown, so it doesn't clear the saved line below (#384)
       clearTimeout(timer); seq++;
-      const links = [names.length ? el("a", {href: recordsLink(p, "labs"), text: "See them on Labs", onclick: () => openTrends(p, names)}) : null,
+      const links = [names.length ? el("a", {href: recordsLink(p, "labs-chart"), text: "See them on Labs", onclick: () => openTrends(p, names)}) : null,
         onTimeline ? el("a", {href: recordsLink(p, "timeline"), text: "See them on the timeline"}) : null,
         onCosts ? el("a", {href: recordsLink(p, typed.payment ? "costs-paid" : "costs"), text: "See them on Costs"}) : null,   // a payment's on What you paid (#443)
         onOverview ? el("a", {href: recordsLink(p, "overview"), text: "See them on the Overview"}) : null,

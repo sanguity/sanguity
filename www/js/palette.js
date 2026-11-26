@@ -206,7 +206,7 @@ const SgPalette = (() => {
     ["labs", "latest", "-latest", "Latest", "latest results newest last every lab list now"],
     ["timeline", "journal", "-journal", "Journal", "notes diary entries photos symptoms"],
     ["costs", "paid", "-paid", "What you paid", "out of pocket spent spending payments total hsa fsa premiums"]];
-  const FIRST_VIEW = {labs: "chart", timeline: "timeline", costs: "claims"};
+  const FIRST_VIEW = {labs: "home", timeline: "timeline", costs: "claims"};   // (Labs where it opens, here as from another page: #1026)
   function tabs(all) {
     if (document.querySelector("header.topbar nav.tabs")?.hidden) return [];
     // on the records page that tab, in that view; elsewhere the records page at its address
@@ -475,7 +475,7 @@ const SgPalette = (() => {
   }
   /* a lab: charted on the Labs tab, focus on its chart (or its table) */
   function openLab(name) {
-    if (!onRecords) return arrive("lab", name, "#labs");
+    if (!onRecords) return arrive("lab", name, "#labs-chart");   // (its charts' own address: #labs alone is where Labs opens, #1026)
     state.sel.add(name);
     pickTab("labs", "chart");
     const card = [...document.querySelectorAll("#charts .chart")].find(c => c.dataset.lab === name);   // in the list's order (#441)

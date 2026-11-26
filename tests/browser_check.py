@@ -14679,7 +14679,7 @@ def main():
             page.wait_for_function("state.tab === 'timeline'", timeout=5000)
             tl500 = js("[window._page500, location.pathname + location.search + location.hash]")
             check("from “/?profile=N”, the dialog's Open Labs and “See them on the timeline” change the tab without a reload (#500)",
-                  labs500 == [1, f"/?profile={dpid497}#labs"] and tl500 == [1, f"/?profile={dpid497}#timeline"], [labs500, tl500])
+                  labs500 == [1, f"/?profile={dpid497}#labs-chart"] and tl500 == [1, f"/?profile={dpid497}#timeline"], [labs500, tl500])   # (#labs: Labs where it opens, then at its view's own, #1026)
             # (#513) that import's lab draw open in the drawer, then its toast's Undo: the drawer doesn't show it any more
             iid513 = js(f"fetch('api/profiles/{dpid497}/imports', {{cache: 'no-store'}}).then(r => r.json()).then(j => j.imports[0].id)")
             js(f"openEvent(EV.find(e => e.imp === {iid513} && e.k === 'lab'))")
@@ -18468,7 +18468,7 @@ def main():
             check("…Back twice lands on Timeline", addr()[1:3] == ["#timeline", "timeline"] and tp.evaluate("!document.getElementById('view-timeline').hidden"), addr())
             tp.go_forward()
             tp.wait_for_function("state.tab === 'labs'", timeout=5000)
-            check("…and Forward on Labs", addr()[1:3] == ["#labs", "labs"], addr())
+            check("…and Forward on Labs", addr()[1:3] == ["#labs-chart", "labs"], addr())   # (its charts' own address, #1026)
             tp.evaluate("switchTab('overview'); switchTab('costs'); switchTab('heatmap')")
             check("…the app's own switches replace the entry (Labs as the heatmap: #labs-heatmap)", addr()[1:] == ["#labs-heatmap", "labs", "heatmap", n0 + 3], addr())
             # a view switch is picked, as a tab is (#442): an entry each, and Back returns to the view before, on the tab
@@ -18481,12 +18481,12 @@ def main():
             tp.go_forward()
             tp.wait_for_function("state.labsView === 'chart'", timeout=5000)
             check("…a view switch adds an entry, as a tab does (#442): Labs as charts, Back to the heatmap",
-                  pushed[1:] == ["#labs", "labs", "chart", n0 + 3] and back_to[1:] == ["#labs-heatmap", "labs", "heatmap", n0 + 3], [pushed, back_to])
+                  pushed[1:] == ["#labs-chart", "labs", "chart", n0 + 3] and back_to[1:] == ["#labs-heatmap", "labs", "heatmap", n0 + 3], [pushed, back_to])
             tp.click("#labsView button[data-view=heatmap]")
             tp.go_back()
             tp.wait_for_function("state.labsView === 'chart'", timeout=5000)
             check("…Back from the heatmap returns to the charts, on Labs (#442)",
-                  addr()[1:] == ["#labs", "labs", "chart", n0 + 4] and tp.evaluate("!document.getElementById('labsChart').hidden && document.getElementById('labsHeatmap').hidden"), addr())
+                  addr()[1:] == ["#labs-chart", "labs", "chart", n0 + 4] and tp.evaluate("!document.getElementById('labsChart').hidden && document.getElementById('labsHeatmap').hidden"), addr())
             tp.go_forward()
             tp.wait_for_function("state.labsView === 'heatmap'", timeout=5000)
             tp.reload()
@@ -18494,7 +18494,7 @@ def main():
             check("…a reload keeps the tab and its view", addr()[1:4] == ["#labs-heatmap", "labs", "heatmap"], addr())
             tp.evaluate("location.hash = '#trends'")
             tp.wait_for_function("state.labsView === 'chart'", timeout=5000)
-            check("…an old alias opens its tab, the address then naming it", addr()[1:4] == ["#labs", "labs", "chart"], addr())
+            check("…an old alias opens its tab, the address then naming it", addr()[1:4] == ["#labs-chart", "labs", "chart"], addr())
             tab_click(tp, "#tab-timeline")
             tp.click("#tlView button[data-view=journal]")
             j442 = tp.evaluate("[location.hash, state.tlView]")
@@ -18558,6 +18558,156 @@ def main():
             paid456 = tp.evaluate("[location.hash, state.tab, costState.view, !!document.getElementById('paidCard')]")
             check("…and the switch to What you paid, then /, lands on What you paid (#456)", paid456 == ["#costs-paid", "costs", "paid", True], paid456)
             tctx.close()
+            # ---- #1026: each of Labs' views at its own address, the page writing it (#labs-chart, #labs-heatmap,
+            # #labs-compare, #labs-latest), and #labs alone Labs where it opens (#997: the view picked, else Latest on a
+            # phone and Chart wider). #labs was the charts' too, so a chart reloaded came back as Latest or the view
+            # picked. In browsers that have shown nothing yet, a phone's (412 px, touch, nothing picked) and a desktop's
+            # (Heatmap picked): a chart opened from a Latest row, an Overview tile, the drawer's Chart these results and the
+            # command palette's lab (on Sources) is at #labs-chart and comes back charted, that lab among them, on a
+            # reload; each view picked is at its own address, a reload and Back and Forward landing on it; #labs alone
+            # opens where Labs opens; a row opened in a new tab charts its lab; the palette's Labs opens Labs where it
+            # opens on the records page and from another page. And Type them in's See them on Labs charts the labs typed
+            # with Heatmap picked
+            AT1026 = "() => [state.tab, state.labsView, location.hash, [...document.querySelectorAll('#charts .chart')].filter(c => c.checkVisibility()).map(c => c.dataset.lab)]"
+            bad1026 = []
+
+            def fresh1026(phone):
+                c = browser.new_context(viewport={"width": 412 if phone else 1400, "height": 860 if phone else 900}, bypass_csp=True, is_mobile=phone, has_touch=phone)
+                c.add_cookies(session)
+                return c, c.new_page()
+
+            def at1026(pg, where, want_view, lab=None, wait=True):
+                if wait:
+                    pg.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+                pg.wait_for_timeout(500)
+                got = pg.evaluate(AT1026)
+                if got[1:3] != [want_view, "#labs-" + want_view] or (lab and lab not in got[3]):
+                    bad1026.append(f"{where}: {got[:3]}, charted {got[3][:4]}{f' (not {lab})' if lab and lab not in got[3] else ''}")
+            for phone1026 in (True, False):
+                kind = "phone" if phone1026 else "desktop, Heatmap picked"
+                c1026, p1026 = fresh1026(phone1026)
+                home1026 = "latest" if phone1026 else "heatmap"
+                p1026.goto(base + "/?profile=1#labs")
+                p1026.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+                if not phone1026:
+                    p1026.click("#labsView button[data-view=heatmap]")
+                    p1026.goto(base + "/?profile=1#labs")
+                at1026(p1026, f"{kind}: #labs alone", home1026)
+                # a Latest row's chart, reloaded
+                p1026.evaluate("switchTab('labs', 'latest')")
+                p1026.wait_for_timeout(300)
+                row1026 = p1026.locator("#ltRows .lt-row").nth(2)
+                lab1026, href1026 = row1026.get_attribute("data-lab"), row1026.get_attribute("href")
+                (row1026.tap if phone1026 else row1026.click)()
+                at1026(p1026, f"{kind}: a Latest row's chart", "chart", lab1026, wait=False)
+                p1026.reload()
+                at1026(p1026, f"{kind}: a Latest row's chart, reloaded", "chart", lab1026)
+                if href1026 != "#labs-chart":
+                    bad1026.append(f"{kind}: a Latest row's href {href1026}")
+                # an Overview tile's, reloaded
+                p1026.evaluate("pickTab('overview')")
+                p1026.wait_for_timeout(300)
+                tile1026 = p1026.locator("#view-overview .tiles .tile").first
+                tlab1026 = p1026.evaluate("t => [...SERIES].find(s => !s.watch && nice(s.name) === t.querySelector('.lbl > span').textContent)?.name", tile1026.element_handle())
+                tile1026.click()
+                at1026(p1026, f"{kind}: an Overview tile's chart", "chart", tlab1026, wait=False)
+                p1026.reload()
+                at1026(p1026, f"{kind}: an Overview tile's chart, reloaded", "chart", tlab1026)
+                # the drawer's Chart these results (a lab's panel), reloaded
+                p1026.evaluate("() => { switchTab('labs', 'latest'); state.sel.delete('Sodium, Blood'); openLab(SERIES.find(s => s.name === 'Sodium, Blood')); }")
+                p1026.wait_for_timeout(500)
+                p1026.evaluate("() => [...document.querySelectorAll('#dbody .dgo button')].find(b => b.textContent === 'Chart these results').click()")
+                at1026(p1026, f"{kind}: the drawer's Chart these results", "chart", "Sodium, Blood", wait=False)
+                p1026.reload()
+                at1026(p1026, f"{kind}: the drawer's Chart these results, reloaded", "chart", "Sodium, Blood")
+                # the palette's lab, chosen on Sources
+                p1026.evaluate("() => { state.sel.delete('Potassium, Blood'); save(); }")
+                p1026.goto(base + "/sources.html?profile=1")
+                p1026.wait_for_selector("#barSearch", state="attached", timeout=10000)
+                p1026.keyboard.press("Control+k")
+                p1026.wait_for_selector("dialog.palette[open]", timeout=5000)
+                p1026.fill("#palQ", "potassium")
+                p1026.wait_for_timeout(300)
+                p1026.keyboard.press("Enter")
+                p1026.wait_for_url(lambda u: "sources" not in u, timeout=10000)
+                p1026.wait_for_function("typeof booted !== 'undefined' && booted && state.tab === 'labs'", timeout=20000)
+                at1026(p1026, f"{kind}: the palette's lab, from Sources", "chart", "Potassium, Blood")
+                p1026.reload()
+                at1026(p1026, f"{kind}: the palette's lab, reloaded", "chart", "Potassium, Blood")
+                # each view picked at its own address: a reload keeps it, Back and Forward land on each
+                for v1026 in ("chart", "heatmap", "compare", "latest"):
+                    if p1026.evaluate("state.labsView") != v1026:
+                        p1026.click(f"#labsView button[data-view={v1026}]")
+                    at1026(p1026, f"{kind}: {v1026} picked", v1026, wait=False)
+                    p1026.reload()
+                    at1026(p1026, f"{kind}: {v1026} picked, reloaded", v1026)
+                for v1026 in ("compare", "heatmap"):
+                    p1026.go_back()
+                    at1026(p1026, f"{kind}: Back to {v1026}", v1026, wait=False)
+                p1026.go_forward()
+                at1026(p1026, f"{kind}: Forward to compare", "compare", wait=False)
+                p1026.goto(base + "/sources.html?profile=1")
+                p1026.goto(base + "/?profile=1#labs")
+                at1026(p1026, f"{kind}: #labs alone, Latest picked last", "latest")
+                # a row opened in a new tab (Ctrl+click): its chart there, the lab among those charted
+                if not phone1026:
+                    p1026.evaluate("() => state.sel.delete('Creatinine')")
+                    with c1026.expect_page() as np1026:
+                        p1026.locator("#ltRows .lt-row[data-lab=Creatinine]").click(modifiers=["Control"])
+                    n1026 = np1026.value
+                    n1026.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+                    at1026(n1026, f"{kind}: a row opened in a new tab", "chart", "Creatinine")
+                    n1026.close()
+                # the palette's Labs, on the records page and from another page: where Labs opens
+                pal1026 = []
+                for url1026 in ("/?profile=1#overview", "/sources.html?profile=1"):
+                    p1026.goto(base + url1026)
+                    p1026.wait_for_selector("#barSearch", state="attached", timeout=10000)
+                    p1026.wait_for_timeout(300)
+                    p1026.keyboard.press("Control+k")
+                    p1026.wait_for_selector("dialog.palette[open]", timeout=5000)
+                    p1026.fill("#palQ", "labs")
+                    p1026.wait_for_timeout(300)
+                    p1026.keyboard.press("Enter")
+                    if "sources" in url1026:
+                        p1026.wait_for_url(lambda u: "sources" not in u, timeout=10000)
+                    p1026.wait_for_function("typeof booted !== 'undefined' && booted && state.tab === 'labs'", timeout=20000)
+                    p1026.wait_for_timeout(300)
+                    pal1026.append(p1026.evaluate("[state.labsView, location.hash]"))
+                if pal1026 != [["latest", "#labs-latest"]] * 2:
+                    bad1026.append(f"{kind}: the palette's Labs on the records page and from Sources: {pal1026}")
+                c1026.close()
+            # Type them in's See them on Labs, Heatmap picked: the labs typed, charted (a profile of its own)
+            from server import db as dbm1026, profiles as prof1026
+            db = dbm1026.connect()
+            tpid1026 = prof1026.create_profile(db, "See them on Labs (fictional)", owner_id=db.execute("SELECT id FROM users WHERE username=?", (USER,)).fetchone()["id"])
+            db.close()
+            c1026, p1026 = fresh1026(False)
+            p1026.goto(base + f"/sources.html?profile={tpid1026}#manual")
+            p1026.evaluate("p => localStorage.setItem('ht-state:' + p, JSON.stringify({tab: 'labs', labsView: 'heatmap', labsPicked: 'heatmap', v: 2}))", tpid1026)
+            p1026.wait_for_selector("#manAdd", timeout=10000)
+            if not p1026.locator("#manRows .man-row").count():
+                p1026.click("#manAdd")
+            r1026 = p1026.locator("#manRows .man-row").first
+            r1026.locator("[data-f=test]").fill("Vitamin B12")
+            r1026.locator("[data-f=value]").fill("480")
+            r1026.locator("[data-f=unit]").fill("pg/mL")
+            p1026.wait_for_timeout(900)
+            p1026.click("#manSave")
+            see1026 = p1026.locator("a", has_text="See them on Labs")
+            see1026.wait_for(timeout=15000)
+            seehref1026 = see1026.get_attribute("href")
+            see1026.click()
+            at1026(p1026, "See them on Labs, Heatmap picked", "chart", "Vitamin B12")
+            c1026.close()
+            db = dbm1026.connect()
+            prof1026.delete_profile(db, tpid1026)
+            db.close()
+            check("Labs' views each at their own address (#1026): a chart opened from a Latest row, an Overview tile, the drawer and the palette's lab is at "
+                  "#labs-chart and comes back charted on a reload, on a phone with nothing picked and a desktop with Heatmap picked; each view picked is "
+                  "at its own, a reload and Back and Forward landing on it; #labs alone opens where Labs opens; a row opened in a new tab charts its lab; "
+                  "the palette's Labs opens where Labs opens on any page; Type them in's See them on Labs charts the labs typed, Heatmap picked",
+                  not bad1026 and seehref1026.endswith("#labs-chart"), [bad1026, seehref1026])
 
             # ---- #45 a default theme for the account: a fresh browser signed in as the same person uses it; your
             # menu's Dark or Light mode changes it (#410); Reset to defaults follows the system again
@@ -19698,8 +19848,9 @@ def main():
                   and words403["medication"][0] == ["Records tabs", "Medications"] and "Log a dose" in words403["medication"][1] and words403["kg"][0] == ["Pages and settings", "Units"], words403)
             # (#452) each view with an address is its own entry, and Enter opens it there: "heatmap" Labs › Heatmap, "what
             # you paid" and "out of pocket" Costs › What you paid, "journal" Timeline › Journal (before Add's Journal entry);
-            # "labs" opens Labs as charts, whichever view it was left in; "compare" Labs › Compare (#297)
-            views452 = {}
+            # "labs" opens Labs where it opens (#1026: as from another page; it was the charts here), whichever view it was
+            # left in; "compare" Labs › Compare (#297)
+            views452, home452 = {}, js("labsHome()")
             for q in ("heatmap", "what you paid", "out of pocket", "journal", "compare", "labs"):
                 js("switchTab('overview')")
                 pal(q)
@@ -19710,13 +19861,13 @@ def main():
                 views452[q] = [first, ctx452, js("[location.hash, state.tab]")]
             js("costState.view = 'claims'; state.tlView = 'timeline'; switchTab('overview')")   # (the views as the checks after expect them)
             check("…views with an address are found by name, Enter opening them: “heatmap”, “what you paid”, “out of pocket”, “journal” (before Add's "
-                  "Journal entry), “compare” (#297), and “labs” Labs as charts, whichever view it was left in (#452)",
+                  "Journal entry), “compare” (#297), and “labs” Labs where it opens, whichever view it was left in (#452, #1026)",
                   views452 == {"heatmap": [["Records tabs", "Heatmap"], ", Records tab › Labs", ["#labs-heatmap", "labs"]],
                                "what you paid": [["Records tabs", "What you paid"], ", Records tab › Costs", ["#costs-paid", "costs"]],
                                "out of pocket": [["Records tabs", "What you paid"], ", Records tab › Costs", ["#costs-paid", "costs"]],
                                "journal": [["Records tabs", "Journal"], ", Records tab › Timeline", ["#timeline-journal", "timeline"]],
                                "compare": [["Records tabs", "Compare"], ", Records tab › Labs", ["#labs-compare", "labs"]],
-                               "labs": [["Records tabs", "Labs"], ", Records tab", ["#labs", "labs"]]}, views452)
+                               "labs": [["Records tabs", "Labs"], ", Records tab", ["#labs-" + home452, "labs"]]}, [views452, home452])
             # opened from inside a menu, its item gone with the menu: Escape puts focus on the menu's button
             back403 = []
             for key in ("/", "Control+k"):
@@ -22826,7 +22977,7 @@ def main():
             # ---- Labs' Latest (#993, latest.js): Labs' fourth view, at #labs-latest. A row for each lab with a result in the
             # period, its latest as its chart's table gives it (latest993: value and unit, flag, range and day), a line
             # saying how many have none in it; a list of links, each named by its lab and its latest. Activating a row (a
-            # click, Enter, a tap) charts the lab, focus on its chart, the address #labs; Back returns to Latest, focus on
+            # click, Enter, a tap) charts the lab, focus on its chart, the address #labs-chart; Back returns to Latest, focus on
             # the row. axe-core at 1400, 375 and 320 px, light and dark; a phone's width; with text at 200% at 360 and 412
             # px every word inside its row and the view switch whole; in forced colours each row's words and focus ring drawn
             # (here, after the ranges matrix's checks, which move the page between profiles too: Latest's do, and the checks
@@ -22889,8 +23040,8 @@ def main():
                   "and its latest, marks as words",
                   view993 == ["#labs-latest", "latest", [True, True, True, False], view993[4], view993[4], True] and view993[4] > 0 and not bad993 and not names993
                   and (f"{out993[1]} more" in out993[0] if out993[1] else "more" not in out993[0]), [view993, bad993, out993, names993])
-            check("…a row activated by a click, Enter or a tap charts its lab, focus on its chart, the address #labs; Back returns to Latest, focus on the row",
-                  len(back993) == 3 and all(g[0][:3] == ["#labs", "chart", lab] and g[1] == ["#labs-latest", row] for g, lab, row in back993.values())
+            check("…a row activated by a click, Enter or a tap charts its lab, focus on its chart, the address #labs-chart; Back returns to Latest, focus on the row",
+                  len(back993) == 3 and all(g[0][:3] == ["#labs-chart", "chart", lab] and g[1] == ["#labs-latest", row] for g, lab, row in back993.values())
                   and all(js("n => `${nice(n)} charted on Labs.`", lab) in g[0][3] for how, (g, lab, row) in back993.items() if how != "tap"), back993)
             seen993, theme993 = [], js("document.documentElement.dataset.theme || null")
             for mode in ("light", "dark"):
@@ -23171,11 +23322,11 @@ def main():
             check("Labs opens on Latest on a phone (#997): in a browser that's shown nothing yet, Labs' address (another page's tab bar) opens Latest at "
                   "360 and 412 px and Chart at 900 and 1400 px; the phone's tab bar's Labs opens Latest, marked as the tab shown, focus and the scroll as "
                   "Body's tab leaves them", opens997 == {360: ["labs", "latest", "#labs-latest", True], 412: ["labs", "latest", "#labs-latest", True],
-                                                         900: ["labs", "chart", "#labs", True], 1400: ["labs", "chart", "#labs", True]}
+                                                         900: ["labs", "chart", "#labs-chart", True], 1400: ["labs", "chart", "#labs-chart", True]}
                   and bar997["labs"][:3] == ["labs", "latest", "page"] and bar997["health"][2] == "page"
                   and [bar997["labs"][3], bar997["labs"][4]] == [bar997["health"][3].replace("health", "labs"), bar997["health"][4]], [opens997, bar997])
             check("…a view picked is where it opens from then on, on a reload and from another page's tab bar (Heatmap, Latest, Chart), for that profile "
-                  "only: another opens on Latest still", picked997 == {v: [["labs", v, {"chart": "#labs"}.get(v, "#labs-" + v), True]] * 2 for v in ("heatmap", "latest", "chart")}
+                  "only: another opens on Latest still", picked997 == {v: [["labs", v, "#labs-" + v, True]] * 2 for v in ("heatmap", "latest", "chart")}
                   and other997 == ["labs", "latest", "#labs-latest", True], [picked997, other997])
             js("p => { labsPicked = p; save(); applyPreset('all'); switchTab('labs', 'chart'); }", pick997)   # (as the checks before these left it)
             settle(300)
