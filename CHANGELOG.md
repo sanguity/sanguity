@@ -3731,6 +3731,10 @@ Everything on `main` so far; it becomes the first tagged release.
   weekly, off until an admin turns it on. A failed or cut-short download keeps the earlier list in use and says
   why. Find your provider gives an admin **Add them now**; the command line stays for servers that can't reach
   those hosts.
+- **Key/value lists' labels no longer run over their values with larger text** (#1047): their label column was a fixed
+  110 px (92 on phones), so at 200% text "Configuration", "Return address" or "Schedule" printed over the value beside
+  it on General, Connected-source apps, Backups and records' drawers. The column now grows to its longest word, the
+  value breaks long addresses, and where both don't fit the label sits above its value; as usual, nothing moves.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
