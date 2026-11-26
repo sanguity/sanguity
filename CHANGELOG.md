@@ -3742,6 +3742,10 @@ Everything on `main` so far; it becomes the first tagged release.
 - **The provider directory's weekly update is off while saved settings are left out** (#1043): with
   `SANGUITY_SAVED_SETTINGS=off` it read its saved switch all the same and went on contacting open.epic.com and
   raw.githubusercontent.com; it now reads the switch as every other setting is read, so recovery mode means off.
+- **A record start-up can't key no longer stops the app starting** (#1044): #1032's re-keying of records saved
+  before #1022 ran at every start-up with no guard, so one record it couldn't read stopped the app, every time. It
+  goes record by record now: one it can't key is left as it was and named in the app's log and the install log, the
+  rest are keyed, and it's tried again at the next start-up until none is left.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

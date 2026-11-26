@@ -173,39 +173,63 @@ def rekey_stamped(db):
     it), plainly ("fhir:<type>/<id>") where that's its import's one server, "fhir:<source>|<type>/<id>" where its import
     mixes servers; its "ver" says that source where it says none. Events (their key_hash, and a lab event's rows'
     "keys"), the profile-wide lists' entries, and the corrections and Costs marks that find them by key, what a lab
-    event's correction holds among them. -> how many records were keyed again"""
-    from . import db as dbm, preview
+    event's correction holds among them. -> how many records were keyed again
+
+    Record by record (#1044): one it can't read or key (an event, a list's entry, an import's lists, a correction or
+    Costs mark) is left as it is, named in the app's log and the install log, and the rest are keyed; the mark is
+    cleared only once none was left, so each start-up tries those again, and the app starts whatever they hold."""
+    from . import activity, db as dbm, preview
     if not dbm.meta_get(db, STAMPED_KEYS):
         return 0
-    secret, n = _key_secret(db), 0
+    secret, n, left = _key_secret(db), 0, []
     with dbm.transaction(db):
         moved = collections.defaultdict(dict)   # profile id -> {old key: new key}
         for imp in db.execute("""SELECT i.id, i.profile_id, i.meta, c.fhir_base FROM imports i
                                  LEFT JOIN connections c ON c.id = i.connection_id ORDER BY i.id""").fetchall():
-            evs = db.execute("SELECT id, body, detail FROM events WHERE import_id=?", (imp["id"],)).fetchall()
-            evs = [(r["id"], _dec(r["body"]) or {}, _dec(r["detail"])) for r in evs]
-            meta = _dec(imp["meta"]) or {}
-            lists = preview._meta_lists(meta)
-            keys = [b.get("key") for _, b, _ in evs] + [k for _, _, d in evs if isinstance(d, dict) for k in d.get("keys") or []] + \
-                [x.get("key") for items in lists.values() for x in items if isinstance(x, dict)]
-            keys = [k for k in keys if isinstance(k, str)]
+            evs = []
+            for r in db.execute("SELECT id, body, detail FROM events WHERE import_id=?", (imp["id"],)).fetchall():
+                try:
+                    b, d = _dec(r["body"]) or {}, _dec(r["detail"])
+                    if not isinstance(b, dict):
+                        raise ValueError("not a record")
+                    evs.append((r["id"], b, d))
+                except Exception:
+                    left.append(f"event {r['id']}")
+            try:
+                meta = _dec(imp["meta"]) or {}
+                lists = preview._meta_lists(meta)
+                keys = [b.get("key") for _, b, _ in evs] + [k for _, _, d in evs if isinstance(d, dict) for k in d.get("keys") or []] + \
+                    [x.get("key") for items in lists.values() for x in items if isinstance(x, dict)]
+                keys = [k for k in keys if isinstance(k, str)]
+            except Exception:
+                left.append(f"import {imp['id']}")
+                continue
 
             def source(k):
                 m = _STAMPED.match(k)
                 return (common.stable_source(m.group(1)) or imp["fhir_base"] or "").strip() if m else None
-            if not any(source(k) is not None for k in keys):
+            try:
+                if not any(source(k) is not None for k in keys):
+                    continue
+                servers = {preview._server(source(k)) for k in keys if _STAMPED.match(k)} | \
+                    {preview._server(m.group(1)) for k in keys if (m := _NAMED.match(k))}
+            except Exception:
+                left.append(f"import {imp['id']}")
                 continue
-            servers = {preview._server(source(k)) for k in keys if _STAMPED.match(k)} | \
-                {preview._server(m.group(1)) for k in keys if (m := _NAMED.match(k))}
-            mixed = len(servers - {""}) > 1
+            mixed, got = len(servers - {""}) > 1, {}   # got: this record's keys moved, kept once it's saved
 
             def new(k):
                 if not (isinstance(k, str) and (m := _STAMPED.match(k))):
                     return k
                 s = source(k)
                 to = f"fhir:{s}|{m.group(2)}" if mixed and s else f"fhir:{m.group(2)}"
-                moved[imp["profile_id"]].setdefault(k, to)
+                got.setdefault(k, to)
                 return to
+
+            def keep():
+                for k, to in got.items():
+                    moved[imp["profile_id"]].setdefault(k, to)
+                got.clear()
 
             def said(x, k):   # its "ver" says its source, where it says none
                 s = source(k) if isinstance(k, str) else None
@@ -213,45 +237,69 @@ def rekey_stamped(db):
                 if s and not common.stable_source(v.get("server")):
                     x["ver"] = {**v, "server": s}
             for eid, b, d in evs:
-                first = next((k for k in [b.get("key"), *(d.get("keys") or [] if isinstance(d, dict) else [])]
-                              if isinstance(k, str) and _STAMPED.match(k)), None)
-                if first is None:
+                got.clear()
+                try:
+                    first = next((k for k in [b.get("key"), *(d.get("keys") or [] if isinstance(d, dict) else [])]
+                                  if isinstance(k, str) and _STAMPED.match(k)), None)
+                    if first is None:
+                        continue
+                    if b.get("k") != "lab":
+                        said(b, first)
+                    b["key"] = new(b.get("key"))
+                    if isinstance(d, dict) and isinstance(d.get("keys"), list):
+                        d["keys"] = [new(k) for k in d["keys"]]
+                    db.execute("UPDATE events SET body=?, detail=?, key_hash=? WHERE id=?",
+                               (_enc(b), None if d is None else _enc(d), _hash(secret, b.get("key")), eid))
+                except Exception:
+                    left.append(f"event {eid}")
                     continue
-                if b.get("k") != "lab":
-                    said(b, first)
-                was = b.get("key")
-                b["key"] = new(was)
-                if isinstance(d, dict) and isinstance(d.get("keys"), list):
-                    d["keys"] = [new(k) for k in d["keys"]]
-                db.execute("UPDATE events SET body=?, detail=?, key_hash=? WHERE id=?",
-                           (_enc(b), None if d is None else _enc(d), _hash(secret, b.get("key")), eid))
+                keep()
                 n += 1
             changed = False
             for items in lists.values():
                 for x in items:
                     if isinstance(x, dict) and isinstance(x.get("key"), str) and _STAMPED.match(x["key"]):
-                        said(x, x["key"])
-                        x["key"] = new(x["key"])
+                        got.clear()
+                        try:
+                            y = dict(x)
+                            said(y, y["key"])
+                            y["key"] = new(y["key"])
+                        except Exception:
+                            left.append(f"an entry of import {imp['id']}'s lists")
+                            continue
+                        x.update(y)
+                        keep()
                         changed, n = True, n + 1
             if changed:
                 db.execute("UPDATE imports SET meta=? WHERE id=?", (_enc(meta), imp["id"]))
         for pid, to in moved.items():
             for r in db.execute("SELECT id, target_key, other_key, value FROM edits WHERE profile_id=?", (pid,)).fetchall():
-                tk, ok = crypto.dec(r["target_key"]), crypto.dec(r["other_key"]) if r["other_key"] else None
-                v = _dec(r["value"]) if r["value"] is not None else None
-                held = {f: [to.get(h, h) for h in v[f]] for f in ("holds", "other_holds")
-                        if isinstance(v, dict) and isinstance(v.get(f), list) and any(h in to for h in v[f])}
-                if tk in to or ok in to or held:
-                    tk, ok = to.get(tk, tk), to.get(ok, ok) if ok else None
-                    db.execute("UPDATE edits SET target=?, target_key=?, other=?, other_key=?, value=? WHERE id=?",
-                               (edits.target_hash(tk), crypto.enc(tk), None if ok is None else edits.target_hash(ok),
-                                None if ok is None else crypto.enc(ok), _enc({**v, **held}) if held else r["value"], r["id"]))
+                try:
+                    tk, ok = crypto.dec(r["target_key"]), crypto.dec(r["other_key"]) if r["other_key"] else None
+                    v = _dec(r["value"]) if r["value"] is not None else None
+                    held = {f: [to.get(h, h) for h in v[f]] for f in ("holds", "other_holds")
+                            if isinstance(v, dict) and isinstance(v.get(f), list) and any(h in to for h in v[f])}
+                    if tk in to or ok in to or held:
+                        tk, ok = to.get(tk, tk), to.get(ok, ok) if ok else None
+                        db.execute("UPDATE edits SET target=?, target_key=?, other=?, other_key=?, value=? WHERE id=?",
+                                   (edits.target_hash(tk), crypto.enc(tk), None if ok is None else edits.target_hash(ok),
+                                    None if ok is None else crypto.enc(ok), _enc({**v, **held}) if held else r["value"], r["id"]))
+                except Exception:
+                    left.append(f"correction {r['id']}")
             for r in db.execute("SELECT id, target_key FROM cost_marks WHERE profile_id=?", (pid,)).fetchall():
-                if (tk := crypto.dec(r["target_key"])) in to:
-                    db.execute("UPDATE OR IGNORE cost_marks SET target=?, target_key=? WHERE id=?",
-                               (oop.target_hash(to[tk]), crypto.enc(to[tk]), r["id"]))
+                try:
+                    if (tk := crypto.dec(r["target_key"])) in to:
+                        db.execute("UPDATE OR IGNORE cost_marks SET target=?, target_key=? WHERE id=?",
+                                   (oop.target_hash(to[tk]), crypto.enc(to[tk]), r["id"]))
+                except Exception:
+                    left.append(f"Costs mark {r['id']}")
             _bump(db, pid)
-        dbm.meta_set(db, STAMPED_KEYS, None)
+        if left:   # tried again at the next start-up
+            print(f"Couldn't key {len(left)} record(s) saved before #1022 as they are now, so they were left as they were "
+                  f"(tried again at the next start-up): {', '.join(left)}.", flush=True)
+            activity.log(db, "records.rekey", detail={"left": left}, actor=activity.START_UP)
+        else:
+            dbm.meta_set(db, STAMPED_KEYS, None)
     return n
 
 

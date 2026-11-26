@@ -782,6 +782,38 @@ class Connections(unittest.TestCase):
         finally:
             db.close()
 
+    def test_a_stamped_record_that_cant_be_keyed_is_left_and_the_app_starts(self):   # #1044
+        """One stamped record start-up can't key (its details unreadable) is left as it was and named in the app's log and
+        the install log; the others are keyed, and the work stays marked, tried again at the next start-up. Nothing is
+        raised, so the app starts (main.py's start-up had stopped there, every time); once none is left, it's done."""
+        from contextlib import redirect_stdout
+        ev = lambda key: {"id": key, "t": "2025-03-04T09:00:00", "k": "visit", "title": "Visit", "key": key}
+        db = dbm.connect()
+        try:
+            with dbm.transaction(db):
+                one = records.store(db, self.pid, {"events": [ev(f"fhir:http://a.example/fhir#x{i}|Encounter/{i}") for i in (1, 2, 3)]}, "upload")
+            bad, before = db.execute("SELECT id, body FROM events WHERE import_id=? ORDER BY id LIMIT 1", (one,)).fetchone()
+            db.execute("UPDATE events SET detail='not what the app encrypts' WHERE id=?", (bad,))
+            dbm.meta_set(db, records.STAMPED_KEYS, "1")
+            with redirect_stdout(io.StringIO()) as out:
+                self.assertEqual(records.rekey_stamped(db), 2)
+            self.assertIn(f"left as they were (tried again at the next start-up): event {bad}.", out.getvalue())
+            got = {r["id"]: (r["body"], records._dec(r["body"])["key"] if r["id"] != bad else None)
+                   for r in db.execute("SELECT id, body FROM events WHERE import_id=?", (one,))}
+            self.assertEqual(got.pop(bad)[0], before, "left as it was")
+            self.assertEqual(sorted(k for _, k in got.values()), ["fhir:Encounter/2", "fhir:Encounter/3"])
+            self.assertTrue(dbm.meta_get(db, records.STAMPED_KEYS), "still marked: tried again")
+            r = db.execute("SELECT actor, detail FROM activity WHERE action='records.rekey' ORDER BY id DESC").fetchone()
+            self.assertEqual((r["actor"], json.loads(crypto.dec(r["detail"]))), ("start-up", {"left": [f"event {bad}"]}))
+            db.execute("DELETE FROM events WHERE id=?", (bad,))   # once nothing is left: done
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(records.rekey_stamped(db), 0)
+            self.assertIsNone(dbm.meta_get(db, records.STAMPED_KEYS))
+        finally:
+            db.execute("DELETE FROM events WHERE import_id=?", (one,))
+            dbm.meta_set(db, records.STAMPED_KEYS, None)
+            db.close()
+
     def test_a_result_sent_again_is_updated_in_place(self):   # #869
         """A result the source amends comes back at the next pull: the same result, updated in place, range and flag,
         never a copy. The report's Hemoglobin 12.1 (13.5–17.5, Low) amended to 12.0–15.5 and Normal, its Platelet Count
