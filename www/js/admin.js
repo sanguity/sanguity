@@ -62,7 +62,7 @@ function syncNotice(rows) {
 function adminGate() {
   $("#adminTf").hidden = false; $("#adminTools").hidden = $("#userDanger").hidden = true; $("#users").hidden = false;
   $("#secNotice").hidden = $("#codeNotice").hidden = $("#syncNotice").hidden = $("#backupNotice").hidden = true;
-  for (const id of ["#general", "#gen-host", "#gen-security", "#gen-backups", "#gen-phone", "#gen-about", "#backups", "#admin", "#sec-sync", "#directory", "#labmaps", "#installLog"]) gateCard($(id));
+  for (const id of ["#gen-host", "#gen-security", "#gen-backups", "#gen-phone", "#gen-about", "#backups", "#admin", "#sec-sync", "#directory", "#labmaps", "#installLog"]) gateCard($(id));
 }
 function gateCard(card) {
   if (card.querySelector(".adm-gate")) return;
