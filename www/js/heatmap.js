@@ -110,7 +110,7 @@ function renderHeatmap(live) {   // live: a frame of a drag (charts.js), at the 
   for (const e of EV) if (e.k === "procedure" && e.ts >= state.from - DAY && e.ts <= state.to + DAY) { const d = isoDay(e.ts); (procDays.get(d) || procDays.set(d, []).get(d)).push(e); }
   cols.forEach(([d, ts], c) => {
     const cx = colX(c);
-    if (STAYS.some(st => ts >= st.ts - DAY / 2 && ts <= st.te + DAY / 2)) g.push(el("svg:rect", {x: cx, y: 8 * k, width: cw, height: 6 * k, fill: "var(--muted)", "fill-opacity": .5}));
+    if (STAYS.some(st => ts >= st.ts - DAY / 2 && ts <= st.te + DAY / 2)) g.push(el("svg:rect", {x: cx, y: 8 * k, width: cw, height: 6 * k, fill: MUTED, "fill-opacity": .5}));
     const procs = procDays.get(d) || [];
     if (procs.length) g.push(shapeMark(KIND_SHAPE.procedure, cx + cw / 2, 24 * k, 3.4 * k, {class: "hm-proc", "data-proc": procs.map(e => e.title).join("; "), "data-day": ts}));   // its kind's shape (#301)
   });

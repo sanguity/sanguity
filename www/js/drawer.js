@@ -194,7 +194,7 @@ const saidKey = v => String(v).trim().toLowerCase();
 function drawerHead(k, title, line, tone, days = []) {
   const key = $("#dkey");
   key.replaceChildren(icon(KIND_ICON[k] || (k ? "file-text" : "history")));   // none: the list of edits
-  key.style.setProperty("--tone", tone || CAT_OF[k]?.color || "var(--muted)");
+  key.style.setProperty("--tone", tone || CAT_OF[k]?.color || MUTED);
   $("#dtitle").textContent = title; $("#dsub").textContent = line;
   drawerSaid = new Set([title, ...title.split(" · "), ...line.split(" · ").flatMap(x => x.split(" – ")), ...days.filter(isFinite).map(fmtD)].filter(Boolean).map(saidKey));
   drawerKeys = [];
