@@ -222,14 +222,18 @@ function sideNav(o) {
     save.onclick = async () => {
       const ps = dirtyIn(shown);
       if (!ps.length || busy) return;
-      const had = box.contains(document.activeElement);   // (before Save is disabled, which takes focus away)
+      // the save's own focus, the bar's or a part's (#1077: Enter in a field saves by Save's click(), #991; a fresh check
+      // asked on the way, its box gone, left focus on the page). Taken before Save is disabled, which takes it away
+      const from = document.activeElement, mine = ps.find(p => p.contains(from)), had = box.contains(from) || !!mine;
       busy = true; draw(); sayIn(msg, "Saving…");
       try { await o.bar.save(ps, msg, had); }
       catch (e) { sayIn(msg, e.message, true); }
       finally {
         busy = false; if (msg.textContent === "Saving…") sayIn(msg, ""); draw();
-        // not all saved: focus back on Save, to put it right and save again (all saved: the page put it on a heading)
-        if (had && !box.hidden && (!document.activeElement || document.activeElement === document.body)) save.focus({preventScroll: true});
+        // not all saved: focus back where it was, the field or Save, to put it right and save again (all saved: the
+        // page put it on a heading); the field drawn again, on its part's heading
+        if (had && (!document.activeElement || document.activeElement === document.body))
+          (mine ? (from.isConnected ? from : mine.querySelector("h2, h3")) : !box.hidden && save)?.focus({preventScroll: true});
       }
     };
     drop.onclick = () => { const ps = dirtyIn(shown); sayIn(msg, ""); if (ps.length) o.bar.discard(ps); };
@@ -260,6 +264,9 @@ function sideNav(o) {
     main.classList.add("with-nav");
     ($("#intro") || nav).after(none);
     $("#groupTitle")?.after(lone);
+    // a card's title hidden as the group's only one (alone, above) passes focus given it to the h1 that says it (#1077:
+    // a save, or a reset, put it on a 1 px heading, with no ring to see)
+    main.addEventListener("focusin", ev => { if (ev.target.matches("h2.vh") && $("#groupTitle")) { const h = $("#groupTitle"); h.tabIndex = -1; h.focus({preventScroll: true}); } });
     search.addEventListener("input", apply);
     aboutWire.after = refresh;   // a card's ⓘ made once it's drawn (util.js): moved beside the h1 if the card's alone
     addEventListener("hashchange", () => { const r = fromHash(); if (r.g) show(r.g, {scrollTo: r.el, push: !r.el, by: true}); });

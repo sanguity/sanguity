@@ -3771,6 +3771,10 @@ Everything on `main` so far; it becomes the first tagged release.
   sidebar's group does; Settings' current group has an edge in forced colours, not its weight alone; the headings
   over a row's buttons (Sharing, the visit summary, Sign-in and security, Accounts and others) are named for screen
   readers; and Sharing's "Loading…" leaves the status line once it has loaded.
+- **Focus after a save stays where you can see it** (#1077): Enter in General → Security's or Backups and logging's
+  fields, through Confirm it's you, left focus on the page; it goes back to the field (cancelled) or the card's
+  heading (saved). In a group of one section (Milestones, Workouts…) a save put focus on its hidden heading; it's
+  on the group's heading now.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
