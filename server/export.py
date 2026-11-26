@@ -719,6 +719,11 @@ def _import_archive(db, pid, archive, new):
                     crypto.write_file(target + ".gz", ecg.pack(wave))
                 continue
             crypto.write_file(target, zf.read(i))   # kept encrypted in the profile's folder
+        for sid, entries in sorted(sent.items()):   # (#1056) every upload fits here, before any record is replaced
+            try:
+                uploads.fits([(rel, i.file_size) for rel, i in entries])
+            except uploads.UploadError as e:
+                raise ValueError(f"upload {sid} in the zip can't be kept on this server ({e}): nothing was imported") from None
         photos = {i.filename: i for i in files if i.filename.startswith("journal/photos/")}
 
         def then(db, data, folder):   # what people wrote and decided, with the records (#589); the phone's summary
@@ -729,7 +734,8 @@ def _import_archive(db, pid, archive, new):
                            (watch, pid, os.path.join(prof.profile_dir(pid), "%")))
         with photo_files(pid) as written:
             n = prof.import_dataset(db, pid, new, then=then, unpacked=True)
-        for _, entries in sorted(sent.items()):
+        kept = 0
+        for sid, entries in sorted(sent.items()):
             upload_id = uploads.create(db, pid, None, put_back=True)   # kept though no job reads it (#944)
             try:
                 for rel, i in entries:
@@ -738,7 +744,19 @@ def _import_archive(db, pid, archive, new):
                 uploads.finish(db, pid, upload_id, unzip=False)   # unpacked already: zips left in it stay zips
                 cycle_tracking.strip_uploads(db, pid, upload_id, on=cycle_tracking.is_on(db, pid))   # (#555)
                 strip_uploads(db, pid, upload_id)   # an export uploaded there once keeps only what this profile imports (#918)
-            except uploads.UploadError as e:
-                uploads.discard(db, pid, upload_id)
-                raise ValueError(f"an upload in the zip can't be kept: {e}") from None
+            except Exception as e:   # (#1056) the records are replaced by now: said so, and not undone
+                with contextlib.suppress(Exception):
+                    uploads.discard(db, pid, upload_id)
+                why = str(e) if isinstance(e, uploads.UploadError) else type(e).__name__
+                raise PartlyImported(f"its records were imported ({n} documents), and {kept} of its {len(sent)} uploads, "
+                                     f"but upload {sid} can't be kept: {why}", n) from None
+            kept += 1
     return n
+
+
+class PartlyImported(ValueError):
+    """(#1056) An export's records were imported, then one of its uploads couldn't be kept: the profile holds the
+    records now (documents: how many), the uploads before it, not that one or those after it."""
+    def __init__(self, message, documents):
+        super().__init__(message)
+        self.documents = documents

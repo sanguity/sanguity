@@ -508,6 +508,44 @@ class Uploads(unittest.TestCase):
         self.assertFalse(os.path.exists(uploads.folder(self.pid, left)))
         self.assertTrue(os.path.isdir(uploads.folder(moved, put_back)))
 
+    def test_an_import_whose_upload_cant_be_kept(self):   # #1056
+        """server.manage import with an upload this server can't keep: the records were replaced first, the error read
+        as if nothing had changed, and linked_build was set back, so the next rebuild overwrote them. Now an upload
+        past the limits is refused before anything is replaced (the profile as it was, still the setup build's); one
+        failing after (here, the disk) leaves the records imported and linked_build 0, and says so."""
+        from server import manage
+        db = self.db
+        pid = prof.create_profile(db, "Setup build (fictional)", owner_id=self.uid["edna"])
+        db.execute("UPDATE profiles SET linked_build=1 WHERE id=?", (pid,))
+        src = os.path.join(TMP, "export-1056.zip")
+        with zipfile.ZipFile(src, "w") as z:
+            z.writestr("data.json", json.dumps({"events": [{"id": 1, "t": "2026-02-05T09:00:00", "k": "visit", "title": "Visit (fictional)"}],
+                                                "details": {}, "labs": [], "costs": []}))
+            z.writestr("uploads/4/portal/labs.csv", LAB_CSV)
+            z.writestr("uploads/5/portal/scan.csv", LAB_CSV * 40)
+        state = lambda: (db.execute("SELECT linked_build FROM profiles WHERE id=?", (pid,)).fetchone()[0],   # noqa: E731
+                         db.execute("SELECT COUNT(*) FROM events WHERE profile_id=?", (pid,)).fetchone()[0],
+                         db.execute("SELECT COUNT(*) FROM uploads WHERE profile_id=? AND state='ready'", (pid,)).fetchone()[0])
+        self.assertEqual(state(), (1, 0, 0))
+        with mock.patch.object(uploads, "max_file", lambda: len(LAB_CSV) * 10), self.assertRaises(SystemExit) as cm:
+            manage.run(["import", str(pid), src])
+        self.assertIn("upload 5 in the zip can't be kept on this server (A file can be at most", str(cm.exception.code))
+        self.assertIn("nothing was imported. Nothing was changed.", str(cm.exception.code))
+        self.assertEqual(state(), (1, 0, 0), "as it was, still the setup build's")
+        real = uploads.add_file
+
+        def full(db_, pid_, upload_id, rel, stream):   # the disk fills while the second upload is written
+            if rel == "portal/scan.csv":
+                raise OSError(28, "No space left on device")
+            return real(db_, pid_, upload_id, rel, stream)
+        with mock.patch.object(uploads, "add_file", full), self.assertRaises(SystemExit) as cm:
+            manage.run(["import", str(pid), src])
+        said = str(cm.exception.code)
+        self.assertIn("only in part: its records were imported (0 documents), and 1 of its 2 uploads, but upload 5 can't be "
+                      "kept: OSError, nor those after it. The profile holds the zip's records now", said)
+        self.assertEqual(state(), (0, 1, 1), "the records imported, linked_build 0")
+        self.assertIsNotNone(db.execute("SELECT 1 FROM activity WHERE action='import' AND profile_id=?", (pid,)).fetchone(), "logged")
+
     @staticmethod
     def login_as(name, pw):
         c = TestClient(main.app)

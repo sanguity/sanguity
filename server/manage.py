@@ -330,8 +330,14 @@ def _command(db, argv):
         db.execute("UPDATE profiles SET linked_build=0 WHERE id=?", (pid,))   # it now holds its own data...
         try:
             n = (export.import_archive if os.path.isfile(args[1]) else prof.import_dataset)(db, pid, args[1])
-        except BaseException:   # ...unless the import failed: then it stays as it was
+        except export.PartlyImported as e:   # (#1056) its records replaced the profile's: it holds its own data now
+            activity.log(db, "import", profile_id=pid, detail={"documents": e.documents}, actor=activity.COMMAND_LINE)
+            sys.exit(f"Imported {args[1]} into profile {pid} only in part: {e}, nor those after it. The profile holds "
+                     "the zip's records now (it's no longer the setup build's).")
+        except BaseException as e:   # ...unless the import failed: then it stays as it was
             db.execute("UPDATE profiles SET linked_build=? WHERE id=?", (linked, pid))
+            if isinstance(e, (ValueError, zipfile.BadZipFile)):
+                sys.exit(f"Couldn't import {args[1]}: {e}. Nothing was changed.")
             raise
         activity.log(db, "import", profile_id=pid, detail={"documents": n}, actor=activity.COMMAND_LINE)
         print(f"Imported {args[1]} into profile {pid} ({n} documents).")
