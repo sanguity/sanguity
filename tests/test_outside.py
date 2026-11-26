@@ -374,6 +374,33 @@ class View(unittest.TestCase):
             db.close()
         self.assertEqual(netguard.take(), [])
 
+    def test_weekly_directory_update_contacts_nobody_with_saved_settings_off(self):   # #1043
+        """The weekly update saved on, and due (never read): with SANGUITY_SAVED_SETTINGS=off it's off, as every saved
+        setting is then, and the app's thread contacts nobody."""
+        from server import settings
+        from server.directory import update
+        from tests.directory_host import DirectoryHost
+        host = DirectoryHost().start()
+        self.addCleanup(host.stop)
+        host.use()
+        db = dbm.connect()
+        try:
+            for k in ("directory.last", "directory.read_at"):
+                dbm.meta_set(db, k, None)
+            settings.put(db, "directory.weekly", True)
+            self.assertLessEqual(update.due_at(db), time.time(), "on and due")
+            with mock.patch.dict(os.environ, {"SANGUITY_SAVED_SETTINGS": "off"}):
+                self.assertIsNone(update.due_at(db))
+                update.wake()   # the app's thread looks at the weekly update
+                time.sleep(0.3)
+                self.assertEqual(host.hits, [], "nobody contacted")
+                self.assertFalse(self.robin.get("/api/provider-directory").json()["weekly"])
+                settings.put(db, "directory.weekly", False)
+        finally:
+            settings.put(db, "directory.weekly", False)
+            db.close()
+        self.assertEqual(netguard.take(), [])
+
     # ---------------------------------------------------------------- the page
 
     def test_settings_install_has_the_section_without_inline_script(self):

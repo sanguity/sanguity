@@ -327,6 +327,7 @@ class FromThePage(unittest.TestCase):
         for k in ("directory.last", "directory.read_at"):
             dbm.meta_set(db, k, None)
         db.execute("DELETE FROM settings WHERE key='directory.weekly'")
+        settings.forget_saved()
         db.execute("DELETE FROM outside_contacts WHERE purpose=?", (outside.DIRECTORY,))
         db.close()
         update.wake()   # the app's thread looks at the weekly update (off): it contacts no one
