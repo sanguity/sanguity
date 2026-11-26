@@ -556,7 +556,7 @@ dialog.sheet[open]{display:flex;flex-direction:column;padding-bottom:env(safe-ar
 .dates{display:flex;gap:var(--sp-2);align-items:center;color:var(--muted);font-size:var(--fs-3)}
 .search{min-width:200px}
 main{padding:var(--sp-4) var(--sp-5) var(--sp-7);max-width:1500px;margin:0 auto}
-footer.notice{max-width:1500px;margin:0 auto;padding:var(--sp-3) var(--sp-5) var(--sp-5);border-top:1px solid var(--grid);color:var(--ink2);font-size:var(--fs-2);box-sizing:border-box}
+div.notice{max-width:1500px;margin:0 auto;padding:var(--sp-3) var(--sp-5) var(--sp-5);border-top:1px solid var(--grid);color:var(--ink2);font-size:var(--fs-2);box-sizing:border-box}
 .range-note{color:var(--ink2);font-size:var(--fs-2);margin:var(--sp-2) 0 var(--sp-2)}
 .tiles + .range-note{margin:-8px 0 var(--sp-4)}
 .card h2,.card>h1{font-size:var(--fs-4);margin:0 0 2px;font-weight:var(--fw-semibold)}

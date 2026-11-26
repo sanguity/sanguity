@@ -3796,6 +3796,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Sign-out leaves no result's value in Latest's New marks** (#1070): what Latest has shown was kept in this
   browser as each result's import, time and value, and stayed after sign-out; it's kept by its place now (its
   import and which of that import's results it is), which says nothing of the result.
+- **The records page's landmarks** (#1061): the not-medical-advice notice and the page's foot were two footer
+  landmarks, now one; the period filters are a landmark of their own, "Period shown", and so is the line saying a
+  connected source stopped syncing, when it shows.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

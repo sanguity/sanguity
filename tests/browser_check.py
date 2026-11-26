@@ -1331,6 +1331,10 @@ OUTLINE_JS = r"""() => {
   return {outline: o.map(([l, t]) => `h${l} ${t}`), h1: o.filter(h => h[0] === 1).length,
     skipped: o.filter((h, i) => h[0] > (i ? o[i - 1][0] : 0) + 1).map(([l, t]) => `h${l} ${t}`)};
 }"""
+# axe-core's landmark rules (#1061, best practice, not WCAG's tags): every landmark rule axe has and region (all that's
+# shown in a landmark); the records page had two contentinfo landmarks and its filters outside any
+AXE_LANDMARKS = """() => axe.run(document, {runOnly: {type: 'rule', values: axe.getRules().map(r => r.ruleId).filter(id => id === 'region' || id.startsWith('landmark-'))}})
+  .then(r => r.violations.map(v => v.id + ' at ' + v.nodes.slice(0, 3).map(n => n.target.join(' ')).join(', ')))"""
 AXE_HEADINGS = """() => axe.run(document, {runOnly: {type: 'rule', values: ['heading-order', 'page-has-heading-one', 'empty-heading']}})
   .then(r => r.violations.map(v => v.id + ' at ' + v.nodes.slice(0, 3).map(n => n.target.join(' ')).join(', ')))"""
 
@@ -26706,6 +26710,7 @@ def main():
             t_axe, axe_bad, axe_other, axe_seen = time.time(), [], [], []
             ua_links, links_seen = [], [0]
             outlines, outline_bad = [], []   # #331: each page's heading outline (in light: it's the same in dark)
+            marks_bad = []   # #1061: axe's landmark rules on each of those pages (in light), and the records tabs at 360 px too
             sizes_bad, sizes_seen = [], [0]   # #258: buttons whose height isn't one of the sizes
             titles_bad = []   # #371: titles on controls that say what's on no screen
             # Chromium's own link colour, light and dark (a visited link's purple reads as this to scripts too)
@@ -26720,6 +26725,7 @@ def main():
                 if outline and label.startswith("light "):
                     o, ob = heading_outline(pg, label[6:])
                     outlines.append(o); outline_bad.extend(ob)
+                    marks_bad.extend(f"{label[6:]}: {v}" for v in pg.evaluate(AXE_LANDMARKS))
                 n, blue = pg.evaluate(UA_LINKS)
                 links_seen[0] += n
                 if label.startswith("light "):
@@ -26736,6 +26742,16 @@ def main():
                     open_tab(t)
                     settle(300)
                     axe_at(page, f"{theme} {t}", outline=True)
+                    if theme == "light":   # (#1061) and at 360 px, with the line a source that stopped syncing shows (app.js syncWarning) shown
+                        page.set_viewport_size({"width": 360, "height": 800})
+                        warn1061 = js("(b => { const was = [b.hidden, b.textContent]; b.hidden = false; b.textContent ||= 'Records from a source may be out of date (browser check).'; return was; })(document.getElementById('syncWarn'))")
+                        settle(200)
+                        marks_bad.extend(f"{t} at 360 px: {v}" for v in js(AXE_LANDMARKS))
+                        if not js("!!document.getElementById('syncWarn').closest('main, header, footer, nav, aside, [role=region][aria-label], [role=complementary], [role=contentinfo]')"):
+                            marks_bad.append(f"{t} at 360 px: the sync warning in no landmark (axe passes a live region)")
+                        js("([h, t]) => { const b = document.getElementById('syncWarn'); b.hidden = h; b.textContent = t; }", warn1061)
+                        page.set_viewport_size({"width": 1400, "height": 900})
+                        settle(200)
                     if t == "heatmap" or (t == "labs" and js("document.querySelectorAll('#charts .chart .view-seg').length")):   # as its table (#60)
                         seg = "#hmHd .view-seg button" if t == "heatmap" else "#charts .chart .view-seg button"
                         page.click(f"{seg} >> nth=1")
@@ -26805,6 +26821,8 @@ def main():
             check(f"…and on each of the {len(outlines)} pages, exactly one h1 (the page's, not the brand), no heading level skipped and "
                   "axe-core's heading rules passing; each page's outline (#331)", len(outlines) >= 35 and not outline_bad,
                   outline_bad[:10] or " | ".join(outlines))
+            check(f"…and on the same {len(outlines)}, axe-core's landmark rules passing, the records tabs at 360 px too (a source's sync warning shown): one contentinfo, all shown in a landmark (#1061)",
+                  len(outlines) >= 35 and not marks_bad, marks_bad[:10])
             check(f"…and on the {sizes_seen[0]} in light, at 1400 px, every button is one of the three sizes, 24, 32 or 40 px tall (#258)",
                   sizes_seen[0] >= 45 and not sizes_bad, sizes_bad[:12])
             check(f"…and on the same {sizes_seen[0]}, no control that takes focus has a title saying what's in neither its text on the screen nor its "
