@@ -3542,6 +3542,9 @@ def main():
         made493 = strict.evaluate(IN_SIGHT)
         check("share links: …focus then on its Copy, in sight, as the card says “Copy the link now” (#493: it fell to the page)",
               (made493 or [0])[0] == "BUTTON" and made493[3] == "Copy" and strict.evaluate("!!document.activeElement.closest('.share-made')"), made493)
+        said1066 = strict.evaluate("document.getElementById('sgStatus').textContent")
+        check("share links: …and the live line says it's made and to copy it (#1066: it kept “New share link: choose what it shows…”)",
+              said1066.endswith("is made. Copy the link now.") and "choose what it shows" not in said1066, said1066)
         check("share links: the link is shown once, with its token after the #", re.fullmatch(re.escape(base) + r"/share\.html#[\w-]{43}", share_url), share_url)
         # #284: the new link as a QR code under it (qr.js), read back to the address by tests/test_qr.py's reader, named
         # for a screen reader, dark on white in both themes
