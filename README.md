@@ -795,11 +795,13 @@ phone upload secrets and connected sources' sign-ins, so a link revoked, a membe
 source disconnected after the backup was made stays so. A source still connected pulls again what it brought since,
 and one connected since pulls from the start, with its review. Each profile's cycle tracking stays as it is now too,
 on or off: where it's off now, or its cycle records were deleted after the backup was made, the cycle records the
-backup holds aren't brought back (the watch receiver deletes its copy when it starts). Everyone is signed out. A profile deleted since comes back with nobody given access to it (an admin gives it an
+backup holds aren't brought back (the watch receiver deletes its copy when it starts). So do the server's own
+settings saved in the app: those on **Settings → General**, the sync defaults, any other install-wide setting, and the
+backup schedule and how many backups it keeps. Everyone is signed out. A profile deleted since comes back with nobody given access to it (an admin gives it an
 owner under **Settings → Accounts**, Profiles without an owner), and one made since isn't in the backup (its records are
 in the `before-restore-<time>/` folder); the restore names both. With no database to replace (a new machine, disaster
 recovery), one that can't be read (damaged: it's kept with what was replaced) or one of another install, all of it
-comes from the backup as it was then, and the restore says so: check the accounts and each profile's sharing before
+comes from the backup as it was then (the server's settings too, which the restore names), and the restore says so: check the accounts and each profile's sharing before
 you share the address again.
 
 The phone and watch data goes to `WATCH_DIR/keys/restore/` (the one folder of the receiver's the app may write), and
