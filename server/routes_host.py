@@ -15,7 +15,7 @@ import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from . import config, connections, routes_settings, settings, watch_keys
+from . import config, connections, settings, watch_keys
 from .main import _request_host, _same_site, admin, get_db
 from .routes_settings import Value
 
@@ -39,16 +39,22 @@ def origins_effects(db, request, new):
             "origin": origin, "accepted": not origin or _same_site(origin, request, new), "confirm": CONFIRM}
 
 
-def _guard_origins(db, request, body, value):
-    if body is None:
-        raise HTTPException(409, "The public addresses are changed under Settings → Install → General → Host, where what "
-                                 "the change does is said first.")
+def _confirm_origins(db, before, value, request, s):
+    """(#998) Every change to the public addresses (a reset too) is confirmed, routes_settings._confirmed's one rule,
+    with "change addresses" typed; a list this page's own address wouldn't pass is refused outright."""
     e = origins_effects(db, request, value)
     if not e["accepted"]:
         raise HTTPException(409, f"Not saved: this page is open at {e['origin']}, and with that list the cross-site check "
                                  f"would refuse everything it sends, changing the list back included. Add {e['origin']} to it.")
-    if body.confirm != CONFIRM:
-        raise HTTPException(400, f"Type “{CONFIRM}” to confirm the change.")
+    said = [f"The address the app gives out, {e['given_out'][0] or 'none'}, becomes {e['given_out'][1] or 'none'}."]
+    if e["apps"]:
+        said.append(f"{e['apps']} connected-source app{'' if e['apps'] == 1 else 's'} must have the new return address, "
+                    f"{e['return_address'][1] or 'none'}, registered with its vendor.")
+    if e["phones"]:
+        said.append(f"The phones of {e['phones']} profile{'' if e['phones'] == 1 else 's'} with an upload secret need the "
+                    f"new upload address, {', '.join(e['upload'][1])}.")
+    return {"count": e["apps"] + e["phones"], "type": CONFIRM, "title": "Change the public addresses?",
+            "action": "Change addresses", "message": " ".join(said), "effects": e}
 
 
 def upload_effects(db, request, new):
@@ -59,7 +65,7 @@ def upload_effects(db, request, new):
     return {"upload": up, "phones": watch_keys.with_secret(db) if up[0] != up[1] else 0}
 
 
-routes_settings.GUARDS["host.publicOrigins"] = _guard_origins
+settings.get_def("host.publicOrigins").confirm = _confirm_origins
 EFFECTS = {"host.publicOrigins": origins_effects, "phone.uploadUrl": upload_effects}
 
 

@@ -905,6 +905,8 @@ def answer_ask(page, yes=True, fill=None, timeout=10000):
     counts any as a problem.)"""
     box = page.wait_for_selector("dialog.sg-ask[open]", timeout=timeout)
     said = box.evaluate("d => [d.querySelector('h2').textContent, d.querySelector('.sg-ask-msg').textContent]")
+    if callable(fill):   # what to type, from what it asks (the count it says to type, #998)
+        fill = fill(said)
     if fill is not None:
         box.query_selector("input").fill(fill)
     box.query_selector(".sg-ask-acts button" + (":last-child" if yes else ":first-child")).click()
@@ -2356,7 +2358,7 @@ def general_security_check(check, browser, base, cookies):
           asked[0].startswith("End ") and "unused for longer" in asked[1] and js("document.getElementById('gen-security').dataset.dirty") == "1", asked)
     page.focus("#gs-idleMinutes")
     page.keyboard.press("Enter")   # Enter: the bar's Save
-    answer_ask(page)
+    answer_ask(page, fill=lambda said: re.search(r"Type (\d+) to confirm", said[1]).group(1))   # (the count typed, #998)
     page.wait_for_function("document.getElementById('genSecMsg').textContent === 'Saved “Sign out when unused for (minutes)”.'", timeout=10000)
     try:
         req1001.urlopen(req1001.Request(base + "/api/me", headers={"Cookie": "sg_session=" + token}), timeout=10)
