@@ -575,7 +575,7 @@ const announce = (() => {
   };
   make();   // there from the start: a screen reader only follows a live region that was in the page before it changed
   if (!box.status) document.addEventListener("DOMContentLoaded", make);
-  return (text, {error = false} = {}) => {
+  const say = (text, {error = false} = {}) => {
     make();
     const k = error ? "alert" : "status";
     if (!box[k] || !text) return;
@@ -584,11 +584,15 @@ const announce = (() => {
     box[k].textContent = "";   // emptied first, so the same words again are a change too
     wait[k] = setTimeout(() => { box[k].textContent = next[k].join(" "); next[k] = []; }, 60);
   };
+  // announce.unsay(text): words no longer true taken out of the status line, said or still to be (#1075: "Loading…")
+  say.unsay = text => { next.status = (next.status || []).filter(t => t !== text); if (box.status?.textContent === text) box.status.textContent = ""; };
+  return say;
 })();
 /* sayIn(m, text, bad): a page's message line (a .msg beside its Save button, a form's hint): shows the text (or
    nodes: words with a link), marked .bad for an error, and says it through announce(), as an alert when bad. The
    line itself stops being a live region (older markup has role=status), so it isn't said twice. An empty text
-   clears it and says nothing. repeat: false for a line redrawn as you type, whose same words again aren't said;
+   clears it and says nothing, and takes its words out of the status line (#1075: Sharing kept "Loading…" there once
+   loaded). repeat: false for a line redrawn as you type, whose same words again aren't said;
    say: false for words a toast says (below), shown here without being said twice. */
 function sayIn(m, text, bad = false, {repeat = true, say = true} = {}) {
   if (!m) return;
@@ -597,10 +601,11 @@ function sayIn(m, text, bad = false, {repeat = true, say = true} = {}) {
   m.replaceChildren(...[].concat(text == null ? [] : text));
   m.classList.toggle("bad", !!bad);
   if (say && m.textContent && (repeat || m.textContent !== was)) announce(m.textContent, {error: !!bad});
+  else if (!m.textContent && was) announce.unsay(was);
 }
 /* viewTitle(title, say): the browser tab's title for what's shown ("Labs · Ben" → "Labs · Ben · Sanguity"), and,
-   when say is given, those words said politely: for a view changed by a sidebar link or a button elsewhere, which a
-   screen reader wouldn't otherwise mention (a tab picked in the tab bar already says it's selected) */
+   when say is given, those words said politely: for a view changed by a link (the records tabs' too, #1075) or a
+   button elsewhere, which a screen reader wouldn't otherwise (reliably) mention */
 function viewTitle(title, say) {
   document.title = title ? `${title} · Sanguity` : "Sanguity";
   if (say) announce(say);
@@ -625,10 +630,14 @@ const smoothly = () => matchMedia("(prefers-reduced-motion: reduce)").matches ? 
    card (app.css), so each cell shows its column's name before its value instead, from data-label (td::before).
    labelCells(table) copies the names; a cell under an empty heading (a row's buttons), spanning columns or with
    nothing in it gets none. The names are the head's last row (a share link's history has its test's name above, #491).
-   It's run here for every table.tbl on the account pages as it's drawn or redrawn, so no page labels its own. */
+   It's run here for every table.tbl on the account pages as it's drawn or redrawn, so no page labels its own.
+   A heading named for screen readers only (thHidden: a row's buttons, "Actions", #1075: axe's empty-table-header) is
+   an empty one here: never shown on its cells. thOf(h): a column's heading, "" a row's buttons' */
+const thHidden = text => el("th", {}, el("span", {class: "vh", text}));
+const thOf = h => h ? el("th", {text: h}) : thHidden("Actions");
 function labelCells(table) {
   const top = table.tHead && table.tHead.rows[table.tHead.rows.length - 1];
-  const heads = top ? [...top.cells].flatMap(th => Array(th.colSpan).fill(th.colSpan > 1 ? "" : th.textContent.trim())) : [];
+  const heads = top ? [...top.cells].flatMap(th => Array(th.colSpan).fill(th.colSpan > 1 || th.querySelector(":scope > .vh:only-child") ? "" : th.textContent.trim())) : [];
   for (const body of table.tBodies) for (const row of body.rows) {
     let col = 0;
     for (const c of row.cells) {

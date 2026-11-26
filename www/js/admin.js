@@ -171,7 +171,7 @@ async function loadUsers(mine = document.activeElement?.closest?.("#userList tr[
   const t = TEMP.isConnected && list.find(u => String(u.id) === TEMP.dataset.user);
   if (TEMP.isConnected && (!t || t.disabled || t.username !== TEMP.dataset.name)) TEMP.remove();   // its password no use now (#502)
   $("#userList").replaceChildren(el("table", {class: "tbl users"},
-    el("thead", {}, el("tr", {}, ...["Account", "Signed in on", ""].map(h => el("th", {text: h})))),
+    el("thead", {}, el("tr", {}, ...["Account", "Signed in on", ""].map(thOf))),
     el("tbody", {}, ...list.map(u => {
       const self = u.id === ME.user.id;
       return el("tr", {"data-user": u.id},
@@ -423,7 +423,7 @@ async function loadLabmaps() {
   const toCheck = list.filter(m => m.check).length;
   $("#labmapList").replaceChildren(...toCheck ? [el("p", {class: "howto", text: `${toCheck} ${toCheck === 1 ? "match" : "matches"} to check: ` +
     "made before Sanguity stopped filling in look-alike names (Vitamin B6 as Vitamin B1), so not used until kept."})] : [], el("table", {class: "tbl lm"},
-    el("thead", {}, el("tr", {}, ...["Reported as", "Goes to", "From", "Added", ""].map(h => el("th", {text: h})))),
+    el("thead", {}, el("tr", {}, ...["Reported as", "Goes to", "From", "Added", ""].map(thOf))),
     el("tbody", {}, ...list.map(m => {
       const goes = el("td", {class: "lm-target"}, m.target || "its own series", m.check ? el("span", {class: "tag lm-check", text: "To check"}) : null);
       const edit = () => {

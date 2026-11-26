@@ -234,7 +234,7 @@ function showAbout(p, a, drop = []) {
   }
   const mine = [...a.heights].reverse();
   hCtl.push(mine.length ? el("table", {class: "tbl about-heights"},
-    el("thead", {}, el("tr", {}, ...["Date", "Height", ""].map(h => el("th", {text: h})))),
+    el("thead", {}, el("tr", {}, ...["Date", "Height", ""].map(thOf))),
     el("tbody", {}, ...mine.map(h => el("tr", {}, el("td", {text: aboutDay(h.date)}), el("td", {}, hText(h)),
       el("td", {class: "acts"}, edit ? el("button", {class: "btn small", type: "button", text: "Remove", "aria-label": `Remove the height on ${aboutDay(h.date)}`,
         onclick: async () => {   // at once, with an Undo that adds it back as it was (#263; it asked first before), if none was since (#367)
@@ -260,7 +260,7 @@ function showAbout(p, a, drop = []) {
         "They're shown here, not used, until " +
         (edit ? "you add one to the history" : "an owner or editor adds one to the history") + ": an import can be undone, and a measurement can be off."})],
       [el("table", {class: "tbl about-heights about-recorded"},
-        el("thead", {}, el("tr", {}, ...["Date", "Height", "From", ""].map(h => el("th", {text: h})))), el("tbody", {}, ...rows)),
+        el("thead", {}, el("tr", {}, ...["Date", "Height", "From", ""].map(thOf))), el("tbody", {}, ...rows)),
       all ? el("div", {class: "about-row"}, all) : null]));
   }
   $("#aboutBody").replaceChildren(...parts.filter(Boolean));
