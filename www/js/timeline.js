@@ -94,7 +94,7 @@ function renderTimeline(live) {   // live: a frame of a gesture, at the width it
         const x0 = Math.max(L, x(ts)), x1 = Math.min(R, x(ts) + bw); if (x1 <= x0) continue;
         d += `M${x0.toFixed(1)},${base}h${(x1 - x0).toFixed(1)}v${(-Math.max(1, (lh - 10) * v / max)).toFixed(1)}h${(x0 - x1).toFixed(1)}Z`;
       }
-      if (d) g.push(el("svg:path", {class: "tl-steps", d, fill: "var(--muted)", "fill-opacity": .45}));
+      if (d) g.push(el("svg:path", {class: "tl-steps", d, fill: MUTED, "fill-opacity": .45}));
       tlSvg._steps = {list: steps, y0: t0, y1: t0 + lh};
     }
     const gs = tlGroups(evs.get(c) || [], x);

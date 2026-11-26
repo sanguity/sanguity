@@ -783,7 +783,7 @@ svg text.ck-yr{fill:var(--ink2);font-weight:var(--fw-medium)}   /* the time axis
    ring (.ck-ring: Labs', Compare's and a lab's panel's, #1035) among them */
 @media (forced-colors:active){.msmark,.msflag,.evlead,.ck-ring{stroke:CanvasText}.mslabel,.msflag-head,.ev-more{fill:CanvasText}.cross{stroke:Highlight}
   svg text:not([class]),.evlabel,.lane-label,svg text:is(.ck-yr,.ck-unit,.ck-ref){fill:CanvasText}
-  .refedge{stroke:CanvasText}.refband{fill:CanvasText}:root{--stay:color-mix(in srgb,CanvasText 7%,transparent);--surface:Canvas}svg text.ck-ref{stroke:Canvas}}
+  .refedge{stroke:CanvasText}.refband{fill:CanvasText}:root{--stay:color-mix(in srgb,CanvasText 7%,transparent);--surface:Canvas;--fc-ink:CanvasText}svg text.ck-ref{stroke:Canvas}}
   /* a chart's own text too (#346, and #657 below); the band's edges (#293), the band and a stay's in a share of the
      system's text (#983: in the app's ink they vanished on its black); the event track (#294). A mark's rim or hollow
      in the surface the system's background (#1013: Labs' dots kept the app's, a light ring on black, as Body's, #975) */
