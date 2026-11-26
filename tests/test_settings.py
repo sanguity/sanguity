@@ -242,6 +242,9 @@ class Settings(unittest.TestCase):
         pid = self.fresh_profile()
         m = self.merged(pid)
         for key, s in settings.SETTINGS.items():
+            if not settings.shown_to(key, False):   # (#998: an admin's alone, not given to robin)
+                self.assertNotIn(key, flat(m))
+                continue
             if s.env and config.source(s.env) == "environment":   # (PUBLIC_ORIGINS, set above: General → Host's, #1000)
                 continue
             self.assertEqual(flat(m)[key], s.default, key)
@@ -323,10 +326,10 @@ class Settings(unittest.TestCase):
         # install settings: admins only
         self.put("test.server", 20, who="robin", status=403)
         self.put("test.server", 30, who="ada")
-        self.assertEqual(self.merged(1, "robin")["test"]["server"], 30)
+        self.assertEqual(self.merged(1, "ada")["test"]["server"], 30)
+        self.assertNotIn("server", self.merged(1, "robin")["test"])   # (#998: an admin's alone)
         secs = {s["key"]: s for sec in self.c["kim"].get("/api/profiles/1/settings/sections").json()["sections"] for s in sec["settings"]}
-        self.assertEqual((secs["sources"]["can_change"], secs["test.mine"]["can_change"], secs["test.server"]["can_change"]),
-                         (False, True, False))
+        self.assertEqual((secs["sources"]["can_change"], secs["test.mine"]["can_change"], "test.server" in secs), (False, True, False))
         # the CSRF check, as for every change
         self.assertEqual(self.c["robin"].put("/api/profiles/1/settings/sources", json={"value": {}}).status_code, 403)
         # logged without the values
@@ -397,12 +400,12 @@ class Settings(unittest.TestCase):
             r = ada.put(f"/api/settings/install/{key}", json={"value": 6}, headers=H)
             self.assertEqual(r.status_code, 200, r.text)
             self.assertEqual((config.setting("SYNC_HOURS"), config.source("SYNC_HOURS"), hours()), (6, "install", 6))
-            self.assertEqual((item()["from"], variable()["from"], self.merged(1, "robin")["testEnv"]["syncHours"]), ("install", "install", 6))
+            self.assertEqual((item()["from"], variable()["from"], self.merged(1, "ada")["testEnv"]["syncHours"]), ("install", "install", 6))
             # set by the environment: that wins, said so and named; a change to it is refused, and the saved value kept
             os.environ["SYNC_HOURS"] = "24"
             st = item()
             self.assertEqual((st["value"], st["from"], st["env"], st["can_change"], hours()), (24, "environment", "SYNC_HOURS", False, 24))
-            self.assertEqual(self.merged(1, "robin")["testEnv"]["syncHours"], 24)
+            self.assertEqual(self.merged(1, "ada")["testEnv"]["syncHours"], 24)
             for r in (ada.put(f"/api/settings/install/{key}", json={"value": 8}, headers=H),
                       ada.put(f"/api/profiles/1/settings/{key}", json={"value": 8}, headers=H)):   # a profile page's too
                 self.assertEqual(r.status_code, 409, r.text)
@@ -840,6 +843,24 @@ class Settings(unittest.TestCase):
         self.assertEqual(reset(json={"confirm": "1"}).status_code, 200)
         self.assertEqual(config.setting("ACTIVITY_DAYS"), 365)
 
+    def test_install_settings_a_member_is_given(self):   # #998
+        """A profile's settings, merged or as the Settings screen's sections, give someone who isn't an admin only the
+        install's settings a member's page reads (the sync defaults): not the public addresses, the upload address,
+        sign-in's limits (a page reads how long a sign-in lasts from /api/me's session), the provider directory's or
+        the activity kept. An admin is given every one."""
+        def install_keys(c):
+            flat = lambda o, at="": [k for n, v in o.items() for k in (flat(v, at + n + ".") if isinstance(v, dict) else [at + n])]   # noqa: E731
+            merged = {k for k in flat(c.get("/api/profiles/1/settings").json()) if k in settings.SETTINGS}
+            listed = {st["key"] for sec in c.get("/api/profiles/1/settings/sections").json()["sections"] for st in sec["settings"]}
+            return {k for k in merged | listed if settings.SETTINGS[k].scope == "install"}
+        everyone = {k for k, d in settings.SETTINGS.items() if d.scope == "install"}
+        for who in ("robin", "kim", "lee"):
+            got = install_keys(self.c[who])
+            self.assertEqual(got, {k for k in everyone if k.startswith("sync.")}, who)
+            self.assertFalse({k for k in got if k.split(".")[0] in ("host", "phone", "security", "directory", "activity")}, who)
+        self.assertEqual(install_keys(self.c["ada"]), everyone)
+        self.assertEqual(set(self.c["kim"].get("/api/me").json()["session"]), {"days", "hours_without_2fa", "idle_minutes"})
+
     def test_general_about_names_the_deployment(self):   # #1004
         """General → About: each deployment's kind named (SANGUITY_DEPLOYMENT, which every template sets: deploy/check.py),
         its folders each with what mounts it there, and its version where it has one (a checkout, or an image built
@@ -927,7 +948,7 @@ class Settings(unittest.TestCase):
         self.put("test.server", 40, who="ada")
         r = self.c["kim"].post("/api/profiles/1/settings/reset", json={"section": "testing"}, headers=H)
         self.assertEqual((r.status_code, r.json()["reset"], r.json()["kept"]), (200, ["test.mine"], ["test.server"]))
-        self.assertEqual(self.merged(1, "kim")["test"], {"mine": "light", "server": 40})
+        self.assertEqual((self.merged(1, "kim")["test"], self.merged(1, "ada")["test"]["server"]), ({"mine": "light"}, 40))
         self.c["ada"].delete("/api/profiles/1/settings/test.server", headers=H)
 
     # ---------------------------------------------------------------- #36 key-lab tiles, #40 tabs, #45 theme

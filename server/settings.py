@@ -1051,9 +1051,23 @@ def install_values(db, prefix=""):
             for k, s in SETTINGS.items() if s.scope == "install" and k.startswith(prefix)}
 
 
-def merged(db, pid, uid):
-    """What GET /api/profiles/{pid}/settings returns: the object settings.json used to be, every key filled in."""
-    return nest({k: v for k, (v, _) in effective(db, pid, uid).items()})
+# (#998) the install's settings a member's page reads, given to everyone signed in: the sync defaults, which each
+# connection's own rules start from. The rest of the install's (the public addresses, the upload address, sign-in's
+# limits, the provider directory's, the activity kept) are an admin's alone: a member's page is told how long a
+# sign-in lasts by /api/me's session.
+MEMBER_SECTIONS = {"sync"}
+
+
+def shown_to(key, is_admin):
+    """Whether a setting's value is given to this person (the merged object, the Settings screen's sections)."""
+    d = SETTINGS[key]
+    return is_admin or d.scope != "install" or d.section in MEMBER_SECTIONS
+
+
+def merged(db, pid, uid, is_admin=True):
+    """What GET /api/profiles/{pid}/settings returns: the object settings.json used to be, every key filled in (for
+    someone who isn't an admin, the install's only where shown_to)."""
+    return nest({k: v for k, (v, _) in effective(db, pid, uid).items() if shown_to(k, is_admin)})
 
 
 def may_change(scope, role, is_admin):
