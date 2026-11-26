@@ -1017,8 +1017,9 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
         # (#971) a record of the pull whose plain id another source's record here holds (another server's export
         # uploaded, with the same ids) is its own: keyed naming its server, as an upload's is (#967, preview._own_keys),
         # in the whole set read so far and in what this pull read alike, so it's added beside that one, never put in its
-        # place, and found by that key at the next pull
-        if (keyed := preview._own_keys(db, pid, full)):
+        # place, and found by that key at the next pull; one a connection to its server saved saying no source is its
+        # own (#1021)
+        if (keyed := preview._own_keys(db, pid, full, c["fhir_base"])):
             if delta is not full:
                 preview.named(delta, keyed)
             touched = {keyed.get((None, k), k) for k in touched}
@@ -1039,7 +1040,7 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
         if _apart(db, pid, labitems, _connected(db, c)):   # (#881) a row saved apart from its result, moved beside it first
             labitems = _items_here(db, pid, hashes_on.values())
         labitems = _of_source(db, pid, labitems, full, c)   # (#971) this source's alone
-        dups = preview.find(db, pid, "fhir", delta, whole=full)   # (#869: a result sent again found by its rows in the whole set)
+        dups = preview.find(db, pid, "fhir", delta, whole=full, source=c["fhir_base"])   # (#869: a result sent again found by its rows in the whole set)
         keyless_new = [e for e in delta["events"] if isinstance(e, dict) and not isinstance(e.get("key"), str)
                        and str(e.get("id")) not in dups["events"]]
         dups["events"] = {str(e.get("id")) for e in delta["events"] if isinstance(e, dict)}   # events: decided below
@@ -1197,16 +1198,19 @@ def _bases(db, pid):
 def _theirs(sent, here, base, bases, imp):
     """(#971) Whether a record here (its body, its import imp) is another source's than the pull's record sent: both say
     their source (their VER's server or source; else the server of the connection that pulled it: base, bases) and they
-    differ. One saying none (saved before #955) is this source's, as before."""
+    differ. One saying none (saved before #955) is this source's, as before, and so is one a connection to this server
+    (base) saved saying none (#1021): where the server sends a stable meta.source the pull's records say that, while
+    those it saved before said nothing, and its own were taken for another source's, a second copy beside each."""
     a, b = preview._source(sent or {}, base), preview._source(here or {}, bases.get(imp))
-    return bool(a and b and a != b)
+    return bool(a and b and b not in (a, preview._server(base)))
 
 
 def _of_source(db, pid, items, full, c):
     """(#971) Of the labitems here (_items_here), those of this source: one saying another source than the whole set's
-    labitems (as _theirs) is left out, so a report or day of another server's export with the same ids holds no row of
-    this pull's, nor has its report's details replaced."""
+    labitems or this connection's server (as _theirs, #1021) is left out, so a report or day of another server's export
+    with the same ids holds no row of this pull's, nor has its report's details replaced."""
     mine = {preview._source(e, c["fhir_base"]) for e in full.get("events") or [] if _labitem(e)} - {""}
+    mine.add(preview._server(c["fhir_base"]))
     if not mine:
         return items
     bases = _bases(db, pid)

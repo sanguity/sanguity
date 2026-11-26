@@ -157,7 +157,7 @@ def _drawer(data):
                              "details": {str(k): d for k, d in details.items()}})
 
 
-def find(db, pid, fmt, data, whole=None):
+def find(db, pid, fmt, data, whole=None, source=None):
     """The duplicates in data: {"events": {event id}, "points": {series index: {point index}}, "txt": {series index:
     {index}}, "series": {series index} (wholly known, nothing in it), "meta": {path: {index}}}; "copies": {series
     index: {point index}}, its results already here that are kept with it, not duplicates (#846), each with its own row
@@ -167,7 +167,8 @@ def find(db, pid, fmt, data, whole=None):
     here it updates (its id), that result's row here (its event's id and the row's index) and its own in the upload;
     "known" (#879), {labitem id: {row index}}, the upload's rows that are records here (the same Observation, whichever
     bundle it came in). whole: the records the upload's rows are in, where they aren't its own (a sync's: the whole set
-    read so far, a lab day grouping results across pulls)."""
+    read so far, a lab day grouping results across pulls). source: a sync's, its connection's server (#1021:
+    _same_lab_source's also)."""
     if whole is None:   # (#967) an upload's records another source's hold the keys of here: keyed as their own first
         _own_keys(db, pid, data)
     events = [e for e in data.get("events") or [] if isinstance(e, dict)]
@@ -234,7 +235,7 @@ def find(db, pid, fmt, data, whole=None):
         meta[path] = {n for n, x in enumerate(items) if _entry(x) in have}
 
     dups = {"events": dup, "points": points, "txt": txt, "series": empty, "meta": meta, "copies": copies, "brings": brings}
-    _same_records(db, pid, data, dups, {i: o for i, o in olds.items() if isinstance(o, tuple) and o[1]}, whole)
+    _same_records(db, pid, data, dups, {i: o for i, o in olds.items() if isinstance(o, tuple) and o[1]}, whole, source)
     _settle(data, dups, set())
     dups["changed"] = _changed(db, pid, data, dups)
     return dups
@@ -303,7 +304,7 @@ def _named(key, source):
     return f"{prefix}:{source}|{rest}"
 
 
-def _own_keys(db, pid, data):
+def _own_keys(db, pid, data, also=None):
     """(#967) A record of the upload whose plain key (_plain) another source's record holds here is a record of its own,
     not that one: its key is made to name its source (_named), in place, before find() looks for duplicates by key.
     So clinic B's medication with hospital A's ids is added beside hospital A's (it was left out as a duplicate, and
@@ -311,8 +312,11 @@ def _own_keys(db, pid, data):
     here under its key naming its source is its own already; one under the plain key from the same source, or from one
     it doesn't say (a record saved before #955), is the same record, as before. Events (not lab days nor lab events,
     whose results have their own rule: #869, #885) and the profile-wide lists' entries. A pull's (#971: sync._save)
-    are keyed so too, in the whole set it has read and in what it read now alike (named()). -> {(its list's path or
-    None, the plain key): the key naming its source} of those keyed so."""
+    are keyed so too, in the whole set it has read and in what it read now alike (named()); also: the server of its
+    connection, which a record here saying no source of its own, saved by a connection to it, is from (#1021: where the
+    server sends a stable meta.source, its records say that, and its records saved before #955 none, so its own were
+    taken for another source's). -> {(its list's path or None, the plain key): the key naming its source} of those
+    keyed so."""
     cands, out = [], {}   # (the record, its plain key, its source as given, its list's path or None)
     for e in data.get("events") or []:
         if isinstance(e, dict) and e.get("k") not in ("lab", "labitem") and _plain(e.get("key")) and (s := _said_source(e)):
@@ -342,7 +346,7 @@ def _own_keys(db, pid, data):
                         held[(path, x["key"])].append(_source(x, bases.get(r["id"])))
     for x, key, s, path in cands:
         own, plain = held.get((path, _named(key, s))), held.get((path, key))
-        if own or plain and all(h and h != _server(s) for h in plain):
+        if own or plain and all(h and h not in (_server(s), _server(also)) for h in plain):
             x["key"] = out[(path, key)] = _named(key, s)
     return out
 
@@ -550,17 +554,18 @@ def _same_record(a, b):
     return _record_key(a[0]) and a[0] == b[0]
 
 
-def _same_lab_source(sent, here, base=None):
+def _same_lab_source(sent, here, base=None, also=None):
     """(#970) Whether a lab event of the upload and one here can hold one record of one source: not where both say their
     source (their VER's server or source: a FHIR file's server, a C-CDA's custodian; else, here, the server of the
     connection whose pull saved it, base) and they differ. Two servers' Observations, reports or C-CDA organizers with
     the same ids were one record: the other's range and flag put in place of this one's. One saying none (saved before
-    #970) is the same, as before."""
+    #970) is the same, as before. also: a pull's, the server of its connection, whose records saved saying none are its
+    own (#1021: where the server sends a stable meta.source, the pull's say that, and its own saved before none)."""
     a, b = _source(sent or {}), _source(here or {}, base)
-    return not (a and b and a != b)
+    return not (a and b and b not in (a, _server(also)))
 
 
-def _same_records(db, pid, data, dups, olds, whole=None):
+def _same_records(db, pid, data, dups, olds, whole=None, source=None):
     """(#869) A result here sent again by its source saying something else of its range and flag (the source amended
     it) is the same result: updated in place ("updates"), never added as a copy, nor left out a duplicate. It's the same
     record where its row in the upload (in whole's lab days, where given) and the row here of the result here (its
@@ -621,7 +626,7 @@ def _same_records(db, pid, data, dups, olds, whole=None):
         for rid, s, q in results[(i, n)]:
             at = crossmatch._row_of(rows, s, q)
             if at and _same_record(rec, _row_record(keyed[at[0]], keyed[at[0]].get("detail"), at[1])) \
-                    and _same_lab_source(events.get(row[0]), keyed[at[0]], bases.get(keyed[at[0]]["imp"])):
+                    and _same_lab_source(events.get(row[0]), keyed[at[0]], bases.get(keyed[at[0]]["imp"]), source):
                 found.append(({"result": rid, "event": at[0], "row": at[1], "at": None if whole else row}, q))
         if not found:
             continue

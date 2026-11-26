@@ -3552,7 +3552,9 @@ Everything on `main` so far; it becomes the first tagged release.
   FHIR export uploaded first, a later pull from a connected portal whose records have the same plain ids changed A's:
   the portal's Atorvastatin, stopped, was put in place of A's Metformin, and its Hyperlipidemia, resolved, in place of
   A's diabetes, while the portal's own records stayed as they were. Now a pull updates only its own source's records:
-  the portal's are changed, A's stay as they are, and Undo puts the portal's back.
+  the portal's are changed, A's stay as they are, and Undo puts the portal's back. What a connection saved before,
+  which doesn't say its source, is still its own (#1021), so a source that names itself another way than its address
+  still has its results and records updated in place, never added again beside them.
 - **A reminder's From and Until keep their year with larger text** (#987): on a phone at 200% text the reminder
   form's dates were cut ("11/25/202", "mm/dd/yy"), and so were a dose's and a journal entry's date and time, which
   share that row. Each is now at least as wide as its date or time, the second on a line of its own where both don't
