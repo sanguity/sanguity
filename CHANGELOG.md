@@ -3564,6 +3564,9 @@ Everything on `main` so far; it becomes the first tagged release.
   fields on Settings, your devices on Account (from 150%) and the getting-started guide's steps, whose names ran over
   each other too. A row's date or amount now goes under its name where both don't fit, a device's dates a line each,
   and the guide's steps are a list; at the usual size nothing moves.
+- **Labs' result dots have rims in the system's colours in forced colours** (#1013): against a contrast theme opposite
+  to the app's, each result's dot and ▲ or ▼ kept the app's card colour as its rim, and Compare its marks' rims and its
+  rings' hollows, as Body's did before #975. A mark's rim or hollow is the system's background now, on every chart.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

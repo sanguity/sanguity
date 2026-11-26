@@ -10250,6 +10250,38 @@ def main():
                   "system's black): Labs' charts and their legend's keys, Compare and a lab's panel's strip",
                   all(not v["bad"] and v["n"].get("refband") for v in fc983.values()) and all(v["n"].get("stayband") for k, v in fc983.items() if "panel" not in k),
                   fc983)
+            # ---- #1013: …and Labs' result marks have no rim (or hollow) in the app's --surface, both ways, as Body's had
+            # none since #975: a result's dot and ▲ or ▼ (.pt) kept it as their rim, a light ring on the system's black, on
+            # Labs' charts, a lab's panel's strip and Compare (its marks' rims and its rings' hollows): each in a system
+            # colour, by computed style
+            RIM1013 = r"""sel => { const probe = c => { const s = document.createElement('span'); s.style.forcedColorAdjust = 'none'; s.style.color = c; document.body.append(s);
+                const v = getComputedStyle(s).color; s.remove(); return v; };
+              const rgb = c => /^color\(srgb /.test(c) ? c.slice(11).split(/[\s/)]+/).slice(0, 3).map(v => Math.round(v * 255)).join() : (c.match(/[\d.]+/g) || []).slice(0, 3).join();
+              const sys = new Set(['Canvas', 'CanvasText', 'Highlight', 'HighlightText', 'GrayText'].map(c => rgb(probe(c)))), surface = rgb(probe('var(--surface)')), out = {n: 0, pt: 0, bad: []};
+              for (const m of document.querySelectorAll(sel)) { if (!m.checkVisibility() || m.closest('defs, clipPath, mask')) continue; const c = getComputedStyle(m); out.n++;
+                if (m.classList.contains('pt')) { out.pt++; if (!sys.has(rgb(c.stroke))) out.bad.push(`${m.tagName.toLowerCase()}.${[...m.classList].join('.')}: rim ${c.stroke}`); }
+                for (const p of ['fill', 'stroke']) if (c[p] !== 'none' && rgb(c[p]) === surface && !sys.has(surface)) out.bad.push(`${m.tagName.toLowerCase()}.${[...m.classList].join('.')}: ${p} --surface ${c[p]}`); }
+              out.bad = [...new Set(out.bad)].slice(0, 8); return out; }"""
+            was1013, rim1013 = js("[document.documentElement.dataset.theme || null, matchMedia('(prefers-color-scheme: dark)').matches, [...state.sel], state.preset, state.tab, state.labsView]"), {}
+            for system1013 in ("dark", "light"):
+                way1013 = f"the system {system1013}, the app {'light' if system1013 == 'dark' else 'dark'}"
+                page.emulate_media(color_scheme=system1013, forced_colors="active")
+                js("t => { document.documentElement.dataset.theme = t; applyPreset('all'); state.sel = new Set(['Hemoglobin', 'Potassium']); switchTab('labs', 'chart'); }", "light" if system1013 == "dark" else "dark")
+                settle(500)
+                rim1013[f"{way1013}: Labs' charts"] = js(RIM1013, "#charts svg.ck :is(circle, path, rect, polygon)")
+                js("openLab(SERIES.find(s => s.name === 'Hemoglobin'))")
+                settle(500)
+                rim1013[f"{way1013}: a lab's panel"] = js(RIM1013, "#dbody svg :is(circle, path, rect, polygon)")
+                js("closeDrawer(); switchTab('labs', 'compare')")
+                settle(500)
+                rim1013[f"{way1013}: Compare"] = js(RIM1013, "#labsCompare svg :is(circle, path, rect, polygon)")
+            page.emulate_media(forced_colors="none", color_scheme="dark" if was1013[1] else "light")
+            js("""([t, , sel, preset, tab, view]) => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+              state.sel = new Set(sel); applyPreset(preset); switchTab(tab, tab === 'labs' ? view : undefined); }""", was1013)
+            settle(300)
+            check("…and Labs' result marks have no rim or hollow in the app's surface colour, both ways (#1013: the dots' and ▲/▼'s rims kept it, a light "
+                  "ring on the system's black): Labs' charts, a lab's panel's strip and Compare, every rim a system colour",
+                  all(v["n"] and not v["bad"] for v in rim1013.values()) and all(v["pt"] for k, v in rim1013.items() if "Compare" not in k), rim1013)
             # ---- #984: …and Body and activity's coloured steps, either theme: the steps' bars (the measure's teal at 30%) were
             # about 1.5:1 on the system's black, sleep's deep stage (--seq1) 2.5:1 on it and the dark theme's 1.8:1 on white.
             # In forced colours, the system dark and light, the app light and dark, in 90 days (a bar a night, a bar a day) and
