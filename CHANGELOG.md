@@ -3559,6 +3559,11 @@ Everything on `main` so far; it becomes the first tagged release.
   form's dates were cut ("11/25/202", "mm/dd/yy"), and so were a dose's and a journal entry's date and time, which
   share that row. Each is now at least as wide as its date or time, the second on a line of its own where both don't
   fit; a reminder's time does the same beside its Remove at 320 px. At the usual size they're side by side as before.
+- **No page scrolls sideways on a 320 px phone with larger text** (#1012): at 200% text the Overview's upcoming
+  appointments and Costs' groups ran past the screen's edge, taking the tab bar's More with them, and so did a target's
+  fields on Settings, your devices on Account (from 150%) and the getting-started guide's steps, whose names ran over
+  each other too. A row's date or amount now goes under its name where both don't fit, a device's dates a line each,
+  and the guide's steps are a list; at the usual size nothing moves.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

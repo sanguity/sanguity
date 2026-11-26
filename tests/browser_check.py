@@ -13232,6 +13232,46 @@ def main():
             check("Above 700 px (#785, #622, 1.4.4): at 701 to 1100 px and on a phone on its side (844×390, 915×412), text at 100–200%, on every page with "
                   "the top bar, the profile's name at its floor (6 em, or whole), on the bar's row or its own; nothing on the bar over anything else or "
                   "outside it", n785 == 168 and not bad785, [n785, dict(list(bad785.items())[:12]), len(bad785)])
+            # ---- #1012: #622's over every page at 320 px, a phone's, with text at 150% and 200% (big785): every records tab
+            # and view, every group of Sources, Sharing, Settings, Account and Admin, and the guide, the visit summary,
+            # providers, import, setup and connect pages, each no wider than the screen (1.4.10). The Overview's next
+            # appointments and Costs' groups ran past it (a grid's columns: "in 3 months · Feb 18, 2027" beside its name),
+            # and so the tab bar's More, fixed to the page's width; Account's devices at 150% too, a target's fields on
+            # Settings and the guide's steps (over each other too). Each page in a context of its own, its groups by address
+            W1012 = r"""() => { const r = e => e.getBoundingClientRect(), vw = document.documentElement.clientWidth, doc = document.documentElement.scrollWidth;
+              const free = e => { for (let a = e.parentElement; a && a !== document.body; a = a.parentElement) if (getComputedStyle(a).overflowX !== 'visible') return false; return true; };
+              const wide = doc <= vw ? [] : [...document.querySelectorAll('body *')].filter(e => r(e).right > vw + 0.5 && !e.closest('svg *') && free(e));
+              return doc <= vw ? null : [doc, wide.filter(e => !wide.some(p => p !== e && p.contains(e))).slice(0, 4).map(e => `${e.tagName.toLowerCase()}.${e.className} “${e.textContent.trim().slice(0, 24)}” to ${Math.round(r(e).right)}`)]; }"""
+            PAGES1012 = [("?profile=1", ["overview", "health", "medications", "timeline", "timeline-journal", "labs", "labs-heatmap", "labs-compare", "costs", "costs-paid"]),
+                         ("sources.html?profile=1", ["overview", "portals", "phone", "upload", "manual", "link", "history"]),
+                         ("sharing.html?profile=1", ["people", "links", "calendar", "summary", "export", "activity"]),
+                         ("settings.html?profile=1", ["dashboard", "about", "labs", "milestones", "activity", "profile", "display", "more"]),
+                         ("account.html", ["security", "device"]), ("admin.html", ["accounts", "activity", "backups", "apps", "directory", "outside"]),
+                         ("guide.html?profile=1", [""]), ("summary.html?profile=1", [""]), ("providers.html?profile=1", [""]), ("import.html?profile=1", [""]),
+                         ("setup.html", [""]), ("connect.html?profile=1", [""])]
+            bad1012, n1012 = {}, 0
+            for path1012, groups1012 in PAGES1012:
+                c1012 = browser.new_context(viewport={"width": 320, "height": 760}, bypass_csp=True, has_touch=True, is_mobile=True)
+                c1012.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
+                p1012 = c1012.new_page()
+                p1012.goto(base + "/" + path1012 + ("#" + groups1012[0] if groups1012[0] else ""))
+                p1012.wait_for_load_state("networkidle")
+                p1012.wait_for_timeout(800)
+                for g1012 in groups1012:
+                    if g1012 != groups1012[0]:
+                        p1012.evaluate("h => { location.hash = h; }", g1012)
+                        p1012.wait_for_timeout(600)
+                    for f1012 in (1.5, 2):
+                        p1012.evaluate("css => { const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = [s]; }", big785(f1012))
+                        p1012.wait_for_timeout(300)
+                        n1012 += 1
+                        if (got1012 := p1012.evaluate(W1012)):
+                            bad1012[f"{path1012.split('?')[0] or 'records'}{'#' + g1012 if g1012 else ''} {round(f1012 * 100)}%"] = got1012
+                    p1012.evaluate("() => { document.adoptedStyleSheets = []; }")
+                c1012.close()
+            check("At 320 px with text at 150% and 200% (#1012, #622, 1.4.10): every page no wider than the screen, every records tab and view and every "
+                  "group of Sources, Sharing, Settings, Account and Admin, the guide and the other pages (the Overview's appointments and Costs' groups ran "
+                  "past it, and the tab bar's More with them)", n1012 == 90 and not bad1012, [n1012, bad1012])
             # ---- #832: #622's on a phone with a long name, 20 characters ("Sam Okafor-Lindqvist", the second profile's for
             # this and put back after), at 360 and 412 px on the records page and Settings, the text made larger as the page
             # is shown (130%, then 150%, then 200%, as a phone's text size is changed with it open): the name at its floor
