@@ -3610,6 +3610,11 @@ Everything on `main` so far; it becomes the first tagged release.
   profile holding lab results and no events didn't open ("Invalid time value"), and a result before the first event
   or after the last (a lab draw hidden by hand, results with no lab event) was past All's ends and shown nowhere on
   Labs. The period now reaches every result: such a profile opens, and All shows each one.
+- **No page scrolls sideways on a 320 px phone with larger text** (#1012): at 200% text the Overview's upcoming
+  appointments and Costs' groups ran past the screen's edge, taking the tab bar's More with them, and so did a target's
+  fields on Settings, your devices on Account (from 150%) and the getting-started guide's steps, whose names ran over
+  each other too. A row's date or amount now goes under its name where both don't fit, a device's dates a line each,
+  and the guide's steps are a list; at the usual size nothing moves.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
