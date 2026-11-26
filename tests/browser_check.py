@@ -11062,7 +11062,7 @@ def main():
                 const v = cr(rgb(c[p]).map((x, i) => a * x + (1 - a) * under[i]), under); out[k] = Math.min(out[k] ?? 99, +v.toFixed(2)); };
               const neutral = c => /--fc-ink|--ink2|--muted/.test(c);
               if (what === 'timeline') { const byId = new Map(EV.map(e => [e.id, e]));
-                for (const m of document.querySelectorAll('#tl circle.ev[data-id]')) { const c = CAT_OF[byId.get(+m.dataset.id)?.k]; if (c && neutral(c.color)) look(`a dot, ${c.label}`, m, 'fill'); }
+                for (const m of document.querySelectorAll('#tl circle.ev[data-id]')) { const c = CAT_OF[byId.get(+m.dataset.id)?.k]; if (c && neutral(c.color)) look(`a dot, ${c.label}`, m, m.getAttribute('fill') === 'var(--surface)' ? 'stroke' : 'fill'); }   // a ring's (hollow: an ECG's notification), its edge
                 for (const m of document.querySelectorAll('#tl .tl-steps')) look("the watch's steps", m, 'fill'); }
               if (what === 'compare') for (const m of document.querySelectorAll('#labsCompare :is(svg *, .legend i)')) { if (m.closest('defs, clipPath, mask')) continue;
                 const k = `Compare's second lab: ${m.tagName.toLowerCase()}${[...m.classList].map(c => '.' + c).join('')}`, st = m.getAttribute('style') || '';
