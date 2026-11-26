@@ -40,6 +40,7 @@ services:
       FORWARDED_ALLOW_IPS: "*"
       SANGUITY_DEPLOYMENT: casaos   # how it's deployed, named on Settings → General → About (#1004)
       RECEIVER_PORT: "8731"   # the receiver's published port below, for the phone upload address: change both together (#1007)
+      TZ: $TZ   # the receiver's time zone, shown on Settings → General → Phone receiver (#998)
     read_only: true
     tmpfs:
       - /tmp

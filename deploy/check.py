@@ -131,6 +131,16 @@ def image_ok(label, image):
     check(f"{label}: uses the released image {IMAGE}", str(image).split("@")[0].rsplit(":", 1)[0] == IMAGE, image)
 
 
+def receiver_values(label, services):
+    """(#998, the owner's decision) the app is given the receiver's TZ (the receiver's TZ_DEFAULT) and SLOT_GRACE_DAYS
+    as the receiver is, so Settings → General → Phone receiver shows what the receiver uses."""
+    app, rx = env_of(services["app"]), env_of(services["receiver"])
+    check(f"{label}: the app gets the receiver's time zone, for General → Phone receiver (#998)",
+          "TZ" in app and app["TZ"] == rx.get("TZ_DEFAULT"), (app.get("TZ"), rx.get("TZ_DEFAULT")))
+    check(f"{label}: the app gets the receiver's SLOT_GRACE_DAYS as the receiver does, for General → Phone receiver (#998)",
+          app.get("SLOT_GRACE_DAYS") == rx.get("SLOT_GRACE_DAYS"), (app.get("SLOT_GRACE_DAYS"), rx.get("SLOT_GRACE_DAYS")))
+
+
 # ---------------------------------------------------------------- compose.release.yaml
 
 def compose_settings(name):
@@ -142,6 +152,7 @@ def compose_settings(name):
     check(f"{name}: the app gets every one of the server's settings, so .env can set it", not missing, missing)
     check(f"{name}: the app gets SANGUITY_SAVED_SETTINGS only as .env sets it (#1006)",
           app.get("SANGUITY_SAVED_SETTINGS") == "${SANGUITY_SAVED_SETTINGS:-}", app.get("SANGUITY_SAVED_SETTINGS"))
+    receiver_values(name, compose["services"])
     for svc_name, svc in compose["services"].items():
         for k, v in env_of(svc).items():
             if k in SETTINGS:
@@ -249,6 +260,7 @@ def truenas(want, lib_dir):
         compare(f"truenas ({t})", want, shape(rendered), TRUENAS_SAME)
         env = rendered["services"]["receiver"]["environment"]
         check("truenas: the receiver gets the time zone", env.get("TZ_DEFAULT") == "Etc/UTC", env.get("TZ_DEFAULT"))
+        receiver_values(f"truenas ({t})", rendered["services"])
         tv = load_yaml(os.path.join(app_dir, "templates", "test_values", t))
         app_env = env_of(rendered["services"]["app"])
         given = {k: v for k, v in app_env.items() if k in SETTINGS - ALWAYS_PASSED}
@@ -358,6 +370,7 @@ def casaos(want):
     check("casaos: the app gets the receiver's published port, for the phone upload address (#1007)", {got} == rx, (got, rx))
     check("casaos: the receiver gets the time zone",
           compose["services"]["receiver"].get("environment", {}).get("TZ_DEFAULT") == "$TZ")
+    receiver_values("casaos", compose["services"])
     given = sorted(k for s in compose["services"].values() for k in env_of(s) if k in SETTINGS - ALWAYS_PASSED)
     check("casaos: no service is given one of the app's settings (#999: they're changed in the app)", not given, given)
     vols = {target(v): source(v) for s in compose["services"].values() for v in s.get("volumes", [])}

@@ -99,7 +99,19 @@ def host(request: Request, origin: str = "", s=Depends(admin), db=Depends(get_db
 @router.get("/api/settings/phone")
 def phone(request: Request, s=Depends(admin), db=Depends(get_db)):
     """General → Phone receiver's read-only rows: the addresses phones are given now, how many profiles' phones upload
-    with a secret, and the receiver's own settings where this process sees them (the all-in-one image passes them to
-    both; with compose only the receiver has them: None)."""
+    with a secret, and the receiver's own settings as it reads them: every deployment passes TZ and SLOT_GRACE_DAYS to
+    the app as to the receiver (#998: compose and CasaOS both, TrueNAS its TZ to every container, the all-in-one image
+    its environment), so their values here are the receiver's, its defaults where they're unset."""
     return {"upload": watch_keys.addresses(_request_host(request)), "phones": watch_keys.with_secret(db),
-            "tz": os.environ.get("TZ") or None, "slot_grace_days": os.environ.get("SLOT_GRACE_DAYS") or None}
+            "tz": os.environ.get("TZ") or "UTC", "slot_grace_days": _receiver_days("SLOT_GRACE_DAYS", 7)}
+
+
+def _receiver_days(name, default):
+    """A number of days as the receiver reads it (watch/receiver.py's _days): its default when unset, unreadable or
+    below zero."""
+    try:
+        v = float(os.environ.get(name) or default)
+    except ValueError:
+        v = default
+    v = v if 0 <= v < float("inf") else default   # (NaN isn't >= 0; nor is a number JSON can't say shown)
+    return int(v) if float(v).is_integer() else v

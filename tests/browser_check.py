@@ -2672,7 +2672,7 @@ def main():
             p1003.goto(base + "/settings.html?profile=1#general")
             p1003.wait_for_selector("#phoneUrl:not([readonly])", timeout=20000)
             got1003["rows"] = p1003.evaluate("""[...document.querySelectorAll('#gen-phone .set-row-lbl')].slice(1)
-                .map(l => [l.querySelector('h3').textContent, (l.textContent.match(/\\b[A-Z]+(?:_[A-Z]+)+|\\bTZ\\b/) || [''])[0]])""")
+                .map(l => [l.querySelector('h3').textContent, (l.textContent.match(/\\b[A-Z]+(?:_[A-Z]+)+|\\bTZ\\b/) || [''])[0], l.nextElementSibling.textContent])""")
             p1003.fill("#phoneUrl", "https://phones.example.test/ingest")
             p1003.click("#setBar button:has-text('Save')")
             asked = p1003.locator("dialog.sg-ask button.danger, dialog.sg-ask button.primary")
@@ -2688,9 +2688,11 @@ def main():
         finally:
             ctx1003.close()
         check("General → Phone receiver (#1003): the upload address saved from the bar applies at once, asked first when phones need it; "
-              "the receiver's settings read-only, each naming its variable", "stopped" not in got1003 and not errs1003
-              and got1003["rows"] == [["Receiver's published port", "RECEIVER_PORT"], ["Time zone", "TZ"], ["Unclaimed data", "SLOT_GRACE_DAYS"],
-                                      ["What a restore replaced", "RESTORE_KEEP_DAYS"]]
+              "the receiver's settings read-only, each naming its variable, the time zone and unclaimed data's days as the receiver has them "
+              "(#998: the app is given them too)", "stopped" not in got1003 and not errs1003
+              and [r[:2] for r in got1003["rows"]] == [["Receiver's published port", "RECEIVER_PORT"], ["Time zone", "TZ"], ["Unclaimed data", "SLOT_GRACE_DAYS"],
+                                                     ["What a restore replaced", "RESTORE_KEEP_DAYS"]]
+              and [r[2] for r in got1003["rows"][1:3]] == [os.environ.get("TZ") or "UTC", f"{os.environ.get('SLOT_GRACE_DAYS') or 7} days"]
               and ("asked" not in got1003 or "phones.example.test" in got1003["asked"])
               and got1003["after"] == ["https://phones.example.test/ingest", False] and got1003["back"] == 200, got1003)
         # (#991) This person's and You's sections show the profile's and the person's own settings only: a server's own
