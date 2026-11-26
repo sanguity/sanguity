@@ -3775,6 +3775,9 @@ Everything on `main` so far; it becomes the first tagged release.
   the profile is no longer the setup build's, so a rebuild doesn't overwrite them.
 - **The server refuses to remove an upload in use** (#1057): one holding a saved record's document, or one an
   import is reading or waiting in review on, is kept (409, saying why), not only when the page checks.
+- **Copies of a changed record from before #1022 become one** (#1068): once #1032 had keyed them alike, a connected
+  source's copies stayed doubled; at start-up each is one record saying what the latest pull says, with its
+  corrections (undoing that pull puts back what the one before brought), and the app's log and Activity say how many.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
