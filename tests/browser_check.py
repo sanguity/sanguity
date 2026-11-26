@@ -2708,6 +2708,39 @@ def main():
               and (f"The phones of {phones1000} profile" in got1000["says"]) == (phones1000 > 0)
               and got1000["typing"] == "Type change addresses to confirm"
               and got1000["after"] == [("https://records.example.test", base), False, True] and got1000["back"] == 200, [got1000, apps1000, phones1000])
+        # #1049: Host and Security changed together, the bar's Save: Host's typed confirmation opens with focus in it, and
+        # keeps it, its words in the bar; Security's saved after it, said too (its save had taken focus to its heading
+        # and the bar's words with it). Discarded and put back after
+        env1049 = os.environ.pop("PUBLIC_ORIGINS")
+        ctx1049 = browser.new_context(viewport={"width": 1400, "height": 900})
+        ctx1049.add_cookies([c for c in strict.context.cookies() if c["name"] == "sg_session"])
+        p1049, errs1049, got1049 = ctx1049.new_page(), [], {}
+        p1049.on("pageerror", lambda e: errs1049.append(str(e)))
+        try:
+            p1049.goto(base + "/settings.html?profile=1#general")
+            p1049.wait_for_selector("#hostOrigins:not([readonly])", timeout=20000)
+            p1049.wait_for_selector("#gs-triesAccount", timeout=20000)
+            was1049 = p1049.input_value("#gs-triesAccount")
+            p1049.fill("#hostOrigins", "https://records.example.test\n" + base)
+            p1049.fill("#gs-triesAccount", "20" if was1049 != "20" else "25")
+            p1049.focus("#setBar button:has-text('Save')")
+            p1049.keyboard.press("Enter")
+            p1049.locator("#genSecMsg", has_text="Saved").wait_for(timeout=10000)
+            p1049.wait_for_timeout(300)
+            got1049 = p1049.evaluate("""() => ({typing: document.activeElement.closest('#gen-host .dz-body') ? document.activeElement.closest('.dz-body').querySelector('.dz-name')?.textContent : document.activeElement.id || document.activeElement.tagName,
+              bar: document.querySelector('#setBar .msg').textContent, sec: document.getElementById('genSecMsg').textContent,
+              toasts: [...document.querySelectorAll('#sgToasts')].map(t => t.textContent).join(' ')})""")
+            p1049.request.put(base + "/api/settings/install/security.triesAccount", headers={"X-Sanguity": "1", "Origin": base},
+                              data={"value": int(was1049) if was1049 else None})
+        except Exception as e:
+            got1049["stopped"] = stopped(e)
+        finally:
+            os.environ["PUBLIC_ORIGINS"] = env1049
+            ctx1049.close()
+        check("General → Host and Security saved together (#1049): focus stays in Host's typed confirmation, the bar's words name it, and "
+              "Security's saved is said after them", "stopped" not in got1049 and not errs1049
+              and got1049["typing"] == "Type change addresses to confirm" and got1049["bar"].startswith("Not saved yet: confirm the change under Public addresses.")
+              and got1049["sec"].startswith("Saved") and "Saved" in got1049["toasts"], [got1049, errs1049])
         # General → Phone receiver (#1003): the upload address saved from the bar (asked first when phones with a secret
         # need it), used by the server at once; the receiver's own settings read-only, each naming its variable
         ctx1003 = browser.new_context(viewport={"width": 1400, "height": 900})

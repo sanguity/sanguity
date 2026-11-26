@@ -61,7 +61,7 @@ function drawPhone(sec, vars, h, note) {
 }
 
 /* the bar's Save: what it changes, from the server; asked first when phones need the new address */
-async function phoneSave(msg) {
+async function phoneSave(msg, had) {
   if (!phoneDirty()) return;
   const k = RX_PHONE.st.key, was = RX_PHONE.st.value;
   let e;
@@ -76,7 +76,7 @@ async function phoneSave(msg) {
   try { await fresh(() => call(`settings/install/${k}`, "PUT", {value: e.value, was}), phoneReauth()); }
   catch (err) { sayIn(msg, `The upload address isn't saved: ${err.message}`, true); return; }
   await loadPhone("Saved the upload address.");
-  $("#gen-phone-hd").focus();
+  if (had) $("#gen-phone-hd").focus();   // (not while another part waits on its confirmation, #1049)
   toast("Saved the upload address.");
 }
 function phoneDiscard() {

@@ -90,7 +90,16 @@ let SET_NAV = null;   // the sidebar (sideNav), for account.js's and admin.js's 
     bar: {save: async (parts, msg, had) => {
       const own = parts.filter(p => !ADM[p.id]);
       if (own.length) await saveParts(own, msg, had);
-      for (const p of parts) if (ADM[p.id]) await ADM[p.id][0](msg, had);
+      // (#1049) a part's save left waiting on its confirmation (General → Host's typed one: focus in it, the part still
+      // changed) keeps focus and its words in the bar; the parts after it save without taking focus, theirs said after
+      let wait = null;
+      const after = [];
+      for (const p of parts) if (ADM[p.id]) {
+        const m = wait == null ? msg : el("span");
+        await ADM[p.id][0](m, had && wait == null);
+        if (wait != null && m.textContent) { after.push(" ", ...m.childNodes); sayIn(msg, [wait, ...after], m.classList.contains("bad")); }
+        else if (wait == null && p.hasAttribute("data-dirty") && p.contains(document.activeElement)) wait = msg.textContent;
+      }
     },
     discard: parts => { const own = parts.filter(p => !ADM[p.id]); if (own.length) discardParts(own); for (const p of parts) if (ADM[p.id]) ADM[p.id][1](); },
     profile: () => PID, keeps: p => !!ADM[p.id]}});   // (Install's don't change with the profile shown)
