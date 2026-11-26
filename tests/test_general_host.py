@@ -3,7 +3,9 @@
 without a restart, to each thing that reads them: the cross-site check, connected sources' return address, the phone
 upload address, calendar feed links and Find your provider's return addresses. A change is guarded: what it does said
 first (the source apps to register again, the phones with a secret), typed confirmation, a list this page's own
-address wouldn't pass refused, a reset refused, then the fresh check. Fictional data only.
+address wouldn't pass refused, a reset refused, then the fresh check. And General: Phone receiver (#1003): the upload
+address (WATCH_UPLOAD_URL) saved in the app applies at once on Sources → Phone and watch, its change counting the
+profiles whose phones need it. Fictional data only.
 
   python3 tests/test_general_host.py
 """
@@ -140,6 +142,34 @@ class Host(unittest.TestCase):
         self.assertEqual(self.put([NEW]).json()["detail"], "reauth_required")
         self.assertEqual(self.c.post("/api/me/reauth", json={"secret": PW}, headers=H).status_code, 200)
         self.assertEqual(self.put([NEW]).status_code, 200)
+
+    def test_e_upload_address_applies_at_once(self):
+        """#1003: the upload address saved in the app is the one Sources → Phone and watch gives, at once (with the
+        answer that makes a secret too); its effects count the phones that need it; back to empty, the public address's
+        host on RECEIVER_PORT again. A bad one is refused; the environment's is locked."""
+        self.set_to([OLD])
+        key, url = "phone.uploadUrl", "https://phones.example.test/ingest"
+        upload = lambda: self.c.get(f"/api/profiles/{self.pid}/watch/receiver").json()["addresses"]   # noqa: E731
+        put = lambda v: self.c.put(f"/api/settings/install/{key}", json={"value": v}, headers=H)   # noqa: E731
+        self.assertEqual(upload(), ["http://health.example.test:8731/ingest"])
+        e = self.c.post(f"/api/settings/install/{key}/effects", json={"value": url}, headers=H).json()
+        self.assertEqual((e["value"], e["upload"], e["phones"]), (url, [["http://health.example.test:8731/ingest"], [url]], 1))
+        self.assertEqual(self.c.get("/api/settings/phone").json()["phones"], 1)
+        self.assertEqual(put(url).status_code, 200)
+        self.assertEqual(upload(), [url])
+        r = self.c.post(f"/api/profiles/{self.pid}/watch/receiver/rotate", headers=H)
+        self.assertEqual(r.json()["addresses"], [url])
+        self.assertEqual(self.c.get("/api/settings/phone").json()["upload"], [url])
+        self.assertEqual(self.c.post(f"/api/settings/install/{key}/effects", json={"value": url}, headers=H).json()["phones"], 0)
+        self.assertEqual(put("ftp://phones.example.test").status_code, 400)
+        self.assertEqual(put("").status_code, 200)
+        self.assertEqual(upload(), ["http://health.example.test:8731/ingest"])
+        os.environ["WATCH_UPLOAD_URL"] = url
+        try:
+            self.assertEqual(put("https://other.example.test/ingest").status_code, 409)
+            self.assertEqual(upload(), [url])
+        finally:
+            del os.environ["WATCH_UPLOAD_URL"]
 
 
 if __name__ == "__main__":
