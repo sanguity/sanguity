@@ -546,12 +546,12 @@ const SgNav = (() => {
     waitN.textContent = n ? String(n) : "";
     if (n) waitLink.removeAttribute("data-none"); else waitLink.setAttribute("data-none", "");
   }
-  async function askWaiting() {
+  async function askWaiting(polled = false) {   // polled: asked on the page's own, as a profile is drawn (#1063: not use)
     const p = known.find(x => String(x.id) === pick.value), mine = ++waitSeq;
     if (!p || locked || (p.role !== "owner" && p.role !== "editor") || (typeof OFFLINE !== "undefined" && OFFLINE.on)) return;
     try {
       const [jobs, conns] = await Promise.all([`profiles/${p.id}/jobs?state=preview`, `profiles/${p.id}/connections`]
-        .map(path => api(path).then(r => r.ok ? r.json() : null)));
+        .map(path => api(path, polled ? background() : {}).then(r => r.ok ? r.json() : null)));
       if (mine === waitSeq && jobs) waited(p.id, sgWaiting(jobs, conns).length);
     } catch (e) {}   // (offline, or the server away: nothing said)
   }
@@ -559,7 +559,7 @@ const SgNav = (() => {
     if (!p || p.id === waitFor) return;
     waitFor = p.id;
     waited(p.id, 0);
-    if (window.requestIdleCallback) requestIdleCallback(() => askWaiting(), {timeout: 3000}); else setTimeout(askWaiting, 1000);
+    if (window.requestIdleCallback) requestIdleCallback(() => askWaiting(true), {timeout: 3000}); else setTimeout(() => askWaiting(true), 1000);
   }
   add.onOpen = askWaiting;
 

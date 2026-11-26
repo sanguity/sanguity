@@ -95,7 +95,8 @@ function poll() {
   if (bkPolling) return;
   bkPolling = setTimeout(async () => {
     bkPolling = null;
-    try { drawBackups(await call("backups")); } catch (e) { say("#bkNowMsg", e.message, true); }
+    try { drawBackups(await call("backups", "GET", undefined, background())); }   // (#1063: a poll, not use)
+    catch (e) { say("#bkNowMsg", e.message, true); }
   }, 800);
 }
 function finished(run) {
