@@ -446,7 +446,8 @@ Portals get things wrong: an outpatient scan coded as a hospital stay, a visit f
 appointment twice. Owners and editors fix them in the event's panel (click it on the timeline): **Hide**,
 **Rename**, **Fix date**, **Not a hospital stay** (for stays) or **Merge with…** another event within a week, which
 folds that event into the open one: the open one keeps its own title, date and details, gains the details it was
-missing, and takes over the other's cost row. An edited event says **Edited**, with what changed and who changed
+missing, and takes over the other's cost row. A lab draw merges only with another lab draw, and a lab result only
+with another lab result (#1023). An edited event says **Edited**, with what changed and who changed
 it, to everyone who can see the profile; owners and editors can undo it there, and **All edits** lists every edit,
 including those whose event is no longer in the records ("not found in the current records": its import was
 undone, or the source changed it). Each edit and undo is in the profile's activity log.

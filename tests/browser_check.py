@@ -8475,7 +8475,7 @@ def main():
             hide417 = js(IN_SIGHT)
             undo417 = "(async () => { for (const x of DATA.edits || []) await sendEdit('/' + x.id, {method: 'DELETE'}, el('p'), {edits: true}); closeDrawer(); })()"
             js(undo417)
-            merge417 = js("""(() => { const e = EV.find(e => e.k === 'visit' && !e.hidden && DATA.events.some(x => x.id !== e.id && !WATCH_KINDS.has(x.k) && Math.abs(zParse(x.t) - e.ts) <= 7 * DAY));
+            merge417 = js("""(() => { const e = EV.find(e => e.k === 'visit' && !e.hidden && DATA.events.some(x => x.id !== e.id && !WATCH_KINDS.has(x.k) && x.k !== 'lab' && x.k !== 'labitem' && Math.abs(zParse(x.t) - e.ts) <= 7 * DAY));
                 setRange(e.ts - 20 * DAY, e.ts + 20 * DAY); return e.id; })()""")
             settle(300)
             page.focus(f"#list .tl-row[data-id='{merge417}']")
@@ -8528,6 +8528,56 @@ def main():
                 page.wait_for_function("!(DATA.edits || []).length", timeout=20000)
                 settle(300)
                 check("…undone, the draw as it was (#950)", js(f"({draw950})", day950) == before950)
+            # #1023: Merge with… offers only a kind it can be one with: a lab event the lab events within a week, a lab day
+            # the lab days, a visit neither (it listed every event, so a lab event went into a lab day or a visit, its
+            # results with no row, or a lab day into a lab event, its lab events listed by none); the first offered merged
+            # into a lab event, then into a lab day: every result there finds its row, its lab day's badge counts what its
+            # drawer shows, every lab day lists lab events alone and every lab event is listed by one; each undone
+            pick1023 = js("""(() => { const near = (e, f) => DATA.events.some(x => x.id !== e.id && f(x) && Math.abs(x.ts - e.ts) <= 7 * DAY);
+                const lab = k => k === 'lab' || k === 'labitem', open = x => !WATCH_KINDS.has(x.k);
+                const of = k => EV.find(e => e.k === k && near(e, x => x.k === k) && near(e, x => open(x) && x.k !== k));   // (a lab event: hidden from the Timeline, in its lab day)
+                const v = EV.find(e => e.k === 'visit' && !e.hidden && near(e, x => lab(x.k)) && near(e, x => open(x) && !lab(x.k)));
+                return [of('labitem')?.id, of('lab')?.id, v?.id]; })()""")
+            offers1023 = []
+            for id1023 in pick1023:
+                if id1023 is None:
+                    offers1023.append(None)
+                    continue
+                js("id => openEvent(byId.get(id))", id1023)
+                settle(200)
+                page.click("#dmoreBtn")
+                page.click("#dmoreList button:text-is('Merge with…')")
+                settle(100)
+                offers1023.append(js("[...document.querySelectorAll('#dbody .edit-form select option')].map(o => byId.get(+o.value)?.k)"))
+            check("Merge with… (#1023): a lab event's offers only lab events, a lab day's only lab days, a visit's neither",
+                  None not in offers1023 and all(offers1023) and set(offers1023[0]) == {"labitem"} and set(offers1023[1]) == {"lab"}
+                  and not {"lab", "labitem"} & set(offers1023[2]), [pick1023, offers1023])
+            held1023 = """async id => { const e = byId.get(id), days = EV.filter(d => d.k === 'lab'), ids = d => DATA.details[d.id]?.ids || [];
+                const day = e?.k === 'lab' ? e : days.find(d => ids(d).includes(id));
+                if (!day) return null; await loadDetails(ids(day));
+                const lost = ids(day).flatMap(i => (DATA.details[i]?.rows || []).filter((_, r) => !rowPoint(DATA.details[i], r, byId.get(i))).map(r => r[0]));
+                const odd = days.flatMap(d => ids(d).filter(i => byId.get(i)?.k !== 'labitem').map(i => [d.id, i]));   // listing what's no lab event
+                const lists = EV.filter(i => i.k === 'labitem').map(i => [i.id, days.filter(d => ids(d).includes(i.id)).length]).filter(([, n]) => n !== 1);
+                return [day.id, ids(day).length, lost, odd, lists]; }"""
+            for n1023, at1023 in enumerate(pick1023[:2]):
+                if at1023 is None:
+                    continue
+                js("id => openEvent(byId.get(id))", at1023)
+                settle(200)
+                page.click("#dmoreBtn")
+                page.click("#dmoreList button:text-is('Merge with…')")
+                other1023 = js("+document.querySelector('#dbody .edit-form select').value")
+                page.click("#dbody .edit-form button:text-is('Save')")
+                page.wait_for_function("(DATA.edits || []).some(x => x.action === 'merge')", timeout=20000)
+                settle(300)
+                merged1023 = js(f"({held1023})", at1023)
+                draw1023 = js(f"({draw950})", merged1023[0]) if merged1023 else None
+                check(f"…the first offered merged into a {('lab event', 'lab day')[n1023]}: every result there finds its row, its lab day's badge counts what its drawer shows, lab days listing lab events alone, each by one (#1023)",
+                      merged1023 is not None and merged1023[1] and not any(merged1023[2:]) and draw1023[0] == draw1023[1],
+                      [at1023, other1023, merged1023, draw1023 and [len(draw1023[0]), len(draw1023[1])]])
+                js(undo417)
+                page.wait_for_function("!(DATA.edits || []).length", timeout=20000)
+                settle(300)
             # #479: opened from a tab's link at 1400 px (the palette leaves focus there), the docked drawer pushes that tab
             # under More; Escape undocks it, More goes as all the tabs fit again, and focus is the tab's, not the page's
             vw479 = page.viewport_size
