@@ -175,6 +175,12 @@
     <form id="genSecBody" novalidate></form>
     <span class="msg" id="genSecMsg" role="status"></span>
   </section>
+  <!-- General → Backups and logging (#1002, gen-backups.js) -->
+  <section class="card conn adm" id="gen-backups" hidden>
+    <h2>Backups and logging</h2>
+    <p class="hint">Where this server keeps its backups and its logs, and how long it keeps activity.</p>
+    <div id="genBk"></div>
+  </section>
   <section class="card conn adm" id="gen-phone" hidden><h2>Phone receiver</h2></section>   <!-- the upload address (admin-phone.js, #1003) -->
 
   <!-- Accounts (admin.js) -->
@@ -367,6 +373,7 @@
 <script src="js/outside.js"></script>
 <script src="js/admin-host.js"></script>
 <script src="js/gen-security.js"></script>
+<script src="js/gen-backups.js"></script>
 <script src="js/admin-phone.js"></script>
 <script src="js/settings-nav.js"></script>
 </body>

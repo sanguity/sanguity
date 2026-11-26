@@ -783,6 +783,44 @@ class Settings(unittest.TestCase):
         self.assertEqual(ada.put("/api/settings/install/sync.attachTypes", json={"value": kinds[:2], "was": kinds}, headers=H).status_code, 409)
         ada.post("/api/settings/install/reset", json={"section": "sync"}, headers=H)
 
+    def test_fewer_days_of_activity_counts_and_confirms(self):   # #1002
+        """General → Logging: keeping fewer days of activity counts the entries the next daily clean-up deletes, every
+        profile's and the install's own, and is made only once that count is typed back (409 until then, saying what
+        goes; a wrong count too). Nothing goes until that clean-up, which then deletes those and no others. More days,
+        or fewer where nothing is that old, asks nothing; a reset to the default is asked as a change is."""
+        from server import activity
+        ada, key, now = self.c["ada"], "activity.days", dbm.now()
+        ada.post("/api/me/reauth", json={"secret": PW["ada"]}, headers=H)
+        ids = {}
+        with contextlib.closing(dbm.connect()) as db:
+            for days, pid in ((400, 1), (200, 1), (100, None), (40, 1), (10, None)):
+                ids[days] = db.execute("INSERT INTO activity(at, profile_id, actor, action) VALUES(?, ?, 'fictional', 'view')",
+                                       (now - days * 86400, pid)).lastrowid
+        left = lambda: sorted(d for d, i in ids.items() if dbm.connect().execute("SELECT 1 FROM activity WHERE id=?", (i,)).fetchone())   # noqa: E731
+        put = lambda v, **kw: ada.put(f"/api/settings/install/{key}", json={"value": v, **kw}, headers=H)   # noqa: E731
+        r = put(90)
+        self.assertEqual(r.status_code, 409, r.text)
+        self.assertEqual(r.json()["detail"]["confirm"]["count"], 3)
+        self.assertIn("Keeping 90 days of activity instead of 365 deletes 3 entries older than 90 days at the next daily "
+                      "clean-up: 2 entries of the profiles' activity and 1 entry of the install's own.", r.json()["detail"]["message"])
+        self.assertIn("Type 3 to confirm.", r.json()["detail"]["message"])
+        self.assertEqual(put(90, confirm="2").status_code, 409, "a wrong count")
+        self.assertEqual(config.setting("ACTIVITY_DAYS"), 365)
+        self.assertEqual(put(90, confirm="3").status_code, 200)
+        self.assertEqual((config.setting("ACTIVITY_DAYS"), left()), (90, [10, 40, 100, 200, 400]), "nothing goes yet")
+        self.assertEqual(self.install_log()[0]["detail"], {"setting": key, "label": settings.SETTINGS[key].label, "from": 365, "to": 90})
+        with contextlib.closing(dbm.connect()) as db:   # the next daily clean-up: a day after the last
+            db.execute("UPDATE meta SET v='0' WHERE k='activity_pruned'")
+            activity.log(db, "view", None, 1, actor="fictional")
+        self.assertEqual(left(), [10, 40])
+        self.assertEqual(put(400).status_code, 200, "more days: nothing goes")
+        self.assertEqual(put(60).status_code, 200, "nothing that old")
+        self.assertEqual(put(30).json()["detail"]["confirm"]["count"], 1)
+        self.assertEqual(put(400).status_code, 200)
+        self.assertEqual(put(7).status_code, 400, "bounded")
+        r = ada.post("/api/settings/install/reset", json={"section": "logging"}, headers=H)   # 400 back to 365: nothing that old
+        self.assertEqual((r.status_code, r.json()["reset"], config.setting("ACTIVITY_DAYS")), (200, [key], 365))
+
     def test_rename_one_name(self):
         """#38: one name of a name map changed where it's shown, the rest of the map kept"""
         pid = self.fresh_profile()

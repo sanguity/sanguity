@@ -13,7 +13,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from . import accounts, activity, config, db as dbm, main, presets, settings
+from . import accounts, activity, config, db as dbm, general, main, presets, settings
 from .main import _client_ip, admin, fresh, get_db, need, user
 
 router = APIRouter()
@@ -54,6 +54,18 @@ def _values(d, old, new):
     return {} if d.private else {"from": old, "to": new}
 
 
+def _confirmed(db, d, value, typed):
+    """(#1002) A change that deletes something (the setting's confirm: fewer days of activity kept) is made only with
+    the count of what goes typed back ("confirm"); else refused, 409 {"message", "confirm": {"count", "message"}}, to
+    ask with. The count is the one at this moment: one that has grown since it was shown is asked again."""
+    if not d.confirm or (d.env and config.source(d.env) == "environment"):   # (then the one in force stays)
+        return
+    before = settings.in_force(d.key)[0] if d.env else _held(db, d)
+    goes = d.confirm(db, before, value)
+    if goes and str(typed if typed is not None else "").replace(",", "").strip() != str(goes["count"]):
+        raise HTTPException(409, {"message": f"{goes['message']} Type {goes['count']} to confirm.", "confirm": goes})
+
+
 def _save_install(db, s, d, body, request, now):
     """(#1006) A change to an install setting, from either route: refused if the value isn't one it takes (400), nothing
     to do if it holds that one already, else the fresh check (403 reauth_required), then saved and logged with the old
@@ -68,6 +80,7 @@ def _save_install(db, s, d, body, request, now):
         GUARDS[d.key](db, request, body, value)
     if not body.confirm:
         _ends_sign_ins(db, s, d, value)
+    _confirmed(db, d, value, body.confirm)
     fresh(request, s, "change a server setting")
     with dbm.transaction(db):
         _unchanged(body, now(), d)
@@ -89,7 +102,7 @@ def _ends_sign_ins(db, s, d, value):
                                              "confirm it to go ahead."})
 
 
-def _reset_install(db, s, defs, request, section=None, label=None):
+def _reset_install(db, s, defs, request, section=None, label=None, confirm=None):
     """(#1006) Install settings back to their defaults: the fresh check when one has a saved value (403
     reauth_required); logged with what each held and goes back to. Returns the keys that had one."""
     have = settings.stored(db, "install")
@@ -98,6 +111,8 @@ def _reset_install(db, s, defs, request, section=None, label=None):
     for d in defs:
         if d.key in have and d.key in GUARDS:   # (#1000) only where its effects are said and confirmed
             GUARDS[d.key](db, request, None, d.default)
+        if d.key in have:   # (#1002) a default that deletes something: confirmed as a change to it is
+            _confirmed(db, d, d.default, confirm)
     fresh(request, s, "reset a server setting")
     with dbm.transaction(db):
         have = settings.stored(db, "install")
@@ -149,7 +164,8 @@ class Value(BaseModel):
     # from it, so a change made since, in another tab or by someone else, isn't lost under it
     was: Any = None
     confirm: Any = None   # (#1000) the words typed to confirm a guarded change (GUARDS); (#1001) true for a change
-    # that ends sign-ins, asked about first (_ends_sign_ins)
+    # that ends sign-ins, asked about first (_ends_sign_ins); (#1002) the count of what the change deletes, typed by
+    # the admin (_confirmed)
 
 
 def _unchanged(body, now, d):
@@ -202,6 +218,7 @@ def reset_one(pid: int, key: str, request: Request, s=Depends(user), db=Depends(
 
 class Section(BaseModel):
     section: str
+    confirm: Any = None   # (#1002) as Value's
 
 
 @router.post("/api/profiles/{pid}/settings/reset")
@@ -217,7 +234,7 @@ def reset_section(pid: int, body: Section, request: Request, s=Depends(user), db
                and not (d.scope == "install" and accounts.admin_needs_second_factor(db, s))]
     if not allowed:
         raise HTTPException(403, "You can't change the settings in this section.")
-    reset = _reset_install(db, s, [d for d in allowed if d.scope == "install"], request, body.section, titles[body.section])
+    reset = _reset_install(db, s, [d for d in allowed if d.scope == "install"], request, body.section, titles[body.section], body.confirm)
     with dbm.transaction(db):
         for scope in ("profile", "user"):
             gone = settings.clear(db, [d.key for d in allowed if d.scope == scope], scope, pid, s["id"])
@@ -373,8 +390,14 @@ def reset_install_section(body: Section, request: Request, s=Depends(admin), db=
     defs = [d for d in settings.SETTINGS.values() if d.section == body.section and d.scope == "install"]
     if not defs:
         raise HTTPException(404, "There's no such section.")
-    gone = _reset_install(db, s, defs, request, body.section, titles[body.section])
+    gone = _reset_install(db, s, defs, request, body.section, titles[body.section], body.confirm)
     return {"reset": gone, **_install_sections(db)}
+
+
+@router.get("/api/settings/install/backups-logging")
+def install_backups_logging(s=Depends(admin)):
+    """(#1002) General → Backups and Logging: the backups folder, the key, where the logs are read (general.py)."""
+    return general.backups_logging()
 
 
 class Rename(BaseModel):
