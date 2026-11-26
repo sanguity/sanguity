@@ -54,9 +54,11 @@ const ltNew = p => { const at = sourceOf(p.imp)?.at;
 function ltRow({s, pts, last}, id) {
   const ranges = last.map(p => refText(p) || "no range on its report"), from = last.map(p => ucOrig(s, p)).filter(Boolean);
   const sep = () => el("span", {class: "vh", text: ", "}), age = ltAge(last[0].ts), chg = ltChange(pts, last);
-  return el("a", {class: "ov-row lt-row" + (age.old ? " old" : ""), id, href: "#labs", "data-lab": s.name, "data-unit": s.unit, onclick: ev => {
-      if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.altKey || ev.button) return;   // a new tab or window: the browser's
-      ev.preventDefault(); ltOpen(s, id); }},
+  // at its charts' own address (#1026); opened in a new tab or window (the browser's), the lab is among those charted there
+  const elsewhere = () => { state.sel.add(s.name); save(); };
+  return el("a", {class: "ov-row lt-row" + (age.old ? " old" : ""), id, href: "#labs-chart", "data-lab": s.name, "data-unit": s.unit, onclick: ev => {
+      if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.altKey || ev.button) return elsewhere();
+      ev.preventDefault(); ltOpen(s, id); }, onauxclick: ev => { if (ev.button === 1) elsewhere(); }},
     el("span", {class: "n"}, nice(s.name), ...(last.some(ltIsNew) ? [" ", ltNew(last.find(ltIsNew))] : [])), sep(),
     el("span", {class: "v"}, ...last.map((p, i) => { const f = FLAG_OF(p[4]);
       return el("span", {class: "lt-v"}, i ? el("span", {class: "vh", text: "; "}) : null, readText(s, p)[0],
@@ -117,7 +119,7 @@ function renderLatest() {
       el("ul", {class: "lt-list"}, ...labs.map(s => el("li", {}, ltRow(by.get(s), ids.get(s)))))].filter(Boolean)));
   ltSeen();   // shown: what's new now isn't, the next time the page is loaded (#996)
 }
-/* a row's lab charted on Labs, focus on its chart (charts.js showSeries), the address a new entry (#labs), so Back
+/* a row's lab charted on Labs, focus on its chart (charts.js showSeries), the address a new entry (#labs-chart), so Back
    returns to Latest: focus then on the row again (ltBack, as the address changes back, below) */
 let ltBack = null;
 function ltOpen(s, id) { ltBack = id; showSeries(s.name, s); }

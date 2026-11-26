@@ -3585,6 +3585,11 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Labs opens on Latest on a phone** (#997): on a phone Labs' charts are harder to read than a list. At phone widths
   Labs now opens on Latest, wider screens on Chart as before; Chart, Heatmap and Compare are a tap away. Once you
   pick a view, Labs opens there, from the tab bar on any page and after a reload, for that profile.
+- **Each of Labs' views has its own address** (#1026): `#labs` was both the charts' address and where Labs opens, so
+  a chart opened from Latest, a key-lab tile, a lab's panel or the command palette came back as Latest or the view
+  you picked when the page reloaded, and Type them in's **See them on Labs** didn't chart the labs typed. The charts
+  are now at `#labs-chart`, beside `#labs-heatmap`, `#labs-compare` and `#labs-latest`, and `#labs` alone opens Labs
+  where it opens; a reload, Back and Forward and a row opened in a new tab each land on the same view.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

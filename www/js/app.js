@@ -12,19 +12,21 @@ let TAB_ORDER = [...TABS], TAB_HIDDEN = new Set();
 const shownTabs = () => TAB_ORDER.filter(t => !TAB_HIDDEN.has(t));
 function applyTabs(cfg) { ({order: TAB_ORDER, hidden: TAB_HIDDEN} = SgNav.layout(cfg)); }
 /* the tab in the address (#208), with its view (#442): index.html#overview, #health, #medications (#275), #timeline,
-   #timeline-journal (the Timeline as the journal, #277), #labs (Labs as charts), #labs-heatmap (Labs as the heatmap), #labs-compare (labs compared, #297),
-   #labs-latest (each lab's latest result, #993), #labs-chart (Labs as charts, whichever view it opens in: #997),
-   #costs (Costs' claims) or #costs-paid (what you paid, #278); the old #trends and #heatmap still open Labs as charts or
-   the heatmap. What follows a ? is for the tab: #costs?drug=metformin, the drug's claims (medications.js, #452). An
+   #timeline-journal (the Timeline as the journal, #277), Labs' views each at its own, #labs-chart (its charts),
+   #labs-heatmap, #labs-compare (#297) and #labs-latest (#993), and #labs alone Labs where it opens (labsHome, core.js:
+   the view picked, else Latest on a phone and Chart wider, #997; another page's tab bar links there; #1026: it was the
+   charts too, so a chart reloaded came back as Latest or the view picked), #costs (Costs' claims) or #costs-paid (what
+   you paid, #278); the old #trends and #heatmap still open Labs as charts or the heatmap. What follows a ? is for the tab: #costs?drug=metformin, the drug's claims (medications.js, #452). An
    address with no # opens the tab last used (save(), core.js). tabOfHash: the address's [tab, its
    view], or null; setView: a view, by its name, on the tab it belongs to */
-const HASH_TABS = {...TAB_ALIAS, labs: ["labs", "chart"], "labs-chart": ["labs", "chart"], "labs-heatmap": ["labs", "heatmap"], "labs-compare": ["labs", "compare"], "labs-latest": ["labs", "latest"], timeline: ["timeline", "timeline"], "timeline-journal": ["timeline", "journal"],
+const HASH_TABS = {...TAB_ALIAS, labs: ["labs", "home"], "labs-chart": ["labs", "chart"], "labs-heatmap": ["labs", "heatmap"], "labs-compare": ["labs", "compare"], "labs-latest": ["labs", "latest"], timeline: ["timeline", "timeline"], "timeline-journal": ["timeline", "journal"],
   costs: ["costs", "claims"], "costs-paid": ["costs", "paid"]};
 const tabOfHash = () => { const h = decodeURIComponent(location.hash.slice(1)).toLowerCase().replace(/\?.*/s, ""); return HASH_TABS[h] || (TABS.includes(h) ? [h] : null); };
-const tabHash = () => "#" + state.tab + (state.tab === "labs" && state.labsView !== "chart" ? "-" + state.labsView : state.tab === "timeline" && state.tlView === "journal" ? "-journal"
+const tabHash = () => "#" + state.tab + (state.tab === "labs" ? "-" + state.labsView : state.tab === "timeline" && state.tlView === "journal" ? "-journal"
   : state.tab === "costs" && costState.view === "paid" ? "-paid" : "");
 function setView(v) {
-  if (LABS_VIEWS.includes(v)) state.labsView = v;
+  if (v === "home") state.labsView = labsHome();   // (#labs alone, #1026)
+  else if (LABS_VIEWS.includes(v)) state.labsView = v;
   else if (v === "timeline" || v === "journal") state.tlView = v;
   else if (v === "claims" || v === "paid") costState.view = v;
 }
@@ -306,12 +308,11 @@ async function recordsDraw(data) {
   $("#meta").textContent = [DATA.source, DATA.built && "built " + fmtD(DATA.built), WATCH && WATCH.last_payload && "watch synced " + fmtDT(WATCH.last_payload)]
     .filter(Boolean).join(" · ");   // a profile of imports alone has no build to name (#199: it said "undefined · built")
   restore();   // a saved period naming a milestone that's since gone is All (setPeriod)
-  // Labs opens on Latest on a phone and on Chart wider till a view's picked (#997), whatever was shown last, and Labs'
-  // own address (another page's tab bar, a reload) opens it where it opens: the view picked, else that; Back and
-  // Forward to #labs are its charts
+  // Labs opens on Latest on a phone and on Chart wider till a view's picked (#997), whatever was shown last; #labs
+  // alone opens it there too, and each view's own address that view (#1026)
   if (!labsPicked) state.labsView = labsHome();
   const arrived = tabOfHash();
-  if (arrived) { state.tab = arrived[0]; setView(decodeURIComponent(location.hash.slice(1)).toLowerCase().replace(/\?.*/s, "") === "labs" ? labsHome() : arrived[1]); }
+  if (arrived) { state.tab = arrived[0]; setView(arrived[1]); }
   // a journal and nothing imported (#472): the Timeline's Journal view, where its entries are, unless the address
   // names another tab; a watch's alone (#477: a phone connected first), Body and activity, where its charts are
   else if (DATA.imports && !Object.keys(DATA.imports).length) {
