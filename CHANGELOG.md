@@ -3621,6 +3621,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Glucose's "Below 54" and "Above 180" shares are told apart in forced colours** (#1014): both were close to the
   system's text colour there, at the time-in-ranges bar's two ends and in its key. The over-180 share and its key are
   hatched in forced colours now; elsewhere they look as before.
+- **A journal entry's Kind and a dose's What happened show every option with larger text** (#1024): on a phone their
+  last options ("Side effect" and "Mood", "Skipped") were cut, the switch scrolling sideways with no scrollbar to say
+  so. Where they don't fit on one line they now wrap onto a second; at the usual size they're as before.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
