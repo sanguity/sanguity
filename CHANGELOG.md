@@ -3756,6 +3756,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - **New profile waits for the server to say you may** (#1050): the profile menu showed it until the page had asked
   who's signed in, so with profiles admins only a member saw it briefly on a slow load; it's shown only once the
   answer says yes.
+- **The 32-bit ARM check passes again** (#1083): its import check after the build still imported pycryptodome
+  (`Crypto`), which #103 replaced with `cryptography` for encryption at rest, so arm.yml failed every run after the
+  image had built. It checks `cryptography`'s AES-GCM, which the app uses, instead; the images are unchanged.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
