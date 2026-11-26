@@ -105,18 +105,28 @@ class Connections(unittest.TestCase):
         return c
 
     def setUp(self):
-        self.fake = FakeFHIR(patients=["robin-example"]).start()
-        self.addCleanup(self.fake.stop)
+        self.fake = self.serve(patients=["robin-example"])
         db = dbm.connect()
-        # sources from earlier tests stay in the database; when the OS hands this fake a port an earlier one had, its
-        # address would match theirs and adding a source would be refused as a duplicate (409): move theirs aside
-        db.execute("UPDATE smart_clients SET issuer = issuer || '/earlier-test-' || id WHERE issuer = ?", (self.fake.fhir_base,))
         self.pid = prof.create_profile(db, "Robin (fictional)", owner_id=self.uids["robin"])
         db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'viewer')", (self.uids["kim"], self.pid))
         db.close()
         self.sleeps.clear()
 
     # ---------------------------------------------------------------- helpers
+
+    def serve(self, **kw):
+        """A fake FHIR server for this test (FakeFHIR(**kw)), stopped after it. Sources from earlier tests stay in the
+        database, and the OS may hand this fake a port an earlier test's had: its address would match theirs and adding
+        a source would be refused as a duplicate (409, "Another source has that FHIR base address already"), at random
+        (#1030: a fake started within a test, not by setUp, didn't do this). Theirs at its address are moved aside."""
+        fake = FakeFHIR(**kw).start()
+        self.addCleanup(fake.stop)
+        db = dbm.connect()
+        try:
+            db.execute("UPDATE smart_clients SET issuer = issuer || '/earlier-test-' || id WHERE issuer = ?", (fake.fhir_base,))
+        finally:
+            db.close()
+        return fake
 
     def source(self, auth="public", secret=None, scopes=None, register=True, vendor="epic"):
         cid = f"app-{auth}-{self.fake.port}"
@@ -195,11 +205,9 @@ class Connections(unittest.TestCase):
 
     def afresh(self, name):
         """A fake FHIR server and a profile of their own, within one test (#909–#914: each case its own): earlier sources
-        at its address moved aside, as setUp does."""
-        self.fake = FakeFHIR(patients=["robin-example"]).start()
-        self.addCleanup(self.fake.stop)
+        at its address moved aside (serve)."""
+        self.fake = self.serve(patients=["robin-example"])
         db = dbm.connect()
-        db.execute("UPDATE smart_clients SET issuer = issuer || '/earlier-test-' || id WHERE issuer = ?", (self.fake.fhir_base,))
         self.pid = prof.create_profile(db, name, owner_id=self.uids["robin"])
         db.close()
 
@@ -880,11 +888,7 @@ class Connections(unittest.TestCase):
         for first in ("U", "P0"):
             for order in itertools.permutations((first, "P1", "P2")):
                 with self.subTest(first=first, order=order):
-                    self.fake = FakeFHIR(patients=["robin-example"]).start()   # (a source and a profile of its own each time)
-                    self.addCleanup(self.fake.stop)
-                    db = dbm.connect()
-                    self.pid = prof.create_profile(db, f"Undone {first} {' '.join(order)} (fictional)", owner_id=self.uids["robin"])
-                    db.close()
+                    self.afresh(f"Undone {first} {' '.join(order)} (fictional)")   # (a source and a profile of its own each time)
                     imps = {"U": self.upload_bundle([json.loads(json.dumps(r)) for r in self.fake.resources(patient="pat-1")])["import_id"]} if first == "U" else {}
                     cid = self.connect(self.source())
                     imps["P0"] = self.first_pull(cid)["import_id"]
@@ -1598,8 +1602,7 @@ class Connections(unittest.TestCase):
         """A payer's CARIN Blue Button API (the fake, standing in for Blue Button's sandbox: a confidential client)
         brings claims onto the Costs tab; a later sync adds only new claims and marks an adjusted claim's original."""
         self.fake.stop()
-        self.fake = FakeFHIR(fixtures=PAYER_FIXTURES).start()
-        self.addCleanup(self.fake.stop)
+        self.fake = self.serve(fixtures=PAYER_FIXTURES)
         sid = self.source(auth="confidential", secret="fictional-payer-secret", vendor="insurer")
         mine = next(x for x in self.robin.get("/api/connect/sources").json()["sources"] if x["id"] == sid)
         self.assertEqual(mine["scopes"], conns.default_scopes(vendor="insurer"))
@@ -2348,8 +2351,7 @@ class Connections(unittest.TestCase):
         started at the old address doesn't finish at the new one."""
         sid = self.source()
         cid = self.connect(sid)
-        other = FakeFHIR(patients=["robin-example"], smart_config={"token_endpoint": self.fake.token_url}).start()
-        self.addCleanup(other.stop)
+        other = self.serve(patients=["robin-example"], smart_config={"token_endpoint": self.fake.token_url})
         r = self.robin.patch(f"/api/connect/sources/{sid}", json={"issuer": other.fhir_base}, headers=H)
         self.assertEqual(r.status_code, 409, r.text)
         self.assertIn("still connected", r.json()["detail"])
