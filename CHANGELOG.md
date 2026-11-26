@@ -3618,6 +3618,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Labs' result dots have rims in the system's colours in forced colours** (#1013): against a contrast theme opposite
   to the app's, each result's dot and ▲ or ▼ kept the app's card colour as its rim, and Compare its marks' rims and its
   rings' hollows, as Body's did before #975. A mark's rim or hollow is the system's background now, on every chart.
+- **Glucose's "Below 54" and "Above 180" shares are told apart in forced colours** (#1014): both were close to the
+  system's text colour there, at the time-in-ranges bar's two ends and in its key. The over-180 share and its key are
+  hatched in forced colours now; elsewhere they look as before.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
