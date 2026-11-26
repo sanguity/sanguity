@@ -44,7 +44,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 75   # about 55 minutes after Redesign 7 (the browser check 45 of them; 35 after Redesign 6, 27 after Redesign 5, 16 after Phase 8): room to grow
+    timeout-minutes: 110   # about 75 minutes after the first backlog batches (the browser check 63 of them; 45 after Redesign 7, 35 after Redesign 6, 27 after Redesign 5, 16 after Phase 8): room to grow
     steps:
       - uses: actions/checkout@v7
 
