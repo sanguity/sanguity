@@ -6,8 +6,8 @@
      profile (the profile menu's) and light or dark mode;
    - Records tabs: the tabs the profile shows (nav.js's links to them);
    - Pages and settings: every page with a sidebar and every group in it (groups.js, the list those sidebars are drawn
-     from), and the parts of a group worth going to by name (Password, Units…): Admin's for admins, Sharing's by the
-     profile's role, as their sidebars list them;
+     from), and the parts of a group worth going to by name (Password, Units…): Settings' Install's for admins (#991),
+     Sharing's by the profile's role, as their sidebars list them;
    - Labs: the lab names (by the name in the records, the name shown, the panel), opened as a chart on the Labs tab;
    - Events: the Timeline's index (the words its search box finds: an event's title, what it's about, its kind, a lab
      day's results' and tests' names), those the Timeline doesn't hide, each opened in the drawer on the Timeline, most
@@ -219,19 +219,19 @@ const SgPalette = (() => {
         ...(all ? TAB_VIEWS.filter(v => v[0] === t).map(([, view, hash, vt, words]) => ({icon: sgIcon(t), title: vt, ctx: `Records tab › ${title}`, words, go: open(a, t, view, hash)})) : [])];
     });
   }
-  /* the pages (not the one you're on) and, when something's typed, their groups and named parts */
+  /* the pages (not the one you're on) and, when something's typed, their groups and named parts; at: what else a
+     search takes as their place's name (groups.js place: You's "account", Install's "admin", #991) */
   function pages(all) {
     const out = [], role = RANK[profile()?.role] ?? -1;
     for (const P of Object.values(SG_PAGES)) {
-      if (P.admin && !ME?.user?.is_admin) continue;
       if (P.page !== page) out.push({icon: P.icon, title: P.title, ctx: "Page", words: P.words, go: () => goTo(P, "")});
       if (!all) continue;
       for (const g of P.groups) {
-        if (g.rest || (g.needs && role < RANK[g.needs])) continue;
+        if (g.rest || (g.admin && !ME?.user?.is_admin) || (g.needs && role < RANK[g.needs])) continue;
         const here = P.page === page;   // (first of those found as well, #524)
-        const up = {icon: g.icon, title: g.title, ctx: P.title, words: g.words, here, go: () => goTo(P, g.id)};
+        const up = {icon: g.icon, title: g.title, ctx: P.title, at: g.place, words: g.words, here, go: () => goTo(P, g.id)};
         out.push(up);
-        for (const [title, id, words, needs] of g.finds || []) if (!needs || role >= RANK[needs]) out.push({icon: sgIcon(P.page.replace(".html", "/") + id), title, ctx: `${P.title} › ${g.title}`, words, here, up, go: () => goTo(P, id, true)});
+        for (const [title, id, words, needs] of g.finds || []) if (!needs || role >= RANK[needs]) out.push({icon: sgIcon(P.page.replace(".html", "/") + id), title, ctx: `${P.title} › ${g.title}`, at: g.place, words, here, up, go: () => goTo(P, id, true)});
       }
     }
     if (page !== "guide.html") out.push({icon: sgIcon("guide"), title: "Getting started", ctx: "Page", words: "guide first records", go: () => { location.href = "guide.html" + (pid() ? "?profile=" + pid() : ""); }});
@@ -309,10 +309,11 @@ const SgPalette = (() => {
   /* a part found (a group's finds, x.up its group) with a word typed only in its place that its group's own title or
      words hold comes after that group (#532: “rename profile” found Delete this profile, “rename” only in “Settings ›
      Rename or delete”, before Rename or delete) */
+  const where = x => x.at ? `${x.ctx} ${x.at}` : x.ctx;
   function scored(x, words) {
-    const n = score(x.title, x.words || "", words, x.ctx), g = x.up, own = flat(x.title) + flat(x.words || "");
+    const n = score(x.title, x.words || "", words, where(x)), g = x.up, own = flat(x.title) + flat(x.words || "");
     if (n < 0 || !g || !kept(words).some(w => !at(own, w) && at(flat(g.title) + flat(g.words || ""), w))) return n;
-    const above = score(g.title, g.words || "", words, g.ctx);
+    const above = score(g.title, g.words || "", words, where(g));
     return above < 0 ? n : Math.max(n, above + .25);
   }
   const ranked = (xs, words, cap, more = () => 0) => xs.map(x => [x.s ?? scored(x, words), x])

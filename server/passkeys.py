@@ -27,11 +27,12 @@ PER_ACCOUNT = 20
 TRANSPORTS = {t.value for t in AuthenticatorTransport}
 
 
-# a passkey the device still has but Sanguity doesn't (removed under Account, or from another install)
+# a passkey the device still has but Sanguity doesn't (removed under Settings, or from another install)
 UNVERIFIED = ("Your passkey didn't check it's you: unlock it with its PIN, fingerprint or face when it asks, not just a "
               "touch, and try again.")   # (#930)
-STALE = ("That passkey isn't registered here: it was probably removed under Account. Delete it from this device's "
-         "passkeys (or password manager), then try again; you can pick a passkey on another device, such as your phone.")
+STALE = ("That passkey isn't registered here: it was probably removed under Settings, Sign-in and security. Delete it "
+         "from this device's passkeys (or password manager), then try again; you can pick a passkey on another device, "
+         "such as your phone.")
 
 
 class PasskeyError(Exception):

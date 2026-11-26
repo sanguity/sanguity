@@ -103,8 +103,6 @@ ALLOWED = {
     "www/css/app.css": {"colours": 1, "px font sizes": 2, "radii": 1, "shadows": 4, "px spacing": 4, "durations": 2},
     # a page's one colour (sign-in's and setup's too: their button's text is --on-accent now) is the brand mark's white
     # highlight, stroke="#fff"
-    "www/account.html": {"colours": 1},
-    "www/admin.html": {"colours": 1},
     "www/guide.html": {"colours": 1},
     "www/index.html": {"colours": 1, "style attributes": 1},
     "www/login.html": {"colours": 1},

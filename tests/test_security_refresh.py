@@ -295,6 +295,39 @@ class Reach(unittest.TestCase):
         self.assertFalse(j["admin"])
         self.assertEqual(j["sources"], [])
 
+    def test_settings_install_is_the_admins_alone(self):
+        """Settings → Install (#991): the Admin page's groups, now on the Settings page every account opens, so their
+        scripts are there for everyone and only the server keeps the install's to its admins. Every route they ask for is
+        an admin's, but the person's own: their sign-in (the fresh check), and what any account may read (Find your
+        provider's directory, the lab names, outside connections, each its own share for a non-admin). And each one
+        that reads refuses an owner, an editor, a viewer and an account with no profile, for real."""
+        with open(os.path.join(ROOT, "www", "settings.html"), encoding="utf-8") as f:
+            scripts = re.findall(r'<script src="js/([\w-]+\.js)"></script>', f.read())
+        install = ["admin.js", "admin-sources.js", "admin-backups.js", "outside.js", "activity.js"]
+        self.assertEqual([s for s in install if s not in scripts], [], "Install's scripts on the Settings page")
+        heads = set()
+        for s in install:
+            with open(os.path.join(ROOT, "www", "js", s), encoding="utf-8") as f:
+                js = f.read()
+            heads |= set(re.findall(r'\b(?:call|api)\(\s*["`]([a-z][\w/-]*)', js)) | set(re.findall(r'\bactivityPanel\(\s*"([\w/-]+)"', js))
+        own = ("/api/me", "/api/outside", "/api/directory", "/api/lab-names")
+        reads = []
+        for h in sorted(heads):
+            path = "/api/" + h.rstrip("/")
+            routes = [k for k in ROUTES if k[1] == path or (h.endswith("/") and k[1].startswith(path + "/"))]
+            self.assertTrue(routes, f"{h}: no such route")
+            for k in routes:
+                if any(k[1] == o or k[1].startswith(o + "/") for o in own):
+                    continue
+                self.assertEqual(ROUTES[k][0], ADMIN, f"Install asks {h} for {k}, which isn't only an admin's")
+                if k[0] == "GET" and "{" not in k[1]:
+                    reads.append(k[1])
+        self.assertGreaterEqual(len(reads), 8, reads)
+        for path in reads:
+            for who in ("olive", "eddie", "vera", "stan"):
+                self.assertEqual(self.status(who, path).status_code, 403, f"{who} {path}")
+            self.assertIn(self.status("ada", path).status_code, (200, 204), path)
+
     def test_a_share_link_or_feed_opens_only_itself(self):
         r = self.status("olive", f"/api/profiles/{self.pid}/links", "POST", json={"sections": ["visits"]})
         self.assertEqual(r.status_code, 200, r.text)

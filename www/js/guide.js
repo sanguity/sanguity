@@ -155,8 +155,8 @@
     if (r.status === 401) { location.replace("login.html"); return; }
     if (!r.ok) return;
     ME = await r.json();
-    if (ME.user.must_change_pw) { location.replace("account.html#password"); return; }
-    if (ME.user.needs_two_factor) { location.replace("account.html#twofa"); return; }
+    if (ME.user.must_change_pw) { location.replace("settings.html#password"); return; }
+    if (ME.user.needs_two_factor) { location.replace("settings.html#twofa"); return; }
     $("#who").textContent = ME.user.username;
     { const w = plainHttpWarning(); if (w) { $("#insecure").textContent = w; $("#insecure").hidden = false; } }
     const pid = making ? null : SgNav.profiles(ME.profiles);   // the top bar's picker (nav.js): the address's, else this browser's last
