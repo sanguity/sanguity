@@ -99,10 +99,14 @@ const SG_PAGES = {
     // admins only. General (#998) first: the server's own settings, each of its sections (#1000-#1005) a part in its has
     {id: "general", title: "General", icon: "wrench", part: "Install", admin: true, has: ["gen-host", "gen-security", "gen-backups", "gen-phone", "gen-about"], place: "admin", words: "server install configuration",
      finds: [["Host", "gen-host", "public addresses origins reverse proxy domain url passkey names trusted proxies port bind forwarded"],
-       ["Security", "gen-security", "sign-in lasts session length days hours idle unused sign out who may create profiles admins only " +
-        "shortest password length one-time temporary fresh check minutes wrong tries throttle attempts wait secure cookie password checks"],
+       // (each of its rows' labels finds it, #524; "onetime", not "one-time": a word typed is found at a word's start, so it's
+       // still found by "one-time", but not whole, so "one-time password" finds Accounts first, where one is made, #502)
+       ["Security", "gen-security", "sign-in lasts session length days hours with second factor without idle when unused sign out " +
+        "who may create profiles admins only shortest password length characters two factor onetime temporary time works fresh " +
+        "check minutes secure cookie password checks"],
+       ["Wrong tries before a wait", "gen-security", "password throttle attempts one account from place address any anywhere"],   // (an entry of its own: "create account" is Accounts')
        ["Require two-factor sign-in", "gen-security", "2fa everyone"],   // (#1001; #528: "require 2fa", Accounts' before)
-       ["Backups and logging", "gen-backups", "backups folder encryption key file keys schedule logs log output docker security activity kept days how long delete older"],
+       ["Backups and logging", "gen-backups", "backups folder encryption key file keys logs log output docker security activity kept days how long delete older"],   // (the schedule's Backups', #532: it only links there)
        ["Phone receiver", "gen-phone", "upload address watch scale health connect receiver port time zone unclaimed restore replaced"],
        ["About", "gen-about", "version release releases what's new schema database deployed deployment truenas unraid casaos docker folders runs as user uid gid configuration limits upload size zip journal photo sync attachment timeout health links"]]},
     {id: "accounts", title: "Accounts", icon: "user-cog", part: "Install", admin: true, has: ["users"], place: "admin",
