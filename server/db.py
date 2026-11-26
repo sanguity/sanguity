@@ -1175,6 +1175,12 @@ SCHEMA = [
     """
     INSERT OR REPLACE INTO meta(k, v) VALUES('fhir_stamped_keys', '1');
     """,
+    # version 45: the copies #1022's bug made, which version 44's keying left sharing one key (#1068): at start-up, once
+    # that's done, records.merge_copies makes each one record (the latest kept) and clears the mark. Its own mark, so
+    # an install whose version 44 work has already run finds its copies too.
+    """
+    INSERT OR REPLACE INTO meta(k, v) VALUES('fhir_stamped_copies', '1');
+    """,
 ]
 
 

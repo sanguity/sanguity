@@ -782,6 +782,84 @@ class Connections(unittest.TestCase):
         finally:
             db.close()
 
+    def test_copies_a_stamp_made_become_one_record_once_keyed_alike(self):   # #1068
+        """#1022's bug doubled each changed record at a pull ("fhir:#req-<id>-<n>|..." keys of their own); #1032 keyed
+        them alike but left both. At start-up after schema step 45, records of one connection sharing one key are one:
+        the earliest pull's, saying what the latest says, the later copy removed (an event, a list's entry), the
+        correction made on the older one finding it; undoing the latest pull puts back what the earlier one brought,
+        the record staying, and the Costs mark the keying couldn't move kept as the later of the two. Nothing else of
+        that source changes, nor an upload's records; logged with counts; once."""
+        from server import activity, edits, oop
+        cid = self.connect(self.source())
+        self.first_pull(cid)   # the fixture's records too, none of them a copy: left as they are
+        ev = lambda key, title: {"id": key, "t": "2025-03-04T09:00:00", "k": "visit", "title": title, "key": key}   # noqa: E731
+        st = lambda t, n: f"fhir:#req-{n}|{t}"   # noqa: E731
+        db = dbm.connect()
+        try:
+            with dbm.transaction(db):
+                a = records.store(db, self.pid, {"events": [ev(st("Encounter/e1", 1), "Checkup"), ev(st("Encounter/e2", 1), "Other visit")],
+                                                 "problems": [{"key": st("Condition/c1", 1), "name": "Fictional condition c1", "status": "Active"}]},
+                                  "sync", fmt="fhir")
+                b = records.store(db, self.pid, {"events": [ev(st("Encounter/e1", 2), "Checkup (changed)")],
+                                                 "problems": [{"key": st("Condition/c1", 2), "name": "Fictional condition c1", "status": "Resolved"}]},
+                                  "sync", fmt="fhir")
+                db.execute("UPDATE imports SET connection_id=? WHERE id IN (?, ?)", (cid, a, b))
+                up = records.store(db, self.pid, {"events": [ev(st("Encounter/e9", 1), "Upload's"), ev(st("Encounter/e9", 2), "Upload's again")]}, "upload")
+                old = db.execute("SELECT id FROM events WHERE import_id=? ORDER BY id LIMIT 1", (a,)).fetchone()[0]
+                edits.add(db, self.pid, self.uids["robin"], "rename", old, title="Checkup (renamed)")
+                for n, hsa in ((1, True), (2, False)):
+                    db.execute("INSERT INTO cost_marks(profile_id, target, target_key, value, at) VALUES(?, ?, ?, ?, ?)",
+                               (self.pid, oop.target_hash(st("Encounter/e1", n)), crypto.enc(st("Encounter/e1", n)),
+                                crypto.enc(json.dumps({"hsa": hsa})), n))
+            dbm.meta_set(db, records.STAMPED_KEYS, "1")
+            self.assertEqual(records.rekey_stamped(db), 7)
+            bodies = lambda: {r["id"]: (r["import_id"], records._dec(r["body"])) for r in   # noqa: E731
+                              db.execute("SELECT id, import_id, body FROM events WHERE profile_id=?", (self.pid,))}
+            before = bodies()
+            self.assertEqual(sorted(b_["key"] for _, b_ in before.values()).count("fhir:Encounter/e1"), 2, "keyed alike, both left")
+            self.assertIsNone(records.merge_copies(db), "not before schema step 45 marks it")
+            step = next(s for s in dbm.SCHEMA if records.COPIES in s)
+            db.executescript("BEGIN;" + step + "COMMIT;")
+            from contextlib import redirect_stdout
+            with redirect_stdout(io.StringIO()) as out:
+                self.assertEqual(records.merge_copies(db), {"events": 1, "entries": 1, "marks": 1})
+            self.assertIsNone(records.merge_copies(db), "once")
+            after = bodies()
+            newer = next(i for i, (imp, b_) in before.items() if imp == b and b_["key"] == "fhir:Encounter/e1")
+            self.assertEqual(set(before) - set(after), {newer}, "the later copy removed, nothing else")
+            self.assertEqual(after[old], (a, before[newer][1]), "the earliest pull's record, saying what the latest says")
+            self.assertEqual({i: before[i] for i in after if i != old}, {i: v for i, v in after.items() if i != old}, "the rest as they were")
+            self.assertEqual(sum(1 for i, _ in after.values() if i == up), 2, "an upload's records aren't touched")
+            marks = [(crypto.dec(r["target_key"]), json.loads(crypto.dec(r["value"])), r["at"])
+                     for r in db.execute("SELECT target_key, value, at FROM cost_marks WHERE profile_id=?", (self.pid,))]
+            self.assertEqual(marks, [("fhir:Encounter/e1", {"hsa": False}, 2)])
+        finally:
+            db.close()
+        d = self.data()
+        self.assertEqual([e["title"] for e in d["events"] if e["title"].startswith("Checkup")], ["Checkup (renamed)"], "its correction kept")
+        self.assertEqual([p["status"] for p in d.get("problems") or [] if p.get("name") == "Fictional condition c1"], ["Resolved"])
+        self.assertIn("one record each, the latest kept: 1 record(s) and 1 list entries removed, 1 Costs mark(s) moved.", out.getvalue())
+        with open(main.__file__, encoding="utf-8") as f:
+            self.assertIn("records.merge_copies(db)", f.read(), "at start-up")
+        # undoing the latest pull puts back what the earlier one brought: the record stays (its correction with it)
+        from server import history
+        db = dbm.connect()
+        try:
+            history.undo(db, self.pid, b, db.execute("SELECT * FROM users WHERE id=?", (self.uids["robin"],)).fetchone())
+            self.assertEqual(records._dec(db.execute("SELECT body FROM events WHERE id=?", (old,)).fetchone()[0])["title"], "Checkup")
+        finally:
+            db.close()
+        d = self.data()
+        self.assertEqual([e["title"] for e in d["events"] if e["title"].startswith("Checkup")], ["Checkup (renamed)"], "still there, corrected")
+        self.assertEqual([p["status"] for p in d.get("problems") or [] if p.get("name") == "Fictional condition c1"], ["Active"],
+                         "the list's entry as the earlier pull had it")
+        db = dbm.connect()
+        try:
+            r = db.execute("SELECT actor, detail FROM activity WHERE action='records.copies' ORDER BY id DESC").fetchone()
+            self.assertEqual((r["actor"], json.loads(crypto.dec(r["detail"]))), (activity.START_UP, {"events": 1, "entries": 1, "marks": 1}))
+        finally:
+            db.close()
+
     def test_a_stamped_record_that_cant_be_keyed_is_left_and_the_app_starts(self):   # #1044
         """One stamped record start-up can't key (its details unreadable) is left as it was and named in the app's log and
         the install log; the others are keyed, and the work stays marked, tried again at the next start-up. Nothing is
