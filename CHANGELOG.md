@@ -3739,6 +3739,9 @@ Everything on `main` so far; it becomes the first tagged release.
   `SANGUITY_SAVED_SETTINGS=off`, fewer days of activity or a shorter sign-in was saved unasked and took effect once the
   flag was taken out, deleting activity or ending sign-ins nobody confirmed; a reset of a setting the environment sets
   likewise. Each is now asked from the value saved here, the one that applies then, and says when it takes effect.
+- **The provider directory's weekly update is off while saved settings are left out** (#1043): with
+  `SANGUITY_SAVED_SETTINGS=off` it read its saved switch all the same and went on contacting open.epic.com and
+  raw.githubusercontent.com; it now reads the switch as every other setting is read, so recovery mode means off.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
