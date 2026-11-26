@@ -1,7 +1,7 @@
 /* Sanguity · Settings → Install's parts about getting records in (#167, #991, after admin.js): Connected-source apps, the
    guided setup of each source (option 1: this install's own app with each vendor, docs/connected-sources-oauth.md)
-   and the defaults of every connection; and the Provider directory, what Find your provider has and how to add
-   Epic's and Oracle Health's lists. Uses call(), say(), when() and plural() from admin.js. */
+   and the defaults of every connection; and the Provider directory, what Find your provider has, and the server
+   reading Epic's and Oracle Health's lists (#992). Uses call(), say(), when(), plural() and fresh() from admin.js. */
 "use strict";
 /* ---------------------------------------------------------------- setting sources up (from connect.js, #32, #91) */
 /* The walk-through (#165): for the vendor chosen, numbered steps of what to do on its developer site (from the
@@ -427,30 +427,100 @@ async function syncReset(sec) {
   toast(said, {action: "Undo", onAction: () => syncUndo(was)});
 }
 
-/* ---------------------------------------------------------------- the provider directory (#93) */
-/* What Find your provider has on this server (GET directory, any signed-in account: the lists' names, never a
-   search), and how an admin adds Epic's and Oracle Health's published lists (docs/provider-directory.md). */
+/* ---------------------------------------------------------------- the provider directory (#93, #992) */
+/* What Find your provider has on this server, and Epic's and Oracle Health's lists, which the server reads itself
+   (GET provider-directory, admins'; server/directory/update.py): Add the lists, or Update now, asked first in the
+   app's dialog naming the hosts it contacts and their terms; then in the background, its progress drawn here, and
+   each stage and the outcome said in the card's status line. Keep them up to date: a switch, off by default, saved as
+   it's changed (the install setting directory.weekly, with the fresh check, #1006), with when the lists were last
+   read and will be next. The command line stays, for a server that can't reach those hosts (docs/provider-directory.md). */
+let DIR = null, dirPolling = null, dirSaid = null;
+const dirName = id => DIR.lists.find(l => l.id === id)?.name || id;
+const dirAnd = parts => parts.length > 1 ? parts.slice(0, -1).join(", ") + " and " + parts.at(-1) : parts[0] || "";
 async function loadDirectory() {
-  let j;
-  try { j = await call("directory?q="); }
-  catch (e) { say("#dirMsg", e.message, true); return; }
-  const missing = j.sources.filter(s => !s.included);
-  const why = s => (s.why || "").replace(/ Run tools.*$/, "");
-  $("#dirSources").replaceChildren(
-    el("p", {}, el("b", {text: `${j.total.toLocaleString("en-US")} providers, insurers and sandboxes`}), ` in this server's list, from:`),
-    el("ul", {class: "adm-dir"}, ...j.sources.map(s => el("li", {},
-      el("b", {text: s.label}), " · ",
-      s.included ? `loaded${s.entries ? `, ${s.entries.toLocaleString("en-US")} entries` : ""}${s.retrieved ? `, read ${fmtD(s.retrieved)}` : ""}`
-        : el("span", {class: "bad", text: "not loaded"}),
-      s.included ? ". " : `. ${why(s)} `,
-      el("a", {href: s.terms, target: "_blank", rel: "noopener noreferrer", text: "Terms"})))),
-    el("p", {}, el("a", {href: "sources.html#portals", text: "Open Find your provider"})));
-  $("#dirAdd").replaceChildren(
-    el("h3", {class: "sub", text: missing.length ? `Adding ${missing.map(s => s.label.split(":")[0].replace(/ Millennium.*/, "")).join(" and ")}'s lists` : "Keeping the lists up to date"}),
-    el("p", {}, "From the Sanguity folder on the server (Python 3.9 or later, nothing to install), run this, and again now and then (Epic suggests weekly) to pick up new hospitals:"),   // (in sight, #447)
-    el("div", {class: "dir-src"}, el("pre", {}, el("code", {text: "python3 tools/build_directory.py"}))),
-    el("p", {class: "hint", text: "It downloads Epic's and Oracle Health's lists (about 100 MB from Epic, 4 MB from Oracle), and the next " +
-      "search uses them, with no restart."}),
-    aboutWords("It writes this server's own copy, data/directory/providers.json.gz. It's the only part of Sanguity that downloads a list, and only when you run it. More in docs/provider-directory.md."));
+  let d;
+  try { d = await call("provider-directory"); }
+  catch (e) { say("#dirMsg", e.message, true); $("#directory").hidden = false; return; }
+  const was = DIR?.running;
+  DIR = d;
+  drawDirectory(d, !!was && !d.running);
+  if (d.running) dirPoll();
+  else if (was) dirDone(d.last);
   $("#directory").hidden = false;
+}
+function drawDirectory(d, done = false) {   // done: an update just ended, its outcome said in the status line
+  const fetched = d.lists.filter(l => l.fetched), missing = fetched.filter(l => !l.included), n = x => x.toLocaleString("en-US");
+  $("#dirSources").replaceChildren(
+    el("p", {}, el("b", {text: `${n(d.total)} providers, insurers and sandboxes`}), " in this server's list, from:"),
+    el("ul", {class: "adm-dir"}, ...d.lists.map(l => el("li", {},
+      el("b", {text: l.label}), " · ",
+      l.included ? `loaded${l.entries != null ? `, ${n(l.entries)} entries` : ""}${l.retrieved ? `, read ${fmtD(l.retrieved)}` : ""}. `
+        : [el("span", {class: "bad", text: "not loaded"}), `: it would add ${l.adds}. `],
+      el("a", {href: l.terms, target: "_blank", rel: "noopener noreferrer", text: "Terms"})))),
+    el("p", {}, el("a", {href: "sources.html#portals", text: "Open Find your provider"})));
+  const btn = $("#dirGet");
+  btn.textContent = missing.length ? "Add the lists" : "Update now";
+  btn.hidden = false;
+  btn.setAttribute("aria-disabled", !!d.running);   // (not disabled: focus stays on it while the lists are read)
+  if (d.running) btn.dataset.tip = "The lists are being read: this card says when it's done."; else delete btn.dataset.tip;
+  const run = d.running, box = $("#dirProgress");
+  box.hidden = !run;
+  if (run) {
+    const pct = run.size ? Math.min(100, Math.round(100 * run.got / run.size)) : null, mb = x => `${Math.max(1, Math.round(x / 1e6))} MB`;
+    const what = run.stage === "download" && run.name ? `Downloading ${run.name}'s list` : run.stage_label;
+    box.replaceChildren(...present(run.stage === "download" && run.got ? el("span", {text: `${mb(run.got)}${run.size ? ` of ${mb(run.size)}` : ""}`}) : null),
+      el("progress", {max: 100, ...(pct != null ? {value: pct} : {}), "aria-label": what}));
+    if (dirSaid !== what) { dirSaid = what; say("#dirMsg", what + "…"); }   // each stage said once, not each megabyte
+  } else box.replaceChildren();
+  const hosts = dirAnd([...new Set(fetched.map(l => l.host))]);
+  const sw = el("input", {type: "checkbox", role: "switch", id: "directory.weekly", checked: d.weekly ? "" : null,
+    "aria-describedby": "dirWeeklyHint", onchange: ev => dirWeekly(ev.target)});
+  $("#dirWeekly").replaceChildren(
+    el("h3", {class: "sub", text: "Keep them up to date"}),
+    el("label", {class: "check switch"}, sw, "Read the lists again once a week"),
+    el("p", {class: "hint", id: "dirWeeklyHint"}, `${d.weekly ? "On: this server reads" : "Off: when on, this server reads"} them from ${hosts} every week, and a failed update keeps the lists it has. `,
+      d.read_at ? `Last read ${when(d.read_at)}. ` : "Not read yet. ",
+      d.weekly && d.next ? `Next ${d.next * 1000 <= Date.now() ? "within the hour" : fmtD(d.next * 1000)}.` : ""),
+    ...present(d.last && !run && !done ? el("p", {class: "hint", id: "dirLast"}, `The last update, ${when(d.last.at)}: ${dirOutcome(d.last)}`) : null));
+  $("#dirOffline").replaceChildren("A server that can't reach ", hosts, " can add the lists on the host instead: ",
+    el("code", {text: "python3 tools/build_directory.py"}), " from the Sanguity folder (docs/provider-directory.md).");
+}
+/* what an update did, in words: each list read, with its count; each that wasn't, why, and what's in use instead */
+function dirOutcome(last) {
+  const read = Object.entries(last.read || {}).map(([id, k]) => `${dirName(id)}'s list read (${k.toLocaleString("en-US")} entries)`);
+  const failed = Object.entries(last.failed || {}).map(([id, why]) => {
+    const l = DIR.lists.find(x => x.id === id);
+    return `${dirName(id)}'s list wasn't read (${why}): ${l?.included ? "its earlier copy is still in use" : "it isn't loaded"}`;
+  });
+  return dirAnd([...read, ...failed]) + ".";
+}
+function dirDone(last) {
+  dirSaid = null;
+  if (!last) return;
+  const failed = Object.keys(last.failed || {}).length;
+  say("#dirMsg", (Object.keys(last.read || {}).length ? "Done. " : "Not done. ") + dirOutcome(last) +
+    (Object.keys(last.read || {}).length ? " Find your provider searches the new lists now." : ""), !!failed);
+}
+function dirPoll() {
+  if (dirPolling) return;
+  dirPolling = setTimeout(async () => { dirPolling = null; await loadDirectory(); }, 1000);
+}
+$("#dirGet").onclick = async () => {
+  if (DIR.running) return;   // its tip says why (util.js)
+  const fetched = DIR.lists.filter(l => l.fetched);
+  if (!await ask({title: fetched.some(l => !l.included) ? "Add Epic's and Oracle Health's lists?" : "Update the lists?", action: "Download the lists",
+    message: [`This server downloads ${dirAnd(fetched.map(l => `${l.name}'s list from ${l.host} (${l.size})`))}.`,
+      "Their terms allow a copy for this server only, which isn't shared. Nothing about you or your records is sent.",
+      "It runs in the background: you can leave this page meanwhile."]})) return;
+  try { DIR = await call("provider-directory/update", "POST"); dirSaid = null; drawDirectory(DIR); dirPoll(); }
+  catch (e) { say("#dirMsg", e.message, true); }
+};
+async function dirWeekly(sw) {
+  const on = sw.checked;
+  try {
+    await fresh(() => call(`settings/install/${encodeURIComponent(sw.id)}`, "PUT", {value: on}), $("#dirReauth"));
+    await loadDirectory();
+    document.getElementById("directory.weekly")?.focus({preventScroll: true});
+    say("#dirMsg", on ? "The lists will be read again once a week." : "Weekly updates are off: the lists are read only when you press Update now.");
+  } catch (e) { sw.checked = !on; say("#dirMsg", `Not changed: ${e.why || e.message}`, true); }
 }
