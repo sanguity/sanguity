@@ -1008,6 +1008,38 @@ def general_backups_check(browser, base, cookies, check, db_path, pw=None):
     return errs
 
 
+def general_about_check(browser, base, cookies, check):
+    """Settings → Install → General → About (#1004), as the admin whose sign-in cookies are given: the version, the
+    database, how it's deployed and who it runs as; the folders, each with what mounts it; the releases page a link,
+    and no request to any host but the app's own; the limits read-only, with their variables. Returns script errors."""
+    ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
+    ctx.add_cookies(cookies)
+    pg, errs, hosts = ctx.new_page(), [], set()
+    pg.on("pageerror", lambda e: errs.append(str(e)))
+    pg.on("request", lambda r: hosts.add(urllib.parse.urlsplit(r.url).netloc))
+    try:
+        pg.goto(base + "/settings.html?profile=1#general")
+        pg.wait_for_selector("#genAbout .kv", timeout=15000)
+        got = pg.evaluate("""[[...document.querySelectorAll('#genAbout dt')].map(d => d.textContent),
+          (a => a && [a.getAttribute('href'), a.target, a.rel])(document.querySelector('#genAbout a[href^="https://"]')),
+          [...document.querySelectorAll('#genAbout li code')].map(c => c.textContent), document.getElementById('genAbout').innerText]""")
+        check("General → About (#1004): the version (a link to the releases page, opened apart), the database, how it's deployed, its "
+              "settings and who it runs as; then the folders, each with what mounts it; nothing in it contacts any host but the app",
+              got[0][:5] == ["Version", "Database", "Deployed as", "Settings", "Runs as"]
+              and got[0][5:] == ["Data", "Backups", "Encryption key", "Record exports", "Phone and watch data", "Configuration"]
+              and got[1] == ["https://github.com/sanguity/sanguity/releases", "_blank", "noopener noreferrer"]
+              and "Schema version " in got[3] and hosts == {urllib.parse.urlsplit(base).netloc}, [got, hosts])
+        check("…and the limits read-only, uploads, connected sources and Health Links, each with its variable",
+              got[2] == ["UPLOAD_MAX_FILE_MB", "UPLOAD_MAX_TOTAL_MB", "UPLOAD_MAX_FILES", "UPLOAD_MAX_ZIP_RATIO", "JOURNAL_PHOTO_MAX_MB",
+                         "SYNC_HOURS", "SYNC_MAX_RESOURCES", "SYNC_MAX_ATTACHMENT_MB", "CONNECT_TIMEOUT", "SHL_MAX_MB", "SHL_MAX_FILES", "SHL_TIMEOUT"]
+              and not pg.evaluate("!!document.querySelector('#genAbout input, #genAbout select')"), got[2])
+    except Exception as e:
+        check("General → About (#1004) ran", False, stopped(e))
+    finally:
+        ctx.close()
+    return errs
+
+
 # ---- axe-core (#202): Deque's accessibility engine, from the axe-playwright-python package (requirements-dev.txt), which
 # bundles a pinned axe.min.js. Only that script is used: put into the page under test by page.evaluate, which the
 # Content-Security-Policy doesn't apply to, so the strict pages are checked as they are; the app never loads it.
@@ -2689,6 +2721,8 @@ def main():
         errs1002 = general_backups_check(browser, base, [c for c in strict.context.cookies() if c["name"] == "sg_session"], check,
                                          os.path.join(TMP, "sanguity.db"))
         check("…and no script fails there", not errs1002, errs1002)
+        errs1004 = general_about_check(browser, base, [c for c in strict.context.cookies() if c["name"] == "sg_session"], check)
+        check("…nor on About (#1004)", not errs1004, errs1004)
         # the Sharing page (#168): its sidebar, each part drawn by its own script
         strict.goto(base + "/sharing.html#summary")   # the visit summary (#48)
         strict.wait_for_selector("#build:not([hidden]) #sections input", timeout=10000)

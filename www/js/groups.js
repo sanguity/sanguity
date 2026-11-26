@@ -97,13 +97,14 @@ const SG_PAGES = {
         ["Units", "sec-units", "metric imperial mmol mg kg lb pounds kilograms weight temperature celsius fahrenheit height cm inches lab tests"]]},
     // Install: the Admin page's groups (#167: admin.js, admin-sources.js, admin-backups.js, outside.js, activity.js),
     // admins only. General (#998) first: the server's own settings, each of its sections (#1000-#1005) a part in its has
-    {id: "general", title: "General", icon: "wrench", part: "Install", admin: true, has: ["general", "gen-host", "gen-security", "gen-backups", "gen-phone"], place: "admin", words: "server install configuration",
+    {id: "general", title: "General", icon: "wrench", part: "Install", admin: true, has: ["general", "gen-host", "gen-security", "gen-backups", "gen-phone", "gen-about"], place: "admin", words: "server install configuration",
      finds: [["Host", "gen-host", "public addresses origins reverse proxy domain url passkey names trusted proxies port bind forwarded"],
        ["Security", "gen-security", "sign-in lasts session length days hours idle unused sign out who may create profiles admins only " +
         "shortest password length one-time temporary fresh check minutes wrong tries throttle attempts wait secure cookie password checks"],
        ["Require two-factor sign-in", "gen-security", "2fa everyone"],   // (#1001; #528: "require 2fa", Accounts' before)
        ["Backups and logging", "gen-backups", "backups folder encryption key file keys schedule logs log output docker security activity kept days how long delete older"],
-       ["Phone receiver", "gen-phone", "upload address watch scale health connect receiver port time zone unclaimed restore replaced"]]},
+       ["Phone receiver", "gen-phone", "upload address watch scale health connect receiver port time zone unclaimed restore replaced"],
+       ["About", "gen-about", "version release releases what's new schema database deployed deployment truenas unraid casaos docker folders runs as user uid gid configuration limits upload size zip journal photo sync attachment timeout health links"]]},
     {id: "accounts", title: "Accounts", icon: "user-cog", part: "Install", admin: true, has: ["users"], place: "admin",
      words: "users new create add account reset password one-time temporary remove delete disable enable make admin " +
        "owner ownerless profile without an turn off sign-in admin someone"},   // (#495, #499, #502: what's done to an account; #506: Make owner, under the list; #515: enable; requiring two-factor sign-in: General's, #1001)

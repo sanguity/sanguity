@@ -72,6 +72,7 @@ services:
       RESTORE_KEEP_DAYS: ${RESTORE_KEEP_DAYS:-}   # what a restore replaced is deleted this long after (#595)
       SANGUITY_SAVED_SETTINGS: ${SANGUITY_SAVED_SETTINGS:-}   # off: the values saved in the app left out (#1006)
       FORWARDED_ALLOW_IPS: "*"   # the app has no published port; only nginx reaches it, and nginx sets the header
+      SANGUITY_DEPLOYMENT: release   # how it's deployed, named on Settings → General → About (#1004)
     # no ports: only nginx (web) reaches it, over the compose network
     read_only: true
     tmpfs:
