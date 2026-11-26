@@ -95,6 +95,9 @@ async def lifespan(app):
                 print(f"Removed {gone} folder(s) of deleted profiles that a stop part-way left.", flush=True)
             sealed = atrest.seal_everything(db)
             records.backfill_key_hashes(db)   # source keys' hashes for rows from before schema version 13
+            if (rekeyed := records.rekey_stamped(db)):   # keyed by a meta.source stamped per write, before #1022 (version 44)
+                print(f"Keyed {rekeyed} record(s) from a FHIR server that stamps each write by the server itself, as they "
+                      "are now, so a change at the source updates them in place.", flush=True)
             from . import labmap   # lab-name matches reviews made before schema version 41: their profile's own (#927)
             labmap.scope_old(db)
             if (given := sync.backfill_keys(db)):   # a lab event's rows' own records, from before #885 (schema version 40)
