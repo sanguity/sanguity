@@ -2640,6 +2640,30 @@ def main():
         ctx1028.close()
         check("Install's start waits for the scripts it calls (#1028): with the CPU slowed and outside.js late, Outside connections, Accounts and "
               "Backups are drawn, and no script fails", drawn1028 is True and not errs1028, [drawn1028, errs1028])
+        # #1048: with no public address, Connected-source apps says to set one in General → Host (where it's set since
+        # #1000, at once: not .env and a restart), a link there; at 320 px with 200% text its example address breaks
+        env1048 = os.environ.pop("PUBLIC_ORIGINS")
+        ctx1048 = browser.new_context(viewport={"width": 320, "height": 760}, bypass_csp=True)
+        ctx1048.add_cookies([c for c in strict.context.cookies() if c["name"] == "sg_session"])
+        p1048, got1048 = ctx1048.new_page(), {}
+        try:
+            p1048.goto(base + "/settings.html?profile=1#apps")
+            p1048.wait_for_selector("#addrWarn li", timeout=20000)
+            got1048["says"] = p1048.inner_text("#addrWarn")
+            p1048.evaluate("css => { const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = [s]; }", BIG_TEXT_CSS)
+            p1048.wait_for_timeout(300)
+            got1048["past"] = p1048.evaluate("() => document.documentElement.scrollWidth - document.documentElement.clientWidth")
+            p1048.click("#addrWarn a")
+            p1048.wait_for_function("() => location.hash === '#gen-host' && document.getElementById('gen-host')?.checkVisibility()", timeout=10000)
+        except Exception as e:
+            got1048["stopped"] = stopped(e)
+        finally:
+            os.environ["PUBLIC_ORIGINS"] = env1048
+            ctx1048.close()
+        check("Connected-source apps with no public address (#1048): says to set it in Settings → Install → General → Host, a link there, not .env "
+              "and a restart; at 320 px with 200% text the page no wider than the screen", "stopped" not in got1048
+              and "in Settings → Install → General → Host:" in got1048["says"] and not re.search(r"\.env|restart|PUBLIC_ORIGINS", got1048["says"])
+              and got1048["past"] <= 0, got1048)
         # General → Host (#1000): the public addresses, editable where the environment doesn't set them (here it does:
         # taken out for this check, read at each use). The bar's Save says what the change does first, with the counts
         # the server gives (source apps to register again, phones with a secret), then asks for it typed; saved, the

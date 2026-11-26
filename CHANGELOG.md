@@ -3746,6 +3746,9 @@ Everything on `main` so far; it becomes the first tagged release.
   before #1022 ran at every start-up with no guard, so one record it couldn't read stopped the app, every time. It
   goes record by record now: one it can't key is left as it was and named in the app's log and the install log, the
   rest are keyed, and it's tried again at the next start-up until none is left.
+- **Connected-source apps says to set the public address in General → Host** (#1048): with none set, it still said to
+  set PUBLIC_ORIGINS in .env and restart; it names Settings → Install → General → Host now (a link there), where it's
+  set at once, and its example address breaks at 320 px with larger text instead of scrolling the page sideways.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

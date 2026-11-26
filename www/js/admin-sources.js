@@ -200,7 +200,8 @@ async function loadSetup({walk = true} = {}) {
   if (again) SgOutside.load();
   $("#returnAddr").textContent = SETUP.return_address || "(not set: see below)";
   $("#copyReturn").hidden = !SETUP.return_address;
-  $("#addrWarn").replaceChildren(...SETUP.warnings.map(w => el("li", {text: w})));
+  const HOST_AT = "Settings → Install → General → Host";   // where the public addresses are set (#1048): a link there
+  $("#addrWarn").replaceChildren(...SETUP.warnings.map(w => el("li", {}, ...w.split(HOST_AT).flatMap((t, i) => i ? [el("a", {href: "#gen-host", text: HOST_AT}), t] : [t]))));
   $("#sourceList").replaceChildren(...SETUP.sources.length ? SETUP.sources.map(sourceRow)   // none: said so (util.js, #499: it showed nothing)
     : [emptyState("No source set up yet: each one added below is listed here, for people to connect.", null, {cls: ""})]);
   if (walk && editing === null) fill(null);

@@ -394,8 +394,8 @@ def return_address(origins=None):
 def address_warnings(uri):
     """Why a vendor may not accept this return address in production (docs/connected-sources-oauth.md)."""
     if not uri:
-        return ["Set PUBLIC_ORIGINS (in .env) to the address people open Sanguity at, like "
-                "https://health.example.com, and restart: the return address is made from it."]
+        return ["Set the address people open Sanguity at, like https://health.example.com, in Settings → Install → "
+                "General → Host: the return address is made from it."]   # (#1048: there since #1000, at once)
     u = urllib.parse.urlsplit(uri)
     host, out = (u.hostname or "").lower(), []
     if u.scheme != "https":
