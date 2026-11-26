@@ -822,7 +822,7 @@ class Connections(unittest.TestCase):
             db.executescript("BEGIN;" + step + "COMMIT;")
             from contextlib import redirect_stdout
             with redirect_stdout(io.StringIO()) as out:
-                self.assertEqual(records.merge_copies(db), {"events": 1, "entries": 1, "marks": 1})
+                self.assertEqual(records.merge_copies(db), {"events": 1, "results": 0, "entries": 1, "marks": 1})
             self.assertIsNone(records.merge_copies(db), "once")
             after = bodies()
             newer = next(i for i, (imp, b_) in before.items() if imp == b and b_["key"] == "fhir:Encounter/e1")
@@ -838,7 +838,7 @@ class Connections(unittest.TestCase):
         d = self.data()
         self.assertEqual([e["title"] for e in d["events"] if e["title"].startswith("Checkup")], ["Checkup (renamed)"], "its correction kept")
         self.assertEqual([p["status"] for p in d.get("problems") or [] if p.get("name") == "Fictional condition c1"], ["Resolved"])
-        self.assertIn("one record each, the latest kept: 1 record(s) and 1 list entries removed, 1 Costs mark(s) moved.", out.getvalue())
+        self.assertIn("one record each, the latest kept: 1 record(s), 0 lab result(s) and 1 list entries removed, 1 Costs mark(s) moved.", out.getvalue())
         with open(main.__file__, encoding="utf-8") as f:
             self.assertIn("records.merge_copies(db)", f.read(), "at start-up")
         # undoing the latest pull puts back what the earlier one brought: the record stays (its correction with it)
@@ -856,9 +856,169 @@ class Connections(unittest.TestCase):
         db = dbm.connect()
         try:
             r = db.execute("SELECT actor, detail FROM activity WHERE action='records.copies' ORDER BY id DESC").fetchone()
-            self.assertEqual((r["actor"], json.loads(crypto.dec(r["detail"]))), (activity.START_UP, {"events": 1, "entries": 1, "marks": 1}))
+            self.assertEqual((r["actor"], json.loads(crypto.dec(r["detail"]))), (activity.START_UP, {"events": 1, "results": 0, "entries": 1, "marks": 1}))
         finally:
             db.close()
+
+    def stamped_before_1022(self):
+        """The profile's records as saved before #1022 from a server stamping meta.source per write: each key
+        "fhir:#req-<id>-1|<type>/<id>", no "ver"."""
+        import re
+        plain = re.compile(r"fhir:([A-Za-z]+/([^|?#]+)(?:#.*)?)$", re.S)
+        old = lambda k: f"fhir:#req-{m.group(2)}-1|{m.group(1)}" if isinstance(k, str) and (m := plain.match(k)) else k   # noqa: E731
+        db = dbm.connect()
+        try:
+            secret = records._key_secret(db)
+            for r in db.execute("SELECT id, body, detail FROM events WHERE profile_id=?", (self.pid,)).fetchall():
+                b, d = records._dec(r["body"]) or {}, records._dec(r["detail"])
+                b.pop("ver", None)
+                b["key"] = old(b.get("key"))
+                if isinstance(d, dict) and isinstance(d.get("keys"), list):
+                    d["keys"] = [old(k) for k in d["keys"]]
+                db.execute("UPDATE events SET body=?, detail=?, key_hash=? WHERE id=?",
+                           (records._enc(b), None if d is None else records._enc(d), records._hash(secret, b.get("key")), r["id"]))
+            for r in db.execute("SELECT id, meta FROM imports WHERE profile_id=?", (self.pid,)).fetchall():
+                m = records._dec(r["meta"]) or {}
+                for v in m.values():
+                    for x in v if isinstance(v, list) else ():
+                        if isinstance(x, dict) and isinstance(x.get("key"), str):
+                            x.pop("ver", None)
+                            x["key"] = old(x["key"])
+                db.execute("UPDATE imports SET meta=? WHERE id=?", (records._enc(m), r["id"]))
+            records._bump(db, self.pid)
+        finally:
+            db.close()
+
+    def test_lab_results_a_stamp_doubled_become_one_row(self):   # #1082
+        """A lab result changed at its source was added again at a pull from a server stamping meta.source per write,
+        keyed by the stamp (before #1022): a second result, its row in a labitem of that pull's own. Once keyed alike
+        (#1032), start-up makes them one row by row (#1068's step): the earliest pull's row and result, saying what the
+        latest says, in its lab day; the later copy's result and row gone. Nothing else changes."""
+        from contextlib import redirect_stdout
+        for (rt, rid), r in self.fake._res.items():
+            r.setdefault("meta", {})["source"] = f"#req-{rid}-1"
+        cid = self.connect(self.source())
+        self.first_pull(cid)
+        self.stamped_before_1022()
+        n0, draw0 = self.counts(), self.draw()
+        for (rt, rid), r in self.fake._res.items():
+            r["meta"]["source"] = f"#req-{rid}-2"
+        self.fake.update("Observation", "obs-hgb", {"referenceRange": [{"low": {"value": 12.0}, "high": {"value": 15.5}, "text": "12.0-15.5"}],
+                                                    "interpretation": None})
+        res = self.pull(cid)
+        self.assertTrue(res["ok"], res)
+        n1, draw1 = self.counts(), self.draw()
+        self.assertEqual({k: v - n0[k] for k, v in n1.items()}, {"imports": 1, "events": 1, "series": 1, "results": 1}, "doubled")
+        self.assertEqual(len(draw1["Hemoglobin"]), 2)
+        db = dbm.connect()
+        try:
+            from server import edits
+            with dbm.transaction(db):   # a correction of the result's lab event: kept
+                edits.add(db, self.pid, self.uids["robin"], "rename", next(
+                    r["id"] for r in db.execute("SELECT id, body, detail FROM events WHERE profile_id=? ORDER BY id", (self.pid,))
+                    if (records._dec(r["body"]) or {}).get("k") == "labitem"
+                    and "Hemoglobin" in [x[0] for x in (records._dec(r["detail"]) or {}).get("rows") or []]), title="CBC (renamed)")
+            hidden = db.execute("SELECT COUNT(*) FROM edits WHERE profile_id=?", (self.pid,)).fetchone()[0]
+            dbm.meta_set(db, records.STAMPED_KEYS, "1")
+            with redirect_stdout(io.StringIO()):
+                self.assertGreater(records.rekey_stamped(db), 0)
+            dbm.meta_set(db, records.COPIES, "1")
+            with redirect_stdout(io.StringIO()) as out:
+                self.assertEqual(records.merge_copies(db), {"events": 0, "results": 1, "entries": 0, "marks": 0})
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM edits WHERE profile_id=?", (self.pid,)).fetchone()[0], hidden)
+        finally:
+            db.close()
+        self.assertIn("1 lab result(s) and 0 list entries removed", out.getvalue())
+        n2, draw2 = self.counts(), self.draw()
+        self.assertEqual({k: v - n0[k] for k, v in n2.items()}, {"imports": 1, "events": 0, "series": 0, "results": 0}, "one again")
+        self.assertEqual(draw2["Hemoglobin"], [(12.0, 15.5, "", "12.0-15.5", "")], "the latest pull's")
+        self.assertEqual(draw2["lab days"], [("4 lab results", [["Hemoglobin", "12.1", "g/dL", "12.0-15.5", ""]] + draw0["lab days"][0][1][1:])],
+                         "one row in one lab day")
+        self.assertIn("CBC (renamed)", [e["title"] for e in self.data()["events"]], "its correction kept")
+        self.assertEqual({k: v for k, v in draw2.items() if k not in ("Hemoglobin", "lab days")},
+                         {k: v for k, v in draw0.items() if k not in ("Hemoglobin", "lab days")}, "nothing else changes")
+        # undoing the later pull puts back what the first brought
+        from server import history
+        db = dbm.connect()
+        try:
+            history.undo(db, self.pid, res["import"], db.execute("SELECT * FROM users WHERE id=?", (self.uids["robin"],)).fetchone())
+        finally:
+            db.close()
+        draw3 = self.draw()
+        self.assertEqual((self.counts(), draw3), (n0, draw0))
+
+    def test_three_copies_a_stamp_made_become_one_and_undo_in_turn(self):   # #1068, #1082
+        """A visit and a lab result each changed twice at their source, each change added again at a pull before #1022:
+        three copies of each. At start-up each is one (the earliest pull's, saying what the latest says); undoing the
+        latest pull, then the middle one, leaves each step as the pull before had it, and nothing is lost."""
+        self.three_copies()
+
+    def test_three_copies_undone_middle_pull_first(self):   # #1068, #1082
+        """The same, the middle pull undone first: the record says what the latest says still; then the latest: as the
+        first pull had it."""
+        self.three_copies(middle_first=True)
+
+    def three_copies(self, middle_first=False):
+        from contextlib import redirect_stdout
+        from server import history
+
+        def stamp(n):
+            for (rt, rid), r in self.fake._res.items():
+                r.setdefault("meta", {})["source"] = f"#req-{rid}-{n}"
+        enc = next(r for r in self.fake.resources("Encounter", patient="pat-1") if r.get("status") != "planned")
+
+        def state():
+            d, w = self.data(), self.draw()
+            return (self.counts(), sorted(e["title"] for e in d["events"] if e["k"] != "lab" and e["k"] != "labitem"), w)
+        stamp(1)
+        cid = self.connect(self.source())
+        self.first_pull(cid)
+        self.stamped_before_1022()
+        states, pulls = [state()], []
+        for n, (low, high, visit) in enumerate(((12.0, 15.5, "Follow-up (changed once)"), (11.5, 15.0, "Follow-up (changed twice)")), 2):
+            stamp(n)
+            self.fake.update("Observation", "obs-hgb", {"referenceRange": [{"low": {"value": low}, "high": {"value": high}, "text": f"{low}-{high}"}],
+                                                        "interpretation": None})
+            self.fake.update("Encounter", enc["id"], {"type": [{"text": visit}]})
+            res = self.pull(cid)
+            self.assertTrue(res["ok"], res)
+            pulls.append(res["import"])
+            self.stamped_before_1022()   # (this pull's copies keyed by the stamp too, as before #1022)
+            got = self.counts()
+            self.assertEqual({k: v - states[-1][0][k] for k, v in got.items()}, {"imports": 1, "events": 2, "series": 1, "results": 1},
+                             f"pull {n}: the visit and the result added again")
+            states.append(state())
+        db = dbm.connect()
+        try:
+            dbm.meta_set(db, records.STAMPED_KEYS, "1")
+            dbm.meta_set(db, records.COPIES, "1")
+            with redirect_stdout(io.StringIO()):
+                records.rekey_stamped(db)
+                self.assertEqual(records.merge_copies(db), {"events": 2, "results": 2, "entries": 0, "marks": 0})
+        finally:
+            db.close()
+        merged = state()
+        self.assertEqual({k: v - states[0][0][k] for k, v in merged[0].items()}, {"imports": 2, "events": 0, "series": 0, "results": 0}, "one each")
+        self.assertEqual(merged[2]["Hemoglobin"], [(11.5, 15.0, "", "11.5-15.0", "")], "the latest pull's")
+        from collections import Counter
+        (orig,) = Counter(states[0][1]) - Counter(merged[1])   # the visit as the first pull had it
+        titled = lambda visit: sorted([*(Counter(states[0][1]) - Counter([orig])).elements(), visit])   # noqa: E731
+        self.assertEqual(merged[1], titled("Follow-up (changed twice)"), "one visit, the latest's")
+        self.assertEqual(merged[2]["faults"], [])
+        steps = [(pulls[0], merged[2]["Hemoglobin"], "Follow-up (changed twice)"), (pulls[1], states[0][2]["Hemoglobin"], orig)] if middle_first \
+            else [(pulls[1], states[1][2]["Hemoglobin"][-1:], "Follow-up (changed once)"), (pulls[0], states[0][2]["Hemoglobin"], orig)]
+        for iid, hgb, visit in steps:   # the latest pull undone, then the middle one (or the other way round)
+            db = dbm.connect()
+            try:
+                history.undo(db, self.pid, iid, db.execute("SELECT * FROM users WHERE id=?", (self.uids["robin"],)).fetchone())
+            finally:
+                db.close()
+            now = state()
+            self.assertEqual(now[2]["Hemoglobin"], hgb, f"undoing {iid}: the result as the pull before had it")
+            self.assertEqual(now[1], titled(visit), f"undoing {iid}: the visit as the pull before had it")
+            self.assertEqual(now[2]["faults"], [])
+            self.assertEqual(len(now[2]["lab days"]), 1)
+        self.assertEqual(state(), states[0], "back to the first pull's, nothing lost")
 
     def test_a_stamped_record_that_cant_be_keyed_is_left_and_the_app_starts(self):   # #1044
         """One stamped record start-up can't key (its details unreadable) is left as it was and named in the app's log and

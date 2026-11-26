@@ -304,7 +304,7 @@ def rekey_stamped(db):
 
 
 COPIES = "fhir_stamped_copies"   # meta, set by schema step 45: merge_copies hasn't run yet
-LAB_KINDS = ("lab", "labitem", "labday")   # a lab event's rows are each their own result's (sync.py, #899): not merged
+LAB_KINDS = ("lab", "labitem", "labday")   # merged row by row (#1082: _merge_lab_copies), each row its own result's
 
 
 def _copy_key(k):
@@ -323,12 +323,13 @@ def merge_copies(db):
     The later copies are removed (what a pull since changed of the latest goes with the record kept). Events (not lab
     events, whose rows are each their own result's), the profile-wide lists' entries, and a Costs mark the keying
     couldn't move onto the kept one's because it had one (the later of the two kept). Corrections find the kept one by
-    its key already. Uploads' records aren't touched. Said in the app's log and the install log, with those counts.
-    -> {"events", "entries", "marks"}: how many removed or moved; None when it's not to run now"""
+    its key already. Lab results row by row (#1082, _merge_lab_copies). Uploads' records aren't touched. Said in the
+    app's log and the install log, with those counts. -> {"events", "results", "entries", "marks"}: how many removed
+    or moved; None when it's not to run now"""
     from . import activity, db as dbm, preview
     if not dbm.meta_get(db, COPIES) or dbm.meta_get(db, STAMPED_KEYS):
         return None
-    out, pids = {"events": 0, "entries": 0, "marks": 0}, set()
+    out, pids = {"events": 0, "results": 0, "entries": 0, "marks": 0}, set()
     with dbm.transaction(db):
         imps = db.execute("SELECT id, profile_id, connection_id, meta FROM imports WHERE connection_id IS NOT NULL "
                           "ORDER BY id").fetchall()
@@ -360,6 +361,7 @@ def merge_copies(db):
             for r in since:   # what pulls since changed of the latest copy, after (undone in turn, the latest first)
                 db.execute("INSERT INTO sync_changes(import_id, event_id, previous) VALUES(?, ?, ?)", (r["import_id"], keep, r["previous"]))
             pids.add(pid)
+        out["results"] = _merge_lab_copies(db, imps, pids)
         metas, copies = {}, collections.defaultdict(list)   # import id -> its meta; (profile, connection, path, key) -> [import id]
         for imp in imps:
             try:
@@ -421,10 +423,88 @@ def merge_copies(db):
         dbm.meta_set(db, COPIES, None)
         if any(out.values()):
             print(f"Made the copies a connected source's changed records were saved as before #1022 one record each, the "
-                  f"latest kept: {out['events']} record(s) and {out['entries']} list entries removed, {out['marks']} Costs "
-                  "mark(s) moved.", flush=True)
+                  f"latest kept: {out['events']} record(s), {out['results']} lab result(s) and {out['entries']} list entries "
+                  f"removed, {out['marks']} Costs mark(s) moved.", flush=True)
             activity.log(db, "records.copies", detail=out, actor=activity.START_UP)
     return out
+
+
+def _merge_lab_copies(db, imps, pids):
+    """(#1082) merge_copies' lab results: a result #1022's bug doubled is one result in its own series and a row in a
+    labitem, each row found by its own record (its Observation's key, the details' "keys"; sync.py, #899). The rows
+    of one connection's labitems that are one record (that key, and which of its rows) are one: the earliest pull's
+    result and row, saying what the latest says (each later pull's version kept as what that pull changed, with the
+    result's, sync_changes, so undoing it puts back what the one before brought), in its labitem and lab day; the
+    later copies' results and rows go, a labitem left with none with them (from its lab days too), and a series left
+    with no result. A labitem whose rows came from other lab events (edits.ROWS_FROM, #972) is left. -> how many
+    results removed"""
+    import copy
+    from . import sync
+    n = 0
+    by_pid = collections.defaultdict(dict)   # profile -> {import id: connection}
+    for imp in imps:
+        by_pid[imp["profile_id"]][imp["id"]] = imp["connection_id"]
+    for pid, conn in by_pid.items():
+        items = {e["id"]: e for e in labitems_of(db, pid, conn) if isinstance(e.get("detail"), dict)
+                 and isinstance(e["detail"].get("rows"), list) and not e["detail"].get(edits.ROWS_FROM)}
+        if not items:
+            continue
+        rows = crossmatch._rows({"events": list(items.values()), "details": {str(i): e["detail"] for i, e in items.items()}})
+        sids = [r[0] for ch in _chunks(sorted(conn)) for r in
+                db.execute(f"SELECT id FROM series WHERE import_id IN ({','.join('?' * len(ch))})", ch)]
+        groups = collections.defaultdict(list)   # (connection, row's record, which of its rows) -> [(import, result, labitem, row)]
+        of, emptied = {}, set()   # result -> its series; the series a result went from
+        for rid, sid, imp, body, q in series_results(db, pid, sids):
+            at = isinstance(q, list) and q and crossmatch._row_of(rows, {**body, "imp": imp}, q)
+            if not at or at[0] not in items:
+                continue
+            own = sync._row_keys(items[at[0]]["detail"])
+            rec = own[at[1]] if at[1] < len(own) else None
+            if rec and _copy_key(rec[0]):
+                groups[(conn[imp], *rec)].append((imp, rid, at[0], at[1], q))
+                of[rid] = sid
+        gone = collections.defaultdict(set)   # labitem -> its rows that go
+        for copies in groups.values():
+            if len({c[2] for c in copies}) < 2:
+                continue
+            copies.sort(key=lambda c: (c[0], c[1]))
+            _, rid0, e0, r0, q0 = copies[0]
+            for imp, rid, eid, r, q in copies[1:]:   # each later pull: what it found, then what it says
+                row = db.execute("SELECT body, cost FROM events WHERE id=?", (e0,)).fetchone()
+                db.execute("INSERT INTO sync_changes(import_id, event_id, previous) VALUES(?, ?, ?)",
+                           (imp, e0, _enc({"body": _dec(row["body"]), "detail": copy.deepcopy(items[e0]["detail"]),
+                                           "cost": _dec(row["cost"]), "results": [[rid0, q0]]})))
+                items[e0]["detail"]["rows"][r0] = copy.deepcopy(items[eid]["detail"]["rows"][r])
+                q0 = q
+                db.execute("DELETE FROM results WHERE id=?", (rid,))
+                emptied.add(of[rid])
+                gone[eid].add(r)
+                n += 1
+            db.execute("UPDATE results SET body=? WHERE id=?", (_enc(q0), rid0))
+            db.execute("UPDATE events SET detail=? WHERE id=?", (_enc(items[e0]["detail"]), e0))
+            pids.add(pid)
+        for eid, at in gone.items():
+            d = items[eid]["detail"]
+            for f in sync.ROW_FIELDS:
+                if isinstance(d.get(f), list):
+                    d[f] = [x for j, x in enumerate(d[f]) if j not in at]
+            if d["rows"]:
+                db.execute("UPDATE events SET detail=? WHERE id=?", (_enc(d), eid))
+                continue
+            db.execute("DELETE FROM events WHERE id=?", (eid,))   # a labitem left holding nothing: from its lab days too
+            for r in db.execute("SELECT id, body, detail FROM events WHERE profile_id=?", (pid,)).fetchall():
+                ld = _dec(r["detail"])
+                if isinstance(ld, dict) and ld.get("type") == "labday" and eid in (ld.get("ids") or []):
+                    ids = [i for i in ld["ids"] if i != eid]
+                    if ids:
+                        db.execute("UPDATE events SET body=?, detail=? WHERE id=?",
+                                   (_enc(sync._labday_body(db, _dec(r["body"]), ids)), _enc({**ld, "ids": ids}), r["id"]))
+                    else:
+                        db.execute("DELETE FROM events WHERE id=?", (r["id"],))
+        for ch in _chunks(sorted(emptied)):   # a series a result went from, left with none
+            db.execute(f"""DELETE FROM series WHERE profile_id=? AND id IN ({','.join('?' * len(ch))})
+                           AND NOT EXISTS(SELECT 1 FROM results WHERE series_id=series.id)""", (pid, *ch))
+    return n
 
 
 def known_event_keys(db, pid, hashes):
