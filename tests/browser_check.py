@@ -2457,6 +2457,37 @@ def main():
               and (f"The phones of {phones1000} profile" in got1000["says"]) == (phones1000 > 0)
               and got1000["typing"] == "Type change addresses to confirm"
               and got1000["after"] == [("https://records.example.test", base), False, True] and got1000["back"] == 200, [got1000, apps1000, phones1000])
+        # General → Phone receiver (#1003): the upload address saved from the bar (asked first when phones with a secret
+        # need it), used by the server at once; the receiver's own settings read-only, each naming its variable
+        ctx1003 = browser.new_context(viewport={"width": 1400, "height": 900})
+        ctx1003.add_cookies([c for c in strict.context.cookies() if c["name"] == "sg_session"])
+        p1003, errs1003, got1003 = ctx1003.new_page(), [], {}
+        p1003.on("pageerror", lambda e: errs1003.append(str(e)))
+        try:
+            p1003.goto(base + "/settings.html?profile=1#general")
+            p1003.wait_for_selector("#phoneUrl:not([readonly])", timeout=20000)
+            got1003["rows"] = p1003.evaluate("""[...document.querySelectorAll('#gen-phone .set-row-lbl')].slice(1)
+                .map(l => [l.querySelector('h3').textContent, (l.textContent.match(/\\b[A-Z]+(?:_[A-Z]+)+|\\bTZ\\b/) || [''])[0]])""")
+            p1003.fill("#phoneUrl", "https://phones.example.test/ingest")
+            p1003.click("#setBar button:has-text('Save')")
+            asked = p1003.locator("dialog.sg-ask button.danger, dialog.sg-ask button.primary")
+            p1003.locator("#gen-phone .set-msg", has_text="Saved the upload address.").or_(asked).first.wait_for(timeout=10000)
+            if asked.count():
+                got1003["asked"] = p1003.inner_text("dialog.sg-ask")
+                asked.click()
+            p1003.locator("#gen-phone .set-msg", has_text="Saved the upload address.").wait_for(timeout=10000)
+            got1003["after"] = [config1000.setting("WATCH_UPLOAD_URL"), p1003.evaluate("document.getElementById('gen-phone').hasAttribute('data-dirty')")]
+            got1003["back"] = p1003.request.put(base + "/api/settings/install/phone.uploadUrl", headers={"X-Sanguity": "1"}, data={"value": ""}).status
+        except Exception as e:
+            got1003["stopped"] = stopped(e)
+        finally:
+            ctx1003.close()
+        check("General → Phone receiver (#1003): the upload address saved from the bar applies at once, asked first when phones need it; "
+              "the receiver's settings read-only, each naming its variable", "stopped" not in got1003 and not errs1003
+              and got1003["rows"] == [["Receiver's published port", "RECEIVER_PORT"], ["Time zone", "TZ"], ["Unclaimed data", "SLOT_GRACE_DAYS"],
+                                      ["What a restore replaced", "RESTORE_KEEP_DAYS"]]
+              and ("asked" not in got1003 or "phones.example.test" in got1003["asked"])
+              and got1003["after"] == ["https://phones.example.test/ingest", False] and got1003["back"] == 200, got1003)
         # (#991) This person's and You's sections show the profile's and the person's own settings only: a server's own
         # (scope "install", as General's will be, #1000-#1004) is Install's, read from /api/settings/install, even where
         # the profile's sections list it beside theirs. One answered here into Dates and times, and a section of its own

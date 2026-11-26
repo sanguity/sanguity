@@ -3694,6 +3694,11 @@ Everything on `main` so far; it becomes the first tagged release.
   at once to the cross-site check, connected sources' return, the phone upload address, calendar links and Find your
   provider. Shown read-only beside it: the names passkeys were made at, what this page's request carried, the trusted
   proxies, the internal port and bind address, and the published web port, each with where it's set.
+- **Settings → Install → General: Phone receiver, the upload address changed in the app** (#1003): `WATCH_UPLOAD_URL`, for
+  a receiver behind your own reverse proxy, was set only in `.env`. An admin changes it here now; Save says first how
+  many profiles' phones with an upload secret need the new address, and Sources → Phone and watch gives it at once.
+  The receiver's own settings are shown read-only, each naming where it's set: its published port, time zone, how long
+  phone data no profile names is kept, and how long what a restore replaced is kept.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
