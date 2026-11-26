@@ -47,8 +47,8 @@ let periodKept = null;
 let catsKept = null, catsVisit = "";
 const catsKey = s => [...s].sort().join();
 /* the Labs view the person last picked with its switch (#997), kept with the rest; null till they pick one. labsHome():
-   where Labs opens from its tab's address (another page's bar, #labs): the view picked, else Latest on a phone (700 px
-   and under) and Chart wider */
+   where Labs opens from its tab's own address, #labs alone (another page's bar; each view has its own, #1026): the view
+   picked, else Latest on a phone (700 px and under) and Chart wider */
 let labsPicked = null;
 const labsHome = () => labsPicked || (PHONE.matches ? "latest" : "chart");
 function save() { if (state.preset !== "all") periodKept = null; if (catsKept && catsKey(state.cats) !== catsVisit) catsKept = null; const P = periodKept || state; try { localStorage.setItem(stateKey(), JSON.stringify({preset: P.preset, from: P.from, to: P.to, cats: [...(catsKept || state.cats)], known: CATS.map(c => c.k), tab: state.tab, labsView: state.labsView, labsPicked, tlView: state.tlView, costView: typeof costState === "object" ? costState.view : undefined, tlWork: state.tlWork, sel: [...state.sel], marks: state.marks, smooth: state.smooth, asc: state.asc, v: 2})); } catch (e) {} }
