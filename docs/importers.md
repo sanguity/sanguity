@@ -224,7 +224,7 @@ resolved, a claim processed do), when it's updated in place, the review saying s
 profile-wide lists the same, both with what they were kept for Undo. Only from the same source (#955: a FHIR
 resource's plain id `fhir:<type>/<id>` on the same server, from the event's or entry's `ver`, which the FHIR importer
 gives as `{"server", "at": meta.lastUpdated, "of": the bundle's timestamp}` (the server: its `meta.source` up to any
-`#`, which a server may stamp per write, as HAPI FHIR's `#<request id>`, else its fullUrl's base, #1022) and the preview gives the date of the upload,
+`#`, which a server may stamp per write, as HAPI FHIR's `#<request id>`, else its fullUrl's base, #1022; records saved before that keyed by the stamp, `fhir:#<request>|<type>/<id>`, are keyed so once at start-up by schema version 44, #1032) and the preview gives the date of the upload,
 the latest it holds, where it says none; a claim of the same insurer), never from an older version (by `at` where both
 say it, else `of`), and never emptying a field the upload leaves out or sends empty; the review names each record it
 would change and what changes, with a box to leave it out. A record whose plain key another source's record holds
