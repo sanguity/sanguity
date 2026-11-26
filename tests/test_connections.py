@@ -603,6 +603,67 @@ class Connections(unittest.TestCase):
         self.assertEqual(self.faults(), [])
         self.assertIsNone(self.pull(cid)["import"], "again: nothing new")
 
+    def test_a_server_stamping_meta_source_per_write_is_one_source(self):   # #1022
+        """HAPI FHIR stamps meta.source "#<request id>" on each write, so a record it changes comes back saying another
+        source: its resources were keyed by each request and taken for another server's, every changed record (the
+        stopped medication, the resolved problem, the amended Hemoglobin) added as a copy beside the old one, the
+        Hemoglobin with no row. A server is named by the part before "#" (else its address): each is updated in place.
+        Then records saved before, saying such a stamp of their source, are its own too."""
+        def stamp(n):
+            for (rt, rid), r in self.fake._res.items():
+                r.setdefault("meta", {})["source"] = f"#req-{rid}-{n}"
+
+        def said():
+            d = self.data()
+            return (sorted((m["name"], m["spans"][-1]["status"]) for m in d.get("medications") or [] if m["key"] != "amoxicillin"),
+                    sorted((p["name"], p["status"]) for p in d.get("problems") or [] if p.get("name") == "Hyperlipidemia"),
+                    sorted((s["name"], p[2], p[3], p[4]) for s in d["labs"] if s["name"] == "Hemoglobin" for p in s["pts"]))
+
+        def change(n, status, clinical, rng):
+            stamp(n)
+            self.fake.update("MedicationRequest", "med-1", {"status": status})
+            self.fake.update("Condition", "cond-1", {"clinicalStatus": {"coding": [{"code": clinical}]}})
+            self.fake.update("Observation", "obs-hgb", {"referenceRange": [{"low": {"value": rng[0]}, "high": {"value": rng[1]},
+                                                                            "text": f"{rng[0]}-{rng[1]}"}], "interpretation": None})
+        stamp(1)
+        cid = self.connect(self.source())
+        self.first_pull(cid)
+        n = self.counts()
+        change(2, "stopped", "resolved", (12.0, 15.5))
+        res = self.pull(cid)
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(said(), ([("Atorvastatin 20 mg tablet", "Stopped")], [("Hyperlipidemia", "Resolved")],
+                                  [("Hemoglobin", 12.0, 15.5, "")]), "each updated in place, never a copy")
+        self.assertEqual({k: v - n[k] for k, v in self.counts().items()}, {"imports": 1, "events": 0, "series": 0, "results": 0})
+        self.assertEqual(self.faults(), [])
+        self.assertIsNone(self.pull(cid)["import"], "again: nothing new")
+
+        db = dbm.connect()   # what it saved, as saved before: its source said by each write's stamp
+        try:
+            for r in db.execute("SELECT id, body FROM events WHERE profile_id=?", (self.pid,)).fetchall():
+                b = records._dec(r["body"]) or {}
+                if isinstance(b.get("ver"), dict) and b["ver"].get("server"):
+                    b["ver"]["server"] = f"#req-{r['id']}-2"
+                    db.execute("UPDATE events SET body=? WHERE id=?", (records._enc(b), r["id"]))
+            for r in db.execute("SELECT id, meta FROM imports WHERE profile_id=?", (self.pid,)).fetchall():
+                m = records._dec(r["meta"]) or {}
+                for v in m.values():
+                    for x in v if isinstance(v, list) else ():
+                        if isinstance(x, dict) and isinstance(x.get("ver"), dict) and x["ver"].get("server"):
+                            x["ver"]["server"] = "#req-list-2"
+                db.execute("UPDATE imports SET meta=? WHERE id=?", (records._enc(m), r["id"]))
+            records._bump(db, self.pid)
+        finally:
+            db.close()
+        n = self.counts()
+        change(3, "active", "active", (11.5, 15.0))
+        res = self.pull(cid)
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(said(), ([("Atorvastatin 20 mg tablet", "Active")], [("Hyperlipidemia", "Active")],
+                                  [("Hemoglobin", 11.5, 15.0, "")]), "saved saying a stamp: its own, updated in place")
+        self.assertEqual({k: v - n[k] for k, v in self.counts().items()}, {"imports": 1, "events": 0, "series": 0, "results": 0})
+        self.assertEqual(self.faults(), [])
+
     def test_a_result_sent_again_is_updated_in_place(self):   # #869
         """A result the source amends comes back at the next pull: the same result, updated in place, range and flag,
         never a copy. The report's Hemoglobin 12.1 (13.5–17.5, Low) amended to 12.0–15.5 and Normal, its Platelet Count

@@ -243,6 +243,12 @@ def flag_known(printed):
     return w in _FLAG_WAY or w in _FLAG_NO_WAY or w in _FLAG_NEITHER
 
 
+def stable_source(src):
+    """(#1022) The part of a FHIR meta.source that names its server for good: what's before any "#", which a server
+    may stamp per write (HAPI FHIR's "<base>#<request id>", or "#<request id>" alone); "" where that's all it says."""
+    return src.split("#", 1)[0].strip() if isinstance(src, str) else ""
+
+
 TAG_RE = re.compile(r"<[^>]+>")
 
 
