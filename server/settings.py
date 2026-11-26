@@ -375,6 +375,33 @@ define("host.publicOrigins", "host", "Public addresses", [], origin_list(), scop
             "proxy that changes the Host header and sends no X-Forwarded-Host; empty, each page uses the address it "
             "was opened at.")
 
+# ---------------------------------------------------------------- General → Phone receiver (#1003)
+# The upload address (WATCH_UPLOAD_URL), read at each use by Sources → Phone and watch (watch_keys.addresses). A change
+# says first how many profiles' phones need the new one (routes_host.py's effects). The receiver's own settings are
+# shown read-only beside it (#998's default).
+
+def upload_url(v):
+    """An http(s) address with a name, or "" (none: each public address's host, or the page's, on RECEIVER_PORT)."""
+    if v is None or (isinstance(v, str) and not v.strip()):
+        return ""
+    v = _text(v, "The upload address", 300)
+    u = urllib.parse.urlsplit(v)
+    try:
+        u.port
+    except ValueError:
+        u = None
+    if u is None or u.scheme not in ("http", "https") or not u.hostname or " " in v or "@" in u.netloc:
+        raise SettingError(f"“{v}” isn't an upload address like https://health.example.com/ingest: https:// or http://, "
+                           "then its name and the path your reverse proxy sends to the receiver.")
+    return v
+
+
+section("phone", "Phone receiver", "Where phones send watch and scale data, and the receiver's own settings.")
+define("phone.uploadUrl", "phone", "Upload address", "", upload_url, scope="install", private=False, kind="url",
+       env="WATCH_UPLOAD_URL",
+       help="Only when the receiver is behind your own reverse proxy, like https://health.example.com/ingest. Empty, "
+            "phones are given each public address's name (or this page's) on the receiver's published port.")
+
 # #225: readings taken at home (and at visits) as Overview tiles beside the key labs, each with its latest value
 HOME_TILES = {"bp": "Blood pressure", "glucose": "Blood glucose", "temp": "Body temperature"}
 define("overview.homeTiles", "overview", "Home readings", [], some_of(HOME_TILES, "Home readings"), kind="choices",

@@ -36,6 +36,7 @@ const FILES = [
   "sources.html", "js/moved.js", "js/sources-overview.js", "js/sources-page.js", "js/sources-watch.js",
   "js/admin-backups.js",
   "js/admin-host.js",
+  "js/admin-phone.js",
   "guide.html", "js/guide.js",
   "js/cycle.js", "js/sources-cycle.js",
   "js/targets.js",
