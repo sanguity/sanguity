@@ -1918,6 +1918,8 @@ def latest993(got):
             continue
         at = [t for t in trs if t[0] == trs[0][0]]   # its latest time's
         ranges, said = r[1].split(" · ")[0].split("; "), r[2].split("; ") if r[2] not in (None, "–") else [r[2]] * len(r[0])
+        if len(ranges) == 1:   # (one said once for two at one time that have it, #1027)
+            ranges = [ranges[0].replace("no range on their reports", "no range on its report")] * len(r[0])
         got_t = sorted([v, f, g, c] for (v, f), g, c in zip(r[0], ranges, said))
         want_t = sorted([t[1].split(" (reported ")[0], re.sub(r"[▲▼◆]\s*", "", t[3]).strip(), "ref " + t[2].split(" · ")[0] if t[2].split(" · ")[0] else "no range on its report", t[1]] for t in at)
         if len(ranges) != len(r[0]) or len(said) != len(r[0]) or [x[:3] for x in got_t] != [x[:3] for x in want_t] or not any(trs[0][0].startswith(p) for p in r[1].split(" · ")[1:]):
@@ -21861,6 +21863,22 @@ def main():
             js("([a, b]) => { state.preset = 'custom'; state.from = zParse(a); state.to = zParse(b); }", [M752.day(95), M752.day(35)])   # (the latest in it not the lab's latest)
             bad993m += [f"the matrix, 95 to 35 days back: {b}" for b in latest993(js(LATEST993_JS))]
             js("applyPreset('all')")
+            # #1027: and at 320 px with 200% text no word of its rows past its card (eGFR's “<60 mL/min/1.73m2 ▼ Low” and
+            # “change not worked out” ran 18 px past it), light and dark
+            in1027, theme1027 = {}, js("document.documentElement.dataset.theme || null")
+            for mode in ("light", "dark"):
+                page.set_viewport_size({"width": 320, "height": 640})
+                js("t => { document.documentElement.dataset.theme = t; }", mode)
+                js(ADOPT_CSS_JS, BIG_TEXT_CSS)
+                js("switchTab('labs', 'latest')")
+                settle(500)
+                got = js(TEXT_IN849_JS, ["#ltRows .lt-row > *", ".card"])
+                in1027[mode] = got["past"] + ([] if got["n"] > 10 else [f"{got['n']} rows"])
+                js(ADOPT_CSS_JS, "")
+            js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme1027)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("#1027: Latest at 320 px with text at 200% has every word of the ranges matrix's rows inside its card, light and dark (eGFR's value "
+                  "and change ran past it)", not any(in1027.values()), in1027)
             js("labs => { for (const n of labs) state.tables.delete(n); switchTab('labs', 'heatmap'); }", list(M752.CASES))
             settle(400)
             hm752 = js("Object.fromEntries(SERIES.filter(s => !s.watch).map(s => [s.name, s.pts.map(p => Math.sign(hmLevel(p) || 0))]))")
@@ -23229,7 +23247,7 @@ def main():
                 pg.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {pid} && state.labsView === 'latest'", timeout=20000)
                 pg.wait_for_timeout(300)
                 return pg.evaluate("""[Object.fromEntries([...document.querySelectorAll('#ltRows .lt-row')].map(a => [a.dataset.lab, a.querySelector('.n .badge')?.textContent || null])),
-                  document.getElementById('ltQn').textContent, (() => { try { return JSON.parse(localStorage.getItem('ht-latest:' + PROFILE.id) || 'null'); } catch (e) { return 'blocked'; } })()]""")
+                  document.querySelector('#ltHd h2').textContent, (() => { try { return JSON.parse(localStorage.getItem('ht-latest:' + PROFILE.id) || 'null'); } catch (e) { return 'blocked'; } })()]""")   # (its count in the heading, #1027)
             db = dbm994.connect()
             p996, q996 = (prof994.create_profile(db, n, owner_id=uid996) for n in ("Latest's New (fictional)", "Latest's New, another (fictional)"))
             db.close()
@@ -23257,16 +23275,17 @@ def main():
             db.close()
             new996 = lambda b: bool(b) and b.startswith("New") and b.endswith("today")
             check("Latest's New (#996): results imported since this browser last showed Latest for the profile are marked “New · today” and counted in its "
-                  "heading (“3 labs · 2 new”); loaded again, none is; nothing on a first look",
-                  [f[0] for f in first996] == [{"Hemoglobin": None, "WBC": None}] * 2 and [f[1] for f in first996] == ["2 labs"] * 2
+                  "heading (“Latest results · 2 new”, #1027); loaded again once their rows were in view, none is; nothing on a first look",
+                  [f[0] for f in first996] == [{"Hemoglobin": None, "WBC": None}] * 2 and [f[1] for f in first996] == ["Latest results"] * 2
                   and set(marked996[0]) == {"Hemoglobin", "WBC", "Ferritin"} and new996(marked996[0]["Hemoglobin"]) and new996(marked996[0]["Ferritin"]) and marked996[0]["WBC"] is None
-                  and marked996[1] == "3 labs · 2 new" and again996[0] == {"Hemoglobin": None, "WBC": None, "Ferritin": None} and again996[1] == "3 labs",
+                  and marked996[1] == "Latest results · 2 new" and again996[0] == {"Hemoglobin": None, "WBC": None, "Ferritin": None} and again996[1] == "Latest results",
                   [first996, marked996, again996])
-            check("…kept per profile in this browser, the newest import it showed and nothing more: another profile's its own, with nothing new; with storage "
-                  "blocked nothing is marked, a new import too, and nothing breaks",
-                  set(first996[0][2]) == {"seen"} and set(again996[2]) == {"seen"} and again996[2]["seen"] > first996[0][2]["seen"]
+            check("…kept per profile in this browser, the newest import at its first look and the new results shown since, nothing more (every one "
+                  "shown, the newest import then); another profile's its own, with nothing new; with storage blocked nothing is marked, a new import too, "
+                  "and nothing breaks",
+                  first996[0][2] and set(first996[0][2]) == {"seen", "shown"} and again996[2] == {"seen": again996[2]["seen"], "shown": []} and again996[2]["seen"] > first996[0][2]["seen"]
                   and other996[0] == {"Hemoglobin": None, "WBC": None} and other996[2] == first996[1][2] != again996[2]
-                  and [b[0] for b in blocked996] == [{"Hemoglobin": None, "WBC": None, "Ferritin": None}] * 2 and [b[1:] for b in blocked996] == [["3 labs", "blocked"]] * 2 and not err996,
+                  and [b[0] for b in blocked996] == [{"Hemoglobin": None, "WBC": None, "Ferritin": None}] * 2 and [b[1:] for b in blocked996] == [["Latest results", "blocked"]] * 2 and not err996,
                   [first996, again996, other996, blocked996, err996])
             # ---- #997: Labs opens on Latest on a phone. In a browser that's shown nothing yet, Labs' own address (another
             # page's tab bar links to it, ./#labs) opens Latest at 360 and 412 px and Chart at 900 and 1400 px; on a phone
@@ -23328,6 +23347,123 @@ def main():
             check("…a view picked is where it opens from then on, on a reload and from another page's tab bar (Heatmap, Latest, Chart), for that profile "
                   "only: another opens on Latest still", picked997 == {v: [["labs", v, "#labs-" + v, True]] * 2 for v in ("heatmap", "latest", "chart")}
                   and other997 == ["labs", "latest", "#labs-latest", True], [picked997, other997])
+            # ---- #1027 (#1020's closing check). A result is New until Latest has shown it, its row drawn in view, the count in
+            # the heading (Latest took the newest import as shown whatever it drew: a result outside the period, hidden by
+            # Flagged only or below the fold was never marked). A profile of twelve labs drawn 20 days back, Latest's first
+            # look at 1400×500 with the period 30 days and Flagged only, then an import of ALT again (High, the first row), of
+            # Zinc, a lab with no panel (Other, the last row) and of Uric Acid 100 days back: ALT marked, "· 1 new" in the
+            # heading, and not once loaded again; Flagged only off, Zinc marked below the fold, and still once loaded again,
+            # then not once it's been scrolled into view; All, Uric Acid marked
+            NEW1027 = """[document.querySelector('#ltHd h2').textContent, [...document.querySelectorAll('#ltRows .lt-row')].filter(a => a.querySelector('.n .badge')).map(a => a.dataset.lab)]"""
+            labs1027 = [("Albumin", "g/dL", 4.1, 3.5, 5.2), ("ALT", "U/L", 30, 7, 56), ("AST", "U/L", 22, 10, 40), ("Calcium", "mg/dL", 9.4, 8.5, 10.5),
+                        ("Creatinine", "mg/dL", 0.9, 0.7, 1.3), ("Glucose", "mg/dL", 92, 70, 99), ("Hemoglobin", "g/dL", 14.1, 13.5, 17.5), ("Magnesium", "mg/dL", 2.0, 1.7, 2.2),
+                        ("Platelet Count", "K/uL", 250, 150, 400), ("Potassium", "mmol/L", 4.2, 3.5, 5.1), ("Sodium", "mmol/L", 140, 135, 145), ("WBC", "K/uL", 6.2, 4.0, 11.0)]
+            db = dbm994.connect()
+            n1027 = prof994.create_profile(db, "Latest's New shown (fictional)", owner_id=uid996)
+            w1027 = prof994.create_profile(db, "Latest's words (fictional)", owner_id=uid996)
+            db.close()
+            store996(n1027, draw996(20, labs1027))
+            c1027 = browser.new_context(viewport={"width": 1400, "height": 500}, bypass_csp=True)
+            c1027.add_cookies(cookies997)
+            p1027 = c1027.new_page()
+
+            def latest1027(again=False):
+                if again:
+                    p1027.reload()
+                else:
+                    p1027.goto(base + f"/?profile={n1027}#labs-latest")
+                p1027.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {n1027}", timeout=20000)
+                p1027.wait_for_timeout(500)
+                return p1027.evaluate(NEW1027)
+            latest1027()
+            p1027.evaluate("() => { applyPreset('30d'); ltF.flagged = true; ltKeep({flagged: true}); renderLatest(); }")
+            p1027.wait_for_timeout(300)
+            first1027 = p1027.evaluate(NEW1027)
+            b1027 = draw996(1, [("ALT", "U/L", 75, 7, 56), ("Zinc (fictional)", "ug/dL", 90, 60, 120)])
+            b1027["labs"][0]["pts"][0][4] = "H"
+            b1027["events"].append({"id": 2, "t": (now995 - td995(days=100)).strftime("%Y-%m-%dT08:00:00"), "k": "lab", "title": "Lab results"})
+            b1027["labs"].append({"name": "Uric Acid", "unit": "mg/dL", "panel": "", "n": 1, "txt": [], "pts": [[b1027["events"][1]["t"], 5.1, 3.5, 7.2, "", "5.1"]]})
+            store996(n1027, b1027)
+            flagged1027 = [latest1027(again=True)]
+            flagged1027.append(latest1027(again=True))
+            p1027.click("#ltFlag")
+            p1027.wait_for_timeout(500)
+            below1027 = [p1027.evaluate(NEW1027), p1027.evaluate("""(a => a.getBoundingClientRect().top > innerHeight)(document.querySelector('#ltRows .lt-row[data-lab="Zinc (fictional)"]'))""")]
+            below1027.append(latest1027(again=True))
+            p1027.evaluate("""document.querySelector('#ltRows .lt-row[data-lab="Zinc (fictional)"]').scrollIntoView({block: 'center'})""")
+            p1027.wait_for_timeout(500)
+            below1027.append(latest1027(again=True))
+            p1027.evaluate("() => { applyPreset('all'); renderLatest(); }")
+            p1027.wait_for_timeout(300)
+            all1027 = p1027.evaluate(NEW1027)
+            check("Latest's New marks a result till its row has been drawn in view (#1027), the count in the heading: one imported after the first look, "
+                  "on its row in view with Flagged only, marked (“Latest results · 1 new”) and not once loaded again; one Flagged only hid, then below "
+                  "the fold, marked, and still once loaded again, not once scrolled into view; one outside the period, marked once All shows it",
+                  first1027 == ["Latest results", []] and flagged1027 == [["Latest results · 1 new", ["ALT"]], ["Latest results", []]]
+                  and below1027 == [["Latest results · 1 new", ["Zinc (fictional)"]], True, ["Latest results · 1 new", ["Zinc (fictional)"]], ["Latest results", []]]
+                  and all1027 == ["Latest results · 1 new", ["Uric Acid"]], [first1027, flagged1027, below1027, all1027])
+            c1027.close()
+            # …Back's row kept with its own entry of the history, not for the page: a row opened, then Latest picked again
+            # and the Timeline, Back to Latest leaves focus and the scroll as they were (it went to the row, 0 → 2368 px);
+            # and a row opened, Back focuses it, Forward its chart, Back the row again (the chart had none, the row neither)
+            c1027 = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
+            c1027.add_cookies(cookies997)
+            p1027 = c1027.new_page()
+            p1027.goto(base + "/?profile=1#labs-latest")
+            p1027.wait_for_function("typeof booted !== 'undefined' && booted && state.labsView === 'latest'", timeout=20000)
+            p1027.evaluate("applyPreset('all')")
+            p1027.wait_for_timeout(300)
+            FOC1027 = "() => [location.hash, document.activeElement.id || (document.activeElement.closest('.chart')?._s?.name ?? document.activeElement.tagName), Math.round(scrollY)]"
+            last1027 = p1027.locator("#ltRows .lt-row").last
+            lastid1027 = last1027.get_attribute("id")
+            last1027.click()
+            p1027.wait_for_timeout(500)
+            p1027.click("#labsView button[data-view=latest]")
+            p1027.evaluate("scrollTo(0, 0)")
+            p1027.wait_for_timeout(300)
+            p1027.evaluate("pickTab('timeline')")
+            p1027.wait_for_timeout(400)
+            p1027.go_back()
+            p1027.wait_for_function("state.labsView === 'latest'", timeout=5000)
+            p1027.wait_for_timeout(500)
+            kept1027 = p1027.evaluate(FOC1027)
+            row1027 = p1027.locator("#ltRows .lt-row").nth(1)
+            rid1027, rlab1027 = row1027.get_attribute("id"), row1027.get_attribute("data-lab")
+            row1027.click()
+            p1027.wait_for_timeout(500)
+            fwd1027 = []
+            for step1027 in ("back", "forward", "back"):
+                (p1027.go_back if step1027 == "back" else p1027.go_forward)()
+                p1027.wait_for_timeout(700)
+                fwd1027.append(p1027.evaluate(FOC1027)[:2])
+            c1027.close()
+            check("…Back's row is kept with its own entry of the history: after Latest picked again and the Timeline, Back to Latest leaves focus and the "
+                  "scroll; a row opened, Back focuses the row, Forward its chart, Back the row again",
+                  kept1027[1] != lastid1027 and kept1027[2] == 0 and fwd1027 == [["#labs-latest", rid1027], ["#labs-chart", rlab1027], ["#labs-latest", rid1027]],
+                  [kept1027, lastid1027, fwd1027, rlab1027])
+            # …and its words say each thing once and read right with none listed: two results at one time with no range,
+            # "no range on their reports" once (it was said for each); a period with none, one line saying so, no other
+            for imp1027 in (13.1, 13.4):
+                store996(w1027, draw996(20, [("Hemoglobin", "g/dL", imp1027, None, None)]))
+            c1027 = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
+            c1027.add_cookies(cookies997)
+            p1027 = c1027.new_page()
+            p1027.goto(base + f"/?profile={w1027}#labs-latest")
+            p1027.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {w1027}", timeout=20000)
+            p1027.evaluate("applyPreset('all')")
+            p1027.wait_for_timeout(300)
+            words1027 = [p1027.evaluate("[document.querySelectorAll('#ltRows .lt-v').length, document.querySelector('#ltRows .lt-row .s').textContent]")]
+            p1027.evaluate("([a, b]) => { state.preset = 'custom'; state.from = zParse(a); state.to = zParse(b); renderLatest(); }", [(now995 - td995(days=400)).strftime("%Y-%m-%dT00:00:00"), (now995 - td995(days=300)).strftime("%Y-%m-%dT00:00:00")])
+            words1027.append(p1027.evaluate("[document.getElementById('ltSays').textContent, document.getElementById('ltRows').textContent, `No lab has a result ${ltPeriod()}. A longer period shows the one lab.`]"))
+            c1027.close()
+            db = dbm994.connect()
+            for pid1027 in (n1027, w1027):
+                prof994.delete_profile(db, pid1027)
+            db.close()
+            check("…its words say each thing once: two results at one time with no range, “no range on their reports” once; with none in the period, one "
+                  "line saying so and how a longer one shows them, nothing more",
+                  words1027[0][0] == 2 and words1027[0][1].startswith("no range on their reports · ") and words1027[0][1].count("no range") == 1
+                  and words1027[1][0] == words1027[1][2] and words1027[1][1] == "", words1027)
             js("p => { labsPicked = p; save(); applyPreset('all'); switchTab('labs', 'chart'); }", pick997)   # (as the checks before these left it)
             settle(300)
             # …#900: and whatever it says, at the width it's shown. The room held the widest three it says as one line, and
