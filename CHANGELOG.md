@@ -3790,6 +3790,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Lab results doubled before #1022 become one too** (#1082): at the same start-up step, a connected source's copies
   of a lab result are one, row by row: the first pull's result and row saying what the latest says, in its lab day,
   with its corrections (undoing that pull puts back what the one before brought).
+- **A date or time typed only partly stops the save** (#1073): "0830" with no AM or PM read as empty, so New
+  reminder's extra time was dropped ("Reminder saved" with the other alone) and a journal entry saved with no time.
+  No form saves while one of its date or time fields is half typed: it's marked, named in the message and focused.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
