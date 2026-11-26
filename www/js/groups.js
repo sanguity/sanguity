@@ -108,7 +108,7 @@ const SG_PAGES = {
     {id: "apps", title: "Connected-source apps", icon: "app-window", part: "Install", admin: true, has: ["admin", "sec-sync"], place: "admin",
      words: "set up a source client portal app test connection change remove delete waiting for review done id secret issuer vendor epic mychart oracle cerner " +
        "new return address redirect uri sandbox use add another notes name people see fhir base how signs scopes ask", finds: [["Sync defaults", "sec-sync", "attachments"]]},   // (#506: a source's buttons; #510: its form's; #515: delete; #519: its return address)
-    {id: "directory", title: "Provider directory", icon: "book-user", part: "Install", admin: true, has: ["directory"], place: "admin", words: "providers"},
+    {id: "directory", title: "Provider directory", icon: "book-user", part: "Install", admin: true, has: ["directory"], place: "admin", words: "providers epic oracle cerner hospitals lists add the update now download keep them up to date weekly"},
     {id: "outside", title: "Outside connections", icon: "globe", part: "Install", admin: true, has: ["outside"], place: "admin", words: "network internet"},
     {id: "labmaps", title: "Lab name matches", icon: "arrow-right-left", part: "Install", admin: true, has: ["labmaps"], place: "admin", words: "aliases mapping reported goes series change remove forget"},   // (#532: its rows' Change and Remove)
     {id: "more", title: "More", icon: "folder", has: [], rest: true},   // a section no group names yet

@@ -9,7 +9,7 @@
    "terms": "https://open.epic.com/Home/TermsOfUse",
    "redistributable": false,
    "included": false,
-   "why": "open.epic's terms allow keeping a copy for yourself and sharing only by linking to it, so each install fetches its own copy. Run tools/build_directory.py to add it."
+   "why": "open.epic's terms allow keeping a copy for yourself and sharing only by linking to it, so each install fetches its own copy. An admin adds it from Settings → Install → Provider directory, or on the host with python3 tools/build_directory.py."
   },
   {
    "id": "oracle-millennium",
@@ -18,7 +18,7 @@
    "terms": "https://github.com/oracle-samples/ignite-endpoints",
    "redistributable": false,
    "included": false,
-   "why": "The list is copyright Oracle with no licence granted, so each install fetches its own copy. Run tools/build_directory.py to add it."
+   "why": "The list is copyright Oracle with no licence granted, so each install fetches its own copy. An admin adds it from Settings → Install → Provider directory, or on the host with python3 tools/build_directory.py."
   },
   {
    "id": "curated",

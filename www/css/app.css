@@ -2107,8 +2107,8 @@ path.pt.abn{stroke-width:1.5}
 .bk .bk-state.good{color:var(--good-text)}
 .bk .bk-state.bad{border-left:3px solid var(--crit);padding-left:var(--sp-3)}
 .bk .kv{grid-template-columns:110px minmax(0,1fr)}
-.bk .bk-progress{display:grid;gap:var(--sp-1);margin:var(--sp-2) 0;font-size:var(--fs-3);color:var(--ink2);max-width:480px}
-.bk .bk-progress progress{width:100%;height:8px}
+:is(.bk,.dir) .bk-progress{display:grid;gap:var(--sp-1);margin:var(--sp-2) 0;font-size:var(--fs-3);color:var(--ink2);max-width:480px}
+:is(.bk,.dir) .bk-progress progress{width:100%;height:8px}
 .bk .bk-sched{display:grid;gap:var(--sp-2);margin:var(--sp-1) 0 0}
 .bk .bk-sched .hint{margin:0;max-width:70ch}
 .acct .bk label.bk-keep{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}

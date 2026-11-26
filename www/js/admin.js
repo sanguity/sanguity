@@ -62,7 +62,7 @@ function syncNotice(rows) {
 function adminGate() {
   $("#adminTf").hidden = false; $("#adminTools").hidden = $("#userDanger").hidden = true; $("#users").hidden = false;
   $("#secNotice").hidden = $("#codeNotice").hidden = $("#syncNotice").hidden = $("#backupNotice").hidden = true;
-  for (const id of ["#general", "#backups", "#admin", "#sec-sync", "#labmaps", "#installLog"]) gateCard($(id));
+  for (const id of ["#general", "#backups", "#admin", "#sec-sync", "#directory", "#labmaps", "#installLog"]) gateCard($(id));
 }
 function gateCard(card) {
   if (card.querySelector(".adm-gate")) return;
@@ -493,15 +493,15 @@ function loadInstallLog() {
 
 /* ---------------------------------------------------------------- start (settings-nav.js) */
 /* for an admin, once first (this person's settings drawn) is done: Install's groups shown, then their content (the
-   directory's and outside connections' for an admin still without a second factor too: they say what's missing) */
+   outside connections' for an admin still without a second factor too: they say what's missing) */
 async function adminStart(first) {
   if (!ME.user.is_admin) return;
   await first;
   for (const g of SG_PAGES.settings.groups) if (g.admin) for (const id of g.has) $("#" + id).hidden = false;
   SgOutside.load();     // outside.js
-  loadDirectory();      // admin-sources.js
   if (ME.user.admin_needs_two_factor) { adminGate(); SET_NAV.again(); return; }
   loadInstallLog();
-  await Promise.all([loadUsers(), loadNotice(), loadLabmaps(), loadRequireTf(), loadSetup(), loadSync(), loadBackups()]);
+  await Promise.all([loadUsers(), loadNotice(), loadLabmaps(), loadRequireTf(), loadSetup(), loadSync(), loadBackups(),
+    loadDirectory()]);   // (#992: the directory's lists, an admin's alone, as the rest of Install is)
   SET_NAV.again();
 }

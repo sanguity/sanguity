@@ -3608,6 +3608,15 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Install's cards are drawn on a slow device or connection too** (#1028): Admin's start asked Outside connections'
   script to draw once its own first answer came, and where that script hadn't loaded yet, it stopped there and the
   cards after it were never drawn. Settings → Install starts once all of its scripts are there.
+- **The provider directory's lists are added and updated from the page, not a command on the host** (#992): adding
+  Epic's and Oracle Health's lists meant running `tools/build_directory.py` on the host (in Docker, a shell in the
+  container), and again now and then. Settings → Install → Provider directory now has **Add the lists** (then
+  **Update now**): after naming the two hosts it contacts and their terms, the server downloads them itself, in the
+  background, through the outside-connections gateway (each contact in Outside connections and the install log),
+  with its progress and outcome shown and said, and the next search uses them. **Keep them up to date** reads them
+  weekly, off until an admin turns it on. A failed or cut-short download keeps the earlier list in use and says
+  why. Find your provider gives an admin **Add them now**; the command line stays for servers that can't reach
+  those hosts.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

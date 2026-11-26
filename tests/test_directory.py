@@ -8,7 +8,7 @@ Fictional data only.
 
   python3 tests/test_directory.py
 """
-import contextlib, gzip, io, json, os, re, shutil, socket, sys, tempfile, unittest, urllib.request
+import contextlib, gzip, io, json, os, re, shutil, socket, sys, tempfile, time, unittest, urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FIX = os.path.join(ROOT, "tests", "fixtures", "directory")
@@ -23,6 +23,7 @@ for d in ("records", "keys", "data"):
     os.makedirs(os.path.join(TMP, d), exist_ok=True)
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "tools"))
+sys.path.insert(0, ROOT)
 
 # ---- no network, from here on: any connection or name lookup beyond this machine is refused and noted, and the
 # run fails if there was one (the event loop's own self-pipe, a loopback socket pair on Windows, is allowed)
@@ -63,7 +64,8 @@ import logging   # noqa: E402
 from fastapi.testclient import TestClient   # noqa: E402
 
 import build_directory as bd   # noqa: E402
-from server import accounts, db as dbm, directory, main   # noqa: E402
+from server import accounts, crypto, db as dbm, directory, main, outside, settings, twofactor   # noqa: E402
+from server.directory import update   # noqa: E402
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
 H = {"X-Sanguity": "1"}
@@ -284,6 +286,153 @@ class Api(unittest.TestCase):
                 page = f.read()
             self.assertNotIn("<script>", page, "no inline script")
             self.assertNotRegex(page, r"\son[a-z]+=", "no inline handlers")
+
+
+class FromThePage(unittest.TestCase):
+    """Settings → Install → Provider directory (#992): the server reads Epic's and Oracle Health's lists itself, from a
+    fake of each list's host (tests/directory_host.py), when an admin asks, and weekly once that's turned on."""
+
+    @classmethod
+    def setUpClass(cls):
+        from tests.directory_host import DirectoryHost
+        cls.host = DirectoryHost().start().use()
+        cls.ctx = TestClient(main.app, base_url="http://testserver").__enter__()
+        db = dbm.connect()
+        if not db.execute("SELECT 1 FROM users WHERE username='robin'").fetchone():
+            accounts.create(db, "robin", password=PW)
+        db.execute("UPDATE users SET is_admin=1 WHERE username='robin'")
+        if not db.execute("SELECT 1 FROM users WHERE username='kim'").fetchone():
+            accounts.create(db, "kim", password=PW)
+        cls.c, cls.kim = (TestClient(main.app, base_url="http://testserver") for _ in "ab")
+        for c, who in ((cls.c, "robin"), (cls.kim, "kim")):
+            r = c.post("/api/login", json={"username": who, "password": PW}, headers=H)
+            assert r.status_code == 200, r.text
+        # an admin's own second factor, now that the server has two accounts (main.admin), once signed in
+        db.execute("UPDATE users SET totp_secret=? WHERE username='robin'", (crypto.enc(twofactor.new_secret()),))
+        db.close()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.ctx.__exit__(None, None, None)
+        cls.host.stop()
+        build_local()
+
+    def setUp(self):
+        for k in self.host.mode:
+            self.host.mode[k] = "ok"
+        self.host.hits.clear()
+        if os.path.exists(LOCAL):
+            os.remove(LOCAL)
+        db = dbm.connect()
+        for k in ("directory.last", "directory.read_at"):
+            dbm.meta_set(db, k, None)
+        db.execute("DELETE FROM settings WHERE key='directory.weekly'")
+        db.execute("DELETE FROM outside_contacts WHERE purpose=?", (outside.DIRECTORY,))
+        db.close()
+        update.wake()   # the app's thread looks at the weekly update (off): it contacts no one
+
+    def contacts(self):
+        db = dbm.connect()
+        try:
+            return [(crypto.dec(r["host"]), r["count"]) for r in db.execute("SELECT host, count FROM outside_contacts WHERE purpose=?", (outside.DIRECTORY,))]
+        finally:
+            db.close()
+
+    def wait(self):
+        for _ in range(200):
+            j = self.c.get("/api/provider-directory").json()
+            if not j["running"]:
+                return j
+            time.sleep(0.05)
+        self.fail("the update didn't finish")
+
+    def test_an_admin_adds_both_lists_and_the_next_search_finds_an_epic_hospital(self):
+        j = self.c.get("/api/provider-directory").json()
+        self.assertEqual({x["id"]: x["included"] for x in j["lists"]}, {"epic-brands": False, "oracle-millennium": False, "curated": True})
+        self.assertEqual(j["hosts"], [f"127.0.0.1:{self.host.port}"])
+        self.assertEqual([x["adds"][:9] for x in j["lists"] if x["fetched"]], ["about 1,3", "about 1,3"], "what each would add")
+        self.assertEqual(self.c.get("/api/directory", params={"q": "harborview"}).json()["results"], [])
+        time.sleep(0.2)
+        self.assertEqual((self.host.hits, self.contacts()), ([], []), "nothing is contacted before the button")
+        db = dbm.connect()
+        start = db.execute("SELECT MAX(id) FROM activity").fetchone()[0]
+        db.close()
+        r = self.c.post("/api/provider-directory/update", headers=H)
+        self.assertEqual(r.status_code, 202, r.text)
+        j = self.wait()
+        self.assertEqual(j["last"]["read"], {"epic-brands": 3, "oracle-millennium": 2})
+        self.assertEqual(j["last"]["failed"], {})
+        self.assertTrue(all(x["included"] for x in j["lists"]))
+        hit = self.c.get("/api/directory", params={"q": "harborview"}).json()["results"][0]
+        self.assertEqual(hit["id"], "epic:9001-1", "found at once, with no restart")
+        self.assertEqual(self.contacts(), [(f"127.0.0.1:{self.host.port}", 1)])
+        db = dbm.connect()
+        try:
+            log = [(r["action"], r["actor"], json.loads(crypto.dec(r["detail"]))) for r in
+                   db.execute("SELECT * FROM activity WHERE id > ? AND profile_id IS NULL AND action IN ('outside', 'directory.update') ORDER BY id", (start,))]
+        finally:
+            db.close()
+        self.assertEqual(log[0][:2], ("outside", "robin"))
+        self.assertEqual(log[0][2]["purpose"], "Provider directory")
+        self.assertEqual(log[-1], ("directory.update", "robin", {"origin": "manual", "read": {"epic-brands": 3, "oracle-millennium": 2}, "failed": {}}))
+        self.assertFalse([f for f in os.listdir(os.path.dirname(LOCAL)) if f.startswith(".update-")], "its downloads are gone")
+
+    def test_a_failed_or_cut_short_download_keeps_the_earlier_lists(self):
+        update.run("manual")
+        self.assertIn("oracle:t1", directory.index().by_id)
+        for mode, why in (("cut", "cut short"), ("error", "503"), ("junk", "isn't the list")):
+            self.host.mode["oracle-millennium"] = mode
+            last = update.run("manual")
+            self.assertEqual(list(last["read"]), ["epic-brands"], mode)
+            self.assertIn(why, last["failed"]["oracle-millennium"], mode)
+            ix = directory.index()
+            self.assertIn("oracle:t1", ix.by_id, f"{mode}: the earlier Oracle list is still in use")
+            self.assertTrue(next(s for s in ix.sources if s["id"] == "oracle-millennium")["included"])
+        self.host.mode["epic-brands"] = "cut"
+        before = os.stat(LOCAL).st_mtime_ns
+        last = update.run("manual")
+        self.assertEqual(last["read"], {})
+        self.assertEqual(set(last["failed"]), {"epic-brands", "oracle-millennium"})
+        self.assertEqual(os.stat(LOCAL).st_mtime_ns, before, "nothing read: the copy isn't touched")
+        self.assertIn("epic:9001-1", directory.index().by_id)
+        said = self.c.get("/api/provider-directory").json()["last"]
+        self.assertEqual(said["failed"]["epic-brands"], "the download was cut short")
+
+    def test_the_weekly_update_is_off_until_turned_on_then_runs_and_is_shown(self):
+        db = dbm.connect()
+        try:
+            self.assertIsNone(update.due_at(db), "off by default")
+            settings.put(db, "directory.weekly", True)
+            self.assertLessEqual(update.due_at(db), time.time(), "never read: due now")
+            update.run("weekly")
+            j = self.c.get("/api/provider-directory").json()
+            self.assertTrue(j["weekly"])
+            self.assertEqual(j["next"], j["read_at"] + update.WEEK)
+            self.assertEqual(j["last"]["origin"], "weekly")
+            actor = db.execute("SELECT actor FROM activity WHERE action='directory.update' ORDER BY id DESC").fetchone()[0]
+            self.assertEqual(actor, "weekly directory update")
+            self.host.mode["epic-brands"] = self.host.mode["oracle-millennium"] = "error"
+            update.run("weekly")
+            self.assertGreaterEqual(update.due_at(db), time.time() + update.RETRY - 5, "a failed try: again a day later")
+            settings.put(db, "directory.weekly", False)
+            self.assertIsNone(update.due_at(db))
+        finally:
+            db.close()
+
+    def test_one_update_at_a_time_and_only_admins(self):
+        self.host.mode["epic-brands"] = "slow"
+        self.host.slow.clear()
+        try:
+            self.assertEqual(self.c.post("/api/provider-directory/update", headers=H).status_code, 202)
+            r = self.c.post("/api/provider-directory/update", headers=H)
+            self.assertEqual(r.status_code, 409, r.text)
+            self.assertTrue(self.c.get("/api/provider-directory").json()["running"])
+        finally:
+            self.host.slow.set()
+        self.wait()
+        self.assertEqual(self.kim.get("/api/provider-directory").status_code, 403)
+        self.assertEqual(self.kim.post("/api/provider-directory/update", headers=H).status_code, 403)
+        self.assertEqual(TestClient(main.app, base_url="http://testserver").get("/api/provider-directory").status_code, 401)
 
 
 def tearDownModule():

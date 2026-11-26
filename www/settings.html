@@ -270,17 +270,22 @@
   </section>
   <section class="card conn adm" id="sec-sync" hidden><h2>Sync defaults</h2></section>
 
-  <!-- Provider directory: what Find your provider has, and adding Epic's and Oracle Health's lists (admin-sources.js) -->
+  <!-- Provider directory: what Find your provider has, and the server reading Epic's and Oracle Health's lists (admin-sources.js, #992) -->
   <section class="card dir conn adm" id="directory" hidden>
     <h2>Provider directory</h2>
     <p class="hint">The list Find your provider searches, kept on this server: searching it contacts no one.</p>
     <div class="about-words" hidden>
       <p>Sanguity ships with the vendors' test sandboxes and Medicare. Epic's and Oracle Health's published lists can't be
-        shipped under their terms, so each server adds its own copy.</p>
+        shipped under their terms, so each server reads its own copy, for itself only. Nothing about you or your records
+        is sent to read them.</p>
     </div>
     <div id="dirSources"></div>
-    <div id="dirAdd"></div>
-    <span class="msg" id="dirMsg" role="status"></span>
+    <div class="row"><button class="btn primary" type="button" id="dirGet" hidden>Add the lists</button>
+      <span class="msg" id="dirMsg" role="status"></span></div>
+    <div id="dirProgress" class="bk-progress" hidden></div>
+    <div id="dirReauth" class="reauth" hidden></div>
+    <div id="dirWeekly"></div>
+    <p class="hint" id="dirOffline"></p>
   </section>
 
   <section class="card conn adm" id="labmaps" hidden>

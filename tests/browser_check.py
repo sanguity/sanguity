@@ -17005,8 +17005,62 @@ def main():
             dir_text = page.inner_text("#directory")
             check("Install: a group picked in the sidebar is the one shown, and the address says so",
                   js(display, "directory") != "none" and js(display, "sec-sync") == "none" and js("location.hash") == "#directory")
-            check("…the provider directory says what's loaded, and how to add Epic's and Oracle Health's lists, and to run it again now and then, in sight (#447)",
-                  "Medicare" in dir_text and "not loaded" in dir_text and "python3 tools/build_directory.py" in dir_text and "again now and then (Epic suggests weekly)" in dir_text, dir_text[:400])
+            check("…the provider directory says what's loaded and what the others would add, offers to add them, and keeps the command "
+                  "line for a server that can't reach their hosts (#447, #992)",
+                  "Medicare" in dir_text and "not loaded: it would add about 1,300" in dir_text and "Add the lists" in dir_text
+                  and "python3 tools/build_directory.py" in dir_text and "every week" in dir_text, dir_text[:600])
+            # #992: Add the lists, from a fake of each list's host (tests/directory_host.py; nothing contacted before the
+            # button): the app's dialog names the hosts and their terms first; then in the background, each stage said in
+            # the card's status line with the button kept (not disabled: focus stays on it), and the outcome said; the
+            # next search finds an Epic hospital; Keep them up to date saved as it's switched, saying when it reads next
+            sys.path.insert(0, os.path.join(ROOT, "tests"))
+            from directory_host import DirectoryHost
+            from server import db as dbm992, directory as dir992
+            host992 = DirectoryHost().start().use()
+            host992.mode["epic-brands"] = "slow"
+            db992 = dbm992.connect()
+            try:
+                db992.execute("UPDATE sessions SET verified_at=?", (dbm992.now(),))   # (the weekly switch's fresh check: just made)
+                js("loadDirectory()")
+                page.wait_for_function("document.getElementById('dirGet').textContent === 'Add the lists'", timeout=10000)
+                page.focus("#dirGet")
+                page.keyboard.press("Enter")
+                page.wait_for_selector("dialog.sg-ask", timeout=5000)
+                asked992 = page.inner_text("dialog.sg-ask")
+                page.keyboard.press("Enter")   # (focus starts on its action: Download the lists)
+                page.wait_for_function("document.getElementById('dirMsg').textContent === \"Downloading Epic's list…\"", timeout=10000)
+                running992 = [js("document.querySelector('#dirProgress progress')?.getAttribute('aria-label')"), js("document.activeElement.id"),
+                              js("document.getElementById('dirGet').getAttribute('aria-disabled')"), host992.hits[:]]
+                host992.slow.set()
+                page.wait_for_function("document.getElementById('dirMsg').textContent.startsWith('Done.')", timeout=20000)
+                done992 = [js("document.getElementById('dirMsg').textContent"), js("document.getElementById('dirGet').textContent"),
+                           js("document.activeElement.id"), js("document.getElementById('dirProgress').hidden"),
+                           js("fetch('api/directory?q=harborview').then(r => r.json()).then(j => j.results[0]?.id)")]
+                check("Install → Provider directory: Add the lists names the hosts and their terms first, then reads them in the background, "
+                      "each stage and the outcome said, focus kept on its button, and the next search finds an Epic hospital (#992)",
+                      f"127.0.0.1:{host992.port}" in asked992 and "for this server only" in asked992 and "Download the lists" in asked992
+                      and running992 == ["Downloading Epic's list", "dirGet", "true", ["/epic-brands"]]
+                      and done992[0] == "Done. Epic's list read (3 entries) and Oracle Health's list read (2 entries). Find your provider searches the new lists now."
+                      and done992[1:] == ["Update now", "dirGet", True, "epic:9001-1"], [asked992[:300], running992, done992])
+                page.click("label.switch:has(#directory\\.weekly)")
+                page.wait_for_function("document.getElementById('dirMsg').textContent.startsWith('The lists will be read again')", timeout=10000)
+                weekly992 = [js("document.getElementById('directory.weekly').checked"), js("document.activeElement.id"),
+                             js("document.getElementById('dirWeeklyHint').textContent"),
+                             js("fetch('api/settings/install').then(r => r.json()).then(d => d.sections.find(s => s.id === 'directory').settings[0].value)")]
+                check("…Keep them up to date is off until switched on, then saved at once, saying when the lists were last read and will "
+                      "be next, focus back on the switch (#992)", weekly992[:2] == [True, "directory.weekly"] and weekly992[3] is True
+                      and weekly992[2].startswith("On: this server reads") and "Last read" in weekly992[2] and "Next" in weekly992[2], weekly992)
+            finally:
+                js("fetch('api/settings/install/reset', {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, body: JSON.stringify({section: 'directory'})}).then(r => r.status)")
+                host992.stop()
+                try:
+                    os.remove(dir992.local_path())   # the bundled list again, as the checks after this expect
+                except OSError:
+                    pass
+                for k in ("directory.last", "directory.read_at"):
+                    dbm992.meta_set(db992, k, None)
+                db992.close()
+                js("loadDirectory()")
             for gid in ("general", "accounts", "backups", "apps", "directory", "labmaps", "outside", "installLog"):
                 page.click(f"#setNav a[data-group={gid}]")
                 page.set_viewport_size({"width": 375, "height": 800})

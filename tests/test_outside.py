@@ -338,6 +338,42 @@ class View(unittest.TestCase):
         self.assertEqual(r.status_code, 400)
         self.assertEqual(self.srv.seen, [])
 
+    # ---------------------------------------------------------------- the provider directory's lists (#992)
+
+    def test_directory_lists_contact_their_hosts_only_when_an_admin_asks_each_contact_recorded(self):
+        from server.directory import build, update
+        from tests.directory_host import DirectoryHost
+        host = DirectoryHost().start()
+        self.addCleanup(host.stop)
+        v = self.view(self.robin)
+        self.assertEqual(v["directory"]["hosts"], ["open.epic.com", "raw.githubusercontent.com"])
+        self.assertNotIn("open.epic.com", v["may_contact"], "only when an admin asks: not a host it may contact now")
+        self.assertNotIn("directory", self.view(self.lee), "an admin's alone")
+        host.use()
+        update.wake()   # the app's thread, with the weekly update off: no contact
+        time.sleep(0.2)
+        self.assertEqual((host.hits, self.view(self.robin)["directory"]["contacts"]), ([], []), "nothing before the button")
+        r = self.robin.post("/api/provider-directory/update", headers=H)
+        self.assertEqual(r.status_code, 202, r.text)
+        for _ in range(200):
+            if not self.robin.get("/api/provider-directory").json()["running"]:
+                break
+            time.sleep(0.05)
+        here = f"127.0.0.1:{host.port}"
+        got = self.view(self.robin)["directory"]["contacts"]
+        self.assertEqual([(e["host"], e["purpose"], e["profile"], e["count"]) for e in got], [(here, "Provider directory", None, 1)])
+        log = [e for e in self.robin.get("/api/activity").json() if e["action"] == "outside"]
+        self.assertEqual((log[0]["detail"], log[0]["actor"]), ({"host": here, "purpose": "Provider directory"}, "robin"))
+        # a host the lists don't name is refused before anything is sent
+        build.SOURCES["oracle-millennium"]["url"] = "http://127.0.0.2:9/elsewhere"
+        db = dbm.connect()
+        try:
+            with self.assertRaises(net.Refused):
+                net.connection(outside.for_directory(db), "http://127.0.0.1:9/x")
+        finally:
+            db.close()
+        self.assertEqual(netguard.take(), [])
+
     # ---------------------------------------------------------------- the page
 
     def test_settings_install_has_the_section_without_inline_script(self):
