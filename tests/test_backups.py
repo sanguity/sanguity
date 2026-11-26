@@ -1533,6 +1533,57 @@ class Backups(unittest.TestCase):
         finally:
             db.close()
 
+    def test_21_a_restore_that_fails_part_way(self):   # #1055
+        """A restore failing between moving today's files aside and putting the backup's database in place (moving them,
+        writing the backup's profiles/ as the disk fills, the replace) left only before-restore-<time>/ and no database:
+        the app then started empty. Now today's data is put back as it was, the app starts with its accounts, and the
+        restore says what happened and names the folder."""
+        path = backup.create(os.path.join(TMP, "backups-1055"))
+        self.assertTrue(any(n.startswith("profiles/") for n in backup.verify(path)["files"]), "a backup with profiles' files")
+        real_move, real_extract, real_replace = shutil.move, backup._extract, os.replace
+
+        def moving(src, dst):   # profiles/ can't be moved aside (the database already was)
+            if "before-restore-" in dst and os.path.basename(src) in backup.CONTENTS:
+                raise OSError(28, "No space left on device")
+            return real_move(src, dst)
+
+        def extracting(tar, m, target):   # the disk fills while profiles/ is written
+            real_extract(tar, m, target)
+            if m.name.startswith("profiles/"):
+                raise OSError(28, "No space left on device")
+
+        def replacing(src, dst):   # the backup's database can't be put in place
+            if src.endswith(".restoring.db"):
+                raise OSError(5, "Input/output error")
+            return real_replace(src, dst)
+        for label, target, fake, step in (("moving", backup.shutil, ("move", moving), "moving today's data aside"),
+                                          ("extracting", backup, ("_extract", extracting), "writing the backup's profiles/"),
+                                          ("replace", backup.os, ("replace", replacing), "putting the backup's database in place")):
+            folder = os.path.join(TMP, f"restored-1055-{label}")
+            shutil.copytree(DATA, folder, ignore=shutil.ignore_patterns("sanguity.db*", "app.lock", "before-restore-*"))
+            src, dst = sqlite3.connect(os.path.join(DATA, "sanguity.db")), sqlite3.connect(os.path.join(folder, "sanguity.db"))
+            src.backup(dst)
+            src.close()
+            dst.close()
+            with mock.patch.multiple(config, DATA_DIR=folder, DB_PATH=os.path.join(folder, "sanguity.db")):
+                before = live_state()
+                out = io.StringIO()
+                with mock.patch.object(backup, "_app_is_running", return_value=False), contextlib.redirect_stdout(out), \
+                        mock.patch.object(target, fake[0], side_effect=fake[1]), self.assertRaises(SystemExit) as cm:
+                    manage.run(["restore", path, "--yes"])
+                said = str(cm.exception.code)
+                self.assertIn(f"The restore failed while {step}", said, label)
+                self.assertIn("Nothing was changed: today's data, moved aside to " + os.path.join(folder, "before-restore-"), said, label)
+                self.assertNotIn("Restored.", out.getvalue(), label)
+                self.assertEqual(live_state(), before, f"{label}: today's data as it was")
+                self.assertEqual([n for n in os.listdir(folder) if n.startswith("before-restore-")], [], label)
+                dbm.init()   # the app starts with today's accounts, not first-run setup
+                con = dbm.connect()
+                try:
+                    self.assertEqual({r[0] for r in con.execute("SELECT username FROM users")} & {"ada", "robin"}, {"ada", "robin"}, label)
+                finally:
+                    con.close()
+
     def test_9b_what_a_restore_replaced(self):
         """What a restore moved aside (it may hold a profile deleted since) is deleted RESTORE_KEEP after the restore,
         at start and now and then while the app runs, or by an admin's Delete now; only folders named as restore()
