@@ -186,7 +186,7 @@ function renderCmpMs(placed) {
   const sel = el("select", {id: "cmpMs", onchange: ev => { cmpMsDate = ev.target.value; keepFocus(renderCompare); }},
     ...ms.map(o => el("option", {value: o.date, text: `${o.label} · ${fmtD(dayTs(o.date))}`, selected: o === m || null})));
   pick.replaceChildren(el("div", {class: "cmp-slot"}, el("label", {for: "cmpMs", text: "Milestone"}), sel),
-    ckLegend([["var(--ink2)", `Median before ${lcLabel(m.label)}`, "ring"], ["var(--ink2)", "From it on", 1]]));
+    ckLegend([[INK2, `Median before ${lcLabel(m.label)}`, "ring"], [INK2, "From it on", 1]]));
   const t = day(m), rows = placed.map(r => ({...r, ...cmpSides(r.pts, t)}));
   if (state.tables.has("#cmpms")) {
     const side = (r, d) => d ? [String(d.n), cmpMedWords(d, r.s.unit)] : ["0", "No results"];

@@ -251,7 +251,7 @@ function ckSparkSpan(vs, lo, hi) {
   const m = (b - a) / 20;   // room for a value at either end
   return [Math.min(a, v0 - m), Math.max(b, v1 + m)];
 }
-function ckSpark(pts, {band = true, r = 3, color = "var(--ink)", cls = ""} = {}) {
+function ckSpark(pts, {band = true, r = 3, color = INK, cls = ""} = {}) {
   const svg = el("svg:svg", {class: ("spark " + cls).trim(), "aria-hidden": "true"});
   pts = pts.filter(p => Number.isFinite(p[1]));
   if (!pts.length) return svg;
@@ -262,7 +262,7 @@ function ckSpark(pts, {band = true, r = 3, color = "var(--ink)", cls = ""} = {})
   const [d0, d1] = ckSparkSpan(use.map(p => p[1]), los.length ? Math.min(...los) : null, his.length ? Math.max(...his) : null);
   const x = ckScale(line ? pts[0].ts : last.ts - 1, last.ts, 3, 97), y = ckScale(d0, d1, 100, 0), g = [];
   ckBand(g, steps, x, y, 0, 100, 0, 100);
-  if (line) g.push(el("svg:path", {d: pts.map((p, i) => (i ? "L" : "M") + x(p.ts).toFixed(1) + "," + y(p[1]).toFixed(1)).join(""), fill: "none", stroke: "var(--muted)", "stroke-width": 1.5}));
+  if (line) g.push(el("svg:path", {d: pts.map((p, i) => (i ? "L" : "M") + x(p.ts).toFixed(1) + "," + y(p[1]).toFixed(1)).join(""), fill: "none", stroke: MUTED, "stroke-width": 1.5}));
   for (const e of g) e.setAttribute("vector-effect", "non-scaling-stroke");
   const at = {x: x(last.ts) + "%", y: y(last[1]) + "%"};
   svg.append(el("svg:svg", {viewBox: "0 0 100 100", preserveAspectRatio: "none", width: "100%", height: "100%"}, ...g),
@@ -669,7 +669,7 @@ function ckPosTicks(lo, hi) {
 /* the labs compared, in order: each a line in its own ink and dash and a mark of its own shape, so none is told by its
    colour alone: the Labs blue, solid, dots; the secondary ink, dashed, squares; a lighter grey, dotted, rings (each 3:1
    or more on the card, light and dark) */
-const CK_SERIES = [{color: "var(--c-lab)", dash: null, shape: "circle"}, {color: "var(--ink2)", dash: "7 4", shape: "square"},
+const CK_SERIES = [{color: "var(--c-lab)", dash: null, shape: "circle"}, {color: INK2, dash: "7 4", shape: "square"},
   {color: "var(--field-line)", dash: "1.5 3.5", shape: "ring"}];
 /* series i's mark at x, y, in its shape and ink, a ring of the card round it where it's filled */
 const ckSeriesMark = (i, x, y, r) => { const k = CK_SERIES[i], ring = k.shape === "ring";
