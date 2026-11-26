@@ -1,38 +1,12 @@
-/* Sanguity · the Admin page (#167): what only admins do, for the whole server, in one place, with a sidebar of groups
-   (sidebar.js, as on Settings): Accounts (and requiring two-factor sign-in), Backups (admin-backups.js,
-   #200), Connected-source apps and
+/* Sanguity · Settings → Install (#991; the Admin page before, #167): what only admins do, for the whole server, as
+   groups of Settings' sidebar (settings-nav.js, which starts this: adminStart): General (#998, its sections their own
+   scripts'), Accounts (and requiring two-factor sign-in), Backups (admin-backups.js, #200), Connected-source apps and
    their sync defaults, the Provider directory (both admin-sources.js), Lab name matches, Outside connections
-   (outside.js) and Install activity (activity.js). Someone who isn't an admin gets a page saying so, and no menu item
-   (nav.js). Admins need a second factor of their own once the server has more than one account: until then each
-   part says so. */
+   (outside.js) and Install activity (activity.js), with the admins' notices over each. Someone who isn't an admin
+   isn't shown them (settings-nav.js says why where an address names one), and the server refuses them their routes.
+   Admins need a second factor of their own once the server has more than one account: until then each part says
+   so. call(), say(), when(), plural() and ME are settings.js's. */
 "use strict";   // $, el and api come from util.js
-/* api() from util.js, returning the JSON answer, or throwing with the server's message */
-async function call(path, method = "GET", body) {
-  const r = await api(path, {method, body: body ? JSON.stringify(body) : undefined});
-  if (r.status === 401) { location.replace("login.html"); throw new Error("signed out"); }
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    const d = j.detail, e = new Error(Array.isArray(d) ? "Please check the fields." : (d && d.message) || d || r.status + " " + r.statusText);
-    e.detail = d; e.status = r.status; throw e;
-  }
-  return j;
-}
-const say = (id, text, bad = false) => sayIn($(id), text, bad);   // shown and said (util.js, #209)
-const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and date format
-const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
-let ME;
-
-$("#logout").onclick = logOut;   // util.js: asks first about what isn't saved (#391)
-
-/* ---------------------------------------------------------------- the sidebar: one group shown at a time */
-/* The sidebar every account page has (sidebar.js, #266), its groups under People, Data safety, Connections and Lab
-   matching. The address follows the group (admin.html#apps); an address naming a section (admin.html#users,
-   #labmaps, #sec-sync, #outside) opens that section's group and scrolls to it. */
-const GROUPS = SG_PAGES.admin.groups;   // groups.js: one list, which the command palette searches too (#273)
-const AdminNav = sideNav({id: "admNav", page: "Admin", groups: GROUPS, find: "Find in Admin", none: q => `Nothing in Admin matches “${q}”.`,
-  // the bar (#272): the sync defaults' numbers (admin-sources.js) and the backups kept (#409, admin-backups.js)
-  bar: {save: async (parts, msg, had) => { for (const p of parts) await (p.id === "backups" ? bkKeepSave : syncSave)(msg, had); },
-    discard: parts => { for (const p of parts) (p.id === "backups" ? bkKeepDiscard : syncDiscard)(); }}});
 
 /* ---------------------------------------------------------------- notices: failed sign-ins, sources that stopped */
 async function loadNotice() {
@@ -88,7 +62,7 @@ function syncNotice(rows) {
 function adminGate() {
   $("#adminTf").hidden = false; $("#adminTools").hidden = $("#userDanger").hidden = true; $("#users").hidden = false;
   $("#secNotice").hidden = $("#codeNotice").hidden = $("#syncNotice").hidden = $("#backupNotice").hidden = true;
-  for (const id of ["#backups", "#admin", "#sec-sync", "#labmaps", "#installLog"]) gateCard($(id));
+  for (const id of ["#general", "#backups", "#admin", "#sec-sync", "#labmaps", "#installLog"]) gateCard($(id));
 }
 function gateCard(card) {
   if (card.querySelector(".adm-gate")) return;
@@ -96,7 +70,7 @@ function gateCard(card) {
   for (const c of card.children) c.hidden = true;
   card.append(...(title ? [el("h2", {text: title})] : []), el("p", {class: "warn adm-gate"},
     "First turn on two-factor sign-in (the authenticator app) or add a passkey for your own account, under ",
-    el("a", {href: "account.html#security", text: "Account → Sign-in & security"}), "."));
+    el("a", {href: "#security", text: "Settings → Sign-in and security"}), "."));
   card.hidden = false;
 }
 /* resetting a password, turning off someone's 2FA, making an admin, and (#590) giving a profile an owner, disabling
@@ -207,12 +181,12 @@ function userMenu(u) {
   return rowMenu(`Manage ${n}`, [
     u.is_admin
       ? {text: "Remove admin…", run: () => changeUser(u, {is_admin: false}, {title: `Remove ${n}'s admin role?`,
-          message: "They keep their account and the profiles shared with them, but can't use the Admin page any more.", action: "Remove admin"},
+          message: "They keep their account and the profiles shared with them, but can't use Settings → Install any more.", action: "Remove admin"},
           `${n} isn't an admin any more.`)}
       : {text: "Make admin…", run: () => changeUser(u, {is_admin: true}, {title: `Make ${n} an admin?`, message: [
           "Admins look after every account on this server: they can add, disable and remove accounts, reset passwords and " +
           "turn off two-factor sign-in, and look after backups and sources.",
-          "They don't see a profile's records unless it's shared with them. They'll need two-factor sign-in of their own to use the Admin page."],
+          "They don't see a profile's records unless it's shared with them. They'll need two-factor sign-in of their own to use Settings → Install."],
           action: "Make admin", danger: true}, `${n} is an admin now.`)},
     {text: "Reset password…", run: () => changeUser(u, {reset_password: true}, {title: `Reset ${n}'s password?`, message: [
       "Their password stops working at once, and they're signed out everywhere.",
@@ -496,7 +470,7 @@ async function loadRequireTf() {
       if (without.some(u => u.id === ME.user.id)) {
         req.checked = false;
         say("#reqTfMsg", ["To require it for everyone, first turn on two-factor sign-in (the authenticator app) or add a passkey " +
-          "for your own account, under ", el("a", {href: "account.html#security", text: "Account → Sign-in & security"}), "."], true);
+          "for your own account, under ", el("a", {href: "#security", text: "Settings → Sign-in and security"}), "."], true);
         return;
       }
       if (n && !await ask({title: "Require two-factor sign-in for everyone?", danger: true, action: "Require it", message: [
@@ -517,22 +491,17 @@ function loadInstallLog() {
   $("#acctLog").replaceChildren(activityPanel("activity", null, {open: true}));
 }
 
-/* ---------------------------------------------------------------- start */
-(async () => {
-  try { ME = await call("me"); } catch (e) { return; }
-  await datesReady();   // dates in this person's time zone and format (dates.js)
-  if (ME.user.must_change_pw) { location.replace("account.html#password"); return; }
-  if (ME.user.needs_two_factor) { location.replace("account.html#twofa"); return; }
-  $("#who").textContent = ME.user.username;
-  { const w = plainHttpWarning(); if (w) { $("#insecure").textContent = w; $("#insecure").hidden = false; } }
-  if (!ME.user.is_admin) { $("#notAdmin").hidden = false; return; }
-  for (const g of GROUPS) for (const id of g.has) $("#" + id).hidden = false;
-  $("#intro").hidden = false;
-  AdminNav.start();
+/* ---------------------------------------------------------------- start (settings-nav.js) */
+/* for an admin, once first (this person's settings drawn) is done: Install's groups shown, then their content (the
+   directory's and outside connections' for an admin still without a second factor too: they say what's missing) */
+async function adminStart(first) {
+  if (!ME.user.is_admin) return;
+  await first;
+  for (const g of SG_PAGES.settings.groups) if (g.admin) for (const id of g.has) $("#" + id).hidden = false;
   SgOutside.load();     // outside.js
   loadDirectory();      // admin-sources.js
-  if (ME.user.admin_needs_two_factor) { adminGate(); AdminNav.again(); return; }
+  if (ME.user.admin_needs_two_factor) { adminGate(); SET_NAV.again(); return; }
   loadInstallLog();
   await Promise.all([loadUsers(), loadNotice(), loadLabmaps(), loadRequireTf(), loadSetup(), loadSync(), loadBackups()]);
-  AdminNav.again();
-})();
+  SET_NAV.again();
+}

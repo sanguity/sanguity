@@ -1,10 +1,10 @@
-/* Sanguity · the Admin page's Backups (#200, server/backup_jobs.py): when the newest backup was made, how big it is
-   and where it went, with a warning when it's late (on every group of the page, and beside Backups in the sidebar);
+/* Sanguity · Settings → Install → Backups (#200, #991; server/backup_jobs.py): when the newest backup was made, how big
+   it is and where it went, with a warning when it's late (on every group of Install, and beside Backups in the sidebar);
    Back up now and Check a backup, which run in the background while this polls how they go; and the schedule.
    What the backups take of the watch receiver's data, and a check's counts of it (#227).
    Restore: what a restore replaced, kept in the data folder until it's deleted, with Delete now (#595).
    Turning the schedule off, or keeping fewer backups than would stay, is asked first (ask(), util.js) and needs the
-   fresh check (admin.js fresh()). Uses admin.js's call(), say(), when() and plural(). */
+   fresh check (admin.js fresh()). Uses settings.js's call(), say(), when() and plural(). */
 "use strict";
 const BK_TABLES = [["users", "account"], ["profiles", "profile"], ["events", "record"], ["results", "lab result"],
   ["documents", "document"], ["imports", "import"]];   // the tables a check's result names, in words
@@ -18,6 +18,12 @@ const bkAgo = s => s < 3600 ? "less than an hour ago" : s < 2 * 86400 ? plural(M
 const bkRemoves = (n, sched, keep) => sched === "off" ? 0 : Math.max(0, n + 1 - keep);   // as backup_jobs.removes
 let BK = null, bkPolling = null, bkShowAll = false;
 
+/* "late" beside Backups in the sidebar while they are, put back each time the sidebar's links are drawn again (another
+   profile's groups: settings-nav.js) */
+function bkMark() {
+  const link = document.querySelector("#setNav a[data-group=backups]"), late = !!BK?.late;
+  if (link && !!link.querySelector(".bk-late") !== late) late ? link.append(el("span", {class: "tag bk-late", text: "late"})) : link.querySelector(".bk-late").remove();
+}
 async function loadBackups() {
   try { drawBackups(await call("backups")); }
   catch (e) { $("#bkStatus").replaceChildren(el("p", {class: "msg bad", text: e.message})); }
@@ -48,11 +54,7 @@ function drawBackups(st) {
   notice.hidden = !st.late;
   notice.replaceChildren(...(st.late ? [el("b", {text: "Backups need attention. "}), st.warning + " ",
     el("a", {href: "#backups", text: "Go to Backups"})] : []));
-  const link = document.querySelector("#admNav a[data-group=backups]");
-  if (link) {
-    link.querySelector(".bk-late")?.remove();
-    if (st.late) link.append(el("span", {class: "tag bk-late", text: "late"}));
-  }
+  bkMark();
   drawSchedule(st);
   drawList(st);
   drawReplaced(st);
@@ -134,7 +136,7 @@ function drawSchedule(st) {
       el("p", {class: "hint", text: "The oldest go after each scheduled one."})],
       line),
     el("span", {class: "msg", id: "bkSchedMsg", role: "status"}));
-  form.onsubmit = ev => { ev.preventDefault(); $("#admBar .btn.primary")?.click(); };   // Enter: the bar's Save
+  form.onsubmit = ev => { ev.preventDefault(); $("#setBar .btn.primary")?.click(); };   // Enter: the bar's Save (Settings', #991)
   mark();
   if (had && !form.contains(document.activeElement)) document.getElementById(had)?.focus({preventScroll: true});
 }

@@ -200,7 +200,7 @@
       node("p", {class: "howto"}, "Sanguity doesn't know these test names. Type or pick the series each belongs to, or leave it empty to keep it " +
         "separate; your choice is used for this profile's later imports from this source. ",
         about("matching lab names", "In a series, a result is charted with the same test from other labs. Only the series changes: each result keeps the " +
-        "name the lab gave it. A match made before can be changed here for this import; to change it for good, ask an admin (Admin, Lab name matches).")),
+        "name the lab gave it. A match made before can be changed here for this import; to change it for good, ask an admin (Settings, Lab name matches).")),
       node("table", {class: "data stack"},
         node("thead", {}, node("tr", {}, node("th", {scope: "col", text: "Name from the lab"}), node("th", {scope: "col", class: "num", text: "Results"}),
                                          node("th", {scope: "col", text: "Series"}))),

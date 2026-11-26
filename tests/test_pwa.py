@@ -130,7 +130,7 @@ class Pwa(unittest.TestCase):
         with open(os.path.join(WWW, "index.html"), encoding="utf-8") as f:
             html = f.read()
         self.assertLess(html.index('src="js/offline.js"'), html.index('src="js/app.js"'), "before app.js asks the API anything")
-        with open(os.path.join(WWW, "account.html"), encoding="utf-8") as f:
+        with open(os.path.join(WWW, "settings.html"), encoding="utf-8") as f:   # its You → This device (#991; Account before)
             html = f.read()
         self.assertIn('id="offlineRecords"', html)
         self.assertLess(html.index('id="installApp"'), html.index('id="offlineRecords"'), "how to install, then what it keeps offline")
