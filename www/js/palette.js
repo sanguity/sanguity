@@ -174,9 +174,10 @@ const SgPalette = (() => {
       out.push({icon: x.querySelector("svg.icon"), title: x.textContent.trim(), ctx: "Add", go: () => x.click()});
     }
     if (profile()?.role === "owner") out.push({icon: sgIcon("sharing/links"), title: "New share link", ctx: "Sharing", go: newLink});
-    // the profile menu's New profile, its only one (#402), even where that menu isn't shown (no profile yet)
+    // the profile menu's New profile, its only one (#402), even where that menu isn't shown (no profile yet); not where
+    // it's hidden, for someone who may not create one (#1001, nav.js sgMayNew)
     const np = document.getElementById("newProfileLink");
-    if (np && !document.getElementById("barSearch").hidden) out.push({icon: sgIcon("sharing/newProfile"), title: "New profile", ctx: "Profile menu", words: "create add child family someone else another",   // (#524: not "person": “add person” is Sharing's)
+    if (np && !np.hidden && !document.getElementById("barSearch").hidden) out.push({icon: sgIcon("sharing/newProfile"), title: "New profile", ctx: "Profile menu", words: "create add child family someone else another",   // (#524: not "person": “add person” is Sharing's)
       server: true, go: () => { location.href = np.href; }});
     const th = document.getElementById("theme");
     if (th && !th.hidden) out.push({icon: sgIcon("theme"), title: th.textContent.trim(), ctx: "Your menu", words: "theme dark light", go: () => th.click()});
