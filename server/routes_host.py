@@ -16,7 +16,7 @@ import os
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from . import config, connections, settings, watch_keys
-from .main import _request_host, _same_site, admin, get_db
+from .main import _foreign_host, _request_host, _same_site, admin, get_db
 from .routes_settings import Value
 
 router = APIRouter()
@@ -36,7 +36,8 @@ def origins_effects(db, request, new):
     return {"given_out": [config.public_address(), config.public_address(new)],
             "return_address": ret, "apps": _apps(db) if ret[0] != ret[1] else 0,
             "upload": up, "phones": watch_keys.with_secret(db) if up[0] != up[1] else 0,
-            "origin": origin, "accepted": not origin or _same_site(origin, request, new), "confirm": CONFIRM}
+            "origin": origin, "accepted": not origin or _same_site(origin, request, new),
+            "refused_host": _foreign_host(request, new) if new else None, "confirm": CONFIRM}
 
 
 def _confirm_origins(db, before, value, request, s):
@@ -46,6 +47,10 @@ def _confirm_origins(db, before, value, request, s):
     if not e["accepted"]:
         raise HTTPException(409, f"Not saved: this page is open at {e['origin']}, and with that list the cross-site check "
                                  f"would refuse everything it sends, changing the list back included. Add {e['origin']} to it.")
+    if e["refused_host"]:   # (#1064) the server would refuse every request this page sends, as above
+        raise HTTPException(409, f"Not saved: this page is open at {e['refused_host']}, a name that list doesn't hold, and "
+                                 "the server would refuse everything sent to it, changing the list back included. Add its "
+                                 "address to the list.")
     said = [f"The address the app gives out, {e['given_out'][0] or 'none'}, becomes {e['given_out'][1] or 'none'}."]
     if e["apps"]:
         said.append(f"{e['apps']} connected-source app{'' if e['apps'] == 1 else 's'} must have the new return address, "

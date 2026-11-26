@@ -208,6 +208,11 @@ Not opened as issues; written up here for the owner to file or drop:
   - The check's real strength is the `X-Sanguity` header. A cross-site page can't send it without a CORS
     preflight, and the app never grants one.
   - A client that forges `X-Forwarded-Host` only affects its own requests and answers.
+  - DNS rebinding (#1064): with public addresses set, a request whose Host or `X-Forwarded-Host` is a name that
+    isn't one of the server's (the public addresses' names, localhost, a dotless name, `.local`, `.lan`, `.home`,
+    `.home.arpa`, `.internal`) is refused on every route and logged (`main._foreign_host`); IP addresses always pass.
+    With none set, a rebinding page still passes the cross-site check on routes that need no sign-in (sign-in
+    guessing, throttled, with no cookie).
   - Passkeys take the site name from the browser's own `Origin`, and the browser checks that against the
     passkey.
 - **Trusting a proxy's client addresses:**
