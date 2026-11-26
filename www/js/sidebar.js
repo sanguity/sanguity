@@ -233,7 +233,7 @@ function sideNav(o) {
         // not all saved: focus back where it was, the field or Save, to put it right and save again (all saved: the
         // page put it on a heading); the field drawn again, on its part's heading
         if (had && (!document.activeElement || document.activeElement === document.body))
-          (mine ? (from.isConnected ? from : mine.querySelector("h2, h3")) : !box.hidden && save)?.focus({preventScroll: true});
+          (mine ? (from.isConnected ? from : mine.querySelector("h2, h3")) : box.hidden ? null : save)?.focus({preventScroll: true});
       }
     };
     drop.onclick = () => { const ps = dirtyIn(shown); sayIn(msg, ""); if (ps.length) o.bar.discard(ps); };
