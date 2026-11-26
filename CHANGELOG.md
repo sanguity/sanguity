@@ -3631,6 +3631,9 @@ Everything on `main` so far; it becomes the first tagged release.
   of the breakpoints, and the widths each issue found broken), every width with `BROWSER_CHECK_FULL=1`, which CI
   sets nightly, on demand and on a release; and CI runs it as three jobs (`--part`), each with its own app. Run
   without `--part`, it still does everything in one.
+- **Records saved before #1022 from a server that stamps each write are found again** (#1032): they were saved under
+  keys naming the write's stamp, so each would still be added as a copy the next time it changed at its source. At the
+  first start after the upgrade they're keyed by the server itself, with their corrections, and updated in place.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
