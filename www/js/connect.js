@@ -9,8 +9,8 @@
    a "connect:sources" event on document says they're read again. */
 "use strict";   // $, el and api come from util.js
 (() => {
-  async function call(path, method = "GET", body) {
-    const r = await api(path, {method, body: body ? JSON.stringify(body) : undefined});
+  async function call(path, method = "GET", body, opts = {}) {
+    const r = await api(path, {method, body: body ? JSON.stringify(body) : undefined, ...opts});
     if (r.status === 401) { location.replace("login.html"); throw new Error("signed out"); }
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error((typeof j.detail === "string" && j.detail) || r.status + " " + r.statusText);
@@ -218,12 +218,12 @@
     return box;
   }
 
-  async function load(note) {
+  async function load(note, polled = false) {   // polled: the page's own refresh, not use (#1063)
     clearTimeout(timer);
     if (!PID) return;
     let d;
     const pid = PID;
-    try { d = await call(`profiles/${pid}/connections`); }
+    try { d = await call(`profiles/${pid}/connections`, "GET", undefined, polled ? background() : {}); }
     catch (e) { if (pid === PID) $("#connList").replaceChildren(el("p", {class: "msg bad", role: "alert", text: e.message})); return; }
     if (pid !== PID) return;   // another profile was picked meanwhile: its own load draws it
     const live = d.connections.filter(c => c.state !== "disconnected"), gone = d.connections.filter(c => c.state === "disconnected");
@@ -259,10 +259,10 @@
     for (const c of live) {   // the first pull's preview, as on the import page
       if (c.first_job && ["queued", "running", "preview"].includes(c.first_job_state) && !followed.has(c.first_job) && d.can_connect) {
         followed.add(c.first_job);
-        window.sanguityImport.follow({profileId: PID, jobId: c.first_job, container: "#import-status", title: `${c.source}: the first records`}).then(() => load());
+        window.sanguityImport.follow({profileId: PID, jobId: c.first_job, container: "#import-status", title: `${c.source}: the first records`}).then(() => load(undefined, true));
       }
     }
-    if (live.some(c => c.phase === "first pull" || c.phase === "first pull saving")) timer = setTimeout(() => load(), 2000);
+    if (live.some(c => c.phase === "first pull" || c.phase === "first pull saving")) timer = setTimeout(() => load(undefined, true), 2000);
   }
 
   /* the connect step of finding your provider (providers.js): the sources set up here, and connecting one */

@@ -3773,6 +3773,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - **The log never holds an error's words, and a passkey step needs its ticket** (#1065): a setup build, settings.json,
   milestones or records that can't be loaded are logged where they failed, not with the error's words (which can quote
   a record); and a passkey step after a password is taken only with that password's ticket.
+- **Idle sign-out ends a sign-in left open on a page that polls** (#1063): Phone and watch, a running import or
+  backup, and the other checks a page makes on its own no longer count as use; Sessions leaves out sign-ins idle
+  sign-out has ended.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

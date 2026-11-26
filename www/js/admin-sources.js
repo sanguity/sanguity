@@ -438,9 +438,9 @@ async function syncReset(sec) {
 let DIR = null, dirPolling = null, dirSaid = null;
 const dirName = id => DIR.lists.find(l => l.id === id)?.name || id;
 const dirAnd = parts => parts.length > 1 ? parts.slice(0, -1).join(", ") + " and " + parts.at(-1) : parts[0] || "";
-async function loadDirectory() {
+async function loadDirectory(polled = false) {
   let d;
-  try { d = await call("provider-directory"); }
+  try { d = await call("provider-directory", "GET", undefined, polled ? background() : {}); }   // (#1063: a poll isn't use)
   catch (e) { say("#dirMsg", e.message, true); $("#directory").hidden = false; return; }
   const was = DIR?.running;
   DIR = d;
@@ -504,7 +504,7 @@ function dirDone(last) {
 }
 function dirPoll() {
   if (dirPolling) return;
-  dirPolling = setTimeout(async () => { dirPolling = null; await loadDirectory(); }, 1000);
+  dirPolling = setTimeout(async () => { dirPolling = null; await loadDirectory(true); }, 1000);
 }
 $("#dirGet").onclick = async () => {
   if (DIR.running) return;   // its tip says why (util.js)

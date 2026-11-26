@@ -368,6 +368,10 @@ const chgWords = (d, m, u = "") => +String(m).replace(/[^\d.]/g, "") === 0 ? "no
 /* every backend call: same-origin cookie, never cached, and the X-Sanguity header the API requires on changes */
 const api = (path, opts = {}) => fetch("api/" + path, {cache: "no-store", credentials: "same-origin", ...opts,
   headers: {...(opts.method && opts.method !== "GET" ? {"X-Sanguity": "1", "Content-Type": "application/json"} : {}), ...opts.headers}});
+/* (#1063) the options of a request the page makes on its own, not its person (a poll, a background refresh): marked so
+   the server doesn't count it as use (main.py _session), and idle sign-out ends a sign-in left open on a page that
+   polls. Every poll and background refresh asks with these: api(path, background()), or background(opts) */
+const background = (opts = {}) => ({...opts, headers: {"X-Sanguity-Background": "1", ...opts.headers}});
 
 /* A whole-value setting (a list, a map) saved as the page made it from the value it read (read), which the server
    refuses (409) if the setting holds another by then: a change made in another tab or by someone else (#923). One save

@@ -304,6 +304,9 @@ def sessions_ended(db, instead, sid=None):
     return len(ended), sid in ended
 
 
+BACKGROUND = "x-sanguity-background"   # (#1063) a request the page makes on its own: not use, for idle sign-out
+
+
 def _session(request, db):
     token = request.cookies.get(config.COOKIE_HOST) or request.cookies.get(config.COOKIE)
     if not token or len(token) > 200:
@@ -318,8 +321,10 @@ def _session(request, db):
         db.execute("DELETE FROM sessions WHERE id=?", (s["sid"],))
         return None
     idle = config.setting("SESSION_IDLE_MINUTES") * 60
-    # note use at most once a minute, or more often when the idle limit is short enough for that to matter
-    if now - s["last_seen"] >= (min(60, idle // 4) if idle else 60):
+    # note use at most once a minute, or more often when the idle limit is short enough for that to matter; never for
+    # what the page asks on its own (#1063: a poll, a background refresh, marked BACKGROUND by util.js background()),
+    # so idle sign-out ends a sign-in left open on a page that polls
+    if request.headers.get(BACKGROUND) != "1" and now - s["last_seen"] >= (min(60, idle // 4) if idle else 60):
         db.execute("UPDATE sessions SET last_seen=? WHERE id=?", (now, s["sid"]))
     return s
 
@@ -1054,10 +1059,11 @@ def passkey_remove(pk: int, body: PasskeyRemove, request: Request, s=Depends(set
 
 @app.get("/api/sessions")
 def sessions(s=Depends(any_user), db=Depends(get_db)):
-    now, life = dbm.now(), _lifetime(db, s)
+    now, life, idle = dbm.now(), _lifetime(db, s), config.setting("SESSION_IDLE_MINUTES") * 60
     return [{**dict(r), "expires": min(r["expires"], r["created"] + life), "current": r["id"] == s["sid"]}
             for r in db.execute("SELECT id, created, last_seen, expires, ip, agent FROM sessions WHERE user_id=? AND "
-                                "expires>? AND created>? ORDER BY last_seen DESC", (s["id"], now, now - life))]
+                                "expires>? AND created>? AND (?=0 OR last_seen>=?) ORDER BY last_seen DESC",   # (#1063: not
+                                (s["id"], now, now - life, idle, now - idle))]   # one idle sign-out has ended, as _over)
 
 
 @app.delete("/api/sessions/{sid}")

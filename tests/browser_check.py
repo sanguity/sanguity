@@ -22655,6 +22655,52 @@ def main():
                   "Bearer <the secret>" in page.inner_text("#watchSteps")
                   and sorted(js("[...document.querySelectorAll('#watchSteps button[aria-label^=Copy]')].map(b => b.getAttribute('aria-label'))"))
                   == ["Copy the header key", "Copy the upload address"])
+            # #1063: Phone and watch polls every 30 s, and every request counted as use, so a sign-in left open there outlived
+            # idle sign-out. Idle at 5 minutes (the setting), a sign-in of its own on the page, its last use 4 minutes
+            # ago (the page's clock run on, the server's time stood in for by moving that last use back): a poll isn't
+            # use, so a minute on the next poll is refused and the page goes to sign-in; Sessions doesn't list it then
+            from server import db as dbm1063, security as sec1063, settings as set1063
+            import secrets as secrets1063, time as time1063
+            tok1063, db1063 = secrets1063.token_urlsafe(32), dbm1063.connect()
+            now1063 = dbm1063.now()
+            db1063.execute(f"DELETE FROM settings WHERE key='security.idleMinutes' AND {set1063.INSTALL_ROWS}")
+            db1063.execute("INSERT INTO settings(key, value, changed) VALUES('security.idleMinutes', '5', 0)")
+            time1063.sleep(set1063.SAVED_SECONDS + 0.5)   # (the app reads it again within that)
+            sid1063 = db1063.execute("INSERT INTO sessions(token_hash, user_id, created, last_seen, expires, ip, agent, verified_at) "
+                                     "SELECT ?, id, ?, ?, ?, '127.0.0.1', 'check 1063', ? FROM users WHERE username=?",
+                                     (sec1063.token_hash(tok1063), now1063 - 60, now1063, now1063 + 86400, now1063, USER)).lastrowid
+            seen1063 = lambda: db1063.execute("SELECT last_seen FROM sessions WHERE id=?", (sid1063,)).fetchone()   # noqa: E731
+            ctx1063 = browser.new_context(viewport={"width": 1400, "height": 900})
+            ctx1063.add_cookies([{"name": "sg_session", "value": tok1063, "url": base}])
+            p1063 = ctx1063.new_page()
+            got1063, listed1063 = [], None
+            try:
+                p1063.clock.install()
+                p1063.goto(base + "/sources.html?profile=1#phone")
+                p1063.wait_for_selector("#watch #watchLast", timeout=15000)
+                p1063.wait_for_load_state("networkidle")
+                db1063.execute("UPDATE sessions SET last_seen=? WHERE id=?", (dbm1063.now() - 240, sid1063))
+                was1063 = seen1063()[0]
+                for _ in range(2):   # two polls, 30 s apart on the page's clock: answered, not use
+                    with p1063.expect_response(lambda r: r.url.endswith("/watch/receiver"), timeout=15000) as r1063:
+                        p1063.clock.run_for(31000)
+                    got1063.append([r1063.value.status, r1063.value.request.headers.get("x-sanguity-background")])
+                got1063.append(seen1063()[0] == was1063)
+                db1063.execute("UPDATE sessions SET last_seen=last_seen-61 WHERE id=?", (sid1063,))   # a minute on, unused
+                listed1063 = page.evaluate("api('sessions').then(r => r.json()).then(l => l.map(s => s.id))")   # (its row still there)
+                p1063.clock.run_for(31000)
+                p1063.wait_for_url("**/login.html*", timeout=15000)
+                got1063.append(seen1063() is None)
+            except Exception as e:
+                got1063.append(stopped(e))
+            ctx1063.close()
+            db1063.execute("DELETE FROM sessions WHERE id=?", (sid1063,))
+            db1063.execute(f"DELETE FROM settings WHERE key='security.idleMinutes' AND {set1063.INSTALL_ROWS}")
+            db1063.close()
+            check("Phone and watch left open past idle sign-out signs out (#1063): its polls are marked as the page's own and "
+                  "don't count as use, a minute past the limit the next poll is refused and the page goes to sign-in, and "
+                  "Sessions doesn't list the sign-in idle ended", got1063 == [[200, "1"], [200, "1"], True, True] and sid1063 not in (listed1063 or [sid1063]),
+                  [got1063, sid1063, listed1063])
             # ---- reference ranges from settings (#44): a profile whose results come without a range; its own ranges,
             # set on the Settings page, colour those results on Trends, the heatmap, the Overview and the visit
             # summary, labelled "range from settings", while a report's own range and flag stay; the page's rules

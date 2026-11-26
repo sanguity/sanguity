@@ -43,7 +43,7 @@
     opts = opts || {};
     const write = opts.method && opts.method !== "GET";
     return fetch("api/" + path, {cache: "no-store", credentials: "same-origin", ...opts,
-      headers: write ? {"X-Sanguity": "1", "Content-Type": "application/json"} : {}});
+      headers: {...(write ? {"X-Sanguity": "1", "Content-Type": "application/json"} : {}), ...opts.headers}});
   }
   async function detail(r) {
     const j = await r.json().catch(() => ({}));
@@ -833,7 +833,7 @@
       await new Promise(go => setTimeout(go, wait));
       let j = null;
       try {
-        const g = await call(`profiles/${encodeURIComponent(pid)}/jobs/${jid}`);
+        const g = await call(`profiles/${encodeURIComponent(pid)}/jobs/${jid}`, background());   // (#1063: not use)
         if (g.status === 401) { location.replace("login.html"); return null; }
         if (!g.ok) { showFailed(card, await detail(g)); return null; }
         j = await g.json(); misses = 0;
