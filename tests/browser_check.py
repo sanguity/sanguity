@@ -27298,7 +27298,7 @@ def main():
             # no longer the only account: admin actions now wait for the admin's own second factor (issue #75)
             check("with a second account, the admin is asked for a second factor",
                   js("!document.getElementById('adminTf').hidden && document.getElementById('adminTools').hidden"))
-            check("…and every other part of Install the server now refuses says so", js("['general', 'gen-security', 'admin', 'sec-sync', 'labmaps', 'installLog'].every(id => document.querySelector('#' + id + ' .adm-gate'))"))
+            check("…and every other part of Install the server now refuses says so", js("['gen-host', 'gen-security', 'gen-backups', 'gen-phone', 'gen-about', 'backups', 'admin', 'sec-sync', 'directory', 'labmaps', 'installLog'].every(id => document.querySelector('#' + id + ' .adm-gate'))"))
             # two-factor sign-in: turn it on from the key shown, confirm with a code, get recovery codes
             from server import twofactor
             import time as _time
