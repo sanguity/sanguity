@@ -1409,7 +1409,7 @@ class Settings(unittest.TestCase):
             r = self.c["robin"].post(url + "/rotate", headers={**H, "X-Forwarded-Host": "health.example.org"})
             self.assertEqual((r.status_code, r.json()["addresses"]), (200, ["http://health.example.org:8731/ingest"]), r.text)
         # a public address set: its host, whatever the request says
-        self.assertEqual(self.c["robin"].get(url, headers={"X-Forwarded-Host": "health.example.org"}).json()["addresses"],
+        self.assertEqual(self.c["robin"].get(url, headers={"X-Forwarded-Host": "nas.lan"}).json()["addresses"],
                          ["http://health.example.test:8731/ingest"])
 
     def test_watch_two_profiles_with_the_real_receiver(self):

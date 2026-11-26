@@ -551,6 +551,13 @@ opened Sanguity at: a link made on the server's home-network address still opens
 Without one, they're made from the address you opened it at. The link back in each calendar event, and connected
 sources' return address, come from the same public address.
 
+**The names it answers at.** With a public address set, Sanguity answers only at its names, so a web page elsewhere
+can't point a name of its own at your server and sign-in guess from your browser (DNS rebinding): an IP address (any
+port), `localhost`, a name without a dot, names ending `.local`, `.lan`, `.home`, `.home.arpa` or `.internal`, and the
+public addresses' names. Any other name, a Tailscale `*.ts.net` one included, is refused with "This address isn't one
+of this server's" and logged (`host.refused`): add its address to the public addresses. A reverse proxy that sends
+on another name than the browser's must have that name listed too. With none set, every name works, as before.
+
 ## Privacy and security
 
 - **Self-hosted only.** Your data stays on your server; Sanguity makes no outside requests and has no telemetry.

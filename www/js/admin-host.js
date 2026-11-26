@@ -77,6 +77,11 @@ async function hostSave(msg) {
       `everything it sends, changing it back included. Add ${e.origin} to it.`, true);
     return;
   }
+  if (e.refused_host) {
+    sayIn(msg, `The public addresses aren't saved: this page is open at ${e.refused_host}, a name that list doesn't hold, and the ` +
+      "server would refuse everything sent to it, changing it back included. Add its address to the list.", true);
+    return;
+  }
   const given = a => a ? el("code", {text: a}) : "none (each page gives the address it was opened at)";
   HOST_ZONE.value = e.value;
   HOST_ZONE.lines = present(

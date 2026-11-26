@@ -3,7 +3,7 @@
 Roles on a profile:  owner (view, import/edit, share, delete) · editor (view, import/edit) · viewer (view).
 Admin is an account flag for managing accounts only; it gives no access to anyone's records.
 """
-import json, logging, os, secrets, string, sys, threading, traceback, urllib.parse
+import ipaddress, json, logging, os, secrets, string, sys, threading, traceback, urllib.parse
 from contextlib import asynccontextmanager
 from typing import Literal, Optional
 
@@ -194,6 +194,44 @@ def _same_site(origin, request, origins=None):
     return host in seen
 
 
+# names only this network can mean, never one a page elsewhere can point at this server (#1064): .localhost (always
+# loopback), .local (mDNS), the home-network ones (.home never delegated) and .internal; and, below, a name without a
+# dot (a Docker service's)
+LOCAL_NAMES = (".localhost", ".local", ".lan", ".home", ".home.arpa", ".internal")
+
+
+def _host_name(value):
+    """The name in a Host header's value, lowercased, without its port or a final dot; None for an IP address (v4, or
+    v6 in brackets or bare) or nothing."""
+    v = value.strip().lower()
+    if not v or v.startswith("["):
+        return None
+    name = v.rsplit(":", 1)[0] if v.count(":") == 1 else v
+    try:
+        ipaddress.ip_address(name)
+        return None
+    except ValueError:
+        return name.rstrip(".") or None
+
+
+def _foreign_host(request, origins=None):
+    """#1064, DNS rebinding: a page at a name of its own, pointed at this server's address, is same-site to itself, so
+    the cross-site check lets it in. Once public addresses are set, a request sent to a name that is none of this
+    server's is refused: the name in Host (the browser sets it) and in each X-Forwarded-Host (a page can add one).
+    This server's: the public addresses' names, localhost, a name without a dot and the network-only names
+    (LOCAL_NAMES). An IP address always passes, at any port, so opening it by address keeps working. With none set,
+    any name passes, as before. Returns the refused name, or None. origins: another list than the one in force."""
+    origins = config.setting("PUBLIC_ORIGINS") if origins is None else origins
+    if not origins:
+        return None
+    own = {(urllib.parse.urlsplit(o).hostname or "").rstrip(".") for o in origins}
+    for value in [request.headers.get("host", "")] + request.headers.get("x-forwarded-host", "").split(","):
+        name = _host_name(value)
+        if name and "." in name and name not in own and not name.endswith(LOCAL_NAMES):
+            return name
+    return None
+
+
 def _audit(event, request=None, user=None, warn=True, **fields):
     """Log a security event. user: an account row (or {"id", "username"}), or None."""
     line = {"at": dbm.now(), "event": event}
@@ -224,7 +262,12 @@ async def busy(request: Request, exc: sec.Busy):
 async def guard(request: Request, call_next):
     """CSRF: state-changing API calls must carry X-Sanguity (a custom header, so a cross-site page can't send it
     without a CORS preflight, which this app never grants) and, when the browser says where they came from, come
-    from this site. Session cookies are SameSite=Strict too."""
+    from this site. Session cookies are SameSite=Strict too. Before that, every request: sent to one of this server's
+    names (_foreign_host, #1064); the security log gets the name and path, nothing else the request carried."""
+    if (name := _foreign_host(request)):
+        _audit("host.refused", request, path=request.url.path[:200], host=name[:200])
+        return JSONResponse({"detail": f"This address isn't one of this server's. Use {config.public_address()}."},
+                            status_code=400)
     if request.url.path.startswith("/api/") and request.method not in ("GET", "HEAD", "OPTIONS"):
         origin = request.headers.get("origin")
         if request.headers.get("x-sanguity") != "1" or (origin and not _same_site(origin, request)):

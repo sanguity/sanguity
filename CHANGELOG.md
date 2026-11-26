@@ -3824,6 +3824,11 @@ Everything on `main` so far; it becomes the first tagged release.
   switch wraps on a phone, its options then their words.
 - **Compare's third lab measured in forced colours** (#1081): its dotted line keeps its grey there, 3.6:1 to 5.8:1 on
   the system's background whichever way the system and the app are set, and is now checked.
+- **Only this server's names are answered once public addresses are set** (#1064): a page elsewhere could point a
+  name of its own at the server (DNS rebinding) and pass the cross-site check to guess sign-ins; a name that isn't a
+  public address's, localhost or a home-network name (`.local`, `.lan`, `.home`, `.home.arpa`, `.internal`, or
+  dotless) is refused and logged, and General → Host won't save a list that would refuse its own page. IP addresses
+  always work; with none set, every name does, as before.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
