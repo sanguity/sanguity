@@ -476,6 +476,30 @@ class Uploads(unittest.TestCase):
         path = backup.create(dest=os.path.join(TMP, "backups-933"))
         self.assertFalse([n for n in backup.verify(path)["files"] if n.startswith(f"profiles/{self.pid}/uploads/{left}/")])
 
+    def test_an_upload_in_use_isnt_removed(self):   # #1057
+        """DELETE of an upload removed its files whatever used them; only the page guarded it. The server refuses (409,
+        saying why) one a saved record's document is stored in, or one an import job uses (queued, being read, in
+        review), its files kept; one nothing uses is removed as before."""
+        pdf = b"%PDF-1.4\n% a fictional scan\n%%EOF\n"
+        saved, _ = self.upload({"letter.pdf": pdf})
+        r = self.c["edna"].post(f"/api/profiles/{self.pid}/manual", headers=H, json={"save": True, "items": [
+            {"kind": "document", "date": "2026-07-02", "title": "Letter (fictional)", "doctype": "letter",
+             "upload": str(saved), "file": "letter.pdf"}]})
+        self.assertEqual(r.status_code, 200, r.text)
+        read, _ = self.upload({"labs.csv": LAB_CSV})
+        jid = self.db.execute("INSERT INTO jobs(profile_id, upload_id, created_by, state, importer, created) "
+                              "VALUES(?, ?, ?, 'running', 'csv', 0)", (self.pid, read, self.uid["edna"])).lastrowid
+        for u, why in ((saved, "A saved record's document is stored in this upload"), (read, "An import is reading this upload")):
+            files = self.folder_files(u)
+            r = self.c["edna"].delete(f"/api/profiles/{self.pid}/uploads/{u}", headers=H)
+            self.assertEqual(r.status_code, 409, r.text)
+            self.assertIn(why, r.json()["detail"])
+            self.assertEqual(self.db.execute("SELECT state FROM uploads WHERE id=?", (u,)).fetchone()[0], "ready")
+            self.assertTrue(files and self.folder_files(u) == files, "its files kept")
+        self.db.execute("UPDATE jobs SET state='failed' WHERE id=?", (jid,))   # the job over: nothing uses it now
+        self.assertEqual(self.c["edna"].delete(f"/api/profiles/{self.pid}/uploads/{read}", headers=H).status_code, 200)
+        self.assertFalse(os.path.exists(uploads.folder(self.pid, read)))
+
     def test_an_unclaimed_file_goes_though_its_account_was_removed(self):   # #944
         """#933's sweep keeps an export's uploads put back with server.manage import, which no account made, and took
         an upload made by none for one of them: a file attached to a record typed in that was never saved, its account

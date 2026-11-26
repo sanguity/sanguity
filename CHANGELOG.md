@@ -3773,6 +3773,8 @@ Everything on `main` so far; it becomes the first tagged release.
 - **`server.manage import` says what an upload it can't keep changed** (#1056): an upload past this server's limits
   is refused before anything is replaced; one failing after the records were replaced says they were imported, and
   the profile is no longer the setup build's, so a rebuild doesn't overwrite them.
+- **The server refuses to remove an upload in use** (#1057): one holding a saved record's document, or one an
+  import is reading or waiting in review on, is kept (409, saying why), not only when the page checks.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

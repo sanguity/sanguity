@@ -96,7 +96,7 @@ def upload_info(pid: int, upload_id: int, s=Depends(user), db=Depends(get_db)):
 def discard_upload(pid: int, upload_id: int, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "editor")
     try:
-        uploads.discard(db, pid, upload_id)
+        uploads.discard(db, pid, upload_id, asked=True)
     except uploads.UploadError as e:
         raise _refused(e) from None
     return {"ok": True}
