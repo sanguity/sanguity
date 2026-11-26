@@ -10,7 +10,7 @@ const SgOutside = (() => {
   const dl = rows => el("dl", {}, ...rows.filter(r => r).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {}, v)]));
   const times = n => n === 1 ? "once" : `${n} times`;
   const none = what => emptyState(what, null, {cls: ""});   // a list with nothing in it says so (util.js, #499: "None yet.")
-  const profileOf = e => e.profile_name || (e.profile == null ? "no profile (an admin's test)" : "profile " + e.profile);
+  const profileOf = e => e.profile_name || (e.profile == null ? (e.purpose === "Provider directory" ? "no profile (the install's)" : "no profile (an admin's test)") : "profile " + e.profile);
 
   function source(s) {
     const h = s.hosts || {}, v = s.vendor_label || s.vendor;   // its vendor as Set up a source names it (#528: "epic")
@@ -73,6 +73,10 @@ const SgOutside = (() => {
       contacts(v.health_links, "No Health Link fetched yet: each host is listed once someone pastes a link and confirms it."),
       sub("Health Card issuers' keys"),
       contacts(v.card_keys, "No issuer's key fetched yet: each is listed once a health card's signature is checked with it."),
+      ...(v.directory ? [sub("Provider directory"),   // (#992) an admin's alone: the lists Find your provider searches
+        el("p", {class: "muted"}, `Epic's and Oracle Health's lists, from ${v.directory.hosts.join(" and ")}: read only when an admin asks, or weekly once one turns that on, in `,
+          el("a", {href: "#directory", text: "Provider directory"}), "."),
+        contacts(v.directory.contacts, "Not read yet: each host is listed once the lists are read.")] : []),
       ...(v.earlier.length ? [sub("Earlier contacts, no longer allowed"), contacts(v.earlier, "")] : []));
   }
   return {load};
