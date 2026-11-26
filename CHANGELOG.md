@@ -3634,6 +3634,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Records saved before #1022 from a server that stamps each write are found again** (#1032): they were saved under
   keys naming the write's stamp, so each would still be added as a copy the next time it changed at its source. At the
   first start after the upgrade they're keyed by the server itself, with their corrections, and updated in place.
+- **The charts' hover ring is in the system's colours in forced colours** (#1035): on Labs, Compare and a lab's panel
+  the ring round the point under the pointer kept the app's ink, a light ring on the system's white with the app dark.
+  It's the system's text colour there now; elsewhere it looks as before.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

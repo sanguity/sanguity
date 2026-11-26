@@ -104,7 +104,7 @@ function cmpDraw(svg, live) {
     for (const p of r.pts) if (p[4]) g.push(abnMark(x(p.ts), at(p), p[4])); else if (!dense) g.push(ckSeriesMark(r.i, x(p.ts), at(p), 3.4));
   }
   if (!all.length) g.push(el("svg:text", {x: (L + R) / 2, y: (T + B) / 2, "text-anchor": "middle", text: "No results of these labs in this date range"}));
-  const cross = ckCross(T, B), rings = on.map(() => el("svg:circle", {r: 6, fill: "none", stroke: "var(--ink)", "stroke-width": 2, visibility: "hidden", "pointer-events": "none"}));
+  const cross = ckCross(T, B), rings = on.map(() => el("svg:circle", {r: 6, class: "ck-ring", fill: "none", stroke: "var(--ink)", "stroke-width": 2, visibility: "hidden", "pointer-events": "none"}));
   const hit = el("svg:rect", {x: L, y: T - 12, width: R - L, height: B - T + 12, fill: "transparent"});
   g.push(cross, ...rings, hit);
   svg.replaceChildren(...g);
