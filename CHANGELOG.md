@@ -3787,6 +3787,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Idle sign-out ends a sign-in left open on a page that polls** (#1063): Phone and watch, a running import or
   backup, and the other checks a page makes on its own no longer count as use; Sessions leaves out sign-ins idle
   sign-out has ended.
+- **Lab results doubled before #1022 become one too** (#1082): at the same start-up step, a connected source's copies
+  of a lab result are one, row by row: the first pull's result and row saying what the latest says, in its lab day,
+  with its corrections (undoing that pull puts back what the one before brought).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
