@@ -67,7 +67,7 @@ let SET_NAV = null;   // the sidebar (sideNav), for account.js's and admin.js's 
   const who = document.getElementById("introHint");
   const NOTICES = ["secNotice", "codeNotice", "syncNotice", "backupNotice"].map(id => document.getElementById(id)), none = document.getElementById("noProfiles");
   // Install's parts with changes to save (the backups kept, the sync defaults' numbers: admin-backups.js, admin-sources.js)
-  const ADM = {backups: [bkKeepSave, bkKeepDiscard], "sec-sync": [syncSave, syncDiscard]};
+  const ADM = {backups: [bkKeepSave, bkKeepDiscard], "sec-sync": [syncSave, syncDiscard], "gen-host": [hostSave, hostDiscard]};
   const nav = SET_NAV = sideNav({id: "setNav", page: "Settings", groups: GROUPS, find: "Find in Settings", none: q => `Nothing in Settings matches “${q}”.`,
     // the groups with something to show: a part that's there, not hidden by its own script; locked, Sign-in and security alone
     allowed: (g, parts) => ready && parts.some(p => !p.hidden) && (!locked || g.id === "security"),

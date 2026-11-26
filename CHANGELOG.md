@@ -3686,6 +3686,14 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Install's cards are drawn on a slow device or connection too** (#1028): Admin's start asked Outside connections'
   script to draw once its own first answer came, and where that script hadn't loaded yet, it stopped there and the
   cards after it were never drawn. Settings → Install starts once all of its scripts are there.
+- **Settings → Install → General: Host, the public addresses changed in the app** (#1000): `PUBLIC_ORIGINS` was set
+  only in `.env` and needed a restart. An admin changes it here now, guarded: Save first says what the change does
+  (the address given out, how many connected-source apps must register the new return address with their vendor, how
+  many profiles' phones need the new upload address), then asks for it typed, then the fresh check; a list this page's
+  own address wouldn't pass is refused, as the cross-site check would then refuse everything the page sends. It applies
+  at once to the cross-site check, connected sources' return, the phone upload address, calendar links and Find your
+  provider. Shown read-only beside it: the names passkeys were made at, what this page's request carried, the trusted
+  proxies, the internal port and bind address, and the published web port, each with where it's set.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
