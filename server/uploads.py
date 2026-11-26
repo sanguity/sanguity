@@ -171,6 +171,21 @@ def too_big(file_limit_binds):
                        f"An upload can hold at most {_size(max_total())} altogether.", 413)
 
 
+def fits(files):
+    """(#1056) Whether an upload of these (path, bytes) pairs, kept as they are (no zip unpacked), would be taken here:
+    UploadError as add_file and finish would refuse it, before any of it is written."""
+    if len(files) > config.setting("UPLOAD_MAX_FILES"):
+        raise UploadError(f"An upload can hold at most {config.setting('UPLOAD_MAX_FILES')} files.", 413)
+    paths = [clean_path(p) for p, _ in files]
+    if any(n > max_file() for _, n in files):
+        raise too_big(True)
+    if sum(n for _, n in files) > max_total():
+        raise too_big(False)
+    if (clash := _conflict(paths)):
+        raise UploadError(f"{clash} clashes with another file in this upload (the same name, or a file named like a "
+                          "folder).", 409)
+
+
 def _new_file():
     """A new random name for a file in an upload's folder."""
     return secrets.token_hex(16)
