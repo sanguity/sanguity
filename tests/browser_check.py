@@ -10554,6 +10554,13 @@ def main():
                 if (m.classList.contains('pt')) { out.pt++; if (!sys.has(rgb(c.stroke))) out.bad.push(`${m.tagName.toLowerCase()}.${[...m.classList].join('.')}: rim ${c.stroke}`); }
                 for (const p of ['fill', 'stroke']) if (c[p] !== 'none' && rgb(c[p]) === surface && !sys.has(surface)) out.bad.push(`${m.tagName.toLowerCase()}.${[...m.classList].join('.')}: ${p} --surface ${c[p]}`); }
               out.bad = [...new Set(out.bad)].slice(0, 8); return out; }"""
+            # (#1035: …and the charts' hover ring, drawn in the app's ink, a system colour too: by computed style, shown or not)
+            RING1035 = r"""sel => { const probe = c => { const s = document.createElement('span'); s.style.forcedColorAdjust = 'none'; s.style.color = c; document.body.append(s);
+                const v = getComputedStyle(s).color; s.remove(); return v; };
+              const sys = new Set(['Canvas', 'CanvasText', 'Highlight', 'HighlightText', 'GrayText'].map(probe)), out = {n: 0, bad: []};
+              for (const m of document.querySelectorAll(sel)) { out.n++; const c = getComputedStyle(m).stroke; if (!sys.has(c)) out.bad.push(c); }
+              out.bad = [...new Set(out.bad)]; return out; }"""
+            RINGS1035, ring1035 = 'svg circle[fill="none"][stroke="var(--ink)"]', {}
             was1013, rim1013 = js("[document.documentElement.dataset.theme || null, matchMedia('(prefers-color-scheme: dark)').matches, [...state.sel], state.preset, state.tab, state.labsView]"), {}
             for system1013 in ("dark", "light"):
                 way1013 = f"the system {system1013}, the app {'light' if system1013 == 'dark' else 'dark'}"
@@ -10561,12 +10568,15 @@ def main():
                 js("t => { document.documentElement.dataset.theme = t; applyPreset('all'); state.sel = new Set(['Hemoglobin', 'Potassium']); switchTab('labs', 'chart'); }", "light" if system1013 == "dark" else "dark")
                 settle(500)
                 rim1013[f"{way1013}: Labs' charts"] = js(RIM1013, "#charts svg.ck :is(circle, path, rect, polygon)")
+                ring1035[f"{way1013}: Labs' charts"] = js(RING1035, "#charts " + RINGS1035)
                 js("openLab(SERIES.find(s => s.name === 'Hemoglobin'))")
                 settle(500)
                 rim1013[f"{way1013}: a lab's panel"] = js(RIM1013, "#dbody svg :is(circle, path, rect, polygon)")
+                ring1035[f"{way1013}: a lab's panel"] = js(RING1035, "#dbody " + RINGS1035)
                 js("closeDrawer(); switchTab('labs', 'compare')")
                 settle(500)
                 rim1013[f"{way1013}: Compare"] = js(RIM1013, "#labsCompare svg :is(circle, path, rect, polygon)")
+                ring1035[f"{way1013}: Compare"] = js(RING1035, "#labsCompare " + RINGS1035)
             page.emulate_media(forced_colors="none", color_scheme="dark" if was1013[1] else "light")
             js("""([t, , sel, preset, tab, view]) => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
               state.sel = new Set(sel); applyPreset(preset); switchTab(tab, tab === 'labs' ? view : undefined); }""", was1013)
@@ -10574,6 +10584,8 @@ def main():
             check("…and Labs' result marks have no rim or hollow in the app's surface colour, both ways (#1013: the dots' and ▲/▼'s rims kept it, a light "
                   "ring on the system's black): Labs' charts, a lab's panel's strip and Compare, every rim a system colour",
                   all(v["n"] and not v["bad"] for v in rim1013.values()) and all(v["pt"] for k, v in rim1013.items() if "Compare" not in k), rim1013)
+            check("…and the charts' hover ring is a system colour in forced colours, both ways (#1035: in the app's ink it stayed rgb(238, 236, 230) on "
+                  "the system's white): Labs' charts, a lab's panel and Compare", all(v["n"] and not v["bad"] for v in ring1035.values()), ring1035)
             # ---- #984: …and Body and activity's coloured steps, either theme: the steps' bars (the measure's teal at 30%) were
             # about 1.5:1 on the system's black, sleep's deep stage (--seq1) 2.5:1 on it and the dark theme's 1.8:1 on white.
             # In forced colours, the system dark and light, the app light and dark, in 90 days (a bar a night, a bar a day) and
