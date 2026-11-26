@@ -114,8 +114,7 @@ function renderHeatmap(live) {   // live: a frame of a drag (charts.js), at the 
     const procs = procDays.get(d) || [];
     if (procs.length) g.push(shapeMark(KIND_SHAPE.procedure, cx + cw / 2, 24 * k, 3.4 * k, {class: "hm-proc", "data-proc": procs.map(e => e.title).join("; "), "data-day": ts}));   // its kind's shape (#301)
   });
-  g.push(el("svg:text", {x: LW - 8, y: 14 * k, "text-anchor": "end", text: "Hospital"}));
-  g.push(el("svg:text", {x: LW - 8, y: 28 * k, "text-anchor": "end", text: "Procedure"}));
+  g.push(hmSide("Hospital", LW, 14 * k), hmSide("Procedure", LW, 28 * k));
   for (const [p, py] of groups) g.push(el("svg:text", {class: "grp", x: 0, y: py + 11 * k, text: p}));
   // the counts' heading, its last line on the first panel's line, right of its name
   g.push(el("svg:text", {x: W - 4, y: top + (11 - (heads.length - 1) * 12) * k, "text-anchor": "end"},
@@ -170,9 +169,11 @@ function renderHeatmap(live) {   // live: a frame of a drag (charts.js), at the 
   // the heatmap's end scrolls into view; its ticks at the columns (hmTicks). A line at each tick goes under the cells
   // (#479): over them they took the taps, and on a phone's narrow columns they covered a draw's out-of-range colour
   const tk = hmTicks(cols.map(c => c[1]), colX, cw, W), AH = ckAxisH(tk.rows), ax = [];
-  const lines = tk.ticks.map(t => el("svg:line", {x1: t.lx, x2: t.lx, y1: top - 2, y2: H, stroke: "var(--grid)", "pointer-events": "none"}));
+  // (#1071: one under the counts' heading starts below it, not across its words)
+  const hx = W - 6 - Math.max(...heads.map(h => labelW(h, "")));
+  const lines = tk.ticks.map(t => el("svg:line", {x1: t.lx, x2: t.lx, y1: t.lx > hx ? top + GH : top - 2, y2: H, stroke: "var(--grid)", "pointer-events": "none"}));
   ckAxis(ax, tk, LW, R, .5, 15);
-  ax.push(el("svg:text", {x: LW - 8, y: .5 + 14.5 * k, "text-anchor": "end", text: "Draw date"}));
+  ax.push(hmSide("Draw date", LW, .5 + 14.5 * k));
   // the strip as wide as its year or month where the grid is narrower (one draw day, #485), not cut there
   const AW = Math.ceil(Math.max(W, ...tk.ticks.map(t => t.major ? t.mx + labelW(t.major, "ck-yr") + 2 : 0)));
   axis.setAttribute("viewBox", `0 0 ${AW} ${AH}`); axis.setAttribute("width", AW); axis.setAttribute("height", AH);
@@ -215,16 +216,22 @@ function renderHeatmap(live) {   // live: a frame of a drag (charts.js), at the 
     const e = (p && hmDraw(p, day)) || EV.find(e => e.k === "lab" && isoDay(e.ts) === day) || EV.find(e => e.k === "procedure" && isoDay(e.ts) === day); if (e) openEvent(e);
   };
 }
-/* a row's name as it fits w px (measured, chartkit.js labelW), cut with "…", its unit (a lab kept in two) kept whole;
-   kept by its room, for a drag's frames */
+/* a row's name as it fits w px (measured, chartkit.js labelW), cut with "…" as short as it takes (#1071: not past the
+   chart's left edge at 200% text on a phone), its unit (a lab kept in two) kept whole; kept by its room, for a drag's frames */
 function hmFit(nm, unit, w) {
   const key = nm + unit + "\n" + w;
   if (!hmCut.has(key)) {
     let t = nm + unit;
-    for (let n = nm.length; n > 4 && labelW(t, "") > w; n--) t = nm.slice(0, n - 1).trimEnd() + "…" + unit;
+    for (let n = nm.length; n > 1 && labelW(t, "") > w; n--) t = nm.slice(0, n - 1).trimEnd() + "…" + unit;
     hmCut.set(key, t);
   }
   return hmCut.get(key);
+}
+/* a label in the names' column, ending 8 px from the grid, or where that's too narrow (#1071: 200% text on a phone)
+   from the chart's left edge, cut to fit */
+function hmSide(text, LW, y) {
+  const t = hmFit(text, "", LW - 2);
+  return el("svg:text", {x: Math.max(LW - 8, labelW(t, "")), y, "text-anchor": "end", text: t});
 }
 /* the heatmap's time axis (#300): its columns are draw days side by side, not evenly spaced time. The kit's ticks
    (chartkit.js ckTimeTicks) for the columns' dates as if they were spread evenly across them; then each tick goes to
