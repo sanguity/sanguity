@@ -154,6 +154,7 @@ ROUTES = {
     ("GET", "/api/settings/install"): (ADMIN, None), ("PUT", "/api/settings/install/{key}"): (ADMIN, None),
     ("POST", "/api/settings/install/reset"): (ADMIN, None),
     ("POST", "/api/settings/install/{key}/effects"): (ADMIN, None), ("GET", "/api/settings/host"): (ADMIN, None),   # General → Host (#1000)
+    ("GET", "/api/settings/phone"): (ADMIN, None),   # General → Phone receiver (#1003)
     ("GET", "/api/labmaps"): (ADMIN, None), ("PATCH", "/api/labmaps/{mid}"): (ADMIN, None), ("DELETE", "/api/labmaps/{mid}"): (ADMIN, None),
     ("GET", "/api/connect/sources"): (ADMIN, None), ("POST", "/api/connect/sources"): (ADMIN, None),
     ("PATCH", "/api/connect/sources/{cid}"): (ADMIN, None), ("DELETE", "/api/connect/sources/{cid}"): (ADMIN, None),
@@ -304,7 +305,7 @@ class Reach(unittest.TestCase):
         that reads refuses an owner, an editor, a viewer and an account with no profile, for real."""
         with open(os.path.join(ROOT, "www", "settings.html"), encoding="utf-8") as f:
             scripts = re.findall(r'<script src="js/([\w-]+\.js)"></script>', f.read())
-        install = ["admin.js", "admin-sources.js", "admin-backups.js", "outside.js", "activity.js", "admin-host.js"]
+        install = ["admin.js", "admin-sources.js", "admin-backups.js", "outside.js", "activity.js", "admin-host.js", "admin-phone.js"]
         self.assertEqual([s for s in install if s not in scripts], [], "Install's scripts on the Settings page")
         heads = set()
         for s in install:
@@ -381,7 +382,8 @@ PLAIN = {
 # settings kept in settings.value, not sealed: how things look and the install's sync rules, never a record
 PLAIN_SETTINGS = {"sync.attachAuto", "sync.attachMaxMB", "sync.attachTypes", "sync.attachBudgetMB", "sync.staleDays", "tabs",
                   "theme", "guide", "dates.timeZone", "dates.format", "units",
-                  "host.publicOrigins"}   # General → Host (#1000): addresses the app gives out anyway, never health information
+                  "host.publicOrigins",   # General → Host (#1000): addresses the app gives out anyway, never health information
+                  "phone.uploadUrl"}   # General → Phone receiver (#1003): the same
 
 
 class AtRest(unittest.TestCase):
