@@ -54,7 +54,7 @@ function medRow(g, m, x, y, L, R, color, opts = {}) {
     g.push(el("svg:rect", attrs));
     if (changed && x1 >= L && x1 <= R) g.push(el("svg:line", {class: "medchange", x1, x2: x1, y1: y - 7, y2: y + 7, "pointer-events": "none"}));
     if (s.stopped && x2 >= L && x2 <= R) g.push(el("svg:line", {class: "medstop", x1: b, x2: b, y1: y - 6, y2: y + 6, "pointer-events": "none"}));
-    if (s.open && x2 <= R + 1) g.push(el("svg:path", {d: `M${b + 1},${y - 4}L${b + 6},${y}L${b + 1},${y + 4}Z`, fill: color, "fill-opacity": .6, "pointer-events": "none"}));
+    if (s.open && x2 <= R + 1) g.push(el("svg:path", {class: "medopen", d: `M${b + 1},${y - 4}L${b + 6},${y}L${b + 1},${y + 4}Z`, fill: color, "fill-opacity": .6, "pointer-events": "none"}));
   });
   if (opts.selectable) medDoseMarks(g, m, x, y, L, R);   // doses logged, on the span (medlog.js, #235)
   for (const f of m.fills) {
