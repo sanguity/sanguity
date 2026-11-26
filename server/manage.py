@@ -35,8 +35,8 @@
                                          SANGUITY_SAVED_SETTINGS=off in the app's environment, they're left out at
                                          start instead, until it's taken away (README, The server's settings)
   restore ARCHIVE [--yes]                replace the records (the database, profiles and setup build) with a backup's,
-                                         keeping today's accounts, access and cycle tracking, everyone signed out
-                                         (#917, #964); the app must be stopped:
+                                         keeping today's accounts, access, cycle tracking and server settings, everyone
+                                         signed out (#917, #964, #1005); the app must be stopped:
                                          docker compose run --rm --no-deps app python -m server.manage restore ...
                                          The phone and watch data in it goes to the receiver, which puts it back when
                                          it next starts (#227)
@@ -104,6 +104,9 @@ CYCLE_KEPT = ("Each profile's cycle tracking was kept as it is today, on or off,
               "its cycle records were deleted after the backup was made, the cycle records the backup holds weren't "
               "brought back, and the watch receiver deletes its copy of them when it starts.")
 CYCLE_THEN = "Each profile's cycle tracking is the backup's too, on or off as it was then."
+# (#1005) every install setting: General's, the sync defaults, the backup schedule and how many it keeps
+SETTINGS_KEPT = ("The server's own settings were kept as they are today, not the backup's: those on Settings → General, "
+                 "the sync defaults, and the backup schedule and how many backups it keeps.")
 
 
 def _say_access(a, created, aside):
@@ -113,6 +116,7 @@ def _say_access(a, created, aside):
     if a.get("kept"):
         print(f"Today's {ACCESS_WORDS} were kept as they were before the restore; only the records are the backup's. " + out)
         print(CYCLE_KEPT)
+        print(SETTINGS_KEPT)
     else:
         why = {"none": "There was no database here to keep them from",
                "unreadable": "The database it replaced can't be read (it's damaged; it's kept with what was replaced), so "
@@ -123,6 +127,9 @@ def _say_access(a, created, aside):
               "removed, an account removed or disabled, or a password or passkey changed since then is as it was then: "
               f"check Admin > Accounts and each profile's Sharing before you share the address again. {out}")
         print(CYCLE_THEN)
+        named = a.get("settings") or []
+        print("The server's own settings are the backup's too, as they were then: " + (
+            ", ".join(named) + "." if named else "it had none saved, so each is its default (or the environment's)."))
     for pid, name in a.get("back") or ():
         print(f"Profile {pid} ({name}) was deleted after the backup was made and is back, with nobody given access to it: "
               "an admin gives it an owner on Admin > Accounts (Profiles without an owner), or with "
