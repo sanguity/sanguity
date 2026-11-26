@@ -254,7 +254,9 @@ async function settingsLoad() {
     if (!ME.profiles.length) {   // (with the account's own theme, as Settings shows it, #433)
       const u = await api("settings/user").then(x => x.ok ? x.json() : null).catch(() => null);
       if (u) applyTheme(u.theme);
-      emptyCard("No health profile yet", emptyState(`No health profile is shared with you yet: create one of your own, or ask a profile's owner to share theirs with ${ME.user.username}.`, {href: "guide.html?new", text: "Create a profile"}));
+      emptyCard("No health profile yet", sgMayNew(ME)   // (#1001: an admin's alone, on this server: who to ask, nothing to create)
+        ? emptyState(`No health profile is shared with you yet: create one of your own, or ask a profile's owner to share theirs with ${ME.user.username}.`, {href: "guide.html?new", text: "Create a profile"})
+        : emptyState(`No health profile is shared with you yet: ask a profile's owner to share theirs with ${ME.user.username}, or an admin to create one for you.`));
       return;
     }
     // the top bar's picker (nav.js, #170): the profile the address names, else this browser's last, else the first
