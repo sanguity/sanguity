@@ -21872,9 +21872,16 @@ def main():
             za.wait_for_selector("#detail .dir-from", timeout=10000)
             finder_read = za.inner_text("#detail .dir-from")
             iso_scan("the provider finder's details")
-            za.goto(base + "/settings.html?profile=1#directory")
-            za.wait_for_selector("#dirSources li", timeout=10000)
-            dir_read = [li for li in za.inner_text("#dirSources").splitlines() if ", read " in li]
+            # (the directory's lists are an admin's with a second factor once there's a second account, #992: a passkey of
+            # the demo account's for this read alone)
+            sdb.execute("INSERT INTO passkeys(user_id, credential_id, public_key, rp_id, name, created) "
+                        "SELECT id, 'dir-311', x'00', 'localhost', 'Directory 311', 1 FROM users WHERE username=?", (USER,))
+            try:
+                za.goto(base + "/settings.html?profile=1#directory")
+                za.wait_for_selector("#dirSources li", timeout=10000)
+                dir_read = [li for li in za.inner_text("#dirSources").splitlines() if ", read " in li]
+            finally:
+                sdb.execute("DELETE FROM passkeys WHERE credential_id='dir-311'")
             check("…the provider directory and the provider finder's “read” dates too (#311)",
                   dir_read and all(re.search(r", read " + dmy + r"\.", li) for li in dir_read) and re.search(r", read " + dmy + r"\.$", finder_read),
                   (dir_read, finder_read))
