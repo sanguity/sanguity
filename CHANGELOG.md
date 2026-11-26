@@ -3753,6 +3753,9 @@ Everything on `main` so far; it becomes the first tagged release.
   Host's typed confirmation, then Security's save moved focus to its own heading, so the unconfirmed change was easy
   to miss. A save waiting on its confirmation keeps focus and its words in the bar; the others save after it and
   say so after them.
+- **New profile waits for the server to say you may** (#1050): the profile menu showed it until the page had asked
+  who's signed in, so with profiles admins only a member saw it briefly on a slow load; it's shown only once the
+  answer says yes.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -166,8 +166,9 @@ function menuSheet(m, title, ...extra) {
 /* New profile is offered only to someone who may create one on this server (#1001, the owner's decision): /api/me's
    may_create_profiles (Settings → Install → General → Security: admins only, or everyone signed in). The profile
    menu's (and so the palette's), the records page's empty state (app.js) and each [data-np] of a page: "offer" shown
-   to who may, "ask" (ask an admin) to who may not. The server refuses the rest (403) */
-const sgMayNew = me => me?.may_create_profiles !== false;
+   to who may, "ask" (ask an admin) to who may not. The server refuses the rest (403). Only once /api/me says so: the
+   profile menu's is hidden until then (#1050: it showed to a member while /api/me was slow) */
+const sgMayNew = me => me?.may_create_profiles === true;
 const SgNav = (() => {
   const header = document.querySelector("header.topbar");
   if (!header) return {sync() {}, lock() {}, profiles() { return null; }, profile() { return null; }, layout() { return {}; }, fit() {}, waited() {}, menu: menuWire, TABS: []};
@@ -219,6 +220,7 @@ const SgNav = (() => {
   const pLinks = [link("sources.html", "sources", "Sources", {id: "sourcesLink"}),
     link("sharing.html", "sharing", "Sharing", {id: "sharingLink"})];
   const npSep = sep(), npLink = link("guide.html?new", "sharing/newProfile", "New profile", {id: "newProfileLink"});
+  npSep.hidden = npLink.hidden = true;   // (until /api/me says this person may: sgMayNew)
   prof.list.append(radios, rSep, ...pLinks, npSep, npLink);
   for (const x of items(prof)) x.tabIndex = -1;
   const wrap = el("div", {class: "profile-pick", id: "profilePick", hidden: ""}, prof.wrap, pick);

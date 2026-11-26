@@ -2407,6 +2407,20 @@ def general_security_check(check, browser, base, cookies):
     ap = ctx.new_page()   # (an admin's own /api/me, admins only still)
     np_admin = np_offered(ap, "/?profile=1", "#profilePick")[:2]
     ap.close()
+    # #1050: /api/me answering late (1.5 s), New profile isn't offered until it says this person may: sampled every frame
+    # until then (it showed unless may_create_profiles was false); an admin's then shown
+    dp = ctx.new_page()
+    dp.add_init_script("""(() => { const f = window.fetch, seen = window.__np1050 = [];
+      window.fetch = (u, o) => /api\\/me$/.test(String(u)) ? new Promise(r => setTimeout(r, 1500)).then(() => f(u, o)).finally(() => { window.__me1050 = true; }) : f(u, o);
+      const look = () => { if (window.__me1050) return; const a = document.getElementById('newProfileLink'); if (a) seen.push(!a.hidden); requestAnimationFrame(look); };
+      requestAnimationFrame(look); })()""")
+    dp.goto(base + "/?profile=1")
+    dp.wait_for_function("() => window.__me1050 === true", timeout=15000)
+    dp.wait_for_timeout(300)
+    late1050 = dp.evaluate("() => [window.__np1050.length, window.__np1050.filter(Boolean).length, !document.getElementById('newProfileLink').hidden]")
+    dp.close()
+    check("…and New profile isn't offered before /api/me says this person may, answering late; then an admin's is (#1050)",
+          late1050[0] > 5 and late1050[1:] == [0, True], late1050)
     check("…who may create profiles is saved as it's picked, and the guide's New profile tells someone who isn't an admin to ask one",
           picked == ["gs-profiles-admins", "admins"] and guide == ["Ask an admin for a profile", True, True], [picked, guide])
     check("…and, admins only, someone who isn't an admin isn't offered New profile anywhere: not in the profile menu or the palette, nor "
