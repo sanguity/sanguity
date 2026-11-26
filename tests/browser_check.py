@@ -2209,6 +2209,50 @@ def main():
         ctx1028.close()
         check("Install's start waits for the scripts it calls (#1028): with the CPU slowed and outside.js late, Outside connections, Accounts and "
               "Backups are drawn, and no script fails", drawn1028 is True and not errs1028, [drawn1028, errs1028])
+        # General → Host (#1000): the public addresses, editable where the environment doesn't set them (here it does:
+        # taken out for this check, read at each use). The bar's Save says what the change does first, with the counts
+        # the server gives (source apps to register again, phones with a secret), then asks for it typed; saved, the
+        # server uses it at once, and the bar's gone
+        from server import config as config1000
+        env1000 = os.environ.pop("PUBLIC_ORIGINS")
+        ctx1000 = browser.new_context(viewport={"width": 1400, "height": 900})
+        ctx1000.add_cookies([c for c in strict.context.cookies() if c["name"] == "sg_session"])
+        p1000, errs1000, got1000, eff1000 = ctx1000.new_page(), [], {}, {}
+        p1000.on("pageerror", lambda e: errs1000.append(str(e)))
+        try:
+            p1000.goto(base + "/settings.html?profile=1#general")
+            p1000.wait_for_selector("#hostOrigins:not([readonly])", timeout=20000)
+            got1000["rows"] = p1000.evaluate("[...document.querySelectorAll('#gen-host .set-row-lbl h3')].map(h => h.firstChild.textContent)")
+            p1000.fill("#hostOrigins", "https://records.example.test\n" + base)
+            with p1000.expect_response("**/api/settings/install/host.publicOrigins/effects") as r1000:
+                p1000.click("#setBar button:has-text('Save')")
+            eff1000 = r1000.value.json()
+            p1000.wait_for_selector("#gen-host .dz-body:not([hidden])", timeout=10000)
+            got1000["says"] = p1000.inner_text("#gen-host .dz-says")
+            got1000["typing"] = p1000.evaluate("document.activeElement.closest('.dz-name')?.textContent")
+            p1000.keyboard.type("change addresses")
+            p1000.keyboard.press("Enter")
+            p1000.locator("#gen-host .set-msg", has_text="Saved the public addresses.").wait_for(timeout=10000)
+            got1000["after"] = [config1000.setting("PUBLIC_ORIGINS"), p1000.evaluate("document.getElementById('gen-host').hasAttribute('data-dirty')"),
+                                p1000.evaluate("document.getElementById('setBar').hidden")]
+            back1000 = p1000.request.put(base + "/api/settings/install/host.publicOrigins", headers={"X-Sanguity": "1", "Origin": base},
+                                         data={"value": [base], "confirm": "change addresses"})
+            got1000["back"] = back1000.status
+        except Exception as e:
+            got1000["stopped"] = stopped(e)
+        finally:
+            os.environ["PUBLIC_ORIGINS"] = env1000
+            ctx1000.close()
+        apps1000, phones1000 = eff1000.get("apps", 0), eff1000.get("phones", 0)
+        check("General → Host (#1000): the public addresses' change says what it does, with the server's counts, asks for it typed, "
+              "then applies at once", "stopped" not in got1000 and not errs1000
+              and got1000["rows"] == ["Public addresses", "Change the public addresses", "Passkey names", "This page's request",
+                                      "Trusted proxies", "Internal port and bind address", "Published web port"]
+              and "becomes https://records.example.test" in got1000["says"]
+              and (f"{apps1000} connected-source app" in got1000["says"]) == (apps1000 > 0)
+              and (f"The phones of {phones1000} profile" in got1000["says"]) == (phones1000 > 0)
+              and got1000["typing"] == "Type change addresses to confirm"
+              and got1000["after"] == [("https://records.example.test", base), False, True] and got1000["back"] == 200, [got1000, apps1000, phones1000])
         # (#991) This person's and You's sections show the profile's and the person's own settings only: a server's own
         # (scope "install", as General's will be, #1000-#1004) is Install's, read from /api/settings/install, even where
         # the profile's sections list it beside theirs. One answered here into Dates and times, and a section of its own

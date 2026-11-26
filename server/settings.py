@@ -330,6 +330,51 @@ define("sync.staleDays", "sync", "Warn when a connection hasn't synced for (days
        help="The profile's main page and the admins' notices say so, with a link to the connection.")
 CHOICES = {"sync.attachTypes": ATTACHMENT_TYPES}
 
+# ---------------------------------------------------------------- General → Host (#1000)
+# The addresses people open Sanguity at (PUBLIC_ORIGINS), read at each use: the cross-site check, the address the app
+# gives out (share links, calendar feeds, connected sources' return, the phone upload address) and Find your
+# provider's return addresses. A change is guarded (routes_host.py): its effects said first, typed confirmation, and a
+# list this page's own address wouldn't pass refused.
+_ORIGIN = re.compile(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*|\[[0-9a-f:.]+\]")
+
+
+def origin_list(most=20):
+    """A list of addresses as a browser's Origin says them (https://health.example.com, a port only where it isn't
+    the scheme's own), lower case, each once; text is split at commas, spaces and line breaks."""
+    def check(v):
+        if isinstance(v, str):
+            v = [p for p in re.split(r"[\s,]+", v) if p]
+        if not isinstance(v, list):
+            raise SettingError("The public addresses must be a list of addresses.")
+        out = []
+        for o in v:
+            o = _text(o, "An address", 300).lower().rstrip("/")
+            u = urllib.parse.urlsplit(o)
+            host, _, port = u.netloc.rpartition(":") if not u.netloc.endswith("]") else (u.netloc, "", "")
+            host, port = (host, port) if host and port.isdigit() else (u.netloc, "")
+            if (u.scheme not in ("http", "https") or u.path or u.query or u.fragment or "@" in u.netloc
+                    or not _ORIGIN.fullmatch(host) or (port and not 0 < int(port) < 65536)):
+                raise SettingError(f"“{o}” isn't an address like https://health.example.com: https:// or http://, then "
+                                   "its name, with a port only if it needs one, and nothing after.")
+            if port in {"https": ("443",), "http": ("80",)}[u.scheme]:
+                port = ""   # (a browser leaves the scheme's own port out of Origin)
+            o = f"{u.scheme}://{host}{':' + port if port else ''}"
+            if o not in out:
+                out.append(o)
+        if len(out) > most:
+            raise SettingError(f"At most {most} addresses.")
+        return out
+    return check
+
+
+section("host", "Host", "The addresses people open Sanguity at, and how this page reached the server.")
+define("host.publicOrigins", "host", "Public addresses", [], origin_list(), scope="install", private=False, kind="origins",
+       env="PUBLIC_ORIGINS",
+       help="One a line, like https://health.example.com. The first https:// one is the address the app gives out: share "
+            "links, calendar feeds, connected sources' return and the phone upload address. Needed behind a reverse "
+            "proxy that changes the Host header and sends no X-Forwarded-Host; empty, each page uses the address it "
+            "was opened at.")
+
 # #225: readings taken at home (and at visits) as Overview tiles beside the key labs, each with its latest value
 HOME_TILES = {"bp": "Blood pressure", "glucose": "Blood glucose", "temp": "Body temperature"}
 define("overview.homeTiles", "overview", "Home readings", [], some_of(HOME_TILES, "Home readings"), kind="choices",

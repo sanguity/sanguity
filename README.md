@@ -699,7 +699,8 @@ A passkey belongs to the name you open Sanguity at, so it works only:
 - **over HTTPS** (or at `http://localhost`): browsers don't offer passkeys to a plain-HTTP address;
 - **at a name, not an IP address**: `https://health.example.com` or a Tailscale name works, `http://192.168.1.20:8730`
   doesn't. Put Sanguity behind a reverse proxy with a certificate (Caddy, Nginx Proxy Manager, Traefik, Tailscale
-  Serve) and add that address to `PUBLIC_ORIGINS` in `.env`;
+  Serve) and add that address to the public addresses (Settings → Install → General → Host, or `PUBLIC_ORIGINS`
+  in `.env`);
 - **at the name it was added at**: one added at `https://health.example.com` isn't offered at another name for the
   same server. **Settings > Passkeys** shows where each one works.
 

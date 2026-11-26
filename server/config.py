@@ -151,12 +151,12 @@ def source(name):
     return lookup(name)[0]
 
 
-def public_address():
+def public_address(origins=None):
     """The address the app gives out (#1009): share links, calendar feed addresses and their QR codes, the link back in
     each calendar event, and connected sources' return address. The first https:// one of PUBLIC_ORIGINS (in order of
     their names, as the return address has always been taken), else the first; None while it lists none: then the
-    address a page was opened at."""
-    origins = sorted(setting("PUBLIC_ORIGINS"), key=lambda o: (not o.startswith("https://"), o))
+    address a page was opened at. origins: another list than the one in force (General → Host's change, #1000)."""
+    origins = sorted(setting("PUBLIC_ORIGINS") if origins is None else origins, key=lambda o: (not o.startswith("https://"), o))
     return origins[0] if origins else None
 
 

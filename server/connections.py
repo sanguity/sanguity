@@ -383,11 +383,11 @@ def _jdec(text):
 
 # ---------------------------------------------------------------- the return address
 
-def return_address():
+def return_address(origins=None):
     """Where the vendor sends a sign-in back: this install's /connect/return, at its first https:// address in
     PUBLIC_ORIGINS (else its first address there). None until PUBLIC_ORIGINS is set. Under option 2 this would be
-    the relay's address instead; it is the only thing that would change."""
-    origin = config.public_address()   # (the address the app gives out everywhere, #1009)
+    the relay's address instead; it is the only thing that would change. origins: another list (#1000)."""
+    origin = config.public_address(origins)   # (the address the app gives out everywhere, #1009)
     return origin + RETURN_PATH if origin else None
 
 

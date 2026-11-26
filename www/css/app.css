@@ -268,6 +268,7 @@ button.tile{cursor:pointer}
 .set-row-lbl{flex:38 1 0;min-width:min(100%,14rem)}
 .set-row-ctl{flex:62 1 0;min-width:min(100%,21rem);container-type:inline-size}
 .set-row.wide>*{flex-basis:100%}
+#gen-host textarea{width:100%;font-family:var(--font-mono)}   /* General → Host's public addresses, one a line (#1000) */
 /* ---- step cards (#284, #494): Phone setup's and Admin's walk-through, one pattern: a numbered card per step, its
    heading beside its number (ol.steps[role=list] > li.step > .step-hd, an h3, or an h4 under one); a value to give the
    other side (.copy-val): its name over it, then the value, its Copy and, for a phone, its QR code */
