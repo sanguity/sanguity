@@ -171,12 +171,13 @@ def ready():
     return os.path.isdir(os.path.dirname(config.WATCH_KEYS))
 
 
-def addresses(request_host=""):
-    """The upload addresses to give the phone app."""
-    if (url := config.setting("WATCH_UPLOAD_URL")):
+def addresses(request_host="", origins=None, url=None):
+    """The upload addresses to give the phone app. origins, url: other values than PUBLIC_ORIGINS' and
+    WATCH_UPLOAD_URL's in force, for what a change to one would give (General, #1000, #1003)."""
+    if (url := config.setting("WATCH_UPLOAD_URL") if url is None else url):
         return [url]
     hosts = []
-    for o in sorted(config.setting("PUBLIC_ORIGINS")):
+    for o in sorted(config.setting("PUBLIC_ORIGINS") if origins is None else origins):
         h = urlsplit(o).hostname
         if h and h not in hosts:
             hosts.append(h)
@@ -185,6 +186,17 @@ def addresses(request_host=""):
         if h:
             hosts.append(h)
     return [f"http://{'[' + h + ']' if ':' in h else h}:{config.setting('RECEIVER_PORT')}/ingest" for h in hosts]
+
+
+def with_secret(db):
+    """How many profiles' phones upload with a secret: their own, or the install's single one from before #46 (the
+    first profile's, once a phone has sent it something). Each needs the new address when the upload address changes
+    (General, #1000, #1003)."""
+    n = sum(1 for r in db.execute("SELECT profile_id FROM settings WHERE key=? AND profile_id IS NOT NULL AND user_id IS NULL",
+                                  (KEY,)) if _row(db, r["profile_id"]) is not None)
+    first = first_profile(db)
+    legacy = first is not None and _row(db, first) is None and legacy_in_use(db) and last_upload(None, True) is not None
+    return n + legacy
 
 
 def mask(secret):
