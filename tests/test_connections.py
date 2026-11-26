@@ -21,7 +21,7 @@ sys.path.insert(0, ROOT)
 
 from fastapi.testclient import TestClient   # noqa: E402
 
-from server import accounts, connections as conns, crypto, db as dbm, main, net, profiles as prof, smart, sync   # noqa: E402
+from server import accounts, connections as conns, crypto, db as dbm, main, net, profiles as prof, records, smart, sync   # noqa: E402
 from tests.whole_records import whole   # noqa: E402  records with every record's details (#217)
 from tests import netguard   # noqa: E402
 from tests.fakefhir import PAYER_FIXTURES, FakeFHIR   # noqa: E402
@@ -539,6 +539,61 @@ class Connections(unittest.TestCase):
         r = self.robin.post(f"/api/profiles/{self.pid}/imports/{res['import']}/undo", headers=H)
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(said(), before, "undone: as they were")
+
+    def test_records_a_connection_saved_saying_no_source_are_its_own(self):   # #1021
+        """#970 and #971 tell sources apart by what each record says of its source (its "ver"), else the address of the
+        connection that pulled it; the importer names a server by its meta.source first. Records a connection saved
+        before them say none, so where the server sends a stable meta.source the next pull took its own for another
+        source's: its amended Hemoglobin added as a second result with a second CBC lab event holding a copy of its row,
+        its stopped medication and resolved problem added beside the old ones, which never updated again. A record a
+        connection saved that names no source is that connection's source's: each is updated in place, as before."""
+        for r in self.fake._res.values():
+            r.setdefault("meta", {})["source"] = "urn:example:fake-ehr"
+        cid = self.connect(self.source())
+        self.first_pull(cid)
+        db = dbm.connect()   # what it saved, as saved before #955 and #970: saying no source
+        try:
+            for r in db.execute("SELECT id, body FROM events WHERE profile_id=?", (self.pid,)).fetchall():
+                b = records._dec(r["body"]) or {}
+                if b.pop("ver", None) is not None:
+                    db.execute("UPDATE events SET body=? WHERE id=?", (records._enc(b), r["id"]))
+            for r in db.execute("SELECT id, meta FROM imports WHERE profile_id=?", (self.pid,)).fetchall():
+                m = records._dec(r["meta"]) or {}
+                for v in m.values():
+                    for x in v if isinstance(v, list) else ():
+                        if isinstance(x, dict):
+                            x.pop("ver", None)
+                db.execute("UPDATE imports SET meta=? WHERE id=?", (records._enc(m), r["id"]))
+            records._bump(db, self.pid)
+        finally:
+            db.close()
+
+        def said():
+            d = self.data()
+            return (sorted((m["name"], m["spans"][-1]["status"]) for m in d.get("medications") or [] if m["key"] != "amoxicillin"),
+                    sorted((p["name"], p["status"]) for p in d.get("problems") or [] if p.get("name") == "Hyperlipidemia"),
+                    sorted((s["name"], p[2], p[3], p[4]) for s in d["labs"] if s["name"] in ("Hemoglobin", "MCV") for p in s["pts"]),
+                    sorted((e["title"], tuple(r[0] for r in d["details"][str(e["id"])]["rows"])) for e in d["events"] if e["k"] == "labitem"))
+        n = self.counts()
+        self.fake.update("Observation", "obs-hgb", {"referenceRange": [{"low": {"value": 12.0}, "high": {"value": 15.5}, "text": "12.0-15.5"}],
+                                                    "interpretation": None})
+        mcv = lab_obs("obs-mcv", "787-2", "MCV", 88, "fL", rng=(80, 100))
+        mcv["meta"] = {"source": "urn:example:fake-ehr"}
+        self.fake.add(mcv, patient="pat-1")
+        self.fake.update("DiagnosticReport", "dr-cbc", {"result": self.fake._res[("DiagnosticReport", "dr-cbc")]["result"] + [{"reference": "Observation/obs-mcv"}]})
+        self.fake.update("MedicationRequest", "med-1", {"status": "stopped"})
+        self.fake.update("Condition", "cond-1", {"clinicalStatus": {"coding": [{"code": "resolved"}]}})
+        res = self.pull(cid)
+        self.assertTrue(res["ok"], res)
+        got = said()
+        self.assertEqual(got[:3], ([("Atorvastatin 20 mg tablet", "Stopped")], [("Hyperlipidemia", "Resolved")],
+                                   [("Hemoglobin", 12.0, 15.5, ""), ("MCV", 80, 100, "")]), "each updated in place, its new result added")
+        self.assertEqual([x for x in got[3] if x[0] == "CBC WITH DIFFERENTIAL"],
+                         [("CBC WITH DIFFERENTIAL", ("Hemoglobin", "Platelet Count")), ("CBC WITH DIFFERENTIAL", ("MCV",))],
+                         "the report's rows where they were, the new one beside its result")
+        self.assertEqual({k: v - n[k] for k, v in self.counts().items()}, {"imports": 1, "events": 1, "series": 1, "results": 1})
+        self.assertEqual(self.faults(), [])
+        self.assertIsNone(self.pull(cid)["import"], "again: nothing new")
 
     def test_a_result_sent_again_is_updated_in_place(self):   # #869
         """A result the source amends comes back at the next pull: the same result, updated in place, range and flag,
