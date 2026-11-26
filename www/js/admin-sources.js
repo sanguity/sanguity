@@ -1,4 +1,4 @@
-/* Sanguity · the Admin page's parts about getting records in (#167, after admin.js): Connected-source apps, the
+/* Sanguity · Settings → Install's parts about getting records in (#167, #991, after admin.js): Connected-source apps, the
    guided setup of each source (option 1: this install's own app with each vendor, docs/connected-sources-oauth.md)
    and the defaults of every connection; and the Provider directory, what Find your provider has and how to add
    Epic's and Oracle Health's lists. Uses call(), say(), when() and plural() from admin.js. */
@@ -193,7 +193,7 @@ async function loadSetup({walk = true} = {}) {
   catch (e) {
     $("#admin").hidden = false;
     $("#admin").replaceChildren(el("h2", {text: "Set up a source"}), el("p", {class: "msg bad",
-      text: e.message === "admin_two_factor_required" ? "Turn on two-factor sign-in for your account (Account page) to set up sources." : e.message}));
+      text: e.message === "admin_two_factor_required" ? "Turn on two-factor sign-in for your account (Settings → Sign-in and security) to set up sources." : e.message}));
     return;
   }
   $("#admin").hidden = false;
@@ -211,7 +211,7 @@ async function loadSetup({walk = true} = {}) {
   }
   prefill();
 }
-/* Sources' Find your provider (#166) sends an admin here to set a provider up: admin.html?vendor=…&issuer=…&name=…#apps
+/* Sources' Find your provider (#166) sends an admin here to set a provider up: settings.html?vendor=…&issuer=…&name=…#apps
    fills the form in with it, once */
 let prefilled = false;
 function prefill() {
@@ -285,15 +285,14 @@ function toggleEditor(value, changed, ro, setting) {   // a switch (#259), named
   const input = el("input", {type: "checkbox", role: "switch", id: setting.key, "aria-label": setting.label, checked: value ? "" : null, disabled: ro, onchange: changed});
   return {node: el("label", {class: "check switch"}, input), get: () => input.checked};
 }
-function choicesEditor(value, changed, ro, setting) {
+function syncChoicesEditor(value, changed, ro, setting) {
   const boxes = Object.entries(setting.choices || {}).map(([id, label]) => el("label", {class: "check"},
     el("input", {type: "checkbox", id: `${setting.key}-${id}`, value: id, checked: value.includes(id) ? "" : null, disabled: ro, onchange: changed}), label));
   return {node: el("div", {class: "row set-choices"}, ...boxes),
     get: () => boxes.map(b => b.querySelector("input")).filter(i => i.checked).map(i => i.value)};
 }
-const SYNC_EDITORS = {number: numberEditor, toggle: toggleEditor, choices: choicesEditor};
+const SYNC_EDITORS = {number: numberEditor, toggle: toggleEditor, choices: syncChoicesEditor};
 const SYNC_NOW = new Set(["toggle", "choices"]);   // saved as they're changed
-const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const syncList = labels => labels.map((l, i) => (i === 0 ? "" : i === labels.length - 1 ? " and " : ", ") + `“${l}”`).join("");
 let SYNC = [];   // the settings drawn: {st, dirty(), counts(), held, get(), put(value)}
 let SYNC_REAUTH = null;   // where the card asks for the fresh check (#1006): kept as the card is drawn again

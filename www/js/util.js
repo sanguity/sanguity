@@ -256,8 +256,10 @@ function goneSay(rows, at, text, sel, fallback, box) {
   sayIn(m, text, true);
   focusNear(rows, at, sel, fallback);
   line.scrollIntoView({block: "nearest"});
+  // (within a pixel: what's scrolled to the bar's foot can sit a fraction over it, the scroll rounded to a whole pixel;
+  // Settings' Install, #991, where a line above made its rows' places fractional)
   const r = document.activeElement.getBoundingClientRect(), pad = getComputedStyle(document.documentElement);
-  if (r.top < parseFloat(pad.scrollPaddingTop) || r.bottom > innerHeight - parseFloat(pad.scrollPaddingBottom)) { m.tabIndex = -1; m.focus({preventScroll: true}); }
+  if (r.top < parseFloat(pad.scrollPaddingTop) - 1 || r.bottom > innerHeight - parseFloat(pad.scrollPaddingBottom) + 1) { m.tabIndex = -1; m.focus({preventScroll: true}); }
 }
 /* An empty state (#199): one sentence saying what would appear here, and the one next step, a link ({href, text}) or
    a button ({onclick, text}); none (null) for someone who can't take it. tag: "div" for a whole card's place, "li"

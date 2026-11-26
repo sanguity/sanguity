@@ -246,8 +246,8 @@ async function settingsLoad() {
     if (m.status === 401) { const s = await api("setup").then(r => r.json()).catch(() => ({})); location.replace(s.needed ? "setup.html" : "login.html"); return; }
     if (!m.ok) throw new Error(m.status + " " + m.statusText);
     ME = await m.json();
-    if (ME.user.must_change_pw) { location.replace("account.html#password"); return; }
-    if (ME.user.needs_two_factor) { location.replace("account.html#twofa"); return; }
+    if (ME.user.must_change_pw) { location.replace("settings.html#password"); return; }
+    if (ME.user.needs_two_factor) { location.replace("settings.html#twofa"); return; }
     $("#who").textContent = ME.user.username;
     doseOffer();   // none until the records are here (#401)
     // the first-run guide and the empty states (#199): with no profile, make one (guide.html?new)

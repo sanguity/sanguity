@@ -1,8 +1,8 @@
-/* Sanguity · the sidebar of Sources, Sharing, Settings, Account and Admin (#266): one component for the five pages,
-   each giving its groups in order, {id, title, icon, part, has: [the ids of its parts], why}.
-   - The sidebar lists them under their part's label (part: "This profile"; on a phone, a row that scrolls sideways,
-     each new part set apart by a line), the group shown marked, and a group with a part changed and not saved yet
-     (data-dirty) marked too.
+/* Sanguity · the sidebar of Sources, Sharing and Settings (#266): one component for the three pages, each giving its
+   groups in order, {id, title, icon, part, has: [the ids of its parts], why}.
+   - The sidebar lists them under their part's label (part: "This person"), each part a list named by it (#991); on a
+     phone a row that scrolls sideways, each new part set apart by a line. The group shown is marked, and a group with
+     a part changed and not saved yet (data-dirty) marked too.
    - One group is shown at a time. Its title is the page's h1 (#groupTitle) and the browser tab's. A card's own
      title shows only beside another card of the group: alone, it's said, not shown, under the h1 that says it, and
      its Reset to defaults (the button in its .set-hd) shows beside the h1 instead (#409).
@@ -10,7 +10,8 @@
      only those that do), each with its group's name above, or says that none does, with a button to clear it (#247)
      and one to search everywhere, the command palette opened with the words (palette.js, #403).
    - The address follows the group (sources.html#portals). An address naming a part, or something in one
-     (settings.html#sec-units, sources.html#import-12), opens that group and scrolls to it. Addresses that moved to
+     (settings.html#sec-units, sources.html#import-12), opens that group and scrolls to it; one naming a label of the
+     sidebar's, in lower case (settings.html#you, #991: your menu's Settings), its first group. Addresses that moved to
      another page are moved.js's.
 
    sideNav(o) with o.id (the sidebar's id, setNav: its search box setFind, its empty state setNone), o.page ("Settings":
@@ -24,13 +25,14 @@
    Gives {nav, start(), show(group or id, {push, scrollTo}), follow(), refresh(), again(), hide(none), current(),
    partsOf(g)}.
 
-   The group bar (#272), with o.bar = {save(parts, msg, had), discard(parts), profile()}: while a part shown has
+   The group bar (#272), with o.bar = {save(parts, msg, had), discard(parts), profile(), keeps(part)?}: while a part shown has
    changes not saved (data-dirty, the number of them), one bar at the foot of the screen says how many, with Discard
    and Save for them all: "3 changes · Discard · Save". save and discard get the parts shown with changes (had: focus
    was in the bar); save gives back once it's done (or has said in msg what stopped it), each part's data-dirty saying
    what's left. A part with changes, shown or not, is asked about before the page is left (logOut() too, util.js) or
-   another profile is picked (profile(): the one shown, to put the picker back on if the answer is to stay). Plain
-   script; all files share one scope. */
+   another profile is picked (profile(): the one shown, to put the picker back on if the answer is to stay; keeps(p):
+   true for a part another profile doesn't draw again, Settings' Install's, #991). Plain script; all files share one
+   scope. */
 "use strict";
 function sideNav(o) {
   const main = $("main.sets"), G = o.groups, pre = o.id.replace(/Nav$/, ""), pools = o.watch || [];
@@ -38,7 +40,7 @@ function sideNav(o) {
   const partsOf = g => g.rest ? pools.flatMap(p => [...p.children].filter(c => !named(c.id)))
     : g.has.map(id => document.getElementById(id)).filter(Boolean);
   const listed = () => G.filter(g => !o.allowed || o.allowed(g, partsOf(g)));
-  const byId = id => G.find(g => g.id === ((o.alias || {})[id] || id));
+  const byId = id => { const k = (o.alias || {})[id] || id; return G.find(g => g.id === k) || G.find(g => g.part?.toLowerCase() === k); };
   function groupOf(n) {
     for (; n && n !== main; n = n.parentElement) {
       const g = n.id && (G.find(x => x.has.includes(n.id)) || (pools.includes(n.parentElement) && G.find(x => x.rest)));
@@ -55,18 +57,24 @@ function sideNav(o) {
   const dirtyIn = ps => ps.filter(p => p.hasAttribute("data-dirty"));
   const bar = o.bar ? groupBar() : null;
 
-  /* the links, drawn again only when the groups listed change (another page's script may add to a link) */
+  /* the links, drawn again only when the groups listed change (another page's script may add to a link). A part's
+     groups are a list of their own named by the part (#991: "Install, list, 8 items"), its name over it said as the
+     list's name, so not twice; a group with no part is an item of the sidebar's own list */
   function draw() {
     const gs = listed(), key = gs.map(g => g.id).join();
     if (key === drawn) return gs;
     drawn = key;
-    let part = gs[0]?.part;
+    let part = gs[0]?.part, sub = null;
     list.replaceChildren(...gs.flatMap((g, i) => {
-      const fresh = !i || g.part !== part;
+      const fresh = !i || g.part !== part, cls = fresh && i ? "set-nav-new" : null;
       part = g.part;
-      return [fresh && g.part ? el("li", {class: "set-nav-part", "aria-hidden": "true", text: g.part}) : null,
-        el("li", {class: fresh && i ? "set-nav-new" : null}, el("a", {href: "#" + g.id, "data-group": g.id,
-          onclick: ev => { ev.preventDefault(); show(g, {push: true, by: true}); }}, icon(g.icon), g.title))].filter(Boolean);
+      const item = el("li", {}, el("a", {href: "#" + g.id, "data-group": g.id,
+        onclick: ev => { ev.preventDefault(); show(g, {push: true, by: true}); }}, icon(g.icon), g.title));
+      if (!g.part) { sub = null; if (cls) item.className = cls; return [item]; }
+      if (!fresh) { sub.append(item); return []; }
+      const id = `${o.id}-p${i}`;
+      sub = el("ul", {"aria-labelledby": id}, item);
+      return [el("li", {class: ["set-nav-grp", cls].filter(Boolean).join(" ")}, el("span", {class: "set-nav-part", id, "aria-hidden": "true", text: g.part}), sub)];
     }));
     return gs;
   }
@@ -232,7 +240,7 @@ function sideNav(o) {
     document.addEventListener("change", async ev => {   // before the page's own listeners: said no, the profile stays
       const pick = ev.target, was = o.bar.profile && o.bar.profile();
       if (pick.id !== "profile" || switching || was == null) return;
-      const names = [...new Set(all().map(p => groupOf(p)?.title).filter(Boolean))];
+      const names = [...new Set(all().filter(p => !o.bar.keeps?.(p)).map(p => groupOf(p)?.title).filter(Boolean))];
       if (!names.length) return;
       const wanted = pick.value;
       ev.stopImmediatePropagation();
@@ -262,7 +270,9 @@ function sideNav(o) {
     follow();
   }
   return {nav, start, show, follow, refresh, partsOf, current: () => current,
-    again: () => { const r = fromHash(); if (r.el) { pending = false; show(r.g, {scrollTo: r.el}); } else apply(); },   // once the parts have their content
+    // once the parts have their content; a group not listed yet (Settings' Install, drawn before the rest is: #991)
+    // stays the one to show once it is
+    again: () => { const r = fromHash(); if (r.el && listed().includes(r.g)) { pending = false; show(r.g, {scrollTo: r.el}); } else apply(); },
     // none: no group is shown any more (Sharing's last profile left, #523), so the title is the page's alone; it kept
     // the last group's, put back by each change that redraws the list
     hide(none = false) { nav.hidden = true; main.classList.remove("with-nav"); if (none) { current = null; apply(); } }};

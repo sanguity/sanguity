@@ -4,19 +4,30 @@
    section's "Reset to defaults" when it isn't at them (#174). Viewers see the profile's settings without
    editors; their own (per-user) settings they can change, and someone with no profile yet still has those (#169).
    A new kind of setting adds an editor to EDITORS. About this person and Targets (#267) are about.js's, the profile's
-   name and deleting it (#402) profile-card.js's. What used to be here and isn't about how things look has its own
-   page now, its old addresses moved.js's. */
+   name and deleting it (#402) profile-card.js's. The person's sign-in and this device (You) are account.js's, and
+   the server's (Install, for admins) admin.js's and the scripts after it (#991), with the helpers here (call, say,
+   when, plural, same, ME). What used to be here and isn't about how things look has its own page now, its old
+   addresses moved.js's. settings-nav.js starts it all (setStart). */
 "use strict";   // $, el and api come from util.js
 let ME, PID = null, LAB_NAMES = [], LABS = [], NICK = {}, HAS_CLAIMS = false;
 
-async function call(path, method = "GET", body, opts = {}) {   // opts: fetch's own (keepalive, #419)
+/* api() from util.js, returning the JSON answer, or throwing with the server's message, its status and detail (a
+   detail that isn't words: Install's "reauth_required", {sole_owner_of}, admin.js). opts: fetch's own (keepalive, #419) */
+async function call(path, method = "GET", body, opts = {}) {
   const r = await api(path, {method, body: body === undefined ? undefined : JSON.stringify(body), ...opts});
   if (r.status === 401) { location.replace("login.html"); throw new Error("signed out"); }
   const j = r.status === 204 ? null : await r.json().catch(() => ({}));
-  if (!r.ok) throw Object.assign(new Error((typeof j.detail === "string" && j.detail) || (Array.isArray(j.detail) ? "Please check the fields." : r.status + " " + r.statusText)), {status: r.status});
+  if (!r.ok) {
+    const d = j?.detail;
+    throw Object.assign(new Error((typeof d === "string" && d) || (Array.isArray(d) ? "Please check the fields." : d && d.message) || r.status + " " + r.statusText),
+      {status: r.status, detail: d});
+  }
   return j;
 }
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const say = (id, text, bad = false) => sayIn($(id), text, bad);   // shown and said (util.js, #209)
+const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and date format
+const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
 $("#logout").onclick = logOut;   // util.js: asks first about what isn't saved (#391)
 
 /* ---------------------------------------------------------------- editors: each builds its controls from a value
@@ -816,7 +827,9 @@ async function load(note, force, all = false) {
   catch (e) { sayIn($("#loadMsg"), e.message, true); if (all) box.replaceChildren(); return; }   // (changes not saved stay)
   sayIn($("#loadMsg"), "");
   await presetsLoad(PID, d.role);   // Start from a condition's offer, for the Overview section (presets.js, #186)
-  d.sections = d.sections.filter(sec => sec.settings.some(st => st.scope !== "install"));   // the server's own: on the Admin page (#167)
+  // the server's own (scope "install") are Install's (#167, #991: the sync defaults, admin-sources.js; General's to come,
+  // #1000-#1004), read from settings/install: none here, even in a section of this person's or yours
+  d.sections = d.sections.map(sec => ({...sec, settings: sec.settings.filter(st => st.scope !== "install")})).filter(sec => sec.settings.length);
   const every = d.sections.flatMap(sec => sec.settings);
   NICK = every.find(st => st.key === "labNicknames")?.value || {};
   labShownList();   // the names the lists show (#458)
@@ -856,31 +869,24 @@ async function loadLabNames() {
   $("#labNames").replaceChildren(...LAB_NAMES.map(n => el("option", {value: n})));
 }
 
-/* ---------------------------------------------------------------- start */
-(async () => {
-  if (sgMoved()) return;   // what was here and isn't about how things look (moved.js)
-  try { ME = await call("me"); } catch (e) { return; }
-  await datesReady();   // dates in this person's time zone and format (dates.js)
-  if (ME.user.must_change_pw) { location.replace("account.html#password"); return; }
-  if (ME.user.needs_two_factor) { location.replace("account.html#twofa"); return; }
-  $("#who").textContent = ME.user.username;
+/* ---------------------------------------------------------------- start (settings-nav.js) */
+/* this person's settings, or with no profile yet the person's own: -> a promise, done once they're drawn the first
+   time, so the sidebar's first group is theirs from the start (You's and Install's wait for it) */
+function setStart() {
   document.addEventListener("theme:changed", () => load());   // your menu's Dark or Light mode saved the theme (nav.js, #410)
-  { const w = plainHttpWarning(); if (w) { $("#insecure").textContent = w; $("#insecure").hidden = false; } }
   if (!ME.profiles.length) {   // no profile yet: their own settings, and how to get one
     $("#noProfiles").hidden = false;
     SgNav.profiles([]);   // no profile: the top bar's picker (nav.js, #170) stays out of sight
-    $("#intro").hidden = false;
-    load(null, null, true);
-    return;
+    return load(null, null, true);
   }
   const sel = $("#profile");
   SgNav.profiles(ME.profiles);   // the top bar's picker (nav.js, #170): the address's profile, else this browser's last
   // About this person (about.js, #267) once the sections are there: its group arrives with theirs, not before
   // and its name and deleting it (profile-card.js, #402), with them too
   // (once the saves on their way are answered, #425: what's drawn is what the server keeps)
-  const pick = () => { PID = +sel.value; const p = ME.profiles.find(x => x.id === PID); Promise.all([loadLabNames(), ...SAVING]).then(() => load(null, null, true)).then(() => { if (PID === p.id) { drawAbout(p); drawProfile(p); } }); };
+  const pick = () => { PID = +sel.value; const p = ME.profiles.find(x => x.id === PID);
+    return Promise.all([loadLabNames(), ...SAVING]).then(() => load(null, null, true)).then(() => { if (PID === p.id) { drawAbout(p); drawProfile(p); } }); };
   document.addEventListener("about:changed", () => load());   // the ranges' preview matches ages and sexes against it
   sel.onchange = pick;
-  $("#intro").hidden = false;
-  pick();
-})();
+  return pick();
+}

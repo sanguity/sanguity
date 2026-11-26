@@ -271,8 +271,8 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     if (sgMoved()) return;   // About this person's old address (#267): on Settings now
     try { ME = await call("me"); } catch (e) { return; }
     await datesReady();   // dates in this person's time zone and format (dates.js), before summary.js draws any
-    if (ME.user.must_change_pw) { location.replace("account.html#password"); return; }
-    if (ME.user.needs_two_factor) { location.replace("account.html#twofa"); return; }
+    if (ME.user.must_change_pw) { location.replace("settings.html#password"); return; }
+    if (ME.user.needs_two_factor) { location.replace("settings.html#twofa"); return; }
     $("#who").textContent = ME.user.username;
     { const w = plainHttpWarning(); if (w) { $("#insecure").textContent = w; $("#insecure").hidden = false; } }
     addEventListener("hashchange", () => sayIn($("#pageMsg"), ""));   // (before the sidebar's: a group refused says so after)

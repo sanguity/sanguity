@@ -608,8 +608,8 @@ def start_app():
     return srv, f"http://127.0.0.1:{port}"
 
 
-USER_MENU = {"#logout", "#theme", "#accountLink", "#displayLink", "#adminLink", "#guideLink"}
-PROFILE_MENU = {"#settingsLink", "#sharingLink", "#sourcesLink", "#aboutLink", "#newProfileLink", "#editTabsLink"}   # #264, #398
+USER_MENU = {"#logout", "#theme", "#settingsLink", "#guideLink"}   # (#991: Settings, Account, Display and Admin before)
+PROFILE_MENU = {"#sharingLink", "#sourcesLink", "#newProfileLink"}   # #264 (#991: its settings are Settings' This person)
 
 
 def menu_click(pg, item):
@@ -1102,7 +1102,7 @@ ICON_PLACES_JS = r"""async palette => {
     if (file === 'guide.html') return 'guide';
     const P = Object.values(SG_PAGES).find(x => x.page === file);
     if (!P) return file + (hash ? '#' + hash : '');
-    if (!hash) return stem(file);
+    if (!hash || P.groups.some(x => x.part?.toLowerCase() === hash)) return stem(file);   // (a label's first group, settings.html#you: the page, #991)
     if (SG_ICON[stem(file) + '/' + hash]) return stem(file) + '/' + hash;
     const g = P.groups.find(x => x.id === hash) || P.groups.find(x => x.has.includes(hash) || (x.finds || []).some(f => f[1] === hash));
     return g ? stem(file) + '/' + g.id : stem(file) + '#' + hash;
@@ -2237,17 +2237,46 @@ def main():
         strict.wait_for_selector("#watch h2", timeout=10000)
         check("under the CSP: the watch card shows the upload address, on Sources", strict.evaluate("document.querySelector('#watch .w-addr').textContent").endswith(":8731/ingest")
               and strict.evaluate("document.querySelector('#srcNav a[aria-current=page]').dataset.group") == "phone")
-        # the Admin page (#167): its sidebar of groups, each part drawn by its own script
-        strict.goto(base + "/admin.html")
+        # Settings → Install (#167; the Admin page before #991): Settings' sidebar in three parts, Install's each drawn by
+        # its own script
+        strict.goto(base + "/settings.html?profile=1#accounts")
         for sel in ("#userList table", "#sec-sync .set", "#sourceList", "#dirSources ul", "#labmapList", "#outsideBody h3", "#acctLog tbody tr", "#bkStatus .kv"):
             strict.wait_for_selector(sel, state="attached", timeout=10000)
-        groups = strict.evaluate("[...document.querySelectorAll('#admNav li')].map(li => (li.matches('.set-nav-part') ? '§' : '') + li.textContent)")
-        check("under the CSP: the Admin page's scripts run, with a sidebar of its groups under People, Data safety, Connections and Lab matching (#266)", groups ==
-              ["§People", "Accounts", "Install activity", "§Data safety", "Backups", "§Connections", "Connected-source apps", "Provider directory",
-               "Outside connections", "§Lab matching", "Lab name matches"], groups)
-        strict.wait_for_selector("#adminLink:not([hidden])", state="attached", timeout=10000)
-        check("…and the menu offers Admin to an admin", strict.evaluate("document.getElementById('adminLink').getAttribute('href')") == "admin.html?profile=1")   # (#397)
-        check("no Admin card shows a stray “null”", strict.evaluate(null_cards) == [], strict.evaluate(null_cards))
+        groups = strict.evaluate("[...document.querySelectorAll('#setNav .set-nav-part, #setNav a')].map(x => (x.matches('.set-nav-part') ? '§' : '') + x.textContent)")
+        check("under the CSP: Install's scripts run on Settings, its sidebar in three parts, This person, You and Install (#266, #991)", groups ==
+              ["§This person", "Dashboard", "About this person", "Labs and ranges", "Milestones", "Workouts", "Rename or delete",
+               "§You", "Sign-in and security", "This device", "Display",
+               "§Install", "General", "Accounts", "Install activity", "Backups", "Connected-source apps", "Provider directory",
+               "Outside connections", "Lab name matches"], groups)
+        check("…and your menu offers Settings, opening You, and no Account, Display or Admin (#991)",
+              strict.evaluate("document.getElementById('settingsLink').getAttribute('href')") == "settings.html?profile=1#you"   # (#397)
+              and not strict.evaluate("!!document.querySelector('#accountLink, #displayLink, #adminLink')"))
+        check("no Install card shows a stray “null”", strict.evaluate(null_cards) == [], strict.evaluate(null_cards))
+        # (#991) This person's and You's sections show the profile's and the person's own settings only: a server's own
+        # (scope "install", as General's will be, #1000-#1004) is Install's, read from /api/settings/install, even where
+        # the profile's sections list it beside theirs. One answered here into Dates and times, and a section of its own
+        ctx991s = browser.new_context(viewport={"width": 1400, "height": 900})
+        ctx991s.add_cookies([c for c in strict.context.cookies() if c["name"] == "sg_session"])
+        p991s = ctx991s.new_page()
+        inst991 = {"key": "test.install991", "label": "A server's own (browser check)", "help": "", "kind": "number", "scope": "install",
+                   "default": 1, "value": 1, "from": "default", "can_change": False}
+        def mixed991(route):
+            got = route.fetch()
+            j = got.json()
+            for sec in j["sections"]:
+                if sec["id"] == "dates":
+                    sec["settings"].append(dict(inst991))
+            j["sections"].append({"id": "server991", "title": "Server only (browser check)", "help": "", "settings": [dict(inst991, key="test.install991b")]})
+            route.fulfill(response=got, json=j)
+        p991s.route("**/api/profiles/1/settings/sections", mixed991)
+        p991s.goto(base + "/settings.html?profile=1#display")
+        p991s.wait_for_selector("#sec-dates [data-key]", timeout=20000)
+        p991s.wait_for_timeout(500)
+        shown991s = p991s.evaluate("[!!document.querySelector('[data-key^=\"test.install991\"]'), !!document.getElementById('sec-server991'), "
+                                   "[...document.querySelectorAll('#sec-dates [data-key]')].map(s => s.dataset.key)]")
+        ctx991s.close()
+        check("This person's and You's sections leave a server's own settings to Install (#991), one listed among theirs or in a section "
+              "of its own", shown991s[:2] == [False, False] and shown991s[2], shown991s)
         # the Sharing page (#168): its sidebar, each part drawn by its own script
         strict.goto(base + "/sharing.html#summary")   # the visit summary (#48)
         strict.wait_for_selector("#build:not([hidden]) #sections input", timeout=10000)
@@ -2298,8 +2327,8 @@ def main():
                     titles: cards.map(h => h.getBoundingClientRect().width > 2 && h.matches(':not(.vh)'))}; }"""
         side_bad = []
         for path, find, labels, alone in (("sources.html?profile=1#portals", "srcFind", 3, True), ("sharing.html?profile=1#links", "shrFind", 0, True),
-                                          ("settings.html?profile=1#display", "setFind", 2, False), ("account.html#security", "acctFind", 0, False),
-                                          ("admin.html#apps", "admFind", 4, False), ("admin.html#backups", "admFind", 4, True)):
+                                          ("settings.html?profile=1#display", "setFind", 3, False), ("settings.html?profile=1#security", "setFind", 3, False),
+                                          ("settings.html?profile=1#apps", "setFind", 3, False), ("settings.html?profile=1#backups", "setFind", 3, True)):
             strict.goto(base + "/" + path)
             strict.wait_for_selector("main > nav.set-nav a[aria-current=page]", timeout=10000)
             strict.wait_for_timeout(600)
@@ -2308,7 +2337,7 @@ def main():
             if not (v["find"] == find and v["ph"] == f"Find in {page_name}" and v["labels"] == labels and v["h1"] == v["cur"] and v["title"] == f"{page_name}: {v['cur']} · Sanguity" and v["shell"] == "1280px"
                     and v["titles"] and (v["titles"] == [False] if alone else all(v["titles"]) and len(v["titles"]) > 1)):
                 side_bad.append((path, v))
-        check("one sidebar (#266): Sources, Sharing, Settings, Account and Admin each have its search box (named “Find in …” on each, #403), group labels and the group's title as the h1, "
+        check("one sidebar (#266): Sources, Sharing and Settings (its You and Install too, #991) each have its search box (named “Find in …” on each, #403), group labels and the group's title as the h1, "
               "a card's title only beside another card, in a 1280 px shell", not side_bad, side_bad)
         # #409: in no group of any of them does a card's title shown say again what the h1 says; a card alone in its
         # group has its Reset to defaults beside the h1 (Milestones), none in the card; Workouts' card is named Workouts
@@ -2318,12 +2347,12 @@ def main():
               if (h.checkVisibility() && !h.matches('.vh') && h.getBoundingClientRect().width > 2 && h.textContent.trim().toLowerCase() === h1) out.push(a.dataset.group + ': ' + h.textContent); }
             return out; }"""
         repeats = {}
-        for path in ("sources.html?profile=1", "sharing.html?profile=1", "settings.html?profile=1", "account.html", "admin.html"):
+        for path in ("sources.html?profile=1", "sharing.html?profile=1", "settings.html?profile=1"):
             strict.goto(base + "/" + path)
             strict.wait_for_selector("main > nav.set-nav a[aria-current=page]", timeout=10000)
             strict.wait_for_timeout(1500)   # (each page's cards drawn: Phone and watch's, Settings' sections)
             repeats[path] = strict.evaluate(repeats_js)
-        check("no card's title shown repeats its group's h1, on any group of Sources, Sharing, Settings, Account or Admin (#409: Phone and watch's)",
+        check("no card's title shown repeats its group's h1, on any group of Sources, Sharing or Settings (with You and Install, #991) (#409: Phone and watch's)",
               not any(repeats.values()) and strict.evaluate("document.title") != "", repeats)
         # #550: the sidebar, sticky, within the window when that's short (it scrolls in itself), and the toasts, with no
         # bar, in the content's column, never over it: each of its links, tabbed to with three toasts showing, in view
@@ -2339,7 +2368,7 @@ def main():
         toasts550 = "for (let i = 1; i <= 3; i++) toast(`Saved a change, number ${i} of three, with an Undo.`, {action: 'Undo', onAction() {}})"
         side550, whole550, mixed570 = {}, {}, {}
         try:
-            for path in ("settings.html?profile=1", "admin.html", "sharing.html?profile=1", "sources.html?profile=1"):
+            for path in ("settings.html?profile=1", "settings.html?profile=1#accounts", "sharing.html?profile=1", "sources.html?profile=1"):
                 for w, h in ((844, 390), (1100, 600), (900, 500)):
                     strict.set_viewport_size({"width": w, "height": h})
                     strict.goto(base + "/" + path)
@@ -2371,7 +2400,7 @@ def main():
                         whole550[f"{path.split('.')[0]} {w}x{h}"] = v
             # #570: refitted as each comes and goes, toasts of mixed heights: a fourth the oldest's height kept the
             # stack's height for the three before it, the newest two cut
-            for path in ("settings.html?profile=1", "admin.html", "account.html"):
+            for path in ("settings.html?profile=1", "settings.html?profile=1#accounts", "settings.html?profile=1#security"):
                 for w, h in ((900, 500), (844, 390)):
                     strict.set_viewport_size({"width": w, "height": h})
                     strict.goto(base + "/" + path)
@@ -2389,11 +2418,11 @@ def main():
                     strict.evaluate("document.querySelectorAll('#sgToasts .sg-toast').forEach(t => t.sgGone())")
         finally:
             strict.set_viewport_size({"width": 1400, "height": 900})
-        check("the sidebar of Settings, Admin, Sharing and Sources at 844×390, 1100×600 and 900×500, three toasts showing: each link "
+        check("the sidebar of Settings (on This person's and Install's groups), Sharing and Sources at 844×390, 1100×600 and 900×500, three toasts showing: each link "
               "tabbed to in view and not more than 10% under a toast (#550: they sat over the sidebar, which ran off a short window)", side550 == {}, side550)
         check("…and the toasts' stack at 320×640, 568×320 and 844×390 shows each toast whole or not at all, never one cut to its Undo (#550)",
               whole550 == {}, whole550)
-        check("…and toasts of mixed heights, four or five added on Settings, Admin and Account at 900×500 and 844×390: none shows only part of itself (#570)",
+        check("…and toasts of mixed heights, four or five added on Settings (This person's, Install's and You's groups) at 900×500 and 844×390: none shows only part of itself (#570)",
               mixed570 == {}, mixed570)
         # ---- #286 one setting row: in every group of Settings, Sharing, Account and Admin with something to set, each
         # setting is a row, its name and help on the left (about 38%) and its control on the right at 1400 px (a .wide
@@ -2404,8 +2433,8 @@ def main():
               c = r.querySelector(':scope > .set-row-ctl').getBoundingClientRect();
               return [Math.round(l.width / b.width * 100), l.right <= c.left, c.top >= l.bottom - 1, r.matches('.wide')]; }); }
           return out; }"""
-        rows286, want286 = {}, {"settings": ["dashboard", "about", "labs", "milestones", "activity", "profile", "display"],
-                                "sharing": ["people", "calendar", "summary", "export"], "account": ["security", "device"], "admin": ["accounts", "backups", "apps"]}
+        rows286, want286 = {}, {"settings": ["dashboard", "about", "labs", "milestones", "activity", "profile", "security", "device", "display", "accounts", "backups", "apps"],
+                                "sharing": ["people", "calendar", "summary", "export"]}   # (Account's and Admin's in Settings, #991)
         for w in (1400, 375):
             strict.set_viewport_size({"width": w, "height": 900})
             for name in want286:
@@ -2417,7 +2446,7 @@ def main():
         bad286 = [(k, g, r) for k, gs in rows286.items() for g, rs in gs.items() for r in rs
                   if not ((r[3] or (30 <= r[0] <= 45 and r[1])) if k.endswith("1400") else (r[0] >= 95 and r[2]))]
         missing286 = [f"{name} {w}: {g}" for name, gs in want286.items() for w in (1400, 375) for g in gs if g not in rows286[f"{name} {w}"]]
-        check("one setting row (#286): every group with something to set on Settings, Sharing, Account and Admin sets it in rows, each "
+        check("one setting row (#286): every group with something to set on Settings (its You and Install too) and Sharing sets it in rows, each "
               "one's name and help beside its control (about 38%) at 1400 px, above it at 375 px", not bad286 and not missing286,
               [missing286, bad286[:8]] if bad286 or missing286 else {k: sum(len(v) for v in gs.values()) for k, gs in rows286.items()})
         # ---- #494: one pattern each. Every row's name starts level with its control (within 8 px, where they're side by
@@ -2450,19 +2479,19 @@ def main():
         con494 = {}
         for w in (1400, 375):
             strict.set_viewport_size({"width": w, "height": 900})
-            for name in ("settings", "sharing", "account", "admin"):
+            for name in ("settings", "sharing"):   # (Settings' You and Install too: Account and Admin before #991)
                 strict.goto(f"{base}/{name}.html?profile=1")
                 strict.wait_for_selector("main > nav.set-nav a[aria-current=page]", timeout=10000)
                 strict.wait_for_timeout(1500)   # (each page's cards drawn)
                 con494[f"{name} {w}"] = strict.evaluate(con494_js)
         strict.set_viewport_size({"width": 1400, "height": 900})
         bad494 = {k: {x: v[x] for x in ("align", "rule", "nameless") if v[x]} for k, v in con494.items() if v["align"] or v["rule"] or v["nameless"]}
-        check("one card head and one row (#494): on Settings, Sharing, Account and Admin at 1400 and 375 px, every row's name starts within 8 px "
+        check("one card head and one row (#494): on Settings (with You and Install, #991) and Sharing at 1400 and 375 px, every row's name starts within 8 px "
               "of its control's top, none has a hint for a name, and each card's first rule follows its line of hint",
               not bad494 and all(v["rows"] for v in con494.values()), bad494 or {k: v["rows"] for k, v in con494.items()})
         empty494 = {}
-        for path, sel in (("sharing.html?profile=1#links", "#links .share-list"), ("account.html#security", "#pkList"),
-                          ("admin.html#backups", "#bkList"), ("admin.html#labs", "#labmapList")):
+        for path, sel in (("sharing.html?profile=1#links", "#links .share-list"), ("settings.html?profile=1#security", "#pkList"),
+                          ("settings.html?profile=1#backups", "#bkList"), ("settings.html?profile=1#labmaps", "#labmapList")):
             strict.goto(f"{base}/{path}")
             strict.wait_for_selector("main > nav.set-nav a[aria-current=page]", timeout=10000)
             strict.wait_for_timeout(1200)
@@ -2484,9 +2513,9 @@ def main():
               and [r[:2] for r in empty494["milestones, result sources"]] == [["No milestones yet: each one is marked on every chart.", False],
                                                                             ["No result sources named yet: each shows as its tag in the records.", False]]
               and all(r[2:] == [False, True, True, True] for r in empty494["milestones, result sources"]), empty494)
-        # #499: and Admin's Outside connections (it said “None yet.” and “None.”) and Set up a source's list (it showed
+        # #499: and Install's Outside connections (it said “None yet.” and “None.”) and Set up a source's list (it showed
         # nothing): each list the server has empty says so through emptyState(), one sentence, and none says “None”
-        strict.goto(base + "/admin.html#outside")
+        strict.goto(base + "/settings.html?profile=1#outside")
         strict.wait_for_selector("#outsideBody h3", timeout=10000)
         strict.wait_for_selector("#sourceList > *", state="attached", timeout=10000)
         empty499 = strict.evaluate("""async () => { const [v, s] = await Promise.all([fetch('api/outside').then(r => r.json()), fetch('api/connect/sources').then(r => r.json())]);
@@ -2498,17 +2527,17 @@ def main():
             const src = document.getElementById('sourceList');
             out["Set up a source"] = [s.sources.length, said(src.querySelector(':scope > .empty-state')) || src.querySelectorAll(':scope > .empty-state').length];
             return out; }""")
-        check("…(#499) and Admin's Outside connections and Set up a source: each list empty says so through emptyState(), never “None”",
+        check("…(#499) and Install's Outside connections and Set up a source: each list empty says so through emptyState(), never “None”",
               len(empty499) == 5 and all(isinstance(v[1], str) if v[0] == 0 else v[1] == 0 for v in empty499.values())
               and any(v[0] == 0 for v in empty499.values()), empty499)
-        strict.goto(base + "/admin.html#accounts")
+        strict.goto(base + "/settings.html?profile=1#accounts")
         strict.wait_for_selector("main > nav.set-nav a[aria-current=page]", timeout=10000)
         strict.wait_for_timeout(600)
         new494 = strict.evaluate("""(() => { const r = document.getElementById('userNew')?.closest('.set-row');
             return [!!r, r && r.querySelector('.set-row-name')?.textContent, r && r.querySelector('.set-row-lbl .hint')?.textContent.length > 10]; })()""")
         check("…Create account is a setting row, its name and a line on the left, the form on the right, as Share with someone is (#494)",
               new494 == [True, "Create an account", True], new494)
-        strict.goto(base + "/admin.html#backups")
+        strict.goto(base + "/settings.html?profile=1#backups")
         strict.wait_for_selector("#bkSchedule .set-row", timeout=10000)
         strict.wait_for_timeout(600)
         keep494 = strict.evaluate("""(() => { const r = [...document.querySelectorAll('#bkSchedule .set-row')].find(x => x.textContent.includes('How many to keep')), h = r.querySelector('.set-row-lbl .hint');
@@ -2525,21 +2554,21 @@ def main():
         lone.append(strict.evaluate("document.querySelector('#sec-health h2').textContent"))
         check("…a card alone in its group (Milestones): Reset to defaults beside the group's title, the h1, and not in the card; Workouts' card "
               "is named Workouts (#409)", lone == ["Reset to defaults", True, False, True, "Workouts"], lone)
-        strict.goto(base + "/admin.html#backups")   # (as the sidebar's checks left it, for its search below)
+        strict.goto(base + "/settings.html?profile=1#backups")   # (as the sidebar's checks left it, for its search below)
         strict.wait_for_selector("main > nav.set-nav a[aria-current=page]", timeout=10000)
         strict.wait_for_timeout(600)
-        strict.fill("#admFind", "usb stick")
+        strict.fill("#setFind", "usb stick")
         strict.wait_for_timeout(200)
         found = strict.evaluate("[document.getElementById('groupTitle').textContent, [...document.querySelectorAll('main > section')].filter(s => s.checkVisibility()).map(s => s.id), "
-                                "document.querySelector('#backups > .set-hd > h2').getBoundingClientRect().width > 2, !!document.querySelector('#admNav a[aria-current=page]')]")
-        strict.fill("#admFind", "no such thing zq")
+                                "document.querySelector('#backups > .set-hd > h2').getBoundingClientRect().width > 2, !!document.querySelector('#setNav a[aria-current=page]')]")
+        strict.fill("#setFind", "no such thing zq")
         strict.wait_for_timeout(200)
-        empty = strict.evaluate("(b => [b.checkVisibility() && b.querySelector('p').textContent, ...[...b.querySelectorAll('button')].map(x => x.textContent)])(document.getElementById('admNone'))")
-        strict.click("#admNone button:text-is('Clear the search')")
-        back = strict.evaluate("[document.activeElement.id, document.getElementById('admFind').value, document.getElementById('groupTitle').textContent, document.getElementById('admNone').hidden]")
-        check("…its search on every page (Admin's here): the parts that mention it, from every group, each with its title, or says none does, with a button that clears it",
-              found[0] == "Find in Admin" and "backups" in found[1] and "users" not in found[1] and found[2] and not found[3]
-              and empty == ["Nothing in Admin matches “no such thing zq”.", "Search everywhere for “no such thing zq”", "Clear the search"] and back == ["admFind", "", "Backups", True], (found, empty, back))
+        empty = strict.evaluate("(b => [b.checkVisibility() && b.querySelector('p').textContent, ...[...b.querySelectorAll('button')].map(x => x.textContent)])(document.getElementById('setNone'))")
+        strict.click("#setNone button:text-is('Clear the search')")
+        back = strict.evaluate("[document.activeElement.id, document.getElementById('setFind').value, document.getElementById('groupTitle').textContent, document.getElementById('setNone').hidden]")
+        check("…its search on every page (Settings' here, from Install's Backups, #991): the parts that mention it, from every group, each with its title, or says none does, with a button that clears it",
+              found[0] == "Find in Settings" and "backups" in found[1] and "users" not in found[1] and found[2] and not found[3]
+              and empty == ["Nothing in Settings matches “no such thing zq”.", "Search everywhere for “no such thing zq”", "Clear the search"] and back == ["setFind", "", "Backups", True], (found, empty, back))
         # ---- help text (#280, after #176's "More about this"): under a heading, one line of hint at most before what its
         # card holds (as laid out at 1400 px: the lines its words take, as the tile checks measure them; a disclosure
         # counts its summary's line). The rest of a card's background is behind an ⓘ beside its heading, named "About"
@@ -2612,8 +2641,8 @@ def main():
             help_here("records " + tab)
         strict.evaluate("costState.view = 'claims'; switchTab('overview')")   # (as the checks after expect it)
         strict.wait_for_timeout(300)
-        for page_ in ("sources", "sharing", "settings", "account", "admin"):
-            strict.goto(base + f"/{page_}.html" + ("?profile=1" if page_ in ("sources", "sharing", "settings") else ""))
+        for page_ in ("sources", "sharing", "settings"):   # (Settings' You and Install: Account and Admin before #991)
+            strict.goto(base + f"/{page_}.html?profile=1")
             strict.wait_for_selector("main > nav.set-nav a[aria-current=page]", timeout=10000)
             for g in strict.evaluate("[...document.querySelectorAll('main > nav.set-nav a[data-group]')].map(a => a.dataset.group)"):
                 strict.click(f"main > nav.set-nav a[data-group='{g}']")
@@ -2628,7 +2657,7 @@ def main():
         check("…on the pages that have background to give", all(help_seen.get(w) for w in (
               "records Overview", "records Body and activity", "records Journal", "records Labs", "records Labs heatmap",   # (the Timeline's was how to pan, #295)
               "sources upload", "sources portals", "sources phone", "sharing links", "sharing calendar", "sharing export",
-              "settings dashboard", "settings about", "account security", "admin accounts", "admin backups", "admin outside")), help_seen)
+              "settings dashboard", "settings about", "settings security", "settings accounts", "settings backups", "settings outside")), help_seen)
         # a card alone in its group (Sources → Upload files): its ⓘ beside the h1, and back in the card beside its own
         # title when the search shows it among others
         strict.goto(base + "/sources.html?profile=1#upload")
@@ -2801,8 +2830,10 @@ def main():
         for path, ready, title, width in (("", "#view-overview .card", None, 1400), ("sources.html?profile=1", "#srcList h3", "Sources: Overview", 375),
                                           ("settings.html?profile=1", "#sec-overview .set-labs li", "Settings: Dashboard", 1400),
                                           ("sharing.html?profile=1", "#memberList tbody tr", "Sharing: People", 375),
-                                          ("account.html", "#acctNav a", "Account: Sign-in and security", 1400), ("admin.html", "#userList table", "Admin: Accounts", 375),
-                                          ("guide.html?profile=1#name", "#step-name:not([hidden])", "Getting started: Whose records", 375)):   # #199 (a named profile opens at its first step not done, #290: this one asked for)
+                                          ("settings.html?profile=1#security", "#setNav a", "Settings: Sign-in and security", 1400),   # Account's and Admin's (#991)
+                                          ("guide.html?profile=1#name", "#step-name:not([hidden])", "Getting started: Whose records", 375),
+                                          # (after another page: from Sign-in and security it'd be the same page, only its # changed)
+                                          ("settings.html?profile=1#accounts", "#userList table", "Settings: Accounts", 375)):   # #199 (a named profile opens at its first step not done, #290: this one asked for)
             strict.set_viewport_size({"width": width, "height": 800})
             strict.goto(base + "/" + path)
             strict.wait_for_selector(ready, state="attached", timeout=10000)
@@ -2856,21 +2887,21 @@ def main():
         check("under the CSP: providers.js searches the directory", "Medicare" in strict.evaluate("document.querySelector('.dir-hit').textContent"))
         strict.wait_for_selector("#srcNote:not([hidden])", timeout=10000)
         note = strict.evaluate("document.getElementById('srcNote').textContent")
-        check("…saying which lists aren't loaded, with no command: an admin gets a link to Admin (#167)", "build_directory" not in note and "python" not in note
-              and strict.evaluate("document.querySelector('#srcNote a').getAttribute('href')") == "admin.html#directory", note)
+        check("…saying which lists aren't loaded, with no command: an admin gets a link to Settings → Provider directory (#167, #991)", "build_directory" not in note and "python" not in note
+              and strict.evaluate("document.querySelector('#srcNote a').getAttribute('href')") == "settings.html#directory", note)
         check("…in the connect step of Sources → Portals and health plans (#166)", strict.evaluate("location.pathname + location.search + location.hash")
               in ("/sources.html?q=medicare#portals", "/sources.html?q=medicare&profile=1#portals")   # (with the profile shown, #415)
               and strict.evaluate("getComputedStyle(document.getElementById('mine')).display") != "none")
         strict.click(".dir-hit")
         strict.wait_for_selector("#detail h3", timeout=10000)
         detail = strict.inner_text("#detail")
-        set_up = strict.evaluate("document.querySelector('#detail a[href^=\"admin.html?\"]').getAttribute('href')")
+        set_up = strict.evaluate("document.querySelector('#detail a[href^=\"settings.html?\"]').getAttribute('href')")
         check("…a provider not set up here sends an admin to set it up, with no copy of the vendor's steps",
               "Not set up on this server yet" in detail and "Return address" not in detail and "Scopes" not in detail
-              and set_up.startswith("admin.html?vendor=insurer&issuer=https") and set_up.endswith("#apps"), (detail[:300], set_up))
+              and set_up.startswith("settings.html?vendor=insurer&issuer=https") and set_up.endswith("#apps"), (detail[:300], set_up))
         strict.goto(base + "/" + set_up)
         strict.wait_for_selector("#guide ol li", timeout=10000)
-        check("…where Admin has the steps (one copy), the form filled in with the provider",
+        check("…where Settings → Connected-source apps has the steps (one copy), the form filled in with the provider",
               strict.evaluate("[document.getElementById('fVendor').value, document.getElementById('fIssuer').value.startsWith('https://'), "
                               "document.getElementById('fName').value]") == ["insurer", True, "Medicare (Blue Button 2.0)"]
               and "Blue Button" in strict.inner_text("#guide"), strict.evaluate("document.getElementById('fName').value"))
@@ -3857,7 +3888,7 @@ def main():
         check("share links: a made-up link says it doesn't work", True)
         holder.close()
         # #352, #374: a button in a row of fields is the fields' height (the default button, not .small), on every group of
-        # Sharing, Settings, Sources, Account and Admin, at 1400 and 320 px (with the share link's Copy, above): those
+        # Sharing, Settings (with You and Install, Account and Admin before #991) and Sources, at 1400 and 320 px (with the share link's Copy, above): those
         # #352 named must have such a row at 1400 px (Sharing's People's Share, Settings' Rename or delete, Visit summary's Add,
         # Settings → About this person's Clear, Dashboard's Add and a lab name's Remove), and Sources → Type records in
         # its result row's ✕, with a typed record's form open too, whose ✕ must be 44 px on a phone (Settings → Display's
@@ -3865,7 +3896,7 @@ def main():
         ready352 = {"people": "#memberList tbody tr", "profile": "#profileBody input", "about": "#aboutBirth", "summary": "#labIn",
                     "dashboard": ".set-add input", "manual": "#manKind-visit"}
         del374 = []
-        for path in ("sharing.html?profile=1", "settings.html?profile=1", "sources.html?profile=1", "account.html", "admin.html"):
+        for path in ("sharing.html?profile=1", "settings.html?profile=1", "sources.html?profile=1"):
             strict.goto(f"{base}/{path}")
             strict.wait_for_selector(".set-nav a[data-group]", timeout=10000)
             for g in strict.evaluate("[...document.querySelectorAll('.set-nav a[data-group]')].filter(a => a.checkVisibility()).map(a => a.dataset.group)"):
@@ -3889,11 +3920,11 @@ def main():
         need352 = ["sharing#people", "settings#profile", "settings#about", "sharing#summary", "settings#dashboard", "sources#manual"]
         bad352 = [f"{k}: {b}" for k, v in rows352.items() for b in v["bad"]] + [f"{k} 1400: no field and button in a row" for k in need352 if not rows352.get(f"{k} 1400", {}).get("n")]
         bad352 += [f"{w} px: {k}'s {c} {bw}×{bh}" for w, k, c, bw, bh in del374 if c != "del btn quiet" or w < 400 and (bw < 44 or bh < 44)]
-        check("a button beside a field is the field's height, on every group of Sharing, Settings, Sources, Account and Admin "
+        check("a button beside a field is the field's height, on every group of Sharing, Settings and Sources "
               "and Share links, at 1400 and 320 px; Sources → Type records in's ✕ is the quiet button, 44 px on a phone (#352, #374)",
               not bad352 and rows352["Share links 1400"]["n"] and len(rows352) > 30 and {x[1] for x in del374} == {"man-row", "man-item"},
               bad352[:8] or [del374, {k: v for k, v in rows352.items() if v["n"]}])
-        strict.goto(base + "/account.html")
+        strict.goto(base + "/settings.html?profile=1#security")
         strict.wait_for_selector("#userMenuBtn", state="visible")
         strict.wait_for_timeout(500)
         menu_click(strict, "#logout")
@@ -8962,7 +8993,7 @@ def main():
             # the Labs charts aren't shown, so they're drawn when they are (#271: no reload): what they'll draw
             check("deleting the entry takes it off the timeline and Trends, back to the journal's home",
                   page.inner_text("#journalHome h2") == "Journal" and js("(() => { switchTab('timeline', 'timeline'); const n = document.querySelectorAll('#tl .jmark').length + jInWindow().length; switchTab('timeline', 'journal'); return n; })()") == 0)
-            page.goto(base + "/account.html")
+            page.goto(base + "/settings.html?profile=1#security")
             page.wait_for_selector("#addMenuBtn", timeout=10000)
             menu_click(page, "#journalBtn")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && booted && document.getElementById('dtitle').textContent === 'New journal entry'", timeout=20000)
@@ -13501,7 +13532,8 @@ def main():
                 c785 = browser.new_context(viewport={"width": sizes785[0][0], "height": sizes785[0][1]}, bypass_csp=True, has_touch=touch785, is_mobile=touch785)
                 c785.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
                 p785 = c785.new_page()
-                for path785 in ("?profile=1#health", "settings.html?profile=1", "sources.html?profile=1", "sharing.html?profile=1", "account.html", "admin.html"):
+                for path785 in ("?profile=1#health", "settings.html?profile=1", "sources.html?profile=1", "sharing.html?profile=1",
+                                "settings.html?profile=1#security", "settings.html?profile=1#accounts"):   # (Account's and Admin's, #991)
                     p785.goto(base + "/" + path785)
                     p785.wait_for_function("(n => !!n && !document.getElementById('profilePick').hidden)(document.querySelector('#profileMenuBtn .profile-name'))", timeout=20000)
                     p785.wait_for_timeout(500)
@@ -16814,17 +16846,23 @@ def main():
             js("switchTab('overview')")
             settle(300)
             before = js(tiles)
-            check("the header links to Settings for this profile", js("document.getElementById('settingsLink').getAttribute('href')") == "settings.html?profile=1")
+            check("the header links to Settings for this profile, from your menu, opening its You part (#991)",
+                  js("document.getElementById('settingsLink').getAttribute('href')") == "settings.html?profile=1#you")
             menu_click(page, "#settingsLink")
+            page.wait_for_selector("#sec-overview .set-labs li", state="attached", timeout=10000)
+            page.wait_for_function("document.getElementById('groupTitle').textContent === 'Sign-in and security'", timeout=10000)
+            page.click(".set-nav-list a[data-group=dashboard]")
             page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
             check("Settings shows every section", js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)") ==
                   ["Overview", "Lab charts", "Names", "Workouts", "Visit summary", "Milestones", "Tabs", "Appearance", "Dates and times", "Units", "Reference ranges"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
-            check("…but not the server's sync defaults or outside connections: those are on the Admin page (#167)",
-                  js("!document.getElementById('sec-sync') && !document.getElementById('outside') && !document.querySelector('.set-nav-list a[data-group=sources], .set-nav-list a[data-group=outside]')"))
+            check("…but not the server's sync defaults among them: those, with outside connections, are its Install's (#167, #991), and Connected sources isn't a group",
+                  js("document.getElementById('sec-sync').parentElement.matches('main') && !!document.getElementById('outside') && !document.querySelector('.set-nav-list a[data-group=sources]')"
+                     " && !!document.querySelector('.set-nav-list a[data-group=outside]')"))
             # ---- the Settings sidebar (settings-nav.js) and the top bar's menus (nav.js)
             display = "id => getComputedStyle(document.getElementById(id)).display"
-            check("Settings: a sidebar of groups, one shown at a time (an owner's ending This profile with Rename or delete, #402)",
-                  js("[...document.querySelectorAll('.set-nav-list a')].map(a => a.textContent)")[:7] == ["Dashboard", "About this person", "Labs and ranges", "Milestones", "Workouts", "Rename or delete", "Display"]
+            check("Settings: a sidebar of groups, one shown at a time (an owner's ending This person with Rename or delete, #402; then You's, #991)",
+                  js("[...document.querySelectorAll('.set-nav-list a')].map(a => a.textContent)")[:9] == ["Dashboard", "About this person", "Labs and ranges", "Milestones", "Workouts", "Rename or delete",
+                                                                                                       "Sign-in and security", "This device", "Display"]
                   and js(display, "sec-overview") != "none" and js(display, "sec-units") == "none", js("[...document.querySelectorAll('.set-nav-list a')].map(a => a.textContent)"))
             page.fill("#setFind", "time zone")
             check("…Find in Settings shows the settings that match, from every group",
@@ -16849,10 +16887,11 @@ def main():
             check("…which empties the search, back in the box, and shows the group again", js("document.getElementById('setFind').value") == ""
                   and js("document.activeElement.id") == "setFind" and page.is_hidden("#setNone") and js(display, "sec-overview") != "none")
             # (#403) a search here finding nothing offers to search everywhere: the command palette, with the words typed,
-            # which finds what's on another page (Account's two-factor sign-in); Escape, back on the button
-            page.fill("#setFind", "two-factor")
+            # which finds what's on another page (Sharing's Who has access; two-factor sign-in, Account's before, is
+            # Settings' own since #991); Escape, back on the button
+            page.fill("#setFind", "who has access")
             settle(200)
-            every = "#setNone button:text-is('Search everywhere for “two-factor”')"
+            every = "#setNone button:text-is('Search everywhere for “who has access”')"
             offered = page.locator(every).count()
             page.click(every)
             page.wait_for_selector("dialog.palette[open]", timeout=5000)
@@ -16860,8 +16899,8 @@ def main():
             got = js("[document.getElementById('palQ').value, document.activeElement.id, document.querySelector('#palList [aria-selected=true] .pal-t').textContent]")
             page.keyboard.press("Escape")
             settle(150)
-            check("…a search finding nothing offers “Search everywhere” (#403): the command palette opens with the words, and finds Account's two-factor sign-in",
-                  offered == 1 and got == ["two-factor", "palQ", "Two-factor sign-in"] and js("document.activeElement.textContent") == "Search everywhere for “two-factor”",
+            check("…a search finding nothing offers “Search everywhere” (#403): the command palette opens with the words, and finds Sharing's Who has access",
+                  offered == 1 and got == ["who has access", "palQ", "Who has access"] and js("document.activeElement.textContent") == "Search everywhere for “who has access”",
                   [offered, got, js("document.activeElement.outerHTML.slice(0, 80)")])
             page.fill("#setFind", "")
             page.click(".set-nav-list a[data-group=display]")
@@ -16959,8 +16998,8 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 900})
             page.click(".set-nav-list a[data-group=dashboard]")
             page.click("#userMenuBtn")
-            check("the top bar: your menu opens with its items, Admin among them for an admin", page.is_visible("#accountLink") and page.is_visible("#logout")
-                  and page.is_visible("#adminLink") and js("document.getElementById('userMenuBtn').getAttribute('aria-expanded')") == "true")
+            check("the top bar: your menu opens with its items, Settings among them (Admin's in it for an admin, #991)", page.is_visible("#settingsLink") and page.is_visible("#logout")
+                  and not js("!!document.getElementById('adminLink')") and js("document.getElementById('userMenuBtn').getAttribute('aria-expanded')") == "true")
             page.keyboard.press("Escape")
             check("…Escape closes it and puts the focus back on its button", page.is_hidden("#userMenuList") and js("document.activeElement.id") == "userMenuBtn")
             # #261: every menu is a popover="auto" (the browser's light dismiss and Escape, no page's own), placed under
@@ -17173,14 +17212,14 @@ def main():
             check("…and at 640×360 the period menu opens on the screen, scrolling inside where it's taller than the room", not bad, bad)
             nctx.close()
             page.set_viewport_size({"width": 1400, "height": 900})
-            # ---- the Admin page (#167): the server's sync defaults, from their old address on Settings
+            # ---- Settings → Install (#167; the Admin page before #991): the server's sync defaults, from their old address
+            # on Settings (Connected sources, #sources), now on Settings again
             page.goto(base + "/settings.html#sources")
-            page.wait_for_url(re.compile(r"/admin\.html(\?[^#]*)?#apps$"), timeout=10000)
             page.wait_for_selector("#sec-sync .set", timeout=10000)
             # (#1006) each change to a server setting asks for the fresh check once the sign-in is older than
             # REAUTH_MINUTES: made here, as the admin would once, so the saves below go straight through (it's asked for below)
             fresh_check(page)
-            check("Admin: an old Settings address opens its new place, the sync defaults (#167)",
+            check("Install: an old Settings address opens its place, the sync defaults in Connected-source apps (#167, #991)",
                   js(display, "sec-sync") != "none" and js(display, "admin") != "none" and js(display, "users") == "none")
             check("…as a switch, numbers and choices, no Save of its own, and neither “set for this server” nor Reset to defaults while all are Sanguity's own (#101, #102, #272)",
                   js("[document.querySelectorAll('#sec-sync input[type=checkbox]').length, document.querySelectorAll('#sec-sync input[type=number]').length, "
@@ -17188,7 +17227,7 @@ def main():
                      "document.querySelector('#sec-sync .set-hd > button').hidden]") == [5, 3, 0, 0, True], js("document.getElementById('sec-sync').innerText.slice(0, 300)"))
             # #272: a number waits for the group's bar; the switch beside it is saved as it's changed, the number kept as typed
             page.fill("#sec-sync [data-key='sync.staleDays'] input", "5")
-            sync_bar = js("[document.getElementById('admBar').hidden, document.querySelector('#admBar .sg-bar-n').textContent]")
+            sync_bar = js("[document.getElementById('setBar').hidden, document.querySelector('#setBar .sg-bar-n').textContent]")
             auto = "fetch('api/settings/install').then(r => r.json()).then(d => d.sections[0].settings.find(s => s.key === 'sync.attachAuto').value)"
             page.click("#sec-sync [data-key='sync.attachAuto'] label")
             page.wait_for_function("document.querySelector('#sec-sync .set-msg').textContent === 'Saved “Fetch attachments automatically”.'", timeout=10000)
@@ -17198,11 +17237,11 @@ def main():
             page.click("#sgToasts .sg-toast:last-child button:text-is('Undo')")
             page.wait_for_function("document.querySelector('#sec-sync .set-msg').textContent.startsWith('Undone')", timeout=10000)
             check("…its Undo puts it back, the number still as typed", js(auto) is True and js("document.querySelector(\"#sec-sync [data-key='sync.staleDays'] input\").value") == "5")
-            page.click("#admBar button:text-is('Save')")
+            page.click("#setBar button:text-is('Save')")
             page.wait_for_function("document.querySelector('#sec-sync .set-msg').textContent.startsWith('Saved')", timeout=10000)
             stale = "fetch('api/profiles/1/settings').then(r => r.json()).then(s => s.sync.staleDays)"
             check("…saved for every connection on the server", js(stale) == 5 and "set for this server" in page.inner_text("#sec-sync [data-key='sync.staleDays']")
-                  and js("document.getElementById('admBar').hidden"), js(stale))
+                  and js("document.getElementById('setBar').hidden"), js(stale))
             page.click("#sec-sync .set-hd > button")
             page.wait_for_function("document.querySelector('#sec-sync .set-msg').textContent.includes('back to')", timeout=10000)
             check("…and Reset to defaults puts them back at once, asking nothing (#272), with an Undo", js(stale) == 3 and not js("!!document.querySelector('dialog[open]')")
@@ -17224,7 +17263,7 @@ def main():
             got956 = [js(types956), js("document.querySelector('#sec-sync .set-msg').textContent"),
                       page.locator(kinds956).evaluate_all("bs => bs.map(b => [b.value, b.checked])")]
             want956 = [[v for v, on in had956[2:] if on], "Saved “Kinds of attachment fetched”.", [[v, False] for v, _ in had956[:2]] + had956[2:]]
-            check("Admin: two kinds of attachment unticked quickly on a slow connection (0.4 s an answer) both save, the second going on from "
+            check("Install: two kinds of attachment unticked quickly on a slow connection (0.4 s an answer) both save, the second going on from "
                   "the first, not refused as changed elsewhere (#956)", all(on for _, on in had956) and got956 == want956, [had956, got956])
             cdp956.detach()
             js("fetch('api/settings/install/reset', {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, body: JSON.stringify({section: 'sync'})}).then(r => r.status)")
@@ -17255,27 +17294,27 @@ def main():
                       False, "sync.attachAuto", True, "changed the server setting “Fetch attachments automatically” (from on to off)"], [asked1006[:160], got1006])
             js("fetch('api/settings/install/reset', {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, body: JSON.stringify({section: 'sync'})}).then(r => r.status)")
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
-            page.click("#admNav a[data-group=directory]")
+            page.click("#setNav a[data-group=directory]")
             dir_text = page.inner_text("#directory")
-            check("Admin: a group picked in the sidebar is the one shown, and the address says so",
+            check("Install: a group picked in the sidebar is the one shown, and the address says so",
                   js(display, "directory") != "none" and js(display, "sec-sync") == "none" and js("location.hash") == "#directory")
             check("…the provider directory says what's loaded, and how to add Epic's and Oracle Health's lists, and to run it again now and then, in sight (#447)",
                   "Medicare" in dir_text and "not loaded" in dir_text and "python3 tools/build_directory.py" in dir_text and "again now and then (Epic suggests weekly)" in dir_text, dir_text[:400])
-            for gid in ("accounts", "backups", "apps", "directory", "labs", "outside", "activity"):
-                page.click(f"#admNav a[data-group={gid}]")
+            for gid in ("general", "accounts", "backups", "apps", "directory", "labmaps", "outside", "installLog"):
+                page.click(f"#setNav a[data-group={gid}]")
                 page.set_viewport_size({"width": 375, "height": 800})
                 settle(150)
                 if js("document.documentElement.scrollWidth") > 375:
-                    check(f"Admin's {gid} group fits 375 px", False, js("document.documentElement.scrollWidth"))
+                    check(f"Install's {gid} group fits 375 px", False, js("document.documentElement.scrollWidth"))
                 page.set_viewport_size({"width": 1400, "height": 900})
             check("…and each of its groups fits 375 px", True)
-            # ---- backups in Admin (#200): the key reminder in the card's lead; Back up now runs in the background and
+            # ---- backups in Settings → Install (#200, #991): the key reminder in the card's lead; Back up now runs in the background and
             # then says what it made (when, size, where); Check a backup says it's good, its temporary copy gone; the
             # schedule is a pick-one with how many to keep, and turning it off is asked first in the app's dialog; a
-            # backup gone stale shows the warning on every group, beside Backups in the sidebar and on the Admin menu
-            # item. In light and dark, at 1400 and 375 px.
+            # backup gone stale shows the warning on every group of Install, beside Backups in the sidebar and beside
+            # Settings in your menu (#991: the Admin item before). In light and dark, at 1400 and 375 px.
             bk_dir = os.path.join(TMP, "backups")
-            page.click("#admNav a[data-group=backups]")
+            page.click("#setNav a[data-group=backups]")
             page.wait_for_selector("#bkStatus .kv", timeout=10000)
             check("Backups (#200): its own group, the key reminder in the lead (not behind its ⓘ, #280)",
                   js(display, "backups") != "none" and js("location.hash") == "#backups"
@@ -17322,7 +17361,7 @@ def main():
                   and sorted(os.listdir(bk_dir)) == made and "good" in page.inner_text("#bkList tbody") and js("!!document.querySelector('#bkList tbody svg.i-check')"), (res[:300], os.listdir(bk_dir)))
             page.set_viewport_size({"width": 375, "height": 800})
             settle(200)
-            cl_tables, cl_bad = cell_labels(page, "Admin → Backups")
+            cl_tables, cl_bad = cell_labels(page, "Settings → Backups")
             check("…at 375 px the backups' cells are labelled with their columns' names, the counts a table with its headings and no labels (#320)",
                   not cl_bad and any("bk-list" in t[0] and t[1] and t[3] >= 3 for t in cl_tables)
                   and any("bk-counts" in t[0] and not t[1] and not t[3] for t in cl_tables), cl_bad[:6] or cl_tables)
@@ -17354,7 +17393,7 @@ def main():
             refused_from = len(problems)   # a sign-in more than REAUTH_MINUTES old is refused (403) and the page asks
             page.click("#bkSchedSeg label:has-text('Daily')")
             page.wait_for_function(f"{sched_msg}.startsWith('Backups are scheduled daily')", timeout=10000)
-            freq = [js(sched), js("document.getElementById('admBar').hidden"), js("[...document.querySelectorAll('#sgToasts .sg-toast-text')].pop().textContent"),
+            freq = [js(sched), js("document.getElementById('setBar').hidden"), js("[...document.querySelectorAll('#sgToasts .sg-toast-text')].pop().textContent"),
                     js("document.activeElement.id")]
             page.click("#sgToasts .sg-toast:last-child button:text-is('Undo')")
             freq_asked = answer_ask(page)   # (back to off: asked first, as turning it off is)
@@ -17368,17 +17407,17 @@ def main():
                   and freq_asked[0] == "Turn off scheduled backups?" and freq[4:] == [["off", 14], "off"] and js(sched) == ["daily", 14], [freq, freq_asked])
             leave = "(() => { const e = new Event('beforeunload', {cancelable: true}); dispatchEvent(e); return e.defaultPrevented; })()"
             page.fill("#bkKeep", "1")
-            keep_bar = [js("document.getElementById('admBar').hidden"), js("document.querySelector('#admBar .sg-bar-n').textContent"),
-                        page.is_visible("#bkSchedule .set-unsaved"), js("document.querySelector('#admNav a[data-group=backups]').textContent").endswith("changes not saved"),
+            keep_bar = [js("document.getElementById('setBar').hidden"), js("document.querySelector('#setBar .sg-bar-n').textContent"),
+                        page.is_visible("#bkSchedule .set-unsaved"), js("document.querySelector('#setNav a[data-group=backups]').textContent").endswith("changes not saved"),
                         js(leave), js(sched)]
-            page.click("#admBar button:text-is('Save')")
+            page.click("#setBar button:text-is('Save')")
             keep_asked = answer_ask(page, yes=False)   # one backup in the folder and one to keep: the next deletes it
             settle(200)
-            keep_bar.append([js("document.getElementById('admBar').hidden"), js(sched)])
+            keep_bar.append([js("document.getElementById('setBar').hidden"), js(sched)])
             page.fill("#bkKeep", "3")
-            page.click("#admBar button:text-is('Save')")
+            page.click("#setBar button:text-is('Save')")
             page.wait_for_function(f"{sched_msg}.startsWith('Saved: keeping the newest 3')", timeout=10000)
-            keep_bar.append([js(sched), js("document.getElementById('admBar').hidden"), js(leave), page.is_visible("#bkSchedule .set-unsaved"),
+            keep_bar.append([js(sched), js("document.getElementById('setBar').hidden"), js(leave), page.is_visible("#bkSchedule .set-unsaved"),
                              "daily, keeping the newest 3" in page.inner_text("#bkStatus")])
             check("…how many to keep waits in the bar: “1 change”, marked not saved there and in the sidebar, leaving asks; keeping fewer than "
                   "would stay is still asked first (No: still in the bar), and the bar's Save keeps it",
@@ -17424,7 +17463,7 @@ def main():
             db541, vp541, bk541, foot544 = dbm536.connect(), page.viewport_size, [], None
             seen541 = f"""(() => {{ const s = {IN_SIGHT}; return s && [s[1] || s[3], !!document.activeElement.closest('#sgToasts')]; }})()"""
             toast541 = "[...document.querySelectorAll('#sgToasts .sg-toast-text')].pop().textContent"
-            bar_msg541 = "document.querySelector('#admBar .msg').textContent"
+            bar_msg541 = "document.querySelector('#setBar .msg').textContent"
             def check541(how):   # the check's box, answered
                 page.wait_for_selector("#bkReauth input[type=password]", state="visible", timeout=10000)
                 if how == "Confirm":
@@ -17468,11 +17507,11 @@ def main():
                 bk541.append(undo541("Confirm", f"{sched_msg}.startsWith('Undone')"))
                 # the bar with its error, three toasts over the page
                 page.fill("#bkKeep", "0")
-                page.click("#admBar button:text-is('Save')")
+                page.click("#setBar button:text-is('Save')")
                 page.wait_for_function(f"{bar_msg541}.includes('between 1 and')", timeout=10000)
                 under541 = {}
                 UNDER541 = """() => { const ts = [...document.querySelectorAll('body > #sgToasts .sg-toast')].map(t => t.getBoundingClientRect());
-                  const parts = [...document.querySelectorAll('#admBar .sg-bar-n, #admBar .msg, #admBar button')];
+                  const parts = [...document.querySelectorAll('#setBar .sg-bar-n, #setBar .msg, #setBar button')];
                   return [ts.length, parts.filter(p => p.textContent && ts.some(t => (r => r.left < t.right && r.right > t.left && r.top < t.bottom && r.bottom > t.top)(p.getBoundingClientRect())))
                     .map(p => p.textContent.slice(0, 12))]; }"""
                 for w, h in ((375, 667), (768, 1000), (1400, 900)):
@@ -17489,7 +17528,7 @@ def main():
                     js(f"toast('Saved a change, number {i + 1} of three, with an Undo.', {{action: 'Undo', onAction() {{}}}})")
                 foot544 = foot_walk(page)
                 js("for (const t of document.querySelectorAll('#sgToasts .sg-toast')) t.sgGone()")
-                page.click("#admBar button:text-is('Discard')")
+                page.click("#setBar button:text-is('Discard')")
             finally:
                 db541.close()
                 page.set_viewport_size(vp541)
@@ -17503,21 +17542,21 @@ def main():
                             ["Undo", True, "Backups are scheduled daily, keeping the newest 1. Undo didn't work: you didn't confirm it's you."], ["bkSched-off", False]], bk541)
             check("…(#541) with toasts and the bar's error, at 375, 768 and 1400 px, at the page's top, near its end and at its end: "
                   "nothing of the bar (its count, its error, Discard, Save) under a toast", under541 == {}, under541)
-            check("Admin → Backups with the bar's error and three toasts, at six sizes: nothing that takes focus more than 10% under the bar "
+            check("Settings → Backups with the bar's error and three toasts, at six sizes: nothing that takes focus more than 10% under the bar "
                   "or a toast (its ⓘ, Off), nothing of the bar under a toast, and the newest toast in sight (#544)", foot544 == {}, foot544)
             # stale: the backup made 10 days ago, as far as the app can tell (its name says when it was made)
             stale_name = time.strftime("sanguity-backup-%Y%m%d-%H%M%S.tar.gz", time.localtime(time.time() - 10 * 86400))
             os.replace(os.path.join(bk_dir, made[0]), os.path.join(bk_dir, stale_name))
-            page.goto(base + "/admin.html#accounts")
+            page.goto(base + "/settings.html?profile=1#accounts")
             page.reload()   # only the address's #part changed: load the page again
             page.wait_for_selector("#backupNotice:not([hidden])", timeout=10000)
             notice = page.inner_text("#backupNotice")
-            check("…a late backup: the warning on every group (Accounts here), saying how old and linking to Backups", "Backups need attention" in notice
+            check("…a late backup: the warning on every group of Install (Accounts here), saying how old and linking to Backups", "Backups need attention" in notice
                   and "10 days old" in notice and js("document.querySelector('#backupNotice a').getAttribute('href')") == "#backups", notice)
-            check("…and beside Backups in the sidebar, in words", js("document.querySelector('#admNav a[data-group=backups] .bk-late')?.textContent") == "late")
+            check("…and beside Backups in the sidebar, in words", js("document.querySelector('#setNav a[data-group=backups] .bk-late')?.textContent") == "late")
             page.click("#userMenuBtn")
-            check("…and on the Admin menu item", js("(b => b && (b.querySelector('svg.i-triangle-alert') ? '⚠' : '') + b.textContent)(document.querySelector('#adminLink .badge'))") == "⚠ backups late",
-                  js("document.getElementById('adminLink').textContent"))
+            check("…and beside Settings in your menu (#991: Admin's before)", js("(b => b && (b.querySelector('svg.i-triangle-alert') ? '⚠' : '') + b.textContent)(document.querySelector('#settingsLink .badge'))") == "⚠ backups late",
+                  js("document.getElementById('settingsLink').textContent"))
             page.keyboard.press("Escape")
             page.click("#backupNotice a")
             page.wait_for_selector("#bkStatus .kv", timeout=10000)
@@ -18680,17 +18719,18 @@ def main():
                   not more_whole, more_whole)
             js("switchTab('overview')")
             page.set_viewport_size({"width": 1400, "height": 900})
-            # #398: Edit tabs… is always in reach, in the profile menu, whether More shows or not (at 1400 px it doesn't; on a
-            # phone with six tabs it does, four and More, #275); it lands on Settings → Tabs with focus on its one heading, the palette finds it by
+            # #398: Edit tabs… is in More where More shows (on a phone with six tabs, four and More, #275; the profile menu's
+            # went with #991, its settings in Settings' This person); it lands on Settings → Tabs with focus on its one heading, the palette finds it by
             # "edit tabs", and a tab hidden there and saved leaves the top bar at once, without the page loading again
             edit_tabs = {}
-            for w in (1400, 375):
+            for w in (375,):
                 page.set_viewport_size({"width": w, "height": 900 if w > 400 else 800})
+                page.goto("about:blank")   # (a page loaded afresh at this width, not only its # changed)
                 page.goto(base + "/?profile=1#overview")
                 page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
                 more_shown = js("document.getElementById('tabMore').checkVisibility()")
-                page.click("#profileMenuBtn")
-                page.click("#editTabsLink")
+                page.click("#tabMoreBtn")
+                page.click("#editTabs")
                 page.wait_for_url(lambda u: u.endswith("/settings.html?profile=1#sec-tabs"), timeout=10000)
                 try:
                     page.wait_for_function("document.activeElement.id === 'sec-tabs-hd'", timeout=10000)
@@ -18713,9 +18753,9 @@ def main():
             gone = js("[window.__same398, [...document.querySelectorAll('header .tabs a[id^=tab-], #tabMoreList a[id^=tab-]')].filter(a => !a.hidden).map(a => a.id.slice(4))]")
             page.click("#sec-tabs button:text-is('Reset to defaults')")
             page.wait_for_function("!document.getElementById('tab-costs').hidden", timeout=10000)
-            check("Edit tabs… (#398): from the profile menu at 1400 px (no More there) and 375 px (More there), on Settings → Tabs with focus on its one heading; "
+            check("Edit tabs… (#398): from More at 375 px, on Settings → Tabs with focus on its one heading; "
                   "the palette finds it by “edit tabs”; a tab hidden and saved there leaves the top bar at once, and Reset brings it back",
-                  [m for m, _ in edit_tabs.values()] == [False, True] and all(f == ["sec-tabs-hd", "Tabs", 1] for _, f in edit_tabs.values()) and any(t.startswith("Tabs") for t in found_tabs)
+                  [m for m, _ in edit_tabs.values()] == [True] and all(f == ["sec-tabs-hd", "Tabs", 1] for _, f in edit_tabs.values()) and any(t.startswith("Tabs") for t in found_tabs)
                   and gone == [True, ["overview", "health", "medications", "timeline", "labs"]], [edit_tabs, found_tabs, gone])
             # #415: the profile's tabs follow a switch made on a page other than the records page (Sources, Sharing,
             # Account): My records' Costs hidden and Labs moved up, Second person's six as they are
@@ -18723,7 +18763,7 @@ def main():
             put415 = "v => api('profiles/1/settings/tabs', {method: v ? 'PUT' : 'DELETE', ...(v ? {body: JSON.stringify({value: v})} : {})}).then(r => r.status)"
             js(f"({put415})({{order: ['overview', 'health', 'labs', 'timeline', 'costs'], hidden: ['costs']}})")
             switched415, filled415 = {}, "!!document.querySelector('#profileMenuList [data-pid]')"
-            for p in ("sources.html", "sharing.html", "account.html"):
+            for p in ("sources.html", "sharing.html", "settings.html"):   # (Settings, Account's since #991)
                 page.goto(base + f"/{p}?profile=1")
                 page.wait_for_function(f"{filled415} && {tabs415} === 'overview,health,medications,labs,timeline'", timeout=20000)
                 pick_profile(page, "2")
@@ -18733,7 +18773,7 @@ def main():
                     pass
                 switched415[p] = js(tabs415)
             js(f"({put415})(null)")
-            check("…switching profile on Sources, Sharing or Account shows the new profile's tabs, not the last one's (#415)",
+            check("…switching profile on Sources, Sharing or Settings shows the new profile's tabs, not the last one's (#415)",
                   all(v == "overview,health,medications,timeline,labs,costs" for v in switched415.values()), switched415)
             # #415: the page's own address always says the profile shown, so one opened at / keeps it on a reload after
             # another browser tab has switched (this browser's last profile changing under it)
@@ -19058,7 +19098,7 @@ def main():
             fp.goto(base + "/")
             fp.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
             check("…a fresh browser uses it once signed in", fp.evaluate("document.documentElement.dataset.theme") == "dark")
-            fp.goto(base + "/account.html")   # a page that loads no settings: theme.js has it from the last visit
+            fp.goto(base + "/sharing.html?profile=1")   # another page, before its settings arrive: theme.js has it from the last visit
             check("…and so does its next page, before it draws", fp.evaluate("document.documentElement.dataset.theme") == "dark")
             fp.goto(base + "/")
             fp.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
@@ -19099,7 +19139,7 @@ def main():
             # ---- pick one on Settings (#193): the theme, each part's units and the sex for reference ranges are segmented
             # controls of radios, each with exactly one checked, and the radio picked (above, through its see-through box)
             # is the one that looks selected
-            radios = r"""[...document.querySelectorAll('fieldset.set-radios > .seg')].map(g => [g.closest('[id^=sec-]').id + ' ' + (g.parentElement.dataset.part || ''),
+            radios = r"""[...document.querySelectorAll('#sections fieldset.set-radios > .seg')].map(g => [g.closest('[id^=sec-]').id + ' ' + (g.parentElement.dataset.part || ''),   // (the sections': Backups' How often is Install's, #991)
               g.querySelectorAll(':scope > label > input[type=radio]:checked').length, g.children.length,
               [...g.children].filter(l => getComputedStyle(l).boxShadow.includes('inset')).map(l => l.querySelector('input').value).join()])"""
             got = js(radios)
@@ -19110,13 +19150,13 @@ def main():
             page.wait_for_function("SET_ITEMS.units.st.value.lab === 'si' && SET_ITEMS.units.st.value.weight === 'kg'", timeout=10000)
             # #550: …as a pick-one's chosen option does everywhere (the records pages' period, Sort): the ink at 600, and in
             # forced colours HighlightText on Highlight, 4.5:1, light and dark; on Settings (Display, About this person) and
-            # Admin → Backups the page's rule for labels made it ink2 at 500, 2.06:1 in forced colours
+            # Settings → Backups (Admin's before #991) the page's rule for labels made it ink2 at 500, 2.06:1 in forced colours
             seg550_js = """() => { const p = document.body.appendChild(document.createElement('div')), b = p.appendChild(document.createElement('button'));
               p.className = 'seg'; b.type = 'button'; b.setAttribute('aria-pressed', 'true'); b.textContent = 'x';
               const look = e => { const c = getComputedStyle(e); return [c.color, c.backgroundColor, c.fontWeight]; }, ref = look(b); p.remove();
               return [ref, [...document.querySelectorAll('main .seg>label:has(>input:checked), main .seg>[aria-checked=true]')].map(e => [e.textContent.trim(), ...look(e)])]; }"""
             seg550 = {}
-            for path, sel in (("settings.html?profile=1#display", "#sec-units .seg"), ("settings.html?profile=1#about", "#aboutBody .seg"), ("admin.html#backups", "#bkSchedSeg")):
+            for path, sel in (("settings.html?profile=1#display", "#sec-units .seg"), ("settings.html?profile=1#about", "#aboutBody .seg"), ("settings.html?profile=1#backups", "#bkSchedSeg")):
                 page.goto(base + "/" + path)
                 page.wait_for_selector(sel, timeout=10000)
                 page.mouse.move(0, 0)   # (not over a choice: one hovered is its colour in transition as the scheme changes)
@@ -19128,7 +19168,7 @@ def main():
                     if bad or not got:
                         seg550[f"{path} {forced} {scheme}"] = [ref, bad or got]
             page.emulate_media(forced_colors="none", color_scheme=None)
-            check("…the one chosen on Settings (Display, About this person) and Admin → Backups as on the records pages: the ink at 600, and "
+            check("…the one chosen on Settings (Display, About this person) and Settings → Backups as on the records pages: the ink at 600, and "
                   "HighlightText on Highlight in forced colours, 4.5:1, light and dark (#550)", seg550 == {}, seg550)
             # ---- on or off as a switch (#259): Settings' tabs are checkboxes with role="switch", each saying on or off
             # (checked) to a screen reader; Space toggles one from the keyboard and marks the section unsaved; on and off
@@ -19160,10 +19200,10 @@ def main():
                   "section unsaved; on and off look apart in light, dark and forced colours",
                   sw_n[0] >= 5 and sw_n[0] == sw_n[1] and sw_n[2] == 0 and sw_off == [False, 1, True] and sw_back and all(v is True for v in sw_looks.values()),
                   [sw_n, sw_off, sw_back, sw_looks])
-            # …and the other single on/off settings are switches too: Admin's two-factor rule and connection defaults,
-            # Account's offline records, the calendar feed's options (the ones a page shows when it opens)
+            # …and the other single on/off settings are switches too: Install's two-factor rule and connection defaults,
+            # This device's offline records (Admin's and Account's before #991), the calendar feed's options (the ones a page shows when it opens)
             sw_pages = {}
-            for path, sel in (("admin.html#accounts", "#reqTf"), ("account.html#devices", "#offlineOn"), ("sharing.html?profile=1#calendar", "#calLabs, #calLabsNow")):
+            for path, sel in (("settings.html?profile=1#accounts", "#reqTf"), ("settings.html?profile=1#device", "#offlineOn"), ("sharing.html?profile=1#calendar", "#calLabs, #calLabsNow")):
                 page.goto(base + "/" + path)
                 page.wait_for_selector(sel, state="attached", timeout=10000)
                 sw_pages[path] = js("s => [...document.querySelectorAll(s)].every(i => i.getAttribute('role') === 'switch' && i.closest('label.switch'))", sel)
@@ -20131,7 +20171,7 @@ def main():
             page.focus("#tab-overview")
             pal("")
             has_opt = "t => [...document.querySelectorAll('#palList .pal-t')].some(x => x.textContent === t)"
-            page.wait_for_function(f"({has_opt})('New share link') && ({has_opt})('Admin')", timeout=10000)   # once it knows who you are
+            page.wait_for_function(f"({has_opt})('New share link')", timeout=10000)   # once it knows who you are
             empty = js(pal_found)
             check("the command palette (#273): Ctrl+K opens it, focus in its box, a combobox over a listbox (the first marked); with nothing typed, "
                   "the Add menu's actions, New share link and light or dark mode, the records tabs and the other pages",
@@ -20139,7 +20179,7 @@ def main():
                   and {"Log a dose", "Upload files", "New share link"} <= {t for g, t in empty if g == "Actions"}
                   and bool({"Dark mode", "Light mode"} & {t for g, t in empty if g == "Actions"})
                   and [t for g, t in empty if g == "Records tabs"] == ["Overview", "Body and activity", "Medications", "Timeline", "Labs", "Costs"]
-                  and [t for g, t in empty if g == "Pages"] == ["Sources", "Sharing", "Settings", "Account", "Admin", "Getting started"], [js(pal_aria), empty])
+                  and [t for g, t in empty if g == "Pages"] == ["Sources", "Sharing", "Settings", "Getting started"], [js(pal_aria), empty])   # (Account and Admin in Settings, #991)
             page.keyboard.press("Escape")
             check("…Escape closes it, focus back where it was", not js("document.querySelector('dialog.palette').open") and js("document.activeElement.id") == "tab-overview")
             pal_theme = {}
@@ -20374,9 +20414,9 @@ def main():
             pal("password")
             pw = js(pal_found)
             page.keyboard.press("Enter")
-            page.wait_for_url(re.compile(r"/account\.html(\?[^#]*)?#password$"), timeout=10000)
-            page.wait_for_function("document.querySelector('#acctNav [aria-current=page]')?.dataset.group === 'security'", timeout=10000)
-            check("…“password” finds Account's Password first (Sign-in and security), and Enter opens that group there, at it",
+            page.wait_for_url(re.compile(r"/settings\.html(\?[^#]*)?#password$"), timeout=10000)
+            page.wait_for_function("document.querySelector('#setNav [aria-current=page]')?.dataset.group === 'security'", timeout=10000)
+            check("…“password” finds Settings' Password first (You → Sign-in and security, #991), and Enter opens that group there, at it",
                   pw[:1] == [["Pages and settings", "Password"]] and js("document.getElementById('password').checkVisibility()"), pw[:3])
             # #495: the palette finds what Redesign 6 added: an iPhone's way in (Phone and watch), and what's done to an
             # account on Admin (it found nothing for these)
@@ -20385,7 +20425,7 @@ def main():
                 pal(q, "Control+k" if not found495 else None)
                 found495[q] = [t for g, t in js(pal_found) if g == "Pages and settings"][:3]
             page.keyboard.press("Escape")
-            check("…(#495) it finds Phone and watch for “iphone”, “apple health” and “health auto export”, and Admin's Accounts for removing, "
+            check("…(#495) it finds Phone and watch for “iphone”, “apple health” and “health auto export”, and Install's Accounts for removing, "
                   "deleting or disabling an account and for requiring two-factor sign-in",
                   all("Phone and watch" in found495[q] for q in ("iphone", "apple health", "health auto export"))
                   and all("Accounts" in found495[q] for q in ("remove account", "delete account", "disable account", "require two-factor")), found495)
@@ -20396,7 +20436,7 @@ def main():
                 pal(q, "Control+k" if not found499 else None)
                 found499[q] = [t for g, t in js(pal_found) if g == "Pages and settings"][:3]
             page.keyboard.press("Escape")
-            check("…(#499) it finds Admin's Accounts for “create account”, and Cycle tracking for “delete cycle data” and “turn off cycle”",
+            check("…(#499) it finds Install's Accounts for “create account”, and Cycle tracking for “delete cycle data” and “turn off cycle”",
                   "Accounts" in found499["create account"] and all("Cycle tracking" in found499[q] for q in ("delete cycle data", "turn off cycle")), found499)
             # #502: and what's done on Account and to an account (it found nothing for these): a word typed in the plural
             # finds it in the singular too ("codes" finds "code")
@@ -20522,8 +20562,8 @@ def main():
 
             def sweep524(pg, role):
                 out = {"groups": {}, "phrases": {}}
-                for name in ("sources", "sharing", "settings", "account") + (("admin",) if role == "admin" else ()):
-                    pg.goto(base + f"/{name}.html" + ("?profile=1" if name in ("sources", "sharing", "settings") else ""))
+                for name in ("sources", "sharing", "settings"):   # (Settings with You and Install, Account's and Admin's before #991)
+                    pg.goto(base + f"/{name}.html?profile=1")
                     pg.wait_for_selector(".set-nav-list a[data-group]", timeout=10000)
                     pg.wait_for_timeout(1200)   # (what each card fetches)
                     r = pg.evaluate(PAL524, [name, ask524[role] if name == "sources" else []])
@@ -20576,7 +20616,7 @@ def main():
                 n524[role] = sum(len(c) for c in s["groups"].values())
                 bad524 += [[role, name, g, lab, found[:2]] for (name, g), ctls in s["groups"].items() for lab, found in ctls
                            if not found or page_of(found[0]) not in on[lab]]
-            check("…(#524) every visible button's and menu item's label on Sources, Sharing, Settings, Account and Admin, for an admin, an "
+            check("…(#524) every visible button's and menu item's label on Sources, Sharing and Settings (its You and Install too, #991), for an admin, an "
                   "owner, an editor and a viewer, finds a page or setting of its own page first (it found nothing for “Test this connection”, "
                   "“Back up now”, “New share link”…); #532: each field's and segmented control's label too (“How often”, “How many to keep”)", not bad524 and n524["admin"] >= 20 and n524["owner"] >= 12 and n524["editor"] >= 10 and n524["viewer"] >= 4,
                   bad524[:8] or n524)
@@ -20589,11 +20629,12 @@ def main():
                                   "qr": {"Two-factor sign-in", "Share links", "Paste a Health Link", "Phone and watch"}}, "owner": {"audit": {"Activity"}}}
             check("…(#524) and what the eighth review typed finds what it names, first: an admin's “delete passkey”, “disable” and “reset 2fa”, "
                   "“lost phone”, “leave profile”, “failed sign-ins”, “audit” and “qr”; an owner's “make”, “add” and “change owner”, “transfer "
-                  "ownership”, “give access”, “share with” and “stop sharing”; an editor's “add person” (New profile), and nothing on Account for "
-                  "their “remove account” or “new account” (Passkeys, Password)",
+                  "ownership”, “give access”, “share with” and “stop sharing”; an editor's “add person” (New profile), and nothing in You (Account "
+                  "before #991) for their “remove account” or “new account” (Passkeys, Password)",
                   all(said524[r][q][:1] == [t] for r, qs in first524.items() for q, t in qs.items())
                   and all(ts <= set(said524[r][q]) for r, qs in among524.items() for q, ts in qs.items())
-                  and not any(page_of(f) == "Account" for q in ("remove account", "new account") for f in swept524["editor"]["phrases"][q]), said524)
+                  and not any(f[0] in ("Sign-in and security", "This device") or f[1].startswith(("Settings › Sign-in and security", "Settings › This device"))
+                              for q in ("remove account", "new account") for f in swept524["editor"]["phrases"][q]), said524)
             labs528 = {role: {g: [lab for lab, _ in sw["groups"].get(("sources", g), [])] for g in ("portals", "overview")} for role, sw in swept524.items()}
             check("…(#528) and the sweep sees Portals' connection controls (Sync now, What it pulls, Disconnect, Sign in again) and Waiting for "
                   "you's Fix it, each finding Sources first (they had no words); an admin's “account password” finds Password first (Accounts "
@@ -20796,10 +20837,10 @@ def main():
             page.goto(base + "/settings.html?profile=1")
             page.wait_for_selector("#sections > section", state="attached", timeout=10000)
             js(f"({slow423})(3000)")
-            pal("account")
+            pal("sharing")   # (another page: Account's groups are Settings' own since #991)
             t423 = time.time()
             page.keyboard.press("Enter")
-            page.wait_for_url("**/account.html?profile=1", timeout=10000)
+            page.wait_for_url("**/sharing.html?profile=1", timeout=10000)
             t423 = time.time() - t423
             page.goto(base + "/settings.html?profile=1")
             page.wait_for_selector("#sections > section", state="attached", timeout=10000)
@@ -20811,7 +20852,7 @@ def main():
             page.wait_for_function(f"({has_opt})('Creatinine')", timeout=20000)
             arrow423.append(js(marked))
             page.keyboard.press("Escape")
-            check("…“account” and Enter on Settings opens Account at once, the records still on their way; a choice made with the arrows stays as they arrive (#423)",
+            check("…“sharing” and Enter on Settings opens Sharing at once, the records still on their way; a choice made with the arrows stays as they arrive (#423)",
                   t423 < 1.5 and arrow423[0] and arrow423[0] == arrow423[1] and arrow423[0][1] != "Creatinine", [t423, arrow423])
             # (#430) Enter while the records are on their way, then an arrow: the wait is taken back, so nothing opens as
             # they arrive; the option arrowed to opens on an Enter of its own
@@ -20878,12 +20919,13 @@ def main():
                 pages: [...document.querySelectorAll('#profileMenuList a[role=menuitem]')].map(a => a.textContent), one: document.querySelectorAll('#profile').length === 1
                   && !!document.querySelector('header.topbar #profilePick > select#profile[hidden]') && !document.querySelector('main #profile, main label.set-profile')})"""
             want_bar = {"brand": True, "tabs": ["Overview", "Body and activity", "Medications", "Timeline", "Labs", "Costs"], "menus": ["profileMenuBtn", "addMenuBtn", "userMenuBtn"],
-                        "profiles": both, "pages": ["About this person", "Settings", "Edit tabs…", "Sources", "Sharing", "New profile"], "one": True}
+                        "profiles": both, "pages": ["Sources", "Sharing", "New profile"], "one": True}   # (#991: its settings are Settings' This person)
             bars = {}
             filled = "!!document.querySelector('#profileMenuList [data-pid]')"
             for path, ready in (("/", "typeof booted !== 'undefined' && booted"), ("/sources.html#portals", "!document.getElementById('intro').hidden"),
                                 ("/sharing.html#people", "!!document.querySelector('#memberList tbody tr')"),
-                                ("/settings.html#display", "!!document.querySelector('#sections > section')"), ("/account.html", filled), ("/admin.html", filled), ("/guide.html", filled)):
+                                ("/settings.html#display", "!!document.querySelector('#sections > section')"), ("/settings.html#security", filled),
+                                ("/settings.html#accounts", filled), ("/guide.html", filled)):   # (Account's and Admin's, #991)
                 page.goto(base + path)
                 page.wait_for_function(ready, timeout=20000)
                 if js(bar_is) != want_bar:
@@ -20898,10 +20940,10 @@ def main():
                   [first, js("document.activeElement.id")])
             page.click("#profileMenuBtn")
             pid = js("document.getElementById('profile').value")
-            check("…the profile menu: About this person in Settings (#267), the profile's Settings, Edit tabs… (#398), Sources and Sharing, each for the profile shown, and New profile",
+            check("…the profile menu: switching profile, then Sources and Sharing, each for the profile shown, and New profile (#991: About this "
+                  "person, its Settings and Edit tabs… are Settings' This person, from your menu)",
                   js("[...document.querySelectorAll('#profileMenuList a[role=menuitem]')].map(a => a.getAttribute('href'))")
-                  == [f"settings.html?profile={pid}#about", f"settings.html?profile={pid}", f"settings.html?profile={pid}#sec-tabs"]
-                  + [f"{x}.html?profile={pid}" for x in ("sources", "sharing")] + ["guide.html?new"],
+                  == [f"{x}.html?profile={pid}" for x in ("sources", "sharing")] + ["guide.html?new"],
                   js("[...document.querySelectorAll('#profileMenuList a[role=menuitem]')].map(a => a.getAttribute('href'))"))
             page.keyboard.press("Escape")
             # a tab link from another page opens that tab (#264), on the profile shown there
@@ -20938,7 +20980,7 @@ def main():
             # Getting started, followed from here, opens Second person
             followed = {}
             for menu, item in [("#addMenuBtn", f"#addMenuList a:text-is('{t}')") for t in ("Log a dose", "Journal entry", "Home reading", "Upload files",
-                                "Connect a portal or plan", "Type records in", "Paste a Health Link")] + [("#userMenuBtn", "#displayLink"), ("#userMenuBtn", "#guideLink")]:
+                                "Connect a portal or plan", "Type records in", "Paste a Health Link")] + [("#userMenuBtn", "#settingsLink"), ("#userMenuBtn", "#guideLink")]:
                 page.goto(base + "/settings.html?profile=2")
                 page.wait_for_function(filled + " && document.getElementById('profile').value === '2'", timeout=20000)
                 js("localStorage.setItem('ht-profile', '1')")   # as another tab picking My records leaves this browser
@@ -20948,7 +20990,7 @@ def main():
                 settle(400)
                 if js("document.getElementById('profile').value") != "2":
                     followed[item] = js("[location.pathname + location.search + location.hash, document.getElementById('profile').value]")
-            check("the top bar's links open the profile shown (#397): with another browser tab on My records since, Add's links, Display and "
+            check("the top bar's links open the profile shown (#397): with another browser tab on My records since, Add's links, Settings and "
                   "Getting started from Second person's Settings each open Second person", not followed, followed)
             page.set_viewport_size({"width": 375, "height": 800})
             box = "(s => { const r = document.querySelector(s).getBoundingClientRect(); return [r.top, r.bottom, r.left, r.right]; })"
@@ -20986,7 +21028,7 @@ def main():
             rows = {}
             for w in (390, 375, 320):
                 page.set_viewport_size({"width": w, "height": 800})
-                for path in ("", "sources.html", "sharing.html", "settings.html", "account.html", "admin.html", "guide.html"):
+                for path in ("", "sources.html", "sharing.html", "settings.html", "settings.html#security", "settings.html#accounts", "guide.html"):   # (Account's, Admin's: #991)
                     page.goto(base + "/" + path)
                     page.wait_for_function(filled, timeout=20000)
                     settle(300)
@@ -21086,7 +21128,8 @@ def main():
             check("…and under 500 px tall the tabs are a row in the top bar, which scrolls with the page (#268, #308)", got == ["relative", "static", True, ""], got)
             # #400: Search is the size of Add and your menu beside it, 44 by 44 on a phone (above) and on a touch screen;
             # your menu's name starts with what it shows ("demo, your menu": speech input says what it sees, WCAG 2.5.3);
-            # About this person picked from the profile menu on Settings puts focus on its heading there
+            # Settings picked from your menu on Settings puts focus on its heading there (You → Sign-in and security, #991;
+            # About this person from the profile menu before)
             tctx = browser.new_context(viewport={"width": 1400, "height": 900}, has_touch=True, bypass_csp=True)
             tctx.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
             tpg = tctx.new_page()
@@ -21097,13 +21140,13 @@ def main():
             page.goto(base + "/settings.html?profile=1#dashboard")
             page.wait_for_selector("#sections > section", state="attached", timeout=10000)
             yours = [ax_said(page, "#userMenuBtn")[0], js("document.getElementById('who').textContent")]
-            page.click("#profileMenuBtn")
-            page.click("#aboutLink")
+            page.click("#userMenuBtn")
+            page.click("#settingsLink")
             page.wait_for_function("document.activeElement.id === 'groupTitle'", timeout=5000)
             about = js("[document.activeElement.textContent, location.hash, location.search]")
-            check("the top bar's small things (#400): Search 44 by 44 on a touch screen; your menu named for what it shows; About this person from "
-                  "the profile menu on Settings puts focus on its heading", touch[0] and touch[1][0] >= 44 and touch[1][1] >= 44 and touch[1][1] == touch[2][1]
-                  and yours[1] == "demo" and yours[0].startswith(yours[1]) and "your menu" in yours[0] and about == ["About this person", "#about", "?profile=1"],
+            check("the top bar's small things (#400): Search 44 by 44 on a touch screen; your menu named for what it shows; its Settings, "
+                  "on Settings, puts focus on its heading (#991)", touch[0] and touch[1][0] >= 44 and touch[1][1] >= 44 and touch[1][1] == touch[2][1]
+                  and yours[1] == "demo" and yours[0].startswith(yours[1]) and "your menu" in yours[0] and about == ["Sign-in and security", "#security", "?profile=1"],
                   [touch, yours, about])
             # #396: a long profile name (40 characters; the server allows 80) is cut short inside its slot, its caret kept,
             # and never covers Search or Add: each is tapped at its centre. On a wide screen it takes the room the bar has
@@ -21144,7 +21187,7 @@ def main():
             places = []
             for w in (1400, 375):
                 page.set_viewport_size({"width": w, "height": 900 if w > 400 else 800})
-                for path in ("?profile=1#overview", "sources.html?profile=1", "sharing.html?profile=1", "settings.html?profile=1", "account.html", "admin.html"):
+                for path in ("?profile=1#overview", "sources.html?profile=1", "sharing.html?profile=1", "settings.html?profile=1"):   # (Account and Admin in Settings, #991)
                     page.goto(base + "/" + path)
                     page.wait_for_function(filled, timeout=20000)
                     settle(800)   # (the sidebar's groups, once the page knows what it holds)
@@ -21319,12 +21362,13 @@ def main():
             sdb.execute("DELETE FROM memberships WHERE user_id=? AND profile_id=1", (uid2,))
             zb.goto(base + "/settings.html")
             zb.wait_for_selector("#sec-dates select", state="attached", timeout=10000)
-            check("no profile: Settings shows Display (their own), says how to get a profile, and no profile choice",
-                  zb.evaluate("[...document.querySelectorAll('#setNav a')].map(a => a.dataset.group).join()") == "display"
+            check("no profile: Settings shows You's groups alone (their own: Sign-in and security first, #991; Display), says how to get a profile, and no profile choice",
+                  zb.evaluate("[...document.querySelectorAll('#setNav a')].map(a => a.dataset.group).join()") == "security,device,display"
                   and zb.evaluate("[...document.querySelectorAll('#sections > section')].map(s => s.id).join()") == "sec-appearance,sec-dates,sec-units"
                   and zb.is_visible("#noProfiles") and zb.locator("#noProfiles a[href='guide.html?new']").count() == 1
-                  and zb.is_hidden("#profile") and zb.evaluate("document.getElementById('groupTitle').textContent") == "Display",
-                  zb.evaluate("[...document.querySelectorAll('#sections > section')].map(s => s.id).join()"))
+                  and zb.is_hidden("#profile") and zb.evaluate("document.getElementById('groupTitle').textContent") == "Sign-in and security",
+                  zb.evaluate("[[...document.querySelectorAll('#setNav a')].map(a => a.dataset.group).join(), [...document.querySelectorAll('#sections > section')].map(s => s.id).join()]"))
+            zb.click("#setNav a[data-group=display]")
             zb.select_option("[data-key='dates.format'] select", "dmy")
             zb.wait_for_function("document.querySelector('#sec-dates .set-msg').textContent == 'Saved “Date format”.'", timeout=10000)
             check("…and saves them", mine(zb)["dates.format"] == "dmy", mine(zb))
@@ -21402,10 +21446,10 @@ def main():
                   and not any(x.startswith(("Share links", "Export everything", "Admin", "Accounts")) for v in seen.values() for x in v)
                   and any(x.startswith("People, Sharing") for x in seen["share"]), seen)
             check("…nor Settings › Dashboard › Tabs, whose switches a viewer can't turn (#423)", not any(x.startswith("Tabs,") for x in seen["tabs"]), seen["tabs"])
-            # #415: nor Edit tabs…, in the profile menu or under More: a viewer can't change the profile's tabs
-            edit415 = zb.evaluate("[PROFILE.role, ...['editTabsLink', 'editTabs'].map(i => document.getElementById(i).hidden), "
+            # #415: nor Edit tabs…, under More (or in the profile menu, where it was before #991): a viewer can't change the profile's tabs
+            edit415 = zb.evaluate("[PROFILE.role, document.getElementById('editTabs').hidden, "
                                   "[...document.querySelectorAll('#profileMenuList [role^=menuitem], #tabMoreList [role^=menuitem]')].filter(x => !x.hidden).some(x => x.textContent.includes('Edit tabs'))]")
-            check("…nor Edit tabs…, in the profile menu or under More (#415)", edit415 == ["viewer", True, True, False], edit415)
+            check("…nor Edit tabs…, under More or in the profile menu (#415)", edit415 == ["viewer", True, False], edit415)
             # #248: a result's Collected and Resulted, a claim's services and the Costs claims table in that format too,
             # not as the record's ISO text; and the drawer's buttons name the Labs tab by its name
             dmy = r"\d{1,2} [A-Z][a-z]{2} \d{4}"
@@ -21445,8 +21489,8 @@ def main():
             for tab in za.evaluate("[...document.querySelectorAll('.tabs a[id^=\"tab-\"]')].filter(t => !t.hidden).map(t => t.id.slice(4))"):
                 za.evaluate(f"switchTab('{tab}')")
                 iso_scan("records: " + tab)
-            for path, nav in (("sources.html?profile=1", "#srcNav"), ("sharing.html?profile=1", "#shrNav"), ("settings.html?profile=1", "#setNav"),
-                              ("account.html", "#acctNav"), ("admin.html", "#admNav"), ("guide.html?profile=1", None), ("providers.html?q=medicare", None)):
+            for path, nav in (("sources.html?profile=1", "#srcNav"), ("sharing.html?profile=1", "#shrNav"), ("settings.html?profile=1", "#setNav"),   # (You's, Install's: #991)
+                              ("guide.html?profile=1", None), ("providers.html?q=medicare", None)):
                 za.goto(base + "/" + path)
                 za.wait_for_load_state("networkidle")
                 if nav:
@@ -21459,7 +21503,7 @@ def main():
             za.wait_for_selector("#detail .dir-from", timeout=10000)
             finder_read = za.inner_text("#detail .dir-from")
             iso_scan("the provider finder's details")
-            za.goto(base + "/admin.html#directory")
+            za.goto(base + "/settings.html?profile=1#directory")
             za.wait_for_selector("#dirSources li", timeout=10000)
             dir_read = [li for li in za.inner_text("#dirSources").splitlines() if ", read " in li]
             check("…the provider directory and the provider finder's “read” dates too (#311)",
@@ -21495,7 +21539,8 @@ def main():
                 .flatMap(g => [...g.querySelectorAll('.pal-t')].map(t => t.textContent))"""
             ADDS = {"Log a dose", "Journal entry", "Home reading", "Upload files", "Connect a portal or plan", "Type records in", "Paste a Health Link", "New share link"}
             offered = {}
-            for path in ("?profile=1", "sources.html?profile=1", "sharing.html?profile=1", "settings.html?profile=1", "account.html", "admin.html", "guide.html?profile=1"):
+            for path in ("?profile=1", "sources.html?profile=1", "sharing.html?profile=1", "settings.html?profile=1", "settings.html?profile=1#security",
+                         "settings.html?profile=1#accounts", "guide.html?profile=1"):   # (Account's and Admin's, #991)
                 zb.goto(base + "/" + path)
                 zb.wait_for_function("document.getElementById('profile').value === '1' && !document.getElementById('profilePick').hidden", timeout=10000)
                 zb.wait_for_load_state("networkidle")
@@ -21683,14 +21728,96 @@ def main():
             # for them, and the everyday pages name no server setting, file or command, only what they can do
             sdb.execute("UPDATE memberships SET role='editor' WHERE user_id=? AND profile_id=1", (uid2,))   # sees the watch card
             jargon = re.compile(r"PUBLIC_ORIGINS|WATCH_DIR|WATCH_UPLOAD_URL|watch_secret|build_directory|connected-sources-oauth|sources\.json|\.env\b|docker compose")
-            zb.goto(base + "/account.html#admin")
-            zb.wait_for_url("**/admin.html", timeout=10000)
-            zb.wait_for_selector("#notAdmin:not([hidden])", timeout=10000)
-            shown_parts = "[...document.querySelectorAll('main > *')].filter(c => !c.hidden).map(c => c.id).join()"
-            check("Admin: its old address opens it, and someone who isn't an admin gets only a page saying it isn't for them",
-                  zb.evaluate(shown_parts) == "notAdmin" and not zb.evaluate("!!document.getElementById('admNav')"), zb.evaluate(shown_parts))
+            # (#991) Account's old Admin tab's address, and Admin's own, open Settings → Install: for someone who isn't an
+            # admin, no Install group, its why said under the first group's title, the address naming that one
+            not_admin991 = {}
+            for path in ("account.html#admin", "admin.html", "admin.html#backups", "settings.html?profile=1#accounts"):
+                zb.goto("about:blank")   # (each a page opened afresh, not only its # changed)
+                zb.goto(base + "/" + path)
+                zb.wait_for_function("location.pathname.endsWith('/settings.html') && document.getElementById('loadMsg').textContent.startsWith('Install is for')", timeout=10000)
+                not_admin991[path] = zb.evaluate("""[location.hash, document.getElementById('groupTitle').textContent, document.getElementById('loadMsg').textContent,
+                    [...document.querySelectorAll('#setNav .set-nav-part')].map(p => p.textContent),
+                    [...document.querySelectorAll('main > *')].filter(c => c.checkVisibility() && c.matches('.adm, #secNotice, #codeNotice, #syncNotice, #backupNotice')).map(c => c.id)]""")
+            check("Install (#991): its old addresses open Settings, and someone who isn't an admin gets no Install group or card, told it's for admins "
+                  "under the first group's title, the address naming that one",
+                  all(v == ["#dashboard", "Dashboard", "Install is for this server's admins, and your account isn't one: for an account for someone else, a portal "
+                            "or health plan set up, or anything else about the whole server, ask your admin.", ["This person", "You"], []] for v in not_admin991.values()), not_admin991)
             zb.wait_for_load_state("networkidle")
-            check("…and their menu has no Admin item", zb.evaluate("document.getElementById('adminLink').hidden"))
+            check("…and their menu has Settings and no Admin item", not zb.evaluate("!!document.getElementById('adminLink')")
+                  and zb.evaluate("document.getElementById('settingsLink').getAttribute('href')") == "settings.html?profile=1#you")
+            # ---- one Settings page (#991): the top bar's menus for an admin, an owner, an editor and a viewer of profile 1
+            # (two accounts made up here for it, gone after): the profile menu switching profiles, then Sources, Sharing and
+            # New profile; your menu Settings (its You part), Getting started, the theme and Log out, and no Account,
+            # Display or Admin. Settings' sidebar is a list per part, named by it for a screen reader (“This person”,
+            # “You”, “Install”), Install the admin's alone; Install's routes refuse the others. Your menu's Settings, from
+            # the records page, lands focus on the group's heading, Sign-in and security
+            from server import security as sec991
+            made991 = {}
+            for role, u in (("owner", "own991"), ("editor", "edit991"), ("one-time", "once991")):
+                uid991 = sdb.execute("INSERT INTO users(username, pw_hash, is_admin, created, must_change_pw) VALUES(?, ?, 0, 0, ?)",
+                                     (u, sec991.hash_password(PW2), int(role == "one-time"))).lastrowid
+                sdb.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, 1, ?)", (uid991, "viewer" if role == "one-time" else role))
+                made991[role] = uid991
+            menus991, ctx991, once991 = {}, [], None
+            try:
+                pages991 = {"admin": za, "viewer": zb}
+                for role, u in (("owner", "own991"), ("editor", "edit991")):
+                    c991 = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
+                    ctx991.append(c991)
+                    pages991[role] = sign_in(c991, u, PW2)
+                for role, pg in pages991.items():
+                    pg.goto(base + "/?profile=1#overview")
+                    pg.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
+                    pg.click("#userMenuBtn")
+                    pg.click("#settingsLink")
+                    pg.wait_for_url(re.compile(r"/settings\.html\?profile=1#you$"), timeout=10000)
+                    pg.wait_for_function("document.activeElement.id === 'groupTitle'", timeout=10000)
+                    got = pg.evaluate("""() => ({profile: [...document.querySelectorAll('#profileMenuList [role=menuitem]')].filter(x => !x.hidden).map(x => x.textContent.trim()),
+                        you: [...document.querySelectorAll('#userMenuList [role^=menuitem]')].filter(x => !x.hidden).map(x => x.textContent.replace('backups late', '').trim()),
+                        gone: ['accountLink', 'displayLink', 'adminLink', 'aboutLink', 'editTabsLink'].filter(id => document.getElementById(id)),
+                        focus: [document.activeElement.textContent, document.getElementById('groupTitle').textContent]})""")
+                    nav991 = pg.get_by_role("navigation", name="Settings sections")
+                    got["parts"] = {n: nav991.get_by_role("list", name=n, exact=True).get_by_role("link").all_inner_texts() for n in ("This person", "You", "Install")}
+                    got["install"] = None if role == "admin" else pg.evaluate("Promise.all(['users', 'backups', 'settings/install', 'labmaps', 'activity', 'security/notice'].map(p => api(p).then(r => r.status)))")
+                    menus991[role] = got
+                # a one-time password to replace first: signed in, Settings → Sign-in and security's Password alone, no
+                # sidebar, nothing in the menus but the theme and Log out (Account's before, #991)
+                c991 = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
+                ctx991.append(c991)
+                op = c991.new_page()
+                op.goto(base + "/login.html")
+                op.fill("#u", "once991")
+                op.fill("#p", PW2)
+                op.click("#b")
+                op.wait_for_url(re.compile(r"/settings\.html(\?[^#]*)?#password$"), timeout=20000)
+                op.wait_for_function("document.activeElement.id === 'pwCur'", timeout=10000)
+                once991 = op.evaluate("""() => [document.getElementById('groupTitle').textContent, document.getElementById('setNav').hidden,
+                    [...document.querySelectorAll('main > *, #sections > *')].filter(c => c.id && c.checkVisibility() && c.matches('.card')).map(c => c.id),
+                    [...document.querySelectorAll('header [role^=menuitem], #userMenuList [role^=menuitem]')].filter(x => !x.hidden && !x.closest('[hidden]')).map(x => x.id)]""")
+            finally:
+                for c991 in ctx991:
+                    c991.close()
+                for uid991 in made991.values():
+                    sdb.execute("DELETE FROM memberships WHERE user_id=?", (uid991,))
+                    sdb.execute("DELETE FROM sessions WHERE user_id=?", (uid991,))
+                    sdb.execute("DELETE FROM users WHERE id=?", (uid991,))
+                sdb.execute("DELETE FROM activity WHERE actor IN ('own991', 'edit991', 'once991')")   # (their sign-ins)
+            person991 = ["Dashboard", "About this person", "Labs and ranges", "Milestones", "Workouts"]
+            want991 = {r: {"profile": ["Sources", "Sharing", "New profile"], "you": ["Settings", "Getting started", menus991.get(r, {}).get("you", [""] * 3)[2], "Log out"],
+                           "gone": [], "focus": ["Sign-in and security"] * 2,
+                           "parts": {"This person": person991 + (["Rename or delete"] if r in ("admin", "owner") else []),
+                                     "You": ["Sign-in and security", "This device", "Display"],
+                                     "Install": ["General", "Accounts", "Install activity", "Backups", "Connected-source apps", "Provider directory",
+                                                 "Outside connections", "Lab name matches"] if r == "admin" else []},
+                           "install": None if r == "admin" else [403] * 6} for r in ("admin", "owner", "editor", "viewer")}   # (the admin's: refused too here, till they have a second factor, #75)
+            check("one Settings page (#991): for an admin, an owner, an editor and a viewer, the profile menu has Sources, Sharing and New profile, your "
+                  "menu Settings, Getting started, the theme and Log out (no Account, Display, Admin, About this person or Edit tabs…); Settings "
+                  "from the records page opens You with focus on its heading; the sidebar a list per part, named This person, You and Install, "
+                  "Install the admin's alone, and Install's routes refused the others (403)",
+                  menus991 == want991 and all(menus991[r]["you"][2] in ("Dark mode", "Light mode") for r in menus991), menus991)
+            check("…and with a one-time password to replace, sign-in lands on Settings → Password, focus in it, that card alone with no "
+                  "sidebar, the menus only the theme and Log out (#991: Account's before)",
+                  once991 == ["Sign-in and security", True, ["mustChange", "password"], ["theme", "logout"]], once991)
             said = {}
             for path, ready in (("settings.html?profile=1#watch", "#watch #watchRotate"), ("connect.html", "#noSources:not([hidden])"),
                                 ("providers.html", "#srcNote:not([hidden])")):
@@ -24284,12 +24411,12 @@ def main():
             page.goto(base + f"/sharing.html?profile={apid}#about")   # its old address, on Sharing (#267)
             page.wait_for_url(f"**/settings.html?profile={apid}#about", timeout=10000)
             about(apid)
-            groups = js("[...document.querySelectorAll('#setNav li')].map(li => li.textContent)")
+            groups = js("[...document.querySelectorAll('#setNav .set-nav-part, #setNav a')].map(x => x.textContent)")   # (a part's label, then its groups: #991)
             atext = page.inner_text("#about")
             unset = [js("document.getElementById('aboutBirth').value"), js("document.querySelector('#about input[name=aboutSex]:checked')?.value"),
                      "No height written down yet." in atext]
-            check("About this person (#267): its own group on Settings under This profile, its old Sharing address landing there with the profile; "
-                  "every detail optional and unset at first", groups[:3] == ["This profile", "Dashboard", "About this person"]
+            check("About this person (#267): its own group on Settings under This person (#991), its old Sharing address landing there with the profile; "
+                  "every detail optional and unset at first", groups[:3] == ["This person", "Dashboard", "About this person"]
                   and js("document.querySelector('#setNav a[aria-current=page]').dataset.group") == "about" and js("document.getElementById('groupTitle').textContent") == "About this person"
                   and unset == ["", "", True], (groups[:3], unset))
             page.goto(base + f"/sharing.html?profile={apid}#targets")
@@ -24667,8 +24794,8 @@ def main():
             fake.signin_patient = "pat-1"   # who "signs in" at the fake's authorize page
             fake.register_client("sanguity-browser-check", [base + "/connect/return"])
             allowed.add(origin(fake.fhir_base))   # its sign-in page, which the browser visits
-            page.goto(base + "/connect.html#admin")   # its old address: the setup is on the Admin page now (#167)
-            page.wait_for_url(re.compile(r"/admin\.html(\?[^#]*)?#admin$"), timeout=10000)
+            page.goto(base + "/connect.html#admin")   # its old address: the setup is Settings → Connected-source apps now (#167, #991)
+            page.wait_for_url(re.compile(r"/settings\.html(\?[^#]*)?#admin$"), timeout=10000)
             page.wait_for_selector("#sourceList", state="attached")
             page.wait_for_function("document.getElementById('returnAddr').textContent.length > 5 && !document.getElementById('admin').hidden", timeout=10000)
             check("connected sources: the setup screen gives the exact return address to register",
@@ -24862,8 +24989,8 @@ def main():
             page.goto(base + "/connect.html")   # its old address: Sources → Portals and health plans (#166)
             page.wait_for_url(re.compile(r"/sources\.html(\?[^#]*)?#portals$"), timeout=10000)   # with or without the ?profile= nav.js adds
             page.wait_for_selector("#adminNote:not([hidden])", timeout=10000)
-            check("connected sources: no setup on the everyday page, and an admin is pointed to Admin (#167)",
-                  js("!document.getElementById('srcForm') && document.querySelector('#adminNote a').getAttribute('href')") == "admin.html#apps")
+            check("connected sources: no setup on the everyday page, and an admin is pointed to Settings → Connected-source apps (#167, #991)",
+                  js("!document.getElementById('srcForm') && document.querySelector('#adminNote a').getAttribute('href')") == "settings.html#apps")
             pick_profile(page, label="Second person (owner)")
             page.wait_for_selector("#sourceButtons button", timeout=10000)
             check("…each Connect button says where it signs in as a tip, not a title, the words on no screen (#358)",
@@ -25104,12 +25231,12 @@ def main():
             js(f"localStorage.setItem('ht-profile', {json.dumps(prev_profile)} || '')")
             check("only the source's own host was contacted", fake.hosts() == {f"127.0.0.1:{fake.port}"}, fake.hosts())
 
-            # ---- outside connections (#97, #59): the Admin page lists every host the install may contact, by purpose
-            page.goto(base + "/settings.html#outside")   # its old address (#167)
-            page.wait_for_url(re.compile(r"/admin\.html(\?[^#]*)?#outside$"), timeout=10000)
+            # ---- outside connections (#97, #59): Settings → Install lists every host the install may contact, by purpose
+            page.goto(base + "/settings.html#outside")   # its address (on Admin from #167, back in Settings since #991)
+            page.wait_for_url(re.compile(r"/settings\.html(\?[^#]*)?#outside$"), timeout=10000)
             page.wait_for_function("document.getElementById('outsideBody').textContent.includes('May contact now')", timeout=10000)
             out = page.inner_text("#outside")
-            check("Admin says plainly that nothing else is contacted (the lead, and the rest behind its ⓘ, #280)",
+            check("Outside connections says plainly that nothing else is contacted (the lead, and the rest behind its ⓘ, #280)",
                   "Sanguity contacts only the hosts listed here" in js("document.getElementById('outsideLead').textContent")
                   and "Nothing else leaves this server" in js("[...document.querySelectorAll('.about-words')].find(w => w.getAttribute('aria-label') === 'About Outside connections').textContent"), out[:200])
             check("…lists the connected source with its host, scopes and last contact",
@@ -25329,7 +25456,7 @@ def main():
             allowed.add(origin(payer.fhir_base))   # its sign-in page too
             payer.signin_patient = "mem-1"
             payer.register_client("sanguity-payer-check", [base + "/connect/return"], secret="fictional-payer-secret")
-            page.goto(base + "/admin.html#apps")
+            page.goto(base + "/settings.html?profile=1#apps")
             page.wait_for_function("!document.getElementById('admin').hidden && document.getElementById('returnAddr').textContent.length > 5", timeout=10000)
             page.select_option("#fVendor", "insurer")
             guide_text = page.inner_text("#guide")
@@ -25403,7 +25530,7 @@ def main():
             }"""
             theme_before_165 = js("document.documentElement.dataset.theme || null")
             page.set_viewport_size({"width": 1400, "height": 900})
-            page.goto(base + "/admin.html#apps")
+            page.goto(base + "/settings.html?profile=1#apps")
             page.wait_for_function("!document.getElementById('admin').hidden && document.querySelector('#walk > li')", timeout=10000)
             walk = lambda: js("""(() => { const w = document.getElementById('walk'); return {
                 n: w.children.length, steps: SETUP.guides[document.getElementById('fVendor').value].steps.length,
@@ -25629,7 +25756,7 @@ def main():
             bad, seen, gaps = [], [], []
             for width in (1400, 320):
                 page.set_viewport_size({"width": width, "height": 900})
-                for path in (f"sources.html?profile={conn_pid}", "sharing.html?profile=1", "settings.html?profile=1", "account.html", "admin.html"):
+                for path in (f"sources.html?profile={conn_pid}", "sharing.html?profile=1", "settings.html?profile=1"):   # (its You and Install: Account and Admin before #991)
                     page.goto(base + "/" + path)
                     page.wait_for_selector(".set-nav a[data-group]", state="attached", timeout=10000)
                     settle(300)
@@ -25641,7 +25768,7 @@ def main():
                             seen.append(g)
                         gaps += [f"{path.split('.')[0]} #{g} at {width} px: {x}" for x in js(rows_gap)]
             page.set_viewport_size({"width": 1400, "height": 900})
-            check("every group of Sources, Sharing, Settings, Account and Admin: rows of buttons have no divider or pointer, "
+            check("every group of Sources, Sharing and Settings (its You and Install too, #991): rows of buttons have no divider or pointer, "
                   "and typed values are weight 400 (#246)", len(seen) >= 25 and not bad, bad[:8] or f"{len(seen)} groups")
             check("…and each row of buttons is at least 8 px above what follows it, at 1400 and 320 px (#309)", not gaps, gaps[:8])
 
@@ -25685,7 +25812,7 @@ def main():
                 check(f"at 375 px, {theme}: every records tab, with its filters open, the drawer and the menus fit, no control cut off or overlapping (#61)",
                       js("document.documentElement.dataset.theme") == theme and not bad, bad[:8] or "")
                 bad, seen = [], []
-                for path in (f"sources.html?profile={conn_pid}", "sharing.html?profile=1", "settings.html?profile=1", "account.html", "admin.html"):
+                for path in (f"sources.html?profile={conn_pid}", "sharing.html?profile=1", "settings.html?profile=1"):   # (its You and Install: Account and Admin before #991)
                     page.goto(base + "/" + path)
                     page.wait_for_selector(".set-nav a[data-group]", state="attached", timeout=10000)
                     settle(300)
@@ -25752,15 +25879,15 @@ def main():
                 theme_item.append(js(item))
             if js("!!document.querySelector('#userMenuList:popover-open')"):
                 page.keyboard.press("Escape")
-            for path, nav in (("settings.html", "#setNav"), ("sources.html", "#srcNav"), ("sharing.html", "#shrNav"), ("account.html", "#acctNav"), ("admin.html", "#admNav")):
+            for path, nav in (("settings.html", "#setNav"), ("sources.html", "#srcNav"), ("sharing.html", "#shrNav")):   # (Account's and Admin's in Settings', #991)
                 page.goto(base + "/" + path)
                 page.wait_for_selector(f"{nav} a[data-group]", timeout=10000)
-                settle(200)
+                settle(1200)   # (You's and Install's groups, once this person's are drawn)
                 icons_in([f"{nav} a[data-group]"])
-            want = {"#setNav a[data-group]": 7, "#srcNav a[data-group]": 7, "#shrNav a[data-group]": 6, "#acctNav a[data-group]": 2, "#admNav a[data-group]": 7,
-                    "#profileMenuList [role=menuitem]": 5, "#addMenuList [role=menuitem]": 7, "#userMenuList [role=menuitem]": 6}
+            want = {"#setNav a[data-group]": 17, "#srcNav a[data-group]": 7, "#shrNav a[data-group]": 6,
+                    "#profileMenuList [role=menuitem]": 3, "#addMenuList [role=menuitem]": 7, "#userMenuList [role=menuitem]": 4}
             check("icons (#354): one Lucide icon, hidden from screen readers and drawn from a symbol the sprite has, in each link of the "
-                  "five sidebars, each kind chip (its kind's), each Timeline row and each item of the profile menu, the Add menu and your menu",
+                  "three sidebars, each kind chip (its kind's), each Timeline row and each item of the profile menu, the Add menu and your menu",
                   not icons_bad and all(icons_n.get(k, 0) >= v for k, v in want.items()) and icons_n["#chips .toggle"] >= 10 and icons_n["#list .tl-row"] > 50,
                   icons_bad[:10] or icons_n)
             check("…and the Dark mode item, turned Light mode and back, keeps its icon before its words",
@@ -25850,7 +25977,7 @@ def main():
                 page.wait_for_selector("dialog.sg-ask[open]", timeout=5000)
                 axe_at(page, f"{theme} the app's own dialog")
                 answer_ask(page, yes=False)
-                for path in (f"sources.html?profile={conn_pid}", "sharing.html?profile=1", "settings.html?profile=1", "account.html", "admin.html"):
+                for path in (f"sources.html?profile={conn_pid}", "sharing.html?profile=1", "settings.html?profile=1"):   # (its You and Install: Account and Admin before #991)
                     page.goto(base + "/" + path)
                     page.wait_for_selector(".set-nav a[data-group]", state="attached", timeout=10000)
                     settle(300)
@@ -25896,7 +26023,7 @@ def main():
                 open_tab(t)
                 settle(250)
                 kbad += focus_walk(page, t) + focus_walk(page, t, back=True)
-            for path, g in (("sources.html?profile=1", "manual"), ("settings.html?profile=1", "labs"), ("sharing.html?profile=1", "summary"), ("admin.html", "apps")):
+            for path, g in (("sources.html?profile=1", "manual"), ("settings.html?profile=1", "labs"), ("sharing.html?profile=1", "summary"), ("settings.html?profile=1", "apps")):   # (Admin's before #991)
                 page.goto(base + "/" + path)
                 page.wait_for_selector(".set-nav a[data-group]", state="attached", timeout=10000)
                 open_group(page, g)
@@ -25916,7 +26043,7 @@ def main():
               const ring = r.bottom + Math.max(0, parseFloat(cs.outlineOffset) + parseFloat(cs.outlineWidth));
               return ring > b + 0.5 ? `${a.tagName.toLowerCase()}${a.id ? '#' + a.id : ''} "${(a.getAttribute('aria-label') || a.textContent || '').trim().slice(0, 24)}" ${Math.round(ring - b)} px under` : null; }"""
             bad767, n767 = {}, 0
-            page.goto(base + "/?profile=1#overview")   # (the walk ended on Admin)
+            page.goto(base + "/?profile=1#overview")   # (the walk ended on Install)
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted", timeout=20000)
             for w, h in ((412, 860), (360, 760), (320, 640)):
                 page.set_viewport_size({"width": w, "height": h})
@@ -25937,7 +26064,7 @@ def main():
             # #831: …and each date, time and date-and-time box in the drawer's forms, Shift+Tab from what follows it onto its
             # last part (its picker's button, focused inside the box), shows focus: a dose's date and time, and Fix date's
             # date and time (a datetime-local box, which #202's rule for that state left out), in light and dark
-            page.goto(base + "/?profile=1#timeline")   # (the walk ends on Admin)
+            page.goto(base + "/?profile=1#timeline")   # (the walk ends on Install)
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted && MEDS.length > 0", timeout=20000)
             box831, bad831 = [], []
 
@@ -26022,7 +26149,7 @@ def main():
                           # and a lab's results, #829)
                           any(w[0].endswith("320 px") and w[1] for w in wraps335) and any(w[0].endswith("1400 px") and not w[1] for w in wraps335)
                           and not unreached, unreached[:8] or wraps335)
-                for path in (f"sources.html?profile={conn_pid}", "sharing.html?profile=1", "settings.html?profile=1", "account.html", "admin.html"):
+                for path in (f"sources.html?profile={conn_pid}", "sharing.html?profile=1", "settings.html?profile=1"):   # (its You and Install: Account and Admin before #991)
                     page.goto(base + "/" + path)
                     page.wait_for_selector(".set-nav a[data-group]", state="attached", timeout=10000)
                     if spaced:
@@ -26145,8 +26272,8 @@ def main():
             edges = {"sign-in": lp.evaluate("(c => c.borderStyle !== 'none' || c.outlineStyle !== 'none' || c.backgroundColor !== getComputedStyle(document.querySelector('form')).backgroundColor)(getComputedStyle(document.getElementById('b')))")}
             ctx.close()
             page.emulate_media(forced_colors="active")
-            page.goto(base + "/account.html")
-            page.wait_for_selector(".btn.primary", timeout=10000)
+            page.goto(base + "/settings.html?profile=1#security")   # (Account's, #991)
+            page.wait_for_selector("#pwForm .btn.primary", timeout=10000)
             edges["account"] = js("[...document.querySelectorAll('.btn.primary, .btn.danger')].filter(b => b.checkVisibility()).every(b => { const c = getComputedStyle(b); return c.borderStyle !== 'none' && parseFloat(c.borderWidth) >= 1; })")
             # …and the icons (#257) are drawn there in the system's colours: the records page with an event's drawer open, the More…
             # period menu, and a page of Settings
@@ -26188,14 +26315,14 @@ def main():
                 pctx = browser.new_context(viewport={"width": 1400, "height": 900}, color_scheme=theme)
                 pctx.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
                 pp = pctx.new_page()
-                pp.goto(base + "/account.html")
+                pp.goto(base + "/settings.html?profile=1#security")   # (Account's, #991)
                 pp.wait_for_selector("#sessList tbody tr", timeout=10000)
                 for kind in ("primary", "danger"):
                     if kind == "danger":
                         pp.evaluate("() => { ask({title: 'Hold this down? (browser check, #350)', message: 'A check of a pressed danger button.', action: 'Remove', danger: true}); }")
                         pp.wait_for_selector("dialog.sg-ask[open] .btn.danger", timeout=5000)
                     pp.mouse.move(5, 895)
-                    pp.focus(".btn.primary >> nth=0" if kind == "primary" else "dialog.sg-ask[open] .btn.danger")
+                    pp.focus("#pwForm .btn.primary" if kind == "primary" else "dialog.sg-ask[open] .btn.danger")
                     pp.keyboard.down(" ")
                     pp.wait_for_timeout(400)   # past the hover's shade (--dur-1)
                     held[f"{theme} {kind}"] = pp.evaluate(pressed_js)
@@ -26234,13 +26361,13 @@ def main():
                   "and hidden again as the form is sent (#290)",
                   show290 == [True, True, "Show password", "text", "current-password", "Hide password", "pShow", "password"], show290)
 
-            # ---- account page: password and devices; profiles and their sharing on the Sharing page (#168); the Admin
-            # page: accounts (#167)
-            page.goto(base + "/account.html")
+            # ---- Settings → You (#991; the account page before): password and devices; profiles and their sharing on the
+            # Sharing page (#168); Settings → Install: accounts (#167)
+            page.goto(base + "/settings.html?profile=1#security")
             page.wait_for_function("document.querySelectorAll('#sessList tbody tr').length > 0", timeout=10000)
-            check("account page lists devices, and nothing of the server's (#167) or of profiles (#168)",
-                  js("!document.getElementById('tab-admin') && !document.getElementById('users') && !document.getElementById('labmaps') && !document.getElementById('secNotice')")
-                  and js("!document.getElementById('acctTabs') && !document.getElementById('profiles') && !document.getElementById('profList')"))
+            check("Sign-in and security lists devices, and shows nothing of the server's (#167, Install's) or of profiles (#168)",
+                  js("['users', 'labmaps', 'secNotice', 'backupNotice', 'sec-overview'].every(id => !document.getElementById(id).checkVisibility())")
+                  and js("!document.getElementById('tab-admin') && !document.getElementById('acctTabs') && !document.getElementById('profiles') && !document.getElementById('profList')"))
             # #515: at 320 px each time in Where you're signed in keeps its AM or PM, and its date the comma after it ("Nov 21, /
             # 2026, 8:37 / AM"), so it's two lines at most: the date, then the time
             page.set_viewport_size({"width": 320, "height": 640})
@@ -26277,7 +26404,7 @@ def main():
                 page.wait_for_function(f"document.querySelectorAll('#sessList tbody button').length === {n - 1}", timeout=10000)
                 settle(200)
                 out493.append((js(IN_SIGHT) or [None] * 4)[::3])
-            check("Account → Sign out: focus then on the next device's Sign out, and with only this device left on the card's heading, "
+            check("Sign-in and security → Sign out: focus then on the next device's Sign out, and with only this device left on the card's heading, "
                   "in sight (#493: it fell to the page)", len(out493) >= 2 and out493[:-1] == [["BUTTON", "Sign out"]] * (len(out493) - 1)
                   and out493[-1] == ["H2", "Where you're signed in"], out493)
             # #492: every password field has Show (pwField, util.js), named for what it holds: Account's password change and
@@ -26291,27 +26418,29 @@ def main():
                 '{"passkeys": [], "problem": null, "required": false, "authenticator_app": true, "site": "127.0.0.1", "user_handle": null}')
             page.route("**/api/me/2fa", tf_on)
             page.route(re.compile(r".*/api/me/passkeys\?.*"), pk_ok)
-            page.goto(base + "/account.html#password")
+            page.goto("about:blank")   # (a page drawn afresh with these answers, not only its # changed: it's on Settings already)
+            page.goto(base + "/settings.html?profile=1#password")
             page.wait_for_selector("#tfBody form input[type=password], #tfBody .pw input", timeout=10000)
             page.wait_for_selector("#pkBody form input[type=password], #pkBody .pw input, #pkWhy:not([hidden])", timeout=10000)
             pw492 = {"account": js(pw_fields)}
             page.unroute(re.compile(r".*/api/me/passkeys\?.*"), pk_ok)
-            # #540: at 127.0.0.1 Account's passkeys card says where they work, its address a link to this page there (it
+            # #540: at 127.0.0.1 the passkeys card says where they work, its address a link to this page there (it
             # was words, and had no path)
-            page.goto(base + "/account.html#passkeys")
+            page.goto("about:blank")   # (drawn afresh with the server's own answer: it was the one answered above)
+            page.goto(base + "/settings.html?profile=1#passkeys")
             page.wait_for_selector("#pkWhy:not([hidden]) a", timeout=10000)
             why540 = js("[document.getElementById('pkWhy').textContent, [...document.querySelectorAll('#pkWhy a')].map(a => [a.textContent, a.href])]")
             here540 = base.replace("127.0.0.1", "localhost")
-            check("Account's passkeys card at 127.0.0.1 links the address where they work, to the account page there (#540: words, with no path)",
-                  why540 == [f"Passkeys don't work at an IP address. Open Sanguity at {here540} to use one.", [[here540, here540 + "/account.html"]]], why540)
-            page.goto(base + "/admin.html#accounts")
+            check("the passkeys card at 127.0.0.1 links the address where they work, to Settings there (#540: words, with no path; #991)",
+                  why540 == [f"Passkeys don't work at an IP address. Open Sanguity at {here540} to use one.", [[here540, here540 + "/settings.html"]]], why540)
+            page.goto(base + "/settings.html?profile=1#accounts")
             page.wait_for_selector("#userList tbody tr", timeout=10000)
             js("() => { confirmIdentity().catch(() => {}); }")   # (as the server asks for it; with an authenticator app, #532)
             page.wait_for_selector("#reauth .pw input", timeout=5000)
             pw492["admin"] = js(pw_fields)
             page.unroute("**/api/me/2fa", tf_on)
             page.click("#reauth button:text-is('Cancel')")
-            page.goto(base + "/admin.html#apps")
+            page.goto(base + "/settings.html?profile=1#apps")
             page.wait_for_function("!document.getElementById('admin').hidden && document.getElementById('returnAddr').textContent.length > 5",
                                    timeout=10000)   # (its form filled first, which sets the sign-in kind)
             page.select_option("#fAuth", "confidential")
@@ -26321,7 +26450,7 @@ def main():
             page.wait_for_selector("#shlPass", state="attached", timeout=10000)
             js("for (const id of ['shlAbout', 'shlPassRow']) document.getElementById(id).hidden = false")   # (as a link that needs one shows it)
             pw492["sources"] = js(pw_fields)
-            check("every password field has Show, named for what it holds: Account's, Admin's and a Health Link's passcode (#492)",
+            check("every password field has Show, named for what it holds: You's, Install's (Account's and Admin's before #991) and a Health Link's passcode (#492)",
                   pw492 == {"account": [["pwCur", "Show current password"], ["pwNew", "Show new password"], ["pwNew2", "Show repeated password"],
                                         ["Your password", "Show password"]],
                             "admin": [["Your password, or a code from your authenticator app", "Show password or code"], ["fSecret", "Show client secret"]],
@@ -26331,7 +26460,7 @@ def main():
             # passkey's removal below ends it)
             if not js("fetch('api/me').then(r => r.json()).then(j => j.calendar_feeds)"):
                 js("api('profiles/1/calendar', {method: 'POST', body: JSON.stringify({tz: 'UTC'})}).then(r => r.status)")
-            page.goto(base + "/account.html#password")
+            page.goto(base + "/settings.html?profile=1#password")
             page.wait_for_selector("#pwFeeds", state="visible", timeout=10000)
             n597, line597 = js("fetch('api/me').then(r => r.json()).then(j => j.calendar_feeds)"), page.inner_text("#pwFeeds")
             check("Change password says beforehand that it turns off your calendar feeds too, with how many, and where to make new ones (#597)",
@@ -26374,7 +26503,7 @@ def main():
                     route.continue_()
             page.route("**/api/me/password", pw_answer544)
             try:
-                page.goto(base + "/account.html#password")
+                page.goto(base + "/settings.html?profile=1#password")
                 page.wait_for_selector("#pwCur", state="visible", timeout=10000)
                 for w, h in ((375, 667), (844, 390)):
                     page.set_viewport_size({"width": w, "height": h})
@@ -26396,15 +26525,15 @@ def main():
                 page.set_viewport_size(vp544)
             problems[before544:] = [x for x in problems[before544:] if "me/password" not in x and "Failed to load resource" not in x]   # (refused on purpose)
             said544 = ["Your current password is wrong", "The new passwords don't match", "Use at least", "Password changed"] * 2
-            check("Account → Password's replies in sight at 375×667 and 844×390, above a phone's tabs, focus kept on Repeat new password (#544)",
+            check("Settings → Password's replies in sight at 375×667 and 844×390, above a phone's tabs, focus kept on Repeat new password (#544)",
                   len(pw544) == 8 and all(v[0] == "pwNew2" and v[1].startswith(s) and v[2] for v, s in zip(pw544.values(), said544)), pw544)
             # #320: on a phone the account pages' tables hid their headings and left the values on their own (Admin's "off" and
             # "10", two dates per device): each cell is labelled with its column's name now, the one name a screen reader
             # hears as the hidden headings are hidden from it too; axe-core clean, light and dark
             page.set_viewport_size({"width": 375, "height": 800})
             cl_seen, cl_bad, cl_axe = {}, [], []
-            for path, ready in (("/account.html#sessions", "#sessList tbody tr"), ("/admin.html#users", "#userList tbody tr"),
-                                ("/admin.html#labmaps", "#labmapList tbody tr"), ("/admin.html#installLog", "#acctLog tbody tr"),
+            for path, ready in (("/settings.html?profile=1#sessions", "#sessList tbody tr"), ("/settings.html?profile=1#users", "#userList tbody tr"),
+                                ("/settings.html?profile=1#labmaps", "#labmapList tbody tr"), ("/settings.html?profile=1#installLog", "#acctLog tbody tr"),
                                 ("/sharing.html?profile=1#people", "#memberList tbody tr"), ("/sharing.html?profile=1#activity", "#actBody tbody tr")):
                 page.goto(base + path)
                 page.wait_for_selector(ready, timeout=10000)
@@ -26416,20 +26545,20 @@ def main():
                     page.emulate_media(color_scheme=theme)
                     cl_axe += axe_check(page, f"{path} at 375 px, {theme}")[0]
                 page.emulate_media(color_scheme=None)
-            check("at 375 px every account page's table labels each cell with its column's name: Account (sessions), Admin (accounts, lab "
+            check("at 375 px every account page's table labels each cell with its column's name: Settings' You (sessions) and Install (accounts, lab "
                   "names, activity), Sharing (people, activity), its headings hidden from screen readers too (#320)",
                   not cl_bad and all(cl_seen.values()), cl_bad[:6] or cl_seen)
             check("…and axe-core finds nothing serious or critical there, light and dark (#320)", not cl_axe, cl_axe[:6])
             page.set_viewport_size({"width": 1400, "height": 900})
-            page.goto(base + "/account.html#users")   # the old Admin tab's addresses open the Admin page
-            page.wait_for_url(re.compile(r"/admin\.html(\?[^#]*)?#users$"), timeout=10000)
+            page.goto(base + "/account.html#users")   # the old Admin tab's addresses open Settings → Install (#991)
+            page.wait_for_url(re.compile(r"/settings\.html(\?[^#]*)?#users$"), timeout=10000)
             page.wait_for_function("!document.getElementById('users').hidden && document.querySelectorAll('#userList tbody tr').length > 0", timeout=10000)
-            check("the old Admin tab's address opens the Admin page, on Accounts", js(display, "users") != "none" and js(display, "labmaps") == "none")
+            check("the old Admin tab's address opens Settings → Install, on Accounts", js(display, "users") != "none" and js(display, "labmaps") == "none")
             page.goto(base + "/account.html#labmaps")
-            page.wait_for_url(re.compile(r"/admin\.html(\?[^#]*)?#labmaps$"), timeout=10000)
+            page.wait_for_url(re.compile(r"/settings\.html(\?[^#]*)?#labmaps$"), timeout=10000)
             page.wait_for_function("document.querySelector('#labmapList tr[data-labmap]')", timeout=10000)
             lm = js("[...document.querySelectorAll('#labmapList tr[data-labmap]')].map(tr => tr.textContent)")
-            check("Admin lists the lab name match, who made it and from what, for one profile (#927), with Change and Remove (#23)",
+            check("Install lists the lab name match, who made it and from what, for one profile (#927), with Change and Remove (#23)",
                   any("Hemoglobin Lvl" in t and "Hemoglobin" in t and "demo" in t and "CSV" in t and "for one profile" in t and "Change" in t and "Remove" in t for t in lm)
                   and "only admins can change or remove" in js("[...document.querySelectorAll('.about-words')].find(w => w.getAttribute('aria-label') === 'About Lab name matches').textContent")   # (behind its ⓘ, #280)
                   and js(display, "labmaps") != "none", lm)
@@ -26557,43 +26686,46 @@ def main():
                 lmdb569.execute("DELETE FROM labmaps WHERE id=?", (lm569,))
                 lmdb569.close()
                 js("loadLabmaps()")
-            check("Admin lists a match remembered before #546 that its rule wouldn't make first, marked to check, with Keep and Forget, "
+            check("Install lists a match remembered before #546 that its rule wouldn't make first, marked to check, with Keep and Forget, "
                   "axe clean in light and dark; kept, it's an ordinary match with Change and Remove, focus on its Change (#569)",
                   rows569[0] == ["Vitamin B6 569", True, "Keep|Change|Forget"] and all(not r[1] and r[2] == "Change|Remove" for r in rows569[1:])
                   and said569.startswith("1 match to check") and not axe569
                   and ["Vitamin B6 569", False, "Change|Remove"] in kept569[0] and kept569[1] == ["Change", "Vitamin B6 569"]
                   and kept569[2] is False and kept569[3] == 1, [rows569, said569, axe569[:4], kept569])
-            # the old Profiles tab's address opens Sharing → People (#168); a section link still lands on Account
+            # the old Profiles tab's address opens Sharing → People (#168); a section link still lands on its card, in Settings (#991)
             page.goto(base + "/account.html#profiles")
             page.wait_for_url(re.compile(r"/sharing\.html(\?[^#]*)?#people$"), timeout=10000)
             page.wait_for_selector("#memberList tbody tr", timeout=10000)
             check("the old Profiles tab's address opens Sharing → People", js("document.querySelector('#shrNav [aria-current=page]').textContent") == "People")
             page.goto(base + "/account.html#twofa")
-            page.wait_for_function("document.getElementById('tfHint').textContent.length > 0", timeout=10000)
-            check("an old section link still opens Account, in its group", js(display, "twofa") != "none" and js("location.hash") == "#twofa"
-                  and js("document.querySelector('#acctNav [aria-current=page]').textContent") == "Sign-in and security", js("location.hash"))
-            # #169: Account is you and this device, a group each in its sidebar; how things look is on Settings
-            check("Account: two groups, sign-in and security first, and nothing else on the page",
-                  js("[...document.querySelectorAll('#acctNav a')].map(a => a.textContent).join('|')") == "Sign-in and security|This device"
+            page.wait_for_url(re.compile(r"/settings\.html(\?[^#]*)?#twofa$"), timeout=10000)
+            page.wait_for_function("document.getElementById('tfHint').textContent.length > 0 && !!document.querySelector('#setNav [aria-current=page]')", timeout=10000)
+            check("an old section link of Account's still opens its card, in Settings → Sign-in and security (#991)", js(display, "twofa") != "none" and js("location.hash") == "#twofa"
+                  and js("document.querySelector('#setNav [aria-current=page]').textContent") == "Sign-in and security", js("location.hash"))
+            # #169: You (Account before #991) is you and this device, a group each in the sidebar, then how things look
+            check("You: Sign-in and security, This device and Display, and nothing else shown in the first (#991)",
+                  js("[...[...document.querySelectorAll('#setNav .set-nav-grp')].find(li => li.querySelector('.set-nav-part').textContent === 'You').querySelectorAll('a')].map(a => a.textContent).join('|')")
+                  == "Sign-in and security|This device|Display"
                   and js(display, "installApp") == "none" and js(display, "offlineRecords") == "none"
                   and js("document.getElementById('groupTitle').textContent") == "Sign-in and security"
-                  and js("[...document.querySelectorAll('main > section')].every(s => ['password', 'twofa', 'passkeys', 'sessions', 'installApp', 'offlineRecords'].includes(s.id))"))
-            page.click("#acctNav a[data-group=device]")
+                  and js("[...document.querySelectorAll('main > section, #sections > section')].filter(s => s.checkVisibility()).every(s => ['password', 'twofa', 'passkeys', 'sessions'].includes(s.id))"))
+            page.click("#setNav a[data-group=device]")
             check("…This device: installing it and offline records, and the address says so",
                   js(display, "installApp") != "none" and js(display, "offlineRecords") != "none" and js(display, "password") == "none"
                   and js(display, "sessions") == "none" and js("location.hash") == "#device"
                   and js("document.getElementById('groupTitle').textContent") == "This device")
             for addr, shows in (("#offline", "offlineRecords"), ("#install", "installApp"), ("#security", "password"), ("#sessions", "sessions")):
                 page.goto(base + "/account.html" + addr)
+                page.wait_for_url(re.compile(r"/settings\.html(\?[^#]*)?" + addr + "$"), timeout=10000)
                 page.wait_for_function(f"getComputedStyle(document.getElementById('{shows}')).display !== 'none'", timeout=10000)
-            check("…each of its addresses opens its group (#offline, #install, #security, #sessions)", True)
+            check("…each of Account's addresses opens its group in Settings (#offline, #install, #security, #sessions)", True)
             page.set_viewport_size({"width": 375, "height": 800})
             for g in ("security", "device"):
-                page.click(f"#acctNav a[data-group={g}]")
+                page.click(f"#setNav a[data-group={g}]")
                 settle(150)
-                check(f"…Account's {g} group fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
+                check(f"…You's {g} group fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
             page.set_viewport_size({"width": 1400, "height": 900})
-            page.goto(base + "/admin.html#accounts")
+            page.goto(base + "/settings.html?profile=1#accounts")
             page.wait_for_function("document.querySelectorAll('#userList tbody tr').length > 0", timeout=10000)
             # #318: the only account, with no second factor of its own: requiring two-factor for everyone isn't asked (the
             # server would refuse it); it says at once to turn on your own first, with the way there, and stays off.
@@ -26604,9 +26736,9 @@ def main():
             tf_msg = js("[document.getElementById('reqTfMsg').textContent, document.getElementById('reqTfMsg').classList.contains('bad'), "
                         "document.querySelector('#reqTfMsg a')?.getAttribute('href')]")
             check("with no second factor of your own, requiring two-factor for everyone isn't asked: it says to turn on yours first, "
-                  "with a link to Account → Sign-in & security, and stays off (#318)",
+                  "with a link to Settings → Sign-in and security, and stays off (#318)",
                   not js("document.querySelector('dialog.sg-ask[open]')") and tf_msg[0].startswith("To require it for everyone, first turn on two-factor sign-in")
-                  and tf_msg[1:] == [True, "account.html#security"] and not page.is_checked("#reqTf")
+                  and tf_msg[1:] == [True, "#security"] and not page.is_checked("#reqTf")
                   and js("fetch('api/settings').then(r => r.json()).then(s => s.require_2fa)") is False, tf_msg)
             near = {}
             for w, h in ((1400, 900), (375, 800), (667, 375)):
@@ -26633,14 +26765,14 @@ def main():
             # no longer the only account: admin actions now wait for the admin's own second factor (issue #75)
             check("with a second account, the admin is asked for a second factor",
                   js("!document.getElementById('adminTf').hidden && document.getElementById('adminTools').hidden"))
-            check("…and every other part of Admin the server now refuses says so", js("['admin', 'sec-sync', 'labmaps', 'installLog'].every(id => document.querySelector('#' + id + ' .adm-gate'))"))
+            check("…and every other part of Install the server now refuses says so", js("['general', 'admin', 'sec-sync', 'labmaps', 'installLog'].every(id => document.querySelector('#' + id + ' .adm-gate'))"))
             # two-factor sign-in: turn it on from the key shown, confirm with a code, get recovery codes
             from server import twofactor
             import time as _time
             totp = lambda key, ahead=0: twofactor._code(key, int(_time.time() // twofactor.PERIOD) + ahead)
-            check("the admin's note links to Account's security tab", js("document.querySelector('#adminTf a').getAttribute('href')") == "account.html#security")
+            check("the admin's note links to Settings → Sign-in and security (#991: Account's before)", js("document.querySelector('#adminTf a').getAttribute('href')") == "#security")
             page.click("#adminTf a")
-            page.wait_for_url(re.compile(r"/account\.html(\?[^#]*)?#security$"), timeout=10000)
+            page.wait_for_url(re.compile(r"/settings\.html(\?[^#]*)?#security$"), timeout=10000)
             page.wait_for_function("document.getElementById('tfHint').textContent.length > 0", timeout=10000)
             check("which opens it", js(display, "twofa") != "none")
             # #499: each of its buttons that draws it again (Cancel, Confirm, I've saved them) took itself away, focus
@@ -26703,7 +26835,7 @@ def main():
             check("…after a wrong code first, with no error left under them (#502)", js("document.getElementById('tfMsg').textContent") == "",
                   js("document.getElementById('tfMsg').textContent"))
             page.locator("#twofa").get_by_role("button", name="I've saved them").click()
-            page.wait_for_function("document.getElementById('tfHint').textContent.startsWith('On.') && document.querySelector('#tfMsg a[href=\"admin.html\"]')", timeout=10000)
+            page.wait_for_function("document.getElementById('tfHint').textContent.startsWith('On.') && document.querySelector('#tfMsg a[href=\"#accounts\"]')", timeout=10000)
             settle(200)
             tf499["I've saved them"] = js(seen499)
             page.set_viewport_size({"width": 1400, "height": 900})
@@ -26711,7 +26843,7 @@ def main():
                   "password beside Turn on (#590), Confirm's on the recovery codes, I've saved them's on the card's heading",
                   {k: [v[0], v[2]] for k, v in tf499.items()} == {"Cancel": ["INPUT", True], "Confirm": ["PRE", True], "I've saved them": ["H2", True]}
                   and tf499["Cancel"][1] == "Your password" and tf499["I've saved them"][1] == "Two-factor sign-in", tf499)
-            check("with 2FA on, Account says Admin is open again", True)
+            check("with 2FA on, Sign-in and security says Install is open again, its link to Accounts (#991)", js("document.getElementById('tfMsg').textContent").endswith("Install is open to you again: go to Accounts."))
             page.click("#tfMsg a")
             page.wait_for_function("!document.getElementById('adminTools').hidden && document.querySelector('#userList').textContent.includes('alex')", timeout=10000)
             check("with 2FA on, the account tools are back", js("document.getElementById('adminTf').hidden && !document.querySelector('.adm-gate')"))
@@ -26825,14 +26957,15 @@ def main():
                     [js("[document.querySelector('#actBody .activity table').getBoundingClientRect().right, document.querySelector('#actBody').getBoundingClientRect().right].map(Math.round)")] if r > c]
             page.set_viewport_size({"width": 1400, "height": 900})
             check("…at 375 and 320 px, with a document opened and a long IPv6 address, Sharing → Activity fits (#342)", not fit342, fit342[:6])
-            page.goto(base + "/admin.html#activity")
+            page.goto(base + "/admin.html#activity")   # (its old address: Settings → Install activity, #991)
+            page.wait_for_url(re.compile(r"/settings\.html(\?[^#]*)?#installLog$"), timeout=10000)
             page.wait_for_function("document.querySelector('#acctLog tbody') && document.querySelector('#acctLog tbody').textContent.includes('created the account alex')", timeout=10000)
-            check("admin sees the install's activity, under Admin → Install activity", js(display, "installLog") != "none" and js(display, "users") == "none")
+            check("admin sees the install's activity, under Settings → Install activity (Admin's #activity before #991)", js(display, "installLog") != "none" and js(display, "users") == "none")
             # #524: at 768 and 900 px an activity log's addresses break only where they don't fit: an IPv4 one never ("127.0.0." /
             # "1" there), on Install activity and Sharing → Activity, the table within its card
             split524, what528 = {}, {}
-            for path, box in (("/admin.html#activity", "#acctLog"), ("/sharing.html?profile=1#activity", "#actBody")):
-                if not path.startswith("/admin"):
+            for path, box in (("/settings.html?profile=1#installLog", "#acctLog"), ("/sharing.html?profile=1#activity", "#actBody")):
+                if not path.startswith("/settings"):
                     page.goto(base + path)
                 page.wait_for_function(f"[...document.querySelectorAll('{box} .activity tbody td:nth-child(4)')].some(td => /^[\\d.]+$/.test(td.textContent))", timeout=10000)
                 for w in (768, 900):
@@ -27220,7 +27353,8 @@ def main():
             from server import db as dbm, profiles
             db = dbm.connect()
             db.execute("UPDATE sessions SET verified_at=0")
-            page.goto(base + "/admin.html#accounts")
+            page.goto("about:blank")   # (the next page loaded: Settings is open here already, and only its # would change)
+            page.goto(base + "/settings.html?profile=1#accounts")
             page.wait_for_function("document.querySelector('#userList').textContent.includes('alex')", timeout=10000)
             try:   # (#936) the next page loaded hears which profiles are the person's: the deleted one's state goes
                 page.wait_for_function(f"localStorage.getItem('ht-state:{third}') === null", timeout=5000)
@@ -27379,7 +27513,7 @@ def main():
             alex_do("Remove admin…")
             asked = answer_ask(page, yes=False)
             settle(300)
-            check("Remove admin asks first (#249)", asked[0] == "Remove alex's admin role?" and "Admin page" in asked[1] and alex_is()["is_admin"], asked)
+            check("Remove admin asks first (#249)", asked[0] == "Remove alex's admin role?" and "Settings → Install" in asked[1] and alex_is()["is_admin"], asked)
             alex_do("Remove admin…")
             answer_ask(page)
             page.wait_for_function("[...document.querySelectorAll('#userList tr')].some(r => r.textContent.includes('alex') && ![...r.querySelectorAll('.tag')].some(t => t.textContent === 'admin') && r.textContent.includes('Make admin…'))", timeout=10000)
@@ -27835,7 +27969,7 @@ def main():
             cdp.send("WebAuthn.enable")
             auth509 = cdp.send("WebAuthn.addVirtualAuthenticator", {"options": {"protocol": "ctap2", "transport": "internal",
                                "hasResidentKey": True, "hasUserVerification": True, "isUserVerified": True}})["authenticatorId"]
-            pk.goto(local + "/account.html")
+            pk.goto(local + "/settings.html#security")   # (Account's, #991)
             pk.wait_for_selector("#pkBody form")
             pwpk527 = pk.evaluate("[...document.querySelectorAll('#pkBody .pw')].map(p => [p.querySelector('input').getAttribute('aria-label'), p.querySelector('.pw-show')?.getAttribute('aria-label')])")
             check("adding a passkey's password has Show, named for it (#492; at localhost, as passkeys can't be made at 127.0.0.1, #527)",
@@ -27994,7 +28128,7 @@ def main():
             # address", "Passkeys don't work at an IP address")
             no_pk528 = json_ok('{"passkeys": [], "problem": null, "required": false, "authenticator_app": true, "site": "localhost", "user_handle": null}')
             def reauth528(pg, at):
-                pg.goto(at + "/admin.html#accounts")
+                pg.goto(at + "/settings.html#accounts")
                 pg.wait_for_selector("#userList tbody tr", timeout=10000)
                 pg.evaluate("() => { confirmIdentity().catch(() => {}); }")
                 pg.wait_for_selector("#reauth .pw input", timeout=10000)
@@ -28015,7 +28149,7 @@ def main():
             for on in (False, True):
                 app532 = json_ok(json.dumps({"on": on, "recovery_codes_left": 10 if on else 0, "required": False, "passkeys": 1}))
                 pk.route(re.compile(r".*/api/me/2fa$"), app532)
-                pk.goto(local + "/admin.html#accounts")
+                pk.goto(local + "/settings.html#accounts")
                 pk.wait_for_selector("#userList tbody tr", timeout=10000)
                 pk.evaluate("() => { confirmIdentity().catch(() => {}); }")
                 pk.wait_for_selector("#reauth .pw input", timeout=10000)
@@ -28023,9 +28157,9 @@ def main():
                   b.querySelector('.pw input').getAttribute('aria-label'), [...b.querySelectorAll('button')].map(x => x.textContent).includes('Use a passkey')])(document.getElementById('reauth'))""")
                 pk.click("#reauth button:text-is('Cancel')")
                 pk.unroute(re.compile(r".*/api/me/2fa$"), app532)
-            pk.goto(local + "/account.html")
+            pk.goto(local + "/settings.html#security")   # (Account's, #991)
             pk.wait_for_selector("#pkList tbody tr", timeout=10000)
-            check("…(#528) Admin's check that it's you offers Use a passkey at localhost with one made there, and not with none, nor at an IP "
+            check("…(#528) Install's check that it's you offers Use a passkey at localhost with one made there, and not with none, nor at an IP "
                   "address (pressed, it could only say so)", pk528 == {"localhost, one made here": [1, True], "localhost, none": [0, False], "127.0.0.1": [0, False]}, pk528)
             check("…(#532) and a code from an authenticator app only to someone with one: with only a passkey, “your password or a passkey”, "
                   "its box “Password” (it offered a code, “Password or code”)",
@@ -28036,7 +28170,7 @@ def main():
             acct_field.update(pk.evaluate(FIELD_LOOK_JS, "#pkBody input[type=password]"))
             pk.set_viewport_size({"width": 375, "height": 800})
             pk.wait_for_timeout(200)
-            cl_tables, cl_bad = cell_labels(pk, "Account → Passkeys")
+            cl_tables, cl_bad = cell_labels(pk, "Settings → Passkeys")
             check("…at 375 px with its name, added and last used under their columns' names, the buttons unlabelled (#320)",
                   not cl_bad and any(t[0].startswith("pkList") and t[1] and t[3] == 3 * t[2] for t in cl_tables), cl_bad[:6] or cl_tables)
             # #510: at 320 px no word in the list broken across lines (Rename and Remove were 40 px wide, "Re/na/me"), and
@@ -28418,9 +28552,9 @@ def main():
             # stand-in event: headless Chromium never offers one), a button opens it, and the header shows Install app
             FAKE_PROMPT = ("(() => { const e = new Event('beforeinstallprompt'); e.prompt = () => { window.sgPrompted = (window.sgPrompted || 0) + 1; }; "
                            "e.userChoice = Promise.resolve({outcome: 'accepted'}); dispatchEvent(e); })()")
-            ph.goto(base + "/account.html#device")
+            ph.goto(base + "/settings.html?profile=1#device")   # (Account's, #991)
             ph.wait_for_selector("#installApp h2")
-            check("Account: how to install on this device, without a prompt from the browser",
+            check("This device: how to install on this device, without a prompt from the browser",
                   "Install app" in ph.inner_text("#installApp") and ph.locator("#installApp button").count() == 0, ph.inner_text("#installApp"))
             ph.evaluate(FAKE_PROMPT)
             ph.locator("#installApp button", has_text="Install on this device").click()
@@ -28440,7 +28574,7 @@ def main():
             iphone.add_cookies([{"name": sg_config.COOKIE, "value": token, "url": base, "httpOnly": True, "sameSite": "Strict"}])
             ip = iphone.new_page()
             ip.on("pageerror", lambda e: problems.append(f"script error (iPhone): {e}"))
-            ip.goto(base + "/account.html#install")
+            ip.goto(base + "/settings.html#install")   # (Account's short address, #991)
             ip.wait_for_selector("#installApp .install-steps", timeout=10000)
             steps = ip.inner_text("#installApp")
             check("on an iPhone: Safari's Share, then Add to Home Screen", "Share button" in steps and "Add to Home Screen" in steps, steps)
@@ -28448,9 +28582,9 @@ def main():
             iphone.close()
 
             # turned on under Account (off until then); the records loaded next are kept
-            ph.goto(base + "/account.html#offline")
+            ph.goto(base + "/settings.html?profile=1#offline")   # (Account's short address, #991)
             ph.wait_for_selector("#offlineOn")
-            check("Account: offline records are off by default, with what's kept explained",
+            check("This device: offline records are off by default, with what's kept explained",
                   not ph.is_checked("#offlineOn") and "anyone who can use this device while it's unlocked" in ph.inner_text("#offlineRecords"))
             ph.check("#offlineOn")
             ph.goto(base + "/")
@@ -28658,7 +28792,7 @@ def main():
                         day: c.day.every(id => detailsHave(id) && !DETAILS_MISSED.has(id))}; })""", ch416)
             check("offline (#416): a source renamed, a lab renamed and a Trends view saved, then a lab day opened: after a reload offline the new names, the view and the day's details are there",
                   in416 and off416 == {"source": "Clinic renamed (#416)", "lab": "Nickname (#416)", "view": True, "day": True}, [ch416, in416, off416])
-            check("offline: Import, Settings and Account say they need the server, as their tip, with no title (#385)",
+            check("offline: Import, Sources, Sharing and Settings say they need the server, as their tip, with no title (#385)",
                   ph.evaluate("[...document.querySelectorAll('header a.acct, dialog.sheet a.acct')].every(a => a.getAttribute('aria-disabled') === 'true' && a.dataset.tip === \"Needs the server: you're offline\" && !a.hasAttribute('title'))"))
             # (#385) the profile menu's and your menu's links, still reached with the arrow keys: each shows the reason as
             # its tooltip and has it as its description, focused from the keyboard; the other profile can't be picked (#264)
@@ -28676,7 +28810,7 @@ def main():
                     ph.keyboard.press("ArrowDown")
                 ph.keyboard.press("Escape")
             check("offline (#385): the profile menu's and your menu's links, reached with the arrow keys, give the reason as their tooltip and description",
-                  {"Sharing", "Sources", "Settings", "About this person", "Account", "Display", "Getting started"} <= {m[0] for m in menu385}
+                  {"Sharing", "Sources", "Settings", "Getting started"} <= {m[0].replace("backups late", "").strip() for m in menu385}   # (#991: About this person, Account and Display in Settings)
                   and all(m[1] == "Needs the server: you're offline" and m[2] and m[2][1] == "Needs the server: you're offline" for m in menu385)
                   and ph.evaluate("[...document.querySelectorAll('#profileMenuList [role=menuitemradio]')].every(b => b.getAttribute('aria-disabled') === 'true')"), menu385)
             ph.evaluate("document.querySelector('#settingsLink').click()")
@@ -28776,7 +28910,7 @@ def main():
             # as forms that can't be sent; the menus' links to other pages not followed, saying why; and the command
             # palette listing nothing that needs the server, saying so
             off413 = {}
-            for path in ("settings.html", "sharing.html", "account.html", "guide.html"):
+            for path in ("settings.html", "sharing.html", "sources.html", "guide.html"):   # (Account's in Settings since #991)
                 ph.goto(f"{base}/{path}")
                 ph.wait_for_selector("#offlineBanner", timeout=10000)
                 ph.wait_for_timeout(300)
@@ -28785,7 +28919,7 @@ def main():
                         h1: [...document.querySelectorAll('h1')].filter(h => h.checkVisibility()).map(h => [h.textContent, b.contains(h)]),
                         links: [...document.querySelectorAll('header a.acct, dialog.sheet a.acct')].every(a => a.getAttribute('aria-disabled') === 'true' && a.dataset.tip === "Needs the server: you're offline"),
                         theme: document.documentElement.dataset.theme}; }""")
-                ph.evaluate("document.getElementById('accountLink').click()")
+                ph.evaluate("document.getElementById('settingsLink').click()")
                 ph.wait_for_timeout(300)
                 got["stayed"] = ph.evaluate("location.pathname") == "/" + path
                 ph.keyboard.press("Control+k")
@@ -28797,8 +28931,8 @@ def main():
                     got["palette"][q] = ph.evaluate("[[...document.querySelectorAll('#palList .pal-t')].map(x => x.textContent), document.querySelector('.pal-note').textContent]")
                 ph.keyboard.press("Escape")
                 off413[path] = got
-            name413 = {"settings.html": "Settings", "sharing.html": "Sharing", "account.html": "Account", "guide.html": "Getting started"}
-            check("offline (#413, #424): Settings, Sharing, Account and Getting started from the service worker say they need the server in the banner, under the page's "
+            name413 = {"settings.html": "Settings", "sharing.html": "Sharing", "sources.html": "Sources", "guide.html": "Getting started"}
+            check("offline (#413, #424): Settings, Sharing, Sources and Getting started from the service worker say they need the server in the banner, under the page's "
                   "one visible h1, with a link to the records, and show nothing that needs it: no empty page, no menu link followed, nothing in the palette that needs the server",
                   all(g["text"].startswith(f"{name413[k]}\nOffline. {name413[k]} needs the server") and g["h1"] == [[name413[k], True]]
                       and g["link"] == "/" and g["shown"] and not g["main"] and g["links"] and g["stayed"]
@@ -28876,7 +29010,7 @@ def main():
                   back428[0] == [False, True] and back428[1] < 8 and back428[2] == [True, False, True], back428)
 
             # turned off: the copy goes
-            ph.goto(base + "/account.html#offline")
+            ph.goto(base + "/settings.html?profile=1#offline")   # (Account's short address, #991)
             ph.wait_for_selector("#offlineOn")
             until("document.querySelector('#offlineRecords .msg').textContent.includes('Kept: the records in ')", 5000)
             ph.uncheck("#offlineOn")
