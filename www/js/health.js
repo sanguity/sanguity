@@ -852,9 +852,9 @@ function hGlucose(box, a, b, {head, legend, byDay}) {
     const cover = P.ds.length ? Math.min(100, P.hours / (P.ds.length * 24) * 100) : 0;
     card.append(el("div", {class: "glu-tir"},
       el("h4", {class: "sub", text: `Time in ranges · ${P.ds.length} CGM day${P.ds.length === 1 ? "" : "s"} in this period, ${gPct(cover)} of the time with readings`}),
-      el("div", {class: "glu-bar", "aria-hidden": "true"}, ...parts.filter(p => p[1] > 0).map(([k, v]) => el("span", {style: {width: v + "%", background: G_C[k]}}))),
+      el("div", {class: "glu-bar", "aria-hidden": "true"}, ...parts.filter(p => p[1] > 0).map(([k, v]) => el("span", {class: "g-" + k, style: {width: v + "%", backgroundColor: G_C[k]}}))),
       el("ul", {}, ...[["lt54", `Below ${s0} ${u}`, P.lt54], ["lt70", `Below ${s1} (with below ${s0})`, P.lt70], ["in", `${s1}–${s2}`, P.in], ["gt180", `Above ${s2}`, P.gt180]]
-        .map(([k, t, v]) => el("li", {}, el("i", {style: {background: G_C[k]}}), `${t}: `, el("b", {text: gPct(v)})))),
+        .map(([k, t, v]) => el("li", {}, el("i", {class: "g-" + k, style: {backgroundColor: G_C[k]}}), `${t}: `, el("b", {text: gPct(v)})))),
       el("p", {class: "hint", text: `The standard published ranges for CGM readings (${s1}–${s2} ${u}, with below ${s1} and below ${s0} counted separately): not advice, and not anyone's own targets.`})));
     if (G.cT) {   // beside it, time in the person's own range (#234), labelled as theirs
       const t = targetOf("cgm"), who = tgtWho(t), range = tgtText("cgm", u), part = P.od.length < P.ds.length ? P.ds.length - P.od.length : 0;
