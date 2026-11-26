@@ -62,7 +62,7 @@ function syncNotice(rows) {
 function adminGate() {
   $("#adminTf").hidden = false; $("#adminTools").hidden = $("#userDanger").hidden = true; $("#users").hidden = false;
   $("#secNotice").hidden = $("#codeNotice").hidden = $("#syncNotice").hidden = $("#backupNotice").hidden = true;
-  for (const id of ["#general", "#gen-host", "#gen-security", "#gen-phone", "#backups", "#admin", "#sec-sync", "#labmaps", "#installLog"]) gateCard($(id));
+  for (const id of ["#general", "#gen-host", "#gen-security", "#gen-backups", "#gen-phone", "#backups", "#admin", "#sec-sync", "#labmaps", "#installLog"]) gateCard($(id));
 }
 function gateCard(card) {
   if (card.querySelector(".adm-gate")) return;
@@ -473,6 +473,6 @@ async function adminStart(first) {
   if (ME.user.admin_needs_two_factor) { adminGate(); SET_NAV.again(); return; }
   loadInstallLog();
   await Promise.all([loadUsers(), loadNotice(), loadLabmaps(), loadGenSecurity(), loadRequireTf(), loadSetup(), loadSync(), loadBackups(),
-                     loadHost(), loadPhone()]);
+                     loadHost(), loadGenBackups(), loadPhone()]);   // General's parts (#998)
   SET_NAV.again();
 }
