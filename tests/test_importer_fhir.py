@@ -507,6 +507,27 @@ class Keys(unittest.TestCase):
         ks = sorted(e["key"] for e in fhir.parse({"mixed.json": p})["data"]["events"])
         self.assertEqual(ks, ["fhir:https://one.example.org/fhir|Encounter/1", "fhir:https://two.example.org/fhir|Encounter/1"])
 
+    def test_a_server_stamping_meta_source_per_write_is_one_server(self):   # #1022
+        """HAPI FHIR stamps meta.source "<base>#<request id>" (or "#<request id>" alone) on each write: a server is named
+        by the part before "#" (else its fullUrl's base), so its records aren't taken for many servers' (keys naming
+        each request), nor a record it changes for another source's."""
+        def parse(stamps, full="https://ehr.example.org/fhir"):
+            bundle = {"resourceType": "Bundle", "entry": [
+                {**({"fullUrl": f"{full}/Encounter/{n}"} if full else {}),
+                 "resource": {"resourceType": "Encounter", "id": str(n), "status": "finished", "class": {"code": "AMB"},
+                              "meta": {"source": src}, "period": {"start": f"2025-0{n}-01T09:00:00Z"}}}
+                for n, src in enumerate(stamps, 1)]}
+            p = os.path.join(self.tmp, "stamped.json")
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump(bundle, f)
+            return sorted((e["key"], (e.get("ver") or {}).get("server")) for e in fhir.parse({"stamped.json": p})["data"]["events"])
+        self.assertEqual(parse(["#req-1", "#req-2"]), [("fhir:Encounter/1", "https://ehr.example.org/fhir"),
+                                                        ("fhir:Encounter/2", "https://ehr.example.org/fhir")])
+        self.assertEqual(parse(["https://ehr.example.org/fhir#a1", "https://ehr.example.org/fhir#b2"], full=None),
+                         [("fhir:Encounter/1", "https://ehr.example.org/fhir"), ("fhir:Encounter/2", "https://ehr.example.org/fhir")])
+        self.assertEqual(parse(["urn:example:one#a", "urn:example:two#b"]), [("fhir:urn:example:one|Encounter/1", "urn:example:one"),
+                                                                             ("fhir:urn:example:two|Encounter/2", "urn:example:two")])
+
 
 class Flags(unittest.TestCase):
     def test_a_flag_that_says_no_way_is_kept(self):

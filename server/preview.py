@@ -278,9 +278,10 @@ def _server(x):
 def _said_source(x):
     """(#967) Where a record of an upload (an event's body, a list's entry) says it came from, as given: its VER's server
     (the FHIR importer's: its server's base), else its source (#968: a C-CDA's custodian, a CareSpace export's clinic).
-    "" where it doesn't say."""
+    "" where it doesn't say. A server only by its stable part (#1022: one saved before saying a meta.source stamped
+    per write, "#<request id>", says none)."""
     v = x.get(VER) if isinstance(x, dict) and isinstance(x.get(VER), dict) else {}
-    return str(v.get("server") or v.get("source") or "").strip()
+    return str(common.stable_source(v.get("server")) or v.get("source") or "").strip()
 
 
 def _source(x, base=None):
@@ -371,7 +372,8 @@ def _same_source(key, sent, here, base=None, sent_d=None, here_d=None):
     A's. (#968) Any other record whose VER says its source both here and in the upload (a C-CDA's custodian, a
     CareSpace export's clinic), the same one; where either doesn't, its importer (the key's prefix), as before."""
     if PLAIN_FHIR.match(str(key).split("#", 1)[0]):
-        a, b = _server((sent.get(VER) or {}).get("server")), _server((here.get(VER) or {}).get("server") or base)
+        srv = lambda x: common.stable_source((x.get(VER) or {}).get("server"))   # (#1022) its stable part
+        a, b = _server(srv(sent)), _server(srv(here) or base)
         if not a or a != b:
             return False
     elif (a := _source(sent)) and (b := _source(here)) and a != b:

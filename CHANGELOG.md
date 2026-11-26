@@ -3596,6 +3596,11 @@ Everything on `main` so far; it becomes the first tagged release.
   heading. Back returns to the row you opened only from that chart, and again after Forward (which focuses the
   chart); a long unit no longer runs past the card at 320 px with larger text; two results at one time with no
   range say so once, and a period with no results says so in one line.
+- **A server that stamps each write's source is one source** (#1022): a FHIR server that marks each record it saves
+  with that write's request (HAPI FHIR's `meta.source` "#<request id>") had its records taken for many servers': at
+  the next pull, a medication it stopped, a problem it resolved and a result it amended were each added as a copy
+  beside the old one, the result with no row in the drawer. A server is now named by the part of its `meta.source`
+  that stays the same (before any "#", else its address), so each is updated in place.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
