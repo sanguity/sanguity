@@ -45,7 +45,8 @@ def clean(items, where):
         try:
             out += check([{k: m.get(k) for k in ("date", "label", "primary") if m.get(k) is not None}])
         except settings.SettingError as e:
-            print(f"{where}: a milestone was left out ({e})", flush=True)
+            print(f"{where}: a milestone was left out: Settings doesn't take its date or label", flush=True)   # (#1065: not
+            # the refusal's words, which can quote the label)
     out.sort(key=lambda m: (m["date"], m["label"]))
     seen = False
     for m in out:
@@ -75,7 +76,7 @@ def migrate(db):
         try:
             corr = old(json.loads(crypto.read_file(path).decode("utf-8")))
         except (OSError, ValueError) as e:
-            print(f"corrections.json can't be read ({type(e).__name__}: {e}); its milestones weren't moved into the "
+            print(f"corrections.json can't be read ({type(e).__name__}); its milestones weren't moved into the "
                   "app. Add them on the Settings page.", flush=True)
     linked = [r["id"] for r in db.execute("SELECT id FROM profiles WHERE linked_build=1 ORDER BY id")] or pids[:1]
     n = 0

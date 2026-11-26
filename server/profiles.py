@@ -11,11 +11,12 @@ profile's own folder, and nothing else on disk can be reached.
 Before schema version 10 a profile's records were profiles/<id>/data.json; migrate_files loads such a file into
 the tables at start-up, then deletes it (#934).
 """
-import contextlib, json, os, secrets, shutil, threading
+import contextlib, json, logging, os, secrets, shutil, threading
 from urllib.parse import quote
 
 from . import activity, config, crypto, db as dbm, edits, milestones, records, settings
 
+log = logging.getLogger("sanguity.profiles")   # (#1065) where it failed, never the message (main.QuietTracebacks)
 _lock = threading.Lock()
 _failed = {}   # profile id -> (build mtime, why): a build that couldn't be loaded, so it isn't retried on every request
 
@@ -310,8 +311,8 @@ def sync_build(db, pid=None):
                 _failed.pop(p, None)
                 activity.log(db, "reload", profile_id=p, actor=activity.SETUP_BUILD)
             except Exception as e:
-                _failed[p] = (m, f"{type(e).__name__}: {e}")
-                print(f"Couldn't load the built records into profile {p}: {_failed[p][1]}", flush=True)
+                _failed[p] = (m, f"{type(e).__name__}: {e}")   # (shown to its admins: build_error)
+                log.exception("couldn't load the built records into profile %s", p)
     return {r["id"]: _failed[r["id"]][1] for r in rows if _failed.get(r["id"], (None,))[0] == m}
 
 
@@ -498,7 +499,7 @@ def migrate_files(db):
                 data = read_json(path)
                 _check(data)
             except Exception as e:   # left where it is, for someone to look at; the app still starts
-                print(f"Couldn't move profile {pid}'s records into the database ({type(e).__name__}: {e}); "
+                print(f"Couldn't move profile {pid}'s records into the database ({type(e).__name__}); "
                       f"{path} is left as it was.", flush=True)
                 continue
             with dbm.transaction(db):

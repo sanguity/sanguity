@@ -127,7 +127,7 @@ def _seal_counts(counts):
     try:
         return crypto.enc(json.dumps(counts, separators=(",", ":"), sort_keys=True))
     except crypto.KeyError_ as e:
-        log.warning("backup: its row counts are left out: %s", e)
+        log.warning("backup: its row counts are left out: the encryption key can't be read (%s)", type(e).__name__)
         return None
 
 

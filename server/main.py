@@ -654,7 +654,7 @@ def login_passkey_options(body: PasskeyStart, request: Request, db=Depends(get_d
         uid = _tickets.get(body.ticket[:200])
         if not uid:
             raise HTTPException(401, "That took too long. Enter your password again.")
-    state, options = passkeys.authentication_options(db, request.headers.get("origin"), uid)
+    state, options = passkeys.authentication_options(db, request.headers.get("origin"), uid, ticket=body.ticket[:200] if uid else None)
     return {"state": state, "options": options}
 
 
@@ -671,7 +671,7 @@ def login_passkey(body: PasskeyFinish, request: Request, response: Response, db=
         if not want:
             raise HTTPException(401, "That took too long. Enter your password again.")
     try:
-        uid, name = passkeys.authenticate(db, body.state[:200], body.credential)
+        uid, name = passkeys.authenticate(db, body.state[:200], body.credential, ticket=(body.ticket or "")[:200] or None)
     except passkeys.PasskeyError as e:
         sec.throttle.fail(*keys)
         if body.ticket:

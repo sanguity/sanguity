@@ -1965,6 +1965,14 @@ class Api(unittest.TestCase):
             with self.assertRaises(passkeys.PasskeyError) as no:
                 passkeys.site(o, ["localhost"])
             self.assertEqual(str(no.exception), want)
+        # (#1065) the state issued after the password is that ticket's: finished without it (or with another), refused,
+        # though presence alone would do with it
+        for other in (None, client().post("/api/login", json={"username": "pia", "password": "pia keeps a long passphrase"}, headers=H).json()["ticket"]):
+            o = c.post("/api/login/passkey/options", json={"ticket": first["ticket"]}, headers=O).json()
+            r = client().post("/api/login/passkey", json={"state": o["state"], "credential": key.get(o["options"], verified=False),
+                                                          **({"ticket": other} if other else {})}, headers=O)
+            self.assertEqual(r.status_code, 401, r.text)
+            self.assertIn("Enter your password again", r.json()["detail"])
         o = c.post("/api/login/passkey/options", json={"ticket": first["ticket"]}, headers=O).json()
         self.assertEqual([x["id"] for x in o["options"]["allowCredentials"]], [SoftKey.b64(key.cid)])
         answer = key.get(o["options"], verified=False)   # after a password, presence is enough

@@ -242,6 +242,6 @@ def index():
                     have = {e.get("id") for e in local["entries"] if isinstance(e, dict)}
                     doc = {**local, "entries": local["entries"] + [e for e in doc["entries"] if e["id"] not in have]}
                 except (OSError, ValueError) as e:   # a broken copy: keep to the bundled list, and say why
-                    print(f"The provider directory {path} couldn't be read ({e}); using the bundled list only.", flush=True)
+                    print(f"The provider directory {path} couldn't be read ({type(e).__name__}); using the bundled list only.", flush=True)
             _cache.update(key=key, index=Index(doc))
         return _cache["index"]

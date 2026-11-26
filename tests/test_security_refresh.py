@@ -17,6 +17,7 @@ Fictional data only.
   python3 tests/test_security_refresh.py
 """
 import ast, inspect, io, json, logging, os, re, shutil, sys, tempfile, textwrap, time, unittest
+from unittest import mock
 from datetime import date, timedelta
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -456,6 +457,44 @@ class QuietLogs(unittest.TestCase):
             self.assertNotIn("FICTIONAL-RECORD-TEXT", text, name)
             self.assertNotIn("Oncology", text, name)
 
+    def test_no_module_logs_an_exceptions_words(self):   # #1065
+        """The rule, by a scan of every module of the server (not a list of them): where an exception is caught, what
+        goes to the log (print, or a logger's call) never holds its words (the exception itself, str(), repr() or its
+        args), which can quote a file's name or a record: its type, its strerror, where it happened. (A logger's
+        exception() is fine: main.QuietTracebacks drops the message.)"""
+        LOGGERS = {"log", "logger", "logging", "_log"}
+
+        def logs(call):
+            f = call.func
+            return isinstance(f, ast.Name) and f.id == "print" or (isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name)
+                                                                   and f.value.id in LOGGERS and f.attr != "exception")
+
+        def words(node, name):   # the exception's words: not type(e), nor an attribute but its args
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "type":
+                return False
+            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == name:
+                return node.attr == "args"
+            if isinstance(node, ast.Name):
+                return node.id == name
+            return any(words(c, name) for c in ast.iter_child_nodes(node))
+        found, seen = [], 0
+        for base, _, files in os.walk(os.path.join(ROOT, "server")):
+            for fn in sorted(f for f in files if f.endswith(".py")):
+                path = os.path.join(base, fn)
+                with open(path, encoding="utf-8") as f:
+                    tree = ast.parse(f.read())
+                seen += 1
+                for h in ast.walk(tree):
+                    if isinstance(h, ast.ExceptHandler) and h.name:
+                        found += [f"{os.path.relpath(path, ROOT)}:{n.lineno}" for n in ast.walk(h) if isinstance(n, ast.Call) and logs(n)
+                                  and any(words(a, h.name) for a in [*n.args, *(k.value for k in n.keywords)])]
+        self.assertGreater(seen, 50, "every module")
+        self.assertEqual(found, [])
+        # and the scan sees one that does
+        bad = ast.parse("try:\n    pass\nexcept ValueError as e:\n    print(f'failed ({e})')\n    log.warning('x %s', str(e))\n")
+        h = next(n for n in ast.walk(bad) if isinstance(n, ast.ExceptHandler))
+        self.assertEqual(sum(1 for n in ast.walk(h) if isinstance(n, ast.Call) and logs(n) and any(words(a, h.name) for a in n.args)), 2)
+
     def test_main_installs_the_filter(self):
         self.assertTrue(any(isinstance(f, main.QuietTracebacks) for h in main.log.handlers for f in h.filters))
         self.assertTrue(any(isinstance(f, main.QuietTracebacks) for f in logging.getLogger("uvicorn.error").filters))
@@ -486,6 +525,32 @@ class QuietLogs(unittest.TestCase):
         text = out.getvalue()
         self.assertIn(f"import job {jid}", text)
         self.assertNotIn("PRIVATE", text)
+
+    def test_a_setup_build_that_cant_be_loaded_logs_where_only(self):   # #1065
+        """profiles.sync_build printed the setup build's import error, its message and all (which can quote a record):
+        it's logged as the others are, where it failed, never the message; its admins are still told why (build_error)."""
+        out = self.capture("sanguity.profiles")
+        db = dbm.connect()
+        try:
+            pid = prof.create_profile(db, "Setup build (fictional)", owner_id=accounts.create(db, "bea", password="harbour lantern crow pebble ivy")[0])
+            db.execute("UPDATE profiles SET linked_build=1, build_mtime=NULL WHERE id=?", (pid,))
+
+            def fails(*a, **k):
+                try:
+                    {}[RECORD_TEXT]
+                except KeyError as e:
+                    raise ValueError(FILE_PROBLEM) from e
+            with mock.patch.object(prof, "build_version", return_value="1:1|-"), mock.patch.object(prof, "import_dataset", fails):
+                why = prof.sync_build(db, pid)
+        finally:
+            db.close()
+        text = out.getvalue()
+        self.assertIn(f"couldn't load the built records into profile {pid}", text)
+        self.assertIn("builtins.ValueError", text)
+        self.assertIn("test_security_refresh.py", text)   # where it happened
+        self.assertNotIn("FICTIONAL-RECORD-TEXT", text)
+        self.assertNotIn("Oncology", text)
+        self.assertIn("Oncology", why[pid], "its admins are told why")
 
 
 # ---------------------------------------------------------------- nginx keeps no access log

@@ -11,7 +11,7 @@ Each passkey checks the person too (fingerprint, face, PIN: "user verification",
 it signs in on its own, or as the step after the password. Only the public key is stored. No attestation is
 asked for: any authenticator is accepted, and none is told apart.
 """
-import ipaddress, json, secrets, threading, urllib.parse
+import hmac, ipaddress, json, secrets, threading, urllib.parse
 
 import webauthn
 from webauthn.helpers import base64url_to_bytes, bytes_to_base64url
@@ -183,10 +183,11 @@ def register(db, u, state, credential, name):
 
 # ---------------------------------------------------------------- signing in with one
 
-def authentication_options(db, origin, uid=None, fresh=False):
+def authentication_options(db, origin, uid=None, fresh=False, ticket=None):
     """Options for navigator.credentials.get. With uid (after the password): that account's passkeys at this
-    address. Without: any passkey the browser holds for this site, which must verify the person; so must one for the
-    fresh check (fresh, with uid: #930), which stands in for the password, and whose challenge only it takes."""
+    address, the state bound to the password's ticket (#1065: only finished with it). Without: any passkey the browser
+    holds for this site, which must verify the person; so must one for the fresh check (fresh, with uid: #930), which
+    stands in for the password, and whose challenge only it takes."""
     rp_id, origin = site(origin, sites(db, uid) if uid is not None else ())
     allow = None
     if uid is not None:
@@ -202,18 +203,20 @@ def authentication_options(db, origin, uid=None, fresh=False):
         rp_id=rp_id, allow_credentials=allow,
         user_verification=UserVerificationRequirement.REQUIRED if verify else UserVerificationRequirement.PREFERRED)
     state = challenges.issue(kind="fresh check" if fresh else "sign-in", uid=uid, challenge=opts.challenge, rp_id=rp_id,
-                             origin=origin, verify=verify)
+                             origin=origin, verify=verify, ticket=sec.token_hash(ticket) if ticket else None)
     return state, json.loads(webauthn.options_to_json(opts))
 
 
-def authenticate(db, state, credential, fresh=False):
+def authenticate(db, state, credential, fresh=False, ticket=None):
     """Check a sign-in, or with fresh the fresh check (a challenge issued for it, #930); returns (user id, passkey
-    name). With a state issued for an account, only its passkeys do. The person must have been verified (a PIN or
-    a fingerprint, not a tap alone) where the challenge asked for it: a sign-in without the password, and the fresh
-    check."""
+    name). With a state issued for an account, only its passkeys do, and only with the ticket it was issued for (#1065:
+    after the password, its person needn't be verified). The person must have been verified (a PIN or a fingerprint,
+    not a tap alone) where the challenge asked for it: a sign-in without the password, and the fresh check."""
     c = challenges.take(state)
     if c["kind"] != ("fresh check" if fresh else "sign-in") or fresh and c["uid"] is None:
         raise PasskeyError("That took too long. Try again.", 401)
+    if c.get("ticket") is not None and (not ticket or not hmac.compare_digest(sec.token_hash(ticket), c["ticket"])):
+        raise PasskeyError("That took too long. Enter your password again.", 401)
     cid = credential.get("id") if isinstance(credential, dict) else None
     row = db.execute("SELECT * FROM passkeys WHERE credential_id=? AND rp_id=?", (str(cid)[:1400], c["rp_id"])).fetchone() if cid else None
     if not row or (c["uid"] is not None and row["user_id"] != c["uid"]):
