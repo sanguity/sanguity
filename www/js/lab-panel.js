@@ -145,7 +145,7 @@ function labStripDraw(svg, s, pts) {
   g.push(el("svg:line", {x1: L, x2: R, y1: B, y2: B, stroke: "var(--axis)"}),
     el("svg:text", {x: L, y: h - 5, text: fmtD(state.from)}), el("svg:text", {x: R, y: h - 5, "text-anchor": "end", text: fmtD(state.to)}));
   for (const p of ckOnTop(pts)) g.push(p[4] ? abnMark(x(p.ts), y(p[1]), p[4]) : el("svg:circle", {class: "pt", cx: x(p.ts), cy: y(p[1]), r: 4}));   // a flag never under a dot (#825)
-  const ring = el("svg:circle", {r: 7, fill: "none", stroke: "var(--ink)", "stroke-width": 2, visibility: "hidden", "pointer-events": "none"});
+  const ring = el("svg:circle", {r: 7, class: "ck-ring", fill: "none", stroke: "var(--ink)", "stroke-width": 2, visibility: "hidden", "pointer-events": "none"});
   g.push(ring);
   svg.replaceChildren(...g);
   // at: every result at the time hovered or stepped to (chartkit.js ckAt), the flagged one ringed; two at one time
