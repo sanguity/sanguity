@@ -3761,6 +3761,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Sources fits a phone with larger text** (#1067): an upload's review widened Upload files past the screen (its
   Cancel and Add side by side), and in Find your provider focus stayed on the result chosen, scrolled off the screen;
   the bar's buttons wrap, and focus goes to the provider's details.
+- **The heatmap's labels stay inside it with larger text** (#1071): at 320 px a row's name ran past the chart's left
+  edge, and the counts' heading was crossed by a year's line; names shorten as far as they need, and the line starts
+  under the heading.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
