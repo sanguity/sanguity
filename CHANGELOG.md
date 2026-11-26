@@ -3756,6 +3756,8 @@ Everything on `main` so far; it becomes the first tagged release.
 - **New profile waits for the server to say you may** (#1050): the profile menu showed it until the page had asked
   who's signed in, so with profiles admins only a member saw it briefly on a slow load; it's shown only once the
   answer says yes.
+- **A menu's items wrap where they don't fit** (#1060): with larger text on a phone the drawer's ⋯ cut "Hide (results
+  stay in Labs)" and scrolled sideways; every menu's items now wrap within it.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

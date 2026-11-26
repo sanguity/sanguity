@@ -9153,6 +9153,44 @@ def main():
                 page.wait_for_function("!(DATA.edits || []).length", timeout=20000)
                 settle(300)
                 check("…undone, the draw as it was (#950)", js(f"({draw950})", day950) == before950)
+            # #1060: a menu's items wrap where they don't fit: .menu-item was nowrap in a menu kept to 280 px, so with text at
+            # 200% on a phone the drawer's ⋯ cut "Hide (results stay in Labs)" and scrolled sideways. At 320 and 412 px with
+            # text at 200%, the top bar's menus (the profile, the period, More, Add and yours: sheets on a phone) and the
+            # drawer's ⋯ on a lab report: every item whole inside its menu, none scrolling sideways; as usual at 360 and
+            # 1400 px, each item one line
+            MENU1060 = r"""() => { const m = [...document.querySelectorAll('.menu-list')].find(x => x.checkVisibility() && (x.matches(':popover-open') || x.closest('dialog[open]')));
+              if (!m) return null; const M = m.getBoundingClientRect(), bad = [], items = [...m.querySelectorAll('.menu-item')].filter(i => i.checkVisibility());
+              if (m.scrollWidth > m.clientWidth + 1) bad.push(`scrolls ${m.scrollWidth} in ${m.clientWidth}`);
+              if (M.left < -.5 || M.right > innerWidth + .5) bad.push('past the screen');
+              for (const i of items) { const r = i.getBoundingClientRect(); if (i.scrollWidth > i.clientWidth + 1 || r.left < M.left - .5 || r.right > M.right + .5) bad.push(`“${i.textContent.trim()}” cut`); }
+              return {id: m.id, n: items.length, bad, tall: Math.round(Math.max(...items.map(i => i.getBoundingClientRect().height)))}; }"""
+            item1060, vp1060 = pick950[1] if pick950 else js("EV.find(e => e.k === 'lab')?.id"), page.viewport_size
+            bad1060, seen1060 = {}, []
+            for w1060, big1060 in ((320, True), (412, True), (360, False), (1400, False)):
+                page.set_viewport_size({"width": w1060, "height": 800})
+                js(ADOPT_CSS_JS, BIG_TEXT_CSS if big1060 else "")
+                settle(300)
+                for list1060 in ("profileMenuList", "periodPillList", "periodMoreList", "tabMoreList", "addMenuList", "userMenuList", "dmoreList"):
+                    if list1060 == "dmoreList":
+                        js("id => openEvent(byId.get(id))", item1060)
+                        settle(300)
+                    btn1060 = f"[aria-controls={list1060}]"
+                    if not js("s => !!document.querySelector(s)?.checkVisibility()", btn1060):
+                        continue   # (More only where some tabs don't fit; the period's pill on a phone, its More… on a laptop)
+                    page.click(btn1060)
+                    settle(250)
+                    got1060 = js(MENU1060)
+                    seen1060.append(f"{list1060} {w1060}")
+                    if not got1060 or got1060["bad"] or not got1060["n"] or (not big1060 and got1060["tall"] > 44):
+                        bad1060[f"{list1060} at {w1060} px{', 200%' if big1060 else ''}"] = got1060
+                    page.keyboard.press("Escape")
+                    settle(200)
+                js("() => { closeDrawer(); document.adoptedStyleSheets = []; }")
+            page.set_viewport_size(vp1060)
+            settle(300)
+            check("a menu's items wrap where they don't fit (#1060: the drawer's ⋯ cut “Hide (results stay in Labs)” and scrolled sideways): at 320 and 412 px "
+                  "with text at 200%, the top bar's menus and the drawer's ⋯, every item whole inside its menu, none scrolling sideways; as usual at 360 and "
+                  "1400 px each item one line", not bad1060 and sum(x.startswith("dmoreList") for x in seen1060) == 4 and len(seen1060) >= 16, bad1060 or seen1060)
             # #1023: Merge with… offers only a kind it can be one with: a lab event the lab events within a week, a lab day
             # the lab days, a visit neither (it listed every event, so a lab event went into a lab day or a visit, its
             # results with no row, or a lab day into a lab event, its lab events listed by none); the first offered merged

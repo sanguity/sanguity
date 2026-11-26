@@ -316,13 +316,13 @@ button.tile{cursor:pointer}
 @starting-style{ .menu-list:popover-open{opacity:0} }
 @supports not (anchor-name: --a){ .menu-list{top:var(--menu-top,auto);left:var(--menu-left,auto);right:auto} .menu-list.sg-measure{display:flex;flex-direction:column;visibility:hidden} }
 .menu-item[hidden],.menu-sep[hidden]{display:none}
-.menu-item{display:block;text-align:left;width:100%;padding:var(--sp-2) var(--sp-3);border:0;background:none;border-radius:var(--r-sm);color:var(--ink);font:inherit;font-size:var(--fs-3);cursor:pointer;text-decoration:none;white-space:nowrap}
+.menu-item{display:block;text-align:left;width:100%;padding:var(--sp-2) var(--sp-3);border:0;background:none;border-radius:var(--r-sm);color:var(--ink);font:inherit;font-size:var(--fs-3);cursor:pointer;text-decoration:none}
 .menu-item:hover,.menu-item:focus-visible{background:var(--hover);outline:none}
 .menu-sep{height:1px;background:var(--grid);margin:var(--sp-1) 2px}
 /* a pick-one menu's items (the period's More…, the profile menu's profiles), the picked one ticked (#257) and tinted; a
    group's name over its items; the page you're on, in bold. The words start past the tick, as wide as the text (1em:
    24 px as usual, more with larger text, #746: it covered their first letter) */
-.menu-item[role=menuitemradio]{position:relative;display:flex;align-items:baseline;justify-content:space-between;gap:var(--sp-3);padding-left:calc(var(--sp-2) + 1em + 2px);white-space:normal}
+.menu-item[role=menuitemradio]{position:relative;display:flex;align-items:baseline;justify-content:space-between;gap:var(--sp-3);padding-left:calc(var(--sp-2) + 1em + 2px)}
 .menu-item[aria-checked="true"]{background:color-mix(in srgb,var(--accent) 12%,var(--raised));font-weight:var(--fw-semibold)}
 .menu-item>.i-check{position:absolute;left:var(--sp-2);margin-top:.225em;color:var(--accent);stroke-width:2.5}
 .menu-item:not([aria-checked="true"])>.i-check{display:none}
@@ -534,7 +534,7 @@ dialog.sheet[open]{display:flex;flex-direction:column;padding-bottom:env(safe-ar
 .sheet-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:0 var(--sp-3) var(--sp-4)}
 .sheet-body h3{margin:var(--sp-4) 0 var(--sp-2);font-size:var(--fs-3);font-weight:var(--fw-semibold);color:var(--ink2)}
 .sheet .menu-list{position:static;display:flex;flex-direction:column;min-width:0;max-width:none;max-height:none;padding:0;border:0;border-radius:0;box-shadow:none;background:none;overflow:visible}
-.sheet .menu-item{display:flex;align-items:center;min-height:44px;white-space:normal}
+.sheet .menu-item{display:flex;align-items:center;min-height:44px}
 .sheet .menu-item>.i-check{margin-top:0}
 .sheet-foot{display:flex;justify-content:flex-end;gap:var(--sp-2);padding:var(--sp-3);border-top:1px solid var(--grid)}
 .sheet-foot .btn{margin:0}
