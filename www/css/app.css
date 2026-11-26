@@ -320,7 +320,7 @@ button.tile{cursor:pointer}
 /* a pick-one menu's items (the period's More…, the profile menu's profiles), the picked one ticked (#257) and tinted; a
    group's name over its items; the page you're on, in bold. The words start past the tick, as wide as the text (1em:
    24 px as usual, more with larger text, #746: it covered their first letter) */
-.menu-item[role=menuitemradio]{position:relative;display:flex;align-items:baseline;justify-content:space-between;gap:var(--sp-3);padding-left:calc(var(--sp-2) + 1em + 2px)}
+.menu-item[role=menuitemradio]{position:relative;display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:0 var(--sp-3);padding-left:calc(var(--sp-2) + 1em + 2px)}
 .menu-item[aria-checked="true"]{background:color-mix(in srgb,var(--accent) 12%,var(--raised));font-weight:var(--fw-semibold)}
 .menu-item>.i-check{position:absolute;left:var(--sp-2);margin-top:.225em;color:var(--accent);stroke-width:2.5}
 .menu-item:not([aria-checked="true"])>.i-check{display:none}
