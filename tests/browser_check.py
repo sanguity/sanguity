@@ -2920,7 +2920,13 @@ def main():
             return ""
         focused = """(() => { const a = document.activeElement, r = a.getBoundingClientRect(), cs = getComputedStyle(a);
             return {text: a.textContent, top: r.top, right: r.right, color: cs.color, bg: cs.backgroundColor}; })()"""
-        skips, titles = {}, {}
+        # (#1036: …and hidden it's off the screen, above its top, at 320, 412 and 1400 px with text as usual and at 200%;
+        # focused, wholly on it: element screenshots at 320 px with 200% text had shown it over the page, its position not)
+        SKIP1036 = r"""css => { const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = css ? [s] : [];
+          const a = document.querySelector('.skip-link'), box = () => { const b = a.getBoundingClientRect(); return [b.top, b.bottom, b.left, b.right].map(Math.round); };
+          document.activeElement && document.activeElement.blur(); const hidden = box(); a.focus(); const shown = box(); a.blur(); document.adoptedStyleSheets = [];
+          return {hidden, shown, ok: hidden[1] <= 0 && shown[0] >= 0 && shown[2] >= 0 && shown[1] <= innerHeight && shown[3] <= innerWidth}; }"""
+        skips, titles, skip1036 = {}, {}, {}
         for path, ready, title, width in (("", "#view-overview .card", None, 1400), ("sources.html?profile=1", "#srcList h3", "Sources: Overview", 375),
                                           ("settings.html?profile=1", "#sec-overview .set-labs li", "Settings: Dashboard", 1400),
                                           ("sharing.html?profile=1", "#memberList tbody tr", "Sharing: People", 375),
@@ -2938,10 +2944,17 @@ def main():
             skips[path or "records"] = [f["text"], f["top"] >= 0 and f["right"] <= width, contrast(f["color"], f["bg"]),
                                         strict.evaluate("document.activeElement === document.querySelector('main')"), strict.evaluate("location.hash") == hash_was]
             titles[path or "records"] = [strict.title(), title + " · Sanguity"]
+            for w1036 in (320, 412, 1400):
+                strict.set_viewport_size({"width": w1036, "height": 800})
+                for big1036 in ("", BIG_TEXT_CSS):
+                    skip1036[f"{path or 'records'} at {w1036} px{', 200% text' if big1036 else ''}"] = strict.evaluate(SKIP1036, big1036)
         strict.set_viewport_size({"width": 1400, "height": 900})
         check("on every page with the top bar, Tab's first stop is “Skip to content”, shown while focused, readable on the dark theme, at 1400 and 375 px (#209)",
               len(skips) == 7 and all(v[0] == "Skip to content" and v[1] and v[2] >= 4.5 for v in skips.values()), skips)
         check("…Enter moves focus to the page's main part, the address unchanged", all(v[3] and v[4] for v in skips.values()), skips)
+        check("…hidden it's above the screen's top and focused wholly on it, on each of those pages at 320, 412 and 1400 px with text "
+              "as usual and at 200% (#1036)", len(skip1036) == 42 and all(v["ok"] for v in skip1036.values()),
+              {k: v for k, v in skip1036.items() if not v["ok"]} or "all 42")
         # #247: hidden, it casts no shadow (its 16 px shadow showed at the top-left of every page in light mode); focused, it does
         skip_look = "(() => { const s = document.querySelector('.skip-link'); return [s === document.activeElement, getComputedStyle(s).boxShadow, s.getBoundingClientRect().bottom]; })()"
         shadows = {}
