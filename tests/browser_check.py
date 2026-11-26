@@ -14379,17 +14379,19 @@ def main():
                   "one row", renamed832 == back832 == 200 and n832 == 16 and not bad832, [renamed832, name832, back832, n832, bad832])
             # ---- #633: the heatmap's own labels too (its names' column, rows and axis grow with the text, chartkit.js ckK):
             # with text at 200% and as usual, at 360 and 412 px, light and dark, every row's and panel's name, count and the
-            # axis's labels inside the grid's or the axis's SVG, none over another
+            # axis's labels inside the grid's or the axis's SVG, none over another; and at 320 px (#1071: names cut at the
+            # chart's left edge, shortened no further than 4 letters), no grid line across a label (#1071: "Outside")
             T633 = r"""() => { const r = e => e.getBoundingClientRect(), labels = [];
               for (const s of document.querySelectorAll('#hm, #hmAxis')) {
                 const R = r(s), bs = [...s.querySelectorAll('text')].filter(t => t.textContent.trim()).map(t => [t.textContent.slice(0, 20), r(t)]);
                 for (const [t, b] of bs) if (b.left < R.left - 1 || b.right > R.right + 1 || b.top < R.top - 1 || b.bottom > R.bottom + 1) labels.push(t + ' outside');
                 bs.forEach(([t, a], i) => bs.slice(i + 1).forEach(([u, b]) => { if (a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1) labels.push(t + ' over ' + u); }));
+                for (const l of s.querySelectorAll('line')) { const b = r(l); for (const [t, a] of bs) if (b.left > a.left + .5 && b.left < a.right - .5 && b.top < a.bottom - 1 && b.bottom > a.top + 1) labels.push(t + ' crossed by a line'); }
               }
               return {labels, rows: document.querySelectorAll('#hm text.row').length, axis: document.querySelectorAll('#hmAxis text').length}; }"""
             bad633 = {}
             open_tab("heatmap")
-            for w in (360, 412):
+            for w in (320, 360, 412):
                 page.set_viewport_size({"width": w, "height": 800})
                 for mode in ("light", "dark"):
                     for big in (False, True):
@@ -14409,8 +14411,8 @@ def main():
                             page.screenshot(path=os.path.join(os.environ["SANGUITY_SHOTS"], f"633-heatmap-{w}-{mode}-200.png"))
             js("t => { document.adoptedStyleSheets = []; if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; renderHeatmap(); }", theme622)
             settle(300)
-            check("…and the heatmap's (#633): its names, counts and axis labels inside its grid and axis, none over another, with text at 200% and as usual, "
-                  "at 360 and 412 px, light and dark, and at 200% in 90 days too", not bad633, bad633)
+            check("…and the heatmap's (#633): its names, counts and axis labels inside its grid and axis, none over another nor crossed by a grid line, "
+                  "with text at 200% and as usual, at 320 (#1071), 360 and 412 px, light and dark, and at 200% in 90 days too", not bad633, bad633)
             # ---- #633: #622's check for the charts with geometry of their own, at 360 and 412 px, light and dark, at the usual
             # size and with text at 200% (1.4.4): Costs' two charts, the Timeline, the Medications tab's lane and the event
             # track over Labs' charts with every layer's row (a journal entry, a mood, a cycle mark, a dose and the
