@@ -74,9 +74,9 @@ Account events (no profile), readable by admins:
                 by an admin's Add the lists / Update now, or by actor WEEKLY_DIRECTORY (directory/update.py, #992)
   records.rekey {"left": [what]}: records saved before #1022 that start-up couldn't key as they are now, left as they
                 were, by actor START_UP (records.rekey_stamped, #1044)
-  records.copies {"events", "entries", "marks"}: the copies #1022's bug made, keyed alike by records.rekey_stamped,
-                made one record each, the latest kept, by actor START_UP: records and list entries removed, Costs marks
-                moved (records.merge_copies, #1068)
+  records.copies {"events", "results", "entries", "marks"}: the copies #1022's bug made, keyed alike by
+                records.rekey_stamped, made one record each by actor START_UP: records, lab results (#1082) and list
+                entries removed, Costs marks moved (records.merge_copies, #1068)
 
 Entries keep the actor's username as it was, so they read the same after an account is gone. A profile's entries
 go with the profile. Entries older than ACTIVITY_DAYS are pruned (at most once a day, when something is logged).
