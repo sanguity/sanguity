@@ -20794,9 +20794,10 @@ def main():
                 found495[q] = [t for g, t in js(pal_found) if g == "Pages and settings"][:3]
             page.keyboard.press("Escape")
             check("…(#495) it finds Phone and watch for “iphone”, “apple health” and “health auto export”, and Install's Accounts for removing, "
-                  "deleting or disabling an account and for requiring two-factor sign-in",
+                  "deleting or disabling an account; requiring two-factor sign-in General → Security's (#1001: Accounts' before, which links there)",
                   all("Phone and watch" in found495[q] for q in ("iphone", "apple health", "health auto export"))
-                  and all("Accounts" in found495[q] for q in ("remove account", "delete account", "disable account", "require two-factor")), found495)
+                  and all("Accounts" in found495[q] for q in ("remove account", "delete account", "disable account"))
+                  and found495["require two-factor"][:1] == ["Require two-factor sign-in"], found495)
             # #499: and Accounts for creating one (its words had "new account" only), and Cycle tracking for its danger
             # zone's two ways out (#495 added them with no words)
             found499 = {}
