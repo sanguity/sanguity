@@ -178,12 +178,14 @@ function ckBand(g, steps, x, y, L, R, T, B) {
 /* the band's numbers at the right of the plot, in ink: words ("13.5–17.5 on report") for the step st at the right end,
    set right-aligned at R, inside the band under its top edge, else over its foot, else just outside it, whichever is
    the first clear of every point (pts: [px, py]) and of the labels placed already (taken), inside the plot, T to B; L
-   to R too, its first word alone where the words are wider (larger text, #622). Its offsets grow with the text (ckK).
-   -> its box [x0, x1, baseline], or null */
+   to R too, its first word alone where the words are wider (larger text, #622). Where none at the right is clear, the
+   first clear at the plot's left, then its first word alone at the right or the left (#1074: over the curve at 200%
+   text). Its offsets grow with the text (ckK). -> its box [x0, x1, baseline], or null */
 function ckBandLabel(g, words, st, y, R, T, B, pts, L = 0, taken = []) {
-  const x1 = R - 4;
-  if (x1 - labelW(words, "ck-ref") < L) words = words.split(" ")[0];
-  return ckRefAt(g, words, st, y, x1 - labelW(words, "ck-ref"), x1, T, B, pts, taken);
+  const w = t => labelW(t, "ck-ref"), one = words.split(" ")[0], x1 = R - 4;
+  if (x1 - w(words) < L) words = one;
+  return ckRefAt(g, words, st, y, x1 - w(words), x1, T, B, pts, taken,
+    [[words, L + 4, L + 4 + w(words)], [one, x1 - w(one), x1], [one, L + 4, L + 4 + w(one)]]);
 }
 /* a lab's band said step by step, with where each range came from (#752; ranges.js rangeSaid): "3.5–5.1 on report",
    "5–20 from settings". The latest step at the plot's right where it reaches it (ckBandLabel), else over its own
@@ -206,14 +208,19 @@ function ckBandLabels(g, steps, x, y, L, R, T, B, at) {
   }
 }
 /* a band's words from x0 to x1 at the first of those places clear of every point and of the labels placed already
-   (taken: their boxes, never overlapped), or at the first such place; none where there's no such place */
-function ckRefAt(g, words, st, y, x0, x1, T, B, pts, taken = []) {
+   (taken: their boxes, never overlapped), else of the other words and places alts ([words, x0, x1] each) the first
+   with such a place, else at the first place; none where there's no place */
+function ckRefAt(g, words, st, y, x0, x1, T, B, pts, taken = [], alts = []) {
   const k = ckK(), hi = st.hi != null ? Math.max(T, y(st.hi)) : T, lo = st.lo != null ? Math.min(B, y(st.lo)) : B;
   const inside = lo - hi >= 16 * k ? (st.hi != null ? [hi + 12 * k, lo - 4] : [lo - 4, hi + 12 * k]) : [];   // by its printed edge first
-  const at = [...inside, hi - 4, lo + 12 * k].filter(yb => yb - 10 * k >= T && yb + 2 <= B   // baselines, 10 px of text over each
-    && !taken.some(([a, b, tb]) => a < x1 + 6 && x0 < b + 6 && Math.abs(tb - yb) < 14 * k));
-  const clear = yb => !pts.some(([px, py]) => px > x0 - 5 && px < x1 + 5 && py > yb - 15 * k && py < yb + 6);
-  const yb = at.find(clear) ?? at[0];
+  const spots = (x0, x1) => {   // [the first place clear of the points, the first place] from x0 to x1
+    const at = [...inside, hi - 4, lo + 12 * k].filter(yb => yb - 10 * k >= T && yb + 2 <= B   // baselines, 10 px of text over each
+      && !taken.some(([a, b, tb]) => a < x1 + 6 && x0 < b + 6 && Math.abs(tb - yb) < 14 * k));
+    return [at.find(yb => !pts.some(([px, py]) => px > x0 - 5 && px < x1 + 5 && py > yb - 15 * k && py < yb + 6)), at[0]];
+  };
+  let [yb, first] = spots(x0, x1);
+  for (const [t, a, b] of alts) { if (yb != null) break; const [c] = spots(a, b); if (c != null) [yb, words, x0, x1] = [c, t, a, b]; }
+  yb ??= first;
   if (yb == null) return null;
   g.push(el("svg:text", {class: "ck-ref", x: x1, y: yb, "text-anchor": "end", text: words}));
   return [x0, x1, yb];
@@ -693,13 +700,16 @@ const ckHour = h => `${h % 12 || 12} ${h % 24 < 12 ? "AM" : "PM"}`;
    ckTimeTicks tries its steps; larger text, fewer) */
 function ckHourTicks(x, W) {
   ckK();
+  const apart = (a, b) => b.x - a.x >= (labelW(a.label, "") + labelW(b.label, "")) / 2 + 12;
   let ticks = [];
   for (const n of [3, 6, 12]) {
     ticks = [];
     for (let h = 0; h <= 24; h += n) { const label = ckHour(h), w = labelW(label, ""); ticks.push({t: h, label, x: Math.max(w / 2, Math.min(W - w / 2, x(h)))}); }
-    if (ticks.every((k, i) => !i || k.x - ticks[i - 1].x >= (labelW(k.label, "") + labelW(ticks[i - 1].label, "")) / 2 + 12)) break;
+    if (ticks.every((k, i) => !i || apart(ticks[i - 1], k))) break;
   }
-  return {rows: 1, ticks};
+  const keep = [];   // where even every 12 hours doesn't fit (#1074: 200% text on a phone), each that runs into the last kept goes
+  for (const t of ticks) if (!keep.length || apart(keep.at(-1), t)) keep.push(t);
+  return {rows: 1, ticks: keep};
 }
 /* a value's spread at each point, in color: runs of rows [x, p5, p25, p50, p75, p95] (a run's points joined, nothing
    drawn between runs): the 5th to 95th percentile a wash with hairline edges, the 25th to 75th a deeper wash over it,
