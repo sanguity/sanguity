@@ -3770,6 +3770,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Server settings fail closed when they can't be read** (#1046): a database busy or briefly missing gave the
   defaults for a moment (profiles for everyone among them); it keeps the values read before, and with none yet,
   Security's strictest permissions and limits (profiles admins only), signing no one out.
+- **The log never holds an error's words, and a passkey step needs its ticket** (#1065): a setup build, settings.json,
+  milestones or records that can't be loaded are logged where they failed, not with the error's words (which can quote
+  a record); and a passkey step after a password is taken only with that password's ticket.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

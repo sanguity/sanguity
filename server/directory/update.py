@@ -228,7 +228,7 @@ def run(origin="manual", who=None, ip=None):
         finally:
             shutil.rmtree(work, ignore_errors=True)
     except OSError as e:
-        log.warning("provider directory: %s", e)
+        log.warning("provider directory: couldn't write to %s (%s)", folder, e.strerror or type(e).__name__)
         failed = {k: failed.get(k) or f"couldn't write to {folder} ({e.strerror or e})" for k in build.FETCHED if k not in read}
     finally:
         with _lock:
