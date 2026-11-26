@@ -61,7 +61,7 @@ async function loadSessions() {
   const list = await call("sessions");
   sessLasts();
   $("#sessList").replaceChildren(el("table", {class: "tbl"},
-    el("thead", {}, el("tr", {}, ...["Device", "Address", "Signed in", "Last active", ""].map(h => el("th", {text: h})))),
+    el("thead", {}, el("tr", {}, ...["Device", "Address", "Signed in", "Last active", ""].map(thOf))),
     el("tbody", {}, ...list.map(s => el("tr", {},
       el("td", {}, device(s.agent), s.current ? el("span", {class: "tag", text: "this device"}) : null),
       // each time kept with its AM or PM (keepDates, util.js; #515: "8:37 / AM" at 320 px)
@@ -213,7 +213,7 @@ async function loadPasskeys() {
     passkeySignalAccepted(st.site, st.user_handle, st.passkeys.filter(k => k.here).map(k => k.credential_id));
   const last = st.passkeys.length === 1 && st.required && !st.authenticator_app;
   $("#pkList").replaceChildren(st.passkeys.length ? el("table", {class: "tbl pk"},
-    el("thead", {}, el("tr", {}, ...["Name", "Added", "Last used", ""].map(h => el("th", {text: h})))),
+    el("thead", {}, el("tr", {}, ...["Name", "Added", "Last used", ""].map(thOf))),
     el("tbody", {}, ...st.passkeys.map(k => {
       // Enter in its name renames it, as its Rename does (#524)
       const name = el("input", {value: k.name, maxlength: 60, "aria-label": "Passkey name", enterkeyhint: "done",

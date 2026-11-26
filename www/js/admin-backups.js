@@ -214,7 +214,7 @@ function drawList(st) {
   if (!st.backups.length) { box.replaceChildren(emptyState("No backups in the folder yet: each one made is listed here, to check.", null, {cls: ""})); return; }   // (#494)
   const shown = bkShowAll ? st.backups : st.backups.slice(0, 5);
   box.replaceChildren(el("div", {class: "tbl-wrap"}, el("table", {class: "tbl bk-list"},
-    el("thead", {}, el("tr", {}, ...["Made", "Size", "Last checked", ""].map(h => el("th", {text: h})))),
+    el("thead", {}, el("tr", {}, ...["Made", "Size", "Last checked", ""].map(thOf))),
     el("tbody", {}, ...shown.map(b => el("tr", {"data-backup": b.name},
       el("td", {}, when(b.at), el("div", {class: "muted bk-name", text: b.name})),
       el("td", {text: bkSize(b.size)}),
@@ -294,7 +294,7 @@ function drawReplaced(st) {
       "backup's phone and watch data is left in watch-restored-<time>/ to be moved in by hand, and kept as long."),
     list.length ? el("div", {class: "tbl-wrap"}, el("table", {class: "tbl bk-replaced"},
       el("caption", {text: "What restores replaced or left, kept in the data folder now"}),
-      el("thead", {}, el("tr", {}, ...["Kept from", "Deleted", ""].map(h => el("th", {text: h})))),
+      el("thead", {}, el("tr", {}, ...["Kept from", "Deleted", ""].map(thOf))),
       el("tbody", {}, ...list.map(r => el("tr", {"data-replaced": r.name},
         el("td", {}, made(r), el("div", {class: "muted bk-name", text: r.name})),
         el("td", {text: r.deletes <= now ? "within the hour" : when(r.deletes)}),

@@ -58,7 +58,7 @@ function switchTab(t, view, push) {
   SgNav.fit();   // kept in sight: out from under More if it was there (#265)
   // on a phone the tabs are a row that scrolls sideways: the one shown in the middle of it
   { const b = $("#tab-" + t), bar = $(".tabs"); if (b.parentElement === bar && bar.scrollWidth > bar.clientWidth) bar.scrollTo({left: bar.scrollLeft + b.getBoundingClientRect().left - bar.getBoundingClientRect().left - (bar.clientWidth - b.offsetWidth) / 2, behavior: smoothly()}); }
-  { const b = $("#tab-" + t); $("#tabTitle").textContent = b.textContent; viewTitle([b.textContent, PROFILE && PROFILE.name].filter(Boolean).join(" · "), changed && booted && !$(".tabs").contains(document.activeElement) && b.textContent); }   // "Labs · Ben · Sanguity"; said when opened from elsewhere (#209)
+  { const b = $("#tab-" + t); $("#tabTitle").textContent = b.textContent; viewTitle([b.textContent, PROFILE && PROFILE.name].filter(Boolean).join(" · "), changed && booted && b.textContent); }   // "Labs · Ben · Sanguity"; said once opened (#209), from the tab bar too: its links' aria-current isn't reliably said (#1075)
   // the records bar: its period, on every tab with time (#171); each tab's own filters are in the tab (the Timeline's
   // kinds and search in its Events card's header, #277; Labs' lab names in its list's, #192)
   $(".filters").style.display = t === "overview" ? "none" : "";

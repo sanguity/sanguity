@@ -1224,7 +1224,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .sg-bar .btn{margin:0}
 .set-nav-dirty::after,.sg-bar-n::before{content:"";display:inline-block;width:7px;height:7px;border-radius:var(--r-pill);background:var(--accent);margin-left:var(--sp-2);vertical-align:1px}
 .sg-bar-n::before{margin:0 var(--sp-2) 0 0}
-@media (forced-colors:active){ .set-nav-dirty::after,.sg-bar-n::before{forced-color-adjust:none;background:CanvasText} }   /* (a background is dropped, #409) */
+@media (forced-colors:active){ .set-nav-dirty::after,.sg-bar-n::before{forced-color-adjust:none;background:CanvasText} .set-nav-list [aria-current=page]{outline:2px solid Highlight;outline-offset:-2px} }   /* (a background is dropped, #409; a shadow too: the current group's edge, #1075) */
 .sets .set-more{display:none}
 .sets .set-more-btn{min-width:36px;font-size:var(--fs-4);line-height:1}
 .sets .set-more .menu-list{min-width:170px}
