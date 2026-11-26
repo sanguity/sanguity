@@ -22109,7 +22109,21 @@ def main():
                 in1027[mode] = got["past"] + ([] if got["n"] > 10 else [f"{got['n']} rows"])
                 js(ADOPT_CSS_JS, "")
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme1027)
+            # (#1039's closing check) Latest's rows keep their own grid, not the flex row #1012 gave every .ov-row: four
+            # columns from 701 px, its name and value then its range and change below 701 px, at the usual text size
+            cols1039 = {}
+            for w1039 in (360, 1400):
+                page.set_viewport_size({"width": w1039, "height": 900})
+                settle(300)
+                cols1039[w1039] = js("""() => { const a = document.querySelector('#ltRows .lt-row'), cs = a && getComputedStyle(a);
+                  if (!a) return null; let lines = 0, low = -1e9;   // (a line: a cell starting below every cell before it)
+                  for (const r of [...a.children].filter(c => !c.matches('.vh')).map(c => c.getBoundingClientRect()).sort((x, y) => x.top - y.top))
+                    if (r.top >= low - 2) { lines++; low = r.bottom; } else low = Math.max(low, r.bottom);
+                  return [cs.display, cs.gridTemplateColumns.split(' ').length, lines]; }""")
             page.set_viewport_size({"width": 1400, "height": 900})
+            check("Latest's rows are a grid as they were before #1012's flex rows: four columns, one line, at 1400 px; two columns, two lines, "
+                  "at 360 px (#1039's closing check: the change had fallen to a third line)",
+                  cols1039 == {360: ["grid", 2, 2], 1400: ["grid", 4, 1]}, cols1039)
             check("#1027: Latest at 320 px with text at 200% has every word of the ranges matrix's rows inside its card, light and dark (eGFR's value "
                   "and change ran past it)", not any(in1027.values()), in1027)
             js("labs => { for (const n of labs) state.tables.delete(n); switchTab('labs', 'heatmap'); }", list(M752.CASES))
