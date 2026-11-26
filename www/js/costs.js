@@ -123,7 +123,7 @@ function drawCosts() {
     [...costBuckets(rows, by)].reverse().map(([k, m]) => [by === "year" ? k : zdate(dayTs(k + "-15")).toLocaleDateString(undefined, {month: "long", year: "numeric"}),
       usd(m.paid), usd(m.owe), usd(m.billed), m.n.toLocaleString("en-US")]))));
   else {
-    const leg = ckLegend([["var(--measure)", "Your share"], ["var(--muted)", "Paid by insurance"], ["var(--stay)", "Hospital stay", "stay-key"]]);   // a stay's edge too (#450)
+    const leg = ckLegend([["var(--measure)", "Your share"], [MUTED, "Paid by insurance"], ["var(--stay)", "Hospital stay", "stay-key"]]);   // a stay's edge too (#450)
     leg.classList.add("mb-2"); mc.append(leg);
     const svg = chartSvg(by === "year" ? "Yearly insurance costs" : "Monthly insurance costs", {id: "costChart"}); mc.append(svg);   // a tab stop as it's made (#652)
     requestAnimationFrame(() => drawCostBars(svg, rows, by));
@@ -359,7 +359,7 @@ function renderPaid(box, claimRows, periodLabel) {
       cum.append(stacked(chartTable(["Month", "Your share listed", "Bills paid", "Share so far", "Paid so far", settled ? "Reduced so far" : "Difference"], out.reverse())));
     } else {
       const svg = chartSvg("Your share and the bills you paid, running totals. Table lists them by month.", {id: "paidChart", height: 210});   // its height from the start, so what's under it doesn't move when it's drawn a frame later (#473); a tab stop (#652)
-      const leg = ckLegend([["var(--measure)", "Your share per insurers, running total", "line"], ["var(--ink2)", "Medical bills you paid, running total", "line"]]);
+      const leg = ckLegend([["var(--measure)", "Your share per insurers, running total", "line"], [INK2, "Medical bills you paid, running total", "line"]]);
       leg.classList.add("mb-2"); cum.append(leg, svg);
       requestAnimationFrame(() => drawPaidCum(svg, claimRows, bills, settled));
     }
@@ -442,7 +442,7 @@ function drawPaidCum(svg, claimRows, payRows, settled) {
   const series = [[], []], acc = [0, 0];
   for (const p of pts) { acc[p.s] += p.a; series[p.s].push([dayTs(p.d), acc[p.s]]); }
   // money is a measure, not a kind of record (#301): your share in --measure, what was paid in ink
-  const color = ["var(--measure)", "var(--ink2)"], label = ["Your share", "Bills paid"], ends = label.map((l, i) => `${l} ${usd(acc[i])}`);
+  const color = ["var(--measure)", INK2], label = ["Your share", "Bills paid"], ends = label.map((l, i) => `${l} ${usd(acc[i])}`);
   const max = Math.max(1, acc[0], acc[1]) * 1.08, vals = niceTicks(0, max, 4), k = ckK();
   const w = Math.max(240, svg.parentElement.clientWidth - 32), endW = Math.max(...ends.map(t => labelW(t, "cum-end"))) + 25;
   const narrow = w < 560 || w - endW < 360, L = costGutter(vals), R = w - (narrow ? 10 : endW + 8);   // 240: fits 320 px (#202)
@@ -554,7 +554,7 @@ function drawCostBars(svg, rows, by = "month") {
   const mid = i => (x(ts[i]) + x(ts[i + 1])) / 2;
   keys.forEach((key, i) => {   // a bar a slot, 24 px at most, rounded at its end (2 px), from its plot's foot
     const bw = Math.max(2, Math.min(24, (x(ts[i + 1]) - x(ts[i])) * .7));
-    for (const [f, y, B, fill] of [["owe", yO, B1, "var(--measure)"], ["paid", yP, B2, "var(--muted)"]]) {
+    for (const [f, y, B, fill] of [["owe", yO, B1, "var(--measure)"], ["paid", yP, B2, MUTED]]) {
       const v = val(i, f); if (v > 0) g.push(el("svg:rect", {x: mid(i) - bw / 2, y: Math.min(B - 1, y(v)), width: bw, height: Math.max(1, B - y(v)), rx: Math.min(2, bw / 2), fill}));
     }
   });

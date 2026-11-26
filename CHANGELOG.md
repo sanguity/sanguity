@@ -3642,6 +3642,11 @@ Everything on `main` so far; it becomes the first tagged release.
   its ring, change, stop, open end, fills and supply line, the doses and the body map's outlines kept the app's ink or
   grey, 1.2:1 to 2.3:1 on the system's background. They're the system's text colour there now, 3:1 or more; the
   heatmap's marks, on cells in the app's colours, keep its ink, and elsewhere everything looks as before.
+- **The Timeline's grey kinds, its steps and Costs' insurance bars are in the system's colours in forced colours**
+  (#1053): chart activity, immunizations, letters, the watch, ECGs and medications are drawn in the app's greys, and
+  with a contrast theme opposite to the app's their dots were 1.8:1 to 2.3:1 on the system's background, the steps
+  1.5:1 and Costs' "Paid by insurance" bars and key 2.8:1. Those greys are the system's text colour there now, set
+  once where the colours are given; elsewhere they look as before.
 - **A server setting is the environment's only when someone set it there** (#999): both compose files passed every
   setting with its default filled in (`SESSION_DAYS: ${SESSION_DAYS:-30}`), CasaOS and Unraid passed `auto` and an
   empty `PUBLIC_ORIGINS`, and TrueNAS always passed its Secure cookie field, so with the environment winning over
