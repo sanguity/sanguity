@@ -495,6 +495,44 @@ class Settings(unittest.TestCase):
         ada.delete("/api/profiles/1/settings/testEnv.sealed", headers=H)
         self.assertNotIn("fictional words", json.dumps(self.install_log()))
 
+    def test_a_saved_settings_read_error_fails_closed(self):   # #1046
+        """A read of the saved server settings that fails (busy past its timeout, the database briefly missing) gave
+        none for SAVED_SECONDS: the defaults, the most lenient bounds and profiles for everyone. It keeps the values
+        read before; with none read yet, Security's permissions and limits are at their strictest (profiles admins
+        only), and the sign-ins' lengths and idle sign-out at their defaults: none is signed out."""
+        import sqlite3
+        keys = ("security.profiles", "security.passwordMin2fa")
+        with contextlib.closing(dbm.connect()) as db:   # an admin's stricter values, saved
+            for key, value in zip(keys, ("admins", 12)):
+                db.execute("INSERT INTO settings(key, value, changed) VALUES(?, ?, 0)", (key, json.dumps(value)))
+
+        def clear():
+            with contextlib.closing(dbm.connect()) as db:
+                db.execute(f"DELETE FROM settings WHERE key IN (?, ?) AND {settings.INSTALL_ROWS}", keys)
+            settings.forget_saved()
+        self.addCleanup(clear)
+        settings.forget_saved()
+        busy = mock.patch.object(settings.sqlite3, "connect", side_effect=sqlite3.OperationalError("database is locked"))
+        with mock.patch.object(settings, "SAVED_SECONDS", 0):
+            read = settings.saved_values()
+            self.assertEqual((read["security.profiles"], config.setting("PASSWORD_MIN_LENGTH_2FA")), ("admins", 12))
+            with busy:
+                self.assertEqual(settings.saved_values(), read, "the values read before")
+                self.assertEqual(config.setting("PASSWORD_MIN_LENGTH_2FA"), 12)
+                missing = mock.patch.object(settings.os.path, "exists", return_value=False)
+                with missing:
+                    self.assertEqual(settings.saved_values(), read, "the database briefly missing: the same")
+                with mock.patch.dict(settings._saved, good=None):   # none read yet
+                    got = settings.saved_values()
+                    self.assertEqual(got["security.profiles"], "admins")
+                    self.assertEqual((config.setting("PASSWORD_MIN_LENGTH_2FA"), config.setting("REAUTH_MINUTES"),
+                                      settings.install_value("security.triesAccount")), (64, 1, 10))
+                    self.assertEqual((config.setting("SESSION_DAYS"), config.setting("SESSION_HOURS_WITHOUT_2FA"),
+                                      config.setting("SESSION_IDLE_MINUTES")), (30, 12, 0), "sign-ins' lengths: the defaults, ending none")
+                with mock.patch.dict(settings._saved, good=None), missing:   # no database at all: nothing saved
+                    self.assertEqual(settings.saved_values(), {})
+        settings.forget_saved()
+
     def test_command_line_shows_and_resets_server_settings(self):
         """#1006: python -m server.manage config show lists every server setting, its value and where it comes from;
         config reset SETTING (its variable or its key) and --all take away what's saved in the app, logged as the

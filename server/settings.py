@@ -957,23 +957,42 @@ def effective(db, pid, uid):
 # their own, read-only, so a process with no database (the watch receiver, which imports config) never makes one.
 
 SAVED_SECONDS = 2
-_saved = {"values": None, "at": 0.0, "db": None}
+_saved = {"values": None, "at": 0.0, "db": None, "good": None}   # good: the values last read, for a read that fails
 _saved_lock = threading.Lock()
+# (#1046) a read that fails (busy past its timeout, the database briefly missing) keeps the values last read: it
+# fails closed. With none read yet, Security's permissions and limits are at their strictest (only admins create
+# profiles, the longest passwords, the fewest tries, the shortest fresh check and one-time password). Never the
+# sign-ins' lengths or idle sign-out: those stay at the defaults, so a failed first read signs no one out
+STRICTEST = {"security.profiles": "admins", "security.passwordMin": "hi", "security.passwordMin2fa": "hi",
+             "security.tempPasswordDays": "lo", "security.reauthMinutes": "lo", "security.triesHere": "lo",
+             "security.triesAddress": "lo", "security.triesAccount": "lo"}
+
+
+def strictest():
+    """{key: value}: STRICTEST, each number's bound as its check has it."""
+    out = {}
+    for k, v in STRICTEST.items():
+        bound = getattr(SETTINGS[k].check, v, None) if v in ("lo", "hi") else v
+        out[k] = bound() if callable(bound) else bound
+    return out
 
 
 def _read_saved():
+    """The saved values, or None where they couldn't be read (a database there that can't be, now)."""
     keys = [k for k, s in SETTINGS.items() if s.scope == "install" and not s.private]   # (#1001: install_value's too)
     if not keys:
         return {}
+    if not os.path.exists(config.DB_PATH):
+        return None
     try:
         db = sqlite3.connect(f"file:{urllib.parse.quote(config.DB_PATH)}?mode=ro", uri=True, timeout=10)
-    except sqlite3.Error:   # no database yet
-        return {}
+    except sqlite3.Error:
+        return None
     try:
         rows = db.execute("SELECT key, value FROM settings WHERE profile_id IS NULL AND user_id IS NULL AND key IN "
                           "(SELECT value FROM json_each(?))", (json.dumps(keys),)).fetchall()
-    except sqlite3.Error:   # not made yet (a database before schema version 18), or busy past the timeout
-        return {}
+    except sqlite3.Error:   # busy past the timeout, or not made yet (a database before schema version 18)
+        return None
     finally:
         db.close()
     out = {}
@@ -991,7 +1010,14 @@ def saved_values():
     with _saved_lock:
         c = _saved
         if c["values"] is None or c["db"] != config.DB_PATH or time.monotonic() - c["at"] > SAVED_SECONDS:
-            c.update(values=_read_saved(), at=time.monotonic(), db=config.DB_PATH)
+            if c["db"] != config.DB_PATH:
+                c["good"] = None
+            got = _read_saved()
+            if got is None:   # (#1046) unreadable now: the last good values; none yet, the strictest (no database: none saved)
+                got = c["good"] if c["good"] is not None else strictest() if os.path.exists(config.DB_PATH) else {}
+            else:
+                c["good"] = got
+            c.update(values=got, at=time.monotonic(), db=config.DB_PATH)
         return c["values"]
 
 
