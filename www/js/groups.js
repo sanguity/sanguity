@@ -97,11 +97,13 @@ const SG_PAGES = {
         ["Units", "sec-units", "metric imperial mmol mg kg lb pounds kilograms weight temperature celsius fahrenheit height cm inches lab tests"]]},
     // Install: the Admin page's groups (#167: admin.js, admin-sources.js, admin-backups.js, outside.js, activity.js),
     // admins only. General (#998) first: the server's own settings, each of its sections (#1000-#1005) a part in its has
-    {id: "general", title: "General", icon: "wrench", part: "Install", admin: true, has: ["general"], place: "admin", words: "server install configuration"},
+    {id: "general", title: "General", icon: "wrench", part: "Install", admin: true, has: ["general", "gen-security"], place: "admin", words: "server install configuration",
+     finds: [["Security", "gen-security", "sign-in lasts session length days hours idle unused sign out who may create profiles admins only " +
+       "shortest password length one-time temporary fresh check minutes wrong tries throttle attempts wait secure cookie password checks"],
+       ["Require two-factor sign-in", "gen-security", "2fa everyone"]]},   // (#1001; #528: "require 2fa", Accounts' before)
     {id: "accounts", title: "Accounts", icon: "user-cog", part: "Install", admin: true, has: ["users"], place: "admin",
-     words: "users new create add account reset password one-time temporary remove delete disable enable make admin require two-factor " +
-       "owner ownerless profile without an turn off sign-in admin someone",   // (#495, #499, #502: what's done to an account; #506: Make owner, under the list; #515: enable)
-     finds: [["Require two-factor sign-in", "users", "2fa everyone"]]},   // (#528: "require 2fa")
+     words: "users new create add account reset password one-time temporary remove delete disable enable make admin " +
+       "owner ownerless profile without an turn off sign-in admin someone"},   // (#495, #499, #502: what's done to an account; #506: Make owner, under the list; #515: enable; requiring two-factor sign-in: General's, #1001)
     {id: "installLog", title: "Install activity", icon: "logs", part: "Install", admin: true, has: ["installLog"], place: "admin", words: "log sign-ins failed audit"},
     {id: "backups", title: "Backups", icon: "archive", part: "Install", admin: true, has: ["backups"], place: "admin", words: "backup restore back up now make check show all fewer " +
       "schedule how often daily weekly off keep newest many oldest replaced delete now before-restore"},   // #200 (#595: Restore's; #532: its schedule's; and each field's and segmented control's label finds its place)

@@ -3608,6 +3608,12 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Install's cards are drawn on a slow device or connection too** (#1028): Admin's start asked Outside connections'
   script to draw once its own first answer came, and where that script hadn't loaded yet, it stopped there and the
   cards after it were never drawn. Settings → Install starts once all of its scripts are there.
+- **Settings → Install → General → Security** (#1001): requiring two-factor sign-in for everyone (moved from Accounts,
+  which links to it), how long a sign-in lasts with and without a second factor, idle sign-out, who may create profiles
+  (everyone, or admins only, which the server enforces), the shortest passwords, a one-time password's days, the
+  fresh check's minutes and the sign-in throttle's free tries, each applying at once, bounded and never more lenient
+  than the defaults; the Secure cookie and password checks at once shown read-only. A change that would end sign-ins
+  says how many and asks first. You → Sign-in and security says how long a sign-in lasts.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

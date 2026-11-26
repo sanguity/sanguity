@@ -31,7 +31,7 @@ that a rebuild never changes settings, and says so in the log when the build's s
 """
 import contextlib, datetime, json, os, re, sqlite3, threading, time, urllib.parse
 
-from . import config, crypto, db as dbm
+from . import config, crypto, db as dbm, security
 
 SCOPES = ("install", "profile", "user")   # broadest first: the order values are layered in
 
@@ -54,8 +54,10 @@ class Setting:
 
     def public(self):
         help = self.help() if callable(self.help) else self.help   # a function: words with a limit read at each use
+        lo, hi = getattr(self.check, "lo", None), getattr(self.check, "hi", None)   # (#1001) a number's bounds, when it has them
         return {"key": self.key, "section": self.section, "label": self.label, "help": help, "kind": self.kind,
-                "scope": self.scope, "default": self.default, **({"choices": CHOICES[self.key]} if self.key in CHOICES else {})}
+                "scope": self.scope, "default": self.default, **({"choices": CHOICES[self.key]} if self.key in CHOICES else {}),
+                **({"min": lo, "max": hi() if callable(hi) else hi} if lo is not None else {})}
 
 
 SECTIONS = []      # [(id, title, help)], in screen order
@@ -246,6 +248,7 @@ def whole(lo, hi, what):
         if isinstance(v, bool) or not isinstance(v, (int, float)) or v != int(v) or not lo <= v <= top:
             raise SettingError(f"{what} must be a whole number from {lo} to {top}.")
         return int(v)
+    check.lo, check.hi = lo, hi   # (#1001) its bounds, for the page's field (Setting.public)
     return check
 
 
@@ -329,6 +332,79 @@ define("sync.staleDays", "sync", "Warn when a connection hasn't synced for (days
        whole(1, 365, "The number of days"), scope="install", private=False, kind="number",
        help="The profile's main page and the admins' notices say so, with a link to the connection.")
 CHOICES = {"sync.attachTypes": ATTACHMENT_TYPES}
+
+
+# ---------------------------------------------------------------- General → Security (#1001)
+# How people sign in, each applying at once where it's used (config.setting, or install_value for those no variable
+# stands for), with the fresh check and logged old and new as every install setting's change (#1006). Each is bounded,
+# and never more lenient than Sanguity's own default (#998): a value outside is refused (400), and the environment's
+# wins over it (a variable set there shows locked). Requiring two-factor sign-in for everyone is the meta row
+# require_2fa (accounts.two_factor_required, PATCH /api/settings), shown in this section too; the Secure cookie and the
+# password checks at once (COOKIE_SECURE, HASH_PARALLEL) are the environment's alone, shown read-only. Shortening a
+# sign-in or turning on idle sign-out ends sign-ins: the change counts them and asks first (routes_settings.py).
+IDLE_LEAST = 5   # minutes: a shorter idle sign-out would end a sign-in while its person reads a page
+
+
+def idle_minutes(v):
+    v = whole(0, 1440, "Signing out when unused")(v)
+    if 0 < v < IDLE_LEAST:
+        raise SettingError(f"Signing out when unused must be off (0) or from {IDLE_LEAST} to 1440 minutes.")
+    return v
+
+
+idle_minutes.lo, idle_minutes.hi = 0, 1440
+
+
+def one_of(choices, what):
+    """One of choices ({id: label})."""
+    def check(v):
+        if not isinstance(v, str) or v not in choices:
+            raise SettingError(f"{what} must be one of: {', '.join(choices.values())}.")
+        return v
+    return check
+
+
+section("security", "Security", "How people sign in to this server, and for how long. Each change applies at once.")
+define("security.sessionDays", "security", "A sign-in lasts, with a second factor (days)", 30,
+       whole(1, 30, "A sign-in's length"), scope="install", private=False, kind="number", env="SESSION_DAYS",
+       help="From signing in, with an authenticator app or a passkey. Shorter ends the sign-ins older than that; "
+            "longer applies to new ones.")
+define("security.sessionHours", "security", "…without one (hours)", 12,
+       whole(1, 12, "A sign-in's length without a second factor"), scope="install", private=False, kind="number",
+       env="SESSION_HOURS_WITHOUT_2FA", help="For an account with no second factor yet.")
+define("security.idleMinutes", "security", "Sign out when unused for (minutes)", 0, idle_minutes, scope="install",
+       private=False, kind="number", env="SESSION_IDLE_MINUTES",
+       help=f"0 is off. Otherwise from {IDLE_LEAST} to 1440 (a day): a sign-in left unused that long ends.")
+PROFILE_MAKERS = {"everyone": "Everyone signed in", "admins": "Admins only"}
+define("security.profiles", "security", "Who may create profiles", "everyone", one_of(PROFILE_MAKERS, "Who may create profiles"),
+       scope="install", private=False, kind="choice",
+       help="A new profile is its maker's, to share from its Sharing page. Admins only: others ask an admin, who makes "
+            "it and shares it with them.")
+CHOICES["security.profiles"] = PROFILE_MAKERS
+define("security.passwordMin", "security", "Shortest password (characters)", 15, whole(15, 64, "The shortest password"),
+       scope="install", private=False, kind="number", env="PASSWORD_MIN_LENGTH",
+       help="While a password is an account's only factor; never below 15 (NIST SP 800-63B). Asked the next time a "
+            "password is set: those set already keep working.")
+define("security.passwordMin2fa", "security", "…with two-factor sign-in on (characters)", 8,
+       whole(8, 64, "The shortest password with two-factor sign-in"), scope="install", private=False, kind="number",
+       env="PASSWORD_MIN_LENGTH_2FA", help="Never below 8.")
+define("security.tempPasswordDays", "security", "A one-time password works for (days)", 7,
+       whole(1, 7, "A one-time password's days"), scope="install", private=False, kind="number", env="TEMP_PASSWORD_DAYS",
+       help="The one an admin gives a new account, or with a password reset: those given after a change.")
+define("security.reauthMinutes", "security", "The fresh check lasts (minutes)", 5,
+       whole(1, 5, "The fresh check's minutes"), scope="install", private=False, kind="number", env="REAUTH_MINUTES",
+       help="Before the most powerful changes, like these, Sanguity asks for the password, a code or a passkey again, "
+            "unless one was given within this long.")
+# failed sign-ins before each further try waits (security.Throttle's kinds), never more than its FREE
+SIGN_IN_TRIES = {"pair": "security.triesHere", "ip": "security.triesAddress", "user": "security.triesAccount"}
+define("security.triesHere", "security", "Wrong tries before a wait: one account, from one place", 5,
+       whole(3, 5, "Wrong tries from one place"), scope="install", private=False, kind="number",
+       help="Then each try waits longer, up to 15 minutes. A browser that signed in before counts on its own.")
+define("security.triesAddress", "security", "…from one address, at any account", 20, whole(10, 20, "Wrong tries from one address"),
+       scope="install", private=False, kind="number", help="At least 10: a household often shares one address.")
+define("security.triesAccount", "security", "…at one account, from anywhere", 30, whole(10, 30, "Wrong tries at one account"),
+       scope="install", private=False, kind="number",
+       help="At least 10: fewer would let a stranger hold someone up from signing in more cheaply.")
 
 # #225: readings taken at home (and at visits) as Overview tiles beside the key labs, each with its latest value
 HOME_TILES = {"bp": "Blood pressure", "glucose": "Blood glucose", "temp": "Body temperature"}
@@ -777,7 +853,7 @@ _saved_lock = threading.Lock()
 
 
 def _read_saved():
-    keys = [k for k, s in SETTINGS.items() if s.env]
+    keys = [k for k, s in SETTINGS.items() if s.scope == "install" and not s.private]   # (#1001: install_value's too)
     if not keys:
         return {}
     try:
@@ -801,7 +877,8 @@ def _read_saved():
 
 
 def saved_values():
-    """{key: value} of the install settings saved in the app that a variable's setting stands for (config.saved)."""
+    """{key: value} of the plain install settings saved in the app: those a variable's setting stands for (config.saved),
+    and the rest install_value reads (#1001)."""
     with _saved_lock:
         c = _saved
         if c["values"] is None or c["db"] != config.DB_PATH or time.monotonic() - c["at"] > SAVED_SECONDS:
@@ -829,6 +906,20 @@ def in_force(key):
     "install" when saved here (and not left out: SANGUITY_SAVED_SETTINGS=off, #1006), else "default"."""
     src, value = config.lookup(SETTINGS[key].env)
     return (list(value) if isinstance(value, tuple) else value), src
+
+
+def install_value(key):
+    """(#1001) The value in force of an install setting, for the server's own use where no database is at hand (a sign-in's
+    throttle): a variable's as config.setting has it; else the one saved in the app (read as config.setting reads
+    them, and left out with SANGUITY_SAVED_SETTINGS=off), else the default."""
+    s = SETTINGS[key]
+    if s.env:
+        return in_force(key)[0]
+    have = {} if config.saved_ignored() else saved_values()
+    return have.get(key, s.default)
+
+
+security.throttle.limit = lambda kind: install_value(SIGN_IN_TRIES[kind]) if kind in SIGN_IN_TRIES else None
 
 
 def nest(flat):
