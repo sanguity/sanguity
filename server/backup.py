@@ -709,6 +709,11 @@ PULLED = ("cursor", "pending_cursor", "first_job", "last_sync", "report", "attac
 CYCLE = "_cycle"   # a profile's cycle tracking (cycle_tracking.KEY, #964)
 ACCESS_SETTINGS = ("_watch.receiver", CYCLE)   # a profile's phone upload secret (watch_keys.KEY), its cycle tracking
 ACCESS_META = ("require_2fa", "setup_code")   # the install's two-factor rule; first-time setup's code, while there's no account
+# (#1005, as #917 keeps today's access) the install's own settings are today's too: every value saved for the whole
+# install (settings.INSTALL_ROWS: General's, the sync defaults, any install setting the registry gets later, whatever
+# its key) and the backup schedule and how many it keeps (backup_jobs.schedule, kept in meta). Disaster recovery (no
+# database of this install's to keep them from) takes the backup's, and the restore names them (_install_settings).
+INSTALL_META = ("backup.schedule", "backup.keep")
 RETIRED = "watch_legacy_retired"   # the install's one phone secret, retired for good (watch_keys): kept retired either way
 
 
@@ -823,7 +828,11 @@ def _keep_access(con, now_tables):
     if "settings" in now_tables:   # (its id left out: the restored database's own rows have theirs)
         _copy(con, "settings", f"{profiles} AND key IN ({keys}) AND user_id IS NULL",
               [c for c in _columns(con, "main", "settings") if c != "id"])
-    for k in ACCESS_META + ((RETIRED,) if con.execute("SELECT 1 FROM now.meta WHERE k=?", (RETIRED,)).fetchone() else ()):
+    from .settings import INSTALL_ROWS   # (#1005) the install's own settings: today's, every one
+    con.execute(f"DELETE FROM main.settings WHERE {INSTALL_ROWS}")
+    if "settings" in now_tables:
+        _copy(con, "settings", f" WHERE {INSTALL_ROWS}", [c for c in _columns(con, "main", "settings") if c != "id"])
+    for k in ACCESS_META + INSTALL_META + ((RETIRED,) if con.execute("SELECT 1 FROM now.meta WHERE k=?", (RETIRED,)).fetchone() else ()):
         con.execute("DELETE FROM main.meta WHERE k=?", (k,))
         con.execute("INSERT INTO main.meta(k, v) SELECT k, v FROM now.meta WHERE k=?", (k,))
     # ids never given again (#588): each count past the highest today's database gave, for records too
@@ -835,6 +844,21 @@ def _keep_access(con, now_tables):
     return stores, cycle
 
 
+def _install_settings(con):
+    """(#1005) The install settings the database being restored (main) has saved, by their names on the Settings page
+    (a key no longer in the registry by its key), and its backup schedule where it has one: what disaster recovery
+    takes from the backup."""
+    from . import backup_jobs, settings
+    out = [settings.SETTINGS[k].label if k in settings.SETTINGS else k
+           for (k,) in con.execute(f"SELECT key FROM main.settings WHERE {settings.INSTALL_ROWS} ORDER BY id")]
+    meta = dict(con.execute(f"SELECT k, v FROM main.meta WHERE k IN ({', '.join('?' * len(INSTALL_META))})", INSTALL_META))
+    if meta:
+        sched, keep = meta.get("backup.schedule"), meta.get("backup.keep")
+        out.append(f"the backup schedule ({sched if sched in backup_jobs.SCHEDULES else 'off'}, keeping "
+                   f"{keep if keep and keep.isdigit() else backup_jobs.KEEP_DEFAULT})")
+    return out
+
+
 def _ready(path, now_path):
     """Make the backup's database at path (brought up to date already) the one to restore: today's access kept from the
     database at now_path, or, with none there (disaster recovery), one that can't be read (damaged, #958) or one of
@@ -844,8 +868,9 @@ def _ready(path, now_path):
     name]]: profiles the backup has that today's database hasn't, deleted since, back with nobody's access), "gone" (
     [[id, name]]: profiles made since, not in the backup), "stores" ([[profile, connection]]: disconnected sources whose
     store of what they read the restore removes once it has put the files back), "cycle" ([profile]: those whose cycle
-    records the backup holds and today's tracking doesn't keep, #964, deleted once the files are back)}."""
-    out = {"kept": False, "why": "none", "sessions": 0, "back": [], "gone": [], "stores": [], "cycle": []}
+    records the backup holds and today's tracking doesn't keep, #964, deleted once the files are back), "settings"
+    ([names]: the install settings taken from the backup, where today's weren't kept, #1005)}."""
+    out = {"kept": False, "why": "none", "sessions": 0, "back": [], "gone": [], "stores": [], "cycle": [], "settings": []}
     con = sqlite3.connect(path, isolation_level=None)
     try:
         con.execute("PRAGMA foreign_keys=ON")
@@ -879,6 +904,8 @@ def _ready(path, now_path):
                         "SELECT id, name FROM main.profiles WHERE id NOT IN (SELECT id FROM now.profiles) ORDER BY id")]
                     out["gone"] = [list(r) for r in con.execute(
                         "SELECT id, name FROM now.profiles WHERE id NOT IN (SELECT id FROM main.profiles) ORDER BY id")]
+            else:   # (#1005) the install's settings are the backup's: named
+                out["settings"] = _install_settings(con)
             out["sessions"] = con.execute("DELETE FROM main.sessions").rowcount   # everyone signs in again
             broken = sorted(set(map(tuple, con.execute("PRAGMA main.foreign_key_check"))) - before)
             if broken:

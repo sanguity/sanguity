@@ -1480,6 +1480,59 @@ class Backups(unittest.TestCase):
         finally:
             db.close()
 
+    def test_20_a_restore_keeps_todays_install_settings(self):   # #1005
+        """#917 kept today's two-factor rule through a restore, but the install's other settings came back as the backup
+        had them: the backup schedule and how many it keeps, the sync defaults, General's. As #917 keeps today's access,
+        they're today's, every install setting the registry has (whatever is added to it later: each is changed after
+        the backup here, one taken away since, one saved since) and an install-wide value of a profile's setting; the
+        restore says so. With no database to replace (disaster recovery) they're the backup's, and the restore names
+        them."""
+        from server import settings
+        keys = [k for k, s in settings.SETTINGS.items() if s.scope == "install"]
+        self.assertIn("activity.days", keys)
+        self.assertTrue({"sync.staleDays", "sync.attachAuto"} <= set(keys))
+        rows = lambda con: sorted(map(tuple, con.execute(f"SELECT key, value FROM settings WHERE {settings.INSTALL_ROWS}")))   # noqa: E731
+        meta = lambda con: dict(map(tuple, con.execute("SELECT k, v FROM meta WHERE k IN ('backup.schedule', 'backup.keep')")))   # noqa: E731
+        then = keys[:-1] + ["overview.keyLabs"]   # (the last one saved only after the backup; a profile's setting install-wide)
+        db = dbm.connect()
+        try:
+            for k in then:
+                db.execute("INSERT INTO settings(key, value, changed) VALUES(?, ?, 0)", (k, json.dumps(f"backup's {k}")))
+            backup_jobs.set_schedule(db, "daily", 9)
+            backup_ = rows(db)
+        finally:
+            db.close()
+        path = backup.create(os.path.join(TMP, "backups-1005"))
+
+        def now(con):   # each changed since by an admin, one taken away, one saved; the schedule changed
+            con.execute(f"UPDATE settings SET value=json_quote('today''s ' || key) WHERE {settings.INSTALL_ROWS}")
+            con.execute(f"DELETE FROM settings WHERE key=? AND {settings.INSTALL_ROWS}", (then[0],))
+            con.execute("INSERT INTO settings(key, value, changed) VALUES(?, ?, 0)", (keys[-1], json.dumps(f"today's {keys[-1]}")))
+            con.execute("INSERT OR REPLACE INTO meta(k, v) VALUES('backup.schedule', 'weekly')")
+            con.execute("DELETE FROM meta WHERE k='backup.keep'")
+        folder = os.path.join(TMP, "restored-1005")
+        said, con = self.restore_into(folder, path, today=True, change=now)
+        today = sorted([(k, json.dumps(f"today's {k}")) for k in then[1:] + [keys[-1]]])
+        self.assertEqual(rows(con), today)
+        self.assertEqual(meta(con), {"backup.schedule": "weekly"})
+        self.assertIn(manage.SETTINGS_KEPT, said)
+        aside = [n for n in os.listdir(folder) if n.startswith("before-restore-")]
+        self.assertEqual(len(aside), 1)
+
+        said, con = self.restore_into(os.path.join(TMP, "restored-1005-none"), path)   # disaster recovery: the backup's
+        self.assertEqual((rows(con), meta(con)), (backup_, {"backup.schedule": "daily", "backup.keep": "9"}))
+        self.assertIn("The server's own settings are the backup's too, as they were then: ", said)
+        for k in then:
+            self.assertIn(settings.SETTINGS[k].label, said)
+        self.assertIn("the backup schedule (daily, keeping 9)", said)
+        self.assertNotIn(manage.SETTINGS_KEPT, said)
+        db = dbm.connect()
+        try:
+            db.execute(f"DELETE FROM settings WHERE {settings.INSTALL_ROWS}")
+            backup_jobs.set_schedule(db, "off", backup_jobs.KEEP_DEFAULT)
+        finally:
+            db.close()
+
     def test_9b_what_a_restore_replaced(self):
         """What a restore moved aside (it may hold a profile deleted since) is deleted RESTORE_KEEP after the restore,
         at start and now and then while the app runs, or by an admin's Delete now; only folders named as restore()

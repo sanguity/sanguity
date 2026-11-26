@@ -3706,6 +3706,9 @@ Everything on `main` so far; it becomes the first tagged release.
   page (nothing is contacted), the schema version, how it's deployed (`SANGUITY_DEPLOYMENT`, which every template now
   sets, `deploy/check.py` checks), who it runs as, the folders and configuration files with what mounts each, and the
   upload, connected-source and Health Link limits, read-only, each with its variable.
+- **A restore keeps today's server settings** (#1005): it kept today's two-factor rule (#917) but brought back the
+  backup's schedule, how many backups to keep, the sync defaults and General's settings. Every install-wide setting is
+  today's now, as access is; with no database of this install's to keep them from, they're the backup's, named.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
