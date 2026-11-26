@@ -9406,6 +9406,19 @@ def main():
             if meds:
                 page.select_option("#dbody .jform select", meds[0])
             page.fill("#dbody textarea", "Started after lunch (fictional)")
+            # #1073: a time typed only partly reads as empty; the entry was saved with no time, without a word
+            time1073 = page.input_value("#dbody .jform input[type=time]")
+            page.fill("#dbody .jform input[type=time]", "")
+            page.focus("#dbody .jform input[type=time]")
+            page.keyboard.type("0830")
+            page.focus("#dbody textarea")
+            page.click("#dbody .jform button[type=submit]")
+            settle(400)
+            half1073 = js("""[document.getElementById('dtitle').textContent, document.querySelector('#dbody .jform > .edit-msg').textContent,
+                document.activeElement.type, document.activeElement.getAttribute('aria-invalid'), typeof JOURNAL === 'undefined' ? 0 : JOURNAL.length]""")
+            check("…a time typed only partly stops the save: Time named in the message, marked and focused, nothing saved (#1073)",
+                  half1073 == ["New journal entry", "Time is only partly typed: finish it, or clear it.", "time", "true", 0], half1073)
+            page.fill("#dbody .jform input[type=time]", time1073)
             page.click("#dbody .jform button[type=submit]")
             page.wait_for_function("typeof JOURNAL !== 'undefined' && JOURNAL.length === 1 && document.getElementById('dtitle').textContent === 'Headache (browser check)'", timeout=20000)
             settle()
@@ -10172,6 +10185,15 @@ def main():
                             "[...document.querySelectorAll('#dbody .mr-time button')].map(b => b.getAttribute('aria-disabled'))]")
                 check("…Add another time says “Time 2 added.” in the form, in place of “1 time left”, focus on Time 2, neither Remove off (#867)",
                       add867 == ["Time 2 added.", "Time 2", [None, None]], add867)
+                # #1073: a time typed only partly ("0830", no AM or PM) reads as empty; it was dropped, "Reminder saved" with 8:00 alone
+                page.keyboard.type("0830")
+                n1073 = js("(DATA.reminders || []).length")
+                page.click("#dbody button:text-is('Add reminder')")
+                settle(400)
+                half1073 = js("""[document.getElementById('dtitle').textContent, document.querySelector('#dbody .jform > .edit-msg').textContent,
+                    document.activeElement.getAttribute('aria-label'), document.activeElement.getAttribute('aria-invalid'), (DATA.reminders || []).length]""")
+                check("…a time typed only partly stops the save: Time 2 named in the message, marked and focused, nothing saved (#1073)",
+                      half1073 == ["New reminder", "Time 2 is only partly typed: finish it, or clear it.", "Time 2", "true", n1073], half1073)
                 page.locator("#dbody .mr-time input >> nth=1").fill("20:00")
                 page.click("#dbody .mr-days button[aria-label=Saturday]")
                 page.click("#dbody .mr-days button[aria-label=Sunday]")

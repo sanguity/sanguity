@@ -3756,6 +3756,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - **New profile waits for the server to say you may** (#1050): the profile menu showed it until the page had asked
   who's signed in, so with profiles admins only a member saw it briefly on a slow load; it's shown only once the
   answer says yes.
+- **A date or time typed only partly stops the save** (#1073): "0830" with no AM or PM read as empty, so New
+  reminder's extra time was dropped ("Reminder saved" with the other alone) and a journal entry saved with no time.
+  No form saves while one of its date or time fields is half typed: it's marked, named in the message and focused.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

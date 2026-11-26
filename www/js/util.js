@@ -350,6 +350,20 @@ function fieldSaid(err, text, field, home) {
   err.scrollIntoView({block: "nearest"});
   field.labels?.[0]?.scrollIntoView({block: "nearest"});
 }
+/* every form's date and time fields (#1073): one typed only partly ("0830" with no AM or PM) reads as empty, and was
+   dropped without a word (a reminder saved with its other time only). No form is sent while one is: the first is
+   marked invalid, named in the form's message line (or said, with none) and given focus, before its own handler runs */
+document.addEventListener("submit", ev => {
+  const f = [...ev.target.querySelectorAll("input[type=date], input[type=time], input[type=datetime-local], input[type=month]")].find(i => i.validity.badInput);
+  if (!f) return;
+  ev.preventDefault(); ev.stopImmediatePropagation();
+  const name = (f.labels?.[0]?.textContent || f.getAttribute("aria-label") || "A date or time").replace(/\s*\(.*\)\s*$/, "").trim();
+  const words = `${name} is only partly typed: finish it, or clear it.`, line = ev.target.querySelector(".edit-msg, .msg");
+  f.setAttribute("aria-invalid", "true");
+  f.addEventListener("input", () => f.removeAttribute("aria-invalid"), {once: true});
+  f.focus();
+  if (line) sayIn(line, words, true); else announce(words, {error: true});
+}, true);
 /* a line of text with each date in it kept on one line (#330), so a tile's "▼ −0.03 since Aug 18, 2026" never leaves
    its year alone below: the text as parts for el(), a date in a <span class="nw">, its textContent unchanged. The
    app's three date formats (dates.js): "Aug 18, 2026", "18 Aug 2026" and "2026-08-18", and "as of" kept as one too
