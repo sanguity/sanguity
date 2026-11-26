@@ -8,6 +8,7 @@ either route, and its entry in the install log has the old and new values: none 
 information or a secret (one that could, private, would be logged by name only). A whole value (a list, a map) that a
 page made from the one it read is sent with that one, its version ("was", #923), and refused (409) if the setting
 holds another by then: a change made since in another tab, or by someone else, is never lost under it."""
+import functools
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -37,11 +38,6 @@ def _not_set_by_environment(d):
                                  "settings on TrueNAS or Unraid) and start it again.")
 
 
-# (#1000) a change that's said and confirmed first: key -> guard(db, request, body, value), raising HTTPException to
-# refuse it (body None: a reset). General → Host's public addresses (routes_host.py)
-GUARDS = {}
-
-
 def _held(db, d):
     """(#1006) What an install setting holds in the app: its saved value, else its default (the one in force can be the
     environment's instead, or the default while saved values are left out)."""
@@ -54,16 +50,30 @@ def _values(d, old, new):
     return {} if d.private else {"from": old, "to": new}
 
 
-def _confirmed(db, d, value, typed):
-    """(#1002) A change that deletes something (the setting's confirm: fewer days of activity kept) is made only with
-    the count of what goes typed back ("confirm"); else refused, 409 {"message", "confirm": {"count", "message"}}, to
-    ask with. The count is the one at this moment: one that has grown since it was shown is asked again."""
-    if not d.confirm or (d.env and config.source(d.env) == "environment"):   # (then the one in force stays)
+def _said(v):
+    return str("" if v is None else v).replace(",", "").strip()
+
+
+def _confirmed(db, request, s, d, value, typed):
+    """(#998) One rule for an install setting's change that must be confirmed first: its definition's confirm
+    (settings.define(confirm=...): fewer days of activity kept, #1002; a shorter sign-in, #1001; the public addresses,
+    #1000) says what the change does, confirm(db, before, after, request, s) -> None when there's nothing to ask, else
+    {"count": how many it touches, "message": what it does, in words, "type": what's typed to confirm (the count
+    unless it says), "title", "action": the question's and its red button's words, ...what more the page shows}; it may
+    refuse the change outright instead (HTTPException), as the public addresses do a list the page's own address
+    wouldn't pass. The change is made only with that typed back ("confirm", on a change or a reset alike); else
+    refused, 409 {"code": "confirm", "message", "confirm": {...}}, for the page to ask with (admin.js confirmed()).
+    Asked at this moment: a count grown since it was shown is asked again. Nothing's asked where the value wouldn't
+    apply (the environment's is in force, or saved values are left out)."""
+    if not d.confirm or (d.env and config.source(d.env) == "environment") or config.saved_ignored():
         return
     before = settings.in_force(d.key)[0] if d.env else _held(db, d)
-    goes = d.confirm(db, before, value)
-    if goes and str(typed if typed is not None else "").replace(",", "").strip() != str(goes["count"]):
-        raise HTTPException(409, {"message": f"{goes['message']} Type {goes['count']} to confirm.", "confirm": goes})
+    goes = d.confirm(db, before, value, request, s)
+    if not goes:
+        return
+    goes = {"type": str(goes["count"]), **goes}
+    if _said(typed) != _said(goes["type"]):
+        raise HTTPException(409, {"code": "confirm", "message": f"{goes['message']} Type {goes['type']} to confirm.", "confirm": goes})
 
 
 def _save_install(db, s, d, body, request, now):
@@ -76,11 +86,7 @@ def _save_install(db, s, d, body, request, now):
         raise HTTPException(400, str(e))
     if value == _held(db, d):
         return
-    if d.key in GUARDS:   # (#1000) said and confirmed first, before the fresh check
-        GUARDS[d.key](db, request, body, value)
-    if not body.confirm:
-        _ends_sign_ins(db, s, d, value)
-    _confirmed(db, d, value, body.confirm)
+    _confirmed(db, request, s, d, value, body.confirm)   # (#998) said and confirmed first, before the fresh check
     fresh(request, s, "change a server setting")
     with dbm.transaction(db):
         _unchanged(body, now(), d)
@@ -89,17 +95,23 @@ def _save_install(db, s, d, body, request, now):
         _log(db, s, None, "install", {"setting": d.key, "label": d.label, **_values(d, old, value)}, request)
 
 
-def _ends_sign_ins(db, s, d, value):
+def _ends_sign_ins(db, before, value, request, s, *, d):
     """(#1001) A shorter sign-in or idle sign-out ends the sign-ins it leaves too old or unused, at their next request:
-    while it would end any, refused (409 confirm_sign_ins) with how many, and whether this one is among them, for the
-    page to ask; sent again with confirm, it's made. (A reset never shortens one: their defaults are their longest.)"""
-    if d.env not in main.SIGN_IN_LENGTHS or config.saved_ignored():
-        return
+    while it would end any, it's asked first (_confirmed) with how many, and whether this one is among them. (A reset
+    never shortens one: their defaults are their longest.)"""
     n, yours = main.sessions_ended(db, {d.env: value}, s["sid"])
-    if n:
-        raise HTTPException(409, {"code": "confirm_sign_ins", "sessions": n, "yours": yours,
-                                  "message": f"This ends {n} sign-in{'' if n == 1 else 's'}{', yours here among them' if yours else ''}: "
-                                             "confirm it to go ahead."})
+    if not n:
+        return None
+    return {"count": n, "yours": yours, "title": f"End {n} sign-in{'' if n == 1 else 's'}?",
+            "action": "End it" if n == 1 else "End them",
+            "message": f"{'1 sign-in is' if n == 1 else f'{n} sign-ins are'} older, or unused for longer, than this change "
+                       f"allows: {'it ends' if n == 1 else 'each ends'} at its next request, and its person signs in again."
+                       + (" Yours here is one of them: you'll be signed out too." if yours else "")}
+
+
+for _d in settings.SETTINGS.values():   # (#1001) each sign-in length's change, asked first where it ends sign-ins
+    if _d.env in main.SIGN_IN_LENGTHS:
+        _d.confirm = functools.partial(_ends_sign_ins, d=_d)
 
 
 def _reset_install(db, s, defs, request, section=None, label=None, confirm=None):
@@ -108,11 +120,9 @@ def _reset_install(db, s, defs, request, section=None, label=None, confirm=None)
     have = settings.stored(db, "install")
     if not any(d.key in have for d in defs):
         return []
-    for d in defs:
-        if d.key in have and d.key in GUARDS:   # (#1000) only where its effects are said and confirmed
-            GUARDS[d.key](db, request, None, d.default)
-        if d.key in have:   # (#1002) a default that deletes something: confirmed as a change to it is
-            _confirmed(db, d, d.default, confirm)
+    for d in defs:   # (#998) a default that must be confirmed: asked as a change to it is
+        if d.key in have:
+            _confirmed(db, request, s, d, d.default, confirm)
     fresh(request, s, "reset a server setting")
     with dbm.transaction(db):
         have = settings.stored(db, "install")
@@ -163,9 +173,7 @@ class Value(BaseModel):
     # (#923) the value as the page read it, its version: sent with a whole value (a list, a map) that the page made
     # from it, so a change made since, in another tab or by someone else, isn't lost under it
     was: Any = None
-    confirm: Any = None   # (#1000) the words typed to confirm a guarded change (GUARDS); (#1001) true for a change
-    # that ends sign-ins, asked about first (_ends_sign_ins); (#1002) the count of what the change deletes, typed by
-    # the admin (_confirmed)
+    confirm: Any = None   # (#998) what's typed to confirm a change that's asked first (_confirmed)
 
 
 def _unchanged(body, now, d):
@@ -198,8 +206,12 @@ def change(pid: int, key: str, body: Value, request: Request, s=Depends(user), d
     return settings.merged(db, pid, s["id"])
 
 
+class Reset(BaseModel):
+    confirm: Any = None   # (#998) as Value's: an install setting's reset that's asked first (_confirmed)
+
+
 @router.delete("/api/profiles/{pid}/settings/{key}")
-def reset_one(pid: int, key: str, request: Request, s=Depends(user), db=Depends(get_db)):
+def reset_one(pid: int, key: str, request: Request, body: Reset | None = None, s=Depends(user), db=Depends(get_db)):
     """Back to the default (or to the value under it, an install-wide one)."""
     role = need(db, s, pid, "viewer")
     try:
@@ -208,7 +220,7 @@ def reset_one(pid: int, key: str, request: Request, s=Depends(user), db=Depends(
         raise HTTPException(404, str(e))
     _check(db, s, pid, d, role)
     if d.scope == "install":
-        _reset_install(db, s, [d], request)
+        _reset_install(db, s, [d], request, confirm=body and body.confirm)
         return settings.merged(db, pid, s["id"])
     with dbm.transaction(db):
         if settings.clear(db, [key], d.scope, pid, s["id"]):
@@ -218,7 +230,7 @@ def reset_one(pid: int, key: str, request: Request, s=Depends(user), db=Depends(
 
 class Section(BaseModel):
     section: str
-    confirm: Any = None   # (#1002) as Value's
+    confirm: Any = None   # (#998) as Value's
 
 
 @router.post("/api/profiles/{pid}/settings/reset")

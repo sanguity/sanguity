@@ -5,7 +5,7 @@
    counted in the card's data-dirty until the group's bar (sidebar.js, settings-nav.js) saves them (genSecSave) or
    puts them back (genSecDiscard), as the sync defaults' are (admin-sources.js). Each is bounded by the server, never
    more lenient than Sanguity's own default; each change asks for the fresh check, in the card (admin.js fresh), and
-   one that ends sign-ins says how many and asks first (the server's 409 confirm_sign_ins). One the server's
+   one that ends sign-ins says how many and asks for that count typed first (admin.js confirmed). One the server's
    environment sets is shown locked, naming its variable; the Secure cookie and the password checks at once are the
    environment's alone, shown read-only. call(), say(), same() and plural() are settings.js's. */
 "use strict";   // $, el, setRow, ask, toast and sayIn come from util.js
@@ -64,20 +64,12 @@ function gsCount() {
   const n = gsTyped().length, card = $("#gen-security");
   if (n) card.setAttribute("data-dirty", n); else card.removeAttribute("data-dirty");
 }
-/* one setting to the server, with the fresh check when it's asked; one that would end sign-ins, asked first */
+/* one setting to the server, with the fresh check when it's asked; one that would end sign-ins says how many and is
+   made once that count is typed (admin.js confirmed) */
 async function gsPut(st, value) {
-  const send = confirm => fresh(() => call(`settings/install/${encodeURIComponent(st.key)}`, "PUT", {value, confirm}), gsBox());
-  try { return await send(false); }
-  catch (e) {
-    if (e.detail?.code !== "confirm_sign_ins") throw e;
-    const n = e.detail.sessions;
-    if (!await ask({title: `End ${plural(n, "sign-in")}?`, danger: true, action: n === 1 ? "End it" : "End them",
-        message: [`${n === 1 ? "1 sign-in is" : `${n} sign-ins are`} older, or unused for longer, than this change allows. ` +
-          `${n === 1 ? "It ends" : "Each ends"} at its next request, and its person signs in again.`,
-          e.detail.yours ? "Yours here is one of them: you'll be signed out too." : ""].filter(Boolean)}))
-      throw Object.assign(new Error("Not saved: no sign-in was ended."), {why: "no sign-in was ended."});
-    return send(true);
-  }
+  const d = await confirmed(typed => fresh(() => call(`settings/install/${encodeURIComponent(st.key)}`, "PUT", {value, confirm: typed}), gsBox()));
+  if (!d) throw Object.assign(new Error("Not saved: no sign-in was ended."), {why: "no sign-in was ended."});
+  return d;
 }
 async function gsChoose(st, v) {
   try {
