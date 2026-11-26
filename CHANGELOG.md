@@ -3799,6 +3799,8 @@ Everything on `main` so far; it becomes the first tagged release.
 - **The records page's landmarks** (#1061): the not-medical-advice notice and the page's foot were two footer
   landmarks, now one; the period filters are a landmark of their own, "Period shown", and so is the line saying a
   connected source stopped syncing, when it shows.
+- **Make the link says it's made** (#1066): a screen reader heard only focus move to Copy; "… is made. Copy the link
+  now." is said too.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
