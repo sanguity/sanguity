@@ -980,10 +980,21 @@ def general_backups_check(browser, base, cookies, check, db_path, pw=None):
               dirty == ["1", True] and f"deletes {n:,} entries older than 90 days" in asked[1] and f"Type {n} to confirm" in asked[1]
               and pg.evaluate(days) == 90 and left == 3 and pg.evaluate("document.getElementById('gen-backups').dataset.dirty") is None,
               [dirty, asked, left])
-        pg.fill("#genActDays", "365")   # more days: asked nothing
-        pg.click("#setBar .btn.primary")
+        # more days: asked nothing. #1077: by Enter in the field (the bar's Save, by its click()), the fresh check asked on the
+        # way (this sign-in made not fresh): once confirmed, focus back in the field, in sight (the check's box gone, it was on the page)
+        from server import security as sec1077
+        con.execute("UPDATE sessions SET verified_at = 0 WHERE token_hash = ?", (sec1077.token_hash(next(c["value"] for c in cookies if c["name"] == "sg_session")),))
+        con.commit()
+        pg.fill("#genActDays", "365")
+        pg.focus("#genActDays")
+        pg.keyboard.press("Enter")
+        pg.wait_for_selector("#genBkReauth input", timeout=10000)
+        pg.fill("#genBkReauth input", pw or PW)
+        pg.locator("#genBkReauth").get_by_role("button", name="Confirm").click()
         pg.wait_for_function("document.getElementById('genBkMsg').textContent.includes('365 days')", timeout=10000)
-        check("…and more days asks nothing", pg.evaluate(days) == 365)
+        foc1077 = pg.evaluate("(a => [a.id, a.checkVisibility() && a.getBoundingClientRect().width > 1])(document.activeElement)")
+        check("…and more days asks nothing; saved by Enter in the field, through the fresh check, focus back in the field, in sight (#1077: on the page)",
+              pg.evaluate(days) == 365 and foc1077 == ["genActDays", True], foc1077)
 
         def env(route):   # as when ACTIVITY_DAYS is set in the app's environment
             got = route.fetch()
@@ -2374,6 +2385,27 @@ def general_security_check(check, browser, base, cookies):
     check("…confirmed (Enter, the bar's Save), it's saved, marked set for this server, and the sign-in left unused ends",
           ended and js("document.querySelector('[data-key=\"security.idleMinutes\"] .tag:not(.set-unsaved)')?.textContent") == "set for this server"
           and not js("document.getElementById('gen-security').dataset.dirty"), ended)
+    # #1077: Enter in a field, the fresh check asked on the way (this sign-in made not fresh): cancelled, focus back in the
+    # field; confirmed, on the card's heading; each in sight (the check's box gone, it was on the page)
+    db = dbm1001.connect()
+    db.execute("UPDATE sessions SET verified_at = 0 WHERE token_hash = ?", (sec1001.token_hash(next(c["value"] for c in cookies if c["name"] == "sg_session")),))
+    db.close()
+    FOC1077 = "(a => [a.id, a.checkVisibility() && a.getBoundingClientRect().width > 1])(document.activeElement)"
+    page.fill("#gs-triesHere", "4")
+    foc1077 = []
+    for confirm in (False, True):
+        page.focus("#gs-triesHere")
+        page.keyboard.press("Enter")
+        page.wait_for_selector("#genSecReauth input", timeout=10000)
+        if confirm:
+            page.fill("#genSecReauth input", PW)
+        page.locator("#genSecReauth").get_by_role("button", name="Confirm" if confirm else "Cancel").click()
+        page.wait_for_function("!document.getElementById('gen-security').dataset.dirty" if confirm
+                               else "document.getElementById('genSecReauth').hidden && document.querySelector('#setBar .msg').textContent.includes('confirm')", timeout=10000)
+        page.wait_for_timeout(200)
+        foc1077.append(js(FOC1077))
+    check("…Enter in a field through the fresh check: cancelled, focus back in the field; confirmed, on the card's heading; in sight (#1077: on the page)",
+          foc1077 == [["gs-triesHere", True], ["genSecHd", True]], foc1077)
     page.click("#setNav a[data-group=security]")
     page.wait_for_selector("#sessLasts", state="visible", timeout=10000)
     check("…and You → Sign-in and security says the lengths, read-only, at once",
@@ -21971,6 +22003,10 @@ def main():
             check("…one primary at a time", js(f"document.querySelectorAll('{ms} input[data-k=primary]:checked').length") == 1)
             page.click("#setBar button:text-is('Save')")
             page.wait_for_function("document.querySelector('#sec-milestones .set-msg').textContent.startsWith('Saved')", timeout=10000)
+            settle(200)
+            foc1077 = js("(a => [a.id, a.checkVisibility() && a.getBoundingClientRect().width > 1 && !a.closest('.vh')])(document.activeElement)")
+            check("…saved by the bar in a group of one section (Milestones), focus on the group's heading, in sight (#1077: on its own, hidden 1 px)",
+                  foc1077 == ["groupTitle", True], foc1077)
             rules = "[data-key=visitWorkouts]"
             page.click(".set-nav-list a[data-group=activity]")   # Workouts: a group of its own since #267
             page.click(f"{rules} button:text-is('Add a row')")
