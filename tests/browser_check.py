@@ -21122,10 +21122,14 @@ def main():
             pal_aria = """(() => { const q = document.getElementById('palQ'), l = document.getElementById(q.getAttribute('aria-controls')), a = q.getAttribute('aria-activedescendant');
                 return [document.activeElement === q, q.getAttribute('role'), q.getAttribute('aria-expanded'), l && l.getAttribute('role'), a,
                   a && document.getElementById(a).getAttribute('aria-selected'), document.querySelectorAll('#palList [aria-selected=true]').length]; })()"""
-            def pal(q, key="Control+k"):   # opened by key (or not, key None: already open) and q typed, as a person would
+            def pal(q, key="Control+k", known=False):   # opened by key (or not, key None: already open) and q typed, as a person would
                 if key:
                     page.keyboard.press(key)
                 page.wait_for_selector("dialog.palette[open]", timeout=5000)
+                if known:   # (#1084: on a page just opened it asks /api/me as it opens; what's for owners and editors, and
+                    # Enter's "sure", wait for it. known: it knows who you are, New share link listed, before q is typed)
+                    page.fill("#palQ", "")
+                    page.wait_for_function(f"({has_opt})('New share link')", timeout=10000)
                 page.fill("#palQ", q)
                 settle(150)
             was_profile = js("localStorage.getItem('ht-profile')")
@@ -21383,9 +21387,10 @@ def main():
                   pw[:1] == [["Pages and settings", "Password"]] and js("document.getElementById('password').checkVisibility()"), pw[:3])
             # #495: the palette finds what Redesign 6 added: an iPhone's way in (Phone and watch), and what's done to an
             # account on Admin (it found nothing for these)
+            # (#1084: Phone and watch is for a profile's owners and editors: until /api/me answered, “iphone” found nothing)
             found495 = {}
             for q in ("iphone", "apple health", "health auto export", "remove account", "delete account", "disable account", "require two-factor"):
-                pal(q, "Control+k" if not found495 else None)
+                pal(q, None if found495 else "Control+k", known=not found495)
                 found495[q] = [t for g, t in js(pal_found) if g == "Pages and settings"][:3]
             page.keyboard.press("Escape")
             check("…(#495) it finds Phone and watch for “iphone”, “apple health” and “health auto export”, and Install's Accounts for removing, "
@@ -21801,7 +21806,7 @@ def main():
             page.goto(base + "/settings.html?profile=1")
             page.wait_for_selector("#sections > section", state="attached", timeout=10000)
             js(f"({slow423})(3000)")
-            pal("sharing")   # (another page: Account's groups are Settings' own since #991)
+            pal("sharing", known=True)   # (#1084: who you are known, the records alone on their way; another page: Account's groups are Settings' own since #991)
             t423 = time.time()
             page.keyboard.press("Enter")
             page.wait_for_url("**/sharing.html?profile=1", timeout=10000)
@@ -21809,7 +21814,7 @@ def main():
             page.goto(base + "/settings.html?profile=1")
             page.wait_for_selector("#sections > section", state="attached", timeout=10000)
             js(f"({slow423})(3000)")
-            pal("c")
+            pal("c", known=True)
             page.keyboard.press("ArrowDown")
             page.keyboard.press("ArrowDown")
             arrow423 = [js(marked)]
