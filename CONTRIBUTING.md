@@ -70,7 +70,9 @@ python tests/test_css_tokens.py        # no new raw colours, px font sizes, radi
 python tests/test_palette.py           # the kinds' colours: eight at most, through the palette checks in light and dark (#301)
 python tests/test_qr.py                # the QR encoder (www/js/qr.js, in node) against known vectors, read back (#284)
 python tests/browser_check.py          # headless browser: every tab, the drawer, pan/zoom, every page at 375 px,
-                                       # axe-core's WCAG 2.2 AA rules and a keyboard walk (docs/accessibility.md)
+                                       # axe-core's WCAG 2.2 AA rules and a keyboard walk (docs/accessibility.md);
+                                       # --part views for one of its parts, as CI runs each (--parts lists them), and
+                                       # BROWSER_CHECK_FULL=1 for every width of its size sweeps, as CI does nightly
 python tests/test_performance.py       # the performance budgets on ten years of fictional records (docs/performance.md)
 ```
 

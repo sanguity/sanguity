@@ -4,7 +4,8 @@
 
 Prints key=value lines for $GITHUB_OUTPUT:
 
-  app        the tests (the check job): anything but documentation, or only the install templates
+  app        the tests and the browser check (the tests and browser jobs): anything but documentation, or only the
+             install templates
   image      the image jobs (docker, release-image, upgrade): what goes into the image or the compose files, so
              not documentation, the templates, tests or tools
   templates  the templates job: the install templates, the compose files and the image's docker/ folder

@@ -3624,6 +3624,13 @@ Everything on `main` so far; it becomes the first tagged release.
 - **A journal entry's Kind and a dose's What happened show every option with larger text** (#1024): on a phone their
   last options ("Side effect" and "Mood", "Skipped") were cut, the switch scrolling sideways with no scrollbar to say
   so. Where they don't fit on one line they now wrap onto a second; at the usual size they're as before.
+- **CI's browser check runs in three parts at once, beside the other tests** (#1029, `tests/browser_check.py`,
+  `.github/workflows/check.yml`): it took about 63 of the check job's 75 minutes, one check after another, and said
+  nothing until it ended. It now prints each check as it's made, with its time, and ends with the slowest checks and
+  each section's time; #900's 1 px and #894's 4 px sweeps check a fixed sample of their widths (the edges, each side
+  of the breakpoints, and the widths each issue found broken), every width with `BROWSER_CHECK_FULL=1`, which CI
+  sets nightly, on demand and on a release; and CI runs it as three jobs (`--part`), each with its own app. Run
+  without `--part`, it still does everything in one.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
