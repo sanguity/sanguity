@@ -151,8 +151,9 @@ function labDayWords() {
     e._q = e._q0 + " " + [...(d ? d.ids.map(i => byId.get(i)?.title || "") : []), ...names, ...names.map(nice)].join(" ").toLowerCase();
   }
 }
-/* the records' span, the watch's last day included, and the journal's and cycle tracking's entries (EV, #472): one
-   written after the latest import is in the period that ends at the latest record, as the palette finds it.
+/* the records' span, every lab result (#841) and the watch's last day included, and the journal's and cycle
+   tracking's entries (EV, #472): one written after the latest import is in the period that ends at the latest
+   record, as the palette finds it.
    state.last: the latest entry, where All ends (core.js setPeriod, #475); the person's own no more than a year ahead, so
    a year typed wrong (2207) doesn't squeeze every chart (#479) */
 function storeSpan() {
@@ -161,6 +162,9 @@ function storeSpan() {
   // end of every period there (#472)
   const own = new Set(["journal", "mood", "cycle"]), today = dayTs(zToday()) + DAY - 1;
   for (const e of EV) if (isFinite(e.ts)) { const t = own.has(e.k) ? Math.min(e.ts, today) : e.ts; if (t < min) min = t; if (t > max) max = t; const l = own.has(e.k) ? Math.min(e.ts, today + 366 * DAY) : e.ts; if (l > last) last = l; }
+  // every result too (#841): one with no lab event (a profile of results alone, which didn't open; a draw hidden by
+  // hand, #950) is in All, never past its end
+  for (const s of SERIES) if (!s.watch) for (const p of s.pts) if (isFinite(p.ts)) { if (p.ts < min) min = p.ts; if (p.ts > max) max = p.ts; if (p.ts > last) last = p.ts; }
   state.min = min; state.max = max; state.last = last;
   // the watch's last day, a reading left out among them (#783: All ended at the last kept, the scale's later ones on
   // no period); with no records at all (a phone's readings, or weights typed in, alone), its first day too

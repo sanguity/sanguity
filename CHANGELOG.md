@@ -3606,6 +3606,10 @@ Everything on `main` so far; it becomes the first tagged release.
   reports listed by no lab draw, or a draw's count of results against what its drawer showed. Now a lab draw is offered
   only the lab draws near it, a lab result only the lab results, and anything else neither; the server refuses the
   rest, and such a merge made before isn't applied (it's still listed under All edits, to undo).
+- **Every lab result is within All** (#841): the records' period reached only their events and the watch's days, so a
+  profile holding lab results and no events didn't open ("Invalid time value"), and a result before the first event
+  or after the last (a lab draw hidden by hand, results with no lab event) was past All's ends and shown nowhere on
+  Labs. The period now reaches every result: such a profile opens, and All shows each one.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
