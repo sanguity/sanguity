@@ -779,9 +779,10 @@ svg text.ck-yr{fill:var(--ink2);font-weight:var(--fw-medium)}   /* the time axis
    opposite to the app's own doesn't leave them faint (#341; the ECG maps its cursor the same way) */
 @media (forced-colors:active){.msmark,.msflag,.evlead{stroke:CanvasText}.mslabel,.msflag-head,.ev-more{fill:CanvasText}.cross{stroke:Highlight}
   svg text:not([class]),.evlabel,.lane-label,svg text:is(.ck-yr,.ck-unit,.ck-ref){fill:CanvasText}
-  .refedge{stroke:CanvasText}.refband{fill:CanvasText}:root{--stay:color-mix(in srgb,CanvasText 7%,transparent)}svg text.ck-ref{stroke:Canvas}}
+  .refedge{stroke:CanvasText}.refband{fill:CanvasText}:root{--stay:color-mix(in srgb,CanvasText 7%,transparent);--surface:Canvas}svg text.ck-ref{stroke:Canvas}}
   /* a chart's own text too (#346, and #657 below); the band's edges (#293), the band and a stay's in a share of the
-     system's text (#983: in the app's ink they vanished on its black); the event track (#294) */
+     system's text (#983: in the app's ink they vanished on its black); the event track (#294). A mark's rim or hollow
+     in the surface the system's background (#1013: Labs' dots kept the app's, a light ring on black, as Body's, #975) */
 table.data{border-collapse:collapse;width:100%;font-size:var(--fs-2);font-variant-numeric:tabular-nums}
 table.data th{text-align:left;color:var(--muted);font-weight:var(--fw-semibold);border-bottom:1px solid var(--axis);padding:var(--sp-1) var(--sp-2);position:sticky;top:0;background:var(--surface)}
 table.data td{border-bottom:1px solid var(--grid);padding:var(--sp-1) var(--sp-2);vertical-align:top}
@@ -2287,7 +2288,7 @@ th>.cell-btn{font-weight:inherit;white-space:nowrap}
 .h-sec>h2{margin:var(--sp-5) 0 var(--sp-3)}
 .h-sec .tile .delta{min-height:2lh}   /* a delta that wraps in one font only moves nothing (#329), as in one row of all */
 /* forced colours miss SVG: its marks in the app's ink in the system's (#975: 1.18:1, the theme opposite) */
-@media (forced-colors:active){ #view-health{--ink:CanvasText;--ink2:CanvasText;--muted:CanvasText;--surface:Canvas;--stay:color-mix(in srgb,CanvasText 7%,transparent)} }
+@media (forced-colors:active){ #view-health{--ink:CanvasText;--ink2:CanvasText;--muted:CanvasText} }
 
 /* ---- menstrual cycle tracking, opt-in (#183, cycle.js and sources-cycle.js): its own colour (--c-cycle in
    tokens.css), the lane's and charts' marks (their shapes: util.js KIND_SHAPE), and the Sources card's lists */
