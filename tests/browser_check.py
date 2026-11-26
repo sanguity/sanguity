@@ -60,6 +60,20 @@ SHL = None   # the local HTTPS host of a fictional SMART Health Link (tests/shl_
 NAN_HOOK = """window.__nan = []; const sa = Element.prototype.setAttribute;
 Element.prototype.setAttribute = function (k, v) { if (String(v) === "NaN") window.__nan.push(this.tagName + "." + k); return sa.call(this, k, v); };"""
 
+# #1029: the size sweeps check a fixed sample of their widths on every run, and every width with BROWSER_CHECK_FULL=1
+# (CI's nightly run, and on demand and on a release). Each sample keeps the edges, each side of the layout's breakpoints
+# (480, 520, 600, 640, 700, 760, 900 and 1200 px) and the widths its issue found broken.
+FULL = os.environ.get("BROWSER_CHECK_FULL") == "1"
+
+
+def sweep(every, sample):
+    """#1029: a size sweep's widths, in their order: all of `every` with BROWSER_CHECK_FULL=1, else those in `sample`;
+    and what its check's name adds when they're the sample."""
+    every, keep = list(every), set(sample)
+    assert keep <= set(every), sorted(keep - set(every))
+    kept = every if FULL else [x for x in every if x in keep]
+    return kept, "" if FULL else f" (on this run {len(kept)} of those {len(every)} widths, a fixed sample; BROWSER_CHECK_FULL=1 for all, #1029)"
+
 
 HTML_RECORD = 990001
 
@@ -23160,6 +23174,9 @@ def main():
                 if (d > .5 || cut) out.push(`${isoDay(t)}: moved ${d.toFixed(1)} px${cut ? ', a readout cut' : ''} (“${reads.map(r => r.innerText).join('” “')}”)`); }
               hover(null); return out; }"""
             bad894 = []
+            # #1029: the edges, each breakpoint's sides, and the widths #894 found the chart moving at (all of them with the fix undone)
+            ws894, sampled894 = sweep(range(320, 1401, 4), (320, 324, 360, 412, 480, 484, 520, 524, 600, 604, 640, 644, 700, 704, 712, 716, 760, 764,
+                                                            792, 900, 904, 920, 1060, 1064, 1196, 1200, 1352, 1400))
             for k894 in (1, 1.5, 2):
                 js(ADOPT_CSS_JS, BIG865[k894])
                 for labs894 in (True, False):
@@ -23168,7 +23185,7 @@ def main():
                        "() => { cmpSel = ['Potassium', 'Sodium'].map(n => cmpKey(SERIES.find(s => s.name === n))).concat(''); state.tables.delete('#cmp'); applyPreset('all'); "
                        "switchTab('labs', 'compare'); renderCompare(); }")
                     settle(500)
-                    for w894 in range(320, 1401, 4):
+                    for w894 in ws894:
                         page.set_viewport_size({"width": w894, "height": 900})
                         got894 = js(SWEEP894, labs894)
                         if got894:
@@ -23178,7 +23195,7 @@ def main():
             settle(300)
             check("#894: …and at every width: every time of Labs' charts and of Compare hovered at each width from 320 to 1400 px, 4 px apart, with text "
                   "as usual, at 150% and at 200%: no chart moves (the readout's room held two at one time in another order than it says them), no "
-                  "readout cut", not bad894, bad894[:20])
+                  "readout cut" + sampled894, not bad894, bad894[:20])
             # ---- #904: and at rest, with two results at the period's latest time, the readout says both, "Latest: 2 results:
             # …", as a hover says them (chartkit.js ckEach): Labs' readout said one of them (trends.js lastP), Compare's slot
             # one (cmpPlaced(s).slice(-1)), and each chart's name one. The period from 90 to 20 days back, its latest time
@@ -23820,6 +23837,10 @@ def main():
             ctx900 = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
             ctx900.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
             pages900, bad900, seen900 = {True: ctx900.new_page(), False: ctx900.new_page()}, [], {}
+            # #1029: the edges, every 50 px (where it's drawn again), each breakpoint's sides, and where #900 found a readout
+            # taller than its room (Labs 322–378 px, Compare 362–467, 803–818 and 1367–1391): with the fix undone it finds 12
+            ws900, sampled900 = sweep(range(320, 1401), (320, *range(350, 1401, 50), 480, 481, 520, 521, 600, 601, 640, 641, 700, 701, 760, 761, 900, 901,
+                                                         1199, 1200, 322, 326, 336, 362, 370, 378, 412, 461, 464, 467, 803, 810, 818, 1367, 1380, 1391))
             for pg900 in pages900.values():
                 pg900.on("pageerror", lambda e: bad900.append(f"script error: {e}"))
                 pg900.on("console", lambda m: m.type == "error" and bad900.append(f"console error: {m.text}"))
@@ -23841,10 +23862,10 @@ def main():
                         if got:
                             bad900.append(f"{'Labs' if labs else 'Compare'} of profile {seed900} at {w} px, text at {k900:.0%}: "
                                           f"{got[0]}{f' (and {len(got) - 1} more)' if len(got) > 1 else ''}")
-                    for w900 in range(320, 1401):   # each page resized while the other's looked at, so neither waits long for its frame
+                    for i900, w900 in enumerate(ws900):   # each page resized while the other's looked at, so neither waits long for its frame
                         pages900[True].set_viewport_size({"width": w900, "height": 900})
-                        if w900 > 320:
-                            step900(False, w900 - 1)
+                        if i900:
+                            step900(False, ws900[i900 - 1])
                         pages900[False].set_viewport_size({"width": w900, "height": 900})
                         step900(True, w900)
                     step900(False, 1400)
@@ -23856,7 +23877,7 @@ def main():
             check("#900: …and whatever it says, at the width it's shown: on two profiles of many times with two results, Labs' charts and Compare at "
                   "each width from 320 to 1400 px, 1 px apart, with text from 100% to 200%, as the window's resize leaves it: nothing each readout "
                   "says is taller than its room (a narrower one wrapped to a line more than the widest three), the tallest and the widest hovered "
-                  "move no chart, and drawn again each room at rest is the same",
+                  "move no chart, and drawn again each room at rest is the same" + sampled900,
                   not bad900 and all(n and all(n) for n in seen900.values()), bad900[:20] or seen900)
             # ---- #780: a one-sided range keeps whether its limit includes its edge ("<5" leaves 5 out, "<=5" keeps it;
             # ">60", ">=60"). The page's rule and words against the server's over a grid of values, ranges, bounds and
