@@ -13,7 +13,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from . import accounts, activity, config, db as dbm, presets, settings
+from . import accounts, activity, config, db as dbm, main, presets, settings
 from .main import _client_ip, admin, fresh, get_db, need, user
 
 router = APIRouter()
@@ -66,12 +66,27 @@ def _save_install(db, s, d, body, request, now):
         return
     if d.key in GUARDS:   # (#1000) said and confirmed first, before the fresh check
         GUARDS[d.key](db, request, body, value)
+    if not body.confirm:
+        _ends_sign_ins(db, s, d, value)
     fresh(request, s, "change a server setting")
     with dbm.transaction(db):
         _unchanged(body, now(), d)
         old = _held(db, d)
         settings.put(db, d.key, value, by=s["id"])
         _log(db, s, None, "install", {"setting": d.key, "label": d.label, **_values(d, old, value)}, request)
+
+
+def _ends_sign_ins(db, s, d, value):
+    """(#1001) A shorter sign-in or idle sign-out ends the sign-ins it leaves too old or unused, at their next request:
+    while it would end any, refused (409 confirm_sign_ins) with how many, and whether this one is among them, for the
+    page to ask; sent again with confirm, it's made. (A reset never shortens one: their defaults are their longest.)"""
+    if d.env not in main.SIGN_IN_LENGTHS or config.saved_ignored():
+        return
+    n, yours = main.sessions_ended(db, {d.env: value}, s["sid"])
+    if n:
+        raise HTTPException(409, {"code": "confirm_sign_ins", "sessions": n, "yours": yours,
+                                  "message": f"This ends {n} sign-in{'' if n == 1 else 's'}{', yours here among them' if yours else ''}: "
+                                             "confirm it to go ahead."})
 
 
 def _reset_install(db, s, defs, request, section=None, label=None):
@@ -133,7 +148,8 @@ class Value(BaseModel):
     # (#923) the value as the page read it, its version: sent with a whole value (a list, a map) that the page made
     # from it, so a change made since, in another tab or by someone else, isn't lost under it
     was: Any = None
-    confirm: Any = None   # (#1000) the words typed to confirm a guarded change (GUARDS)
+    confirm: Any = None   # (#1000) the words typed to confirm a guarded change (GUARDS); (#1001) true for a change
+    # that ends sign-ins, asked about first (_ends_sign_ins)
 
 
 def _unchanged(body, now, d):

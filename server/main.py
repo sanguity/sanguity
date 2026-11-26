@@ -260,13 +260,44 @@ def _request_host(request):
     return (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").split(",")[0].strip()
 
 
-def _lifetime(db, u):
+SIGN_IN_LENGTHS = ("SESSION_DAYS", "SESSION_HOURS_WITHOUT_2FA", "SESSION_IDLE_MINUTES")
+
+
+def _length(name, instead=None):
+    """A sign-in length in force, or (#1001) the one a change would put in its place (instead: {name: value})."""
+    return (instead or {}).get(name, config.setting(name))
+
+
+def sign_in_lengths():
+    """How long a sign-in lasts, as the sign-in page and You → Sign-in and security say it."""
+    return {"days": _length("SESSION_DAYS"), "hours_without_2fa": _length("SESSION_HOURS_WITHOUT_2FA"),
+            "idle_minutes": _length("SESSION_IDLE_MINUTES")}
+
+
+def _lifetime(db, u, instead=None):
     """How long, in seconds, a session of account u lasts from sign-in: SESSION_DAYS with a second factor, and
     SESSION_HOURS_WITHOUT_2FA (if shorter) without one."""
-    days, hours = config.setting("SESSION_DAYS") * 86400, config.setting("SESSION_HOURS_WITHOUT_2FA") * 3600
+    days, hours = _length("SESSION_DAYS", instead) * 86400, _length("SESSION_HOURS_WITHOUT_2FA", instead) * 3600
     if hours and hours < days and not accounts.has_second_factor(db, u):
         return hours
     return days
+
+
+def _over(db, s, now, instead=None):
+    """Whether session s has ended: judged from sign-in as well as from the stored end, so a session from before the
+    second factor went (or from before a shorter limit) ends on the shorter limit too; or after idle minutes unused."""
+    idle = _length("SESSION_IDLE_MINUTES", instead) * 60
+    return bool(s["expires"] <= now or now - s["s_created"] >= _lifetime(db, s, instead) or (idle and now - s["last_seen"] > idle))
+
+
+def sessions_ended(db, instead, sid=None):
+    """(#1001) The sign-ins a shorter length or idle sign-out (instead: {name: value}) would end at their next request,
+    of those the lengths in force keep: (how many, whether session sid is one)."""
+    now = dbm.now()
+    ended = [r["sid"] for r in db.execute("""SELECT s.id AS sid, s.created AS s_created, s.last_seen, s.expires, u.* FROM sessions s
+                                             JOIN users u ON u.id = s.user_id WHERE u.disabled=0""")
+             if _over(db, r, now, instead) and not _over(db, r, now)]
+    return len(ended), sid in ended
 
 
 def _session(request, db):
@@ -279,13 +310,10 @@ def _session(request, db):
     now = dbm.now()
     if not s:
         return None
-    idle = config.setting("SESSION_IDLE_MINUTES") * 60
-    # judged from sign-in as well as from the stored end, so a session from before the second factor went (or from
-    # before this limit existed) ends on the shorter limit too
-    if (s["expires"] <= now or now - s["s_created"] >= _lifetime(db, s)
-            or (idle and now - s["last_seen"] > idle)):
+    if _over(db, s, now):
         db.execute("DELETE FROM sessions WHERE id=?", (s["sid"],))
         return None
+    idle = config.setting("SESSION_IDLE_MINUTES") * 60
     # note use at most once a minute, or more often when the idle limit is short enough for that to matter
     if now - s["last_seen"] >= (min(60, idle // 4) if idle else 60):
         db.execute("UPDATE sessions SET last_seen=? WHERE id=?", (now, s["sid"]))
@@ -399,8 +427,7 @@ def setup_state(db=Depends(get_db)):
     needed = db.execute("SELECT 1 FROM users LIMIT 1").fetchone() is None
     return {"needed": needed, "password_min": config.setting("PASSWORD_MIN_LENGTH"),
             "records": needed and db.execute("SELECT 1 FROM profiles WHERE id NOT IN (SELECT profile_id FROM memberships) LIMIT 1").fetchone() is not None,
-            "session": {"days": config.setting("SESSION_DAYS"), "hours_without_2fa": config.setting("SESSION_HOURS_WITHOUT_2FA"),
-                        "idle_minutes": config.setting("SESSION_IDLE_MINUTES")}}
+            "session": sign_in_lengths()}
 
 
 class SetupRefused(Exception):
@@ -717,6 +744,7 @@ def me(s=Depends(any_user), db=Depends(get_db)):
                      "must_change_pw": bool(s["must_change_pw"]), "two_factor": second,
                      "needs_two_factor": needs_2fa, "admin_needs_two_factor": accounts.admin_needs_second_factor(db, s)},
             "two_factor_required": required, "reauth_minutes": config.setting("REAUTH_MINUTES"),
+            "session": sign_in_lengths(), "may_create_profiles": may_create_profiles(s),   # (#1001: You → Sign-in and security, New profile)
             "profiles": _profiles_for(db, s["id"]) if not (s["must_change_pw"] or needs_2fa) else [],
             "password_min": _password_min(db, s), "session_ends": _session_ends(db, s),
             "calendar_feeds": calendar.count_for(db, s["id"]),   # what changing the password or removing a passkey ends (#597)
@@ -1058,8 +1086,15 @@ def _profile_name(name):
     return name
 
 
+def may_create_profiles(s):
+    """(#1001) Whether account s may create a profile: everyone signed in may, unless General → Security says admins only."""
+    return bool(s["is_admin"]) or settings.install_value("security.profiles") == "everyone"
+
+
 @app.post("/api/profiles")
 def new_profile(body: ProfileIn, request: Request, s=Depends(user), db=Depends(get_db)):
+    if not may_create_profiles(s):
+        raise HTTPException(403, "On this server only an admin can create a profile: ask one to make it and share it with you.")
     pid = prof.create_profile(db, _profile_name(body.name), owner_id=s["id"])
     activity.log(db, "create", s, pid, ip=_client_ip(request))
     return {"id": pid}

@@ -473,6 +473,17 @@ function labDayTitle(e, title = e.title) {
   return title.replace(/^\d+ lab results?(?= · |$)/, `${n} lab result${n === 1 ? "" : "s"}`);
 }
 
+/* how long a sign-in lasts, as this server is set up (t: the server's {days, hours_without_2fa, idle_minutes}, set in
+   Settings → Install → General → Security or SESSION_* in .env, #1001), said after lead: the sign-in page's note and
+   You → Sign-in and security's */
+function signInLasts(t, lead) {
+  const n = (v, unit) => `${v} ${unit}${v === 1 ? "" : "s"}`;
+  let say = lead + (t.hours_without_2fa && t.hours_without_2fa < t.days * 24
+    ? `: up to ${n(t.days, "day")} with two-factor sign-in or a passkey, otherwise ${n(t.hours_without_2fa, "hour")}.`
+    : `, for up to ${n(t.days, "day")}.`);
+  return t.idle_minutes ? say + ` Leave it unused for ${n(t.idle_minutes, "minute")} and you'll be signed out.` : say;
+}
+
 /* A warning when this page came over plain HTTP from somewhere other than this machine, the home network or a
    tailnet (where WireGuard already encrypts): passwords and records would cross the internet readable (ASVS 9.1.1). */
 function plainHttpWarning() {

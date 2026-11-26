@@ -1,6 +1,6 @@
 /* Sanguity · Settings → Install (#991; the Admin page before, #167): what only admins do, for the whole server, as
    groups of Settings' sidebar (settings-nav.js, which starts this: adminStart): General (#998, its sections their own
-   scripts'), Accounts (and requiring two-factor sign-in), Backups (admin-backups.js, #200), Connected-source apps and
+   scripts': gen-security.js, #1001), Accounts, Backups (admin-backups.js, #200), Connected-source apps and
    their sync defaults, the Provider directory (both admin-sources.js), Lab name matches, Outside connections
    (outside.js) and Install activity (activity.js), with the admins' notices over each. Someone who isn't an admin
    isn't shown them (settings-nav.js says why where an address names one), and the server refuses them their routes.
@@ -62,7 +62,7 @@ function syncNotice(rows) {
 function adminGate() {
   $("#adminTf").hidden = false; $("#adminTools").hidden = $("#userDanger").hidden = true; $("#users").hidden = false;
   $("#secNotice").hidden = $("#codeNotice").hidden = $("#syncNotice").hidden = $("#backupNotice").hidden = true;
-  for (const id of ["#general", "#gen-host", "#gen-phone", "#backups", "#admin", "#sec-sync", "#labmaps", "#installLog"]) gateCard($(id));
+  for (const id of ["#general", "#gen-host", "#gen-security", "#gen-phone", "#backups", "#admin", "#sec-sync", "#labmaps", "#installLog"]) gateCard($(id));
 }
 function gateCard(card) {
   if (card.querySelector(".adm-gate")) return;
@@ -455,37 +455,7 @@ async function lmAgain(id, sel, gone) {
   focusNear(rows(), find() < 0 ? at : find(), sel, $("#labmaps h2"));
 }
 
-/* ---------------------------------------------------------------- requiring two-factor sign-in, install activity */
-async function loadRequireTf() {
-  const req = $("#reqTf");   // its replies in #reqTfMsg, right under it (#323): #userMsg is below the list
-  req.checked = (await call("settings")).require_2fa;
-  req.onchange = async () => {
-    // turning it on is asked first while some accounts have no second factor (#314): each is then refused on every
-    // request until it sets one up (server/main.py, user). Turning it off isn't: it takes nothing away
-    if (req.checked) {
-      let list;
-      try { list = await call("users"); } catch (e) { req.checked = false; say("#reqTfMsg", e.message, true); return; }
-      const without = list.filter(u => !u.disabled && !u.two_factor), n = without.length;
-      // without one of your own the server refuses it (main.py, change_server_settings): said at once, not asked (#318)
-      if (without.some(u => u.id === ME.user.id)) {
-        req.checked = false;
-        say("#reqTfMsg", ["To require it for everyone, first turn on two-factor sign-in (the authenticator app) or add a passkey " +
-          "for your own account, under ", el("a", {href: "#security", text: "Settings → Sign-in and security"}), "."], true);
-        return;
-      }
-      if (n && !await ask({title: "Require two-factor sign-in for everyone?", danger: true, action: "Require it", message: [
-          `${n === 1 ? "1 account doesn't" : `${n} accounts don't`} have a second factor yet (an authenticator app or a passkey).`,
-          "An account without one can't open any records until it has one: Sanguity asks it to set one up first. " +
-          "You can turn this off again at any time."]})) { req.checked = false; return; }
-    }
-    try {   // (#1006: the fresh check, as every server setting's change)
-      await fresh(() => call("settings", "PATCH", {require_2fa: req.checked}));
-      say("#reqTfMsg", req.checked ? "Everyone now needs two-factor sign-in." : "Two-factor sign-in is now optional.");
-    }
-    catch (e) { req.checked = !req.checked; say("#reqTfMsg", e.message, true); }
-    if (!document.activeElement || document.activeElement === document.body) req.focus({preventScroll: true});   // (the check's form gone)
-  };
-}
+/* ---------------------------------------------------------------- install activity (requiring two-factor sign-in: gen-security.js, #1001) */
 /* account events only: who created, disabled or reset which account, and the server's own changes (no records) */
 function loadInstallLog() {
   $("#acctLog").replaceChildren(activityPanel("activity", null, {open: true}));
@@ -502,6 +472,7 @@ async function adminStart(first) {
   loadDirectory();      // admin-sources.js
   if (ME.user.admin_needs_two_factor) { adminGate(); SET_NAV.again(); return; }
   loadInstallLog();
-  await Promise.all([loadUsers(), loadNotice(), loadLabmaps(), loadRequireTf(), loadSetup(), loadSync(), loadBackups(), loadHost(), loadPhone()]);
+  await Promise.all([loadUsers(), loadNotice(), loadLabmaps(), loadGenSecurity(), loadRequireTf(), loadSetup(), loadSync(), loadBackups(),
+                     loadHost(), loadPhone()]);
   SET_NAV.again();
 }
