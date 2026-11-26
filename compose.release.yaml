@@ -70,6 +70,9 @@ services:
       RECEIVER_PORT: ${RECEIVER_PORT:-}   # for the upload address on Sources → Phone and watch (#46); empty: 8731
       WATCH_UPLOAD_URL: ${WATCH_UPLOAD_URL:-}
       RESTORE_KEEP_DAYS: ${RESTORE_KEEP_DAYS:-}   # what a restore replaced is deleted this long after (#595)
+      # the receiver's own (below), passed here too so General → Phone receiver shows them (#998)
+      TZ: ${TZ:-UTC}
+      SLOT_GRACE_DAYS: ${SLOT_GRACE_DAYS:-}
       SANGUITY_SAVED_SETTINGS: ${SANGUITY_SAVED_SETTINGS:-}   # off: the values saved in the app left out (#1006)
       FORWARDED_ALLOW_IPS: "*"   # the app has no published port; only nginx reaches it, and nginx sets the header
       SANGUITY_DEPLOYMENT: release   # how it's deployed, named on Settings → General → About (#1004)

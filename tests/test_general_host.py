@@ -180,6 +180,24 @@ class Host(unittest.TestCase):
         finally:
             del os.environ["WATCH_UPLOAD_URL"]
 
+    def test_f_receiver_values_shown(self):
+        """#998 (the owner, 2026-11-26): the app is given TZ and SLOT_GRACE_DAYS as the receiver is, so Phone receiver
+        says the receiver's values: as set, else its defaults (UTC, 7 days), and a number it wouldn't read as its 7."""
+        was = {k: os.environ.pop(k, None) for k in ("TZ", "SLOT_GRACE_DAYS")}
+        rows = lambda: (lambda j: (j["tz"], j["slot_grace_days"]))(self.c.get("/api/settings/phone").json())   # noqa: E731
+        try:
+            self.assertEqual(rows(), ("UTC", 7))
+            os.environ.update(TZ="America/Chicago", SLOT_GRACE_DAYS="")   # compose's ${SLOT_GRACE_DAYS:-}, unset in .env
+            self.assertEqual(rows(), ("America/Chicago", 7))
+            for given, shown in (("14", 14), ("1.5", 1.5), ("-3", 7), ("soon", 7), ("nan", 7), ("inf", 7)):
+                os.environ["SLOT_GRACE_DAYS"] = given
+                self.assertEqual(rows()[1], shown, given)
+        finally:
+            for k, v in was.items():
+                os.environ.pop(k, None)
+                if v is not None:
+                    os.environ[k] = v
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

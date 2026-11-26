@@ -3692,6 +3692,9 @@ Everything on `main` so far; it becomes the first tagged release.
   many profiles' phones with an upload secret need the new address, and Sources → Phone and watch gives it at once.
   The receiver's own settings are shown read-only, each naming where it's set: its published port, time zone, how long
   phone data no profile names is kept, and how long what a restore replaced is kept.
+- **Phone receiver shows the receiver's time zone and how long unclaimed data is kept** (#998): compose, the release
+  compose file, CasaOS and the all-in-one image give the app `TZ` and `SLOT_GRACE_DAYS` as they give the receiver
+  (TrueNAS already did), so the rows say their values. The app's clock follows `TZ` then, as on TrueNAS and Unraid.
 - **Settings → Install → General → Security** (#1001): requiring two-factor sign-in for everyone (moved from Accounts,
   which links to it), how long a sign-in lasts with and without a second factor, idle sign-out, who may create profiles
   (everyone, or admins only, which the server enforces), the shortest passwords, a one-time password's days, the
