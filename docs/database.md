@@ -660,7 +660,7 @@ Every request Sanguity's server makes to another host goes through `server/net.p
 `server/outside.py` (#97, #59): a connected source's hosts (as its admin-tested discovery names them), or the host of
 a SMART Health Link someone confirmed. Each contact is recorded before anything is sent: in the activity log, and in
 **outside_contacts** (schema 20), one row per profile, purpose and host with the first and last contact and a count,
-for the outside-connections view on the Admin page. Only the host is kept, encrypted (a Health Link's host can say
+for the outside-connections view in Settings → Install. Only the host is kept, encrypted (a Health Link's host can say
 where someone is treated); never a path, query, token or key. `profile_id` is `NULL` for a contact with no profile
 involved (an admin's "Test this connection"); a profile's rows go with it.
 
@@ -746,7 +746,7 @@ erDiagram
 ## Backups (install-wide)
 
 The backups themselves are files in `BACKUP_DIR` (`server/backup.py`); `backup_runs` (schema version 28, #200) is
-what the Admin page's **Backups** asked for and how it went: **Back up now**, the schedule's backups (origin
+what Settings → **Backups** asked for and how it went: **Back up now**, the schedule's backups (origin
 `schedule`, made by "scheduled backup") and **Check a backup**, one row each. `server/backup_jobs.py` runs them in
 turn in the background (`queued` → `running` → `done` or `failed`), and the page polls the one running. A check
 that ran and found the backup damaged is `done` with `ok` 0 and what it found in `message`. A backup's file is named
@@ -785,7 +785,7 @@ restore says so (`backup._ready`). The receiver's data is staged only after that
 `profiles/` and `build/` it replaces to `DATA_DIR/before-restore-<time>/` (`-1` added for a second restore in the same
 second). That folder may hold a profile deleted before the restore, or since, so it is deleted `RESTORE_KEEP_DAYS`
 (30) after the restore (the later of its name's time and its last change): at start-up and hourly while the app runs
-(`backup_jobs.sweep_replaced`), or at once by an admin's **Delete now** on Admin → Backups, which lists them. A folder
+(`backup_jobs.sweep_replaced`), or at once by an admin's **Delete now** on Settings → Backups, which lists them. A folder
 is renamed `.deleting-…` before it's deleted, so a stop halfway leaves nothing that looks newer; what's left goes at
 the next sweep. Only names a restore gives are touched, never a link. Each deletion is an account event
 (`backup.replaced`, by "time limit" or the admin). A backup never includes it: it takes only the database, `profiles/`

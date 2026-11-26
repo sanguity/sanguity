@@ -230,7 +230,7 @@ const OFFLINE = {on: false, copy: null};   // on: showing the kept copy, without
     // the page's h1 (the tab's goes with the records it names, app.js emptyCard: #424)
     banner(el("h1", {text: "Records"}), el("strong", {text: "Offline. Records aren't available offline on this device. "}),
       "Sanguity needs its server to show them. To read the last records you open here without a connection, turn on ",
-      el("b", {text: "Offline records on this device"}), " under Account when you're back online.");
+      el("b", {text: "Offline records on this device"}), " under Settings, This device, when you're back online.");
   }
   function offlineView() {
     const c = OFFLINE.copy;

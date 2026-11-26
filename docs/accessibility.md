@@ -1,7 +1,7 @@
 # Accessibility: WCAG 2.2 AA
 
 Sanguity aims to meet [WCAG 2.2](https://www.w3.org/TR/WCAG22/) at level AA on every page: the records (Overview,
-Body and activity, Medications, Timeline, Labs, Costs), the event drawer, Sources, Sharing, Settings, Account, Admin, the
+Body and activity, Medications, Timeline, Labs, Costs), the event drawer, Sources, Sharing, Settings (its You and Install, the Account and Admin pages before #991), the
 first-run guide, the provider finder, sign-in, setup and a shared page (`share.html`). This page lists each
 criterion, how it was checked, what was fixed in the review (#202), and what's still open.
 
@@ -11,7 +11,7 @@ Two kinds of check keep it that way. **Automated**, on every pull request (`test
   hundred pages and states in light and dark: each records tab (Labs as charts and as a heatmap, both also as
   tables), the drawer for a lab result, a claim, a medication, a letter and a visit, the app's own dialog (with a
   box to type in), the More… period menu, a kind's ⋯ menu, the top bar's two menus, every group of Sources,
-  Sharing, Settings, Account and Admin, the guide, the provider finder and the sign-in page; and, under the real
+  Sharing, Settings (with You and Install), the guide, the provider finder and the sign-in page; and, under the real
   Content-Security-Policy, the shared page, setup, and a fresh install's empty tabs. A serious or critical finding
   fails the check; moderate and minor ones are listed under a passing one. axe comes from the
   [`axe-playwright-python`](https://pypi.org/project/axe-playwright-python/) package, pinned and hash-checked in
@@ -73,7 +73,7 @@ What can't be done here is a pass with a real screen reader: see [Still open](#s
 | 3.3.2 Labels or instructions | axe | See 2.4.6. |
 | 3.3.4 Error prevention | read the code | Removing, revoking and undoing ask first (#210); imports are previewed and can be undone. |
 | 3.3.7 Redundant entry | read the forms | Nothing asked twice, except a new password, typed again to confirm it (allowed for security). Whose records a fresh install keeps is asked once, in setup: the guide counts that step done (#290; it asked again before). |
-| 3.3.8 Accessible authentication (minimum) | automated (above) | Nothing to fix: password managers can fill the sign-in, paste works in every field, and passkeys need no typing at all. The setup code can be pasted. A password typed anywhere (sign-in, setup, Account, Admin, a Health Link's passcode) can be shown to check it (Show, #290, #492). |
+| 3.3.8 Accessible authentication (minimum) | automated (above) | Nothing to fix: password managers can fill the sign-in, paste works in every field, and passkeys need no typing at all. The setup code can be pasted. A password typed anywhere (sign-in, setup, Settings' You and Install, a Health Link's passcode) can be shown to check it (Show, #290, #492). |
 | 4.1.2 Name, role, value | axe; read the code | **Fixed.** Rows that opened something on click are buttons (2.1.1). A paid amount's row said `aria-expanded` on a table row, which a row can't have; its date is the button that says it. The heatmap's row names were focusable inside a picture, so screen readers couldn't reach them; they're clicked there, and renamed by keyboard from the ✎ in the heatmap's table (or a chart). A chart's table that scrolls takes focus, named by its columns, so it can be scrolled by keyboard. |
 | 4.1.3 Status messages | #209 | **Since #263** a save, an import or a removal that can be undone is said by a toast, in one polite live region inside a landmark named Notifications on every page with app.css, said once (the page's own line beside the control shows it without saying it again). Alt+N takes focus to the newest toast (not while typing in a field, where Option+N types ñ on a Mac, #361) and Escape gives it back; no toast takes focus by itself. Focus that went into a toast goes back where it came from when the toast goes, however it goes, and stays on a button while its action runs (#361). While a modal dialog is open, the status line is inside it, so it's heard, and so are the toasts while the drawer is open (a modal sheet on a phone), so they can be used; a question, `ask()`, leaves the toasts where they were, inert behind it, so one asked from a toast's Undo doesn't show that toast under its buttons and Tab from them doesn't reach it (#369). |
 

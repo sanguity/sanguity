@@ -1,6 +1,6 @@
 /* Sanguity · activity logs (sharing.js, admin.js): what each entry says, and a log that opens on demand. A profile's log
    (GET profiles/<id>/activity) on the Sharing page, under Activity (#168); the install's account events (GET activity)
-   on the Admin page. Uses the page's own call() and when() (sharing.js, admin.js). */
+   in Settings' Install (#991). Uses the page's own call() and when() (sharing.js, settings.js). */
 "use strict";
 const KIND_NAME = {visit: "Visits", contact: "Chart activity", procedure: "Procedures", imaging: "Imaging", study: "Reports & studies",
   message: "Messages", appt_msg: "Appointment messages", auto_msg: "Automated messages", letter: "Letters", document: "Documents"};   // #237
