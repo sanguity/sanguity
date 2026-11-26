@@ -41,21 +41,35 @@ function ltChange(pts, last) {
    (ltKeep's seen and shown, each result by ltKey) and read once a page, so a result stays marked while the page is
    open and not once it's loaded again after its row was in view; once every lab's latest since seen has been shown,
    seen moves on and the list starts again. Nothing is marked on a first look or with storage blocked. Never sent
-   anywhere */
+   anywhere. Each result kept by its place, not what it says (#1070: kept as its import, time and value, values and
+   times were left in the browser after sign-out; a hash of them could be guessed back): its import's id and which of
+   that import's lab results it is, in the order the records list them (DATA.labs, a copy left out by same.js counted
+   too), "12.3". One kept as written before is found among the results and kept by its place as it's read */
 let ltBase;   // {seen, shown: Set} as this page found them: undefined till Latest is drawn, null on a first look (or blocked)
-const ltKey = p => `${p.imp}|${p[0]}|${p[1]}`;
+let ltPlaces = null;   // {labs: the DATA.labs they're of, at: point -> "imp.n", was: "imp|time|value" -> "imp.n"}
+const ltPlace = () => {
+  if (ltPlaces?.labs === DATA.labs) return ltPlaces;
+  const at = new Map(), was = new Map(), n = new Map();
+  for (const s of DATA.labs) if (!s.watch) for (const p of s.pts) {
+    const k = n.get(s.imp) || 0; n.set(s.imp, k + 1);
+    at.set(p, `${s.imp}.${k}`); was.set(`${s.imp}|${p[0]}|${p[1]}`, `${s.imp}.${k}`);
+  }
+  return ltPlaces = {labs: DATA.labs, at, was};
+};
+const ltKey = p => ltPlace().at.get(p) || `${p.imp}.`;
+const ltShownKept = k => Array.isArray(k.shown) ? k.shown.map(x => String(x).includes("|") ? ltPlace().was.get(String(x)) : x).filter(Boolean) : [];
 const ltIsNew = p => ltBase != null && p.imp > ltBase.seen && !ltBase.shown.has(ltKey(p));
 const ltNewest = () => { let m = 0; for (const s of SERIES) if (!s.watch) for (const p of s.pts) if (p.imp > m) m = p.imp; return m; };
 function ltRead() {
   const k = ltKept();
-  if (Number.isInteger(k.seen)) ltBase = {seen: k.seen, shown: new Set(Array.isArray(k.shown) ? k.shown : [])};
+  if (Number.isInteger(k.seen)) ltBase = {seen: k.seen, shown: new Set(ltShownKept(k))};
   else { ltBase = null; ltKeep({seen: ltNewest(), shown: []}); }   // (a first look: what's here now isn't new)
 }
 /* results shown (their rows drawn in view): kept, and seen moved on once every lab's latest since it has been */
 function ltShown(keys) {
   const k = ltKept();
   if (!Number.isInteger(k.seen)) return;
-  const shown = new Set([...(Array.isArray(k.shown) ? k.shown : []), ...keys]), live = new Set(), last = [];
+  const shown = new Set([...ltShownKept(k), ...keys]), live = new Set(), last = [];
   for (const s of SERIES) if (!s.watch && s.pts.length) {
     for (const p of s.pts) if (p.imp > k.seen) live.add(ltKey(p));
     for (const p of ckLast(s.pts)) if (p.imp > k.seen) last.push(ltKey(p));

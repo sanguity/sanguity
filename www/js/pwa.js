@@ -81,7 +81,7 @@ if (SgOffline.works()) navigator.serviceWorker.register(new URL("sw.js", SgOffli
 
 /* (#220) the lab series picked on Labs, by name (sel in each profile's view, ht-state:<id>, core.js), go at sign-out
    too, and the lab name typed in Labs' Latest filter (q in ht-latest:<id>, latest.js, #994); the rest of each (period,
-   tab, kinds; Flagged only and what Latest last showed) is kept */
+   tab, kinds; Flagged only and what Latest has shown, each result by its place, #1070) is kept */
 function forgetPicks() {
   try {
     const keys = [];
@@ -90,7 +90,9 @@ function forgetPicks() {
       let s = null;
       try { s = JSON.parse(localStorage.getItem(k)); } catch (e) {}
       const name = k.startsWith("ht-latest:") ? "q" : "sel";
-      if (s && typeof s === "object" && name in s) { delete s[name]; localStorage.setItem(k, JSON.stringify(s)); }
+      if (s && typeof s === "object" && name in s) delete s[name];
+      if (s && Array.isArray(s.shown)) s.shown = s.shown.filter(x => !String(x).includes("|"));   // a result as written, kept before #1070
+      if (s && typeof s === "object") localStorage.setItem(k, JSON.stringify(s));
     }
   } catch (e) {}
 }
