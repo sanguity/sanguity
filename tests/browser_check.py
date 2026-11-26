@@ -15264,6 +15264,43 @@ def main():
             n489, under489 = under_bar(page, "#importer .job:last-child")
             check("a C-CDA's review in Upload files at 375 px, tabbed through: nothing focused is under its bar (#489)",
                   n489 > 3 and not under489, [n489, under489, js("document.querySelector('#importer .job:last-child .imp-actions').offsetHeight")])
+            # #1067: at 320 px with text at 200%, the review's bar (Cancel and Add side by side) widened Upload files past its
+            # card and the page scrolled sideways; the bar's buttons wrap. With a review in it: no wider than the screen
+            vp1067 = page.viewport_size
+            page.set_viewport_size({"width": 320, "height": 760})
+            js(ADOPT_CSS_JS, BIG_TEXT_CSS)
+            settle(400)
+            wide1067 = js("""() => { const W = document.documentElement.clientWidth; return [document.documentElement.scrollWidth - W, ...[...document.querySelectorAll('#importer .up, #importer .up *')]
+              .filter(e => e.checkVisibility() && e.getBoundingClientRect().right + scrollX > W + .5).slice(0, 4).map(e => e.getAttribute('class'))]; }""")
+            js(ADOPT_CSS_JS, "")
+            page.set_viewport_size(vp1067)
+            settle(300)
+            check("…and at 320 px with text at 200%, Upload files with a review in it no wider than the screen, nothing in it past its edge (#1067: its bar's "
+                  "buttons side by side widened it)", wide1067 == [0], wide1067)
+            # …and Find your provider (#1067): a result chosen scrolls its details, under the list, into view; focus goes to
+            # their heading (it stayed on the result, then off the screen, and the next Tab went back to the list): at 320 px
+            # with text at 200%, and at 1400 px
+            ctx1067 = browser.new_context(viewport={"width": 320, "height": 760}, bypass_csp=True)
+            ctx1067.add_cookies([c for c in page.context.cookies() if c["name"] == "sg_session"])
+            p1067, got1067 = ctx1067.new_page(), {}
+            try:
+                for w1067 in (320, 1400):
+                    p1067.set_viewport_size({"width": w1067, "height": 760})
+                    p1067.goto(base + "/providers.html?q=medicare")
+                    p1067.wait_for_selector(".dir-hit", timeout=15000)
+                    p1067.evaluate(ADOPT_CSS_JS, BIG_TEXT_CSS if w1067 == 320 else "")
+                    p1067.focus(".dir-hit")
+                    p1067.keyboard.press("Enter")
+                    p1067.wait_for_selector("#detail h3", timeout=10000)
+                    p1067.wait_for_timeout(1000)
+                    got1067[w1067] = p1067.evaluate("""() => { const a = document.activeElement, r = a.getBoundingClientRect();
+                      return [a === document.querySelector('#detail h3'), r.top >= 0 && r.bottom <= innerHeight]; }""")
+            except Exception as e:
+                got1067["stopped"] = stopped(e)
+            finally:
+                ctx1067.close()
+            check("…and Find your provider: a result chosen, focus on its details' heading, on the screen, at 320 px with text at 200% and at 1400 px "
+                  "(#1067: left on the result, scrolled off it)", got1067 == {320: [True, True], 1400: [True, True]}, got1067)
             # (#490) another profile chosen: the review is put away from Upload files, so its Add can't save into the profile
             # left behind; it waits in that profile's Waiting for you
             jid490 = js(f"{last_card}.dataset.job")
