@@ -310,7 +310,7 @@ function drawChart(svg, s, pts, read, live) {   // live: a frame of a drag, at t
   }
   if (!pts.length) g.push(el("svg:text", {x: (L + R) / 2, y: (T + B) / 2, "text-anchor": "middle", text: "No values in this date range"}));
   const cross = ckCross(T, B);
-  const dot = el("svg:circle", {r: 5.5, fill: "none", stroke: "var(--ink)", "stroke-width": 2, visibility: "hidden", "pointer-events": "none"});
+  const dot = el("svg:circle", {r: 5.5, class: "ck-ring", fill: "none", stroke: "var(--ink)", "stroke-width": 2, visibility: "hidden", "pointer-events": "none"});
   const hit = el("svg:rect", {x: L, y: T - 12, width: R - L, height: B - T + 12, fill: "transparent"});
   g.push(cross, dot, hit);
   svg.replaceChildren(...g.filter(Boolean));
