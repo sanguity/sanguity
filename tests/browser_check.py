@@ -879,15 +879,16 @@ def answer_ask(page, yes=True, fill=None, timeout=10000):
     return said
 
 
-def confirm_its_you(page, done, timeout=10000):
+def confirm_its_you(page, done, timeout=10000, box="reauth"):
     """After an Admin action the fresh check may be asked for (server main.fresh; #590 added giving a profile an owner,
     disabling its only owner and handing its profiles over): answer it with the password if it's asked (not within a
-    few minutes of the last one), then wait until done (JS, true once the action has finished)."""
-    page.wait_for_function(f"!document.getElementById('reauth').hidden || ({done})", timeout=timeout)
-    asked = page.evaluate("!document.getElementById('reauth').hidden")
+    few minutes of the last one), then wait until done (JS, true once the action has finished). box: the card's own
+    place for it (General → Security's, genSecReauth, #1001), else Accounts'."""
+    page.wait_for_function(f"!document.getElementById('{box}').hidden || ({done})", timeout=timeout)
+    asked = page.evaluate(f"!document.getElementById('{box}').hidden")
     if asked:
-        page.fill("#reauth input", PW)
-        page.locator("#reauth").get_by_role("button", name="Confirm").click()
+        page.fill(f"#{box} input", PW)
+        page.locator("#" + box).get_by_role("button", name="Confirm").click()
     page.wait_for_function(done, timeout=timeout)
     return asked
 
@@ -2071,6 +2072,104 @@ def font_swap(browser, state, url, width):
     return changed, len(before), round(shift, 4), fonts_before, fonts_after
 
 
+def general_security_check(check, browser, base, cookies):
+    """(#1001) Settings → Install → General → Security, for an admin: every setting drawn with its bounds, Install's
+    two-factor switch here (Accounts links to it), the Secure cookie and password checks read-only; a value past its
+    bound refused by the bar's Save, kept as typed; idle sign-out that would end a sign-in asks first, with how many
+    (Cancel saves nothing), then ends it, Enter saving; You → Sign-in and security says the lengths at once; admins
+    only for profiles tells the guide's New profile to ask an admin; no serious axe finding, and 320 px fits. Puts
+    everything back as it was."""
+    import secrets as secrets1001, urllib.request as req1001
+    from server import db as dbm1001, security as sec1001
+    ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
+    ctx.add_cookies([c for c in cookies if c["name"] == "sg_session"])
+    page = ctx.new_page()
+    js = page.evaluate
+    page.goto(base + "/settings.html?profile=1#gen-security")
+    page.wait_for_selector('#genSecBody [data-key="security.triesAccount"]', timeout=20000)
+    fresh_check(page)   # (asked of each change; its own flow is #1006's check)
+    drawn = js("""[[...document.querySelectorAll('#genSecBody [data-key]')].map(r => r.dataset.key),
+      [...document.querySelectorAll('#genSecBody .set-num')].map(i => [i.id, i.min, i.max]),
+      !!document.querySelector('#gen-security #reqTf'), document.querySelector('#setNav a[aria-current=page]')?.dataset.group,
+      document.getElementById('genSecBody').textContent.includes('COOKIE_SECURE') && document.getElementById('genSecBody').textContent.includes('HASH_PARALLEL'),
+      document.querySelector('#users a[href="#gen-security"]')?.textContent, !!document.querySelector('#users #reqTf')]""")
+    keys = ["sessionDays", "sessionHours", "idleMinutes", "profiles", "passwordMin", "passwordMin2fa", "tempPasswordDays",
+            "reauthMinutes", "triesHere", "triesAddress", "triesAccount"]
+    check("General → Security (#1001): each setting a row with its bounds, the two-factor switch here and not under Accounts, "
+          "which links here, and the Secure cookie and password checks shown with their variables",
+          drawn[0] == ["security." + k for k in keys] and drawn[2:] == [True, "general", True, "General → Security", False]
+          and ["gs-sessionHours", "1", "12"] in drawn[1] and ["gs-idleMinutes", "0", "1440"] in drawn[1] and ["gs-reauthMinutes", "1", "5"] in drawn[1], drawn)
+    # past its bound: the bar's Save says why, and it stays as typed
+    page.fill("#gs-triesHere", "6")
+    marked = js("[document.getElementById('gen-security').dataset.dirty, document.querySelector('[data-key=\"security.triesHere\"]').classList.contains('set-changed')]")
+    page.click("#setBar .btn.primary")
+    page.wait_for_function("document.querySelector('#setBar .msg').textContent.includes('from 3 to 5')", timeout=10000)
+    check("…a value past its bound is marked not saved and counted, and Save says the bounds, leaving it as typed",
+          marked == ["1", True] and js("document.getElementById('gs-triesHere').value") == "6", marked)
+    page.fill("#gs-triesHere", "5")
+    # idle sign-out that ends a sign-in (another of this account's, unused for 20 minutes): asked first
+    token = secrets1001.token_urlsafe(32)
+    db = dbm1001.connect()
+    now = dbm1001.now()
+    db.execute("INSERT INTO sessions(token_hash, user_id, created, last_seen, expires, ip, agent, verified_at) "
+               "SELECT ?, id, ?, ?, ?, '127.0.0.1', 'check 1001', 0 FROM users WHERE username=?",
+               (sec1001.token_hash(token), now - 3600, now - 1200, now + 86400, USER))
+    db.close()
+    page.fill("#gs-idleMinutes", "15")
+    page.click("#setBar .btn.primary")
+    asked = answer_ask(page, yes=False)
+    page.wait_for_function("document.querySelector('#setBar .msg').textContent.includes('no sign-in was ended')", timeout=10000)
+    check("…idle sign-out that would end sign-ins asks first, saying how many, and Cancel saves nothing (#1001)",
+          asked[0].startswith("End ") and "unused for longer" in asked[1] and js("document.getElementById('gen-security').dataset.dirty") == "1", asked)
+    page.focus("#gs-idleMinutes")
+    page.keyboard.press("Enter")   # Enter: the bar's Save
+    answer_ask(page)
+    page.wait_for_function("document.getElementById('genSecMsg').textContent === 'Saved “Sign out when unused for (minutes)”.'", timeout=10000)
+    try:
+        req1001.urlopen(req1001.Request(base + "/api/me", headers={"Cookie": "sg_session=" + token}), timeout=10)
+        ended = False
+    except req1001.HTTPError as e:
+        ended = e.code == 401
+    check("…confirmed (Enter, the bar's Save), it's saved, marked set for this server, and the sign-in left unused ends",
+          ended and js("document.querySelector('[data-key=\"security.idleMinutes\"] .tag:not(.set-unsaved)')?.textContent") == "set for this server"
+          and not js("document.getElementById('gen-security').dataset.dirty"), ended)
+    page.click("#setNav a[data-group=security]")
+    page.wait_for_selector("#sessLasts", state="visible", timeout=10000)
+    check("…and You → Sign-in and security says the lengths, read-only, at once",
+          "Leave it unused for 15 minutes" in js("document.getElementById('sessLasts').textContent"), js("document.getElementById('sessLasts').textContent"))
+    # who may create profiles: as it's picked; the guide's New profile then tells a non-admin to ask an admin
+    page.click("#setNav a[data-group=general]")
+    page.click("label:has(#gs-profiles-admins)")
+    page.wait_for_function("document.getElementById('genSecMsg').textContent === 'Saved: admins only may create profiles.'", timeout=10000)
+    picked = [js("document.activeElement.id"), js("fetch('api/settings/install').then(r => r.json()).then(d => d.sections.find(s => s.id === 'security').settings.find(s => s.key === 'security.profiles').value)")]
+    gp = ctx.new_page()
+
+    def not_admin(route):
+        me = route.fetch().json()
+        me.update(profiles=[], may_create_profiles=False)
+        me["user"]["is_admin"] = False
+        route.fulfill(json=me)
+    gp.route("**/api/me", not_admin)
+    gp.goto(base + "/guide.html?new")
+    gp.wait_for_selector("#step-view:not([hidden])", timeout=10000)
+    guide = gp.evaluate("[document.getElementById('viewTitle').textContent, document.getElementById('nameForm').offsetParent === null, document.getElementById('viewGo').hidden]")
+    gp.close()
+    check("…who may create profiles is saved as it's picked, and the guide's New profile tells someone who isn't an admin to ask one",
+          picked == ["gs-profiles-admins", "admins"] and guide == ["Ask an admin for a profile", True, True], [picked, guide])
+    page.click("label:has(#gs-profiles-everyone)")
+    page.wait_for_function("document.getElementById('genSecMsg').textContent === 'Saved: everyone signed in may create profiles.'", timeout=10000)
+    serious, _ = axe_check(page, "General → Security")
+    page.set_viewport_size({"width": 320, "height": 700})
+    page.wait_for_timeout(200)
+    wide = js("document.documentElement.scrollWidth")
+    check("…no serious axe finding, and it fits 320 px", not serious and wide <= 320, [serious, wide])
+    fresh_check(page)
+    gone = js("fetch('api/settings/install/reset', {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, "
+              "body: JSON.stringify({section: 'security'})}).then(r => r.json()).then(j => j.reset)")
+    check("…and put back as it was", sorted(gone or []) == ["security.idleMinutes", "security.profiles"], gone)
+    ctx.close()
+
+
 def main():
     srv, base = start_app()
     problems, passed = [], []
@@ -2377,6 +2476,7 @@ def main():
         ctx991s.close()
         check("This person's and You's sections leave a server's own settings to Install (#991), one listed among theirs or in a section "
               "of its own", shown991s[:2] == [False, False] and shown991s[2], shown991s)
+        general_security_check(check, browser, base, strict.context.cookies())   # (#1001) General → Security
         # the Sharing page (#168): its sidebar, each part drawn by its own script
         strict.goto(base + "/sharing.html#summary")   # the visit summary (#48)
         strict.wait_for_selector("#build:not([hidden]) #sections input", timeout=10000)
@@ -19303,7 +19403,7 @@ def main():
             # …and the other single on/off settings are switches too: Install's two-factor rule and connection defaults,
             # This device's offline records (Admin's and Account's before #991), the calendar feed's options (the ones a page shows when it opens)
             sw_pages = {}
-            for path, sel in (("settings.html?profile=1#accounts", "#reqTf"), ("settings.html?profile=1#device", "#offlineOn"), ("sharing.html?profile=1#calendar", "#calLabs, #calLabsNow")):
+            for path, sel in (("settings.html?profile=1#general", "#reqTf"), ("settings.html?profile=1#device", "#offlineOn"), ("sharing.html?profile=1#calendar", "#calLabs, #calLabsNow")):
                 page.goto(base + "/" + path)
                 page.wait_for_selector(sel, state="attached", timeout=10000)
                 sw_pages[path] = js("s => [...document.querySelectorAll(s)].every(i => i.getAttribute('role') === 'switch' && i.closest('label.switch'))", sel)
@@ -26815,7 +26915,9 @@ def main():
             page.wait_for_function("document.querySelectorAll('#userList tbody tr').length > 0", timeout=10000)
             # #318: the only account, with no second factor of its own: requiring two-factor for everyone isn't asked (the
             # server would refuse it); it says at once to turn on your own first, with the way there, and stays off.
-            # Requiring it with a second factor of your own is asked: the #314 check, below
+            # Requiring it with a second factor of your own is asked: the #314 check, below. (General → Security's, #1001)
+            page.click("#setNav a[data-group=general]")
+            page.wait_for_selector("#reqTf", state="visible", timeout=10000)
             page.click("#reqTf")
             page.wait_for_function("document.getElementById('reqTfMsg').textContent.includes('your own account')", timeout=10000)
             settle(300)
@@ -26837,6 +26939,8 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 900})
             check("…and the reason is right under the checkbox, on screen at 1400×900, 375×800 and 667×375 (#323)",
                   all(0 <= gap <= 12 and seen and shown for gap, seen, shown in near.values()), near)
+            page.click("#setNav a[data-group=accounts]")
+            page.wait_for_selector("#userName", state="visible", timeout=10000)
             page.fill("#userName", "alex")
             page.click("#userNew button[type=submit]")
             page.wait_for_function("document.querySelector('#userTemp code')", timeout=10000)
@@ -26851,7 +26955,7 @@ def main():
             # no longer the only account: admin actions now wait for the admin's own second factor (issue #75)
             check("with a second account, the admin is asked for a second factor",
                   js("!document.getElementById('adminTf').hidden && document.getElementById('adminTools').hidden"))
-            check("…and every other part of Install the server now refuses says so", js("['general', 'admin', 'sec-sync', 'labmaps', 'installLog'].every(id => document.querySelector('#' + id + ' .adm-gate'))"))
+            check("…and every other part of Install the server now refuses says so", js("['general', 'gen-security', 'admin', 'sec-sync', 'labmaps', 'installLog'].every(id => document.querySelector('#' + id + ' .adm-gate'))"))
             # two-factor sign-in: turn it on from the key shown, confirm with a code, get recovery codes
             from server import twofactor
             import time as _time
@@ -27616,6 +27720,8 @@ def main():
             required = lambda: js("fetch('api/settings').then(r => r.json()).then(s => s.require_2fa)")  # noqa: E731
             lacking = js("fetch('api/users').then(r => r.json()).then(l => l.filter(u => !u.disabled && !u.two_factor).length)")
             mine_has = js("fetch('api/users').then(r => r.json()).then(l => l.find(u => u.id === ME.user.id).two_factor)")
+            page.click("#setNav a[data-group=general]")   # (General → Security's, #1001)
+            page.wait_for_selector("#reqTf", state="visible", timeout=10000)
             page.click("#reqTf")
             page.wait_for_selector("dialog.sg-ask[open]", timeout=10000)
             tf_focus = js(focus_js)
@@ -27629,12 +27735,13 @@ def main():
             before1006 = len(problems)
             page.click("#reqTf")
             answer_ask(page)
-            confirm_its_you(page, "document.getElementById('reqTfMsg').textContent === 'Everyone now needs two-factor sign-in.'")   # (#1006: if it's due)
+            confirm_its_you(page, "document.getElementById('reqTfMsg').textContent === 'Everyone now needs two-factor sign-in.'", box="genSecReauth")   # (#1006: if it's due)
             check("…confirming turns it on", page.is_checked("#reqTf") and required() is True)
             page.click("#reqTf")
-            confirm_its_you(page, "document.getElementById('reqTfMsg').textContent === 'Two-factor sign-in is now optional.'")
+            confirm_its_you(page, "document.getElementById('reqTfMsg').textContent === 'Two-factor sign-in is now optional.'", box="genSecReauth")
             problems[before1006:] = [x for x in problems[before1006:] if "403" not in x]   # the refusal that asks, if it was due
             check("…and turning it off isn't asked", not js("document.querySelector('dialog.sg-ask')") and required() is False)
+            page.click("#setNav a[data-group=accounts]")
             # #536: Turn off two-factor sign-in… for an account whose second factor is only its passkeys names them, and not a
             # phone or recovery codes it never had; Cancel. One with two passkeys, made up here and removed after
             pk536 = db.execute("INSERT INTO users(username, pw_hash, is_admin, created) VALUES('pk536', 'x', 0, 0)").lastrowid
