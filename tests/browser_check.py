@@ -2183,8 +2183,8 @@ def general_security_check(check, browser, base, cookies):
     two-factor switch here (Accounts links to it), the Secure cookie and password checks read-only; a value past its
     bound refused by the bar's Save, kept as typed; idle sign-out that would end a sign-in asks first, with how many
     (Cancel saves nothing), then ends it, Enter saving; You → Sign-in and security says the lengths at once; admins
-    only for profiles tells the guide's New profile to ask an admin; no serious axe finding, and 320 px fits. Puts
-    everything back as it was."""
+    only for profiles tells the guide's New profile to ask an admin, and offers New profile nowhere else to a member
+    (an admin still has it); no serious axe finding, and 320 px fits. Puts everything back as it was."""
     import secrets as secrets1001, urllib.request as req1001
     from server import db as dbm1001, security as sec1001
     ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
@@ -2259,9 +2259,31 @@ def general_security_check(check, browser, base, cookies):
     gp.goto(base + "/guide.html?new")
     gp.wait_for_selector("#step-view:not([hidden])", timeout=10000)
     guide = gp.evaluate("[document.getElementById('viewTitle').textContent, document.getElementById('nameForm').offsetParent === null, document.getElementById('viewGo').hidden]")
+
+    def np_offered(pg, path, empty):   # (#1001, the owner's decision) New profile where it's offered: the profile menu, the palette, the page's own
+        pg.goto(base + path)
+        pg.wait_for_selector(empty, state="visible", timeout=15000)
+        pg.wait_for_load_state("networkidle")
+        pg.keyboard.press("Control+k")
+        pg.wait_for_selector("dialog.palette[open]", timeout=5000)
+        pg.fill("#palQ", "new profile")
+        pg.wait_for_timeout(300)
+        got = pg.evaluate("""e => [!document.getElementById('newProfileLink').hidden,
+          [...document.querySelectorAll('dialog.palette [role=option]')].some(o => o.textContent.includes('New profile')),
+          !!document.querySelector(e + ' a[href="guide.html?new"]:not(:is([hidden], [hidden] *))'), document.querySelector(e).innerText]""", empty)
+        pg.keyboard.press("Escape")
+        return got
+    np_member = [np_offered(gp, "/?profile=1", "main .empty"), np_offered(gp, "/sources.html", "#noProfiles")]
     gp.close()
+    ap = ctx.new_page()   # (an admin's own /api/me, admins only still)
+    np_admin = np_offered(ap, "/?profile=1", "#profilePick")[:2]
+    ap.close()
     check("…who may create profiles is saved as it's picked, and the guide's New profile tells someone who isn't an admin to ask one",
           picked == ["gs-profiles-admins", "admins"] and guide == ["Ask an admin for a profile", True, True], [picked, guide])
+    check("…and, admins only, someone who isn't an admin isn't offered New profile anywhere: not in the profile menu or the palette, nor "
+          "the records page's and Sources' notes for no profile, which say to ask an admin; an admin still is (#1001, the owner's decision)",
+          [m[:3] for m in np_member] == [[False, False, False]] * 2 and all("an admin to create one" in m[3] for m in np_member)
+          and np_admin == [True, True], [np_member, np_admin])
     page.click("label:has(#gs-profiles-everyone)")
     page.wait_for_function("document.getElementById('genSecMsg').textContent === 'Saved: everyone signed in may create profiles.'", timeout=10000)
     serious, _ = axe_check(page, "General → Security")
