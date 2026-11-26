@@ -377,7 +377,7 @@ function renderPaid(box, claimRows, periodLabel) {
     const max = Math.max(1, ...groups.map(g => g.v));
     // a row is a button, by keyboard too, saying whether it's picked, as the claims' are (#202, #448)
     // picked, tinted (in forced colours ringed, its bar in the text's colour: .cost-bar, app.css, #456)
-    for (const g of groups) host.append(el("div", {class: "ov-row", style: {gridTemplateColumns: "1fr auto"},
+    for (const g of groups) host.append(el("div", {class: "ov-row",
       ...pressable(() => pick(g.key)), "aria-pressed": paidState.q === g.key},
       el("span", {class: "n", style: {fontWeight: 500}, text: g.key}), el("span", {class: "v", text: usd(g.v)}),
       el("span", {class: "s cost-bars"},   // the bar the row's width on one scale, its note under it, as the claims' (#483, #485)
@@ -502,7 +502,7 @@ function barList(card, groups, onPick, active) {
   const max = Math.max(1, ...groups.map(g => g.paid + g.owe));
   for (const g of groups) {
     const w1 = g.paid / max * 100, w2 = g.owe / max * 100;
-    card.append(el("div", {class: "ov-row", style: {gridTemplateColumns: "1fr auto"}, ...pressable(() => onPick(g.key)),   // picked, as What you paid's (#456)
+    card.append(el("div", {class: "ov-row", ...pressable(() => onPick(g.key)),   // picked, as What you paid's (#456)
       "aria-pressed": active === undefined ? null : active === g.key,   // a type of care picked filters the claims (#202)
       "data-tip": `${g.key}: ${g.n} claims · billed ${usd(g.billed)} · insurance paid ${usd(g.paid)} · your share ${usd(g.owe)}`},
       el("span", {class: "n", style: {fontWeight: 500}, text: g.key}),

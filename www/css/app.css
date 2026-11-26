@@ -700,13 +700,12 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .ov-today{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:0 var(--sp-5);align-items:start}
 .ov-out-say{margin:0 0 var(--sp-1);font-weight:var(--fw-semibold)}
 .ov-out{margin-bottom:var(--sp-4)}
-.ov-out .ov-row{display:flex;flex-wrap:wrap}   /* a flag on one line, wrapping on a phone */
 .lab-panel{font-size:var(--fs-2);font-weight:var(--fw-semibold);color:var(--ink2);margin:0 0 var(--sp-2)}   /* a panel's name over its labs, as everywhere they're grouped (labGroups, #279, #441) */
 .tiles.ov-read{--tile:min(150px,calc(50% - var(--sp-3)))}   /* one row at 1400 px (and as .tiles on a phone, #722) */
 .st{display:inline-flex;align-items:center;gap:3px;font-size:var(--fs-1);font-weight:var(--fw-semibold);white-space:nowrap}
 .st.hi,.st.lo,.st.flag{color:var(--crit)}
 .ov-cols{display:grid;grid-template-columns:1.2fr 1fr;gap:0 var(--sp-5);align-items:start}
-.ov-row{display:grid;grid-template-columns:1fr auto auto;gap:var(--sp-1) var(--sp-3);align-items:baseline;padding:var(--sp-2) var(--sp-1);border-bottom:1px solid var(--grid);cursor:pointer;border-radius:var(--r-sm)}
+.ov-row{display:flex;flex-wrap:wrap;gap:var(--sp-1) var(--sp-3);align-items:baseline;padding:var(--sp-2) var(--sp-1);border-bottom:1px solid var(--grid);cursor:pointer;border-radius:var(--r-sm)}
 .ov-row:hover{background:var(--hover)}
 .ov-row.still{cursor:default}   /* a problem or an allergy: a list to read */
 .ov-row .n>.key{margin-right:var(--sp-2);vertical-align:-2px}   /* its kind's icon, in its lane's colour (#354) */
@@ -714,7 +713,11 @@ svg text{fill:var(--muted);font-size:var(--fs-1)}
 .ov-row .n.plain{font-weight:var(--fw-regular)}   /* a problem's or an allergy's name: a list to read, not to open */
 .ov-row .v{font-variant-numeric:tabular-nums;font-weight:var(--fw-semibold)}
 .ov-row .r{color:var(--muted);font-size:var(--fs-2);font-variant-numeric:tabular-nums}
-.ov-row .s{grid-column:1/-1;color:var(--ink2);font-size:var(--fs-2)}
+.ov-row .s{color:var(--ink2);font-size:var(--fs-2)}
+/* its date or amount under its name where both don't fit (#1012) */
+.ov-row:not(.ov-out>*)>.n{flex:1 1 0}
+.ov-row:not(.ov-out>*)>.r{margin-right:var(--sp-3)}
+.ov-row:not(.ov-out>*)>.s{flex-basis:100%}
 /* heatmap */
 /* overflow-x:clip (not auto) so the wrapper is not a scroll container and the month axis can stick to the window bottom
    (over a phone's tabs, #268) */
@@ -1025,6 +1028,9 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
   .acct .tbl.pk tr{grid-template-columns:repeat(2,minmax(0,1fr))}
   .acct .tbl.pk :is(td:first-child,td.acts){grid-column:1/-1}
 }
+/* a device's dates a line each where two don't fit (#1012) */
+.acct #sessList{container-type:inline-size}
+@container (width < 14.5em){ .acct #sessList tr{grid-template-columns:minmax(0,1fr)} }
 /* uploading (#281, import.js dropTarget): Sources → Upload files, the guide's step 2 and the dialog a drop opens
    (drop.js); the drop target, then each upload's card (import-jobs.js frame): its title, the stage line, one bar,
    what's happening now and the job's own part. The veil over the page while files are dragged over it */
@@ -2181,18 +2187,20 @@ span.pw{display:block}   /* in a label, the field a block of its own (#492) */
 main.acct.guide{max-width:640px}
 .guide-hd h1{font-size:var(--fs-6);font-weight:var(--fw-semibold);margin:2px 0 var(--sp-3);letter-spacing:-.01em}
 /* the steps as one line (#290): a numbered dot each, its name under it, joined by a rule that's green past each step
-   done; four across at 320 px too */
-.guide-steps{list-style:none;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);margin:0 0 var(--sp-4);padding:0;font-size:var(--fs-3);color:var(--ink2);text-align:center}
+   done; four across at 320 px too, a list where they don't fit (#1012) */
+.guide-hd{container-type:inline-size;font-size:var(--fs-3)}
+.guide-steps{--gn:max(24px,calc(var(--fs-2) * 1.9));list-style:none;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);margin:0 0 var(--sp-4);padding:0;color:var(--ink2);text-align:center}
 .guide-steps li{position:relative}
-.guide-steps li+li::before{content:"";position:absolute;top:14px;left:calc(15px - 50%);right:calc(50% + 15px);border-top:2px solid var(--axis)}
+.guide-steps li+li::before{content:"";position:absolute;top:calc(var(--gn) / 2 + 2px);left:calc(var(--gn) / 2 + 3px - 50%);right:calc(50% + var(--gn) / 2 + 3px);border-top:2px solid var(--axis)}
 .guide-steps li.done+li::before{border-color:var(--good-text)}
 .guide-steps li>*{display:flex;flex-direction:column;align-items:center;gap:var(--sp-1);padding:2px var(--sp-1);color:inherit;text-decoration:none;border-radius:var(--r-sm)}
 .guide-steps a:hover{color:var(--ink);text-decoration:underline}
-.guide-n{display:grid;place-items:center;width:24px;height:24px;border-radius:var(--r-pill);border:1px solid var(--axis);background:var(--page);font-size:var(--fs-2);font-weight:var(--fw-semibold);flex:none}
+.guide-n{display:grid;place-items:center;width:var(--gn);height:var(--gn);border-radius:var(--r-pill);border:1px solid var(--axis);background:var(--page);font-size:var(--fs-2);font-weight:var(--fw-semibold);flex:none}
 .guide-steps .cur{color:var(--ink);font-weight:var(--fw-semibold)}
 .guide-steps .done .guide-n{border-color:var(--good-text);color:var(--good-text)}
 .guide-steps .cur .guide-n{background:var(--accent-fill);border-color:var(--accent-fill);color:var(--on-accent)}
-@media (max-width:600px){ .guide-steps{font-size:var(--fs-2)} }
+@media (max-width:600px){ .guide-hd{font-size:var(--fs-2)} }
+@container (width < calc(19em + 32px)){ .guide-steps{grid-auto-flow:row;gap:var(--sp-1);text-align:start} .guide-steps li>*{flex-direction:row;gap:var(--sp-2)} .guide-steps li+li::before{content:none} }
 .guide-step h2{font-size:var(--fs-5);margin:0 0 var(--sp-1)}
 .guide-step h2:focus{outline:none}
 .guide-step .form{max-width:none;margin-top:var(--sp-3)}
@@ -2367,6 +2375,8 @@ svg text.growth-pct{font-size:var(--fs-1)}
 .about .tgt-pair input{width:7em}
 .about .tgt-who{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
 .about .tgt-who input[type=text]{width:14em}
+.about :is(.tgt-who,.tgt-who>label){min-width:0}   /* (#1012) */
+.about .tgt-who>label{grid-template-columns:minmax(0,1fr)}
 .about .tgt-form>.about-row{margin-top:0;flex-basis:100%}
 @media (forced-colors:active){ .tgt-key{forced-color-adjust:none} }   /* in the system's colours with the rest of Body's ink (#729, #975) */
 
