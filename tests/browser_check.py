@@ -2388,6 +2388,31 @@ def main():
               strict.evaluate("document.getElementById('settingsLink').getAttribute('href')") == "settings.html?profile=1#you"   # (#397)
               and not strict.evaluate("!!document.querySelector('#accountLink, #displayLink, #adminLink')"))
         check("no Install card shows a stray “null”", strict.evaluate(null_cards) == [], strict.evaluate(null_cards))
+        # #1028: Install's start calls the scripts after it (outside.js's SgOutside, admin-sources.js's, admin-backups.js's)
+        # only once they're all there: the page's start is its last script's (settings-nav.js). With the CPU slowed four
+        # times and outside.js answered 1.5 s late, Outside connections is drawn and no script fails (Admin's start, in
+        # admin.js before it, called SgOutside once "me" was answered: "SgOutside is not defined", the cards after it not drawn)
+        import time as time1028
+        ctx1028 = browser.new_context(viewport={"width": 1400, "height": 900})
+        ctx1028.add_cookies([c for c in strict.context.cookies() if c["name"] == "sg_session"])
+        p1028, errs1028 = ctx1028.new_page(), []
+        p1028.on("pageerror", lambda e: errs1028.append(str(e)))
+        def late1028(route):
+            got = route.fetch()
+            time1028.sleep(1.5)
+            route.fulfill(response=got)
+        p1028.route("**/js/outside.js", late1028)
+        ctx1028.new_cdp_session(p1028).send("Emulation.setCPUThrottlingRate", {"rate": 4})
+        p1028.goto(base + "/settings.html?profile=1#outside")
+        try:
+            p1028.wait_for_selector("#outsideBody h3", timeout=20000)
+            p1028.wait_for_selector("#userList table, #bkStatus .kv", state="attached", timeout=20000)
+            drawn1028 = p1028.evaluate("[...document.querySelectorAll('#outsideBody h3')].length > 0 && !!document.querySelector('#userList table') && !!document.querySelector('#bkStatus .kv')")
+        except Exception as e:
+            drawn1028 = stopped(e)
+        ctx1028.close()
+        check("Install's start waits for the scripts it calls (#1028): with the CPU slowed and outside.js late, Outside connections, Accounts and "
+              "Backups are drawn, and no script fails", drawn1028 is True and not errs1028, [drawn1028, errs1028])
         # (#991) This person's and You's sections show the profile's and the person's own settings only: a server's own
         # (scope "install", as General's will be, #1000-#1004) is Install's, read from /api/settings/install, even where
         # the profile's sections list it beside theirs. One answered here into Dates and times, and a section of its own
