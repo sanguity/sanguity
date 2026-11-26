@@ -97,7 +97,7 @@ const SG_PAGES = {
         ["Units", "sec-units", "metric imperial mmol mg kg lb pounds kilograms weight temperature celsius fahrenheit height cm inches lab tests"]]},
     // Install: the Admin page's groups (#167: admin.js, admin-sources.js, admin-backups.js, outside.js, activity.js),
     // admins only. General (#998) first: the server's own settings, each of its sections (#1000-#1005) a part in its has
-    {id: "general", title: "General", icon: "wrench", part: "Install", admin: true, has: ["general", "gen-host", "gen-security", "gen-backups", "gen-phone", "gen-about"], place: "admin", words: "server install configuration",
+    {id: "general", title: "General", icon: "wrench", part: "Install", admin: true, has: ["gen-host", "gen-security", "gen-backups", "gen-phone", "gen-about"], place: "admin", words: "server install configuration",
      finds: [["Host", "gen-host", "public addresses origins reverse proxy domain url passkey names trusted proxies port bind forwarded"],
        ["Security", "gen-security", "sign-in lasts session length days hours idle unused sign out who may create profiles admins only " +
         "shortest password length one-time temporary fresh check minutes wrong tries throttle attempts wait secure cookie password checks"],

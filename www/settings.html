@@ -151,12 +151,8 @@
   <div class="card warn" id="syncNotice" hidden></div>
   <div class="card warn" id="backupNotice" hidden></div>
 
-  <!-- General (#998): the server's own settings, each of its sections a card of its own after this one, its id in
-       General's has (groups.js), shown to admins with the rest (admin.js) -->
-  <section class="card conn adm" id="general" hidden>
-    <h2>General</h2>
-    <p class="hint">This server's own settings.</p>
-  </section>
+  <!-- General (#998): the server's own settings, each of its sections a card of its own, its id in General's has
+       (groups.js), shown to admins with the rest (admin.js); the group's h1 names it, no card of its own repeating it -->
   <section class="card conn adm" id="gen-host" hidden><h2>Host</h2></section>   <!-- the public addresses (admin-host.js, #1000) -->
   <!-- General → Security (#1001, gen-security.js): how people sign in, and for how long. Requiring two-factor sign-in
        for everyone (Accounts' before), then the rows drawn from the server's settings, the fresh check in the card -->
