@@ -24523,6 +24523,15 @@ def main():
             p1027.click("#ltFlag")
             p1027.wait_for_timeout(500)
             below1027 = [p1027.evaluate(NEW1027), p1027.evaluate("""(a => a.getBoundingClientRect().top > innerHeight)(document.querySelector('#ltRows .lt-row[data-lab="Zinc (fictional)"]'))""")]
+            # #1070: what sign-out leaves (forgetPicks, its sg:logout) holds no result's time or value, nor anything made from them:
+            # ALT's, shown, kept by its place, its import's id and which of that import's results it is (it was "import|time|value",
+            # and a hash of that could be guessed back); Zinc still marked once loaded again, below
+            kept1070 = p1027.evaluate("""() => { forgetPicks(); const p = SERIES.find(s => s.name === 'ALT').pts.at(-1), k = JSON.parse(localStorage.getItem(LT_KEY()));
+                const all = [localStorage, sessionStorage].flatMap(s => Object.keys(s).map(x => x + '=' + s.getItem(x))).join('\\n');
+                return [k.shown.length > 0, k.shown.every(x => /^\\d+\\.\\d+$/.test(x)), k.shown.includes(ltKey(p)) && ltKey(p).startsWith(p.imp + '.'),
+                  all.includes('|' + p[0] + '|'), all.includes(String(p[0]))]; }""")
+            check("…what sign-out leaves of Latest's New holds no result's time or value, nor a hash of them: each shown result kept as its "
+                  "import's id and its place among that import's results (#1070)", kept1070 == [True, True, True, False, False], kept1070)
             below1027.append(latest1027(again=True))
             p1027.evaluate("""document.querySelector('#ltRows .lt-row[data-lab="Zinc (fictional)"]').scrollIntoView({block: 'center'})""")
             p1027.wait_for_timeout(500)

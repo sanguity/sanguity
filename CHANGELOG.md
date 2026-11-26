@@ -3759,6 +3759,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - **A date or time typed only partly stops the save** (#1073): "0830" with no AM or PM read as empty, so New
   reminder's extra time was dropped ("Reminder saved" with the other alone) and a journal entry saved with no time.
   No form saves while one of its date or time fields is half typed: it's marked, named in the message and focused.
+- **Sign-out leaves no result's value in Latest's New marks** (#1070): what Latest has shown was kept in this
+  browser as each result's import, time and value, and stayed after sign-out; it's kept by its place now (its
+  import and which of that import's results it is), which says nothing of the result.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
