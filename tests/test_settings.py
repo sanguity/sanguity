@@ -585,7 +585,11 @@ class Settings(unittest.TestCase):
     # ---------------------------------------------------------------- General → Security (#1001)
 
     def security_put(self, key, value, status=200, confirm=True):
-        r = self.c["ada"].put(f"/api/settings/install/{key}", json={"value": value, "confirm": confirm}, headers=H)
+        """confirm: what's asked to be typed is typed (#998's one rule), or nothing is (False)"""
+        put = lambda typed=None: self.c["ada"].put(f"/api/settings/install/{key}", json={"value": value, "confirm": typed}, headers=H)   # noqa: E731
+        r = put()
+        if confirm and r.status_code == 409 and isinstance(r.json()["detail"], dict) and "confirm" in r.json()["detail"]:
+            r = put(r.json()["detail"]["confirm"]["type"])
         self.assertEqual(r.status_code, status, f"{key} = {value!r}: {r.text}")
         return r
 
@@ -701,8 +705,12 @@ class Settings(unittest.TestCase):
             self.assertEqual(main.sessions_ended(db, {"SESSION_HOURS_WITHOUT_2FA": 2}, aged), (1, True))
         try:
             r = self.security_put("security.sessionHours", 2, 409, confirm=False)
-            self.assertEqual({k: r.json()["detail"][k] for k in ("code", "sessions", "yours")}, {"code": "confirm_sign_ins", "sessions": 1, "yours": False})
-            self.assertEqual(r.json()["detail"]["message"], "This ends 1 sign-in: confirm it to go ahead.")
+            c = r.json()["detail"]["confirm"]   # (#998: asked as every install setting's change is, the count typed back)
+            self.assertEqual((r.json()["detail"]["code"], c["count"], c["type"], c["yours"]), ("confirm", 1, "1", False))
+            self.assertEqual(r.json()["detail"]["message"], "1 sign-in is older, or unused for longer, than this change allows: it "
+                                                           "ends at its next request, and its person signs in again. Type 1 to confirm.")
+            self.assertEqual(self.c["ada"].put("/api/settings/install/security.sessionHours", json={"value": 2, "confirm": "2"},
+                                               headers=H).status_code, 409, "a wrong count")
             self.assertEqual((old.get("/api/me").status_code, new.get("/api/me").status_code), (200, 200), "not yet")
             self.stale()
             self.assertEqual(self.security_put("security.sessionHours", 2, 403).json()["detail"], "reauth_required", "then the fresh check")
@@ -714,7 +722,7 @@ class Settings(unittest.TestCase):
             with contextlib.closing(dbm.connect()) as db:
                 db.execute("UPDATE sessions SET last_seen=?", (dbm.now(),))
                 db.execute("UPDATE sessions SET last_seen=last_seen-20*60 WHERE id=(SELECT MAX(id) FROM sessions)")
-            self.assertEqual(self.security_put("security.idleMinutes", 15, 409, confirm=False).json()["detail"]["sessions"], 1)
+            self.assertEqual(self.security_put("security.idleMinutes", 15, 409, confirm=False).json()["detail"]["confirm"]["count"], 1)
             self.security_put("security.idleMinutes", 30, confirm=False)   # ends none: not asked
             self.security_put("security.idleMinutes", 15)
             self.assertEqual((old.get("/api/me").status_code, new.get("/api/me").status_code), (401, 200))
@@ -820,6 +828,17 @@ class Settings(unittest.TestCase):
         self.assertEqual(put(7).status_code, 400, "bounded")
         r = ada.post("/api/settings/install/reset", json={"section": "logging"}, headers=H)   # 400 back to 365: nothing that old
         self.assertEqual((r.status_code, r.json()["reset"], config.setting("ACTIVITY_DAYS")), (200, [key], 365))
+        # a reset of the one setting on a profile's route is asked the same way, and carries its confirmation (#998)
+        self.assertEqual(put(400).status_code, 200)
+        with contextlib.closing(dbm.connect()) as db:
+            db.execute("INSERT INTO activity(at, profile_id, actor, action) VALUES(?, 1, 'fictional', 'view')", (now - 380 * 86400,))
+        reset = lambda **kw: ada.request("DELETE", f"/api/profiles/1/settings/{key}", headers=H, **kw)   # noqa: E731
+        r = reset()
+        self.assertEqual((r.status_code, r.json()["detail"]["code"], r.json()["detail"]["confirm"]["count"]), (409, "confirm", 1), r.text)
+        self.assertEqual(reset(json={"confirm": "2"}).status_code, 409, "a wrong count")
+        self.assertEqual(config.setting("ACTIVITY_DAYS"), 400)
+        self.assertEqual(reset(json={"confirm": "1"}).status_code, 200)
+        self.assertEqual(config.setting("ACTIVITY_DAYS"), 365)
 
     def test_general_about_names_the_deployment(self):   # #1004
         """General → About: each deployment's kind named (SANGUITY_DEPLOYMENT, which every template sets: deploy/check.py),

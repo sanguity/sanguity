@@ -4,7 +4,7 @@
    genBkSchedule). Logging: how long activity is kept (the install setting activity.days, ACTIVITY_DAYS), kept as
    typed and marked "not saved" until the group's bar saves it (genBkSave, settings-nav.js ADM) or puts it back
    (genBkDiscard); keeping fewer days, where that deletes entries, says how many and goes ahead only once that count
-   is typed (the server asks: 409 "confirm"), with the fresh check; set by the environment, it's shown fixed, naming
+   is typed (admin.js confirmed, the server's one rule), with the fresh check; set by the environment, it's shown fixed, naming
    its variable. Then where the app's output and its security log are read (read-only). call(), say(), plural() and
    fresh() are settings.js's and admin.js's. */
 "use strict";
@@ -65,23 +65,9 @@ function genBkSchedule(b) {
   if (line) line.textContent = gbSchedule(b) + ". ";
 }
 
-/* the days to the server: where that deletes entries, it says how many, and it's done once that count is typed (asked
-   again, saying so, if what's typed isn't it). Gives back the install's settings, or null when the answer was no */
-async function gbPut(value) {
-  let body = {value}, again = false;
-  for (;;) {
-    try { return await fresh(() => call(`settings/install/${GB_KEY}`, "PUT", body), $("#genBkReauth")); }
-    catch (e) {
-      if (!(e.status === 409 && e.detail?.confirm)) throw e;
-      const c = e.detail.confirm, field = el("input", {inputmode: "numeric", autocomplete: "off", spellcheck: "false", required: true});
-      if (!await ask({title: `Delete ${c.count.toLocaleString("en-US")} activity ${c.count === 1 ? "entry" : "entries"}?`, danger: true, field,
-          message: [again ? "That wasn't the number: type it as it's shown." : null, c.message,
-            el("label", {}, `Type ${c.count} to confirm`, field)], action: "Keep fewer days"})) return null;
-      body = {value, confirm: field.value};
-      again = true;
-    }
-  }
-}
+/* the days to the server: where that deletes entries, it says how many, and it's done once that count is typed
+   (admin.js confirmed). Gives back the install's settings, or null when the answer was no */
+const gbPut = value => confirmed(typed => fresh(() => call(`settings/install/${GB_KEY}`, "PUT", {value, confirm: typed}), $("#genBkReauth")));
 /* the bar's Save and Discard: the days kept */
 async function genBkSave(msg, had) {
   const value = +gbTyped, what = `“${GB.st.label}” isn't saved: `;

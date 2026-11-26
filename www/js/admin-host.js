@@ -92,7 +92,7 @@ async function hostSave(msg) {
 }
 async function hostChange(typed) {
   const was = HOST.st.value, value = HOST_ZONE.value, k = HOST.st.key;
-  await fresh(() => call(`settings/install/${k}`, "PUT", {value, was, confirm: typed}), hostReauth());
+  if (!await confirmed(t => fresh(() => call(`settings/install/${k}`, "PUT", {value, was, confirm: t}), hostReauth()), typed)) return;
   HOST_ZONE.hide();
   await loadHost("Saved the public addresses.");
   $("#gen-host-hd").focus();
