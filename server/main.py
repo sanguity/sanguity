@@ -176,11 +176,12 @@ async def lifespan(app):
 app = FastAPI(title="Sanguity", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 
 
-def _same_site(origin, request):
+def _same_site(origin, request, origins=None):
     """The browser's Origin names this site: the Host it reached us on, the host a reverse proxy in front says it
-    served (X-Forwarded-Host, passed on by our nginx), or an address listed in PUBLIC_ORIGINS."""
+    served (X-Forwarded-Host, passed on by our nginx), or an address listed in PUBLIC_ORIGINS (origins: another list
+    than the one in force, for General → Host's refusal of one this page's own address wouldn't pass, #1000)."""
     origin = origin.lower().rstrip("/")
-    if origin in config.setting("PUBLIC_ORIGINS"):
+    if origin in (config.setting("PUBLIC_ORIGINS") if origins is None else origins):
         return True
     plain = lambda h: h.removesuffix(":443").removesuffix(":80")   # browsers leave default ports out of Origin
     host = plain(origin.split("://", 1)[-1])
@@ -1561,6 +1562,7 @@ app.include_router(__import__("server.routes_same", fromlist=["router"]).router)
 app.include_router(__import__("server.routes_manual", fromlist=["router"]).router)    # results typed in (#27)
 app.include_router(__import__("server.routes_labmaps", fromlist=["router"]).router)   # lab names matched on import (#23)
 app.include_router(__import__("server.routes_settings", fromlist=["router"]).router)  # settings (#35)
+app.include_router(__import__("server.routes_host", fromlist=["router"]).router)      # General → Host (#1000)
 app.include_router(__import__("server.routes_watch", fromlist=["router"]).router)     # a watch receiver secret per profile (#46)
 app.include_router(__import__("server.routes_shl", fromlist=["router"]).router)       # SMART Health Links and Cards (#94)
 app.include_router(__import__("server.routes_directory", fromlist=["router"]).router)  # find your provider (#93)
