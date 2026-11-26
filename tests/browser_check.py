@@ -11116,6 +11116,30 @@ def main():
                   all(v["n"] and not v["bad"] for v in rim1013.values()) and all(v["pt"] for k, v in rim1013.items() if "Compare" not in k), rim1013)
             check("…and the charts' hover ring is a system colour in forced colours, both ways (#1035: in the app's ink it stayed rgb(238, 236, 230) on "
                   "the system's white): Labs' charts, a lab's panel and Compare", all(v["n"] and not v["bad"] for v in ring1035.values()), ring1035)
+            # ---- #1081: …and Compare's third lab, its dotted line in --field-line (CK_SERIES[2]), which forced colours leave
+            # as it is: measured on the system's background, the system dark or light and the app either theme, 3:1 or more
+            # (3.6:1 to 5.8:1 when measured: so it keeps its colour, not the system's)
+            LINE1081 = r"""() => { const probe = c => { const s = document.createElement('span'); s.style.forcedColorAdjust = 'none'; s.style.color = c; document.body.append(s);
+                const v = getComputedStyle(s).color; s.remove(); return v; };
+              const rgb = c => /^color\(srgb /.test(c) ? c.slice(11).split(/[\s/)]+/).slice(0, 3).map(v => Math.round(v * 255)) : (c.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+              const lum = c => rgb(c).map(v => { v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }).reduce((s, v, i) => s + v * [.2126, .7152, .0722][i], 0);
+              const line = document.querySelectorAll('#labsCompare path.cmp-line')[2]; if (!line) return null;
+              const [x, y] = [lum(getComputedStyle(line).stroke), lum(probe('Canvas'))].sort((p, q) => q - p);
+              return [line.getAttribute('stroke'), Math.round((x + .05) / (y + .05) * 100) / 100]; }"""
+            was1081, got1081 = js("[document.documentElement.dataset.theme || null, matchMedia('(prefers-color-scheme: dark)').matches, [...state.sel], state.preset, state.tab, state.labsView]"), {}
+            for system1081 in ("dark", "light"):
+                page.emulate_media(color_scheme=system1081, forced_colors="active")
+                for app1081 in ("light", "dark"):
+                    js("""t => { document.documentElement.dataset.theme = t; applyPreset('all');
+                      state.sel = new Set(SERIES.filter(s => !s.watch && s.n >= 3).slice(0, 3).map(s => s.name)); switchTab('labs', 'compare'); }""", app1081)
+                    settle(500)
+                    got1081[f"the system {system1081}, the app {app1081}"] = js(LINE1081)
+            page.emulate_media(forced_colors="none", color_scheme="dark" if was1081[1] else "light")
+            js("""([t, , sel, preset, tab, view]) => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+              state.sel = new Set(sel); applyPreset(preset); switchTab(tab, tab === 'labs' ? view : undefined); }""", was1081)
+            settle(300)
+            check("…and Compare's third lab's dotted line 3:1 or more on the system's background in forced colours, the system dark or light, the app "
+                  "either theme (#1081)", all(v and v[0] == "var(--field-line)" and v[1] >= 3 for v in got1081.values()), got1081)
             # ---- #984: …and Body and activity's coloured steps, either theme: the steps' bars (the measure's teal at 30%) were
             # about 1.5:1 on the system's black, sleep's deep stage (--seq1) 2.5:1 on it and the dark theme's 1.8:1 on white.
             # In forced colours, the system dark and light, the app light and dark, in 90 days (a bar a night, a bar a day) and

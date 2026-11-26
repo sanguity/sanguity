@@ -3769,6 +3769,8 @@ Everything on `main` so far; it becomes the first tagged release.
   cut ("Birth to 2 years (WHO)", Settings' units) or scrolled with no sign (the Timeline's Newest | Oldest). The hours
   are thinned to what fits, the numbers placed clear of the data, the names over their bars with room, and every
   switch wraps on a phone, its options then their words.
+- **Compare's third lab measured in forced colours** (#1081): its dotted line keeps its grey there, 3.6:1 to 5.8:1 on
+  the system's background whichever way the system and the app are set, and is now checked.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
