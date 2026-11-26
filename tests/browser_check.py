@@ -11050,7 +11050,7 @@ def main():
             mark1038 = {}
             # (#1053: …and the marks JS colours in the app's neutral inks, as drawn: the Timeline's dots of the kinds in
             # --ink2 or --muted (chart activity, letters, the watch...) and its steps, Costs' "Paid by insurance" bars and
-            # their key, each at its opacity over Canvas, 3:1 or more. (#hm's hover ring keeps the app's ink: it's on cells
+            # their key, Compare's second lab (its line, medians and keys), each at its opacity over Canvas, 3:1 or more. (#hm's hover ring keeps the app's ink: it's on cells
             # in the app's colours, where the system's text would be fainter)
             SEEN1053 = r"""what => { const cv = document.createElement('canvas').getContext('2d', {willReadFrequently: true});
               const rgb = c => { cv.clearRect(0, 0, 1, 1); cv.fillStyle = '#000'; cv.fillStyle = c; cv.fillRect(0, 0, 1, 1); return [...cv.getImageData(0, 0, 1, 1).data.slice(0, 3)]; };
@@ -11058,12 +11058,16 @@ def main():
               const lum = a => { const [r, g, b] = a.map(v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }); return .2126 * r + .7152 * g + .0722 * b; };
               const cr = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
               const bg = rgb(probe('Canvas')), out = {};
-              const look = (k, m, p, under = bg) => { if (!m.checkVisibility()) return; const c = getComputedStyle(m), a = p === 'backgroundColor' ? 1 : +c[p + 'Opacity'] * +c.opacity;
+              const look = (k, m, p, under = bg) => { if (!m.checkVisibility()) return; const c = getComputedStyle(m), a = p === 'fill' || p === 'stroke' ? +c[p + 'Opacity'] * +c.opacity : 1;
                 const v = cr(rgb(c[p]).map((x, i) => a * x + (1 - a) * under[i]), under); out[k] = Math.min(out[k] ?? 99, +v.toFixed(2)); };
               const neutral = c => /--fc-ink|--ink2|--muted/.test(c);
               if (what === 'timeline') { const byId = new Map(EV.map(e => [e.id, e]));
                 for (const m of document.querySelectorAll('#tl circle.ev[data-id]')) { const c = CAT_OF[byId.get(+m.dataset.id)?.k]; if (c && neutral(c.color)) look(`a dot, ${c.label}`, m, 'fill'); }
                 for (const m of document.querySelectorAll('#tl .tl-steps')) look("the watch's steps", m, 'fill'); }
+              if (what === 'compare') for (const m of document.querySelectorAll('#labsCompare :is(svg *, .legend i)')) { if (m.closest('defs, clipPath, mask')) continue;
+                const k = `Compare's second lab: ${m.tagName.toLowerCase()}${[...m.classList].map(c => '.' + c).join('')}`, st = m.getAttribute('style') || '';
+                for (const p of ['fill', 'stroke']) if (neutral(m.getAttribute(p))) look(`${k} ${p}`, m, p);
+                if (neutral(st)) look(`${k}, its key`, m, /border/.test(st) ? 'borderTopColor' : 'backgroundColor'); }
               if (what === 'costs') { for (const m of document.querySelectorAll('#view-costs svg rect[fill]')) if (neutral(m.getAttribute('fill'))) look('a "Paid by insurance" bar', m, 'fill');
                 for (const m of document.querySelectorAll('#view-costs .legend > span')) if (/Paid by insurance/.test(m.textContent)) look('its key', m.querySelector('i'), 'backgroundColor'); }
               return out; }"""
@@ -11084,6 +11088,7 @@ def main():
                 settle(500)
                 rim1013[f"{way1013}: Compare"] = js(RIM1013, "#labsCompare svg :is(circle, path, rect, polygon)")
                 ring1035[f"{way1013}: Compare"] = js(RING1035, "#labsCompare " + RINGS1035)
+                mark1053[way1013] = js(SEEN1053, "compare")
                 js(MARKS1038)
                 page.hover(".m1038 [data-k*=pointer] path")
                 js("() => document.querySelector('.m1038 [data-k*=focused] path').focus({focusVisible: true})")
@@ -11095,7 +11100,7 @@ def main():
                 page.mouse.move(700, 450)
                 js("() => switchTab('timeline')")
                 settle(500)
-                mark1053[way1013] = js(SEEN1053, "timeline")
+                mark1053[way1013].update(js(SEEN1053, "timeline"))
                 js("() => switchTab('costs')")
                 settle(500)
                 mark1053[way1013].update(js(SEEN1053, "costs"))
@@ -11112,8 +11117,9 @@ def main():
                   "events', journal's, mood's and cycle's rings, medications' and doses' marks and the body map's outlines kept the app's ink, 1.18:1)",
                   all(v["n"] == 20 and not v["bad"] for v in mark1038.values()), mark1038)
             check("…and the marks JS colours in the app's neutral inks are 3:1 or more on what's under them, both ways (#1053: the Timeline's dots "
-                  "of chart activity, letters and the watch 1.8:1, its steps 1.5:1, Costs' insurance bars 2.8:1): the dots, the steps, the bars and "
-                  "their key", all(len(v) == 6 and min(v.values()) >= 3 for v in mark1053.values()), mark1053)
+                  "of chart activity, letters and the watch 1.8:1, its steps 1.5:1, Costs' insurance bars 2.8:1, Compare's second lab 1.8:1): the "
+                  "dots, the steps, the bars and their key, and Compare's second lab's line, medians and keys",
+                  all(len(v) >= 12 and sum(k.startswith("Compare") for k in v) >= 6 and all(r >= 3 for r in v.values()) for v in mark1053.values()), mark1053)
             # ---- #984: …and Body and activity's coloured steps, either theme: the steps' bars (the measure's teal at 30%) were
             # about 1.5:1 on the system's black, sleep's deep stage (--seq1) 2.5:1 on it and the dark theme's 1.8:1 on white.
             # In forced colours, the system dark and light, the app light and dark, in 90 days (a bar a night, a bar a day) and

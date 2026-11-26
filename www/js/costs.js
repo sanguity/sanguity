@@ -381,7 +381,7 @@ function renderPaid(box, claimRows, periodLabel) {
       ...pressable(() => pick(g.key)), "aria-pressed": paidState.q === g.key},
       el("span", {class: "n", style: {fontWeight: 500}, text: g.key}), el("span", {class: "v", text: usd(g.v)}),
       el("span", {class: "s cost-bars"},   // the bar the row's width on one scale, its note under it, as the claims' (#483, #485)
-        el("span", {class: "cost-bar-run"}, el("span", {class: "cost-bar", style: {width: Math.max(0, g.v / max * 100) + "%", background: "var(--ink2)"}})),
+        el("span", {class: "cost-bar-run"}, el("span", {class: "cost-bar", style: {width: Math.max(0, g.v / max * 100) + "%", background: INK2}})),
         el("span", {class: "cost-bar-note", text: `${g.n} amount${g.n === 1 ? "" : "s"}`}))));
   };
   bars(g1, grp(r => r.group)); bars(g2, grp(r => r.who || "(no payee)"));
@@ -511,7 +511,7 @@ function barList(card, groups, onPick, active) {
       // largest's bar squeezed its note to two lines, and bars sized to what each note left didn't compare)
       el("span", {class: "s cost-bars"},
         el("span", {class: "cost-bar-run"},
-          el("span", {class: "cost-bar", style: {width: w1 + "%", background: "var(--muted)", borderRadius: w2 > 0.3 ? "2px 0 0 2px" : null}}),
+          el("span", {class: "cost-bar", style: {width: w1 + "%", background: MUTED, borderRadius: w2 > 0.3 ? "2px 0 0 2px" : null}}),
           w2 > 0.3 ? el("span", {class: "cost-bar", style: {width: w2 + "%", background: "var(--measure)", borderRadius: "0 2px 2px 0"}}) : null),
         el("span", {class: "cost-bar-note", text: `${g.n} claim${g.n === 1 ? "" : "s"}${g.owe >= 1 ? ` · your share ${usd(g.owe)}` : ""}`}))));
   }
@@ -566,7 +566,7 @@ function drawCostBars(svg, rows, by = "month") {
     ckCrossAt(cross, mid(i));
     const m = months.get(keys[i]), rows = [el("div", {class: "v", text: say(i)}),
       el("div", {class: "s"}, el("span", {class: "k", style: {background: "var(--measure)"}}), `Your share ${usd(m.owe)}`),
-      el("div", {class: "s"}, el("span", {class: "k", style: {background: "var(--muted)"}}), `Insurance paid ${usd(m.paid)}`),
+      el("div", {class: "s"}, el("span", {class: "k", style: {background: MUTED}}), `Insurance paid ${usd(m.paid)}`),
       el("div", {class: "s", text: `${m.n} claims · billed ${usd(m.billed)}`})];
     ckTip(svg, mid(i), rows);
     return tipWords(rows);

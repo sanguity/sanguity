@@ -369,22 +369,22 @@
   const UPDATED = ["lab result updated", "lab results updated"];   // (#869: counts' "updated", once saved)
   const CHANGED = ["record updated", "records updated"];   // (#920: counts' "changed", once saved)
   const EXTRA = [["results", ["lab result", "lab results"], "test-tube-diagonal", "var(--c-lab)"],
-    ["documents", ["attached file", "attached files"], "file-text", "var(--ink2)"],
-    ["allergies", ["allergy", "allergies"], "triangle-alert", "var(--muted)"],
-    ["problems", ["problem or diagnosis", "problems or diagnoses"], "clipboard", "var(--ink2)"],
+    ["documents", ["attached file", "attached files"], "file-text", INK2],
+    ["allergies", ["allergy", "allergies"], "triangle-alert", MUTED],
+    ["problems", ["problem or diagnosis", "problems or diagnoses"], "clipboard", INK2],
     ["upcoming", ["upcoming appointment", "upcoming appointments"], "calendar", "var(--c-visit)"],
-    ["watch_days", ["day of activity data", "days of activity data"], "watch", "var(--ink2)"],
-    ["workouts", KIND.exercise, "dumbbell", "var(--ink2)"],
-    ["ecgs", ["ECG recording", "ECG recordings"], "activity", "var(--ink2)"],
-    ["rhythm", ["irregular rhythm notification", "irregular rhythm notifications"], "activity", "var(--ink2)"],
-    ["bp_readings", ["blood pressure reading", "blood pressure readings"], "heart-pulse", "var(--ink2)"],
-    ["temp_readings", ["body temperature reading", "body temperature readings"], "gauge", "var(--ink2)"],
-    ["glucose_readings", ["glucose meter reading", "glucose meter readings"], "droplet", "var(--ink2)"],
-    ["cgm_days", ["day of CGM readings", "days of CGM readings"], "droplet", "var(--ink2)"],
-    ["heights", ["height, offered for About this person", "heights, offered for About this person"], "ruler", "var(--ink2)"],
+    ["watch_days", ["day of activity data", "days of activity data"], "watch", INK2],
+    ["workouts", KIND.exercise, "dumbbell", INK2],
+    ["ecgs", ["ECG recording", "ECG recordings"], "activity", INK2],
+    ["rhythm", ["irregular rhythm notification", "irregular rhythm notifications"], "activity", INK2],
+    ["bp_readings", ["blood pressure reading", "blood pressure readings"], "heart-pulse", INK2],
+    ["temp_readings", ["body temperature reading", "body temperature readings"], "gauge", INK2],
+    ["glucose_readings", ["glucose meter reading", "glucose meter readings"], "droplet", INK2],
+    ["cgm_days", ["day of CGM readings", "days of CGM readings"], "droplet", INK2],
+    ["heights", ["height, offered for About this person", "heights, offered for About this person"], "ruler", INK2],
     ["cycle", ["cycle tracking record", "cycle tracking records"], "droplet", "var(--c-cycle)"],
     ["updated", UPDATED, "test-tube-diagonal", "var(--c-lab)"],   // results here updated in place (#869), once saved
-    ["changed", CHANGED, "pencil", "var(--ink2)"]];   // records here updated in place (#920), once saved
+    ["changed", CHANGED, "pencil", INK2]];   // records here updated in place (#920), once saved
   const RECORDS = new Set(["results", "allergies", "problems", "upcoming"]);   // besides events: what's a record
   // a wearable's (the server's jobs._watch_counts), counted in the review's bar beside the records (#500)
   const WATCH = new Set(["watch_days", "workouts", "ecgs", "rhythm", "bp_readings", "temp_readings", "glucose_readings", "cgm_days", "heights", "cycle"]);
@@ -393,7 +393,7 @@
   function counted(c) {
     const kinds = c.kinds || {};
     const ev = Object.entries(kinds).filter(([k, n]) => n > 0 && k !== "labitem" && !(k === "lab" && c.results)).sort((a, b) => b[1] - a[1])
-      .map(([k, n]) => ({k, n, words: KIND[k] || [k, k], mark: () => kindIcon(k), tone: (CAT_OF[k] || {}).color || "var(--muted)", record: true}));
+      .map(([k, n]) => ({k, n, words: KIND[k] || [k, k], mark: () => kindIcon(k), tone: (CAT_OF[k] || {}).color || MUTED, record: true}));
     return ev.concat(EXTRA.filter(([k]) => c[k] > 0 && !(k === "workouts" && kinds.exercise))
       .map(([k, words, ic, tone]) => ({k, n: c[k], words, mark: () => icon(ic), tone, record: RECORDS.has(k)})));
   }
