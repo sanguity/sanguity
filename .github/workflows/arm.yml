@@ -57,9 +57,15 @@ jobs:
       - name: Smoke test (setup, sign-in, records, documents, encryption, nothing served that shouldn't be)
         run: |
           python3 tests/docker_smoke.py --code "$SETUP_CODE" --receiver http://127.0.0.1:8731
-          for f in data/build/data.json data/profiles/*/data.json; do
+          # what's kept on disk is sealed, and the records are database rows (#17) with none of the demo's text readable,
+          # as check.yml's docker job checks (its data.json files went with #17)
+          test -n "$(find data/build data/profiles -type f ! -name '*.tmp')"
+          find data/build data/profiles -type f ! -name '*.tmp' -print0 | while IFS= read -r -d '' f; do
             [ "$(head -c 4 "$f")" = SGE1 ] || { echo "$f is not encrypted"; exit 1; }
           done
+          ! grep -rlq '"source"' data/build data/profiles || { echo "plaintext records found in data/"; exit 1; }
+          ls data/sanguity.db*
+          ! grep -alq -e 'Lakeside Family Medicine' -e '"title"' data/sanguity.db* || { echo "plaintext records found in the database"; exit 1; }
 
       - name: Show the containers and their logs
         if: failure()
