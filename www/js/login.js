@@ -102,13 +102,13 @@ function signedIn(j) {
   // (#433): asked here, at most half a second, so a dark account's first page doesn't start light (#436)
   const themed = Promise.race([api("settings/user").then(r => r.ok ? r.json() : null).then(s => s && applyTheme(s.theme)).catch(() => {}),
     new Promise(r => setTimeout(r, 500))]);
-  const next = () => themed.then(() => location.replace(j.must_change_pw ? "account.html#password" : "./"));
+  const next = () => themed.then(() => location.replace(j.must_change_pw ? "settings.html#password" : "./"));
   if (j.recovery_codes_left == null) { next(); return; }
   // a recovery code was used: say what that means before going on, on the page with a Continue (#210: not a pop-up)
   const note = el("p", {id: "recoveryNote"}), go = el("button", {type: "button", class: "btn primary large", id: "recoveryGo", text: "Continue", onclick: next});
   f.replaceChildren(f.querySelector(".logo"), note, go);
   sayIn(note, `Signed in with a recovery code. You have ${j.recovery_codes_left} left, and every other device was signed out. ` +
-              "If you lost your phone, set up two-factor sign-in again under Account.");
+              "If you lost your phone, set up two-factor sign-in again under Settings, Sign-in and security.");
   go.focus();
 }
 pkBtn.addEventListener("click", async () => {

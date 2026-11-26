@@ -1,6 +1,6 @@
 /* Sanguity · the pages with the top bar other than the records page, without a connection (#413). Loaded after pwa.js,
-   before nav.js and palette.js, on Settings, Sharing, Sources, Account, Admin and Getting started. (The records page
-   has offline.js instead, which answers it from the copy this device may keep; these pages hold nothing offline.)
+   before nav.js and palette.js, on Settings (with its You and Install, Account and Admin before #991), Sharing, Sources
+   and Getting started. (The records page has offline.js instead, which answers it from the copy this device may keep; these pages hold nothing offline.)
 
    - A request to the API that can't reach the server says so ("You're offline. This needs the server."), never the
      browser's own "Failed to fetch", and sets OFFLINE.on as offline.js does: the command palette then lists only what

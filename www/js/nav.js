@@ -1,10 +1,11 @@
 /* Sanguity · the top bar on every signed-in page (after util.js, pwa.js and groups.js, before the page's own script).
 
-   One row, the same on every page (#264): the brand (back to the records), the profile menu (switch profile; About
-   this person, Settings, Sources, Sharing; New profile), the records tabs as links (those that don't fit under More,
-   #265), then two menus. Add: today's (a dose, a journal entry, a home reading) and records in (what's waiting for you,
-   #283; upload, connect, type in, a Health Link). The person's own menu: Account, Display, Admin (admins only: nav.js asks the API itself, #167),
-   Getting started (the first-run guide, #199), the light/dark toggle, log out. The items keep the ids the pages
+   One row, the same on every page (#264): the brand (back to the records), the profile menu (switch profile; Sources,
+   Sharing; New profile), the records tabs as links (those that don't fit under More, #265), then two menus. Add:
+   today's (a dose, a journal entry, a home reading) and records in (what's waiting for you, #283; upload, connect, type
+   in, a Health Link). The person's own menu: Settings (#991: the profile's, yours and, for admins, the server's, in
+   one page; "backups late" beside it for an admin: nav.js asks the API itself, #200), Getting started (the first-run
+   guide, #199), the light/dark toggle, log out. The items keep the ids the pages
    already use (#importLink, #journalBtn, #settingsLink, #theme, #logout, #who, #profile, #tab-labs), so each page's
    script sets them up as before; nav.js only builds the bar and its menus (menuWire, below).
 
@@ -185,9 +186,10 @@ const SgNav = (() => {
     return menuWire({btn, list, wrap: el("div", {class: "menu", id}, btn, list)});
   }
   /* each item with its icon before its words (#354), hidden from assistive technology; a link to the page you're on
-     says so (aria-current). ico: the place's key in groups.js's one list of icons (sgIcon, #399) */
+     says so (aria-current: Settings, to its You part, on Settings, #991). ico: the place's key in groups.js's one list
+     of icons (sgIcon, #399) */
   const link = (href, ico, text, attrs = {}) => el("a", {class: "menu-item acct", role: "menuitem", href,
-    "aria-current": href.split("?")[0] === page ? "page" : null, ...attrs}, icon(sgIcon(ico)), text);
+    "aria-current": href.split(/[?#]/)[0] === page ? "page" : null, ...attrs}, icon(sgIcon(ico)), text);
   const action = (id, ico, text, attrs = {}) => el("button", {class: "menu-item", role: "menuitem", type: "button", id, ...attrs}, icon(sgIcon(ico)), text);
   const sep = () => el("div", {class: "menu-sep", role: "separator"});
   const head = text => el("div", {class: "menu-head", "aria-hidden": "true", text});
@@ -208,10 +210,8 @@ const SgNav = (() => {
   const prof = menu("profileMenu", "", "", []);
   prof.btn.classList.add("profile-btn");
   const radios = el("div", {role: "group", "aria-label": "Switch profile"}), rSep = sep();
-  const pLinks = [link("settings.html#about", "settings/about", "About this person", {id: "aboutLink"}),   // in Settings now (#267)
-    link("settings.html", "settings", "Settings", {id: "settingsLink"}),
-    link("settings.html#sec-tabs", "settings/sec-tabs", "Edit tabs…", {id: "editTabsLink"}),   // always in reach, whether or not More shows (#398)
-    link("sources.html", "sources", "Sources", {id: "sourcesLink"}),
+  // its settings are Settings' This person, in your menu (#991)
+  const pLinks = [link("sources.html", "sources", "Sources", {id: "sourcesLink"}),
     link("sharing.html", "sharing", "Sharing", {id: "sharingLink"})];
   prof.list.append(radios, rSep, ...pLinks, sep(), link("guide.html?new", "sharing/newProfile", "New profile", {id: "newProfileLink"}));
   for (const x of items(prof)) x.tabIndex = -1;
@@ -409,11 +409,11 @@ const SgNav = (() => {
     const put = s => { if (tabsFor === pid) layout(s && s.tabs); };
     api(`profiles/${pid}/settings`).then(r => r.ok ? r.json() : null).then(put, () => put(null));
   }
-  /* Edit tabs… (the profile menu's and More's) for those who can change the profile's tabs, its owners and editors:
-     a viewer would find only switches they can't turn (#415) */
+  /* Edit tabs… (More's) for those who can change the profile's tabs, its owners and editors: a viewer would find only
+     switches they can't turn (#415) */
   function canEditTabs(p) {
     const can = !!p && (p.role === "owner" || p.role === "editor");
-    for (const x of [document.getElementById("editTabsLink"), editTabs, editSep]) setHidden(x, !can);
+    for (const x of [editTabs, editSep]) setHidden(x, !can);
   }
 
   /* ---- Add (#264), in two groups. Today: a dose of a current medication (the Medications tab's Today, #275, or the
@@ -434,12 +434,12 @@ const SgNav = (() => {
       link(src + "#manual", "sources/manual", "Type records in", {"data-needs": "import"}),
       link(src + "#link", "sources/link", "Paste a Health Link", {"data-needs": "import"})),
   ]);
-  /* the person's own menu (#264): what's theirs whichever profile is shown */
+  /* the person's own menu (#264): what's theirs whichever profile is shown. Settings (#991: Account, Display and Admin
+     before) opens its You part (#you: its first group, Sign-in and security); the profile's and the server's are its
+     other parts */
   const who = el("span", {id: "who", text: "Account"});
   const user = menu("userMenu", "", "", [
-    link("account.html", "account", "Account", {id: "accountLink"}),
-    link("settings.html#display", "settings/display", "Display", {id: "displayLink"}),
-    link("admin.html", "admin", "Admin", {id: "adminLink", hidden: ""}),
+    link("settings.html#you", "settings", "Settings", {id: "settingsLink"}),
     link("guide.html", "guide", "Getting started", {id: "guideLink"}),   // the first-run guide, any time (#199)
     action("theme", "theme", "Dark mode"),
     sep(),
@@ -560,9 +560,11 @@ const SgNav = (() => {
      address, which the sidebar follows (About this person from Settings' profile menu); to another page, once that
      page has drawn it (Edit tabs… from the records page: Settings → Tabs), unless something else had focus first. */
   const ARRIVE = "sg-arrive", sidePage = f => typeof SG_PAGES !== "undefined" && Object.values(SG_PAGES).some(P => P.page === f);
-  function headingOf(id) {
-    const group = Object.values(SG_PAGES).find(P => P.page === page)?.groups.some(g => g.id === id), part = !group && document.getElementById(id);
+  function headingOf(id) {   // (a group, a label's first group as in settings.html#you, #991, or a part)
+    const gs = Object.values(SG_PAGES).find(P => P.page === page)?.groups || [], is = g => g.id === id || g.part?.toLowerCase() === id;
+    const group = gs.some(is), part = !group && document.getElementById(id);
     if (!group && !part) return null;   // (#home-reading: its page puts focus in the form it opens)
+    if (group && !is(gs.find(g => g.id === document.querySelector("main.sets")?.dataset.group) || {})) return null;   // (the group once it's shown: #991)
     let t = part && part.querySelector(":scope > h2, :scope > .set-hd > h2");
     if (!t || t.classList.contains("vh")) t = document.getElementById("groupTitle");   // a card alone in its group: the h1 says it
     return t && t.checkVisibility() ? t : null;
@@ -601,8 +603,9 @@ const SgNav = (() => {
     const id = decodeURIComponent(location.hash.slice(1));
     if (w && id && w === page + "#" + id) focusOn(id, 10000);
   });
-  /* Admin, for admins only (#167): once the page's own scripts have asked who's signed in; and on a page that isn't
-     about a profile, the profile menu. With no profile at all, no records tabs on any page, here for every one: those
+  /* for an admin, "backups late" beside Settings (#200; beside Admin before #991: Settings → Backups says why, in
+     Install): once the page's own scripts have asked who's signed in; and on a page that isn't about a profile, the
+     profile menu. With no profile at all, no records tabs on any page, here for every one: those
      that fill the menu themselves may stop first (#505: Sources and the guide's New profile did) */
   const own = onRecords || header.hasAttribute("data-profile");
   document.addEventListener("DOMContentLoaded", () => {
@@ -612,11 +615,8 @@ const SgNav = (() => {
         saveLater();   // a theme picked offline (#414)
         if (Array.isArray(me.profiles)) forgetProfiles(id => !me.profiles.some(p => p.id === id));   // a profile no longer theirs (pwa.js, #936)
       }
-      if (me && me.user && me.user.is_admin && !locked) {
-        const a = document.getElementById("adminLink");
-        a.hidden = false;
-        if (me.backups_late) a.append(" ", el("span", {class: "badge bk-late"}, icon("triangle-alert"), " backups late"));   // #200: Admin → Backups says why
-      }
+      if (me && me.user && me.user.is_admin && me.backups_late && !locked)
+        document.getElementById("settingsLink").append(" ", el("span", {class: "badge bk-late"}, icon("triangle-alert"), " backups late"));
     }).catch(() => {});
   });
   /* nothing to go to but Log out (a password to change or a second factor to set up first, account.js) */

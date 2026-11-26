@@ -71,8 +71,8 @@ const SgSources = (() => {
     if (!r.ok) return null;
     const me = await r.json();
     await datesReady();   // dates in this person's time zone and format (dates.js)
-    if (me.user.must_change_pw) { location.replace("account.html#password"); return null; }
-    if (me.user.needs_two_factor) { location.replace("account.html#twofa"); return null; }
+    if (me.user.must_change_pw) { location.replace("settings.html#password"); return null; }
+    if (me.user.needs_two_factor) { location.replace("settings.html#twofa"); return null; }
     $("#who").textContent = me.user.username;
     { const w = plainHttpWarning(); if (w) { $("#insecure").textContent = w; $("#insecure").hidden = false; } }
     if (!me.profiles.length) { none = true; nav.hide(true); $("#noProfiles").hidden = false; return null; }   // nor in the title (#527)

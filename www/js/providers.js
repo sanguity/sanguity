@@ -1,8 +1,8 @@
 /* Sanguity · find your provider (#93), in the connect step of Sources → Portals and health plans (#166): search the
    directory on this server (GET api/directory), pick an entry, and see whether it can be connected here. When a
    source this server has set up reaches the same FHIR base, it's connected from there (window.SgConnect, connect.js);
-   otherwise an admin is sent to set it up on the Admin page, with the address filled in, where each vendor's steps
-   are (one copy of them: Admin → Connected-source apps), and everyone else is told what to ask their admin for.
+   otherwise an admin is sent to set it up in Settings' Install, with the address filled in, where each vendor's steps
+   are (one copy of them: Settings → Connected-source apps), and everyone else is told what to ask their admin for.
    Logos are shown only when the directory file carries them as data: URLs; nothing is fetched from vendors. */
 "use strict";   // $, el and api come from util.js
 (() => {
@@ -27,7 +27,7 @@
   }
 
   /* ---------------------------------------------------------------- which lists this server has */
-  /* what's missing, and who can add it: how is on the Admin page (admin-sources.js, #167) */
+  /* what's missing, and who can add it: how is in Settings' Install (admin-sources.js, #167, #991) */
   function sources(list) {
     const missing = list.filter(s => !s.included);
     const box = $("#srcNote");
@@ -37,7 +37,7 @@
     box.replaceChildren(
       el("p", {}, el("b", {text: "This server has only the vendors' test sandboxes and Medicare so far. "}),
         `${names}'s hospitals and clinics aren't in its list yet: their lists can't be shipped with Sanguity, so each server adds its own copy. `,
-        ...(ADMIN ? ["As an admin, you can add them: ", el("a", {href: "admin.html#directory", text: "Admin → Provider directory"}), "."]
+        ...(ADMIN ? ["As an admin, you can add them: ", el("a", {href: "settings.html#directory", text: "Settings → Provider directory"}), "."]
           : ["Ask your admin to add them."])));
   }
 
@@ -102,7 +102,7 @@
   /* the sources set up on this server that reach this entry's FHIR base (connect.js lists them) */
   const base = u => String(u || "").trim().toLowerCase().replace(/\/+$/, "");
   const setUp = e => (window.SgConnect ? SgConnect.sources : []).filter(s => base(s.issuer) === base(e.fhir_base));
-  /* the Admin page's vendor for a directory vendor, to open its setup with this entry filled in */
+  /* Settings → Connected-source apps' vendor for a directory vendor, to open its setup with this entry filled in */
   const ADMIN_VENDOR = {epic: "epic", oracle: "oracle", "cms-bluebutton": "insurer"};
   function connecting(e, v) {
     const all = setUp(e), here = all.filter(s => !s.waiting);
@@ -117,7 +117,7 @@
     if (ADMIN) {
       const q = new URLSearchParams({vendor: ADMIN_VENDOR[e.vendor] || "other", issuer: e.fhir_base, name: e.name});
       return [el("p", {}, el("b", {text: "Not set up on this server yet. "}), "As an admin, you set it up under ",
-        el("a", {href: `admin.html?${q}#apps`, text: "Admin → Connected-source apps"}),
+        el("a", {href: `settings.html?${q}#apps`, text: "Settings → Connected-source apps"}),
         `, which has ${v.name}'s steps, with this FHIR base filled in. Then each profile connects it by signing in.`),
         copyBox(e.fhir_base, "FHIR base URL")];
     }
