@@ -3624,6 +3624,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - **A journal entry's Kind and a dose's What happened show every option with larger text** (#1024): on a phone their
   last options ("Side effect" and "Mood", "Skipped") were cut, the switch scrolling sideways with no scrollbar to say
   so. Where they don't fit on one line they now wrap onto a second; at the usual size they're as before.
+- **Records saved before #1022 from a server that stamps each write are found again** (#1032): they were saved under
+  keys naming the write's stamp, so each would still be added as a copy the next time it changed at its source. At the
+  first start after the upgrade they're keyed by the server itself, with their corrections, and updated in place.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

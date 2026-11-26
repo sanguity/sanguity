@@ -664,6 +664,124 @@ class Connections(unittest.TestCase):
         self.assertEqual({k: v - n[k] for k, v in self.counts().items()}, {"imports": 1, "events": 0, "series": 0, "results": 0})
         self.assertEqual(self.faults(), [])
 
+    def test_records_keyed_by_a_stamp_before_1022_are_keyed_again(self):   # #1032
+        """Before #1022 a server stamping meta.source per write had its resources keyed by the stamp,
+        "fhir:#req-<id>-<n>|<type>/<id>", with no "ver": each changed record was added again as a copy. Schema step 47
+        marks them, and at start-up records.rekey_stamped keys them as the importer does now (the connection's one
+        server: plainly), a correction of one finding it still: the next pull updates each in place."""
+        from server import edits
+        import re
+        def stamp(n):
+            for (rt, rid), r in self.fake._res.items():
+                r.setdefault("meta", {})["source"] = f"#req-{rid}-{n}"
+        stamp(1)
+        cid = self.connect(self.source())
+        self.first_pull(cid)
+        plain = re.compile(r"fhir:([A-Za-z]+/([^|?#]+)(?:#.*)?)$", re.S)
+        old = lambda k: f"fhir:#req-{m.group(2)}-1|{m.group(1)}" if isinstance(k, str) and (m := plain.match(k)) else k
+
+        def keys():
+            db = dbm.connect()
+            try:
+                out = {}
+                for r in db.execute("SELECT id, body, detail FROM events WHERE profile_id=?", (self.pid,)):
+                    d = records._dec(r["detail"])
+                    out[r["id"]] = ((records._dec(r["body"]) or {}).get("key"), (d or {}).get("keys") if isinstance(d, dict) else None)
+                for r in db.execute("SELECT id, meta FROM imports WHERE profile_id=?", (self.pid,)):
+                    out[f"i{r['id']}"] = sorted(x["key"] for v in (records._dec(r["meta"]) or {}).values() if isinstance(v, list)
+                                                for x in v if isinstance(x, dict) and isinstance(x.get("key"), str))
+                return out
+            finally:
+                db.close()
+        db = dbm.connect()   # a visit renamed, then everything as saved before #1022
+        try:
+            visit = next(r["id"] for r in db.execute("SELECT id, body FROM events WHERE profile_id=?", (self.pid,))
+                         if str((records._dec(r["body"]) or {}).get("key")).startswith("fhir:Encounter/"))
+            with dbm.transaction(db):
+                edits.add(db, self.pid, self.uids["robin"], "rename", visit, title="Checkup (renamed)")
+        finally:
+            db.close()
+        now = keys()
+        self.assertTrue(any(plain.match(str(k)) for k, _ in [v for v in now.values() if isinstance(v, tuple)]))
+        db = dbm.connect()
+        try:
+            secret = records._key_secret(db)
+            for r in db.execute("SELECT id, body, detail FROM events WHERE profile_id=?", (self.pid,)).fetchall():
+                b, d = records._dec(r["body"]) or {}, records._dec(r["detail"])
+                b.pop("ver", None)
+                b["key"] = old(b.get("key"))
+                if isinstance(d, dict) and isinstance(d.get("keys"), list):
+                    d["keys"] = [old(k) for k in d["keys"]]
+                db.execute("UPDATE events SET body=?, detail=?, key_hash=? WHERE id=?",
+                           (records._enc(b), None if d is None else records._enc(d), records._hash(secret, b.get("key")), r["id"]))
+            for r in db.execute("SELECT id, meta FROM imports WHERE profile_id=?", (self.pid,)).fetchall():
+                m = records._dec(r["meta"]) or {}
+                for v in m.values():
+                    for x in v if isinstance(v, list) else ():
+                        if isinstance(x, dict) and isinstance(x.get("key"), str):
+                            x.pop("ver", None)
+                            x["key"] = old(x["key"])
+                db.execute("UPDATE imports SET meta=? WHERE id=?", (records._enc(m), r["id"]))
+            for r in db.execute("SELECT id, target_key FROM edits WHERE profile_id=?", (self.pid,)).fetchall():
+                k = old(crypto.dec(r["target_key"]))
+                db.execute("UPDATE edits SET target=?, target_key=? WHERE id=?", (edits.target_hash(k), crypto.enc(k), r["id"]))
+            records._bump(db, self.pid)
+            self.assertNotEqual(keys(), now)
+            step = next(s for s in dbm.SCHEMA if records.STAMPED_KEYS in s)
+            db.executescript("BEGIN;" + step + "COMMIT;")
+            self.assertTrue(dbm.meta_get(db, records.STAMPED_KEYS), "the schema step marks the work")
+            self.assertGreater(records.rekey_stamped(db), 0)
+            self.assertIsNone(dbm.meta_get(db, records.STAMPED_KEYS), "once")
+            self.assertEqual(records.rekey_stamped(db), 0)
+        finally:
+            db.close()
+        self.assertEqual(keys(), now, "each keyed as the importer keys it now")
+        self.assertIn("Checkup (renamed)", [e["title"] for e in self.data()["events"]], "its correction finds it")
+
+        n = self.counts()
+        stamp(2)
+        self.fake.update("MedicationRequest", "med-1", {"status": "stopped"})
+        self.fake.update("Condition", "cond-1", {"clinicalStatus": {"coding": [{"code": "resolved"}]}})
+        self.fake.update("Observation", "obs-hgb", {"referenceRange": [{"low": {"value": 12.0}, "high": {"value": 15.5}, "text": "12.0-15.5"}],
+                                                    "interpretation": None})
+        res = self.pull(cid)
+        self.assertTrue(res["ok"], res)
+        d = self.data()
+        self.assertEqual([m["spans"][-1]["status"] for m in d.get("medications") or [] if m["name"] == "Atorvastatin 20 mg tablet"], ["Stopped"])
+        self.assertEqual([p["status"] for p in d.get("problems") or [] if p.get("name") == "Hyperlipidemia"], ["Resolved"])
+        self.assertEqual([(p[2], p[3]) for s in d["labs"] if s["name"] == "Hemoglobin" for p in s["pts"]], [(12.0, 15.5)])
+        self.assertEqual({k: v - n[k] for k, v in self.counts().items()}, {"imports": 1, "events": 0, "series": 0, "results": 0},
+                         "each updated in place, never a copy")
+        self.assertEqual(self.faults(), [])
+        self.assertIn("Checkup (renamed)", [e["title"] for e in self.data()["events"]])
+
+    def test_uploads_keyed_by_a_stamp_before_1022_by_its_stable_part(self):   # #1032
+        """An upload's records keyed by "<base>#<request>" are its base's: plainly where that's the upload's one server
+        (their "ver" saying it), "fhir:<base>|..." where the upload mixes servers, as the importer keys them now."""
+        ev = lambda key: {"id": key, "t": "2025-03-04T09:00:00", "k": "visit", "title": "Visit", "key": key}
+        db = dbm.connect()
+        try:
+            with dbm.transaction(db):
+                one = records.store(db, self.pid, {"events": [ev("fhir:http://a.example/fhir#x1|Encounter/1"),
+                                                              ev("fhir:http://a.example/fhir#y2|Encounter/2")]}, "upload")
+                two = records.store(db, self.pid, {"events": [ev("fhir:http://a.example/fhir#z3|Encounter/3"),
+                                                              ev("fhir:http://b.example/fhir|Encounter/3")]}, "upload")
+            dbm.meta_set(db, records.STAMPED_KEYS, "1")
+            self.assertEqual(records.rekey_stamped(db), 3)
+            got = {(r["import_id"], (b := records._dec(r["body"]))["key"], (b.get("ver") or {}).get("server"))
+                   for r in db.execute("SELECT import_id, body FROM events WHERE profile_id=?", (self.pid,))}
+            hashes = {r[0] for r in db.execute("SELECT key_hash FROM events WHERE profile_id=?", (self.pid,))}
+        finally:
+            db.close()
+        self.assertEqual(got, {(one, "fhir:Encounter/1", "http://a.example/fhir"), (one, "fhir:Encounter/2", "http://a.example/fhir"),
+                               (two, "fhir:http://a.example/fhir|Encounter/3", "http://a.example/fhir"),
+                               (two, "fhir:http://b.example/fhir|Encounter/3", None)})
+        db = dbm.connect()
+        try:
+            self.assertEqual(hashes, set(records.key_hashes(db, [k for _, k, _ in got]).values()))
+        finally:
+            db.close()
+
     def test_a_result_sent_again_is_updated_in_place(self):   # #869
         """A result the source amends comes back at the next pull: the same result, updated in place, range and flag,
         never a copy. The report's Hemoglobin 12.1 (13.5–17.5, Low) amended to 12.0–15.5 and Normal, its Platelet Count

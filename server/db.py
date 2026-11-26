@@ -1168,6 +1168,13 @@ SCHEMA = [
     ALTER TABLE uploads ADD COLUMN put_back INTEGER NOT NULL DEFAULT 0;
     UPDATE uploads SET put_back=1 WHERE created_by IS NULL AND NOT EXISTS(SELECT 1 FROM jobs j WHERE j.upload_id=uploads.id);
     """,
+    # version 47: records saved before #1022 from a server that stamps meta.source per write keyed by their stable
+    # source (#1032). They were keyed "fhir:#<request>|<type>/<id>", so each was added again as a copy when it changed
+    # at its source. Their keys are encrypted, so this only marks the work: at start-up records.rekey_stamped keys them
+    # as the FHIR importer does now (the corrections and Costs marks that find them too), and clears the mark.
+    """
+    INSERT OR REPLACE INTO meta(k, v) VALUES('fhir_stamped_keys', '1');
+    """,
 ]
 
 
