@@ -3676,6 +3676,9 @@ Everything on `main` so far; it becomes the first tagged release.
   opening You, with "backups late" beside it for an admin; the profile menu has switching profiles, Sources, Sharing
   and New profile. The old addresses (`account.html`, `admin.html` and their sections, `settings.html#display`) open
   their part of Settings.
+- **Install's cards are drawn on a slow device or connection too** (#1028): Admin's start asked Outside connections'
+  script to draw once its own first answer came, and where that script hadn't loaded yet, it stopped there and the
+  cards after it were never drawn. Settings → Install starts once all of its scripts are there.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
