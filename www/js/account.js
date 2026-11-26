@@ -55,8 +55,11 @@ $("#pwForm").onsubmit = async ev => {
 };
 
 /* ---------------------------------------------------------------- sessions */
+/* how long a sign-in lasts, as the admins set it (#1001: General → Security, which tells it again on a change), read-only */
+const sessLasts = () => { $("#sessLasts").textContent = signInLasts(ME.session, "You stay signed in on a device until you log out") + " This server's admins set it."; };
 async function loadSessions() {
   const list = await call("sessions");
+  sessLasts();
   $("#sessList").replaceChildren(el("table", {class: "tbl"},
     el("thead", {}, el("tr", {}, ...["Device", "Address", "Signed in", "Last active", ""].map(h => el("th", {text: h})))),
     el("tbody", {}, ...list.map(s => el("tr", {},

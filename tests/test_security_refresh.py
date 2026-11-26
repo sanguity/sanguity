@@ -305,7 +305,8 @@ class Reach(unittest.TestCase):
         that reads refuses an owner, an editor, a viewer and an account with no profile, for real."""
         with open(os.path.join(ROOT, "www", "settings.html"), encoding="utf-8") as f:
             scripts = re.findall(r'<script src="js/([\w-]+\.js)"></script>', f.read())
-        install = ["admin.js", "admin-sources.js", "admin-backups.js", "outside.js", "activity.js", "admin-host.js", "admin-phone.js"]
+        install = ["admin.js", "admin-sources.js", "admin-backups.js", "outside.js", "activity.js", "admin-host.js",
+                   "gen-security.js", "admin-phone.js"]
         self.assertEqual([s for s in install if s not in scripts], [], "Install's scripts on the Settings page")
         heads = set()
         for s in install:
@@ -383,7 +384,11 @@ PLAIN = {
 PLAIN_SETTINGS = {"sync.attachAuto", "sync.attachMaxMB", "sync.attachTypes", "sync.attachBudgetMB", "sync.staleDays", "tabs",
                   "theme", "guide", "dates.timeZone", "dates.format", "units",
                   "host.publicOrigins",   # General → Host (#1000): addresses the app gives out anyway, never health information
-                  "phone.uploadUrl"}   # General → Phone receiver (#1003): the same
+                  "phone.uploadUrl",   # General → Phone receiver (#1003): the same
+                  # General → Security (#1001): how people sign in, numbers and a choice, none about anyone
+                  "security.sessionDays", "security.sessionHours", "security.idleMinutes", "security.profiles", "security.passwordMin",
+                  "security.passwordMin2fa", "security.tempPasswordDays", "security.reauthMinutes", "security.triesHere",
+                  "security.triesAddress", "security.triesAccount"}
 
 
 class AtRest(unittest.TestCase):

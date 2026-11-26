@@ -185,7 +185,8 @@ class Throttle:
 
     After a key's free failures inside WINDOW seconds, each further try waits longer (doubling, capped at
     MAX_WAIT). NIST SP 800-63B asks for at most 100 consecutive failures before an account is locked; this stays
-    below. At most MAX_KEYS keys are kept, so a flood of made-up usernames can't exhaust memory.
+    below. At most MAX_KEYS keys are kept, so a flood of made-up usernames can't exhaust memory. An admin may lower
+    sign-in's free tries, never raise them (SignInThrottle, #1001).
     """
     FREE = {"pair": 5, "ip": 20, "user": 30}
     WINDOW, MAX_WAIT, MAX_KEYS, MAX_TIMES = 15 * 60, 15 * 60, 10000, 64
@@ -193,13 +194,17 @@ class Throttle:
     def __init__(self):
         self._fails, self._lock = {}, threading.Lock()
 
+    def free(self, kind):
+        """The free failures of a key of this kind."""
+        return self.FREE.get(kind, 5)
+
     def _key_wait(self, key, now):
         times = [t for t in self._fails.get(key, ()) if now - t < self.WINDOW]
         if times:
             self._fails[key] = times
         else:
             self._fails.pop(key, None)
-        free = self.FREE.get(key.split(":", 1)[0], 5)
+        free = self.free(key.split(":", 1)[0])
         if len(times) < free:
             return 0
         wait = min(self.MAX_WAIT, 2 ** min(len(times) - free, 10) * 30)
@@ -225,7 +230,7 @@ class Throttle:
                     # still full: forget a tenth in one go (so this runs once per that many new keys), keys that
                     # aren't holding anyone back first, idlest first; a flood can't wipe a guesser's count early
                     drop = len(self._fails) - self.MAX_KEYS * 9 // 10
-                    blocking = lambda k: len(self._fails[k]) >= self.FREE.get(k.split(":", 1)[0], 5)
+                    blocking = lambda k: len(self._fails[k]) >= self.free(k.split(":", 1)[0])
                     for k in heapq.nsmallest(drop, self._fails, key=lambda k: (blocking(k), self._fails[k][-1])):
                         del self._fails[k]
 
@@ -253,4 +258,14 @@ def login_keys(username, address, device=None):
     return ("pair:" + u + "|" + address, "ip:" + address, "user:" + u)
 
 
-throttle = Throttle()
+class SignInThrottle(Throttle):
+    """Sign-in's, and a signed-in session's password checks (#1001): an admin may lower each kind's free failures in
+    Settings → Install → General → Security (settings.py's security.tries*), read at each failure, never above FREE."""
+    limit = None   # settings.py sets it: kind -> the free failures in force for it, or None
+
+    def free(self, kind):
+        top = super().free(kind)
+        return min(top, (self.limit(kind) if self.limit else None) or top)
+
+
+throttle = SignInThrottle()

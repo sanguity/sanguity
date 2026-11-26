@@ -570,9 +570,12 @@ sources' return address, come from the same public address.
   alone can't be used to guess them. Sign-in throttling,
   and server-side sessions you can see and sign out under **Settings → Sign-in and security**. A sign-in lasts 30 days on an account with
   a second factor and 12 hours on one without (`SESSION_DAYS`, `SESSION_HOURS_WITHOUT_2FA` in `.env`); optionally
-  sign people out after a period of inactivity too (`SESSION_IDLE_MINUTES`).
+  sign people out after a period of inactivity too (`SESSION_IDLE_MINUTES`). Admins can shorten these, raise the
+  shortest password, shorten the fresh check and a one-time password's days, lower the sign-in throttle's free tries,
+  and let only admins create profiles, under **Settings → Install → General → Security**: never more lenient than
+  these defaults, and a change that would end sign-ins says how many first.
 - **Two-factor sign-in** with an authenticator app (codes that can't be reused) and one-time recovery codes, under
-  **Settings → Sign-in and security**; admins can require it for everyone. With it on, a password may be as short as 8 characters.
+  **Settings → Sign-in and security**; admins can require it for everyone (**Settings → Install → General → Security**). With it on, a password may be as short as 8 characters.
 - **Passkeys** (Face ID, Touch ID, Windows Hello, a phone or a security key), under **Settings → Sign-in and security**: sign in with one on
   its own, or use it as the step after the password. They need HTTPS; see [Passkeys](#passkeys).
 - **Every request for records or documents checks the account's role on that profile.** Documents are served
