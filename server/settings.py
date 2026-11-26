@@ -1138,7 +1138,8 @@ def from_file(obj, scope="profile", where=""):
         try:
             out[k] = s.clean(v)
         except SettingError as e:
-            print(f"{where or 'settings.json'}: {k} left at its default ({e})", flush=True)
+            print(f"{where or 'settings.json'}: {k} left at its default: not a value it takes", flush=True)   # (#1065: not
+            # the refusal's words, which can quote the value)
     return out
 
 
@@ -1186,7 +1187,7 @@ def migrate_files(db, profile_dir):
         try:
             obj = read_file(path)
         except Exception as e:   # left where it is, for someone to look at; the app still starts
-            print(f"Couldn't move profile {pid}'s settings.json into the database ({type(e).__name__}: {e}); "
+            print(f"Couldn't move profile {pid}'s settings.json into the database ({type(e).__name__}); "
                   f"{path} is left as it was.", flush=True)
             continue
         with dbm.transaction(db):
@@ -1207,7 +1208,7 @@ def from_build(db, pid, path):
         try:
             values = from_file(read_file(path), where="the setup build's settings.json")
         except (ValueError, OSError) as e:
-            print(f"The setup build's settings.json can't be read ({type(e).__name__}: {e}); settings unchanged.", flush=True)
+            print(f"The setup build's settings.json can't be read ({type(e).__name__}); settings unchanged.", flush=True)
     if not seeded:
         if values:
             fill_profile(db, pid, values)
