@@ -3705,6 +3705,10 @@ Everything on `main` so far; it becomes the first tagged release.
   fresh check's minutes and the sign-in throttle's free tries, each applying at once, bounded and never more lenient
   than the defaults; the Secure cookie and password checks at once shown read-only. A change that would end sign-ins
   says how many and asks first. You → Sign-in and security says how long a sign-in lasts.
+- **General → Backups and logging** (#1002): the backups folder and the encryption key (its path and how many keys),
+  each with what mounts it on this kind of install, and the schedule linking to Backups; how long activity is kept
+  (`ACTIVITY_DAYS`), where fewer days asks first, with the count of entries it deletes to type; and where the app's
+  output and its security log are read.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

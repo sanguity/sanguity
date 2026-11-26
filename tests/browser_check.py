@@ -936,6 +936,78 @@ def fresh_check(page):
                          "'application/json'}, body: JSON.stringify({secret: pw})}).then(r => r.status)", PW)
 
 
+def general_backups_check(browser, base, cookies, check, db_path, pw=None):
+    """Settings → Install → General → Backups and logging (#1002), as the admin whose sign-in cookies are given: the
+    backups folder, the key and the schedule's line, where the logs are read, and the days of activity kept, changed
+    through the group's bar (fewer, deleting entries, asked with the count to type) and shown fixed when the environment
+    sets it. db_path: the app's database, given entries old enough to go. Returns the page's script errors."""
+    import sqlite3
+    ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)   # (its waits are evaluated)
+    ctx.add_cookies(cookies)
+    pg, errs = ctx.new_page(), []
+    pg.on("pageerror", lambda e: errs.append(str(e)))
+    days = "fetch('api/settings/install').then(r => r.json()).then(j => j.sections.flatMap(s => s.settings).find(s => s.key === 'activity.days').value)"
+    con = sqlite3.connect(db_path)
+    try:
+        pg.goto(base + "/settings.html?profile=1#general")
+        pg.wait_for_selector("#genBk .kv", timeout=15000)
+        text = pg.evaluate("document.getElementById('genBk').innerText")
+        names = pg.evaluate("[...document.querySelectorAll('#genBk dt')].map(d => d.textContent)")
+        check("General → Backups and logging (#1002): the backups folder, the key (how many keys, never one) and the schedule with a link "
+              "to Backups, where it's set; where the app's output and its security log are read; the days of activity kept",
+              names == ["Folder", "Encryption key", "Schedule", "The app's output", "Security log", "Activity"]
+              and "(1 key; the first encrypts)" in text and pg.evaluate("!!document.querySelector('#genBk a[href=\"#backups\"]')")
+              and pg.input_value("#genActDays") == "365", [names, text])
+        # three entries of profile 1's, 200 days old: keeping 90 days deletes them (and any others that old) at the next
+        # daily clean-up, so it's asked first, with the count to type
+        now = int(time.time())
+        ids = [con.execute("INSERT INTO activity(at, profile_id, actor, action) VALUES(?, 1, 'fictional', 'view')",
+                           (now - 200 * 86400,)).lastrowid for _ in range(3)]
+        con.commit()
+        n = con.execute("SELECT COUNT(*) FROM activity WHERE at < ?", (now - 90 * 86400,)).fetchone()[0]
+        pg.evaluate("pw => fetch('api/me/reauth', {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, "
+                    "body: JSON.stringify({secret: pw})})", pw or PW)
+        pg.fill("#genActDays", "90")
+        dirty = pg.evaluate("[document.getElementById('gen-backups').dataset.dirty, document.querySelector('#genBk .set-row').classList.contains('set-changed')]")
+        pg.click("#setBar .btn.primary")
+        asked = answer_ask(pg, fill=str(n))
+        pg.wait_for_function("document.getElementById('genBkMsg').textContent.startsWith('Saved')", timeout=10000)
+        left = con.execute(f"SELECT COUNT(*) FROM activity WHERE id IN ({','.join(map(str, ids))})").fetchone()[0]
+        check("…keeping fewer days, where that deletes entries, asks first with how many, the profiles' and the install's, and saves once "
+              "that count is typed; nothing goes before the next daily clean-up",
+              dirty == ["1", True] and f"deletes {n:,} entries older than 90 days" in asked[1] and f"Type {n} to confirm" in asked[1]
+              and pg.evaluate(days) == 90 and left == 3 and pg.evaluate("document.getElementById('gen-backups').dataset.dirty") is None,
+              [dirty, asked, left])
+        pg.fill("#genActDays", "365")   # more days: asked nothing
+        pg.click("#setBar .btn.primary")
+        pg.wait_for_function("document.getElementById('genBkMsg').textContent.includes('365 days')", timeout=10000)
+        check("…and more days asks nothing", pg.evaluate(days) == 365)
+
+        def env(route):   # as when ACTIVITY_DAYS is set in the app's environment
+            got = route.fetch()
+            j = got.json()
+            for sec in j["sections"]:
+                for st in sec["settings"]:
+                    if st["key"] == "activity.days":
+                        st.update(value=400, **{"from": "environment", "can_change": False})
+            route.fulfill(response=got, json=j)
+        pg.route("**/api/settings/install", env)
+        pg.reload()
+        pg.wait_for_selector("#genBk .kv", timeout=15000)
+        fixed = pg.evaluate("[document.getElementById('genActDays').disabled, document.getElementById('genActDays').value, "
+                            "document.querySelector('#genBk .set-row').textContent]")
+        check("…set by the environment, it's shown fixed, naming its variable", fixed[:2] == [True, "400"]
+              and "set by the environment" in fixed[2] and "ACTIVITY_DAYS" in fixed[2], fixed)
+    except Exception as e:
+        check("General → Backups and logging (#1002) ran", False, stopped(e))
+    finally:
+        con.execute("DELETE FROM activity WHERE actor='fictional'")
+        con.commit()
+        con.close()
+        ctx.close()
+    return errs
+
+
 # ---- axe-core (#202): Deque's accessibility engine, from the axe-playwright-python package (requirements-dev.txt), which
 # bundles a pinned axe.min.js. Only that script is used: put into the page under test by page.evaluate, which the
 # Content-Security-Policy doesn't apply to, so the strict pages are checked as they are; the app never loads it.
@@ -2613,6 +2685,10 @@ def main():
         check("This person's and You's sections leave a server's own settings to Install (#991), one listed among theirs or in a section "
               "of its own", shown991s[:2] == [False, False] and shown991s[2], shown991s)
         general_security_check(check, browser, base, strict.context.cookies())   # (#1001) General → Security
+        # General's sections (#998), in the page's order
+        errs1002 = general_backups_check(browser, base, [c for c in strict.context.cookies() if c["name"] == "sg_session"], check,
+                                         os.path.join(TMP, "sanguity.db"))
+        check("…and no script fails there", not errs1002, errs1002)
         # the Sharing page (#168): its sidebar, each part drawn by its own script
         strict.goto(base + "/sharing.html#summary")   # the visit summary (#48)
         strict.wait_for_selector("#build:not([hidden]) #sections input", timeout=10000)
