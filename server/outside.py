@@ -14,6 +14,10 @@ way out, under a permit made here from what the install was told to contact:
         a SMART Health Link someone pasted and confirmed (shl.py): its host (a pasted Health Card's issuer), and also
         the hosts the link itself names (file locations, Health Card issuers) that the page named and they confirmed
         (#919): one it names beyond those is asked about before it's contacted, never contacted unconfirmed.
+  for_directory(db, who, ip, actor=None)
+        the provider directory's two published lists (#992; directory/update.py): the hosts directory/build.py names
+        for them, only when an admin presses Add the lists or Update now, or once a week after an admin turned that
+        on. Account-level: no profile is involved.
 
 Each contact is recorded before the request is sent, so an attempt that fails is listed too:
   - as a profile activity entry "outside" with {"host", "purpose"} (account-level when no profile is involved);
@@ -21,7 +25,7 @@ Each contact is recorded before the request is sent, so an attempt that fails is
     outside-connections view.
 Only the host is kept: never the path, query, token, key or passcode.
 
-  record(db, pid, host, purpose, who=None, ip=None)
+  record(db, pid, host, purpose, who=None, ip=None, actor=None)
   recent(db, pid, limit=100) -> [{"at", "host", "purpose", "actor"}]   from the activity log
   view(db, s) -> what the Admin page's "Outside connections" section shows (GET /api/outside)
 """
@@ -32,16 +36,17 @@ from . import activity, crypto, db as dbm, net
 ACTION = "outside"
 SOURCE = "Connected source: "                        # + sign-in, sync, disconnect, test
 LINK, LINK_FILE, CARD_KEYS = "SMART Health Link", "SMART Health Link file", "Health Card issuer's keys"
+DIRECTORY = "Provider directory"
 NOTHING_ELSE = ("Sanguity contacts only the hosts listed here, and only for the reason given. Nothing else leaves "
                 "this server: no telemetry, analytics, update checks, fonts or maps, and no host that nobody "
                 "connected. Every request to another server goes through one gateway that refuses any host not "
                 "listed, and records each contact here.")
 
 
-def record(db, pid, host, purpose, who=None, ip=None):
+def record(db, pid, host, purpose, who=None, ip=None, actor=None):
     """Note that Sanguity is about to contact host for purpose (a short phrase, like "SMART Health Link")."""
     host, purpose = net.norm(str(host)[:255]), str(purpose)[:80]
-    activity.log(db, ACTION, who, pid, {"host": host, "purpose": purpose}, ip)
+    activity.log(db, ACTION, who, pid, {"host": host, "purpose": purpose}, ip, actor=actor)
     now = dbm.now()
     for r in db.execute("SELECT id, host FROM outside_contacts WHERE profile_id IS ? AND purpose=?", (pid, purpose)).fetchall():
         if crypto.dec(r["host"]) == host:
@@ -58,8 +63,8 @@ def recent(db, pid, limit=100):
 
 # ---------------------------------------------------------------- permits (net.Permit)
 
-def _recorder(db, pid, who, ip):
-    return lambda host, purpose: record(db, pid, host, purpose, who, ip)
+def _recorder(db, pid, who, ip, actor=None):
+    return lambda host, purpose: record(db, pid, host, purpose, who, ip, actor)
 
 
 def _source_hosts(db, source_id, issuer_only=False):
@@ -92,6 +97,15 @@ def for_connection(db, connection_id, purpose, who=None, ip=None):
 
 def for_link(db, pid, host, who=None, ip=None, also=()):
     return net.Permit(LINK, {h for h in (host, *also) if h}, _recorder(db, pid, who, ip))
+
+
+def directory_hosts():
+    from .directory import build
+    return {net.host_of(s["url"]) for s in build.SOURCES.values() if s["url"]}
+
+
+def for_directory(db, who=None, ip=None, actor=None):
+    return net.Permit(DIRECTORY, directory_hosts, _recorder(db, None, who, ip, actor))
 
 
 # ---------------------------------------------------------------- the view
@@ -164,4 +178,5 @@ def view(db, s):
     pick = lambda *ps: [c for c in contacts if c["purpose"] in ps]
     return {"nothing_else": NOTHING_ELSE, "admin": admin, "may_contact": allowed, "sources": sources,
             "health_links": pick(LINK, LINK_FILE), "card_keys": pick(CARD_KEYS),
+            **({"directory": {"hosts": sorted(directory_hosts()), "contacts": pick(DIRECTORY)}} if admin else {}),
             "earlier": [c for c in contacts if c["purpose"].startswith(SOURCE) and c["host"] not in allowed]}

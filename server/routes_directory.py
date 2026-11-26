@@ -4,6 +4,12 @@ may search it; nothing here touches anyone's records, and nothing is looked up o
   GET /api/directory?q=…        {"results": [entry…], "vendors": {…}, "sources": [...], "built", "return_addresses"}
   GET /api/directory/entry?id=… one entry with all its names and places, its vendor, and the return addresses
 
+Admins only (#992), Settings → Install → Provider directory: adding and updating Epic's and Oracle Health's lists,
+which the server downloads itself (directory/update.py). Not under /api/directory: nothing of these is anyone's.
+  GET  /api/provider-directory          each list: loaded or not, its count, when it was read, its terms and host;
+                                        the update going on (its progress), the last one's outcome, the weekly update
+  POST /api/provider-directory/update   Add the lists / Update now, in the background (409 while one runs)
+
 An entry: id, name, vendor, kind (provider · payer · sandbox), fhir_base, fhir_version, org (the health system),
 places [[city, state]…], aliases (its locations' names), logo and portal (URLs as the vendor published them; the
 app never fetches them), sandbox, source, retrieved. A result also says which of its names matched, so a search for
@@ -18,7 +24,8 @@ import ipaddress
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from . import config, directory
-from .main import _request_host, user
+from .directory import update
+from .main import _client_ip, _request_host, admin, get_db, user
 
 router = APIRouter()
 LIST_MAX = 60   # names and places shown for one entry
@@ -86,3 +93,17 @@ def entry(request: Request, id: str = Query(..., max_length=200), s=Depends(user
             e[k + "_total"] = len(e[k])
             e[k] = e[k][:LIST_MAX]
     return {"entry": e, **_context(ix, request)}
+
+
+@router.get("/api/provider-directory")
+def lists(s=Depends(admin), db=Depends(get_db)):
+    return update.status(db)
+
+
+@router.post("/api/provider-directory/update", status_code=202)
+def update_now(request: Request, s=Depends(admin), db=Depends(get_db)):
+    try:
+        update.submit({"id": s["id"], "username": s["username"]}, _client_ip(request))
+    except update.Busy as e:
+        raise HTTPException(409, str(e))
+    return update.status(db)

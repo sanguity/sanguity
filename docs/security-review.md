@@ -90,7 +90,8 @@ check changes without updating the list, and it exercises this table against a l
 | Outside connections (Settings → Install) | Empty list | Their profiles' entries | Their profiles' entries | The whole install | No | No |
 | Accounts, require two-factor, sign-in notices, account activity | No | No | No | Yes (with their own second factor) | No | No |
 | Connected-source apps (vendor setup), lab-name matches, install settings, backups | No | No | No | Yes (with their own second factor; the most powerful changes, and every change to an install setting (#1006), also need a fresh check) | No | No |
-| The provider directory | Yes | Yes | Yes | Yes | No | No |
+| The provider directory: search it | Yes | Yes | Yes | Yes | No | No |
+| The provider directory: add or update Epic's and Oracle Health's lists, the weekly update (#992, `/api/provider-directory`) | No | No | No | Yes (with their own second factor; turning the weekly update on or off also needs a fresh check) | No | No |
 | "What is this test?" pages (#163, `GET /api/lab-test-pages`): the app's own table of links, nothing of anyone's | Yes | Yes | Yes | Yes | No | No |
 
 Someone signed in to an account a profile isn't shared with gets 404 on every route of that profile. A share link
@@ -470,7 +471,7 @@ made, failed, checked and the schedule changed.
 | 14.2.1 | Components up to date | Met | Dependabot: weekly proposals for the Python locks, the images and the GitHub Actions. The README's update command pulls newer images and base images (#77). |
 | 14.2.2 | Unneeded features off | Met | No API docs or OpenAPI. Static serving only in development (`SANGUITY_SERVE_STATIC`). Outside contact only for what someone connected. |
 | 14.2.3 | Subresource integrity for outside assets | N/A | Nothing is loaded from elsewhere (`default-src 'self'`): no fonts, maps or logos from other sites. |
-| 14.2.4 | Components from trusted sources | Met | PyPI with `--require-hashes`. Official Python and nginx images. The provider directory is a bundled file, built from vendors' published lists (`tools/build_directory.py`), never fetched by the app. |
+| 14.2.4 | Components from trusted sources | Met | PyPI with `--require-hashes`. Official Python and nginx images. The provider directory is a bundled file, plus each install's own copy of Epic's and Oracle Health's published lists, which the server downloads only when an admin presses Add the lists or turned on the weekly update (#992), through the gateway from those two hosts alone, and reads in a process of its own. |
 | 14.2.5 | Inventory of components | Met | `requirements.txt` (with hashes) and the image tags. |
 | 14.2.6 | Third-party components isolated | Met | Separate containers. The app has no published port and only nginx can reach it. |
 | 14.3.1 | Generic server errors | Met | As 7.4.1. |
@@ -537,6 +538,11 @@ What each added, and how it keeps to the rules above. Each file named has its ow
 
 ### The provider directory (#93)
 - A bundled file searched on the server; no outside lookups, logos shown only as `data:` images.
+- Epic's and Oracle Health's lists (#992): downloaded by the server only when an admin asks (Settings → Install →
+  Provider directory) or weekly once an admin turns that on (off by default), under a permit for their two hosts
+  alone (`outside.for_directory`), each contact in outside_contacts and the install log; at most 512 MB each, read by
+  `server/directory/build.py` in a child process (`python -I -B`), the new copy replacing the old in one step. A
+  failed, cut-short or wrong download keeps the earlier list. Admin routes only.
 
 ### Calendar feeds (#51)
 - One per person and profile, for anyone who can view it; minimal by default ("Appointment", "Labs expected"), never

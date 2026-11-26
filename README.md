@@ -505,10 +505,13 @@ start time and title. Like the records, they are encrypted at rest. Milestones a
 directory of FHIR endpoints by name, location, city or state, and says whether it can be connected here: one set up on
 this server connects from there; otherwise an admin is taken to **Settings → Connected-source apps** with its FHIR base
 filled in (each vendor's setup steps are there, in one place), and everyone else is told what to ask their admin
-for. Epic's and Oracle Health's lists
-can't be shipped with Sanguity, so an admin adds them once (**Settings → Provider directory** shows what's there):
-`python3 tools/build_directory.py` (about 1 MB; see
-[docs/provider-directory.md](docs/provider-directory.md)). The app never looks anything up itself.
+for. Epic's and Oracle Health's lists can't be shipped with Sanguity, so each server reads its own copy: an admin
+presses **Add the lists** in **Settings → Install → Provider directory**, which names the two hosts it contacts first,
+and the server downloads them in the background (about 100 MB; the copy it keeps is about 1 MB). The next search uses
+them. **Keep them up to date** reads them again weekly; it's off until an admin turns it on, and a failed update keeps
+the lists the server has. A server that can't reach those hosts can build the same copy on the host with
+`python3 tools/build_directory.py` (see [docs/provider-directory.md](docs/provider-directory.md)). Searching never
+looks anything up.
 
 ### Calendar reminders
 
@@ -558,7 +561,9 @@ sources' return address, come from the same public address.
   names (its files elsewhere, a card's issuer) only once the page has named it and you've confirmed that too (#919);
   and once you connect a source
   ([Connected sources](#connected-sources)), the server talks to that vendor only, through an app your install
-  registers with it (see [docs/connected-sources-oauth.md](docs/connected-sources-oauth.md)). **Settings →
+  registers with it (see [docs/connected-sources-oauth.md](docs/connected-sources-oauth.md)); and the provider
+  directory's two lists, from open.epic.com and raw.githubusercontent.com, only when an admin presses Add the lists
+  or Update now, or weekly once an admin turns that on ([Finding your provider](#finding-your-provider)). **Settings →
   [Outside connections](www/settings.html)** (`settings.html#outside` on your install, for admins) lists every host the install
   may contact, grouped by purpose, with the scopes asked for and granted and when each was last contacted, for
   the whole install. Every outbound request goes through one gateway
@@ -938,7 +943,7 @@ www/                index.html (markup), css/tokens.css (the font and colour tok
 demo/               Fictional demo dataset generator (--big: ten years of records, for the performance budgets)
 tools/              anonymise.py (an anonymised copy of an export, to share as a sample: docs/anonymising-exports.md),
                     screenshots.py, make_icons.py, build_sprite.py, contrast.py (the colour tokens' contrast: docs/accessibility.md),
-                    build_directory.py, fhir_schema_subset.py (the FHIR R4 schema the FHIR export is checked against:
+                    build_directory.py (the provider directory's lists, on the host), fhir_schema_subset.py (the FHIR R4 schema the FHIR export is checked against:
                     docs/fhir-export.md)
 tests/              API and upload tests, a headless browser check (with WCAG 2.2 AA checks: docs/accessibility.md),
                     the performance budgets (docs/performance.md) and a smoke test of the Docker install (all run in CI)
