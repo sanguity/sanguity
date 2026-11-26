@@ -70,8 +70,9 @@ def tokens():
 
 def kinds():
     """the Timeline's kinds in order, [(k, its colour as CATS gives it)]"""
-    cats = read("www", "js", "util.js").split("const CATS = [", 1)[1].split("];", 1)[0]
-    return re.findall(r'\{k:"(\w+)",\s*label:"[^"]*",\s*color:"([^"]+)"', cats)
+    util = read("www", "js", "util.js")   # a colour by its name too (INK2, MUTED: #1053's), as util.js gives it
+    cats, named = util.split("const CATS = [", 1)[1].split("];", 1)[0], dict(re.findall(r'\b([A-Z][A-Z0-9]*) = "(var\([^"]+\))"', util))
+    return [(k, named.get(c, c.strip('"'))) for k, c in re.findall(r'\{k:"(\w+)",\s*label:"[^"]*",\s*color:("[^"]+"|[A-Z][A-Z0-9]*)', cats)]
 
 
 def main():
@@ -120,7 +121,7 @@ def main():
             fail(f"{mode}: --measure {m} is {near[0]:.1f} from {near[1]}: too like a kind of record")
     colour = dict(ks)
     for k in ("contact", "immunization", "letter", "ecg"):
-        if colour.get(k) != "var(--ink2)":
+        if colour.get(k) != "var(--fc-ink,var(--ink2))":   # the system's text in forced colours (#1053)
             fail(f"{k} is {colour.get(k)}, not the neutral ink")
     for f in ("health.js", "costs.js"):
         used = sorted(set(re.findall(r"--c-[a-z]+", read("www", "js", f))) - {"--c-lab"})
