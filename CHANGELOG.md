@@ -3702,6 +3702,10 @@ Everything on `main` so far; it becomes the first tagged release.
   each with what mounts it on this kind of install, and the schedule linking to Backups; how long activity is kept
   (`ACTIVITY_DAYS`), where fewer days asks first, with the count of entries it deletes to type; and where the app's
   output and its security log are read.
+- **General → About, with the limits** (#1004): the version (a checkout says it has none) with a link to the releases
+  page (nothing is contacted), the schema version, how it's deployed (`SANGUITY_DEPLOYMENT`, which every template now
+  sets, `deploy/check.py` checks), who it runs as, the folders and configuration files with what mounts each, and the
+  upload, connected-source and Health Link limits, read-only, each with its variable.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

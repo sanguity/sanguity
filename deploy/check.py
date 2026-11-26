@@ -365,6 +365,39 @@ def casaos(want):
     check("casaos: the key folder isn't inside the data folder", key and data and not key.startswith(data + "/"), (key, data))
 
 
+# ---------------------------------------------------------------- the deployment's kind (#1004)
+
+def _kinds():
+    """The kinds Settings → General → About names: the keys of server/general.py's KINDS (read as text: it imports the
+    server's encryption, which this check doesn't need)."""
+    with open(os.path.join(ROOT, "server", "general.py"), encoding="utf-8") as f:
+        text = f.read()
+    return set(re.findall(r'^    "(\w+)": \{"name"', text, re.M))
+
+
+def deployments():
+    """Each way to deploy sets SANGUITY_DEPLOYMENT for the app, a kind General → About names (#1004); the released
+    image also sets SANGUITY_VERSION, its version."""
+    kinds = _kinds()
+    for name, kind in (("compose.yaml", "compose"), ("compose.release.yaml", "release"),
+                       (os.path.join("deploy", "casaos", "Sanguity", "docker-compose.yml"), "casaos")):
+        got = env_of(load_yaml(os.path.join(ROOT, name))["services"]["app"]).get("SANGUITY_DEPLOYMENT")
+        check(f"{name}: the app is told it's deployed as {kind}, a kind About names", got == kind and kind in kinds, got)
+    template = open(os.path.join(HERE, "truenas", "sanguity", "templates", "docker-compose.yaml"), encoding="utf-8").read()
+    check("truenas: the app is told it's deployed as truenas, a kind About names",
+          'app.environment.add_env("SANGUITY_DEPLOYMENT", "truenas")' in template and "truenas" in kinds)
+    root = ET.parse(os.path.join(HERE, "unraid", "sanguity.xml")).getroot()
+    c = next((c for c in root.findall("Config") if c.get("Target") == "SANGUITY_DEPLOYMENT"), None)
+    check("unraid: the app is told it's deployed as unraid, a kind About names",
+          c is not None and c.get("Type") == "Variable" and c.get("Default") == (c.text or "") == "unraid" and "unraid" in kinds,
+          c is not None and c.attrib)
+    aio = open(os.path.join(ROOT, "docker", "allinone.py"), encoding="utf-8").read()
+    check("the all-in-one container tells the app it's deployed as allinone, unless its template says (Unraid), a kind About names",
+          '{"SANGUITY_DEPLOYMENT": "allinone", **base' in aio and "allinone" in kinds)
+    docker = open(os.path.join(ROOT, "docker", "app.Dockerfile"), encoding="utf-8").read()
+    check("the released image sets SANGUITY_VERSION, the version About shows", "SANGUITY_VERSION=${VERSION}" in docker)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--truenas-lib")
@@ -376,6 +409,7 @@ def main():
         truenas(want, a.truenas_lib)
         unraid(want)
         casaos(want)
+        deployments()
     except Exception as e:   # report what was caught so far instead of a bare traceback
         failed.append(f"stopped: {type(e).__name__}: {e}")
     for x in passed:

@@ -400,6 +400,12 @@ def install_backups_logging(s=Depends(admin)):
     return general.backups_logging()
 
 
+@router.get("/api/settings/install/about")
+def install_about(s=Depends(admin)):
+    """(#1004) General → About: the version, the deployment, the folders, the limits (general.py). Contacts nobody."""
+    return general.about()
+
+
 class Rename(BaseModel):
     name: str
     to: Any = None
