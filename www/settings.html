@@ -158,6 +158,12 @@
     <p class="hint">Where this server keeps its backups and its logs, and how long it keeps activity.</p>
     <div id="genBk"></div>
   </section>
+  <!-- General → About, with the limits (#1004, gen-about.js) -->
+  <section class="card conn adm" id="gen-about" hidden>
+    <h2>About</h2>
+    <p class="hint">This server's version, how it's deployed, its folders and its limits. Nothing here contacts anyone.</p>
+    <div id="genAbout"></div>
+  </section>
 
   <!-- Accounts, and requiring two-factor sign-in (admin.js) -->
   <section class="card conn adm" id="users" hidden>
@@ -352,6 +358,7 @@
 <script src="js/admin-backups.js"></script>
 <script src="js/outside.js"></script>
 <script src="js/gen-backups.js"></script>
+<script src="js/gen-about.js"></script>
 <script src="js/settings-nav.js"></script>
 </body>
 </html>

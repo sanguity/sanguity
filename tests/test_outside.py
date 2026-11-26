@@ -353,6 +353,23 @@ class View(unittest.TestCase):
             js = fh.read()
         self.assertNotIn("innerHTML", js)
 
+    def test_general_about_contacts_nobody(self):   # #1004
+        """General → About shows the version and links to the releases page, and that's all (#998, decision 5): reading
+        it, and Backups and logging, contacts no host and adds no outside contact, and its script asks only the app for
+        anything, the releases page a link it opens in another tab."""
+        from server import general
+        netguard.take()
+        before = self.view(self.robin)
+        got = [self.robin.get(p) for p in ("/api/settings/install/about", "/api/settings/install/backups-logging")]
+        self.assertEqual([r.status_code for r in got], [200, 200], [r.text for r in got])
+        self.assertEqual(got[0].json()["releases"], general.RELEASES)
+        self.assertEqual((netguard.take(), self.view(self.robin)), ([], before))
+        with open(os.path.join(ROOT, "www", "js", "gen-about.js"), encoding="utf-8") as fh:
+            js = fh.read()
+        self.assertEqual(re.findall(r"\b(fetch|XMLHttpRequest|sendBeacon|WebSocket|EventSource|import)\s*\(", js), [])
+        self.assertEqual(re.findall(r'\bcall\(\s*"([^"]+)"', js), ["settings/install/about"])
+        self.assertIn('href: a.releases, target: "_blank", rel: "noopener noreferrer"', js)
+
     def test_signed_out_gets_nothing(self):
         self.assertEqual(client().get("/api/outside").status_code, 401)
 

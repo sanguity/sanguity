@@ -671,6 +671,35 @@ class Settings(unittest.TestCase):
         r = ada.post("/api/settings/install/reset", json={"section": "logging"}, headers=H)   # 400 back to 365: nothing that old
         self.assertEqual((r.status_code, r.json()["reset"], config.setting("ACTIVITY_DAYS")), (200, [key], 365))
 
+    def test_general_about_names_the_deployment(self):   # #1004
+        """General → About: each deployment's kind named (SANGUITY_DEPLOYMENT, which every template sets: deploy/check.py),
+        its folders each with what mounts it there, and its version where it has one (a checkout, or an image built
+        without one, says so); unset, or a kind it doesn't know, "other"; the limits with their variables, values and
+        where each comes from. Admins only."""
+        from server import general
+        ada = self.c["ada"]
+        self.assertEqual(self.c["robin"].get("/api/settings/install/about").status_code, 403)
+        for kind, version, want in (("truenas", "1.2.3", ("1.2.3", False)), ("release", "1.2.3", ("1.2.3", False)),
+                                    ("compose", "", (None, True)), ("allinone", "dev", (None, True)), ("", "", (None, True)),
+                                    ("no-such-kind", "1.2.3", ("1.2.3", False))):
+            with mock.patch.dict(os.environ, SANGUITY_DEPLOYMENT=kind, SANGUITY_VERSION=version):
+                a = ada.get("/api/settings/install/about").json()
+            named = kind if kind in general.KINDS else "other"
+            self.assertEqual((a["deployment"], a["deployment_name"]), (named, general.KINDS[named]["name"]))
+            self.assertEqual((a["version"], a["checkout"]), want, kind)
+            folders = {f["key"]: f for f in a["folders"]}
+            self.assertEqual(folders["data"]["path"], config.DATA_DIR)
+            self.assertEqual(folders["data"]["set_by"], general.KINDS[a["deployment"]]["mounts"].get("data"))
+        for kind in set(general.KINDS) - {"other"}:   # every kind names what mounts each folder, and who it runs as
+            self.assertEqual(set(general.KINDS[kind]["mounts"]), {"data", "backups", "key", "records", "watch", "config", "user"}, kind)
+        limits = {x["name"]: x for g in a["limits"] for x in g["limits"]}
+        self.assertEqual(limits["SHL_MAX_MB"], {"name": "SHL_MAX_MB", "what": "What one link brings", "unit": "MB", "value": 64,
+                                                 "from": "default", "default": 64})
+        with mock.patch.dict(os.environ, UPLOAD_MAX_FILES="500"):
+            got = {x["name"]: x for g in ada.get("/api/settings/install/about").json()["limits"] for x in g["limits"]}["UPLOAD_MAX_FILES"]
+        self.assertEqual((got["value"], got["from"]), (500, "environment"))
+        self.assertEqual(a["schema"], len(dbm.SCHEMA))
+
     def test_rename_one_name(self):
         """#38: one name of a name map changed where it's shown, the rest of the map kept"""
         pid = self.fresh_profile()

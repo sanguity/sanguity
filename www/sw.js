@@ -53,6 +53,7 @@ const FILES = [
   "js/offline-page.js",
   "js/qr.js",
   "js/gen-backups.js",
+  "js/gen-about.js",
 ];
 
 /* the part of a same-origin address after the app's own folder, if it's one of the app's own files: "" for the

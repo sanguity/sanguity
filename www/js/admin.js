@@ -62,7 +62,7 @@ function syncNotice(rows) {
 function adminGate() {
   $("#adminTf").hidden = false; $("#adminTools").hidden = $("#userDanger").hidden = true; $("#users").hidden = false;
   $("#secNotice").hidden = $("#codeNotice").hidden = $("#syncNotice").hidden = $("#backupNotice").hidden = true;
-  for (const id of ["#general", "#gen-backups", "#backups", "#admin", "#sec-sync", "#labmaps", "#installLog"]) gateCard($(id));
+  for (const id of ["#general", "#gen-backups", "#gen-about", "#backups", "#admin", "#sec-sync", "#labmaps", "#installLog"]) gateCard($(id));
 }
 function gateCard(card) {
   if (card.querySelector(".adm-gate")) return;
@@ -503,6 +503,6 @@ async function adminStart(first) {
   if (ME.user.admin_needs_two_factor) { adminGate(); SET_NAV.again(); return; }
   loadInstallLog();
   await Promise.all([loadUsers(), loadNotice(), loadLabmaps(), loadRequireTf(), loadSetup(), loadSync(), loadBackups(),
-    loadGenBackups()]);   // General's parts (#998): gen-backups.js
+    loadGenBackups(), loadGenAbout()]);   // General's parts (#998): gen-backups.js, gen-about.js
   SET_NAV.again();
 }
