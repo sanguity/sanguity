@@ -9863,6 +9863,15 @@ def main():
             ABOVE895 = r"""() => { const s = document.querySelector('#charts .chart svg.ck'), h = e => e ? Math.round(e.getBoundingClientRect().height) : 0;
               return [s.getBoundingClientRect().top, h(document.querySelector('.filters')), h(document.querySelector('#view-labs .labs-head')), h(document.getElementById('evTrack'))]; }"""
             BIG895 = {1: "", 1.5: ":root{--fs-1:17.25px;--fs-2:18.75px;--fs-3:21px;--fs-4:23.25px;--fs-5:27px;--fs-6:33px;--fs-7:42px} html{font-size:150%}", 2: BIG_TEXT_CSS}
+            # the page still (#985): the window's scroll, the nth chart's top and the page's height the same for 12 frames in
+            # a row, no gesture's plot held (charts.js panZoom), 5 s at most; -> [scrollY, its top, the most the page scrolls].
+            # A redraw's charts are drawn a frame after the page around them, placeholders for that frame, so a read then
+            # (on CI's slower machine, 80 ms after a scroll) found the plot 45 px lower than it rests
+            STILL985 = r"""async n => { const frame = () => new Promise(r => requestAnimationFrame(r)), t0 = performance.now(), root = document.documentElement;
+              const snap = () => { const s = document.querySelectorAll('#charts .chart svg.ck')[n]; return JSON.stringify([Math.round(scrollY), s ? s.getBoundingClientRect().top : null, root.scrollHeight, root.classList.contains('ck-held')]); };
+              let last = snap(), same = 0;
+              while (performance.now() - t0 < 5000 && (same < 12 || JSON.parse(last)[3])) { await frame(); const now = snap(); if (now === last) same++; else { last = now; same = 0; } }
+              const [y, top, h] = JSON.parse(last); return [y, top, h - innerHeight]; }"""
             sel895, bad895, n895 = js("[...state.sel]"), [], 0
             for w895, h895, k895, at895 in ((900, 1400, 1.5, "top"), (412, 860, 2, "track"), (360, 800, 2, "track"), (1400, 900, 1, "top")):
                 page.set_viewport_size({"width": w895, "height": h895})
@@ -9871,7 +9880,7 @@ def main():
                 settle(700)
                 if at895 == "track":
                     js("() => { const r = document.querySelector('#evTrack').getBoundingClientRect(); scrollBy(0, r.top + r.height / 2 - 80); }")
-                    settle(300)
+                js(STILL985, 0)   # (on a slower machine the page scrolled 9 px after a fixed wait, at 412 px with 200% text)
                 was895 = js(ABOVE895)
                 x895, y895 = js("() => { const r = document.querySelector('#charts .chart svg.ck').getBoundingClientRect(); return [r.left + r.width / 2, Math.min(innerHeight - 40, r.top + r.height / 2)]; }")
                 page.mouse.move(x895, y895)
@@ -9886,7 +9895,7 @@ def main():
                                       f"the event track {was895[1:]} → {now895[1:]}")
                         break
                 page.mouse.up()
-                settle(800)
+                js(STILL985, 0)
                 end895 = js(ABOVE895)
                 if abs(end895[0] - was895[0]) > 1:
                     bad895.append(f"{w895} px, text at {k895:.0%}, let go: the plot moved {end895[0] - was895[0]:+.0f} px (the bar, Labs' head and the event track {was895[1:]} → {end895[1:]})")
@@ -9903,10 +9912,10 @@ def main():
             # of it. Only what grows or shrinks over the plot is made up for now. Labs' second chart in the window's
             # middle: zoomed by the wheel and the page wheeled 600 px off the charts straight after; dragged past the
             # records' end and the page wheeled 600 px as it's let go; at 412 px by touch, panned past the end and the page
-            # swiped at once. The scroll goes as far as the page lets it (one ends at the page's foot), and once all's drawn
-            # the plot is where the scroll left it on the screen (what grew over it, the period bar turned custom, made up
-            # for; the page drawn shorter for a moment at its foot, which scrolled it up, put back), at 1400 px as usual and
-            # with 200% text
+            # swiped at once. Once the page is still (STILL985) the scroll has gone as far as the page lets it (one ends at
+            # the page's foot), and the plot stays where the scroll left it on the screen (what grew over it, the period bar
+            # turned custom, made up for; the page drawn shorter for a moment at its foot, which scrolled it up, put back),
+            # at 1400 px as usual and with 200% text
             PLOT985 = "() => { const s = document.querySelectorAll('#charts .chart svg.ck')[1], r = s.getBoundingClientRect(); return [Math.round(scrollY), r.top, r.left, r.width, r.height, document.documentElement.scrollHeight - innerHeight]; }"
             GO985 = r"""() => { state.tables.clear(); state.sel = new Set(['Hemoglobin', 'WBC', 'Platelet Count']); applyPreset('1y'); switchTab('labs', 'chart'); renderLabs();
               return new Promise(r => setTimeout(() => { const s = document.querySelectorAll('#charts .chart svg.ck')[1]; scrollBy(0, s.getBoundingClientRect().top - 350); r(); }, 600)); }"""
@@ -9916,7 +9925,7 @@ def main():
                 for how985 in ("a wheel's zoom", "a drag past the records' end"):
                     page.set_viewport_size({"width": 1400, "height": 900})
                     js(GO985)
-                    settle(400)
+                    js(STILL985, 1)
                     _, _, x985, w985, h985, _ = js(PLOT985)
                     y985 = 350 + h985 / 2
                     if how985 == "a wheel's zoom":
@@ -9933,14 +9942,13 @@ def main():
                             settle(30)
                         page.mouse.up()
                     page.mouse.move(1396, 450)   # off the charts, at the page's edge
-                    s0, mx985 = js(PLOT985)[::5]
+                    s0 = js("Math.round(scrollY)")
                     page.mouse.wheel(0, 300)
                     settle(30)
                     page.mouse.wheel(0, 300)
-                    settle(80)
-                    s1, t1 = js(PLOT985)[:2]
-                    settle(900)
-                    s2, t2 = js(PLOT985)[:2]
+                    s1, t1, mx985 = js(STILL985, 1)
+                    settle(500)
+                    s2, t2, _ = js(STILL985, 1)
                     if s1 < min(s0 + 600, mx985) - 10 or abs(t2 - t1) > 2:
                         bad985.append(f"{how985}, then the page scrolled 600 px, text at {k985:.0%}: scrolled {s0} → {s1} → {s2}, the plot at {t1:.0f} → {t2:.0f} px")
                 # a finger on a phone, in a context of its own (the same session)
@@ -9951,7 +9959,7 @@ def main():
                 pg985.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
                 pg985.evaluate(ADOPT_CSS_JS, BIG895[k985])
                 pg985.evaluate(GO985)
-                pg985.wait_for_timeout(400)
+                pg985.evaluate(STILL985, 1)
                 cdp985 = ctx985.new_cdp_session(pg985)
                 _, _, x985, w985, h985, _ = pg985.evaluate(PLOT985)
                 sx985, sy985 = x985 + w985 / 2, 350 + h985 / 2
@@ -9960,11 +9968,11 @@ def main():
                     cdp985.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": sx985 - 900 * i985 / 8, "y": sy985}]})
                     pg985.wait_for_timeout(25)
                 cdp985.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
-                s0, mx985 = pg985.evaluate(PLOT985)[::5]
+                s0 = pg985.evaluate("Math.round(scrollY)")
                 cdp985.send("Input.synthesizeScrollGesture", {"x": 6, "y": 600, "yDistance": -500, "speed": 2500, "preventFling": True})
-                s1, t1 = pg985.evaluate(PLOT985)[:2]
-                pg985.wait_for_timeout(1000)
-                s2, t2 = pg985.evaluate(PLOT985)[:2]
+                s1, t1, mx985 = pg985.evaluate(STILL985, 1)
+                pg985.wait_for_timeout(500)
+                s2, t2, _ = pg985.evaluate(STILL985, 1)
                 if s1 < min(s0 + 300, mx985) - 10 or abs(t2 - t1) > 2:
                     bad985.append(f"a finger's pan past the records' end at 412 px, then the page swiped, text at {k985:.0%}: scrolled {s0} → {s1} → {s2}, the plot at {t1:.0f} → {t2:.0f} px")
                 ctx985.close()
