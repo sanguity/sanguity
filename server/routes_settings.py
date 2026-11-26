@@ -37,6 +37,11 @@ def _not_set_by_environment(d):
                                  "settings on TrueNAS or Unraid) and start it again.")
 
 
+# (#1000) a change that's said and confirmed first: key -> guard(db, request, body, value), raising HTTPException to
+# refuse it (body None: a reset). General → Host's public addresses (routes_host.py)
+GUARDS = {}
+
+
 def _held(db, d):
     """(#1006) What an install setting holds in the app: its saved value, else its default (the one in force can be the
     environment's instead, or the default while saved values are left out)."""
@@ -59,6 +64,8 @@ def _save_install(db, s, d, body, request, now):
         raise HTTPException(400, str(e))
     if value == _held(db, d):
         return
+    if d.key in GUARDS:   # (#1000) said and confirmed first, before the fresh check
+        GUARDS[d.key](db, request, body, value)
     fresh(request, s, "change a server setting")
     with dbm.transaction(db):
         _unchanged(body, now(), d)
@@ -73,6 +80,9 @@ def _reset_install(db, s, defs, request, section=None, label=None):
     have = settings.stored(db, "install")
     if not any(d.key in have for d in defs):
         return []
+    for d in defs:
+        if d.key in have and d.key in GUARDS:   # (#1000) only where its effects are said and confirmed
+            GUARDS[d.key](db, request, None, d.default)
     fresh(request, s, "reset a server setting")
     with dbm.transaction(db):
         have = settings.stored(db, "install")
@@ -123,6 +133,7 @@ class Value(BaseModel):
     # (#923) the value as the page read it, its version: sent with a whole value (a list, a map) that the page made
     # from it, so a change made since, in another tab or by someone else, isn't lost under it
     was: Any = None
+    confirm: Any = None   # (#1000) the words typed to confirm a guarded change (GUARDS)
 
 
 def _unchanged(body, now, d):

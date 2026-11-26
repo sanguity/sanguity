@@ -245,6 +245,8 @@ class Settings(unittest.TestCase):
         pid = self.fresh_profile()
         m = self.merged(pid)
         for key, s in settings.SETTINGS.items():
+            if s.env and config.source(s.env) == "environment":   # (PUBLIC_ORIGINS, set above: General → Host's, #1000)
+                continue
             self.assertEqual(flat(m)[key], s.default, key)
         self.assertEqual(m["overview"]["keyLabs"], settings.KEY_LABS)
         # the page's own fallback (www/js/core.js) says the same as the server
@@ -348,7 +350,8 @@ class Settings(unittest.TestCase):
         got = ada.get("/api/settings/install").json()["sections"]
         sync = next(s for s in got if s["id"] == "sync")
         self.assertEqual(sync["title"], "Sync defaults")
-        self.assertTrue(all(st["scope"] == "install" and st["can_change"] for sec in got for st in sec["settings"]), got)
+        self.assertTrue(all(st["scope"] == "install" and st["can_change"] == (st["from"] != "environment")
+                            for sec in got for st in sec["settings"]), got)   # (PUBLIC_ORIGINS is set above, #1000)
         self.assertEqual({st["key"]: st["from"] for st in sync["settings"]}["sync.staleDays"], "default")
         self.assertNotIn("names", {s["id"] for s in got})   # only the install's: no profile's or person's settings
         # only admins, and changes pass the CSRF check
