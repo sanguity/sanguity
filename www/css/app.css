@@ -125,7 +125,7 @@ label.switch:has(>input:disabled){cursor:default}
      or role="radiogroup" of <button type="button" role="radio" aria-checked="true|false"> (only the checked one in the tab
      order, arrow keys move: the journal form's kinds), or <label><input type="radio" name="…">Light</label> each, in a
      <fieldset> with its <legend> (the radio stays for the keyboard and forms, see-through over its label: Settings).
-     Add "wrap" where the choices may not fit a phone: they wrap instead of scrolling sideways.
+     Under 700 px every one wraps, its choices then their words; add "wrap" for that wider too, where they may not fit.
      Selected: an accent tint, a bar under it and bold text. Forced colors: the system's highlight.
    ON OR OFF, a toggle chip (.toggle): each shows or hides something by itself, so several can be on.
      <button type="button" class="toggle" aria-pressed="true|false"><span class="key"></span>Visits <span class="n">31</span></button>
@@ -171,10 +171,8 @@ button.toggle,label.toggle{--tone:var(--accent);position:relative;display:inline
   padding:0 var(--sp-3);color:var(--ink2);font:inherit;font-size:var(--fs-3);font-weight:var(--fw-medium);cursor:pointer}
 .chip:hover{border-color:var(--ink2);color:var(--ink)}
 @media (max-width:700px){
-  .seg:not(.wrap){flex:none;overflow-x:auto;scrollbar-width:none}   /* a row of choices too wide scrolls (the period is a pill there, #269) */
-  .seg:not(.wrap)::-webkit-scrollbar{display:none}
-  .seg>button,.seg>label{flex:none}
-  .seg.wrap>button,.seg.wrap>label{flex:1 0 auto}
+  .seg{flex-wrap:wrap}   /* every pick-one wraps: its choices, then their words (#1074, #800, #806: cut, or scrolled with no sign) */
+  .seg>button,.seg>label{flex:1 1 auto;white-space:normal}
   button.toggle,label.toggle{padding:0 var(--sp-3)}
 }
 @media (max-width:640px),(pointer:coarse){ .seg>button,.seg>label,.seg.view-seg>button{min-height:42px} button.toggle,label.toggle,.chip{min-height:44px} }

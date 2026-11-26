@@ -3764,6 +3764,11 @@ Everything on `main` so far; it becomes the first tagged release.
 - **The heatmap's labels stay inside it with larger text** (#1071): at 320 px a row's name ran past the chart's left
   edge, and the counts' heading was crossed by a year's line; names shorten as far as they need, and the line starts
   under the heading.
+- **Charts and switches with larger text on a phone** (#1074, #800, #806): glucose's hours ran together and its
+  range's numbers sat over the curve, the Medications lane's names ran into their bars, and a switch's options were
+  cut ("Birth to 2 years (WHO)", Settings' units) or scrolled with no sign (the Timeline's Newest | Oldest). The hours
+  are thinned to what fits, the numbers placed clear of the data, the names over their bars with room, and every
+  switch wraps on a phone, its options then their words.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

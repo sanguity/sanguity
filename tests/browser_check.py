@@ -2010,6 +2010,16 @@ TEXT_IN849_JS = r"""([sel, box]) => { const out = {n: 0, past: [], said: []}, V 
 TILE_SIZES753 = [(320, 800), (360, 800), (375, 800), (412, 800), (700, 800), (768, 800), (900, 800), (1100, 900), (1400, 900), (844, 390)]
 BIG_TEXT_CSS = ":root{--fs-1:23px;--fs-2:25px;--fs-3:28px;--fs-4:31px;--fs-5:36px;--fs-6:44px;--fs-7:56px} html{font-size:200%}"
 ADOPT_CSS_JS = "css => { const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = css ? [s] : []; }"
+# every pick-one (.seg) shown under root (#1074, #800, #806): {n: its options, bad: one scrolling, past the screen or
+# an option cut or past it, lines: each one's rows of options, but those that wrapped already (.wrap)}
+SEG1074_JS = r"""root => { const r = e => e.getBoundingClientRect(), out = {n: 0, bad: [], lines: []};
+  for (const s of document.querySelectorAll(root + ' .seg')) { if (!s.checkVisibility()) continue; const S = r(s), tops = new Set(), name = s.getAttribute('aria-label') || s.className;
+    if (s.scrollWidth > s.clientWidth + 1) out.bad.push(`${name} scrolls ${s.scrollWidth} in ${s.clientWidth}`);
+    if (S.left < -.5 || S.right > document.documentElement.clientWidth + .5) out.bad.push(`${name} past the screen`);
+    for (const b of s.children) { if (!b.checkVisibility()) continue; const B = r(b); out.n++; tops.add(Math.round(B.top));
+      if (B.left < S.left - 1 || B.right > S.right + 1 || b.scrollWidth > b.clientWidth + 1) out.bad.push(`“${b.textContent.trim()}” cut`); }
+    if (!s.matches('.wrap')) out.lines.push(tops.size); }
+  return out; }"""
 # Labs' Latest (#993) beside the charts' tables, for the period shown: {latest: each row's [lab, unit, its values each
 # [as shown, its flag's word], its line under them (ranges · reported · day …), its change (#995) or null], charts:
 # each lab's chart's [lab, unit, its table's rows, newest first, each its cells' words]}; Labs' view, its labs and
@@ -7276,6 +7286,29 @@ def main():
             check("…each hour's percentiles, worked out from the days' hours, within 3 mg/dL of those of every reading in it; each hour's readings and days counted",
                   pooled303[1] <= 3 and [n for n, _ in pooled303[0]] == [x[0] for x in GLUCOSE_POOLED] and sum(x[0] for x in GLUCOSE_POOLED) == 14 * 288 - 72
                   and [d for _, d in pooled303[0]] == [13 if 1 <= h < 7 else 14 for h in range(24)], pooled303)
+            # #1074: with text at 200% at 320, 360 and 412 px, the profile's labels inside it and none over another (its hours'
+            # "12 PM" and "12 AM" ran together: the ticks thinned to what fits) and its band's numbers over none of the data
+            # (over the evening's peak: room under the band with larger text, else the plot's left, else the first word alone)
+            OVER1074 = r"""() => { const s = document.querySelector('#h-glucose svg.glu-prof'), t = s?.querySelector('text.ck-ref'); if (!t) return 'no band label';
+              const b = t.getBBox(), wash = [...s.querySelectorAll('path')].filter(p => +p.getAttribute('fill-opacity') === .15), hit = [];
+              for (let x = b.x + 2; x < b.x + b.width - 2; x += 2) for (let y = b.y + 2; y < b.y + b.height - 2; y += 2)
+                if (wash.some(p => p.isPointInFill(new DOMPoint(x, y)))) hit.push([Math.round(x), Math.round(y)]);
+              return hit.length ? `“${t.textContent}” over the data at ${hit.length} points` : ''; }"""
+            bad1074, vp1074 = {}, page.viewport_size
+            for w1074 in (320, 360, 412):
+                page.set_viewport_size({"width": w1074, "height": 800})
+                js(ADOPT_CSS_JS, BIG_TEXT_CSS)
+                js("renderHealth()")
+                settle(500)
+                got1074 = js(L633, "#h-glucose svg.glu-prof") + [p for p in [js(OVER1074)] if p]
+                if got1074:
+                    bad1074[w1074] = got1074
+            js(ADOPT_CSS_JS, "")
+            page.set_viewport_size(vp1074)
+            js("renderHealth()")
+            settle(400)
+            check("…with text at 200% at 320, 360 and 412 px, its labels inside it, none over another, its band's numbers over none of the data (#1074: "
+                  "“12 PM” over “12 AM”, “70–180” over the evening's peak)", not bad1074, bad1074)
             js("state.from = zParse(GLUCOSE_DAY + 'T00:00'); state.to = zParse(GLUCOSE_DAY + 'T23:59'); state.preset = 'custom'; renderHealth()".replace("GLUCOSE_DAY", repr(GLUCOSE_GAP_DAY)))
             settle(400)
             one303 = js(P303)
@@ -14072,6 +14105,51 @@ def main():
             check("…and a journal entry's Kind and a dose's What happened, every option whole inside its switch, at 320, 360 and 412 px with text at 100% "
                   "to 200%, one line as usual from 360 px (#1024: “Side effect”, “Mood” and “Skipped” were cut, the switch scrolling with no scrollbar)",
                   not bad1024 and n1024 == 3 * 4 * 7, bad1024 or n1024)
+            # ---- #1074 (#800, #806): …and every pick-one under 700 px wraps, its options then their words: .seg.wrap kept each
+            # option as wide as its words (Settings' "mg/dL, g/dL (conventional)" and "Follow the system", Security's
+            # "Everyone signed in" cut), and the others scrolled with their scrollbar hidden (the Timeline's Newest | Oldest).
+            # At 320, 360 and 412 px with text at 200%, the records tabs' and Settings' (Display, General, About, Backups):
+            # every option whole inside its switch, none scrolling; as usual at 360 and 412 px each one line (but those made to
+            # wrap before: Lab tests' units on two or three)
+            bad1074s, n1074s, was1074 = {}, 0, js("state.tab")
+            for w in (320, 360, 412):
+                page.set_viewport_size({"width": w, "height": 800})
+                for big in (True, False) if w > 320 else (True,):
+                    js(ADOPT_CSS_JS, BIG_TEXT_CSS if big else "")
+                    for tab, view in (("timeline", "timeline"), ("timeline", "journal"), ("health", None), ("costs", None), ("labs", "chart")):
+                        js("([t, v]) => { switchTab(t, v || undefined); renderAll(); }", [tab, view])
+                        settle(400)
+                        got = js(SEG1074_JS, "main")
+                        n1074s += got["n"]
+                        if got["bad"] or (not big and any(n > 1 for n in got["lines"])):
+                            bad1074s[f"{tab} {view or ''} at {w} px{', 200%' if big else ''}"] = got
+            js("t => { document.adoptedStyleSheets = []; switchTab(t); renderAll(); }", was1074)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(300)
+            ctx1074 = browser.new_context(viewport={"width": 320, "height": 800}, bypass_csp=True)
+            ctx1074.add_cookies([c for c in page.context.cookies() if c["name"] == "sg_session"])
+            p1074 = ctx1074.new_page()
+            try:
+                p1074.goto(base + "/settings.html?profile=1")
+                p1074.wait_for_selector(".set-nav a[data-group='display']", state="attached", timeout=15000)
+                for w in (320, 360, 412):
+                    p1074.set_viewport_size({"width": w, "height": 800})
+                    for big in (True, False) if w > 320 else (True,):
+                        p1074.evaluate(ADOPT_CSS_JS, BIG_TEXT_CSS if big else "")
+                        for g in ("display", "general", "about", "backups"):
+                            p1074.evaluate("g => document.querySelector(`.set-nav a[data-group='${g}']`).click()", g)
+                            p1074.wait_for_timeout(500)
+                            got = p1074.evaluate(SEG1074_JS, "main")
+                            n1074s += got["n"]
+                            if got["bad"] or not got["n"] or (not big and any(n > 1 for n in got["lines"])):
+                                bad1074s[f"Settings → {g} at {w} px{', 200%' if big else ''}"] = got
+            except Exception as e:
+                bad1074s["stopped"] = stopped(e)
+            finally:
+                ctx1074.close()
+            check("…and every switch under 700 px wraps, its options then their words (#1074, #800, #806: options cut, or scrolled with no sign): at 320, 360 "
+                  "and 412 px with text at 200%, on the records tabs and Settings' Display, General, About and Backups, every option whole inside its switch, "
+                  "none scrolling; as usual at 360 and 412 px each one line", not bad1074s and n1074s >= 300, bad1074s or n1074s)
             # ---- #785: #622's check above 700 px, where the tabs are in the top bar, all under More where they don't fit: at
             # 701, 768, 900, 1024 and 1100 px and on a phone on its side (844×390, 915×412, a touch screen), with text as
             # usual and at 130%, 150% and 200%, on the records page (Body and activity, the longest tab's name) and every
@@ -14323,14 +14401,20 @@ def main():
             # ---- #643: each medication's name whole on the Timeline's Medications lane and the Medications tab's lane (it was cut
             # to "Acyclo…" at 200%, its title no help on a touch screen): in the gutter broken into lines, or over its row where a
             # word doesn't fit there, at 360 and 412 px, light and dark, with text at 200% and as usual, a long name put in for
-            # the check (and taken out); every label inside its chart, none over another (#633's L633)
+            # the check (and taken out); every label inside its chart, none over another (#633's L633); and at 320 px, no name
+            # over a bar (#1074: a name over its bars ran into them at 200%)
+            BARS1074 = r"""sel => { const r = e => e.getBoundingClientRect(), out = [];
+              for (const s of document.querySelectorAll(sel)) { if (!s.checkVisibility()) continue; const bars = [...s.querySelectorAll('.medbar')].map(r);
+                for (const t of s.querySelectorAll('text.medname')) { const a = r(t);
+                  if (bars.some(b => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom - .5)) out.push(`“${t.textContent.slice(0, 20)}” over a bar`); } }
+              return out; }"""
             NAMES643 = r"""sel => [...document.querySelectorAll(sel + ' text.medname')].filter(t => t.checkVisibility())
               .map(t => [...(t.querySelector('tspan') ? t.querySelectorAll('tspan') : [t])].map(l => l.firstChild.textContent).join(' '))"""
             LONG643 = "Amoxicillin 875 mg and clavulanate potassium 125 mg tablet"
             was643 = js("[MEDS[0].name, state.preset, document.documentElement.dataset.theme || null]")
             js("n => { MEDS[0].name = n; applyPreset('all'); }", LONG643)
             bad643 = {}
-            for w in (360, 412):
+            for w in (320, 360, 412):
                 page.set_viewport_size({"width": w, "height": 800})
                 for mode in ("light", "dark"):
                     for big in (False, True):
@@ -14343,7 +14427,7 @@ def main():
                             names = js(NAMES643, sel)
                             got += [f"{tab}: “{n}” not whole" for n in names if n not in js("MEDS.map(m => m.name)")]
                             got += [f"{tab}: no “{LONG643}”"] if LONG643 not in names else []
-                            got += [f"{tab}: {p}" for p in js(L633, sel)]
+                            got += [f"{tab}: {p}" for p in js(L633, sel) + js(BARS1074, sel)]
                         if got:
                             bad643[f"{w} {mode}{' 200%' if big else ''}"] = got[:8]
             js("""w => { MEDS[0].name = w[0]; document.adoptedStyleSheets = []; if (w[2]) document.documentElement.dataset.theme = w[2]; else delete document.documentElement.dataset.theme;
@@ -14351,7 +14435,8 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 900})
             settle(300)
             check("…and each medication's name whole on the Timeline's Medications lane and the Medications tab's (#643: cut to “Acyclo…”), a long one "
-                  "among them, at 360 and 412 px, light and dark, with text at 200% and as usual, inside the chart and none over another", not bad643, bad643)
+                  "among them, at 320 (#1074), 360 and 412 px, light and dark, with text at 200% and as usual, inside the chart and none over another nor over a "
+                  "bar", not bad643, bad643)
             # ---- #978: …and on Labs' event track, whose Medications row draws each name over its spans: it was cut to the
             # plot and to 40 letters ("Amoxicillin 875 mg and clavulanate pota…"), the whole name nowhere a touch screen could
             # reach. At 360, 412 and 1400 px, light and dark, with text at 200% and as usual, the medications ticked on Labs
@@ -25396,6 +25481,20 @@ def main():
                   heads == ["Weight for age (kg)", "Length for age (cm)", "Head circumference for age (cm)"] and curves == [[5, 8], [5, 8], [5, 8]]
                   and all("(corrected: 17 months)" in l_ for l_ in lst) and "Before 2 years, ages are corrected for being born early" in page.inner_text("#h-growth")
                   and js("document.activeElement.textContent") == "Birth to 2 years (WHO)", (heads, curves, lst[:1]))
+            # #1074: …its switch at 320, 360 and 412 px with text at 200%, each choice whole (“Birth to 2 years (WHO)” was cut
+            # to “(WH” at 320 and 360 px)
+            bad1074g, vp1074g = {}, page.viewport_size
+            for w1074 in (320, 360, 412):
+                page.set_viewport_size({"width": w1074, "height": 800})
+                js(ADOPT_CSS_JS, BIG_TEXT_CSS)
+                settle(400)
+                got1074 = js(SEG1074_JS, "#h-growth")
+                if got1074["bad"] or got1074["n"] < 4:
+                    bad1074g[w1074] = got1074
+            js(ADOPT_CSS_JS, "")
+            page.set_viewport_size(vp1074g)
+            settle(300)
+            check("…its switch's choices whole at 320, 360 and 412 px with text at 200% (#1074: “Birth to 2 years (WH”)", not bad1074g, bad1074g)
             page.click("#h-growth .view-seg button:text-is('Table')")
             settle(300)
             tbg = js("(() => { const t = document.querySelector('#h-growth table.data'); return [[...t.querySelectorAll('thead th')].map(h => h.textContent), "

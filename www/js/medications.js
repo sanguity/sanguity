@@ -130,7 +130,7 @@ function drawMedLane(svg, rows, a, b) {
   const col = Math.min(Math.max(...rows.map(m => labelW(m.name, "medname"))) + 12, w * (w < 600 ? .34 : .25)), over = !rows.every(m => medLines(m.name, col - 8)), L = over ? 8 : col;
   const lay = rows.map(m => {
     const lines = medLines(m.name, over ? R - L : L - 8) || [ckFit(m.name, "medname", R - L)];
-    return {m, lines, h: over ? (12 + (lines.length - 1) * MED_LH) * k + 14 : Math.max(24, lines.length * MED_LH + 8) * k};
+    return {m, lines, h: over ? medOverH(lines.length, k) : Math.max(24, lines.length * MED_LH + 8) * k};
   });
   const plotB = top + lay.reduce((s, r) => s + r.h, 0), x = ckScale(a, b, L, R), tk = ckTimeTicks(a, b, x, w), g = [];
   svg.setAttribute("viewBox", `0 0 ${w} ${plotB + ckAxisH(tk.rows)}`); svg.setAttribute("height", plotB + ckAxisH(tk.rows));

@@ -790,8 +790,9 @@ function gDayChart(box, rows, label) {
   requestAnimationFrame(() => {
     if (!svg.isConnected) return;
     let lo = Math.min(G.inStd[0], ...have.map(r => r.p[0])), hi = Math.max(G.inStd[1], ...have.map(r => r.p[4]));
-    const pad = (hi - lo) * .08; lo = Math.max(0, lo - pad); hi += pad;
-    const ticks = niceTicks(lo, hi, 5), k = ckK(), w = Math.max(260, box.clientWidth), L = Math.max((w < 480 ? 36 : 44) * k, ...ticks.map(v => labelW(ckNum(v), "") + 10));   // (as wide as its numbers, #654)
+    // (its foot lower with larger text, as its labels grow: room under the band for its numbers, #1074: over the curve at 200%)
+    const k = ckK(), pad = (hi - lo) * .08; lo = Math.max(0, lo - pad * k); hi += pad;
+    const ticks = niceTicks(lo, hi, 5), w = Math.max(260, box.clientWidth), L = Math.max((w < 480 ? 36 : 44) * k, ...ticks.map(v => labelW(ckNum(v), "") + 10));   // (as wide as its numbers, #654)
     const R = w - 8, T = 8 * k, B = T + 180, x = ckScale(0, 24, L, R);
     const y = ckScale(lo, hi, B, T), g = [], tk = ckHourTicks(x, w), st = {a: 0, b: 24, lo: G.inStd[0], hi: G.inStd[1]};
     svg.setAttribute("viewBox", `0 0 ${w} ${B + ckAxisH(tk.rows)}`); svg.setAttribute("height", B + ckAxisH(tk.rows)); svg._geom = {L, R, T, B, w};
