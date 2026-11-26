@@ -2064,13 +2064,52 @@ def font_swap(browser, state, url, width):
     return changed, len(before), round(shift, 4), fonts_before, fonts_after
 
 
+def sections_of_main():
+    """#1029: main()'s sections, by its "# ---- " comments: [(first line, title)], for the time each took."""
+    first = main.__code__.co_firstlineno
+    with open(os.path.abspath(__file__), encoding="utf-8") as f:
+        marks = [(i, re.sub(r"^\s*# ---- ", "", s).strip()) for i, s in enumerate(f, 1) if i > first and re.match(r"\s*# ---- ", s)]
+    return [(first, "the start (under the CSP, sign-in)")] + marks
+
+
+def check_line():
+    """#1029: the line of main() a check was made from, through any helper it called."""
+    f = sys._getframe(2)
+    while f is not None and f.f_code is not main.__code__:
+        f = f.f_back
+    return f.f_lineno if f is not None else 0
+
+
+def time_summary(timings, total, marks, slowest=40):
+    """#1029: the slowest checks and the time per section (marks: sections_of_main()), each check counted from the one before it."""
+    import bisect
+    starts, per = [m[0] for m in marks], {}
+    for dt, _, line in timings:
+        k = max(bisect.bisect_right(starts, line) - 1, 0)
+        per[k] = per.get(k, 0) + dt
+    print(f"\nThe {slowest} slowest checks (seconds since the check before; line of main):")
+    for dt, name, line in sorted(timings, key=lambda t: -t[0])[:slowest]:
+        print(f"{dt:8.1f}  L{line:<6} {name[:150]}")
+    print("\nTime per section (seconds; the section's first line):")
+    for k, s in sorted(per.items(), key=lambda kv: -kv[1]):
+        print(f"{s:8.1f}  L{marks[k][0]:<6} {marks[k][1][:150]}")
+    print(f"\n{total / 60:.1f} minutes in all, {sum(t[0] for t in timings) / 60:.1f} of them up to the last check", flush=True)
+
+
 def main():
+    t0, sections = time.monotonic(), sections_of_main()   # (read before the file can change under a long run)
     srv, base = start_app()
     problems, passed = [], []
     acct_field = {}   # #332: a field on Account, light and dark, for sign-in's and setup's to match
+    timings, since = [], [t0]   # #1029: each check's seconds since the one before, its name and line, printed as it goes
 
     def check(name, ok, detail=""):
-        (passed if ok else problems).append(f"{name}{': ' + str(detail) if detail != '' else ''}")
+        text = f"{name}{': ' + str(detail) if detail != '' else ''}"
+        (passed if ok else problems).append(text)
+        now = time.monotonic()
+        timings.append((now - since[0], name, check_line()))
+        print(f"{'ok' if ok else 'FAIL':6}{now - since[0]:6.1f}s  {text}", flush=True)
+        since[0] = now
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
@@ -29341,8 +29380,11 @@ def main():
     time.sleep(0.3)
     shutil.rmtree(TMP, ignore_errors=True)
 
-    for x in passed:
-        print("ok    ", x)
+    time_summary(timings, time.monotonic() - t0, sections)   # each check was printed as it was made (#1029); the problems again here
+    if os.environ.get("BROWSER_CHECK_NAMES"):   # #1029: every check's name, a line each, to compare two runs' checks
+        with open(os.environ["BROWSER_CHECK_NAMES"], "w", encoding="utf-8") as f:
+            f.writelines(name.replace("\n", " ") + "\n" for _, name, _ in timings)
+    print()
     for x in problems:
         print("FAIL  ", x)
     print(f"\n{len(passed)} passed, {len(problems)} failed")
