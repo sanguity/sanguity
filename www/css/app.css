@@ -1503,7 +1503,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .share .share-pic{margin:0;max-width:240px;min-width:0}
 .share .share-pic img{display:block;max-width:100%;border-radius:var(--r-md);border:1px solid var(--ring)}
 .share .share-pic figcaption{font-size:var(--fs-2);color:var(--ink2)}
-@media (forced-colors:active){.jbody .jreg,.jmood rect{forced-color-adjust:none}.jbody .jreg{stroke:CanvasText}.jbody .jreg.on,.jbmap .jreg.has{fill:Highlight}}
+@media (forced-colors:active){.jbody .jreg,.jmood rect{forced-color-adjust:none}.jbody .jreg,.jbody .jreg:is(:focus-visible,.on),.jbmap .jreg.has:is(:hover,:focus-visible),.jmood:is(:focus-visible,.sel)>rect:first-child{stroke:CanvasText}.jbody .jreg.on,.jbmap .jreg.has{fill:Highlight}}
 
 /* ---- install as a phone app (#56): the offline view (js/offline.js) and the Account choice (js/pwa.js) */
 .offline-banner{max-width:1500px;margin:var(--sp-3) auto 0;box-sizing:border-box;border-color:var(--c-study);font-size:var(--fs-3);width:calc(100% - 40px)}
@@ -2292,8 +2292,11 @@ th>.cell-btn{font-weight:inherit;white-space:nowrap}
 .h-secbar{margin:0 0 var(--sp-2)}
 .h-sec>h2{margin:var(--sp-5) 0 var(--sp-3)}
 .h-sec .tile .delta{min-height:2lh}   /* a delta that wraps in one font only moves nothing (#329), as in one row of all */
-/* forced colours miss SVG: its marks in the app's ink in the system's (#975: 1.18:1, the theme opposite) */
-@media (forced-colors:active){ #view-health{--ink:CanvasText;--ink2:CanvasText;--muted:CanvasText} }
+/* forced colours miss SVG: its marks in the app's ink in the system's (#975: 1.18:1, the theme opposite); the
+   rings, medications' and doses' marks on the system's background too (#1038), not the heatmap's .hm-mark on its cells */
+@media (forced-colors:active){ #view-health{--ink:CanvasText;--ink2:CanvasText;--muted:CanvasText}
+  :is(.ev,.jmark):is(:hover,.sel),.jmark:focus-visible,:is(.medbar,.medfill).ev:is(:hover,.sel),.medchange,.medstop,.medsupply,.dosemark.skipped{stroke:CanvasText}
+  .medbar,.medopen,.medfill,.medfill.ev:is(:hover,.sel),.dosemark{fill:CanvasText} }
 
 /* ---- menstrual cycle tracking, opt-in (#183, cycle.js and sources-cycle.js): its own colour (--c-cycle in
    tokens.css), the lane's and charts' marks (their shapes: util.js KIND_SHAPE), and the Sources card's lists */
@@ -2303,7 +2306,7 @@ th>.cell-btn{font-weight:inherit;white-space:nowrap}
 .cy-list li{margin:3px 0}
 .cy-reach{margin-top:var(--sp-3)}
 #exportCycleWrap{margin:var(--sp-1) 0 var(--sp-2)}
-@media (forced-colors:active){ .cymark{forced-color-adjust:none} }
+@media (forced-colors:active){ .cymark{forced-color-adjust:none} .cymark:is(:hover,:focus-visible,.sel){stroke:CanvasText} }
 
 /* ---- ECG recordings in the drawer (#182, ecg.js): the trace drawn small, 10 seconds a row, its readout and summary */
 .ecg-trace{margin:var(--sp-1) 0 var(--sp-2)}

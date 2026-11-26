@@ -11020,6 +11020,34 @@ def main():
               for (const m of document.querySelectorAll(sel)) { out.n++; const c = getComputedStyle(m).stroke; if (!sys.has(c)) out.bad.push(c); }
               out.bad = [...new Set(out.bad)]; return out; }"""
             RINGS1035, ring1035 = 'svg circle[fill="none"][stroke="var(--ink)"]', {}
+            # (#1038: …and every other kind of mark drawn in the app's ink outside Body, on the system's background: the
+            # events', journal's, mood's and cycle's rings, a medication's span, its ring, change, stop, open end, fills and
+            # supply, the doses, the body map's regions' outlines and an ECG's trace. Each drawn by its own classes, in its
+            # own state (chosen, under the pointer, focused), and seen at its opacity over Canvas: 3:1 or more)
+            MARKS1038 = r"""() => { const wrap = document.createElement('div'), r = 'x="2" y="2" width="16" height="16"', ln = 'x1="2" x2="18" y1="10" y2="10"';
+              const mk = (c, at = '', tag = 'rect', geo = r) => `<svg class="${tag === 'path' ? 'jbody' : ''}" width="20" height="20"><${tag} class="${c}" ${geo} ${at}/></svg>`;
+              wrap.className = 'm1038 jbfigs jbmap'; wrap.style.cssText = 'position:fixed;left:0;top:0;z-index:9999';
+              const kinds = {"an event's ring": mk('ev sel', 'fill="var(--c-lab)"'), "a journal mark's ring": mk('ev jmark sel', 'fill="var(--c-journal)"'),
+                "a journal mark's ring on Labs' charts, focused": mk('jmark', 'tabindex="0" fill="var(--c-journal)"'), "a cycle mark's ring": mk('ev cymark sel', 'fill="var(--c-cycle)"'),
+                "a mood's ring": `<svg width="20" height="20"><g class="ev jmood sel"><rect ${r} fill="transparent"/></g></svg>`,
+                "a medication's span": mk('medbar ev', 'fill="var(--muted)" fill-opacity=".55"'), "a medication's span's ring": mk('medbar ev sel', 'fill="var(--muted)"'),
+                "its open end": mk('medopen', 'fill="var(--muted)" fill-opacity=".6"'), "a dose change's line": mk('medchange', '', 'line', ln), "a stop's line": mk('medstop', '', 'line', ln),
+                "a fill's supply line": mk('medsupply', '', 'line', ln), "a pharmacy fill": mk('medfill ev'), "a pharmacy fill, chosen": mk('medfill ev sel'),
+                "a dose taken": mk('dosemark taken'), "a dose taken late": mk('dosemark late'), "a dose skipped's ring": mk('dosemark skipped'),
+                "a body map region's outline, focused": mk('jreg', 'tabindex="0"', 'path', 'd="M2,2h16v16h-16z"'), "a body map region's outline, picked": mk('jreg on', '', 'path', 'd="M2,2h16v16h-16z"'),
+                "a body map region's outline with entries, under the pointer": mk('jreg has', '', 'path', 'd="M2,2h16v16h-16z"'), "an ECG's trace": mk('ecg-line', '', 'polyline', 'points="2,2 10,18 18,2"')};
+              wrap.innerHTML = Object.entries(kinds).map(([k, m]) => m.replace('<svg ', `<svg data-k="${k}" `)).join(''); document.body.append(wrap); }"""
+            SEEN1038 = r"""pick => { const probe = c => { const s = document.createElement('span'); s.style.forcedColorAdjust = 'none'; s.style.color = c; document.body.append(s);
+                const v = getComputedStyle(s).color; s.remove(); return v; };
+              const rgb = c => /^color\(srgb /.test(c) ? c.slice(11).split(/[\s/)]+/).slice(0, 3).map(v => v * 255) : (c.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+              const lum = a => { const [r, g, b] = a.map(v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }); return .2126 * r + .7152 * g + .0722 * b; };
+              const bg = rgb(probe('Canvas')), out = {n: 0, bad: []};
+              for (const s of document.querySelectorAll('.m1038 svg')) { const k = s.dataset.k; if (!RegExp(pick).test(k)) continue; const m = s.querySelector('rect, line, path, polyline'), c = getComputedStyle(m); out.n++;
+                const p = /ring|outline|line|trace/.test(k) ? 'stroke' : 'fill', a = +c[p + 'Opacity'] * +c.opacity, seen = rgb(c[p]).map((v, i) => a * v + (1 - a) * bg[i]);
+                const x = lum(seen), y = lum(bg), cr = (Math.max(x, y) + .05) / (Math.min(x, y) + .05);
+                if (!(cr >= 3)) out.bad.push(`${k}: ${p} ${c[p]}, ${cr.toFixed(2)}:1`); }
+              return out; }"""
+            mark1038 = {}
             was1013, rim1013 = js("[document.documentElement.dataset.theme || null, matchMedia('(prefers-color-scheme: dark)').matches, [...state.sel], state.preset, state.tab, state.labsView]"), {}
             for system1013 in ("dark", "light"):
                 way1013 = f"the system {system1013}, the app {'light' if system1013 == 'dark' else 'dark'}"
@@ -11036,6 +11064,15 @@ def main():
                 settle(500)
                 rim1013[f"{way1013}: Compare"] = js(RIM1013, "#labsCompare svg :is(circle, path, rect, polygon)")
                 ring1035[f"{way1013}: Compare"] = js(RING1035, "#labsCompare " + RINGS1035)
+                js(MARKS1038)
+                page.hover(".m1038 [data-k*=pointer] path")
+                js("() => document.querySelector('.m1038 [data-k*=focused] path').focus({focusVisible: true})")
+                mark1038[way1013] = js(SEEN1038, "^(?!.*Labs)")
+                js("() => document.querySelector('.m1038 [data-k*=Labs] rect').focus({focusVisible: true})")
+                labs1038 = js(SEEN1038, "Labs")
+                mark1038[way1013] = {"n": mark1038[way1013]["n"] + labs1038["n"], "bad": mark1038[way1013]["bad"] + labs1038["bad"]}
+                js("() => { document.activeElement.blur(); document.querySelector('.m1038').remove(); }")
+                page.mouse.move(700, 450)
             page.emulate_media(forced_colors="none", color_scheme="dark" if was1013[1] else "light")
             js("""([t, , sel, preset, tab, view]) => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
               state.sel = new Set(sel); applyPreset(preset); switchTab(tab, tab === 'labs' ? view : undefined); }""", was1013)
@@ -11045,6 +11082,9 @@ def main():
                   all(v["n"] and not v["bad"] for v in rim1013.values()) and all(v["pt"] for k, v in rim1013.items() if "Compare" not in k), rim1013)
             check("…and the charts' hover ring is a system colour in forced colours, both ways (#1035: in the app's ink it stayed rgb(238, 236, 230) on "
                   "the system's white): Labs' charts, a lab's panel and Compare", all(v["n"] and not v["bad"] for v in ring1035.values()), ring1035)
+            check("…and every other kind of mark in the app's ink outside Body is 3:1 or more on the system's background, both ways (#1038: the "
+                  "events', journal's, mood's and cycle's rings, medications' and doses' marks and the body map's outlines kept the app's ink, 1.18:1)",
+                  all(v["n"] == 20 and not v["bad"] for v in mark1038.values()), mark1038)
             # ---- #984: …and Body and activity's coloured steps, either theme: the steps' bars (the measure's teal at 30%) were
             # about 1.5:1 on the system's black, sleep's deep stage (--seq1) 2.5:1 on it and the dark theme's 1.8:1 on white.
             # In forced colours, the system dark and light, the app light and dark, in 90 days (a bar a night, a bar a day) and
