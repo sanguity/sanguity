@@ -10580,6 +10580,28 @@ def main():
                   "on the system's black), the day's heart rate, clinic and meter readings, the dots' rims, a target's band, BMI's categories, the "
                   "stays and their legend keys, in All and in 90 days", all(v["n"] > 0 and not v["bad"] for v in ink975.values()),
                   {k: v for k, v in ink975.items() if not v["n"] or v["bad"]})
+            # ---- #1014: …and glucose's "Below 54" and "Above 180" shares, near the system's text both (--seq1 and --ink2
+            # since #975 and #984), told apart by more than their colour: in forced colours, the system dark and light and
+            # the app light and dark, the bar's over-180 share and its key hatched and the under-54's not; out of forced
+            # colours, no share or key patterned (as before)
+            GLU1014 = r"""() => Object.fromEntries(['g-lt54', 'g-gt180'].map(k => [k, [...document.querySelectorAll(`#h-glucose :is(.glu-bar span, .glu-tir li i).${k}`)]
+              .filter(e => e.checkVisibility()).map(e => (b => b === 'none' ? 'plain' : /gradient/.test(b) ? 'hatched' : b)(getComputedStyle(e).backgroundImage))]))"""
+            was1014, glu1014 = js("[document.documentElement.dataset.theme || null, matchMedia('(prefers-color-scheme: dark)').matches, state.tab, state.preset]"), {}
+            for system1014 in ("dark", "light"):
+                for forced1014 in ("active", "none"):
+                    page.emulate_media(color_scheme=system1014, forced_colors=forced1014)
+                    for app1014 in ("light", "dark"):
+                        js("t => { document.documentElement.dataset.theme = t; applyPreset('90d'); switchTab('health'); }", app1014)
+                        settle(500)
+                        glu1014[f"the system {system1014}{', forced' if forced1014 == 'active' else ''}, the app {app1014}"] = js(GLU1014)
+            page.emulate_media(forced_colors="none", color_scheme="dark" if was1014[1] else "light")
+            js("""([t, , tab, preset]) => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+              applyPreset(preset); switchTab(tab, tab === 'labs' ? 'chart' : undefined); }""", was1014)
+            settle(300)
+            check("…and glucose's under-54 and over-180 shares told apart by more than their colour in forced colours (#1014: both near the system's text): "
+                  "the over-180 share and its key hatched, the under-54's plain, any theme; out of forced colours neither patterned",
+                  all(v == ({"g-lt54": ["plain"] * 2, "g-gt180": ["hatched"] * 2} if "forced" in k else {"g-lt54": ["plain"] * 2, "g-gt180": ["plain"] * 2})
+                      for k, v in glu1014.items()), glu1014)
             # their labels (#312): at 1400, 375 and 320 px each one on the Timeline and Body and activity is inside its plot
             # with no mark on it; one shortened to fit ends in "…" and keeps the full names in its title; a Body and
             # activity chart's aria-label names them (Labs names them on its event track, #294: TRACK_JS). Body names them

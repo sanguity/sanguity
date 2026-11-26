@@ -2273,7 +2273,8 @@ th>.cell-btn{font-weight:inherit;white-space:nowrap}
 .glu-tir li i{display:inline-block;width:10px;height:10px;border-radius:2px}
 .glu-tir li b{color:var(--ink);font-weight:var(--fw-semibold);font-variant-numeric:tabular-nums}
 .glu-tir .hint{margin:var(--sp-1) 0 0}
-@media (forced-colors:active){ .glu-bar span,.glu-tir li i{forced-color-adjust:none} }
+@media (forced-colors:active){ .glu-bar span,.glu-tir li i{forced-color-adjust:none}
+  .glu-tir .g-gt180{background-image:repeating-linear-gradient(-45deg,Canvas 0 2px,transparent 0 4px)} }   /* not under 54's alone by colour (#1014) */
 
 /* ---- home and clinic readings on Body and activity (#180) */
 .vital-list{list-style:none;margin:2px 0 0;padding:0;font-size:var(--fs-3)}
