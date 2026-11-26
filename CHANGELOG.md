@@ -3778,6 +3778,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Copies of a changed record from before #1022 become one** (#1068): once #1032 had keyed them alike, a connected
   source's copies stayed doubled; at start-up each is one record saying what the latest pull says, with its
   corrections (undoing that pull puts back what the one before brought), and the app's log and Activity say how many.
+- **Server settings fail closed when they can't be read** (#1046): a database busy or briefly missing gave the
+  defaults for a moment (profiles for everyone among them); it keeps the values read before, and with none yet,
+  Security's strictest permissions and limits (profiles admins only), signing no one out.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
