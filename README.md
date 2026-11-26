@@ -668,8 +668,9 @@ sources' return address, come from the same public address.
   typing its name, the watch receiver's copy of its phone data included; the original exports and older backups are
   left alone.
 - **Activity log:** each profile's owners can see who opened its records and documents, and who shared, renamed or
-  changed it, and when (**Sharing → Activity**); admins see account changes (**Settings > Install activity**). Entries are kept for a year
-  (`ACTIVITY_DAYS` in `.env`).
+  changed it, and when (**Sharing → Activity**); admins see account changes (**Settings > Install activity**). Entries are kept for a year, or
+  what an admin sets under **Settings → General → Backups and logging** (30 days to 10 years; fewer days asks first,
+  with the count of entries the next daily clean-up deletes), unless `ACTIVITY_DAYS` in `.env` sets it there.
 - **Encrypted at rest** (AES-256-GCM): records, documents, settings and the sensitive database fields are
   unreadable without the key in `auth/data_key`, so a copied data folder or backup gives nothing away. See
   [Encryption at rest](#encryption-at-rest).

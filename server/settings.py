@@ -42,8 +42,12 @@ class SettingError(ValueError):
 
 class Setting:
     def __init__(self, key, section, label, default, check, scope="profile", private=True, kind=None, help="",
-                 merge=False, reread=False, screen=True, env=None):
+                 merge=False, reread=False, screen=True, env=None, confirm=None):
         self.key, self.section, self.label, self.default, self.check = key, section, label, default, check
+        # (#1002) an install setting whose change can delete something: confirm(db, before, after) -> None when nothing
+        # goes, else {"count": how many go, "message": what goes, in words}; the change is made only once the admin has
+        # typed the count (routes_settings._confirmed)
+        self.confirm = confirm
         self.scope, self.private, self.kind, self.help, self.merge = scope, private, kind, help, merge
         self.env = env   # the variable of config.VARS it stands for (#999): the environment's value wins over it
         self.reread = reread   # a stored value is checked again when read: its check gives older values in today's terms
@@ -692,11 +696,38 @@ define("journal.groups", "journal", "Symptom groups", [], _groups_check, kind="g
             "its own severity.")
 
 
+# ---------------------------------------------------------------- General → Backups and Logging (#1002)
+section("logging", "Logging", "What the server keeps of who did what.")
+_entries = lambda k: f"{k:,} {'entry' if k == 1 else 'entries'}"   # noqa: E731
+
+
+def _activity_goes(db, before, after):
+    """(#1002) Fewer days of activity kept: the entries the next daily clean-up then deletes (activity.py), every
+    profile's and the install's own, counted."""
+    if after >= before:
+        return None
+    profiles, install = db.execute("SELECT IFNULL(SUM(profile_id IS NOT NULL), 0), IFNULL(SUM(profile_id IS NULL), 0) "
+                                   "FROM activity WHERE at < ?", (dbm.now() - after * 86400,)).fetchone()
+    if not profiles + install:
+        return None
+    return {"count": profiles + install,
+            "message": f"Keeping {after} days of activity instead of {before} deletes {_entries(profiles + install)} older "
+                       f"than {after} days at the next daily clean-up: {_entries(profiles)} of the profiles' activity "
+                       f"and {_entries(install)} of the install's own. They can't be brought back."}
+
+
+define("activity.days", "logging", "Activity kept for (days)", 365, whole(30, 3650, "The days of activity kept"),
+       scope="install", private=False, kind="number", env="ACTIVITY_DAYS", confirm=_activity_goes,
+       help="Each profile's activity and the install's own: older entries are deleted once a day.")
+
+
 # ---------------------------------------------------------------- storage
+INSTALL_ROWS = "profile_id IS NULL AND user_id IS NULL"   # the install's own values: a restore keeps today's (#1005)
+
 
 def _where(scope, pid, uid):
     if scope == "install":
-        return "profile_id IS NULL AND user_id IS NULL", ()
+        return INSTALL_ROWS, ()
     if scope == "profile":
         return "profile_id=? AND user_id IS NULL", (pid,)
     return "profile_id IS NULL AND user_id=?", (uid,)

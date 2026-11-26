@@ -3608,6 +3608,10 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Install's cards are drawn on a slow device or connection too** (#1028): Admin's start asked Outside connections'
   script to draw once its own first answer came, and where that script hadn't loaded yet, it stopped there and the
   cards after it were never drawn. Settings → Install starts once all of its scripts are there.
+- **General → Backups and logging** (#1002): the backups folder and the encryption key (its path and how many keys),
+  each with what mounts it on this kind of install, and the schedule linking to Backups; how long activity is kept
+  (`ACTIVITY_DAYS`), where fewer days asks first, with the count of entries it deletes to type; and where the app's
+  output and its security log are read.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

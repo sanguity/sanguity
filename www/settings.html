@@ -152,6 +152,12 @@
     <h2>General</h2>
     <p class="hint">This server's own settings.</p>
   </section>
+  <!-- General → Backups and logging (#1002, gen-backups.js) -->
+  <section class="card conn adm" id="gen-backups" hidden>
+    <h2>Backups and logging</h2>
+    <p class="hint">Where this server keeps its backups and its logs, and how long it keeps activity.</p>
+    <div id="genBk"></div>
+  </section>
 
   <!-- Accounts, and requiring two-factor sign-in (admin.js) -->
   <section class="card conn adm" id="users" hidden>
@@ -345,6 +351,7 @@
 <script src="js/admin-sources.js"></script>
 <script src="js/admin-backups.js"></script>
 <script src="js/outside.js"></script>
+<script src="js/gen-backups.js"></script>
 <script src="js/settings-nav.js"></script>
 </body>
 </html>
