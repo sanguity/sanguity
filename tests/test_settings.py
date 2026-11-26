@@ -843,6 +843,46 @@ class Settings(unittest.TestCase):
         self.assertEqual(reset(json={"confirm": "1"}).status_code, 200)
         self.assertEqual(config.setting("ACTIVITY_DAYS"), 365)
 
+    def test_a_change_that_applies_later_is_asked_now(self):   # #1042
+        """With saved settings left out (SANGUITY_SAVED_SETTINGS=off), a change to an install setting that's asked first
+        is asked all the same, from the value saved here, the one that applies once the flag is taken out (it was saved
+        unasked, and took effect then): fewer days of activity, a shorter sign-in. And a reset of one the environment
+        sets, from the value saved here to the default, which applies if the variable is taken out."""
+        ada, now = self.c["ada"], dbm.now()
+        ada.post("/api/me/reauth", json={"secret": PW["ada"]}, headers=H)
+        put = lambda k, v, **kw: ada.put(f"/api/settings/install/{k}", json={"value": v, **kw}, headers=H)   # noqa: E731
+        self.assertEqual(put("activity.days", 400).status_code, 200)
+        with contextlib.closing(dbm.connect()) as db:
+            gone = db.execute("INSERT INTO activity(at, profile_id, actor, action) VALUES(?, 1, 'fictional', 'view')", (now - 380 * 86400,)).lastrowid
+        self.login("zed")
+        with contextlib.closing(dbm.connect()) as db:
+            aged = db.execute("SELECT MAX(id) FROM sessions").fetchone()[0]
+            db.execute("UPDATE sessions SET created=created-3*3600 WHERE id=?", (aged,))
+        try:
+            with mock.patch.dict(os.environ, {"SANGUITY_SAVED_SETTINGS": "off"}):
+                self.assertEqual(config.setting("ACTIVITY_DAYS"), 365, "left out")
+                r = put("activity.days", 90)
+                self.assertEqual((r.status_code, r.json()["detail"]["code"]), (409, "confirm"), r.text)
+                self.assertIn("instead of 400", r.json()["detail"]["message"])
+                self.assertIn("this takes effect once it's taken out", r.json()["detail"]["message"])
+                r = put("security.sessionHours", 2)
+                self.assertEqual((r.status_code, r.json()["detail"]["code"]), (409, "confirm"), r.text)
+                self.assertEqual(settings.stored(dbm.connect(), "install").get("security.sessionHours"), None, "not saved")
+            self.assertEqual(config.setting("ACTIVITY_DAYS"), 400, "the flag taken out: nothing changed unasked")
+            with mock.patch.dict(os.environ, {"ACTIVITY_DAYS": "500"}):
+                reset = lambda **kw: ada.request("DELETE", "/api/profiles/1/settings/activity.days", headers=H, **kw)   # noqa: E731
+                r = reset()
+                self.assertEqual((r.status_code, r.json()["detail"]["code"]), (409, "confirm"), r.text)
+                self.assertIn("The server's environment sets ACTIVITY_DAYS: this takes effect if it's taken out.", r.json()["detail"]["message"])
+                self.assertEqual(reset(json={"confirm": r.json()["detail"]["confirm"]["type"]}).status_code, 200)
+            self.assertEqual(config.setting("ACTIVITY_DAYS"), 365)
+        finally:
+            with contextlib.closing(dbm.connect()) as db:
+                db.execute("DELETE FROM activity WHERE id=?", (gone,))
+                db.execute("DELETE FROM sessions WHERE id=?", (aged,))
+            ada.post("/api/settings/install/reset", json={"section": "logging"}, headers=H)
+            self.security_reset()
+
     def test_install_settings_a_member_is_given(self):   # #998
         """A profile's settings, merged or as the Settings screen's sections, give someone who isn't an admin only the
         install's settings a member's page reads (the sync defaults): not the public addresses, the upload address,

@@ -63,15 +63,20 @@ def _confirmed(db, request, s, d, value, typed):
     refuse the change outright instead (HTTPException), as the public addresses do a list the page's own address
     wouldn't pass. The change is made only with that typed back ("confirm", on a change or a reset alike); else
     refused, 409 {"code": "confirm", "message", "confirm": {...}}, for the page to ask with (admin.js confirmed()).
-    Asked at this moment: a count grown since it was shown is asked again. Nothing's asked where the value wouldn't
-    apply (the environment's is in force, or saved values are left out)."""
-    if not d.confirm or (d.env and config.source(d.env) == "environment") or config.saved_ignored():
+    Asked at this moment: a count grown since it was shown is asked again. Asked too where the value doesn't apply yet
+    (#1042: saved values left out, SANGUITY_SAVED_SETTINGS=off, or the environment's in force, for a reset), from the
+    value that applies once it does, the one saved here: else it would take effect then, unasked."""
+    if not d.confirm:
         return
-    before = settings.in_force(d.key)[0] if d.env else _held(db, d)
+    later = config.saved_ignored() or (d.env and config.source(d.env) == "environment")
+    before = _held(db, d) if later or not d.env else settings.in_force(d.key)[0]
     goes = d.confirm(db, before, value, request, s)
     if not goes:
         return
     goes = {"type": str(goes["count"]), **goes}
+    if later:
+        goes["message"] += (" Saved settings are left out while SANGUITY_SAVED_SETTINGS=off is set: this takes effect once it's taken out."
+                            if config.saved_ignored() else f" The server's environment sets {d.env}: this takes effect if it's taken out.")
     if _said(typed) != _said(goes["type"]):
         raise HTTPException(409, {"code": "confirm", "message": f"{goes['message']} Type {goes['type']} to confirm.", "confirm": goes})
 

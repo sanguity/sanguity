@@ -3735,6 +3735,10 @@ Everything on `main` so far; it becomes the first tagged release.
   110 px (92 on phones), so at 200% text "Configuration", "Return address" or "Schedule" printed over the value beside
   it on General, Connected-source apps, Backups and records' drawers. The column now grows to its longest word, the
   value breaks long addresses, and where both don't fit the label sits above its value; as usual, nothing moves.
+- **A server setting's change that must be confirmed is asked even while it doesn't apply yet** (#1042): with
+  `SANGUITY_SAVED_SETTINGS=off`, fewer days of activity or a shorter sign-in was saved unasked and took effect once the
+  flag was taken out, deleting activity or ending sign-ins nobody confirmed; a reset of a setting the environment sets
+  likewise. Each is now asked from the value saved here, the one that applies then, and says when it takes effect.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
