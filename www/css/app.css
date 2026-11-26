@@ -567,6 +567,7 @@ main>[id^=view-] h2{font-size:var(--fs-5);font-weight:var(--fw-semibold);line-he
 main>[id^=view-] :is(.card,.card>.set-hd,.card>.list-hd)>h3:not(.sub){font-size:var(--fs-4);font-weight:var(--fw-semibold);line-height:1.3;margin:0 0 2px}
 .card .hint{color:var(--muted);font-size:var(--fs-3);margin:0 0 var(--sp-2)}
 .howto{color:var(--ink2);font-size:var(--fs-3);margin:0 0 var(--sp-2)}   /* what someone needs in order to act, in full (#280): what to upload, what a field expects, a warning */
+.howto a{overflow-wrap:break-word}   /* an address in it (Passkeys': open Sanguity at http://localhost:…) broken at 320 px with 200% text, not past the page */
 /* the type scale (#255, tokens.css): Source Serif 4 for page and section titles and the headline values, Inter for the
    rest (a value's unit too); tabular figures wherever numbers are read against each other: values, tables, chart axes,
    the drawer's facts */
