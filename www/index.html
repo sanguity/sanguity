@@ -21,8 +21,8 @@
   <p class="brand-name"><svg class="brand" viewBox="9 5 46 56" aria-hidden="true"><path class="brand-drop" d="M32 7C35.5 14 53 24.5 53 38.5a21 21 0 0 1-42 0C11 24.5 28.5 14 32 7Z"/><path d="M23.5 24.5Q19 29.5 17.6 35.5" fill="none" stroke="#fff" stroke-opacity=".38" stroke-width="3.2" stroke-linecap="round"/><path class="brand-line" d="M19 43h5l4.5-9 5 15 4-9h6.5" fill="none" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/><circle class="brand-dot" cx="44" cy="40" r="3.4"/></svg>Sanguity</p>
   <button class="iconbtn acct" id="installBtn" type="button" data-tip="Put Sanguity on this device's home screen" hidden>Install app</button>
 </header>
-<p class="sync-warn" id="syncWarn" role="status" hidden></p>
-<div class="filters">
+<p class="sync-warn" id="syncWarn" role="region" aria-label="Connected sources" aria-live="polite" hidden></p>   <!-- a landmark when shown, said as it is (#1061) -->
+<div class="filters" role="region" aria-label="Period shown">   <!-- a landmark of its own (#1061) -->
   <!-- on a phone, the period as one pill opening a sheet (#269, core.js) -->
   <div class="menu period-pick">
     <button class="period-pill" id="periodPill" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="periodPillList"></button>
@@ -158,14 +158,16 @@
     </div>
   </section>
 </main>
-<footer class="notice" id="notice"><strong>Not medical advice.</strong> Sanguity shows what your records say. It doesn't diagnose, interpret results or recommend treatment; your care team interprets them in context.</footer>
+<footer>   <!-- the page's one contentinfo landmark (#1061: the notice and the foot were two) -->
+  <div class="notice" id="notice"><strong>Not medical advice.</strong> Sanguity shows what your records say. It doesn't diagnose, interpret results or recommend treatment; your care team interprets them in context.</div>
+  <div class="pagefoot"><span class="meta" id="meta"></span></div>
+</footer>
 <dialog id="drawer" class="sg-dlg sg-dlg-side" aria-labelledby="dtitle">
   <div class="dh" data-grab><span class="dkind" id="dkey"></span><div class="dtl"><h3 id="dtitle"></h3><div class="sub" id="dsub"></div></div><div class="acts"><div class="menu" id="dmore" hidden><button class="iconbtn" id="dmoreBtn" type="button" aria-label="Correct this record" data-tip="Correct this record" aria-haspopup="menu" aria-expanded="false" aria-controls="dmoreList"><svg class="icon i-ellipsis" aria-hidden="true" focusable="false"><use href="icons/sprite.svg#i-ellipsis"/></svg></button><div class="menu-list" id="dmoreList" role="menu" aria-label="Correct this record" popover></div></div><button class="iconbtn" id="dwide" type="button" aria-pressed="false" aria-label="Wider panel" data-tip="Wider panel"><svg class="icon i-chevrons-left-right" aria-hidden="true" focusable="false"><use href="icons/sprite.svg#i-chevrons-left-right"/></svg><svg class="icon i-chevrons-right-left" aria-hidden="true" focusable="false"><use href="icons/sprite.svg#i-chevrons-right-left"/></svg></button><button class="iconbtn close" id="dclose" type="button" aria-label="Close" data-tip="Close (Esc)"><svg class="icon i-x" aria-hidden="true" focusable="false"><use href="icons/sprite.svg#i-x"/></svg></button></div></div>
   <div class="db" id="dbody"></div>
 </dialog>
 <div class="tip sg-follow" id="tip"></div>
 
-<footer class="pagefoot"><span class="meta" id="meta"></span></footer>
 <script src="js/util.js"></script>
 <script src="js/pwa.js"></script>
 <script src="js/groups.js"></script>
