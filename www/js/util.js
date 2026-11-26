@@ -24,6 +24,10 @@ const present = (...kids) => kids.flat().filter(k => k != null);
 /* each kind of record's name: the Timeline's and the drawer's (core.js), and the command palette's on every page, an
    event's words as the Timeline searches them (store.js, palette.js: #463) */
 const KIND_LABEL = {lab:"Lab draw",imaging:"Imaging",procedure:"Procedure",study:"Report / study",message:"Conversation",appt_msg:"Appointment message",auto_msg:"Automated message",letter:"Letter",document:"Document",stay:"Hospital stay",visit:"Visit",contact:"Chart activity",labitem:"Lab result",exercise:"Workout (watch)",med:"Medication",rx:"Pharmacy fill",claim:"Insurance claim",journal:"Journal",mood:"Mood and energy",immunization:"Immunization",ecg:"ECG (watch)",rhythm:"Irregular rhythm notification (watch)",cycle:"Cycle tracking"};
+/* the app's neutral inks for a mark JS colours: the system's text in forced colours (--fc-ink, app.css), where SVG
+   keeps the app's, under 3:1 on the system's background with the app's theme opposite (#1053). Not --ink2 itself:
+   the heatmap's marks keep the app's ink on cells in its colours */
+const INK2 = "var(--fc-ink,var(--ink2))", MUTED = "var(--fc-ink,var(--muted))";
 /* the Timeline's kinds (core.js, the records page) and each kind's icon, here for the command palette on every page
    too (#470): its events off the records page, counted as the Timeline lists them and shown with their kinds' icons.
    Each kind's colour is the same in its chip, its Timeline lane, its rows and the drawer. Eight kinds have a colour of
@@ -33,18 +37,18 @@ const KIND_LABEL = {lab:"Lab draw",imaging:"Imaging",procedure:"Procedure",study
 const CATS = [
   {k:"stay",      label:"Hospital stays",   color:"var(--stay-line)", kinds:["stay"]},
   {k:"visit",     label:"Visits",           color:"var(--c-visit)",   kinds:["visit"]},
-  {k:"contact",   label:"Chart activity",   color:"var(--ink2)",      kinds:["contact"]},   // chart reviews, calls, faxes (#236)
+  {k:"contact",   label:"Chart activity",   color:INK2,      kinds:["contact"]},   // chart reviews, calls, faxes (#236)
   {k:"lab",       label:"Labs",             color:"var(--c-lab)",     kinds:["lab"]},
   {k:"imaging",   label:"Imaging",          color:"var(--c-imaging)", kinds:["imaging"]},
   {k:"procedure", label:"Procedures",       color:"var(--c-procedure)",kinds:["procedure"]},
-  {k:"immunization", label:"Immunizations", color:"var(--ink2)", kinds:["immunization"]},   // #179: vaccines given
+  {k:"immunization", label:"Immunizations", color:INK2, kinds:["immunization"]},   // #179: vaccines given
   {k:"study",     label:"Reports & studies",color:"var(--c-study)",   kinds:["study"]},
   {k:"message",   label:"Messages",         color:"var(--c-message)", kinds:["message","appt_msg","auto_msg"]},
-  {k:"letter",    label:"Letters & docs",   color:"var(--ink2)",      kinds:["letter","document"]},
-  {k:"med",       label:"Medications",      color:"var(--muted)",     kinds:["med","rx"]},
+  {k:"letter",    label:"Letters & docs",   color:INK2,      kinds:["letter","document"]},
+  {k:"med",       label:"Medications",      color:MUTED,     kinds:["med","rx"]},
   {k:"claim",     label:"Insurance claims", color:"var(--axis)",      kinds:["claim"]},
-  {k:"watch",     label:"Watch",            color:"var(--ink2)",      kinds:["exercise"]},
-  {k:"ecg",       label:"ECG & rhythm",     color:"var(--ink2)",      kinds:["ecg","rhythm"]},   // #182: a watch's ECGs and irregular rhythm notifications (ecg.js)
+  {k:"watch",     label:"Watch",            color:INK2,      kinds:["exercise"]},
+  {k:"ecg",       label:"ECG & rhythm",     color:INK2,      kinds:["ecg","rhythm"]},   // #182: a watch's ECGs and irregular rhythm notifications (ecg.js)
   {k:"journal",   label:"Journal",          color:"var(--c-journal)", kinds:["journal"]},   // the person's own entries (journal.js)
   {k:"mood",      label:"Mood & energy",    color:"var(--c-journal)", kinds:["mood"]},      // #161: a day's mood and energy, written in the journal
   {k:"cycle",     label:"Cycle tracking",   color:"var(--c-cycle)",   kinds:["cycle"]},     // #183: only when its owner turned it on (cycle.js)
