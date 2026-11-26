@@ -392,7 +392,7 @@ function journalForm(j, preset, back) {
   const body = jDrawer(isNew ? "New journal entry" : "Edit journal entry", isNew ? "A note, a symptom, a side effect or a mood" + whose : `${J_LABEL[cur.kind]} · ${jWhen(cur)}`);
   const msg = el("p", {class: "hint edit-msg", role: "status"});
   const uid = jUid(), id = n => `j-${n}-${uid}`;
-  const kinds = el("div", {class: "seg jkinds", role: "radiogroup", "aria-label": "Kind of entry"});
+  const kinds = el("div", {class: "seg wrap jkinds", role: "radiogroup", "aria-label": "Kind of entry"});
   let kind = cur.kind;
   const date = el("input", {type: "date", id: id("date"), required: true, max: isoDay(Date.now() + 366 * DAY)}), time = el("input", {type: "time", id: id("time")});   // the date a year ahead at most (#479)
   date.value = cur.t.slice(0, 10); time.value = cur.t.length > 10 ? cur.t.slice(11, 16) : "";
