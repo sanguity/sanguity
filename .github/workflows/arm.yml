@@ -35,7 +35,8 @@ jobs:
           start=$(date +%s)
           docker compose build app
           echo "Built in $(( ($(date +%s) - start) / 60 )) minutes"
-          docker run --rm sanguity-app python -c "import platform, cryptography, webauthn, argon2, Crypto; print(platform.machine(), 'cryptography', cryptography.__version__)"
+          # what encryption at rest (server/crypto.py: cryptography's AESGCM), passkeys and passwords import
+          docker run --rm sanguity-app python -c "import platform, cryptography, webauthn, argon2; from cryptography.hazmat.primitives.ciphers.aead import AESGCM; print(platform.machine(), 'cryptography', cryptography.__version__)"
 
       - name: Start (docker compose up -d)
         run: docker compose up -d
