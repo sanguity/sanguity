@@ -146,7 +146,7 @@ def _log(db, s, pid, scope, detail, request):
 def merged(pid: int, s=Depends(user), db=Depends(get_db)):
     """Every setting's value for this person on this profile, nested as settings.json was (what the page reads)."""
     need(db, s, pid, "viewer")
-    return settings.merged(db, pid, s["id"])
+    return settings.merged(db, pid, s["id"], s["is_admin"])
 
 
 @router.get("/api/profiles/{pid}/settings/sections")
@@ -159,8 +159,8 @@ def sections(pid: int, s=Depends(user), db=Depends(get_db)):
     for sid, title, help in settings.SECTIONS:
         items = []
         for k, d in settings.SETTINGS.items():
-            if d.section != sid or not d.screen:   # not d.screen: a page's own (the guide's, #199)
-                continue
+            if d.section != sid or not d.screen or not settings.shown_to(k, s["is_admin"]):   # not d.screen: a page's own
+                continue   # (the guide's, #199); not shown_to: an admin's alone (#998)
             v, src = eff[k]
             items.append({**d.public(), "value": v, "from": src, "can_change": settings.may_change(d.scope, role, s["is_admin"])})
         if items:
@@ -195,7 +195,7 @@ def change(pid: int, key: str, body: Value, request: Request, s=Depends(user), d
     _not_set_by_environment(d)
     if d.scope == "install":
         _save_install(db, s, d, body, request, lambda: settings.effective(db, pid, s["id"])[key][0])
-        return settings.merged(db, pid, s["id"])
+        return settings.merged(db, pid, s["id"], s["is_admin"])
     try:
         with dbm.transaction(db):
             _unchanged(body, settings.effective(db, pid, s["id"])[key][0], d)
@@ -203,7 +203,7 @@ def change(pid: int, key: str, body: Value, request: Request, s=Depends(user), d
             _log(db, s, pid, d.scope, {"setting": key, "label": d.label}, request)
     except settings.SettingError as e:
         raise HTTPException(400, str(e))
-    return settings.merged(db, pid, s["id"])
+    return settings.merged(db, pid, s["id"], s["is_admin"])
 
 
 class Reset(BaseModel):
@@ -221,11 +221,11 @@ def reset_one(pid: int, key: str, request: Request, body: Reset | None = None, s
     _check(db, s, pid, d, role)
     if d.scope == "install":
         _reset_install(db, s, [d], request, confirm=body and body.confirm)
-        return settings.merged(db, pid, s["id"])
+        return settings.merged(db, pid, s["id"], s["is_admin"])
     with dbm.transaction(db):
         if settings.clear(db, [key], d.scope, pid, s["id"]):
             _log(db, s, pid, d.scope, {"setting": key, "label": d.label, "reset": True}, request)
-    return settings.merged(db, pid, s["id"])
+    return settings.merged(db, pid, s["id"], s["is_admin"])
 
 
 class Section(BaseModel):
@@ -253,7 +253,7 @@ def reset_section(pid: int, body: Section, request: Request, s=Depends(user), db
             if gone:
                 _log(db, s, pid, scope, {"section": body.section, "label": titles[body.section], "settings": gone, "reset": True}, request)
             reset += gone
-    return {"reset": reset, "kept": [d.key for d in mine if d not in allowed], "settings": settings.merged(db, pid, s["id"])}
+    return {"reset": reset, "kept": [d.key for d in mine if d not in allowed], "settings": settings.merged(db, pid, s["id"], s["is_admin"])}
 
 
 # ---------------------------------------------------------------- dashboard presets by condition (#186)
@@ -439,4 +439,4 @@ def rename(pid: int, key: str, body: Rename, request: Request, s=Depends(user), 
             _log(db, s, pid, d.scope, {"setting": key, "label": d.label}, request)
     except settings.SettingError as e:
         raise HTTPException(400, str(e))
-    return settings.merged(db, pid, s["id"])
+    return settings.merged(db, pid, s["id"], s["is_admin"])
