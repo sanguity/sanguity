@@ -117,8 +117,10 @@ function shareLinksPanel(p, {open = false} = {}) {
         made.replaceChildren(el("div", {class: "share-made"}, el("p", {}, el("b", {text: `${named(shown)} is made. Copy the link now.`}),
           " It's shown only this once: Sanguity keeps a fingerprint of it, not the link itself, so it can't show it again."),
           el("div", {class: "row"}, field, copy, qr?.btn), qr?.fig));
-        // focus on its Copy, as it says (#493): Make the link goes with the form
+        // focus on its Copy, as it says (#493): Make the link goes with the form; and that said (#1066: the live line
+        // kept "New share link: choose what it shows…")
         copy.focus({preventScroll: true});
+        announce(`${named(shown)} is made. Copy the link now.`);
         f.remove(); await load();
         made.scrollIntoView({block: "nearest"});
       } catch (e) { fail(e); }
