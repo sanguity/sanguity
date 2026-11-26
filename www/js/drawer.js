@@ -578,9 +578,11 @@ function editPanel(e) {
     }},
     e.k === "stay" ? {text: "Not a hospital stay", run: () => post({action: "not_stay"})} : null,
     {text: "Merge with…", run: () => {
-      const near = DATA.events.filter(x => x.id !== e.id && !WATCH_KINDS.has(x.k) &&Math.abs(x.ts - e.ts) <= 7 * DAY)
+      // only a kind it can be one with (#1023, server/edits.py mergeable): a lab draw's or a lab result's own kind alone
+      const lab = k => k === "lab" || k === "labitem", fits = x => lab(x.k) || lab(e.k) ? x.k === e.k : true;
+      const near = DATA.events.filter(x => x.id !== e.id && !WATCH_KINDS.has(x.k) && fits(x) && Math.abs(x.ts - e.ts) <= 7 * DAY)
         .sort((a, b) => Math.abs(a.ts - e.ts) - Math.abs(b.ts - e.ts)).slice(0, 50);
-      if (!near.length) { sayIn(msg, "No other event within a week of this one to merge with."); return; }
+      if (!near.length) { sayIn(msg, `No other ${lab(e.k) ? KIND_LABEL[e.k].toLowerCase() : "event"} within a week of this one to merge with.`); return; }
       const sel = el("select", {"aria-label": "Event to merge into this one"},
         ...near.map(x => el("option", {value: x.id, text: `${fmtDT(x.ts)} · ${KIND_LABEL[x.k] || x.k} · ${x.title}`})));
       form("Fold this event into the open one (it keeps its own title and date)", sel, () => post({action: "merge", other: +sel.value}));

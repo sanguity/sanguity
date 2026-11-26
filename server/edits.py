@@ -45,7 +45,8 @@ How each action changes the records:
             result finds it (crossmatch._rows, drawer.js rowPoint); the event says those lab events (FOLDED, with
             the series their rows' results are in, records._row_series), so its lab day's badge counts their results
             (util.js labDraws); it's listed by its own lab day alone, and a lab day left listing nothing goes. Then
-            the second is left out.
+            the second is left out. Only kinds that can be one (#1023, mergeable()): a lab day with a lab day, a lab
+            event with a lab event, never either with another kind; one made before that isn't applied.
 
 Edits apply in the order they were made, merges last, so a merged event's own corrections are made first. One edit
 may match several events (two keyless events with the same kind, minute and title): it applies to each, except a
@@ -68,6 +69,7 @@ from .importers import common
 ACTIONS = ("hide", "rename", "date", "not_stay", "merge", "kind")
 UNLISTED = "_unlisted"   # (#950) apply()'s lab events hidden, for records._assemble to pop (never served)
 RULE = "kind_rule"   # not made with add(): add_batch()
+LAB_KINDS = ("lab", "labitem")
 # the kinds an entry can move between (#237): their details are free-form, so any of them reads as any other
 MOVABLE = ("visit", "contact", "procedure", "imaging", "study", "message", "appt_msg", "auto_msg", "letter", "document")
 SIMILAR_MAX = 2000
@@ -137,6 +139,14 @@ def _held(value, field="holds"):
     """What an edit keeps of what its event held, or None (an edit of any other kind, or made before #937)."""
     h = value.get(field) if isinstance(value, dict) else None
     return ({x for x in h if isinstance(x, str)} or None) if isinstance(h, list) else None
+
+
+def mergeable(a, b):
+    """(#1023) Whether events of kinds a and b can be merged into one: a lab day with a lab day (#915), a lab event with
+    a lab event (#972), never either with another kind, which left results with no row (a lab event into a lab day or
+    a visit), lab events listed by no lab day (a lab day into a lab event), or a lab day's badge counting what its
+    drawer doesn't show; any two other kinds, as before. The drawer's Merge with… offers these alone."""
+    return a == b if a in LAB_KINDS or b in LAB_KINDS else True
 
 
 def target_hash(key):
@@ -225,8 +235,8 @@ def apply(db, pid, data):
         a = r["action"]
         if a == "merge":
             others = found(crypto.dec(r["other_key"] or ""), _held(value, "other_holds"))
-            if not hits or not others or hits[0] is others[0]:
-                listed.append(entry(r, value, hits[:1], False))
+            if not hits or not others or hits[0] is others[0] or not mergeable(hits[0].get("k"), others[0].get("k")):
+                listed.append(entry(r, value, hits[:1], False))   # (#1023) one of kinds that can't be one: not applied
                 continue
             first, second = hits[0], others[0]
             _merge(first, second, details)
@@ -457,7 +467,7 @@ def follow_rebuild(db, pid, before, after):
 
 def _holds_now(db, pid, event_id, e):
     """holds() of an event as stored, sorted, for an edit to keep (#937)."""
-    if e.get("k") not in ("lab", "labitem"):
+    if e.get("k") not in LAB_KINDS:
         return []
 
     def detail_of(i):
@@ -501,6 +511,8 @@ def add(db, pid, uid, action, event_id, title=None, t=None, other_id=None, k=Non
         if other_id is None or int(other_id) == int(event_id):
             raise EditError("Choose another event to merge with this one.")
         o = _event(db, pid, other_id)
+        if not mergeable(e.get("k"), o.get("k")):   # (#1023)
+            raise EditError("A lab draw can be merged only with another lab draw, and a lab result only with another lab result.")
         other, value["other"] = key_of(o), _was(o)
         if other == key:
             raise EditError("These two events can't be told apart, so they can't be merged.")
