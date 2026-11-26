@@ -481,6 +481,12 @@ define("security.triesAccount", "security", "…at one account, from anywhere", 
        scope="install", private=False, kind="number",
        help="At least 10: fewer would let a stranger hold someone up from signing in more cheaply.")
 
+# #992: the provider directory's weekly update (directory/update.py), shown in Install → Provider directory, not General
+section("directory", "Provider directory", "What Find your provider searches: Epic's and Oracle Health's lists, read by this server.")
+define("directory.weekly", "directory", "Keep the lists up to date", False, yes_no("Keeping the lists up to date"),
+       scope="install", private=False, kind="toggle",
+       help="Once a week, this server reads Epic's and Oracle Health's lists again. A failed update keeps the lists it has.")
+
 # #225: readings taken at home (and at visits) as Overview tiles beside the key labs, each with its latest value
 HOME_TILES = {"bp": "Blood pressure", "glucose": "Blood glucose", "temp": "Body temperature"}
 define("overview.homeTiles", "overview", "Home readings", [], some_of(HOME_TILES, "Home readings"), kind="choices",

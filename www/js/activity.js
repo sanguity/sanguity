@@ -91,6 +91,12 @@ const WHAT = {
   "backup.fail": d => `couldn't make a backup (${d.error})`,
   "backup.schedule": d => d.schedule === "off" ? "turned off scheduled backups" : `scheduled backups ${d.schedule}, keeping the newest ${d.keep}`,
   "backup.replaced": d => `deleted ${/^watch-restored-/.test(d.name) ? "the phone and watch data a restore left to move in" : "what a restore replaced"}, ${d.name}` + (d.days != null ? `, ${d.days} day${d.days === 1 ? "" : "s"} after the restore` : ""),   // (#603)
+  // the provider directory's lists read by the server (#992): each list's count, or why it wasn't read
+  "directory.update": d => {
+    const name = id => ({"epic-brands": "Epic's", "oracle-millennium": "Oracle Health's"})[id] || id;
+    return "read the provider directory's lists (" + [...Object.entries(d.read || {}).map(([id, n]) => `${name(id)}: ${n.toLocaleString("en-US")} entries`),
+      ...Object.entries(d.failed || {}).map(([id, why]) => `${name(id)} not read: ${why}`)].join("; ") + ")";
+  },
 };
 const FILTERS = [["", "Everything"], ["view", "Opened the records"], ["document", "Opened documents"],
   ["share", "Sharing"], ["unshare", "Removed access"], ["rename", "Renames"], ["import", "Imports"], ["reload", "Reloads"],

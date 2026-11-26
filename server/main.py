@@ -165,9 +165,12 @@ async def lifespan(app):
         jobs.start()
         sync.start()   # connected sources' scheduled pulls (#91)
         backup_jobs.start()   # Back up now, scheduled backups and checks (#200)
+        from .directory import update as directory_update
+        directory_update.start()   # the provider directory's lists, when an admin asks and weekly if turned on (#992)
         try:
             yield
         finally:
+            directory_update.stop()
             backup_jobs.stop()
             sync.stop()
             jobs.stop()

@@ -163,6 +163,8 @@ ROUTES = {
     ("POST", "/api/connect/sources/{cid}/test"): (ADMIN, None),
     ("GET", "/api/backups"): (ADMIN, None), ("POST", "/api/backups"): (ADMIN, None), ("POST", "/api/backups/check"): (ADMIN, None),
     ("PUT", "/api/backups/schedule"): (ADMIN, None), ("DELETE", "/api/backups/replaced/{name}"): (ADMIN, None),   # (#595)
+    # the provider directory's lists, read by the server when an admin asks (#992): not under /api/directory, anyone's
+    ("GET", "/api/provider-directory"): (ADMIN, None), ("POST", "/api/provider-directory/update"): (ADMIN, None),
 }
 RANK = {"viewer": 1, "editor": 2, "owner": 3}
 
@@ -284,7 +286,7 @@ class Reach(unittest.TestCase):
             (E, [p + "/export", p + "/jobs", p + "/edits", p + "/watch/receiver", p + "/cycle", p + "/condition-presets"]),
             (O, [p + "/activity", p + "/links"]),
             (A, ["/api/users", "/api/activity", "/api/ownerless", "/api/security/notice", "/api/settings", "/api/settings/install",
-                "/api/labmaps", "/api/connect/sources", "/api/backups"]),
+                "/api/labmaps", "/api/connect/sources", "/api/backups", "/api/provider-directory"]),
             (U, ["/api/me", "/api/outside", "/api/directory", "/api/lab-names", "/api/lab-test-pages", "/api/uploads/limits", "/api/settings/user"]),
         ]
         for rule, paths in table:
@@ -391,7 +393,8 @@ PLAIN_SETTINGS = {"sync.attachAuto", "sync.attachMaxMB", "sync.attachTypes", "sy
                   # General → Security (#1001): how people sign in, numbers and a choice, none about anyone
                   "security.sessionDays", "security.sessionHours", "security.idleMinutes", "security.profiles", "security.passwordMin",
                   "security.passwordMin2fa", "security.tempPasswordDays", "security.reauthMinutes", "security.triesHere",
-                  "security.triesAddress", "security.triesAccount"}
+                  "security.triesAddress", "security.triesAccount",
+                  "directory.weekly"}   # on or off (#992)
 
 
 class AtRest(unittest.TestCase):

@@ -27,7 +27,7 @@
   }
 
   /* ---------------------------------------------------------------- which lists this server has */
-  /* what's missing, and who can add it: how is in Settings' Install (admin-sources.js, #167, #991) */
+  /* what's missing, and who can add it: an admin, in Settings → Install → Provider directory (admin-sources.js, #992) */
   function sources(list) {
     const missing = list.filter(s => !s.included);
     const box = $("#srcNote");
@@ -37,7 +37,7 @@
     box.replaceChildren(
       el("p", {}, el("b", {text: "This server has only the vendors' test sandboxes and Medicare so far. "}),
         `${names}'s hospitals and clinics aren't in its list yet: their lists can't be shipped with Sanguity, so each server adds its own copy. `,
-        ...(ADMIN ? ["As an admin, you can add them: ", el("a", {href: "settings.html#directory", text: "Settings → Provider directory"}), "."]
+        ...(ADMIN ? ["As an admin, you can have this server read them: ", el("a", {href: "settings.html#directory", text: "Add them now"}), "."]
           : ["Ask your admin to add them."])));
   }
 

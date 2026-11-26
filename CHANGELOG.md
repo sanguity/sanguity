@@ -3716,6 +3716,15 @@ Everything on `main` so far; it becomes the first tagged release.
 - **A restore keeps today's server settings** (#1005): it kept today's two-factor rule (#917) but brought back the
   backup's schedule, how many backups to keep, the sync defaults and General's settings. Every install-wide setting is
   today's now, as access is; with no database of this install's to keep them from, they're the backup's, named.
+- **The provider directory's lists are added and updated from the page, not a command on the host** (#992): adding
+  Epic's and Oracle Health's lists meant running `tools/build_directory.py` on the host (in Docker, a shell in the
+  container), and again now and then. Settings → Install → Provider directory now has **Add the lists** (then
+  **Update now**): after naming the two hosts it contacts and their terms, the server downloads them itself, in the
+  background, through the outside-connections gateway (each contact in Outside connections and the install log),
+  with its progress and outcome shown and said, and the next search uses them. **Keep them up to date** reads them
+  weekly, off until an admin turns it on. A failed or cut-short download keeps the earlier list in use and says
+  why. Find your provider gives an admin **Add them now**; the command line stays for servers that can't reach
+  those hosts.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
