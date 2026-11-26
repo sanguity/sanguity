@@ -303,6 +303,130 @@ def rekey_stamped(db):
     return n
 
 
+COPIES = "fhir_stamped_copies"   # meta, set by schema step 45: merge_copies hasn't run yet
+LAB_KINDS = ("lab", "labitem", "labday")   # a lab event's rows are each their own result's (sync.py, #899): not merged
+
+
+def _copy_key(k):
+    """Whether copies of one record of a connected source can share key k: a FHIR record's own (preview._record_key,
+    not a day's or a content hash), keyed as it is now (not one rekey_stamped left stamped)."""
+    from . import preview
+    return isinstance(k, str) and k.startswith("fhir:") and preview._record_key(k) and not _STAMPED.match(k)
+
+
+def merge_copies(db):
+    """Once, at start-up after schema step 45, when rekey_stamped's work is done (#1068): records of one connection
+    sharing one key, the copies #1022's bug made (each changed record added again at a pull, under a key of its own
+    until rekey_stamped keyed them alike), are one record each, as updates in place would have left it: the earliest
+    pull's, saying what the latest says, each later pull's version kept as what that pull changed (sync_changes), so
+    undoing a pull puts back what the one before it brought and never takes away a record an earlier pull brought too.
+    The later copies are removed (what a pull since changed of the latest goes with the record kept). Events (not lab
+    events, whose rows are each their own result's), the profile-wide lists' entries, and a Costs mark the keying
+    couldn't move onto the kept one's because it had one (the later of the two kept). Corrections find the kept one by
+    its key already. Uploads' records aren't touched. Said in the app's log and the install log, with those counts.
+    -> {"events", "entries", "marks"}: how many removed or moved; None when it's not to run now"""
+    from . import activity, db as dbm, preview
+    if not dbm.meta_get(db, COPIES) or dbm.meta_get(db, STAMPED_KEYS):
+        return None
+    out, pids = {"events": 0, "entries": 0, "marks": 0}, set()
+    with dbm.transaction(db):
+        imps = db.execute("SELECT id, profile_id, connection_id, meta FROM imports WHERE connection_id IS NOT NULL "
+                          "ORDER BY id").fetchall()
+        groups = collections.defaultdict(list)   # (profile, connection, key hash) -> [(import id, event id)]
+        for imp in imps:
+            for r in db.execute("SELECT id, key_hash, body FROM events WHERE import_id=?", (imp["id"],)).fetchall():
+                try:
+                    b = _dec(r["body"])
+                except Exception:
+                    continue
+                if isinstance(b, dict) and b.get("k") not in LAB_KINDS and _copy_key(b.get("key")) and r["key_hash"]:
+                    groups[(imp["profile_id"], imp["connection_id"], r["key_hash"])].append((imp["id"], r["id"]))
+        for (pid, _, _), rows in groups.items():
+            if len(rows) < 2:
+                continue
+            rows, was = sorted(rows), {}
+            for _, eid in rows:
+                r = db.execute("SELECT body, detail, cost FROM events WHERE id=?", (eid,)).fetchone()
+                was[eid] = (r, {"body": _dec(r["body"]), "detail": _dec(r["detail"]), "cost": _dec(r["cost"])})
+            keep, last = rows[0][1], rows[-1][1]
+            since = db.execute("SELECT import_id, previous FROM sync_changes WHERE event_id=? ORDER BY id", (last,)).fetchall()
+            for (iid, _), (_, before) in zip(rows[1:], rows):   # each later pull: what it found, the copy before it
+                db.execute("INSERT INTO sync_changes(import_id, event_id, previous) VALUES(?, ?, ?)", (iid, keep, _enc(was[before][1])))
+            db.execute("UPDATE events SET body=?, detail=?, cost=? WHERE id=?",
+                       (was[last][0]["body"], was[last][0]["detail"], was[last][0]["cost"], keep))
+            for _, eid in rows[1:]:
+                db.execute("DELETE FROM events WHERE id=?", (eid,))
+                out["events"] += 1
+            for r in since:   # what pulls since changed of the latest copy, after (undone in turn, the latest first)
+                db.execute("INSERT INTO sync_changes(import_id, event_id, previous) VALUES(?, ?, ?)", (r["import_id"], keep, r["previous"]))
+            pids.add(pid)
+        metas, copies = {}, collections.defaultdict(list)   # import id -> its meta; (profile, connection, path, key) -> [import id]
+        for imp in imps:
+            try:
+                meta = _dec(imp["meta"]) or {}
+                lists = preview._meta_lists(meta)
+            except Exception:
+                continue
+            metas[imp["id"]] = meta
+            for path, items in lists.items():
+                for k in dict.fromkeys(x["key"] for x in items if isinstance(x, dict) and _copy_key(x.get("key"))):
+                    copies[(imp["profile_id"], imp["connection_id"], path, k)].append(imp["id"])
+
+        def entry(iid, path, k):
+            return next(x for x in preview._meta_lists(metas[iid])[path] if isinstance(x, dict) and x.get("key") == k)
+        changed = set()
+        for (pid, _, path, k), iids in copies.items():
+            if len(iids) < 2:
+                continue
+            keep, last = iids[0], iids[-1]
+            since = [r for r in db.execute("SELECT id, import_id, previous FROM sync_changes WHERE meta_import=? ORDER BY id", (last,)).fetchall()
+                     if (p := _dec(r["previous"])).get("path") == path and p.get("key") == k]
+            for iid, before in zip(iids[1:], iids):
+                db.execute("INSERT INTO sync_changes(import_id, meta_import, previous) VALUES(?, ?, ?)",
+                           (iid, keep, _enc({"path": path, "key": k, "entry": entry(before, path, k)})))
+            items = preview._meta_lists(metas[keep])[path]
+            at = next(i for i, x in enumerate(items) if isinstance(x, dict) and x.get("key") == k)
+            items[at] = entry(last, path, k)
+            for iid in iids[1:]:
+                items = preview._meta_lists(metas[iid])[path]
+                gone = [x for x in items if isinstance(x, dict) and x.get("key") == k]
+                items[:] = [x for x in items if not (isinstance(x, dict) and x.get("key") == k)]
+                out["entries"] += len(gone)
+            for r in since:   # what pulls since changed of the latest copy's entry, now of the one kept
+                db.execute("DELETE FROM sync_changes WHERE id=?", (r["id"],))
+                db.execute("INSERT INTO sync_changes(import_id, meta_import, previous) VALUES(?, ?, ?)", (r["import_id"], keep, r["previous"]))
+            changed.update(iids)
+            pids.add(pid)
+        for iid in sorted(changed):
+            db.execute("UPDATE imports SET meta=? WHERE id=?", (_enc(metas[iid]), iid))
+        for r in db.execute("SELECT id, profile_id, target_key, value, created_by, at FROM cost_marks").fetchall():
+            try:   # a mark rekey_stamped's UPDATE OR IGNORE left on a copy's old key, as the kept one had one
+                m = _STAMPED.match(crypto.dec(r["target_key"]))
+                src = m and common.stable_source(m.group(1))
+                there = m and next((t for k in (f"fhir:{m.group(2)}", *([f"fhir:{src}|{m.group(2)}"] if src else []))
+                                    if (t := db.execute("SELECT id, at FROM cost_marks WHERE profile_id=? AND target=?",
+                                                        (r["profile_id"], oop.target_hash(k))).fetchone())), None)
+            except Exception:
+                continue
+            if not there:
+                continue
+            if r["at"] > there["at"]:
+                db.execute("UPDATE cost_marks SET value=?, created_by=?, at=? WHERE id=?",
+                           (r["value"], r["created_by"], r["at"], there["id"]))
+            db.execute("DELETE FROM cost_marks WHERE id=?", (r["id"],))
+            out["marks"] += 1
+            pids.add(r["profile_id"])
+        for pid in pids:
+            _bump(db, pid)
+        dbm.meta_set(db, COPIES, None)
+        if any(out.values()):
+            print(f"Made the copies a connected source's changed records were saved as before #1022 one record each, the "
+                  f"latest kept: {out['events']} record(s) and {out['entries']} list entries removed, {out['marks']} Costs "
+                  "mark(s) moved.", flush=True)
+            activity.log(db, "records.copies", detail=out, actor=activity.START_UP)
+    return out
+
+
 def known_event_keys(db, pid, hashes):
     """Which of these key hashes the profile's events already have."""
     return _known(db, "events", pid, hashes)

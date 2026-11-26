@@ -99,6 +99,8 @@ const WHAT = {
   },
   // records saved before #1022 that start-up couldn't key as they are now (#1044): left as they were, tried again
   "records.rekey": d => `couldn't key ${(d.left || []).length} older record${(d.left || []).length === 1 ? "" : "s"} as they are now, so left them as they were: ${(d.left || []).join(", ")}`,
+  // the copies #1022's bug made, one record each once keyed alike (#1068): the latest kept
+  "records.copies": d => `made older copies of a connected source's changed records one record each, the latest kept: ${d.events || 0} record${d.events === 1 ? "" : "s"} and ${d.entries || 0} list entr${d.entries === 1 ? "y" : "ies"} removed, ${d.marks || 0} Costs mark${d.marks === 1 ? "" : "s"} moved`,
 };
 const FILTERS = [["", "Everything"], ["view", "Opened the records"], ["document", "Opened documents"],
   ["share", "Sharing"], ["unshare", "Removed access"], ["rename", "Renames"], ["import", "Imports"], ["reload", "Reloads"],
