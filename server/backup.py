@@ -923,6 +923,35 @@ def _ready(path, now_path):
     return out
 
 
+REPLACES = ("sanguity.db", "sanguity.db-wal", "sanguity.db-shm", *CONTENTS)   # what a restore moves aside, by name
+
+
+def _put_back(aside, moved, step, e):
+    """(#1055) A restore failed between moving today's files aside and putting the backup's database in place: remove
+    what it wrote in their place, move today's back, and say what happened and where today's files are."""
+    why = f"{type(e).__name__}: {e.strerror}" if isinstance(e, OSError) and e.strerror else type(e).__name__
+    try:
+        for n in REPLACES:   # anything there now is the backup's: today's were all moved aside
+            p = os.path.join(config.DATA_DIR, n)
+            if os.path.isdir(p) and not os.path.islink(p):
+                shutil.rmtree(p)
+            elif os.path.lexists(p):
+                os.remove(p)
+        for n in moved:
+            shutil.move(os.path.join(aside, n), os.path.join(config.DATA_DIR, n))
+    except OSError as again:
+        log.error("restore: today's data couldn't be put back from %s (%s)", aside, type(again).__name__)
+        return (f"The restore failed while {step} ({why}), and today's data couldn't all be put back "
+                f"({type(again).__name__}): it is in {aside}. Before starting the app, move sanguity.db and the profiles "
+                "and build folders from there back into the data folder (replacing any there), then delete the folder.")
+    with contextlib.suppress(OSError):
+        os.remove(os.path.join(aside, ".restoring.db"))
+    with contextlib.suppress(OSError):
+        os.rmdir(aside)   # empty now
+    return (f"The restore failed while {step} ({why}). Nothing was changed: today's data, moved aside to {aside}, was "
+            "put back where it was. Free some space if the disk is full, then restore again.")
+
+
 def restore(archive):
     """Replace DATA_DIR's records (its database, profiles and build) with the archive's, keeping today's access (#917:
     _ready), and hand the receiver its data (#227). The backup's database is made ready first, in the folder what it
@@ -956,15 +985,30 @@ def restore(archive):
     except BaseException:
         shutil.rmtree(aside, ignore_errors=True)
         raise
-    for n in ("sanguity.db", "sanguity.db-wal", "sanguity.db-shm", *CONTENTS):
-        if os.path.exists(os.path.join(config.DATA_DIR, n)):
-            shutil.move(os.path.join(config.DATA_DIR, n), os.path.join(aside, n))
-    with tarfile.open(archive, "r:gz") as tar:
-        for m in tar.getmembers():
-            if m.name in ("manifest.json", "sanguity.db") or m.name.startswith(WATCH + "/"):
-                continue
-            _extract(tar, m, os.path.join(config.DATA_DIR, *m.name.split("/")))
-    os.replace(ready, live)
+    # (#1055) today's files moved aside, the backup's extracted and its database put in place: one guarded step. On any
+    # failure (the disk filling while profiles/ is extracted, say) what was extracted goes and today's files are put back
+    moved, step = [], "moving today's data aside"
+    try:
+        for n in REPLACES:
+            if os.path.lexists(os.path.join(config.DATA_DIR, n)):
+                shutil.move(os.path.join(config.DATA_DIR, n), os.path.join(aside, n))
+                moved.append(n)
+        step = "writing the backup's files"
+        with tarfile.open(archive, "r:gz") as tar:
+            for m in tar.getmembers():
+                if m.name in ("manifest.json", "sanguity.db") or m.name.startswith(WATCH + "/"):
+                    continue
+                step = f"writing the backup's {m.name.split('/')[0]}/"
+                _extract(tar, m, os.path.join(config.DATA_DIR, *m.name.split("/")))
+        step = "putting the backup's database in place"
+        os.replace(ready, live)
+    except BaseException as e:
+        if watch:   # the receiver's data staged for this restore (#958): none of it is left for a restore that didn't happen
+            shutil.rmtree(watch, ignore_errors=True)
+        said = _put_back(aside, moved, step, e)
+        if not isinstance(e, Exception):   # stopped (Ctrl-C): put back, and stopped as asked
+            raise
+        raise BackupError(said) from e
     for pid, cid in manifest["access"].pop("stores", ()):   # a disconnected source's store of what it read (#917)
         with contextlib.suppress(FileNotFoundError):
             os.remove(os.path.join(config.DATA_DIR, "profiles", str(int(pid)), "connections", str(int(cid))))
