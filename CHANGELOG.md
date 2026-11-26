@@ -3521,6 +3521,15 @@ Everything on `main` so far; it becomes the first tagged release.
   first, as connected sources' return address is taken), and the page makes the link, the address and the QR code
   from it; the link back in each calendar event takes the `https://` one too (it took the first by name, `http://`
   ones first). Without one, as before. The calendar's note about where a feed can be reached reads the address given.
+- **One Settings page: This person, You, and Install for admins** (#991): settings were split across the top bar's two
+  menus, with Account and Admin pages of their own. Settings is now one page, its sidebar in three named parts: **This
+  person** (the profile's dashboard, About this person, labs and ranges, milestones, workouts, renaming or deleting
+  it), **You** (sign-in and security, this device, display) and, for admins only, **Install** (an empty General for the
+  server's own settings to come, then accounts, the install's activity, backups, connected-source apps, the provider
+  directory, outside connections and lab name matches, with the admins' notices over them). Your menu has **Settings**,
+  opening You, with "backups late" beside it for an admin; the profile menu has switching profiles, Sources, Sharing
+  and New profile. The old addresses (`account.html`, `admin.html` and their sections, `settings.html#display`) open
+  their part of Settings.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

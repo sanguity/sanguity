@@ -77,15 +77,22 @@ on the **Settings** page, appear on every chart and as "since" periods.
   doses come in through Health Auto Export; it records what you say happened and never says a dose was due.
 
 **Finding your way.** The same bar across the top of every page: the **profile menu** (the profile shown, by name and
-your role; switch profile; its About this person, Settings, Sources and Sharing; New profile), your records' tabs
-(those that don't fit under **More**, which ends with Edit tabs…), **Add** (today: log a dose, a journal entry, a home
-reading; records: upload files, connect a portal or plan, type records in, paste a Health Link) and your menu (account,
-display, getting started, light or dark, log out). The tab shown and its view are in the address (`#timeline`, `#labs`, `#labs-heatmap`, `#costs-paid`...), so Back moves between tabs and views and a
-copied link opens the same one. **Settings** is grouped in a sidebar (this profile's dashboard, About this person (birth date, sex for reference
-ranges, height) and its targets, labs and ranges, milestones, workouts; your display), one group at a time, with **Find in Settings** to search them all (finding nothing, it offers to search everywhere). Sources, Sharing, Account and Admin have the same
-sidebar, each with a search of its own.
-**Account** is you and this device: sign-in and security (password, two-factor sign-in, passkeys, where you're
-signed in), and this device (install as an app, offline records).
+your role; switch profile; its Sources and Sharing; New profile), your records' tabs (those that don't fit under
+**More**, which ends with Edit tabs…), **Add** (today: log a dose, a journal entry, a home reading; records: upload
+files, connect a portal or plan, type records in, paste a Health Link) and your menu (**Settings**, getting started,
+light or dark, log out). The tab shown and its view are in the address (`#timeline`, `#labs`, `#labs-heatmap`, `#costs-paid`...), so Back moves between tabs and views and a
+copied link opens the same one. **Settings** is one page with a sidebar in three parts, one group shown at a time, with
+**Find in Settings** to search them all (finding nothing, it offers to search everywhere):
+- **This person:** the profile shown: its dashboard, About this person (birth date, sex for reference ranges,
+  height) and its targets, labs and ranges, milestones, workouts, and renaming or deleting it;
+- **You:** sign-in and security (password, two-factor sign-in, passkeys, where you're signed in), this device
+  (install as an app, offline records) and display. Your menu's Settings opens here;
+- **Install**, for admins only: General (the server's own settings), accounts, the install's activity, backups,
+  connected-source apps and their sync defaults, the provider directory, outside connections and lab name matches,
+  with the admins' notices over them.
+
+The old Account and Admin pages' addresses (`account.html`, `admin.html` and their `#sections`) open their part of
+Settings. Sources and Sharing have the same sidebar, each with a search of its own.
 **Sources** (in the profile menu) has everything about records coming in, in a sidebar the same way: an overview of every
 way records reach the profile and when each last brought something; what stays connected (portals and health plans,
 the phone and watch); one-off ways in (upload, type in, paste a Health Link); and the import history.
@@ -164,7 +171,7 @@ keep. It becomes the admin and owns the records already on the server; until you
 fictional demo. With no records on the server yet, the **Getting started** guide opens next, at its first records:
 it brings them in and, if you like, connects a phone; each step is ticked as it's done, every one can be skipped, and
 the guide stays in your menu. Add accounts for
-other people under **Admin** (in your menu, for admins), then share profiles with them under **Sharing → People**.
+other people under **Settings → Install → Accounts** (for admins), then share profiles with them under **Sharing → People**.
 
 **Your records:** put each export in its own folder under `RECORDS_DIR` (default `./records`), copy
 `sources.example.json` to `sources.json` and describe them, then `docker compose run --rm setup rebuild`; the first profile picks up the rebuild automatically.
@@ -182,7 +189,7 @@ and aren't read from the file after that (see `corrections.example.json`).
 | `docker compose run --rm setup rebuild` | Rebuild the data after adding or updating exports |
 | `docker compose exec app python -m server.manage reset-password NAME` | One-time password for a locked-out account |
 | `docker compose exec app python -m server.manage list` | Accounts, profiles and who has which role |
-| `docker compose exec app python -m server.manage remove-user NAME --hand-to OTHER` | Delete an account for good (also under **Admin**); profiles only it owned go to OTHER |
+| `docker compose exec app python -m server.manage remove-user NAME --hand-to OTHER` | Delete an account for good (also under **Settings → Accounts**); profiles only it owned go to OTHER |
 | `docker compose exec app python -m server.manage disable-2fa NAME` | Turn off two-factor sign-in for someone who lost their phone and recovery codes |
 | `git pull && docker compose pull --ignore-buildable && docker compose build --pull && docker compose up -d` | Update a checkout install, and the images it runs on |
 
@@ -410,7 +417,7 @@ anything is decrypted.
 
 Instead of downloading exports, a profile can be connected to a patient portal's FHIR API (SMART on FHIR, Epic's
 first) under **Sources → Portals and health plans**. Each install registers its own app
-with each vendor ([why](docs/connected-sources-oauth.md)), so an admin sets each source up once, under **Admin →
+with each vendor ([why](docs/connected-sources-oauth.md)), so an admin sets each source up once, under **Settings →
 Connected-source apps**:
 
 1. Set `PUBLIC_ORIGINS` in `.env` to the address you open Sanguity at; the return address is that plus
@@ -443,11 +450,11 @@ with the same source keys as the portal's export file would give them, so a file
 once. A source set up before appointments, allergies, fills and immunizations were pulled needs their scopes added
 (the setup screen says which it leaves out); its connections ask to sign in again only when someone turns one on. **What it pulls…** on a connection changes the choice for future pulls; a kind turned off keeps
 what it brought unless you remove it, which is an entry in the import history that undoing puts back. Attachments
-(visit notes, scans, reports) follow rules set for the whole server under Admin → Connected-source apps (fetched automatically or
+(visit notes, scans, reports) follow rules set for the whole server under Settings → Connected-source apps (fetched automatically or
 only when asked, which kinds of file, the largest, and a total per connection), which each connection can change;
 the ones left out are listed with **Fetch anyway**. When a connection stops syncing (several failures in a row,
 access ended, or no successful sync for `Warn when a connection hasn't synced` days, 3 by default), the profile's
-main page says so with a link, the profile's activity log notes it once, and admins see it on the Admin page.
+main page says so with a link, the profile's activity log notes it once, and admins see it in Settings' Install.
 Nothing is sent anywhere: no email or push.
 
 ### Typing records in
@@ -494,10 +501,10 @@ start time and title. Like the records, they are encrypted at rest. Milestones a
 
 **Find your hospital, clinic or insurer**, in the connect step of **Sources → Portals and health plans**, searches a
 directory of FHIR endpoints by name, location, city or state, and says whether it can be connected here: one set up on
-this server connects from there; otherwise an admin is taken to **Admin → Connected-source apps** with its FHIR base
+this server connects from there; otherwise an admin is taken to **Settings → Connected-source apps** with its FHIR base
 filled in (each vendor's setup steps are there, in one place), and everyone else is told what to ask their admin
 for. Epic's and Oracle Health's lists
-can't be shipped with Sanguity, so an admin adds them once (**Admin → Provider directory** shows what's there):
+can't be shipped with Sanguity, so an admin adds them once (**Settings → Provider directory** shows what's there):
 `python3 tools/build_directory.py` (about 1 MB; see
 [docs/provider-directory.md](docs/provider-directory.md)). The app never looks anything up itself.
 
@@ -549,8 +556,8 @@ sources' return address, come from the same public address.
   names (its files elsewhere, a card's issuer) only once the page has named it and you've confirmed that too (#919);
   and once you connect a source
   ([Connected sources](#connected-sources)), the server talks to that vendor only, through an app your install
-  registers with it (see [docs/connected-sources-oauth.md](docs/connected-sources-oauth.md)). **Admin →
-  [Outside connections](www/admin.html)** (`admin.html#outside` on your install) lists every host the install
+  registers with it (see [docs/connected-sources-oauth.md](docs/connected-sources-oauth.md)). **Settings →
+  [Outside connections](www/settings.html)** (`settings.html#outside` on your install, for admins) lists every host the install
   may contact, grouped by purpose, with the scopes asked for and granted and when each was last contacted, for
   the whole install. Every outbound request goes through one gateway
   (`server/net.py`) that refuses any host not listed there, and disconnecting a source stops all contact with it.
@@ -559,18 +566,18 @@ sources' return address, come from the same public address.
   public breaches are refused, checked against a bundled list on your server, see `server/passwords/`). Password and
   recovery-code hashes are peppered with a server secret that only the encryption key unlocks, so a copied database
   alone can't be used to guess them. Sign-in throttling,
-  and server-side sessions you can see and sign out under **Account**. A sign-in lasts 30 days on an account with
+  and server-side sessions you can see and sign out under **Settings → Sign-in and security**. A sign-in lasts 30 days on an account with
   a second factor and 12 hours on one without (`SESSION_DAYS`, `SESSION_HOURS_WITHOUT_2FA` in `.env`); optionally
   sign people out after a period of inactivity too (`SESSION_IDLE_MINUTES`).
 - **Two-factor sign-in** with an authenticator app (codes that can't be reused) and one-time recovery codes, under
-  **Account**; admins can require it for everyone. With it on, a password may be as short as 8 characters.
-- **Passkeys** (Face ID, Touch ID, Windows Hello, a phone or a security key), under **Account**: sign in with one on
+  **Settings → Sign-in and security**; admins can require it for everyone. With it on, a password may be as short as 8 characters.
+- **Passkeys** (Face ID, Touch ID, Windows Hello, a phone or a security key), under **Settings → Sign-in and security**: sign in with one on
   its own, or use it as the step after the password. They need HTTPS; see [Passkeys](#passkeys).
 - **Every request for records or documents checks the account's role on that profile.** Documents are served
   only through that check, read-only, with scripts blocked; no folder of health data is served directly.
 - **Admins manage accounts, not records:** being an admin doesn't show anyone's records.
 - **Admins need a second factor:** once the server has more than one account, an admin needs an authenticator app
-  or a passkey on their own account to use any admin action under **Admin**; until then the page says to set one
+  or a passkey on their own account to use any admin action under **Settings → Install**; until then the page says to set one
   up. A one-person install (one admin, no other accounts) is exempt. Resetting someone's password, turning off their
   two-factor sign-in or making someone an admin also asks the admin to confirm it's them (password, code or passkey)
   unless they did so, or signed in, within the last 5 minutes (`REAUTH_MINUTES` in `.env`). The command line
@@ -661,14 +668,14 @@ sources' return address, come from the same public address.
   typing its name, the watch receiver's copy of its phone data included; the original exports and older backups are
   left alone.
 - **Activity log:** each profile's owners can see who opened its records and documents, and who shared, renamed or
-  changed it, and when (**Sharing → Activity**); admins see account changes (**Admin > Install activity**). Entries are kept for a year
+  changed it, and when (**Sharing → Activity**); admins see account changes (**Settings > Install activity**). Entries are kept for a year
   (`ACTIVITY_DAYS` in `.env`).
 - **Encrypted at rest** (AES-256-GCM): records, documents, settings and the sensitive database fields are
   unreadable without the key in `auth/data_key`, so a copied data folder or backup gives nothing away. See
   [Encryption at rest](#encryption-at-rest).
 - **Secrets are generated on first start** (encryption key, watch-receiver key, a one-time setup code).
 - Records, built data, watch data, logins and secrets are never committed (see `.gitignore`).
-- **Failed sign-ins:** they're throttled and logged, and admins see a notice under **Admin** when one address or
+- **Failed sign-ins:** they're throttled and logged, and admins see a notice over **Settings → Install** when one address or
   account fails 10 times in a day, or 30 failures pile up in all. Nothing is sent outside the server.
 - **Logs hold no health data:** neither nginx nor the app keeps an access log, so the names of uploaded files,
   searches and links aren't written anywhere; an error is logged with where it happened, not with what it was
@@ -676,7 +683,7 @@ sources' return address, come from the same public address.
 - **Reviewed against OWASP ASVS** (Level 2): [docs/security-review.md](docs/security-review.md) has every
   requirement, who can reach what, and the accepted deviations. Report a vulnerability privately ([SECURITY.md](SECURITY.md)).
 - **Put Sanguity behind HTTPS** (a reverse proxy, Tailscale or similar) before using it outside your home network;
-  Sanguity itself serves plain HTTP on `WEB_PORT`, and the sign-in and Account pages warn when they're opened that
+  Sanguity itself serves plain HTTP on `WEB_PORT`, and the sign-in and Settings pages warn when they're opened that
   way from outside the home network or a tailnet. Behind your proxy:
   - set `COOKIE_SECURE=1` in `.env`, so the sign-in cookie is never sent over plain HTTP (the default, `auto`,
     relies on the proxy sending `X-Forwarded-Proto: https`);
@@ -694,7 +701,7 @@ A passkey belongs to the name you open Sanguity at, so it works only:
   doesn't. Put Sanguity behind a reverse proxy with a certificate (Caddy, Nginx Proxy Manager, Traefik, Tailscale
   Serve) and add that address to `PUBLIC_ORIGINS` in `.env`;
 - **at the name it was added at**: one added at `https://health.example.com` isn't offered at another name for the
-  same server. **Account > Passkeys** shows where each one works.
+  same server. **Settings > Passkeys** shows where each one works.
 
 Your password keeps working alongside passkeys. Where an admin requires two-factor sign-in, your last second step
 (the only passkey, with no authenticator app) can't be removed, so nobody locks themselves out. An admin's
@@ -707,11 +714,11 @@ Sanguity installs to a phone's home screen with its own icon: **Add to Home Scre
 iPhone, or **Install app** in Chrome's menu on Android. Like passkeys, this needs **HTTPS** (or `http://localhost`):
 browsers don't install from, or run the offline part at, a plain-HTTP address. The app offers it too: an
 **Install app** button in the header when the browser can install it (Chrome, Edge, Samsung Internet), and an
-**Install on this device** card under **Account > This device** with the steps for iPhone and iPad, or a link to your HTTPS
+**Install on this device** card under **Settings > This device** with the steps for iPhone and iPad, or a link to your HTTPS
 address (from `PUBLIC_ORIGINS`) when the page was opened over plain HTTP.
 
 Installed, it opens without a connection, but by default shows no records then: the app's pages are kept on the
-phone, its records aren't. **Account > This device > Offline records on this device** keeps a copy of the last profile you opened,
+phone, its records aren't. **Settings > This device > Offline records on this device** keeps a copy of the last profile you opened,
 read-only offline with the time it was loaded; a record's details (a result's values, a claim's lines) are in it once
 you've opened that record on the phone. That copy is outside Sanguity's encryption at rest, so anyone who can
 use the phone unlocked could read it. It never includes documents or other profiles, and it's deleted when you sign
@@ -730,8 +737,8 @@ Health records are worth more than uptime: keep copies off this machine.
 | Your original exports | `RECORDS_DIR` | copy them; Sanguity only reads them |
 | Secrets and configuration | `auth/`, `.env`, `sources.json`, `corrections.json` (settings are in the database) | copy them; keep `auth/data_key` somewhere other than the backups (see below) |
 
-**In the app** (**Admin → Backups**): when the newest backup was made, its size and the folder it went to, with a
-warning when it's late (on every Admin group and on the Admin menu item). **Back up now** makes one in the
+**In the app** (**Settings → Backups**, for admins): when the newest backup was made, its size and the folder it went to, with a
+warning when it's late (on every Install group, beside Backups in the sidebar and beside Settings in your menu). **Back up now** makes one in the
 background. The schedule (off, daily or weekly) has the app make one when the newest is a day or a week old, and
 keeps the newest N, deleting older `sanguity-backup-*.tar.gz` files from the folder and nothing else. **Check a
 backup** restores one into a temporary folder beside it, compares it with what its manifest says it holds (every
@@ -745,7 +752,7 @@ is written without them, says so, and Check a backup reports it.
 copied as the receiver last saved it, still encrypted) and every upload it archived (`raw/`), so readings that came
 after its last save are there too, and folded in when it starts after a restore. Its summaries (`public/`) and
 `keys/` aren't copied: they're made again from the database and the app's. The app reads `WATCH_DIR` read-only for
-this and never writes it, except `keys/`; **Admin → Backups** says what the next backup takes, and when the receiver
+this and never writes it, except `keys/`; **Settings → Backups** says what the next backup takes, and when the receiver
 last saved. An install whose compose file is older doesn't show the app the receiver's folder: add the read-only
 line to the `app` service (`- ${WATCH_DIR:-./watch-data}:/srv/watch-store:ro` and `SANGUITY_WATCH_STORE: /srv/watch-store`
 in `compose.yaml`; `- ${WATCH_DIR:-./watch-data}:/watch:ro` in place of the `/watch/public` line in `compose.release.yaml`),
@@ -753,7 +760,7 @@ or copy `WATCH_DIR`'s `watch.db`, `profiles/` and `raw/` yourself. Installs with
 nothing changes. A backup can't be rewritten: what's deleted later, cycle records included (#183), stays in the
 backups made before until they're deleted.
 
-Or run the backup from cron on the host (on TrueNAS: **System > Advanced > Cron Jobs**); the Admin page shows these
+Or run the backup from cron on the host (on TrueNAS: **System > Advanced > Cron Jobs**); Settings → Backups shows these
 too, and warns when the newest is over a week old:
 
 ```sh
@@ -762,11 +769,11 @@ too, and warns when the newest is over a week old:
 
 ZFS snapshots of these folders are fine too: SQLite recovers from a snapshot as from a power cut. The archive is
 still worth having, since it can be checked (`python -m server.manage verify FILE`, or `check FILE` to restore it
-into a temporary folder as the Admin page does) and copied anywhere.
+into a temporary folder as Settings → Backups does) and copied anywhere.
 
 **Restore** with the app stopped; the data it replaces is moved to `DATA_DIR/before-restore-<time>/`, and a backup
 from an older version is upgraded when the app starts. That folder may hold profiles deleted since, so the app deletes
-it 30 days after the restore (`RESTORE_KEEP_DAYS` on the app), and **Admin → Backups** lists it with a **Delete now**;
+it 30 days after the restore (`RESTORE_KEEP_DAYS` on the app), and **Settings → Backups** lists it with a **Delete now**;
 no backup includes it:
 
 ```sh
@@ -780,7 +787,7 @@ accounts and their passwords, passkeys and two-factor sign-in, who may see each 
 phone upload secrets and connected sources' sign-ins, so a link revoked, a member removed, a password changed or a
 source disconnected after the backup was made stays so. A source still connected pulls again what it brought since,
 and one connected since pulls from the start, with its review. Everyone is signed out. A profile deleted since comes back with nobody given access to it (an admin gives it an
-owner under **Admin → Accounts**, Profiles without an owner), and one made since isn't in the backup (its records are
+owner under **Settings → Accounts**, Profiles without an owner), and one made since isn't in the backup (its records are
 in the `before-restore-<time>/` folder); the restore names both. With no database to replace (a new machine, disaster
 recovery), one that can't be read (damaged: it's kept with what was replaced) or one of another install, all of it
 comes from the backup as it was then, and the restore says so: check the accounts and each profile's sharing before
@@ -792,7 +799,7 @@ the receiver puts it back when it starts, moving what it had to `WATCH_DIR/befor
 was left running, `docker compose restart receiver`. On the all-in-one container (Unraid), stop it, run the restore
 with the same folders, and start it again. A backup from before #227 has no phone and watch data, and the receiver's
 is left as it is. Where the app can't write `WATCH_DIR/keys/`, the restore leaves the phone and watch data in
-`DATA_DIR/watch-restored-<time>/` and says how to move it in by hand; **Admin → Backups** lists it beside the
+`DATA_DIR/watch-restored-<time>/` and says how to move it in by hand; **Settings → Backups** lists it beside the
 `before-restore-<time>/` folders, and the app deletes it 30 days after the restore too, or sooner with **Delete now**
 (the backup still has it).
 
@@ -911,7 +918,8 @@ www/                index.html (markup), css/tokens.css (the font and colour tok
                     fonts/ (Inter and Source Serif 4, with their licences),
                     css/app.css (in cascade layers, its head says which), js/*.js (one plain script per tab, loaded in order),
                     login.html, setup.html (first account), guide.html (getting started: a new profile's first records),
-                    account.html (password, devices), sharing.html (a profile's people and how it's shared),
+                    settings.html (Settings: this person's, yours, and the install's for admins; account.html and
+                    admin.html open their part of it), sharing.html (a profile's people and how it's shared),
                     sources.html (records coming in: uploads, typing in, portals, the phone, the import history;
                     import.html, connect.html and providers.html open its sections); manifest.webmanifest, icons/ and sw.js (install as a
                     phone app; tools/make_icons.py draws the icons), icons/sprite.svg (the interface's icons, from Lucide:

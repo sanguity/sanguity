@@ -1,30 +1,15 @@
-/* Sanguity · account page: you and this device (#169). Two groups in a sidebar: Sign-in and security (password,
-   two-factor sign-in, passkeys, where you're signed in) and This device (installing Sanguity, offline records; their
-   cards are pwa.js's). Profiles, with their sharing and activity, are on the Sharing page (sharing.js, #168); the
-   server's administration is on the Admin page (admin.js, #167); how things look is on Settings. */
+/* Sanguity · Settings → You (#991; the Account page before, #169): Sign-in and security (password, two-factor
+   sign-in, passkeys, where you're signed in) and This device (installing Sanguity, offline records; their cards are
+   pwa.js's), two groups of Settings' sidebar (settings-nav.js, which starts this: acctLock, acctStart). Profiles, with
+   their sharing and activity, are on the Sharing page (sharing.js, #168); the server's administration is Settings →
+   Install (admin.js). call(), say(), when() and ME are settings.js's. */
 "use strict";   // $, el and api come from util.js
-/* api() from util.js, returning the JSON answer, or throwing with the server's message */
-async function call(path, method = "GET", body) {
-  const r = await api(path, {method, body: body ? JSON.stringify(body) : undefined});
-  if (r.status === 401) { location.replace("login.html"); throw new Error("signed out"); }
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    const d = j.detail, e = new Error(Array.isArray(d) ? "Please check the fields." : (d && d.message) || d || r.status + " " + r.statusText);
-    e.detail = d; e.status = r.status; throw e;
-  }
-  return j;
-}
-const say = (id, text, bad = false) => sayIn($(id), text, bad);   // shown and said (util.js, #209)
-const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and date format
 const device = ua => {
   if (!ua) return "Unknown device";
   const b = /Edg\//.test(ua) ? "Edge" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "Browser";
   const os = /iPhone|iPad/.test(ua) ? "iOS" : /Android/.test(ua) ? "Android" : /Windows/.test(ua) ? "Windows" : /Mac OS/.test(ua) ? "macOS" : /Linux/.test(ua) ? "Linux" : "";
   return os ? `${b} on ${os}` : b;
 };
-let ME;
-
-$("#logout").onclick = logOut;   // util.js: asks first about what isn't saved (#391)
 
 /* ---------------------------------------------------------------- password */
 /* each with Show (util.js pwField, #492), hidden again only as it's sent: not over a mismatch. Its reply brought into
@@ -147,7 +132,7 @@ async function loadTwoFactor(focus = false) {
       pwSent(ev.target);
       try {
         const r = await call("me/2fa/off", "POST", {password: pw.value});
-        if (r.must_change_pw) { location.replace("account.html#password"); location.reload(); return; }
+        if (r.must_change_pw) { location.replace(location.pathname + location.search + "#password"); location.reload(); return; }
         loadTwoFactor(true); loadPasskeys(); loadSessions();
       } catch (e) { say("#tfMsg", e.message, true); } }},
       pwField(pw).box, el("button", {class: "btn small", type: "submit", text: "Turn off"})));   // with Show (#492)
@@ -193,12 +178,14 @@ function showRecoveryCodes(codes, justTurnedOn) {
   tfFocus(shown);
 }
 
-/* after a second factor is added: who's signed in, again; an admin who needed one for the Admin page (once the
-   server has more than one account) and now has one is told Admin is open again */
+/* after a second factor is added: who's signed in, again; an admin who needed one for Install (once the server has
+   more than one account) and now has one is told Install is open again, its link drawing the page again on Accounts
+   (Install's cards say what's missing until then: admin.js adminGate) */
 async function adminAgain(m) {
   const had = ME.user.admin_needs_two_factor;
   ME = await call("me");
-  if (had && !ME.user.admin_needs_two_factor) $(m).append(" Admin is open to you again: ", el("a", {href: "admin.html", text: "go to Admin"}), ".");
+  if (had && !ME.user.admin_needs_two_factor) $(m).append(" Install is open to you again: ", el("a", {href: "#accounts", text: "go to Accounts",
+    onclick: ev => { ev.preventDefault(); location.replace("#accounts"); location.reload(); }}), ".");
 }
 
 /* ---------------------------------------------------------------- passkeys */
@@ -243,7 +230,7 @@ async function loadPasskeys() {
               const at = st.passkeys.indexOf(k);
               try {
                 const r = await call("me/passkeys/" + k.id, "DELETE", {password: pw.value});
-                if (r.must_change_pw) { location.replace("account.html#password"); location.reload(); return; }
+                if (r.must_change_pw) { location.replace(location.pathname + location.search + "#password"); location.reload(); return; }
                 await Promise.all([loadPasskeys(), loadSessions()]);
                 if (r.signed_out_elsewhere || r.calendar_feeds)   // and the calendar feeds that went with it (#597)
                   say("#pkMsg", "Removed." + (r.signed_out_elsewhere ? ` Signed out ${r.signed_out_elsewhere} other device${r.signed_out_elsewhere === 1 ? "" : "s"}.` : "") +
@@ -292,40 +279,32 @@ async function pkGone(at, text) {
   goneSay([...$("#pkList").querySelectorAll("tbody tr")], at, text, "td.acts button:last-child", $("#passkeys h2"), $("#pkList"));
 }
 
-/* ---------------------------------------------------------------- the sidebar and the address */
-/* The sidebar every account page has (sidebar.js, #266): one group shown at a time, the address following it
-   (account.html#device). An address naming a section (#password, #twofa, #passkeys, #sessions, #installApp,
-   #offlineRecords) opens its group and scrolls to it; #install and #offline are short for the last two. The old
-   Profiles and Admin tabs' addresses (#profiles; #admin, #users, #labmaps) open Sharing and Admin (moved.js). */
-const GROUPS = SG_PAGES.account.groups;   // groups.js: one list, which the command palette searches too (#273)
-let locked = false;   // until the one-time password is replaced, or the second factor the server requires is set up: that alone
-const AcctNav = sideNav({id: "acctNav", page: "Account", groups: GROUPS, find: "Find in Account", none: q => `Nothing in Account matches “${q}”.`,
-  allowed: g => !locked || g === GROUPS[0], alias: {install: "installApp", offline: "offlineRecords"},
-  intro: g => { $("#introHint").textContent = g ? g.hint : ""; }});
-const lockNav = () => { locked = true; AcctNav.hide(); AcctNav.follow(); };
-
-/* ---------------------------------------------------------------- start */
-(async () => {
-  if (sgMoved()) return;   // the old Profiles and Admin tabs' addresses (moved.js)
-  AcctNav.start();
-  try { ME = await call("me"); } catch (e) { return; }
-  await datesReady();   // dates in this person's time zone and format (dates.js)
-  $("#who").textContent = ME.user.username;
-  { const w = plainHttpWarning(); if (w) { $("#insecure").textContent = w; $("#insecure").hidden = false; } }
+/* ---------------------------------------------------------------- start (settings-nav.js) */
+/* a one-time password to replace, or the second factor the server requires to set up: Sign-in and security alone,
+   the top bar's menus put away (nav.js lock) and nothing else asked of the server, which refuses it until then.
+   -> true if so (settings-nav.js then hides the sidebar, listing that group alone) */
+function acctLock() {
   $("#pwHint").textContent = `At least ${ME.password_min} characters. A few unrelated words make a strong password you can remember.`;
   pwFeeds();   // (#597)
   if (ME.user.must_change_pw) {   // nothing else is available until the one-time password is replaced
-    $("#mustChange").hidden = false; SgNav.lock(); lockNav();
-    for (const id of ["#sessions", "#twofa", "#passkeys"]) $(id).hidden = true;
+    $("#mustChange").hidden = $("#password").hidden = false; SgNav.lock();
     $("#pwCur").focus();
-    return;
+    return true;
   }
   if (ME.user.needs_two_factor) {   // the server requires it: set it up before anything else
-    $("#needTf").hidden = false; SgNav.lock(); lockNav();
-    $("#sessions").hidden = true;
-    await Promise.all([loadTwoFactor(), loadPasskeys()]);
-    return;
+    $("#needTf").hidden = false; SgNav.lock();
+    for (const id of ["#password", "#twofa", "#passkeys"]) $(id).hidden = false;
+    Promise.all([loadTwoFactor(), loadPasskeys()]).then(() => SET_NAV.again());
+    return true;
   }
-  await Promise.all([loadSessions(), loadTwoFactor(), loadPasskeys()]);
-  AcctNav.again();   // the cards have their content now, so a section link lands where it should
-})();
+  return false;
+}
+/* the rest: shown once first (this person's settings drawn) is done, so the sidebar's first group is theirs from the
+   start; then the cards' content, and an address naming one of them lands on it */
+async function acctStart(first) {
+  const loads = Promise.all([loadSessions(), loadTwoFactor(), loadPasskeys()]);
+  await first;
+  for (const g of SG_PAGES.settings.groups) if (g.part === "You" && g.id !== "display") for (const id of g.has) $("#" + id).hidden = false;
+  await loads;
+  SET_NAV.again();   // the cards have their content now, so a section link lands where it should
+}

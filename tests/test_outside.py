@@ -340,13 +340,13 @@ class View(unittest.TestCase):
 
     # ---------------------------------------------------------------- the page
 
-    def test_admin_page_has_the_section_without_inline_script(self):
-        r = self.robin.get("/admin.html")   # on the Admin page since #167
+    def test_settings_install_has_the_section_without_inline_script(self):
+        r = self.robin.get("/settings.html")   # Settings → Install since #991 (the Admin page's from #167)
         self.assertEqual(r.status_code, 200)
         html = r.text
         self.assertIn('id="outside"', html)
         self.assertIn('src="js/outside.js"', html)
-        self.assertNotIn('id="outside"', self.robin.get("/settings.html").text)
+        self.assertNotIn('id="outside"', self.robin.get("/admin.html").text)   # its old address only says where it went (moved.js)
         self.assertEqual(re.findall(r"<script(?![^>]*\bsrc=)[^>]*>", html), [], "no inline script")
         self.assertNotIn("unsafe-inline", r.headers.get("content-security-policy", "").split("script-src")[-1].split(";")[0])
         with open(os.path.join(ROOT, "www", "js", "outside.js"), encoding="utf-8") as fh:

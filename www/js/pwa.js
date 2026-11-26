@@ -1,8 +1,8 @@
 /* Sanguity · install as a phone app (#56), on every page (after util.js): registers the service worker (sw.js),
    keeps this device's choice about offline records, and deletes the offline copy whenever the sign-in ends.
 
-   Offline records are off unless the person turns them on, per device, under Account. When on, the records page
-   (js/offline.js) keeps one copy of the last profile it loaded: its records (each record's details once it was opened
+   Offline records are off unless the person turns them on, per device, under Settings → This device. When on, the
+   records page (js/offline.js) keeps one copy of the last profile it loaded: its records (each record's details once it was opened
    on this device, #217), settings and watch data, never documents (PDFs, pictures) and never another profile's. That copy is outside the server's encryption at rest, so it's
    deleted on sign-out, when the sign-in page is reached (a sign-in that ended), when the sign-in's own end time passes
    (even with no connection), when the option is turned off, and once the person no longer has the profile (#591:
@@ -12,7 +12,7 @@
    Why it isn't encrypted on the device: to open offline, the page needs the key without the server, so the key would
    have to be kept on the phone right beside the copy, and anyone who can open the app on the unlocked phone could
    read it either way. What a key from the server would add (a signed-out device holding nothing readable) comes from
-   deleting the copy instead. So it's kept plainly, and the Account page says who could see it. */
+   deleting the copy instead. So it's kept plainly, and Settings → This device says who could see it. */
 "use strict";
 const SgOffline = (() => {
   const CACHE = "sanguity-offline", FLAG = "sg-offline-records";
@@ -185,7 +185,7 @@ const SgLogout = (() => {
   new MutationObserver(apply).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
 })();
 
-/* ---------------------------------------------------------------- Account: offline records on this device */
+/* ---------------------------------------------------------------- Settings → This device: offline records on it */
 (async function offlineChoice() {
   const box = document.getElementById("offlineRecords");
   if (!box) return;
@@ -231,7 +231,7 @@ const SgLogout = (() => {
 /* ---------------------------------------------------------------- installing on this device
    Chrome, Edge and Samsung Internet (Android and desktop) offer an install prompt the page may open from a button
    (beforeinstallprompt); iPhone and iPad have no prompt, so the page says where Safari's Add to Home Screen is. The
-   header's Install app button shows only while the browser offers that prompt; the Account page always says how,
+   header's Install app button shows only while the browser offers that prompt; Settings → This device always says how,
    or why not here (a plain-HTTP address), or that this is the installed app already. */
 const SgInstall = (() => {
   let prompt = null;

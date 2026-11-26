@@ -16,97 +16,16 @@
 <link rel="stylesheet" href="css/app.css">
 <script src="js/theme.js"></script>
 </head>
+<!-- its old address: Account's groups are in Settings now, under You (#991), and moved.js opens the matching one, its #section kept -->
 <body class="acct-page">
-<header class="topbar">
-  <p class="brand-name"><svg class="brand" viewBox="9 5 46 56" aria-hidden="true"><path class="brand-drop" d="M32 7C35.5 14 53 24.5 53 38.5a21 21 0 0 1-42 0C11 24.5 28.5 14 32 7Z"/><path d="M23.5 24.5Q19 29.5 17.6 35.5" fill="none" stroke="#fff" stroke-opacity=".38" stroke-width="3.2" stroke-linecap="round"/><path class="brand-line" d="M19 43h5l4.5-9 5 15 4-9h6.5" fill="none" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/><circle class="brand-dot" cx="44" cy="40" r="3.4"/></svg>Sanguity</p>
-</header>
-<main class="acct sets">
-  <!-- the group shown (account.js): its title, and what it's about -->
-  <div class="set-top" id="intro">
-    <div class="set-top-hd"><h1 id="groupTitle">Sign-in and security</h1></div>
-    <p class="set-who" id="introHint"></p>
-  </div>
-
-  <div class="card warn" id="insecure" role="alert" hidden></div>
-  <div class="card warn" id="mustChange" hidden>Choose your own password to continue. The one you signed in with was for one use only.</div>
-
-  <!-- Sign-in and security -->
-  <section class="card" id="password">
-    <h2>Password</h2>
-    <p class="hint" id="pwHint"></p>
-    <!-- a setting row (#286, app.css .set-row): its name on the left, the control on the right, under the card's head (#494) -->
-    <div class="set-row">
-      <div class="set-row-lbl"><p class="set-row-name">Change your password</p></div>
-      <div class="set-row-ctl"><form id="pwForm" class="form">
-        <label>Current password <input type="password" id="pwCur" autocomplete="current-password" required></label>
-        <label>New password <input type="password" id="pwNew" autocomplete="new-password" required></label>
-        <label>Repeat new password <input type="password" id="pwNew2" autocomplete="new-password" required></label>
-        <!-- what changing it ends besides other devices' sign-ins, said beforehand (#597, account.js) -->
-        <p class="howto" id="pwFeeds" hidden></p>
-        <div class="row"><button class="btn primary" type="submit">Change password</button><span class="msg" id="pwMsg" role="status"></span></div>
-      </form></div>
-    </div>
+<main class="acct">
+  <section class="card">
+    <h1>This page has moved</h1>
+    <p>Your password, two-factor sign-in, passkeys and devices are in <a href="settings.html#security">Settings</a> now, under You.</p>
   </section>
-
-  <div class="card warn" id="needTf" hidden>This server requires two-factor sign-in. Turn on the authenticator app or add a passkey below to continue.</div>
-
-  <section class="card" id="twofa">
-    <h2>Two-factor sign-in</h2>
-    <p class="hint" id="tfHint"></p>
-    <div class="about-words" hidden>
-      <p>Authenticator apps include Google Authenticator, Microsoft Authenticator, 1Password and Bitwarden. Once it's on,
-        Sanguity asks for the app's code after your password.</p>
-      <p>Turning it on gives you recovery codes, each of which signs you in once if you lose your phone.</p>
-    </div>
-    <div class="set-row">
-      <div class="set-row-lbl"><p class="set-row-name">Authenticator app</p></div>
-      <div class="set-row-ctl"><div id="tfBody"></div><span class="msg" id="tfMsg" role="status"></span></div>
-    </div>
-  </section>
-
-  <section class="card" id="passkeys">
-    <h2>Passkeys</h2>
-    <p class="hint" id="pkHint"></p>
-    <div class="about-words" hidden>
-      <p>A passkey signs you in on its own, or as the step after your password. It can't be phished or guessed, and your
-        password still works too.</p>
-    </div>
-    <div class="set-row wide">
-      <div class="set-row-lbl"><p class="set-row-name">Your passkeys</p></div>
-      <div class="set-row-ctl">
-        <p class="howto" id="pkWhy" hidden></p>
-        <div id="pkList"></div>
-        <div id="pkBody"></div>
-        <span class="msg" id="pkMsg" role="status"></span>
-      </div>
-    </div>
-  </section>
-
-  <section class="card" id="sessions">
-    <h2>Where you're signed in</h2>
-    <p class="hint">Sign out any device you don't recognise. Changing your password also signs out every other device.</p>
-    <div class="set-row">
-      <div class="set-row-lbl"><p class="set-row-name">Other devices</p></div>
-      <div class="set-row-ctl"><div class="row"><button class="btn" id="sessOthers" type="button">Sign out all other devices</button><span class="msg" id="sessMsg" role="status"></span></div></div>
-    </div>
-    <div id="sessList"></div>
-  </section>
-
-  <!-- This device: installing Sanguity on it, and offline records on it (#56), filled in by js/pwa.js -->
-  <section class="card" id="installApp"></section>
-  <section class="card" id="offlineRecords"></section>
 </main>
-<script src="js/moved.js"></script>
 <script src="js/util.js"></script>
 <script src="js/pwa.js"></script>
-<script src="js/offline-page.js"></script>
-<script src="js/groups.js"></script>
-<script src="js/nav.js"></script>
-<script src="js/palette.js"></script>
-<script src="js/drop.js"></script>
-<script src="js/dates.js"></script>
-<script src="js/sidebar.js"></script>
-<script src="js/qr.js"></script>
-<script src="js/account.js"></script>
+<script src="js/moved.js"></script>
 </body>
 </html>

@@ -5,7 +5,7 @@ the connect step of **Sources → Portals and health plans** (#166; `providers.j
 searches a directory of endpoints and shows, for the one chosen, its vendor, how realistic connecting it is under the
 decision in [connected-sources-oauth.md](connected-sources-oauth.md) (option 1: each install registers its own app
 with each vendor), and whether it can be connected here: a source set up on this server with the same FHIR base is
-connected from there; otherwise an admin is taken to **Admin → Connected-source apps** with the FHIR base filled in,
+connected from there; otherwise an admin is taken to **Settings → Connected-source apps** with the FHIR base filled in,
 where each vendor's setup steps are (`connections.GUIDES`, their one copy), and everyone else is told what to ask
 their admin for.
 
@@ -20,7 +20,7 @@ their admin for.
 
 CMS publishes no single list of payers' patient-access endpoints; each payer publishes its own (#92).
 
-So a fresh install finds only the sandboxes and Medicare (**Admin → Provider directory** shows which lists a server has). To add Epic's and Oracle Health's lists, an admin runs,
+So a fresh install finds only the sandboxes and Medicare (**Settings → Provider directory** shows which lists a server has). To add Epic's and Oracle Health's lists, an admin runs,
 from the Sanguity folder on the host (Python 3.9 or later, nothing to install):
 
 ```bash

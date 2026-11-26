@@ -1,5 +1,5 @@
-/* Sanguity · Admin page, "Outside connections" (#59, #97; there since #167): every host this install may contact,
-   grouped by purpose, with the scopes asked for and granted and when each was last contacted (GET /api/outside,
+/* Sanguity · Settings → Install, "Outside connections" (#59, #97; the Admin page's from #167, Settings' since #991):
+   every host this install may contact, grouped by purpose, with the scopes asked for and granted and when each was last contacted (GET /api/outside,
    outside.py). Admins see the whole install. Read only: connecting and disconnecting are on the Connected sources
    page. admin.js calls SgOutside.load() once it knows the person is an admin. */
 "use strict";   // $ and el come from util.js

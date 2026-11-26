@@ -107,7 +107,7 @@ remain the main way records come in; live connections are an extra for those who
   Disconnect finds it and cancels it whether it's queued, being read, waiting for its review or being saved, and a save
   that finds the source disconnected is rolled back (`sync.first_saved`).
 - **Outside requests** stay opt-in: nothing contacts a vendor until the user connects it, and every connection is
-  listed with its host (#97, #59): Admin → Outside connections, enforced by `server/net.py`.
+  listed with its host (#97, #59): Settings → Outside connections, enforced by `server/net.py`.
 
 ## Summary of the proposal (before the decision)
 
