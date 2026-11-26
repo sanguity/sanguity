@@ -128,6 +128,11 @@
   <section class="card" id="sessions" hidden>
     <h2>Where you're signed in</h2>
     <p class="hint">Sign out any device you don't recognise. Changing your password also signs out every other device.</p>
+    <!-- as this server's admins set it (#1001: General → Security), read-only here (account.js) -->
+    <div class="set-row">
+      <div class="set-row-lbl"><p class="set-row-name">How long a sign-in lasts</p></div>
+      <div class="set-row-ctl"><p id="sessLasts"></p></div>
+    </div>
     <div class="set-row">
       <div class="set-row-lbl"><p class="set-row-name">Other devices</p></div>
       <div class="set-row-ctl"><div class="row"><button class="btn" id="sessOthers" type="button">Sign out all other devices</button><span class="msg" id="sessMsg" role="status"></span></div></div>
@@ -153,9 +158,26 @@
     <p class="hint">This server's own settings.</p>
   </section>
   <section class="card conn adm" id="gen-host" hidden><h2>Host</h2></section>   <!-- the public addresses (admin-host.js, #1000) -->
+  <!-- General → Security (#1001, gen-security.js): how people sign in, and for how long. Requiring two-factor sign-in
+       for everyone (Accounts' before), then the rows drawn from the server's settings, the fresh check in the card -->
+  <section class="card conn adm" id="gen-security" hidden>
+    <h2 id="genSecHd" tabindex="-1">Security</h2>
+    <p class="hint">How people sign in to this server, and for how long. Each change applies at once.</p>
+    <div id="genSecReauth" class="reauth" hidden></div>
+    <div class="set-row">
+      <div class="set-row-lbl"><p class="set-row-name">Two-factor sign-in</p>
+        <p class="hint">An account without an authenticator app or a passkey can't open any records until it sets one up.</p></div>
+      <div class="set-row-ctl">
+        <label class="check switch"><input type="checkbox" role="switch" id="reqTf" aria-describedby="reqTfMsg"> Require two-factor sign-in for everyone</label>
+        <p class="msg req-tf-msg" id="reqTfMsg" role="status"></p>   <!-- the setting's own replies, beside it (#323) -->
+      </div>
+    </div>
+    <form id="genSecBody" novalidate></form>
+    <span class="msg" id="genSecMsg" role="status"></span>
+  </section>
   <section class="card conn adm" id="gen-phone" hidden><h2>Phone receiver</h2></section>   <!-- the upload address (admin-phone.js, #1003) -->
 
-  <!-- Accounts, and requiring two-factor sign-in (admin.js) -->
+  <!-- Accounts (admin.js) -->
   <section class="card conn adm" id="users" hidden>
     <h2>Accounts</h2>
     <p class="hint">An account for each person who signs in. Being an admin lets someone manage accounts; it doesn't show
@@ -168,14 +190,10 @@
       passkey for your own account, under <a href="#security">Settings → Sign-in and security</a>. Admins need one as soon as the server has more than one account.</p>
     <div id="reauth" class="reauth" hidden></div>
     <div id="adminTools">
-      <!-- a setting row (#286, app.css .set-row): what it does on the left, the switch on the right -->
+      <!-- requiring two-factor sign-in for everyone: General → Security's (#1001), linked from here -->
       <div class="set-row">
-        <div class="set-row-lbl"><p class="set-row-name">Two-factor sign-in</p>
-          <p class="hint">An account without an authenticator app or a passkey can't open any records until it sets one up.</p></div>
-        <div class="set-row-ctl">
-          <label class="check switch"><input type="checkbox" role="switch" id="reqTf" aria-describedby="reqTfMsg"> Require two-factor sign-in for everyone</label>
-          <p class="msg req-tf-msg" id="reqTfMsg" role="status"></p>   <!-- the setting's own replies, beside it (#323) -->
-        </div>
+        <div class="set-row-lbl"><p class="set-row-name">Two-factor sign-in</p></div>
+        <div class="set-row-ctl"><p>Requiring it for everyone is under <a href="#gen-security">General → Security</a>.</p></div>
       </div>
       <!-- adding someone: a setting row, as Sharing's Share with someone is (#494) -->
       <div class="set-row" id="userNewRow">
@@ -348,6 +366,7 @@
 <script src="js/admin-backups.js"></script>
 <script src="js/outside.js"></script>
 <script src="js/admin-host.js"></script>
+<script src="js/gen-security.js"></script>
 <script src="js/admin-phone.js"></script>
 <script src="js/settings-nav.js"></script>
 </body>

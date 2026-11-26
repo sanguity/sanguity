@@ -56,9 +56,6 @@ settings.define("test.server", "testing", "Server-wide", 10, lambda v: int(v), s
 settings.section("testing-env", "Testing the environment")   # (its own: the reset test counts the section above's)
 settings.define("testEnv.syncHours", "testing-env", "Sync every (hours)", 12, settings.whole(1, 168, "Hours"), scope="install",
                 private=False, env="SYNC_HOURS")
-# (#1006) one that can lock everyone out: 0 days ends every sign-in at once (General's own will be bounded)
-settings.define("testEnv.sessionDays", "testing-env", "Sign-in lasts (days)", 30, settings.whole(0, 365, "Days"), scope="install",
-                private=False, env="SESSION_DAYS")
 # (#1006) an install setting that could hold health information: logged by name only
 settings.define("testEnv.sealed", "testing-env", "Sealed", "", lambda v: str(v), scope="install")
 
@@ -542,15 +539,25 @@ class Settings(unittest.TestCase):
         self.assertEqual(ada.get("/api/settings/install").json()["sections"][0]["settings"][0]["from"], "default")
 
     def test_saved_settings_off_lets_a_locked_out_install_back_in(self):
-        """#1006: a value saved in the app that ends every sign-in at once (here 0 days: General's own are bounded) locks
-        everyone out; SANGUITY_SAVED_SETTINGS=off leaves saved values out, so people sign in again and an admin puts it
-        right; server.manage config reset does too, without the page."""
-        key = "testEnv.sessionDays"
-        signed_in = lambda: self.login("zed").get("/api/me").status_code   # noqa: E731  (a new sign-in, then a request)
+        """#1006: a value saved in the app that ends sign-ins (here 1 day, General → Security's shortest, #1001: Zed's two
+        days old) keeps people out; SANGUITY_SAVED_SETTINGS=off leaves saved values out, so they're in again and an admin
+        puts it right; server.manage config reset does too, without the page."""
+        key = "security.sessionDays"
+
+        def signed_in():   # a sign-in two days old, with a second factor (so not ended at 12 hours), then a request
+            c = self.login("zed")
+            with contextlib.closing(dbm.connect()) as db:
+                db.execute("UPDATE users SET totp_secret=? WHERE id=?", (crypto.enc("JBSWY3DPEHPK3PXP"), self.uid["zed"]))
+                db.execute("UPDATE sessions SET created=created-2*86400 WHERE id=(SELECT MAX(id) FROM sessions WHERE user_id=?)", (self.uid["zed"],))
+            try:
+                return c.get("/api/me").status_code
+            finally:
+                with contextlib.closing(dbm.connect()) as db:
+                    db.execute("UPDATE users SET totp_secret=NULL WHERE id=?", (self.uid["zed"],))
 
         def lock():   # as if saved by mistake
             with contextlib.closing(dbm.connect()) as db:
-                settings.put(db, key, 0)
+                settings.put(db, key, 1)
         self.assertEqual(signed_in(), 200)
         lock()
         self.assertEqual(signed_in(), 401, "locked out: every sign-in ends at once")
@@ -559,7 +566,7 @@ class Settings(unittest.TestCase):
             got = self.c["ada"].get("/api/settings/install").json()
             st = {s["key"]: s for sec in got["sections"] for s in sec["settings"]}[key]
             self.assertEqual((got["saved_ignored"], st["value"], st["from"], st["saved"], got["variables"]["SESSION_DAYS"]["from"]),
-                             (True, 30, "default", 0, "default"))
+                             (True, 30, "default", 1, "default"))
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
                 main.say_settings()   # what the app's start says
@@ -574,6 +581,146 @@ class Settings(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             manage.run(["config", "reset", "SESSION_DAYS"])
         self.assertEqual(signed_in(), 200)
+
+    # ---------------------------------------------------------------- General → Security (#1001)
+
+    def security_put(self, key, value, status=200, confirm=True):
+        r = self.c["ada"].put(f"/api/settings/install/{key}", json={"value": value, "confirm": confirm}, headers=H)
+        self.assertEqual(r.status_code, status, f"{key} = {value!r}: {r.text}")
+        return r
+
+    def security_reset(self):
+        self.c["ada"].post("/api/me/reauth", json={"secret": PW["ada"]}, headers=H)
+        self.assertEqual(self.c["ada"].post("/api/settings/install/reset", json={"section": "security"}, headers=H).status_code, 200)
+
+    def test_security_settings_are_bounded_never_more_lenient(self):
+        """#1001: each of General → Security's settings takes the values from its least to its most, Sanguity's own
+        default never exceeded (#998), and refuses one past either (400), saying its bounds; the page is given them. A
+        variable set in the environment (PASSWORD_MIN_LENGTH, here) shows locked and refuses a change (409)."""
+        ada = self.c["ada"]
+        ada.post("/api/me/reauth", json={"secret": PW["ada"]}, headers=H)
+        bounds = {"security.sessionDays": (1, 30), "security.sessionHours": (1, 12), "security.idleMinutes": (5, 1440),
+                  "security.passwordMin": (15, 64), "security.passwordMin2fa": (8, 64), "security.tempPasswordDays": (1, 7),
+                  "security.reauthMinutes": (1, 5), "security.triesHere": (3, 5), "security.triesAddress": (10, 20),
+                  "security.triesAccount": (10, 30)}
+        try:
+            with mock.patch.dict(os.environ):
+                os.environ.pop("PASSWORD_MIN_LENGTH")
+                got = {st["key"]: st for sec in ada.get("/api/settings/install").json()["sections"] if sec["id"] == "security"
+                       for st in sec["settings"]}
+                self.assertEqual({k: (got[k]["min"], got[k]["max"], got[k]["default"]) for k in bounds},
+                                 {**{k: (lo, hi, hi) for k, (lo, hi) in bounds.items()}, "security.idleMinutes": (0, 1440, 0),
+                                  "security.passwordMin": (15, 64, 15), "security.passwordMin2fa": (8, 64, 8)})
+                for key, (lo, hi) in bounds.items():
+                    for v in (lo - 1, hi + 1, "10", 2.5, True):
+                        if key == "security.idleMinutes" and v == lo - 1:
+                            v = 1   # (0 is off; 1 to 4 aren't)
+                        self.assertIn("must be", self.security_put(key, v, 400).json()["detail"])
+                    for v in (lo, hi):
+                        self.security_put(key, v)
+                self.security_put("security.idleMinutes", 0)
+                for v in ("nobody", ["admins"], None):
+                    self.security_put("security.profiles", v, 400)
+                self.assertEqual(got["security.profiles"]["choices"], {"everyone": "Everyone signed in", "admins": "Admins only"})
+            st = {s["key"]: s for sec in ada.get("/api/settings/install").json()["sections"] for s in sec["settings"]}["security.passwordMin"]
+            self.assertEqual((st["from"], st["can_change"], st["env"]), ("environment", False, "PASSWORD_MIN_LENGTH"))
+            self.assertIn("PASSWORD_MIN_LENGTH", self.security_put("security.passwordMin", 20, 409).json()["detail"])
+        finally:
+            self.security_reset()
+
+    def test_security_settings_apply_at_once(self):
+        """#1001: each of General → Security's settings reaches what it governs at once, without a restart: a sign-in's
+        lengths and idle sign-out (You → Sign-in and security is told them), who may create profiles (the server
+        refuses the rest), the shortest passwords, a one-time password's days, the fresh check's minutes, and the
+        sign-in throttle's free tries."""
+        from server import security as sec
+        ada = self.c["ada"]
+        ada.post("/api/me/reauth", json={"secret": PW["ada"]}, headers=H)
+        try:
+            # who may create profiles: admins only, then everyone again
+            self.security_put("security.profiles", "admins")
+            r = self.c["robin"].post("/api/profiles", json={"name": "Not made (fictional)"}, headers=H)
+            self.assertEqual((r.status_code, "only an admin" in r.json()["detail"]), (403, True), r.text)
+            self.assertEqual((self.c["robin"].get("/api/me").json()["may_create_profiles"], ada.get("/api/me").json()["may_create_profiles"]), (False, True))
+            made = ada.post("/api/profiles", json={"name": "Made by an admin (fictional)"}, headers=H)
+            self.assertEqual(made.status_code, 200, made.text)
+            ada.request("DELETE", f"/api/profiles/{made.json()['id']}", json={"confirm_name": "Made by an admin (fictional)"}, headers=H)
+            self.security_put("security.profiles", "everyone")
+            self.assertTrue(self.c["robin"].get("/api/me").json()["may_create_profiles"])
+            # the lengths, as You → Sign-in and security and the sign-in page say them
+            self.security_put("security.sessionDays", 10)
+            self.security_put("security.idleMinutes", 60)
+            self.assertEqual((ada.get("/api/me").json()["session"], client().get("/api/setup").json()["session"]),
+                             ({"days": 10, "hours_without_2fa": 12, "idle_minutes": 60},) * 2)
+            # the shortest password: asked of the next one set
+            self.security_put("security.passwordMin2fa", 20)
+            with mock.patch.dict(os.environ):
+                os.environ.pop("PASSWORD_MIN_LENGTH")
+                self.security_put("security.passwordMin", 25)
+                zed = self.login("zed")
+                self.assertEqual(zed.get("/api/me").json()["password_min"], 25)
+                r = zed.post("/api/me/password", json={"current": PW["zed"], "new": "twenty one characters"}, headers=H)
+                self.assertEqual(r.status_code, 400, r.text)
+                self.assertIn("25", r.json()["detail"])
+            self.assertEqual(ada.get("/api/me").json()["password_min"], 20)   # (Ada's: with two-factor sign-in on)
+            # a one-time password's days, from those given now
+            self.security_put("security.tempPasswordDays", 3)
+            self.assertAlmostEqual(accounts.temp_expiry() - dbm.now(), 3 * 86400, delta=2)
+            # the fresh check: given 2 minutes ago, with 1 minute it's asked again
+            self.security_put("security.reauthMinutes", 1)
+            with contextlib.closing(dbm.connect()) as db:
+                db.execute("UPDATE sessions SET verified_at=? WHERE user_id=?", (dbm.now() - 120, self.uid["ada"]))
+            self.assertEqual(self.security_put("security.triesHere", 3, 403).json()["detail"], "reauth_required")
+            self.assertEqual(ada.get("/api/me").json()["reauth_minutes"], 1)
+            ada.post("/api/me/reauth", json={"secret": PW["ada"]}, headers=H)
+            # the throttle's free tries: 3 wrong ones from here, then a wait (5 before)
+            keys = sec.login_keys("nobody1001", "testclient")
+            sec.throttle.clear(*keys)
+            tries = lambda: [client().post("/api/login", json={"username": "nobody1001", "password": "not a password here"}, headers=H).status_code  # noqa: E731
+                             for _ in range(4)]
+            self.assertEqual(tries(), [401] * 4)
+            sec.throttle.clear(*keys)
+            self.security_put("security.triesHere", 3)
+            self.assertEqual(tries(), [401] * 3 + [429])
+            sec.throttle.clear(*keys)
+        finally:
+            self.security_reset()
+        self.assertEqual(self.c["ada"].get("/api/me").json()["session"], {"days": 30, "hours_without_2fa": 12, "idle_minutes": 0})
+
+    def test_a_shorter_sign_in_counts_the_ones_it_ends_and_asks(self):
+        """#1001: shortening a sign-in, or turning idle sign-out on, would end sign-ins: refused (409) with how many (and
+        whether yours is one) until sent again confirmed; then they end at their next request, and the rest go on. A
+        change that ends none isn't asked."""
+        ada, who = self.c["ada"], self.uid["zed"]
+        ada.post("/api/me/reauth", json={"secret": PW["ada"]}, headers=H)
+        old, new = self.login("zed"), self.login("zed")
+        with contextlib.closing(dbm.connect()) as db:
+            db.execute("UPDATE sessions SET last_seen=?", (dbm.now(),))
+            aged = db.execute("SELECT MIN(id) FROM sessions WHERE user_id=? AND id IN (SELECT id FROM sessions ORDER BY id DESC LIMIT 2)", (who,)).fetchone()[0]
+            db.execute("UPDATE sessions SET created=created-3*3600, last_seen=last_seen-20*60 WHERE id=?", (aged,))
+            self.assertEqual(main.sessions_ended(db, {"SESSION_HOURS_WITHOUT_2FA": 2}, aged), (1, True))
+        try:
+            r = self.security_put("security.sessionHours", 2, 409, confirm=False)
+            self.assertEqual({k: r.json()["detail"][k] for k in ("code", "sessions", "yours")}, {"code": "confirm_sign_ins", "sessions": 1, "yours": False})
+            self.assertEqual(r.json()["detail"]["message"], "This ends 1 sign-in: confirm it to go ahead.")
+            self.assertEqual((old.get("/api/me").status_code, new.get("/api/me").status_code), (200, 200), "not yet")
+            self.stale()
+            self.assertEqual(self.security_put("security.sessionHours", 2, 403).json()["detail"], "reauth_required", "then the fresh check")
+            ada.post("/api/me/reauth", json={"secret": PW["ada"]}, headers=H)
+            self.security_put("security.sessionHours", 2)
+            self.assertEqual((old.get("/api/me").status_code, new.get("/api/me").status_code), (401, 200))
+            # idle sign-out: one unused for 20 minutes
+            old = self.login("zed")
+            with contextlib.closing(dbm.connect()) as db:
+                db.execute("UPDATE sessions SET last_seen=?", (dbm.now(),))
+                db.execute("UPDATE sessions SET last_seen=last_seen-20*60 WHERE id=(SELECT MAX(id) FROM sessions)")
+            self.assertEqual(self.security_put("security.idleMinutes", 15, 409, confirm=False).json()["detail"]["sessions"], 1)
+            self.security_put("security.idleMinutes", 30, confirm=False)   # ends none: not asked
+            self.security_put("security.idleMinutes", 15)
+            self.assertEqual((old.get("/api/me").status_code, new.get("/api/me").status_code), (401, 200))
+            self.security_put("security.sessionDays", 20, confirm=False)   # none is that old
+        finally:
+            self.security_reset()
 
     def test_every_variable_a_page_names_is_one_compose_reads(self):
         """#1008: a variable a setting's help names (the Sync defaults' ceiling, SYNC_MAX_ATTACHMENT_MB), or any text the

@@ -1,14 +1,7 @@
 const f = document.getElementById("f"), btn = document.getElementById("b"), err = document.getElementById("e");
 api("setup").then(r => r.json()).then(s => { if (s.needed) location.replace("setup.html"); else stayNote(s.session); }).catch(() => {});
-function stayNote(t) {   // how long a sign-in lasts, as this server is set up (SESSION_* in .env)
-  if (!t) return;
-  const n = (v, unit) => `${v} ${unit}${v === 1 ? "" : "s"}`;
-  let say = "Private medical records. You'll stay signed in on this device until you log out";
-  say += t.hours_without_2fa && t.hours_without_2fa < t.days * 24
-    ? `: up to ${n(t.days, "day")} with two-factor sign-in or a passkey, otherwise ${n(t.hours_without_2fa, "hour")}.`
-    : `, for up to ${n(t.days, "day")}.`;
-  if (t.idle_minutes) say += ` Leave it unused for ${n(t.idle_minutes, "minute")} and you'll be signed out.`;
-  document.getElementById("stay").textContent = say;
+function stayNote(t) {   // how long a sign-in lasts, as this server is set up (util.js)
+  if (t) document.getElementById("stay").textContent = signInLasts(t, "Private medical records. You'll stay signed in on this device until you log out");
 }
 { const w = plainHttpWarning(), box = document.getElementById("insecure"); if (w) { box.textContent = w; box.hidden = false; } }
 /* a Log out made without the server (#422, pwa.js SgLogout): this device's part is done; the sign-in on the server is

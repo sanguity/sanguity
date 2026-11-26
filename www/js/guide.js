@@ -7,7 +7,8 @@
    renames it. An export is uploaded in the records step itself, with Sources' drop target (import.js, #281), through
    to its review and Save; the other ways and the phone are on the Sources page: its links carry ?guide=<step>, and
    that page shows a way back here (sources-page.js). Someone with no profile yet makes one in the first step (also guide.html?new); someone
-   who can only view a profile is told its owners and editors set it up, with no steps of theirs.
+   who can only view a profile is told its owners and editors set it up, with no steps of theirs; where only an admin
+   may create a profile (#1001: Settings → Install → General → Security), someone with none is told to ask one.
 
    Signing in to an empty profile of your own (your only one) opens this page until you finish or skip it: the
    per-person setting "guide" ("", "skipped" or "done", server/settings.py), set here. Your menu's Getting started
@@ -168,7 +169,16 @@
       steps = [{id: "view", title: P.name}];
       $("#guideSteps").hidden = true;
       $("#viewSays").textContent = `You can view ${P.name}. Its owners and editors bring in its records and set up its phone, and what they add appears here for you too.`;
+      $("#step-view .guide-later").hidden = !ME.may_create_profiles;   // (#1001: an admin's alone, on this server)
       drawFor();
+      show("view");
+      return;
+    }
+    if (!P && !ME.may_create_profiles) {   // (#1001) only an admin makes a profile on this server: who to ask, and no form
+      steps = [{id: "view", title: "Getting started"}];
+      $("#guideSteps").hidden = $("#viewGo").hidden = $("#step-view .guide-later").hidden = true;
+      $("#viewTitle").textContent = "Ask an admin for a profile";
+      $("#viewSays").textContent = "On this server only an admin can create a profile. Ask one to make yours and share it with you: it then opens here.";
       show("view");
       return;
     }
