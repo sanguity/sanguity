@@ -14048,6 +14048,49 @@ def main():
             check("At 320 px with text at 150% and 200% (#1012, #622, 1.4.10): every page no wider than the screen, every records tab and view and every "
                   "group of Sources, Sharing, Settings, Account and Admin, the guide and the other pages (the Overview's appointments and Costs' groups ran "
                   "past it, and the tab bar's More with them)", n1012 == 90 and not bad1012, [n1012, bad1012])
+            # ---- #1047: every key/value list (.kv) at 320, 412 and 1400 px with text at 200%: no label's words over its value or
+            # past its own box, and no page wider than the screen; as usual (360, 412, 1400 px), each value beside its label.
+            # General's Host, Backups and logging and About, Connected-source apps, Backups, and every records drawer that has
+            # one (a fixed 92/110 px label column had labels printed over their values: "Configuration" 182 px in 92)
+            KV1047 = r"""() => { const out = [], rg = document.createRange(), r = e => e.getBoundingClientRect();
+              const ov = (x, y) => x.left < y.right - 0.5 && y.left < x.right - 0.5 && x.top < y.bottom - 0.5 && y.top < x.bottom - 0.5;
+              const lists = [...document.querySelectorAll('dl.kv')].filter(d => d.checkVisibility());
+              for (const dl of lists) for (const dt of dl.querySelectorAll(':scope > dt')) { const dd = dt.nextElementSibling; rg.selectNodeContents(dt); const t = rg.getBoundingClientRect();
+                if (dd && (ov(t, r(dd)) || t.right > r(dt).right + 0.5)) out.push(dt.textContent + ' over its value');
+                if (dd && !document.adoptedStyleSheets.length && Math.abs(r(dd).top - r(dt).top) > 0.5) out.push(dt.textContent + ' not beside its value'); }
+              if (document.documentElement.scrollWidth > document.documentElement.clientWidth) out.push('wider than the screen');
+              return [lists.length, out]; }"""
+            bad1047, n1047 = {}, 0
+            for w1047 in (320, 360, 412, 1400):
+                c1047 = browser.new_context(viewport={"width": w1047, "height": 800}, bypass_csp=True)
+                c1047.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
+                p1047 = c1047.new_page()
+                def at1047(where, n=0):
+                    for f1047 in ((1,) if w1047 == 360 else (2,) if w1047 == 320 else (1, 2)):
+                        p1047.evaluate("css => { const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = css ? [s] : []; }", big785(f1047))
+                        p1047.wait_for_timeout(250)
+                        lists, got = p1047.evaluate(KV1047)
+                        n += lists
+                        if got or not lists:
+                            bad1047[f"{where} {w1047} {round(f1047 * 100)}%"] = got or "no list"
+                    return n
+                for g1047 in ("general", "apps", "backups"):
+                    p1047.goto(base + "/settings.html?profile=1#" + g1047)
+                    p1047.wait_for_load_state("networkidle")
+                    p1047.wait_for_timeout(800)
+                    n1047 += at1047("settings#" + g1047)
+                p1047.goto(base + "/?profile=1#timeline")
+                p1047.wait_for_function("() => typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
+                for k1047 in p1047.evaluate("() => [...new Set(EV.map(e => e.k))]") + ["lab panel"]:
+                    p1047.evaluate("() => { document.adoptedStyleSheets = []; }")
+                    p1047.evaluate("k => k === 'lab panel' ? openLab(SERIES.find(s => s.name === 'Hemoglobin')) : openEvent(EV.find(e => e.k === k))", k1047)
+                    p1047.wait_for_timeout(600)
+                    if p1047.evaluate("() => [...document.querySelectorAll('#dbody dl.kv')].some(d => d.checkVisibility())"):
+                        n1047 += at1047("drawer " + k1047)
+                c1047.close()
+            check("Key/value lists at 320, 412 and 1400 px with text at 200% (#1047, 1.4.4): no label over its value and no page wider than the screen, on "
+                  "General, Connected-source apps, Backups and every records drawer with one; as usual, each value beside its label",
+                  n1047 > 40 and not bad1047, [n1047, bad1047])
             # ---- #832: #622's on a phone with a long name, 20 characters ("Sam Okafor-Lindqvist", the second profile's for
             # this and put back after), at 360 and 412 px on the records page and Settings, the text made larger as the page
             # is shown (130%, then 150%, then 200%, as a phone's text size is changed with it open): the name at its floor
