@@ -115,7 +115,7 @@ const flagCell = x => atCell([x.flag ? `${x.value} ${flagWord(x.flag)}` : x.valu
 const rangeCell = t => el("td", {}, el("span", {class: "nw", text: t || ""}));
 function table(heads, rows, cls = "") {   // a region that can be scrolled from the keyboard on a narrow screen (#225's wider tables)
   return scrollBox({class: "scroll", "aria-label": heads.filter(Boolean).join(", ")}, el("table", {class: ("tbl " + cls).trim()},
-    el("thead", {}, el("tr", {}, ...heads.map(h => el("th", {text: h})))), el("tbody", {}, ...rows)));
+    el("thead", {}, el("tr", {}, ...heads.map(h => h ? el("th", {text: h}) : thHidden("Chart")))), el("tbody", {}, ...rows)));   // (a trend's sparkline, #1075)
 }
 /* a trend's sparkline (chartkit.js ckSpark, #299): the server's [day, value, flag, low, high, …, edge], oldest first */
 const spark = pts => ckSpark(pts.map(([d, v, f, lo, hi, , , e]) => ckPt(zParse(d), v, lo, hi, f, e)), {r: 2});

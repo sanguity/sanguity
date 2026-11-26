@@ -3767,6 +3767,10 @@ Everything on `main` so far; it becomes the first tagged release.
   connected source stopped syncing, when it shows.
 - **Make the link says it's made** (#1066): a screen reader heard only focus move to Copy; "… is made. Copy the link
   now." is said too.
+- **Screen readers on the records tabs, Settings and Sharing** (#1075): a records tab picked says its name, as a
+  sidebar's group does; Settings' current group has an edge in forced colours, not its weight alone; the headings
+  over a row's buttons (Sharing, the visit summary, Sign-in and security, Accounts and others) are named for screen
+  readers; and Sharing's "Loading…" leaves the status line once it has loaded.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

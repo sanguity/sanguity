@@ -167,7 +167,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     };
     const rows = () => [...$("#memberList tbody").rows];
     $("#memberList").replaceChildren(el("table", {class: "tbl shr-members"},
-      el("thead", {}, el("tr", {}, ...["Person", "Role", ""].map(h => el("th", {text: h})))),
+      el("thead", {}, el("tr", {}, ...["Person", "Role", ""].map(thOf))),
       el("tbody", {}, ...MEMBERS.map(m => el("tr", {},
         el("td", {}, m.username, m.user_id === me ? el("span", {class: "muted", text: " (you)"}) : null,
           m.disabled ? el("span", {class: "muted", text: " (account disabled)"}) : null),   // owners are told (#314)

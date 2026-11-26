@@ -1335,6 +1335,8 @@ OUTLINE_JS = r"""() => {
 # shown in a landmark); the records page had two contentinfo landmarks and its filters outside any
 AXE_LANDMARKS = """() => axe.run(document, {runOnly: {type: 'rule', values: axe.getRules().map(r => r.ruleId).filter(id => id === 'region' || id.startsWith('landmark-'))}})
   .then(r => r.violations.map(v => v.id + ' at ' + v.nodes.slice(0, 3).map(n => n.target.join(' ')).join(', ')))"""
+# axe-core's empty-table-header (#1075, best practice): a heading over a row's buttons named for screen readers only
+AXE_EMPTY_TH = """() => axe.run(document, {runOnly: {type: 'rule', values: ['empty-table-header']}}).then(r => r.violations.flatMap(v => v.nodes.map(n => n.target.join(' '))))"""
 AXE_HEADINGS = """() => axe.run(document, {runOnly: {type: 'rule', values: ['heading-order', 'page-has-heading-one', 'empty-heading']}})
   .then(r => r.violations.map(v => v.id + ' at ' + v.nodes.slice(0, 3).map(n => n.target.join(' ')).join(', ')))"""
 
@@ -1362,7 +1364,7 @@ CELL_LABELS_JS = r"""() => {
   for (const t of document.querySelectorAll('main.acct table.tbl')) {
     if (!t.checkVisibility() || !t.tHead) continue;
     const where = ((t.closest('[id]') || {}).id || '') + ' table.' + t.className.trim().split(/\s+/).join('.');
-    const hidden = getComputedStyle(t.tHead).display === 'none', heads = [...t.tHead.rows[0].cells].map(h => h.textContent.trim());
+    const hidden = getComputedStyle(t.tHead).display === 'none', heads = [...t.tHead.rows[0].cells].map(h => h.querySelector(':scope > .vh:only-child') ? '' : h.textContent.trim());   // (named for screen readers only: an empty one, #1075)
     let rows = 0, cells = 0;
     for (const r of [...t.tBodies].flatMap(b => [...b.rows]).filter(r => r.checkVisibility())) {
       rows++;
@@ -11517,8 +11519,8 @@ def main():
             settle(300)
 
             # ---- keyboard and screen-reader basics (#209) on the records page (light theme): "Skip to content" readable;
-            # the browser tab's title follows the tab, said only when the tab is opened from elsewhere (the tab bar
-            # already says which tab is selected); a save and an error said through the shared status line and alert,
+            # the browser tab's title follows the tab, said as it's opened, from the tab bar too (#1075: its links'
+            # aria-current isn't reliably said); a save and an error said through the shared status line and alert,
             # the message shown beside them too; the details drawer, covering the page at 375 px, keeps Tab inside
             # it, the page behind inert and out of Chromium's accessibility tree, focus given back on Escape; less
             # motion when the system asks for it
@@ -11538,8 +11540,8 @@ def main():
             settle(300)
             page.locator("#view-overview a.btn", has_text="Open Costs").first.click()
             elsewhere_said = [page.title(), said(page)]
-            check("the tab's title is the tab and the profile; picked in the tab bar, nothing more is said",
-                  in_bar == ["Labs · My records · Sanguity", ""], in_bar)
+            check("the tab's title is the tab and the profile; picked in the tab bar, its name said through the status line, as a sidebar's group is (#1075)",
+                  in_bar == ["Labs · My records · Sanguity", "Labs"], in_bar)
             check("…opened from a button elsewhere, the tab is said through the status line", elsewhere_said == ["Costs · My records · Sanguity", "Costs"], elsewhere_said)
             # #255: a heading outline on every records tab: one h1 in <main>, the tab's name (visually hidden: the tab bar
             # shows it), over its sections' h2s and their parts' h3s, no level skipped (axe's heading-order and empty-heading)
@@ -17558,8 +17560,18 @@ def main():
                 return [d.backgroundColor, d.backgroundColor !== 'rgba(0, 0, 0, 0)' && d.backgroundColor !== bg && parseFloat(d.width) > 0]; })"""
             page.emulate_media(forced_colors="active")
             dots = js(dot_js)
+            # #1075: the current group by more than its weight there (its accent shadow is dropped): a system-colour edge, the others
+            # none; at 1400 px (on a phone its edge is a border)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(200)
+            cur1075 = js("""[innerWidth, ...[...document.querySelectorAll('.set-nav-list a[data-group]')].filter(a => a.checkVisibility()).slice(0, 3).map(a => (c => [a.getAttribute('aria-current'),
+                c.outlineStyle !== 'none' && parseFloat(c.outlineWidth) >= 2])(getComputedStyle(a)))]""")
+            page.set_viewport_size({"width": 375, "height": 800})
+            settle(200)
             page.emulate_media(forced_colors="none")
             check("…the sidebar's “not saved” dot and the bar's are drawn in forced colours too (#409)", all(d[1] for d in dots) and dots[0][0] == dots[1][0], dots)
+            check("…and the current group has an edge in forced colours, not its weight alone; the others none (#1075)",
+                  cur1075[0] > 760 and sum(1 for c in cur1075[1:] if c == ["page", True]) == 1 and all(c[1] == (c[0] == "page") for c in cur1075[1:]), cur1075)
             page.focus("#sec-overview .set-order li:nth-child(2) .set-more-btn")
             page.keyboard.press("Enter")
             first_act = js("document.activeElement.textContent")
@@ -26593,6 +26605,7 @@ def main():
             ua_links, links_seen = [], [0]
             outlines, outline_bad = [], []   # #331: each page's heading outline (in light: it's the same in dark)
             marks_bad = []   # #1061: axe's landmark rules on each of those pages (in light), and the records tabs at 360 px too
+            th_bad = []   # #1075: axe's empty-table-header on all of them, in light
             sizes_bad, sizes_seen = [], [0]   # #258: buttons whose height isn't one of the sizes
             titles_bad = []   # #371: titles on controls that say what's on no screen
             # Chromium's own link colour, light and dark (a visited link's purple reads as this to scripts too)
@@ -26611,6 +26624,7 @@ def main():
                 n, blue = pg.evaluate(UA_LINKS)
                 links_seen[0] += n
                 if label.startswith("light "):
+                    th_bad.extend(f"{label[6:]}: {t}" for t in pg.evaluate(AXE_EMPTY_TH))
                     sizes_seen[0] += 1
                     sizes_bad.extend(f"{label[6:]}: {b}" for b in pg.evaluate(CONTROL_SIZES_JS, pg.viewport_size["width"] <= 640))
                     titles_bad.extend(f"{label[6:]}: {t}" for t in pg.evaluate(TITLES_JS))
@@ -26705,6 +26719,8 @@ def main():
                   outline_bad[:10] or " | ".join(outlines))
             check(f"…and on the same {len(outlines)}, axe-core's landmark rules passing, the records tabs at 360 px too (a source's sync warning shown): one contentinfo, all shown in a landmark (#1061)",
                   len(outlines) >= 35 and not marks_bad, marks_bad[:10])
+            check(f"…and on the {sizes_seen[0]} in light, no empty table heading (axe-core's empty-table-header): one over a row's buttons is named for screen readers (#1075)",
+                  sizes_seen[0] >= 45 and not th_bad, th_bad[:10])
             check(f"…and on the {sizes_seen[0]} in light, at 1400 px, every button is one of the three sizes, 24, 32 or 40 px tall (#258)",
                   sizes_seen[0] >= 45 and not sizes_bad, sizes_bad[:12])
             check(f"…and on the same {sizes_seen[0]}, no control that takes focus has a title saying what's in neither its text on the screen nor its "
@@ -27951,6 +27967,11 @@ def main():
             db_313.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, 1, 'viewer')", (alex_id,))
             page.goto(base + "/sharing.html?profile=1#people")
             page.wait_for_function("document.getElementById('people').dataset.profile === '1' && !!document.querySelector(\"#memberList button[aria-label='Remove alex']\")", timeout=10000)
+            # #1075: the visit summary's "Loading…", said as Sharing loads, isn't left in the status line once it has
+            page.wait_for_function("!document.getElementById('build').hidden", timeout=10000)
+            settle(200)
+            st1075 = js("document.getElementById('sgStatus').textContent")
+            check("Sharing loaded: the status line doesn't still say “Loading…” (#1075)", "Loading" not in st1075, st1075)
             page.click("#memberList button[aria-label='Remove alex']")
             asked = answer_ask(page, yes=False)
             check("…Remove on the default profile says “the records in My records”, with no possessive made from its name (#313)",
