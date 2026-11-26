@@ -51,9 +51,9 @@ function drawPhone(sec, vars, h, note) {
       "unless set) sets both; Watch Receiver Port on TrueNAS; on Unraid both Watch receiver port fields, the same number; on CasaOS " +
       "its compose file, in both places.", set(String(v("RECEIVER_PORT").value), v("RECEIVER_PORT").from)),
     ro("Time zone", "Where the receiver's days start and end for watch and scale readings. TZ in .env (UTC unless set); Timezone " +
-      "on TrueNAS, Time zone on Unraid; CasaOS gives its own.", h.tz ? el("code", {text: h.tz}) : "The receiver's own: not seen by the app here."),
+      "on TrueNAS, Time zone on Unraid; CasaOS gives its own.", el("code", {text: h.tz})),
     ro("Unclaimed data", "Phone data that no profile or secret names is deleted this long after it's first found. " +
-      "SLOT_GRACE_DAYS in .env (7 unless set).", h.slot_grace_days ? `${h.slot_grace_days} days` : "The receiver's own: not seen by the app here."),
+      "SLOT_GRACE_DAYS in .env (7 unless set).", plural(h.slot_grace_days, "day")),
     ro("What a restore replaced", "Kept this long after a restore, then deleted, by the app and the receiver alike. " +
       "RESTORE_KEEP_DAYS in .env sets both.", set(`${v("RESTORE_KEEP_DAYS").value} days`, v("RESTORE_KEEP_DAYS").from))));
   if (note) sayIn(msg, note, false, {say: false});
