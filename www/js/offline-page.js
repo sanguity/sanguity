@@ -134,7 +134,7 @@ const OFFLINE = {on: false, copy: null};   // the same flag as offline.js's: on,
   function again() {
     if (!OFFLINE.on || asking) return;
     asking = true;
-    realFetch(API + "me", {cache: "no-store", credentials: "same-origin"}).then(() => {
+    realFetch(API + "me", background({cache: "no-store", credentials: "same-origin"})).then(() => {   // (#1063: not use)
       if (document.body.classList.contains("offline-page")) location.reload(); else back();
     }, () => {}).finally(() => { asking = false; });
   }

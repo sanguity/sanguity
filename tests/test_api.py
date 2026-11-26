@@ -1260,6 +1260,41 @@ class Api(unittest.TestCase):
             env.stop()
             db.close()
 
+    def test_a_page_polling_doesnt_keep_an_idle_sign_in(self):   # #1063
+        """Every authenticated request counted as use, so a page that polls (Phone and watch, every 30 s) kept a sign-in
+        left open past idle sign-out for its whole length. What the page asks on its own is marked (util.js background(),
+        X-Sanguity-Background) and doesn't extend it; a person's request does. Sessions leaves out the sign-ins idle
+        sign-out has ended."""
+        db = dbm.connect()
+        if not db.execute("SELECT 1 FROM users WHERE username='idle-poll'").fetchone():
+            db.execute("INSERT INTO users(username, pw_hash, created) VALUES('idle-poll', ?, 0)", (sec.hash_password(PW["ben"]),))
+        who = "user_id=(SELECT id FROM users WHERE username='idle-poll')"
+        c, other = self.login("idle-poll", PW["ben"]), self.login("idle-poll", PW["ben"])
+        polled = {"X-Sanguity-Background": "1"}
+        env = mock.patch.dict(os.environ, {"SESSION_IDLE_MINUTES": "1"})
+        env.start()
+        try:
+            seen = lambda: db.execute(f"SELECT last_seen FROM sessions WHERE {who} ORDER BY id LIMIT 1").fetchone()[0]   # noqa: E731
+            db.execute(f"UPDATE sessions SET last_seen=? WHERE {who}", (dbm.now() - 50,))
+            was = seen()
+            self.assertEqual(c.get("/api/me", headers=polled).status_code, 200)   # a poll: answered, not use
+            self.assertEqual(seen(), was)
+            self.assertEqual(c.get("/api/me").status_code, 200)   # the person: use
+            self.assertGreater(seen(), was)
+            db.execute(f"UPDATE sessions SET last_seen=? WHERE {who}", (dbm.now() - 50,))
+            for _ in range(3):   # polls every 30 s don't keep it
+                self.assertEqual(c.get("/api/me", headers=polled).status_code, 200)
+            db.execute(f"UPDATE sessions SET last_seen=last_seen-11 WHERE {who}")
+            # the other sign-in, used just now, lists only itself: the first has been idle past the minute
+            db.execute(f"UPDATE sessions SET last_seen=? WHERE {who} AND id=(SELECT MAX(id) FROM sessions WHERE {who})", (dbm.now(),))
+            listed = other.get("/api/sessions").json()
+            self.assertEqual([s_["current"] for s_ in listed], [True], listed)
+            self.assertEqual(c.get("/api/me", headers=polled).status_code, 401)   # signed out by idle, poll or not
+        finally:
+            env.stop()
+            db.execute(f"DELETE FROM sessions WHERE {who}")
+            db.close()
+
     def test_session_lifetime_follows_second_factor(self):
         from server import config, twofactor
         import time

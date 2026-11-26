@@ -199,7 +199,7 @@ const OFFLINE = {on: false, copy: null};   // on: showing the kept copy, without
   function back() {
     if (asking || !document.body.classList.contains("offline")) return;
     asking = true;
-    realFetch(API + "me", {cache: "no-store", credentials: "same-origin"}).then(() => {
+    realFetch(API + "me", background({cache: "no-store", credentials: "same-origin"})).then(() => {   // (#1063: not use)
       OFFLINE.on = false;
       let said = false;
       (function live() {

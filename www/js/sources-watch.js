@@ -7,8 +7,8 @@
    The Sources page signs in and chooses the profile (sources-page.js). */
 "use strict";   // $, el, api, ask, sayIn, announce, icon, aboutWords, copyBtn come from util.js; qrShow from qr.js; fmtWhen, fmtD from dates.js
 (() => {
-  async function call(path, method = "GET", body) {
-    const r = await api(path, {method, body: body === undefined ? undefined : JSON.stringify(body)});
+  async function call(path, method = "GET", body, opts = {}) {
+    const r = await api(path, {method, body: body === undefined ? undefined : JSON.stringify(body), ...opts});
     if (r.status === 401) { location.replace("login.html"); throw new Error("signed out"); }
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error((typeof j.detail === "string" && j.detail) || r.status + " " + r.statusText);
@@ -52,7 +52,7 @@
       if (mine !== gen) return;
       if (inSight() && navigator.onLine !== false) {
         try {
-          const st = await call(`profiles/${PID}/watch/receiver`);
+          const st = await call(`profiles/${PID}/watch/receiver`, "GET", undefined, background());   // (#1063: not use)
           if (mine !== gen) return;
           const before = ST.last;
           ST = {...ST, last: st.last, ready: st.ready};
