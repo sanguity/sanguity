@@ -3749,6 +3749,10 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Connected-source apps says to set the public address in General → Host** (#1048): with none set, it still said to
   set PUBLIC_ORIGINS in .env and restart; it names Settings → Install → General → Host now (a link there), where it's
   set at once, and its example address breaks at 320 px with larger text instead of scrolling the page sideways.
+- **Saving General's Host and Security together keeps focus in Host's confirmation** (#1049): the bar's Save opened
+  Host's typed confirmation, then Security's save moved focus to its own heading, so the unconfirmed change was easy
+  to miss. A save waiting on its confirmation keeps focus and its words in the bar; the others save after it and
+  say so after them.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
