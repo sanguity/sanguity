@@ -16,7 +16,7 @@
 // #275; v12: a drop anywhere uploads, #281; v13: the QR codes, #284; v14: the chart kit, #291, and a lab's panel, #296;
 // v15: Labs' event track, #294; v16: labs compared, #297; v17: Labs' Latest, #993): the worker installs a fresh copy under the new name, and
 // activating deletes the old one, with any file no longer listed.
-const SHELL = "sanguity-shell-v17";
+const SHELL = "sanguity-shell-v18";
 const SCOPE = new URL(self.registration.scope);
 // Every page, style, script, font and icon in www/ (tests/test_pwa.py checks this list against the folder). Not the
 // fonts' and icons' licence texts, and not connect-return.html: that's where a connected source's sign-in comes back, with a code
