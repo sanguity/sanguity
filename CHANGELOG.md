@@ -3809,6 +3809,8 @@ Everything on `main` so far; it becomes the first tagged release.
   fields, through Confirm it's you, left focus on the page; it goes back to the field (cancelled) or the card's
   heading (saved). In a group of one section (Milestones, Workouts…) a save put focus on its hidden heading; it's
   on the group's heading now.
+- **A menu's items wrap where they don't fit** (#1060): with larger text on a phone the drawer's ⋯ cut "Hide (results
+  stay in Labs)" and scrolled sideways; every menu's items now wrap within it.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
