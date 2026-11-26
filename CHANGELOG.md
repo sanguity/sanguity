@@ -3637,6 +3637,11 @@ Everything on `main` so far; it becomes the first tagged release.
 - **The charts' hover ring is in the system's colours in forced colours** (#1035): on Labs, Compare and a lab's panel
   the ring round the point under the pointer kept the app's ink, a light ring on the system's white with the app dark.
   It's the system's text colour there now; elsewhere it looks as before.
+- **The other marks drawn in the app's ink are in the system's colours in forced colours** (#1038): against a contrast
+  theme opposite to the app's, the ring round a chosen event, journal entry, mood or cycle day, a medication's span,
+  its ring, change, stop, open end, fills and supply line, the doses and the body map's outlines kept the app's ink or
+  grey, 1.2:1 to 2.3:1 on the system's background. They're the system's text colour there now, 3:1 or more; the
+  heatmap's marks, on cells in the app's colours, keep its ink, and elsewhere everything looks as before.
 - **A server setting is the environment's only when someone set it there** (#999): both compose files passed every
   setting with its default filled in (`SESSION_DAYS: ${SESSION_DAYS:-30}`), CasaOS and Unraid passed `auto` and an
   empty `PUBLIC_ORIGINS`, and TrueNAS always passed its Secure cookie field, so with the environment winning over
