@@ -321,27 +321,20 @@ def _upcoming(data, now):
 
 
 def _medications(data, now):
-    details, rows = data.get("details") or {}, {}
-    for e in data.get("events") or []:
-        if e.get("k") != "med" or e.get("hidden"):
+    """The current medications: the medications the page shows (records._assemble's, medications.py: your own among
+    them, your changes made, those hidden left out, #1091), each whose latest listing hasn't stopped or ended before
+    now, and whose status, if it gives one, says it's taken."""
+    rows = []
+    for m in data.get("medications") or []:
+        s = (m.get("spans") or [None])[-1]
+        if not s or s.get("stopped") or (s.get("to") and s["to"] < now):
             continue
-        d = details.get(str(e.get("id"))) or {}
-        status = str(d.get("status") or "").strip().lower()
-        end = _day(e.get("end") or d.get("end") or d.get("stop"))
+        status = str(s.get("status") or "").strip().lower()
         if status and status not in ACTIVE:
             continue
-        if not status and end and end < now:
-            continue
-        name = e.get("title") or d.get("name") or "Medication"
-        key = " ".join(name.lower().split())
-        row = {"name": name, "instructions": d.get("instructions") or "", "since": _day(e.get("t")) or "",
-               "source": d.get("src") or ""}
-        have = rows.get(key)   # the same medication from two sources: once, the newest
-        if have is None or row["since"] > have["since"]:
-            if have and have["source"] and have["source"] != row["source"]:
-                row["source"] = ", ".join(x for x in (row["source"], have["source"]) if x)
-            rows[key] = row
-    return sorted(rows.values(), key=lambda r: r["name"].lower())
+        rows.append({"name": m.get("name") or "Medication", "instructions": s.get("dose") or "", "since": s.get("from") or "",
+                     "source": "Your own entry" if m.get("own") else ", ".join(s.get("sources") or [])})
+    return sorted(rows, key=lambda r: r["name"].lower())
 
 
 def options(db, pid, uid):
