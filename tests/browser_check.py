@@ -10456,7 +10456,7 @@ def main():
                 week = page.inner_text("#dbody .dose-week")
                 check("logged: the medication opens again with the dose, its note and who logged it, and this week's count of what was logged",
                       item.startswith("Taken late") and "Fictional note: later than usual" in item and f"Logged by {USER}" in item
-                      and bool(re.fullmatch(r"This week: (\d of \d scheduled doses? taken|No scheduled doses yet); 1 other dose logged", week)), [item, week])   # (#1095: not one of its schedule's)
+                      and bool(re.fullmatch(r"(This week: \d of \d scheduled doses? taken( \(1 late\))?|No scheduled doses this week)(; 1 other dose logged)?", week)), [item, week])   # (#1095: not one of its schedule's)
                 body235 = page.inner_text("#dbody")
                 check("…the drawer never says a dose was due or should be taken", not re.search(r"(?i)\b(due|should|missed|overdue|adherence|forgot)\b", body235), body235[-400:])
                 sweep235("medication drawer with its log", "#dbody .doselist")
@@ -10486,7 +10486,7 @@ def main():
                       today235 and [r[0] for r in mine] == want and "Taken" in mine[-1][3] and len({r[1] for r in today235["rows"]}) == today235["cur"]
                       and "Today" not in [r[0] for r in today235["rows"]] + today235["ov"] and today235["ov"], today235)
                 check("…one click logs a dose, three choices a row; the week's count; never \"due\"",
-                      today235 and all(r[2] in (0, 3) for r in today235["rows"]) and today235["week"].startswith("This week: ")
+                      today235 and all(r[2] in (0, 3) for r in today235["rows"]) and today235["week"].startswith(("This week: ", "No scheduled doses this week"))
                       and not re.search(r"(?i)\b(due|should|missed|overdue)\b", today235["text"]), today235 and today235["week"])
                 sweep235("Overview with today's doses", "#ovDoses")
                 row = page.locator("#ovDoses .dose-today", has=page.locator(".dose-quick")).first
@@ -10622,10 +10622,10 @@ def main():
                     (page.check if k == "medlog" else page.uncheck)(f"#sections input[value={k}]")
                 page.wait_for_selector("#preview:not([hidden]):not([aria-busy]) h3", timeout=10000)   # drawn as the choices change (#288)
                 pv = page.inner_text("#preview")
-                # (with #162's reminder, its schedule: the Overview's Skipped one of it, the drawer's taken late another, #1095)
+                # (with #162's reminder, its schedule: the Overview's Skipped one of it; the drawer's taken late one of it within two hours, else another, #1095)
                 check("…ticked, the preview lists each dose with what happened and the count of its schedule's doses taken",
                       js("[...document.querySelectorAll('#preview h3')].map(h => h.textContent)")[0].startswith("Medication log")
-                      and re.search(re.escape(cur["name"]) + r": (0 of 1 scheduled dose taken, 1 skipped|No scheduled doses in this period); 1 other dose logged", pv)
+                      and re.search(re.escape(cur["name"]) + r": (\d of \d scheduled doses? taken( \(1 late\))?, 1 skipped|No scheduled doses in this period)(; 1 other dose logged)?", pv)
                       and "Skipped" in pv and not re.search(r"(?i)\b(due|should|missed)\b", pv), pv[:400])
                 sweep235("summary preview with the medication log", "#preview")
                 check("the medication log's form, drawer, today's doses, Labs row and summary fit 375 px, light and dark", not bad235, bad235[:6])

@@ -59,8 +59,9 @@ function doseWeeks(list) {
 }
 const thisWeek = list => list.filter(d => weekOf(doseDay(d)) === weekOf(zToday()));
 /* ---- against a schedule (#1095, server/med_log.match and schedule_counts): each of a day's scheduled doses with the
-   dose logged for it. One logged against a time takes the first of that time not yet taken (two at 8:00 are two); the
-   phone's, which have none, the nearest within DOSE_WINDOW minutes; the rest are others ("Also") */
+   dose logged for it. One logged against a time takes the first of that time not yet taken (two at 8:00 are two); one
+   without (the phone's, or typed in the drawer) the nearest within DOSE_WINDOW minutes; one logged As needed, and the
+   rest, are others ("Also") */
 const DOSE_WINDOW = 120;
 const hmMin = hm => +hm.slice(0, 2) * 60 + +hm.slice(3, 5);
 const doseHM = d => { const z = zdate(d.ts); return `${String(z.getHours()).padStart(2, "0")}:${String(z.getMinutes()).padStart(2, "0")}`; };
@@ -73,7 +74,7 @@ function doseMatch(sched, ds) {
   }
   for (const d of later) {
     let k = -1;
-    if (d.phone) {
+    if (!d.asneeded) {
       const hm = hmMin(doseHM(d)), gap = i => Math.abs(hmMin(sched[i].at) - hm);
       sched.forEach((s, i) => { if (!got[i] && gap(i) <= DOSE_WINDOW && (k < 0 || gap(i) < gap(k))) k = i; });
     }
@@ -98,21 +99,22 @@ function doseSched(m, days) {
   }
   return n;
 }
-/* "9 of 14 scheduled doses taken (1 late), 2 skipped; 1 other dose logged" (server/med_log.said_scheduled) */
+/* "9 of 14 scheduled doses taken (1 late), 2 skipped; 1 other dose logged" (server/med_log.said_scheduled); with none,
+   "No scheduled doses this week" (the server's "in this period") */
 function doseSchedSaid(c) {
-  return (!c.scheduled ? "No scheduled doses yet" : `${c.taken} of ${c.scheduled} scheduled dose${c.scheduled === 1 ? "" : "s"} taken` + (c.late ? ` (${c.late} late)` : "")
+  return (!c.scheduled ? "No scheduled doses this week" : `${c.taken} of ${c.scheduled} scheduled dose${c.scheduled === 1 ? "" : "s"} taken` + (c.late ? ` (${c.late} late)` : "")
     + (c.skipped ? `, ${c.skipped} skipped` : "")) + (c.other ? `; ${c.other} other dose${c.other === 1 ? "" : "s"} logged` : "");
 }
 const weekDays = () => { const w = dayTs(weekOf(zToday())); return [...Array(7)].map((_, i) => isoDay(w + i * DAY)); };
-/* this week's words for medications: of those with a schedule, the doses taken of those it gave so far, and how many
-   others were logged; with none, what was logged ("12 of 14 logged doses taken") */
+/* this week's line for medications: of those with a schedule, the doses taken of those it gave so far, and how many
+   others were logged; with none, what was logged ("This week: 12 of 14 logged doses taken") */
 function doseWeekSaid(meds) {
   const timed = meds.filter(m => mrOf(m).some(r => !r.asneeded)), keys = new Set(timed.map(m => m.key));
   const rest = thisWeek(DOSES.filter(d => meds.some(m => m.key === d.key) && !keys.has(d.key)));
-  if (!timed.length) return doseSaid(doseCounts(rest));
+  if (!timed.length) return "This week: " + doseSaid(doseCounts(rest));
   const days = weekDays(), n = timed.map(m => doseSched(m, days)).reduce((a, c) => { for (const k in a) a[k] += c[k]; return a; });
   n.other += rest.length;
-  return doseSchedSaid(n);
+  return (n.scheduled ? "This week: " : "") + doseSchedSaid(n);
 }
 
 /* ---------------------------------------------------------------- the medication's drawer: its log */
@@ -120,7 +122,7 @@ function medLogSection(m) {
   const ds = dosesOf(m), write = canEdit(), cur = mrCurrent(m), timed = mrOf(m).some(r => !r.asneeded);
   if (!ds.length && !(write && cur) && !timed) return [];
   const out = [el("div", {class: "sect", text: "Doses logged"})];
-  if (ds.length || timed) out.push(el("p", {class: "dose-week", text: "This week: " + doseWeekSaid([m])}));
+  if (ds.length || timed) out.push(el("p", {class: "dose-week", text: doseWeekSaid([m])}));
   if (ds.length) {
     const weeks = doseWeeks(ds).slice(0, 8);
     out.push(scrollBox({class: "tablewrap", "aria-label": "Doses logged, week by week", style: {maxHeight: "none"}},
@@ -155,7 +157,7 @@ function medLogSection(m) {
   return out;
 }
 
-/* the log / correct form, in the drawer. d: the dose (null: a new one); preset: {status, slot, amount, unit} */
+/* the log / correct form, in the drawer. d: the dose (null: a new one); preset: {status, slot, amount, unit, asneeded} */
 function doseForm(m, d, preset = {}) {
   const body = drawerHead("med", d ? "Correct a dose" : "Log a dose", m.name);
   drawerStill = () => MEDS.some(x => x.key === m.key);   // the medication's import undone: closed (app.js, #517)
@@ -188,7 +190,7 @@ function doseForm(m, d, preset = {}) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date.value) || !/^\d{2}:\d{2}/.test(time.value)) { sayIn(msg, "Give the date and time.", true); (date.value ? time : date).focus(); return; }
     const n = mrNum(amt.value);
     if (Number.isNaN(n)) { sayIn(msg, "The amount isn't a number above 0.", true); amt.setAttribute("aria-invalid", "true"); amt.addEventListener("input", () => amt.removeAttribute("aria-invalid"), {once: true}); amt.focus(); return; }
-    const out = {med: m.key, t: `${date.value}T${time.value.slice(0, 5)}`, status, note: note.value, slot: d ? d.slot : preset.slot || null, amount: n, unit: unit.value.trim()};
+    const out = {med: m.key, t: `${date.value}T${time.value.slice(0, 5)}`, status, note: note.value, slot: d ? d.slot : preset.slot || null, amount: n, unit: unit.value.trim(), asneeded: d ? !!d.asneeded : !!preset.asneeded};
     doseSend(d ? `/${d.id}` : "", {method: d ? "PUT" : "POST", body: JSON.stringify(out)}, msg, {med: m.key});
   };
   body.append(form);
@@ -260,7 +262,7 @@ function todayDoses({id = "ovDoses", head = el("h3", {text: "Today's medication 
       rows.push([last, el("li", {class: "dose-today" + (other.length ? " logged" : ""), "data-dose-row": m.key + " "},
         el("span", {class: "dose-slot"}, "As needed", ...(amt ? [el("br"), amt] : [])), open(),
         write || other.length ? el("span", {class: "dose-got"}, ...other.map(logged), write ? el("button", {class: "btn small", type: "button", text: "Log a dose",
-          "aria-label": `Log a dose: ${m.name}, as needed`, ...off, onclick: () => away || doseForm(m, null, {amount: need.dose?.amount, unit: need.dose?.unit})}) : null) : none())]);
+          "aria-label": `Log a dose: ${m.name}, as needed`, ...off, onclick: () => away || doseForm(m, null, {amount: need.dose?.amount, unit: need.dose?.unit, asneeded: true})}) : null) : none())]);
     } else if (!sched.length || other.length) rows.push([last, el("li", {class: "dose-today" + (other.length ? " logged" : ""), "data-dose-row": m.key + " "},
       el("span", {class: "dose-slot", text: sched.length ? "Also" : "Any time"}), open(),
       write || other.length ? el("span", {class: "dose-got"}, ...other.map(logged), write ? quick(m, null, m.key + " ", m.name) : null) : none())]);
@@ -278,7 +280,7 @@ function todayDoses({id = "ovDoses", head = el("h3", {text: "Today's medication 
     el("p", {class: "hint", text: !write ? (todays.length ? "What was logged today." : "Nothing logged today.") : away ? "Logging a dose needs the server: you're offline."
       : "Log what happened, for your own record: taken, taken late or skipped."}),
     rows.length ? el("ul", {class: "doselist today" + (few ? " few" : "")}, ...rows.slice(from, from + n).map(r => r[1])) : null,
-    el("p", {class: "dose-week", text: "This week: " + doseWeekSaid(cur)}),
+    el("p", {class: "dose-week", text: doseWeekSaid(cur)}),
     aboutWords({name: "today's medication doses"}, `The times and amounts are those of the schedule set on each medication (its details, ${id === "ovDoses" ? "on the Medications tab" : "below"}). This keeps what is logged, nothing more. Doses logged in Apple Health's Medications come with the phone's data when Health Auto Export sends them, each beside the scheduled dose within two hours of it. This isn't medical advice.`),   // (#447: on the Medications tab, they're below it; one name on both, #460)
     msg);
 }

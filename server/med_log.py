@@ -6,7 +6,7 @@ and it finds its medication by the medication's grouping key (medications.med_ke
 says is encrypted in body: {med: the key, name: what the medication was called when it was logged, t: the wall-clock
 time it happened, YYYY-MM-DDTHH:MM, in the person's own time, status: "taken" | "late" | "skipped", note, slot: the
 scheduled time "HH:MM" it was logged against from today's list, when it was, amount: a number or None, unit: "tablets"
-(#1095: from its scheduled time's, or typed)}. Who logged or last changed it, and when,
+(#1095: from its scheduled time's, or typed), asneeded: true when logged As needed, never one of the schedule's}. Who logged or last changed it, and when,
 are plain. The records the page loads list them as "doses" (a change bumps profiles.records_rev); an export carries
 them in its data.json, and a backup has them with the rest of the database.
 
@@ -19,8 +19,9 @@ It records what the person says happened. It never says a dose was due, or shoul
 logged ("12 of 14 logged doses taken"), or, for a medication with a schedule (#1094, med_reminders.py), of the doses
 its schedule gives ("9 of 14 scheduled doses taken", #1095), plain counts. Each dose of the schedule on a day is
 matched with the dose logged for it: one logged against its time (slot) takes the first of that time not yet taken
-(two at 8:00 are two, logged one by one); one from the phone, which has no slot, the nearest of that day within
-WINDOW minutes of it; any other is "also" (logged, but not one of the schedule's).
+(two at 8:00 are two, logged one by one); one with no slot (the phone's, or typed in the drawer) the nearest of that
+day within WINDOW minutes of it; one logged As needed (asneeded), and any left, is "also" (logged, but not one of the
+schedule's).
 """
 import json, re
 from datetime import date, datetime, timedelta
@@ -52,7 +53,7 @@ def medications(db, pid):
     return {m["key"]: m.get("name") or m["key"] for m in meds if isinstance(m, dict) and m.get("key")}
 
 
-def check(db, pid, med, t, status, note=None, slot=None, today=None, keep_med=None, amount=None):
+def check(db, pid, med, t, status, note=None, slot=None, today=None, keep_med=None, amount=None, asneeded=False):
     """The dose as stored, or DoseError. med: one of the profile's medications, by key (or keep_med, the dose's own,
     when its medication's import was undone since). t: no later than today (the person's own, given). amount:
     {amount, unit}, or None."""
@@ -81,7 +82,8 @@ def check(db, pid, med, t, status, note=None, slot=None, today=None, keep_med=No
         a = med_reminders.amount(amount)
     except med_reminders.ReminderError as x:
         raise DoseError(str(x)) from None
-    return {"med": med, "name": str(meds.get(med) or med)[:300], "t": t, "status": status, "note": note, "slot": slot or None, **a}
+    return {"med": med, "name": str(meds.get(med) or med)[:300], "t": t, "status": status, "note": note, "slot": slot or None, **a,
+            **({"asneeded": True} if asneeded and not slot else {})}
 
 
 def add(db, pid, who, dose):
@@ -127,7 +129,7 @@ def listing(db, pid, ids=None):
         d = json.loads(crypto.dec(r["body"]))
         out.append({"id": r["id"], "med": d.get("med"), "name": d.get("name") or "", "t": d.get("t"), "status": d.get("status"),
                     "note": d.get("note") or "", "slot": d.get("slot"), "amount": d.get("amount"), "unit": d.get("unit") or "",
-                    "by": r["created_name"], "at": r["created"],
+                    "asneeded": bool(d.get("asneeded")), "by": r["created_name"], "at": r["created"],
                     "changed": r["changed"], "changed_by": r["changed_name"]})
     out.sort(key=lambda d: (str(d["t"] or ""), d["id"]))
     return out
@@ -209,8 +211,9 @@ def scheduled(lines, day, stop=None):
 
 def match(sched, doses):
     """Each of a day's scheduled doses with the dose logged for it: ([dose or None for each], [the others]). doses:
-    that day's, of that medication, {t, status, slot, phone?}: one with a slot takes the first of its time not yet
-    taken; a phone's (phone true) the nearest within WINDOW minutes; the rest are the others."""
+    that day's, of that medication, {t, status, slot, asneeded?}: one with a slot takes the first of its time not yet
+    taken; one without (the phone's, or typed with no time of the schedule) the nearest within WINDOW minutes; one
+    logged As needed, and the rest, are the others."""
     got, other, later = [None] * len(sched), [], []
     for d in sorted(doses, key=lambda d: str(d.get("t") or "")):
         if d.get("slot"):
@@ -222,7 +225,7 @@ def match(sched, doses):
         else:
             later.append(d)
     for d in later:
-        if d.get("phone") and _TIME.match(str(d.get("t") or "")):
+        if not d.get("asneeded") and _TIME.match(str(d.get("t") or "")):
             hm = _min(d["t"][11:16])
             near = [(abs(_min(at) - hm), i) for i, (at, _) in enumerate(sched) if got[i] is None and abs(_min(at) - hm) <= WINDOW]
             if near:
@@ -263,7 +266,7 @@ def schedule_counts(lines, doses, days, now, stop=None):
 def said_scheduled(c):
     """"9 of 14 scheduled doses taken (1 late), 2 skipped; 1 other dose logged": plain counts of the schedule's doses
     so far, and of those logged that aren't one."""
-    s = "No scheduled doses in this period"
+    s = "No scheduled doses in this period"   # (the week's line says "this week", medlog.js)
     if c["scheduled"]:
         s = f"{c['taken']} of {c['scheduled']} scheduled dose{'' if c['scheduled'] == 1 else 's'} taken"
         if c["late"]:

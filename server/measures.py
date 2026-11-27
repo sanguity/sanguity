@@ -44,7 +44,7 @@ from bisect import bisect_left, insort
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from . import ecg, glucose, growth, med_log, medications, person, targets as tg, watch_store
+from . import ecg, glucose, growth, med_log, med_reminders, medications, person, targets as tg, watch_store
 
 FROM = "the device and app that sent it (or “Typed in”)"   # #581: where each reading came from, as its page says it
 SECTIONS = [   # (id, label, what a share link shows: said on the owner's form and the link's page; #576, #581: everything it shows)
@@ -598,7 +598,8 @@ def _doses(c):
     "doses") and the phone's (the watch summary's "med_doses"), oldest first. Those of a medication hidden by hand
     (#1093: records' "hiddenMeds", by its key) are left out, as the medication is: the log stays where it's kept."""
     hidden = {h.get("key") for h in c.data.get("hiddenMeds") or [] if isinstance(h, dict)}
-    out = [(d["t"], d.get("name") or d.get("med") or "", d.get("status"), str(d.get("note") or "")[:1000], "Typed in")
+    out = [(d["t"], d.get("name") or d.get("med") or "", d.get("status"), str(d.get("note") or "")[:1000],
+            "Typed in" + (f", {med_reminders.said(d)}" if med_reminders.said(d) else ""))   # its amount, as the phone's (#1095)
            for d in c.data.get("doses") or [] if isinstance(d, dict) and _day(d.get("t")) and d.get("status") in med_log.STATUSES
            and d.get("med") not in hidden]
     out += [(d["t"], d["name"], d["status"], "", f"{d['app']}" + (f", {d['dose']}" if d["dose"] else ""))
@@ -619,7 +620,7 @@ def _scheduled(c, key, keep):
     except ValueError:
         return None
     days = [d for d in (first + timedelta(days=i) for i in range((now.date() - first).days + 1)) if keep(d.isoformat())]
-    doses = [{"t": d["t"], "status": d.get("status"), "slot": d.get("slot")} for d in c.data.get("doses") or []
+    doses = [{"t": d["t"], "status": d.get("status"), "slot": d.get("slot"), "asneeded": d.get("asneeded")} for d in c.data.get("doses") or []
              if isinstance(d, dict) and d.get("med") == key and _day(d.get("t"))]
     doses += [{**d, "phone": True} for d in med_log.phone_doses(c.watch, c.tz) if medications.med_key(d["name"]) == key]
     return med_log.schedule_counts(lines, doses, days, now, med.get("stop"))
