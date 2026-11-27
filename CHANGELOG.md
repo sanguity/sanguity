@@ -3845,7 +3845,8 @@ Everything on `main` so far; it becomes the first tagged release.
   The visit summary, share links and the FHIR export read the same medications (yours in, your changes made, those
   hidden out), and a profile with nothing imported but a medication of its own opens on it.
 - **Add a medication, and Edit one, on the Medications tab** (#1092): **Add a medication** is always beside Current's
-  heading (and on the empty tab), and a medication's drawer has **Edit**: name, strength, dose and instructions, route,
+  heading (and on the empty tab) and in the **Add** menu, from any page (so a new profile, nothing imported, can start
+  with one), and a medication's drawer has **Edit**: name, strength, dose and instructions, route,
   start, stop (and **Stopped today**), status, prescriber and note. One of your own is yours to change; for one from
   the records the form starts from what they say, and once saved the drawer shows **Your change** beside **As listed**,
   with **Put back as listed** (and an Undo). The import page's typed-in medication stays, as a record-style listing.

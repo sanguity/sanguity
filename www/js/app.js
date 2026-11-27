@@ -80,6 +80,8 @@ for (const k of TABS) $("#tab-" + k).addEventListener("click", ev => {
 let booted = false;
 // Back, Forward, a link or a typed address: the tab it names (an old alias's # becomes its tab's own)
 addEventListener("hashchange", () => {
+  // Add → Add a medication (medmine.js, #1092): on a profile with nothing imported too, its first medication of its own
+  if (location.hash === "#add-medication" && (booted || PROFILE && !DATA)) return medAddResume();
   if (!booted) return;
   if (location.hash === "#log-dose") return logDose();
   const t = tabOfHash(), drug = t?.[0] === "costs" && medCostsArrive();   // #costs?drug=… (#452)
@@ -271,7 +273,7 @@ async function settingsLoad() {
     if (r.status === 204) {   // no records yet (#199): the getting-started guide, opened by itself the first time
       if (PROFILE.role === "owner" && ME.profiles.length === 1) {   // your own profile, and your only one
         const u = await api("settings/user").then(x => x.ok ? x.json() : {}).catch(() => ({}));
-        if (u.guide === "" && !/^#(new-journal-entry|log-dose)$/.test(location.hash)) { location.replace(`guide.html?profile=${PROFILE.id}`); return; }   // not finished or skipped yet; not when Add sent them to do something here (#479)
+        if (u.guide === "" && !/^#(new-journal-entry|log-dose|add-medication)$/.test(location.hash)) { location.replace(`guide.html?profile=${PROFILE.id}`); return; }   // not finished or skipped yet; not when Add sent them to do something here (#479)
       }
       await settingsLoad();
       applyTabs(CFG.tabs);   // its tabs as it has them, as the other pages show them (#425)
@@ -279,7 +281,7 @@ async function settingsLoad() {
       emptyProfile();
       // arriving from Add on another page (#401): a journal entry can be the first record; a dose can't, and says why
       await dates;
-      if (location.hash === "#log-dose") logDose(); else if (canImport(PROFILE)) journalResume();
+      if (location.hash === "#log-dose") logDose(); else if (canImport(PROFILE)) { journalResume(); medAddResume(); }
       return;
     }
     if (!r.ok) throw new Error(r.status + " " + r.statusText);
@@ -292,6 +294,7 @@ async function settingsLoad() {
   journalResume();  // Add → Journal entry from another page (journal.js)
   SgPalette.resume();   // a lab or an event chosen in the command palette on another page (palette.js, #273)
   if (location.hash === "#log-dose") logDose();   // arriving from Add on another page (nav.js)
+  medAddResume();   // Add → Add a medication, from here or another page (medmine.js, #1092)
 })();
 /* the records drawn: as the page loads, or an empty profile's first (recordsFirst) */
 async function recordsDraw(data) {

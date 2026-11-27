@@ -30,8 +30,17 @@ async function mmSend(method, path, body, msg) {
   try { r = await api(`profiles/${PROFILE.id}/medications/${path}`, {method, body: JSON.stringify(body)}); j = await r.json().catch(() => ({})); }
   catch (err) { say("Couldn't reach the server: " + err.message, true); return null; }
   if (!r.ok) { say(typeof j.detail === "string" ? j.detail : `Couldn't save it (${r.status}).`, true); return null; }
-  if (j.records) storeRecords(j.records); else location.reload();
+  if (!j.records) location.reload();
+  else if (!DATA) await recordsFirst(j.records);   // a profile with nothing imported: its first records, its tabs drawn (#1091)
+  else storeRecords(j.records);
   return j;
+}
+/* Add → Add a medication (nav.js #add-medication), on this page or arriving from another: the form, the address the
+   tab's again (a reload doesn't open it twice); for owners and editors */
+function medAddResume() {
+  if (location.hash !== "#add-medication") return;
+  history.replaceState(history.state, "", location.pathname + location.search + (DATA ? tabHash() : ""));
+  if (canEdit()) medEditForm(null);
 }
 const mmOpen = key => { const m = MEDS.find(x => x.key === key); if (m) openMedication(m); return m; };
 

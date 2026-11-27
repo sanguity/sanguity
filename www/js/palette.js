@@ -187,6 +187,7 @@ const SgPalette = (() => {
      Log a dose by the names of the profile's current medications; and whether one opens another page, which needs
      the server (New share link: Sharing) */
   const ADD_WORDS = {doseLink: "medication meds medicine pill tablet dose took taken", journalBtn: "note diary symptom feeling",
+    medAddLink: "medication meds medicine pill tablet new own prescription",
     "home-reading": "blood pressure weight glucose temperature"};
   function known(xs) {
     const items = addItems();
