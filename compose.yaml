@@ -63,6 +63,7 @@ services:
       UPLOAD_MAX_FILES: ${UPLOAD_MAX_FILES:-}
       UPLOAD_MAX_ZIP_RATIO: ${UPLOAD_MAX_ZIP_RATIO:-}
       JOURNAL_PHOTO_MAX_MB: ${JOURNAL_PHOTO_MAX_MB:-}   # a photo attached to a journal entry (#161)
+      CONNECTED_SOURCES: ${CONNECTED_SOURCES:-}   # connected sources at all (#1096): experimental, off by default
       SYNC_HOURS: ${SYNC_HOURS:-}
       SYNC_MAX_RESOURCES: ${SYNC_MAX_RESOURCES:-}
       SYNC_MAX_ATTACHMENT_MB: ${SYNC_MAX_ATTACHMENT_MB:-}

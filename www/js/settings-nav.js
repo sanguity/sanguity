@@ -52,13 +52,13 @@ let SET_NAV = null;   // the sidebar (sideNav), for account.js's and admin.js's 
      group's why is said under the title of the one shown instead, until another is, and the address names that one
      (#419); as a note, in the style of the line above it, not a save's (#425) */
   const RANK = {viewer: 0, editor: 1, owner: 2}, said = document.getElementById("loadMsg");
-  const NOT_ADMIN = "Install is for this server's admins, and your account isn't one: for an account for someone else, a portal or " +
-    "health plan set up, or anything else about the whole server, ask your admin.";
+  const NOT_ADMIN = () => "Install is for this server's admins, and your account isn't one: for an account for someone else, " +
+    (sgConnected(ME) ? "a portal or health plan set up, " : "") + "or anything else about the whole server, ask your admin.";   // (#1096: portals while they're on)
   let told = null, ready = false, locked = false;
   function whyNot(hash = location.hash) {
     const h = decodeURIComponent(hash.slice(1)), role = main.dataset.role, g = GROUPS.find(x => x.id === h || x.has.includes(h));
     if (told || !ready || !g) return;
-    const why = g.admin ? !ME.user.is_admin && NOT_ADMIN : role && g.why && RANK[role] < RANK[g.needs] && g.why;
+    const why = g.admin ? !ME.user.is_admin && NOT_ADMIN() : role && g.why && RANK[role] < RANK[g.needs] && g.why;
     if (!why) return;
     told = why;
     sayIn(said, el("span", {class: "set-who", text: told}));

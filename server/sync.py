@@ -125,7 +125,11 @@ def _loop():
 
 
 def run_due(now=None):
-    """Pull every connection that is due, oldest due first. Returns how many were pulled."""
+    """Pull every connection that is due, oldest due first. Returns how many were pulled: none while connected sources
+    are off (#1096), when each stays due, to pull once they're on again."""
+    from . import settings
+    if not settings.connected_sources():
+        return 0
     db = dbm.connect()
     try:
         due = [r[0] for r in db.execute("""SELECT id FROM connections WHERE state='active' AND next_sync IS NOT NULL

@@ -108,6 +108,34 @@ function genSecDiscard() {
   $("#genSecHd").focus();
 }
 
+/* ---------------------------------------------------------------- General → Experimental (#1096) */
+/* each of its settings a switch, saved as it's switched (the fresh check, in the card), as the weekly directory update's
+   is (admin-sources.js); one the environment sets shown locked, naming its variable. Connected sources' (the only one
+   now) shows or hides their parts of Install at once (admin.js csShown) */
+async function loadGenExperimental() {
+  let d;
+  try { d = await call("settings/install"); }
+  catch (e) { sayIn($("#genExpMsg"), e.message, true); return; }
+  $("#genExpBody").replaceChildren(...d.sections.find(s => s.id === "experimental").settings.map(st => {
+    const id = "gx-" + st.key.split(".")[1], locked = !st.can_change;
+    const sw = el("input", {type: "checkbox", role: "switch", id, checked: st.value ? "" : null, disabled: locked, "aria-labelledby": id + "-lbl", "aria-describedby": id + "-h",
+      onchange: () => gxSwitch(st, sw)});
+    return setRow([el("p", {class: "set-row-name", id: id + "-lbl", text: st.label}),
+      el("p", {class: "hint", id: id + "-h", text: [st.help, locked ? gsWhere(st.env) : ""].filter(Boolean).join(" ")})],
+      el("label", {class: "check switch"}, sw), {"data-key": st.key});   // (named by the row's name, as a sync default's switch)
+  }));
+}
+async function gxSwitch(st, sw) {
+  const on = sw.checked;
+  try {
+    await fresh(() => call(`settings/install/${encodeURIComponent(st.key)}`, "PUT", {value: on}), $("#genExpReauth"));
+    say("#genExpMsg", on ? "Connected sources are on: Sources offers portals and health plans, and connections sync again."
+      : "Connected sources are off: none of them is shown or synced, and every connection and what it brought is kept.");
+    await csShown(on);
+  } catch (e) { sw.checked = !on; say("#genExpMsg", `Not changed: ${e.why || e.message}`, true); }
+  document.getElementById(sw.id)?.focus({preventScroll: true});
+}
+
 /* ---------------------------------------------------------------- requiring two-factor sign-in (Accounts' before #1001) */
 async function loadRequireTf() {
   const req = $("#reqTf");   // its replies in #reqTfMsg, right under it (#323)

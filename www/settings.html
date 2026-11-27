@@ -178,6 +178,14 @@
     <div id="genBk"></div>
   </section>
   <section class="card conn adm" id="gen-phone" hidden><h2>Phone receiver</h2></section>   <!-- the upload address (admin-phone.js, #1003) -->
+  <!-- General → Experimental (#1096, gen-security.js): connected sources' switch, off by default -->
+  <section class="card conn adm" id="gen-experimental" hidden>
+    <h2 id="genExpHd" tabindex="-1">Experimental</h2>
+    <p class="hint">Parts of Sanguity that work but aren't recommended yet. Each change applies at once.</p>
+    <div id="genExpReauth" class="reauth" hidden></div>
+    <div id="genExpBody"></div>
+    <span class="msg" id="genExpMsg" role="status"></span>
+  </section>
   <!-- General → About, with the limits (#1004, gen-about.js) -->
   <section class="card conn adm" id="gen-about" hidden>
     <h2>About</h2>
@@ -263,7 +271,8 @@
   <!-- Connected-source apps: each vendor's app for this server, and the defaults of every connection (admin-sources.js) -->
   <section class="card conn adm" id="admin" hidden>
     <h2>Set up a source</h2>
-    <p class="hint">Register this server's own app with each vendor, so people can connect their portals and health plans.</p>
+    <p class="hint">Experimental, not recommended yet: register this server's own app with each vendor, so people can
+      connect their portals and health plans.</p>
     <div class="about-words" hidden>
       <p>The vendor sends sign-ins straight back here. Nothing is shared with the Sanguity project: the count of
         connections below stays on this server. Why each install has its own app: docs/connected-sources-oauth.md.</p>
@@ -301,7 +310,8 @@
   <!-- Provider directory: what Find your provider has, and the server reading Epic's and Oracle Health's lists (admin-sources.js, #992) -->
   <section class="card dir conn adm" id="directory" hidden>
     <h2>Provider directory</h2>
-    <p class="hint">The list Find your provider searches, kept on this server: searching it contacts no one.</p>
+    <p class="hint">Experimental, as connected sources are: the list Find your provider searches, kept on this server.
+      Searching it contacts no one.</p>
     <div class="about-words" hidden>
       <p>Sanguity ships with the vendors' test sandboxes and Medicare. Epic's and Oracle Health's published lists can't be
         shipped under their terms, so each server reads its own copy, for itself only. Nothing about you or your records

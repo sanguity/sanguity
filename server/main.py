@@ -129,6 +129,9 @@ async def lifespan(app):
                       "Settings page now, and each file was deleted.", flush=True)
             if (kept := watch_store.migrate(db)):
                 print(f"Kept the imported watch data of {kept} profile(s) as an import that can't be undone.", flush=True)
+            if settings.keep_sources_on(db):   # (#1096) once: an install with a registered app or a connection
+                print("Connected sources are experimental and off by default now; this install has a connected-source app "
+                      "or a connection, so they stay on (Settings → Install → General → Experimental).", flush=True)
             pid = prof.bootstrap(db)
             from . import cycle_tracking   # cycle tracking turned off, its deletion done: its setting goes (#935)
             cycle_tracking.restored(db)   # (#964) cycle records a restore a stop cut short brought back and doesn't keep
@@ -404,6 +407,14 @@ def admin(request: Request, s=Depends(user), db=Depends(get_db)):
     if accounts.admin_needs_second_factor(db, s):
         _audit("access.denied", request, s, need="admin second factor", path=request.url.path)
         raise HTTPException(403, "admin_two_factor_required")
+    return s
+
+
+def connected(s=Depends(user)):
+    """(#1096) Every connections, sync and directory route's (routes_connect.py's and routes_directory.py's routers):
+    refused while connected sources are off (settings.connected_sources), after the sign-in's own checks."""
+    if not settings.connected_sources():
+        raise HTTPException(404, "Connected sources are turned off on this server.")
     return s
 
 
@@ -799,6 +810,7 @@ def me(s=Depends(any_user), db=Depends(get_db)):
             "session": sign_in_lengths(), "may_create_profiles": may_create_profiles(s),   # (#1001: You → Sign-in and security, New profile)
             "profiles": _profiles_for(db, s["id"]) if not (s["must_change_pw"] or needs_2fa) else [],
             "password_min": _password_min(db, s), "session_ends": _session_ends(db, s),
+            "connected_sources": settings.connected_sources(),   # (#1096) whether any page offers them: on or off, no more
             "calendar_feeds": calendar.count_for(db, s["id"]),   # what changing the password or removing a passkey ends (#597)
             # the install's HTTPS address (PUBLIC_ORIGINS), for "install from this address" on a plain-HTTP page (#56)
             "https_address": next((o for o in sorted(config.setting("PUBLIC_ORIGINS")) if o.startswith("https://")), None),

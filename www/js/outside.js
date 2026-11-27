@@ -64,11 +64,11 @@ const SgOutside = (() => {
     body.replaceChildren(
       sub("May contact now"),
       v.may_contact.length ? el("ul", {class: "out-hosts"}, ...v.may_contact.map(h => el("li", {}, code(h))))
-        : none("No host: no source is set up or connected, so Sanguity contacts nobody on its own."),
-      el("p", {class: "muted"}, "A Health Link's host is contacted only when someone pastes the link and confirms it. ",
-        el("a", {href: "sources.html#portals", text: "Connect or disconnect sources"}), "."),
-      sub("Connected sources"),
-      ...(v.sources.length ? v.sources.map(source) : [none("No source set up or connected yet: each is listed here with the hosts it may contact.")]),
+        : none(v.connected_sources ? "No host: no source is set up or connected, so Sanguity contacts nobody on its own." : "No host: Sanguity contacts nobody on its own."),
+      el("p", {class: "muted"}, "A Health Link's host is contacted only when someone pastes the link and confirms it.",
+        ...(v.connected_sources ? [" ", el("a", {href: "sources.html#portals", text: "Connect or disconnect sources"}), "."] : [])),
+      ...(v.connected_sources ? [sub("Connected sources"),   // (#1096) none of theirs while they're off
+        ...(v.sources.length ? v.sources.map(source) : [none("No source set up or connected yet: each is listed here with the hosts it may contact.")])] : []),
       sub("SMART Health Link fetches"),
       contacts(v.health_links, "No Health Link fetched yet: each host is listed once someone pastes a link and confirms it."),
       sub("Health Card issuers' keys"),

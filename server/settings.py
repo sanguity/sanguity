@@ -481,6 +481,39 @@ define("security.triesAccount", "security", "…at one account, from anywhere", 
        scope="install", private=False, kind="number",
        help="At least 10: fewer would let a stranger hold someone up from signing in more cheaply.")
 
+# General → Experimental (#1096): connected sources, off by default (a fresh install's), on for an install that had a
+# registered app or a connection when it was upgraded (keep_sources_on). connected_sources() is the one rule every
+# connections, sync and directory route, the sync and directory schedulers and the outside gateway read; /api/me
+# gives every page its plain on or off. Off keeps every connection and what it pulled: on again, they sync again.
+section("experimental", "Experimental", "Parts of Sanguity that work but aren't recommended yet. Each change applies at once.")
+define("experimental.connectedSources", "experimental", "Connected sources (experimental, not recommended yet)", False,
+       yes_no("Connected sources"), scope="install", private=False, kind="toggle", env="CONNECTED_SOURCES",
+       help="Patient portals and health plans connected from Sources, synced on a schedule, and Find your provider. "
+            "Each portal needs an app registered with its vendor first, under Connected-source apps. Off: none of it "
+            "is shown, nothing is synced and nobody is contacted for it; connections and what they brought are kept, "
+            "and sync again when it's turned back on.")
+SOURCES_KEPT = "connected_sources.kept"   # meta: keep_sources_on has run
+
+
+def connected_sources():
+    """(#1096) Whether connected sources are on: the value in force of General → Experimental's switch."""
+    return bool(install_value("experimental.connectedSources"))
+
+
+def keep_sources_on(db):
+    """(#1096) Once, at start-up: an install from before the switch that has a registered app or a connection keeps
+    connected sources on (nothing stops syncing unasked); any other starts off. True when it turned the switch on."""
+    if dbm.meta_get(db, SOURCES_KEPT):
+        return False
+    had = db.execute("SELECT EXISTS(SELECT 1 FROM smart_clients) OR EXISTS(SELECT 1 FROM connections)").fetchone()[0]
+    on = bool(had) and "experimental.connectedSources" not in stored(db, "install")
+    with dbm.transaction(db):
+        if on:
+            put(db, "experimental.connectedSources", True)
+        dbm.meta_set(db, SOURCES_KEPT, "1")
+    return on
+
+
 # #992: the provider directory's weekly update (directory/update.py), shown in Install → Provider directory, not General
 section("directory", "Provider directory", "What Find your provider searches: Epic's and Oracle Health's lists, read by this server.")
 define("directory.weekly", "directory", "Keep the lists up to date", False, yes_no("Keeping the lists up to date"),

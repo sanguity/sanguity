@@ -202,6 +202,10 @@ Not opened as issues; written up here for the owner to file or drop:
     cookie, never anyone else's.
   - The device cookie (`sg_device`) only separates one browser's sign-in tries from other people's; it's sent
     only to `/api/login` and lets nobody in.
+- **Connected sources are off by default** (#1096): behind the install setting `experimental.connectedSources`
+  (`CONNECTED_SOURCES` in the environment wins). Off, the server refuses every connections, sync and directory route
+  (404, after the sign-in's own checks), runs no sync or directory update, and the outside gateway allows none of their
+  hosts (`settings.connected_sources()`, one rule); connections and what they pulled are kept.
 - **`PUBLIC_ORIGINS` and `X-Forwarded-Host`:**
   - These widen which `Origin` the CSRF check accepts (`main._same_site`), and give the address shown for the app in
     a calendar event, the phone's upload address and a connected source's return address.

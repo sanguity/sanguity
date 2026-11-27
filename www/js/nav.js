@@ -438,7 +438,7 @@ const SgNav = (() => {
     group("Records",
       link(src + "#waiting", "sources/waiting", "Waiting for you", {id: "waitingLink", "data-needs": "import", "data-none": ""}),   // #283, below
       link(src + "#upload", "sources/upload", "Upload files", {id: "importLink", "data-needs": "import"}),
-      link(src + "#portals", "sources/portals", "Connect a portal or plan", {"data-needs": "import"}),
+      link(src + "#portals", "sources/portals", "Connect a portal or plan", {id: "connectLink", "data-needs": "import", "data-none": ""}),   // (#1096: while connected sources are on, below)
       link(src + "#manual", "sources/manual", "Type records in", {"data-needs": "import"}),
       link(src + "#link", "sources/link", "Paste a Health Link", {"data-needs": "import"})),
   ]);
@@ -550,8 +550,9 @@ const SgNav = (() => {
     const p = known.find(x => String(x.id) === pick.value), mine = ++waitSeq;
     if (!p || locked || (p.role !== "owner" && p.role !== "editor") || (typeof OFFLINE !== "undefined" && OFFLINE.on)) return;
     try {
-      const [jobs, conns] = await Promise.all([`profiles/${p.id}/jobs?state=preview`, `profiles/${p.id}/connections`]
-        .map(path => api(path, polled ? background() : {}).then(r => r.ok ? r.json() : null)));
+      const cs = sgConnected(await meRead);   // (#1096) a profile's connections only while connected sources are on
+      const [jobs, conns] = await Promise.all([`profiles/${p.id}/jobs?state=preview`, cs && `profiles/${p.id}/connections`]
+        .map(path => path ? api(path, polled ? background() : {}).then(r => r.ok ? r.json() : null) : null));
       if (mine === waitSeq && jobs) waited(p.id, sgWaiting(jobs, conns).length);
     } catch (e) {}   // (offline, or the server away: nothing said)
   }
@@ -616,11 +617,20 @@ const SgNav = (() => {
      profile menu. With no profile at all, no records tabs on any page, here for every one: those
      that fill the menu themselves may stop first (#505: Sources and the guide's New profile did) */
   const own = onRecords || header.hasAttribute("data-profile");
+  let meSaid;
+  const meRead = new Promise(r => { meSaid = r; });   // who's signed in, as asked below (null: not known)
   document.addEventListener("DOMContentLoaded", () => {
     api("me").then(r => r.ok ? r.json() : null).then(me => {
+      meSaid(me);
       if (me) {   // New profile where it's offered (sgMayNew)
         npSep.hidden = npLink.hidden = !sgMayNew(me);
         for (const e of document.querySelectorAll("[data-np]")) e.hidden = (e.dataset.np === "offer") !== sgMayNew(me);
+      }
+      if (sgConnected(me)) {   // (#1096) connected sources, while they're on: Add's Connect, and each page's [data-cs]
+        const c = document.getElementById("connectLink");
+        c.lastChild.textContent = "Connect a portal or plan (experimental)";
+        c.removeAttribute("data-none");
+        for (const e of document.querySelectorAll("[data-cs]")) e.hidden = false;
       }
       if (me && (!own || me.profiles?.length === 0) && !locked) profiles(me.profiles);
       if (me && !me.offline) {
@@ -629,7 +639,7 @@ const SgNav = (() => {
       }
       if (me && me.user && me.user.is_admin && me.backups_late && !locked)
         document.getElementById("settingsLink").append(" ", el("span", {class: "badge bk-late"}, icon("triangle-alert"), " backups late"));
-    }).catch(() => {});
+    }).catch(() => meSaid(null));
   });
   /* nothing to go to but Log out (a password to change or a second factor to set up first, account.js) */
   function lock() {

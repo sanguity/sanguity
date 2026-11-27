@@ -62,7 +62,7 @@ function syncNotice(rows) {
 function adminGate() {
   $("#adminTf").hidden = false; $("#adminTools").hidden = $("#userDanger").hidden = true; $("#users").hidden = false;
   $("#secNotice").hidden = $("#codeNotice").hidden = $("#syncNotice").hidden = $("#backupNotice").hidden = true;
-  for (const id of ["#gen-host", "#gen-security", "#gen-backups", "#gen-phone", "#gen-about", "#backups", "#admin", "#sec-sync", "#directory", "#labmaps", "#installLog"]) gateCard($(id));
+  for (const id of ["#gen-host", "#gen-security", "#gen-backups", "#gen-phone", "#gen-experimental", "#gen-about", "#backups", "#admin", "#sec-sync", "#directory", "#labmaps", "#installLog"]) gateCard($(id));
 }
 function gateCard(card) {
   if (card.querySelector(".adm-gate")) return;
@@ -486,12 +486,23 @@ function loadInstallLog() {
 async function adminStart(first) {
   if (!ME.user.is_admin) return;
   await first;
-  for (const g of SG_PAGES.settings.groups) if (g.admin) for (const id of g.has) $("#" + id).hidden = false;
+  const cs = sgConnected(ME);   // (#1096) connected sources' groups only while they're on (csShown)
+  for (const g of SG_PAGES.settings.groups) if (g.admin && (cs || !g.cs)) for (const id of g.has) $("#" + id).hidden = false;
   SgOutside.load();     // outside.js
   if (ME.user.admin_needs_two_factor) { adminGate(); SET_NAV.again(); return; }
   loadInstallLog();
-  await Promise.all([loadUsers(), loadNotice(), loadLabmaps(), loadGenSecurity(), loadRequireTf(), loadSetup(), loadSync(), loadBackups(),
-                     loadHost(), loadGenBackups(), loadPhone(), loadGenAbout(),
-                     loadDirectory()]);   // General's parts (#998); #992: the directory's lists, an admin's alone
+  await Promise.all([loadUsers(), loadNotice(), loadLabmaps(), loadGenSecurity(), loadRequireTf(), cs && loadSetup(), cs && loadSync(), loadBackups(),
+                     loadHost(), loadGenBackups(), loadPhone(), loadGenExperimental(), loadGenAbout(),
+                     cs && loadDirectory()]);   // General's parts (#998); #992: the directory's lists, an admin's alone
+  SET_NAV.again();
+}
+/* (#1096) connected sources switched on or off in General → Experimental: their groups here (Connected-source apps
+   with the sync defaults, the Provider directory) shown and read, or hidden; the outside connections and About read
+   again. The rest of the app follows as each page is next opened (its /api/me) */
+async function csShown(on) {
+  ME.connected_sources = on;
+  for (const g of SG_PAGES.settings.groups) if (g.cs) for (const id of g.has) $("#" + id).hidden = !on;
+  SgOutside.load();
+  await Promise.all([loadGenAbout(), on && loadSetup(), on && loadSync(), on && loadDirectory()]);
   SET_NAV.again();
 }
