@@ -3915,6 +3915,9 @@ Everything on `main` so far; it becomes the first tagged release.
   profile's next import put new results beside the old chart ("Diastolic blood pressure", "HDL"). An import, a sync or
   records typed in now file a test the profile charts under another name (the same LOINC code, or a name for the same
   test) in that chart, in the same unit, unasked.
+- **A FHIR file's results outside a report name no panel** (#1102): they were grouped as "Lab results", so its LDL
+  Cholesterol sat there on Latest and a spreadsheet's HDL Cholesterol alone under Other; such a lab now goes in the
+  panel another import gives it, else Sanguity's (Lipids).
 - **One unit spelled two ways is one chart** (#1102): a FHIR file's platelets in 10³/µL and a spreadsheet's in K/µL
   were two series in Latest and the Overview; counts in thousands or millions however written (10*3/uL, 10^3/uL,
   x10E3/uL, Thou/uL) and mm[Hg] are each one unit now, for charts and for lab-name matching.
