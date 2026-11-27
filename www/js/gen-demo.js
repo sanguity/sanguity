@@ -11,9 +11,9 @@ async function loadGenDemo() {
   catch (e) { box.replaceChildren(); sayIn(msg, e.message, true); return; }
   const btn = (id, text, onclick, cls = "btn") => el("button", {class: cls, type: "button", id, text, onclick});
   if (!d.profile) {
-    box.replaceChildren(setRow(el("div", {}, el("p", {class: "set-row-name", text: "No demo profile"}),
+    box.replaceChildren(setRow([el("p", {class: "set-row-name", text: "No demo profile"}),   // (the rows' pattern, #494)
         el("p", {class: "hint", text: d.available ? `Adds a profile named “${d.name}”, yours, with about two years of made-up records.`
-          : "This install has no demo generator (demo/generate.py)."})),
+          : "This install has no demo generator (demo/generate.py)."})],
       btn("demoAdd", "Add a demo profile", async ev => {
         ev.target.disabled = true;
         try {
@@ -28,8 +28,8 @@ async function loadGenDemo() {
     return;
   }
   const p = d.profile;
-  box.replaceChildren(setRow(el("div", {}, el("p", {class: "set-row-name"}, "“", el("b", {text: p.name}), "” is on this server"),
-      el("p", {class: "hint", text: "Remove demo deletes it and everything in it, for everyone it's shared with. No other profile is touched."})),
+  box.replaceChildren(setRow([el("p", {class: "set-row-name"}, "“", el("b", {text: p.name}), "” is on this server"),
+      el("p", {class: "hint", text: "Remove demo deletes it and everything in it, for everyone it's shared with. No other profile is touched."})],
     el("div", {class: "form inline"}, el("a", {class: "btn", id: "demoOpen", href: `./?profile=${p.id}`, text: "Open it"}),
      btn("demoRemove", "Remove demo", async () => {
        if (!await ask({title: "Remove the demo profile?", danger: true, action: "Remove demo",
