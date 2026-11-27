@@ -337,6 +337,9 @@ class InTheRecords(unittest.TestCase):
         db.close()
         p = f"/api/profiles/{pid}"
         meds = {m["name"]: m["key"] for m in self.c.get(p + "/data").json()["medications"]}
+        for name in ("Placebex 2 mg tablet", "Fictorin 5 mg tablet"):   # a dose of each, logged before one's hidden
+            r = self.c.post(p + "/medications/doses", headers=H, json={"med": meds[name], "t": "2026-11-20T08:00", "status": "taken", "note": name + " DOSENOTE"})
+            self.assertEqual(r.status_code, 201, r.text)
         self.assertEqual(self.c.put(p + "/medications/hidden", headers=H, json={"key": meds["Placebex 2 mg tablet"], "hidden": True}).status_code, 200)
         self.assertEqual(self.c.put(p + "/medications/listed", headers=H, json={"key": meds["Fictorin 5 mg tablet"], "dose": "Twice daily CHANGED"}).status_code, 200)
         self.assertEqual(self.c.post(p + "/medications/own", headers=H, json={"name": "Calmora OWNENTRY", "dose": "1 tablet", "start": "2026-10-01"}).status_code, 201)
@@ -359,6 +362,18 @@ class InTheRecords(unittest.TestCase):
         r = TestClient(main.app, base_url="http://testserver").post("/api/share/view", headers=H, json={"token": r.json()["path"].split("#", 1)[1]})
         self.assertEqual(r.status_code, 200, r.text)
         said(json.dumps(r.json()["medications"]), "the share link")
+        # (#1093) its medication log: the hidden one's dose left out, as the medication is; the log keeps it
+        r = self.c.post(p + "/links", headers=H, json={"sections": ["medlog"]})
+        self.assertEqual(r.status_code, 200, r.text)
+        r = TestClient(main.app, base_url="http://testserver").post("/api/share/view", headers=H, json={"token": r.json()["path"].split("#", 1)[1]})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertIn("Fictorin 5 mg tablet DOSENOTE", r.text, "the medication log in the link")
+        self.assertNotIn("Placebex", r.text, "not the hidden one's dose")
+        r = self.c.post(p + "/summary/preview", headers=H, json={"sections": ["medlog"]})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertIn("Fictorin 5 mg tablet DOSENOTE", r.text)
+        self.assertNotIn("Placebex", r.text, "nor in the visit summary's")
+        self.assertEqual(len(self.c.get(p + "/data").json()["doses"]), 2, "both kept in the log")
         r = self.c.get(p + "/export?format=fhir")
         self.assertEqual(r.status_code, 200, r.text[:300])
         z = zipfile.ZipFile(io.BytesIO(r.content))
