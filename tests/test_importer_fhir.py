@@ -198,9 +198,11 @@ class Bundle(Shape, unittest.TestCase):
 
     def test_warnings_name_what_was_skipped(self):
         w = " ".join(self.out["warnings"])
-        self.assertIn("Observation (social-history)", w)
+        self.assertIn("social history notes (such as smoking)", w)   # in plain words (#1103)
+        self.assertNotIn("Observation (", w)
+        self.assertNotIn("base64", w)
         self.assertNotIn("Immunization", w)   # imported since #165, its own kind since #179
-        self.assertIn("inline", w)
+        self.assertIn("stored inside the records themselves", w)
         self.assertEqual([e["title"] for e in by_kind(self.data, "immunization")], ["Influenza vaccine"])
         self.assertEqual(by_kind(self.data, "procedure"), [])
 
@@ -264,7 +266,7 @@ class AppleHealthFolder(Shape, unittest.TestCase):
         self.assertDataShape(self.data)
 
     def test_contents(self):
-        chol = series(self.data, "CHOLESTEROL, TOTAL")
+        chol = series(self.data, "Total Cholesterol")   # lab-aliases.json's name for it (#1103)
         self.assertEqual(chol["pts"][0][1:5], [212, None, 199, "H"])
         self.assertEqual(chol["loinc"], "2093-3")
         (m,) = by_kind(self.data, "med")

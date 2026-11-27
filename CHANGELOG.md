@@ -3916,6 +3916,13 @@ Everything on `main` so far; it becomes the first tagged release.
   Apple Health's Export All Health Data, Blue Button), and shows an upload left at its review again after a reload, as
   Sources → Waiting for you does; a phone's step waits for its first upload instead of being done once its secret is
   made; and an admin has a step to keep a copy of the encryption key elsewhere and turn backups on.
+- **Lab names matched less, and units as people write them** (#1103): a visit's vital signs (blood pressure, heart
+  rate, height, temperature) are no longer lab names to match; lab-aliases.json knows more spellings of the lipids,
+  HbA1c, TSH and eGFR (CKD-EPI); a first import into a profile with no labs yet shows its names to match closed, as
+  optional; a text result ("Negative") counts as a result, and "for 3 tests" is said only where there are fewer tests
+  than results (it was "5 lab results in 6 tests"); skipped FHIR records and attachments are named in plain words, not
+  "Observation (social-history)" or "inline base64". Units are shown as on a printout everywhere (10³/µL, not
+  10*3/uL; mmHg, not mm[Hg]), by one rule.
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 

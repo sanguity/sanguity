@@ -135,6 +135,7 @@ function sumChart(r) {
 /* a measures block's cell (#225): a day, or a local wall time, in this person's format; else its text */
 const measureCell = (kind, v) => !v ? v : kind === "day" ? fmtDay(v) : kind === "time" ? fmtDT(zParse(v)) : v;
 function renderPreview(s) {
+  unitsSaid(s);   // every unit as people write it (util.js, #1103)
   const box = $("#preview"), since = fmtDay(s.since.date);
   const labels = Object.fromEntries(OPTS.sections.map(x => [x.id, x.label]));
   // its length beside its heading, said only when it changes (not as it's first drawn)

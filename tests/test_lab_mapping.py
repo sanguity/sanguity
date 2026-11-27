@@ -151,6 +151,25 @@ class LabMapping(unittest.TestCase):
         self.assertEqual(j2["labs"], [])
         self.assertEqual(j2["lab_targets"], [])
 
+    def test_a_newcomers_names(self):   # #1103
+        """A visit's vital signs (the "Vitals" panel: blood pressure, heart rate, height, temperature) aren't lab names to
+        match; the newer spellings of lipids, HbA1c, TSH and eGFR are known; and a first import into a profile with no
+        lab series yet says so ("labs_first"), for the page to show the names closed, which one with series doesn't."""
+        pid = self.profile("Newcomer 1103")
+        j = self.previewed(pid, csv(["2026-02-05", "Zorblatt Index 1103", "4", "ng/dL", "1-5", "", "", ""],
+                                    ["2026-02-05", "Systolic Pressure Zz 1103", "120", "mm[Hg]", "", "", "Vitals", ""],
+                                    ["2026-02-05", "HbA1c", "5.4", "%", "4.0-5.6", "", "", ""],
+                                    ["2026-02-05", "LDL-C", "96", "mg/dL", "<100", "", "", ""],
+                                    ["2026-02-05", "Thyroid Stimulating Hormone", "1.9", "uIU/mL", "0.4-4.5", "", "", ""],
+                                    ["2026-02-05", "eGFR CKD-EPI", "96", "mL/min/1.73m2", ">60", "", "", ""]))
+        self.assertEqual([e["name"] for e in j["labs"]], ["Zorblatt Index 1103"])
+        self.assertIs(j["labs_first"], True)
+        self.save(pid, j)
+        names = {s["name"] for s in self.robin.get(f"/api/profiles/{pid}/data").json()["labs"]}
+        self.assertTrue({"Hemoglobin A1c", "LDL Cholesterol", "TSH", "CKD-EPI eGFR"} <= names, names)
+        j = self.previewed(pid, csv(["2026-03-05", "Zorblatt Other 1103", "4", "ng/dL", "1-5", "", "", ""]))
+        self.assertIs(j["labs_first"], False)
+
     def test_suggested_by_similar_name_only_with_a_compatible_unit(self):
         pid = self.profile("Similar")
         self.save(pid, self.previewed(pid, csv(["2026-01-05", "Vitamin D 25-Hydroxy", "31", "ng/mL", "30-100", "", "", ""])))
@@ -301,7 +320,7 @@ class LabMapping(unittest.TestCase):
         row = lambda day, v: csv([day, name, v, "ng/dL", "0.8-1.8", "", "", ""])
         j = self.previewed(theirs, row("2026-03-01", "1.9"), c=self.ash)
         ref = self.entry(j, name)["ref"]
-        r = self.ash.post(f"/api/profiles/{theirs}/jobs/{j['id']}/confirm", json={"labs": {ref: "Hemoglobin A1c"}}, headers=H)
+        r = self.ash.post(f"/api/profiles/{theirs}/jobs/{j['id']}/confirm", json={"labs": {ref: "Prolactin"}}, headers=H)
         self.assertEqual(r.status_code, 400, r.text)
         self.assertIn("isn't a series this review offered", r.json()["detail"])
         self.assertEqual(self.robin.get(f"/api/profiles/{theirs}/jobs/{j['id']}").json()["state"], "preview")

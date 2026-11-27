@@ -185,6 +185,13 @@ class Jobs(unittest.TestCase):
         self.assertEqual(jobs._watch_counts(w), {"watch_days": 2, "workouts": 0, "bp_readings": 1, "temp_readings": 1, "glucose_readings": 1})
         self.assertEqual(jobs._watch_counts({**w, "metrics": w["metrics"][:3]})["watch_days"], 0)
 
+    def test_a_text_result_is_a_result(self):   # #1103
+        """A lab's text results ("Negative") count as results beside its numbers: a test holding only text was "5 lab
+        results in 6 tests"."""
+        data = {"events": [], "labs": [{"name": "A", "pts": [["2026-11-09", 1], ["2026-11-10", 2]], "txt": []},
+                                       {"name": "B", "pts": [], "txt": [["2026-11-09", "Negative"]]}]}
+        self.assertEqual({k: jobs.summarise(data)["counts"][k] for k in ("series", "results")}, {"series": 2, "results": 3})
+
     def test_imports_through_the_registry(self):
         before = count(self.pid)
         jid = self.start(self.fixture_upload())

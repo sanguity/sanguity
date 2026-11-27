@@ -940,7 +940,7 @@ def report(data, dups, summarise):
             continue
         n = len(dups["points"].get(i, ())) + len(dups["txt"].get(i, ()))
         if n:
-            results += len(dups["points"].get(i, ()))
+            results += n   # text results' too, as jobs.summarise counts them (#1103)
             # the days its duplicates are from (#490), text results' too: the first, and the last where it's another (as
             # times, said as days in the person's zone by the page, #1102)
             days = sorted(str(x[0]) for key, rows in (("points", s.get("pts")), ("txt", s.get("txt")))

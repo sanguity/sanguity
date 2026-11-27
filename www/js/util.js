@@ -421,6 +421,29 @@ function applyTheme(accountDefault) {
   if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
 }
 
+/* A unit as people write it (#1103), the one rule for every unit shown: the codes reports carry (UCUM) said as on a
+   lab printout: "10*3/uL" and "x10E3/uL" are 10³/µL, "mm[Hg]" mmHg, "[in_i]" in, "Cel" °C, "{beats}/min" beats/min,
+   "kg/m2" kg/m², "umol/L" µmol/L. Only how it's written changes, never what it is ("U/L", enzyme units, stays).
+   Applied as each page reads its records (store.js, share.js, summary.js; unitsSaid: every "unit" in what came),
+   and where a unit comes on its own (the import review, Settings' lists). */
+const UNIT_SUP = {"-": "⁻", 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹"};
+function unitSaid(u) {
+  if (typeof u !== "string" || !u) return u;
+  if (/^cel$/i.test(u.trim())) return "°C";
+  return u.replace(/\[deg([FC])\]/gi, (_, x) => "°" + x.toUpperCase())
+    .replace(/\[([^\]_]+)(?:_[^\]]*)?\]/g, "$1").replace(/\{([^}]*)\}/g, (_, x) => x.replace(/_/g, " "))
+    .replace(/(?<![A-Za-z\d.])(?:x\s*)?10\s*(?:\*|\^|e)\s*(-?\d+)/gi, (_, n) => "10" + [...n].map(c => UNIT_SUP[c]).join(""))
+    .replace(/(?<![A-Za-z])u(?=(?:g|mol|L|l|IU|U|eq|m)\b)/g, "µ")
+    .replace(/(?<![A-Za-z])([cm]?m)([23])(?!\d)/g, (_, m, n) => m + UNIT_SUP[n]);
+}
+function unitsSaid(x) {   // every "unit" in what a page read (an object or a list, however deep), in place
+  if (Array.isArray(x)) for (const v of x) unitsSaid(v);
+  else if (x && typeof x === "object") for (const [k, v] of Object.entries(x)) {
+    if (k === "unit" && typeof v === "string") x[k] = unitSaid(v); else if (v && typeof v === "object") unitsSaid(v);
+  }
+  return x;
+}
+
 /* The Overview's key-lab tiles (#36), shared by the Overview and the Settings preview: the chosen labs this profile
    has results for, in order. While the choice is still the default list and fewer than half of it (or of six) has
    results here, the profile's most-measured labs fill as many tiles, so a new profile needs no setting. */

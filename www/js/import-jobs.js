@@ -139,7 +139,9 @@
   const tag = (card, k, v) => { card.dataset[k] = v; const f = FRAMES.get(card); if (f) f.card.dataset[k] = v; };
 
   // what came in, counted as the review counts it (counted, below: a lab draw left out where there are results, #490)
-  const countItems = c => counted(c).map(x => node("li", {text: plural(x.n, x.words) + (x.k === "results" ? " in " + plural(c.series || 0, ["test", "tests"]) : "")}));
+  // how many tests n lab results are for, said only where it's fewer (#1103: not "5 lab results in 6 tests", nor "6 in 6")
+  const forTests = (n, series) => series && series < n ? " for " + plural(series, ["test", "tests"]) : "";
+  const countItems = c => counted(c).map(x => node("li", {text: plural(x.n, x.words) + (x.k === "results" ? forTests(x.n, c.series) : "")}));
   const rangeText = r => r ? (r.from === r.to ? ` from ${day(r.from)}` : ` from ${day(r.from)} to ${day(r.to)}`) : "";
   const notes = j => (j.warnings || []).length ? node("details", {}, node("summary", {text: plural(j.warnings.length, ["note", "notes"]) + " from the import"}),
                                                  node("ul", {}, j.warnings.map(w => node("li", {text: w})))) : null;
@@ -151,7 +153,7 @@
      to match, a table whose series are typed with a list to pick from; results possibly the same as another source's
      and the duplicates, each acted on only when ticked; and a bar at the foot whose button says what it adds. */
   const KEEP = "";   // a lab name kept as a series of its own: no series has an empty name
-  const unitText = u => u ? ` (${u})` : "";
+  const unitText = u => u ? ` (${unitSaid(u)})` : "";   // (as people write it, #1103)
 
   // the lab names to match (#23), one row each: the series typed or picked from a list (the match made before or the
   // sure suggestion first), or left empty to keep it a series of its own; a similar name is a "Maybe" beside an empty
@@ -196,8 +198,9 @@
         node("td", {}, box, node("datalist", {id: id + "-list"}, opts), why));
       return {l, box, read, initial, tr};
     });
-    const part = node("details", {class: "imp-labs", open: ""},
-      node("summary", {text: `${plural(listed.length, ["lab name", "lab names"])} to match`}),
+    // (#1103) a first import into a profile with no lab series yet: closed, each name kept as it is unless matched
+    const part = node("details", {class: "imp-labs", open: j.labs_first ? null : ""},
+      node("summary", {text: `${plural(listed.length, ["lab name", "lab names"])} to match` + (j.labs_first ? " (optional)" : "")}),
       node("p", {class: "howto"}, "Sanguity doesn't know these test names. Type or pick the series each belongs to, or leave it empty to keep it " +
         "separate; your choice is used for this profile's later imports from this source. ",
         about("matching lab names", "In a series, a result is charted with the same test from other labs. Only the series changes: each result keeps the " +
@@ -212,7 +215,7 @@
     const picked = () => Object.fromEntries(rows.map(r => [r, r.read()]).filter(([r, v]) => v !== r.initial || (!r.l.before && r.initial !== KEEP))
       .map(([r, v]) => [r.l.ref, v === KEEP ? null : v]));
     // the first box naming no series, marked as such
-    const wrong = () => { const r = rows.find(r => r.read() === null); if (r) r.box.dispatchEvent(new Event("change")); return r ? r.box : null; };
+    const wrong = () => { const r = rows.find(r => r.read() === null); if (r) { part.open = true; r.box.dispatchEvent(new Event("change")); } return r ? r.box : null; };
     // what's been typed, by ref, and typed again in a review drawn again (#497): a name still listed gets it back,
     // marked as naming no series only where the person's own change had marked it (#504: not one half typed)
     const kept = () => Object.fromEntries(rows.filter(r => r.box.value !== r.initial).map(r => [r.l.ref, [r.box.value, r.box.hasAttribute("aria-invalid")]]));
@@ -228,7 +231,7 @@
   // when each was taken, in the person's zone and date format, its time kept whole (dates.js, #522: not the browser's)
   const when = t => { t = String(t); const ms = zParse(t); if (!isFinite(ms)) return t;
     return t.length === 10 || /T(00:00|12:00):00$/.test(t) ? fmtD(ms) : fmtDT(ms); };
-  const valueText = x => `${x.value} ${x.unit || ""}`.trim();
+  const valueText = x => `${x.value} ${unitSaid(x.unit) || ""}`.trim();   // (as people write it, #1103)
   function sameChoices(j) {
     const listed = j.possible || [];
     if (!listed.length) return {part: null, picked: () => [], tick: () => {}};
@@ -415,8 +418,8 @@
       return node("div", {class: "tile"},
         node("span", {class: "lbl"}, toned(x.mark(), x.tone), cap(x.words[x.n === 1 ? 0 : 1])),
         node("span", {class: "val", text: x.n.toLocaleString("en-US")}),
-        x.k === "results" ? node("span", {class: "delta", text: "in " + plural(c.series || 0, ["test", "tests"]) +
-          ((c.kinds || {}).lab ? ", from " + plural(c.kinds.lab, KIND.lab) : "")}) : null,
+        x.k === "results" && (forTests(x.n, c.series) || (c.kinds || {}).lab) ? node("span", {class: "delta", text: [forTests(x.n, c.series).trim(),
+          (c.kinds || {}).lab ? "from " + plural(c.kinds.lab, KIND.lab) : ""].filter(Boolean).join(", ")}) : null,
         some.length ? node("ul", {}, some.map(([t, what]) => node("li", {}, t ? node("span", {class: "d", text: day(t)}) : null, " ", what)),
                            x.n > some.length ? node("li", {class: "more", text: `and ${(x.n - some.length).toLocaleString("en-US")} more`}) : null) : null);
     }));
@@ -698,9 +701,9 @@
       const typed = Object.entries(c.typed).filter(([k, n]) => n > 0 && k !== "height" && !AT_HOME.includes(k));
       const home = AT_HOME.reduce((n, k) => n + (c.typed[k] || 0), 0);
       if (home) typed.push(["readings", home]);
-      // "in 2 tests" only where the results are all lab results: vitals are charted as results too
+      // "for 2 tests" only where the results are all lab results: vitals are charted as results too
       out.push(...typed.sort((a, b) => b[1] - a[1]).map(([k, n]) => plural(n, TYPED[k] || [k, k])
-        + (k === "labs" && !c.typed.vitals && c.series ? " in " + plural(c.series, ["test", "tests"]) : "")));
+        + (k === "labs" && !c.typed.vitals ? forTests(n, c.series) : "")));
       if (c.heights_set) out.push(plural(c.heights_set, ["height", "heights"]) + " put in About this person (kept there if this is undone)");
       return out.length ? out.join(", ") : "No records";
     }
@@ -708,7 +711,7 @@
     const kinds = listed.filter(([k]) => !(k === "lab" && !draws && c.results));
     if (kinds.length) out.push(...kinds.map(([k, v]) => plural(v, HKIND[k] || [k, k])));
     else if (c.events && !listed.length) out.push(plural(c.events, ["event", "events"]));
-    if (c.results) out.push(plural(c.results, ["lab result", "lab results"]) + " in " + plural(c.series || 0, ["test", "tests"]));
+    if (c.results) out.push(plural(c.results, ["lab result", "lab results"]) + forTests(c.results, c.series));
     if (c.documents) out.push(plural(c.documents, ["attached file", "attached files"]));
     if (c.allergies) out.push(plural(c.allergies, ["allergy", "allergies"]));   // #179 (jobs.summarise)
     if (c.problems) out.push(plural(c.problems, ["problem or diagnosis", "problems or diagnoses"]));

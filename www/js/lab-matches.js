@@ -10,7 +10,7 @@
    panel's Same test as… (lab-panel.js). Plain script; all files share one scope. */
 "use strict";
 const LM_KEEP = "";   // the picker's Keep as its own test: no test has an empty name
-const lmUnit = u => u ? ` (${u})` : "";
+const lmUnit = u => u ? ` (${unitSaid(u)})` : "";   // as people write it (util.js, #1103)
 const lmPlural = (n, w) => `${n.toLocaleString("en-US")} ${w}${n === 1 ? "" : "s"}`;
 async function lmCall(path, method = "GET", body) {
   const r = await api(path, {method, body: body === undefined ? undefined : JSON.stringify(body)});

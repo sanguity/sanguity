@@ -389,25 +389,6 @@
     "loinc": "3094-0"
    },
    {
-    "name": "Cholesterol, Total",
-    "key": "pdf-labs:cholesterol, total|mg/dL",
-    "unit": "mg/dL",
-    "panel": "Lipid Panel",
-    "n": 1,
-    "pts": [
-     [
-      "2026-05-02T07:45:00-05:00",
-      188,
-      100,
-      199,
-      "",
-      "188",
-      "Labcorp"
-     ]
-    ],
-    "txt": []
-   },
-   {
     "name": "Creatinine",
     "key": "loinc:2160-0",
     "unit": "mg/dL",
@@ -449,7 +430,7 @@
    },
    {
     "name": "HDL Cholesterol",
-    "key": "pdf-labs:hdl cholesterol|mg/dL",
+    "key": "loinc:2085-9",
     "unit": "mg/dL",
     "panel": "Lipid Panel",
     "n": 1,
@@ -465,7 +446,8 @@
       ">"
      ]
     ],
-    "txt": []
+    "txt": [],
+    "loinc": "2085-9"
    },
    {
     "name": "Hematocrit",
@@ -509,7 +491,7 @@
    },
    {
     "name": "Hemoglobin A1c",
-    "key": "pdf-labs:hemoglobin a1c|%",
+    "key": "loinc:4548-4",
     "unit": "%",
     "panel": "Hemoglobin A1c",
     "n": 1,
@@ -524,11 +506,12 @@
       "Labcorp"
      ]
     ],
-    "txt": []
+    "txt": [],
+    "loinc": "4548-4"
    },
    {
-    "name": "LDL Chol Calc (NIH)",
-    "key": "pdf-labs:ldl chol calc (nih)|mg/dL",
+    "name": "LDL Cholesterol",
+    "key": "loinc:13457-7",
     "unit": "mg/dL",
     "panel": "Lipid Panel",
     "n": 1,
@@ -543,7 +526,8 @@
       "Labcorp"
      ]
     ],
-    "txt": []
+    "txt": [],
+    "loinc": "13457-7"
    },
    {
     "name": "MCV",
@@ -663,6 +647,26 @@
     ],
     "txt": [],
     "loinc": "2951-2"
+   },
+   {
+    "name": "Total Cholesterol",
+    "key": "loinc:2093-3",
+    "unit": "mg/dL",
+    "panel": "Lipid Panel",
+    "n": 1,
+    "pts": [
+     [
+      "2026-05-02T07:45:00-05:00",
+      188,
+      100,
+      199,
+      "",
+      "188",
+      "Labcorp"
+     ]
+    ],
+    "txt": [],
+    "loinc": "2093-3"
    },
    {
     "name": "Triglycerides",

@@ -16308,7 +16308,7 @@ def main():
                   card.startswith("Imported.") and "Epic MyChart" in card and "lab result" in card, card)
             toast497 = js("document.querySelector('#sgToasts .sg-toast:last-child .sg-toast-text')?.textContent || ''")
             check("…its toast names the largest kinds first: its 12 lab results, not its 4 hospital stays (#497)",
-                  toast497.startswith("Imported 12 lab results in ") and "4 hospital stays" in toast497, toast497)
+                  toast497.startswith("Imported 12 lab results") and "4 hospital stays" in toast497, toast497)
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             up = db.execute("SELECT id FROM uploads WHERE profile_id=2 ORDER BY id DESC").fetchone()
             job = db.execute("SELECT state, importer FROM jobs WHERE upload_id=?", (up["id"],)).fetchone()
@@ -16921,12 +16921,12 @@ def main():
             check("each Undo asks one question of one import, its toast's and Import history's the same, files only for the upload, "
                   "a lab draw not counted beside its result (#508)",
                   asks508[0] == asks508[1] and asks508[2] == asks508[3] and asks508[0][0] == asks508[2][0] == "Undo this import?"
-                  and "1 lab result in 1 test, and the files uploaded for it." in asks508[0][1] and "lab draw" not in asks508[0][1]
+                  and "1 lab result, and the files uploaded for it." in asks508[0][1] and "lab draw" not in asks508[0][1]
                   and asks508[2][1].startswith("Everything this typed-in import brought is removed: ") and "files" not in asks508[2][1], asks508)
             typed513 = js(f"document.getElementById('import-{man508}').textContent")
-            check("one typed result is “1 lab result in 1 test” in Import history and its Undo question, not 2 events (#513)",
-                  "1 lab result in 1 test" in typed513 and "event" not in typed513
-                  and asks508[2][1].startswith("Everything this typed-in import brought is removed: 1 lab result in 1 test."), [typed513, asks508[2]])
+            check("one typed result is “1 lab result” in Import history and its Undo question, not 2 events (#513)",
+                  "1 lab result" in typed513 and "in 1 test" not in typed513 and "event" not in typed513
+                  and asks508[2][1].startswith("Everything this typed-in import brought is removed: 1 lab result."), [typed513, asks508[2]])
             page.click("#sgToasts .sg-toast button:text-is('Undo…')")   # the upload's, the first of the two
             answer_ask(page)
             page.wait_for_function(f"document.getElementById('import-{up508}')?.classList.contains('undone')", timeout=10000)
@@ -17332,7 +17332,7 @@ def main():
             asked = answer_ask(page, yes=False)
             kept_imp = js("fetch('api/profiles/2/imports', {cache: 'no-store'}).then(r => r.json()).then(j => j.imports[0])")
             check("typed records' toast (#360): Undo… asks first, as Import history does (#508: in its words), and Keep it leaves the import and the toast there",
-                  asked[0] == "Undo this import?" and asked[1].startswith("Everything this typed-in import brought is removed: ") and "2 lab results in 2 tests" in asked[1]
+                  asked[0] == "Undo this import?" and asked[1].startswith("Everything this typed-in import brought is removed: ") and "2 lab results" in asked[1] and "in 2 tests" not in asked[1]
                   and "files" not in asked[1] and "can't be reversed" in asked[1] and not kept_imp.get("undone_at")
                   and js(f"document.querySelector('{man_toast} .sg-toast-text').textContent").startswith("Saved 2 results"), [asked, kept_imp.get("undone_at")])
             js("localStorage.removeItem('ht-state:2')")   # nothing chosen on Labs in this browser: what's charted is what Open Labs picks
@@ -21018,6 +21018,7 @@ def main():
             check("…bilirubin, with no exact conversion, stays as reported", bili["unit"] == "mg/dL" and bili["from"] is None, bili)
             check("…and the weights are in kg", js("SERIES.find(s => s.key === 'weight').unit") == "kg")
             # #1102: a C-CDA vital's value as reported keeps its own unit ("37 Cel", stored 98.6 in °F): Labs said "37 Cel °F"
+            # (what was reported said with its unit as people write it, util.js unitSaid, #1103: "37 °C")
             said1102 = js("""() => { const pt = (v, t) => Object.assign(["2026-03-02T12:00:00", v, null, null, "", t, "ECC"], {ts: 0});
                 const ss = [{name: "Temperature", unit: "°F", pts: [pt(98.6, "37 Cel")]}, {name: "Height", unit: "in", pts: [pt(68.9, "175 cm")]},
                             {name: "Heart rate (clinic)", unit: "bpm", pts: [pt(72, "72 /min")]}, {name: "Blood pressure, diastolic", unit: "mmHg", pts: [pt(82, "82 mm[Hg]")]},
@@ -21025,7 +21026,7 @@ def main():
                 if (typeof saidApart === "function") saidApart(ss);
                 return ss.map(s => readText(s, s.pts[0])); }""")
             check("Labs: a vital reported in a unit of its own is said in the chart's unit, what was reported beside it (#1102)",
-                  said1102 == [["98.6 °F", "Reported as 37 Cel"], ["68.9 in", "Reported as 175 cm"], ["72 bpm", ""], ["82 mmHg", ""], ["<0.5 mg/dL", ""]], said1102)
+                  said1102 == [["98.6 °F", "Reported as 37 °C"], ["68.9 in", "Reported as 175 cm"], ["72 bpm", ""], ["82 mmHg", ""], ["<0.5 mg/dL", ""]], said1102)
             js("switchTab('overview')")
             tile = js("[...document.querySelectorAll('#view-overview .tile')].find(t => t.textContent.includes('Creatinine'))?.textContent || ''")
             check("Overview: the creatinine tile in µmol/L, with the reported value", "µmol/L" in tile and re.search(r"Reported [\d.]+ mg/dL", tile), tile)
@@ -24971,9 +24972,26 @@ def main():
                   "medication stopped and the problem resolved", not bad920, bad920)
             check("#955: the review names each record a file uploaded again would change, with what changes (“status: Active → Stopped”), "
                   "and one ticked to leave it out isn't counted (“Update 1 record”)", not bad955, bad955)
+            # ---- #1103: a first import into an empty profile: its lab names to match closed, said optional (nothing of its
+            # own to match to); its units as people write them (10³/µL, not 10*3/uL); "for N tests" only where fewer
+            db = dbm.connect()
+            npid1103 = prof_r.create_profile(db, "First import (fictional)", owner_id=owner)
+            db.close()
+            page.goto(base + f"/import.html?profile={npid1103}")
+            page.wait_for_selector("#importer", state="visible", timeout=10000)
+            csv1103 = ("Date,Test,Result,Units,Reference Range,Flag,Panel,LOINC\n2026-02-05,Zorblatt Count 1103,6.1,10*3/uL,4.0-11.0,,,\n"
+                       "2026-03-05,Zorblatt Count 1103,6.4,10*3/uL,4.0-11.0,,,\n2026-03-05,Quixel Ratio 1103,1.2,ratio,,,,\n")
+            page.set_input_files("#pickFiles", files=[{"name": "labs.csv", "mimeType": "text/csv", "buffer": csv1103.encode()}])
+            page.wait_for_function(f"document.querySelectorAll('.import-job').length && /^(Ready to import|All duplicates|Not imported)/.test({card846}.textContent)", timeout=30000)
+            rev1103 = js(f"""(c => [c.querySelector('details.imp-labs')?.open, c.querySelector('details.imp-labs summary')?.textContent,
+                c.querySelector('details.imp-labs td')?.textContent, c.querySelector('.imp-tiles .tile .delta')?.textContent ?? null])({card846})""")
+            check("a first import into an empty profile: its lab names to match closed and said optional, their units as people write "
+                  "them (10³/µL), its results “for 2 tests”, not “in 2 tests” (#1103)",
+                  rev1103[0] is False and rev1103[1] == "2 lab names to match (optional)" and rev1103[2] == "Zorblatt Count 1103 (10³/µL)"
+                  and (rev1103[3] or "").startswith("for 2 tests"), rev1103)
             # ---- #887: one duplicate ticked to add anyway adds only that result. A C-CDA of four results at one time (ALT,
             # CRP, Potassium, Sodium) uploaded on the import page, then again: ALT ticked in the second's review, its button
-            # says "Add 1 lab result", and its save adds that one ("1 lab result in 1 test"), with its own row in a lab day of
+            # says "Add 1 lab result", and its save adds that one ("1 lab result"), with its own row in a lab day of
             # its own ("1 lab result" on the Timeline, ALT alone in its drawer), the first's as it was. The report's other results
             # came with it (preview._settle kept its labitem whole for ALT's row, and _with_rows its other rows' results): "4 lab
             # results in 4 tests", and a second "4 lab results" lab day for the same draw
@@ -24998,7 +25016,7 @@ def main():
                 if k887:
                     said887 = js(f"""[[...{card846}.querySelectorAll('ul > li')].map(li => li.textContent),
                       (t => t && t.querySelector('.sg-toast-text').textContent)(document.querySelector('#sgToasts .sg-toast:last-child'))]""")
-                    if said887 != [["1 lab result in 1 test"], "Imported 1 lab result in 1 test."]:
+                    if said887 != [["1 lab result"], "Imported 1 lab result."]:   # (#1103: no "in 1 test")
                         bad887.append(f"its card and toast say {said887}")
                 js("for (const t of document.querySelectorAll('#sgToasts .sg-toast')) t.sgGone()")
             page.goto(base + f"/?profile={kpid887}")
@@ -25021,7 +25039,7 @@ def main():
             prof_r.delete_profile(db, kpid887)
             db.close()
             check("#887: one duplicate ticked to add anyway adds only that result (a C-CDA again, ALT ticked: “Add 1 lab result”, and its save "
-                  "“1 lab result in 1 test”), with its own row in a lab day of its own (“1 lab result”, ALT alone in its drawer), the first "
+                  "“1 lab result”), with its own row in a lab day of its own (“1 lab result”, ALT alone in its drawer), the first "
                   "upload's lab day as it was", not bad887, bad887)
             # ---- #848: two results at one time (tests/ranges_matrix.py's AT_ONCE: Potassium 5.0 and 5.6 ▲ High at one time,
             # from two imports, not copies). Labs' chart and the lab panel's strip found the keyboard's stop by its time and

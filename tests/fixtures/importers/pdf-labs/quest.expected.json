@@ -490,26 +490,6 @@
     "loinc": "3094-0"
    },
    {
-    "name": "CHOLESTEROL, TOTAL",
-    "key": "pdf-labs:cholesterol, total|mg/dL",
-    "unit": "mg/dL",
-    "panel": "LIPID PANEL",
-    "n": 1,
-    "pts": [
-     [
-      "2026-03-14T08:32:00-04:00",
-      212,
-      null,
-      200,
-      "H",
-      "212",
-      "Quest",
-      "<"
-     ]
-    ],
-    "txt": []
-   },
-   {
     "name": "CO2",
     "key": "loinc:2028-9",
     "unit": "mmol/L",
@@ -629,8 +609,8 @@
     "loinc": "2345-7"
    },
    {
-    "name": "HDL CHOLESTEROL",
-    "key": "pdf-labs:hdl cholesterol|mg/dL",
+    "name": "HDL Cholesterol",
+    "key": "loinc:2085-9",
     "unit": "mg/dL",
     "panel": "LIPID PANEL",
     "n": 1,
@@ -645,27 +625,8 @@
       "Quest"
      ]
     ],
-    "txt": []
-   },
-   {
-    "name": "HEMOGLOBIN A1c",
-    "key": "pdf-labs:hemoglobin a1c|% of total Hgb",
-    "unit": "% of total Hgb",
-    "panel": "",
-    "n": 1,
-    "pts": [
-     [
-      "2026-03-14T08:32:00-04:00",
-      5.4,
-      null,
-      5.7,
-      "",
-      "5.4",
-      "Quest",
-      "<"
-     ]
-    ],
-    "txt": []
+    "txt": [],
+    "loinc": "2085-9"
    },
    {
     "name": "Hematocrit",
@@ -708,8 +669,29 @@
     "loinc": "718-7"
    },
    {
-    "name": "LDL-CHOLESTEROL",
-    "key": "pdf-labs:ldl-cholesterol|mg/dL",
+    "name": "Hemoglobin A1c",
+    "key": "loinc:4548-4",
+    "unit": "% of total Hgb",
+    "panel": "",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      5.4,
+      null,
+      5.7,
+      "",
+      "5.4",
+      "Quest",
+      "<"
+     ]
+    ],
+    "txt": [],
+    "loinc": "4548-4"
+   },
+   {
+    "name": "LDL Cholesterol",
+    "key": "loinc:13457-7",
     "unit": "mg/dL",
     "panel": "LIPID PANEL",
     "n": 1,
@@ -725,7 +707,8 @@
       "<"
      ]
     ],
-    "txt": []
+    "txt": [],
+    "loinc": "13457-7"
    },
    {
     "name": "MCV",
@@ -829,7 +812,7 @@
    },
    {
     "name": "TSH",
-    "key": "pdf-labs:tsh|mIU/L",
+    "key": "loinc:3016-3",
     "unit": "mIU/L",
     "panel": "",
     "n": 1,
@@ -844,7 +827,29 @@
       "Quest"
      ]
     ],
-    "txt": []
+    "txt": [],
+    "loinc": "3016-3"
+   },
+   {
+    "name": "Total Cholesterol",
+    "key": "loinc:2093-3",
+    "unit": "mg/dL",
+    "panel": "LIPID PANEL",
+    "n": 1,
+    "pts": [
+     [
+      "2026-03-14T08:32:00-04:00",
+      212,
+      null,
+      200,
+      "H",
+      "212",
+      "Quest",
+      "<"
+     ]
+    ],
+    "txt": [],
+    "loinc": "2093-3"
    },
    {
     "name": "Total Protein",
