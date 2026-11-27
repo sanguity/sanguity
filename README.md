@@ -167,10 +167,13 @@ hour or more on the Pi itself (a Pi with 1 GB of memory may need swap). Later bu
 `requirements.txt` changes. The released image is already built for all three.
 
 Open `http://<this machine>:8730` and enter the setup code to create the first account, and whose records you'll
-keep. It becomes the admin and owns the records already on the server; until you add your own, that is the
-fictional demo. With no records on the server yet, the **Getting started** guide opens next, at its first records:
+keep. It becomes the admin and owns the records already on the server. A fresh install starts empty: with no records
+on the server yet, the **Getting started** guide opens next, at its first records:
 it brings them in (an upload, or typed in) and, if you like, connects a phone; each step is ticked as it's done, every
-one can be skipped, and the guide stays in your menu. Connected sources (signing in to a portal or health plan) are
+one can be skipped, and the guide stays in your menu. To look around first, tick **Also add a demo profile** as you
+create the account (or, any time, **Settings → Install → General → Demo profile**): a separate profile, **Demo
+(fictional)**, with two years of made-up records, beside yours and never in it, named so in the profile menu and
+under its records; **Remove demo** there deletes it and everything in it, and no other profile. Connected sources (signing in to a portal or health plan) are
 experimental and off by default: an admin turns them on under **Settings → Install → General → Experimental**
 ([Connected sources](#connected-sources)). Add accounts for
 other people under **Settings → Install → Accounts** (for admins), then share profiles with them under **Sharing → People**.
@@ -882,11 +885,12 @@ backup.
 
 `docker/dev-stack.sh` runs a separate test copy from any branch on the same machine: its own compose project
 (`sanguity-dev`), ports (8740 and 8741 by default) and folders, so the real install is never touched. Your record
-exports and watch summary can be shown read-only, or it uses the demo data.
+exports and watch summary can be shown read-only; without them it starts empty, as an install does, and offers the
+demo profile (a copy set up before that change keeps the demo it started with).
 
 ```sh
 curl -fsSLO https://raw.githubusercontent.com/sanguity/sanguity/main/docker/dev-stack.sh
-sudo bash dev-stack.sh --dir /mnt/POOL/apps/sanguity-dev                       # main, demo data
+sudo bash dev-stack.sh --dir /mnt/POOL/apps/sanguity-dev                       # main, empty (add the demo profile)
 sudo bash dev-stack.sh --dir /mnt/POOL/apps/sanguity-dev --branch my-feature   # switch to a branch (also: update)
 sudo bash dev-stack.sh --dir /mnt/POOL/apps/sanguity-dev --records /path/to/exports     --watch-public /path/to/watch-data/public --watch-key /path/to/auth/data_key --puid UID --pgid GID   # your data, read-only
 ```

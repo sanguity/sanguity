@@ -39,6 +39,9 @@
   <label for="n">Whose records will you keep here? <span class="opt">(optional)</span></label>
   <input id="n" placeholder="e.g. your first name" maxlength="80" autocomplete="off" aria-describedby="nn">
   <p class="note tight" id="nn">Their name: yours, or someone you look after. Left empty, it's your username. You can change it later.</p>
+  <!-- the demo (#1101): a profile of its own beside theirs, never in it; Remove demo is in Settings → Install → General -->
+  <label class="check"><input type="checkbox" id="d" aria-describedby="dn"> Also add a demo profile to look around</label>
+  <p class="note tight" id="dn">A separate profile, “Demo (fictional)”, with made-up records. Remove it whole any time, under Settings → Install → General.</p>
   <button class="btn primary large" id="b" type="submit">Create account</button>
   <div class="err" id="e" role="alert"></div>
 </form>

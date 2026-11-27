@@ -3,7 +3,8 @@
    Show and a live count toward the server's minimum (pwField, util.js). Refused, focus goes to the field it's about,
    marked invalid, else back on Create account (#498): the field the server names, never one guessed from the message's
    words, and each send clears the marks of the last (#501); the reason under that field, in sight with it and
-   describing it (fieldSaid, util.js, #505). The note says it owns the records here only where there are some. */
+   describing it (fieldSaid, util.js, #505). The note says it owns the records here only where there are some. A fresh install has none: it starts empty, and
+   "Also add a demo profile" adds the fictional demo as a profile of its own (#1101). */
 const btn = $("#b"), err = $("#e");
 const pw = pwField($("#p"), {min: 15, hint: $("#pn")});
 pwField($("#p2"), {name: "repeated password"});   // its Show named apart from the first's (#498)
@@ -24,7 +25,8 @@ $("#f").addEventListener("submit", async ev => {
   let field = null, said;
   try {
     const r = await api("setup", {method: "POST",
-      body: JSON.stringify({code: $("#c").value, username: $("#u").value.trim(), password: $("#p").value, profile_name: $("#n").value.trim() || null})});
+      body: JSON.stringify({code: $("#c").value, username: $("#u").value.trim(), password: $("#p").value, profile_name: $("#n").value.trim() || null,
+        demo: $("#d").checked})});   // (#1101) a profile of its own, beside theirs
     const j = await r.json().catch(() => ({}));
     if (r.ok) { location.replace("./"); return; }
     said = j.detail ? (Array.isArray(j.detail) ? "Please fill in every field." : j.detail) : "Setup failed (" + r.status + ").";

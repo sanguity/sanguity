@@ -1,10 +1,10 @@
 # Sanguity.  Start:  docker compose up -d --build        Settings: copy .env.example to .env
 # The first start prints a setup code (docker compose logs app) for creating the first account in the browser,
-# and shows demo data until you add sources.json.
+# and starts empty: no records until you add them (or a sources.json); setup offers a demo profile to look around.
 name: sanguity
 
 services:
-  # one-shot: secrets and folders, then the built data in DATA_DIR/build (your exports via sources.json, or the demo)
+  # one-shot: secrets and folders, then the built data in DATA_DIR/build (your exports via sources.json; none without one)
   setup:
     build:
       context: .
