@@ -28632,7 +28632,7 @@ def main():
             # no longer the only account: admin actions now wait for the admin's own second factor (issue #75)
             check("with a second account, the admin is asked for a second factor",
                   js("!document.getElementById('adminTf').hidden && document.getElementById('adminTools').hidden"))
-            check("…and every other part of Install the server now refuses says so", js("['gen-host', 'gen-security', 'gen-backups', 'gen-phone', 'gen-about', 'backups', 'admin', 'sec-sync', 'directory', 'labmaps', 'installLog'].every(id => document.querySelector('#' + id + ' .adm-gate'))"))
+            check("…and every other part of Install the server now refuses says so", js("['gen-host', 'gen-security', 'gen-backups', 'gen-phone', 'gen-demo', 'gen-about', 'backups', 'admin', 'sec-sync', 'directory', 'labmaps', 'installLog'].every(id => document.querySelector('#' + id + ' .adm-gate'))"))
             # two-factor sign-in: turn it on from the key shown, confirm with a code, get recovery codes
             from server import twofactor
             import time as _time
@@ -31426,6 +31426,42 @@ def main():
             fp.set_viewport_size({"width": 1400, "height": 900})
             check("…and each fits 375 px, in light and dark", not bad, bad[:8] or "")
             check("…with no serious or critical axe-core finding (WCAG 2.2 AA, #202)", not empty_axe[0], (empty_axe[0] + empty_axe[1])[:8] or "")
+            # #1101: this fresh install started empty; Settings → Install → General → Demo profile adds the demo as a
+            # profile of its own (listed last, labelled), and Remove demo deletes it whole, the person's own untouched
+            mine1101 = lambda: fp.evaluate(f"Promise.all([1, {pid2}].map(p => fetch('api/profiles/' + p + '/data').then(r => r.status === 204 ? null : r.json())))")
+            had1101 = mine1101()
+            names1101 = fp.evaluate("fetch('api/me').then(r => r.json()).then(j => j.profiles.map(p => p.name))")
+            fp.goto(fbase + "/settings.html?profile=1#general")
+            fp.wait_for_selector("#demoAdd", timeout=15000)
+            add1101 = [fp.inner_text("#gen-demo h2"), fp.is_enabled("#demoAdd"), fp.evaluate("document.getElementById('gen-demo').closest('[hidden]') === null")]
+            fp.click("#demoAdd")
+            fp.wait_for_selector("#demoOpen", timeout=30000)
+            menu1101 = fp.evaluate("fetch('api/me').then(r => r.json()).then(j => j.profiles.map(p => [p.name, p.role, p.demo]))")
+            menu_names = fp.evaluate("[...document.querySelectorAll('#profileMenu [data-pid]')].map(b => b.textContent)")
+            demo1101 = fp.evaluate("fetch('api/me').then(r => r.json()).then(j => j.profiles.find(p => p.demo).id)")
+            said1101 = [fp.inner_text("#genDemoMsg"), fp.evaluate("document.activeElement.id")]
+            fp.goto(fbase + f"/?profile={demo1101}#overview")
+            f_until("typeof booted !== 'undefined' && booted && EV.length > 100")
+            label1101 = [fp.inner_text("#profileMenu .profile-name"), fp.inner_text("#meta")]
+            fp.set_viewport_size({"width": 412, "height": 900})
+            fp.goto(fbase + "/settings.html?profile=1#general")
+            fp.wait_for_selector("#demoRemove", timeout=15000)
+            fits1101 = phone_fits(fp, "General, Demo profile at 412 px")
+            fp.click("#demoRemove")
+            asked1101 = answer_ask(fp)
+            fp.wait_for_selector("#demoAdd", timeout=15000)
+            fp.set_viewport_size({"width": 1400, "height": 900})
+            gone1101 = [fp.evaluate("fetch('api/me').then(r => r.json()).then(j => j.profiles.map(p => p.name))"), fp.inner_text("#genDemoMsg"),
+                        fp.evaluate("document.activeElement.id"), fp.evaluate("fetch('api/settings/install/demo').then(r => r.json()).then(j => j.profile)")]
+            check("first run: the fresh install has no demo; Settings → Install → General → Demo profile adds one, a profile of its own, "
+                  "listed last, named “Demo (fictional)” in the profile menu and under its records (#1101)",
+                  add1101 == ["Demo profile", True, True] and len(names1101) == 2
+                  and menu1101 == [[n, "owner", False] for n in names1101] + [["Demo (fictional)", "owner", True]]
+                  and any("Demo (fictional)" in n for n in menu_names) and said1101 == ["Added “Demo (fictional)”: it's in the profile menu.", "demoOpen"]
+                  and "Demo (fictional)" in label1101[0] and "Sanguity demo data (fictional)" in label1101[1], [add1101, menu1101, menu_names, said1101, label1101])
+            check("…Remove demo, asked once, deletes it whole and nothing of the person's own profiles; the card fits 412 px",
+                  asked1101[0] == "Remove the demo profile?" and gone1101 == [names1101, "Removed “Demo (fictional)”.", "demoAdd", None]
+                  and mine1101() == had1101 and not fits1101, [asked1101, gone1101, fits1101[:4]])
             fctx.close()
             # #492: setup on a server whose records are there already (the setup build's profile, "My records"), the name
             # left empty: the profile is named after the username, as setup's hint says; another, named, keeps its name.

@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import accounts, activity, alerts, atrest, backup, backup_jobs, calendar, config, crypto, db as dbm, edits, export, fhir_export, hrzones, jobs, milestones, passkeys, profiles as prof, records, security as sec, settings, sync, twofactor, units, uploads, watch_keys, watch_store
+from . import accounts, activity, alerts, atrest, backup, backup_jobs, calendar, config, crypto, db as dbm, demo, edits, export, fhir_export, hrzones, jobs, milestones, passkeys, profiles as prof, records, security as sec, settings, sync, twofactor, units, uploads, watch_keys, watch_store
 
 log = logging.getLogger("sanguity")
 # security events (sign-ins, refused second steps and access): one JSON line each on the app's output, so
@@ -480,6 +480,7 @@ class Setup(BaseModel):
     username: str
     password: str
     profile_name: Optional[str] = None
+    demo: bool = False   # (#1101) also add the demo profile, to look around
 
 
 @app.get("/api/setup")
@@ -531,9 +532,17 @@ def setup(body: Setup, request: Request, response: Response, db=Depends(get_db))
             # they had a name of their own (only the setup build's are "My records")
             db.execute("UPDATE profiles SET name=? WHERE id=?", (label or body.username.strip(), owned[0]))
         elif not owned:
-            pid = prof.create_profile(db, label or body.username.strip(), owner_id=uid)
+            # a fresh install (#1101: it starts empty): this first profile is the setup build's, as bootstrap's was, so
+            # the records a sources.json brings later (setup rebuild) load into it, and it reads the receiver's own summary
+            pid = prof.create_profile(db, label or body.username.strip(), owner_id=uid,
+                                      linked_build=not dbm.meta_get(db, "build_unlinked"), watch_file=config.WATCH_FILE)
             activity.log(db, "create", first, pid, ip=_client_ip(request))
     sec.throttle.clear(*keys)
+    if body.demo:   # (#1101) beside the person's own profile, never in it; the account is made either way
+        try:
+            _add_demo(db, first, request)
+        except Exception as e:   # (the account is made: Settings → Install → General offers the demo again)
+            log.warning("setup: the demo profile wasn't added (%s)", type(e).__name__)
     _start_session(request, response, db, uid, "setup")
     return {"ok": True}
 
@@ -793,9 +802,13 @@ def logout(request: Request, response: Response, db=Depends(get_db)):
 # ---------------------------------------------------------------- the signed-in account
 
 def _profiles_for(db, uid):
-    return [dict(r) for r in db.execute(
+    """Each profile shared with uid, by name; the demo profile (#1101: "demo": true) last, so a person's own is the
+    one shown first."""
+    did = demo.profile_id(db)
+    rows = [dict(r) for r in db.execute(
         """SELECT p.id, p.name, m.role, (SELECT COUNT(*) FROM memberships x WHERE x.profile_id = p.id) AS members
            FROM memberships m JOIN profiles p ON p.id = m.profile_id WHERE m.user_id=? ORDER BY p.name COLLATE NOCASE, p.id""", (uid,))]
+    return sorted(({**r, "demo": r["id"] == did} for r in rows), key=lambda r: r["demo"])
 
 
 @app.get("/api/me")
@@ -1182,6 +1195,46 @@ def delete_profile(pid: int, body: ProfileDelete, request: Request, s=Depends(us
                                                   **({"lab_matches": gone["lab_matches"]} if gone["lab_matches"] else {})},
                  ip=_client_ip(request))
     return {"ok": True, "unlinked_build": gone["linked_build"], "lab_matches": gone["lab_matches"]}
+
+
+def _add_demo(db, s, request):
+    had = demo.profile_id(db)
+    pid = demo.add(db, s["id"])
+    if pid != had:
+        activity.log(db, "create", s, pid, ip=_client_ip(request))
+        watch_keys.publish(db)   # its receiver slot, as for any new profile
+    return pid
+
+
+@app.get("/api/settings/install/demo")
+def demo_state(s=Depends(admin), db=Depends(get_db)):
+    """(#1101) Settings → Install → General → Demo profile: the demo profile there is (its id and name), or none, and
+    whether this install can make one."""
+    pid = demo.profile_id(db)
+    row = db.execute("SELECT name FROM profiles WHERE id=?", (pid,)).fetchone() if pid else None
+    return {"available": demo.available(), "name": demo.NAME, "profile": {"id": pid, "name": row["name"]} if row else None}
+
+
+@app.post("/api/settings/install/demo")
+def demo_add(request: Request, s=Depends(admin), db=Depends(get_db)):
+    """(#1101) Add a demo profile, owned by the admin who asks: a profile of its own, "Demo (fictional)". One at a
+    time: asked again, the one there is is returned."""
+    try:
+        pid = _add_demo(db, s, request)
+    except demo.DemoError as e:
+        raise HTTPException(409, str(e))
+    return {"id": pid, "name": db.execute("SELECT name FROM profiles WHERE id=?", (pid,)).fetchone()["name"]}
+
+
+@app.delete("/api/settings/install/demo")
+def demo_remove(request: Request, s=Depends(admin), db=Depends(get_db)):
+    """(#1101) Remove demo: the demo profile and everything in it, in one step, and no other profile."""
+    gone = demo.remove(db)
+    if gone is None:
+        raise HTTPException(404, "There's no demo profile on this server.")
+    watch_keys.publish(db)   # its watch secret stops working
+    activity.log(db, "profile.delete", s, detail={"name": gone["name"], "members": gone["members"]}, ip=_client_ip(request))
+    return {"ok": True}
 
 
 @app.patch("/api/profiles/{pid}")

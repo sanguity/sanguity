@@ -12,7 +12,7 @@
 {% set records_ro = dict(values.storage.records, read_only=true) %}
 {% set config_ro = dict(values.storage.config, read_only=true) %}
 
-{# setup: one-shot. Secrets and folders, then the built data (the demo, until records are added) #}
+{# setup: one-shot. Secrets and folders, then the built data (your exports via sources.json; a fresh install starts empty) #}
 {% set setup = tpl.add_container(values.consts.setup_container_name, "image") %}
 {% do setup.set_user(values.run_as.user, values.run_as.group) %}
 {% do setup.restart.set_policy("on-failure", 1) %}

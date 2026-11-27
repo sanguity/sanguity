@@ -354,12 +354,13 @@ def delete_profile(db, pid):
     change is committed, with anything written to the profile's folder meanwhile by what doesn't take the lock (a file
     being uploaded). A failure puts it back, beside anything written meanwhile, never onto it; what a stop part-way
     leaves is put back or removed at the next start (sweep).
-    Returns what was deleted: {"name", "members", "linked_build", "lab_matches"}."""
+    Returns what was deleted: {"name", "members", "linked_build" (it had the setup build's records), "lab_matches"}."""
     from . import watch_keys
     folder, aside, moved = profile_dir(pid), _deleting_dir(pid), False
     try:
         with dbm.transaction(db):
             p = db.execute("SELECT name, linked_build FROM profiles WHERE id=?", (pid,)).fetchone()
+            built = bool(p["linked_build"] and records.imports(db, pid, "build"))   # (#1101: linked, but it may have none)
             members = db.execute("SELECT COUNT(*) FROM memberships WHERE profile_id=?", (pid,)).fetchone()[0]
             shutil.rmtree(aside, ignore_errors=True)   # what an earlier deletion of it left: it all goes now
             if os.path.isdir(folder):
@@ -379,7 +380,7 @@ def delete_profile(db, pid):
         shutil.rmtree(d, ignore_errors=True)
     _failed.pop(pid, None)
     records.forget(pid)
-    return {"name": p["name"], "members": members, "linked_build": bool(p["linked_build"]), "lab_matches": matches}
+    return {"name": p["name"], "members": members, "linked_build": built, "lab_matches": matches}
 
 
 def sweep(db):

@@ -2178,6 +2178,8 @@ span.pw{display:block}   /* in a label, the field a block of its own (#492) */
 .pw-count{flex:none;font-variant-numeric:tabular-nums}
 .pw-count.ok{color:var(--good-text);font-weight:var(--fw-medium)}
 .auth .opt{font-weight:var(--fw-regular);color:var(--muted)}
+.auth .check{display:flex;gap:var(--sp-2);color:var(--ink)}   /* setup's demo box (#1101) */
+.auth .check input{flex:none;width:var(--sp-5);height:var(--sp-5);min-height:0;margin:0}
 .auth .err{min-height:1.2em;margin-top:var(--sp-3);font-size:var(--fs-3);color:var(--crit)}
 .auth .insecure{margin:0 0 var(--sp-2);padding:var(--sp-2) var(--sp-3);border:1px solid var(--crit);border-radius:var(--r-md);font-size:var(--fs-3);color:var(--crit)}
 .auth .or{display:flex;align-items:center;gap:var(--sp-2);margin-top:var(--sp-4);font-size:var(--fs-2);color:var(--muted)}

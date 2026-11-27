@@ -66,21 +66,31 @@ def main():
         st, _, body = req("/api/setup")
         needed = st == 200 and json.loads(body).get("needed")
         if needed:
+            # (#1101) a fresh install has no records: nothing here for the first account to own
+            check("a fresh install starts empty", json.loads(body).get("records") is False, body[:200])
             check("setup code given", bool(a.code), "" if a.code else "pass --code from `docker compose logs app`")
-            st, _, body = req("/api/setup", {"code": a.code, "username": USER, "password": PW, "profile_name": "Smoke test"})
-            check("first account created with the setup code", st == 200, body[:200])
+            st, _, body = req("/api/setup", {"code": a.code, "username": USER, "password": PW, "profile_name": "Smoke test", "demo": True})
+            check("first account created with the setup code, and the demo profile asked for", st == 200, body[:200])
         else:
             st, _, body = req("/api/login", {"username": USER, "password": PW})
             check("signs in (already set up)", st == 200, body[:200])
         check("a cross-site change is refused", _cross_site(base) == 403)
 
-        # ---- the account, its profile and the demo records
+        # ---- the account, its profiles and the demo records: a profile of its own on a fresh install (#1101), an
+        # install set up before it (the upgrade job) has the demo as its build's profile
         st, _, body = req("/api/me")
         me = json.loads(body) if st == 200 else {}
         check("signed in as the new admin", st == 200 and me["user"]["username"] == USER and me["user"]["is_admin"], body[:200])
         profiles = me.get("profiles", [])
-        check("owns the records already on the server", len(profiles) == 1 and profiles[0]["role"] == "owner", profiles)
-        pid = profiles[0]["id"] if profiles else 1
+        check("owns its profiles", profiles and all(p["role"] == "owner" for p in profiles), profiles)
+        shown = [p for p in profiles if p.get("demo")]
+        if needed:
+            own = [p for p in profiles if not p.get("demo")]
+            check("setup made the person's own profile, and the demo beside it, labelled (#1101)",
+                  len(own) == 1 and own[0]["name"] == "Smoke test" and len(shown) == 1 and shown[0]["name"] == "Demo (fictional)"
+                  and profiles[0] is own[0], profiles)
+            check("the person's own profile starts empty (#1101)", own and req(f"/api/profiles/{own[0]['id']}/data")[0] == 204)
+        pid = (shown or profiles or [{"id": 1}])[0]["id"]
         st, h, body = req(f"/api/profiles/{pid}/data")
         data = json.loads(body) if st == 200 else {}
         check("demo records load", st == 200 and len(data.get("events", [])) > 100, st)

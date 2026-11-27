@@ -5,9 +5,12 @@
   docker compose run --rm setup rebuild          rebuild the data after adding new exports
 
 Data: with a sources.json next to compose.yaml, the records are built from your exports (RECORDS_DIR) into
-DATA_DIR/build; the app loads that build into the first profile (and again after each rebuild). Without one, a
-fictional demo dataset is generated there so there is something to look at. A settings.json next to compose.yaml
-(see settings.example.json) gives that profile its first settings, once; after that they're changed in the app.
+DATA_DIR/build; the app loads that build into the first profile (and again after each rebuild). Without one, the
+install starts empty: the first account's profile has no records, and the getting-started guide opens (#1101). The
+fictional demo is a profile of its own, added on request (setup's "Add a demo profile", or Settings → Install →
+General → Demo profile; server/demo.py). An install whose build is the demo from before #1101 keeps it, regenerated on
+each start so its dates stay current. A settings.json next to compose.yaml (see settings.example.json) gives the
+build's profile its first settings, once; after that they're changed in the app.
 
 Accounts live in the app's database. The first one is created in the browser with the setup code the app prints
 (docker compose logs app); after that, admins add accounts under Settings → Install → Accounts. To recover a lost password:
@@ -109,12 +112,18 @@ def build_data():
     elif not os.path.exists(data) and os.path.isfile(legacy) and not is_demo(legacy):
         shutil.copyfile(legacy, data)
         print("Moved your existing www/data.json into the app's data folder. You can delete www/data.json.")
-    elif not os.path.exists(data) or is_demo(data):
-        # demo: regenerated on each start so its dates stay current; real watch data is never overwritten
+    elif is_demo(data):
+        # the demo as the build, from before #1101: regenerated on each start so its dates stay current; real watch
+        # data is never overwritten. A fresh install never gets it (the demo is a profile of its own, on request)
         real_watch = any(os.path.exists(os.path.join(WATCH, n)) for n in ("watch.db", "raw"))
         watch_args = [] if real_watch else ["--watch", os.path.join(WATCH, "public")]
         run([sys.executable, "-I", os.path.join(APP, "demo", "generate.py"), BUILD, *watch_args])
-        print("No sources.json found: showing the fictional demo data. See sources.example.json to use your own records.")
+        print("No sources.json found: showing the fictional demo data this install started with. See sources.example.json "
+              "to use your own records.")
+    elif not os.path.exists(data):
+        print("No sources.json found: starting empty. Records are added in the app (the getting-started guide opens "
+              "first), or from your exports with a sources.json (see sources.example.json). To look around first, add "
+              "a demo profile: it's offered as you create the first account, and under Settings → Install → General.")
     else:
         print("Built data exists and there is no sources.json; leaving it as it is.")
     # first settings for a profile newly linked to this build (settings.json next to compose.yaml, or the old www/ one);

@@ -3893,6 +3893,11 @@ Everything on `main` so far; it becomes the first tagged release.
   as its own test; adding or changing one can move the results already saved too, charted with the test without
   changing the records, and Remove leaves them where they are; each has an Undo. Keep separate at a review, beside a
   test it offered, is remembered like a match. Export everything carries the matches and the moved results.
+- **A fresh install starts empty; the demo is a profile of its own, on request** (#1101): setup no longer loads the
+  fictional demo into the first account's profile, so that profile has no records and the getting-started guide opens.
+  Setup's **Also add a demo profile** box, or Settings → Install → General → Demo profile, adds **Demo (fictional)**
+  beside it (listed last, named so in the profile menu and under its records), and **Remove demo** deletes it and
+  everything in it, and no other profile. An install whose build is already the demo keeps it.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

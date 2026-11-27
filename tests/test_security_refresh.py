@@ -167,6 +167,8 @@ ROUTES = {
     ("GET", "/api/settings/phone"): (ADMIN, None),   # General → Phone receiver (#1003)
     ("GET", "/api/settings/install/backups-logging"): (ADMIN, None),   # General → Backups and logging (#1002)
     ("GET", "/api/settings/install/about"): (ADMIN, None),   # General → About (#1004)
+    ("GET", "/api/settings/install/demo"): (ADMIN, None), ("POST", "/api/settings/install/demo"): (ADMIN, None),   # General → Demo profile (#1101)
+    ("DELETE", "/api/settings/install/demo"): (ADMIN, None),
     ("GET", "/api/labmaps"): (ADMIN, None), ("PATCH", "/api/labmaps/{mid}"): (ADMIN, None), ("DELETE", "/api/labmaps/{mid}"): (ADMIN, None),
     ("GET", "/api/connect/sources"): (ADMIN, None), ("POST", "/api/connect/sources"): (ADMIN, None),
     ("PATCH", "/api/connect/sources/{cid}"): (ADMIN, None), ("DELETE", "/api/connect/sources/{cid}"): (ADMIN, None),
@@ -320,7 +322,7 @@ class Reach(unittest.TestCase):
         with open(os.path.join(ROOT, "www", "settings.html"), encoding="utf-8") as f:
             scripts = re.findall(r'<script src="js/([\w-]+\.js)"></script>', f.read())
         install = ["admin.js", "admin-sources.js", "admin-backups.js", "outside.js", "activity.js", "admin-host.js",
-                   "gen-security.js", "gen-backups.js", "admin-phone.js", "gen-about.js"]   # General's sections (#998)
+                   "gen-security.js", "gen-backups.js", "admin-phone.js", "gen-about.js", "gen-demo.js"]   # General's sections (#998, #1101)
         self.assertEqual([s for s in install if s not in scripts], [], "Install's scripts on the Settings page")
         heads = set()
         for s in install:

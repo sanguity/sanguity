@@ -103,7 +103,7 @@ const SG_PAGES = {
         ["Units", "sec-units", "metric imperial mmol mg kg lb pounds kilograms weight temperature celsius fahrenheit height cm inches lab tests"]]},
     // Install: the Admin page's groups (#167: admin.js, admin-sources.js, admin-backups.js, outside.js, activity.js),
     // admins only. General (#998) first: the server's own settings, each of its sections (#1000-#1005) a part in its has
-    {id: "general", title: "General", icon: "wrench", part: "Install", admin: true, has: ["gen-host", "gen-security", "gen-backups", "gen-phone", "gen-experimental", "gen-about"], place: "admin", words: "server install configuration",
+    {id: "general", title: "General", icon: "wrench", part: "Install", admin: true, has: ["gen-host", "gen-security", "gen-backups", "gen-phone", "gen-experimental", "gen-demo", "gen-about"], place: "admin", words: "server install configuration",
      finds: [["Host", "gen-host", "public addresses origins reverse proxy domain url passkey names trusted proxies port bind forwarded"],
        // (each of its rows' labels finds it, #524; "onetime", not "one-time": a word typed is found at a word's start, so it's
        // still found by "one-time", but not whole, so "one-time password" finds Accounts first, where one is made, #502)
@@ -115,6 +115,7 @@ const SG_PAGES = {
        ["Backups and logging", "gen-backups", "backups folder encryption key file keys logs log output docker security activity kept days how long delete older"],   // (the schedule's Backups', #532: it only links there)
        ["Phone receiver", "gen-phone", "upload address watch scale health connect receiver port time zone unclaimed restore replaced"],
        ["Experimental", "gen-experimental", "connected sources portals health plans fhir epic mychart sync find your provider turn on off"],   // (#1096)
+       ["Demo profile", "gen-demo", "demo sample example fictional made-up look around try remove demo"],   // (#1101)
        ["About", "gen-about", "version release releases what's new schema database deployed deployment truenas unraid casaos docker folders runs as user uid gid configuration limits upload size zip journal photo sync attachment timeout health links"]]},
     {id: "accounts", title: "Accounts", icon: "user-cog", part: "Install", admin: true, has: ["users"], place: "admin",
      words: "users new create add account reset password one-time temporary remove delete disable enable make admin " +

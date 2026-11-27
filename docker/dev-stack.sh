@@ -20,7 +20,9 @@
 #   --branch NAME          branch or tag to run (default: main)
 #   --name NAME            compose project or TrueNAS app name (default: sanguity-dev)
 #   --port N               web port; the watch receiver gets N+1 (default: 8740)
-#   --records DIR          folder holding your record exports (read-only); without it the demo data is used
+#   --records DIR          folder holding your record exports (read-only); without it the copy starts empty, as an
+#                          install does (setup and Settings → Install → General add the demo profile; a copy set up
+#                          before #1101 keeps the demo it started with)
 #   --watch-public DIR     a real install's watch summary folder (WATCH_DIR/public) to show, read-only
 #   --watch-key FILE       that install's key file (auth/data_key): the summary is encrypted with it. Added after
 #                          the test copy's own key in its key file, so it is used only to read the summary
