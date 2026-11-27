@@ -1089,6 +1089,174 @@ IN_SIGHT = """(a => a && a !== document.body && a.checkVisibility() && (r => r.b
     ? [a.tagName, a.id, a.dataset.id || '', a.textContent.trim().slice(0, 40)] : null)(document.activeElement)"""
 
 
+def lab_matches_check(browser, base, cookies, check):
+    """Settings → This person → Labs and ranges → Lab name matches (#1097), as an owner whose sign-in cookies are given,
+    on profile 1: Keep separate left beside a test a review offered is saved like a match and listed here; Add a match
+    through the picker (the profile's tests, unit beside each, and Keep as its own test) moves the saved results, with
+    an Undo; Change to Keep as its own test splits them back out, Undo puts them back; Remove asks nothing, leaves the
+    results, and its Undo brings the match back; Labs' lab panel's Same test as… is the same picker. The card at 320–1400
+    px and with text at 200%, light and dark, forced colours, by keyboard (the picker opened and left with focus back)
+    and for a screen reader (each match's heading says where it's charted). Leaves profile 1 as it found it. Returns
+    the pages' script errors."""
+    ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)   # (its waits are evaluated)
+    ctx.add_cookies(cookies)
+    pg, errs = ctx.new_page(), []
+    pg.on("pageerror", lambda e: errs.append(str(e)))
+    api = lambda path, method="GET", body=None: pg.evaluate(  # noqa: E731
+        "([p, m, b]) => fetch('api/' + p, {method: m, headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, "
+        "body: b == null ? undefined : JSON.stringify(b)}).then(async r => [r.status, await r.json().catch(() => null)])", [path, method, body])
+    names = lambda: pg.evaluate("fetch('api/profiles/1/data').then(r => r.json()).then(d => [...new Set(d.labs.map(s => s.name))])")  # noqa: E731
+    rows = lambda: pg.evaluate("[...document.querySelectorAll('#labmatchesBody [data-labmatch]')].map(r => [r.querySelector('h3').textContent, "  # noqa: E731
+                               "r.querySelector('.muted')?.textContent || '', [...r.querySelectorAll('button')].map(b => b.textContent).join('|')])")
+    msg = lambda: pg.evaluate("document.getElementById('labmatchesMsg').textContent")  # noqa: E731
+    undo = lambda: pg.locator(".sg-toast").last.get_by_role("button", name="Undo").click()  # noqa: E731
+
+    def pick(frm, to, move=True):   # the picker, answered: frm (Add's) and to by their names, whether its results move
+        box = pg.wait_for_selector("dialog.sg-ask[open]", timeout=10000)
+        if frm is not None:
+            box.query_selector("select[id$=f]").select_option(value=frm)
+        box.query_selector("select[id$=t]").select_option(value=to)
+        if box.query_selector("select[id$=m]"):
+            box.query_selector("select[id$=m]").select_option(value="1" if move else "")
+        box.query_selector(".sg-ask-acts button:last-child").click()
+        pg.wait_for_function("e => !e.isConnected", arg=box, timeout=10000)
+
+    iid = None
+    try:
+        pg.goto(base + "/settings.html?profile=1#labs")
+        pg.wait_for_selector("#labmatchesBody > *", timeout=15000)
+        tests = api("profiles/1/labmaps")[1]["tests"]
+        to = next((t for t in tests if t["name"] == "Platelet Count"), tests[0])
+        name = to["name"] + " 1097"   # a name Sanguity doesn't know, like a test the profile has: a Maybe at the review
+        # Keep separate, left as it was beside the Maybe the review offered: saved like a match (#1097, decision 3)
+        pg.goto(base + "/import.html?profile=1")
+        pg.wait_for_selector("#importer", state="visible", timeout=10000)
+        csv = f"Date,Test,Result,Units,Reference Range\n2026-11-10,{name},250,{to['unit']},150 - 400\n"
+        pg.set_input_files("#pickFiles", files=[{"name": "lab-1097.csv", "mimeType": "text/csv", "buffer": csv.encode()}])
+        pg.wait_for_function(f"document.querySelectorAll('.import-job').length && /^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
+        review = pg.evaluate(f"(() => {{ const tr = {last_card}.querySelector('.imp-labs tbody tr'); return tr && [tr.querySelector('input[list]').value, tr.querySelector('.why')?.textContent || '']; }})()")
+        pg.evaluate(f"{last_card}.querySelector('.imp-actions .primary').click()")
+        pg.wait_for_function(f"/^(Imported|Not imported)/.test({last_card}.textContent)", timeout=30000)
+        iid = max(i["id"] for i in api("profiles/1/imports")[1]["imports"])
+        pg.goto(base + "/settings.html?profile=1#labs")
+        pg.wait_for_selector("#labmatchesBody [data-labmatch]", timeout=15000)
+        kept = rows()
+        order = pg.evaluate("[...document.querySelectorAll('#sec-names, #labmatches, #sec-ranges')].map(e => e.id)")
+        check("Lab name matches (#1097) sits between Names and Ranges in Labs and ranges, as the group lists it",
+              order == ["sec-names", "labmatches", "sec-ranges"], order)
+        check("Lab name matches (#1097): Keep separate, left beside a test the review offered, is saved like a match and listed in "
+              "This person → Labs and ranges as kept as its own test, where from, when and by whom, with its import and result counted",
+              review and review[0] == "" and review[1].startswith("Maybe") and any(r[0].startswith(name) and r[0].endswith("kept as its own test")
+              and "by demo" in r[1] and "1 import · 1 result" in r[1] and r[2] == "Change…|Remove" for r in kept), [review, kept])
+        # Add a match, through the picker: its saved result moved, with an Undo
+        pg.click("#lmAdd")
+        opts = pg.evaluate("[...document.querySelectorAll('dialog.sg-ask select:not([id$=m])')].map(s => [...s.options].map(o => o.textContent))")
+        pick(name, to["name"])
+        pg.wait_for_function("document.getElementById('labmatchesMsg').textContent.includes('now charted with')", timeout=10000)
+        pg.wait_for_function("([n, t]) => [...document.querySelectorAll('#labmatchesBody h3')].some(h => h.textContent.startsWith(n) && h.textContent.endsWith(t))",
+                             arg=[name, to["name"]], timeout=10000)   # (drawn again)
+        added = [rows(), name in names(), msg()]
+        undo()
+        pg.wait_for_function("document.getElementById('labmatchesMsg').textContent.startsWith('Undone')", timeout=10000)
+        pg.wait_for_function("[...document.querySelectorAll('#labmatchesBody h3')].some(h => h.textContent.endsWith('kept as its own test'))", timeout=10000)
+        check("…Add a match: the picker lists the profile's tests with their units, and Keep as its own test; saved, the result is charted "
+              "with the test (re-filed), the message saying so; Undo puts it back as its own test",
+              opts and f"{to['name']} ({to['unit']})" in opts[0] and opts[-1][-1] == "Keep as its own test" and name not in opts[-1]
+              and any(r[0].startswith(name) and r[0].endswith(to["name"]) for r in added[0]) and not added[1] and "1 saved result moved" in added[2]
+              and name in names(), [opts and opts[-1][-3:], added])
+        # Change with re-file, and Undo (the match made again: Change → the test, then Keep as its own test)
+        row = lambda: pg.locator("#labmatchesBody [data-labmatch]", has_text=name)  # noqa: E731
+        row().get_by_role("button", name=f"Change the match for {name}").click()
+        pick(None, to["name"])
+        pg.wait_for_function("document.getElementById('labmatchesMsg').textContent.includes('now charted with')", timeout=10000)
+        moved = name not in names()
+        row().get_by_role("button", name=f"Change the match for {name}").click()
+        pick(None, "")
+        pg.wait_for_function("document.getElementById('labmatchesMsg').textContent.includes('kept as its own test')", timeout=10000)
+        split = name in names()
+        undo()
+        pg.wait_for_function("document.getElementById('labmatchesMsg').textContent.startsWith('Undone')", timeout=10000)
+        check("…Change with its results moved charts them with the test; changed to Keep as its own test they're split back out, and "
+              "Undo charts them with the test again", moved and split and name not in names(), [moved, split])
+        # Remove: no question, the results left where they are, Undo brings it back
+        row().get_by_role("button", name=f"Remove the match for {name}").click()
+        pg.wait_for_function("document.getElementById('labmatchesMsg').textContent.startsWith('Removed')", timeout=10000)
+        asked, gone = pg.evaluate("!!document.querySelector('dialog.sg-ask[open]')"), [r for r in rows() if r[0].startswith(name)]
+        stays = name not in names() and "stay with" in msg()
+        undo()
+        pg.wait_for_function(f"[...document.querySelectorAll('#labmatchesBody h3')].some(h => h.textContent.startsWith({json.dumps(name)}))", timeout=10000)
+        check("…Remove asks nothing, leaves the results where they're charted, says so, and Undo brings the match back", not asked and not gone and stays, [asked, gone, msg()])
+        # keyboard and screen reader: Add's picker opened by Enter, focus in it, Escape back to Add; each heading says where it goes
+        pg.focus("#lmAdd")
+        pg.keyboard.press("Enter")
+        pg.wait_for_selector("dialog.sg-ask[open]", timeout=10000)
+        inside = pg.evaluate("document.activeElement.tagName + ':' + !!document.activeElement.closest('dialog.sg-ask')")
+        pg.keyboard.press("Escape")
+        pg.wait_for_function("!document.querySelector('dialog.sg-ask')", timeout=10000)
+        back = pg.evaluate("document.activeElement.id")
+        said = (ax_said(pg, "#labmatchesBody [data-labmatch] h3") or [""])[0]
+        check("…by keyboard: Enter on Add a match opens the picker with focus on its first list, Escape closes it with focus back on Add; "
+              "a screen reader hears each match as where it's charted (“…, charted with …”)",
+              inside == "SELECT:true" and back == "lmAdd" and "charted with" in said, [inside, back, said])
+        # the card at 320–1400 px, text at 200%, light and dark, forced colours
+        fits, axes = {}, []
+        for w in (320, 412, 768, 1400):
+            pg.set_viewport_size({"width": w, "height": 900})
+            pg.wait_for_timeout(150)
+            o = pg.evaluate("""(() => { const c = document.getElementById('labmatches').getBoundingClientRect();
+              return [document.documentElement.scrollWidth - innerWidth, [...document.querySelectorAll('#labmatches *')].filter(e => e.checkVisibility()
+                && e.getBoundingClientRect().right > c.right + 0.5).length]; })()""")
+            if o != [0, 0]:
+                fits[w] = o
+        pg.set_viewport_size({"width": 412, "height": 900})
+        big = pg.add_style_tag(content=BIG_TEXT_CSS)
+        pg.wait_for_timeout(200)
+        fits["200%"] = pg.evaluate("document.documentElement.scrollWidth - innerWidth") or None
+        big.evaluate("s => s.remove()")
+        for theme in ("light", "dark"):
+            pg.emulate_media(color_scheme=theme)
+            pg.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
+            pg.wait_for_timeout(200)
+            pg.locator("#labmatches").scroll_into_view_if_needed()
+            clear_of_bar(pg)
+            axes += axe_check(pg, f"Lab name matches, {theme}")[0]
+        pg.evaluate("delete document.documentElement.dataset.theme")
+        pg.emulate_media(color_scheme=None, forced_colors="active")
+        pg.wait_for_timeout(200)
+        forced = pg.evaluate("""[...document.querySelectorAll('#labmatches button')].filter(b => b.checkVisibility())
+          .every(b => getComputedStyle(b).borderStyle !== 'none' && parseFloat(getComputedStyle(b).borderWidth) > 0)""")
+        pg.emulate_media(forced_colors="none")
+        pg.set_viewport_size({"width": 1400, "height": 900})
+        check("…the card fits from 320 to 1400 px and with text at 200%, axe-core finds nothing serious light or dark, and its buttons keep "
+              "their edges in forced colours", not any(fits.values()) and not axes and forced, [fits, axes[:4], forced])
+        # Labs: a lab's panel's Same test as…, the same picker; Undo
+        pg.goto(base + "/?profile=1")
+        pg.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE && PROFILE.id === 1", timeout=20000)
+        m = next(x for x in api("profiles/1/labmaps")[1]["matches"] if x["name"] == name)
+        api(f"profiles/1/labmaps/{m['id']}", "PATCH", {"target": None, "move": True})   # its own test again, for Labs to match
+        pg.reload()
+        pg.wait_for_function(f"typeof booted !== 'undefined' && booted && SERIES.some(s => s.name === {json.dumps(name)})", timeout=20000)
+        pg.evaluate(f"switchTab('labs'); openLab(SERIES.find(s => s.name === {json.dumps(name)}))")
+        pg.get_by_role("button", name="Same test as…").click()
+        pick(None, to["name"])
+        pg.wait_for_function(f"!SERIES.some(s => s.name === {json.dumps(name)})", timeout=10000)
+        panel = pg.evaluate("drawer.dataset.lab")
+        undo()
+        pg.wait_for_function(f"SERIES.some(s => s.name === {json.dumps(name)})", timeout=10000)
+        check("…Labs: a lab's panel has Same test as…, the same picker: its results charted with the test there and then (its panel "
+              "opened), and the toast's Undo puts them back", panel == to["name"], panel)
+    finally:
+        try:
+            for x in api("profiles/1/labmaps")[1]["matches"]:
+                if x["name"] == name:
+                    api(f"profiles/1/labmaps/{x['id']}", "DELETE")
+            if iid:
+                api(f"profiles/1/imports/{iid}/undo", "POST")
+        finally:
+            ctx.close()
+    return errs
+
+
 def clear_of_bar(page):
     """Scroll up just enough that no control lies half under the sticky top bar, before axe looks at a part scrolled
     into view: axe counts a control the bar half covers as too small a target (2.5.8), so where the scroll happened to
@@ -28216,11 +28384,11 @@ def main():
             check("the old Admin tab's address opens Settings → Install, on Accounts", js(display, "users") != "none" and js(display, "labmaps") == "none")
             page.goto(base + "/account.html#labmaps")
             page.wait_for_url(re.compile(r"/settings\.html(\?[^#]*)?#labmaps$"), timeout=10000)
-            page.wait_for_function("document.querySelector('#labmapList tr[data-labmap]')", timeout=10000)
+            page.wait_for_function("document.getElementById('labmapList').childElementCount", timeout=10000)
             lm = js("[...document.querySelectorAll('#labmapList tr[data-labmap]')].map(tr => tr.textContent)")
-            check("Install lists the lab name match, who made it and from what, for one profile (#927), with Change and Remove (#23)",
-                  any("Hemoglobin Lvl" in t and "Hemoglobin" in t and "demo" in t and "CSV" in t and "for one profile" in t and "Change" in t and "Remove" in t for t in lm)
-                  and "only admins can change or remove" in js("[...document.querySelectorAll('.about-words')].find(w => w.getAttribute('aria-label') === 'About Lab name matches').textContent")   # (behind its ⓘ, #280)
+            check("Install lists only the lab name matches for every profile: a profile's own (Hemoglobin Lvl, a review's, #927) is "
+                  "its Settings' (#1097), as Install's words say", not any("Hemoglobin Lvl" in t for t in lm)
+                  and "Labs and" in js("document.querySelector('#labmaps .about-words').textContent")   # (behind its ⓘ, #280)
                   and js(display, "labmaps") != "none", lm)
             # #528: at 375×667 a match's Save (by Enter in its box) leaves focus on its Change, and Remove → Forget match on the
             # next match's Remove, in sight (it fell to the page); one removed elsewhere, then saved, is drawn away, “No such
@@ -28271,6 +28439,10 @@ def main():
             lm532 = lmdb532.execute("INSERT INTO labmaps(lookup, importer, source, target, created_by, created_name, created, checked) VALUES(?, 'manual', ?, ?, NULL, ?, ?, ?)",
                                     (labmap528.lookup("manual", "Glucose fasting 532", "mg/dL", None), crypto528.enc(json.dumps({"name": "Glucose fasting, a long name from an outside lab 532", "unit": "mg/dL", "loinc": None})),
                                      crypto528.enc("Glucose"), USER, dbm.now(), dbm.now())).lastrowid
+            # (#1097: the review's Hemoglobin Lvl is its profile's now, not Install's: one for every profile in its place, gone after #536's)
+            lm1097i = lmdb532.execute("INSERT INTO labmaps(lookup, importer, source, target, created_by, created_name, created, checked) VALUES(?, 'csv', ?, ?, NULL, ?, ?, ?)",
+                                      (labmap528.lookup("csv", "Hemoglobin Lvl", "g/dL", None), crypto528.enc(json.dumps({"name": "Hemoglobin Lvl", "unit": "g/dL", "loinc": None})),
+                                       crypto528.enc("Hemoglobin"), USER, dbm.now(), dbm.now())).lastrowid
             BROKEN532 = """(() => { const out = [], w = document.createTreeWalker(document.getElementById('labmapList'), NodeFilter.SHOW_TEXT);
               for (let n; (n = w.nextNode());) if (n.parentElement.checkVisibility()) for (const m of n.textContent.matchAll(/\\S+/g)) {
                 const r = document.createRange(); r.setStart(n, m.index); r.setEnd(n, m.index + m[0].length);
@@ -28315,6 +28487,10 @@ def main():
                 lmrow528("Hemoglobin Lvl").get_by_role("button", name="Cancel").click()
             finally:
                 page.set_viewport_size(vp528)
+                lmdb1097i = dbm.connect()
+                lmdb1097i.execute("DELETE FROM labmaps WHERE id=?", (lm1097i,))
+                lmdb1097i.close()
+                js("loadLabmaps()")
             check("…(#536) with a match's Change open, from 700 to 820 px every 4 px, Lab name matches stays in its card, with no sideways "
                   "scroll (at 762–804 px Change and Remove were past it)", edit536 and not out536, out536)
             # #569: a match remembered before #546 that its rule wouldn't make (Vitamin B6 filled in as Vitamin B1; checked
@@ -28352,6 +28528,9 @@ def main():
                   and said569.startswith("1 match to check") and not axe569
                   and ["Vitamin B6 569", False, "Change|Remove"] in kept569[0] and kept569[1] == ["Change", "Vitamin B6 569"]
                   and kept569[2] is False and kept569[3] == 1, [rows569, said569, axe569[:4], kept569])
+            # #1097: a profile's own lab name matches, in This person → Labs and ranges, and Labs' Same test as…
+            errs1097 = lab_matches_check(browser, base, [c for c in page.context.cookies() if c["name"] == "sg_session"], check)
+            check("…and no script fails there (#1097)", not errs1097, errs1097)
             # the old Profiles tab's address opens Sharing → People (#168); a section link still lands on its card, in Settings (#991)
             page.goto(base + "/account.html#profiles")
             page.wait_for_url(re.compile(r"/sharing\.html(\?[^#]*)?#people$"), timeout=10000)

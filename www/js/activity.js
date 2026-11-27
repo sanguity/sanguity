@@ -26,6 +26,9 @@ const WHAT = {
   upload: d => d.source === "smart-health-link" ? `imported a SMART Health Link from ${d.host}` : `uploaded ${d.files} file${d.files === 1 ? "" : "s"} to import`,
   outside: d => `had Sanguity contact ${d.host} (${d.purpose})`,
   discard: () => "cancelled an import at its preview",
+  // a lab name match of the profile's own (#1097), never its names
+  labmap: d => ({add: "matched a lab name to a test", keep: "kept a lab name as its own test", change: "changed a lab name match", check: "kept a lab name match to check",
+    remove: "removed a lab name match", undo: "undid a change to a lab name match"}[d.change] || "changed a lab name match") + (d.moved ? `, moving ${d.moved} saved result${d.moved === 1 ? "" : "s"}` : ""),
   undo: d => `undid an import${d.label ? ` (${d.label})` : ""}, removing what it brought`,
   edit: d => d.action === "cost" ? `marked ${d.of === "claim" ? "a claim's share" : "an out-of-pocket payment"}` + [   // #55
       "hsa" in d && (d.hsa ? ` as paid with an ${d.hsa}` : d.hsa === "" ? " as paid with neither an HSA nor an FSA" : " to be tagged from what it says"),

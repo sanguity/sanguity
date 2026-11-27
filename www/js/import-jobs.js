@@ -193,21 +193,23 @@
         node("td", {}, node("b", {text: l.name}), unitText(l.unit), l.loinc ? node("span", {class: "loinc", text: ` · LOINC ${l.loinc}`}) : null),
         node("td", {class: "num", "data-label": "Results"}, (l.n || 0).toLocaleString("en-US")),
         node("td", {}, box, node("datalist", {id: id + "-list"}, opts), why));
-      return {l, box, read, initial, tr};
+      // (#1097) a test was offered for it and it's left its own: kept separate, a choice remembered like a match
+      return {l, box, read, initial, tr, offered: !before && !l.same && !!(top || l.check)};
     });
     const part = node("details", {class: "imp-labs", open: ""},
       node("summary", {text: `${plural(listed.length, ["lab name", "lab names"])} to match`}),
       node("p", {class: "howto"}, "Sanguity doesn't know these test names. Type or pick the series each belongs to, or leave it empty to keep it " +
         "separate; your choice is used for this profile's later imports from this source. ",
         about("matching lab names", "In a series, a result is charted with the same test from other labs. Only the series changes: each result keeps the " +
-        "name the lab gave it. A match made before can be changed here for this import; to change it for good, ask an admin (Settings, Lab name matches).")),
+        "name the lab gave it. A match made before can be changed here for this import; to change it for good, and to see every match: Settings, Labs and ranges, Lab name matches.")),
       node("table", {class: "data stack"},
         node("thead", {}, node("tr", {}, node("th", {scope: "col", text: "Name from the lab"}), node("th", {scope: "col", class: "num", text: "Results"}),
                                          node("th", {scope: "col", text: "Series"}))),
         node("tbody", {}, rows.map(r => r.tr))));
-    // sent, and remembered for later imports: a suggestion left chosen, or any choice changed by hand. A name matched
-    // before is sent only when changed (for this import only); "keep it separate" left as it was isn't sent
-    const picked = () => Object.fromEntries(rows.map(r => [r, r.read()]).filter(([r, v]) => v !== r.initial || (!r.l.before && r.initial !== KEEP))
+    // sent, and remembered for later imports: a suggestion left chosen, any choice changed by hand, and "keep it
+    // separate" left as it was beside a test offered (#1097: the next import doesn't ask again). A name matched before
+    // is sent only when changed (for this import only)
+    const picked = () => Object.fromEntries(rows.map(r => [r, r.read()]).filter(([r, v]) => v !== r.initial || (!r.l.before && (r.initial !== KEEP || r.offered)))
       .map(([r, v]) => [r.l.ref, v === KEEP ? null : v]));
     // the first box naming no series, marked as such
     const wrong = () => { const r = rows.find(r => r.read() === null); if (r) r.box.dispatchEvent(new Event("change")); return r ? r.box : null; };

@@ -844,7 +844,10 @@ async function load(note, force, all = false) {
     if (!all && old && old.parentNode === box && (old.hasAttribute("data-dirty") || old.sgItems?.some(x => x.dirty())) && !forced.includes(sec.id)) return old;   // (one on its way, #407)
     return sectionCard(sec, {note: note && (note.sections || []).includes(sec.id) ? note.text : "", quiet: !!(note && note.quiet)});
   });
-  const inPlace = !all && box.children.length === cards.length && d.sections.every((sec, i) => box.children[i].id === "sec-" + sec.id);
+  // (#1097) Lab name matches (lab-matches.js, its card in the page) between Names and Ranges, as its group lists it
+  const lm = $("#labmatches"), at = cards.findIndex(c => c.id === "sec-names");
+  if (lm && at >= 0) cards.splice(at + 1, 0, lm);
+  const inPlace = !all && box.children.length === cards.length && cards.every((c, i) => box.children[i].id === c.id);
   if (inPlace) cards.forEach((c, i) => { if (box.children[i] !== c) box.children[i].replaceWith(c); });
   else box.replaceChildren(...cards);
   // the visit summary's measures are ticked on Sharing → Visit summary (#402, summary.js): their section stays here out
@@ -885,7 +888,7 @@ function setStart() {
   // and its name and deleting it (profile-card.js, #402), with them too
   // (once the saves on their way are answered, #425: what's drawn is what the server keeps)
   const pick = () => { PID = +sel.value; const p = ME.profiles.find(x => x.id === PID);
-    return Promise.all([loadLabNames(), ...SAVING]).then(() => load(null, null, true)).then(() => { if (PID === p.id) { drawAbout(p); drawProfile(p); } }); };
+    return Promise.all([loadLabNames(), ...SAVING]).then(() => load(null, null, true)).then(() => { if (PID === p.id) { drawAbout(p); drawProfile(p); drawLabMatches(p); } }); };
   document.addEventListener("about:changed", () => load());   // the ranges' preview matches ages and sexes against it
   sel.onchange = pick;
   return pick();
