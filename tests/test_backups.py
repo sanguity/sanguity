@@ -41,15 +41,16 @@ def client():
 def live_state():
     """Everything a restore would replace, as it is now: each file under DATA_DIR but the database (its bytes and
     its time), and every row of the database except the logs a backup or a check writes to by design."""
-    files = {}
-    for root, dirs, names in os.walk(DATA):
+    from server import config
+    files, data = {}, config.DATA_DIR   # (the data folder as the app has it: a test may point it elsewhere, #1055)
+    for root, dirs, names in os.walk(data):
         for n in names:
             p = os.path.join(root, n)
             if n.startswith("sanguity.db") or n == "app.lock":
                 continue
             with open(p, "rb") as f:
-                files[os.path.relpath(p, DATA)] = (hashlib.sha256(f.read()).hexdigest(), os.stat(p).st_mtime_ns)
-    con = sqlite3.connect(f"file:{os.path.join(DATA, 'sanguity.db')}?mode=ro", uri=True)
+                files[os.path.relpath(p, data)] = (hashlib.sha256(f.read()).hexdigest(), os.stat(p).st_mtime_ns)
+    con = sqlite3.connect(f"file:{os.path.join(data, 'sanguity.db')}?mode=ro", uri=True)
     try:
         rows = {}
         for (t,) in con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"):
@@ -1532,6 +1533,37 @@ class Backups(unittest.TestCase):
             backup_jobs.set_schedule(db, "off", backup_jobs.KEEP_DEFAULT)
         finally:
             db.close()
+
+    def test_21b_a_move_aside_cut_short_keeps_both_halves(self):   # #1055, its closing recheck
+        """A move of profiles/ to another disk copies, then deletes: cut short between the two, part of today's profiles/
+        is in each place. Nothing of it is removed, and the restore says where each is rather than \"Nothing was
+        changed\"."""
+        path = backup.create(os.path.join(TMP, "backups-1055b"))
+        real_move = shutil.move
+        folder = os.path.join(TMP, "restored-1055-split")
+        shutil.copytree(DATA, folder, ignore=shutil.ignore_patterns("sanguity.db*", "app.lock", "before-restore-*"))
+        src, dst = sqlite3.connect(os.path.join(DATA, "sanguity.db")), sqlite3.connect(os.path.join(folder, "sanguity.db"))
+        src.backup(dst)
+        src.close()
+        dst.close()
+
+        def split(a, b):   # profiles/ half copied to the folder, then the disk fills; today's still in place
+            if "before-restore-" in b and os.path.basename(a) == "profiles":
+                shutil.copytree(a, b, ignore=lambda d, names: names[len(names) // 2:])
+                raise OSError(28, "No space left on device")
+            return real_move(a, b)
+        with mock.patch.multiple(config, DATA_DIR=folder, DB_PATH=os.path.join(folder, "sanguity.db")):
+            before = live_state()
+            with mock.patch.object(backup, "_app_is_running", return_value=False), contextlib.redirect_stdout(io.StringIO()), \
+                    mock.patch.object(backup.shutil, "move", side_effect=split), self.assertRaises(SystemExit) as cm:
+                manage.run(["restore", path, "--yes"])
+            said = str(cm.exception.code)
+            self.assertIn("except profiles, which was being moved aside", said)
+            self.assertNotIn("Nothing was changed", said)
+            self.assertEqual(live_state(), before, "today's data as it was: profiles/ kept where it is, the database back")
+            asides = [n for n in os.listdir(folder) if n.startswith("before-restore-")]
+            self.assertEqual(len(asides), 1, "the folder with the half copy is kept, named")
+            self.assertIn(asides[0], said)
 
     def test_21_a_restore_that_fails_part_way(self):   # #1055
         """A restore failing between moving today's files aside and putting the backup's database in place (moving them,
