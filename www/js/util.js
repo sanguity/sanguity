@@ -838,7 +838,11 @@ const placeAt = (node, at) => { for (const [k, v] of Object.entries(at)) node.st
     const text = t.dataset.tip;
     if (!text || !t.isConnected) return hide();
     if (on !== t) hide();
-    if (!box) (document.querySelector("dialog:modal") || document.body).append(box = el("div", {class: "sg-tip sg-follow", id: "sgTip", role: "tooltip", popover: "manual"}));
+    // kept in the open modal dialog, else in <main>: inside a landmark, as everything shown is (#1061: axe's region rule
+    // doesn't count a tooltip), moved there as it shows (never while shown: moving a popover closes it)
+    box ||= el("div", {class: "sg-tip sg-follow", id: "sgTip", role: "tooltip", popover: "manual"});
+    const home = document.querySelector("dialog:modal") || document.querySelector("main") || document.body;
+    if (box.parentElement !== home && !box.matches(":popover-open")) home.append(box);
     box.textContent = text;
     on = t; by = how;
     t.classList.add("sg-tip-on");   // the anchor app.css places it from
