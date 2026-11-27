@@ -949,9 +949,13 @@ def _put_back(aside, moved, existed, moving, step, e):
             shutil.move(os.path.join(aside, moving), os.path.join(config.DATA_DIR, moving))
     except OSError as again:
         log.error("restore: today's data couldn't be put back from %s (%s)", aside, type(again).__name__)
+        back = [n for n in moved if os.path.lexists(os.path.join(aside, n))]   # today's, still in the folder aside
+        keep = (f" Today's {moving} is still in the data folder, whole or part: don't replace it with the part of it "
+                f"in {aside}; compare the two and keep the whole one." if split else "")
         return (f"The restore failed while {step} ({why}), and today's data couldn't all be put back "
-                f"({type(again).__name__}): it is in {aside}. Before starting the app, move sanguity.db and the profiles "
-                "and build folders from there back into the data folder (replacing any there), then delete the folder.")
+                f"({type(again).__name__}): {', '.join(back) or 'nothing'} of it is in {aside}. Before starting the app, "
+                f"move {', '.join(back) or 'nothing'} from there back into the data folder (replacing any there), then "
+                f"delete the folder.{keep}")
     with contextlib.suppress(OSError):
         os.remove(os.path.join(aside, ".restoring.db"))
     if split:   # today's `moving` may be part in each place: nothing of it removed, and the person told where
