@@ -3904,6 +3904,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - **An import's review never offers HDL as LDL** (#1102): its lab-name matching offered "Maybe: LDL Cholesterol" for
   HDL Cholesterol. A name is never offered for one a qualifier tells apart (HDL and LDL, free and total, direct and
   calculated, ionized), nor for a test whose LOINC code isn't its own.
+- **One LOINC code, one chart, for vitals** (#1102): a FHIR file's "Diastolic blood pressure" and a C-CDA document's
+  "Blood pressure, diastolic" (both 8462-4) were two charts. A FHIR import names a vital by its LOINC code first, as
+  C-CDA does, in the same unit (a temperature in °C and a height in cm converted, as reported kept beside them).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

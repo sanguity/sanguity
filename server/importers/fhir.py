@@ -12,7 +12,9 @@ What becomes what:
     Observation (laboratory)       one `labitem` event (hidden) per report or per day, under a `lab` event per day,
                                    and a point in `labs` [t, value, lo, hi, flag, as reported, source]; the labitem's
                                    "keys" name each row's Observation (#885: a day's key is every source's)
-    Observation (vital-signs)      a point in `labs` (panel "Vitals"); body weight goes to `clinicWeights` in lb
+    Observation (vital-signs)      a point in `labs` (panel "Vitals"); body weight goes to `clinicWeights` in lb; a
+                                   vital (any Observation) whose LOINC code common.VITALS knows is named and in the
+                                   unit C-CDA's is, by that code first (#1102)
     DiagnosticReport               groups its lab Observations; without lab results it is a `study`/`imaging` event
                                    with its conclusion; presentedForm attachments become documents
     Condition                      `problems`
@@ -751,20 +753,29 @@ def parse(files):
         v, rep, unit = _value(value_src)
         lo, hi, rtxt, edge = _range(value_src if value_src.get("referenceRange") else o)
         flag = _flag(value_src.get("interpretation") or o.get("interpretation"), v, lo, hi, edge, comparator(rep))
-        loinc = (codes(code_cc, LOINC) or [None])[0]
-        base = key = canonical_lab(name, loinc) or name   # the series: lab-aliases.json's name when it knows the test
+        loincs = codes(code_cc, LOINC)
+        vc = next((c for c in loincs if c in common.VITALS), None)
+        loinc = vc or (loincs or [None])[0]
+        x, s_unit, said = v, unit, rep
+        if vc:   # a vital sign by its LOINC code first, named and in the unit every importer gives it (#1102)
+            base, x, s_unit = common.vital(vc, v, unit)
+            if x != v:   # converted: its value as reported keeps its unit ("37 Cel"), its range (in that unit) left out
+                said, lo, hi, edge = f"{rep} {unit}".strip(), None, None, ""
+        else:
+            base = canonical_lab(name, loinc) or name   # the series: lab-aliases.json's name when it knows the test
+        key = base
         s = labs.get(key)
-        if s and s["unit"] and unit and unit_key(s["unit"]) != unit_key(unit):   # same name, other unit: keep apart
-            key = f"{base} ({unit})"
+        if s and s["unit"] and s_unit and unit_key(s["unit"]) != unit_key(s_unit):   # same name, other unit: keep apart
+            key = f"{base} ({s_unit})"
             s = labs.get(key)
         if s is None:
-            s = labs[key] = {"unit": unit, "loinc": loinc, "code": None, "pts": [], "txt": [], "panels": Counter()}
+            s = labs[key] = {"unit": s_unit, "loinc": loinc, "code": None, "pts": [], "txt": [], "panels": Counter()}
         s["loinc"] = s["loinc"] or loinc
         s["code"] = s["code"] or next(iter(_coding_keys(code_cc)), None)
-        s["unit"] = s["unit"] or unit
+        s["unit"] = s["unit"] or s_unit
         s["panels"][panel] += 1
         if v is not None:
-            s["pts"].append([t, v, lo, hi, flag, rep, src] + ([edge] if edge else []))
+            s["pts"].append([t, x, lo, hi, flag, said, src] + ([edge] if edge else []))
         elif rep:
             s["txt"].append([t, rep])
         return [name, rep, unit, rtxt, flag], bool(flag)
