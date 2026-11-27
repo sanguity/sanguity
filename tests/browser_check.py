@@ -20853,6 +20853,10 @@ def main():
             # ---- #45 a default theme for the account: a fresh browser signed in as the same person uses it; your
             # menu's Dark or Light mode changes it (#410); Reset to defaults follows the system again
             js("localStorage.removeItem('ht-theme')")
+            # (#1026's block leaves the records page with a drawer open: closed, and the page left, before another opens,
+            # so nothing it holds can keep the next page from loading; it stopped here now and then under load)
+            js("typeof closeDrawer === 'function' && closeDrawer()")
+            page.goto("about:blank")
             page.goto(base + "/settings.html?profile=1#sec-appearance")
             page.wait_for_selector("#sec-appearance input[value=dark]", timeout=10000)
             page.check("#sec-appearance input[value=dark]")   # saved as it's picked (#272)
