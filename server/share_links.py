@@ -299,7 +299,6 @@ def _build(db, link, today, section):
     body = records.served(db, pid)
     data = json.loads(body) if body else {}
     events = [e for e in data.get("events") or [] if isinstance(e, dict) and not e.get("hidden")]
-    details = data.get("details") or {}
     out = {"profile": link["profile_name"], "expires": link["expires"], "from": scope["from"], "to": scope["to"],
            "sections": [{"id": s, "label": l, "what": w} for s, l, w in SECTIONS if s in scope["sections"]]}
     want = set(scope["sections"])
@@ -314,19 +313,15 @@ def _build(db, link, today, section):
         out["visits"] = rows(VISIT_KINDS, True)
     if "procedures" in want:
         out["procedures"] = rows(PROCEDURE_KINDS, False)
-    if "medications" in want:
-        meds = []
-        for e in events:
-            if e.get("k") != "med":
-                continue
-            d = details.get(str(e.get("id"))) or {}
-            start = summary._day(e.get("t"))
-            stop = summary._day(e.get("end") or d.get("end") or d.get("stop"))
+    if "medications" in want:   # the medications the page shows (medications.py: your own among them, your changes
+        meds = []               # made, those hidden left out, #1091), each from its first listing to its stop
+        for m in data.get("medications") or []:
+            spans = [x for x in m.get("spans") or [] if isinstance(x, dict)]
+            start, stop = (spans[0].get("from") if spans else None), m.get("stop")
             if not start or (scope["to"] and start > scope["to"]) or (scope["from"] and stop and stop < scope["from"]):
                 continue
-            meds.append({"name": _text(e.get("title") or d.get("name") or "Medication", 200),
-                         "instructions": _text(d.get("instructions")), "since": start, "until": stop,
-                         "status": _text(d.get("status"), 40)})
+            meds.append({"name": _text(m.get("name") or "Medication", 200), "instructions": _text(spans[-1].get("dose")),
+                         "since": start, "until": stop, "status": _text(spans[-1].get("status"), 40)})
         out["medications"] = sorted(meds, key=lambda m: (m["name"].lower(), m["since"]))
     cfg = None
 

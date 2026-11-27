@@ -710,15 +710,27 @@ def _problems(b, data):
                       "abatementString": "Resolved" if code == "resolved" else None})
 
 
+def _med_said(s):
+    """(#1091) a listing's details as the medications the page shows say its span (medications.py: your changes made)."""
+    return {"instructions": s.get("dose"), "status": s.get("status"), "prescriber": s.get("prescriber"),
+            "end": s.get("to") if s.get("stopped") else None}
+
+
 def _meds(b, data):
     details = data.get("details") or {}
     costs = {c.get("id") for c in data.get("costs") or [] if isinstance(c, dict)}
+    # (#1091) the listings of a medication you changed say what its latest span says now; your own medications follow
+    changed = {i: m["spans"][-1] for m in data.get("medications") or [] if m.get("change") and m.get("spans")
+               for i in m["spans"][-1].get("ids") or []}
     for e in data.get("events") or []:
         d = details.get(str(e.get("id")))
         d = d if isinstance(d, dict) else {}
         t = b.t(e.get("t"))
         if not t or e.get("hidden"):
             continue
+        if e.get("k") == "med" and e.get("id") in changed:
+            s = changed[e["id"]]
+            e, d = {**e, "title": s.get("title") or e.get("title")}, {**d, **_med_said(s)}
         if e.get("k") == "med":
             med = cc(e.get("title") or "Medication", coding(RXNORM, d.get("rxnorm")))
             end = b.t(d.get("end")) if d.get("end") else None
@@ -754,6 +766,28 @@ def _meds(b, data):
                           "quantity": {"value": qm[0], "unit": _text(qm[1])} if qm else None,
                           "daysSupply": {"value": supply, "unit": "days", "system": UCUM, "code": "d"} if supply is not None else None,
                           "dosageInstruction": [{"text": d.get("instructions")}] if _text(d.get("instructions")) else []})
+    for m in data.get("medications") or []:   # (#1091) your own, as a typed-in listing goes, its source the person
+        own, s = m.get("own"), (m.get("spans") or [None])[-1]
+        t = b.t(s.get("from")) if own and s else None
+        if not t:
+            continue
+        end = b.t(s["to"]) if s.get("stopped") and s.get("to") else None
+        med = cc(s.get("title") or m.get("name") or "Medication")
+        contained, based = [], []
+        if _text(own.get("prescriber")):
+            contained.append(_clean({"resourceType": "MedicationRequest", "id": "rx", "status": "active" if not end else "completed",
+                                     "intent": "order", "medicationCodeableConcept": med, "subject": b.subject(), "authoredOn": t,
+                                     "requester": b.party("Practitioner", own.get("prescriber"))}))
+            based.append({"reference": "#rx"})
+        status = str(own.get("status") or "").lower()
+        yield _clean({"resourceType": "MedicationStatement", "id": b.rid("MedicationStatement", m["key"]), "contained": contained,
+                      "basedOn": based, "status": MED_STATUS.get(status, "completed" if s.get("stopped") else "active"),
+                      "statusReason": [cc(own.get("status"))] if status not in MED_STATUS and _text(own.get("status")) else [],
+                      "medicationCodeableConcept": med, "subject": b.subject(), "informationSource": b.subject(),
+                      "effectivePeriod": {"start": t, "end": end if end and end > t else None},
+                      "note": [{"text": own["note"]}] if _text(own.get("note")) else [],
+                      "dosage": [_clean({"text": own.get("dose") or None, "route": cc(own.get("route")) if _text(own.get("route")) else None})]
+                      if _text(own.get("dose")) or _text(own.get("route")) else []})
 
 
 def _immunizations(b, data):

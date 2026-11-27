@@ -663,7 +663,8 @@ def _snapshot(db):
 
 
 def assemble(db, pid, raw=False):
-    """The profile's records in the shape the page reads, or None when nothing was ever imported into it. raw: as they
+    """The profile's records in the shape the page reads, or None when nothing was ever imported into it and it has no
+    medication of its own (#1091: with one, records of no events, its medications listed as ever). raw: as they
     were imported, for Export everything (#589): not tidied, no correction or same-result link applied (the export
     carries those apart, to be applied again once loaded), and nothing worked out from them (medications,
     out-of-pocket, units); the journal, doses and reminders listed as ever."""
@@ -720,8 +721,8 @@ def _panels(labs):
 
 def _assemble(db, pid, raw=False):
     imps = db.execute("SELECT id, at, origin, format, synced, meta, name FROM imports WHERE profile_id=? ORDER BY id", (pid,)).fetchall()
-    if not imps:
-        return None
+    if not imps and (raw or not any(r["own"] for r in medications.listing(db, pid))):
+        return None   # (#1091) nothing imported, but medications of its own: records of those alone (as imported: none)
     out, costs, pay_imps = {}, [], []   # costs: (import, place in its list, row)
     for r in imps:
         meta = _dec(r["meta"]) or {}

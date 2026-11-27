@@ -319,6 +319,8 @@ async function recordsDraw(data) {
   // names another tab; a watch's alone (#477: a phone connected first), Body and activity, where its charts are
   else if (DATA.imports && !Object.keys(DATA.imports).length) {
     if (WATCH && !(DATA.journal || []).length && shownTabs().includes("health")) state.tab = "health";
+    // medications of your own and no journal (#1091): Medications, where they are
+    else if (MEDS.length && !(DATA.journal || []).length && shownTabs().includes("medications")) state.tab = "medications";
     else [state.tab, state.tlView] = ["timeline", "journal"];
   }
   const drug = arrived?.[0] === "costs" && medCostsArrive();   // (#costs?drug=…, #452)

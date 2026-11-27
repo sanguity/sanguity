@@ -10946,6 +10946,24 @@ def main():
                 check("…Show again: back under Current, focus on its row, said", shown1093 == [cur["key"], False, True], shown1093)
                 js("async () => { const m = MEDS.find(m => m.own); if (m) await mmSend('DELETE', `own/${m.own.id}`); }")
                 settle(300)
+                # (#1091) a profile with nothing imported but a medication of its own: its records are that one, and the
+                # page opens on Medications, listing it under Current and in Today
+                pid1091 = js("""api('profiles', {method: 'POST', body: JSON.stringify({name: 'Own medication only (fictional)'})}).then(r => r.json())
+                    .then(j => api(`profiles/${j.id}/medications/own`, {method: 'POST', body: JSON.stringify({name: 'Solely own (fictional)', start: zToday()})}).then(() => j.id))""")
+                page.goto(base + f"/?profile={pid1091}")
+                page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {pid1091}", timeout=20000)
+                settle(400)
+                empty1091 = js("""[state.tab, EV.length, [...document.querySelectorAll('#view-medications div.card li.med-row .cell-btn')].map(b => b.textContent),
+                    [...document.querySelectorAll('#medToday .dose-med')].map(b => b.textContent), !!document.querySelector('main .empty-state')]""")
+                check("a profile with nothing imported but a medication of its own opens on Medications, listing it under Current and in Today (#1091)",
+                      empty1091 == ["medications", 0, ["Solely own (fictional)"], ["Solely own (fictional)"], False], empty1091)
+                from server import db as dbm1091, profiles as prof1091
+                db1091 = dbm1091.connect()
+                prof1091.delete_profile(db1091, pid1091)
+                db1091.close()
+                page.goto(base + "/?profile=1")
+                page.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
+                settle(300)
                 page.goto(base + "/")
                 page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
                 js("setRange(dayTs('2025-01-01'), dayTs('2025-12-31')); switchTab('timeline')")
