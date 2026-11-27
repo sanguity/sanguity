@@ -439,7 +439,7 @@ const SgNav = (() => {
     group("Records",
       link(src + "#waiting", "sources/waiting", "Waiting for you", {id: "waitingLink", "data-needs": "import", "data-none": ""}),   // #283, below
       link(src + "#upload", "sources/upload", "Upload files", {id: "importLink", "data-needs": "import"}),
-      link(src + "#portals", "sources/portals", "Connect a portal or plan", {id: "connectLink", "data-needs": "import", "data-none": ""}),   // (#1096: while connected sources are on, below)
+      link(src + "#portals", "sources/portals", "Connect a source", {id: "connectLink", "data-needs": "import", "data-none": ""}),   // (#1096: while connected sources are on, below)
       link(src + "#manual", "sources/manual", "Type records in", {"data-needs": "import"}),
       link(src + "#link", "sources/link", "Paste a Health Link", {"data-needs": "import"})),
   ]);
@@ -629,7 +629,7 @@ const SgNav = (() => {
       }
       if (sgConnected(me)) {   // (#1096) connected sources, while they're on: Add's Connect, and each page's [data-cs]
         const c = document.getElementById("connectLink");
-        c.lastChild.textContent = "Connect a portal or plan (experimental)";
+        c.lastChild.textContent = "Connect a source (experimental)";
         c.removeAttribute("data-none");
         for (const e of document.querySelectorAll("[data-cs]")) e.hidden = false;
       }
