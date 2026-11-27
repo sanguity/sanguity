@@ -594,11 +594,14 @@ def targets_block(c, keep, most):
 
 def _doses(c):
     """[(local wall time, medication, status, note, where from)] of the medication log (#235): typed in (records'
-    "doses") and the phone's (the watch summary's "med_doses"), oldest first."""
+    "doses") and the phone's (the watch summary's "med_doses"), oldest first. Those of a medication hidden by hand
+    (#1093: records' "hiddenMeds", by its key) are left out, as the medication is: the log stays where it's kept."""
+    hidden = {h.get("key") for h in c.data.get("hiddenMeds") or [] if isinstance(h, dict)}
     out = [(d["t"], d.get("name") or d.get("med") or "", d.get("status"), str(d.get("note") or "")[:1000], "Typed in")
-           for d in c.data.get("doses") or [] if isinstance(d, dict) and _day(d.get("t")) and d.get("status") in med_log.STATUSES]
+           for d in c.data.get("doses") or [] if isinstance(d, dict) and _day(d.get("t")) and d.get("status") in med_log.STATUSES
+           and d.get("med") not in hidden]
     out += [(d["t"], d["name"], d["status"], "", f"{d['app']}" + (f", {d['dose']}" if d["dose"] else ""))
-            for d in med_log.phone_doses(c.watch, c.tz)]
+            for d in med_log.phone_doses(c.watch, c.tz) if medications.med_key(d["name"]) not in hidden]
     return sorted(out, key=lambda x: x[0])
 
 
