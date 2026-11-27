@@ -28370,6 +28370,15 @@ def main():
             # hears as the hidden headings are hidden from it too; axe-core clean, light and dark
             page.set_viewport_size({"width": 375, "height": 800})
             cl_seen, cl_bad, cl_axe = {}, [], []
+            # (#1097: Install lists only the matches for every profile, a review's being its profile's: one for every
+            # profile made up here for its table, gone after)
+            from server import crypto as crypto320, labmap as labmap320
+            lmdb320 = dbm.connect()
+            lm320 = lmdb320.execute("INSERT INTO labmaps(lookup, importer, source, target, created_by, created_name, created, checked) VALUES(?, 'csv', ?, ?, NULL, ?, ?, ?)",
+                                    (labmap320.lookup("csv", "Ferritin 320", "ng/mL", None), crypto320.enc(json.dumps({"name": "Ferritin 320", "unit": "ng/mL", "loinc": None})),
+                                     crypto320.enc("Ferritin"), USER, dbm.now(), dbm.now())).lastrowid
+            if js("typeof loadLabmaps === 'function'"):   # (this page's Install, loaded before it: drawn again with it)
+                js("loadLabmaps()")
             for path, ready in (("/settings.html?profile=1#sessions", "#sessList tbody tr"), ("/settings.html?profile=1#users", "#userList tbody tr"),
                                 ("/settings.html?profile=1#labmaps", "#labmapList tbody tr"), ("/settings.html?profile=1#installLog", "#acctLog tbody tr"),
                                 ("/sharing.html?profile=1#people", "#memberList tbody tr"), ("/sharing.html?profile=1#activity", "#actBody tbody tr")):
@@ -28383,6 +28392,8 @@ def main():
                     page.emulate_media(color_scheme=theme)
                     cl_axe += axe_check(page, f"{path} at 375 px, {theme}")[0]
                 page.emulate_media(color_scheme=None)
+            lmdb320.execute("DELETE FROM labmaps WHERE id=?", (lm320,))
+            lmdb320.close()
             check("at 375 px every account page's table labels each cell with its column's name: Settings' You (sessions) and Install (accounts, lab "
                   "names, activity), Sharing (people, activity), its headings hidden from screen readers too (#320)",
                   not cl_bad and all(cl_seen.values()), cl_bad[:6] or cl_seen)
@@ -28398,14 +28409,14 @@ def main():
             lm = js("[...document.querySelectorAll('#labmapList tr[data-labmap]')].map(tr => tr.textContent)")
             check("Install lists only the lab name matches for every profile: a profile's own (Hemoglobin Lvl, a review's, #927) is "
                   "its Settings' (#1097), as Install's words say", not any("Hemoglobin Lvl" in t for t in lm)
-                  and "Labs and" in js("document.querySelector('#labmaps .about-words').textContent")   # (behind its ⓘ, #280)
+                  and js("[...document.querySelectorAll('.about-words')].some(w => w.textContent.includes(\"Each profile's own matches are its owners'\"))")   # (behind its ⓘ, #280: moved beside the heading)
                   and js(display, "labmaps") != "none", lm)
             # #528: at 375×667 a match's Save (by Enter in its box) leaves focus on its Change, and Remove → Forget match on the
             # next match's Remove, in sight (it fell to the page); one removed elsewhere, then saved, is drawn away, “No such
             # lab name match.” where it was, focus beside it (it stayed, said under the list). Two made up here, gone after
             from server import crypto as crypto528, labmap as labmap528
             lmdb528 = dbm.connect()
-            for n in ("Ferritin 528", "Glucose 528"):
+            for n in ("Ferritin 528", "Glucose 528", "Iron 528"):   # (#1097: Iron, beside the one removed elsewhere, as a review's was before)
                 lmdb528.execute("INSERT INTO labmaps(lookup, importer, source, target, created_by, created_name, created, checked) VALUES(?, 'manual', ?, ?, NULL, ?, ?, ?)",
                                 (labmap528.lookup("manual", n, "g/dL", None), crypto528.enc(json.dumps({"name": n, "unit": "g/dL", "loinc": None})),
                                  crypto528.enc("Hemoglobin"), USER, dbm.now(), dbm.now()))   # (checked: not one to check, #569)
@@ -28443,6 +28454,9 @@ def main():
                   "page); one removed elsewhere, then saved, is drawn away, “No such lab name match.” where it was, focus on a Change beside it",
                   lm528[0] == ["Change", "Ferritin 528", True, None, False] and lm528[1][0] == "Remove" and lm528[1][1] and lm528[1][2]
                   and lm528[2][0] == "Change" and lm528[2][2:] == [True, "No such lab name match.", True, False], lm528)
+            lmdb1097 = dbm.connect()
+            lmdb1097.execute("DELETE FROM labmaps WHERE lookup=?", (labmap528.lookup("manual", "Iron 528", "g/dL", None),))
+            lmdb1097.close()
             # #532: at 320 and 375 px, and with a row's Change open, no word of the matches is broken across lines (“Chan/ge”,
             # “Remo/ve”, “Glucos/e”: its first column was 55 px). One with a long name, made up here and gone after
             lmdb532 = dbm.connect()
