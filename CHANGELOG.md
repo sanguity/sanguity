@@ -3850,8 +3850,8 @@ Everything on `main` so far; it becomes the first tagged release.
   start, stop (and **Stopped today**), status, prescriber and note. One of your own is yours to change; for one from
   the records the form starts from what they say, and once saved the drawer shows **Your change** beside **As listed**,
   with **Put back as listed** (and an Undo). The import page's typed-in medication stays, as a record-style listing.
-- **Remove a medication** (#1093): in its drawer, **Remove** deletes one of your own (its logged doses stay in the
-  log) and hides one from the records: it leaves Current, Past, Today, the lanes, the calendar feed, and share links'
+- **Remove a medication** (#1093): in its drawer, **Remove** deletes one of your own (its logged doses kept, in Export
+  everything, and back with Undo) and hides one from the records: it leaves Current, Past, Today, the lanes, the calendar feed, and share links'
   and the visit summary's medications and medication log, and the journal form's list (a share link's journal entry
   about it doesn't name it), its records stay in the profile (and in the FHIR export),
   and a later pull doesn't bring it back. Each says so with an **Undo**, which takes focus; **Hidden** on the
@@ -3859,7 +3859,8 @@ Everything on `main` so far; it becomes the first tagged release.
 - **A schedule for each medication, with amounts** (#1094): a medication's reminders are now its schedule, set in its
   drawer: times each with an amount and unit (2 tablets at 8:00, 1 at 20:00, any number a day), the days, from and
   until, or As needed, and as many lines as it takes (every day at 8:00, and Mondays and Fridays at 20:00). Remind me
-  puts a line in the calendar feed, which says the amount at each time with full details. **Pause** keeps a line with
+  puts a line in the calendar feed, which says the amount at each time with full details ("2 doses of 1 tablet" for
+  two alike at one time). **Pause** keeps a line with
   its times but off Today, out of the counts and the calendar feed until **Resume**. Reminders set before are kept as
   schedule lines with no amounts, reminding as they did; one that was turned off is a paused line (schema version 47).
 - **Each scheduled dose its own row on Today, with its amount** (#1095): two doses at 8:00 are two rows, logged one

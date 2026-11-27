@@ -98,6 +98,14 @@ def said(a):
     return f"{a['amount']:g} {a.get('unit') or ''}".strip()
 
 
+def together(amounts):
+    """The doses at one time, said: "2 tablets"; "1 tablet and 5 ml"; two alike "2 doses of 1 tablet" (not "1 tablet
+    and 1 tablet"), "2 doses" with none given; "" for one with none. amounts: said() of each."""
+    if len(amounts) > 1 and len(set(amounts)) == 1:
+        return f"{len(amounts)} doses" + (f" of {amounts[0]}" if amounts[0] else "")
+    return " and ".join(a for a in amounts if a)
+
+
 def line(times, amounts, days, start, until, asneeded=False, dose=None):
     """A schedule line's times (in order, with their amounts), days, from, until, As needed and its usual amount, as
     kept; or ReminderError."""
@@ -382,7 +390,7 @@ def feed_events(db, pid, full, today):
             lines = recurrence(r, at, last_day, zone)
             if lines is None:
                 continue
-            amount = " and ".join(a for a in amounts if a)
+            amount = together(amounts)
             summary = ((m.get("name") or r["name"] or "Medication") + (f" · {amount}" if amount else "")) if full else "Medication"
             events.append({"ident": f"reminder|{r['id']}|{at}", "summary": summary, "dose": dose if full else "",
                            "amount": amount if full else "", "lines": lines})

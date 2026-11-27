@@ -167,7 +167,7 @@ function openMedication(m) {
   if (!m) return;
   state.selEv = null;
   const last = m.spans[m.spans.length - 1];
-  const body = drawerHead("med", m.name, (m.own ? "Your own entry · " : "Medication history · ") + (m.spans.length ? `${fmtD(m.spans[0].ts)} – ${last.open ? "no end in the records" : fmtD(last.te)}` : `pharmacy fills only, from ${fmtD(m.fills[0].ts)}`));   // drawer.js (#270)
+  const body = drawerHead("med", m.name, (m.own ? "Your own entry · " : "Medication history · ") + (m.spans.length ? `${fmtD(m.spans[0].ts)} – ${last.open ? (m.own ? "no end date" : "no end in the records") : fmtD(last.te)}` : `pharmacy fills only, from ${fmtD(m.fills[0].ts)}`));   // drawer.js (#270)
   drawer.dataset.med = m.key;   // (medShown)
   // its key facts, as every record's (#406): what the head says (when it started, that the records give no end) isn't
   // said again
@@ -196,8 +196,10 @@ function openMedication(m) {
   const notes = JOURNAL.filter(e => e.j.med && (m.own ? e.j.med === m.name : medKeyOf(e.j.med) === m.key));   // your own: by its name (#1091)
   if (notes.length) body.append(el("div", {class: "sect", text: "Journal entries linked to it"}),
     ...notes.sort((a, b) => a.ts - b.ts).map(e => el("button", {class: "btn", type: "button", text: `${fmtD(e.ts)} · ${e.title}`, onclick: () => openEvent(e)})));
-  body.append(el("p", {class: "hint", style: {color: "var(--ink2)"}, text: "What the records say, in order: a listing's dates may not be when a medication started or ended. This isn't medical advice."}),
-    aboutWords("A clinic's medication list dates a medication from when it was recorded there, which may not be when it was started; a listing with no end date may still have ended."),
+  // your own entry is what you wrote, not a listing of the records (#1092's check: it said both of the records)
+  body.append(el("p", {class: "hint", style: {color: "var(--ink2)"}, text: m.own ? "Your own entry, as you wrote it. This isn't medical advice."
+      : "What the records say, in order: a listing's dates may not be when a medication started or ended. This isn't medical advice."}),
+    ...(m.own ? [] : [aboutWords("A clinic's medication list dates a medication from when it was recorded there, which may not be when it was started; a listing with no end date may still have ended.")]),
     el("div", {class: "btns"}, el("button", {class: "btn", type: "button", text: "Zoom timeline to this medication", onclick: () => {
       const a = medFrom(m), b = medTo(m), pad = Math.max(7 * DAY, (b - a) * .05); setRange(a - pad, b + pad); pickTab("timeline"); }})));
   showDrawer();
@@ -262,7 +264,9 @@ function mrEnds(r, m) {
 /* "2 tablets at 8:00 AM and 1 tablet at 8:00 PM every day"; "8:00 AM on Mon and Fri" with no amounts; "As needed,
    usually 2 puffs" */
 const mrWhat = r => r.asneeded ? "As needed" + (mrAmt(r.dose) ? `, usually ${mrAmt(r.dose)}` : "") + (r.days.length < 7 ? " " + mrDays(r.days) : "")
-  : `${mrAnd(r.times.map((t, i) => (a => a ? `${a} at ${mrTime(t)}` : mrTime(t))(mrAmt((r.amounts || [])[i]))))} ${mrDays(r.days)}`;
+  : `${mrAnd([...new Set(r.times)].map(t => (a => a ? `${a} at ${mrTime(t)}` : mrTime(t))(mrTogether(r.times.flatMap((x, i) => x === t ? [mrAmt((r.amounts || [])[i])] : [])))))} ${mrDays(r.days)}`;
+/* the doses at one time (server/med_reminders.together): "1 tablet and 5 ml"; two alike "2 doses of 1 tablet" */
+const mrTogether = as => as.length > 1 && as.every(a => a === as[0]) ? `${as.length} doses` + (as[0] ? ` of ${as[0]}` : "") : as.filter(Boolean).join(" and ");
 /* "… every day, from 18 Nov 2026, no end date" */
 const mrSays = r => `${mrWhat(r)}, from ${fmtD(dayTs(r.from))}` + (r.until ? ` until ${fmtD(dayTs(r.until))}` : ", no end date");
 function mrState(r, m) {

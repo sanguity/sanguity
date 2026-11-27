@@ -1003,6 +1003,13 @@ class Reminders(unittest.TestCase):
         self.assertEqual(lines[-1]["times"], ["08:00", "08:00"])
         _, cal = self.feed(details="full")
         self.assertIn("Fictionamide 10 mg tablet · 1 tablet and 5 ml", [unescape(e["SUMMARY"][1]) for e in self.reminders(cal)])
+        # two alike: "2 doses of 1 tablet", not "1 tablet and 1 tablet" (#1095's check); with no amounts, "2 doses"
+        self.set(times=["09:00", "09:00"], amounts=[{"amount": 1, "unit": "tablet"}] * 2)
+        self.set(times=["10:00", "10:00"])
+        said = [unescape(e["SUMMARY"][1]) for e in self.reminders(self.feed(details="full")[1])]
+        self.assertIn("Fictionamide 10 mg tablet · 2 doses of 1 tablet", said)
+        self.assertIn("Fictionamide 10 mg tablet · 2 doses", said)
+        self.assertFalse([x for x in said if "1 tablet and 1 tablet" in x], said)
         bad = [({"amounts": [{"amount": 1}]}, "each time"), ({"amounts": [{"amount": 0}]}, "above 0"), ({"amounts": [{"amount": -2}]}, "above 0"),
                ({"amounts": [{"amount": 1, "unit": "x" * 41}]}, "too long"), ({"times": ["08:00"] * 25}, "At most")]
         for body, word in bad:

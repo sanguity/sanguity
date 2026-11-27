@@ -95,7 +95,7 @@ function renderMedications() {
     cur.length ? medRows("Current medications", ["Since", "As listed", "Last fill", "Schedule"], cur, m => {
       const f = medLastFill(m);
       return [fmtD(medSince(m)), medListed(m) || "Not given",
-        [f ? fmtD(f.ts) + (f.supply ? ` · ${f.supply} days` : "") : "None in the records",
+        [f ? fmtD(f.ts) + (f.supply ? ` · ${f.supply} days` : "") : m.own ? "None" : "None in the records",   // (your own: no records)
           ...(f && costs && medClaims(m).length ? [el("br"), el("a", {href: medCostsHref(m), class: "med-costs", onclick: ev => medOnCosts(m, ev)}, "Its claims on Costs")] : [])],
         medReminds(m)];
     }) : el("p", {class: "hint", text: "No medication without an end, in the records or your own."}));
