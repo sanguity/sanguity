@@ -1560,7 +1560,9 @@ class Backups(unittest.TestCase):
             said = str(cm.exception.code)
             self.assertIn("except profiles, which was being moved aside", said)
             self.assertNotIn("Nothing was changed", said)
-            self.assertEqual(live_state(), before, "today's data as it was: profiles/ kept where it is, the database back")
+            now = live_state()   # (the folder holding the half copy, kept and named, aside)
+            now = ({k: v for k, v in now[0].items() if not k.startswith("before-restore-")}, *now[1:])
+            self.assertEqual(now, before, "today's data as it was: profiles/ kept where it is, the database back")
             asides = [n for n in os.listdir(folder) if n.startswith("before-restore-")]
             self.assertEqual(len(asides), 1, "the folder with the half copy is kept, named")
             self.assertIn(asides[0], said)
