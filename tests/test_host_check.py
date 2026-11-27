@@ -28,7 +28,7 @@ H = {"X-Sanguity": "1"}
 PW = "an admin of the fictional install"
 PUBLIC = "https://health.example.test"
 LISTED = ("health.example.test", "Health.Example.Test:443", "health.example.test.")
-IPS = ("192.168.1.20:8730", "10.0.0.5", "[::1]:8000", "[fd00::20]:8730", "[::1]")
+IPS = ("192.168.1.20:8730", "10.0.0.5", "[::1]:8000", "[fd00::20]:8730", "[::1]", "192.168.1.5.", "192.168.1.5.:8730")   # (a final dot too, #1086)
 LOCAL = ("localhost", "localhost:8730", "127.0.0.1:8000", "nas.local:8730", "nas.lan", "nas.home:8443", "nas.home.arpa", "app.internal",
          "app:8000", "testserver", "dev.localhost")
 UNLISTED = ("rebind.example.net", "rebind.example.net:8730", "evil.ts.net:8443", "health.example.test.evil.example")
