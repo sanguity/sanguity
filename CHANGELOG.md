@@ -3854,7 +3854,7 @@ Everything on `main` so far; it becomes the first tagged release.
   log) and hides one from the records: it leaves Current, Past, Today, the lanes, the calendar feed, and share links'
   and the visit summary's medications and medication log, and the journal form's list (a share link's journal entry
   about it doesn't name it), its records stay in the profile (and in the FHIR export),
-  and a later pull doesn't bring it back. Each says so with an **Undo**; **Hidden** on the
+  and a later pull doesn't bring it back. Each says so with an **Undo**, which takes focus; **Hidden** on the
   Medications tab lists those hidden, each with **Show again**.
 - **A schedule for each medication, with amounts** (#1094): a medication's reminders are now its schedule, set in its
   drawer: times each with an amount and unit (2 tablets at 8:00, 1 at 20:00, any number a day), the days, from and
@@ -3863,7 +3863,7 @@ Everything on `main` so far; it becomes the first tagged release.
   its times but off Today, out of the counts and the calendar feed until **Resume**. Reminders set before are kept as
   schedule lines with no amounts, reminding as they did; one that was turned off is a paused line (schema version 47).
 - **Each scheduled dose its own row on Today, with its amount** (#1095): two doses at 8:00 are two rows, logged one
-  by one, each saying how much; As needed has Log a dose with its usual amount to start from; a dose with no time of
+  by one, each saying how much (and, to a screen reader, which: "first of 2"); As needed has Log a dose with its usual amount to start from; a dose with no time of
   the schedule (from Apple Health, or logged in the drawer) goes to the scheduled dose within two hours of it, else
   under Also. A logged dose keeps its amount and unit, which the visit summary lists too. The week, the drawer and
   the visit summary count the schedule's doses so far: "9 of 14 scheduled doses taken".
