@@ -3772,7 +3772,9 @@ Everything on `main` so far; it becomes the first tagged release.
   answer says yes.
 - **A restore that fails part-way puts today's data back** (#1055): one failing after today's files were moved
   aside (the disk filling while profiles are written, say) left the install empty; now what it wrote goes, today's
-  files are moved back, and it says what happened and names the folder.
+  files are moved back, and it says what happened and names the folder. Only what the restore wrote is removed: a
+  folder being moved aside as it failed is left where it is, and if it couldn't all be put back the restore names just
+  what to move back, never telling you to replace today's folder with a half copy.
 - **`server.manage import` says what an upload it can't keep changed** (#1056): an upload past this server's limits
   is refused before anything is replaced; one failing after the records were replaced says they were imported, and
   the profile is no longer the setup build's, so a rebuild doesn't overwrite them.

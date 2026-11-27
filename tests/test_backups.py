@@ -1567,6 +1567,38 @@ class Backups(unittest.TestCase):
             self.assertEqual(len(asides), 1, "the folder with the half copy is kept, named")
             self.assertIn(asides[0], said)
 
+    def test_21c_put_back_failing_after_a_cut_short_move(self):   # #1055, the final recheck
+        """A move of profiles/ cut short half copied, then putting today's database back failing too: the message names
+        only what is in the folder aside to move back, and says today's profiles/ is still in the data folder and not to
+        be replaced by the half copy (it said to move the profiles folder back, replacing any there)."""
+        path = backup.create(os.path.join(TMP, "backups-1055c"))
+        real_move = shutil.move
+        folder = os.path.join(TMP, "restored-1055-split2")
+        shutil.copytree(DATA, folder, ignore=shutil.ignore_patterns("sanguity.db*", "app.lock", "before-restore-*"))
+        src, dst = sqlite3.connect(os.path.join(DATA, "sanguity.db")), sqlite3.connect(os.path.join(folder, "sanguity.db"))
+        src.backup(dst)
+        src.close()
+        dst.close()
+
+        def split_then_stuck(a, b):
+            if "before-restore-" in b and os.path.basename(a) == "profiles":
+                shutil.copytree(a, b, ignore=lambda d, names: names[len(names) // 2:])
+                raise OSError(28, "No space left on device")
+            if "before-restore-" in a:   # moving today's back out of the folder aside
+                raise OSError(30, "Read-only file system")
+            return real_move(a, b)
+        with mock.patch.multiple(config, DATA_DIR=folder, DB_PATH=os.path.join(folder, "sanguity.db")):
+            with mock.patch.object(backup, "_app_is_running", return_value=False), contextlib.redirect_stdout(io.StringIO()), \
+                    mock.patch.object(backup.shutil, "move", side_effect=split_then_stuck), self.assertRaises(SystemExit) as cm:
+                manage.run(["restore", path, "--yes"])
+            said = str(cm.exception.code)
+            self.assertIn("couldn't all be put back", said)
+            self.assertIn("move sanguity.db from there", said)
+            self.assertNotIn("the profiles and build folders", said)
+            self.assertIn("Today's profiles is still in the data folder", said)
+            self.assertIn("don't replace it", said)
+            self.assertTrue(os.path.isdir(os.path.join(folder, "profiles")), "today's profiles/ left where it is")
+
     def test_21_a_restore_that_fails_part_way(self):   # #1055
         """A restore failing between moving today's files aside and putting the backup's database in place (moving them,
         writing the backup's profiles/ as the disk fills, the replace) left only before-restore-<time>/ and no database:
