@@ -152,6 +152,23 @@ UNIT_SAID = {"10*3/uL": "10³/µL", "x10E3/uL": "10³/µL", "10^9/L": "10⁹/L",
 UNIT_CASES = list(UNIT_SAID)
 
 
+class OneUnitTwoSpellings(unittest.TestCase):
+    """#1102: a FHIR file's platelets in "10*3/uL" (said 10³/µL) and a CSV's in "K/µL" were two series in Latest and the
+    Overview, one unit spelled two ways. Each series carries its unit's comparable form (uk), which the page joins on."""
+
+    def test_one_form(self):
+        from server.importers import common
+        for spellings in (["10*3/uL", "10³/µL", "10^3/uL", "x10E3/uL", "K/µL", "K/uL", "Thou/uL", "10³/μL"],
+                          ["10*6/uL", "x10E6/uL", "10⁶/µL", "M/uL", "mil/uL"], ["mm[Hg]", "mmHg"]):
+            for f in (common.unit_norm, common.unit_key):
+                self.assertEqual(len({f(u) for u in spellings}), 1, (f.__name__, spellings, [f(u) for u in spellings]))
+        self.assertNotEqual(common.unit_key("10*3/uL"), common.unit_key("10*6/uL"))
+        self.assertNotEqual(common.unit_key("mg/dL"), common.unit_key("mmol/L"))
+        data = units.annotate({"labs": [{"name": "Platelet Count", "unit": "10*3/uL"}, {"name": "Platelet Count", "unit": "K/µL"},
+                                        {"name": "Glucose, Blood", "unit": "mg/dL"}]})
+        self.assertEqual([s["uk"] for s in data["labs"]], ["k/ul", "k/ul", "mg/dl"])
+
+
 class UnitSaid(unittest.TestCase):
     def test_a_unit_as_people_write_it(self):   # #1103
         self.assertEqual({u: units.said(u) for u in UNIT_CASES}, UNIT_SAID)

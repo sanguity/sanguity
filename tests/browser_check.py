@@ -21069,6 +21069,10 @@ def main():
                 return ss.map(s => readText(s, s.pts[0])); }""")
             check("Labs: a vital reported in a unit of its own is said in the chart's unit, what was reported beside it (#1102)",
                   said1102 == [["98.6 °F", "Reported as 37 °C"], ["68.9 in", "Reported as 175 cm"], ["72 bpm", ""], ["82 mmHg", ""], ["<0.5 mg/dL", ""]], said1102)
+            # a test's series in one unit spelled two ways ("10³/µL" from FHIR, "K/µL" from a CSV) are one chart (#1102: the server's uk)
+            joined1102 = js("""() => joinSeries([{name: "Platelet Count", unit: "10*3/uL", uk: "k/ul", imp: 1, pts: []},
+                {name: "Platelet Count", unit: "K/µL", uk: "k/ul", imp: 2, pts: []}, {name: "Platelet Count", unit: "10*6/uL", uk: "m/ul", imp: 2, pts: []}]).map(s => s.imps)""")
+            check("…and one unit spelled two ways is one chart, another unit another (#1102)", joined1102 == [[1, 2], [2]], joined1102)
             js("switchTab('overview')")
             tile = js("[...document.querySelectorAll('#view-overview .tile')].find(t => t.textContent.includes('Creatinine'))?.textContent || ''")
             check("Overview: the creatinine tile in µmol/L, with the reported value", "µmol/L" in tile and re.search(r"Reported [\d.]+ mg/dL", tile), tile)
