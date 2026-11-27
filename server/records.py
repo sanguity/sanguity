@@ -50,7 +50,7 @@ every row. '' means the record has no key; NULL, not worked out yet (backfill_ke
 import collections, hashlib, hmac, json, re, threading
 from contextlib import contextmanager
 
-from . import crossmatch, crypto, edits, encounters, journal, medications, oop, units
+from . import crossmatch, crypto, edits, encounters, journal, labmap, medications, oop, units
 from .importers import common
 
 FORMAT = "sanguity-data"            # imports.format of a data.json (build.py, the demo, an export zip)
@@ -741,7 +741,8 @@ def _assemble(db, pid, raw=False):
     pts = {}
     for r in db.execute("SELECT series_id, body FROM results WHERE profile_id=? ORDER BY id", (pid,)):
         pts.setdefault(r["series_id"], []).append(_dec(r["body"]))
-    labs = [{**_dec(r["body"]), "imp": r["import_id"], "pts": pts.get(r["id"], [])}
+    shown = {} if raw else labmap.charted(db, pid)   # (#1097) a series re-filed under another test, charted there
+    labs = [{**_dec(r["body"]), "imp": r["import_id"], "pts": pts.get(r["id"], []), **({"name": shown[r["id"]]} if r["id"] in shown else {})}
             for r in db.execute("SELECT id, import_id, body FROM series WHERE profile_id=? ORDER BY id", (pid,))]
     if raw:   # #589: the rows as stored, for an export to load again exactly
         out = {**out, "events": events, "details": details, "labs": labs, "costs": costs}

@@ -232,6 +232,70 @@ class Export(unittest.TestCase):
         self.assertEqual(j["state"], "done", j)
         self.check_copy(pid, before)
 
+    def test_lab_name_matches_and_refiled_labs_go_with_it(self):   # #1097
+        """A profile's lab name matches, and its labs re-filed under another test, come back with its export, loaded
+        either way: Labs shows the same, the match is listed and used, and a series is found by its key and name."""
+        src = self.new_profile("Matched 1097 (fictional)")
+        labs = {"events": [], "details": {}, "costs": [], "labs": [
+            {"name": "Hemoglobin", "unit": "g/dL", "key": "x:hgb", "panel": "CBC", "pts": [[D(-30) + "T09:00:00", 13.1, 12, 16, "", "13.1"]]},
+            {"name": "HGB-X 1097", "unit": "g/dL", "key": "x:hgbx", "panel": "CBC", "pts": [[D(-20) + "T09:00:00", 12.0, 12, 16, "L", "12.0"]]}]}
+        db = dbm.connect()
+        try:
+            with dbm.transaction(db):
+                records.store(db, src, labs, "upload", fmt="csv")
+        finally:
+            db.close()
+        r = self.robin.post(f"/api/profiles/{src}/labmaps", json={"name": "HGB-X 1097", "target": "Hemoglobin", "move": True}, headers=H)
+        self.assertEqual((r.status_code, r.json()["results"]), (200, 1), r.text)
+        labs_of = lambda pid: sorted((s["name"], p[0][:10]) for s in self.data(pid)["labs"] for p in s["pts"])  # noqa: E731
+        before = labs_of(src)
+        self.assertEqual([n for n, _ in before], ["Hemoglobin", "Hemoglobin"])
+        r = self.robin.get(f"/api/profiles/{src}/export")
+        z = zipfile.ZipFile(io.BytesIO(r.content))
+        fixes = json.loads(z.read("data.json"))["corrections"]
+        self.assertEqual(([(m["name"], m["target"], m["importer"]) for m in fixes["labmaps"]], [(x["key"], x["name"], x["as"]) for x in fixes["refiled"]]),
+                         ([("HGB-X 1097", "Hemoglobin", "csv")], [("x:hgbx", "HGB-X 1097", "Hemoglobin")]))
+        archive = os.path.join(TMP, "matched-1097.zip")
+        with open(archive, "wb") as f:
+            f.write(r.content)
+        by_command = self.new_profile("Matched copy 1097 (fictional)")
+        db = dbm.connect()
+        try:
+            export.import_archive(db, by_command, archive)
+            export.import_archive(db, by_command, archive)   # again: nothing twice
+        finally:
+            db.close()
+        by_upload = self.new_profile("Matched upload 1097 (fictional)")
+        db = dbm.connect()
+        try:
+            up = uploads.create(db, by_upload, None)
+            uploads.add_file(db, by_upload, up, "sanguity-export.zip", io.BytesIO(r.content))
+            uploads.finish(db, by_upload, up)
+        finally:
+            db.close()
+        r = self.robin.post(f"/api/profiles/{by_upload}/uploads/{up}/import", headers=H)
+        jid, end = r.json()["id"], time.time() + 30
+        while time.time() < end:
+            j = self.robin.get(f"/api/profiles/{by_upload}/jobs/{jid}").json()
+            if j["state"] == "preview":
+                self.assertEqual(j.get("restores"), {"corrections": 2}, j)
+                self.robin.post(f"/api/profiles/{by_upload}/jobs/{jid}/confirm", headers=H)
+            elif j["state"] in ("done", "failed", "discarded"):
+                break
+            time.sleep(0.05)
+        self.assertEqual(j["state"], "done", j)
+        for pid in (by_command, by_upload):
+            self.assertEqual(labs_of(pid), before, pid)
+            got = self.robin.get(f"/api/profiles/{pid}/labmaps").json()["matches"]
+            self.assertEqual([(m["name"], m["target"], m["check"]) for m in got], [("HGB-X 1097", "Hemoglobin", False)], pid)
+            db = dbm.connect()
+            try:
+                from server import labmap
+                now = {r[0] for r in db.execute("SELECT id FROM series WHERE profile_id=?", (pid,))}   # (loaded again: the series anew)
+                self.assertEqual(len(set(labmap.charted(db, pid)) & now), 1, pid)
+            finally:
+                db.close()
+
     def test_a_damaged_export_is_refused_whole(self):
         z = zipfile.ZipFile(io.BytesIO(self.export()))
         data = json.loads(z.read("data.json"))

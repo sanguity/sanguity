@@ -52,7 +52,8 @@ FIELDS = (("documents", "id", "path"), ("activity", "id", "detail"), ("users", "
           ("share_links", "id", "label"), ("share_links", "id", "scope"),
           ("cost_marks", "id", "target_key"), ("cost_marks", "id", "value"),
           ("summary_drafts", "id", "sealed"),   # (#219)
-          ("med_reminders", "id", "body"), ("med_doses", "id", "body"))   # (#162, #235)
+          ("med_reminders", "id", "body"), ("med_doses", "id", "body"),   # (#162, #235)
+          ("labmap_changes", "id", "value"))   # (#1097)
 
 
 def anything_encrypted(db):

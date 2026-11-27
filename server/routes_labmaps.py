@@ -1,27 +1,42 @@
-"""The lab names matched during imports (labmap.py, #23), for admins: only an admin may change or remove one. Owners
-and editors make them by confirming an import's preview, each for that profile (#927); one an admin made before is
-for every profile. Each entry names a test as a lab reported it and the series it goes to; never anyone's results,
-nor which profile it came from.
+"""The lab names matched to a profile's tests (labmap.py, #23).
+
+A profile's own (#927), for its owners and editors (viewers read them), on Settings → This person → Labs and ranges and
+from a lab's chart on Labs (Same test as…, #1097): made at an import's review, or here; changed or removed here, each
+with an Undo; a change re-files the results already saved under the match when asked to (move):
+
+  GET    /api/profiles/{pid}/labmaps            {"matches": [{id, importer, label, name, unit, loinc, target, check,
+                                                 created, created_by, changed, changed_by, results, imports}],
+                                                 "tests": [{name, unit}] (the picker's: the profile's tests as charted),
+                                                 "can_change"}
+  POST   /api/profiles/{pid}/labmaps            {"name": a test as charted, "target": one of the tests or null (kept as
+                                                 its own), "move"}: every name, unit and source charted under that name
+                                                 matched (Add, Same test as…) -> {change, matches, series, results}
+  PATCH  /api/profiles/{pid}/labmaps/{id}       {"target", "move"} (Change, Keep as its own test), or {"target": the one
+                                                 shown, "keep": true} (Keep, a match to check: 409 if it isn't the match's
+                                                 now, #575) -> the same
+  DELETE /api/profiles/{pid}/labmaps/{id}       forget it (the next import asks again; results stay where they are) -> {change}
+  POST   /api/profiles/{pid}/labmaps/undo/{cid} a change undone (409 if one of its matches was changed since)
+
+One an admin made before #927 is for every profile, and stays Install's, for admins, with no results counted (whose
+would they be):
 
   GET    /api/labmaps          [{id, importer, label, name, unit, loinc, target, check, one_profile, created, created_by,
-                                 changed, changed_by}]
-                               (check: remembered before #546 and not applied until kept; listed first, #569;
-                                one_profile: a profile's own, else for every profile, #927)
+                                 changed, changed_by}]   (check: remembered before #546 and not applied until kept, first)
   PATCH  /api/labmaps/{id}     {"target": series name, or null to keep it as a series of its own}; the same target: Keep
                                ({"target": the one shown, "keep": true}: refused with 409 if it isn't the match's now, #575)
   DELETE /api/labmaps/{id}     forget it: the next import with that name asks again
 
-Changes apply to later imports; results already saved keep their series. Each is logged (activity "labmap.change",
-with "kept" for a Keep, and "labmap.remove", account events). The CSRF check in main.guard covers the PATCH and DELETE
-like every other change.
+Install's apply to later imports; results already saved keep their series. Each change is logged: a profile's
+(activity "labmap", never the names), Install's ("labmap.change", with "kept" for a Keep, and "labmap.remove", account
+events). The CSRF check in main.guard covers every change.
 """
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from . import activity, db as dbm, importers as registry, labmap
-from .main import _client_ip, admin, get_db
+from . import activity, db as dbm, importers as registry, labmap, routes_edits
+from .main import RANK, _client_ip, admin, get_db, need, user
 
 router = APIRouter()
 HAND_ENTRY = "Typed in"
@@ -31,6 +46,99 @@ def _label(name):
     mod = registry.get(name)
     return mod.LABEL if mod else HAND_ENTRY if name == "manual" else name
 
+
+# ---------------------------------------------------------------- a profile's own (#1097)
+
+class NewMatch(BaseModel):
+    name: str = Field(..., max_length=labmap.NAME_MAX)               # a test as the profile charts it
+    target: Optional[str] = Field(None, max_length=labmap.NAME_MAX)  # one of its tests; null: kept as its own
+    move: bool = True                                                # its saved results re-filed too
+
+
+class OwnChange(BaseModel):
+    target: Optional[str] = Field(None, max_length=labmap.NAME_MAX)
+    move: bool = True
+    keep: bool = False   # Keep (#575): only if target is still the match's
+
+
+@router.get("/api/profiles/{pid}/labmaps")
+def profile_labmaps(pid: int, s=Depends(user), db=Depends(get_db)):
+    role = need(db, s, pid, "viewer")
+    return {"matches": [{**{k: v for k, v in m.items() if k != "one_profile"}, "label": _label(m["importer"])} for m in labmap.own(db, pid)],
+            "tests": labmap.tests(db, pid), "can_change": RANK[role] >= RANK["editor"]}
+
+
+def _done(db, pid, s, request, change, out):
+    activity.log(db, "labmap", s, pid, {"change": change, "matches": len(out.get("matches") or []) or 1,
+                                        **({"moved": out["results"]} if out.get("results") else {})}, _client_ip(request))
+    return out
+
+
+def _reply(db, pid, out, records):
+    """The answer, with the records as the page loads them when it asks (records=1: Labs, #271's way), so a lab
+    re-filed is charted where it now goes without loading them again."""
+    return routes_edits.with_records(db, pid, out) if records else out
+
+
+@router.post("/api/profiles/{pid}/labmaps")
+def add_profile_labmap(pid: int, body: NewMatch, request: Request, records: bool = False, s=Depends(user), db=Depends(get_db)):
+    need(db, s, pid, "editor")
+    with dbm.transaction(db):
+        idents = labmap.charted_as(db, pid, body.name)
+        if not idents:
+            raise HTTPException(404, f"This profile has no test “{' '.join(body.name.split())}” now. Look at the list again.")
+        try:
+            out = labmap.set_matches(db, pid, idents, body.target, s, move=body.move)
+        except labmap.Refused as e:
+            raise HTTPException(400, str(e))
+        out = _done(db, pid, s, request, "add" if body.target else "keep", out)
+    return _reply(db, pid, out, records)
+
+
+@router.patch("/api/profiles/{pid}/labmaps/{mid}")
+def change_profile_labmap(pid: int, mid: int, body: OwnChange, request: Request, records: bool = False, s=Depends(user), db=Depends(get_db)):
+    need(db, s, pid, "editor")
+    with dbm.transaction(db):
+        m = labmap.get(db, mid, pid)
+        if not m:
+            raise HTTPException(404, "No such lab name match: it was removed meanwhile.")
+        if body.keep and labmap.clean_target(body.target) != m["target"]:
+            raise HTTPException(409, f"Not kept: this match was changed meanwhile; {_goes(m)}. Look at it again.")
+        try:
+            out = labmap.set_matches(db, pid, [(m["importer"], m["name"], m["unit"], m["loinc"])],
+                                     m["target"] if body.keep else body.target, s, move=body.move and not body.keep, kept=body.keep)
+        except labmap.Refused as e:
+            raise HTTPException(400, str(e))
+        out = _done(db, pid, s, request, "check" if body.keep else "change", out)
+    return _reply(db, pid, out, records)
+
+
+@router.delete("/api/profiles/{pid}/labmaps/{mid}")
+def remove_profile_labmap(pid: int, mid: int, request: Request, records: bool = False, s=Depends(user), db=Depends(get_db)):
+    need(db, s, pid, "editor")
+    with dbm.transaction(db):
+        cid = labmap.remove_own(db, pid, mid, s)
+        if cid is None:
+            raise HTTPException(404, "No such lab name match: it was removed meanwhile.")
+        out = _done(db, pid, s, request, "remove", {"change": cid})
+    return _reply(db, pid, out, records)
+
+
+@router.post("/api/profiles/{pid}/labmaps/undo/{cid}")
+def undo_profile_labmap(pid: int, cid: int, request: Request, records: bool = False, s=Depends(user), db=Depends(get_db)):
+    need(db, s, pid, "editor")
+    with dbm.transaction(db):
+        try:
+            labmap.undo(db, pid, cid)
+        except LookupError:
+            raise HTTPException(404, "Nothing to undo: it was undone already.")
+        except labmap.Refused as e:
+            raise HTTPException(409, str(e))
+        out = _done(db, pid, s, request, "undo", {"ok": True})
+    return _reply(db, pid, out, records)
+
+
+# ---------------------------------------------------------------- Install's, for every profile (admins)
 
 @router.get("/api/labmaps")
 def list_labmaps(s=Depends(admin), db=Depends(get_db)):

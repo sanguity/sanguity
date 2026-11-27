@@ -6,7 +6,8 @@ The zip:
                       too, with their own titles and dates, and each document link pointing at the copy in documents/;
                       the corrections made to them in the app as "corrections" (corrections(): the edits, the
                       same-result decisions and the Costs marks, each by the key it finds its record by, so they apply
-                      again once loaded and can still be undone); the journal (notes, symptoms, side effects and moods
+                      again once loaded and can still be undone; the profile's lab name matches and the labs it charts
+                      under another test, #1097, labmap.for_export); the journal (notes, symptoms, side effects and moods
                       people wrote, journal.py) as its "journal" list, each photo an entry lists naming its file below
                       ("file"); the medication log (#235, med_log.py) as "doses" and medication reminders (#162) as
                       "reminders". Loading the export puts all of these back (restore())
@@ -32,7 +33,7 @@ visit summary drafts, and which import each record came from (they load as one i
 """
 import contextlib, datetime, gzip, json, os, posixpath, re, secrets, shutil, urllib.parse, zipfile
 
-from . import (crossmatch, crypto, cycle_tracking, db as dbm, ecg, edits, journal, journal_photos, med_log, med_reminders, oop,
+from . import (crossmatch, crypto, cycle_tracking, db as dbm, ecg, edits, journal, journal_photos, labmap, med_log, med_reminders, oop,
                profiles as prof, records, settings, uploads, watch_store)
 
 DOC_URL = re.compile(r"^api/profiles/\d+/documents/([^/#?]+)")
@@ -84,7 +85,7 @@ def _dec(text):
 
 def _has_corrections(db, pid):
     return any(db.execute(f"SELECT 1 FROM {t} WHERE profile_id=? LIMIT 1", (pid,)).fetchone()
-               for t in ("edits", "same_results", "cost_marks"))
+               for t in ("edits", "same_results", "cost_marks", "labmaps"))
 
 
 def corrections(db, pid, events):
@@ -94,6 +95,8 @@ def corrections(db, pid, events):
              of the entries it moves now (moved), as those load as an import of their own, with a source of their own
       same   [{a, b, same, value, at, by}]   crossmatch.py's decisions, by both results' point keys
       marks  [{key, value, at, by}]          the Costs tab's marks (oop.py), by the payment's or claim's key
+      labmaps, refiled                       the profile's lab name matches and its labs charted under another test
+                                             (#1097, labmap.for_export)
     events: the records as imported (assemble(raw=True)), which a rule's entries are found in."""
     users = {r["id"]: r["username"] for r in db.execute("SELECT id, username FROM users")}
     out = {"edits": [], "same": [], "marks": []}
@@ -121,6 +124,7 @@ def corrections(db, pid, events):
         value = _dec(r["value"]) or {}
         out["marks"].append({"key": crypto.dec(r["target_key"]), "value": value, "at": r["at"],
                              "by": users.get(r["created_by"]) or value.get("by")})
+    out.update(labmap.for_export(db, pid))   # (#1097)
     return out if any(out.values()) else None
 
 
@@ -500,6 +504,7 @@ def check_parts(data):
                     out[name].append((x, check(x)))
             except ValueError as e:   # JournalError, ReminderError and SettingError among them
                 _fail(what, n, str(e).rstrip(".") + ".")
+    out["labmaps"], out["refiled"] = labmap.check_export(data)   # (#1097)
     return out
 
 
@@ -507,7 +512,8 @@ def brings(data):
     """What an export's data.json brings besides the records, counted: {"corrections", "journal", "photos", "doses",
     "reminders"} with those it has (each the number in the file: what the profile has already is left as it is)."""
     got = check_parts(data)
-    out = {"corrections": len(got["edits"]) + len(got["same"]) + len(got["marks"]), "journal": len(got["journal"]),
+    out = {"corrections": len(got["edits"]) + len(got["same"]) + len(got["marks"]) + len(got["labmaps"]) + len(got["refiled"]),
+           "journal": len(got["journal"]),
            "photos": sum(len(x.get("photos") or []) for x, _ in got["journal"]), "doses": len(got["doses"]),
            "reminders": len(got["reminders"])}
     return {k: n for k, n in out.items() if n}
@@ -570,6 +576,11 @@ def restore(db, pid, data, photo, written):
                       VALUES(?, ?, ?, ?, ?, ?, NULL, ?)""",
                    (pid, pair, crypto.enc(a), crypto.enc(b), int(same), _enc(value), _stamp(x.get("at")) or dbm.now()))
         n["corrections"] += 1
+    # (#1097) lab name matches, and the labs charted under another test (found once the records are saved: jobs.py
+    # puts these back again after them)
+    added = labmap.from_export(db, pid, data)
+    n["corrections"] += added
+    n["here"] += len(got["labmaps"]) - added
     marked = {r[0] for r in db.execute("SELECT target FROM cost_marks WHERE profile_id=?", (pid,))}
     for x, (key, value) in got["marks"]:
         th = oop.target_hash(key)
