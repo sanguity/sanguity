@@ -81,23 +81,24 @@ function medWindow() {
 }
 function renderMedications() {
   const box = $("#view-medications");
-  if (!MEDS.length) {   // (#199) what would be here, and a way to start
-    box.replaceChildren(emptyState("Medications appear here from the records: what's listed now, what was before, and the doses logged.",
-      canEdit() ? {href: `sources.html?profile=${PROFILE.id}#manual`, text: "Type in a medication"} : null));
+  if (!MEDS.length) {   // (#199) what would be here, and a way to start: one of your own (medmine.js, #1092)
+    box.replaceChildren(...present(emptyState("Medications appear here from the records, and those you add: what's listed now, what was before, and the doses logged.",
+      canEdit() ? {onclick: () => medEditForm(null), text: "Add a medication"} : null)));
     return;
   }
   const cur = MEDS.filter(mrCurrent), past = MEDS.filter(m => !mrCurrent(m)).sort((a, b) => medTo(b) - medTo(a));
   const costs = shownTabs().includes("costs");
   const head = el("h2", {text: "Today"});
   const today = todayDoses({id: "medToday", head});   // (none without a current medication)
-  const now = el("div", {class: "card"}, el("h2", {text: `Current (${cur.length})`}),
+  // its Add a medication always there, for owners and editors (medmine.js, #1092)
+  const now = el("div", {class: "card"}, el("div", {class: "set-hd"}, el("h2", {text: `Current (${cur.length})`}), medAddBtn()),
     cur.length ? medRows("Current medications", ["Since", "As listed", "Last fill", "Reminders"], cur, m => {
       const f = medLastFill(m);
       return [fmtD(medSince(m)), medListed(m) || "Not given",
         [f ? fmtD(f.ts) + (f.supply ? ` · ${f.supply} days` : "") : "None in the records",
           ...(f && costs && medClaims(m).length ? [el("br"), el("a", {href: medCostsHref(m), class: "med-costs", onclick: ev => medOnCosts(m, ev)}, "Its claims on Costs")] : [])],
         medReminds(m)];
-    }) : el("p", {class: "hint", text: "The records list no medication without an end."}));
+    }) : el("p", {class: "hint", text: "No medication without an end, in the records or your own."}));
   const before = past.length ? el("details", {class: "card med-past", open: medPastOpen || null, ontoggle: e => { medPastOpen = e.target.open; }},
     el("summary", {}, el("h2", {text: `Past (${past.length})`})),
     medRows("Past medications", ["When", "Last listed as", "Pharmacy fills"], past, m => {
