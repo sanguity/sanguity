@@ -2,8 +2,8 @@
    - Today: each of today's doses of a current medication, logged with Taken, Taken late or Skipped (medlog.js's
      todayDoses: the dose log, #235, lives here; the Overview shows the same rows). A viewer sees what was logged.
    - Current: each medication whose latest listing gives no end (meds.js mrCurrent): since when the listings run
-     unbroken, its latest listing's words, its last pharmacy fill, its reminders' times (#162). A row opens its drawer
-     (meds.js openMedication: its history, reminders and log). A fill that came as a pharmacy claim too links to the
+     unbroken, its latest listing's words, its last pharmacy fill, its schedule (#1094, #162). A row opens its drawer
+     (meds.js openMedication: its history, schedule and log). A fill that came as a pharmacy claim too links to the
      claims on Costs, that drug's.
    - Past: the rest, closed until it's opened, then as it was left.
    - The medications over the records bar's period: a row each, drawn as the Timeline's Medications lane is (meds.js
@@ -22,11 +22,11 @@ function medSince(m) {
 const medLastFill = m => m.fills.reduce((a, f) => !a || f.ts > a.ts ? f : a, null);
 /* its latest listing's words, the name apart: "Take 1 tablet twice daily" */
 const medListed = m => { const s = m.spans.at(-1); return s ? [s.title !== m.name && s.title, s.dose].filter(Boolean).join(" · ") : ""; };
-/* its reminders in the calendar feed now: "8:00 AM and 8:00 PM every day"; "Off" when set but turned off */
+/* its schedule now (#1094): "2 tablets at 8:00 AM every day; 8:00 PM on Mon and Fri", and "· no reminders" when
+   none of it has Remind me on; "None" with none, or all ended */
 function medReminds(m) {
-  const rs = mrOf(m).map(r => [r, mrState(r, m).cls]);
-  const on = rs.filter(([, c]) => c === "on").map(([r]) => `${mrAnd(r.times.map(mrTime))} ${mrDays(r.days)}`);
-  return on.length ? on.join("; ") : rs.some(([, c]) => c === "off") ? "Off" : "None";
+  const rs = mrOf(m).filter(r => mrState(r, m).cls !== "ended");
+  return rs.length ? rs.map(mrWhat).join("; ") + (rs.some(r => r.on && !r.asneeded) ? "" : " · no reminders") : "None";
 }
 /* the drug's pharmacy claims, on Costs (#55): its claims listed there, in a period that has them. Its link's address
    names them (#452: #costs?drug=metformin, Costs' claims, the drug's), so one opened in a new window or tab (Ctrl, ⌘
@@ -92,7 +92,7 @@ function renderMedications() {
   const today = todayDoses({id: "medToday", head});   // (none without a current medication)
   // its Add a medication always there, for owners and editors (medmine.js, #1092)
   const now = el("div", {class: "card"}, el("div", {class: "set-hd"}, el("h2", {text: `Current (${cur.length})`}), medAddBtn()),
-    cur.length ? medRows("Current medications", ["Since", "As listed", "Last fill", "Reminders"], cur, m => {
+    cur.length ? medRows("Current medications", ["Since", "As listed", "Last fill", "Schedule"], cur, m => {
       const f = medLastFill(m);
       return [fmtD(medSince(m)), medListed(m) || "Not given",
         [f ? fmtD(f.ts) + (f.supply ? ` · ${f.supply} days` : "") : "None in the records",

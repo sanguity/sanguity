@@ -15,14 +15,14 @@ What a feed holds:
   expected labs  a guess, for a panel drawn at a steady rhythm (DRAWS_MIN draws or more, the recent gaps within
                  RHYTHM_SPREAD of each other): the next draw one usual gap after the last, as a tentative all-day
                  event, "expected, not scheduled". Never a time of day: the records don't know one.
-  medication reminders (#162, med_reminders.py)  each time of day of each reminder turned on, as a recurring event
-                 (RRULE) in the reminder's own time zone (TZID, with a VTIMEZONE), ending on its until day or the day
+  medication reminders (#162, med_reminders.py)  each time of day of each schedule line with Remind me on (#1094),
+                 with its amounts in the full wording, as a recurring event (RRULE) in the line's own time zone (TZID, with a VTIMEZONE), ending on its until day or the day
                  the records say the medication stopped; listed while the feed's "meds" is on (the default)
 
 A calendar may sync to a phone vendor's cloud, so how much it says is the person's choice, per feed:
   minimal (the default)   "Appointment" / "Labs expected" / "Medication", the time, and a link back to the app
   full                    the record's title, where, with whom, which panels, and the source it came from; a
-                          medication's name and its instructions as the records list them
+                          medication's name, the amount at each time, and its instructions as the records list them
 Neither ever carries results, diagnoses or procedures.
 
 Each event's UID is a keyed hash of the profile and the record (its source key, or its date and title), so a
@@ -384,7 +384,8 @@ def build(db, feed, base_url, now=None):
         lines[header:header] = [x for name, (y0, y1) in sorted(zones.items()) for x in med_reminders.vtimezone(name, y0, y1) or []]
         for e in evs:
             if full:
-                desc = "\n".join(["A reminder set in Sanguity."] + ([f"As the records list it: {e['dose']}"] if e["dose"] else []) +
+                desc = "\n".join(["A reminder set in Sanguity."] + ([f"Amount: {e['amount']}"] if e["amount"] else []) +
+                                 ([f"As the records list it: {e['dose']}"] if e["dose"] else []) +
                                  [f"Open Sanguity: {link}"])
             else:
                 desc = f"A reminder set in Sanguity. Details are in Sanguity: {link}"

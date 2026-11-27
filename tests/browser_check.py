@@ -10156,14 +10156,14 @@ def main():
                 js("k => openMedication(MEDS.find(m => m.key === k))", cur["key"])
                 settle(200)
                 check("…its drawer offers to add a reminder, and says the calendar feed brings it",
-                      page.locator("#dbody button:text-is('Add a reminder')").count() == 1 and "Sharing → Calendar feed" in page.inner_text("#dbody"))
-                page.click("#dbody button:text-is('Add a reminder')")
+                      page.locator("#dbody button:text-is('Add a schedule')").count() == 1 and "Sharing → Calendar feed" in page.inner_text("#dbody"))
+                page.click("#dbody button:text-is('Add a schedule')")
                 settle(200)
-                form162 = js("""({title: document.getElementById('dtitle').textContent, times: document.querySelectorAll('#dbody .mr-time input').length,
-                    first: document.querySelector('#dbody .mr-time input').value, days: [...document.querySelectorAll('#dbody .mr-days .toggle')].map(b => b.getAttribute('aria-pressed')).join(),
+                form162 = js("""({title: document.getElementById('dtitle').textContent, times: document.querySelectorAll('#dbody .mr-time input[type=time]').length,
+                    first: document.querySelector('#dbody .mr-time input[type=time]').value, days: [...document.querySelectorAll('#dbody .mr-days .toggle')].map(b => b.getAttribute('aria-pressed')).join(),
                     from: document.querySelector('#dbody input[type=date]').value, today: zToday(), zone: document.querySelector('#dbody .jform > p.hint').textContent})""")
                 check("…the form starts at 08:00, every day, from today, in the person's time zone",
-                      form162["title"] == "New reminder" and form162["times"] == 1 and form162["first"] == "08:00" and form162["days"] == ",".join(["true"] * 7)
+                      form162["title"] == "New schedule" and form162["times"] == 1 and form162["first"] == "08:00" and form162["days"] == ",".join(["true"] * 7)
                       and form162["from"] == form162["today"] and "your time zone" in form162["zone"], form162)
                 bad162, axe162 = [], []
                 theme162 = js("document.documentElement.dataset.theme || null")
@@ -10177,15 +10177,15 @@ def main():
                         axe162 += axe_check(page, f"reminder form, {width} px, {theme}")[0]
                 page.set_viewport_size({"width": 1400, "height": 900})
                 page.click("#dbody button:text-is('Add another time')")
-                page.locator("#dbody .mr-time input >> nth=1").fill("20:00")
+                page.locator("#dbody .mr-time input[type=time] >> nth=1").fill("20:00")
                 # #830: Remove time N pressed from the keyboard (Enter, then Space) leaves focus on the next time's field, or
                 # on the one before for the last (it went to the page); the times left named by their place, ids each once
                 FOC830 = """() => [(a => a.closest('#dbody .mr-time') ? a.getAttribute('aria-label') + ' ' + a.value : a.id || a.tagName)(document.activeElement),
-                  [...document.querySelectorAll('#dbody .mr-time input')].map(i => i.getAttribute('aria-label') + ' ' + i.value),
+                  [...document.querySelectorAll('#dbody .mr-time input[type=time]')].map(i => i.getAttribute('aria-label') + ' ' + i.value),
                   [...document.querySelectorAll('#dbody .mr-time button')].map(b => b.getAttribute('aria-label')),
-                  new Set([...document.querySelectorAll('#dbody .mr-time input')].map(i => i.id)).size]"""
+                  new Set([...document.querySelectorAll('#dbody .mr-time input[type=time]')].map(i => i.id)).size]"""
                 page.click("#dbody button:text-is('Add another time')")
-                page.locator("#dbody .mr-time input >> nth=2").fill("12:00")
+                page.locator("#dbody .mr-time input[type=time] >> nth=2").fill("12:00")
                 page.focus("#dbody .mr-time:nth-child(2) button")
                 page.keyboard.press("Enter")
                 rm830 = [js(FOC830)]
@@ -10195,7 +10195,7 @@ def main():
                 rm853 = [js("document.getElementById('sgStatus').textContent")]
                 page.keyboard.press("Enter")
                 settle(400)
-                rm853.append(js("[document.getElementById('dtitle').textContent, [...document.querySelectorAll('#dbody .mr-time input')].map(i => i.value), document.activeElement.getAttribute('aria-label')]"))
+                rm853.append(js("[document.getElementById('dtitle').textContent, [...document.querySelectorAll('#dbody .mr-time input[type=time]')].map(i => i.value), document.activeElement.getAttribute('aria-label')]"))
                 page.focus("#dbody .mr-time:last-child button")
                 page.keyboard.press(" ")
                 rm830.append(js(FOC830))
@@ -10205,8 +10205,8 @@ def main():
                       "place (#830: focus went to the page)", rm830 == [["Time 2 12:00", ["Time 1 08:00", "Time 2 12:00"], ["Remove time 1", "Remove time 2"], 2],
                                                                            ["Time 1 08:00", ["Time 1 08:00"], ["Remove time 1"], 1]], rm830)
                 check("…and it's said (“Time 2 removed; 2 times left”), and Enter in the time field focus goes to doesn't save the form (#853: it saved "
-                      "the reminder a time short)", "Time 2 removed; 2 times left." in rm853[0] and rm853[1] == ["New reminder", ["08:00", "12:00"], "Time 2"]
-                      and "Time 2 removed; 1 time left." in rm853[2] and "Reminder saved" not in rm853[0] + rm853[2], rm853)
+                      "the reminder a time short)", "Time 2 removed; 2 times left." in rm853[0] and rm853[1] == ["New schedule", ["08:00", "12:00"], "Time 2"]
+                      and "Time 2 removed; 1 time left." in rm853[2] and "Schedule saved" not in rm853[0] + rm853[2], rm853)
                 # #837: the only time's Remove is off (aria-disabled), its reason its tip and, shown on focus, its description;
                 # pressed, it says the reason and the time stays (it did nothing and said nothing)
                 page.focus("#dbody .mr-time button")
@@ -10216,9 +10216,9 @@ def main():
                 settle(200)
                 one837 += [js("[document.querySelector('#dbody .jform > .edit-msg').textContent, document.querySelectorAll('#dbody .mr-time').length, document.activeElement.getAttribute('aria-label')]"),
                            js("document.getElementById('sgStatus').textContent")]
-                check("…the only time's Remove is off, saying why (“A reminder needs a time”) as its description and when pressed, the time kept (#837: it did "
-                      "nothing and said nothing)", one837[:3] == ["true", ["Remove time 1", "A reminder needs a time"], ["A reminder needs a time.", 1, "Remove time 1"]]
-                      and "A reminder needs a time" in one837[3], one837)
+                check("…the only time's Remove is off, saying why (“A schedule needs a time”) as its description and when pressed, the time kept (#837: it did "
+                      "nothing and said nothing)", one837[:3] == ["true", ["Remove time 1", "A schedule needs a time"], ["A schedule needs a time, or As needed.", 1, "Remove time 1"]]
+                      and "A schedule needs a time, or As needed" in one837[3], one837)
                 # #977: …and its tip, shown as Remove has focus or the pointer, covers no control (filed as opening below Remove,
                 # over Add another time, until put away): at 360, 412, 900 and 1400 px, as usual and with text at 200%, the
                 # form at rest and scrolled so its times are at the top of the drawer's body, by the keyboard and the mouse
@@ -10276,7 +10276,7 @@ def main():
                     p986.wait_for_function("() => typeof booted !== 'undefined' && booted", timeout=20000)
                     p986.evaluate("([t, css]) => { document.documentElement.dataset.theme = t; const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = css ? [s] : []; }",
                                   [theme986, BIG_TEXT_CSS if big986 else ""])
-                    p986.evaluate("k => { openMedication(MEDS.find(m => m.key === k)); [...document.querySelectorAll('#dbody button')].find(b => /^Add (a|another) reminder$/.test(b.textContent)).click(); }", cur["key"])
+                    p986.evaluate("k => { openMedication(MEDS.find(m => m.key === k)); [...document.querySelectorAll('#dbody button')].find(b => /^Add (a schedule|another line)$/.test(b.textContent)).click(); }", cur["key"])
                     p986.wait_for_timeout(800)   # (the sheet's rise)
                     bx986 = p986.locator("#dbody .mr-time > .btn").bounding_box()
                     p986.touchscreen.tap(bx986["x"] + bx986["width"] / 2, bx986["y"] + bx986["height"] / 2)
@@ -10286,7 +10286,7 @@ def main():
                     p986.touchscreen.tap(bx986["x"] + 4, bx986["y"] + bx986["height"] / 2)
                     p986.wait_for_timeout(300)
                     gone986 = p986.evaluate("() => !document.getElementById('sgTip')?.matches(':popover-open')")
-                    if got986 != ["A reminder needs a time", True, True, 1] or not gone986:
+                    if got986 != ["A schedule needs a time", True, True, 1] or not gone986:
                         bad986[f"{w986} px{', text at 200%' if big986 else ''}, {theme986}"] = [got986, "" if gone986 else "kept after a tap elsewhere"]
                 c986.close()
                 check("…and a tap on it shows that reason beside it, as its tip, in the window, on a touch screen at 412 px with text at 200% and 360 px as "
@@ -10297,28 +10297,28 @@ def main():
                             "[...document.querySelectorAll('#dbody .mr-time button')].map(b => b.getAttribute('aria-disabled'))]")
                 check("…Add another time says “Time 2 added.” in the form, in place of “1 time left”, focus on Time 2, neither Remove off (#867)",
                       add867 == ["Time 2 added.", "Time 2", [None, None]], add867)
-                # #1073: a time typed only partly ("0830", no AM or PM) reads as empty; it was dropped, "Reminder saved" with 8:00 alone
+                # #1073: a time typed only partly ("0830", no AM or PM) reads as empty; it was dropped, "Schedule saved" with 8:00 alone
                 page.keyboard.type("0830")
                 n1073 = js("(DATA.reminders || []).length")
-                page.click("#dbody button:text-is('Add reminder')")
+                page.click("#dbody button:text-is('Add to schedule')")
                 settle(400)
                 half1073 = js("""[document.getElementById('dtitle').textContent, document.querySelector('#dbody .jform > .edit-msg').textContent,
                     document.activeElement.getAttribute('aria-label'), document.activeElement.getAttribute('aria-invalid'), (DATA.reminders || []).length]""")
                 check("…a time typed only partly stops the save: Time 2 named in the message, marked and focused, nothing saved (#1073)",
-                      half1073 == ["New reminder", "Time 2 is only partly typed: finish it, or clear it.", "Time 2", "true", n1073], half1073)
-                page.locator("#dbody .mr-time input >> nth=1").fill("20:00")
+                      half1073 == ["New schedule", "Time 2 is only partly typed: finish it, or clear it.", "Time 2", "true", n1073], half1073)
+                page.locator("#dbody .mr-time input[type=time] >> nth=1").fill("20:00")
                 page.click("#dbody .mr-days button[aria-label=Saturday]")
                 page.click("#dbody .mr-days button[aria-label=Sunday]")
                 until162 = js("isoDay(Date.now() + 90 * DAY)")
                 page.locator("#dbody input[type=date] >> nth=1").fill(until162)
-                page.click("#dbody button:text-is('Add reminder')")
+                page.click("#dbody button:text-is('Add to schedule')")
                 page.wait_for_load_state("load")
                 page.wait_for_function("typeof MEDS !== 'undefined' && document.querySelector('#dbody .mr-item')", timeout=20000)
                 settle(300)
                 item = js("document.querySelector('#dbody .mr-item').innerText")
                 check("saved: the page opens the medication again with the reminder, on, in the person's own words",
                       js("document.getElementById('dtitle').textContent") == cur["name"] and "8:00" in item and "on weekdays" in item
-                      and "On: in the calendar feed" in item and js("d => fmtD(dayTs(d))", until162) in item, item)
+                      and "Remind me on: in the calendar feed" in item and js("d => fmtD(dayTs(d))", until162) in item, item)
                 check("…it's in the records the page loaded, with the zone it was set in",
                       js("(DATA.reminders || []).length === 1 && DATA.reminders[0].times.join() === '08:00,20:00' && DATA.reminders[0].days.join() === 'mo,tu,we,th,fr' && !!DATA.reminders[0].tz"))
                 for width in (1400, 375):
@@ -10333,25 +10333,80 @@ def main():
                 js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme162)
                 check("…the form and the reminder fit 375 px, in light and dark", not bad162, bad162[:6])
                 check("…and pass axe-core's WCAG A and AA rules at 1400 and 375 px, in light and dark", not axe162, axe162[:6])
-                page.click("#dbody .mr-item button:text-is('Turn off')")
+                page.click("#dbody .mr-item button.toggle:text-is('Remind me')")
                 page.wait_for_load_state("load")
-                page.wait_for_function("typeof MEDS !== 'undefined' && document.querySelector('#dbody .mr-item.off')", timeout=20000)
-                check("turned off: kept, and said to be out of the calendar feed", "Off: not in the calendar feed" in page.inner_text("#dbody .mr-item"))
-                page.click("#dbody .mr-item button:text-is('Turn on')")
+                page.wait_for_function("typeof MEDS !== 'undefined' && document.querySelector('#dbody .mr-item.quiet')", timeout=20000)
+                check("Remind me turned off: kept in the schedule, and said to be out of the calendar feed",
+                      "Remind me off: not in the calendar feed" in page.inner_text("#dbody .mr-item")
+                      and js("document.querySelector('#dbody .mr-item button.toggle').getAttribute('aria-pressed')") == "false")
+                page.click("#dbody .mr-item button.toggle:text-is('Remind me')")
                 page.wait_for_load_state("load")
-                page.wait_for_function("typeof MEDS !== 'undefined' && document.querySelector('#dbody .mr-item.on')", timeout=20000)
-                check("…and on again", "On: in the calendar feed" in page.inner_text("#dbody .mr-item"))
+                page.wait_for_function("typeof MEDS !== 'undefined' && document.querySelector('#dbody .mr-item.remind')", timeout=20000)
+                check("…and on again", "Remind me on: in the calendar feed" in page.inner_text("#dbody .mr-item"))
+                # ---- #1094: the schedule's form. A line's times each with an amount and unit, its own days: the owner's
+                # "Mondays and Fridays only, morning and night" (1 tablet at 8:00, 2 at 20:00), beside the line above; an
+                # amount that isn't a number stops the save, named and focused; As needed puts away the times and Remind me
+                # and asks the usual amount; at 320 px with text at 200% it fits; each line said in the drawer, saved said
+                page.click("#dbody button:text-is('Add another line')")
+                settle(200)
+                for d1094 in ("Tuesday", "Wednesday", "Thursday", "Saturday", "Sunday"):
+                    page.click(f"#dbody .mr-days button[aria-label={d1094}]")
+                page.fill("#dbody [aria-label='Amount at time 1']", "1")
+                page.fill("#dbody [aria-label='Unit at time 1']", "tablet")
+                page.click("#dbody button:text-is('Add another time')")
+                page.locator("#dbody .mr-time input[type=time] >> nth=1").fill("20:00")
+                unit1094 = js("document.querySelector(\"#dbody [aria-label='Unit at time 2']\").value")
+                page.fill("#dbody [aria-label='Amount at time 2']", "two")
+                n1094 = js("(DATA.reminders || []).length")
+                page.click("#dbody button:text-is('Add to schedule')")
+                settle(300)
+                bad1094 = js("""[document.querySelector('#dbody .jform > .edit-msg').textContent, document.activeElement.getAttribute('aria-label'),
+                    document.activeElement.getAttribute('aria-invalid'), (DATA.reminders || []).length]""")
+                check("…the schedule's form (#1094): an amount that isn't a number stops the save, named, marked and focused; the next time starts with the unit above",
+                      bad1094 == ["Amount at time 2 isn't a number above 0.", "Amount at time 2", "true", n1094] and unit1094 == "tablet", [bad1094, unit1094])
+                page.fill("#dbody [aria-label='Amount at time 2']", "2")
+                page.fill("#dbody [aria-label='Unit at time 2']", "tablets")
+                fit1094 = []
+                for w1094 in (320, 1400):
+                    page.set_viewport_size({"width": w1094, "height": 800})
+                    js(ADOPT_CSS_JS, BIG_TEXT_CSS)
+                    settle(300)
+                    fit1094 += phone_fits(page, f"schedule form at {w1094} px, text at 200%") if w1094 < 400 else []
+                    js(ADOPT_CSS_JS, "")
+                page.set_viewport_size({"width": 1400, "height": 900})
+                page.click("#dbody label.toggle:has-text('As needed')")
+                need1094 = js("""[...['.mr-times', '.mr-add']].map(s => document.querySelector('#dbody ' + s).checkVisibility())
+                    .concat([[...document.querySelectorAll('#dbody label.toggle')].find(l => /Remind me/.test(l.textContent)).checkVisibility(),
+                             document.querySelector('#dbody input[id^=mr-amt]').checkVisibility()])""")
+                page.click("#dbody label.toggle:has-text('As needed')")
+                page.click("#dbody button:text-is('Add to schedule')")
+                page.wait_for_function("n => (DATA.reminders || []).length === n + 1 && document.querySelectorAll('#dbody .mr-item').length === n + 1", arg=n1094, timeout=20000)
+                settle(300)
+                line1094 = js("""[DATA.reminders.at(-1), [...document.querySelectorAll('#dbody .mr-item .mr-says')].map(s => s.textContent),
+                    document.getElementById('sgStatus').textContent]""")
+                said1094 = line1094[1][-1] if line1094[1] else ""
+                check("…As needed puts away the times and Remind me and asks the usual amount; unticked, they're back",
+                      need1094 == [False, False, False, True], need1094)
+                check("…saved: Mondays and Fridays at 8:00 and 20:00 with their amounts, a line of its own beside the one before, said in the drawer and announced; "
+                      "it fits 320 px with text at 200%",
+                      line1094[0]["times"] == ["08:00", "20:00"] and line1094[0]["days"] == ["mo", "fr"] and line1094[0]["on"] is True
+                      and line1094[0]["amounts"] == [{"amount": 1, "unit": "tablet"}, {"amount": 2, "unit": "tablets"}]
+                      and said1094.startswith("1 tablet at 8:00\xa0AM and 2 tablets at 8:00\xa0PM on Mon and Fri, from ")
+                      and len(line1094[1]) == n1094 + 1 and "Schedule saved." in line1094[2] and not fit1094, [line1094, fit1094])
+                js("""async () => { const r = DATA.reminders.at(-1); const x = await api(`profiles/${PROFILE.id}/medications/reminders/${r.id}`, {method: 'DELETE'});
+                    storePut('reminders', await x.json()); }""")
+                settle(200)
                 page.keyboard.press("Escape")
                 # a reminder whose medication the records say stopped (the demo's Examplocin, 2025-09-30), as the server lists one
                 ended = js("""(() => { const m = MEDS.find(m => m.key === 'examplocin');
                     DATA.reminders.push({id: 99999, med: 'examplocin', name: m.name, times: ['09:00'], days: ['mo','tu','we','th','fr','sa','su'], from: '2025-06-01', until: null, tz: 'UTC', on: true});
                     openMedication(m); const t = document.getElementById('dbody').innerText; DATA.reminders.pop();
                     return {ended: t.includes('Ended ' + fmtD(dayTs('2025-09-30')) + ': the records say this medication stopped then'),
-                            add: [...document.querySelectorAll('#dbody button')].some(b => /^Add (another )?reminder$/.test(b.textContent)),
-                            none: t.includes('no new reminders can be set'),
+                            add: [...document.querySelectorAll('#dbody button')].some(b => /^Add (a schedule|another line)$/.test(b.textContent)),
+                            none: t.includes('no new schedule can be set'),
                             off: [...document.querySelectorAll('#dbody .mr-item button')].map(b => b.textContent)}; })()""")
                 check("a medication stopped in the records: its reminder says it ended then, and no new one can be set",
-                      ended["ended"] and not ended["add"] and ended["none"] and "Turn off" not in ended["off"], ended)
+                      ended["ended"] and not ended["add"] and ended["none"] and "Remind me" not in ended["off"], ended)
                 page.keyboard.press("Escape")
                 settle(200)
 
@@ -10599,7 +10654,7 @@ def main():
                       and med275["lane"] == med275["want"][2] >= len(med275["cur"]) and cur["name"] in med275["today"], {k: v for k, v in med275.items() if k != "text"})
                 check("…the current medication with a reminder: since when, as listed, its last fill and the reminder's times, each fact named",
                       len(row275) == 5 and row275[1].startswith("Since ") and row275[2].startswith("As listed ") and row275[3].startswith("Last fill ")
-                      and row275[4].startswith("Reminders 8:00\xa0AM and 8:00\xa0PM"), row275)   # (#517: each time with its AM or PM)
+                      and row275[4].startswith("Schedule 8:00\xa0AM and 8:00\xa0PM on weekdays"), row275)   # (#517: each time with its AM or PM)
                 check("…never saying a dose was due or a medication should be taken", not re.search(r"(?i)\b(due|should|missed|overdue|adherence)\b", med275["text"]),
                       med275["text"][:300])
                 # a row opens the medication's drawer; Escape takes focus back to it
@@ -12426,7 +12481,7 @@ def main():
             undone784 = [   # #811: each a change undone, which closes it
                 ("reminder", "a time added and removed", lambda: (page.click("#dbody .mr-add"), page.click("#dbody button[aria-label='Remove time 2']"))),
                 ("reminder of two times", "time 2 removed and put back", lambda: (page.click("#dbody button[aria-label='Remove time 2']"), page.click("#dbody .mr-add"),
-                                                                                 page.fill("#dbody .mr-times input >> nth=1", "20:00"))),
+                                                                                 page.fill("#dbody .mr-times input[type=time] >> nth=1", "20:00"))),
                 ("journal", "a photo added and removed", lambda: (photo784(), page.click("#dbody button[aria-label='Remove photo 1']")))]
             kept784, shut784 = {}, {}
             for w784 in (768, 1100):
