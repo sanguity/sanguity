@@ -13,6 +13,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-outside-test-")
 ORIGIN = "http://sanguity.test:8730"
 RETURN = ORIGIN + "/connect/return"
+os.environ["CONNECTED_SOURCES"] = "1"   # connected sources on, as before #1096 made them a switch, off by default
 os.environ.update(SANGUITY_DATA=TMP, SANGUITY_RECORDS=os.path.join(TMP, "records"), SANGUITY_BUILD=os.path.join(TMP, "no-build"),
                   SANGUITY_WATCH_FILE=os.path.join(TMP, "watch", "daily.json"), SANGUITY_LEGACY_WWW=os.path.join(TMP, "www"),
                   SANGUITY_KEY_FILE=os.path.join(TMP, "keys", "data_key"), PUBLIC_ORIGINS=ORIGIN, CONNECT_ALLOW_HTTP="1",
@@ -396,6 +397,60 @@ class View(unittest.TestCase):
                 self.assertEqual(host.hits, [], "nobody contacted")
                 self.assertFalse(self.robin.get("/api/provider-directory").json()["weekly"])
                 settings.put(db, "directory.weekly", False)
+        finally:
+            settings.put(db, "directory.weekly", False)
+            db.close()
+        self.assertEqual(netguard.take(), [])
+
+    def test_connected_sources_off_contact_nobody_and_keep_what_they_had(self):   # #1096
+        """Connected sources turned off, with a connection due and the weekly directory update on and due: every
+        connections, sync and directory route refused saying so, for its editor and the admin; no pull and no directory
+        read; the gateway refuses the connection's hosts; the outside view lists none of it. The connection stays as
+        it was, and syncs once they're on again."""
+        from server import settings
+        from server.directory import update
+        from tests.directory_host import DirectoryHost
+        sid = self.source()
+        cid = self.connect(sid)
+        self.assertTrue(self.pull(cid)["ok"])
+        host = DirectoryHost().start()
+        self.addCleanup(host.stop)
+        host.use()
+        db = dbm.connect()
+        p = f"/api/profiles/{self.pid}"
+        try:
+            for k in ("directory.last", "directory.read_at"):
+                dbm.meta_set(db, k, None)
+            settings.put(db, "directory.weekly", True)
+            db.execute("UPDATE connections SET next_sync=1 WHERE id=?", (cid,))
+            before = len(self.fake.requests)
+            with mock.patch.dict(os.environ, {"CONNECTED_SOURCES": "0"}):
+                for c, method, path in ((self.lee, "GET", p + "/connections"), (self.lee, "GET", p + "/connections/warnings"),
+                                        (self.lee, "POST", f"{p}/connections/{cid}/sync"), (self.lee, "POST", p + "/connect/start"),
+                                        (self.lee, "POST", f"{p}/connections/{cid}/disconnect"), (self.lee, "POST", "/api/connect/return"),
+                                        (self.robin, "GET", "/api/connect/sources"), (self.robin, "POST", f"/api/connect/sources/{sid}/test"),
+                                        (self.lee, "GET", "/api/directory?q=clinic"), (self.robin, "GET", "/api/provider-directory"),
+                                        (self.robin, "POST", "/api/provider-directory/update")):
+                    r = c.request(method, path, headers=H, json={"source": sid, "code": "x", "state": "y"} if method == "POST" else None)
+                    self.assertEqual((r.status_code, r.json()["detail"]), (404, "Connected sources are turned off on this server."), path)
+                self.assertEqual(client().get(p + "/connections").status_code, 401, "signed out: the sign-in's answer first")
+                self.assertEqual(sync.run_due(), 0)
+                self.assertIsNone(update.due_at(db))
+                update.wake()   # the app's thread looks at the weekly update
+                time.sleep(0.3)
+                with self.assertRaises(net.Refused):
+                    net.connection(outside.for_connection(db, cid, "Connected source: sync"), self.fake.fhir_base + "/metadata")
+                with self.assertRaises(net.Refused):
+                    net.connection(outside.for_source(db, sid, "Connected source: test"), self.fake.fhir_base + "/metadata")
+                for c in (self.robin, self.lee):
+                    v = self.view(c)
+                    self.assertEqual((v["sources"], v["may_contact"], v["earlier"], "directory" in v), ([], [], [], False))
+            self.assertEqual((len(self.fake.requests), host.hits), (before, []), "nobody contacted")
+            self.assertEqual(db.execute("SELECT state, next_sync FROM connections WHERE id=?", (cid,)).fetchone()[:], ("active", 1), "kept as it was")
+            settings.put(db, "directory.weekly", False)
+            self.assertGreaterEqual(sync.run_due(), 1, "on again: it syncs")
+            self.assertGreater(len(self.fake.requests), before)
+            self.assertIsNotNone(self.mine(self.view(self.lee), sid))
         finally:
             settings.put(db, "directory.weekly", False)
             db.close()

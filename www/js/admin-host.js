@@ -22,6 +22,17 @@ async function loadHost(note) {
   drawHost(sec, h, note);
 }
 
+/* (#1096) connected sources switched on or off: the public addresses' words (whether they name their return address)
+   again, what's typed kept; the zone, if it was showing, asked again by the next Save */
+async function hostWords() {
+  if (!HOST) return;
+  let d;
+  try { d = await call("settings/install"); } catch (e) { return; }
+  const st = d.sections.find(s => s.id === "host")?.settings.find(s => s.key === "host.publicOrigins");
+  if (st) { HOST.st.help = st.help; $("#hostOriginsHint")?.replaceChildren(...helpNodes(st.help)); }
+  HOST_ZONE?.node.setAttribute("hidden", "");
+}
+
 function drawHost(sec, h, note) {
   const card = $("#gen-host"), st = sec.settings.find(s => s.key === "host.publicOrigins"), locked = !st.can_change;
   HOST = {sec, st, h};
@@ -90,7 +101,7 @@ async function hostSave(msg) {
       ", registered with its vendor before anyone can connect or sign in again there.") : null,
     e.phones ? el("p", {}, `The phones of ${plural(e.phones, "profile")} with an upload secret need the new upload address, `,
       el("code", {text: e.upload[1].join(", ")}), ", in their phone app.") : null,
-    !e.apps && !e.phones ? "No connected-source app or phone needs changing." : null);
+    !e.apps && !e.phones ? (sgConnected(ME) ? "No connected-source app or phone needs changing." : "No phone needs changing.") : null);   // (#1096)
   HOST_ZONE.node.hidden = false;
   HOST_ZONE.show(e.confirm);
   sayIn(msg, "Not saved yet: confirm the change under Public addresses.");

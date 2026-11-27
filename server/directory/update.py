@@ -107,7 +107,7 @@ def _meta(db, k):
 def weekly(db=None):
     """Whether the weekly update is on: the value in force, as the rest of the server reads them (#1043), so off while
     saved settings are left out (SANGUITY_SAVED_SETTINGS=off) whatever is saved."""
-    return bool(settings.install_value("directory.weekly"))
+    return bool(settings.install_value("directory.weekly")) and settings.connected_sources()   # (#1096: off with them)
 
 
 def due_at(db):

@@ -38,9 +38,10 @@ from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 
 from . import connections as conns, db as dbm, sync
-from .main import PAGE_CSP, WWW, _client_ip, admin, get_db, need, user
+from .main import PAGE_CSP, WWW, _client_ip, admin, connected, get_db, need, user
 
-router = APIRouter()
+router = APIRouter()   # the pages, when the app serves www/ itself; the API, refused while connected sources are off (#1096)
+api = APIRouter(dependencies=[Depends(connected)])
 
 
 def _problem(e):
@@ -49,7 +50,7 @@ def _problem(e):
 
 # ---------------------------------------------------------------- a profile's connections
 
-@router.get("/api/profiles/{pid}/connections")
+@api.get("/api/profiles/{pid}/connections")
 def list_connections(pid: int, s=Depends(user), db=Depends(get_db)):
     role = need(db, s, pid, "viewer")
     return {"can_connect": role in ("owner", "editor"), "sources": conns.choices(db),
@@ -70,7 +71,7 @@ def _choice(body):
     return {k: getattr(body, k) if k in given else conns.KEEP for k in ("kinds", "since")}
 
 
-@router.get("/api/profiles/{pid}/connect/start")
+@api.get("/api/profiles/{pid}/connect/start")
 def start_get(pid: int, request: Request, source: int, s=Depends(user), db=Depends(get_db)):
     """Opened by the page (same site, so the session cookie comes along): on to the vendor's sign-in."""
     need(db, s, pid, "editor")
@@ -82,7 +83,7 @@ def start_get(pid: int, request: Request, source: int, s=Depends(user), db=Depen
     return RedirectResponse(url, status_code=303)
 
 
-@router.post("/api/profiles/{pid}/connect/start")
+@api.post("/api/profiles/{pid}/connect/start")
 def start_post(pid: int, body: Start, request: Request, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "editor")
     try:
@@ -99,7 +100,7 @@ class Return(BaseModel):
     error_description: Optional[str] = None
 
 
-@router.post("/api/connect/return")
+@api.post("/api/connect/return")
 def connect_return(body: Return, request: Request, s=Depends(user), db=Depends(get_db)):
     try:
         return conns.finish(db, s, body.code, body.state, body.error, body.error_description, _client_ip(request),
@@ -108,7 +109,7 @@ def connect_return(body: Return, request: Request, s=Depends(user), db=Depends(g
         raise _problem(e) from None
 
 
-@router.post("/api/profiles/{pid}/connections/{cid}/sync", status_code=202)
+@api.post("/api/profiles/{pid}/connections/{cid}/sync", status_code=202)
 def sync_now(pid: int, cid: int, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "editor")
     try:
@@ -122,7 +123,7 @@ class Choice(BaseModel):
     since: Optional[str] = None
 
 
-@router.post("/api/profiles/{pid}/connections/{cid}/reconnect")
+@api.post("/api/profiles/{pid}/connections/{cid}/reconnect")
 def reconnect(pid: int, cid: int, request: Request, body: Optional[Choice] = None, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "editor")
     try:
@@ -135,14 +136,14 @@ def reconnect(pid: int, cid: int, request: Request, body: Optional[Choice] = Non
         raise _problem(e) from None
 
 
-@router.get("/api/profiles/{pid}/connections/warnings")
+@api.get("/api/profiles/{pid}/connections/warnings")
 def warnings(pid: int, s=Depends(user), db=Depends(get_db)):
     """For the profile's main page (#102): owners and editors get the warning, viewers a quieter note."""
     role = need(db, s, pid, "viewer")
     return {"can_fix": role in ("owner", "editor"), "warnings": conns.warnings_for(db, pid)}
 
 
-@router.patch("/api/profiles/{pid}/connections/{cid}")
+@api.patch("/api/profiles/{pid}/connections/{cid}")
 def change(pid: int, cid: int, request: Request, body: dict[str, Any] = Body(...), s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "editor")
     unknown = set(body) - {"kinds", "since", "attach"}
@@ -158,7 +159,7 @@ class Remove(BaseModel):
     kind: str
 
 
-@router.post("/api/profiles/{pid}/connections/{cid}/remove")
+@api.post("/api/profiles/{pid}/connections/{cid}/remove")
 def remove_kind(pid: int, cid: int, body: Remove, request: Request, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "editor")
     try:
@@ -167,7 +168,7 @@ def remove_kind(pid: int, cid: int, body: Remove, request: Request, s=Depends(us
         raise _problem(e) from None
 
 
-@router.post("/api/profiles/{pid}/connections/{cid}/attachments/{sid}/fetch")
+@api.post("/api/profiles/{pid}/connections/{cid}/attachments/{sid}/fetch")
 def fetch_anyway(pid: int, cid: int, sid: int, request: Request, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "editor")
     try:
@@ -180,7 +181,7 @@ class Disconnect(BaseModel):
     remove_records: bool = False
 
 
-@router.post("/api/profiles/{pid}/connections/{cid}/disconnect")
+@api.post("/api/profiles/{pid}/connections/{cid}/disconnect")
 def disconnect(pid: int, cid: int, request: Request, body: Optional[Disconnect] = None, s=Depends(user), db=Depends(get_db)):
     need(db, s, pid, "editor")
     try:
@@ -202,12 +203,12 @@ class Source(BaseModel):
     waiting: Optional[bool] = None   # waiting for the vendor's review (#165)
 
 
-@router.get("/api/connect/sources")
+@api.get("/api/connect/sources")
 def sources(s=Depends(admin), db=Depends(get_db)):
     return conns.setup(db)
 
 
-@router.post("/api/connect/sources", status_code=201)
+@api.post("/api/connect/sources", status_code=201)
 def add_source(body: Source, request: Request, s=Depends(admin), db=Depends(get_db)):
     try:
         return conns.save_client(db, s, body.model_dump(), ip=_client_ip(request))
@@ -215,7 +216,7 @@ def add_source(body: Source, request: Request, s=Depends(admin), db=Depends(get_
         raise _problem(e) from None
 
 
-@router.patch("/api/connect/sources/{cid}")
+@api.patch("/api/connect/sources/{cid}")
 def change_source(cid: int, body: Source, request: Request, s=Depends(admin), db=Depends(get_db)):
     try:
         return conns.save_client(db, s, body.model_dump(), cid, ip=_client_ip(request))
@@ -223,7 +224,7 @@ def change_source(cid: int, body: Source, request: Request, s=Depends(admin), db
         raise _problem(e) from None
 
 
-@router.delete("/api/connect/sources/{cid}")
+@api.delete("/api/connect/sources/{cid}")
 def remove_source(cid: int, request: Request, s=Depends(admin), db=Depends(get_db)):
     try:
         conns.remove_client(db, s, cid, ip=_client_ip(request))
@@ -232,12 +233,15 @@ def remove_source(cid: int, request: Request, s=Depends(admin), db=Depends(get_d
     return {"ok": True}
 
 
-@router.post("/api/connect/sources/{cid}/test")
+@api.post("/api/connect/sources/{cid}/test")
 def test_source(cid: int, request: Request, s=Depends(admin), db=Depends(get_db)):
     try:
         return conns.test_client(db, s, cid, ip=_client_ip(request))
     except conns.Problem as e:
         raise _problem(e) from None
+
+
+router.include_router(api)
 
 
 # ---------------------------------------------------------------- the pages, when the app serves www/ itself (development)

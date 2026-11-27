@@ -166,7 +166,7 @@
   /* ---------------------------------------------------------------- start */
   (async () => {
     const me = await SgSources.ready;   // the page signs in (sources-page.js)
-    if (!me) return;
+    if (!sgConnected(me)) return;   // (#1096) off, with connected sources
     ADMIN = me.user.is_admin;
     $("#finder").hidden = false;
     const p = new URLSearchParams(location.search);   // providers.html?q=…&id=… (moved.js keeps them)

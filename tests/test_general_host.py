@@ -15,6 +15,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-general-host-test-")
 for name in ("PUBLIC_ORIGINS", "WATCH_UPLOAD_URL", "SANGUITY_SAVED_SETTINGS"):
     os.environ.pop(name, None)
+os.environ["CONNECTED_SOURCES"] = "1"   # connected sources on, as before #1096 made them a switch, off by default
 os.environ.update(SANGUITY_DATA=TMP, SANGUITY_RECORDS=os.path.join(TMP, "records"), SANGUITY_BUILD=os.path.join(TMP, "build"),
                   SANGUITY_WATCH_FILE=os.path.join(TMP, "watch-rx", "public", "daily.json"), SANGUITY_LEGACY_WWW=os.path.join(TMP, "www"),
                   SANGUITY_WATCH_KEYS=os.path.join(TMP, "watch-rx", "keys", "receiver-secrets.json"), RECEIVER_PORT="8731",

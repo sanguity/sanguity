@@ -25,7 +25,8 @@ CONFIRM = "change addresses"   # typed to confirm a change to the public address
 
 
 def _apps(db):
-    return db.execute("SELECT COUNT(*) FROM smart_clients").fetchone()[0]
+    """The connected-source apps a new return address concerns: none while connected sources are off (#1096)."""
+    return db.execute("SELECT COUNT(*) FROM smart_clients").fetchone()[0] if settings.connected_sources() else 0
 
 
 def origins_effects(db, request, new):
