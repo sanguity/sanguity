@@ -88,6 +88,7 @@ services:
       - ./server:/app/server:ro
       - ./lab-aliases.json:/app/lab-aliases.json:ro   # lab names for the importers (server/importers/common.py)
       - ./condition-presets.json:/app/condition-presets.json:ro   # Settings → Dashboard's presets by condition (server/presets.py, #186)
+      - ./demo/generate.py:/app/demo/generate.py:ro   # Add a demo profile (server/demo.py, #1101)
       - ./auth:/run/secrets/sanguity:ro   # data_key: the encryption key, kept apart from the data and its backups
       - ${DATA_DIR:-./data}:/data
       - ${BACKUP_DIR:-./backups}:/backups   # backups go here (Admin → Backups, or server.manage backup)

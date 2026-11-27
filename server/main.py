@@ -533,9 +533,11 @@ def setup(body: Setup, request: Request, response: Response, db=Depends(get_db))
             db.execute("UPDATE profiles SET name=? WHERE id=?", (label or body.username.strip(), owned[0]))
         elif not owned:
             # a fresh install (#1101: it starts empty): this first profile is the setup build's, as bootstrap's was, so
-            # the records a sources.json brings later (setup rebuild) load into it, and it reads the receiver's own summary
+            # the records a sources.json brings later (setup rebuild) load into it. Not the receiver's own summary
+            # (slot ""): the receiver writes an empty one as it starts, which would be records here, and the guide
+            # wouldn't open; a phone gets a secret and a summary of the profile's own (Sources → Phone and watch)
             pid = prof.create_profile(db, label or body.username.strip(), owner_id=uid,
-                                      linked_build=not dbm.meta_get(db, "build_unlinked"), watch_file=config.WATCH_FILE)
+                                      linked_build=not dbm.meta_get(db, "build_unlinked"))
             activity.log(db, "create", first, pid, ip=_client_ip(request))
             watch_keys.retire_unused(db)   # (#1103) no phone used the install's single secret: none to keep taking
     sec.throttle.clear(*keys)
@@ -544,7 +546,7 @@ def setup(body: Setup, request: Request, response: Response, db=Depends(get_db))
         try:
             _add_demo(db, first, request)
         except Exception as e:   # (the account is made: Settings → Install → General offers the demo again)
-            log.warning("setup: the demo profile wasn't added (%s)", type(e).__name__)
+            log.warning("setup: the demo profile wasn't added (%s)", type(e).__name__ if demo.available() else "this install has no demo/generate.py")
     _start_session(request, response, db, uid, "setup")
     return {"ok": True}
 
