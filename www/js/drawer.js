@@ -265,7 +265,7 @@ function rowPoint(d, i, ev) {
   const imp = from ? from[0] : ev.imp, day = from ? isoDay(zParse(from[1])) : isoDay(ev.ts);
   for (const s of DATA.labs) {
     if (s.watch || s.name !== name || (imp != null && s.imp != null && s.imp !== imp)) continue;
-    const on = s.pts.filter(p => isoDay(p.ts) === day), p = on.find(p => rowSaid(p.orig ? p.orig.v : p[5] || p[1]) === v) || (on.length === 1 ? on[0] : null);
+    const on = s.pts.filter(p => isoDay(p.ts) === day), p = on.find(p => rowSaid(p.orig ? p.orig.v : p.said || p[5] || p[1]) === v) || (on.length === 1 ? on[0] : null);
     if (p) return {s, p};
   }
   return null;

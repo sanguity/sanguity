@@ -120,7 +120,7 @@ function storeRecords(data) {
   // #44: results with no range of their own (ranges.js). Before the units, since an override is stated in the
   // reported unit and is then converted with the values (#41)
   RANGES_USED = applyRangeOverrides(DATA.labs, rangeConfig(CFG));   // with About this person's birth date and sex (#194)
-  applyUnits(DATA.labs); applyUnitsToRows(DATA.labs, DATA.details);   // this person's units, exact conversions only (units.js, #41)
+  saidApart(DATA.labs); applyUnits(DATA.labs); applyUnitsToRows(DATA.labs, DATA.details);   // this person's units, exact conversions only (units.js, #41)
   SERIES = joinSeries(DATA.labs);   // one chart per test, whichever imports brought it (same.js)
   labDayWords();   // a lab day found by its tests' names (#459)
   STEPS = [];

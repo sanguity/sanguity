@@ -3898,6 +3898,9 @@ Everything on `main` so far; it becomes the first tagged release.
   Setup's **Also add a demo profile** box, or Settings → Install → General → Demo profile, adds **Demo (fictional)**
   beside it (listed last, named so in the profile menu and under its records), and **Remove demo** deletes it and
   everything in it, and no other profile. An install whose build is already the demo keeps it.
+- **A vital reported in another unit is said in its chart's unit** (#1102): a C-CDA document's temperature, height,
+  pulse and blood pressure showed their value as written with the chart's unit after it ("37 Cel °F", "175 cm in");
+  Labs, the Overview and the visit summary now say the converted value ("98.6 °F"), with "Reported as 37 Cel" beside it.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
