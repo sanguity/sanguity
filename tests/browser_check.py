@@ -1162,7 +1162,7 @@ def lab_matches_check(browser, base, cookies, check):
         pg.wait_for_function("[...document.querySelectorAll('#labmatchesBody h3')].some(h => h.textContent.endsWith('kept as its own test'))", timeout=10000)
         check("…Add a match: the picker lists the profile's tests with their units, and Keep as its own test; saved, the result is charted "
               "with the test (re-filed), the message saying so; Undo puts it back as its own test",
-              opts and f"{to['name']} ({to['unit']})" in opts[0] and opts[-1][-1] == "Keep as its own test" and name not in opts[-1]
+              opts and f"{to['name']} ({unit_said(to['unit'])})" in opts[0] and opts[-1][-1] == "Keep as its own test" and name not in opts[-1]
               and any(r[0].startswith(name) and r[0].endswith(to["name"]) for r in added[0]) and not added[1] and "1 saved result moved" in added[2]
               and name in names(), [opts and opts[-1][-3:], added])
         # Change with re-file, and Undo (the match made again: Change → the test, then Keep as its own test)
@@ -2035,6 +2035,17 @@ CHART_ACCENT_JS = r"""sel => {
 # What you paid, each with its More figures open, so every figure is measured (#278)
 TILE_TAB_JS = """([t, p]) => { if (p) setPeriod(p);
   if (t.startsWith('costs')) Object.assign(costState, {view: t === 'costs' ? 'claims' : 'paid', more: true}); switchTab(t.split('-')[0]); }"""
+
+
+# a unit as the pages say it (#1103: util.js unitSaid, server/units.py said, test_units holding them alike), for what's
+# expected of a page in a unit as reported ("10*3/uL" is 10³/µL); and a dict keyed (lab, unit, ...) keyed so
+def unit_said(u):
+    from server import units
+    return units.said(u)
+
+
+def said_keys(d):
+    return {(k[0], unit_said(k[1]), *k[2:]): v for k, v in d.items()}
 
 
 # the sparklines under root (#299), each as chartkit.js ckSpark draws it: how many points its line has (0: none), its
@@ -23976,7 +23987,7 @@ def main():
             for unit, pts in (("ng/mL", fe), ("ug/L", ug)):
                 for q in pts:
                     hit = None if rng.has_own(q[2], q[3], q[4]) else rng.find(cfg, "Ferritin", unit, q[0])
-                    want.append(["Ferritin", unit, q[0], hit["low"] if hit else q[2], hit["high"] if hit else q[3],
+                    want.append(["Ferritin", unit_said(unit), q[0], hit["low"] if hit else q[2], hit["high"] if hit else q[3],
                                  rng.flag(q[1], hit["low"], hit["high"], rng.comparator(q[5])) if hit else q[4], "settings" if hit else ""])
             check("…the page applies them as the server does (ranges.js and server/ranges.py agree)", sorted(got) == sorted(want),
                   [g for g in got if g not in want][:3])
@@ -24410,7 +24421,7 @@ def main():
                 if sum752["rows"].get(n) != [cell(then), cell(now), rng752]:
                     bad752.append(f"the summary's {n} row: {sum752['rows'].get(n)} not {[cell(then), cell(now), rng752]}")
                 pdf_then = f"{then[0]}{' ' + then[1] if then[1] else ''} .{{1,16}}?" + (re.escape(f" ({' '.join(w for w in then[2] if w)})") if then[2] else "")
-                if not re.search(re.escape(n) + r" \(" + re.escape(M752.UNITS[n]) + r"\) " + re.escape(then[0]) + pdf_then[len(then[0]):], pdf752):
+                if not re.search(re.escape(n) + r" \(" + re.escape(unit_said(M752.UNITS[n])) + r"\) " + re.escape(then[0]) + pdf_then[len(then[0]):], pdf752):
                     bad752.append(f"the PDF's {n} Then: {re.findall(re.escape(n) + ' .{0,60}', pdf752)[:1]}")
                 line = [i for i, p in enumerate(M752.CASES[n]) if p[0] > M752.SINCE][-1:] + [i for i, p in enumerate(M752.CASES[n]) if p[0] < M752.SINCE]
                 bad752 += [f"the summary's {n} chart: {b}" for b in chart752(sum752["charts"].get(n) or {"marks": [], "ref": []}, M752.JUDGED[n], M752.STEPS[n], line)]
@@ -24546,8 +24557,9 @@ def main():
             def views845(pid, judged, given, tiles):
                 """what's wrong in Labs' list, the lab panel's counts and Settings' preview of the key-lab tiles, for results
                 judged so ({(lab, unit): [[flag, low, high, ...]]}), each latest's value as given ({(lab, unit): value})
-                and each key lab's tile ({lab: (lab, unit)})"""
+                and each key lab's tile ({lab: (lab, unit)}); each unit as the page says it (#1103)"""
                 bad = []
+                judged, given, tiles = said_keys(judged), said_keys(given), {n: (k[0], unit_said(k[1])) for n, k in tiles.items()}
                 page.goto(base + f"/?profile={pid}")
                 page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {pid}", timeout=20000)
                 js("() => { state.tables.clear(); applyPreset('all'); switchTab('labs', 'chart'); renderLabs(); }")
@@ -24589,7 +24601,7 @@ def main():
             for n866, j866 in M752.JUDGED.items():
                 if len(j866) < 2:   # (a lab with two results or more has a row)
                     continue
-                f866, u866 = j866[-1][0], M752.UNITS[n866]
+                f866, u866 = j866[-1][0], unit_said(M752.UNITS[n866])
                 want866 = f"{M752.CASES[n866][-1][5]} {u866}" + (f", {FLAG752[f866].split(' ', 1)[1]}" if f866 else "")
                 said866 = ax_said(page, "#" + ids866[n866]) if n866 in ids866 else None
                 if not said866 or not said866[0].endswith(want866) or re.search(r"[▲▼◆]", said866[0]):
@@ -24606,7 +24618,7 @@ def main():
                     continue
                 f872, row872 = j872[-1][0], f"document.getElementById('{ids866[n872]}').closest('.srow')"
                 shown872 = js(f"{row872}.querySelector('.nm').textContent")
-                want872 = f"{shown872}, {M752.CASES[n872][-1][5]} {M752.UNITS[n872]}" + (f", {FLAG752[f872].split(' ', 1)[1]}" if f872 else "")
+                want872 = f"{shown872}, {M752.CASES[n872][-1][5]} {unit_said(M752.UNITS[n872])}" + (f", {FLAG752[f872].split(' ', 1)[1]}" if f872 else "")
                 said872 = ax_said(page, "#" + ids866[n872])
                 tq872 = js(f"(() => {{ const a = {row872}.querySelector('a.test-page'); if (!a) return null; a.id ||= '{ids866[n872]}_tq'; return a.id; }})()")
                 link872 = ax_said(page, "#" + tq872) if tq872 else None
@@ -24651,8 +24663,9 @@ def main():
             def views781(when, seen, once, trends, out, days, pid=cpid, tok=tok781, labs=M752.COPIES_LABS, every=M752.COPIES_OUT):
                 """what's wrong in Labs (seen: its results), a share link's page (tok), the summary's preview and its PDF
                 (once), and the Timeline and the drawer (days: each import's lab days, M752.COPIES_DAYS), of profile pid
-                (its key labs labs; every: each out-of-range row any of its views has)"""
+                (its key labs labs; every: each out-of-range row any of its views has); each unit as the pages say it (#1103)"""
                 bad = []
+                seen, once, trends, out, every = (said_keys(x) for x in (seen, once, trends, out, every))
                 page.goto(base + f"/?profile={pid}")
                 page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {pid}", timeout=20000)
                 got = {(n, u): p for n, u, p in js("SERIES.filter(s => !s.watch).map(s => [s.name, s.unit, s.pts.map(p => [p[4] || '', p[2], p[3], ...(p[7] ? [p[7]] : [])])])")}
@@ -24890,7 +24903,7 @@ def main():
                 settle(500)
                 got846 = js("""Object.fromEntries([...document.querySelectorAll('#ovOut .ov-row')].map(r => [r.querySelector('.n').textContent,
                   [r.querySelector('.v').textContent.trim(), r.querySelector('.r').textContent]]))""")
-                want846 = {M752.SHOWN.get(n, n): [f"{v} {u} {SUM781[f]}", f"ref {r}" if r else ""] for (n, u), (v, f, r, *_) in M752.UPLOADED_OUT.items()}
+                want846 = {M752.SHOWN.get(n, n): [f"{v} {unit_said(u)} {SUM781[f]}", f"ref {r}" if r else ""] for (n, u), (v, f, r, *_) in M752.UPLOADED_OUT.items()}
                 if got846 != want846:
                     bad846.append(f"{when846}: the Overview's out-of-range list {got846} not {want846}")
                 db = dbm.connect()
@@ -26002,7 +26015,7 @@ def main():
                 if rows780 != want780:
                     bad780.append(f"Labs' {n780} table: {rows780} not {want780}")
             js("labs => { for (const n of labs) state.tables.delete(n); }", list(M752.PRINTED))
-            for n780, (out780, range780) in {"C-Reactive Protein": ("▲ 4 above", "< 5 and ≤ 5 mg/L"), "eGFR": ("▼ 4 below", "> 60 and ≥ 60 mL/min/1.73m2")}.items():
+            for n780, (out780, range780) in {"C-Reactive Protein": ("▲ 4 above", "< 5 and ≤ 5 mg/L"), "eGFR": ("▼ 4 below", "> 60 and ≥ 60 mL/min/1.73m²")}.items():   # (#1103: the unit as people write it)
                 js("n => openLab(SERIES.find(s => s.name === n))", n780)   # its panel: counted by the same flags, each range said so
                 settle(300)
                 panel780 = js("Object.fromEntries([...document.querySelectorAll('#drawer dd[data-k]')].map(d => [d.dataset.k, d.textContent]))")
@@ -26014,7 +26027,7 @@ def main():
                 page.wait_for_function("document.querySelectorAll('#dbody details.res table.data tbody tr').length > 1", timeout=5000)
                 rows780 = sorted([[c.replace(" ", " ") for c in r] for r in js(
                     "[...document.querySelectorAll('#dbody details.res table.data tbody tr')].map(r => [r.cells[1].textContent, r.cells[2].textContent, r.cells[3].textContent])")])
-                want780 = sorted([f"{v} {u}", r, FLAG752[M752.JUDGED[n][i][0]]] for n, u, at, v, r, i in M752.printed() if at[:10] == d780)
+                want780 = sorted([f"{v} {unit_said(u)}", r, FLAG752[M752.JUDGED[n][i][0]]] for n, u, at, v, r, i in M752.printed() if at[:10] == d780)
                 if rows780 != want780:
                     bad780.append(f"the drawer's {d780}: {rows780} not {want780}")
             js("closeDrawer()")
@@ -26246,10 +26259,10 @@ def main():
                         read886 = M752.COMMAS[n886][mode886]   # its import's reading (None: kept as printed)
                         cell = got886.get(t[:10])
                         if not r:   # a value: converted from its number as imported, else as reported
-                            ok886 = cell and (cell[0] == f"{v} {unit886}" and cell[1] is None if read886 is None
-                                              else cell[0].endswith(" " + to886) and near886(cell[0], read886) and cell[1] == f"Reported {v} {unit886}")
+                            ok886 = cell and (cell[0] == f"{v} {unit_said(unit886)}" and cell[1] is None if read886 is None
+                                              else cell[0].endswith(" " + to886) and near886(cell[0], read886) and cell[1] == f"Reported {v} {unit_said(unit886)}")
                         else:   # 5 beside "<n": its range converted from the limit its import read, else as printed in its own unit
-                            ok886 = cell and cell[0].endswith(" " + to886) and (cell[2] == f"{r} {unit886}" if read886 is None
+                            ok886 = cell and cell[0].endswith(" " + to886) and (cell[2] == f"{r} {unit_said(unit886)}" if read886 is None
                                                                                 else cell[2].startswith("<") and near886(cell[2], read886))
                         if not ok886:
                             bad886.append(f"{choice886}, {['decimal mark unknown', 'commas in thousands', 'decimal commas'][mode886]}: {v!r}"
