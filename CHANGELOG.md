@@ -3910,6 +3910,14 @@ Everything on `main` so far; it becomes the first tagged release.
 - **An import's review says its dates in the person's time zone** (#1102): it listed each record on its source's date,
   so a stay from 21:40 in Chicago was a day before the Timeline's for someone in London; it now says the same day the
   Timeline and Overview do.
+- **A restore keeps every record's id** (#1104): a backup now keeps the setup build's files' own times and a restore
+  puts them back, so the app no longer loads the build again at its first start after a restore, which gave every
+  record a new id and listed a Setup build import at the restore's time (a backup made before this still does, once).
+  A disaster recovery (no database to restore over) says before you type yes that everything is the backup's, not
+  that today's accounts are kept, and leaves no empty before-restore folder nor says data was replaced. A data folder
+  the restore can't write gets a plain message, nothing changed, not a Python traceback. Check a backup's rows table
+  says the live data has changed since only when a count differs. The README names every Settings page with its part
+  (Settings → Install → Backups, → You → Sign-in and security, → This person → About this person, and so on).
 
 - **A newcomer's first steps: setup and the guide** (#1103): setup says the code is also in `setup-code.txt` in the
   data folder (TrueNAS, or run from source); the guide's first records step says where an export comes from (MyChart,
