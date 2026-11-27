@@ -29605,7 +29605,8 @@ def main():
             # #532: at 375×667 the last profile without an owner deleted elsewhere, then its Make owner: “No such profile.”
             # where the list was, focus on it, both in sight (focus went to the card's heading, above the screen); and no
             # “No such …” line left after the next action (“No such account.” stayed through a Make owner, and “No such
-            # profile.” until the list changed). The server answered here: alex's Make admin, then the ownerless list
+            # profile.” until the list changed). The server answered here: alex's Enable (disabled: no Make admin, #1078), then
+            # the ownerless list
             lone532 = ['[{"id": 99532, "name": "Lone 532", "members": [{"username": "nobody532", "role": "owner", "disabled": true}]}]']
             def ownerless532(route):
                 if route.request.method == "POST":
@@ -29617,8 +29618,7 @@ def main():
             stale532, before532 = [], len(problems)
             page.set_viewport_size({"width": 375, "height": 667})
             page.route(re.compile(rf"/api/users/{alex}$"), gone532)
-            alex_do("Make admin…")
-            answer_ask(page)
+            alex_do("Enable")   # (not asked: the server's “No such account.” at once)
             page.wait_for_selector("#userList .row-msg", timeout=10000)
             page.unroute(re.compile(rf"/api/users/{alex}$"), gone532)
             stale532.append(js(SAID532))
