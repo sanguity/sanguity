@@ -62,6 +62,23 @@
     <div id="targetsBody"></div>
     <span class="msg" id="targetsMsg" role="status"></span>
   </section>
+  <!-- the profile's lab name matches (#1097): lab-matches.js, server/routes_labmaps.py -->
+  <section class="card" id="labmatches" hidden>
+    <h2 id="labmatchesHd" tabindex="-1">Lab name matches</h2>
+    <p class="hint">When a lab names a test differently (Plt Count), Sanguity charts it with the test you already have
+      (Platelet Count). You match names when you review an <a id="lmImport" href="import.html">import</a>.</p>
+    <div class="about-words" hidden>
+      <p>Each match is this profile's: it names a test as one source reported it (its name, unit and code) and the test
+        it's charted with, or keeps it as a test of its own. Later imports, pulls and results typed in follow it.</p>
+      <p>Changing or adding one can move the results already saved too: they're charted with the test you pick, and
+        each still keeps the name its lab gave it. Removing one leaves the results where they are; the next import with
+        that name asks again. Every change can be undone.</p>
+      <p>Names, above, only changes how a name is shown. Owners and editors change matches; everyone the profile is
+        shared with sees them. A match an admin made for every profile is on Install's Lab name matches.</p>
+    </div>
+    <div id="labmatchesBody"></div>
+    <span class="msg" id="labmatchesMsg" role="status"></span>
+  </section>
   <!-- the profile's name, and deleting it: its owners' (#402, on Sharing before; profile-card.js) -->
   <section class="card" id="profileCard" hidden>
     <h2>Name</h2>
@@ -328,13 +345,11 @@
 
   <section class="card conn adm" id="labmaps" hidden>
     <h2>Lab name matches</h2>
-    <p class="hint">The series each unfamiliar lab name was matched to at an import. A change applies to later imports only.</p>
+    <p class="hint">The matches an admin made for every profile on this server. A change applies to later imports only.</p>
     <div class="about-words" hidden>
-      <p>When an import has a lab test spelled in a way Sanguity doesn't know, the person importing it picks the series it
-        belongs to (or keeps it separate), and that choice is used for that profile's later imports from the same
-        source: it's marked "for one profile". One marked "for every profile" was made by an admin and applies to every
-        profile on this server. Either way, only admins can change or remove them here. The matches name tests, never anyone's
-        results or profiles. Results already saved keep their series.</p>
+      <p>Before matches were each profile's own, an admin's applied to every profile, and still do (a profile's own is
+        used before it). Each profile's own matches are its owners' and editors', on its Settings, This person, Labs and
+        ranges. The matches here name tests, never anyone's results or profiles. Results already saved keep their series.</p>
     </div>
     <div id="labmapList"></div>
     <span class="msg" id="labmapMsg" role="status"></span>
@@ -375,6 +390,7 @@
 <script src="js/dates.js"></script>
 <script src="js/person.js"></script>
 <script src="js/targets.js"></script>
+<script src="js/lab-matches.js"></script>
 <script src="js/ranges.js"></script>
 <script src="js/presets.js"></script>
 <script src="js/about.js"></script>

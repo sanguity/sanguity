@@ -3886,6 +3886,13 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Sign out all other devices counts your calendar feeds, and a disabled account isn't offered Make admin** (#1078):
   its question said your calendar feeds were turned off too even with none; it now says how many, as Change password's
   line does, and nothing of them with none. A disabled account's ⋯ menu no longer offers Make admin (enable it first).
+- **Lab name matches are each profile's, in This person, said plainly** (#1097): owners and editors see and change
+  their profile's matches under Settings → This person → Labs and ranges (viewers read them), each with where it came
+  from and how many results and imports it covers; Install keeps only an admin's for every profile. A match is added
+  there for any lab, or from a lab's panel on Labs (Same test as…), through one picker of the profile's tests and Keep
+  as its own test; adding or changing one can move the results already saved too, charted with the test without
+  changing the records, and Remove leaves them where they are; each has an Undo. Keep separate at a review, beside a
+  test it offered, is remembered like a match. Export everything carries the matches and the moved results.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
@@ -3910,7 +3917,9 @@ From an install that keeps records in `data.json` (before #103):
 
 From an install that matched lab names at an import's review before #546:
 - Open Admin → Lab name matches once: a match remembered then that today's rule wouldn't make is listed first as
-  "To check" and isn't used until an admin keeps it (#569). Results already saved keep their series.
+  "To check" and isn't used until an admin keeps it (#569). Results already saved keep their series. Since #1097 a
+  review's is its profile's, listed first in Settings → This person → Labs and ranges → Lab name matches, for its
+  owners and editors to keep or forget.
 
 From an install with one watch receiver secret (before #46):
 - Nothing to do for the phone that's already set up: `auth/watch_secret` keeps working as the first profile's

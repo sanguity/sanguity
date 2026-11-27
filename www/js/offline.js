@@ -86,7 +86,7 @@ const OFFLINE = {on: false, copy: null};   // on: showing the kept copy, without
      between results; the details opened before went with the records they belonged to), the rows of the list it
      changed (store.js putRows), the out-of-pocket part (a Costs mark) or a source's own name (rename.js, #416);
      rev: what the copy's records are now */
-  const CHANGE = /^profiles\/(\d+)\/(edits|same|journal|medications\/doses|medications\/reminders|costs\/mark|imports\/(\d+)\/name)(\/|$)/;
+  const CHANGE = /^profiles\/(\d+)\/(edits|same|labmaps|journal|medications\/doses|medications\/reminders|costs\/mark|imports\/(\d+)\/name)(\/|$)/;
   const LIST = {journal: "journal", "medications/doses": "doses", "medications/reminders": "reminders"};
   function keepChange(path, r) {
     const cm = path.match(CHANGE), rev = r.headers.get("X-Records-Rev");
