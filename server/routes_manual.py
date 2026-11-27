@@ -223,7 +223,7 @@ def _duplicates(db, pid, data, lab, got, origin, have_watch):
     rows = {n: by_key.get(csv_labs._key(r)) in dups["events"] for n, r, p, _ in got if r and not p}
     copies = {n: said[by_key.get(csv_labs._key(r))] for n, r, p, _ in got if r and not p and by_key.get(csv_labs._key(r)) in said}
     offset = len(lab.get("labs") or [])
-    index = {s["name"]: offset + i for i, s in enumerate(data["labs"][offset:])}
+    index = {k: offset + i for i, s in enumerate(data["labs"][offset:]) for k in (s["name"], s.get("reported")) if k}   # (built's name, #1102)
     parts = collections.defaultdict(list)   # record number -> [is each of its parts a duplicate]
     for eid, n in origin["events"].items():
         parts[n].append(eid in dups["events"])
@@ -297,7 +297,7 @@ def manual(pid: int, body: Rows, request: Request, s=Depends(user), db=Depends(g
     base = max([e["id"] for e in lab.get("events") or []], default=0)
     found_heights = _heights(db, pid, recs)   # #224, before building: one refused isn't built
     built, origin = manual_items.build([r for r in recs if r["ok"]], base_id=base)
-    data = _combine(lab, built["data"])
+    data = _combine(lab, labmap.keep_charted(db, pid, built["data"]))   # a vital charted under another name goes there (#1102)
     have_watch = watch_store.load(db, pid) if origin["watch"] else None
     dups, dup_rows, found, copy_rows = _duplicates(db, pid, data, lab, got, origin, have_watch)
     seen = (dups, dict(found))   # asked again under the write lock before saving (#592)
