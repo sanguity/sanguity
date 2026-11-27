@@ -425,7 +425,8 @@ function applyTheme(accountDefault) {
    lab printout: "10*3/uL" and "x10E3/uL" are 10³/µL, "mm[Hg]" mmHg, "[in_i]" in, "Cel" °C, "{beats}/min" beats/min,
    "kg/m2" kg/m², "umol/L" µmol/L. Only how it's written changes, never what it is ("U/L", enzyme units, stays).
    Applied as each page reads its records (store.js, share.js, summary.js; unitsSaid: every "unit" in what came),
-   and where a unit comes on its own (the import review, Settings' lists). */
+   and where a unit comes on its own (the import review, Settings' lists). The server says units the same way where it
+   writes them out itself (server/units.py said: the visit summary's PDF), test_units.py holding the two alike. */
 const UNIT_SUP = {"-": "⁻", 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹"};
 function unitSaid(u) {
   if (typeof u !== "string" || !u) return u;

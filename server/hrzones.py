@@ -15,7 +15,7 @@ What each phone app sends per workout, and what's kept (watch/receiver.py writes
   Health Auto Export (Apple Health)   a workout's heart rate as minute-by-minute readings ("heartRateData": [{date,
       Min, Avg, Max}]) and its average and maximum ("heartRate": {avg, max}, or avgHeartRate / maxHeartRate in older
       versions). The readings give time in each zone; without them, only the average and maximum.
-  Health Connect (Life Dashboard Companion)   an exercise session holds no heart rate: the heart rate samples the
+  Health Connect (Life Dashboard)   an exercise session holds no heart rate: the heart rate samples the
       phone sent for the session's time (raw samples, not hourly buckets) are the workout's readings.
   An uploaded Apple Health export   each workout's heart rate statistics (WorkoutStatistics: average and maximum)
       only. Its heart rate readings are summed into days as they stream past, so time in zones isn't counted for it.

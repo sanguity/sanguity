@@ -21,7 +21,7 @@ Where they come from:
       made in another language names the header lines in that language: they are then taken by their place, in
       Apple's order. export.xml's HKCategoryTypeIdentifierIrregularHeartRhythmEvent records are the notifications.
       The export holds no average heart rate for a recording, so one that came only that way shows none.
-  Health Connect (Android)   has no ECG or irregular-rhythm record type, so Life Dashboard Companion sends none.
+  Health Connect (Android)   has no ECG or irregular-rhythm record type, so Life Dashboard sends none.
 
 The shapes (in a watch summary's "ecg" list: daily.json, and the imports' summaries, watch_store.py):
   {"key": "ecg:<16 hex>", "type": "ecg", "start", "end" (UTC, ISO), "classification", "avg_hr", "symptoms",

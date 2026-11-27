@@ -1830,7 +1830,7 @@ def read(path):
 
 
 def ldc(rows, seq):
-    """Life Dashboard Companion's upload of blood pressure readings (local times in America/Chicago, -0600)."""
+    """Life Dashboard's upload of blood pressure readings (local times in America/Chicago, -0600)."""
     import datetime as dt
     utc = lambda t: (dt.datetime.fromisoformat(t) + dt.timedelta(hours=6)).strftime("%Y-%m-%dT%H:%M:%SZ")
     return {"source": "health_connect", "timezone": "America/Chicago", "sequence": seq, "timestamp": "2024-03-13T13:00:00Z",

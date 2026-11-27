@@ -50,7 +50,7 @@ def utc(day, hour=8):
 
 
 def ldc(seq=1, **extra):
-    """Life Dashboard Companion's upload: a period logged as one, its flow day by day, an ovulation test, cervical
+    """Life Dashboard's upload: a period logged as one, its flow day by day, an ovulation test, cervical
     mucus, spotting, sexual activity (never kept), basal body temperature, and steps (always kept)."""
     return {"source": "health_connect", "timezone": TZ, "sequence": seq, "timestamp": "2026-03-20T12:00:00Z",
             "menstruation_period": [{"uuid": "hc-period-1", "start_time": "2026-03-02T06:00:00Z", "end_time": "2026-03-07T06:00:00Z", "source": "Fictional Cycle App"}],

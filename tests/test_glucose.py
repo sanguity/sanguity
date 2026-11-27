@@ -1,5 +1,5 @@
 """Blood glucose from the phone apps (#181): watch/receiver.py reads meter and continuous glucose monitor (CGM)
-readings from Life Dashboard Companion (Health Connect) and Health Auto Export (Apple Health), and server/glucose.py
+readings from Life Dashboard (Health Connect) and Health Auto Export (Apple Health), and server/glucose.py
 summarises a CGM's days. All data here is fictional, written for these tests.
 
   python tests/test_glucose.py
@@ -43,7 +43,7 @@ def readings():
 
 
 def hc_payload(rows=None, **extra):
-    """Life Dashboard Companion's upload: the CGM's readings in mmol/L, the meter's in mg/dL, each with its specimen."""
+    """Life Dashboard's upload: the CGM's readings in mmol/L, the meter's in mg/dL, each with its specimen."""
     rows = readings() if rows is None else rows
     out = []
     for at, v, kind in rows:

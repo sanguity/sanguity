@@ -13,7 +13,7 @@ columns cut to fit. The output is bytes, built in memory: nothing is written to 
 
 Coordinates are PDF points (1/72 inch) from the bottom-left corner of the page.
 """
-import unicodedata, zlib
+import re, unicodedata, zlib
 
 WIDTH, HEIGHT = 612, 792   # US Letter
 
@@ -32,16 +32,29 @@ _BOLD = [278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 2
 # a few characters past ASCII the summary uses (Windows-1252 has them); any other is about a digit wide
 _EXTRA = {"–": (556, 556), "—": (1000, 1000), "‘": (222, 278), "’": (222, 278), "“": (333, 500), "”": (333, 500),
           "•": (350, 350), "·": (278, 278), "°": (400, 400), "±": (584, 584), "µ": (556, 611), "…": (1000, 1000),
-          "×": (584, 584), " ": (278, 278)}
+          "×": (584, 584), "¹": (333, 333), "²": (333, 333), "³": (333, 333), " ": (278, 278)}
 # characters Windows-1252 lacks, said in ones it has
 _PLAIN = {"≤": "<=", "≥": ">=", "▲": "^", "▼": "v", "→": "->", "←": "<-", "−": "-", "‐": "-", "‑": "-", " ": " ",
           " ": " ", "✓": "ok"}
 
 
+_SUPS = "⁻⁰¹²³⁴⁵⁶⁷⁸⁹"
+_SUP_RUN = re.compile(f"[{_SUPS}]+")
+
+
+def _power(m):
+    """A run of superscripts (a unit's 10⁹, #1103): kept where Windows-1252 has each (¹ ² ³), else written "^9" (as a
+    plain 9 it would read 109)."""
+    run = m.group()
+    if all(ch in "¹²³" for ch in run):
+        return run
+    return "^" + run.translate(str.maketrans(_SUPS, "-0123456789"))
+
+
 def plain(text):
     """text with every character the fonts can show: kept when Windows-1252 has it, else its plain form."""
     out = []
-    for ch in str(text):
+    for ch in _SUP_RUN.sub(_power, str(text)):
         if ch in "\r\n\t":
             out.append(" ")
             continue

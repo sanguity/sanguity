@@ -23,6 +23,7 @@ of the "units" setting (settings.py): "conventional" (mg/dL, g/dL) or "si" (mmol
 "lb" or "kg" for weights, "F" or "C" for temperatures, "cm" or "ftin" for heights. A choice the series is already in,
 or has no exact conversion to, is left out. The page keeps the value and unit as reported beside the converted one (www/js/units.js).
 """
+import re
 from decimal import Decimal
 
 from .importers import common
@@ -183,3 +184,27 @@ def annotate_watch(summary):
     if (summary or {}).get("glucose_readings"):   # typed in at home, mg/dL (#224): shown in this person's lab unit too
         summary["glucose_conv"] = conversions("Glucose, Blood", "mg/dL")
     return summary
+
+
+# ---------------------------------------------------------------- a unit as people write it (#1103)
+
+_SUP = str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹")
+_A = re.ASCII   # (\b and the classes as JavaScript reads them)
+
+
+def said(u):
+    """A unit as people write it, the rule www/js/util.js unitSaid is for the page, step for step (tests/test_units.py
+    holds them to the same answers): the codes reports carry (UCUM) said as on a lab printout, "10*3/uL" and "x10E3/uL"
+    as 10³/µL, "mm[Hg]" mmHg, "[in_i]" in, "Cel" °C, "{beats}/min" beats/min, "kg/m2" kg/m², "umol/L" µmol/L; "U/L"
+    (enzyme units) kept. Only how it's written: for what the server writes out itself (the visit summary's PDF, a share
+    link's measures), never for what's stored or compared."""
+    if not isinstance(u, str) or not u:
+        return u
+    if re.fullmatch(r"cel", u.strip(), re.I | _A):
+        return "°C"
+    u = re.sub(r"\[deg([FC])\]", lambda m: "°" + m.group(1).upper(), u, flags=re.I | _A)
+    u = re.sub(r"\[([^\]_]+)(?:_[^\]]*)?\]", r"\1", u)
+    u = re.sub(r"\{([^}]*)\}", lambda m: m.group(1).replace("_", " "), u)
+    u = re.sub(r"(?<![A-Za-z\d.])(?:x\s*)?10\s*(?:\*|\^|e)\s*(-?\d+)", lambda m: "10" + m.group(1).translate(_SUP), u, flags=re.I | _A)
+    u = re.sub(r"(?<![A-Za-z])u(?=(?:g|mol|L|l|IU|U|eq|m)\b)", "µ", u, flags=_A)
+    return re.sub(r"(?<![A-Za-z])([cm]?m)([23])(?!\d)", lambda m: m.group(1) + m.group(2).translate(_SUP), u, flags=_A)

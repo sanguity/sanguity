@@ -3922,9 +3922,9 @@ Everything on `main` so far; it becomes the first tagged release.
   optional; a text result ("Negative") counts as a result, and "for 3 tests" is said only where there are fewer tests
   than results (it was "5 lab results in 6 tests"); skipped FHIR records and attachments are named in plain words, not
   "Observation (social-history)" or "inline base64". Units are shown as on a printout everywhere (10³/µL, not
-  10*3/uL; mmHg, not mm[Hg]), by one rule.
-- **The phone, schedules, share links and a few words** (#1103): Sources → Phone and watch links Life Dashboard
-  Companion's store (F-Droid) and warns when the upload address is localhost or 127.0.0.1, which a phone can't reach;
+  10*3/uL; mmHg, not mm[Hg]), by one rule, on the pages and in the visit summary's PDF.
+- **The phone, schedules, share links and a few words** (#1103): Sources → Phone and watch calls the Android app by
+  its name now, Life Dashboard (formerly Life Dashboard Companion), links its store (F-Droid) and warns when the upload address is localhost or 127.0.0.1, which a phone can't reach;
   a new schedule's Remind me starts off without a calendar feed, saying one is needed; a share link's Records from
   starts empty (every record), and on a phone its sections are named without their long descriptions; an upcoming
   date over 24 months away is said in years ("in 72 years", not "in 867 months"); a key-lab tile has no sparkline
