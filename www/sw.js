@@ -46,7 +46,7 @@ const FILES = [
   "js/sidebar.js", "js/about.js",
   "js/journal-body.js",
 
-  "js/medlog.js", "js/medications.js",
+  "js/medlog.js", "js/medmine.js", "js/medications.js",
   "js/details.js",
   "js/test-pages.js",
   "js/lab-panel.js",
