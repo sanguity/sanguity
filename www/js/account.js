@@ -83,9 +83,9 @@ async function loadSessions() {
    (none left but this one) on the card's heading (util.js) */
 const sessFocus = (at = 0) => focusNear([...$("#sessList tbody").rows], at, "button", $("#sessions h2"));
 $("#sessOthers").onclick = async () => {
-  // it turns off your calendar feeds too (#590): asked first, saying so
-  if (!await ask({title: "Sign out all other devices?", action: "Sign out others",
-                  message: "Your calendar feeds are turned off too, as a lost phone's calendar app keeps their addresses. You can make new ones under Sharing."})) return;
+  // it turns off your calendar feeds too (#590): asked first, saying so, with how many, only when you have one (#1078)
+  const feeds = await feedsNow();
+  if (!await ask({title: "Sign out all other devices?", action: "Sign out others", message: feeds ? feedsEnd(feeds) : ""})) return;
   try {
     const r = await call("sessions/revoke-others", "POST");
     // the calendar feeds that went with them (#590), said, with where to make a new one
