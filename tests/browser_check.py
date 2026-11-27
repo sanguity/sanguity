@@ -14557,7 +14557,7 @@ def main():
             # side as before
             CUT987 = CUT797.replace("'input[type=date], input[type=time]'", "'#dbody :is(input[type=date], input[type=time])'")
             med987 = js("(() => { const m = MEDS.find(m => m.spans.length && m.spans.at(-1).open); return m && m.key; })()")
-            FORMS987 = {"a reminder": "k => { openMedication(MEDS.find(m => m.key === k)); [...document.querySelectorAll('#dbody button')].find(b => /^Add (a|another) reminder$/.test(b.textContent)).click(); }",
+            FORMS987 = {"a reminder": "k => { openMedication(MEDS.find(m => m.key === k)); [...document.querySelectorAll('#dbody button')].find(b => /^Add (a schedule|another line)$/.test(b.textContent)).click(); }",   # (a schedule's, #1094)
                         "a dose": "k => { openMedication(MEDS.find(m => m.key === k)); [...document.querySelectorAll('#dbody button')].find(b => b.textContent.startsWith('Log a dose')).click(); }",
                         "a journal entry": "() => journalNew()"}
             bad987, seen987 = {}, 0
@@ -30191,7 +30191,7 @@ def main():
                   : c.disabled && c.title === "Needs the server: you're offline"])"""
             ph.evaluate("openMedication(MEDS.find(mrCurrent))")
             ph.wait_for_selector("#dbody .sect", timeout=5000)
-            off449 = {"drawer": [c for c in ph.evaluate(CTRL449, "#dbody button") if re.match(r"(Log a dose|Add (a|another) reminder|(Edit|Turn o(n|ff)|Remove) the (reminder|dose))", c[0])]}
+            off449 = {"drawer": [c for c in ph.evaluate(CTRL449, "#dbody button") if re.match(r"(Log a dose|Add (a schedule|another line)|(Edit|Turn o(n|ff)|Remove) the (reminder|dose|schedule)|(Edit|Remove) )", c[0])]}
             SAYS456 = "sel => [...document.querySelectorAll(sel)].map(p => [p.textContent, p.checkVisibility()])"
             says456 = {"drawer": ph.evaluate(SAYS456, "#dbody > .offline-note")}
             sent449 = ph.evaluate("[(DATA.reminders || []).length, (DATA.doses || []).length]")
