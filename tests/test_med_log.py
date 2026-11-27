@@ -8,7 +8,7 @@ phone's (Apple Health's Medications, through the watch receiver) beside the type
   python3 tests/test_med_log.py
 """
 import io, json, os, shutil, sys, tempfile, unittest, zipfile
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-medlog-test-")
@@ -233,6 +233,85 @@ class Log(unittest.TestCase):
         self.assertEqual(med_log.said(med_log.counts([{"status": "taken"}])), "1 of 1 logged dose taken")
         self.assertEqual(med_log.said(med_log.counts([])), "No doses logged")
         self.assertEqual(med_log.week_of(date(2026, 11, 18)), date(2026, 11, 16), "weeks from Monday")
+
+    # ---- doses against a schedule (#1095)
+
+    def test_amounts_on_doses(self):
+        did = self.log(slot="08:00", amount=2, unit="tablets")["id"]
+        self.log(t=D(-1) + "T13:00", amount=0.5, unit=" ml ")
+        self.log(t=D(-1) + "T14:00")
+        got = {d["t"][-5:]: (d["amount"], d["unit"]) for d in self.data()["doses"]}
+        self.assertEqual(got, {"08:05": (2, "tablets"), "13:00": (0.5, "ml"), "14:00": (None, "")})
+        r = self.c["lee"].put(self.path(f"/{did}"), json={"med": "fictionamide", "t": D(-1) + "T08:05", "status": "taken", "slot": "08:00",
+                                                          "amount": 1, "unit": "tablet"}, headers=H)
+        self.assertEqual(r.json()["doses"][0]["amount"], 1, "corrected")
+        for body, word in (({"amount": 0}, "above 0"), ({"amount": -1}, "above 0"), ({"unit": "u" * 41}, "too long")):
+            self.assertIn(word, self.log(code=400, **body)["detail"])
+        db = dbm.connect()
+        row = db.execute("SELECT body FROM med_doses WHERE id=?", (did,)).fetchone()
+        db.close()
+        self.assertNotIn("tablet", row["body"], "encrypted with the rest")
+
+    def test_counts_against_a_schedule(self):
+        """The owner's lines (#1094): every day at 8:00, and Mondays and Fridays at 20:00, from a Monday; and a line at
+        13:00 from the second week's Wednesday until its Friday; As needed gives none"""
+        from server import med_reminders as mr
+        mo = date(2026, 11, 2)   # a Monday
+        line = lambda times, days, a, b=None: {"times": times, "amounts": [{"amount": 1, "unit": "tablet"}] * len(times), "days": days,
+                                               "from": a.isoformat(), "until": b and b.isoformat(), "asneeded": False}
+        lines = [line(["08:00"], list(mr.DAYS), mo), line(["20:00"], ["mo", "fr"], mo),
+                 line(["13:00"], list(mr.DAYS), mo + timedelta(days=9), mo + timedelta(days=11)),
+                 {**line([], list(mr.DAYS), mo), "asneeded": True}]
+        week = [mo + timedelta(days=i) for i in range(7)]
+        self.assertEqual([t for t, _ in med_log.scheduled(lines, mo)], ["08:00", "20:00"], "a Monday: both")
+        self.assertEqual([t for t, _ in med_log.scheduled(lines, mo + timedelta(days=1))], ["08:00"], "a Tuesday: the morning's only")
+        self.assertEqual([t for t, _ in med_log.scheduled(lines, mo + timedelta(days=10))], ["08:00", "13:00"], "from and until")
+        self.assertEqual([t for t, _ in med_log.scheduled(lines, mo - timedelta(days=1))], [], "before from: none")
+        self.assertEqual([t for t, _ in med_log.scheduled(lines, mo + timedelta(days=3), stop=(mo + timedelta(days=2)).isoformat())], [],
+                         "after the records say it stopped: none")
+        t = lambda d, hm: f"{d.isoformat()}T{hm}"
+        doses = [{"t": t(mo, "08:02"), "status": "taken", "slot": "08:00"},
+                 {"t": t(mo, "21:10"), "status": "late", "slot": "20:00"},
+                 {"t": t(week[1], "08:40"), "status": "taken", "phone": True},          # the phone's, 40 minutes on: the 8:00 one
+                 {"t": t(week[2], "11:30"), "status": "taken", "phone": True},          # 3½ hours on: none of them
+                 {"t": t(week[3], "08:00"), "status": "skipped", "slot": "08:00"},
+                 {"t": t(week[4], "08:00"), "status": "taken", "slot": "08:00"},
+                 {"t": t(week[4], "08:01"), "status": "taken", "slot": "08:00"},        # a second at 8:00 with one scheduled: also
+                 {"t": t(week[5], "15:00"), "status": "taken"}]                         # typed with no time of the schedule: also
+        n = med_log.schedule_counts(lines, doses, week, datetime(2026, 11, 20))
+        # 7 mornings + Monday's and Friday's nights = 9 scheduled; taken: Mon 8:00 and 20:00 (late), Tue's from the phone, Fri 8:00
+        self.assertEqual(n, {"scheduled": 9, "taken": 4, "late": 1, "skipped": 1, "other": 3}, "others: 11:30, the second 8:00, 15:00")
+        self.assertEqual(med_log.said_scheduled(n), "4 of 9 scheduled doses taken (1 late), 1 skipped; 3 other doses logged")
+        # mid-Monday of the week: only the doses whose time has come, or that are logged
+        n = med_log.schedule_counts(lines, doses, week, datetime(2026, 11, 2, 12, 0))
+        self.assertEqual(n, {"scheduled": 2, "taken": 2, "late": 1, "skipped": 0, "other": 0}, "Monday's 20:00 logged already, so counted")
+        n = med_log.schedule_counts(lines, doses[:1], week, datetime(2026, 11, 2, 12, 0))
+        self.assertEqual(n["scheduled"], 1, "Monday's 20:00 not yet come")
+        second = [mo + timedelta(days=7 + i) for i in range(7)]
+        n = med_log.schedule_counts(lines, [], second, datetime(2026, 12, 1))
+        self.assertEqual(n["scheduled"], 7 + 2 + 3, "the 13:00 line from its Wednesday until its Friday")
+        self.assertEqual(med_log.said_scheduled({"scheduled": 1, "taken": 1, "late": 0, "skipped": 0}), "1 of 1 scheduled dose taken")
+        self.assertEqual(med_log.said_scheduled({"scheduled": 0, "taken": 0, "late": 0, "skipped": 0}), "No scheduled doses in this period")
+        self.assertEqual(med_log.said_scheduled({"scheduled": 0, "taken": 0, "late": 0, "skipped": 0, "other": 1}), "No scheduled doses in this period; 1 other dose logged")
+        # two at one time: two, each taken by a dose logged against that time
+        two = [line(["08:00", "08:00"], list(mr.DAYS), mo)]
+        got, other = med_log.match(med_log.scheduled(two, mo), [{"t": t(mo, "08:01"), "status": "taken", "slot": "08:00"}])
+        self.assertEqual([bool(g) for g in got], [True, False])
+        got, other = med_log.match(med_log.scheduled(two, mo), [{"t": t(mo, "08:01"), "status": "taken", "slot": "08:00"},
+                                                                {"t": t(mo, "08:03"), "status": "taken", "slot": "08:00"}])
+        self.assertEqual(([bool(g) for g in got], other), ([True, True], []))
+
+    def test_summary_counts_against_the_schedule(self):
+        self.log(t=D(-1) + "T08:05", slot="08:00")
+        self.log(t=D(-2) + "T08:10", status="skipped", slot="08:00")
+        data = self.data()
+        data["reminders"] = [{"med": "fictionamide", "times": ["08:00"], "amounts": [{"amount": 1, "unit": "tablet"}],
+                              "days": ["mo", "tu", "we", "th", "fr", "sa", "su"], "from": D(-3), "until": None, "asneeded": False}]
+        cx = measures.Ctx({"tz": "UTC"}, data, {})
+        b = measures.blocks(cx, ["medlog"], lambda d: D(-3) <= d <= D(-1))["medlog"]
+        self.assertEqual(b["lead"], ["Fictionamide 10 mg tablet: 1 of 3 scheduled doses taken, 1 skipped"])
+        for word in ("due", "should", "missed", "adherence"):
+            self.assertNotIn(word, json.dumps(b).lower())
 
     def test_phone_doses_read_as_logged(self):
         watch = {"med_doses": [["2026-11-16T08:05:00-06:00", "Fictionamide 10 mg tablet", "taken", 1, "count", "Apple Health"],

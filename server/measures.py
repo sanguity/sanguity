@@ -24,7 +24,8 @@ the person ticks what they want a clinician or relative to see.
 
   medlog         the medication log (#235, server/med_log.py): each dose logged, typed in or sent by the phone
                  (Apple Health's Medications, with its app and the dose taken), with what happened and its note; a
-                 line per medication counting what was logged ("12 of 14 logged doses taken"), never what was expected
+                 line per medication counting what was logged ("12 of 14 logged doses taken"), or with a schedule
+                 (#1095) the doses taken of those it gave ("9 of 14 scheduled doses taken"), plain counts
 Cycle tracking (#183) isn't here: the visit summary has its own section for it (cycle_tracking.py), offered only to
 owners and editors while it's on and ticked each time, and share links never offer it.
 
@@ -40,7 +41,7 @@ A table's columns can follow what it has (#232): glucose without CGM days has no
 oxygen has a Readings column only when some were typed in.
 """
 from bisect import bisect_left, insort
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import ecg, glucose, growth, med_log, medications, person, targets as tg, watch_store
@@ -605,13 +606,33 @@ def _doses(c):
     return sorted(out, key=lambda x: x[0])
 
 
+def _scheduled(c, key, keep):
+    """A medication's doses taken of those its schedule gave on the period's days so far (#1095, med_log.schedule_counts),
+    or None without a schedule."""
+    lines = [r for r in c.data.get("reminders") or [] if isinstance(r, dict) and r.get("med") == key and r.get("from")]
+    if not lines:
+        return None
+    med = next((m for m in c.data.get("medications") or [] if isinstance(m, dict) and m.get("key") == key), {})
+    now = datetime.now(c.tz).replace(tzinfo=None)
+    try:
+        first = min(date.fromisoformat(r["from"]) for r in lines)
+    except ValueError:
+        return None
+    days = [d for d in (first + timedelta(days=i) for i in range((now.date() - first).days + 1)) if keep(d.isoformat())]
+    doses = [{"t": d["t"], "status": d.get("status"), "slot": d.get("slot")} for d in c.data.get("doses") or []
+             if isinstance(d, dict) and d.get("med") == key and _day(d.get("t"))]
+    doses += [{**d, "phone": True} for d in med_log.phone_doses(c.watch, c.tz) if medications.med_key(d["name"]) == key]
+    return med_log.schedule_counts(lines, doses, days, now, med.get("stop"))
+
+
 def medlog(c, keep, most):
     rows = [d for d in _doses(c) if keep(d[0][:10])]
     lead, by = [], {}
     for d in rows:
         by.setdefault(medications.med_key(d[1]), []).append(d)
-    for ds in sorted(by.values(), key=lambda ds: ds[-1][1].lower()):
-        lead.append(f"{ds[-1][1]}: " + med_log.said(med_log.counts([{"status": d[2]} for d in ds])))
+    for key, ds in sorted(by.items(), key=lambda kv: kv[1][-1][1].lower()):
+        n = _scheduled(c, key, keep)
+        lead.append(f"{ds[-1][1]}: " + (med_log.said_scheduled(n) if n and (n["scheduled"] or n["other"]) else med_log.said(med_log.counts([{"status": d[2]} for d in ds]))))
     rows = rows[::-1]   # newest first
     return _block([("Date and time", "time", 110), ("Medication", "text", 150), ("What happened", "text", 80), ("Note", "text", 150),
                    ("From", "text", None)],
