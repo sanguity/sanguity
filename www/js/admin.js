@@ -418,7 +418,7 @@ async function loadLabmaps() {
   const [list, names] = await Promise.all([call("labmaps"), call("lab-names").catch(() => [])]);
   $("#labmapNames").replaceChildren(...[...new Set([...names, ...list.map(m => m.target).filter(Boolean)])].map(n => el("option", {value: n})));
   $("#labmaps").hidden = false;
-  if (!list.length) { $("#labmapList").replaceChildren(emptyState("None yet: they're made when an import's lab names are matched at its preview.", null, {cls: ""})); return; }   // (#494)
+  if (!list.length) { $("#labmapList").replaceChildren(emptyState("None: each profile's own matches are on its Settings, This person, Labs and ranges.", null, {cls: ""})); return; }   // (#494; #1097)
   const as = m => m.target ? `charted as “${m.target}”` : "kept as a series of its own";
   const toCheck = list.filter(m => m.check).length;
   $("#labmapList").replaceChildren(...toCheck ? [el("p", {class: "howto", text: `${toCheck} ${toCheck === 1 ? "match" : "matches"} to check: ` +
@@ -441,7 +441,7 @@ async function loadLabmaps() {
       return el("tr", {"data-labmap": m.id},
         el("td", {}, el("b", {text: m.name}), el("span", {class: "muted", text: [m.unit, m.loinc && "LOINC " + m.loinc].filter(Boolean).map(x => " · " + x).join("")})),
         goes,
-        el("td", {}, m.label, el("div", {class: "muted", text: m.one_profile ? "for one profile" : "for every profile"})),
+        el("td", {}, m.label),   // (#1097: every one here is for every profile; a profile's own are its Settings')
         el("td", {}, `${when(m.created)} by ${m.created_by}`, m.changed ? el("div", {class: "muted", text: `changed ${when(m.changed)} by ${m.changed_by}`}) : null),
         el("td", {class: "acts"},
           m.check ? el("button", {class: "btn small primary", type: "button", text: "Keep", onclick: async () => {

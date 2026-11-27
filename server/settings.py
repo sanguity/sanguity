@@ -304,7 +304,7 @@ define("labNicknames", "names", "Lab names", {
            "Automated Abs Neutrophil Cnt": "Neutrophils (absolute)", "Lymphocytes Absolute": "Lymphocytes (absolute)",
            "Platelet Count": "Platelets", "Potassium, Blood": "Potassium", "Sodium, Blood": "Sodium",
            "Total Bilirubin": "Bilirubin, total"},
-       name_map(), kind="names", merge=True, help="A lab's name in the records, and the name to show for it.")
+       name_map(), kind="names", merge=True, help="A lab's name in the records, and the name to show for it. To chart two names as one test: Lab name matches, below.")
 define("sources", "names", "Result sources", {}, name_map(), kind="names", merge=True,
        help="The short source tag on lab results (like EXT), and the name to show for it.")
 ATTACHMENT_TYPES = {"pdf": "PDF", "image": "Images", "text": "Text", "html": "Web pages (HTML)"}

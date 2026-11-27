@@ -105,7 +105,8 @@ function openLab(s) {
   const onLabs = drawerDocks() && state.tab === "labs" && state.labsView === "chart" && state.sel.has(s.name), table = state.tables.has(s.name);
   const go = (asTable) => { if (asTable) state.tables.add(s.name); else state.tables.delete(s.name); showSeries(s.name); };
   body.append(el("div", {class: "btns dgo"}, onLabs && !table ? null : goBtn("Chart these results", () => go(false)),
-    onLabs && table ? null : goBtn("Show them as a table", () => go(true))),
+    onLabs && table ? null : goBtn("Show them as a table", () => go(true)),
+    canRename() && !s.watch ? goBtn("Same test as…", () => lmSameAs(s)) : null),   // a lab name match (#1097, lab-matches.js)
     el("p", {class: "hint dnote", text: "Counts and positions from the lab's table for this period. This isn't medical advice."}),
     aboutWords({title: "How these are counted"}, "Every result the lab's table lists for the period, against each result's own reference range on its report (or one you set in Settings, where the report gives none), the range the chart's band steps with.",
       "A result counts as outside its range when its report flags it high or low, or when its value is past the range (one given as “<15”, when every value it stands for is); one its report flags without saying which way (◆) is counted as flagged on its report, and as inside its range where it has one; the median is the middle result, or the mean of the two in the middle, of those given as the value measured (one given as “<15” left out). The change is the latest result less the first, as printed (with two at the first or the latest time, each one's); it doesn't say how the results in between went."));
