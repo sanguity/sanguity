@@ -28037,10 +28037,26 @@ def main():
             db_493.close()
             page.reload()
             page.wait_for_function("document.querySelectorAll('#sessList tbody button').length >= 2", timeout=10000)
-            page.click("#sessOthers")
-            sess590 = answer_ask(page, yes=False) + [js("document.querySelectorAll('#sessList tbody button').length")]
-            check("Sign out all other devices asks first, saying your calendar feeds are turned off too, and Cancel signs no one out (#590)",
-                  sess590[0] == "Sign out all other devices?" and "calendar feeds are turned off too" in sess590[1] and sess590[2] >= 2, sess590)
+            # #1078: with how many calendar feeds you have, as Change password's line counts them (#962), and nothing of them
+            # with none: the count as asked (GET /api/me), here as if two, then none
+            sess590 = []
+
+            def feeds_as(n):   # (one argument: a handler taking two is given the request as its second)
+                def answer(route):
+                    me = route.fetch().json()
+                    me["calendar_feeds"] = n
+                    route.fulfill(json=me)
+                return answer
+            for n590 in (2, 0):
+                feeds590 = feeds_as(n590)
+                page.route("**/api/me", feeds590)
+                page.click("#sessOthers")
+                sess590.append(answer_ask(page, yes=False))
+                page.unroute("**/api/me", feeds590)
+            sess590.append(js("document.querySelectorAll('#sessList tbody button').length"))
+            check("Sign out all other devices asks first, saying your calendar feeds are turned off too, how many, only when you have one "
+                  "(#590, #1078), and Cancel signs no one out", sess590[0][0] == sess590[1][0] == "Sign out all other devices?"
+                  and sess590[0][1].startswith("Your 2 calendar feeds are turned off too") and "calendar" not in sess590[1][1] and sess590[2] >= 2, sess590)
             out493 = []
             for n in range(js("document.querySelectorAll('#sessList tbody button').length"), 0, -1):
                 page.focus("#sessList tbody button")
@@ -29262,6 +29278,11 @@ def main():
                   said541 == [["alex", t, t, "Manage alex"] for t in ("alex is an admin now.", "alex isn't an admin any more.")]
                   + [["pk536"] + ["Turned off two-factor sign-in for pk536: 2 passkeys removed."] * 2 + ["Manage pk536"]]
                   + [["alex"] + ["Disabled alex: they're signed out everywhere."] * 2 + ["Manage alex"]], said541)
+            alex_row().get_by_role("button", name="Manage alex").click()   # #1078: disabled, no Make admin (enabled first)
+            menu1078 = [t.strip() for t in alex_row().get_by_role("menuitem").all_inner_texts()]
+            page.keyboard.press("Escape")
+            check("…a disabled account's ⋯ offers no Make admin, Enable in its place (#1078)",
+                  menu1078 == ["Reset password…", "Enable", "Remove account…"], menu1078)
             # #502: Make owner, its row gone with it, puts focus on the next profile's Make owner, else the one before's (it
             # fell to the page). Two more of alex's, given to this admin, then deleted
             db502 = dbm.connect()

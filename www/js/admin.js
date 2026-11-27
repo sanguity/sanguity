@@ -202,6 +202,7 @@ function userMenu(u) {
       ? {text: "Remove admin…", run: () => changeUser(u, {is_admin: false}, {title: `Remove ${n}'s admin role?`,
           message: "They keep their account and the profiles shared with them, but can't use Settings → Install any more.", action: "Remove admin"},
           `${n} isn't an admin any more.`)}
+      : u.disabled ? false   // (#1078: enabled first; a disabled account can't sign in to be one)
       : {text: "Make admin…", run: () => changeUser(u, {is_admin: true}, {title: `Make ${n} an admin?`, message: [
           "Admins look after every account on this server: they can add, disable and remove accounts, reset passwords and " +
           "turn off two-factor sign-in, and look after backups and sources.",

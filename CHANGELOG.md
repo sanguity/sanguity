@@ -3883,6 +3883,9 @@ Everything on `main` so far; it becomes the first tagged release.
   set, say that a home-network name on a domain of your own (split DNS) or a Tailscale name is refused until it's
   listed, and how to list it; an IP address written with a final dot (`192.168.1.5.`) was refused, and is answered
   like any other.
+- **Sign out all other devices counts your calendar feeds, and a disabled account isn't offered Make admin** (#1078):
+  its question said your calendar feeds were turned off too even with none; it now says how many, as Change password's
+  line does, and nothing of them with none. A disabled account's ⋯ menu no longer offers Make admin (enable it first).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
