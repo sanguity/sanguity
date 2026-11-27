@@ -9,7 +9,8 @@ series, the preview suggests a series to put it in:
   2. then the same name once case, punctuation and common abbreviations are evened out      "same name written another way, same unit"
   3. then names alike once evened out                                                      "similar name, same unit"
 
-and only where the units agree (common.unit_for); a name from lab-aliases.json the profile doesn't chart yet has no
+and only where the units agree (common.unit_for); by name (2 and 3), never a test with another LOINC code or a name
+a qualifier tells apart (#1102: HDL and LDL, free and total, direct and calculated: QUALIFIER); a name from lab-aliases.json the profile doesn't chart yet has no
 unit to compare, and says so. Only 1 and 2 are "sure", put in the box for the person to confirm; a similar name (3)
 is a "Maybe" beside an empty box, chosen only by hand (#546: "Vitamin B6" was filed under "Vitamin B1" as if sure,
 for every profile), so names differing by a number or a letter (B6 and B1, Factor 3 and Factor 1, IgG and IgA) are
@@ -71,6 +72,10 @@ FILLER = {"serum", "plasma", "ser", "plas", "bld", "blood", "level", "lvl", "who
 SPECIMEN = {"serum": "serum", "ser": "serum", "plasma": "plasma", "plas": "plasma", "blood": "blood", "bld": "blood",
             "whole": "blood", "urine": "urine", "ur": "urine", "urn": "urine", "csf": "csf", "spinal": "csf",
             "saliva": "saliva", "stool": "stool", "fecal": "stool", "feces": "stool"}
+# words that make another test of a name (#1102: "HDL Cholesterol" was offered as "LDL Cholesterol", a similar name):
+# names that differ by one are never offered, "Total" alone aside ("Bilirubin, Total" is "Bilirubin"; not "Bilirubin, Direct")
+QUALIFIER = {"hdl", "ldl", "vldl", "non", "free", "total", "direct", "indirect", "calculated", "calc", "measured",
+             "ionized", "ionised", "bound", "unbound", "conjugated", "unconjugated", "fasting", "random", "hs", "ultrasensitive"}
 
 
 # ---------------------------------------------------------------- names and identities
@@ -109,6 +114,12 @@ def same_name(a, b):
     def letters(n):
         return {w for w in norm(n).replace("_", " ").split() if len(w) == 1}
     return even(a) == even(b) and letters(a) == letters(b) and specimens(a) == specimens(b)
+
+
+def told_apart(a, b):
+    """Whether a word of QUALIFIER names another test of one name than of the other: HDL and LDL, free and total."""
+    q = lambda n: {"calculated" if w == "calc" else "ionized" if w == "ionised" else w for w in even(n).split()} & QUALIFIER  # noqa: E731
+    return bool((q(a) ^ q(b)) - {"total"})
 
 
 def fits(name, loinc, target):
@@ -185,19 +196,20 @@ def suggest(s, have):
                         add(n, have[n]["unit"], "same LOINC code")
                 else:
                     add(n, "", "same LOINC code (from Sanguity's list of tests; no unit to compare)")
+    # by name, never a test whose LOINC code isn't this one's, nor a name a qualifier tells apart (#1102: HDL as LDL)
     mine = even(name)
     alike = []
     for n, v in have.items():
-        if not compatible(n, v["unit"], unit):
+        if not compatible(n, v["unit"], unit) or code and v["loinc"] and code not in v["loinc"] or told_apart(name, n):
             continue
         if same_name(name, n):
             alike.append((2, 0, n, v["unit"], "same name written another way, same unit"))
         elif (r := difflib.SequenceMatcher(None, mine, even(n)).ratio()) >= SIMILAR:
             alike.append((r, 1, n, v["unit"], "similar name, same unit"))
     for n, d in common.lab_defs().items():
-        if n in have:
+        if n in have or code and d.get("loinc") and d["loinc"] != code:
             continue
-        r = max(difflib.SequenceMatcher(None, mine, even(a)).ratio() for a in [n] + d.get("aliases", []))
+        r = max((difflib.SequenceMatcher(None, mine, even(a)).ratio() for a in [n] + d.get("aliases", []) if not told_apart(name, a)), default=0)
         if r >= SIMILAR:
             alike.append((r, 1, n, "", "similar name (from Sanguity's list of tests; no unit to compare)"))
     for _, weak, n, u, why in sorted(alike, key=lambda x: (-x[0], x[1], x[2])):
