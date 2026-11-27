@@ -10946,17 +10946,29 @@ def main():
                 check("…Show again: back under Current, focus on its row, said", shown1093 == [cur["key"], False, True], shown1093)
                 js("async () => { const m = MEDS.find(m => m.own); if (m) await mmSend('DELETE', `own/${m.own.id}`); }")
                 settle(300)
-                # (#1091) a profile with nothing imported but a medication of its own: its records are that one, and the
-                # page opens on Medications, listing it under Current and in Today
-                pid1091 = js("""api('profiles', {method: 'POST', body: JSON.stringify({name: 'Own medication only (fictional)'})}).then(r => r.json())
-                    .then(j => api(`profiles/${j.id}/medications/own`, {method: 'POST', body: JSON.stringify({name: 'Solely own (fictional)', start: zToday()})}).then(() => j.id))""")
+                # (#1091, #1092) a new profile, nothing imported: Add → Add a medication opens the form, and saved, its first
+                # records are that medication, the tabs drawn on Medications with it under Current and in Today; again
+                # it opens there
+                pid1091 = js("api('profiles', {method: 'POST', body: JSON.stringify({name: 'Own medication only (fictional)'})}).then(r => r.json()).then(j => j.id)")
+                page.goto(base + f"/?profile={pid1091}")
+                page.wait_for_selector("main .empty-state", timeout=20000)
+                menu_click(page, "#medAddLink")
+                page.wait_for_function("document.getElementById('dtitle')?.textContent === 'Add a medication' && document.activeElement.id.startsWith('mm-name')", timeout=10000)
+                page.keyboard.type("Solely own (fictional)")
+                page.click("#dbody button[type=submit]")
+                page.wait_for_function("typeof booted !== 'undefined' && booted && MEDS.length === 1", timeout=20000)
+                settle(400)
+                seen1091 = """[state.tab, EV.length, [...document.querySelectorAll('#view-medications div.card li.med-row .cell-btn')].map(b => b.textContent),
+                    [...document.querySelectorAll('#medToday .dose-med')].map(b => b.textContent), !!document.querySelector('main .empty-state')]"""
+                empty1091 = [js(seen1091), js("document.getElementById('dtitle').textContent")]
                 page.goto(base + f"/?profile={pid1091}")
                 page.wait_for_function(f"typeof booted !== 'undefined' && booted && PROFILE.id === {pid1091}", timeout=20000)
                 settle(400)
-                empty1091 = js("""[state.tab, EV.length, [...document.querySelectorAll('#view-medications div.card li.med-row .cell-btn')].map(b => b.textContent),
-                    [...document.querySelectorAll('#medToday .dose-med')].map(b => b.textContent), !!document.querySelector('main .empty-state')]""")
-                check("a profile with nothing imported but a medication of its own opens on Medications, listing it under Current and in Today (#1091)",
-                      empty1091 == ["medications", 0, ["Solely own (fictional)"], ["Solely own (fictional)"], False], empty1091)
+                empty1091.append(js(seen1091))
+                seen = ["medications", 0, ["Solely own (fictional)"], ["Solely own (fictional)"], False]
+                check("a new profile, nothing imported (#1091, #1092): Add → Add a medication, saved, draws its first records, on Medications with it "
+                      "under Current and in Today, its drawer open; loaded again, it opens there",
+                      empty1091 == [seen, "Solely own (fictional)", seen], empty1091)
                 from server import db as dbm1091, profiles as prof1091
                 db1091 = dbm1091.connect()
                 prof1091.delete_profile(db1091, pid1091)
@@ -18120,12 +18132,12 @@ def main():
             page.keyboard.press("ArrowDown")
             check("…the Add menu opens from the keyboard, on its first item", js("document.activeElement.textContent") == "Log a dose", js("document.activeElement.textContent"))
             page.keyboard.press("ArrowDown")
-            check("…and the arrow keys move through it", js("document.activeElement.textContent") == "Journal entry", js("document.activeElement.textContent"))
+            check("…and the arrow keys move through it", js("document.activeElement.textContent") == "Add a medication", js("document.activeElement.textContent"))   # (#1092)
             # #264: in two groups, Today and Records, each way in opening its section of Sources (#166)
-            check("…in two groups: Today (a dose, a journal entry, a home reading), then Records, each way in opening its section of Sources (#166), "
+            check("…in two groups: Today (a dose, a medication of your own, #1092, a journal entry, a home reading), then Records, each way in opening its section of Sources (#166), "
                   "after what's waiting for you (#283)",
                   js("[...document.querySelectorAll('#addMenuList [role=group]')].map(g => [g.getAttribute('aria-label'), ...[...g.querySelectorAll('[role=menuitem]')].map(a => a.getAttribute('href'))])")
-                  == [["Today", "./?profile=1#log-dose", "./?profile=1#new-journal-entry", "sources.html?profile=1#home-reading"],   # for the profile shown (#397)
+                  == [["Today", "./?profile=1#log-dose", "./?profile=1#add-medication", "./?profile=1#new-journal-entry", "sources.html?profile=1#home-reading"],   # for the profile shown (#397)
                       ["Records", "sources.html?profile=1#waiting", "sources.html?profile=1#upload", "sources.html?profile=1#portals", "sources.html?profile=1#manual",
                        "sources.html?profile=1#link"]],
                   js("[...document.querySelectorAll('#addMenuList [role=group]')].map(g => [g.getAttribute('aria-label'), ...[...g.querySelectorAll('[role=menuitem]')].map(a => a.getAttribute('href'))])"))
@@ -22136,7 +22148,7 @@ def main():
             # Second person shown here, My records picked in another browser tab since; each of Add's links, Display and
             # Getting started, followed from here, opens Second person
             followed = {}
-            for menu, item in [("#addMenuBtn", f"#addMenuList a:text-is('{t}')") for t in ("Log a dose", "Journal entry", "Home reading", "Upload files",
+            for menu, item in [("#addMenuBtn", f"#addMenuList a:text-is('{t}')") for t in ("Log a dose", "Add a medication", "Journal entry", "Home reading", "Upload files",
                                 "Connect a portal or plan", "Type records in", "Paste a Health Link")] + [("#userMenuBtn", "#settingsLink"), ("#userMenuBtn", "#guideLink")]:
                 page.goto(base + "/settings.html?profile=2")
                 page.wait_for_function(filled + " && document.getElementById('profile').value === '2'", timeout=20000)
@@ -22705,7 +22717,7 @@ def main():
                 .filter(x => !x.hidden && !x.closest('[hidden]')).map(x => x.textContent.trim())"""
             pal_actions = """() => [...document.querySelectorAll('#palList [role=group]')].filter(g => g.querySelector('.pal-sec').textContent === 'Actions')
                 .flatMap(g => [...g.querySelectorAll('.pal-t')].map(t => t.textContent))"""
-            ADDS = {"Log a dose", "Journal entry", "Home reading", "Upload files", "Connect a portal or plan", "Type records in", "Paste a Health Link", "New share link"}
+            ADDS = {"Log a dose", "Add a medication", "Journal entry", "Home reading", "Upload files", "Connect a portal or plan", "Type records in", "Paste a Health Link", "New share link"}
             offered = {}
             for path in ("?profile=1", "sources.html?profile=1", "sharing.html?profile=1", "settings.html?profile=1", "settings.html?profile=1#security",
                          "settings.html?profile=1#accounts", "guide.html?profile=1"):   # (Account's and Admin's, #991)
@@ -23052,7 +23064,7 @@ def main():
             zb.wait_for_selector("#addMenuBtn", timeout=10000)
             own_empty = zb.evaluate(add_offers)
             check("Add follows the profile shown (#401): nothing for one they can only view; on the empty one they edit, all but Log a dose",
-                  viewing == [] and own_empty == ["Journal entry", "Home reading", "Upload files", "Connect a portal or plan", "Type records in", "Paste a Health Link"],
+                  viewing == [] and own_empty == ["Add a medication", "Journal entry", "Home reading", "Upload files", "Connect a portal or plan", "Type records in", "Paste a Health Link"],
                   [viewing, own_empty])
             zb.goto(base + f"/settings.html?profile={pid3}")
             zb.wait_for_selector("#addMenuBtn", timeout=10000)
