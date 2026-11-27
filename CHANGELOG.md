@@ -3893,6 +3893,9 @@ Everything on `main` so far; it becomes the first tagged release.
   as its own test; adding or changing one can move the results already saved too, charted with the test without
   changing the records, and Remove leaves them where they are; each has an Undo. Keep separate at a review, beside a
   test it offered, is remembered like a match. Export everything carries the matches and the moved results.
+- **A vital reported in another unit is said in its chart's unit** (#1102): a C-CDA document's temperature, height,
+  pulse and blood pressure showed their value as written with the chart's unit after it ("37 Cel °F", "175 cm in");
+  Labs, the Overview and the visit summary now say the converted value ("98.6 °F"), with "Reported as 37 Cel" beside it.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
