@@ -35,7 +35,7 @@ def utc(local):
 
 
 def ldc(rows=BP, seq=1, **extra):
-    """Life Dashboard Companion's upload of these readings."""
+    """Life Dashboard's upload of these readings."""
     return {"source": "health_connect", "timezone": TZ, "sequence": seq, "timestamp": "2024-03-11T13:00:00Z",
             "blood_pressure": [{"uuid": f"bp-{t}", "time": utc(t), "systolic": s, "diastolic": d, "source": CUFF,
                                 **({"pulse": p} if p is not None else {})} for t, s, d, p in rows], **extra}

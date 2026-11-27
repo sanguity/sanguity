@@ -65,6 +65,8 @@ CLINIC = {
         {"name": "Ferritin", "unit": "ng/mL", "panel": "Iron", "n": 1, "txt": [], "pts": [[day(-20), 210, 20, 200, "", "210"]]},
         {"name": "Glucose", "unit": "mg/dL", "panel": "BMP", "n": 1, "txt": [], "pts": [[day(-5), 105, 70, 99, "H", "105"]]},
         {"name": "Sodium, Blood", "unit": "mmol/L", "panel": "BMP", "n": 1, "txt": [], "pts": [[day(-100), 133, 135, 145, "L", "133"]]},
+        # a key lab in a unit as its report codes it: said as people write it, 10³/µL (#1103)
+        {"name": "Platelet Count", "unit": "10*3/uL", "panel": "CBC", "n": 2, "txt": [], "pts": [[day(-60), 240, 150, 400, "", "240"], [day(-5), 251, 150, 400, "", "251"]]},
     ],
     "costs": [],
     "upcoming": [{"t": d(60), "title": "Annual physical", "who": "Dr. Rowan Vale", "where": "Maple Street Clinic"},
@@ -210,6 +212,9 @@ class Summary(unittest.TestCase):
         for gone in ("Amoxicillin", "Cetirizine", "A past appointment"):
             self.assertNotIn(gone, text, "stopped medications and past appointments are left out")
         self.assertIn("Sodium (mmol/L) 133", text, "a key lab with no result since: its last one, as a trend")
+        # (#1103) a unit as people write it, by units.said (the page's unitSaid): 10³/µL, not 10*3/uL
+        self.assertIn("Platelets (10³/µL) 240", text)
+        self.assertNotIn("10*3/uL", text)
         self.assertIn("no new result", text)
         self.assertIn(f"Since: {summary.fmt_date(SINCE)} (Follow-up visit)", text)
 

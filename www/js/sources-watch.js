@@ -134,9 +134,9 @@
           el("li", {}, "For a glucose meter or a continuous glucose monitor, one with only ", b("blood glucose"), " and no time grouping, so each reading comes on its own."),   // blood glucose (#181)
           el("li", {}, "For a watch's ECG recordings and irregular rhythm notifications, one with the data type ", b("ECG"), " and one with ", b("Heart Rate Notifications"), ", synced daily since the last sync (a recording is about 1 MB as the app sends it)."))),   // #182
     ],
-    // Life Dashboard Companion: Health Connect's data, each upload signed with the secret
+    // Life Dashboard: Health Connect's data, each upload signed with the secret
     android: () => [
-      step("Get Life Dashboard Companion", para("On the Android phone, from ",   // (#1103) where it's found: F-Droid, not Google Play
+      step("Get Life Dashboard", para("Life Dashboard (formerly Life Dashboard Companion), on the Android phone, from ",   // (#1103) where it's found: F-Droid, not Google Play
         el("a", {href: "https://f-droid.org/packages/com.owen282000.lifedashboard/", target: "_blank", rel: "noopener", id: "watchStore"}, "F-Droid"),
         ". It reads Health Connect: let it read what you'd like sent, such as steps, heart rate, sleep, weight, blood pressure and glucose.")),
       secretStep(),
@@ -161,8 +161,8 @@
       }})));
     box.replaceChildren(...present(
       el("h2", {text: "Upload from the phone"}),   // (the group, Phone and watch, holds Cycle tracking too: its title is the h1, #409)
-      el("p", {class: "hint", text: "Health Auto Export (iPhone) or Life Dashboard Companion (Android) sends watch, sleep and scale readings here."}),
-      aboutWords("Health Auto Export reads Apple Health, and Life Dashboard Companion reads Health Connect. Garmin, Fitbit, Withings and other apps come through them, by writing to Apple Health or Health Connect.",
+      el("p", {class: "hint", text: "Health Auto Export (iPhone) or Life Dashboard (Android) sends watch, sleep and scale readings here."}),
+      aboutWords("Health Auto Export reads Apple Health, and Life Dashboard reads Health Connect. Garmin, Fitbit, Withings and other apps come through them, by writing to Apple Health or Health Connect.",
         "Each profile has its own secret, so each person's phone uploads to their own profile. Readings are split into days in the phone's own time zone."),
       el("p", {class: "w-live", id: "watchLive"}),
       st.ready ? null : el("p", {class: "msg bad", text: "The watch receiver isn't ready for this profile's own secret yet: " +

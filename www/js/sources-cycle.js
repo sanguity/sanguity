@@ -87,7 +87,7 @@
     };
     if (!st.on) {
       parts.push(el("p", {class: "hint", id: "cycleState", text: `Off. ${KEPT} from the phone apps are left out of every upload before anything is kept.`}),
-        aboutWords(`Turned on, ${KEPT.toLowerCase()} from Health Connect (Life Dashboard Companion) or Apple Health (Health Auto Export) are kept for this profile. ${WHO}`, NEVER, SEX, WORDS));
+        aboutWords(`Turned on, ${KEPT.toLowerCase()} from Health Connect (Life Dashboard) or Apple Health (Health Auto Export) are kept for this profile. ${WHO}`, NEVER, SEX, WORDS));
       if (owner) {
         const go = el("button", {class: "btn", type: "button", id: "cycleOn", text: "Turn on cycle tracking…", disabled: !st.ready || null, onclick: async () => {
           if (!await ask({title: "Turn on cycle tracking?", action: "Turn on", message: [
@@ -104,7 +104,7 @@
         aboutWords(WHO, NEVER, SEX, WORDS),
         el("h3", {class: "sub", text: "Sending them from the phone"}),
         el("ul", {class: "cy-list"},
-          el("li", {text: "Android: in Health Connect, let Life Dashboard Companion read cycle tracking (menstruation, ovulation tests, cervical mucus, spotting). It sends them with the rest."}),
+          el("li", {text: "Android: in Health Connect, let Life Dashboard read cycle tracking (menstruation, ovulation tests, cervical mucus, spotting). It sends them with the rest."}),
           el("li", {text: "iPhone: in Health Auto Export, add a REST API automation like the others, with Cycle Tracking's menstrual flow, ovulation test result, cervical mucus quality and spotting (intermenstrual bleeding), and no time grouping."}),
           el("li", {id: "cycleExport", text: "Or upload the Health app's export (Export All Health Data) under Upload files: its cycle records come in while this is on, and are left out while it's off."})));   // #223
       if (owner) { parts.push(el("div", {class: "row"}, msg)); zone = cycleZone(ME.profiles.find(x => x.id === PID)?.name || "", msg); }

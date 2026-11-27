@@ -58,8 +58,8 @@ on the **Settings** page, appear on every chart and as "since" periods.
   then come in on a schedule. Experimental and off by default ([Connected sources](#connected-sources)).
 - **Type records in** by hand, paste a SMART Health Link, and **correct** anything an import got wrong; corrections
   survive re-imports.
-- **Phones:** watch and smart-scale data from Android (Health Connect, via Life Dashboard Companion) or iPhone
-  (Apple Health, via Health Auto Export), which covers Garmin, Fitbit, Withings and most others
+- **Phones:** watch and smart-scale data from Android (Health Connect, via Life Dashboard, formerly Life Dashboard
+  Companion) or iPhone (Apple Health, via Health Auto Export), which covers Garmin, Fitbit, Withings and most others
   ([Connecting a phone](#connecting-a-phone-watch-and-scale-data)).
 
 **Making it yours**
@@ -307,7 +307,7 @@ start deletes too).
 | Lab results spreadsheets (CSV) and Quest or Labcorp lab report PDFs | Lab results with units, ranges and flags |
 | Insurance claims exports (`uhc`, `bcbs` formats, or an EOB spreadsheet (CSV)) | Claims, billed / paid / your share, denials |
 | Payments export (`payments.json`) | Out-of-pocket payments and premiums |
-| Health Connect, via the Life Dashboard Companion phone app | Steps, heart rate, HRV, sleep stages, workouts, weight and body composition, blood pressure (each reading, with its pulse when the cuff gives one), body temperature, blood oxygen, respiratory rate, cardio fitness (VO2 max), blood glucose (meter and CGM) |
+| Health Connect, via the Life Dashboard phone app | Steps, heart rate, HRV, sleep stages, workouts, weight and body composition, blood pressure (each reading, with its pulse when the cuff gives one), body temperature, blood oxygen, respiratory rate, cardio fitness (VO2 max), blood glucose (meter and CGM) |
 | Apple Health on iPhone, via the Health Auto Export app (or an uploaded `export.xml`) | The same, with HRV as Apple's SDNN; and a watch's ECG recordings and irregular rhythm notifications (#182) |
 | Apple Health's whole export zip (Export All Health Data) | The above, read the same way (#223: home blood pressure, body temperature and glucose too; heights offered for About this person; cycle records only while cycle tracking is on), ECGs from its `electrocardiograms/` folder, and the Health app's Health Records from hospitals and clinics (FHIR files in `clinical-records/`): visits, labs, medications, problems, allergies, immunizations, procedures |
 | Typed in by hand (**Sources → Type records in**) | Lab results, visits, hospital stays, procedures, imaging and reports, medications and pharmacy fills, problems and diagnoses, immunizations, insurance claims, out-of-pocket payments, upcoming appointments, vitals, home blood pressure, glucose, temperature, blood oxygen, weight and steps, heights, workouts, letters and documents with a PDF or picture |
@@ -337,7 +337,8 @@ receiver first finds it so (`SLOT_GRACE_DAYS` on the receiver, 7); what a restor
 
 Two phone apps upload to that address:
 
-- **Android: Life Dashboard Companion** reads Health Connect. Give it the upload address and the secret; it signs
+- **Android: Life Dashboard**, [from F-Droid](https://f-droid.org/packages/com.owen282000.lifedashboard/), reads
+  Health Connect. Give it the upload address and the secret; it signs
   each upload with the secret.
 - **iPhone: Health Auto Export** reads Apple Health (its REST API automations need the app's Premium subscription or
   trial). Add a REST API automation with the upload address as its URL, a header `Authorization` with the value

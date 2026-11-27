@@ -23,7 +23,7 @@ Privacy first. This is among the most sensitive data a person has, so:
 
 Record types (both apps' payloads are worked out from the receiver's existing patterns; neither app documents these
 types for us, so the field names below are assumptions, and anything unexpected is skipped rather than guessed):
-  Health Connect, via Life Dashboard Companion: a list per record type, under the type's name in snake case, each
+  Health Connect, via Life Dashboard: a list per record type, under the type's name in snake case, each
   entry with "uuid", "time" (an instant, ISO 8601) and "source", like its other samples; deletions in
   "deleted_records" with that type name. Values are Health Connect's own constants, as numbers or their names:
     menstruation_flow        {"flow": 0 unknown, 1 light, 2 medium, 3 heavy}
@@ -200,7 +200,7 @@ def has_any(p):
 
 
 def from_health_connect(c, p, tz):
-    """Fold a Life Dashboard Companion upload's cycle records in (tz: the upload's zone, for each record's day).
+    """Fold a Life Dashboard upload's cycle records in (tz: the upload's zone, for each record's day).
     Returns how many were kept."""
     n = 0
     day = lambda t: t.astimezone(tz).date().isoformat()

@@ -2,7 +2,7 @@
 writes for the Body and activity tab.
 
 Where readings come from (watch/receiver.py hands each upload's glucose here):
-  Health Connect, via Life Dashboard Companion   "blood_glucose": [{"uuid", "time", "millimoles_per_liter" or
+  Health Connect, via Life Dashboard   "blood_glucose": [{"uuid", "time", "millimoles_per_liter" or
       "milligrams_per_deciliter", "specimen_source", "source", ...}], one entry a reading, in the shape of its other
       samples (the value field named after Health Connect's unit, as "kilograms" and "celsius" are); deletions come in
       "deleted_records" with the type "blood_glucose". Readings sent in hourly buckets can't be counted into ranges,
@@ -138,7 +138,7 @@ def _put(c, app, src, rid, t, v, kind):
 
 
 def from_health_connect(c, p, tz):
-    """Fold a Life Dashboard Companion upload's glucose in (tz: the upload's zone, for the local time). Returns
+    """Fold a Life Dashboard upload's glucose in (tz: the upload's zone, for the local time). Returns
     (readings, left out)."""
     n = skipped = 0
     for r in p.get("blood_glucose") or []:

@@ -363,7 +363,7 @@ CYCLE_RX = {}   # the receiver that folded the cycle fixture in, kept to carry o
 def add_cycle_watch(watch_dir):
     """Menstrual cycle records (#183), folded by the receiver itself from fictional uploads of both phone apps, with
     cycle tracking on for its slot: Health Auto Export's flow and ovulation tests from January to April 2026, then
-    Life Dashboard Companion's periods (logged as periods), flow, ovulation tests, cervical mucus and one spotting, and
+    Life Dashboard's periods (logged as periods), flow, ovulation tests, cervical mucus and one spotting, and
     sexual activity, which is never kept. It writes cycle.json beside the demo's daily.json, as the receiver does; the
     app shows none of it until the profile's owner turns cycle tracking on (the demo has it off)."""
     import hashlib, tempfile as tf
@@ -476,7 +476,7 @@ RESP_VISITS = [("2025-01-14T10:20:00-05:00", 16, ""), ("2025-06-10T10:05:00-04:0
 
 def add_fitness_records(build, watch_dir):
     """Respiratory rate and VO2 max from both phone apps (#226), folded by the receiver itself into the demo's watch
-    summary: Health Auto Export's until mid-September (each upload sent twice), then Life Dashboard Companion's; and
+    summary: Health Auto Export's until mid-September (each upload sent twice), then Life Dashboard's; and
     respiratory rates taken at visits, in the records as a vitals series (RESP_VISITS)."""
     import hashlib, tempfile as tf
     from datetime import datetime
@@ -523,7 +523,7 @@ def add_workout_hr(watch_dir):
     """Workouts with heart rate from both phone apps (#197), folded by the receiver into the demo's watch summary (the
     demo's own workouts have none): through Health Auto Export, a run on 8 September with its minute-by-minute readings
     (5 min at 100 bpm, 10 at 120, 10 at 140, 5 at 160) and a ride on 12 September with only its average and highest;
-    through Life Dashboard Companion, a walk on 20 October and a run on 10 November, with heart rate samples every 5
+    through Life Dashboard, a walk on 20 October and a run on 10 November, with heart rate samples every 5
     seconds during them (15 min at 105 and 30 at 125; 10 min at 150, 15 at 165, 5 at 175). Local times in New York."""
     import hashlib, tempfile as tf
     from datetime import datetime, timedelta
@@ -23755,7 +23755,7 @@ def main():
             check("…an iPhone | Android switch, each phone's steps a card each, numbered in order (#284)",
                   iphone284 == ["Get Health Auto Export", "The secret", "Add a REST API automation", "Put the secret in a header",
                                 "Choose what it sends, and when", "Send a test upload", "Add the others you need"]
-                  and android284 == [["Get Life Dashboard Companion", "The secret", "Give it the address and the secret", "Send a test upload"],
+                  and android284 == [["Get Life Dashboard", "The secret", "Give it the address and the secret", "Send a test upload"],
                                      ["false", "true"], "android", "Setting up an Android"]
                   and js("getComputedStyle(document.querySelector('#watchSteps h3'), '::before').content") == "counter(step)", [iphone284, android284])
             # #1103: Android's app named with where it's found (F-Droid, its own window); and an upload address naming this

@@ -129,6 +129,40 @@ class PageFigures(unittest.TestCase):
         self.assertEqual(got[0], "0.0000136", "1.2E-3 µmol/L of creatinine in mg/dL")
         self.assertEqual(page_js("[ucFmt(0, 3), ucFmt(NaN, 3), ucFmt(-1.5e-8, 2), ucFmt(1e-30, 3)]"), ["0", "", "-0.0000000150", "0." + "0" * 29 + "100"])
 
+    def test_a_unit_said_alike_on_the_page_and_the_server(self):
+        """#1103: a unit as people write it, one rule in two places: util.js unitSaid (the pages) and units.said (what
+        the server writes out: the visit summary's PDF, a share link's measures), each giving the same for every unit
+        here; how it's written only, U/L (enzyme units) and the units people already write kept."""
+        import json, re, subprocess
+        src = open(os.path.join(ROOT, "www", "js", "util.js"), encoding="utf-8").read()
+        rule = re.search(r"const UNIT_SUP = .*?\nfunction unitSaid\(u\) \{.*?\n\}\n", src, re.S).group()
+        r = subprocess.run(["node", "-e", rule + "console.log(JSON.stringify(JSON.parse(process.argv[1]).map(unitSaid)))", json.dumps(UNIT_CASES)],
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(json.loads(r.stdout), [units.said(u) for u in UNIT_CASES])
+
+
+# units as reports code them, and as people write them (#1103: util.js unitSaid, units.said)
+UNIT_SAID = {"10*3/uL": "10³/µL", "x10E3/uL": "10³/µL", "10^9/L": "10⁹/L", "x10E12/L": "10¹²/L", "10*6/uL": "10⁶/µL",
+             "mm[Hg]": "mmHg", "[in_i]": "in", "Cel": "°C", "[degF]": "°F", "{beats}/min": "beats/min", "kg/m2": "kg/m²",
+             "umol/L": "µmol/L", "uIU/mL": "µIU/mL", "ug/dL": "µg/dL", "mL/min/{1.73_m2}": "mL/min/1.73 m²",
+             "mL/min/1.73m2": "mL/min/1.73m²", "10*3/mm3": "10³/mm³", "/[HPF]": "/HPF", "K/uL": "K/µL",
+             "U/L": "U/L", "mg/dL": "mg/dL", "mEq/L": "mEq/L", "%": "%", "fL": "fL", "bpm": "bpm", "cm": "cm", "in": "in",
+             "mm/h": "mm/h", "IU/L": "IU/L", "10³/µL": "10³/µL", "": ""}
+UNIT_CASES = list(UNIT_SAID)
+
+
+class UnitSaid(unittest.TestCase):
+    def test_a_unit_as_people_write_it(self):   # #1103
+        self.assertEqual({u: units.said(u) for u in UNIT_CASES}, UNIT_SAID)
+        self.assertIsNone(units.said(None))
+
+    def test_the_pdf_writes_a_power_it_has_no_glyph_for_plainly(self):   # #1103
+        """The summary's PDF fonts (Windows-1252) have ¹ ² ³ but no other superscript: 10⁹/L is written 10^9/L, never
+        "109/L", which reads as another number."""
+        from server import pdfdoc
+        self.assertEqual([pdfdoc.plain(u) for u in ("10³/µL", "10⁹/L", "10¹²/L", "10⁻³/L", "kg/m²")], ["10³/µL", "10^9/L", "10¹²/L", "10^-3/L", "kg/m²"])
+
 
 class Served(unittest.TestCase):
     @classmethod

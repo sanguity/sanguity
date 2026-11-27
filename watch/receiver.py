@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Receiver for the phone apps' uploads, on one address: Life Dashboard Companion (Health Connect, Android) webhooks,
+"""Receiver for the phone apps' uploads, on one address: Life Dashboard (Health Connect, Android) webhooks,
 and Health Auto Export (Apple Health, iPhone) REST API automations (#148).
 
 - Verifies X-Signature (HMAC-SHA256 of the raw body; Life Dashboard), or the secret itself sent as

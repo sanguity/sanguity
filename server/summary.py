@@ -44,7 +44,7 @@ notice on every page.
 """
 import contextvars, datetime, json, math, re
 
-from . import crypto, db as dbm, measures, pdfdoc, ranges, records, settings
+from . import crypto, db as dbm, measures, pdfdoc, ranges, records, settings, units
 
 SECTIONS = [("out_of_range", "Out-of-range results"), ("trends", "Trends since the last visit"),
             ("medications", "Current medications"), ("appointments", "Upcoming appointments"),
@@ -776,7 +776,7 @@ def _charts(lay, rows, note):
     cw = (pdfdoc.WIDTH - 2 * MARGIN - gap * (CHART_COLS - 1)) / CHART_COLS
     for i in range(0, len(rows), CHART_COLS):
         part = rows[i:i + CHART_COLS]
-        names = [pdfdoc.wrap(r["label"] + (f" ({r['unit']})" if r["unit"] else ""), 8, cw, True)[:2] for r in part]
+        names = [pdfdoc.wrap(r["label"] + (f" ({units.said(r['unit'])})" if r["unit"] else ""), 8, cw, True)[:2] for r in part]
         h = max(_chart_h(n) for n in names)
         lay.need(h)
         for j, (r, n) in enumerate(zip(part, names)):
@@ -855,7 +855,7 @@ def _render(s, charts):
                     continue
                 lay.table(sid, [("TEST", 140), ("RESULT", 72), ("FLAG", 42), ("RANGE", 96), ("DATE", 66), ("SOURCE", None)],
                           rows, lambda r: [r["label"] + (f"  ({r['out']} of {r['of']})" if r["of"] > 1 else ""),
-                                           f"{r['value']} {r['unit']}".strip(), (r["flag"],), r["range"] or "not given",
+                                           f"{r['value']} {units.said(r['unit'])}".strip(), (r["flag"],), r["range"] or "not given",
                                            _when(r["date"]), r["source"]])
                 lay.note(said["out_of_range"], 7.5)   # what each is judged against (#717, #752), as the preview says it
                 if any(r["range"].endswith("(settings)") for r in rows):
@@ -867,7 +867,7 @@ def _render(s, charts):
                     lay.note("None of the key labs has results. Pick labs on the summary page, or set the key labs in Settings.")
                     continue
                 lay.table(sid, TREND_COLS,
-                          rows, lambda r: [f"{r['label']}" + (f" ({r['unit']})" if r["unit"] else ""),
+                          rows, lambda r: [f"{r['label']}" + (f" ({units.said(r['unit'])})" if r["unit"] else ""),
                                            now_cell(r["then"], "none before"),
                                            now_cell(r["now"]), r["change"] or "", str(r["since"]), None,
                                            (r["now"] or {}).get("range") or ""],

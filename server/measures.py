@@ -44,7 +44,7 @@ from bisect import bisect_left, insort
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from . import ecg, glucose, growth, med_log, med_reminders, medications, person, targets as tg, watch_store
+from . import ecg, glucose, growth, med_log, med_reminders, medications, person, targets as tg, units, watch_store
 
 FROM = "the device and app that sent it (or “Typed in”)"   # #581: where each reading came from, as its page says it
 SECTIONS = [   # (id, label, what a share link shows: said on the owner's form and the link's page; #576, #581: everything it shows)
@@ -270,7 +270,7 @@ def oxygen(c, keep, most):
 
 def _daily(c, key, keep, most, what, note):
     m = c.metrics.get(key) or {}
-    unit = str(m.get("unit") or "")
+    unit = units.said(str(m.get("unit") or ""))   # as people write it (#1103)
     days = [(d, v) for d, v in c.pts(key) if keep(d)][::-1]
     lead = []
     if days:

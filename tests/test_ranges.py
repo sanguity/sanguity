@@ -24,7 +24,7 @@ sys.path.insert(0, ROOT)
 from fastapi.testclient import TestClient   # noqa: E402
 from pypdf import PdfReader   # noqa: E402
 
-from server import accounts, crossmatch, db as dbm, main, profiles as prof, ranges, records, settings, summary   # noqa: E402
+from server import accounts, crossmatch, db as dbm, main, profiles as prof, ranges, records, settings, summary, units   # noqa: E402
 import logging   # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -588,9 +588,9 @@ class Api(unittest.TestCase):
         self.assertEqual(r.status_code, 200, r.text[:200])
         text = " ".join("\n".join(p.extract_text() for p in PdfReader(io.BytesIO(r.content)).pages).split())
         for (n, u), (v, f, rg, *_) in out.items():
-            self.assertIn(f"{v} {u} {f} {rg}", text, f"{when}: the PDF's out-of-range {n}")
+            self.assertIn(f"{v} {units.said(u)} {f} {rg}", text, f"{when}: the PDF's out-of-range {n}")   # its unit as people write it (#1103)
         for n, u in trends:
-            self.assertIn(f"{M.SHOWN.get(n, n)} ({u})", text, f"{when}: the PDF's trend of {n} in {u}")
+            self.assertIn(f"{M.SHOWN.get(n, n)} ({units.said(u)})", text, f"{when}: the PDF's trend of {n} in {u}")
         view = TestClient(main.app, base_url="http://testserver").post("/api/share/view", json={"token": token}, headers=H).json()
         self.assertEqual({(x["name"], x["unit"]): [[q["flag"], q["lo"], q["hi"], q["range"], *filter(None, [q.get("edge")])] for q in x["results"][::-1]]
                           for x in view["results"]},
