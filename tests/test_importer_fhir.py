@@ -142,9 +142,31 @@ class Bundle(Shape, unittest.TestCase):
         self.assertEqual((s["n"], s["txt"]), (0, [["2025-03-04T09:50:00-06:00", "Yellow"]]))
 
     def test_vitals(self):
-        self.assertEqual(series(self.data, "Systolic blood pressure")["pts"][0][1], 128)
-        self.assertEqual(series(self.data, "Diastolic blood pressure")["panel"], "Vitals")
+        """#1102: a vital is named by its LOINC code first, as C-CDA's are (common.VITALS): "Diastolic blood pressure"
+        (8462-4, in mm[Hg]) was a chart beside C-CDA's "Blood pressure, diastolic"."""
+        sys_, dia = series(self.data, "Blood pressure, systolic"), series(self.data, "Blood pressure, diastolic")
+        self.assertEqual((sys_["pts"][0][1], sys_["unit"], sys_["loinc"]), (128, "mmHg", "8480-6"))
+        self.assertEqual((dia["panel"], dia["unit"], dia["pts"][0][5]), ("Vitals", "mmHg", "82"))
+        self.assertFalse([s for s in self.data["labs"] if s["name"].lower().endswith("blood pressure")])
         self.assertEqual(self.data["clinicWeights"], [["2025-03-04T09:35:00-06:00", 176.4, "FHIR"]])   # 80 kg in lb
+
+    def test_vitals_in_another_unit(self):
+        """A temperature in °C and a height in cm: converted to the unit C-CDA's are in (°F, in), as reported kept with its
+        unit, and C-CDA's name, so a FHIR and a C-CDA import of the same test are one chart (#1102)."""
+        obs = lambda i, code, text, v, u: {"resource": {"resourceType": "Observation", "id": f"v{i}", "status": "final",  # noqa: E731
+            "category": [{"coding": [{"system": "http://terminology.hl7.org/CodeSystem/observation-category", "code": "vital-signs"}]}],
+            "code": {"coding": [{"system": "http://loinc.org", "code": code}], "text": text},
+            "effectiveDateTime": "2025-03-04T09:35:00-06:00", "valueQuantity": {"value": v, "unit": u}}}
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        with open(os.path.join(tmp, "b.json"), "w") as f:
+            json.dump({"resourceType": "Bundle", "type": "collection", "entry": [
+                obs(1, "8310-5", "Body temperature", 37, "Cel"), obs(2, "8302-2", "Body height", 175, "cm"),
+                obs(3, "8867-4", "Heart rate", 72, "/min")]}, f)
+        data = fhir.parse({"b.json": os.path.join(tmp, "b.json")})["data"]
+        got = {s["name"]: (s["unit"], [p[1] for p in s["pts"]], [p[5] for p in s["pts"]]) for s in data["labs"]}
+        self.assertEqual(got, {"Temperature": ("°F", [98.6], ["37 Cel"]), "Height": ("in", [68.9], ["175 cm"]),
+                               "Heart rate (clinic)": ("bpm", [72], ["72"])})
 
     def test_encounters(self):
         v = by_kind(self.data, "visit")

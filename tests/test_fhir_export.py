@@ -25,6 +25,7 @@ import browser_check as bc   # noqa: E402  (its builders of the demo's extra rec
 import fhir_schema_check   # noqa: E402
 from fastapi.testclient import TestClient   # noqa: E402
 
+from server.importers import common   # noqa: E402
 from server import (accounts, atrest, cycle_tracking, db as dbm, export, fhir_export, importers, journal, main, profiles,   # noqa: E402
                     records, settings, watch_store)
 
@@ -120,8 +121,9 @@ def project(data, watch=None):
         else:
             add("other", (k, e["title"]))
     for s in data.get("labs") or []:
+        name = common.VITALS.get(str(s.get("loinc") or ""), (s["name"],))[0]   # a vital comes back by its LOINC code's name (#1102)
         for p in s.get("pts") or []:
-            add("point", (s["name"], t19(p[0]), p[1], p[2] if len(p) > 2 else None, p[3] if len(p) > 3 else None, p[4] if len(p) > 4 else "",
+            add("point", (name, t19(p[0]), p[1], p[2] if len(p) > 2 else None, p[3] if len(p) > 3 else None, p[4] if len(p) > 4 else "",
                           str(p[5]) if len(p) > 5 else str(p[1])))   # the value as reported, its precision kept ("2.0")
     for p in data.get("problems") or []:
         add("problem", ("Allergy" if p.get("type") == "Allergy" else "Diagnosis" if p.get("type") != "Health concern" else p["type"],
@@ -214,7 +216,7 @@ class FhirExport(unittest.TestCase):
 
     def compare(self, a, b, heights=()):
         """Profile a's records against profile b's, which were loaded from a's FHIR export: the same, kind by kind.
-        heights: About this person's heights, which come back as a body height series (what a clinic's would be,
+        heights: About this person's heights, which come back as a height series (what a clinic's would be,
         offered on About this person to add to the history: an import never changes a setting)."""
         db = self.db
         want = project(records.assemble(db, a), watch_store.load(db, a))
@@ -226,11 +228,13 @@ class FhirExport(unittest.TestCase):
             if not want["measure"]:
                 del want["measure"]
         have = project(records.assemble(db, b), watch_store.load(db, b))
-        came = [p for p in have.get("point", []) if p[0] == "Body height"]
-        have["point"] = [p for p in have.get("point", []) if p[0] != "Body height"] or None
+        # (#1102: named and in the unit a clinic's height is, by its LOINC code, "Height" in inches)
+        mine = want.get("point") or []
+        came = [p for p in have.get("point", []) if p[0] == "Height" and p not in mine]
+        have["point"] = [p for p in have.get("point", []) if p not in came] or None
         if not have["point"]:
             del have["point"]
-        self.assertEqual(sorted((p[1][:10], p[2]) for p in came), sorted((h["date"], h["cm"]) for h in heights))
+        self.assertEqual(sorted((p[1][:10], p[2]) for p in came), sorted((h["date"], round(h["cm"] / 2.54, 1)) for h in heights))
         for kind in sorted(set(want) | set(have)):
             with self.subTest(kind=kind):
                 self.assertEqual(want.get(kind), have.get(kind))

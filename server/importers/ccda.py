@@ -47,12 +47,7 @@ CVX = "2.16.840.1.113883.12.292"
 REACTION, SEVERITY, CRITICALITY, ALLERGY_STATUS = ("2.16.840.1.113883.10.20.22.4.9", "2.16.840.1.113883.10.20.22.4.8",
                                                    "2.16.840.1.113883.10.20.22.4.145", "2.16.840.1.113883.10.20.22.4.28")
 
-# vitals by LOINC: (series name as build.py names it, unit)
-VITALS = {"8302-2": ("Height", "in"), "8306-3": ("Height", "in"), "8310-5": ("Temperature", "°F"),
-          "8867-4": ("Heart rate (clinic)", "bpm"), "8480-6": ("Blood pressure, systolic", "mmHg"),
-          "8462-4": ("Blood pressure, diastolic", "mmHg"), "59408-5": ("SpO2 (clinic)", "%"), "2708-6": ("SpO2 (clinic)", "%"),
-          "9279-1": ("Respiratory rate (clinic)", "/min"), "39156-5": ("BMI", "kg/m²"),
-          "9843-4": ("Head circumference", "cm"), "8287-5": ("Head circumference", "cm")}   # head circumference: #196
+VITALS = common.VITALS   # vitals by LOINC: (series name, unit), every importer's (#1102)
 WEIGHT_LOINC = "29463-7"
 WEIGHT_UNITS = {"kg": 2.20462, "lb": 1.0, "[lb_av]": 1.0, "lbs": 1.0, "g": 0.00220462, "[oz_av]": 0.0625}
 
@@ -443,17 +438,10 @@ def vital_readings(doc):
                 if f and 1 < x * f < 600:   # from 1 lb: a baby's weight too (#196)
                     yield {"t": t, "x": round(x * f, 1), "weight": True}
                 continue
-            if c not in VITALS:
+            v = common.vital(c, x, unit)
+            if v is None:
                 continue
-            name, unit_out = VITALS[c]
-            if name == "Height" and u == "cm":
-                x = round(x / 2.54, 1)
-            elif name == "Height" and u == "m":
-                x = round(x / 0.0254, 1)
-            elif name == "Head circumference" and u in ("in", "[in_i]"):   # #196
-                x = round(x * 2.54, 1)
-            elif name == "Temperature" and u in ("cel", "c", "°c"):
-                x = round(x * 9 / 5 + 32, 1)
+            name, x, unit_out = v
             yield {"t": t, "x": _clean(x), "name": name, "unit": unit_out, "loinc": c,
                    "raw": raw + (f" {unit}" if unit else "")}
 
