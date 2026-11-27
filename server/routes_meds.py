@@ -12,7 +12,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
-from . import activity, db as dbm, med_log, med_reminders as mr, records, settings
+from . import activity, db as dbm, med_log, med_reminders as mr, medications, records, settings
 from .main import _client_ip, get_db, need, user
 
 router = APIRouter()
@@ -164,3 +164,112 @@ def remove_dose(pid: int, did: int, request: Request, response: Response, s=Depe
         activity.log(db, "medication", s, pid, med_log.log_detail("delete", was), _client_ip(request))
     records.stamp(response, db, pid)
     return {"ok": True, "removed": [did]}
+
+
+# ---------------------------------------------------------------- your own medications, and your changes (#1091)
+# medications.py, "your own medications". Viewers read them in the records the page loads (DATA.medications' "own",
+# "change" and "listed", DATA.hiddenMeds); owners and editors add, change, remove, hide and show again. A change can
+# move a medication anywhere on the page (Current to Past, out of Today), so each reply carries the records whole,
+# "records", as an edit's does (records.page_reply, #271), with "key": the medication's. Logged as "medication":
+# what was done, never the medication.
+
+class MedFields(BaseModel):
+    name: Optional[str] = None
+    strength: Optional[str] = None
+    dose: Optional[str] = None                 # the dose and instructions: "1 tablet twice a day"
+    route: Optional[str] = None
+    start: Optional[str] = None                # YYYY-MM-DD
+    stop: Optional[str] = None                 # YYYY-MM-DD, or "" for none
+    status: Optional[str] = None
+    prescriber: Optional[str] = None
+    note: Optional[str] = None
+    key: Optional[str] = None                  # an own entry's, its removal undone (POST); the records' (PUT .../listed)
+
+
+class Hidden(BaseModel):
+    key: str
+    hidden: bool
+
+
+def _entry_reply(db, pid, reply, status=200):
+    body, rev = records.page_reply(db, pid, reply)
+    return Response(body, status_code=status, media_type="application/json", headers={"X-Records-Rev": rev})
+
+
+def _fields(body, own):
+    try:
+        return medications.check(body.model_dump(exclude={"key"}), own)
+    except medications.EntryError as x:
+        raise HTTPException(400, str(x))
+
+
+def _listed(db, pid, key):
+    was = medications.record_listed(db, pid, key) if isinstance(key, str) and not medications.is_own(key) else None
+    if was is None:
+        raise HTTPException(404, "No such medication in the records.")
+    return was
+
+
+@router.get("/api/profiles/{pid}/medications/entries")
+def list_entries(pid: int, s=Depends(user), db=Depends(get_db)):
+    need(db, s, pid, "viewer")
+    return {"entries": medications.listing(db, pid)}
+
+
+@router.post("/api/profiles/{pid}/medications/own", status_code=201)
+def add_own(pid: int, body: MedFields, request: Request, s=Depends(user), db=Depends(get_db)):
+    need(db, s, pid, "editor")
+    f = _fields(body, True)
+    try:
+        with dbm.transaction(db):
+            eid = medications.add_own(db, pid, s, f, body.key)
+            activity.log(db, "medication", s, pid, medications.log_detail("own.back" if body.key else "own.add"), _client_ip(request))
+    except medications.EntryError as x:
+        raise HTTPException(400, str(x))
+    return _entry_reply(db, pid, {"id": eid, "key": medications.get(db, pid, eid)["key"]}, 201)
+
+
+@router.put("/api/profiles/{pid}/medications/own/{eid}")
+def change_own(pid: int, eid: int, body: MedFields, request: Request, s=Depends(user), db=Depends(get_db)):
+    need(db, s, pid, "editor")
+    f = _fields(body, True)
+    with dbm.transaction(db):
+        was = medications.change_own(db, pid, s, eid, f)
+        if was is None:
+            raise HTTPException(404, "No such medication of your own.")
+        activity.log(db, "medication", s, pid, medications.log_detail("own.change"), _client_ip(request))
+    return _entry_reply(db, pid, {"id": eid, "key": was["key"]})
+
+
+@router.delete("/api/profiles/{pid}/medications/own/{eid}")
+def remove_own(pid: int, eid: int, request: Request, s=Depends(user), db=Depends(get_db)):
+    """An own entry deleted; the reply says what it was ("removed": its fields and key), for an Undo to add it back."""
+    need(db, s, pid, "editor")
+    with dbm.transaction(db):
+        was = medications.remove_own(db, pid, eid)
+        if was is None:
+            raise HTTPException(404, "No such medication of your own.")
+        activity.log(db, "medication", s, pid, medications.log_detail("own.delete"), _client_ip(request))
+    return _entry_reply(db, pid, {"removed": {k: v for k, v in was.items() if k != "own"}, "key": was["key"]})
+
+
+@router.put("/api/profiles/{pid}/medications/listed")
+def change_listed(pid: int, body: MedFields, request: Request, s=Depends(user), db=Depends(get_db)):
+    """Your changes to a medication of the records (body.key): every field Edit shows, those as the records say them
+    not kept. With none left it's as listed again (Put back as listed). "was": the change before, for an Undo."""
+    need(db, s, pid, "editor")
+    f = _fields(body, False)
+    with dbm.transaction(db):
+        before, eid = medications.set_change(db, pid, s, body.key, _listed(db, pid, body.key), fields=f)
+        activity.log(db, "medication", s, pid, medications.log_detail("listed.change" if eid else "listed.back"), _client_ip(request))
+    return _entry_reply(db, pid, {"id": eid, "key": body.key, "was": before})
+
+
+@router.put("/api/profiles/{pid}/medications/hidden")
+def hide_listed(pid: int, body: Hidden, request: Request, s=Depends(user), db=Depends(get_db)):
+    """A medication of the records hidden, its records kept, or shown again (#1093)."""
+    need(db, s, pid, "editor")
+    with dbm.transaction(db):
+        _, eid = medications.set_change(db, pid, s, body.key, _listed(db, pid, body.key), hidden=body.hidden)
+        activity.log(db, "medication", s, pid, medications.log_detail("listed.hide" if body.hidden else "listed.show"), _client_ip(request))
+    return _entry_reply(db, pid, {"id": eid, "key": body.key})

@@ -29,7 +29,12 @@ to data.json, and each part of it has its place:
                                                              import; left out while there are none
   medications [{name, key, rxnorm, spans, changes, fills...}]  each medication's listings as spans, its dose changes
                                                              and its pharmacy fills (medications.py, #50), worked out
-                                                             from the events above; left out while there are none
+                                                             from the events above; left out while there are none.
+                                                             With the profile's own ("own") and its changes to the
+                                                             records' ("change", "listed"), the med_entries table (#1091)
+  hiddenMeds [{key, name, id, start, stop}]                  the records' medications hidden by hand (#1093), their
+                                                             records kept; left out while there are none
+  medEntries [{id, key, own, name, ..., hidden?, by...}]     (an export's only, assemble(raw=True)) the med_entries rows
   reminders  [{id, med, name, times, days, from, until, tz, on, by...}]  the med_reminders table: medication reminders
                                                              for the calendar feed (med_reminders.py, #162), never part
                                                              of an import; left out while there are none
@@ -56,8 +61,9 @@ from .importers import common
 FORMAT = "sanguity-data"            # imports.format of a data.json (build.py, the demo, an export zip)
 ROWS = ("events", "details", "labs", "costs")   # the parts kept as rows; the rest of the object is the meta
 SERVED = ("imports", "edits", "same", "possible", "journal", "medications", "oop", "reminders", "doses",
-          "corrections")   # parts assemble() adds: never stored from an import (an export's data.json has them, and
-                           # its corrections, #589: those go back into their own tables, export.restore)
+          "hiddenMeds", "medEntries", "corrections")   # parts assemble() adds: never stored from an import (an
+                           # export's data.json has them, and its corrections, #589, and its own medications, #1091:
+                           # those go back into their own tables, export.restore)
 
 
 def _enc(obj):
@@ -760,8 +766,15 @@ def _assemble(db, pid, raw=False):
         out = oop.annotate(db, pid, out, pay_imps)   # out-of-pocket: sources, HSA/FSA, matched to claims, counted once (#55)
     if (entries := journal.listing(db, pid)):   # only when there are some, like edits
         out["journal"] = entries
-    if not raw and (meds := medications.history(out)):   # #50: each medication's spans and fills, only when there are some
-        out["medications"] = meds
+    if raw:   # (#1091) the profile's own medications and changes to the records', as kept
+        if (mine := medications.listing(db, pid)):
+            out["medEntries"] = mine
+    else:   # #50: each medication's spans and fills, only when there are some; with the profile's own and changes (#1091)
+        meds, hidden = medications.assembled(db, pid, out)
+        if meds:
+            out["medications"] = meds
+        if hidden:
+            out["hiddenMeds"] = hidden
     from . import med_reminders
     if (rem := med_reminders.listing(db, pid)):   # #162: reminders for the calendar feed, only when there are some
         out["reminders"] = rem

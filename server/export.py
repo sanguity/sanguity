@@ -32,7 +32,7 @@ visit summary drafts, and which import each record came from (they load as one i
 """
 import contextlib, datetime, gzip, json, os, posixpath, re, secrets, shutil, urllib.parse, zipfile
 
-from . import (crossmatch, crypto, cycle_tracking, db as dbm, ecg, edits, journal, journal_photos, med_log, med_reminders, oop,
+from . import (crossmatch, crypto, cycle_tracking, db as dbm, ecg, edits, journal, journal_photos, med_log, med_reminders, medications, oop,
                profiles as prof, records, settings, uploads, watch_store)
 
 DOC_URL = re.compile(r"^api/profiles/\d+/documents/([^/#?]+)")
@@ -60,7 +60,7 @@ def plan(db, pid, cycle=False, activity=False, shown=False):
         data = records.assemble(db, pid, raw=True)   # as imported: what loading the export stores again (#589)
     if data is None and not shown:   # nothing imported, but what people wrote or decided still goes (#589)
         own = {k: v for k, v in (("journal", journal.listing(db, pid)), ("reminders", med_reminders.listing(db, pid)),
-                                 ("doses", med_log.listing(db, pid))) if v}
+                                 ("doses", med_log.listing(db, pid)), ("medEntries", medications.listing(db, pid))) if v}
         data = {"events": [], "details": {}, "labs": [], "costs": [], **own} if own or _has_corrections(db, pid) else None
     if data is not None and not shown and (fixes := corrections(db, pid, data["events"])):
         data["corrections"] = fixes
@@ -255,7 +255,8 @@ no longer need.
                      with the corrections made to them in Sanguity ("corrections": {len(fixes.get('edits') or [])} edits, {len(fixes.get('same') or [])} same-result
                      decisions, {len(fixes.get('marks') or [])} Costs marks), the journal ("journal": {len(got.get('journal') or [])} entries),
                      the medication log ("doses": {len(got.get('doses') or [])} logged; a phone's are in watch/daily.json) and
-                     the medication reminders ("reminders": {len(got.get('reminders') or [])})
+                     the medication reminders ("reminders": {len(got.get('reminders') or [])}) and the medications of
+                     your own and your changes to those of the records ("medEntries": {len(got.get('medEntries') or [])})
   settings.json     the profile's settings{'' if len(p['settings']) > 1 else ' (none set: all at their defaults)'}
   documents/         the documents, one folder each
   watch/daily.json   watch and scale summary{'' if p['watch'] else ' (none)'}
@@ -325,7 +326,7 @@ def strip_all(db):
     return sum(strip_uploads(db, pid) for (pid,) in db.execute("SELECT DISTINCT profile_id FROM uploads WHERE state='ready'").fetchall())
 
 
-PARTS = ("journal", "doses", "reminders")   # what people wrote, beside the records and their corrections
+PARTS = ("journal", "doses", "reminders", "medEntries")   # what people wrote, beside the records and their corrections
 KEY_MAX, BY_MAX = 4000, 200
 
 
@@ -465,18 +466,34 @@ def _reminder(r):
             "until": b.isoformat() if b else None, "tz": tz}
 
 
+def _med_entry(x):
+    """(#1091) an own medication or a change to one of the records', as med_entries keeps it."""
+    if not isinstance(x, dict):
+        raise ValueError("it isn't an object")
+    own, key = bool(x.get("own")), _str(x.get("key"), 300, "medication")
+    if own and not medications._OWN_KEY.match(key):
+        raise ValueError("its key isn't one of an entry of your own")
+    body = {"key": key, "own": own, **medications.check({k: x[k] for k in medications.FIELDS if k in x}, own)}
+    if not own and x.get("hidden"):
+        body["hidden"] = True
+    if not own and len(body) == 2:
+        raise ValueError("it changes nothing")
+    return body
+
+
 def check_parts(data):
     """What an export's data.json brings besides its records, checked (#589): {"edits", "same", "marks", "journal",
     "doses", "reminders"}, each a list of what its table keeps, or ValueError saying which one can't be loaded and
     why (an export Sanguity wrote always loads; a damaged or hand-made one is refused whole, before anything is
     kept). Needs no database: the importer checks an upload with it before its review (importers/sanguity.py)."""
-    out = {k: [] for k in ("edits", "same", "marks", "journal", "doses", "reminders")}
+    out = {k: [] for k in ("edits", "same", "marks", "journal", "doses", "reminders", "medEntries")}
     checks = (("edits", ("corrections", "edits"), "correction", _edit),
               ("same", ("corrections", "same"), "same-result decision", None),
               ("marks", ("corrections", "marks"), "Costs mark", None),
               ("journal", ("journal",), "journal entry", _entry),
               ("doses", ("doses",), "logged dose", _dose),
-              ("reminders", ("reminders",), "medication reminder", _reminder))
+              ("reminders", ("reminders",), "medication reminder", _reminder),
+              ("medEntries", ("medEntries",), "medication of your own or change", _med_entry))
     for name, path, what, check in checks:
         for n, x in enumerate(_list(data, *path)):
             try:
@@ -509,7 +526,7 @@ def brings(data):
     got = check_parts(data)
     out = {"corrections": len(got["edits"]) + len(got["same"]) + len(got["marks"]), "journal": len(got["journal"]),
            "photos": sum(len(x.get("photos") or []) for x, _ in got["journal"]), "doses": len(got["doses"]),
-           "reminders": len(got["reminders"])}
+           "reminders": len(got["reminders"]), "medEntries": len(got["medEntries"])}
     return {k: n for k, n in out.items() if n}
 
 
@@ -526,7 +543,7 @@ def restore(db, pid, data, photo, written):
     left as the profile has it, and counted as "here". Returns {"corrections", "journal", "photos", "doses",
     "reminders", "here", "photos_missing"}: what was put back."""
     got = check_parts(data)
-    n = dict.fromkeys(("corrections", "journal", "photos", "doses", "reminders", "here", "photos_missing"), 0)
+    n = dict.fromkeys(("corrections", "journal", "photos", "doses", "reminders", "medEntries", "here", "photos_missing"), 0)
 
     # corrections, by the keys of the records they change
     have = {(r["target"], r["action"], r["other"]) for r in db.execute("SELECT target, action, other FROM edits WHERE profile_id=?", (pid,))}
@@ -645,7 +662,19 @@ def restore(db, pid, data, photo, written):
                 db.execute("""INSERT INTO med_doses(profile_id, body, created_by, created_name, created, changed_by, changed_name,
                               changed) VALUES(?, ?, NULL, ?, ?, NULL, ?, ?)""", (pid, _enc(body), by, at or dbm.now(), changed_by, changed))
             n[name] += 1
-    if any(n[k] for k in ("corrections", "journal", "doses", "reminders")):
+    # (#1091) the medications of the profile's own (one with the same key is here already) and its changes to the
+    # records' (one to the same medication is here already: the profile's kept)
+    keys = {b.get("key") for _, b in medications._rows(db, pid)}
+    for x, body in got["medEntries"]:
+        if body["key"] in keys:
+            n["here"] += 1
+            continue
+        keys.add(body["key"])
+        by, at, changed, changed_by = _who(x)
+        db.execute("""INSERT INTO med_entries(profile_id, body, created_by, created_name, created, changed_by, changed_name,
+                      changed) VALUES(?, ?, NULL, ?, ?, NULL, ?, ?)""", (pid, _enc(body), by, at or dbm.now(), changed_by, changed))
+        n["medEntries"] += 1
+    if any(n[k] for k in ("corrections", "journal", "doses", "reminders", "medEntries")):
         records._bump(db, pid)
     return n
 
