@@ -21003,6 +21003,15 @@ def main():
                   and abs(hb["v"] - float(hb["orig"]) * 10) < 1e-9, (mg, hb))
             check("…bilirubin, with no exact conversion, stays as reported", bili["unit"] == "mg/dL" and bili["from"] is None, bili)
             check("…and the weights are in kg", js("SERIES.find(s => s.key === 'weight').unit") == "kg")
+            # #1102: a C-CDA vital's value as reported keeps its own unit ("37 Cel", stored 98.6 in °F): Labs said "37 Cel °F"
+            said1102 = js("""() => { const pt = (v, t) => Object.assign(["2026-03-02T12:00:00", v, null, null, "", t, "ECC"], {ts: 0});
+                const ss = [{name: "Temperature", unit: "°F", pts: [pt(98.6, "37 Cel")]}, {name: "Height", unit: "in", pts: [pt(68.9, "175 cm")]},
+                            {name: "Heart rate (clinic)", unit: "bpm", pts: [pt(72, "72 /min")]}, {name: "Blood pressure, diastolic", unit: "mmHg", pts: [pt(82, "82 mm[Hg]")]},
+                            {name: "CRP", unit: "mg/dL", pts: [pt(0.5, "<0.5")]}];
+                if (typeof saidApart === "function") saidApart(ss);
+                return ss.map(s => readText(s, s.pts[0])); }""")
+            check("Labs: a vital reported in a unit of its own is said in the chart's unit, what was reported beside it (#1102)",
+                  said1102 == [["98.6 °F", "Reported as 37 Cel"], ["68.9 in", "Reported as 175 cm"], ["72 bpm", ""], ["82 mmHg", ""], ["<0.5 mg/dL", ""]], said1102)
             js("switchTab('overview')")
             tile = js("[...document.querySelectorAll('#view-overview .tile')].find(t => t.textContent.includes('Creatinine'))?.textContent || ''")
             check("Overview: the creatinine tile in µmol/L, with the reported value", "µmol/L" in tile and re.search(r"Reported [\d.]+ mg/dL", tile), tile)

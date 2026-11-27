@@ -909,6 +909,18 @@ class Writer(unittest.TestCase):
         self.assertEqual(reader.metadata.title, "Test (fictional)")
 
 
+class OwnUnit(unittest.TestCase):
+    """#1102: a C-CDA vital's value as reported keeps its own unit ("37 Cel", stored as 98.6 in °F): said as the number
+    in the series' unit, never "37 Cel" with "°F" after it."""
+
+    def test_value_said_in_the_series_unit(self):
+        said = lambda text, v: summary.value_text(summary._pt(["2026-03-02T12:00:00", v, None, None, "", text, "ECC"]))  # noqa: E731
+        self.assertEqual([said("37 Cel", 98.6), said("175 cm", 68.9), said("72 /min", 72), said("82 mm[Hg]", 82)],
+                         ["98.6", "68.9", "72", "82"])
+        self.assertEqual([said("<0.5", 0.5), said("4,5", 4.5), said("Negative", None), said("5 to 10", 5)],
+                         ["<0.5", "4,5", "Negative", "5 to 10"], "a value with no unit of its own as reported")
+
+
 class TypedOnce(unittest.TestCase):
     """A reading typed in (#224) that a phone sent too is listed once in the summary and share links (#225)."""
 

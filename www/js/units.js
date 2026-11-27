@@ -50,6 +50,18 @@ function ucRange(uc, text, as) {
   const m = /^\s*(-?[^\s–-][^–-]*?)\s*(?:-|–|\bto\b)\s*(\S.*?)\s*$/i.exec(String(text ?? "")), a = m && valueRead(m[1]), b = m && valueRead(m[2]);
   return a && b && !a.c && !b.c && (!as || as[0] === a.x && as[1] === b.x) ? `${f(a)}–${f(b)}` : null;
 }
+/* a value reported with a unit of its own ("37 Cel", "175 cm", "72 /min": an import's vitals, which it puts in the
+   series' unit), said as its number in the series' unit; where that isn't the number reported, what was is kept as
+   p.said, which ucOrig says beside it (#1102: Labs said "37 Cel °F", the reported text with the series' unit after it) */
+function saidApart(list) {
+  for (const s of list) for (const p of s.pts || []) {
+    const t = typeof p[5] === "string" ? p[5].trim() : "", m = /^(\S+)\s+([^\d\s-]\S*)$/.exec(t);
+    const r = m && typeof p[1] === "number" && !valueRead(t) ? valueRead(m[1]) : null;
+    if (!r) continue;
+    if (r.x === p[1]) p[5] = m[1];
+    else { p.said = t; p[5] = r.c ? r.b + fmtNum(p[1]) : ""; }
+  }
+}
 /* convert series in place (lab series from DATA.labs, or watch series), each with its own conv */
 function applyUnits(list) {
   for (const s of list) {
@@ -63,7 +75,7 @@ function applyUnits(list) {
       // value as ranges.js valueRead reads one ("4,5", "=<5" and "> OR = 60" are, #874: they were said as their number)
       // its report's range said as Labs says one (ranges.js rangeWords, #782), not one from settings, which isn't the report's;
       // r, its report's low and high as its import read them (#886: its drawer row's, applyUnitsToRows), not another copy's
-      p.orig = {v: shown, ref: p.rs === "settings" ? null : rangeWords(p), own: has && !read,
+      p.orig = {v: p.said || shown, ref: p.rs === "settings" ? null : rangeWords(p), own: !!p.said || has && !read,
         r: p.rs === "settings" || s.rangeFrom?.[j] != null || p[2] == null && p[3] == null ? null : [p[2], p[3]]};
       if (typeof p[1] === "number") p[1] = p[1] * uc.a + uc.b;
       for (const i of [2, 3]) { const n = ucNum(p[i]); if (n != null) p[i] = +ucFmt(n * uc.a + uc.b, ucSig(p[i])); }
@@ -76,6 +88,7 @@ function applyUnits(list) {
 /* "95 mg/dL, ref 70–99" as reported, for a point of a converted series, with its report's range only ("≤ 100"; none
    for one whose range is from settings, #782); "" otherwise */
 function ucOrig(s, p) {
+  if (s && !s.uc && p && p.said) return p.said;   // reported in another unit, its series not converted (saidApart)
   if (!s || !s.uc || !p || !p.orig) return "";
   const o = p.orig;
   return `${o.v}${o.own ? "" : " " + s.uc.from}${o.ref ? ", ref " + o.ref : ""}`;

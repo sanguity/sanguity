@@ -175,12 +175,27 @@ def _num(v):
     return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
 
 
+OWN_UNIT = re.compile(r"(\S+)\s+([^\d\s-]\S*)")
+
+
+def _apart(text, v):
+    """A value reported with a unit of its own ("37 Cel", "72 /min": an import's vitals, put in the series' unit), as its
+    number, or as none where that isn't v, the number in the series' unit (#1102: "37 Cel °F"); www/js/units.js
+    saidApart is the same."""
+    m = OWN_UNIT.fullmatch(text)
+    if not m or v is None or ranges.common.value_number(text) is not None:
+        return text
+    n = ranges.common.value_number(m.group(1))
+    return text if n is None else m.group(1) if n == v else text if ranges.comparator(text) else ""
+
+
 def _pt(p):
     """A result point [time, value, low, high, flag, text, source tag, edge] as a dict (edge: whether its one-sided
     range leaves its limit's edge out, "<" or ">", #780), its flag as stored read as its report's (ranges.read_flag,
     #839: an older import's "N" is no flag, its ">" High, as the page reads them), before its copies are put together."""
     p = list(p) + [None] * (8 - len(p)) if isinstance(p, (list, tuple)) else [None] * 8
     v, lo, hi, text, edge = _num(p[1]), _num(p[2]), _num(p[3]), str(p[5] or "").strip(), str(p[7] or "")
+    text = _apart(text, v)
     return {"t": p[0], "d": _day(p[0]), "v": v, "lo": lo, "hi": hi, "flag": ranges.read_flag(p[4], v, lo, hi, text, edge),
             "text": text, "rs": "report", "edge": edge}
 
