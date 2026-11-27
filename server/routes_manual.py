@@ -297,7 +297,9 @@ def manual(pid: int, body: Rows, request: Request, s=Depends(user), db=Depends(g
     base = max([e["id"] for e in lab.get("events") or []], default=0)
     found_heights = _heights(db, pid, recs)   # #224, before building: one refused isn't built
     built, origin = manual_items.build([r for r in recs if r["ok"]], base_id=base)
-    data = _combine(lab, labmap.keep_charted(db, pid, built["data"]))   # a vital charted under another name goes there (#1102)
+    vitals, more = labmap.keep_charted(db, pid, MATCHED_AS, built["data"])   # a vital charted under another name goes there (#1102)
+    matches = matches + more
+    data = _combine(lab, vitals)
     have_watch = watch_store.load(db, pid) if origin["watch"] else None
     dups, dup_rows, found, copy_rows = _duplicates(db, pid, data, lab, got, origin, have_watch)
     seen = (dups, dict(found))   # asked again under the write lock before saving (#592)

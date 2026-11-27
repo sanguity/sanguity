@@ -137,7 +137,7 @@ def compatible(target, u1, u2):
 
 def lookup(importer, name, unit, loinc, pid=None):
     """The keyed hash a remembered choice is found by: a profile's own (#927) keyed with the profile too."""
-    ident = [str(importer), norm(name), common.unit_norm(unit), str(loinc or "").strip()] + ([int(pid)] if pid is not None else [])
+    ident = [str(importer), norm(name), common.unit_ident(unit), str(loinc or "").strip()] + ([int(pid)] if pid is not None else [])
     return sec.pepper_mac(b"sanguity lab map\x00" + json.dumps(ident, ensure_ascii=False).encode("utf-8")).hex()[:32]
 
 
@@ -230,7 +230,9 @@ def charted_under(s, have):
         return None
     canon = common.canonical_lab(name, code)
     for n, v in sorted(have.items(), key=lambda x: x[0].lower()):
-        if compatible(n, v["unit"], unit) and (code and code in v["loinc"] or canon and common.canonical_lab(n) == canon):
+        # by name, never a test of another LOINC code (a "direct LDL" chart, 18262-6, isn't calculated LDL's, 13457-7)
+        if compatible(n, v["unit"], unit) and (code and code in v["loinc"] or canon and common.canonical_lab(n) == canon
+                                               and not (code and v["loinc"] and code not in v["loinc"])):
             return n
     return None
 
@@ -243,10 +245,15 @@ def kept_charted(have, data):
             if isinstance(s, dict) and (s.get("panel") == "Vitals" or _known(s.get("name"))) and (t := charted_under(s, have))}
 
 
-def keep_charted(db, pid, data):
+def keep_charted(db, pid, importers, data):
     """data with each lab series that profile pid charts under another name put in that one (charted_under): records
-    typed in, outside a review."""
-    return apply(data, kept_charted(profile_series(db, pid), data))
+    typed in, outside a review; a series a choice was remembered for (importers', to check too) applied as remembered,
+    never filed so (#1102: a vital kept as its own test). -> (data, the remembered choices' ids, marked used once saved)"""
+    found = remembered(db, pid, importers, {f"s:{i}": _ident(s) for i, s in enumerate(data.get("labs") or [])
+                                            if isinstance(s, dict) and isinstance(s.get("name"), str)}, flagged=True)
+    picked = {**{ref: t for ref, t in kept_charted(profile_series(db, pid), data).items() if ref not in found},
+              **{ref: f["target"] for ref, f in found.items() if not f["check"]}}
+    return apply(data, picked), [f["id"] for f in found.values() if not f["check"]]
 
 
 def plan(db, pid, importer, data, keep=()):
@@ -270,10 +277,16 @@ def plan(db, pid, importer, data, keep=()):
         # (#1103) a visit's vital signs (blood pressure, heart rate, height, temperature) aren't lab names to match
         if isinstance(s, dict) and isinstance(s.get("name"), str) and s["name"].strip() and s.get("panel") != "Vitals":
             candidates[f"s:{i}"] = s
-    found = remembered(db, pid, [importer], {ref: _ident(s) for ref, s in candidates.items()}, flagged=True)
+    every = {f"s:{i}": _ident(s) for i, s in enumerate(data.get("labs") or [])
+             if isinstance(s, dict) and isinstance(s.get("name"), str) and s["name"].strip()}
+    found_all = remembered(db, pid, [importer], every, flagged=True)   # a vital's too: its Keep as its own test (#1102)
+    found = {ref: f for ref, f in found_all.items() if ref in candidates}
     listed, auto, ids = [], {}, {}
+    for ref, f in found_all.items():   # a vital's remembered choice, applied as remembered (it isn't asked about, #1103)
+        if ref not in candidates and not f["check"]:
+            auto[ref], ids[ref] = f["target"], f["id"]
     # a test the profile charts under another name goes there, a vital too, unless a choice for it was remembered (#1102)
-    kept = {ref: t for ref, t in kept_charted(have, data).items() if ref not in found}
+    kept = {ref: t for ref, t in kept_charted(have, data).items() if ref not in found_all}
     auto.update(kept)
     for ref, s in candidates.items():
         if ref in kept:
@@ -539,9 +552,10 @@ def apply_remembered(db, pid, importers, data):
     [their ids], marked used once it's saved)."""
     idents = {f"s:{i}": _ident(s) for i, s in enumerate(data.get("labs") or [])
               if isinstance(s, dict) and isinstance(s.get("name"), str)}   # (#1097: a known name too, once matched)
-    found = remembered(db, pid, importers, idents)
-    picked = {ref: f["target"] for ref, f in found.items()}
-    picked = {**kept_charted(profile_series(db, pid), data), **picked}   # else where the profile charts it (#1102)
+    found = remembered(db, pid, importers, idents, flagged=True)   # (one to check isn't applied, nor filed for it: plan's)
+    picked = {ref: f["target"] for ref, f in found.items() if not f["check"]}
+    picked = {**{ref: t for ref, t in kept_charted(profile_series(db, pid), data).items() if ref not in found}, **picked}   # (#1102)
+    found = {ref: f for ref, f in found.items() if not f["check"]}
     renamed = {idents[ref][0]: t for ref, t in picked.items() if t}
     return apply(data, picked), renamed, [f["id"] for f in found.values()]
 
