@@ -354,7 +354,7 @@ jobs:
           echo "The app didn't come up with a setup code within 3 minutes"; exit 1
 
       - name: First run (setup, sign-in, records, documents, nothing served that shouldn't be)
-        run: python3 tests/docker_smoke.py --code "$SETUP_CODE" --receiver http://127.0.0.1:8731
+        run: python3 tests/docker_smoke.py --code "$SETUP_CODE" --receiver http://127.0.0.1:8731 --phone-secret "$RUNNER_TEMP/phone-secret"
 
       - name: Records on disk are encrypted, and the key is kept apart from the data
         run: |
@@ -372,10 +372,11 @@ jobs:
       - name: Watch data on disk is encrypted (a signed upload, then everything in watch-data/ is sealed)
         run: |
           python3 - <<'PY'
-          import hashlib, hmac, json, urllib.request
+          import hashlib, hmac, json, os, urllib.request
           body = json.dumps({"source": "health_connect", "timezone": "UTC", "timestamp": "2026-11-01T09:00:00Z",
                              "weight": [{"time": "2026-11-01T08:00:00Z", "kilograms": 80.0, "uuid": "ci"}]}).encode()
-          sig = "sha256=" + hmac.new(open("auth/watch_secret", "rb").read().strip(), body, hashlib.sha256).hexdigest()
+          # the first profile's own secret, made by the first run's smoke test (a fresh install has no shared one, #1103)
+          sig = "sha256=" + hmac.new(open(os.environ["RUNNER_TEMP"] + "/phone-secret", "rb").read().strip(), body, hashlib.sha256).hexdigest()
           r = urllib.request.Request("http://127.0.0.1:8731/ingest", data=body, headers={"X-Signature": sig})
           assert urllib.request.urlopen(r, timeout=10).status == 200
           PY

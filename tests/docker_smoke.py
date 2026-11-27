@@ -19,6 +19,8 @@ def main():
     ap.add_argument("--base", default="http://127.0.0.1:8730")
     ap.add_argument("--receiver")
     ap.add_argument("--code", default="")
+    ap.add_argument("--phone-secret", help="make the first profile's own phone secret and write it to this file, for a "
+                                           "signed upload to the receiver after (a fresh install has no shared one, #1103)")
     a = ap.parse_args()
     base = a.base.rstrip("/")
     jar = http.cookiejar.CookieJar()
@@ -146,6 +148,13 @@ def main():
         check("other API requests keep the 64 KB cap", req("/api/me/password", {"current": "x" * 100_000, "new": "y"})[0] == 413)
 
         # ---- sign-out ends the session on the server
+        if a.phone_secret:   # a profile's own phone secret, as Sources → Phone and watch makes one (#1103)
+            first = (profiles or [{"id": 1}])[0]["id"]
+            st, _, body = req(f"/api/profiles/{first}/watch/receiver/rotate", {})
+            secret = json.loads(body).get("secret") if st == 200 else None
+            if check("a phone secret is made for the first profile", bool(secret), st):
+                with open(a.phone_secret, "w") as f:
+                    f.write(secret)
         check("signs out", req("/api/logout", method="POST")[0] == 200)
         check("signed out for real", req("/api/me")[0] == 401)
         check("a wrong password is refused", req("/api/login", {"username": USER, "password": "not the password at all"})[0] == 401)
