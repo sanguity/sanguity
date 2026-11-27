@@ -229,16 +229,24 @@ def _backup_command(cmd, args):
                      if w else ", without phone and watch data") + ". The copy was deleted.")
         elif cmd == "restore" and args:
             m = backup.verify(args[0])
-            print(f"Backup from {m['created']}: {len(m['files'])} files. Restoring replaces this install's profiles and "
-                  f"records with the backup's (the current ones are moved aside, and deleted {backup.KEEP_DAYS} days "
-                  f"later), keeping today's {ACCESS_WORDS}, and each profile's cycle tracking as it is today. Everyone is "
-                  "signed out.")
+            if os.path.isfile(os.path.join(config.DATA_DIR, "sanguity.db")):
+                print(f"Backup from {m['created']}: {len(m['files'])} files. Restoring replaces this install's profiles and "
+                      f"records with the backup's (the current ones are moved aside, and deleted {backup.KEEP_DAYS} days "
+                      f"later), keeping today's {ACCESS_WORDS}, and each profile's cycle tracking as it is today. Everyone is "
+                      "signed out.")
+            else:   # (#1104) disaster recovery: no database to keep any of it from
+                print(f"Backup from {m['created']}: {len(m['files'])} files. There's no database in {config.DATA_DIR}, so "
+                      f"restoring puts all of the backup's in place: its profiles and records, and its {ACCESS_WORDS}, "
+                      "cycle tracking and server settings, as they were when it was made.")
             if "--yes" not in args and (not sys.stdin.isatty() or input("Type yes to restore: ").strip().lower() != "yes"):
                 sys.exit("Nothing changed. (Add --yes to restore without being asked.)")
             m, aside = backup.restore(args[0])
-            print(f"Restored. The data it replaced is in {aside}: the app deletes it {backup.KEEP_DAYS} days from now "
-                  "(RESTORE_KEEP_DAYS), or sooner with Delete now under Settings → Install → Backups. It may hold profiles deleted "
-                  "since the backup was made. Start the app again.")
+            if aside:
+                print(f"Restored. The data it replaced is in {aside}: the app deletes it {backup.KEEP_DAYS} days from now "
+                      "(RESTORE_KEEP_DAYS), or sooner with Delete now under Settings → Install → Backups. It may hold profiles deleted "
+                      "since the backup was made. Start the app again.")
+            else:   # (#1104) nothing was here to replace
+                print("Restored. There was no data here to replace, so nothing was moved aside. Start the app again.")
             _say_access(m.get("access") or {}, m.get("created"), aside)
             w = m.get("watch_restored")   # the receiver's data (#227)
             if w and w["staged"]:
