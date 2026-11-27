@@ -3223,10 +3223,11 @@ def main():
               and appt299["this"] == 1 and len(appt299["colors"]) == 1 and appt299["crit"] not in appt299["colors"], [sum299, appt299])
         # #302: under the trends' table a chart of each trend of two results or more (the kit's, ckSolo), its name over it, as
         # the PDF has (the preview says it has room for them: it's made without them where they'd push a section out)
+        # (each unit as people write it, util.js unitSaid, as the PDF says it too: #1103)
         sum302 = strict.evaluate("""async () => { const o = await (await fetch('api/profiles/1/summary')).json();
           const s = await (await fetch('api/profiles/1/summary/preview', {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'},
             body: JSON.stringify({appointment: 0, since: null, labs: [], questions: document.getElementById('questions').value, sections: [...document.querySelectorAll('#sections input:checked')].map(i => i.value)})})).json();
-          return {charts: s.charts, want: s.trends.filter(r => r.spark.filter(p => p[1] != null).length > 1).map(r => r.label + (r.unit ? ` (${r.unit})` : '')),
+          return {charts: s.charts, want: s.trends.filter(r => r.spark.filter(p => p[1] != null).length > 1).map(r => r.label + (r.unit ? ` (${unitSaid(r.unit)})` : '')),
             names: [...document.querySelectorAll('#prevBody .sum-chart > figcaption')].map(f => f.textContent),
             after: (p => p?.matches('.sum-said') ? p.previousElementSibling : p)(document.querySelector('#prevBody .sum-charts')?.previousElementSibling)?.querySelector('table') != null}; }""")   # (under its note, #752)
         solo302s = strict.evaluate(SOLO302_JS, "#prevBody")
@@ -16046,8 +16047,8 @@ def main():
                   "new / already here / possibly the same, and a sticky bar whose button says what it adds",
                   card.startswith("Ready to import") and (rv["title"] or "").startswith("C-CDA") and " · " in rv["title"]
                   and {"Visits", "Lab results", "Medications", "Hospital stay"} <= {t[0] for t in rv["tiles"]} and all(t[2] >= 1 for t in rv["tiles"])
-                  and len({t[3] for t in rv["tiles"]}) >= 3 and rv["split"] == ["18 new", "0 already here", "0 possibly the same"]
-                  and rv["buttons"] == ["Cancel", "Add 18 records"] and rv["sticky"] == "sticky", rv)
+                  and len({t[3] for t in rv["tiles"]}) >= 3 and rv["split"] == ["19 new", "0 already here", "0 possibly the same"]
+                  and rv["buttons"] == ["Cancel", "Add 19 records"] and rv["sticky"] == "sticky", rv)   # (#1103: 19, its urine colour, a text result, counted)
             check("…and nothing is saved yet", db.execute("SELECT COUNT(*) FROM imports WHERE profile_id=2").fetchone()[0] == 0)
             page.set_viewport_size({"width": 375, "height": 800})
             settle(200)
@@ -16129,7 +16130,7 @@ def main():
             # (02:40 in London the next day) was listed on its source's date, Jun 10
             dates1102 = js("[DATES.zone, DATES.format]")
             js("useDates('Europe/London', 'mdy')")
-            page.set_input_files("#step-records .up-btns input:not([webkitdirectory])",
+            page.set_input_files("#importer .up-btns input:not([webkitdirectory])",   # (Sources: Upload files)
                                  files=[os.path.join(ROOT, "tests", "fixtures", "importers", "fhir", "bundle", "patient-everything.json")])
             page.wait_for_function(f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}?.textContent || '') && {last_card}.querySelector('.imp-tiles')", timeout=30000)
             stay1102 = js(f"""(c => [...c.querySelectorAll('.imp-tiles .tile')].filter(t => /stay/i.test(t.querySelector('.lbl').textContent))
@@ -16340,8 +16341,8 @@ def main():
             check("an Epic MyChart export uploads and is imported in the background, as Epic MyChart",
                   card.startswith("Imported.") and "Epic MyChart" in card and "lab result" in card, card)
             toast497 = js("document.querySelector('#sgToasts .sg-toast:last-child .sg-toast-text')?.textContent || ''")
-            check("…its toast names the largest kinds first: its 12 lab results, not its 4 hospital stays (#497)",
-                  toast497.startswith("Imported 12 lab results") and "4 hospital stays" in toast497, toast497)
+            check("…its toast names the largest kinds first: its 13 lab results (a text result counted, #1103), not its 4 hospital stays (#497)",
+                  toast497.startswith("Imported 13 lab results") and "4 hospital stays" in toast497, toast497)
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
             up = db.execute("SELECT id FROM uploads WHERE profile_id=2 ORDER BY id DESC").fetchone()
             job = db.execute("SELECT state, importer FROM jobs WHERE upload_id=?", (up["id"],)).fetchone()
@@ -16614,6 +16615,7 @@ def main():
             page.wait_for_function("(l => l.length && /^Ready to import/.test(l[l.length - 1].textContent))(document.querySelectorAll('dialog.up-dlg[open] .import-job'))", timeout=30000)
             settle(600)
             dcard497 = "document.querySelector('dialog.up-dlg .job:last-child .import-job')"
+            js(f"{dcard497}.querySelector('details.imp-labs').open = true")   # (#1103: closed, as a first lab import's is)
             js(f"{dcard497}.querySelector('.imp-actions .primary').focus()")
             over497 = []
             for _ in range(12):
@@ -18230,6 +18232,7 @@ def main():
                 page.set_input_files("#pickFiles", files=[{"name": f"lab-{n}.csv", "mimeType": "text/csv", "buffer": csv497.format(d, v).encode()}])
                 page.wait_for_function(f"document.querySelectorAll('#importer .import-job').length === {n + 1} && /^Ready to import/.test({last_card}.textContent)", timeout=30000)
             first497 = "document.querySelector('#importer .import-job')"
+            js(f"{first497}.querySelector('details.imp-labs').open = true")   # (#1103: closed where the profile has no lab series yet)
             page.locator("#importer .import-job").first.locator(".imp-labs input[list]").fill("Hemoglobin")
             js(f"{first497}.querySelector('.imp-labs input[list]').dispatchEvent(new Event('change'))")
             js(f"{last_card}.querySelector('.imp-actions .primary').click()")
@@ -18278,7 +18281,7 @@ def main():
                   fold497[0] == ["Sending (done)", "Recognising (done)", "Review", "Saved"]
                   and zip497 == ["Sending (done)", "Unpacking (done)", "Recognising (done)", "Review", "Saved"], [fold497, zip497])
             check("…the folder's review, drawn again once the zip is added, is all duplicates and lists no lab names to match (#497)",
-                  fold497[1] and again497 == [False, False, "Nothing to add"], [fold497, again497])
+                  again497 == [False, False, "Nothing to add"], [fold497, again497])   # (#1103: its names may all be known now, or vitals)
             page.set_input_files("#pickFiles", files=[{"name": "export-again.zip", "mimeType": "application/zip", "buffer": buf497.getvalue()}])
             page.wait_for_function(f"/^(All duplicates|Ready to import)/.test({last_card}.textContent) && {last_card}.closest('.job').querySelector('h3').textContent === 'export-again.zip'", timeout=30000)
             js(f"{last_card}.querySelector('.imp-dups').open = true")
@@ -18343,6 +18346,7 @@ def main():
             undo500 = csv497.replace("XR", "XV").format("2026-11-12", "12.7").encode()
             page.set_input_files("#pickFiles", files=[{"name": "undo-500.csv", "mimeType": "text/csv", "buffer": undo500}])
             page.wait_for_function(f"/^Ready to import/.test({last_card}.textContent) && {last_card}.closest('.job').querySelector('h3').textContent === 'undo-500.csv'", timeout=30000)
+            js(f"{last_card}.querySelector('details.imp-labs').open = true")   # (#1103: closed where the profile has no lab series yet)
             page.locator("#importer .import-job").last.locator(".imp-labs input[list]").fill("Zeta marker XR")
             js(f"{last_card}.querySelector('.imp-labs input[list]').dispatchEvent(new Event('change'))")
             js(f"{last_card}.querySelector('.imp-actions .primary').click()")
@@ -22788,7 +22792,8 @@ def main():
                 if (meds.dataset.short !== 'Meds' || meds.textContent !== 'Medications') bad.push('Medications: ' + meds.textContent);   // (#275)
                 for (const a of shown) { const x = a.getBoundingClientRect(); if (x.width < 44 || x.height < 44 || x.left < 0 || x.right > w || !a.querySelector('svg.icon')) bad.push(a.id + ' ' + Math.round(x.width) + '×' + Math.round(x.height)); }
                 const body = document.getElementById('tab-health');
-                if (body.dataset.short !== 'Body' || getComputedStyle(body.querySelector('.tab-long')).clipPath === 'none' || body.textContent !== 'Body and activity') bad.push('Body: ' + body.textContent);
+                // (in the bar, "Body"; under More, where it is with nothing in it, #1103, its whole name)
+                if (body.dataset.short !== 'Body' || (shown.includes(body) && getComputedStyle(body.querySelector('.tab-long')).clipPath === 'none') || body.textContent !== 'Body and activity') bad.push('Body: ' + body.textContent);
                 scrollTo(0, document.documentElement.scrollHeight);
                 const last = Math.max(...[...document.querySelectorAll('body > :not(header, dialog, script, .sg-follow, .sg-toasts, #tip, .skip-link) *')].filter(n => n.checkVisibility() && getComputedStyle(n).position !== 'fixed').map(n => n.getBoundingClientRect().bottom));
                 if (last > bar.getBoundingClientRect().top + 1) bad.push('under the tabs at the end: ' + Math.round(last) + ' > ' + Math.round(bar.getBoundingClientRect().top));
@@ -22860,6 +22865,11 @@ def main():
                     js("SgNav.layout({order: ['overview', 'health', 'labs', 'medications', 'timeline', 'costs'], hidden: []})")
                     slots1103.append(js(bar1103))
                     js("SgNav.layout(CFG.tabs)")
+            db = dbm1103.connect()
+            prof1103.delete_profile(db, lpid1103)   # (gone again: a new browser's first profile is My records, as the checks after expect)
+            db.close()
+            page.goto(base + "/?profile=1")   # (the records page of My records, as the checks after this one start from)
+            page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
             check("a phone's bar (#1103): Body and activity, with nothing in it, gives its place to Labs while the tabs are in their usual order, "
                   "on every page from the first (Sources before the records); an order of the person's own is kept; a profile with watch data as before",
                   slots1103 == ["overview,medications,timeline,labs", "overview,medications,timeline,labs", "overview,health,labs,medications",
@@ -25069,6 +25079,11 @@ def main():
                   "them (10³/µL), its results “for 2 tests”, not “in 2 tests” (#1103)",
                   rev1103[0] is False and rev1103[1] == "2 lab names to match (optional)" and rev1103[2] == "Zorblatt Count 1103 (10³/µL)"
                   and (rev1103[3] or "").startswith("for 2 tests"), rev1103)
+            js(f"{card846}.querySelector('.imp-actions button:not(.primary)').click()")   # (Cancel: nothing kept)
+            page.wait_for_function(f"{card846}.textContent.startsWith('Cancelled.')", timeout=10000)
+            db = dbm.connect()
+            prof_r.delete_profile(db, npid1103)   # (gone again, as the checks after expect the profiles they know)
+            db.close()
             # ---- #887: one duplicate ticked to add anyway adds only that result. A C-CDA of four results at one time (ALT,
             # CRP, Potassium, Sodium) uploaded on the import page, then again: ALT ticked in the second's review, its button
             # says "Add 1 lab result", and its save adds that one ("1 lab result"), with its own row in a lab day of
@@ -31481,8 +31496,8 @@ def main():
             bk1103 = fp.evaluate("""[[...document.querySelectorAll('#step-backups .guide-way')].map(a => a.getAttribute('href')), document.getElementById('step-backups').textContent,
                 [...document.querySelectorAll('#guideSteps li.done')].some(li => li.textContent.includes('Backups'))]""")
             check("…then the admin's: keep a copy of the encryption key elsewhere, and turn backups on, linking to each, not done while they're off (#1103)",
-                  bk1103[0] == ["settings.html#gen-backups", "settings.html#backups"] and "a copy of the key" in bk1103[1] and "encrypted" in bk1103[1]
-                  and "somewhere other than this server" in bk1103[1] and bk1103[2] is False, bk1103)
+                  bk1103[0] == ["settings.html#gen-backups", "settings.html#backups"] and "a copy of the key" in bk1103[1] and "encryption key" in bk1103[1]
+                  and "somewhere other than this server" in " ".join(bk1103[1].split()) and bk1103[2] is False, bk1103)
             fp.click("#step-backups [data-skip]")
             fp.wait_for_selector("#step-done:not([hidden])", timeout=10000)
             f_until("document.getElementById('doneSays').textContent.length > 0", 5000)
