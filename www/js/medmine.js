@@ -86,10 +86,11 @@ function medMineSection(m) {
     btn("Remove", () => mmRemove(m), {"aria-label": `Remove ${m.name}`, "data-tip": m.own ? "Delete your entry" : "Hide it here; its records are kept"})));
   return out;
 }
-/* focus somewhere once the drawer has closed on what's gone: the toast's Undo, rather than the page */
+/* focus once the drawer has closed on what's gone: the toast's Undo (as Import history's removals; it went to the next
+   row, the Undo a long way off), back to that row once the toast goes */
 function mmAfterGone(t) {
   closeDrawer();
-  requestAnimationFrame(() => { const a = document.activeElement; if (!a || a === document.body) t.node?.querySelector(".sg-toast-acts button")?.focus(); });
+  requestAnimationFrame(() => { if (t.node?.isConnected) t.node.querySelector(".sg-toast-acts button")?.focus(); });
 }
 async function mmRemove(m) {
   const name = m.name;

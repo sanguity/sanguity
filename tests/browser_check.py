@@ -10901,16 +10901,19 @@ def main():
                     settle(300)
                     one1095 = [js(ROWS1095, k1095), js("document.activeElement.closest('.dose-today')?.dataset.doseRow + ' ' + document.activeElement.className"),
                                js("document.getElementById('sgStatus').textContent"), js("[DATA.doses.at(-1).slot, DATA.doses.at(-1).amount, DATA.doses.at(-1).unit]")]
-                    page.locator(f"#medToday .dose-today[data-dose-row='{k1095} 08:00 2'] .dose-quick button:text-is('Taken')").click()
+                    second1095 = page.locator(f"#medToday .dose-today[data-dose-row='{k1095} 08:00 2'] .dose-quick button:text-is('Taken')")
+                    label1095b = second1095.get_attribute("aria-label")
+                    second1095.click()
                     page.wait_for_function("k => document.querySelector(`#medToday .dose-today[data-dose-row=\"${k} 08:00 2\"]`)?.classList.contains('logged')", arg=k1095, timeout=20000)
                     settle(300)
                     two1095 = [js(ROWS1095, k1095), js("[DATA.doses.at(-1).slot, DATA.doses.at(-1).amount, DATA.doses.at(-1).unit]")]
                     check("…two at one time logged one by one: Taken on the first logs it alone (the second keeps its buttons), focus on its "
-                          "medication, said with what and how much; then the second, each with its amount",
-                          label1095 == f"Taken: {med1095['name']}, 1 tablet at 8:00\xa0AM" and one1095[0][0][2] == 0 and "Taken · " in one1095[0][0][3]
+                          "medication, said with what and how much; then the second, each with its amount, each named first or second of 2",
+                          label1095 == f"Taken: {med1095['name']}, 1 tablet at 8:00\xa0AM, first of 2" and one1095[0][0][2] == 0 and "Taken · " in one1095[0][0][3]
                           and "1 tablet" in one1095[0][0][3] and one1095[0][1][2] == 3 and one1095[1].startswith(f"{k1095} 08:00 ") and "dose-med" in one1095[1]
-                          and f"Logged. Taken: {med1095['name']}, 1 tablet at 8:00\xa0AM." in one1095[2] and one1095[3] == ["08:00", 1, "tablet"]
-                          and two1095[0][1][2] == 0 and "5 ml" in two1095[0][1][3] and two1095[1] == ["08:00", 5, "ml"], [label1095, one1095, two1095])
+                          and f"Logged. Taken: {med1095['name']}, 1 tablet at 8:00\xa0AM, first of 2." in one1095[2] and one1095[3] == ["08:00", 1, "tablet"]
+                          and two1095[0][1][2] == 0 and "5 ml" in two1095[0][1][3] and two1095[1] == ["08:00", 5, "ml"]
+                          and label1095b == f"Taken: {med1095['name']}, 5 ml at 8:00\xa0AM, second of 2", [label1095, label1095b, one1095, two1095])
                     page.locator(f"#medToday .dose-today[data-dose-row='{k1095} '] button:text-is('Log a dose')").click()
                     settle(300)
                     need1095 = js("""[document.getElementById('dtitle').textContent, document.querySelector('#dbody input[id^=dose-amt]').value,
@@ -11065,16 +11068,17 @@ def main():
                 settle(250)
                 check("…the tab and the form fit 320-1400 px and 200% text, and pass axe-core's WCAG A and AA rules, light, dark and forced colours",
                       not bad1092 and not axe1092, (bad1092 + axe1092)[:6])
-                # #1093: Remove your own: deleted, the drawer closed, focus on the page, said, with an Undo that puts it back
+                # #1093: Remove your own: deleted, the drawer closed, focus on the toast's Undo (#1095's check: it went to the
+                # next row), said, with an Undo that puts it back
                 page.locator("#view-medications li.med-row .cell-btn", has_text="Calmora (fictional)").first.click()
                 settle(300)
                 page.click("#dbody .btns button:text-is('Remove')")
                 page.wait_for_function("!MEDS.some(m => m.own)", timeout=20000)
                 settle(400)
                 gone1093 = js("""[drawer.classList.contains('open'), [...document.querySelectorAll('#sgToasts .sg-toast-text')].at(-1)?.textContent,
-                    document.activeElement !== document.body && !!document.activeElement.closest('main, #sgToasts'),
+                    document.activeElement.textContent === 'Undo' && !!document.activeElement.closest('#sgToasts .sg-toast:last-child'),
                     [...document.querySelectorAll('#view-medications .cell-btn')].some(b => b.textContent === 'Calmora (fictional)')]""")
-                check("Remove your own medication (#1093): deleted, the drawer closed with focus on the page, a toast saying so with an Undo",
+                check("Remove your own medication (#1093): deleted, the drawer closed, a toast saying so with an Undo, focus on the Undo",
                       gone1093 == [False, "Removed Calmora (fictional).", True, False], gone1093)
                 page.click("#sgToasts .sg-toast:last-child button:text-is('Undo')")
                 page.wait_for_function("MEDS.some(m => m.own && m.name === 'Calmora (fictional)')", timeout=20000)
@@ -11090,11 +11094,11 @@ def main():
                 page.wait_for_function("k => !MEDS.some(m => m.key === k)", arg=cur["key"], timeout=20000)
                 settle(400)
                 hid1093 = js("""w => [drawer.classList.contains('open'), [...document.querySelectorAll('#sgToasts .sg-toast-text')].at(-1)?.textContent.startsWith('Hid ' + w),
-                    document.activeElement !== document.body, (DATA.hiddenMeds || []).map(h => h.name),
+                    document.activeElement.textContent === 'Undo' && !!document.activeElement.closest('#sgToasts .sg-toast:last-child'), (DATA.hiddenMeds || []).map(h => h.name),
                     [...document.querySelectorAll('#view-medications h2')].some(h => h.textContent === 'Hidden (1)'),
                     [...document.querySelectorAll('#view-medications .cell-btn, #view-medications .dose-med, #view-medications svg text')].some(b => b.textContent === w),
                     EV.some(e => e.k === 'med' && e.title === w)]""", cur["name"])
-                check("Remove one from the records (#1093): hidden from Current, Today and the lane, its records kept, a toast with an Undo, Hidden listing it",
+                check("Remove one from the records (#1093): hidden from Current, Today and the lane, its records kept, a toast with an Undo (focus on it), Hidden listing it",
                       hid1093 == [False, True, True, [cur["name"]], True, False, True], hid1093)
                 page.click("#sgToasts .sg-toast:last-child button:text-is('Undo')")
                 page.wait_for_function("k => MEDS.some(m => m.key === k)", arg=cur["key"], timeout=20000)

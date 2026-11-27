@@ -227,6 +227,7 @@ async function doseSend(path, opts, msg, after) {
    its one button and Taken late and Skipped under its ⋯ (one with doses logged wraps them under its name, as the
    Medications tab's do: .logged, #468); and only that many rows, from the latest scheduled time that has come (the
    first while none has), the number left out in the card's data-more (the Overview links to the rest) */
+const DOSE_NTH = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
 function todayDoses({id = "ovDoses", head = el("h3", {text: "Today's medication doses"}), few = 0} = {}) {
   const write = canEdit(), today = zToday();
   const cur = MEDS.filter(mrCurrent);
@@ -248,10 +249,12 @@ function todayDoses({id = "ovDoses", head = el("h3", {text: "Today's medication 
   for (const m of cur) {
     const sched = mrDoses(m, today), need = mrAsNeeded(m, today), {got, other} = doseMatch(sched, todays.filter(d => d.key === m.key));
     const open = () => el("button", {class: "cell-btn dose-med", type: "button", text: m.name, "data-tip": "Its details and log", onclick: () => openMedication(m)});
-    const nth = {};
+    const nth = {}, at = {};
+    for (const s of sched) at[s.at] = (at[s.at] || 0) + 1;
     sched.forEach((s, k) => {
       const n = nth[s.at] = (nth[s.at] || 0) + 1, row = m.key + " " + s.at + (n > 1 ? " " + n : ""), amt = mrAmt(s), d = got[k];
-      const what = `${m.name}, ${amt ? amt + " at " : ""}${mrTime(s.at)}`;
+      // two at one time say which, their buttons' names and what's said once logged not alike (#1095's check)
+      const what = `${m.name}, ${amt ? amt + " at " : ""}${mrTime(s.at)}` + (at[s.at] > 1 ? `, ${DOSE_NTH[n - 1] || n} of ${at[s.at]}` : "");
       rows.push([s.at, el("li", {class: "dose-today" + (d ? " logged" : ""), "data-dose-row": row},
         el("span", {class: "dose-slot"}, mrTime(s.at), ...(amt ? [el("br"), amt] : [])), open(),
         d ? el("span", {class: "dose-got"}, logged(d)) : write ? quick(m, s, row, what) : none())]);
