@@ -1,8 +1,10 @@
-/* Sanguity · your own medications, and your changes to those from the records (#1092; server/medications.py, #1091).
-   A medication of DATA.medications may carry "own" (an entry of your own: {id, key, its fields, by, at}) or "change"
-   (your changes over one from the records: {id, the fields changed, by, at, changed_by}) with "listed" (what the
-   records say: the fields, and their spans as they were). Owners and editors add one on the Medications tab (Add a
-   medication), and in a medication's drawer Edit it, or put one from the records back as listed, with an Undo. Every
+/* Sanguity · your own medications, and your changes to those from the records (#1092, #1093; server/medications.py,
+   #1091). A medication of DATA.medications may carry "own" (an entry of your own: {id, key, its fields, by, at}) or
+   "change" (your changes over one from the records: {id, the fields changed, by, at, changed_by}) with "listed" (what
+   the records say: the fields, and their spans as they were). DATA.hiddenMeds lists those of the records hidden by
+   hand. Owners and editors add one on the Medications tab (Add a medication), and in a medication's drawer Edit it,
+   put one from the records back as listed, or Remove it: one of their own is deleted, one from the records hidden (its
+   records kept, a later pull doesn't bring it back), each with an Undo; Hidden on the tab shows each one again. Every
    change's reply carries the records whole, put in place (store.js storeRecords), the tab drawn again with them.
    Plain script, loaded in order by index.html after medlog.js; all files share one global scope. */
 "use strict";
@@ -35,9 +37,26 @@ const mmOpen = key => { const m = MEDS.find(x => x.key === key); if (m) openMedi
 
 /* the Medications tab's Add a medication, for owners and editors */
 const medAddBtn = () => canEdit() ? el("button", {class: "btn small needs-server", type: "button", text: "Add a medication", onclick: () => medEditForm(null)}) : null;
+/* the medications of the records hidden by hand (#1093), on the tab: closed until opened, each with Show again */
+let medHiddenOpen = false;
+function medHiddenCard() {
+  const hid = Array.isArray(DATA.hiddenMeds) ? DATA.hiddenMeds : [];
+  if (!hid.length) return null;
+  return el("details", {class: "card med-past", open: medHiddenOpen || null, ontoggle: e => { medHiddenOpen = e.target.open; }},
+    el("summary", {}, el("h2", {text: `Hidden (${hid.length})`})),
+    el("p", {class: "hint", text: "Taken off this list by hand: their records are kept, and a later pull doesn't bring them back."}),
+    el("ul", {class: "mr-list", "aria-label": "Hidden medications"}, ...hid.map(h => el("li", {class: "mr-item"},
+      el("span", {class: "mr-says", text: h.name + (h.start ? ` · from ${fmtD(dayTs(h.start))}` : "") + (h.stop ? ` to ${fmtD(dayTs(h.stop))}` : "")}),
+      canEdit() ? el("button", {class: "btn small needs-server", type: "button", text: "Show again", "aria-label": `Show ${h.name} again`, onclick: async () => {
+        if (!await mmSend("PUT", "hidden", {key: h.key, hidden: false})) return;
+        const row = document.querySelector(`#view-medications [data-med-key="${CSS.escape(h.key)}"] .cell-btn`);
+        row?.focus();
+        announce(`${h.name} is shown again.`);
+      }}) : null))));
+}
 
 /* in a medication's drawer (meds.js openMedication): your entry, or your change beside what the records list, and
-   Edit and Put back as listed for owners and editors */
+   Edit, Put back as listed and Remove for owners and editors */
 function medMineSection(m) {
   const out = [], changed = mmChanged(m);
   if (m.own) {
@@ -54,8 +73,30 @@ function medMineSection(m) {
   if (!canEdit()) return out;
   const btn = (text, onclick, more = {}) => el("button", {class: "btn needs-server", type: "button", text, onclick, ...more});
   out.push(el("div", {class: "btns"}, btn("Edit", () => medEditForm(m), {"aria-label": `Edit ${m.name}`}),
-    changed.length ? btn("Put back as listed", () => mmPutBack(m), {"data-tip": "Undo your changes: as the records list it"}) : null));
+    changed.length ? btn("Put back as listed", () => mmPutBack(m), {"data-tip": "Undo your changes: as the records list it"}) : null,
+    btn("Remove", () => mmRemove(m), {"aria-label": `Remove ${m.name}`, "data-tip": m.own ? "Delete your entry" : "Hide it here; its records are kept"})));
   return out;
+}
+/* focus somewhere once the drawer has closed on what's gone: the toast's Undo, rather than the page */
+function mmAfterGone(t) {
+  closeDrawer();
+  requestAnimationFrame(() => { const a = document.activeElement; if (!a || a === document.body) t.node?.querySelector(".sg-toast-acts button")?.focus(); });
+}
+async function mmRemove(m) {
+  const name = m.name;
+  if (m.own) {
+    const j = await mmSend("DELETE", `own/${m.own.id}`);
+    if (!j) return;
+    const logged = DOSES.filter(d => d.key === m.key).length;
+    mmAfterGone(toast(`Removed ${name}` + (logged ? `; its ${logged} logged dose${logged > 1 ? "s stay" : " stays"} in the log.` : "."), {action: "Undo", onAction: async () => {
+      if (await mmSend("POST", "own", j.removed)) { mmOpen(j.removed.key); announce(`${name} is back.`); }
+    }}));
+    return;
+  }
+  if (!await mmSend("PUT", "hidden", {key: m.key, hidden: true})) return;
+  mmAfterGone(toast(`Hid ${name}: its records are kept. Hidden on the Medications tab shows it again.`, {action: "Undo", onAction: async () => {
+    if (await mmSend("PUT", "hidden", {key: m.key, hidden: false})) { mmOpen(m.key); announce(`${name} is shown again.`); }
+  }}));
 }
 async function mmPutBack(m) {
   const was = mmFields(m);

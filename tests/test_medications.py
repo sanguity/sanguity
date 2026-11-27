@@ -273,7 +273,20 @@ class InTheRecords(unittest.TestCase):
         self.assertEqual(self.c.put(p + "/medications/listed", headers=H, json={"key": "no such", "dose": "x"}).status_code, 404)
 
         # Placebex hidden: out of the medications, its records kept, hidden still after a pull; shown again
+        from datetime import date
+        from server import med_reminders
+
+        def feed():   # (#1093) its schedule: the calendar feed's reminders
+            db = dbm.connect()
+            try:
+                return len(med_reminders.feed_events(db, pid, False, date(2026, 11, 20))[0])
+            finally:
+                db.close()
         plc = meds()["Placebex 2 mg tablet"]["key"]
+        r = self.c.post(p + "/medications/reminders", headers=H, json={"med": plc, "times": ["21:00"], "days": ["mo", "tu", "we", "th", "fr", "sa", "su"],
+                                                                        "start": "2026-11-01", "tz": "America/New_York"})
+        self.assertEqual(r.status_code, 201, r.text)
+        self.assertEqual(feed(), 1)
         r = self.c.put(p + "/medications/hidden", headers=H, json={"key": plc, "hidden": True})
         self.assertEqual(r.status_code, 200, r.text)
         pull("Once daily")
@@ -281,10 +294,12 @@ class InTheRecords(unittest.TestCase):
         self.assertNotIn("Placebex 2 mg tablet", {m["name"] for m in d["medications"]})
         self.assertEqual([(h["key"], h["name"]) for h in d["hiddenMeds"]], [(plc, "Placebex 2 mg tablet")])
         self.assertIn("Placebex 2 mg tablet", {e["title"] for e in d["events"]}, "its records stay")
+        self.assertEqual((feed(), [x["med"] for x in d["reminders"]]), (0, [plc]), "out of the feed, its reminder kept")
         self.assertEqual(self.c.put(p + "/medications/hidden", headers=H, json={"key": plc, "hidden": False}).status_code, 200)
         d = data()
         self.assertIn("Placebex 2 mg tablet", {m["name"] for m in d["medications"]})
         self.assertNotIn("hiddenMeds", d)
+        self.assertEqual(feed(), 1, "shown again: in the feed again")
 
         # a viewer reads them and changes none
         sam = TestClient(main.app, base_url="http://testserver")
