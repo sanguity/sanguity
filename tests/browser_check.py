@@ -10478,6 +10478,10 @@ def main():
                     settle(300)   # (the page drawn again for the width it's back to, 120 ms on, before what's next: a menu opened then closed with it)
                 sweep235("dose form")
                 page.fill("#dbody textarea", "Fictional note: later than usual")
+                # at 0:00, more than two hours from the reminder's 8:00 and 20:00, so it's none of them whenever this runs
+                # (#1095: one within two hours of a scheduled dose is that dose; at 6:09 it was 8:00's, and #440's "Also"
+                # row, and the Overview's Taken on it after, weren't there)
+                page.fill("#dbody input[type=time]", "00:00")
                 page.click("#dbody button:text-is('Log dose')")
                 page.wait_for_load_state("load")
                 page.wait_for_function("typeof MEDS !== 'undefined' && document.querySelector('#dbody .dose-item')", timeout=20000)
