@@ -503,6 +503,42 @@ class FhirExport(unittest.TestCase):
         bad = {"resourceType": "Observation", "status": "done", "code": {"text": "x"}, "effectiveDateTime": "2026-01-01T10:00:00", "colour": 1}
         self.assertEqual(len(fhir_schema_check.errors(bad)), 3, fhir_schema_check.errors(bad))
 
+    def test_your_own_medications_and_changes(self):   # #1091
+        """A medication of your own goes out as a MedicationStatement (its source the patient, its dose, route, note and
+        prescriber), one you changed as you changed it, and they're valid R4; on a profile with nothing imported too, its
+        own medication its only record."""
+        pid = profiles.create_profile(self.db, "Own medications (fictional)", owner_id=self.uids["robin"])
+        robin, p = self.login("robin"), f"/api/profiles/{pid}"
+        try:
+            r = robin.post(p + "/medications/own", headers=H, json={"name": "Calmora (fictional)", "strength": "10 mg", "dose": "1 tablet",
+                                                                    "route": "By mouth", "start": "2026-09-01", "stop": "2026-10-15",
+                                                                    "status": "Stopped", "prescriber": "Dr Example (fictional)", "note": "Fictional"})
+            self.assertEqual(r.status_code, 201, r.text)
+            bundle = self.bundle(self.export(pid))[0]
+            self.assertEqual(fhir_schema_check.errors(bundle), [])
+            (st,) = [e["resource"] for e in bundle["entry"] if e["resource"]["resourceType"] == "MedicationStatement"]
+            self.assertEqual((st["medicationCodeableConcept"]["text"], st["status"], st["dosage"][0]["text"], st["dosage"][0]["route"]["text"],
+                              st["note"][0]["text"], st["effectivePeriod"]["start"][:10], st["effectivePeriod"]["end"][:10],
+                              st["contained"][0]["requester"]["display"], st["informationSource"]["reference"].startswith("urn:uuid:")),
+                             ("Calmora (fictional) 10 mg", "stopped", "1 tablet", "By mouth", "Fictional", "2026-09-01", "2026-10-15",
+                              "Dr Example (fictional)", True))
+            with dbm.transaction(self.db):
+                records.store(self.db, pid, {"events": [{"id": "a", "t": "2026-03-01T08:00:00", "k": "med", "title": "Fictorin 5 mg tablet", "key": "f:m1"}],
+                                             "details": {"a": {"type": "med", "instructions": "Once daily", "status": "Active"}}}, "upload")
+            key = next(m["key"] for m in robin.get(p + "/data").json()["medications"] if not m.get("own"))
+            r = robin.put(p + "/medications/listed", headers=H, json={"key": key, "dose": "Twice daily (fictional)", "stop": "2026-11-01"})
+            self.assertEqual(r.status_code, 200, r.text)
+            bundle = self.bundle(self.export(pid))[0]
+            self.assertEqual(fhir_schema_check.errors(bundle), [])
+            st = {e["resource"]["medicationCodeableConcept"]["text"]: e["resource"] for e in bundle["entry"]
+                  if e["resource"]["resourceType"] == "MedicationStatement"}
+            self.assertEqual(sorted(st), ["Calmora (fictional) 10 mg", "Fictorin 5 mg tablet"])
+            fic = st["Fictorin 5 mg tablet"]
+            self.assertEqual((fic["dosage"], fic["effectivePeriod"]["end"][:10], fic["status"]),
+                             ([{"text": "Twice daily (fictional)"}], "2026-11-01", "active"), "your change made; its status as listed")
+        finally:
+            profiles.delete_profile(self.db, pid)
+
     def test_ids_are_stable_and_unique(self):
         a, _, _ = self.bundle(self.export())
         b, _, _ = self.bundle(self.export())

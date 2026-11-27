@@ -319,6 +319,75 @@ class InTheRecords(unittest.TestCase):
         finally:
             db.close()
 
+    def test_one_list_for_the_summary_share_links_and_fhir(self):   # #1091
+        """The visit summary (preview and PDF), a share link and the FHIR export read the medications the page shows:
+        one hidden is in none of them; your own entry is, and one you changed is, as changed. A profile with nothing
+        imported but a medication of its own has records of it: the page's data lists it, and the summary too."""
+        import io, zipfile
+        from pypdf import PdfReader
+        from server import profiles
+        db = dbm.connect()
+        uid = db.execute("SELECT id FROM users WHERE username='robin'").fetchone()[0]
+        pid = profiles.create_profile(db, "One list (fictional)", owner_id=uid)
+        empty = profiles.create_profile(db, "Nothing imported (fictional)", owner_id=uid)
+        with dbm.transaction(db):
+            records.store(db, pid, records_of(
+                med("a", "2026-03-01T08:00:00", "Fictorin 5 mg tablet", instructions="Once daily", status="Active"),
+                med("b", "2026-02-01T08:00:00", "Placebex 2 mg tablet", instructions="At night", status="Active")), "upload")
+        db.close()
+        p = f"/api/profiles/{pid}"
+        meds = {m["name"]: m["key"] for m in self.c.get(p + "/data").json()["medications"]}
+        self.assertEqual(self.c.put(p + "/medications/hidden", headers=H, json={"key": meds["Placebex 2 mg tablet"], "hidden": True}).status_code, 200)
+        self.assertEqual(self.c.put(p + "/medications/listed", headers=H, json={"key": meds["Fictorin 5 mg tablet"], "dose": "Twice daily CHANGED"}).status_code, 200)
+        self.assertEqual(self.c.post(p + "/medications/own", headers=H, json={"name": "Calmora OWNENTRY", "dose": "1 tablet", "start": "2026-10-01"}).status_code, 201)
+
+        def said(text, where):
+            self.assertIn("Calmora OWNENTRY", text, where)
+            self.assertIn("Twice daily CHANGED", text, where)
+            self.assertNotIn("Once daily", text, where + ": the records' words, changed")
+            self.assertNotIn("Placebex", text, where + ": the hidden one")
+
+        opts = {"sections": ["medications"]}
+        r = self.c.post(p + "/summary/preview", headers=H, json=opts)
+        self.assertEqual(r.status_code, 200, r.text)
+        said(json.dumps(r.json()), "the summary")
+        r = self.c.post(p + "/summary/pdf", headers=H, json=opts)
+        self.assertEqual(r.status_code, 200, r.text[:300])
+        said("\n".join(x.extract_text() for x in PdfReader(io.BytesIO(r.content)).pages), "the summary's PDF")
+        r = self.c.post(p + "/links", headers=H, json={"sections": ["medications"]})
+        self.assertEqual(r.status_code, 200, r.text)
+        r = TestClient(main.app, base_url="http://testserver").post("/api/share/view", headers=H, json={"token": r.json()["path"].split("#", 1)[1]})
+        self.assertEqual(r.status_code, 200, r.text)
+        said(json.dumps(r.json()["medications"]), "the share link")
+        r = self.c.get(p + "/export?format=fhir")
+        self.assertEqual(r.status_code, 200, r.text[:300])
+        z = zipfile.ZipFile(io.BytesIO(r.content))
+        bundle = json.loads(z.read(next(n for n in z.namelist() if n.endswith(".json"))))
+        sts = {x["resource"]["medicationCodeableConcept"]["text"]: x["resource"] for x in bundle["entry"]
+               if x["resource"]["resourceType"] == "MedicationStatement"}
+        self.assertEqual(sts["Calmora OWNENTRY"]["dosage"], [{"text": "1 tablet"}], "your own, as a MedicationStatement")
+        self.assertEqual(sts["Calmora OWNENTRY"]["status"], "active")
+        self.assertEqual(sts["Fictorin 5 mg tablet"]["dosage"], [{"text": "Twice daily CHANGED"}], "your change made")
+
+        # nothing imported, a medication of its own: records of it, the summary listing it
+        e = f"/api/profiles/{empty}"
+        self.assertEqual(self.c.get(e + "/data").status_code, 204)
+        self.assertEqual(self.c.post(e + "/medications/own", headers=H, json={"name": "Solely OWN", "start": "2026-10-01"}).status_code, 201)
+        r = self.c.get(e + "/data")
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(([m["name"] for m in r.json()["medications"]], r.json()["events"], r.json()["imports"]), (["Solely OWN"], [], {}))
+        r = self.c.post(e + "/summary/preview", headers=H, json=opts)
+        self.assertIn("Solely OWN", json.dumps(r.json()))
+        (own,) = self.c.get(e + "/medications/entries").json()["entries"]
+        self.assertEqual(self.c.delete(f"{e}/medications/own/{own['id']}", headers=H).status_code, 200)
+        self.assertEqual(self.c.get(e + "/data").status_code, 204, "deleted: no records again")
+        db = dbm.connect()
+        try:
+            profiles.delete_profile(db, pid)
+            profiles.delete_profile(db, empty)
+        finally:
+            db.close()
+
     def test_a_rename_takes_what_hangs_on_its_medication(self):   # #921, #954
         """A rename groups a medication as it's shown (as before #921): it joins a medication of its new name, or
         leaves one it shared a key with. What hangs on a medication's key goes with it in the same save (#954): its
