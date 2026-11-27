@@ -1081,6 +1081,63 @@ class LabMapping(unittest.TestCase):
                         ({"name": "LDL Cholesterol", "unit": "mg/dL", "loinc": "13457-7"}, None)):
             self.assertEqual(labmap.charted_under(s, have), want, s)
 
+    def test_a_vital_kept_as_its_own_test_stays_its_own(self):   # #1102, the recheck's
+        """A vital kept as its own test (Keep, or Same test as… on Labs) is never filed in the chart the profile has the
+        same test in: an import's (its kept series' import undone and imported again) and records typed in."""
+        from server import records, routes_manual
+        pid = self.profile("Kept vitals")
+        db = dbm.connect()
+        try:
+            with dbm.transaction(db):
+                records.store(db, pid, {"events": [], "details": {}, "labs": [
+                    {"name": "Diastolic blood pressure", "unit": "mm[Hg]", "loinc": "8462-4", "key": "loinc:8462-4", "panel": "Vitals",
+                     "pts": [["2025-01-04T09:35:00-06:00", 80, None, None, "", "80", "FHIR"]], "txt": []}]}, "fhir", "fhir")
+                who = {"id": self.uids["robin"], "username": "robin"}
+                labmap.set_matches(db, pid, [("fhir", "Blood pressure, diastolic", "mmHg", "8462-4"),
+                                             (routes_manual.NAME, "Blood pressure, diastolic", "mmHg", "8462-4")], None, who, move=False)
+        finally:
+            db.close()
+        with open(os.path.join(ROOT, "tests", "fixtures", "importers", "fhir", "bundle", "patient-everything.json"), encoding="utf-8") as f:
+            self.save(pid, self.previewed(pid, {"patient-everything.json": f.read()}))
+        r = self.ash.post(f"/api/profiles/{pid}/manual", json={"rows": [], "items": [{"kind": "vitals", "date": "2025-05-04", "time": "09:35",
+                                                                                      "bp": "118/76"}], "save": True}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(self.points(pid, "Diastolic blood pressure"), [("2025-01-04", 80)])
+        self.assertEqual(self.points(pid, "Blood pressure, diastolic"), [("2025-03-04", 82), ("2025-05-04", 76)])
+        # and by name, never a test of another LOINC code: a "direct LDL" chart doesn't take a calculated LDL
+        ldl = {"name": "LDL Cholesterol", "unit": "mg/dL", "loinc": "13457-7"}
+        self.assertIsNone(labmap.charted_under(ldl, {"LDL-C": {"unit": "mg/dL", "loinc": {"18262-6"}}}))
+        self.assertEqual(labmap.charted_under(ldl, {"LDL-C": {"unit": "mg/dL", "loinc": set()}}), "LDL-C")
+
+    def test_identities_kept_before_1102_are_found(self):   # #1102, the recheck's
+        """A remembered match and a same-result decision are found by a hash of the unit's form as it was kept: units
+        #1102 compares as one (10^3/uL and K/uL, mm[Hg] and mmHg) keep the form they were hashed with (unit_ident)."""
+        from server import crossmatch, security as sec
+        from server.importers import common
+
+        def main_form(u):   # main's unit_norm, as identities were hashed before #1102
+            u = (u or "").strip().lower().replace(" ", "").replace("µ", "u")
+            for a, c in (("gm/dl", "g/dl"), ("x10e3/ul", "k/ul"), ("10*3/ul", "k/ul"), ("x10e6/ul", "m/ul"), ("10*6/ul", "m/ul"),
+                         ("iu/l", "u/l"), ("ml/min/1.73m2", "ml/min"), ("/100wbc", "")):
+                u = u.replace(a, c)
+            return u
+        units = ["10^3/uL", "10^3/µL", "10³/µL", "Thou/uL", "Mil/uL", "10^6/uL", "x103/uL", "10*3/μL", "mm[Hg]", "K/uL", "mg/dL"]
+        self.assertEqual([common.unit_ident(u) for u in units], [main_form(u) for u in units])
+        pid = self.profile("Kept identities")
+        db = dbm.connect()
+        try:
+            for i, u in enumerate(units):
+                key = sec.pepper_mac(b"sanguity lab map\x00" + json.dumps(["csv", f"zorblatt {i}", main_form(u), "", pid],
+                                                                         ensure_ascii=False).encode("utf-8")).hex()[:32]
+                db.execute("INSERT INTO labmaps(lookup, importer, source, target, created_name, created, checked, profile_id) VALUES(?, 'csv', ?, NULL, 'robin', 0, 0, ?)",
+                           (key, crypto.enc(json.dumps({"name": f"Zorblatt {i}", "unit": u, "loinc": ""})), pid))
+            found = labmap.remembered(db, pid, ["csv"], {f"s:{i}": (f"Zorblatt {i}", u, "") for i, u in enumerate(units)})
+            self.assertEqual(sorted(found, key=lambda r: int(r[2:])), [f"s:{i}" for i in range(len(units))])
+        finally:
+            db.close()
+        s, p = {"name": "Platelet Count", "unit": "10^3/uL"}, ["2026-01-05T08:00:00", 210, 150, 400, "", "210"]
+        self.assertEqual(crossmatch.point_key(s, p), "\x1f".join(("pt", "n:platelet count", main_form("10^3/uL"), p[0], "210")))
+
     # ---------------------------------------------------------------- the pieces
 
     def test_names_evened_out(self):

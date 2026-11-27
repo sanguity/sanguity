@@ -357,11 +357,25 @@ def _counts(u):
     return u
 
 
+_NORM = (("gm/dl", "g/dl"), ("x10e3/ul", "k/ul"), ("10*3/ul", "k/ul"), ("x10e6/ul", "m/ul"), ("10*6/ul", "m/ul"),
+         ("iu/l", "u/l"), ("ml/min/1.73m2", "ml/min"), ("/100wbc", ""))
+
+
+def unit_ident(u):
+    """A unit's form in what's kept by a hash of it (labmap.lookup: a remembered lab-name match or Keep separate;
+    crossmatch.point_key: a same / not-the-same decision). Frozen as it was before #1102 widened unit_norm, so what an
+    install has kept is still found by it: never change it (a change needs a schema step rehashing those rows)."""
+    u = (u or "").strip().lower().replace(" ", "").replace("µ", "u")
+    for a, c in _NORM:
+        u = u.replace(a, c)
+    return u
+
+
 def unit_norm(u):
-    """A unit reduced to a comparable form: "x10E3/uL", "10*3/uL" and "10³/µL" all become "k/ul"."""
+    """A unit reduced to a comparable form: "x10E3/uL", "10*3/uL" and "10³/µL" all become "k/ul". For comparing only;
+    a hash that's kept uses unit_ident."""
     u = _counts((u or "").strip().lower().replace(" ", "").replace("µ", "u").replace("μ", "u"))
-    for a, c in (("gm/dl", "g/dl"), ("x10e3/ul", "k/ul"), ("10*3/ul", "k/ul"), ("x10e6/ul", "m/ul"), ("10*6/ul", "m/ul"),
-                 ("iu/l", "u/l"), ("ml/min/1.73m2", "ml/min"), ("/100wbc", "")):
+    for a, c in _NORM:
         u = u.replace(a, c)
     return u
 

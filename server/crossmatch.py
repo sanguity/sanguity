@@ -166,7 +166,7 @@ def point_key(s, p):
     """What identifies a result across re-imports: its series' key (else name and unit), unit, time, value."""
     k = s.get("key")
     ident = k if isinstance(k, str) and k.strip() else "n:" + str(s.get("name") or "").strip().lower()
-    return "\x1f".join(("pt", ident, common.unit_norm(s.get("unit")), str(p[0]), _shown(p)))
+    return "\x1f".join(("pt", ident, common.unit_ident(s.get("unit")), str(p[0]), _shown(p)))   # (kept hashed: unit_ident)
 
 
 def pair_hash(ka, kb):
