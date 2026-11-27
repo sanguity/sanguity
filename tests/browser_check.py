@@ -31158,6 +31158,9 @@ def main():
             fp.goto(fbase + "/")
             fp.wait_for_url("**/setup.html", timeout=10000)
             fp.wait_for_selector("#c", timeout=10000)
+            cn1103 = fp.inner_text("#cn")
+            check("first run: the setup code's note says where it is besides the app's log: setup-code.txt in the data folder (#1103)",
+                  "docker compose logs app" in cn1103 and "setup-code.txt" in cn1103 and "data folder" in cn1103, cn1103)
             setup_axe = axe_check(fp, "setup.html, light")   # #202: axe-core's WCAG A and AA rules, under the real CSP
             fp.emulate_media(color_scheme="dark")
             setup_axe = [a + b for a, b in zip(setup_axe, axe_check(fp, "setup.html, dark"))]
@@ -31293,7 +31296,7 @@ def main():
             done_js = "[...document.querySelectorAll('#guideSteps li.done')].map(li => (li.querySelector('.guide-n svg.i-check') ? '✓' : '') + li.textContent)"
             check("first run: setup signs in and the guide opens by itself on the new, empty profile, past whose records it holds (asked in setup, "
                   "never twice: that step done) at the first records (#290)",
-                  fp.evaluate(steps_js) == ["Whose records", "First records", "Phone (optional)", "Overview"] and fp.evaluate(done_js) == ["✓Whose records (done)"]
+                  fp.evaluate(steps_js) == ["Whose records", "First records", "Phone (optional)", "Backups", "Overview"] and fp.evaluate(done_js) == ["✓Whose records (done)"]
                   and fp.evaluate("fetch('api/me').then(r => r.json()).then(j => j.profiles.map(p => p.name))") == ["Robin"]
                   and fp.is_visible("#skipGuide") and guide_is() == "", [fp.evaluate(steps_js), fp.evaluate(done_js)])
             # the steps are one line, at 1400 and at 320 px (they wrapped into a 2×2 block on a phone), joined by a rule
@@ -31307,7 +31310,7 @@ def main():
                     document.documentElement.scrollWidth <= innerWidth]""")
             fp.set_viewport_size({"width": 1400, "height": 900})
             check("…its steps one line at 1400 and 320 px, joined by a rule that's coloured past a step done (#290)",
-                  all(v == [1, "solid,solid,solid", True, True] for v in line290.values()), line290)
+                  all(v == [1, "solid,solid,solid,solid", True, True] for v in line290.values()), line290)   # (#1103: the admin's Backups too)
             # #479: Add → Journal entry (and Log a dose) on that new, empty profile isn't sent back to the guide: the form opens
             fp.goto(fbase + "/?profile=1#new-journal-entry")
             try:
@@ -31334,9 +31337,24 @@ def main():
             ways = fp.evaluate("[...document.querySelectorAll('#step-records .guide-way')].map(a => a.getAttribute('href'))")
             check("…its ways in: an upload in the step itself (#281), else Sources' own sections, a portal or plan (#165's section), typing in",
                   fp.is_visible("#step-records .up-drop") and ways == [f"sources.html?profile=1&guide=records#{g}" for g in ("portals", "manual")], ways)
+            # #1103: where an export comes from, behind a disclosure in the step: MyChart, Apple Health's, Blue Button
+            where1103 = fp.evaluate("(d => d && [d.open, d.querySelector('summary').textContent, d.textContent])(document.querySelector('#step-records details#guideWhere'))")
+            check("…“Where do I get an export?”, closed, names MyChart, Apple Health's Export All Health Data and Blue Button (#1103)",
+                  where1103 and where1103[0] is False and where1103[1] == "Where do I get an export?"
+                  and all(w in where1103[2] for w in ("MyChart", "Export All Health Data", "Blue Button")), where1103)
             fp.set_input_files("#step-records .up-btns input:not([webkitdirectory])", os.path.join(ROOT, "tests", "fixtures", "importers", "ccda", "maple-grove-ccd", "maple-grove-ccd.xml"))
             last = "[...document.querySelectorAll('.import-job')].pop()"
             f_until(f"!!{last} && /^(Ready to import|All duplicates|Not imported)/.test({last}.textContent)", 30000)
+            # #1103: an upload left at its review is shown again in the step once the page is reloaded, with a line
+            # saying it waits there and under Sources → Waiting for you
+            fp.reload()
+            fp.wait_for_selector("#step-records:not([hidden])", timeout=10000)
+            f_until(f"!!{last} && /^(Ready to import|All duplicates|Not imported)/.test({last}.textContent)", 30000)
+            again1103 = fp.evaluate("""[document.querySelectorAll('#step-records .import-job').length, document.getElementById('recordsWait').hidden,
+                document.getElementById('recordsWait').textContent, document.querySelector('#recordsWait a')?.getAttribute('href')]""")
+            check("…a review left open is there again after a reload, said to wait there and under Sources → Waiting for you (#1103)",
+                  again1103[0] == 1 and again1103[1] is False and "waiting for your review" in again1103[2]
+                  and again1103[3] == "sources.html?profile=1&guide=records#waiting", again1103)
             fp.evaluate(f"{last}.querySelector('.imp-actions .primary').click()")
             f_until(f"/^(Imported|Not imported)/.test({last}.textContent)", 30000)
             check("…where a fictional C-CDA is uploaded, previewed and saved", fp.evaluate(f"{last}.textContent").startswith("Imported."), fp.evaluate(f"{last}.textContent")[:200])
@@ -31349,7 +31367,25 @@ def main():
             fp.wait_for_selector("#step-phone:not([hidden])", timeout=10000)
             check("…then a phone, optional, set up on Sources → Phone and watch",
                   "(optional)" in fp.inner_text("#phoneTitle") and fp.get_attribute("#step-phone .guide-way", "href") == "sources.html?profile=1&guide=phone#phone")
+            # #1103: a secret made, the step is waiting for the phone's first upload, not done
+            fp.evaluate("api('profiles/1/watch/receiver/rotate', {method: 'POST', body: '{}'}).then(r => r.status)")
+            fp.reload()
+            fp.wait_for_selector("#step-phone:not([hidden])", timeout=10000)
+            f_until("!document.getElementById('phoneHave').hidden", 5000)
+            wait1103 = fp.evaluate("""[document.getElementById('phoneHave').textContent, !!document.querySelector('#phoneHave .guide-tick'),
+                [...document.querySelectorAll('#guideSteps li.done')].some(li => li.textContent.includes('Phone')),
+                document.querySelector('#step-phone [data-skip]').hidden, document.querySelector('#step-phone [data-next]').hidden]""")
+            check("…with a secret made, the phone's step waits for its first upload: said so, not marked done, still skippable (#1103)",
+                  "waiting for its first upload" in wait1103[0] and wait1103[1:] == [False, False, False, True], wait1103)
             fp.click("#step-phone [data-skip]")
+            # #1103: an admin's step: a copy of the encryption key kept elsewhere, and backups on (off on a new install)
+            fp.wait_for_selector("#step-backups:not([hidden])", timeout=10000)
+            bk1103 = fp.evaluate("""[[...document.querySelectorAll('#step-backups .guide-way')].map(a => a.getAttribute('href')), document.getElementById('step-backups').textContent,
+                [...document.querySelectorAll('#guideSteps li.done')].some(li => li.textContent.includes('Backups'))]""")
+            check("…then the admin's: keep a copy of the encryption key elsewhere, and turn backups on, linking to each, not done while they're off (#1103)",
+                  bk1103[0] == ["settings.html#gen-backups", "settings.html#backups"] and "a copy of the key" in bk1103[1] and "encrypted" in bk1103[1]
+                  and "somewhere other than this server" in bk1103[1] and bk1103[2] is False, bk1103)
+            fp.click("#step-backups [data-skip]")
             fp.wait_for_selector("#step-done:not([hidden])", timeout=10000)
             f_until("document.getElementById('doneSays').textContent.length > 0", 5000)
             check("…skipped, to the end: the Overview, with nothing left to skip, the guide not yet marked done",
@@ -31359,7 +31395,7 @@ def main():
             bad = []
             for theme in ("light", "dark"):
                 fp.emulate_media(color_scheme=theme)
-                for step in ("name", "records", "phone", "done"):
+                for step in ("name", "records", "phone", "backups", "done"):
                     fp.goto(fbase + f"/guide.html?profile=1#{step}")
                     fp.wait_for_selector(f"#step-{step}:not([hidden])", timeout=10000)
                     fp.wait_for_timeout(150)

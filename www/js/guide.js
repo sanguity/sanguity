@@ -1,6 +1,6 @@
 /* Sanguity · the getting-started guide (#199): guide.html. From a profile with nothing in it to its first records, one
-   step at a time: whose records it holds (its name: owners only), the first records, a phone (optional), then the
-   Overview. The steps are one line at the top, each marked done as its aim is met (#290), and any of them can be
+   step at a time: whose records it holds (its name: owners only), the first records, a phone (optional), an admin's
+   backups (#1103: a copy of the key kept elsewhere, backups on), then the Overview. The steps are one line at the top, each marked done as its aim is met (#290), and any of them can be
    reached from it again; the guide opens at the first that isn't done, and every step but the first can be skipped.
    Every way a profile is made asks its name (setup, or this guide's first step, where New profile leads), so a
    profile that's here has its first step done: a fresh install is asked it once, in setup, and the step here only
@@ -23,6 +23,7 @@
     {id: "name", title: "Whose records", owner: true},
     {id: "records", title: "First records"},
     {id: "phone", title: "Phone (optional)"},
+    {id: "backups", title: "Backups", admin: true},   // (#1103) an admin's: the key kept elsewhere, and backups on
     {id: "done", title: "Overview"},
   ];
   const q = new URLSearchParams(location.search), making = q.has("new");
@@ -103,20 +104,23 @@
   /* the words and links that name the profile, once it's known (and again after it's renamed) */
   function drawFor() {
     if (!P) return;
-    for (const a of document.querySelectorAll(".guide-way")) a.href = `sources.html?profile=${P.id}&guide=${a.dataset.to === "phone" ? "phone" : "records"}#${a.dataset.to}`;
+    for (const a of document.querySelectorAll(".guide-way[data-to]")) a.href = `sources.html?profile=${P.id}&guide=${a.dataset.to === "phone" ? "phone" : "records"}#${a.dataset.to}`;
     $("#viewGo").href = records(P.id, "overview");
   }
   /* what's in the profile already: its records and its phone, each step saying so and offering Continue */
   async function status() {
-    const [imps, phone] = await Promise.all([call(`profiles/${P.id}/imports`).catch(() => null),
-      call(`profiles/${P.id}/watch/receiver`).catch(() => null)]);
+    const [imps, phone, bk] = await Promise.all([call(`profiles/${P.id}/imports`).catch(() => null),
+      call(`profiles/${P.id}/watch/receiver`).catch(() => null), steps.some(s => s.id === "backups") ? call("backups").catch(() => null) : null]);
     const n = imps ? (imps.imports || []).filter(e => e.state === "active").length : 0;
     done.records = n > 0;
-    done.phone = !!(phone && (phone.has_secret || phone.legacy));
-    const have = (id, yes, text) => {
+    // (#1103) a phone's step is done once its first upload is in, not when its secret is made: until then it's waiting
+    const set = !!(phone && (phone.has_secret || phone.legacy)), wait = set && !(phone.last && (!phone.created || phone.last >= phone.created));
+    done.phone = set && !wait;
+    done.backups = !!(bk && bk.schedule && bk.schedule !== "off");
+    const have = (id, yes, text, waiting = false) => {
       const p = $("#" + id);
-      p.hidden = !yes;
-      p.replaceChildren(el("span", {class: "guide-tick", "aria-hidden": "true"}, icon("check"), " "), text);
+      p.hidden = !yes && !waiting;
+      p.replaceChildren(yes ? el("span", {class: "guide-tick", "aria-hidden": "true"}, icon("check"), " ") : "", text);
       const sec = p.closest(".guide-step");
       sec.querySelector("[data-next]").hidden = !yes;
       sec.querySelector("[data-skip]").hidden = yes;
@@ -124,7 +128,9 @@
     // the words don't name the profile: a name such as "My records" (the one the server's own records came in as)
     // made "My records has records now" (#290)
     have("recordsHave", done.records, `The records are in, from ${n} import${n === 1 ? "" : "s"}. Add more any time under Sources.`);
-    have("phoneHave", done.phone, "A phone is set up for this profile. Its readings appear on Body and activity once it sends some.");
+    have("phoneHave", done.phone, wait ? "A phone is set up for this profile, waiting for its first upload. Its readings appear on Body and activity once it sends some."
+      : "This profile's phone is sending its readings. They're on Body and activity.", wait);
+    if (bk) have("backupsHave", done.backups, "Backups are on. Keep the copy of the key up to date if it's ever changed.");
     $("#doneSays").textContent = done.records
       ? "The records are in. The Overview shows the latest of each key lab, anything flagged outside its reference range, and what happened most recently."
       : "There are no records yet, so the Overview starts empty. It fills in as records come in: Add, in the top bar, brings them in any time.";
@@ -137,6 +143,20 @@
     const t = dropTarget({pid: () => P.id, canEdit: () => P.role === "owner" || P.role === "editor"});
     $("#guideDrop").replaceWith(t.el);
     SgDrop.here(t, () => { if (current !== "records") show("records"); });
+    reviewsAgain(t.el.querySelector(".up-jobs"));
+  }
+  /* (#1103) an upload left at its review (the page reloaded, or left before Add): shown again under the drop target,
+     as Sources' Waiting for you shows it, and said in a line pointing there too */
+  async function reviewsAgain(box) {
+    if (P.role !== "owner" && P.role !== "editor") return;
+    const jobs = await call(`profiles/${P.id}/jobs?state=preview`).catch(() => null), waiting = sgWaiting(jobs, null).map(w => w.job);
+    if (!waiting.length) return;
+    const line = $("#recordsWait");
+    line.replaceChildren(waiting.length === 1 ? "An upload is waiting for your review, below" : `${waiting.length} uploads are waiting for your review, below`,
+      ". It's also under ", el("a", {href: `sources.html?profile=${P.id}&guide=records#waiting`, text: "Sources → Waiting for you"}), ".");
+    line.hidden = false;
+    for (const job of waiting) window.sanguityImport.follow({profileId: P.id, jobId: job.id, container: box, title: job.label || "An upload", text: "Opening its review…"})
+      .then(() => { if (!box.querySelector(".job[data-step=review]")) line.hidden = true; });
   }
   document.addEventListener("sg:imports", ev => { if (P && ev.detail.pid === P.id) ev.detail.wait(status()); });
   $("#finish").onclick = async () => {
@@ -182,7 +202,7 @@
       show("view");
       return;
     }
-    steps = !P || P.role === "owner" ? STEPS : STEPS.filter(s => !s.owner);
+    steps = (!P || P.role === "owner" ? STEPS : STEPS.filter(s => !s.owner)).filter(s => !s.admin || ME.user.is_admin);
     if (!P) {   // no profile yet (or making another): its name first, and nothing to skip to
       $("#nameTitle").textContent = "Whose records will your profile hold?";
       $("#nameGo").textContent = "Create a profile";

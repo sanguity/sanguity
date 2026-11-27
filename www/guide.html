@@ -50,6 +50,15 @@
   <section class="card guide-step" id="step-records" aria-labelledby="recordsTitle" hidden>
     <h2 id="recordsTitle">Bring in the first records</h2>
     <p class="hint">Upload the export a patient portal or app gave you, or start another way. You can add the others later, under Sources.</p>
+    <!-- (#1103) where an export comes from, for someone who hasn't one yet -->
+    <details class="more mt-3" id="guideWhere"><summary>Where do I get an export?</summary>
+      <ul>
+        <li><b>MyChart</b> (and other patient portals): on its website, look for Download My Record or Share My Record
+          (often under Document Center), and upload the zip it gives you.</li>
+        <li><b>Apple Health</b>, on an iPhone: in the Health app, tap your picture, then Export All Health Data, and upload the zip it makes.</li>
+        <li><b>Blue Button</b>: Medicare, the VA and many health plans offer a download of your records by that name on their websites.</li>
+      </ul></details>
+    <p class="guide-have" id="recordsWait" hidden></p>
     <div id="guideDrop"></div>
     <ul class="guide-ways">
       <li data-cs hidden><a class="guide-way" data-to="portals" href="sources.html#portals"><b>Connect a portal or health plan <svg class="icon i-arrow-right" aria-hidden="true" focusable="false"><use href="icons/sprite.svg#i-arrow-right"/></svg></b>
@@ -79,7 +88,25 @@
     </div>
   </section>
 
-  <!-- 4. the end: the Overview -->
+  <!-- 4. admins only (#1103): a copy of the encryption key kept somewhere else, and backups on -->
+  <section class="card guide-step" id="step-backups" aria-labelledby="backupsTitle" hidden>
+    <h2 id="backupsTitle">Keep a copy of the key, and turn backups on</h2>
+    <p class="hint">The records on this server are encrypted with a key kept beside them. Without it neither the records nor
+      their backups can be read, so keep a copy somewhere other than this server, such as a password manager.</p>
+    <ul class="guide-ways">
+      <li><a class="guide-way" href="settings.html#gen-backups"><b>See where the key is <svg class="icon i-arrow-right" aria-hidden="true" focusable="false"><use href="icons/sprite.svg#i-arrow-right"/></svg></b>
+        <span>Settings → Install → General → Backups and logging names its file.</span></a></li>
+      <li><a class="guide-way" href="settings.html#backups"><b>Turn backups on <svg class="icon i-arrow-right" aria-hidden="true" focusable="false"><use href="icons/sprite.svg#i-arrow-right"/></svg></b>
+        <span>Settings → Install → Backups: daily or weekly, kept in the backups folder.</span></a></li>
+    </ul>
+    <p class="guide-have" id="backupsHave" hidden></p>
+    <div class="row">
+      <button class="btn primary" type="button" data-next hidden>Continue</button>
+      <button class="btn" type="button" data-skip>Skip this step</button>
+    </div>
+  </section>
+
+  <!-- 5. the end: the Overview -->
   <section class="card guide-step" id="step-done" aria-labelledby="doneTitle" hidden>
     <h2 id="doneTitle">All set</h2>
     <p id="doneSays"></p>
