@@ -438,10 +438,14 @@ def _dose(d):
         raise ValueError("it isn't taken, taken late or skipped")
     slot = d.get("slot")
     if slot is not None and not (isinstance(slot, str) and med_log._SLOT.match(slot)):
-        raise ValueError("its reminder time isn't HH:MM")
+        raise ValueError("its scheduled time isn't HH:MM")
+    try:
+        amount = med_reminders.amount(d)   # (#1095)
+    except med_reminders.ReminderError as x:
+        raise ValueError(f"its amount can't be kept: {x}") from None
     return {"med": _str(d.get("med"), 300, "medication"), "name": _str(d.get("name") or d["med"], 300, "medication's name"),
             "t": t, "status": d["status"], "note": _str(d.get("note") or "", med_log.NOTE_MAX, "note", empty=True).strip(),
-            "slot": slot or None}
+            "slot": slot or None, **amount}
 
 
 def _reminder(r):

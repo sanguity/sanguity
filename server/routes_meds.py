@@ -123,13 +123,16 @@ class Dose(BaseModel):
     t: str                         # YYYY-MM-DDTHH:MM, the person's own wall-clock time
     status: str                    # taken, late, skipped
     note: Optional[str] = None
-    slot: Optional[str] = None     # the reminder time ("HH:MM") it was logged against, from today's list
+    slot: Optional[str] = None     # the scheduled time ("HH:MM") it was logged against, from today's list
+    amount: Optional[float] = None   # how much (#1095): from its scheduled time's, or typed
+    unit: Optional[str] = None
 
 
 def _dose(db, pid, s, body, keep_med=None):
     today = settings.local_now(db, s["id"]).date() + timedelta(days=1)   # a day's grace: the browser's zone may be ahead
     try:
-        return med_log.check(db, pid, body.med, body.t, body.status, body.note, body.slot, today, keep_med)
+        return med_log.check(db, pid, body.med, body.t, body.status, body.note, body.slot, today, keep_med,
+                             {"amount": body.amount, "unit": body.unit})
     except med_log.DoseError as x:
         raise HTTPException(400, str(x))
 

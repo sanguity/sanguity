@@ -169,7 +169,7 @@ reminder one): like journal entries they belong to the profile and find their me
 keeps them; the body (the medication, times with the amount at each, days, from, until, time zone, As needed) is
 encrypted, `remind` (`active` before version 47) says whether its Remind me puts it in the calendar feed. **med_doses** (the same
 step, #235, `server/med_log.py`) is the medication log: doses logged as taken, taken late or skipped, the profile's
-like the journal; the body (the medication, when, what happened, a note, the reminder time) is encrypted, and the
+like the journal; the body (the medication, when, what happened, a note, the scheduled time and the amount, #1095) is encrypted, and the
 records list them as `doses`. A phone's doses are watch data (`med_doses` in the receiver's summary), not rows here.
 **med_entries** (schema version 46, #1091, `server/medications.py`) are a profile's own medications and its changes to
 those of the records: an own one has a key of its own ("own:" and a random word), a change finds its medication by the
@@ -356,7 +356,7 @@ erDiagram
     med_doses {
         int id PK
         int profile_id FK
-        text body "🔒 JSON: medication key and name, time, taken | late | skipped, note, reminder time"
+        text body "🔒 JSON: medication key and name, time, taken | late | skipped, note, scheduled time, amount and unit"
         int created_by FK
         text created_name "the username then"
         int created

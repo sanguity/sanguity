@@ -10456,7 +10456,7 @@ def main():
                 week = page.inner_text("#dbody .dose-week")
                 check("logged: the medication opens again with the dose, its note and who logged it, and this week's count of what was logged",
                       item.startswith("Taken late") and "Fictional note: later than usual" in item and f"Logged by {USER}" in item
-                      and week == "This week: 1 of 1 logged dose taken (1 late)", [item, week])
+                      and bool(re.fullmatch(r"This week: (\d of \d scheduled doses? taken|No scheduled doses yet); 1 other dose logged", week)), [item, week])   # (#1095: not one of its schedule's)
                 body235 = page.inner_text("#dbody")
                 check("…the drawer never says a dose was due or should be taken", not re.search(r"(?i)\b(due|should|missed|overdue|adherence|forgot)\b", body235), body235[-400:])
                 sweep235("medication drawer with its log", "#dbody .doselist")
@@ -10622,9 +10622,10 @@ def main():
                     (page.check if k == "medlog" else page.uncheck)(f"#sections input[value={k}]")
                 page.wait_for_selector("#preview:not([hidden]):not([aria-busy]) h3", timeout=10000)   # drawn as the choices change (#288)
                 pv = page.inner_text("#preview")
-                check("…ticked, the preview lists each dose with what happened and the count of what was logged",
+                # (with #162's reminder, its schedule: the Overview's Skipped one of it, the drawer's taken late another, #1095)
+                check("…ticked, the preview lists each dose with what happened and the count of its schedule's doses taken",
                       js("[...document.querySelectorAll('#preview h3')].map(h => h.textContent)")[0].startswith("Medication log")
-                      and re.search(re.escape(cur["name"]) + r": 1 of 2 logged doses taken, 1 skipped", pv)
+                      and re.search(re.escape(cur["name"]) + r": (0 of 1 scheduled dose taken, 1 skipped|No scheduled doses in this period); 1 other dose logged", pv)
                       and "Skipped" in pv and not re.search(r"(?i)\b(due|should|missed)\b", pv), pv[:400])
                 sweep235("summary preview with the medication log", "#preview")
                 check("the medication log's form, drawer, today's doses, Labs row and summary fit 375 px, light and dark", not bad235, bad235[:6])
@@ -10833,6 +10834,95 @@ def main():
                       "and leaves the period saved as it was, on another tab and after a reload",
                       [k[1][0] for k in keep475] in ([], ["30d", "30d", "custom"])
                       and all(k[2] == ["all", True] and k[3] == k[1] and k[4][0] == k[1][0] and (k[1][0] != "custom" or k[4] == k[1]) for k in keep475), keep475)
+                # ---- #1095: each scheduled dose its own row on Today, with its amount, logged one by one. On another current
+                # medication (none of its own today): every day 1 tablet and 5 ml at 8:00 (two at one time), 2 tablets at
+                # 20:00 on today's weekday only, 21:00 on tomorrow's only (not today's: no row), and As needed (2 puffs).
+                # Taken on the first 8:00: it alone is logged, the second still has its buttons, focus on the row's
+                # medication, what was logged said; then the second. As needed: Log a dose, its form with the usual
+                # amount, logged with 3. The phone's dose at 20:30 goes to 20:00, one at 15:00 to Also. The week and the
+                # drawer say taken of scheduled, plain counts; 320 px with text at 200% fits; never "due"
+                med1095 = js("""(() => { const m = MEDS.find(m => mrCurrent(m) && !mrOf(m).length && !DOSES.some(d => d.key === m.key && doseDay(d) === zToday()));
+                    return m && {key: m.key, name: m.name}; })()""")
+                check("…(#1095) the demo has a second current medication with no schedule", bool(med1095), med1095)
+                if med1095:
+                    lines1095 = js("""async k => { const dow = (zdate(Date.now()).getDay() + 6) % 7, day = i => MR_DAYS[i % 7][0], ids = [];
+                        for (const b of [{times: ['08:00', '08:00'], amounts: [{amount: 1, unit: 'tablet'}, {amount: 5, unit: 'ml'}], days: MR_DAYS.map(d => d[0])},
+                                         {times: ['20:00'], amounts: [{amount: 2, unit: 'tablets'}], days: [day(dow)]},
+                                         {times: ['21:00'], amounts: [{amount: 1, unit: 'tablet'}], days: [day(dow + 1)]},
+                                         {times: [], asneeded: true, dose: {amount: 2, unit: 'puffs'}, days: MR_DAYS.map(d => d[0]), on: false}]) {
+                          const r = await api(`profiles/${PROFILE.id}/medications/reminders`, {method: 'POST', body: JSON.stringify({med: k, start: zToday(), ...b})});
+                          const j = await r.json(); ids.push(j.id); storePut('reminders', j); }
+                        return ids; }""", med1095["key"])
+                    js("switchTab('medications')")
+                    settle(400)
+                    ROWS1095 = """k => [...document.querySelectorAll('#medToday .dose-today')].filter(r => r.dataset.doseRow.startsWith(k + ' ')).map(r =>
+                        [r.dataset.doseRow, r.querySelector('.dose-slot').innerText.replace(/\\s+/g, ' '), r.querySelectorAll('.dose-quick button').length,
+                         r.querySelector('.dose-got')?.innerText.replace(/\\s+/g, ' ') || ''])"""
+                    rows1095 = js(ROWS1095, med1095["key"])
+                    k1095 = med1095["key"]
+                    check("…(#1095) Today: a row for each of the schedule's doses today with its amount, two at 8:00 two, the day's 20:00 and not "
+                          "tomorrow's 21:00, and As needed with its usual amount",
+                          [r[:3] for r in rows1095] == [[f"{k1095} 08:00", "8:00 AM 1 tablet", 3], [f"{k1095} 08:00 2", "8:00 AM 5 ml", 3],
+                                                        [f"{k1095} 20:00", "8:00 PM 2 tablets", 3], [f"{k1095} ", "As needed 2 puffs", 0]], rows1095)
+                    first = page.locator(f"#medToday .dose-today[data-dose-row='{k1095} 08:00'] .dose-quick button:text-is('Taken')")
+                    label1095 = first.get_attribute("aria-label")
+                    first.click()
+                    page.wait_for_function("k => document.querySelector(`#medToday .dose-today[data-dose-row=\"${k} 08:00\"]`)?.classList.contains('logged')", arg=k1095, timeout=20000)
+                    settle(300)
+                    one1095 = [js(ROWS1095, k1095), js("document.activeElement.closest('.dose-today')?.dataset.doseRow + ' ' + document.activeElement.className"),
+                               js("document.getElementById('sgStatus').textContent"), js("[DATA.doses.at(-1).slot, DATA.doses.at(-1).amount, DATA.doses.at(-1).unit]")]
+                    page.locator(f"#medToday .dose-today[data-dose-row='{k1095} 08:00 2'] .dose-quick button:text-is('Taken')").click()
+                    page.wait_for_function("k => document.querySelector(`#medToday .dose-today[data-dose-row=\"${k} 08:00 2\"]`)?.classList.contains('logged')", arg=k1095, timeout=20000)
+                    settle(300)
+                    two1095 = [js(ROWS1095, k1095), js("[DATA.doses.at(-1).slot, DATA.doses.at(-1).amount, DATA.doses.at(-1).unit]")]
+                    check("…two at one time logged one by one: Taken on the first logs it alone (the second keeps its buttons), focus on its "
+                          "medication, said with what and how much; then the second, each with its amount",
+                          label1095 == f"Taken: {med1095['name']}, 1 tablet at 8:00\xa0AM" and one1095[0][0][2] == 0 and "Taken · " in one1095[0][0][3]
+                          and "1 tablet" in one1095[0][0][3] and one1095[0][1][2] == 3 and one1095[1].startswith(f"{k1095} 08:00 ") and "dose-med" in one1095[1]
+                          and f"Logged. Taken: {med1095['name']}, 1 tablet at 8:00\xa0AM." in one1095[2] and one1095[3] == ["08:00", 1, "tablet"]
+                          and two1095[0][1][2] == 0 and "5 ml" in two1095[0][1][3] and two1095[1] == ["08:00", 5, "ml"], [label1095, one1095, two1095])
+                    page.locator(f"#medToday .dose-today[data-dose-row='{k1095} '] button:text-is('Log a dose')").click()
+                    settle(300)
+                    need1095 = js("""[document.getElementById('dtitle').textContent, document.querySelector('#dbody input[id^=dose-amt]').value,
+                        document.querySelector('#dbody input[id^=dose-unit]').value, document.querySelector('#dbody label[for^=dose-amt]').textContent]""")
+                    page.fill("#dbody input[id^=dose-amt]", "3")
+                    page.click("#dbody button:text-is('Log dose')")
+                    page.wait_for_function("() => DATA.doses.at(-1).amount === 3", timeout=20000)
+                    js("switchTab('medications')")
+                    settle(300)
+                    need1095 += [js("[DATA.doses.at(-1).slot, DATA.doses.at(-1).unit]"), js(ROWS1095, k1095)[-1][3]]
+                    check("…As needed: Log a dose opens its form with the usual amount (2 puffs), logged with 3, listed in its row",
+                          need1095[:4] == ["Log a dose", "2", "puffs", "Amount (optional)"] and need1095[4] == [None, "puffs"] and "3 puffs" in need1095[5], need1095)
+                    # the phone's doses (Apple Health): 20:30 is the 20:00 one, within two hours of it; 15:00 is none of them
+                    js("""([n, d]) => { WATCH.med_doses = [...(WATCH.med_doses || []), [d + 'T20:30:00', n, 'taken', 2, 'tablets', 'Apple Health'],
+                        [d + 'T15:00:00', n, 'taken', 1, 'tablet', 'Apple Health']]; medLogLoad(); renderMedications(); }""", [med1095["name"], js("zToday()")])
+                    settle(300)
+                    phone1095 = js(ROWS1095, k1095)
+                    week1095 = js("""k => [document.querySelector('#medToday .dose-week').textContent, (openMedication(MEDS.find(m => m.key === k)),
+                        document.querySelector('#dbody .dose-week').textContent)]""", k1095)
+                    js("closeDrawer()")
+                    check("…the phone's dose at 20:30 is the 20:00 one; its 15:00 one, within two hours of none, is in the As needed row",
+                          phone1095[2][2] == 0 and "from Apple Health" in phone1095[2][3] and "2 tablets" in phone1095[2][3]
+                          and "from Apple Health" in phone1095[3][3] and "1 tablet" in phone1095[3][3], phone1095)
+                    # (the 20:00 one counted with its dose logged, whatever the time; As needed's and the 15:00 one the others)
+                    check("…the drawer says this week's doses taken of those scheduled so far, plain counts, and the others logged; Today's week too",
+                          week1095[1] == "This week: 3 of 3 scheduled doses taken; 2 other doses logged"
+                          and bool(re.match(r"This week: \d+ of \d+ scheduled doses taken", week1095[0])), week1095)
+                    fit1095 = []
+                    for w1095 in (320, 1400):
+                        page.set_viewport_size({"width": w1095, "height": 800})
+                        js(ADOPT_CSS_JS, BIG_TEXT_CSS)
+                        settle(300)
+                        if w1095 < 400:
+                            fit1095 += phone_fits(page, "Medications tab's Today at 320 px, text at 200% (#1095)")
+                        js(ADOPT_CSS_JS, "")
+                    page.set_viewport_size({"width": 1400, "height": 900})
+                    text1095 = page.inner_text("#medToday")
+                    check("…Today fits 320 px with text at 200%, and never says a dose was due", not fit1095 and not re.search(r"(?i)\b(due|should|missed|overdue|adherence)\b", text1095), fit1095)
+                    js("""async ([ids, k]) => { for (const id of ids) storePut('reminders', await (await api(`profiles/${PROFILE.id}/medications/reminders/${id}`, {method: 'DELETE'})).json());
+                        for (const d of DATA.doses.filter(d => d.med === k && d.id)) storePut('doses', await (await api(`profiles/${PROFILE.id}/medications/doses/${d.id}`, {method: 'DELETE'})).json());
+                        WATCH.med_doses = WATCH.med_doses.filter(r => medKeyOf(r[1]) !== k); medLogLoad(); renderMedications(); }""", [lines1095, k1095])
+                    settle(300)
                 # Add → Log a dose: on the Medications tab's Today, its first button focused; with the tab hidden, the Overview's
                 js("switchTab('overview')")
                 menu_click(page, "#doseLink")
