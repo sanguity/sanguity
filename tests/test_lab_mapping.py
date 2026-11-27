@@ -1043,6 +1043,44 @@ class LabMapping(unittest.TestCase):
         self.assertEqual(self.points(pid, "Vitamin D 25-Hydroxy"), [("2026-01-05", 31), ("2026-02-05", 28), ("2026-03-05", 33)])
         self.assertNotIn("VIT D 25-OH", [s["name"] for s in self.data(pid)["labs"]])
 
+    def test_a_test_charted_under_an_older_name_keeps_its_chart(self):   # #1102, the closing check's
+        """An install upgraded from a version that named FHIR's blood pressure "Diastolic blood pressure" (8462-4, in
+        mm[Hg]) and a FHIR "HDL" (2085-9) as reported: its next imports, naming them anew (a vital by its code's name,
+        "Blood pressure, diastolic"; lab-aliases.json's "HDL Cholesterol"), a FHIR file, a CSV's "HDL-C" with no code and
+        records typed in, go to the series the profile charts them under, unasked: no test in two charts."""
+        from server import records
+        pid = self.profile("Older names")
+        old = lambda name, unit, code, v: {"name": name, "unit": unit, "loinc": code, "key": f"loinc:{code}", "panel": "Vitals",  # noqa: E731
+                                           "pts": [["2025-01-04T09:35:00-06:00", v, None, None, "", str(v), "FHIR"]], "txt": []}
+        db = dbm.connect()
+        try:
+            with dbm.transaction(db):
+                records.store(db, pid, {"events": [], "details": {}, "labs": [
+                    old("Diastolic blood pressure", "mm[Hg]", "8462-4", 80), old("Systolic blood pressure", "mm[Hg]", "8480-6", 125),
+                    {**old("HDL", "mg/dL", "2085-9", 55), "panel": "Lab results"}]}, "fhir", "fhir")
+        finally:
+            db.close()
+        with open(os.path.join(ROOT, "tests", "fixtures", "importers", "fhir", "bundle", "patient-everything.json"), encoding="utf-8") as f:
+            j = self.previewed(pid, {"patient-everything.json": f.read()})
+        self.assertFalse([e["name"] for e in j["labs"] if "pressure" in e["name"]], "not asked about")
+        self.save(pid, j)
+        j = self.previewed(pid, csv(["2025-03-14", "HDL-C", "72", "mg/dL", ">40", "", "Lipid Panel", ""]))
+        self.assertNotIn("HDL-C", [e["name"] for e in j["labs"]])
+        self.save(pid, j)
+        items = [{"kind": "vitals", "date": "2025-05-04", "time": "09:35", "bp": "118/76"}]
+        r = self.ash.post(f"/api/profiles/{pid}/manual", json={"rows": [], "items": items, "save": True}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        names = {s["name"] for s in self.data(pid)["labs"]}
+        self.assertFalse(names & {"Blood pressure, diastolic", "Blood pressure, systolic", "HDL Cholesterol"}, names)
+        self.assertEqual(self.points(pid, "Diastolic blood pressure"), [("2025-01-04", 80), ("2025-03-04", 82), ("2025-05-04", 76)])
+        self.assertEqual(self.points(pid, "Systolic blood pressure"), [("2025-01-04", 125), ("2025-03-04", 128), ("2025-05-04", 118)])
+        self.assertEqual(self.points(pid, "HDL"), [("2025-01-04", 55), ("2025-03-14", 72)])
+        have = {"HDL": {"unit": "mg/dL", "loinc": {"2085-9"}}, "Glucose": {"unit": "mg/dL", "loinc": set()}}
+        for s, want in (({"name": "HDL Cholesterol", "unit": "mmol/L", "loinc": "2085-9"}, None),   # another unit: its own
+                        ({"name": "HDL", "unit": "mg/dL"}, None), ({"name": "Zorblatt", "unit": "mg/dL", "loinc": "2085-9"}, "HDL"),
+                        ({"name": "LDL Cholesterol", "unit": "mg/dL", "loinc": "13457-7"}, None)):
+            self.assertEqual(labmap.charted_under(s, have), want, s)
+
     # ---------------------------------------------------------------- the pieces
 
     def test_names_evened_out(self):

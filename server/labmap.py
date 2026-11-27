@@ -219,11 +219,42 @@ def suggest(s, have):
 
 # ---------------------------------------------------------------- an import's plan
 
+def charted_under(s, have):
+    """The profile's series an import's series s goes to before the name its import gave it, or None: none when the
+    profile charts that name; else one it charts the same test under, in the same unit, by the series' LOINC code or as
+    a name lab-aliases.json gives the test s is named for. So an install charting a test under an older name keeps one
+    chart when its importers name the test anew (#1102: FHIR's "Diastolic blood pressure" (8462-4), then a vital by its
+    code's name, "Blood pressure, diastolic"; "HDL" (2085-9), then the wider lab-aliases.json's "HDL Cholesterol")."""
+    name, unit, code = str(s.get("name") or "").strip(), str(s.get("unit") or ""), series_loinc(s)
+    if not name or name.lower() in {n.lower() for n in have}:
+        return None
+    canon = common.canonical_lab(name, code)
+    for n, v in sorted(have.items(), key=lambda x: x[0].lower()):
+        if compatible(n, v["unit"], unit) and (code and code in v["loinc"] or canon and common.canonical_lab(n) == canon):
+            return n
+    return None
+
+
+def kept_charted(have, data):
+    """{ref: the series charted_under}, for data's lab series that have one and that a review doesn't ask about: a name
+    lab-aliases.json knows, or a vital (#1103). Another name is asked about, its series of the same LOINC code offered
+    as sure (suggest)."""
+    return {f"s:{i}": t for i, s in enumerate(data.get("labs") or [])
+            if isinstance(s, dict) and (s.get("panel") == "Vitals" or _known(s.get("name"))) and (t := charted_under(s, have))}
+
+
+def keep_charted(db, pid, data):
+    """data with each lab series that profile pid charts under another name put in that one (charted_under): records
+    typed in, outside a review."""
+    return apply(data, kept_charted(profile_series(db, pid), data))
+
+
 def plan(db, pid, importer, data, keep=()):
     """What the preview asks about data's lab series, and what's settled already:
 
       {"listed": [{"ref", "name", "unit", "loinc", "n", "suggestions", "before": {"target"} | None, ("check": {"target"})}],
-       "auto": {ref: target or None}   remembered choices, applied without asking
+       "auto": {ref: target or None}   remembered choices, and a test the profile charts under another name
+                                       (charted_under), applied without asking
        "ids": {ref: labmaps id}        theirs, marked used once the import is saved (used, #500)
        "targets": [{"name", "unit"}]   every series one can be put in (only when something is listed)}
 
@@ -241,7 +272,12 @@ def plan(db, pid, importer, data, keep=()):
             candidates[f"s:{i}"] = s
     found = remembered(db, pid, [importer], {ref: _ident(s) for ref, s in candidates.items()}, flagged=True)
     listed, auto, ids = [], {}, {}
+    # a test the profile charts under another name goes there, a vital too, unless a choice for it was remembered (#1102)
+    kept = {ref: t for ref, t in kept_charted(have, data).items() if ref not in found}
+    auto.update(kept)
     for ref, s in candidates.items():
+        if ref in kept:
+            continue
         before, same = found.get(ref), lower.get(s["name"].strip().lower())
         if before is None and (_known(s["name"]) or same and ref not in keep):   # (#1097: a name Sanguity knows, only once matched)
             continue
@@ -505,6 +541,7 @@ def apply_remembered(db, pid, importers, data):
               if isinstance(s, dict) and isinstance(s.get("name"), str)}   # (#1097: a known name too, once matched)
     found = remembered(db, pid, importers, idents)
     picked = {ref: f["target"] for ref, f in found.items()}
+    picked = {**kept_charted(profile_series(db, pid), data), **picked}   # else where the profile charts it (#1102)
     renamed = {idents[ref][0]: t for ref, t in picked.items() if t}
     return apply(data, picked), renamed, [f["id"] for f in found.values()]
 
