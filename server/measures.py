@@ -612,7 +612,8 @@ def _doses(c):
 def _scheduled(c, key, keep):
     """A medication's doses taken of those its schedule gave on the period's days so far (#1095, med_log.schedule_counts),
     or None without a schedule."""
-    lines = [r for r in c.data.get("reminders") or [] if isinstance(r, dict) and r.get("med") == key and r.get("from")]
+    lines = [r for r in c.data.get("reminders") or [] if isinstance(r, dict) and r.get("med") == key and r.get("from")
+             and not r.get("paused")]   # (a paused line counts nothing, #1094)
     if not lines:
         return None
     med = next((m for m in c.data.get("medications") or [] if isinstance(m, dict) and m.get("key") == key), {})

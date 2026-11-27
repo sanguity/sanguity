@@ -1201,10 +1201,13 @@ SCHEMA = [
     """,
     # version 47: a medication reminder becomes a line of the medication's schedule (#1094; med_reminders.py): its
     # times, days, from, until and zone are the line's, read with no amount at each time (its body is encrypted, so
-    # med_reminders.listing reads one from before as that), and whether it was on is now its Remind me: one on stays
-    # in the calendar feed as it was, one off stays out of it.
+    # med_reminders.listing reads one from before as that). One that was on is a line with Remind me on, in the
+    # calendar feed as it was; one turned off is a paused line (the owner, on #1090): kept with its times, its doses
+    # on no Today and in no count, and in no calendar, until it's resumed, when it reminds as it did.
     """
     ALTER TABLE med_reminders RENAME COLUMN active TO remind;
+    ALTER TABLE med_reminders ADD COLUMN paused INTEGER NOT NULL DEFAULT 0;   -- 1: paused, kept to resume
+    UPDATE med_reminders SET paused=1, remind=1 WHERE remind=0;
     """,
 ]
 

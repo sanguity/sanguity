@@ -1767,7 +1767,7 @@ svg text.medname{fill:var(--ink2);font-size:var(--fs-1)}
 .mr-item{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-1) var(--sp-2);border:1px solid var(--grid);border-radius:var(--r-md);padding:var(--sp-1) var(--sp-3)}
 .mr-says{flex:1 1 220px;min-width:0;color:var(--ink)}
 .mr-state{flex:1 1 100%;order:3;font-size:var(--fs-2);color:var(--ink2)}
-.mr-item.ended .mr-says{color:var(--ink2)}
+.mr-item:is(.ended,.paused) .mr-says{color:var(--ink2)}
 .mr-acts{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
 .mr-times{display:flex;flex-direction:column;gap:var(--sp-3)}
 .mr-time,.mr-time>div{display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center}

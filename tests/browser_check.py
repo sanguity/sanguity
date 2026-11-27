@@ -10343,6 +10343,36 @@ def main():
                 page.wait_for_load_state("load")
                 page.wait_for_function("typeof MEDS !== 'undefined' && document.querySelector('#dbody .mr-item.remind')", timeout=20000)
                 check("…and on again", "Remind me on: in the calendar feed" in page.inner_text("#dbody .mr-item"))
+                # #1094 (the owner, on #1090): Pause keeps the line with its times, said paused, its doses on no day's
+                # list (Today's, the counts') and its Remind me put away; Resume brings them back; focus stays on the button
+                PAUSE1094 = """k => { const m = MEDS.find(x => x.key === k), it = document.querySelector('#dbody .mr-item'), b = it?.querySelector('[data-id^=pause-]');
+                  return {cls: it?.className, says: it?.querySelector('.mr-state')?.textContent, btn: b?.textContent, label: b?.getAttribute('aria-label'),
+                    focus: document.activeElement === b, remind: !!it?.querySelector('button.toggle'), kept: (DATA.reminders || [])[0]?.times.join(),
+                    doses: [...Array(7)].flatMap((_, i) => mrDoses(m, isoDay(Date.now() + i * DAY))).length, live: document.getElementById('sgStatus')?.textContent}; }"""
+                page.click("#dbody .mr-item button:text-is('Pause')")
+                page.wait_for_function("typeof MEDS !== 'undefined' && document.querySelector('#dbody .mr-item.paused')", timeout=20000)
+                settle(300)
+                p1094 = js(PAUSE1094, cur["key"])
+                check("Pause: the line kept with its times, said paused, none of its doses on any day this week, Remind me put away, focus on Resume, said",
+                      p1094["kept"] == "08:00,20:00" and p1094["says"].startswith("Paused") and p1094["doses"] == 0 and not p1094["remind"]
+                      and p1094["btn"] == "Resume" and p1094["label"].startswith("Resume the schedule line") and p1094["focus"]
+                      and "Paused:" in p1094["live"], p1094)
+                TODAY1094 = """k => [[...document.querySelectorAll('#medToday [data-dose-row]')].filter(r => r.dataset.doseRow.startsWith(k + ' ') && r.dataset.doseRow.length > k.length + 1).length,
+                  document.querySelector(`#view-medications .med-row[data-med-key="${k}"]`)?.lastElementChild.textContent]"""
+                if js("state.tab") == "medications":   # (Today and Current drawn again in place)
+                    try:
+                        page.wait_for_function(f"k => ({TODAY1094})(k)[0] === 0", arg=cur["key"], timeout=5000)
+                    except Exception:
+                        pass
+                    t1094 = js(TODAY1094, cur["key"])
+                    check("…Today, drawn again, has no row at its times; Current's Schedule says it's paused", t1094[0] == 0 and "(paused)" in (t1094[1] or ""), t1094)
+                page.focus("#dbody .mr-item [data-id^=pause-]")
+                page.keyboard.press("Enter")
+                page.wait_for_function("typeof MEDS !== 'undefined' && document.querySelector('#dbody .mr-item.remind')", timeout=20000)
+                settle(300)
+                r1094 = js(PAUSE1094, cur["key"])
+                check("…Resume (by keyboard): its doses back, Remind me on as it was, focus on Pause, said",
+                      r1094["doses"] > 0 and r1094["remind"] and r1094["btn"] == "Pause" and r1094["focus"] and "Resumed:" in r1094["live"], r1094)
                 # ---- #1094: the schedule's form. A line's times each with an amount and unit, its own days: the owner's
                 # "Mondays and Fridays only, morning and night" (1 tablet at 8:00, 2 at 20:00), beside the line above; an
                 # amount that isn't a number stops the save, named and focused; As needed puts away the times and Remind me

@@ -39,7 +39,8 @@ class Reminder(BaseModel):
 
 
 class Switch(BaseModel):
-    on: bool
+    on: Optional[bool] = None       # Remind me
+    paused: Optional[bool] = None   # paused: kept, its doses on no Today and in no count, in no calendar (#1094)
 
 
 def _zone(db, s, tz):
@@ -95,12 +96,17 @@ def change_reminder(pid: int, rid: int, body: Reminder, request: Request, respon
 
 @router.patch("/api/profiles/{pid}/medications/reminders/{rid}")
 def switch_reminder(pid: int, rid: int, body: Switch, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
-    """Turn a reminder on or off; off keeps it, listed nowhere, to turn on again."""
+    """Turn a line's Remind me on or off, or pause or resume it: paused, it's kept to resume, giving no doses."""
     need(db, s, pid, "editor")
+    if body.on is None and body.paused is None:
+        raise HTTPException(400, "Say on or paused.")
     with dbm.transaction(db):
-        if mr.change(db, pid, rid, s, active=body.on) is None:
+        if mr.change(db, pid, rid, s, active=body.on, paused=body.paused) is None:
             raise HTTPException(404, "No such reminder.")
-        _log(db, s, pid, "reminder.on" if body.on else "reminder.off", request)
+        if body.on is not None:
+            _log(db, s, pid, "reminder.on" if body.on else "reminder.off", request)
+        if body.paused is not None:
+            _log(db, s, pid, "reminder.pause" if body.paused else "reminder.resume", request)
     records.stamp(response, db, pid)
     return {"reminder": mr.get(db, pid, rid), "reminders": mr.listing(db, pid, [rid])}
 

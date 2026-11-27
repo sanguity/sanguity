@@ -22,11 +22,11 @@ function medSince(m) {
 const medLastFill = m => m.fills.reduce((a, f) => !a || f.ts > a.ts ? f : a, null);
 /* its latest listing's words, the name apart: "Take 1 tablet twice daily" */
 const medListed = m => { const s = m.spans.at(-1); return s ? [s.title !== m.name && s.title, s.dose].filter(Boolean).join(" · ") : ""; };
-/* its schedule now (#1094): "2 tablets at 8:00 AM every day; 8:00 PM on Mon and Fri", and "· no reminders" when
-   none of it has Remind me on; "None" with none, or all ended */
+/* its schedule now (#1094): "2 tablets at 8:00 AM every day; 8:00 PM on Mon and Fri (paused)", and "· no reminders"
+   when none of it has Remind me on; "None" with none, or all ended */
 function medReminds(m) {
-  const rs = mrOf(m).filter(r => mrState(r, m).cls !== "ended");
-  return rs.length ? rs.map(mrWhat).join("; ") + (rs.some(r => r.on && !r.asneeded) ? "" : " · no reminders") : "None";
+  const rs = mrAll(m).filter(r => mrState(r, m).cls !== "ended");
+  return rs.length ? rs.map(r => mrWhat(r) + (r.paused ? " (paused)" : "")).join("; ") + (rs.some(r => r.on && !r.asneeded && !r.paused) ? "" : " · no reminders") : "None";
 }
 /* the drug's pharmacy claims, on Costs (#55): its claims listed there, in a period that has them. Its link's address
    names them (#452: #costs?drug=metformin, Costs' claims, the drug's), so one opened in a new window or tab (Ctrl, ⌘

@@ -235,11 +235,14 @@ function medHistoryAction(e) {
    person's calendar app through the calendar feed, with the amounts. A line ends on its until day, or sooner on the
    day the records say the medication stopped, and the list here says which. Owners and editors set, change, turn
    Remind me on or off and remove them; every change is put in the records in place (store.js, #271) and this
-   medication's drawer is drawn again. DATA.reminders keeps the lines (server/med_reminders.py), "on": Remind me. */
+   medication's drawer is drawn again. DATA.reminders keeps the lines (server/med_reminders.py), "on": Remind me;
+   "paused": kept with its times to resume (the owner, on #1090), its doses on no Today and in no count or calendar:
+   mrAll lists every line (the drawer's), mrOf those not paused (what gives doses). */
 const MR_DAYS = [["mo", "Mon", "Monday"], ["tu", "Tue", "Tuesday"], ["we", "Wed", "Wednesday"], ["th", "Thu", "Thursday"],
   ["fr", "Fri", "Friday"], ["sa", "Sat", "Saturday"], ["su", "Sun", "Sunday"]];
 const MR_MAX = 24;   // times a day on one line (server/med_reminders.TIMES_MAX)
-const mrOf = m => (Array.isArray(DATA.reminders) ? DATA.reminders : []).filter(r => r && r.med === m.key);
+const mrAll = m => (Array.isArray(DATA.reminders) ? DATA.reminders : []).filter(r => r && r.med === m.key);
+const mrOf = m => mrAll(m).filter(r => !r.paused);
 const mrCurrent = m => !!m.spans.length && !!m.spans[m.spans.length - 1].open;
 /* "8:00 AM" in this person's language, for a wall-clock "HH:MM" (no zone: it is the line's own) */
 const mrTime = t => { const [h, n] = t.split(":").map(Number); return _fmt(Date.UTC(2000, 0, 1, h, n), {hour: "numeric", minute: "2-digit", timeZone: "UTC"}); };
@@ -266,6 +269,7 @@ function mrState(r, m) {
   const end = mrEnds(r, m);
   if (end && end.why === "stopped") return {cls: "ended", text: `Ended ${fmtD(dayTs(end.day))}: the records say this medication stopped then`};
   if (end && end.day < zToday()) return {cls: "ended", text: `Ended ${fmtD(dayTs(end.day))}`};
+  if (r.paused) return {cls: "paused", text: "Paused: not on Today, in the counts or the calendar feed until resumed"};
   if (r.asneeded) return {cls: "asneeded", text: "Logged when taken: no reminders"};
   if (!r.on) return {cls: "quiet", text: "Remind me off: not in the calendar feed"};
   return {cls: "remind", text: "Remind me on: in the calendar feed"};
@@ -280,7 +284,7 @@ function mrDoses(m, day) {
 /* its As needed line that day, or null */
 const mrAsNeeded = (m, day) => mrOf(m).find(r => r.asneeded && r.from <= day && !(mrEnds(r, m) && mrEnds(r, m).day < day)) || null;
 function medReminderSection(m) {
-  const rs = mrOf(m), write = canEdit(), cur = mrCurrent(m);
+  const rs = mrAll(m), write = canEdit(), cur = mrCurrent(m);
   if (!rs.length && !(write && cur)) return [];
   const out = [el("div", {class: "sect", text: "Schedule"})];
   const msg = el("p", {class: "hint edit-msg", role: "status"});
@@ -292,9 +296,12 @@ function medReminderSection(m) {
       write ? el("span", {class: "mr-acts needs-server"},   // what saves, off while offline (offline.js, #449)
         st.cls !== "ended" || mrEnds(r, m)?.why === "until" ? el("button", {class: "btn small", type: "button", text: "Edit",
           "aria-label": "Edit the schedule line " + mrSays(r), onclick: () => medReminderForm(m, r)}) : null,
-        st.cls !== "ended" && !r.asneeded ? el("button", {class: "toggle", type: "button", text: "Remind me", "aria-pressed": !!r.on,
+        st.cls !== "ended" && !r.asneeded && !r.paused ? el("button", {class: "toggle", type: "button", text: "Remind me", "aria-pressed": !!r.on,
           "aria-label": "Remind me: " + mrSays(r),
           onclick: () => mrSend(`/${r.id}`, {method: "PATCH", body: JSON.stringify({on: !r.on})}, msg, m)}) : null,
+        st.cls !== "ended" ? el("button", {class: "btn small", type: "button", text: r.paused ? "Resume" : "Pause", "data-id": "pause-" + r.id,   // (focus kept on it: drawer.js recordSig)
+          "aria-label": (r.paused ? "Resume" : "Pause") + " the schedule line " + mrSays(r),
+          onclick: () => mrSend(`/${r.id}`, {method: "PATCH", body: JSON.stringify({paused: !r.paused})}, msg, m)}) : null,
         el("button", {class: "btn small", type: "button", text: "Remove", "aria-label": "Remove the schedule line " + mrSays(r), onclick: async () => {
           if (!await ask({title: "Remove this from the schedule?", message: mrSays(r) + ". Today stops listing its doses, and any reminders leave your calendar at its next refresh.",
             action: "Remove", danger: true})) return;
@@ -405,5 +412,8 @@ async function mrSend(path, opts, msg, m) {
   if (!r.ok) { sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save the schedule (${r.status}).`, true); return; }
   storePut("reminders", j);
   medAgain(MEDS.find(x => x.key === m.key));
-  announce(opts.method === "DELETE" ? "Removed from the schedule." : opts.method === "PATCH" ? (j.reminders?.[0]?.on ? "Remind me on." : "Remind me off.") : "Schedule saved.");
+  const sw = opts.method === "PATCH" && JSON.parse(opts.body), now = j.reminders?.[0] || {};
+  announce(opts.method === "DELETE" ? "Removed from the schedule." : !sw ? "Schedule saved."
+    : "paused" in sw ? (now.paused ? "Paused: its doses leave Today and the counts." : "Resumed: its doses are on Today again.")
+    : now.on ? "Remind me on." : "Remind me off.");
 }

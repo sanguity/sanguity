@@ -652,10 +652,12 @@ def restore(db, pid, data, photo, written):
                 n["here"] += 1
                 continue
             kept.add(k)
-            if table == "med_reminders":
-                db.execute("""INSERT INTO med_reminders(profile_id, body, remind, created_by, created_name, created, changed_by,
-                              changed_name, changed) VALUES(?, ?, ?, NULL, ?, ?, NULL, ?, ?)""",
-                           (pid, _enc(body), 0 if x.get("on") is False else 1, by, at or dbm.now(), changed_by, changed))
+            if table == "med_reminders":   # one turned off in an export from before #1094 (no "paused") is paused
+                old = "paused" not in x and x.get("on") is False
+                db.execute("""INSERT INTO med_reminders(profile_id, body, remind, paused, created_by, created_name, created,
+                              changed_by, changed_name, changed) VALUES(?, ?, ?, ?, NULL, ?, ?, NULL, ?, ?)""",
+                           (pid, _enc(body), 0 if x.get("on") is False and not old else 1, int(old or x.get("paused") is True),
+                            by, at or dbm.now(), changed_by, changed))
             else:
                 db.execute("""INSERT INTO med_doses(profile_id, body, created_by, created_name, created, changed_by, changed_name,
                               changed) VALUES(?, ?, NULL, ?, ?, NULL, ?, ?)""", (pid, _enc(body), by, at or dbm.now(), changed_by, changed))
