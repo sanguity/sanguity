@@ -3842,6 +3842,8 @@ Everything on `main` so far; it becomes the first tagged release.
   one from the records, kept over what they say (the records untouched, a later pull never undoing them), are stored
   encrypted (schema version 46), put into the medications the page shows, and come with exports, backups and
   restores; owners and editors make them, under `/api/profiles/{pid}/medications/own`, `.../listed` and `.../hidden`.
+  The visit summary, share links and the FHIR export read the same medications (yours in, your changes made, those
+  hidden out), and a profile with nothing imported but a medication of its own opens on it.
 - **Add a medication, and Edit one, on the Medications tab** (#1092): **Add a medication** is always beside Current's
   heading (and on the empty tab), and a medication's drawer has **Edit**: name, strength, dose and instructions, route,
   start, stop (and **Stopped today**), status, prescriber and note. One of your own is yours to change; for one from
