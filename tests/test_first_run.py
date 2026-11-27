@@ -69,6 +69,11 @@ class FirstRun(unittest.TestCase):
         self.assertFalse(st["records"])   # nothing here for the first account to own
 
     def test_2_setup_with_the_demo(self):
+        # the receiver writes an empty summary for its own slot as it starts (watch/receiver.py): it isn't the first
+        # profile's, so that profile still has no records and the guide opens
+        os.makedirs(os.path.join(WATCH, "public"), exist_ok=True)
+        with open(os.path.join(WATCH, "public", "daily.json"), "w") as f:
+            json.dump({"metrics": [], "exercise": []}, f)
         c = client()
         r = c.post("/api/setup", json={"code": CODE, "username": "ada", "password": PW, "profile_name": "Ada", "demo": True}, headers=H)
         self.assertEqual(r.status_code, 200, r.text)
@@ -79,7 +84,7 @@ class FirstRun(unittest.TestCase):
         own, shown = profiles[0]["id"], profiles[1]["id"]
         self.assertEqual(c.get(f"/api/profiles/{own}/data").status_code, 204)   # empty: the guide opens
         # (#1103) no phone set up: the install's single receiver secret (from before each profile had its own) isn't
-        # counted for the first profile, which reads the receiver's own summary, nor taken by the receiver
+        # counted for the first profile, which doesn't read the receiver's own summary, nor taken by the receiver
         rec = c.get(f"/api/profiles/{own}/watch/receiver").json()
         self.assertEqual((rec["has_secret"], rec["legacy"], rec["last"]), (False, False, None))
         db = dbm.connect()
@@ -173,6 +178,16 @@ class FirstRun(unittest.TestCase):
         self.assertEqual(bo.delete("/api/settings/install/demo", headers=H).status_code, 403)
         self.assertEqual(bo.post("/api/settings/install/demo", headers=H).status_code, 403)
         self.assertEqual(bo.get("/api/settings/install/demo").status_code, 403)
+
+    def test_5_every_install_has_the_generator(self):
+        """A checkout's compose.yaml runs the app on the image's Python with only some of the checkout mounted: the demo
+        generator is one of them, or Add a demo profile has nothing to run (the released image copies it in)."""
+        with open(os.path.join(ROOT, "compose.yaml"), encoding="utf-8") as f:
+            app = f.read().split("\n  app:\n", 1)[1].split("\n  web:\n", 1)[0]
+        self.assertIn("- ./demo/generate.py:/app/demo/generate.py:ro", app)
+        with open(os.path.join(ROOT, "docker", "app.Dockerfile"), encoding="utf-8") as f:
+            self.assertIn("COPY demo/generate.py /app/demo/generate.py", f.read())
+        self.assertEqual(demo.GENERATOR, os.path.join(ROOT, "demo", "generate.py"))   # /app/demo/generate.py in the image
 
     def test_4_a_demo_build_from_before_stays(self):
         """An install set up before #1101, whose build is the demo, keeps it (regenerated, so its dates stay current)."""

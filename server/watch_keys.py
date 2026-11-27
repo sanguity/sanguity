@@ -80,11 +80,11 @@ def legacy_in_use(db):
 
 
 def retire_unused(db):
-    """(#1103) A fresh install's first profile reads the receiver's own summary (slot ""), as the first profile of an
-    install from before #46 does, but no phone has ever used the install's single secret: with no summary there, it's
-    retired, so the profile counts as having a phone only once it makes a secret of its own (it was "set up, waiting for
-    its first upload", and Sources spoke of the server's original secret). An install with a phone's summary keeps it."""
-    if legacy_in_use(db) and not os.path.exists(config.WATCH_FILE):
+    """(#1103) A fresh install's first profile doesn't read the receiver's own summary (slot "", #1101), so no profile
+    does and the install's single secret would send a phone's uploads where nothing reads them: it's retired, and the
+    profile has a phone once it makes a secret of its own (it was "set up, waiting for its first upload", and Sources
+    spoke of the server's original secret). While a profile reads that summary, it's kept."""
+    if legacy_in_use(db) and first_profile(db) is None:
         dbm.meta_set(db, RETIRED, str(dbm.now()))
 
 
