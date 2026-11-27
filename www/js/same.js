@@ -17,12 +17,16 @@
    one time a flagged result comes after an unflagged one, so what reads the latest (the Overview's tile, a sparkline's
    dot) reads the flag. Points need their ts and ranges (applyRangeOverrides) already. */
 function joinSeries(labs) {
+  // a unit's form (server/units.py annotate: uk, #1102: one unit spelled two ways is one), for a series the records
+  // served; one without (made on the page) by its unit as written's, as a series served in that spelling has it, so it
+  // never leaves its test's chart (#471's typed-in creatinine was a chart of its own, hidden behind the clinic's)
+  const form = new Map(labs.filter(s => s.uk != null).map(s => [s.unit || "", s.uk]));
   const out = [], by = new Map();
   for (const s of labs) {
     s.pts.forEach((p, n) => { p.imp = s.imp; p.same = (s.same && s.same[n]) || null; p.also = null; p.apart = s.apart?.[n] ?? null;
       p.rangeFrom = s.rangeFrom?.[n] ?? null;   // (#834: the import whose copy's report gave its range, drawer.js resultTable)
       p.off = s.unlisted?.[n] ? [s.imp] : null; });   // (#950: the imports whose copy's reports were hidden by hand, util.js labDraws)
-    const k = s.name + "\u001f" + (s.uk ?? s.unit ?? "");   // one unit spelled two ways is one (server/units.py annotate: uk, #1102)
+    const k = s.name + "\u001f" + (s.uk ?? form.get(s.unit || "") ?? s.unit ?? "");
     const have = by.get(k);
     if (!have) { const c = {...s, imps: [s.imp]}; by.set(k, c); out.push(c); continue; }
     have.pts = have.pts.concat(s.pts); have.txt = (have.txt || []).concat(s.txt || []); have.imps.push(s.imp);

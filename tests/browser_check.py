@@ -21086,8 +21086,11 @@ def main():
                   said1102 == [["98.6 °F", "Reported as 37 °C"], ["68.9 in", "Reported as 175 cm"], ["72 bpm", ""], ["82 mmHg", ""], ["<0.5 mg/dL", ""]], said1102)
             # a test's series in one unit spelled two ways ("10³/µL" from FHIR, "K/µL" from a CSV) are one chart (#1102: the server's uk)
             joined1102 = js("""() => joinSeries([{name: "Platelet Count", unit: "10*3/uL", uk: "k/ul", imp: 1, pts: []},
-                {name: "Platelet Count", unit: "K/µL", uk: "k/ul", imp: 2, pts: []}, {name: "Platelet Count", unit: "10*6/uL", uk: "m/ul", imp: 2, pts: []}]).map(s => s.imps)""")
-            check("…and one unit spelled two ways is one chart, another unit another (#1102)", joined1102 == [[1, 2], [2]], joined1102)
+                {name: "Platelet Count", unit: "K/µL", uk: "k/ul", imp: 2, pts: []}, {name: "Platelet Count", unit: "10*6/uL", uk: "m/ul", imp: 2, pts: []},
+                {name: "Platelet Count", unit: "K/µL", imp: 3, pts: []}, {name: "Creatinine", unit: "mg/dL", uk: "mg/dl", imp: 1, pts: []},
+                {name: "Creatinine", unit: "mg/dL", imp: 4, pts: []}]).map(s => s.imps)""")
+            # (a series made on the page, with no unit form, joins one served in its unit as written: #471's typed-in creatinine)
+            check("…and one unit spelled two ways is one chart, another unit another (#1102)", joined1102 == [[1, 2, 3], [2], [1, 4]], joined1102)
             js("switchTab('overview')")
             tile = js("[...document.querySelectorAll('#view-overview .tile')].find(t => t.textContent.includes('Creatinine'))?.textContent || ''")
             check("Overview: the creatinine tile in µmol/L, with the reported value", "µmol/L" in tile and re.search(r"Reported [\d.]+ mg/dL", tile), tile)

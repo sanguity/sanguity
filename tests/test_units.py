@@ -219,6 +219,25 @@ class Served(unittest.TestCase):
         self.assertEqual(g["unit"], "mg/dL")
         self.assertEqual(g["pts"][0][1], 95.0)   # the values themselves are as reported; the page converts
 
+    def test_two_draws_on_one_day_one_chart(self):   # #1102, browser_check's #471 setup
+        """An outside lab's Creatinine 1.6 H typed in on the day of the clinic's draw (0.92): both series of the test are
+        served with one unit form (uk), so the page charts both results in one Creatinine (a series without one, made
+        on the page, joins by its unit as written: same.js joinSeries), never one hidden behind the other."""
+        db = dbm.connect()
+        pid = prof.create_profile(db, "Two draws (fictional)", owner_id=self.uids["robin"])
+        with dbm.transaction(db):
+            records.store(db, pid, DATA, "upload")
+        db.close()
+        row = {"date": "2026-10-02", "time": "14:30", "test": "Creatinine", "value": "1.6", "unit": "mg/dL", "range": "0.6-1.2",
+               "flag": "H", "lab": "Fictional Outside Lab"}
+        r = self.robin.post(f"/api/profiles/{pid}/manual", json={"rows": [row], "save": True}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        d = self.robin.get(f"/api/profiles/{pid}/data").json()
+        cr = [s for s in d["labs"] if s["name"] == "Creatinine"]
+        self.assertEqual(sorted(p[1] for s in cr for p in s["pts"]), [0.92, 1.6])
+        self.assertEqual({s["uk"] for s in cr}, {"mg/dl"})
+        self.assertEqual({s["unit"] for s in cr}, {"mg/dL"})
+
     def test_watch_weights_but_never_a_temperature_change(self):
         summary = {"metrics": [{"key": "weight", "name": "Weight", "unit": "lb", "group": "Body", "pts": [["2026-10-01", 176.0]]},
                                {"key": "skin_temp", "name": "Skin temperature change", "unit": "°C", "group": "Other",

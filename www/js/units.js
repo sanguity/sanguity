@@ -68,6 +68,7 @@ function applyUnits(list) {
     const uc = s && !s.uc && ucChoose(s.conv);
     if (!uc) continue;
     s.uc = {...uc, from: s.unit};
+    delete s.uk;   // its served unit's form isn't its unit's now: joined by the unit it's shown in (same.js joinSeries, #1102)
     s.unit = uc.to;
     for (const [j, p] of s.pts.entries()) {
       const has = p[5] != null && p[5] !== "", shown = has ? String(p[5]) : p[1] == null ? "" : fmtNum(p[1]), read = has ? valueRead(shown) : null;
