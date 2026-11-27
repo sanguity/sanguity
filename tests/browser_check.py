@@ -2726,8 +2726,17 @@ def connected_sources_switch_check(check, browser, base, cookies):
 
     def host_and_log(pg):
         """General → Host's hint and what changing the public addresses says (asked, then left unsaved), and the profile
-        activity log's kinds"""
-        pg.goto(base + "/settings.html?profile=1#general")
+        activity log's kinds. (The run's PUBLIC_ORIGINS, the environment's, locks the list: left out meanwhile, as #1000's)"""
+        env = os.environ.pop("PUBLIC_ORIGINS", None)
+        try:
+            return host_and_log_(pg)
+        finally:
+            if env is not None:
+                os.environ["PUBLIC_ORIGINS"] = env
+
+    def host_and_log_(pg):
+        pg.goto(base + "/settings.html?profile=1")   # (loaded afresh: the address's own #general may be open already)
+        pg.click("#setNav a[data-group=general]")
         pg.wait_for_selector("#hostOrigins:not([readonly])", timeout=20000)
         hint = pg.inner_text("#hostOriginsHint")
         was = pg.input_value("#hostOrigins")
