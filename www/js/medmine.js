@@ -98,7 +98,8 @@ async function mmRemove(m) {
     const j = await mmSend("DELETE", `own/${m.own.id}`);
     if (!j) return;
     const logged = DOSES.filter(d => d.key === m.key).length;
-    mmAfterGone(toast(`Removed ${name}` + (logged ? `; its ${logged} logged dose${logged > 1 ? "s stay" : " stays"} in the log.` : "."), {action: "Undo", onAction: async () => {
+    // (its doses are kept, but the tab and its drawers list them nowhere without it: said where they are)
+    mmAfterGone(toast(`Removed ${name}` + (logged ? `. Its ${logged} logged dose${logged > 1 ? "s are" : " is"} kept, in Export everything, and come${logged > 1 ? "" : "s"} back with Undo.` : "."), {action: "Undo", onAction: async () => {
       if (await mmSend("POST", "own", j.removed)) { mmOpen(j.removed.key); announce(`${name} is back.`); }
     }}));
     return;
