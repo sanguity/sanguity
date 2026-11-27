@@ -320,7 +320,7 @@ function medReminderSection(m) {
   return out;
 }
 /* a typed amount: a number above 0 (a comma as the point too), null for none, or NaN */
-const mrNum = v => (v = v.trim().replace(",", ".")) ? (/^\d*\.?\d+$/.test(v) && +v > 0 ? +v : NaN) : null;
+const mrNum = v => (v = v.trim()) ? ((n => n && n.x > 0 ? n.x : NaN)(numberRead(v))) : null;   // (read as every number is, ranges.js, #874: "1,5" one and a half)
 /* the add / edit form of a schedule line, in the drawer. r: the line (null: a new one) */
 function medReminderForm(m, r) {
   const body = drawerHead("med", r ? "Edit schedule" : "New schedule", m.name);
