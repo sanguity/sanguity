@@ -789,7 +789,8 @@ def parse(files):
         s["loinc"] = s["loinc"] or loinc
         s["code"] = s["code"] or next(iter(_coding_keys(code_cc)), None)
         s["unit"] = s["unit"] or s_unit
-        s["panels"][panel] += 1
+        if panel:
+            s["panels"][panel] += 1
         if v is not None:
             s["pts"].append([t, x, lo, hi, flag, said, src] + ([edge] if edge else []))
         elif rep:
@@ -813,11 +814,11 @@ def parse(files):
             abn += a
         return rows, abn
 
-    def add_labitem(key, t, order, members, report, prov, status, lab, specimen):
+    def add_labitem(key, t, order, members, report, prov, status, lab, specimen, panel=None):
         rows, keys, abn = [], [], 0
         for o in members:
             src = lab or SOURCE
-            rr, a = obs_rows(o, order, src)
+            rr, a = obs_rows(o, order if panel is None else panel, src)
             rows += rr
             keys += [rkey(o)] * len(rr)   # (#885) the Observation each row is: a day's key isn't one source's record
             abn += a
@@ -933,7 +934,8 @@ def parse(files):
         obs.sort(key=lambda o: (_obs_time(o), rkey(o)))
         # several Observations share this labitem, so its key names the day (and the lab, when a day has several)
         add_labitem(f"fhir:labitem:{day}" + (f"|{org}" if orgs_on[day] > 1 else ""), _obs_time(obs[0]), "Lab results", obs, [], who_of(obs[0]),
-                    cap(obs[0].get("status") or ""), org, text_of((idx.get(obs[0].get("specimen"), obs[0]) or {}).get("type")))
+                    cap(obs[0].get("status") or ""), org, text_of((idx.get(obs[0].get("specimen"), obs[0]) or {}).get("type")),
+                    panel="")   # (#1102) "Lab results" names no panel: the records put the lab in its own (records._panels)
 
     # --- one visible lab event per day, linking that day's results
     for day, ids in sorted(lab_days.items()):
