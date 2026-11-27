@@ -40,7 +40,8 @@ from tests.whole_records import whole   # noqa: E402  records with every record'
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
 H = {"X-Sanguity": "1"}
-PW = {"robin": "harbour lantern pebble crow", "ash": "copper meadow lantern drift", "ada": "granite willow ember compass"}
+PW = {"robin": "harbour lantern pebble crow", "ash": "copper meadow lantern drift", "ada": "granite willow ember compass",
+      "vera": "saffron harbour thistle owl", "olga": "quartz meadow willow fern"}
 HEAD = "Date,Test,Result,Units,Reference Range,Flag,Panel,LOINC\n"
 
 
@@ -59,7 +60,7 @@ class LabMapping(unittest.TestCase):
         db = dbm.connect()
         cls.uids = {n: accounts.create(db, n, password=pw, is_admin=n == "ada")[0] for n, pw in PW.items()}
         db.close()
-        cls.robin, cls.ash, cls.ada = (cls.login(n) for n in ("robin", "ash", "ada"))
+        cls.robin, cls.ash, cls.ada, cls.vera, cls.olga = (cls.login(n) for n in ("robin", "ash", "ada", "vera", "olga"))
         db = dbm.connect()   # the admin's own second factor (admin actions need one once there are other accounts)
         db.execute("UPDATE users SET totp_secret=? WHERE id=?", (crypto.enc(twofactor.new_secret()), cls.uids["ada"]))
         db.close()
@@ -120,6 +121,11 @@ class LabMapping(unittest.TestCase):
 
     def points(self, pid, name):
         return sorted((p[0][:10], p[1]) for s in self.data(pid)["labs"] if s["name"] == name for p in s["pts"])
+
+    def own(self, pid, c=None):
+        r = (c or self.robin).get(f"/api/profiles/{pid}/labmaps")
+        self.assertEqual(r.status_code, 200, r.text)
+        return r.json()["matches"]
 
     def entry(self, j, name):
         return next(e for e in j["labs"] if e["name"] == name)
@@ -278,9 +284,10 @@ class LabMapping(unittest.TestCase):
         done = self.save(theirs, j, {ref: "hemoglobin"}, c=self.ash)   # a test Sanguity's list knows, in its spelling
         self.assertEqual(done["lab_names"], {"matched": 1, "remembered": 1})
         self.assertEqual(self.points(theirs, "Hemoglobin"), [("2026-03-01", 1.9)])
-        m = next(x for x in self.ada.get("/api/labmaps").json() if x["name"] == name)
-        self.assertEqual((m["target"], m["one_profile"]), ("Hemoglobin", True))
+        m = next(x for x in self.own(theirs) if x["name"] == name)
+        self.assertEqual(m["target"], "Hemoglobin")
         self.assertNotIn("for", m)   # (which profile isn't said)
+        self.assertFalse([x for x in self.ada.get("/api/labmaps").json() if x["name"] == name])   # (#1097: not Install's)
         # the other profile: asked, nothing applied; typed in, the name stays
         j = self.previewed(mine, row("2026-03-02", "1.4"))
         self.assertIsNone(self.entry(j, name)["before"])
@@ -302,7 +309,7 @@ class LabMapping(unittest.TestCase):
             self.robin.post(f"/api/profiles/{pid}/jobs/{j['id']}/discard", headers=H)
         self.assertFalse(next(x for x in self.ada.get("/api/labmaps").json() if x["id"] == mid)["one_profile"])
         self.ada.delete(f"/api/labmaps/{mid}", headers=H)
-        self.ada.delete(f"/api/labmaps/{m['id']}", headers=H)
+        self.robin.delete(f"/api/profiles/{theirs}/labmaps/{m['id']}", headers=H)
 
     def test_version_41_gives_a_reviews_match_its_profile(self):   # #927
         """The upgrade to schema version 41: a match a review made is its import's profile's, keyed with it at start-up
@@ -346,7 +353,7 @@ class LabMapping(unittest.TestCase):
             j = self.previewed(pid, csv(["2026-02-05", "HGB-927", "12.0", "g/dL", "13.5 - 17.5", "L", "CBC", ""]))
             self.assertEqual(self.entry(j, "HGB-927")["before"], before, pid)
             self.robin.post(f"/api/profiles/{pid}/jobs/{j['id']}/discard", headers=H)
-        self.ada.delete(f"/api/labmaps/{mid}", headers=H)
+        self.robin.delete(f"/api/profiles/{theirs}/labmaps/{mid}", headers=H)
 
     def test_keep_as_new_is_remembered_as_kept_separate(self):
         pid = self.with_hemoglobin("Separate")
@@ -359,7 +366,7 @@ class LabMapping(unittest.TestCase):
         db = dbm.connect()
         try:
             rows = db.execute("SELECT target FROM labmaps WHERE importer='csv'").fetchall()
-            mine = [m for m in labmap.listing(db) if m["name"] == "HGB-Y"]
+            mine = [m for m in labmap.listing(db, pid) if m["name"] == "HGB-Y"]
         finally:
             db.close()
         self.assertEqual(len(mine), 1)
@@ -373,7 +380,7 @@ class LabMapping(unittest.TestCase):
         self.assertIn(("2026-03-05", 12.4), self.points(pid, "Hemoglobin"))
         db = dbm.connect()
         try:
-            self.assertIsNone(next(m for m in labmap.listing(db) if m["name"] == "HGB-Y")["target"])   # still kept separate
+            self.assertIsNone(next(m for m in labmap.listing(db, pid) if m["name"] == "HGB-Y")["target"])   # still kept separate
         finally:
             db.close()
         j = self.previewed(pid, csv(["2026-04-05", "HGB-Y", "12.8", "g/dL", "13.5 - 17.5", "L", "CBC", "718-7"]))
@@ -387,7 +394,7 @@ class LabMapping(unittest.TestCase):
         self.assertEqual(self.points(pid, "HGB-Z"), [("2026-02-05", 12.0)])
         db = dbm.connect()
         try:
-            self.assertFalse([m for m in labmap.listing(db) if m["name"] == "HGB-Z"])
+            self.assertFalse([m for m in labmap.listing(db, pid) if m["name"] == "HGB-Z"])
         finally:
             db.close()
 
@@ -431,10 +438,15 @@ class LabMapping(unittest.TestCase):
         self.assertIsNone(self.entry(k, "HGB-D2")["before"])
         self.save(other, k, {self.entry(k, "HGB-D5")["ref"]: "Hemoglobin"})
         everyone = self.remembered_as("HGB-D6", "Hemoglobin", checked=1, changed=1, unit="g/dL")
-        mine = lambda: {m["name"]: m for m in self.ada.get("/api/labmaps").json() if m["name"].startswith("HGB-D")}
+        def mine():
+            db = dbm.connect()
+            try:
+                return {m["name"]: m for m in labmap.listing(db) + labmap.listing(db, gone) + labmap.listing(db, other) if m["name"].startswith("HGB-D")}
+            finally:
+                db.close()
         self.assertEqual(sorted(mine()), ["HGB-D1", "HGB-D2", "HGB-D3", "HGB-D5", "HGB-D6"])
-        self.assertEqual(self.ada.patch(f"/api/labmaps/{mine()['HGB-D3']['id']}", json={"target": "Hemoglobin", "keep": True},
-                                        headers=H).status_code, 200)
+        self.assertEqual(self.robin.patch(f"/api/profiles/{gone}/labmaps/{mine()['HGB-D3']['id']}", json={"target": "Hemoglobin", "keep": True},
+                                          headers=H).status_code, 200)
         r = self.robin.request("DELETE", f"/api/profiles/{gone}", json={"confirm_name": "Deleted (fictional)"}, headers=H)
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(r.json()["lab_matches"], 3)
@@ -664,7 +676,7 @@ class LabMapping(unittest.TestCase):
         self.assertEqual(e["before"], {"target": None})
         self.assertNotIn("check", e)
         self.robin.post(f"/api/profiles/{pid}/jobs/{j['id']}/discard", headers=H)
-        self.ada.delete(f"/api/labmaps/{mid}", headers=H)
+        self.robin.delete(f"/api/profiles/{pid}/labmaps/{mid}", headers=H)
         # one for every profile, to check: the review's choice is the profile's own, the admins' to check stays
         everyone = self.remembered_as("Vitamin B6 pick", "Vitamin B1")
         j = self.previewed(pid, csv(["2026-03-06", "Vitamin B6 pick", "43", "nmol/L", "20-125", "", "", ""]))
@@ -681,32 +693,41 @@ class LabMapping(unittest.TestCase):
             db.close()
         self.assertEqual((own["target"], own["profile_id"]), (None, pid))
         self.assertTrue(next(m for m in self.ada.get("/api/labmaps").json() if m["id"] == everyone)["check"])
-        self.ada.delete(f"/api/labmaps/{own['id']}", headers=H)
+        self.robin.delete(f"/api/profiles/{pid}/labmaps/{own['id']}", headers=H)
         self.ada.delete(f"/api/labmaps/{everyone}", headers=H)
         # an admin keeps it while a review is waiting: the admin's stays
         mid = self.remembered_as("Vitamin B6 pick", "Vitamin B1", pid=pid)
         j = self.previewed(pid, csv(["2026-04-05", "Vitamin B6 pick", "44", "nmol/L", "20-125", "", "", ""]))
-        self.assertEqual(self.ada.patch(f"/api/labmaps/{mid}", json={"target": "Vitamin B1", "keep": True}, headers=H).status_code, 200)
+        self.assertEqual(self.robin.patch(f"/api/profiles/{pid}/labmaps/{mid}", json={"target": "Vitamin B1", "keep": True}, headers=H).status_code, 200)
         done = self.save(pid, j, {self.entry(j, "Vitamin B6 pick")["ref"]: None})
         self.assertEqual(done["lab_names"]["remembered"], 0)
         self.assertEqual(self.labmap_row(mid)["target"], "Vitamin B1")
-        self.ada.delete(f"/api/labmaps/{mid}", headers=H)
+        self.robin.delete(f"/api/profiles/{pid}/labmaps/{mid}", headers=H)
 
-    # ---------------------------------------------------------------- the list: admins only, logged
+    # ---------------------------------------------------------------- Install's: admins only, logged
 
-    def test_only_admins_edit_the_list(self):
+    def test_only_admins_edit_installs_list(self):
+        """Install's list is the matches for every profile, made by admins before #927 (#1097): an admin changes or
+        removes one there; a profile's own isn't listed or changed there."""
         pid = self.with_hemoglobin("Admins")
-        j = self.previewed(pid, csv(["2026-02-05", "HGB-A", "12.0", "g/dL", "13.5 - 17.5", "L", "CBC", "718-7"]))
-        self.save(pid, j, {self.entry(j, "HGB-A")["ref"]: "Hemoglobin"})
+        own = self.previewed(pid, csv(["2026-02-04", "HGB-A own", "12.0", "g/dL", "13.5 - 17.5", "L", "CBC", ""]))
+        self.save(pid, own, {self.entry(own, "HGB-A own")["ref"]: "Hemoglobin"})
+        mid = self.remembered_as("HGB-A", "Hemoglobin", checked=1, unit="g/dL")
         for c in (self.robin, self.ash):   # the profile's owner and editor
             self.assertEqual(c.get("/api/labmaps").status_code, 403)
         listed = self.ada.get("/api/labmaps").json()
+        self.assertFalse([x for x in listed if x["name"] == "HGB-A own"])   # (#1097: the profile's own, not Install's)
+        mine = next(x for x in self.own(pid) if x["name"] == "HGB-A own")
+        self.assertEqual(self.ada.patch(f"/api/labmaps/{mine['id']}", json={"target": None}, headers=H).status_code, 404)
+        self.assertEqual(self.ada.delete(f"/api/labmaps/{mine['id']}", headers=H).status_code, 404)
         m = next(x for x in listed if x["name"] == "HGB-A")
-        self.assertEqual((m["target"], m["unit"], m["loinc"], m["importer"], m["created_by"]), ("Hemoglobin", "g/dL", "718-7", "csv", "robin"))
+        self.assertEqual((m["id"], m["target"], m["unit"], m["importer"], m["one_profile"]), (mid, "Hemoglobin", "g/dL", "csv", False))
+        self.assertNotIn("results", m)   # (whose would they be)
         self.assertIn("CSV", m["label"])
         for c in (self.robin, self.ash):
             self.assertEqual(c.patch(f"/api/labmaps/{m['id']}", json={"target": "WBC"}, headers=H).status_code, 403)
             self.assertEqual(c.delete(f"/api/labmaps/{m['id']}", headers=H).status_code, 403)
+            self.assertEqual(c.delete(f"/api/profiles/{pid}/labmaps/{m['id']}", headers=H).status_code, 404)   # (not the profile's)
         self.assertEqual(self.ada.patch(f"/api/labmaps/{m['id']}", json={"target": "WBC"}).status_code, 403)   # CSRF header
         r = self.ada.patch(f"/api/labmaps/{m['id']}", json={"target": "Hemoglobin "}, headers=H)
         self.assertEqual((r.status_code, r.json()["target"], r.json()["changed_by"]), (200, "Hemoglobin", "ada"), r.text)
@@ -714,11 +735,11 @@ class LabMapping(unittest.TestCase):
         self.assertIsNone(r.json()["target"])
         self.assertEqual(self.ada.patch("/api/labmaps/999999", json={"target": None}, headers=H).status_code, 404)
         # the change applies to the next import
-        j = self.previewed(pid, csv(["2026-03-05", "HGB-A", "12.1", "g/dL", "13.5 - 17.5", "L", "CBC", "718-7"]))
+        j = self.previewed(pid, csv(["2026-03-05", "HGB-A", "12.1", "g/dL", "13.5 - 17.5", "L", "CBC", ""]))
         self.assertEqual(self.entry(j, "HGB-A")["before"], {"target": None})
         self.assertEqual(self.ada.delete(f"/api/labmaps/{m['id']}", headers=H).status_code, 200)
         self.assertFalse([x for x in self.ada.get("/api/labmaps").json() if x["id"] == m["id"]])
-        j2 = self.previewed(pid, csv(["2026-03-06", "HGB-A", "12.2", "g/dL", "13.5 - 17.5", "L", "CBC", "718-7"]))
+        j2 = self.previewed(pid, csv(["2026-03-06", "HGB-A", "12.2", "g/dL", "13.5 - 17.5", "L", "CBC", ""]))
         self.assertIsNone(self.entry(j2, "HGB-A")["before"])   # forgotten: asked again
         db = dbm.connect()
         try:
@@ -729,6 +750,194 @@ class LabMapping(unittest.TestCase):
         mine = [x for x in log if x[1]["name"] == "HGB-A"]
         self.assertEqual([a for a, _ in mine], ["labmap.change", "labmap.change", "labmap.remove"])
         self.assertEqual((mine[1][1]["from"], mine[1][1]["to"]), ("Hemoglobin", None))
+        for x in (j, j2):
+            self.robin.post(f"/api/profiles/{pid}/jobs/{x['id']}/discard", headers=H)
+
+    # ---------------------------------------------------------------- a profile's own, on Settings (#1097)
+
+    def test_a_profiles_own_for_its_owners_and_editors(self):
+        """Each profile's matches are its owners' and editors' to see and change (its viewers only see them); a member
+        of another profile, and an admin with no role on it, are refused (not found); each match counts the results
+        it covers and from how many imports."""
+        pid = self.with_hemoglobin("Own 1097")
+        a = self.previewed(pid, csv(["2026-02-05", "HGB-O", "12.0", "g/dL", "13.5 - 17.5", "L", "CBC", ""],
+                                    ["2026-02-06", "HGB-O", "12.2", "g/dL", "13.5 - 17.5", "L", "CBC", ""]))
+        self.save(pid, a, {self.entry(a, "HGB-O")["ref"]: "Hemoglobin"})
+        self.save(pid, self.previewed(pid, csv(["2026-03-05", "HGB-O", "12.4", "g/dL", "13.5 - 17.5", "L", "CBC", ""])))   # matched as before
+        db = dbm.connect()
+        try:
+            db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'viewer')", (self.uids["vera"], pid))
+            elsewhere = prof.create_profile(db, "Olga's 1097 (fictional)", owner_id=self.uids["olga"])
+        finally:
+            db.close()
+        for c in (self.robin, self.ash, self.vera):
+            got = c.get(f"/api/profiles/{pid}/labmaps").json()
+            m = next(x for x in got["matches"] if x["name"] == "HGB-O")
+            self.assertEqual((m["target"], m["results"], m["imports"], m["created_by"]), ("Hemoglobin", 3, 2, "robin"))
+            self.assertEqual(got["can_change"], c is not self.vera)
+            self.assertIn({"name": "Hemoglobin", "unit": "g/dL"}, got["tests"])
+            self.assertNotIn("HGB-O", [t["name"] for t in got["tests"]])   # (charted as Hemoglobin)
+        self.assertEqual(self.vera.patch(f"/api/profiles/{pid}/labmaps/{m['id']}", json={"target": None}, headers=H).status_code, 403)
+        self.assertEqual(self.vera.delete(f"/api/profiles/{pid}/labmaps/{m['id']}", headers=H).status_code, 403)
+        self.assertEqual(self.vera.post(f"/api/profiles/{pid}/labmaps", json={"name": "Hemoglobin", "target": None}, headers=H).status_code, 403)
+        for c in (self.olga, self.ada):   # another profile's member; an admin with no role here
+            self.assertEqual(c.get(f"/api/profiles/{pid}/labmaps").status_code, 404)
+            self.assertEqual(c.patch(f"/api/profiles/{pid}/labmaps/{m['id']}", json={"target": None}, headers=H).status_code, 404)
+            self.assertEqual(c.delete(f"/api/profiles/{pid}/labmaps/{m['id']}", headers=H).status_code, 404)
+        self.assertEqual(self.olga.get(f"/api/profiles/{elsewhere}/labmaps").json()["matches"], [])   # (another's not there)
+        self.assertEqual(self.olga.patch(f"/api/profiles/{elsewhere}/labmaps/{m['id']}", json={"target": None}, headers=H).status_code, 404)
+        self.assertFalse([x for x in self.ada.get("/api/labmaps").json() if x["name"] == "HGB-O"])   # admins: Install's only
+
+    def lab_names(self, pid):
+        return sorted({s["name"] for s in self.data(pid)["labs"]})
+
+    def test_a_change_refiles_saved_results_and_undo_puts_them_back(self):
+        """Change a match and re-file: the results saved under it are charted under the new test (Labs, the summary
+        and the calendar read the records as put together), the records themselves untouched; Undo puts the match
+        and the results back exactly. Not re-filed: they stay. Later imports follow the match, and an import's Undo
+        still takes away only its own results."""
+        pid = self.with_hemoglobin("Refile 1097")
+        self.save(pid, self.previewed(pid, csv(["2026-01-06", "Hematocrit", "41", "%", "40-50", "", "CBC", ""])))
+        a = self.previewed(pid, csv(["2026-02-05", "HGB-R", "12.0", "g/dL", "13.5 - 17.5", "L", "CBC", ""]))
+        first = self.save(pid, a, {self.entry(a, "HGB-R")["ref"]: "Hemoglobin"})
+        second = self.save(pid, self.previewed(pid, csv(["2026-03-05", "HGB-R", "12.4", "g/dL", "13.5 - 17.5", "L", "CBC", ""])))
+        m = next(x for x in self.own(pid) if x["name"] == "HGB-R")
+        db = dbm.connect()
+        try:
+            stored = [tuple(r) for r in db.execute("SELECT id, body FROM series WHERE profile_id=? ORDER BY id", (pid,))]
+        finally:
+            db.close()
+        # changed without re-filing: saved results stay; only later imports follow
+        r = self.ash.patch(f"/api/profiles/{pid}/labmaps/{m['id']}", json={"target": "Hematocrit", "move": False}, headers=H)
+        self.assertEqual((r.status_code, r.json()["results"]), (200, 0), r.text)
+        self.assertEqual(self.points(pid, "Hemoglobin"), [("2026-01-05", 13.1), ("2026-02-05", 12.0), ("2026-03-05", 12.4)])
+        self.assertEqual(self.ash.post(f"/api/profiles/{pid}/labmaps/undo/{r.json()['change']}", headers=H).status_code, 200)
+        # re-filed: under Hematocrit now, everywhere the records are read
+        r = self.ash.patch(f"/api/profiles/{pid}/labmaps/{m['id']}", json={"target": "Hematocrit", "move": True}, headers=H)
+        self.assertEqual((r.status_code, r.json()["results"], r.json()["series"]), (200, 2, 2), r.text)
+        self.assertEqual(self.points(pid, "Hemoglobin"), [("2026-01-05", 13.1)])
+        self.assertEqual(self.points(pid, "Hematocrit"), [("2026-01-06", 41.0), ("2026-02-05", 12.0), ("2026-03-05", 12.4)])
+        db = dbm.connect()
+        try:
+            from server import calendar, records
+            self.assertEqual(stored, [tuple(r) for r in db.execute("SELECT id, body FROM series WHERE profile_id=? ORDER BY id", (pid,))])   # untouched
+            self.assertEqual(sorted(len(s["pts"]) for s in calendar._series(db, pid) if s["name"] == "Hematocrit"), [1, 1, 1])
+            labs = records.assemble(db, pid)["labs"]   # what the summary, share links and exports as shown read
+            self.assertEqual(sorted(p[0][:10] for s in labs if s["name"] == "Hematocrit" for p in s["pts"]), ["2026-01-06", "2026-02-05", "2026-03-05"])
+        finally:
+            db.close()
+        self.assertEqual(next(x for x in self.own(pid) if x["id"] == m["id"])["target"], "Hematocrit")
+        # a later import follows the match; the same file again is still a duplicate
+        k = self.previewed(pid, csv(["2026-04-05", "HGB-R", "12.6", "g/dL", "13.5 - 17.5", "L", "CBC", ""]))
+        self.assertEqual(self.entry(k, "HGB-R")["before"], {"target": "Hematocrit"})
+        self.save(pid, k)
+        dup = self.previewed(pid, csv(["2026-03-05", "HGB-R", "12.4", "g/dL", "13.5 - 17.5", "L", "CBC", ""]))
+        self.assertFalse(dup["new"])
+        self.robin.post(f"/api/profiles/{pid}/jobs/{dup['id']}/discard", headers=H)
+        # an import's Undo after a re-file takes its own results only
+        self.assertEqual(self.robin.post(f"/api/profiles/{pid}/imports/{second['import_id']}/undo", headers=H).status_code, 200)
+        self.assertEqual(self.points(pid, "Hematocrit"), [("2026-01-06", 41.0), ("2026-02-05", 12.0), ("2026-04-05", 12.6)])
+        # Keep as its own test splits it back out; the re-file's Undo is refused while a later change stands
+        r2 = self.robin.patch(f"/api/profiles/{pid}/labmaps/{m['id']}", json={"target": None, "move": True}, headers=H)
+        self.assertEqual(r2.status_code, 200, r2.text)
+        self.assertEqual(self.points(pid, "HGB-R"), [("2026-02-05", 12.0), ("2026-04-05", 12.6)])
+        self.assertEqual(self.robin.post(f"/api/profiles/{pid}/labmaps/undo/{r.json()['change']}", headers=H).status_code, 409)
+        self.assertEqual(self.robin.post(f"/api/profiles/{pid}/labmaps/undo/{r2.json()['change']}", headers=H).status_code, 200)
+        self.assertEqual(self.points(pid, "Hematocrit"), [("2026-01-06", 41.0), ("2026-02-05", 12.0), ("2026-04-05", 12.6)])
+        self.assertEqual(self.robin.post(f"/api/profiles/{pid}/labmaps/undo/{r.json()['change']}", headers=H).status_code, 200)
+        self.assertEqual(self.robin.post(f"/api/profiles/{pid}/labmaps/undo/{r.json()['change']}", headers=H).status_code, 404)   # once
+        # back as before the re-file: the match, and its results (the later import's came in under Hematocrit)
+        self.assertEqual(next(x for x in self.own(pid) if x["id"] == m["id"])["target"], "Hemoglobin")
+        self.assertEqual(self.points(pid, "Hemoglobin"), [("2026-01-05", 13.1), ("2026-02-05", 12.0)])
+        self.assertEqual(self.points(pid, "Hematocrit"), [("2026-01-06", 41.0), ("2026-04-05", 12.6)])
+        self.assertEqual(self.labmap_row(m["id"])["import_id"], first["import_id"])
+        db = dbm.connect()
+        try:
+            log = [json.loads(crypto.dec(r["detail"]))["change"] for r in db.execute(
+                "SELECT detail FROM activity WHERE action='labmap' AND profile_id=? ORDER BY id", (pid,))]
+        finally:
+            db.close()
+        self.assertEqual(log, ["change", "undo", "change", "change", "undo", "undo"])
+
+    def test_add_a_match_for_any_test_and_from_labs(self):
+        """Add (the page) and Same test as… (Labs) match a test as charted, any of the profile's, one Sanguity's list
+        knows too, to another: every name, unit and source charted under it, its results re-filed, later imports
+        following it. Remove leaves the results where they are, with an Undo; Keep as its own test splits it out."""
+        pid = self.with_hemoglobin("Add 1097")
+        self.save(pid, self.previewed(pid, csv(["2026-01-07", "Glucose", "91", "mg/dL", "70-99", "", "BMP", ""])))
+        self.save(pid, self.previewed(pid, csv(["2026-01-08", "Hematocrit", "41", "%", "40-50", "", "CBC", ""])))
+        self.assertEqual(self.ash.post(f"/api/profiles/{pid}/labmaps", json={"name": "Nothing here", "target": "Hemoglobin"}, headers=H).status_code, 404)
+        r = self.ash.post(f"/api/profiles/{pid}/labmaps", json={"name": "Hematocrit", "target": "Not a test"}, headers=H)
+        self.assertEqual(r.status_code, 400, r.text)   # nothing that isn't one of its tests
+        r = self.ash.post(f"/api/profiles/{pid}/labmaps", json={"name": "Hematocrit", "target": "Glucose, Blood", "move": True}, headers=H)
+        self.assertEqual((r.status_code, r.json()["results"]), (200, 1), r.text)
+        self.assertEqual(self.lab_names(pid), ["Glucose, Blood", "Hemoglobin"])
+        self.assertEqual(self.points(pid, "Glucose, Blood"), [("2026-01-07", 91.0), ("2026-01-08", 41.0)])
+        m = next(x for x in self.own(pid) if x["name"] == "Hematocrit")
+        self.assertEqual((m["target"], m["results"], m["imports"], m["check"]), ("Glucose, Blood", 1, 1, False))
+        # a later import of the known name follows it
+        k = self.previewed(pid, csv(["2026-02-08", "Hematocrit", "42", "%", "40-50", "", "CBC", ""]))
+        self.assertEqual(self.entry(k, "Hematocrit")["before"], {"target": "Glucose, Blood"})
+        self.save(pid, k)
+        self.assertIn(("2026-02-08", 42.0), self.points(pid, "Glucose, Blood"))
+        # Remove: the results stay where they're charted; the next import doesn't follow it; Undo brings it back
+        r = self.robin.delete(f"/api/profiles/{pid}/labmaps/{m['id']}", headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(self.lab_names(pid), ["Glucose, Blood", "Hemoglobin"])
+        self.assertFalse([x for x in self.own(pid) if x["name"] == "Hematocrit"])
+        k = self.previewed(pid, csv(["2026-04-08", "Hematocrit", "44", "%", "40-50", "", "CBC", ""]))
+        self.assertNotIn("Hematocrit", [e["name"] for e in k["labs"]])   # a name Sanguity knows: not asked, its own again
+        self.robin.post(f"/api/profiles/{pid}/jobs/{k['id']}/discard", headers=H)
+        self.assertEqual(self.robin.post(f"/api/profiles/{pid}/labmaps/undo/{r.json()['change']}", headers=H).status_code, 200)
+        again = next(x for x in self.own(pid) if x["name"] == "Hematocrit")
+        self.assertEqual((again["id"], again["target"], again["created_by"]), (m["id"], "Glucose, Blood", "ash"))
+        # Same test as… from Labs, the chart's name (Glucose, Blood: its own and Hematocrit's re-filed), kept as its own
+        # test: the matched lab split back out, with an Undo
+        r = self.robin.post(f"/api/profiles/{pid}/labmaps", json={"name": "Glucose, Blood", "target": None, "move": True}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(self.lab_names(pid), ["Glucose, Blood", "Hematocrit", "Hemoglobin"])
+        self.assertEqual(self.points(pid, "Glucose, Blood"), [("2026-01-07", 91.0)])
+        self.assertEqual(self.robin.post(f"/api/profiles/{pid}/labmaps/undo/{r.json()['change']}", headers=H).status_code, 200)
+        self.assertEqual(self.lab_names(pid), ["Glucose, Blood", "Hemoglobin"])
+
+    def test_keep_separate_at_a_review_is_listed_and_honoured(self):
+        """Keep separate, chosen at a review, is saved like a match: listed as kept as its own test, the next import
+        not asking; changed on the page, the next import follows that."""
+        pid = self.with_hemoglobin("Kept 1097")
+        j = self.previewed(pid, csv(["2026-02-05", "HGB-K", "12.0", "g/dL", "13.5 - 17.5", "L", "CBC", ""]))
+        self.save(pid, j, {self.entry(j, "HGB-K")["ref"]: None})
+        m = next(x for x in self.own(pid) if x["name"] == "HGB-K")
+        self.assertEqual((m["target"], m["results"]), (None, 1))
+        k = self.previewed(pid, csv(["2026-03-05", "HGB-K", "12.4", "g/dL", "13.5 - 17.5", "L", "CBC", ""]))
+        self.assertEqual(self.entry(k, "HGB-K")["before"], {"target": None})   # not asked: kept as before
+        self.robin.post(f"/api/profiles/{pid}/jobs/{k['id']}/discard", headers=H)
+        r = self.robin.patch(f"/api/profiles/{pid}/labmaps/{m['id']}", json={"target": "Hemoglobin", "move": True}, headers=H)
+        self.assertEqual((r.status_code, r.json()["results"]), (200, 1), r.text)
+        self.assertEqual(self.points(pid, "Hemoglobin"), [("2026-01-05", 13.1), ("2026-02-05", 12.0)])
+        k = self.previewed(pid, csv(["2026-03-05", "HGB-K", "12.4", "g/dL", "13.5 - 17.5", "L", "CBC", ""]))
+        self.assertEqual(self.entry(k, "HGB-K")["before"], {"target": "Hemoglobin"})
+        self.robin.post(f"/api/profiles/{pid}/jobs/{k['id']}/discard", headers=H)
+
+    def test_a_match_made_before_names_were_kept_is_refiled_too(self):
+        """A series saved under a match before the name as reported was kept beside it is re-filed by that match too:
+        the one its own import saved."""
+        pid = self.with_hemoglobin("Legacy 1097")
+        j = self.previewed(pid, csv(["2026-02-05", "HGB-L", "12.0", "g/dL", "13.5 - 17.5", "L", "CBC", ""]))
+        done = self.save(pid, j, {self.entry(j, "HGB-L")["ref"]: "Hemoglobin"})
+        db = dbm.connect()
+        try:   # as saved before #1097: the series named for the match, nothing beside it
+            for r in db.execute("SELECT id, body FROM series WHERE import_id=?", (done["import_id"],)).fetchall():
+                b = json.loads(crypto.dec(r["body"]))
+                b.pop("reported")
+                db.execute("UPDATE series SET body=? WHERE id=?", (crypto.enc(json.dumps(b)), r["id"]))
+        finally:
+            db.close()
+        m = next(x for x in self.own(pid) if x["name"] == "HGB-L")
+        self.assertEqual(m["results"], 1)
+        r = self.robin.patch(f"/api/profiles/{pid}/labmaps/{m['id']}", json={"target": None, "move": True}, headers=H)
+        self.assertEqual(r.json()["results"], 1, r.text)
+        self.assertEqual(self.points(pid, "HGB-L"), [("2026-02-05", 12.0)])
+        self.assertEqual(self.points(pid, "Hemoglobin"), [("2026-01-05", 13.1)])
 
     # ---------------------------------------------------------------- at rest
 

@@ -492,6 +492,8 @@ def _save(db, j):
                 summary["counts"]["documents"] = n
                 iid = records.store(db, pid, new, "upload", fmt=name)
                 prof.link_documents(db, iid, keepdocs)
+                if back is not None:   # (#1097) an export's labs charted under another test, among the records just saved
+                    labmap.from_export(db, pid, data)
                 # (#920) a medication stopped, a problem resolved, a claim processed: first, so a record's results
                 # updated after it add to what it was (one "before" an event, as update() keeps them)
                 if preview.changes(dups):

@@ -250,7 +250,7 @@ def expected_labs(series, today):
 
 
 def _series(db, pid):
-    from . import records
+    from . import labmap, records
     pts = {}
     for r in db.execute("SELECT series_id, body FROM results WHERE profile_id=?", (pid,)):
         p = records._dec(r["body"])
@@ -258,10 +258,10 @@ def _series(db, pid):
             pts.setdefault(r["series_id"], []).append([p[0]])   # only the date is needed
         elif isinstance(p, dict):
             pts.setdefault(r["series_id"], []).append([p.get("t")])
-    out = []
+    out, shown = [], labmap.charted(db, pid)   # (#1097) as charted
     for r in db.execute("SELECT id, body FROM series WHERE profile_id=?", (pid,)):
         b = records._dec(r["body"]) or {}
-        out.append({"name": b.get("name"), "panel": b.get("panel"), "watch": b.get("watch"), "pts": pts.get(r["id"], [])})
+        out.append({"name": shown.get(r["id"], b.get("name")), "panel": b.get("panel"), "watch": b.get("watch"), "pts": pts.get(r["id"], [])})
     return out
 
 

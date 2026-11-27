@@ -1209,6 +1209,21 @@ SCHEMA = [
     ALTER TABLE med_reminders ADD COLUMN paused INTEGER NOT NULL DEFAULT 0;   -- 1: paused, kept to resume
     UPDATE med_reminders SET paused=1, remind=1 WHERE remind=0;
     """,
+    # version 48: a profile's changes to its lab-name matches (#1097: labmap.set_matches, remove; Settings → This person
+    # → Labs and ranges, and Labs' Same test as…), each with the results it re-filed: series, how many series it charts
+    # under another test (0: none, kept for its Undo only, a while); value, encrypted: {"series": {series id: the name
+    # it's charted under}, "before": the matches as they were, "after": as it left them}. Applied as the records are
+    # put together (records._assemble), never written into them, so its Undo (deleting it) is exact.
+    """
+    CREATE TABLE labmap_changes(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        series INTEGER NOT NULL DEFAULT 0,
+        value TEXT NOT NULL,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        at INTEGER NOT NULL);
+    CREATE INDEX labmap_changes_profile ON labmap_changes(profile_id, series);
+    """,
 ]
 
 
