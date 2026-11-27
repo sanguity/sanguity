@@ -245,6 +245,8 @@ class Log(unittest.TestCase):
         r = self.c["lee"].put(self.path(f"/{did}"), json={"med": "fictionamide", "t": D(-1) + "T08:05", "status": "taken", "slot": "08:00",
                                                           "amount": 1, "unit": "tablet"}, headers=H)
         self.assertEqual(r.json()["doses"][0]["amount"], 1, "corrected")
+        self.log(t=D(-1) + "T15:00", amount=2, unit="puffs", asneeded=True)
+        self.assertTrue(next(d for d in self.data()["doses"] if d["t"].endswith("15:00"))["asneeded"], "logged As needed: kept so")
         for body, word in (({"amount": 0}, "above 0"), ({"amount": -1}, "above 0"), ({"unit": "u" * 41}, "too long")):
             self.assertIn(word, self.log(code=400, **body)["detail"])
         db = dbm.connect()
@@ -300,9 +302,24 @@ class Log(unittest.TestCase):
         got, other = med_log.match(med_log.scheduled(two, mo), [{"t": t(mo, "08:01"), "status": "taken", "slot": "08:00"},
                                                                 {"t": t(mo, "08:03"), "status": "taken", "slot": "08:00"}])
         self.assertEqual(([bool(g) for g in got], other), ([True, True], []))
+        # a dose with no time of the schedule, typed in the drawer as the phone's are: the nearest within two hours
+        # (one rule for both); one tied to a time keeps it; one logged As needed is never one of the schedule's
+        day = [line(["08:00", "20:00"], list(mr.DAYS), mo)]
+        typed = {"t": t(mo, "09:10"), "status": "taken", "slot": None}
+        got, other = med_log.match(med_log.scheduled(day, mo), [typed])
+        self.assertEqual((got, other), ([typed, None], []), "typed at 9:10: the 8:00 one")
+        tied = {"t": t(mo, "09:10"), "status": "taken", "slot": "20:00"}
+        got, other = med_log.match(med_log.scheduled(day, mo), [tied])
+        self.assertEqual((got, other), ([None, tied], []), "tied to 20:00: that one, whenever it was logged")
+        far = {"t": t(mo, "14:00"), "status": "taken"}
+        need = {"t": t(mo, "08:00"), "status": "taken", "asneeded": True}
+        got, other = med_log.match(med_log.scheduled(day, mo), [far, need])
+        self.assertEqual((got, other), ([None, None], [need, far]), "14:00 near none; As needed never one")
+        n = med_log.schedule_counts(day, [typed, far, need], [mo], datetime(2026, 11, 2, 23, 0))
+        self.assertEqual(n, {"scheduled": 2, "taken": 1, "late": 0, "skipped": 0, "other": 2}, "the drawer's dose counted, not undercounted")
 
     def test_summary_counts_against_the_schedule(self):
-        self.log(t=D(-1) + "T08:05", slot="08:00")
+        self.log(t=D(-1) + "T08:05", slot="08:00", amount=2, unit="tablets")
         self.log(t=D(-2) + "T08:10", status="skipped", slot="08:00")
         data = self.data()
         data["reminders"] = [{"med": "fictionamide", "times": ["08:00"], "amounts": [{"amount": 1, "unit": "tablet"}],
@@ -310,6 +327,8 @@ class Log(unittest.TestCase):
         cx = measures.Ctx({"tz": "UTC"}, data, {})
         b = measures.blocks(cx, ["medlog"], lambda d: D(-3) <= d <= D(-1))["medlog"]
         self.assertEqual(b["lead"], ["Fictionamide 10 mg tablet: 1 of 3 scheduled doses taken, 1 skipped"])
+        self.assertEqual(b["rows"][0][4], "Typed in, 2 tablets", "a typed dose's amount, as the phone's")
+        self.assertEqual(b["rows"][1][4], "Typed in", "none given: none said")
         for word in ("due", "should", "missed", "adherence"):
             self.assertNotIn(word, json.dumps(b).lower())
 
