@@ -227,8 +227,9 @@ class LabMapping(unittest.TestCase):
         other, nor a test whose LOINC code isn't the series' own; "Total" alone doesn't make another test."""
         pid = self.profile("Qualifiers")
         self.save(pid, self.previewed(pid, csv(["2025-01-05", "LDL Cholesterol", "131", "mg/dL", "<100", "", "", "13457-7"])))
-        j = self.previewed(pid, csv(["2025-03-14", "HDL Cholesterol", "72", "mg/dL", ">40", "", "", ""]))
-        self.assertNotIn("LDL Cholesterol", [s["name"] for s in self.entry(j, "HDL Cholesterol")["suggestions"]])
+        # (a spelling lab-aliases.json doesn't know: "HDL Cholesterol" itself is a test it knows since #1103)
+        j = self.previewed(pid, csv(["2025-03-14", "Cholesterol in HDL", "72", "mg/dL", ">40", "", "", ""]))
+        self.assertNotIn("LDL Cholesterol", [s["name"] for s in self.entry(j, "Cholesterol in HDL")["suggestions"]])
         have = {"LDL Cholesterol": {"unit": "mg/dL", "loinc": {"13457-7"}}, "Testosterone, Free": {"unit": "ng/dL", "loinc": set()},
                 "Bilirubin, Direct": {"unit": "mg/dL", "loinc": set()}, "Calcium, Ionized": {"unit": "mg/dL", "loinc": set()},
                 "Zorblatt": {"unit": "mg/dL", "loinc": {"99-1"}}, "Quorbin": {"unit": "mg/dL", "loinc": set()}}
