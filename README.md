@@ -29,6 +29,7 @@ person's records appear in this repository.
 | Overview | Key labs with sparklines, watch and scale summaries, active problems, allergies, immunizations, upcoming visits, costs since a milestone |
 | Body and activity | Watch, sleep and smart-scale data: weight and body composition, sleep stages, steps and workouts (with heart rate zones from the age or a measured maximum), heart rate and HRV; blood pressure, body temperature, blood oxygen and respiratory rate taken at home beside the readings taken at visits; cardio fitness (VO2 max) as the watch estimates it; blood glucose from a meter or a continuous glucose monitor (CGM), with time in the standard ranges; BMI over time; a child's growth charts (WHO and CDC percentiles) |
 | Timeline | Every visit, stay, lab draw, report, immunization, message, document and claim on one zoomable timeline, with a searchable list; each medication as spans from its start through dose changes to its stop, with pharmacy fills marked |
+| Medications | Every medication in the records and those you add yourself, current and past, with its doses, dose changes and pharmacy fills; a schedule for each (times and amounts on the days you choose, or as needed), Today's doses to log, and a log of the doses taken, taken late or skipped |
 | Labs | Lab results against reference ranges, as charts over time (each with a table of its values), with procedures, imaging and your milestones marked, and saved views of the labs you chart together; or as a heatmap of every draw, one row per lab; a name filter beside the list of labs narrows either; "What is this test?" beside a lab links to a plain-language page about the test (MedlinePlus) |
 | Costs | Insurance claims by month or year, type of care and provider, and what you actually paid out of pocket: typed in, exported or from claims, matched to claims, counted once, with HSA and FSA totals |
 
@@ -71,10 +72,13 @@ on the **Settings** page, appear on every chart and as "since" periods.
   your own symptom groups logged in one go, where on the body (a front and back outline, or a list), photos with
   their location data taken out, a day's mood and energy in a lane of their own, and a body map of where symptoms
   have been.
-- A **medication log** (#235): doses taken, taken late or skipped, logged from a medication's details or the
-  Overview's "Today's medication doses" (with the reminder times set on it, #162), on the medication's span on the
-  timeline and, when ticked, under the Labs charts, with a weekly count of what was logged. Apple Health's Medications
-  doses come in through Health Auto Export; it records what you say happened and never says a dose was due.
+- A **medication log** (#235): doses taken, taken late or skipped, logged from a medication's details, the
+  Medications tab's Today or the Overview's "Today's medication doses", on the medication's span on the timeline and,
+  when ticked, under the Labs charts. A medication's **schedule** (#162, #1095) lists each dose it gives on Today, and
+  its weekly count is of the doses scheduled so far ("9 of 14 scheduled doses taken"); without one, of the doses
+  logged. **Remind me** puts a schedule's times in your calendar app through a calendar feed. Apple Health's
+  Medications doses come in through Health Auto Export. It records what you say happened, and never says a dose
+  should be taken.
 
 **Finding your way.** The same bar across the top of every page: the **profile menu** (the profile shown, by name and
 your role; switch profile; its Sources and Sharing; New profile), your records' tabs (those that don't fit under
@@ -136,7 +140,8 @@ run that release's Python packages with the checkout's code. A released install 
 from, so `compose.release.yaml` mounts only your data folders. The TrueNAS, Unraid and CasaOS templates in
 [`deploy/`](deploy/) run the same image.
 
-> No version has been tagged yet. Until the first release, install from a git checkout.
+> Releases start with 0.2.0, on the [releases page](https://github.com/sanguity/sanguity/releases). If it lists none
+> yet, install from a git checkout.
 
 **From a release**, in an empty folder:
 
