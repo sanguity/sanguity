@@ -425,7 +425,7 @@ const SgNav = (() => {
   }
 
   /* ---- Add (#264), in two groups. Today: a dose of a current medication (the Medications tab's Today, #275, or the
-     Overview's doses: app.js), a journal entry (its form opens on the records page; from another page the link takes you there and it
+     Overview's doses: app.js), a medication of your own (its form on the records page, medmine.js, #1092), a journal entry (its form opens on the records page; from another page the link takes you there and it
      opens, #173), a home reading (Type records in, with a blood pressure's form). Records: each way in, opening its
      section of the Sources page (#166). On the Sources page itself only the address's #section changes: the page
      isn't loaded again, so the profile in its address (?profile=2) and what's typed in are kept (#388) */
@@ -433,6 +433,7 @@ const SgNav = (() => {
   const add = menu("addMenu", "Add", "add", [
     group("Today",
       link(rec + "#log-dose", "dose", "Log a dose", {id: "doseLink", "data-needs": "import"}),
+      link(rec + "#add-medication", "medications", "Add a medication", {id: "medAddLink", "data-needs": "import"}),   // your own (#1092)
       onRecords ? action("journalBtn", "journal", "Journal entry", {hidden: ""}) : link("./#new-journal-entry", "journal", "Journal entry", {id: "journalBtn"}),
       link(src + "#home-reading", "reading", "Home reading", {"data-needs": "import"})),
     group("Records",
