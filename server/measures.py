@@ -595,15 +595,17 @@ def targets_block(c, keep, most):
 
 def _doses(c):
     """[(local wall time, medication, status, note, where from)] of the medication log (#235): typed in (records'
-    "doses") and the phone's (the watch summary's "med_doses"), oldest first. Those of a medication hidden by hand
-    (#1093: records' "hiddenMeds", by its key) are left out, as the medication is: the log stays where it's kept."""
-    hidden = {h.get("key") for h in c.data.get("hiddenMeds") or [] if isinstance(h, dict)}
+    "doses") and the phone's (the watch summary's "med_doses"), oldest first. A typed one is shown only while its
+    medication is among those the page shows (#1093): not one hidden by hand, nor your own entry deleted; the phone's,
+    found by name, not one hidden. The log keeps them all (and Export everything)."""
+    shown = {m.get("key") for m in c.data.get("medications") or [] if isinstance(m, dict)}
+    named = medications.hidden_test(c.data)
     out = [(d["t"], d.get("name") or d.get("med") or "", d.get("status"), str(d.get("note") or "")[:1000],
             "Typed in" + (f", {med_reminders.said(d)}" if med_reminders.said(d) else ""))   # its amount, as the phone's (#1095)
            for d in c.data.get("doses") or [] if isinstance(d, dict) and _day(d.get("t")) and d.get("status") in med_log.STATUSES
-           and d.get("med") not in hidden]
+           and d.get("med") in shown]
     out += [(d["t"], d["name"], d["status"], "", f"{d['app']}" + (f", {d['dose']}" if d["dose"] else ""))
-            for d in med_log.phone_doses(c.watch, c.tz) if medications.med_key(d["name"]) not in hidden]
+            for d in med_log.phone_doses(c.watch, c.tz) if not named(d["name"])]
     return sorted(out, key=lambda x: x[0])
 
 

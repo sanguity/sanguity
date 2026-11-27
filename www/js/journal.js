@@ -398,7 +398,8 @@ function journalForm(j, preset, back) {
   date.value = cur.t.slice(0, 10); time.value = cur.t.length > 10 ? cur.t.slice(11, 16) : "";
   const title = el("input", {type: "text", id: id("title"), maxlength: 200, autocomplete: "off"}); title.value = cur.title || "";
   const sev = jScale(id("sev"), "Severity", cur.severity);
-  const medNames = [...new Set([...EV.filter(e => e.k === "med" || e.k === "rx").map(e => e.title), ...MEDS.filter(m => m.own).map(m => m.name)].filter(Boolean))].sort((a, b) => a.localeCompare(b));   // your own too (#1091)
+  const hid = new Set((DATA?.hiddenMeds || []).flatMap(h => [h.key, medKeyOf(h.name)]));   // those hidden by hand left out (#1093)
+  const medNames = [...new Set([...EV.filter(e => (e.k === "med" || e.k === "rx") && !hid.has(medKeyOf(e.title))).map(e => e.title), ...MEDS.filter(m => m.own).map(m => m.name)].filter(Boolean))].sort((a, b) => a.localeCompare(b));   // your own too (#1091)
   if (cur.med && !medNames.includes(cur.med)) medNames.unshift(cur.med);   // linked before its import was undone: kept
   const med = el("select", {id: id("med")}, el("option", {value: "", text: medNames.length ? "None" : "No medications in the records"}), ...medNames.map(m => el("option", {value: m, text: m})));
   med.value = cur.med || "";

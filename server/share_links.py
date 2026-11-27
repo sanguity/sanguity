@@ -42,7 +42,7 @@ label and scope are encrypted at rest (atrest.FIELDS): lab names and a clinician
 import json, re
 from datetime import date
 
-from . import activity, crypto, db as dbm, journal, journal_photos, measures, person, records, security as sec, settings, summary
+from . import activity, crypto, db as dbm, journal, journal_photos, measures, medications, person, records, security as sec, settings, summary
 
 SECTIONS = [   # #576: each line names everything its page shows, and _build sends nothing more (test_share_links.py ties them)
     ("visits", "Visits and hospital stays", "the date (a hospital stay's first and last days), the title, and the details its "
@@ -356,10 +356,11 @@ def _build(db, link, today, section):
                                       for u in ups if _in(summary._day(u.get("t")), scope) and summary._day(u.get("t")) >= today),
                                      key=lambda u: u["t"])
     if "journal" in want:   # with where on the body, the group and the day's mood (#161), an entry's medication
-        pics = "journal_photos" in want   # (#518); photos only when ticked
+        pics = "journal_photos" in want   # (#518) unless it's one hidden by hand (#1093); photos only when ticked
+        hid = medications.hidden_test(data)
         out["journal"] = sorted(({"t": _text(j.get("t"), 25), "kind": j.get("kind"), "title": _text(j.get("title"), 300),
                                   "severity": j.get("severity"), "note": str(j.get("note") or "")[:4000],
-                                  **({"med": _text(j["med"], journal.MED_MAX)} if j.get("med") else {}),
+                                  **({"med": _text(j["med"], journal.MED_MAX)} if j.get("med") and not hid(j["med"]) else {}),
                                   **({"mood": j.get("mood"), "energy": j.get("energy")} if j.get("kind") == "mood" else {}),
                                   **({"where": [journal.REGIONS[w] for w in j["where"] if w in journal.REGIONS]} if j.get("where") else {}),
                                   **({"group": _text(j["group"], 80)} if j.get("group") else {}),
