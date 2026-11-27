@@ -261,6 +261,9 @@ def _report(db, pid, name, data, watch, labs):
     # a lab name is asked about only while its series brings something new (#497: not one whose results are all here)
     listed = [e for e in labs["listed"] if not _all_here(named, dups, int(e["ref"][2:]))]
     report["labs"], report["lab_targets"] = listed, labs["targets"] if listed else []
+    # (#1103) a first import into a profile with no lab series yet: nothing of its own to match to, so the page shows
+    # the names closed, kept as they are unless someone opens them
+    report["labs_first"] = bool(listed) and not db.execute("SELECT 1 FROM series WHERE profile_id=? LIMIT 1", (pid,)).fetchone()
     if watch:   # what the profile has already counts as already here (#497), not as new
         fresh, here, _ = _watch_split(db, pid, watch)
         report["counts"].update(fresh)
@@ -719,7 +722,8 @@ def summarise(data):
     days += [str(p[0])[:10] for s in labs for p in s.get("pts") or [] if isinstance(p, list) and p and p[0]]
     days = [d for d in days if re.match(r"^\d{4}-\d{2}-\d{2}$", d)]
     counts = {"events": sum(kinds.values()), "kinds": dict(sorted(kinds.items())), "series": len(labs),
-              "results": sum(len(s.get("pts") or []) for s in labs)}
+              # a text result ("Negative") is a result too (#1103: "5 lab results in 6 tests" where one held only text)
+              "results": sum(len(s.get("pts") or []) + len(s.get("txt") or []) for s in labs)}
     # #179: the profile-wide lists' allergies, other problems and upcoming visits, for the preview to list
     probs = [p for p in data.get("problems") or [] if isinstance(p, dict)]
     lists = {"allergies": sum(1 for p in probs if p.get("type") == "Allergy"),
@@ -744,6 +748,7 @@ def describe(r, stamp=None, uid=None):
             "counts": summary.get("counts"), "samples": summary.get("samples"), "range": summary.get("range"), "total": summary.get("total"),
             "duplicates": summary.get("duplicates"), "new": summary.get("new"), "skipped": summary.get("skipped"),
             "labs": summary.get("labs"), "lab_targets": summary.get("lab_targets"), "lab_names": summary.get("lab_names"),
+            "labs_first": bool(summary.get("labs_first")),   # (#1103)
             "possible": summary.get("possible") or [], "linked": summary.get("linked"),
             "warnings": json.loads(crypto.dec(r["warnings"])) if r["warnings"] else [],
             "message": crypto.dec(r["message"]) if r["message"] else None, "import_id": r["import_id"],

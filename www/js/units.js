@@ -59,7 +59,7 @@ function saidApart(list) {
     const r = m && typeof p[1] === "number" && !valueRead(t) ? valueRead(m[1]) : null;
     if (!r) continue;
     if (r.x === p[1]) p[5] = m[1];
-    else { p.said = t; p[5] = r.c ? r.b + fmtNum(p[1]) : ""; }
+    else { p.said = `${m[1]} ${unitSaid(m[2])}`; p[5] = r.c ? r.b + fmtNum(p[1]) : ""; }   // its unit as people write it ("37 °C", #1103)
   }
 }
 /* convert series in place (lab series from DATA.labs, or watch series), each with its own conv */
@@ -93,6 +93,12 @@ function ucOrig(s, p) {
   const o = p.orig;
   return `${o.v}${o.own ? "" : " " + s.uc.from}${o.ref ? ", ref " + o.ref : ""}`;
 }
+/* the drawer's result rows' units as people write them (util.js unitSaid, #1103), after applyUnitsToRows: what's
+   shown, and what was reported */
+function rowUnitsSaid(details) {
+  for (const d of Object.values(details || {})) if (d && Array.isArray(d.rows))
+    for (const row of d.rows) if (Array.isArray(row)) { row[2] = unitSaid(row[2]); if (row.orig) row.orig[1] = unitSaid(row.orig[1]); }
+}
 /* the drawer's result rows ([name, value, unit, ref range, flag]) in the chosen units, each read only as its import
    read it (#886), as the page doesn't know a file's decimal mark: by its result (drawer.js rowPoint, its value as
    reported the row's) in that series' unit (d.series, #782: a report's "Glucose" is "Glucose, Blood"), its value that
@@ -107,7 +113,7 @@ function applyUnitsToRows(labs, details) {
     const ev = byId.get(+id) ?? byId.get(id);
     for (const [i, row] of d.rows.entries()) {
       const at = !row.orig && rowPoint(d, i, ev), uc = at && at.s.uc, p = at && at.p;
-      if (!uc || uc.from !== (row[2] || "") || rowSaid(row[1]) !== rowSaid(p.orig.v)) continue;
+      if (!uc || unitSaid(uc.from) !== unitSaid(row[2] || "") || rowSaid(row[1]) !== rowSaid(p.orig.v)) continue;   // (either as written, #1103)
       row.orig = [row[1], row[2], row[3]];
       row[1] = p[5] || fmtNum(p[1]); row[2] = uc.to;
       if (row[3]) row[3] = p.orig.r ? ucRange(uc, row[3], p.orig.r) ?? rangeWords(p) : `${row[3]} ${uc.from}`;

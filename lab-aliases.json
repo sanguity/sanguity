@@ -85,7 +85,12 @@
    "loinc": "98979-8",
    "aliases": [
     "EGFR CKD-EPI 2021",
-    "gfr estimate"
+    "gfr estimate",
+    "eGFR CKD-EPI",
+    "eGFR (CKD-EPI)",
+    "eGFR (CKD-EPI 2021)",
+    "eGFR CKD-EPI Cr 2021",
+    "eGFR Creatinine (CKD-EPI 2021)"
    ]
   },
   "CMV PCR": {
@@ -156,6 +161,16 @@
     "Glucose (External)"
    ]
   },
+  "HDL Cholesterol": {
+   "loinc": "2085-9",
+   "aliases": [
+    "HDL",
+    "HDL-C",
+    "HDL-Cholesterol",
+    "HDL Chol",
+    "Cholesterol, HDL"
+   ]
+  },
   "Hematocrit": {
    "loinc": "4544-3",
    "aliases": [
@@ -166,6 +181,19 @@
    "loinc": "718-7",
    "aliases": [
     "HGB"
+   ]
+  },
+  "Hemoglobin A1c": {
+   "loinc": "4548-4",
+   "aliases": [
+    "HbA1c",
+    "Hb A1c",
+    "HgbA1c",
+    "Hgb A1c",
+    "A1c",
+    "Glycated Hemoglobin",
+    "Glycohemoglobin",
+    "Hemoglobin A1c/Hemoglobin.total in Blood"
    ]
   },
   "Immature Granulocytes %": {
@@ -188,6 +216,20 @@
    "aliases": [
     "LDH",
     "ldh, total"
+   ]
+  },
+  "LDL Cholesterol": {
+   "loinc": "13457-7",
+   "aliases": [
+    "LDL",
+    "LDL-C",
+    "LDL-Cholesterol",
+    "LDL Chol Calc (NIH)",
+    "LDL Cholesterol Calc",
+    "LDL Calculated",
+    "LDL Chol, Calculated",
+    "Cholesterol, LDL",
+    "LDL Cholesterol (Calculated)"
    ]
   },
   "Lipase": {
@@ -259,6 +301,15 @@
     "NEUT%"
    ]
   },
+  "Non-HDL Cholesterol": {
+   "loinc": "43396-1",
+   "aliases": [
+    "Non HDL Cholesterol",
+    "Non-HDL",
+    "Non-HDL Chol",
+    "Cholesterol, Non-HDL"
+   ]
+  },
   "NRBC": {
    "aliases": [
     "nrbc",
@@ -314,6 +365,17 @@
     "TOTAL BILI"
    ]
   },
+  "Total Cholesterol": {
+   "loinc": "2093-3",
+   "aliases": [
+    "Cholesterol, Total",
+    "Cholesterol Total",
+    "Cholesterol",
+    "Total Chol",
+    "Chol, Total",
+    "Cholesterol, Serum"
+   ]
+  },
   "Total Protein": {
    "loinc": "2885-2",
    "aliases": [
@@ -325,7 +387,20 @@
   "Triglycerides": {
    "loinc": "2571-8",
    "aliases": [
-    "TRIGLYCERIDE"
+    "TRIGLYCERIDE",
+    "Triglycerides, Serum",
+    "Triglycerides, Blood"
+   ]
+  },
+  "TSH": {
+   "loinc": "3016-3",
+   "aliases": [
+    "Thyroid Stimulating Hormone",
+    "Thyrotropin",
+    "TSH, 3rd Generation",
+    "TSH, Ultrasensitive",
+    "TSH (Sensitive)",
+    "TSH, Serum"
    ]
   },
   "WBC": {
@@ -399,6 +474,10 @@
    "Ferritin"
   ],
   "Lipids": [
+   "Total Cholesterol",
+   "LDL Cholesterol",
+   "HDL Cholesterol",
+   "Non-HDL Cholesterol",
    "Triglycerides"
   ],
   "Viral load": [

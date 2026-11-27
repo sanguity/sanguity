@@ -236,7 +236,8 @@ def plan(db, pid, importer, data, keep=()):
     lower = {n.lower(): n for n in have}
     candidates = {}
     for i, s in enumerate(data.get("labs") or []):
-        if isinstance(s, dict) and isinstance(s.get("name"), str) and s["name"].strip():
+        # (#1103) a visit's vital signs (blood pressure, heart rate, height, temperature) aren't lab names to match
+        if isinstance(s, dict) and isinstance(s.get("name"), str) and s["name"].strip() and s.get("panel") != "Vitals":
             candidates[f"s:{i}"] = s
     found = remembered(db, pid, [importer], {ref: _ident(s) for ref, s in candidates.items()}, flagged=True)
     listed, auto, ids = [], {}, {}

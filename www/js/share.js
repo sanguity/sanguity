@@ -325,7 +325,7 @@ async function shLoad() {
   } catch (e) { failed("Shared records", "Couldn't reach the server. Check the connection and reload the page."); return; }
   if (r.status === 429) { failed("Shared records", "This link has been opened many times in a short while. Try again in a few minutes."); return; }
   if (!r.ok) { broken(); return; }
-  const d = await r.json();
+  const d = unitsSaid(await r.json());   // every unit as people write it (util.js, #1103)
   SH_CUT = d.cut || {};   // the long sections, sent only their latest rows (#498)
   const range = d.from && d.to ? `from ${shDay(d.from)} to ${shDay(d.to)}` : d.from ? `from ${shDay(d.from)} on` : d.to ? `up to ${shDay(d.to)}` : "of any date";
   document.title = `${d.profile} · shared records · Sanguity`;

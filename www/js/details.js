@@ -33,6 +33,7 @@ async function loadDetails(ids) {
       DETAILS_GOT.add(id);
     }
     applyUnitsToRows(DATA.labs, fresh);   // this person's units, as for everything else (#41)
+    rowUnitsSaid(fresh);   // as people write them (#1103)
   }
 }
 

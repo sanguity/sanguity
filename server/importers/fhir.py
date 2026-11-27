@@ -86,6 +86,22 @@ KNOWN = SUPPORTING | IMPORTED | {
     "Bundle", "AllergyIntolerance", "Immunization", "Procedure", "CarePlan", "CareTeam", "Goal", "Device", "Claim",
     "ExplanationOfBenefit", "Coverage", "ImagingStudy", "MedicationAdministration", "MedicationDispense", "ServiceRequest",
     "QuestionnaireResponse", "FamilyMemberHistory", "Composition", "List", "Appointment", "Communication", "Binary"}
+# what a skipped record is, in plain words (#1103: "social history notes", not "Observation (social-history)"); a kind
+# not here keeps its FHIR name
+PLAIN_KINDS = {"CarePlan": "care plans", "CareTeam": "care teams", "Goal": "goals", "Claim": "claims",
+               "MedicationAdministration": "medicines given", "ServiceRequest": "orders", "Composition": "summary documents",
+               "QuestionnaireResponse": "questionnaire answers", "FamilyMemberHistory": "family history", "List": "lists",
+               "Binary": "loose files"}
+PLAIN_OBS = {"social-history": "social history notes (such as smoking)", "survey": "questionnaire answers",
+             "exam": "exam findings", "imaging": "imaging measurements", "procedure": "procedure measurements",
+             "therapy": "therapy notes", "activity": "activity notes", "uncategorised": "observations of no stated kind"}
+
+
+def _plain_kind(k):
+    """A skipped kind's key ("CarePlan", "Observation (social-history, survey)") in plain words."""
+    if k.startswith("Observation (") and k.endswith(")"):
+        return " and ".join(PLAIN_OBS.get(c, c + " observations") for c in k[13:-1].split(", "))
+    return PLAIN_KINDS.get(k, k)
 
 INPATIENT = {"IMP", "ACUTE", "NONAC", "inpatient", "inpatient encounter"}
 DOC_KINDS = {"document", "letter", "imaging", "study", "procedure", "visit", "message"}   # a document's kind (#205)
@@ -1210,12 +1226,12 @@ def parse(files):
 
     # --- warnings
     if skipped:
-        parts = ", ".join(f"{k} ({n})" for k, n in sorted(skipped.items(), key=lambda kv: (-kv[1], kv[0])))
+        parts = ", ".join(f"{_plain_kind(k)} ({n})" for k, n in sorted(skipped.items(), key=lambda kv: (-kv[1], kv[0])))
         warnings.append(f"Skipped {sum(skipped.values())} record{'s' if sum(skipped.values()) != 1 else ''} "
                         f"of kinds Sanguity doesn't import yet: {parts}.")
-    if inline:
-        warnings.append(f"Skipped {inline} attachment{'s' if inline != 1 else ''} embedded in the records themselves "
-                        "(inline base64); only attachments included as separate files are imported for now.")
+    if inline:   # (#1103: in plain words, not "inline base64")
+        warnings.append(f"Skipped {inline} attachment{'s' if inline != 1 else ''} stored inside the records themselves; "
+                        "only attachments that come as separate files in the upload are imported for now.")
     if remote:
         warnings.append(f"{remote} document{'s' if remote != 1 else ''} link{'s' if remote == 1 else ''} to a web address "
                         "instead of a file in the upload, so only the entry was imported.")

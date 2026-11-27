@@ -121,6 +121,9 @@ function storeRecords(data) {
   // reported unit and is then converted with the values (#41)
   RANGES_USED = applyRangeOverrides(DATA.labs, rangeConfig(CFG));   // with About this person's birth date and sex (#194)
   saidApart(DATA.labs); applyUnits(DATA.labs); applyUnitsToRows(DATA.labs, DATA.details);   // this person's units, exact conversions only (units.js, #41)
+  // each unit as people write it (util.js unitSaid, #1103): the series', what a converted one came in, the drawer rows'
+  for (const s of DATA.labs) { s.unit = unitSaid(s.unit); if (s.uc) s.uc.from = unitSaid(s.uc.from); }
+  rowUnitsSaid(DATA.details);
   SERIES = joinSeries(DATA.labs);   // one chart per test, whichever imports brought it (same.js)
   labDayWords();   // a lab day found by its tests' names (#459)
   STEPS = [];

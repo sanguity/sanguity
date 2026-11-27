@@ -295,7 +295,7 @@ function tilesEditor(value, changed, ro, setting) {
       return el("div", {class: "tile", "data-lab": n},
         el("span", {class: "lbl"}, el("span", {text: nick(n), "data-tip": nick(n) !== n ? n : null}), nick(n) !== n ? el("span", {class: "vh", text: ` (${n})`}) : null,   // #358
           ...(st && st.cls !== "ok" ? [el("span", {class: "st " + st.cls, "data-tip": st.title}, st.text), st.title ? el("span", {class: "vh", text: `, ${st.title.toLowerCase()}`}) : null] : [])),
-        el("span", {class: "val"}, last[5] || String(last[1]), el("small", {text: s.unit || ""})));
+        el("span", {class: "val"}, last[5] || String(last[1]), el("small", {text: unitSaid(s.unit) || ""})));
     })]).filter(Boolean));
     if (!names.length) preview.append(el("p", {class: "hint", text: LABS.length ? "None of these labs has results in this profile yet." : "This profile has no lab results yet."}));
     else if (isDefault(ol.get()) && names.some(n => !ol.get().includes(n)))
@@ -508,7 +508,7 @@ function rangesEditor(value, changed, ro) {
       const left = without.filter(s => !have.has(rNorm(s.name) + "\u001f" + rUnit(s.unit))).sort((a, b) => b.pts.length - a.pts.length).slice(0, 8);
       sugg.replaceChildren(...(left.length ? [el("span", {class: "muted", text: "Results without a range: "}),
         ...left.map(s => el("button", {class: "chip", type: "button", "aria-label": `Add a range for ${s.name} in ${s.unit || "no unit"}`,
-          onclick: () => add({lab: s.name, unit: s.unit, sex: "any"})}, icon("plus"), `${nick(s.name)}${s.unit ? " (" + s.unit + ")" : ""} · ${s.pts.length}`))] : []));
+          onclick: () => add({lab: s.name, unit: s.unit, sex: "any"})}, icon("plus"), `${nick(s.name)}${s.unit ? " (" + unitSaid(s.unit) + ")" : ""} · ${s.pts.length}`))] : []));
     }
     changed();
   }
