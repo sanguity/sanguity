@@ -202,6 +202,30 @@ class LabMapping(unittest.TestCase):
         self.assertEqual(self.points(pid, "Vitamin B1"), [("2026-01-05", 120.0), ("2026-03-05", 125.0)])
         self.assertEqual(self.points(pid, "Hemoglobin"), [("2026-03-05", 13.0)])
 
+    def test_never_offered_across_a_qualifier_or_another_loinc_code(self):   # #1102
+        """HDL Cholesterol was offered as "Maybe: LDL Cholesterol, similar name, same unit", opposite tests. Names a
+        qualifier tells apart (HDL and LDL, free and total, direct and calculated, ionized) are never offered for each
+        other, nor a test whose LOINC code isn't the series' own; "Total" alone doesn't make another test."""
+        pid = self.profile("Qualifiers")
+        self.save(pid, self.previewed(pid, csv(["2025-01-05", "LDL Cholesterol", "131", "mg/dL", "<100", "", "", "13457-7"])))
+        j = self.previewed(pid, csv(["2025-03-14", "HDL Cholesterol", "72", "mg/dL", ">40", "", "", ""]))
+        self.assertNotIn("LDL Cholesterol", [s["name"] for s in self.entry(j, "HDL Cholesterol")["suggestions"]])
+        have = {"LDL Cholesterol": {"unit": "mg/dL", "loinc": {"13457-7"}}, "Testosterone, Free": {"unit": "ng/dL", "loinc": set()},
+                "Bilirubin, Direct": {"unit": "mg/dL", "loinc": set()}, "Calcium, Ionized": {"unit": "mg/dL", "loinc": set()},
+                "Zorblatt": {"unit": "mg/dL", "loinc": {"99-1"}}, "Quorbin": {"unit": "mg/dL", "loinc": set()}}
+        names = lambda name, unit, loinc=None: [s["name"] for s in labmap.suggest({"name": name, "unit": unit, "loinc": loinc}, have)]  # noqa: E731
+        for name, unit, other in (("HDL Cholesterol", "mg/dL", "LDL Cholesterol"), ("Non-LDL Cholesterol", "mg/dL", "LDL Cholesterol"),
+                                  ("LDL Cholesterol Direct", "mg/dL", "LDL Cholesterol"), ("Testosterone, Total", "ng/dL", "Testosterone, Free"),
+                                  ("Testosterone", "ng/dL", "Testosterone, Free"), ("Bilirubin, Total", "mg/dL", "Bilirubin, Direct"),
+                                  ("Bilirubin, Indirect", "mg/dL", "Bilirubin, Direct"), ("Calcium", "mg/dL", "Calcium, Ionized"),
+                                  ("Zorblat", "mg/dL", "Zorblatt")):
+            self.assertNotIn(other, names(name, unit, "98-2" if other == "Zorblatt" else None), name)
+        self.assertIn("LDL Cholesterol", names("LDL Cholestrol", "mg/dL"), "a similar name still offered")
+        self.assertIn("Zorblatt", names("Zorblat", "mg/dL"), "with no LOINC code of its own")
+        self.assertFalse(labmap.told_apart("Bilirubin, Total", "BILI"), "Total alone")
+        self.assertTrue(labmap.told_apart("Bilirubin, Total", "Bilirubin, Direct") and labmap.told_apart("T4", "Free T4"))
+        self.assertNotIn("LDL Cholesterol", names("LDL Cholesterol", "mg/dL", "18262-6"), "another LOINC code: direct LDL")
+
     def test_a_specimen_is_part_of_the_name(self):   # #569
         """A name with a specimen (blood, serum, urine...) isn't the same name written another way as one without it,
         or with another: "Ketones, Blood" is only a "Maybe" for a profile's "Ketones", which may be a urine series.
