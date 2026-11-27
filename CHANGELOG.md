@@ -3850,8 +3850,9 @@ Everything on `main` so far; it becomes the first tagged release.
   the records the form starts from what they say, and once saved the drawer shows **Your change** beside **As listed**,
   with **Put back as listed** (and an Undo). The import page's typed-in medication stays, as a record-style listing.
 - **Remove a medication** (#1093): in its drawer, **Remove** deletes one of your own (its logged doses stay in the
-  log) and hides one from the records: it leaves Current, Past, Today, the lanes and the calendar feed, its records
-  stay in the profile, and a later pull doesn't bring it back. Each says so with an **Undo**; **Hidden** on the
+  log) and hides one from the records: it leaves Current, Past, Today, the lanes, the calendar feed, and share links'
+  and the visit summary's medications and medication log, its records stay in the profile (and in the FHIR export),
+  and a later pull doesn't bring it back. Each says so with an **Undo**; **Hidden** on the
   Medications tab lists those hidden, each with **Show again**.
 
 ### Removed
