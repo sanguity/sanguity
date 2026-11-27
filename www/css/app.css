@@ -1099,6 +1099,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .imp-bar rect{fill:var(--imp-c)}
 @media (forced-colors:active){ .imp-split li::before{forced-color-adjust:none} }   /* (a background is dropped, #409) */
 .imp-labs{container-type:inline-size}
+.import-job summary{min-height:24px}   /* a 24 px target (#1103) */
 .imp-labs table{font-size:var(--fs-3)}
 .imp-labs table.data th{position:static}   /* not under the top bar, nor over the rows in a dialog (#497: over table.data's sticky) */
 .imp-labs th:last-child{width:45%}
