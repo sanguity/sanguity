@@ -86,7 +86,7 @@ def say_settings():
     """What the start says about the server's settings: saved values left out (#1006), and a variable left out (#999)."""
     if config.saved_ignored():   # the way back in when a saved value locked everyone out
         print("SANGUITY_SAVED_SETTINGS=off: the server's settings saved in the app are left out, each its default or the "
-              "environment's. Change the one that needs it on the Admin page, then take SANGUITY_SAVED_SETTINGS out and "
+              "environment's. Change the one that needs it under Settings → Install → General, then take SANGUITY_SAVED_SETTINGS out and "
               "start the app again.", flush=True)
     for name, text in config.unreadable():   # left out, as if it weren't set: said, as nothing else would
         print(f"{name} in the environment ({text[:40]!r}) isn't a number it can be, so it's left out: the value saved "
@@ -1236,7 +1236,7 @@ def share(pid: int, body: MemberIn, request: Request, s=Depends(user), db=Depend
     need(db, s, pid, "owner")
     u = db.execute("SELECT id, username FROM users WHERE username=? AND disabled=0", (body.username.strip(),)).fetchone()
     if not u:
-        raise HTTPException(404, "No active account with that username. An admin can create it under Admin → Accounts.")
+        raise HTTPException(404, "No active account with that username. An admin can create it under Settings → Install → Accounts.")
     with dbm.transaction(db):
         accounts.end_lost_access(db)   # what they had before losing access stays ended (#590)
         before, old = dbm.active_owners(db, pid), role_of(db, u["id"], pid)

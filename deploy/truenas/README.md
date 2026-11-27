@@ -21,7 +21,7 @@ that user before setup starts, so setup doesn't need root as it does in compose.
 |---|---|---|
 | Data | `/data` | the database and each profile's files |
 | Encryption Key | `/run/secrets/sanguity` | apart from the data; read-only except for setup. Keep a copy elsewhere |
-| Backups | `/backups` | where Sanguity writes its backups, on the schedule set under **Admin → Backups** or with `python -m server.manage backup`. Copy them off this machine too |
+| Backups | `/backups` | where Sanguity writes its backups, on the schedule set under **Settings → Install → Backups** or with `python -m server.manage backup`. Copy them off this machine too |
 | Watch Data | `/watch` | the receiver's data; the app reads its summary and, for backups, its data, and writes the receiver's per-profile secrets (`keys/`) |
 | Record Exports | `/srv/records` | read-only; for `sources.json`; can stay empty |
 | Config | `/config` | read-only; `sources.json`, `settings.json`, `corrections.json`; can stay empty |

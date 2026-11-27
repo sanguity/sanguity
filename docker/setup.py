@@ -10,7 +10,7 @@ fictional demo dataset is generated there so there is something to look at. A se
 (see settings.example.json) gives that profile its first settings, once; after that they're changed in the app.
 
 Accounts live in the app's database. The first one is created in the browser with the setup code the app prints
-(docker compose logs app); after that, admins add accounts under Account. To recover a lost password:
+(docker compose logs app); after that, admins add accounts under Settings → Install → Accounts. To recover a lost password:
   docker compose exec app python -m server.manage reset-password USERNAME
 """
 import json, os, secrets, shutil, subprocess, sys
