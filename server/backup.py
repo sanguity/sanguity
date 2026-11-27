@@ -38,6 +38,9 @@ date as it's restored. That folder
 may hold a profile deleted before the restore, or since, so it is deleted RESTORE_KEEP_DAYS (30) after the restore
 (#595): at start and hourly while the app runs (backup_jobs.sweep_replaced), or by an admin's Delete now on Admin ->
 Backups (replaced(), delete_replaced()). No backup takes it: a backup holds only the database, profiles/ and build/.
+The setup build's files are put back with the times they had (the manifest's "times", #1104): a build's version is
+its files' times (profiles.build_version), so a restored profile's saved version still matches it, and the build isn't
+loaded again at the first start, which would give every record a new id.
 The receiver's data goes to the receiver's keys/restore/ folder, the one of its folders the app may write; the
 receiver moves it in when it next starts, and what it had to before-restore-<time>/ in its own folder. Where that
 folder can't be written, it goes to DATA_DIR/watch-restored-<time>/ for the operator to move in by hand, listed and
@@ -426,7 +429,7 @@ def create(dest=None, keep=None, name=None, progress=None):
     now = datetime.datetime.fromtimestamp(made_at(name))
     final = os.path.join(dest, name)
     part = final + ".part"
-    hashes, counts, done = {}, {}, [0]
+    hashes, counts, done, times = {}, {}, [0], {}   # times: the build's files' modification times (#1104)
     watch = _watch_files()   # the receiver's data (#227); none without a receiver
     total = _size(config.DB_PATH) + sum(_size(p) for p in _data_files().values()) + sum(_size(p) for _, p in watch)
 
@@ -453,6 +456,8 @@ def create(dest=None, keep=None, name=None, progress=None):
                     size += len(piece)
                 f.seek(0)
                 hashes[name] = h.hexdigest()
+                if name.startswith("build/"):
+                    times[name] = os.fstat(f.fileno()).st_mtime_ns
                 info = tarfile.TarInfo(name)
                 info.size, info.mtime, info.mode = size, int(now.timestamp()), 0o600
                 tar.addfile(info, f)
@@ -515,7 +520,8 @@ def create(dest=None, keep=None, name=None, progress=None):
                     slot["counts"] = _seal_counts(slot["counts"])   # (#935)
             add("manifest.json", json.dumps({"format": FORMAT, "created": now.isoformat(timespec="seconds"),
                                              "schema": schema, "files": hashes, "counts": _seal_counts(counts),
-                                             **({"watch": slots} if slots else {})}, indent=1).encode())
+                                             **({"watch": slots} if slots else {}),
+                                             **({"times": times} if times else {})}, indent=1).encode())
         os.replace(part, final)
     except BaseException:
         with contextlib.suppress(FileNotFoundError):
@@ -970,13 +976,25 @@ def _put_back(aside, moved, existed, moving, step, e):
             "put back where it was. Free some space if the disk is full, then restore again.")
 
 
+def _unwritable(e):
+    """(#1104) A restore stopped before anything changed, because the data folder can't be written, in words."""
+    return (f"The data folder {config.DATA_DIR} can't be written by this user ({e.strerror or e}): nothing was changed. "
+            "Restore as the user the app runs as (docker compose run --rm --no-deps app python -m server.manage restore "
+            "... does), or give that user the folder, then restore again.")
+
+
 def restore(archive):
     """Replace DATA_DIR's records (its database, profiles and build) with the archive's, keeping today's access (#917:
     _ready), and hand the receiver its data (#227). The backup's database is made ready first, in the folder what it
-    replaces is moved to, so a failure there replaces nothing. Returns (manifest, where the old data went);
+    replaces is moved to, so a failure there replaces nothing. Returns (manifest, where the old data went: None when
+    there was none, a disaster recovery, and no folder is left, #1104);
     manifest["access"] is what _ready says; manifest["watch_restored"] is {"folder", "staged"} when the backup has the
     receiver's data (staged: in the receiver's keys/restore/, which it moves in when it next starts)."""
-    if _app_is_running():
+    try:
+        running = _app_is_running()   # (opens app.lock in DATA_DIR to write)
+    except OSError as e:
+        raise BackupError(_unwritable(e)) from None
+    if running:
         raise BackupError("The app is running. Stop it first (docker compose stop app, or stop the app in TrueNAS), "
                           "then restore with: docker compose run --rm --no-deps app python -m server.manage restore ...")
     manifest = verify(archive)
@@ -987,7 +1005,10 @@ def restore(archive):
     aside = os.path.join(config.DATA_DIR, f"before-restore-{stamp}")
     while os.path.lexists(aside):   # a second restore in the same second (REPLACED's -1)
         aside += "-1"
-    os.makedirs(aside)
+    try:
+        os.makedirs(aside)
+    except OSError as e:
+        raise BackupError(_unwritable(e)) from None
     live, ready = os.path.join(config.DATA_DIR, "sanguity.db"), os.path.join(aside, ".restoring.db")
     try:   # the backup's database, brought up to date and given today's access, before anything is replaced
         with tarfile.open(archive, "r:gz") as tar:
@@ -1014,12 +1035,16 @@ def restore(archive):
             moved.append(n)
         moving = None
         step = "writing the backup's files"
+        times = manifest.get("times") or {}   # (#1104) the build's files' own times; none in a backup made before
         with tarfile.open(archive, "r:gz") as tar:
             for m in tar.getmembers():
                 if m.name in ("manifest.json", "sanguity.db") or m.name.startswith(WATCH + "/"):
                     continue
                 step = f"writing the backup's {m.name.split('/')[0]}/"
-                _extract(tar, m, os.path.join(config.DATA_DIR, *m.name.split("/")))
+                target = os.path.join(config.DATA_DIR, *m.name.split("/"))
+                _extract(tar, m, target)
+                if isinstance(times.get(m.name), int):
+                    os.utime(target, ns=(times[m.name], times[m.name]))
         step = "putting the backup's database in place"
         os.replace(ready, live)
     except BaseException as e:
@@ -1045,6 +1070,9 @@ def restore(archive):
         watch = watch[:-len(".part")]
     if watch:
         manifest["watch_restored"] = {"folder": watch, "staged": staged}
+    if not any(names for _, _, names in os.walk(aside)):   # (#1104) nothing was replaced (disaster recovery): no folder
+        shutil.rmtree(aside, ignore_errors=True)
+        aside = None
     return manifest, aside
 
 
@@ -1221,9 +1249,11 @@ def check(archive, progress=None):
     touches DATA_DIR: the copy is made in the backups folder and its database is opened there; the live database
     is only read, to show its counts beside the backup's. Returns {"ok", "problems": [plain sentences], "created",
     "schema", "files", "counts": {table: {"backup": rows, "expected": rows the manifest says}}, "now": {table: rows
-    now}}. progress(stage, done, total), stage "checksums", "restoring" or "database"."""
+    now}, "changed": whether any of those differs from the backup's, #1104}. progress(stage, done, total), stage
+    "checksums", "restoring" or "database"."""
     say = progress or (lambda *a: None)
-    out = {"ok": False, "problems": [], "created": None, "schema": None, "files": 0, "counts": {}, "now": {}, "watch": None}
+    out = {"ok": False, "problems": [], "created": None, "schema": None, "files": 0, "counts": {}, "now": {}, "changed": False,
+           "watch": None}
 
     def bad(why):
         out["problems"].append(why)
@@ -1324,6 +1354,7 @@ def check(archive, progress=None):
                 ". They were missing when the backup was made: restored, the records they belong to would be without them.")
         _check_watch(work, manifest, out, bad)   # 6. the receiver's data (#227)
         out["now"] = _live_counts()
+        out["changed"] = any(t in out["now"] and out["now"][t] != c["backup"] for t, c in out["counts"].items())   # (#1104)
         out["ok"] = not out["problems"]
         say("database", 1, 1)
         return out

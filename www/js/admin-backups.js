@@ -249,7 +249,7 @@ function drawResult(run) {
     : el("p", {class: "bk-state bad"}, el("b", {}, icon("x"), " Not good. "), `The backup from ${bkWhen(run.file)}: ${run.message} ` +
       "Make a new backup, and don't rely on this one. The temporary copy was deleted."),
     rows.length ? el("div", {class: "tbl-wrap"}, el("table", {class: "tbl bk-counts"},
-      el("caption", {text: "Rows in the backup, and in the live data now (it has changed since)"}),
+      el("caption", {text: "Rows in the backup, and in the live data now" + (res.changed ? " (it has changed since)" : "")}),
       el("thead", {}, el("tr", {}, ...["", "Backup", "Expected", "Now"].map(h => el("th", {text: h})))),
       el("tbody", {}, ...rows.map(([t, w]) => el("tr", {},
         el("th", {scope: "row", text: w[0].toUpperCase() + w.slice(1) + "s"}),

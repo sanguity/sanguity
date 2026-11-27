@@ -191,7 +191,7 @@ and aren't read from the file after that (see `corrections.example.json`).
 | `docker compose run --rm setup rebuild` | Rebuild the data after adding or updating exports |
 | `docker compose exec app python -m server.manage reset-password NAME` | One-time password for a locked-out account |
 | `docker compose exec app python -m server.manage list` | Accounts, profiles and who has which role |
-| `docker compose exec app python -m server.manage remove-user NAME --hand-to OTHER` | Delete an account for good (also under **Settings → Accounts**); profiles only it owned go to OTHER |
+| `docker compose exec app python -m server.manage remove-user NAME --hand-to OTHER` | Delete an account for good (also under **Settings → Install → Accounts**); profiles only it owned go to OTHER |
 | `docker compose exec app python -m server.manage disable-2fa NAME` | Turn off two-factor sign-in for someone who lost their phone and recovery codes |
 | `git pull && docker compose pull --ignore-buildable && docker compose build --pull && docker compose up -d` | Update a checkout install, and the images it runs on |
 
@@ -350,7 +350,7 @@ Blood glucose (#181) comes the same way, from a meter or a continuous glucose mo
 write to Health Connect and Apple Health). Body and activity shows a meter's readings as they are and a CGM's days
 summarised: the average, the lowest and highest reading, the hours with readings (a gap in a sensor's readings shows
 as fewer), and the share of readings below 54, below 70, 70–180 and above 180 mg/dL, the standard published ranges
-(not advice), in mg/dL or mmol/L as chosen under **Settings → Units**. A reading is a CGM's when it says so (Health
+(not advice), in mg/dL or mmol/L as chosen under **Settings → You → Display → Units**. A reading is a CGM's when it says so (Health
 Connect's specimen, interstitial fluid) or when its source sends readings minutes apart (`server/glucose.py`). The
 receiver keeps every reading, encrypted, so a reading sent twice counts once: a CGM adds about 10 MB a year to its
 `watch.db` and 3 MB to `raw/` in `WATCH_DIR` (both in the app's backups, see [Backup and restore](#backup-and-restore)),
@@ -427,7 +427,7 @@ it's on. An install upgraded with a source set up or a connection keeps it on.
 
 Instead of downloading exports, a profile can be connected to a patient portal's FHIR API (SMART on FHIR, Epic's
 first) under **Sources → Portals and health plans**. Each install registers its own app
-with each vendor ([why](docs/connected-sources-oauth.md)), so an admin sets each source up once, under **Settings →
+with each vendor ([why](docs/connected-sources-oauth.md)), so an admin sets each source up once, under **Settings → Install →
 Connected-source apps**:
 
 1. Set `PUBLIC_ORIGINS` in `.env` to the address you open Sanguity at; the return address is that plus
@@ -460,7 +460,7 @@ with the same source keys as the portal's export file would give them, so a file
 once. A source set up before appointments, allergies, fills and immunizations were pulled needs their scopes added
 (the setup screen says which it leaves out); its connections ask to sign in again only when someone turns one on. **What it pulls…** on a connection changes the choice for future pulls; a kind turned off keeps
 what it brought unless you remove it, which is an entry in the import history that undoing puts back. Attachments
-(visit notes, scans, reports) follow rules set for the whole server under Settings → Connected-source apps (fetched automatically or
+(visit notes, scans, reports) follow rules set for the whole server under Settings → Install → Connected-source apps (fetched automatically or
 only when asked, which kinds of file, the largest, and a total per connection), which each connection can change;
 the ones left out are listed with **Fetch anyway**. When a connection stops syncing (several failures in a row,
 access ended, or no successful sync for `Warn when a connection hasn't synced` days, 3 by default), the profile's
@@ -478,7 +478,7 @@ an out-of-pocket payment (with its receipt, and whether an HSA or FSA paid it), 
 height, SpO2, breathing rate, weight), a blood pressure, glucose, temperature or blood oxygen reading taken at home
 (shown beside the phone's on Body and activity, as typed in; typed again for the same time, it replaces the one
 before), a weight or step count measured at home, a workout, or a letter or document with its PDF or picture
-attached. A height goes in Settings → About this person, with its history. Dates and times are picked with the
+attached. A height goes in Settings → This person → About this person, with its history. Dates and times are picked with the
 browser's own date and time pickers; lab rows pasted from a spreadsheet keep the dates it has (`2026-03-04`,
 `4 Mar 2026`, and `03/04/2026` when the other dates settle which is the day), shown in the pickers once read.
 
@@ -512,7 +512,7 @@ start time and title. Like the records, they are encrypted at rest. Milestones a
 
 **Find your hospital, clinic or insurer**, in the connect step of **Sources → Portals and health plans**, searches a
 directory of FHIR endpoints by name, location, city or state, and says whether it can be connected here: one set up on
-this server connects from there; otherwise an admin is taken to **Settings → Connected-source apps** with its FHIR base
+this server connects from there; otherwise an admin is taken to **Settings → Install → Connected-source apps** with its FHIR base
 filled in (each vendor's setup steps are there, in one place), and everyone else is told what to ask their admin
 for. Epic's and Oracle Health's lists can't be shipped with Sanguity, so each server reads its own copy: an admin
 presses **Add the lists** in **Settings → Install → Provider directory**, which names the two hosts it contacts first,
@@ -582,7 +582,7 @@ too. With none set, every name works, as before.
   ([Connected sources](#connected-sources)), the server talks to that vendor only, through an app your install
   registers with it (see [docs/connected-sources-oauth.md](docs/connected-sources-oauth.md)); and the provider
   directory's two lists, from open.epic.com and raw.githubusercontent.com, only when an admin presses Add the lists
-  or Update now, or weekly once an admin turns that on ([Finding your provider](#finding-your-provider)). **Settings →
+  or Update now, or weekly once an admin turns that on ([Finding your provider](#finding-your-provider)). **Settings → Install →
   [Outside connections](www/settings.html)** (`settings.html#outside` on your install, for admins) lists every host the install
   may contact, grouped by purpose, with the scopes asked for and granted and when each was last contacted, for
   the whole install. Every outbound request goes through one gateway
@@ -592,15 +592,15 @@ too. With none set, every name works, as before.
   public breaches are refused, checked against a bundled list on your server, see `server/passwords/`). Password and
   recovery-code hashes are peppered with a server secret that only the encryption key unlocks, so a copied database
   alone can't be used to guess them. Sign-in throttling,
-  and server-side sessions you can see and sign out under **Settings → Sign-in and security**. A sign-in lasts 30 days on an account with
+  and server-side sessions you can see and sign out under **Settings → You → Sign-in and security**. A sign-in lasts 30 days on an account with
   a second factor and 12 hours on one without (`SESSION_DAYS`, `SESSION_HOURS_WITHOUT_2FA` in `.env`); optionally
   sign people out after a period of inactivity too (`SESSION_IDLE_MINUTES`). Admins can shorten these, raise the
   shortest password, shorten the fresh check and a one-time password's days, lower the sign-in throttle's free tries,
   and let only admins create profiles, under **Settings → Install → General → Security**: never more lenient than
   these defaults, and a change that would end sign-ins says how many first.
 - **Two-factor sign-in** with an authenticator app (codes that can't be reused) and one-time recovery codes, under
-  **Settings → Sign-in and security**; admins can require it for everyone (**Settings → Install → General → Security**). With it on, a password may be as short as 8 characters.
-- **Passkeys** (Face ID, Touch ID, Windows Hello, a phone or a security key), under **Settings → Sign-in and security**: sign in with one on
+  **Settings → You → Sign-in and security**; admins can require it for everyone (**Settings → Install → General → Security**). With it on, a password may be as short as 8 characters.
+- **Passkeys** (Face ID, Touch ID, Windows Hello, a phone or a security key), under **Settings → You → Sign-in and security**: sign in with one on
   its own, or use it as the step after the password. They need HTTPS; see [Passkeys](#passkeys).
 - **Every request for records or documents checks the account's role on that profile.** Documents are served
   only through that check, read-only, with scripts blocked; no folder of health data is served directly.
@@ -631,7 +631,7 @@ too. With none set, every name works, as before.
   primary (the one the Overview counts from); they are encrypted like the records. They live in the database (backed up and exported with the profile); a
   `settings.json` from before is moved in once at the upgrade, then deleted (a `settings-before-v18.json` an earlier
   version kept is deleted too).
-- **Start from a condition** (Settings → Dashboard, #186): pick one or more of 79 conditions (type 2 diabetes,
+- **Start from a condition** (Settings → This person → Dashboard, #186): pick one or more of 79 conditions (type 2 diabetes,
   chronic kidney disease, atrial fibrillation, hepatitis C, sickle cell disease, myeloma, lupus, HIV, pregnancy, on
   lithium or warfarin, and more, #187) to preview and fill in the key-lab tiles and home readings commonly followed for them,
   as a published guideline lists them (named and linked), and if you like a Labs view per condition and the visit
@@ -640,11 +640,11 @@ too. With none set, every name works, as before.
   names is offered (never from allergies). [docs/condition-presets.md](docs/condition-presets.md) lists them by body system,
   the ones left out and why, and how to add one.
 - **Units:** each person picks, for themself, mg/dL or mmol/L for lab tests, lb or kg, °F or °C, and cm or feet and
-  inches for heights (**Settings → Units**). A value is converted only when the conversion is exact for that test (`server/units.py` lists them:
+  inches for heights (**Settings → You → Display → Units**). A value is converted only when the conversion is exact for that test (`server/units.py` lists them:
   glucose, creatinine, BUN, calcium and magnesium by their molar mass; hemoglobin, MCHC, albumin and total protein by a
   power of ten); every other test stays in the unit its lab reported. Reference ranges convert with the values, and
   the value as reported is shown beside every converted one.
-- **About this person:** under **Settings → About this person**, a profile's birth date, the sex labs base reference
+- **About this person:** under **Settings → This person → About this person**, a profile's birth date, the sex labs base reference
   ranges on (female, male or not set; not gender identity, which Sanguity doesn't ask for) and a dated height history,
   typed in cm or in feet and inches and shown in your units. Heights a clinic recorded in the records are shown beside
   it, and added to it only when you say. Each is optional and encrypted; owners and editors change them, everyone the
@@ -656,14 +656,14 @@ too. With none set, every name works, as before.
   and sex (the WHO's to 2 years, the CDC's from 2 to 20), with each measurement's percentile; a due date, for a baby
   born early, gives the corrected age before 2. Where the tables come from and their licences:
   [docs/growth-charts.md](docs/growth-charts.md).
-- **Targets of your own (#234):** under **Settings → About this person**, owners and editors can type in a target for
+- **Targets of your own (#234):** under **Settings → This person → About this person**, owners and editors can type in a target for
   each reading taken at home (blood pressure, glucose meter readings, CGM time in range, body temperature, blood
   oxygen, weight), as the person's care team gave it, with who set it and when. Body and activity draws it on the
   measure's chart, marks readings at home outside it ▲ or ▼ with words, and says how many in the period were; CGM days
   show the time in the person's own range beside the standard published one. A visit summary or share link includes
   them only when ticked. Sanguity never suggests a target; with none entered nothing changes.
 - **Reference ranges from settings:** some results come without a range (typed in, a spreadsheet, some portals).
-  Under **Settings → Reference ranges** you can give a lab, in a stated unit, a low and high of your own, for anyone
+  Under **Settings → This person → Labs and ranges → Reference ranges** you can give a lab, in a stated unit, a low and high of your own, for anyone
   or for female or male, and for an age band (by the birth date in About this person; the age on each result's day is used). They're used
   only for a result with no range and no flag on its report, never instead of one, and only in the same unit
   (nothing is converted). Wherever one colours a result (Labs' charts and heatmap, the Overview, the visit summary,
@@ -690,15 +690,15 @@ too. With none set, every name works, as before.
   average, highest and the readings), glucose by day (a CGM's time in the standard published ranges, labelled as
   such; each reading typed in at home with its meal note, #232), blood oxygen (the watch's days and each reading
   typed in), respiratory rate, VO2 max, immunizations, ECGs and BMI (for a child, the growth charts'
-  percentiles). A share link offers the same, unticked; never cycle tracking. **Settings → Overview → Home
+  percentiles). A share link offers the same, unticked; never cycle tracking. **Settings → This person → Dashboard → Overview tiles → Home
   readings** adds blood pressure, glucose and temperature tiles after the key labs, each the latest reading with its
   date and where it came from.
-- **Delete profile:** an owner can delete a profile and everything in it under **Settings → Rename or delete**, after
+- **Delete profile:** an owner can delete a profile and everything in it under **Settings → This person → Rename or delete**, after
   typing its name, the watch receiver's copy of its phone data included; the original exports and older backups are
   left alone.
 - **Activity log:** each profile's owners can see who opened its records and documents, and who shared, renamed or
-  changed it, and when (**Sharing → Activity**); admins see account changes (**Settings > Install activity**). Entries are kept for a year, or
-  what an admin sets under **Settings → General → Backups and logging** (30 days to 10 years; fewer days asks first,
+  changed it, and when (**Sharing → Activity**); admins see account changes (**Settings → Install → Install activity**). Entries are kept for a year, or
+  what an admin sets under **Settings → Install → General → Backups and logging** (30 days to 10 years; fewer days asks first,
   with the count of entries the next daily clean-up deletes), unless `ACTIVITY_DAYS` in `.env` sets it there.
 - **Encrypted at rest** (AES-256-GCM): records, documents, settings and the sensitive database fields are
   unreadable without the key in `auth/data_key`, so a copied data folder or backup gives nothing away. See
@@ -745,11 +745,11 @@ Sanguity installs to a phone's home screen with its own icon: **Add to Home Scre
 iPhone, or **Install app** in Chrome's menu on Android. Like passkeys, this needs **HTTPS** (or `http://localhost`):
 browsers don't install from, or run the offline part at, a plain-HTTP address. The app offers it too: an
 **Install app** button in the header when the browser can install it (Chrome, Edge, Samsung Internet), and an
-**Install on this device** card under **Settings > This device** with the steps for iPhone and iPad, or a link to your HTTPS
+**Install on this device** card under **Settings → You → This device** with the steps for iPhone and iPad, or a link to your HTTPS
 address (from `PUBLIC_ORIGINS`) when the page was opened over plain HTTP.
 
 Installed, it opens without a connection, but by default shows no records then: the app's pages are kept on the
-phone, its records aren't. **Settings > This device > Offline records on this device** keeps a copy of the last profile you opened,
+phone, its records aren't. **Settings → You → This device → Offline records on this device** keeps a copy of the last profile you opened,
 read-only offline with the time it was loaded; a record's details (a result's values, a claim's lines) are in it once
 you've opened that record on the phone. That copy is outside Sanguity's encryption at rest, so anyone who can
 use the phone unlocked could read it. It never includes documents or other profiles, and it's deleted when you sign
@@ -768,7 +768,7 @@ Health records are worth more than uptime: keep copies off this machine.
 | Your original exports | `RECORDS_DIR` | copy them; Sanguity only reads them |
 | Secrets and configuration | `auth/`, `.env`, `sources.json`, `corrections.json` (settings are in the database) | copy them; keep `auth/data_key` somewhere other than the backups (see below) |
 
-**In the app** (**Settings → Backups**, for admins): when the newest backup was made, its size and the folder it went to, with a
+**In the app** (**Settings → Install → Backups**, for admins): when the newest backup was made, its size and the folder it went to, with a
 warning when it's late (on every Install group, beside Backups in the sidebar and beside Settings in your menu). **Back up now** makes one in the
 background. The schedule (off, daily or weekly) has the app make one when the newest is a day or a week old, and
 keeps the newest N, deleting older `sanguity-backup-*.tar.gz` files from the folder and nothing else. **Check a
@@ -783,7 +783,7 @@ is written without them, says so, and Check a backup reports it.
 copied as the receiver last saved it, still encrypted) and every upload it archived (`raw/`), so readings that came
 after its last save are there too, and folded in when it starts after a restore. Its summaries (`public/`) and
 `keys/` aren't copied: they're made again from the database and the app's. The app reads `WATCH_DIR` read-only for
-this and never writes it, except `keys/`; **Settings → Backups** says what the next backup takes, and when the receiver
+this and never writes it, except `keys/`; **Settings → Install → Backups** says what the next backup takes, and when the receiver
 last saved. An install whose compose file is older doesn't show the app the receiver's folder: add the read-only
 line to the `app` service (`- ${WATCH_DIR:-./watch-data}:/srv/watch-store:ro` and `SANGUITY_WATCH_STORE: /srv/watch-store`
 in `compose.yaml`; `- ${WATCH_DIR:-./watch-data}:/watch:ro` in place of the `/watch/public` line in `compose.release.yaml`),
@@ -791,7 +791,7 @@ or copy `WATCH_DIR`'s `watch.db`, `profiles/` and `raw/` yourself. Installs with
 nothing changes. A backup can't be rewritten: what's deleted later, cycle records included (#183), stays in the
 backups made before until they're deleted.
 
-Or run the backup from cron on the host (on TrueNAS: **System > Advanced > Cron Jobs**); Settings → Backups shows these
+Or run the backup from cron on the host (on TrueNAS: **System > Advanced > Cron Jobs**); Settings → Install → Backups shows these
 too, and warns when the newest is over a week old:
 
 ```sh
@@ -800,11 +800,11 @@ too, and warns when the newest is over a week old:
 
 ZFS snapshots of these folders are fine too: SQLite recovers from a snapshot as from a power cut. The archive is
 still worth having, since it can be checked (`python -m server.manage verify FILE`, or `check FILE` to restore it
-into a temporary folder as Settings → Backups does) and copied anywhere.
+into a temporary folder as Settings → Install → Backups does) and copied anywhere.
 
-**Restore** with the app stopped; the data it replaces is moved to `DATA_DIR/before-restore-<time>/`, and a backup
+**Restore** with the app stopped; the data it replaces is moved to `DATA_DIR/before-restore-<time>/` (none is made when there was nothing to replace), and a backup
 from an older version is upgraded when the app starts. That folder may hold profiles deleted since, so the app deletes
-it 30 days after the restore (`RESTORE_KEEP_DAYS` on the app), and **Settings → Backups** lists it with a **Delete now**;
+it 30 days after the restore (`RESTORE_KEEP_DAYS` on the app), and **Settings → Install → Backups** lists it with a **Delete now**;
 no backup includes it:
 
 ```sh
@@ -820,9 +820,9 @@ source disconnected after the backup was made stays so. A source still connected
 and one connected since pulls from the start, with its review. Each profile's cycle tracking stays as it is now too,
 on or off: where it's off now, or its cycle records were deleted after the backup was made, the cycle records the
 backup holds aren't brought back (the watch receiver deletes its copy when it starts). So do the server's own
-settings saved in the app: those on **Settings → General**, the sync defaults, any other install-wide setting, and the
+settings saved in the app: those on **Settings → Install → General**, the sync defaults, any other install-wide setting, and the
 backup schedule and how many backups it keeps. Everyone is signed out. A profile deleted since comes back with nobody given access to it (an admin gives it an
-owner under **Settings → Accounts**, Profiles without an owner), and one made since isn't in the backup (its records are
+owner under **Settings → Install → Accounts**, Profiles without an owner), and one made since isn't in the backup (its records are
 in the `before-restore-<time>/` folder); the restore names both. With no database to replace (a new machine, disaster
 recovery), one that can't be read (damaged: it's kept with what was replaced) or one of another install, all of it
 comes from the backup as it was then (the server's settings too, which the restore names), and the restore says so: check the accounts and each profile's sharing before
@@ -834,7 +834,7 @@ the receiver puts it back when it starts, moving what it had to `WATCH_DIR/befor
 was left running, `docker compose restart receiver`. On the all-in-one container (Unraid), stop it, run the restore
 with the same folders, and start it again. A backup from before #227 has no phone and watch data, and the receiver's
 is left as it is. Where the app can't write `WATCH_DIR/keys/`, the restore leaves the phone and watch data in
-`DATA_DIR/watch-restored-<time>/` and says how to move it in by hand; **Settings → Backups** lists it beside the
+`DATA_DIR/watch-restored-<time>/` and says how to move it in by hand; **Settings → Install → Backups** lists it beside the
 `before-restore-<time>/` folders, and the app deletes it 30 days after the restore too, or sooner with **Delete now**
 (the backup still has it).
 
@@ -944,7 +944,7 @@ build.py            Builds a profile's data.json from the exports listed in sour
 lab-aliases.json    Canonical lab names, LOINC codes and other spellings that map onto them
 lab-test-pages.json "What is this test?": a plain-language page about each lab, by LOINC code or name (CONTRIBUTING.md
                     says how to add one)
-condition-presets.json  Settings → Dashboard's presets by condition: labs by LOINC code, home readings, a guideline
+condition-presets.json  Settings → This person → Dashboard's presets by condition: labs by LOINC code, home readings, a guideline
                     each (docs/condition-presets.md says how to add one)
 nginx.conf          Web server: the app's pages and security headers; passes /api/ to the app
 watch/receiver.py   phone uploads (Life Dashboard / Health Connect, Health Auto Export / Apple Health): archives, folds into SQLite, writes public/daily.json

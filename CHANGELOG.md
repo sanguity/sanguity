@@ -3893,6 +3893,14 @@ Everything on `main` so far; it becomes the first tagged release.
   as its own test; adding or changing one can move the results already saved too, charted with the test without
   changing the records, and Remove leaves them where they are; each has an Undo. Keep separate at a review, beside a
   test it offered, is remembered like a match. Export everything carries the matches and the moved results.
+- **A restore keeps every record's id** (#1104): a backup now keeps the setup build's files' own times and a restore
+  puts them back, so the app no longer loads the build again at its first start after a restore, which gave every
+  record a new id and listed a Setup build import at the restore's time (a backup made before this still does, once).
+  A disaster recovery (no database to restore over) says before you type yes that everything is the backup's, not
+  that today's accounts are kept, and leaves no empty before-restore folder nor says data was replaced. A data folder
+  the restore can't write gets a plain message, nothing changed, not a Python traceback. Check a backup's rows table
+  says the live data has changed since only when a count differs. The README names every Settings page with its part
+  (Settings → Install → Backups, → You → Sign-in and security, → This person → About this person, and so on).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

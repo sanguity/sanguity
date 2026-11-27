@@ -244,6 +244,18 @@ class Backups(unittest.TestCase):
             manage.run(["check", os.path.join(FOLDER, name)])
         self.assertTrue(out.getvalue().startswith("Good: "), out.getvalue())
         self.assertEqual(live_state(), before)
+        # (#1104) the rows table says the live data has changed since only when a count differs
+        self.assertIs(res["changed"], False, (res["counts"], res["now"]))
+        db = dbm.connect()
+        try:
+            uid = accounts.create(db, "temp-1104", password="a fictional passphrase, long enough")[0]
+            got = backup.check(os.path.join(FOLDER, name))
+            db.execute("DELETE FROM users WHERE id=?", (uid,))
+        finally:
+            db.close()
+        self.assertTrue(got["ok"], got)
+        self.assertIs(got["changed"], True)
+        self.assertEqual(got["now"]["users"], got["counts"]["users"]["backup"] + 1)
 
     def test_3_check_damaged_backups(self):
         name = self.backup_now()["file"]
@@ -1533,6 +1545,74 @@ class Backups(unittest.TestCase):
             backup_jobs.set_schedule(db, "off", backup_jobs.KEEP_DEFAULT)
         finally:
             db.close()
+
+    def test_22_a_restore_keeps_record_ids_and_says_what_a_disaster_recovery_did(self):   # #1104
+        """The setup build's files come back with the times they had, so the build isn't loaded again at the first
+        start and every record keeps its id (with them the edits, lab-name matches and cost marks made on them). A
+        disaster recovery (no database here) says all of it is the backup's, not that today's accounts are kept; it
+        leaves no empty before-restore folder (none listed under Backups) and doesn't say data was replaced."""
+        src, build = os.path.join(TMP, "linked-1104"), os.path.join(TMP, "linked-1104", "build")
+        shutil.copytree(FIXTURE, build)
+        ids = lambda con: ([tuple(r) for r in con.execute("SELECT id, origin FROM imports ORDER BY id")],   # noqa: E731
+                           [tuple(r) for r in con.execute("SELECT id, import_id FROM events ORDER BY id")])
+        with mock.patch.multiple(config, DATA_DIR=src, DB_PATH=os.path.join(src, "sanguity.db"), BUILD_DIR=build,
+                                 WATCH_STORE=os.path.join(TMP, "no-store-1104")):
+            dbm.init()
+            db = dbm.connect()
+            try:
+                prof.create_profile(db, "Built (fictional)", linked_build=True)
+                self.assertEqual(prof.sync_build(db), {})
+                before = ids(db)
+            finally:
+                db.close()
+            path = backup.create(os.path.join(TMP, "backups-1104"))
+        self.assertTrue(before[1] and before[0][0][1] == "build", before)
+        folder = os.path.join(TMP, "restored-1104")
+        said, con = self.restore_into(folder, path)
+        with mock.patch.multiple(config, DATA_DIR=folder, DB_PATH=os.path.join(folder, "sanguity.db"),
+                                 BUILD_DIR=os.path.join(folder, "build")):
+            db = dbm.connect()
+            try:
+                self.assertEqual(prof.sync_build(db), {})   # what the app's first start does
+                self.assertEqual(ids(db), before, "the build was loaded again: every record has a new id")
+            finally:
+                db.close()
+            self.assertEqual(backup.replaced(), [])
+        self.assertEqual([n for n in os.listdir(folder) if n.startswith("before-restore-")], [])
+        self.assertIn(f"There's no database in {folder}, so restoring puts all of the backup's in place", said)
+        self.assertNotIn("keeping today's", said)
+        self.assertIn("Restored. There was no data here to replace, so nothing was moved aside.", said)
+        self.assertNotIn("The data it replaced", said)
+
+        said, con = self.restore_into(os.path.join(TMP, "restored-1104-today"), path, today=True)   # over today's
+        self.assertIn("keeping today's", said)
+        self.assertIn("Restored. The data it replaced is in ", said)
+
+    def test_23_a_restore_into_a_folder_it_cant_write(self):   # #1104
+        """A data folder this user can't write (its app.lock too): a plain message, not a traceback, and nothing changed."""
+        if os.geteuid() == 0:
+            self.skipTest("root writes any folder")
+        path = backup.create(os.path.join(TMP, "backups-1104w"))
+        for today in (False, True):
+            folder = os.path.join(TMP, f"unwritable-1104-{today}")
+            os.makedirs(folder)
+            if today:   # today's database, and the lock the app takes, as another user left them
+                shutil.copy(os.path.join(DATA, "sanguity.db"), folder)
+                with open(os.path.join(folder, "app.lock"), "w"):
+                    pass
+                os.chmod(os.path.join(folder, "app.lock"), 0o444)
+            before = sorted(os.listdir(folder))
+            os.chmod(folder, 0o555)
+            self.addCleanup(os.chmod, folder, 0o755)
+            running = {} if today else {"_app_is_running": mock.Mock(return_value=False)}
+            with mock.patch.multiple(backup, LOCK_FILE=os.path.join(folder, "app.lock"), **running), \
+                    mock.patch.multiple(config, DATA_DIR=folder, DB_PATH=os.path.join(folder, "sanguity.db")), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                with self.assertRaises(SystemExit) as cm:
+                    manage.run(["restore", path, "--yes"])
+            said = str(cm.exception.code)
+            self.assertIn(f"The data folder {folder} can't be written by this user (Permission denied): nothing was changed.", said)
+            self.assertEqual(sorted(os.listdir(folder)), before, today)
 
     def test_21b_a_move_aside_cut_short_keeps_both_halves(self):   # #1055, its closing recheck
         """A move of profiles/ to another disk copies, then deletes: cut short between the two, part of today's profiles/
