@@ -83,7 +83,7 @@ function renderMedications() {
   const box = $("#view-medications");
   if (!MEDS.length) {   // (#199) what would be here, and a way to start: one of your own (medmine.js, #1092)
     box.replaceChildren(...present(emptyState("Medications appear here from the records, and those you add: what's listed now, what was before, and the doses logged.",
-      canEdit() ? {onclick: () => medEditForm(null), text: "Add a medication"} : null)));
+      canEdit() ? {onclick: () => medEditForm(null), text: "Add a medication"} : null), medHiddenCard()));
     return;
   }
   const cur = MEDS.filter(mrCurrent), past = MEDS.filter(m => !mrCurrent(m)).sort((a, b) => medTo(b) - medTo(a));
@@ -117,7 +117,7 @@ function renderMedications() {
         "Doses logged: ● taken, ◆ taken late, ○ skipped.") : null),
     rows.length ? [el("p", {class: "hint", text: "Point at a mark for what it is; click it to open it."}), svg]
       : el("p", {class: "hint", text: "No medications in this period."}));
-  box.replaceChildren(...[today, now, before, lane].filter(Boolean),
+  box.replaceChildren(...[today, now, before, medHiddenCard(), lane].filter(Boolean),   // Hidden (medmine.js, #1093)
     el("p", {class: "hint", text: "What the records list, in order: a listing's dates may not be when a medication started or ended. This isn't medical advice."}));
   if (rows.length) drawMedLane(svg, rows, a, b);
 }
