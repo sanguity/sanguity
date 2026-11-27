@@ -563,9 +563,12 @@ sources' return address, come from the same public address.
 **The names it answers at.** With a public address set, Sanguity answers only at its names, so a web page elsewhere
 can't point a name of its own at your server and sign-in guess from your browser (DNS rebinding): an IP address (any
 port), `localhost`, a name without a dot, names ending `.local`, `.lan`, `.home`, `.home.arpa` or `.internal`, and the
-public addresses' names. Any other name, a Tailscale `*.ts.net` one included, is refused with "This address isn't one
-of this server's" and logged (`host.refused`): add its address to the public addresses. A reverse proxy that sends
-on another name than the browser's must have that name listed too. With none set, every name works, as before.
+public addresses' names. Any other name is refused with "This address isn't one of this server's" and logged
+(`host.refused`): a home-network name on a domain of your own (split DNS, `nas.example.com`) and a Tailscale
+`*.ts.net` name included. To open Sanguity at one, add its address, as you type it in the browser
+(`https://nas.example.com:8443`), to the public addresses: **Settings → Install → General → Host**, or
+`PUBLIC_ORIGINS` in `.env`. A reverse proxy that sends on another name than the browser's must have that name listed
+too. With none set, every name works, as before.
 
 ## Privacy and security
 

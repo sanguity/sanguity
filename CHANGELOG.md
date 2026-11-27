@@ -3879,6 +3879,10 @@ Everything on `main` so far; it becomes the first tagged release.
   and the TrueNAS, Unraid and CasaOS notes pointed to the old Admin and Account pages; they name Settings → Install →
   Accounts, General or Backups, and Sharing → Export everything. A phone's way back in Sources says "Sources
   overview", not a second "Overview" beside the bottom bar's.
+- **General → Host says which names it answers at** (#1086): its ⓘ and the README name them once public addresses are
+  set, say that a home-network name on a domain of your own (split DNS) or a Tailscale name is refused until it's
+  listed, and how to list it; an IP address written with a final dot (`192.168.1.5.`) was refused, and is answered
+  like any other.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
