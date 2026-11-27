@@ -1615,6 +1615,9 @@ Everything on `main` so far; it becomes the first tagged release.
   went back to where it was, a drag past the records' end then a scroll didn't scroll at all, and on a phone a pan
   then a swipe lost most of it. Only what grows or shrinks over the chart is made up for now, by the chart's place in
   the page, so a scroll of yours stays.
+- **A chart dragged past its records' end no longer jumps as it springs back** (#985): its last frame drew the view
+  for its new dates a frame before its charts were drawn, so for a frame the charts below the first were 45 px lower
+  (more with larger text, the page scrolled up at its foot) and back, a visible jump on a slow phone.
 - **Body and Labs on a phone: the charts start on the first screen** (#615): the top took three or four rows before
   any record, and Labs put its whole list of labs above the charts. On a phone the period now sits in one row with
   Labs' Chart | Heatmap and **Show**, which opens what the charts also show, the legend and the ⓘ under the row.

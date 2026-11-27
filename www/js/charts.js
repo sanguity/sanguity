@@ -20,7 +20,7 @@
    person's can't be */
 function panZoom(box, {plot, span, get, set, draw, end, reset, start, data, twin, minSpan = 2 * DAY}) {
   const ptrs = new Map(); let drag = null, pinch = null, raf = 0, dirty = false, finT = 0, justDragged = false;
-  let lim = null, want = null, anim = 0, rest = null;   // the gesture's limits, the window it asks for, the spring back
+  let lim = null, want = null, anim = 0, endT = 0, rest = null;   // the gesture's limits, the window it asks for, the spring back and its end
   let held = null;   // the plot under the gesture and its place in the page as last kept (twin)
   const pageY = q => q.getBoundingClientRect().top + scrollY, root = document.documentElement;
   const hold = p => { if (twin && !held && p?.isConnected) { held = {p, y: pageY(p)}; root.classList.add("ck-held"); } };
@@ -67,12 +67,16 @@ function panZoom(box, {plot, span, get, set, draw, end, reset, start, data, twin
       const [a, b] = get(); if (Math.abs(a - was[0]) + Math.abs(b - was[1]) > 1) { letGo(); return anim = 0; }   // a period picked meanwhile: that one stays
       const k = dur ? Math.min(1, (now - t0) / dur) : 1, e = 1 - (1 - k) ** 3;
       set(...(was = [from[0] + (rest[0] - from[0]) * e, from[1] + (rest[1] - from[1]) * e])); drawn();
-      if (k < 1) anim = requestAnimationFrame(step); else { anim = 0; ended(); }
+      if (k < 1) anim = requestAnimationFrame(step);
+      else {   // the full render in a task of its own, not in this frame: charts are drawn in the frame after the one they're
+        // made in (trends.js), so made in this one they were painted a frame undrawn, shorter, the plot 45 px off and back (#985)
+        anim = 0; endT = setTimeout(() => { endT = 0; const [a, b] = get(); if (Math.abs(a - was[0]) + Math.abs(b - was[1]) > 1) letGo(); else ended(); });
+      }
     };
     anim = requestAnimationFrame(step);
   };
   // a new gesture while it springs back starts from where it rests (the full render comes when that one ends)
-  const settle = () => { if (!anim) return; cancelAnimationFrame(anim); anim = 0; set(...rest); dirty = true; };
+  const settle = () => { if (endT) { clearTimeout(endT); endT = 0; dirty = true; } if (!anim) return; cancelAnimationFrame(anim); anim = 0; set(...rest); dirty = true; };
   box.addEventListener("pointerdown", ev => {
     const p = plot(ev); if (!p || (ev.pointerType === "mouse" && ev.button !== 0)) return;
     settle(); ptrs.set(ev.pointerId, ev.clientX);
@@ -108,7 +112,7 @@ function panZoom(box, {plot, span, get, set, draw, end, reset, start, data, twin
   };
   box.addEventListener("pointerup", up); box.addEventListener("pointercancel", up);
   box.addEventListener("click", ev => { if (justDragged) { ev.stopPropagation(); ev.preventDefault(); } }, true);
-  box.addEventListener("dblclick", ev => { if (plot(ev)) { ev.preventDefault(); clearTimeout(finT); cancelAnimationFrame(anim); anim = 0; dirty = false; lim = want = null; letGo(); reset(); } });
+  box.addEventListener("dblclick", ev => { if (plot(ev)) { ev.preventDefault(); clearTimeout(finT); clearTimeout(endT); cancelAnimationFrame(anim); anim = endT = 0; dirty = false; lim = want = null; letGo(); reset(); } });
   box.addEventListener("wheel", ev => {
     const p = plot(ev); if (!p) return;
     settle(); hold(p);
