@@ -8,9 +8,9 @@
 **Your medical records, insurance claims and wearable data on one private timeline, on your own server.**
 
 Sanguity brings together what your patient portals, insurers, phone and watch know about you: lab trends, visits,
-hospital stays, medications, documents and what your care actually cost. Upload the exports you can download, or
-connect a portal or health plan once and let new records arrive by themselves. It runs on hardware you control,
-encrypts what it keeps, and talks to no one you haven't connected.
+hospital stays, medications, documents and what your care actually cost. Upload the exports you can download, type
+records in, and let your phone send its readings. It runs on hardware you control, encrypts what it keeps, and talks
+to no one you haven't connected.
 
 ![Overview: key lab tiles with sparklines, watch and scale summaries, problems and upcoming visits](docs/screenshots/overview.png)
 
@@ -54,7 +54,7 @@ on the **Settings** page, appear on every chart and as "since" periods.
   more ([sources below](#supported-sources-today)). Each import is previewed before it's saved, can be undone from
   the import history, and records the same result from two sources once.
 - **Connect** a patient portal (SMART on FHIR, Epic first) or a health plan's patient-access API once; new records
-  then come in on a schedule ([Connected sources](#connected-sources)).
+  then come in on a schedule. Experimental and off by default ([Connected sources](#connected-sources)).
 - **Type records in** by hand, paste a SMART Health Link, and **correct** anything an import got wrong; corrections
   survive re-imports.
 - **Phones:** watch and smart-scale data from Android (Health Connect, via Life Dashboard Companion) or iPhone
@@ -79,7 +79,7 @@ on the **Settings** page, appear on every chart and as "since" periods.
 **Finding your way.** The same bar across the top of every page: the **profile menu** (the profile shown, by name and
 your role; switch profile; its Sources and Sharing; New profile), your records' tabs (those that don't fit under
 **More**, which ends with Edit tabs…), **Add** (today: log a dose, a journal entry, a home reading; records: upload
-files, connect a portal or plan, type records in, paste a Health Link) and your menu (**Settings**, getting started,
+files, connect a portal or plan while connected sources are on, type records in, paste a Health Link) and your menu (**Settings**, getting started,
 light or dark, log out). The tab shown and its view are in the address (`#timeline`, `#labs`, `#labs-heatmap`, `#costs-paid`...), so Back moves between tabs and views and a
 copied link opens the same one. **Settings** is one page with a sidebar in three parts, one group shown at a time, with
 **Find in Settings** to search them all (finding nothing, it offers to search everywhere):
@@ -169,8 +169,10 @@ hour or more on the Pi itself (a Pi with 1 GB of memory may need swap). Later bu
 Open `http://<this machine>:8730` and enter the setup code to create the first account, and whose records you'll
 keep. It becomes the admin and owns the records already on the server; until you add your own, that is the
 fictional demo. With no records on the server yet, the **Getting started** guide opens next, at its first records:
-it brings them in and, if you like, connects a phone; each step is ticked as it's done, every one can be skipped, and
-the guide stays in your menu. Add accounts for
+it brings them in (an upload, or typed in) and, if you like, connects a phone; each step is ticked as it's done, every
+one can be skipped, and the guide stays in your menu. Connected sources (signing in to a portal or health plan) are
+experimental and off by default: an admin turns them on under **Settings → Install → General → Experimental**
+([Connected sources](#connected-sources)). Add accounts for
 other people under **Settings → Install → Accounts** (for admins), then share profiles with them under **Sharing → People**.
 
 **Your records:** put each export in its own folder under `RECORDS_DIR` (default `./records`), copy
@@ -415,6 +417,13 @@ machine's memory; in the TrueNAS app it's half the app's memory limit (1 GiB of 
 anything is decrypted.
 
 ### Connected sources
+
+**Experimental, not recommended yet, and off by default** (#1096): registering an app with each vendor and copying its
+IDs back is a lot to ask for now, so uploads and the phone are the ways in. An admin turns connected sources on under
+**Settings → Install → General → Experimental** (or with `CONNECTED_SOURCES=1` in `.env`); off, none of this section
+is shown (Sources' portals, Find your provider, Settings' Connected-source apps and Provider directory), nothing
+syncs and nobody is contacted for it, and connections made before and what they brought are kept, syncing again once
+it's on. An install upgraded with a source set up or a connection keeps it on.
 
 Instead of downloading exports, a profile can be connected to a patient portal's FHIR API (SMART on FHIR, Epic's
 first) under **Sources → Portals and health plans**. Each install registers its own app

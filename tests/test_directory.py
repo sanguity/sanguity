@@ -14,6 +14,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FIX = os.path.join(ROOT, "tests", "fixtures", "directory")
 TMP = tempfile.mkdtemp(prefix="sanguity-directory-test-")
 LOCAL = os.path.join(TMP, "data", "directory", "providers.json.gz")
+os.environ["CONNECTED_SOURCES"] = "1"   # connected sources on, as before #1096 made them a switch, off by default
 os.environ.update(SANGUITY_DATA=os.path.join(TMP, "data"), SANGUITY_RECORDS=os.path.join(TMP, "records"),
                   SANGUITY_BUILD=os.path.join(TMP, "no-build"), SANGUITY_WATCH_FILE=os.path.join(TMP, "watch", "daily.json"),
                   SANGUITY_LEGACY_WWW=os.path.join(TMP, "www"), PASSWORD_MIN_LENGTH="15",

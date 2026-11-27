@@ -3868,6 +3868,12 @@ Everything on `main` so far; it becomes the first tagged release.
   the schedule (from Apple Health, or logged in the drawer) goes to the scheduled dose within two hours of it, else
   under Also. A logged dose keeps its amount and unit, which the visit summary lists too. The week, the drawer and
   the visit summary count the schedule's doses so far: "9 of 14 scheduled doses taken".
+- **Connected sources are experimental and off by default** (#1096): an admin turns them on in Settings → Install →
+  General → Experimental (or `CONNECTED_SOURCES=1`). Off, nothing of them is shown (Sources' portals and Find your
+  provider, the Add menu's and the guide's Connect, Install's Connected-source apps and Provider directory), their
+  routes are refused, nothing syncs, the directory isn't updated and nobody is contacted for them; connections and what
+  they brought are kept and sync again once they're on. An install upgraded with a source set up or a connection keeps
+  them on.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

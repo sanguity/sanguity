@@ -31,7 +31,7 @@ Only the host is kept: never the path, query, token, key or passcode.
 """
 import json
 
-from . import activity, crypto, db as dbm, net
+from . import activity, crypto, db as dbm, net, settings
 
 ACTION = "outside"
 SOURCE = "Connected source: "                        # + sign-in, sync, disconnect, test
@@ -70,7 +70,7 @@ def _recorder(db, pid, who, ip, actor=None):
 def _source_hosts(db, source_id, issuer_only=False):
     from . import connections, smart
     r = db.execute("SELECT * FROM smart_clients WHERE id=?", (source_id,)).fetchone() if source_id is not None else None
-    if not r:
+    if not r or not settings.connected_sources():   # (#1096) none while connected sources are off
         return set()
     return {smart.host_of(r["issuer"])} if issuer_only else connections.hosts_for(r)
 
@@ -84,7 +84,7 @@ def _connection_hosts(db, connection_id):
     removed, or moved before #926) that address's host alone."""
     from . import connections, smart
     c = db.execute("SELECT state, issuer, client_id FROM connections WHERE id=?", (connection_id,)).fetchone()
-    if not c or c["state"] == "disconnected":
+    if not c or c["state"] == "disconnected" or not settings.connected_sources():
         return set()
     r = db.execute("SELECT * FROM smart_clients WHERE id=?", (c["client_id"],)).fetchone() if c["client_id"] is not None else None
     return connections.hosts_for(r) if connections.same_server(r, c) else {smart.host_of(c["issuer"])}
@@ -105,7 +105,7 @@ def directory_hosts():
 
 
 def for_directory(db, who=None, ip=None, actor=None):
-    return net.Permit(DIRECTORY, directory_hosts, _recorder(db, None, who, ip, actor))
+    return net.Permit(DIRECTORY, lambda: directory_hosts() if settings.connected_sources() else set(), _recorder(db, None, who, ip, actor))
 
 
 # ---------------------------------------------------------------- the view
@@ -138,14 +138,17 @@ def _last(contacts, hosts, pid=...):
 
 def view(db, s):
     """Every host this install may contact, as s may see it, grouped by purpose, with when each was last contacted.
-    Admins see the whole install; owners and editors their profiles' entries; nothing here is a health record."""
+    Admins see the whole install; owners and editors their profiles' entries; nothing here is a health record. While
+    connected sources are off (#1096), nothing of theirs: no sources, no directory, none contacted before."""
     from . import connections, smart
-    admin = bool(s["is_admin"])
+    admin, on = bool(s["is_admin"]), settings.connected_sources()
     profiles = _profiles(db, s)
-    contacts = _contacts(db, profiles, admin)
+    contacts = [c for c in _contacts(db, profiles, admin) if on or not (c["purpose"].startswith(SOURCE) or c["purpose"] == DIRECTORY)]
     live = [c for c in db.execute("SELECT * FROM connections WHERE state != 'disconnected' ORDER BY id")
-            if c["profile_id"] in profiles]
-    if admin:
+            if on and c["profile_id"] in profiles]
+    if not on:
+        clients = []
+    elif admin:
         clients = db.execute("SELECT * FROM smart_clients ORDER BY name, id").fetchall()
     else:
         ids = sorted({c["client_id"] for c in live if c["client_id"] is not None})
@@ -176,7 +179,7 @@ def view(db, s):
             sources.append(entry(c["source"], None, c["issuer"], {}, {smart.host_of(c["issuer"])}, None, None, [c], None))
     allowed = sorted({h for x in sources for h in x["may_contact"]})
     pick = lambda *ps: [c for c in contacts if c["purpose"] in ps]
-    return {"nothing_else": NOTHING_ELSE, "admin": admin, "may_contact": allowed, "sources": sources,
+    return {"nothing_else": NOTHING_ELSE, "admin": admin, "connected_sources": on, "may_contact": allowed, "sources": sources,
             "health_links": pick(LINK, LINK_FILE), "card_keys": pick(CARD_KEYS),
-            **({"directory": {"hosts": sorted(directory_hosts()), "contacts": pick(DIRECTORY)}} if admin else {}),
+            **({"directory": {"hosts": sorted(directory_hosts()), "contacts": pick(DIRECTORY)}} if admin and on else {}),
             "earlier": [c for c in contacts if c["purpose"].startswith(SOURCE) and c["host"] not in allowed]}

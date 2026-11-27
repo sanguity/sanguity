@@ -22,6 +22,7 @@ from datetime import date, timedelta
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-security-test-")
+os.environ["CONNECTED_SOURCES"] = "1"   # connected sources on, as before #1096 made them a switch, off by default
 os.environ.update(SANGUITY_DATA=TMP, SANGUITY_RECORDS=os.path.join(TMP, "records"), SANGUITY_BUILD=os.path.join(TMP, "no-build"),
                   SANGUITY_WATCH_FILE=os.path.join(TMP, "watch", "daily.json"), SANGUITY_LEGACY_WWW=os.path.join(TMP, "www"),
                   SANGUITY_BACKUPS=os.path.join(TMP, "backups"), SANGUITY_WATCH_KEYS=os.path.join(TMP, "watch-keys", "keys.json"),
@@ -341,6 +342,24 @@ class Reach(unittest.TestCase):
                 self.assertEqual(self.status(who, path).status_code, 403, f"{who} {path}")
             self.assertIn(self.status("ada", path).status_code, (200, 204), path)
 
+    def test_connected_sources_off_refuses_every_route_of_theirs(self):   # #1096
+        """With connected sources off (General → Experimental), every connections, sync and directory route is refused
+        saying so, to every account (the admin too), once the sign-in's own checks have passed: no session is still 401."""
+        theirs = [k for k in ROUTES if re.match(r"/api/(connect/|directory|provider-directory|profiles/\{pid\}/connect)", k[1])]
+        from server import routes_connect, routes_directory   # (the routers refused while they're off)
+        self.assertEqual(set(theirs), {(m, r.path) for rt in (routes_connect.api, routes_directory.router) for r in rt.routes for m in r.methods})
+        fill = {"{pid}": str(self.pid), "{cid}": "1", "{sid}": "1"}
+        with mock.patch.dict(os.environ, {"CONNECTED_SOURCES": "0"}):
+            for m, path in theirs:
+                for k, v in fill.items():
+                    path = path.replace(k, v)
+                for who in ("olive", "eddie", "vera", "stan", "ada", None):
+                    r = self.status(who, path, m, **({"json": {}} if m in ("POST", "PATCH") else {}))
+                    want = (401, None) if who is None else (404, "Connected sources are turned off on this server.")
+                    self.assertEqual((r.status_code, r.json()["detail"] if who else None), want, f"{who} {m} {path}")
+            self.assertIs(self.status("vera", "/api/me").json()["connected_sources"], False)
+        self.assertIs(self.status("vera", "/api/me").json()["connected_sources"], True)
+
     def test_a_share_link_or_feed_opens_only_itself(self):
         r = self.status("olive", f"/api/profiles/{self.pid}/links", "POST", json={"sections": ["visits"]})
         self.assertEqual(r.status_code, 200, r.text)
@@ -401,7 +420,8 @@ PLAIN_SETTINGS = {"sync.attachAuto", "sync.attachMaxMB", "sync.attachTypes", "sy
                   "security.sessionDays", "security.sessionHours", "security.idleMinutes", "security.profiles", "security.passwordMin",
                   "security.passwordMin2fa", "security.tempPasswordDays", "security.reauthMinutes", "security.triesHere",
                   "security.triesAddress", "security.triesAccount",
-                  "directory.weekly"}   # on or off (#992)
+                  "directory.weekly",   # on or off (#992)
+                  "experimental.connectedSources"}   # (#1096) on or off
 
 
 class AtRest(unittest.TestCase):

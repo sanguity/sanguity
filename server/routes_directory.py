@@ -25,9 +25,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from . import config, directory
 from .directory import update
-from .main import _client_ip, _request_host, admin, get_db, user
+from .main import _client_ip, _request_host, admin, connected, get_db, user
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(connected)])   # refused while connected sources are off (#1096)
 LIST_MAX = 60   # names and places shown for one entry
 
 

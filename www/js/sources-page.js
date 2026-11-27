@@ -26,7 +26,7 @@ const SgSources = (() => {
      who can only view it, the Overview and the import history; an address naming another shows the Overview. Until
      /api/me has said whose this is, every group is (a part's script may show its group as the page loads) */
   const nav = sideNav({id: "srcNav", page: "Sources", groups: GROUPS, find: "Find in Sources", none: q => `Nothing in Sources matches “${q}”.`,
-    allowed: g => !none && (!g.needs || !ME || canEdit()), refuse: () => !!profile(),
+    allowed: g => !none && (!g.needs || !ME || canEdit()) && (!g.cs || sgConnected(ME)), refuse: () => !!profile(),   // (#1096: once /api/me says they're on)
     alias: {zip: "upload", folder: "upload", files: "upload", payment: "manual", "home-reading": "manual", watch: "phone"},   // Add → Home reading (#264);   // the old pages' addresses (import.html#manual, #link, #zip, #payment; settings.html#watch: moved.js)
     later: [[/^import-\d+$/, "history"], [/^conn-\d+$/, "portals"]],   // drawn after the page loads: an import in the history (a record's Source link, #100), a connection
     intro: hint, shown: g => document.dispatchEvent(new CustomEvent("sources:group", {detail: g.id}))});

@@ -106,7 +106,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
   /* the profile's activity (owners), drawn when its group is shown, once its people are known (for the filter) */
   function drawActivity() {
     if (!P || P.role !== "owner" || MEMBERS_OF !== P.id) return;
-    $("#actBody").replaceChildren(activityPanel(`profiles/${P.id}/activity`, MEMBERS, {open: true}));   // activity.js
+    $("#actBody").replaceChildren(activityPanel(`profiles/${P.id}/activity`, MEMBERS, {open: true, cs: sgConnected(ME)}));   // activity.js
   }
   sel.addEventListener("change", () => { sayIn($("#pageMsg"), ""); pick(); });
 

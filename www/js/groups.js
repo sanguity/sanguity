@@ -14,7 +14,8 @@
    - finds: its parts that are worth going to by name, [title as the part's heading says it, its id, words, and the
      role it needs, if its group doesn't: Tabs, #423]. The palette goes to page#id, which opens the group and scrolls
      to the part.
-   A group with rest: true (Settings' More: the sections no other group names) isn't searched.
+   A group with rest: true (Settings' More: the sections no other group names) isn't searched; one with cs: true is
+   connected sources' (#1096), listed and searched only while they're on (sgConnected).
 
    The icons (#399): one per place, the same wherever it's shown (the top bar and its menus, a phone's tab bar, the
    sidebars, the palette), and none for two places. A page's and a group's are theirs below; the records tabs' and the
@@ -22,6 +23,10 @@
    tab), "add" (the bar's), "sources" (a page), "sources/upload" (a group, or a part: its own, else its group's).
    Loaded before nav.js, which draws the bar with them. Plain script; all files share one scope. */
 "use strict";
+/* connected sources (#1096): experimental, off unless an admin turns them on (Settings → Install → General →
+   Experimental). The one rule every page asks, from /api/me (its connected_sources, a plain true or false): off,
+   nothing of theirs is offered (the cs groups, Add's Connect, the guide's way, the Overview's and Sources' notes) */
+const sgConnected = me => !!(me && me.connected_sources);
 const SG_ICON = {
   overview: "layout-grid", health: "heart-pulse", medications: "pill-bottle", timeline: "chart-gantt", labs: "test-tube-diagonal", costs: "banknote",
   more: "ellipsis",
@@ -41,7 +46,7 @@ const SG_PAGES = {
   sources: {page: "sources.html", title: "Sources", icon: "database", profile: true, words: "import add records bring in", groups: [
     {id: "overview", title: "Overview", icon: "layout-list", has: ["waiting", "srcOverview"],   // #283
      words: "sources connections where records come from waiting for you review fix sign in again"},   // (#528: a connection's)
-    {id: "portals", title: "Portals and health plans", icon: "plug", part: "Connected", has: ["mine"], needs: "editor",   // the ways in: owners' and editors' (#401)
+    {id: "portals", title: "Portals and health plans", icon: "plug", part: "Connected", has: ["mine"], needs: "editor", cs: true,   // the ways in: owners' and editors' (#401)
      words: "connect portal patient health plan insurance fhir sync epic mychart oracle cerner find hospital clinic " +
        "sync now pull again sign in again reconnect disconnect what it pulls use server defaults fetch anyway name city state"},   // (#515: the vendors' and portals' names; #528: a connection's)
     {id: "phone", title: "Phone and watch", icon: "watch", part: "Connected", has: ["watch", "cycle"], needs: "editor",   // cycle tracking (#183)
@@ -97,7 +102,7 @@ const SG_PAGES = {
         ["Units", "sec-units", "metric imperial mmol mg kg lb pounds kilograms weight temperature celsius fahrenheit height cm inches lab tests"]]},
     // Install: the Admin page's groups (#167: admin.js, admin-sources.js, admin-backups.js, outside.js, activity.js),
     // admins only. General (#998) first: the server's own settings, each of its sections (#1000-#1005) a part in its has
-    {id: "general", title: "General", icon: "wrench", part: "Install", admin: true, has: ["gen-host", "gen-security", "gen-backups", "gen-phone", "gen-about"], place: "admin", words: "server install configuration",
+    {id: "general", title: "General", icon: "wrench", part: "Install", admin: true, has: ["gen-host", "gen-security", "gen-backups", "gen-phone", "gen-experimental", "gen-about"], place: "admin", words: "server install configuration",
      finds: [["Host", "gen-host", "public addresses origins reverse proxy domain url passkey names trusted proxies port bind forwarded"],
        // (each of its rows' labels finds it, #524; "onetime", not "one-time": a word typed is found at a word's start, so it's
        // still found by "one-time", but not whole, so "one-time password" finds Accounts first, where one is made, #502)
@@ -108,6 +113,7 @@ const SG_PAGES = {
        ["Require two-factor sign-in", "gen-security", "2fa everyone"],   // (#1001; #528: "require 2fa", Accounts' before)
        ["Backups and logging", "gen-backups", "backups folder encryption key file keys logs log output docker security activity kept days how long delete older"],   // (the schedule's Backups', #532: it only links there)
        ["Phone receiver", "gen-phone", "upload address watch scale health connect receiver port time zone unclaimed restore replaced"],
+       ["Experimental", "gen-experimental", "connected sources portals health plans fhir epic mychart sync find your provider turn on off"],   // (#1096)
        ["About", "gen-about", "version release releases what's new schema database deployed deployment truenas unraid casaos docker folders runs as user uid gid configuration limits upload size zip journal photo sync attachment timeout health links"]]},
     {id: "accounts", title: "Accounts", icon: "user-cog", part: "Install", admin: true, has: ["users"], place: "admin",
      words: "users new create add account reset password one-time temporary remove delete disable enable make admin " +
@@ -115,10 +121,10 @@ const SG_PAGES = {
     {id: "installLog", title: "Install activity", icon: "logs", part: "Install", admin: true, has: ["installLog"], place: "admin", words: "log sign-ins failed audit"},
     {id: "backups", title: "Backups", icon: "archive", part: "Install", admin: true, has: ["backups"], place: "admin", words: "backup restore back up now make check show all fewer " +
       "schedule how often daily weekly off keep newest many oldest replaced delete now before-restore"},   // #200 (#595: Restore's; #532: its schedule's; and each field's and segmented control's label finds its place)
-    {id: "apps", title: "Connected-source apps", icon: "app-window", part: "Install", admin: true, has: ["admin", "sec-sync"], place: "admin",
+    {id: "apps", title: "Connected-source apps", icon: "app-window", part: "Install", admin: true, cs: true, has: ["admin", "sec-sync"], place: "admin",
      words: "set up a source client portal app test connection change remove delete waiting for review done id secret issuer vendor epic mychart oracle cerner " +
        "new return address redirect uri sandbox use add another notes name people see fhir base how signs scopes ask", finds: [["Sync defaults", "sec-sync", "attachments"]]},   // (#506: a source's buttons; #510: its form's; #515: delete; #519: its return address)
-    {id: "directory", title: "Provider directory", icon: "book-user", part: "Install", admin: true, has: ["directory"], place: "admin", words: "providers epic oracle cerner hospitals lists add the update now download keep them up to date weekly"},
+    {id: "directory", title: "Provider directory", icon: "book-user", part: "Install", admin: true, cs: true, has: ["directory"], place: "admin", words: "providers epic oracle cerner hospitals lists add the update now download keep them up to date weekly"},
     {id: "outside", title: "Outside connections", icon: "globe", part: "Install", admin: true, has: ["outside"], place: "admin", words: "network internet"},
     {id: "labmaps", title: "Lab name matches", icon: "arrow-right-left", part: "Install", admin: true, has: ["labmaps"], place: "admin", words: "aliases mapping reported goes series change remove forget"},   // (#532: its rows' Change and Remove)
     {id: "more", title: "More", icon: "folder", has: [], rest: true},   // a section no group names yet

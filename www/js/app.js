@@ -265,7 +265,7 @@ async function settingsLoad() {
     PROFILE = ME.profiles.find(p => p.id === SgNav.profiles(ME.profiles));
     hLoad();
     renderProfileMenu();
-    syncWarning(PROFILE.id);
+    if (sgConnected(ME)) syncWarning(PROFILE.id);   // (#1096) none while connected sources are off
     testPagesLoad();   // "What is this test?" links (test-pages.js, #163), alongside the records
     const r = await api(`profiles/${PROFILE.id}/data`);
     if (r.status === 401) { location.replace("login.html"); return; }
