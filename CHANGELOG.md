@@ -3902,6 +3902,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - **One LOINC code, one chart, for vitals** (#1102): a FHIR file's "Diastolic blood pressure" and a C-CDA document's
   "Blood pressure, diastolic" (both 8462-4) were two charts. A FHIR import names a vital by its LOINC code first, as
   C-CDA does, in the same unit (a temperature in °C and a height in cm converted, as reported kept beside them).
+- **An import's review says its dates in the person's time zone** (#1102): it listed each record on its source's date,
+  so a stay from 21:40 in Chicago was a day before the Timeline's for someone in London; it now says the same day the
+  Timeline and Overview do.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

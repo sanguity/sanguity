@@ -237,7 +237,7 @@ class Preview(unittest.TestCase):
         self.assertEqual((again["duplicates"]["results"], again["duplicates"]["kinds"]), (4, {"lab": 2}))
         self.assertEqual(again["range"], left["range"])
         # each duplicate series with the days of its results: the first and the last (#490)
-        days = {i["title"]: (i["t"], i.get("to")) for i in again["duplicates"]["items"] if i["kind"] == "results"}
+        days = {i["title"]: (i["t"][:10], i.get("to", "")[:10] or None) for i in again["duplicates"]["items"] if i["kind"] == "results"}
         self.assertEqual(days["Hemoglobin"], ("2025-03-14", "2025-04-02"))
         self.assertEqual(days["Ferritin"], ("2025-04-02", None))
         done = self.save(pid, again)   # and saving it adds nothing, as confirm finds the duplicates again anyway
@@ -366,10 +366,16 @@ class Preview(unittest.TestCase):
         j, _ = self.previewed(pid, {"labs.csv": CSV_HEAD + MARCH + APRIL})
         self.assertEqual(j["profile_id"], pid)
         s = j["samples"]
-        self.assertEqual(sorted((r["t"], r["name"], r["value"], r["unit"]) for r in s["results"]),
+        self.assertEqual(sorted((r["t"][:10], r["name"], r["value"], r["unit"]) for r in s["results"]),
                          [("2025-04-02", "Ferritin", "85", "ng/mL"), ("2025-04-02", "Hemoglobin", "13.8", "g/dL")])   # not March's
-        self.assertEqual([r["t"] for r in s["events"]["lab"]], ["2025-04-02"])
+        self.assertEqual([r["t"][:10] for r in s["events"]["lab"]], ["2025-04-02"])
         self.assertEqual((s["allergies"], s["problems"], s["upcoming"]), ([], [], []))
+        # #1102: each time as the records give it, its offset kept, for the page to say its day in the person's zone as
+        # the Timeline does: a stay from 21:40 in Chicago is the next day in London (it was cut to its source's date)
+        pid = self.profile("Samples FHIR")
+        j, _ = self.previewed(pid, folder_files(os.path.join(FIX, CASES["fhir"])))
+        self.assertEqual(j["samples"]["events"]["stay"], [{"t": "2025-06-10T21:40:00-05:00", "title": "Hospital stay · Riverside General Hospital"}])
+        self.assertEqual(sorted(p["t"] for p in j["samples"]["problems"]), ["2024-11-20", "2025-06-10"], "a problem's a date, as the Overview's")
         # a C-CDA: its kinds, each at most SAMPLES, latest first; a value as reported with its unit in it shown as the number
         pid = self.profile("Samples C-CDA")
         j, _ = self.previewed(pid, folder_files(os.path.join(FIX, CASES["ccda"])))

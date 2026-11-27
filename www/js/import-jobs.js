@@ -50,7 +50,8 @@
     return typeof j.detail === "string" ? j.detail : `The server answered ${r.status}.`;
   }
   const plural = (n, [one, many]) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
-  const day = s => { const t = dayTs(s); return isNaN(t) ? s : fmtD(t); };   // dates.js
+  // a time's day in the person's zone, as the Timeline says it (dates.js; #1102: its source's date, a day off)
+  const day = s => { const t = zParse(s); return isNaN(t) ? s : fmtD(t); };
 
   function host(container) {
     let h = container;
@@ -331,7 +332,7 @@
         const kind = (KIND[it.kind] || LISTED[it.kind] || [it.kind])[0];
         const what = it.kind === "results" ? plural(it.n || 0, ["lab result", "lab results"]) + ": " + it.title
                    : it.title.toLowerCase().startsWith(kind + ":") ? it.title : kind + ": " + it.title;   // ("Allergy: Peanuts" says so)
-        const when = it.t ? keepDates(it.to ? `${day(it.t)} – ${day(it.to)}` : day(it.t)) : "Undated";
+        const when = it.t ? keepDates(it.to && day(it.to) !== day(it.t) ? `${day(it.t)} – ${day(it.to)}` : day(it.t)) : "Undated";
         return node("li", {}, node(it.ref ? "label" : "span", {}, b, " ", node("span", {class: "d"}, when), " ", what));
       })),
       d.more ? node("p", {class: "hint", text: `…and ${d.more.toLocaleString("en-US")} more.`}) : null,

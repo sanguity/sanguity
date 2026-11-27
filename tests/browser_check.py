@@ -16092,6 +16092,20 @@ def main():
             check("…and after Cancel, focus is on the card's result, not lost with the button (#489)",
                   js(f"document.activeElement.parentElement === {last_card} && document.activeElement.textContent.startsWith('Cancelled.')"),
                   js("document.activeElement.outerHTML.slice(0, 120)"))
+            # #1102: the review says each day in the person's zone, as the Timeline does: a FHIR stay from 21:40 in Chicago
+            # (02:40 in London the next day) was listed on its source's date, Jun 10
+            dates1102 = js("[DATES.zone, DATES.format]")
+            js("useDates('Europe/London', 'mdy')")
+            page.set_input_files("#step-records .up-btns input:not([webkitdirectory])",
+                                 files=[os.path.join(ROOT, "tests", "fixtures", "importers", "fhir", "bundle", "patient-everything.json")])
+            page.wait_for_function(f"/^(Ready to import|All duplicates|Not imported)/.test({last_card}?.textContent || '') && {last_card}.querySelector('.imp-tiles')", timeout=30000)
+            stay1102 = js(f"""(c => [...c.querySelectorAll('.imp-tiles .tile')].filter(t => /stay/i.test(t.querySelector('.lbl').textContent))
+                .map(t => [...t.querySelectorAll('ul li:not(.more)')].map(li => li.textContent)))({last_card})""")
+            check("the review says a day in the person's zone, as the Timeline does: a stay from 21:40 in Chicago is Jun 11 in London (#1102)",
+                  stay1102 == [["Jun 11, 2025 Hospital stay · Riverside General Hospital"]], stay1102)
+            js(f"[...{last_card}.querySelectorAll('.imp-actions button')].find(b => b.textContent === 'Cancel').click()")
+            page.wait_for_function(f"{last_card}.textContent.startsWith('Cancelled.')", timeout=10000)
+            js("([z, f]) => useDates(z, f)", dates1102)
             # (#489) a C-CDA's review in Upload files at 375 px, its bar two rows: tabbed through, nothing that takes focus is
             # under the bar (2.4.11): the page's scroll padding is measured from the bar. Into My records, whose series don't
             # know its lab names, so the review has them to match
