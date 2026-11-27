@@ -10904,7 +10904,20 @@ def main():
             # swiped at once. The scroll goes as far as the page lets it (one ends at the page's foot), and once all's drawn
             # the plot is where the scroll left it on the screen (what grew over it, the period bar turned custom, made up
             # for; the page drawn shorter for a moment at its foot, which scrolled it up, put back), at 1400 px as usual and
-            # with 200% text
+            # with 200% text. Every frame painted from the gesture's end on, not two moments (a measure between a
+            # redraw's task and its frame sees what's never painted, and one at two moments misses a frame between): the
+            # plot moves on the screen only as the page scrolls it, never down and never further up than it scrolled. A
+            # drag's spring back drew its charts in its last frame, undrawn till the next: painted for a frame with the
+            # plot 45 px lower (151 px with 200% text, the page shorter at its foot) and back, every time, under load where
+            # the two moments caught it too
+            PAINT985 = r"""() => { const t0 = performance.now(), log = window.paint985 = [], d = document.createElement('i');
+              d.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;pointer-events:none'; document.body.append(d);
+              const ro = new ResizeObserver(() => { const s = document.querySelectorAll('#charts .chart svg.ck')[1]; if (s) log.push([Math.round(scrollY), Math.round(s.getBoundingClientRect().top)]); });
+              ro.observe(d); let n = 0;   // (its callback after the frame's own work and layout, as it's painted)
+              const tick = () => { if (performance.now() - t0 > 1500) { ro.disconnect(); d.remove(); return; } d.style.width = 1 + ++n % 2 + 'px'; requestAnimationFrame(tick); };
+              requestAnimationFrame(tick); }"""
+            jumps985 = lambda f: [f"scrolled {f[i - 1][0]} → {f[i][0]}, the plot at {f[i - 1][1]} → {f[i][1]} px" for i in range(1, len(f))
+                                  if not -max(0, f[i][0] - f[i - 1][0]) - 2 <= f[i][1] - f[i - 1][1] <= 2]
             PLOT985 = "() => { const s = document.querySelectorAll('#charts .chart svg.ck')[1], r = s.getBoundingClientRect(); return [Math.round(scrollY), r.top, r.left, r.width, r.height, document.documentElement.scrollHeight - innerHeight]; }"
             GO985 = r"""() => { state.tables.clear(); state.sel = new Set(['Hemoglobin', 'WBC', 'Platelet Count']); applyPreset('1y'); switchTab('labs', 'chart'); renderLabs();
               return new Promise(r => setTimeout(() => { const s = document.querySelectorAll('#charts .chart svg.ck')[1]; scrollBy(0, s.getBoundingClientRect().top - 350); r(); }, 600)); }"""
@@ -10930,17 +10943,18 @@ def main():
                             page.mouse.move(x985 + w985 * .3 - i985 * 60, y985)
                             settle(30)
                         page.mouse.up()
+                    js(PAINT985)
                     page.mouse.move(1396, 450)   # off the charts, at the page's edge
                     s0, mx985 = js(PLOT985)[::5]
                     page.mouse.wheel(0, 300)
                     settle(30)
                     page.mouse.wheel(0, 300)
-                    settle(80)
-                    s1, t1 = js(PLOT985)[:2]
-                    settle(900)
+                    settle(980)
                     s2, t2 = js(PLOT985)[:2]
-                    if s1 < min(s0 + 600, mx985) - 10 or abs(t2 - t1) > 2:
-                        bad985.append(f"{how985}, then the page scrolled 600 px, text at {k985:.0%}: scrolled {s0} → {s1} → {s2}, the plot at {t1:.0f} → {t2:.0f} px")
+                    j985 = jumps985(js("window.paint985"))
+                    if s2 < min(s0 + 600, mx985) - 10 or j985:
+                        bad985.append(f"{how985}, then the page scrolled 600 px, text at {k985:.0%}: scrolled {s0} → {s2}, the plot at {t2:.0f} px; painted frames where "
+                                      f"it moved by itself: {j985}")
                 # a finger on a phone, in a context of its own (the same session)
                 ctx985 = browser.new_context(viewport={"width": 412, "height": 900}, has_touch=True, is_mobile=True, bypass_csp=True)
                 ctx985.add_cookies(page.context.cookies())
@@ -10958,13 +10972,15 @@ def main():
                     cdp985.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": sx985 - 900 * i985 / 8, "y": sy985}]})
                     pg985.wait_for_timeout(25)
                 cdp985.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+                pg985.evaluate(PAINT985)
                 s0, mx985 = pg985.evaluate(PLOT985)[::5]
                 cdp985.send("Input.synthesizeScrollGesture", {"x": 6, "y": 600, "yDistance": -500, "speed": 2500, "preventFling": True})
-                s1, t1 = pg985.evaluate(PLOT985)[:2]
                 pg985.wait_for_timeout(1000)
                 s2, t2 = pg985.evaluate(PLOT985)[:2]
-                if s1 < min(s0 + 300, mx985) - 10 or abs(t2 - t1) > 2:
-                    bad985.append(f"a finger's pan past the records' end at 412 px, then the page swiped, text at {k985:.0%}: scrolled {s0} → {s1} → {s2}, the plot at {t1:.0f} → {t2:.0f} px")
+                j985 = jumps985(pg985.evaluate("window.paint985"))
+                if s2 < min(s0 + 300, mx985) - 10 or j985:
+                    bad985.append(f"a finger's pan past the records' end at 412 px, then the page swiped, text at {k985:.0%}: scrolled {s0} → {s2}, the plot at {t2:.0f} px; "
+                                  f"painted frames where it moved by itself: {j985}")
                 ctx985.close()
             js("s => { document.adoptedStyleSheets = []; state.sel = new Set(s); applyPreset('all'); switchTab('labs', 'chart'); scrollTo(0, 0); }", sel985)
             page.set_viewport_size({"width": 1400, "height": 900})
