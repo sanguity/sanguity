@@ -890,28 +890,30 @@ def _sample_value(p):
 def samples(new):
     """A few of what's new for the review screen (#282), latest first, SAMPLES of each: {"events": {kind: [{"t",
     "title"}]} (visible events), "results": [{"t", "name", "value", "unit"}] (the value as reported), "allergies",
-    "problems": [{"t", "title"}], "upcoming": [{"t", "title"}]}."""
+    "problems": [{"t", "title"}], "upcoming": [{"t", "title"}]}. Each "t" as the records give it, its offset kept, which
+    the review says as a day in the person's zone as the Timeline does (#1102: cut to its source's date, a stay at 21:40
+    in Chicago was a day before the Timeline's); a problem's and an allergy's a date, as the Overview's."""
     by_kind = collections.defaultdict(list)
     for e in new.get("events") or []:
         if isinstance(e, dict) and not e.get("hidden"):
-            by_kind[str(e.get("k"))].append({"t": str(e.get("t") or "")[:10], "title": str(e.get("title") or "")})
+            by_kind[str(e.get("k"))].append({"t": str(e.get("t") or ""), "title": str(e.get("title") or "")})
     results = []
     for s in new.get("labs") or []:
         if not isinstance(s, dict):
             continue
         for p in s.get("pts") or []:
             if isinstance(p, list) and p:   # (its value said once it's among the few shown: _sample_value)
-                results.append({"t": str(p[0])[:10], "name": str(s.get("name") or ""), "value": p, "unit": str(s.get("unit") or "")})
+                results.append({"t": str(p[0]), "name": str(s.get("name") or ""), "value": p, "unit": str(s.get("unit") or "")})
         for t in s.get("txt") or []:
             if isinstance(t, list) and len(t) > 1:
-                results.append({"t": str(t[0])[:10], "name": str(s.get("name") or ""), "value": str(t[1]), "unit": ""})
+                results.append({"t": str(t[0]), "name": str(s.get("name") or ""), "value": str(t[1]), "unit": ""})
     probs = [p for p in new.get("problems") or [] if isinstance(p, dict)]
     listed = lambda rows: _latest([{"t": str(p.get("date") or "")[:10], "title": str(p.get("name") or "")} for p in rows])
     return {"events": {k: _latest(v) for k, v in sorted(by_kind.items())},
             "results": [{**r, "value": _sample_value(r["value"]) if isinstance(r["value"], list) else r["value"]} for r in _latest(results)],
             "allergies": listed([p for p in probs if p.get("type") == "Allergy"]),
             "problems": listed([p for p in probs if p.get("type") != "Allergy"]),
-            "upcoming": _latest([{"t": str(u.get("t") or "")[:10], "title": str(u.get("title") or "")}
+            "upcoming": _latest([{"t": str(u.get("t") or ""), "title": str(u.get("title") or "")}
                                  for u in new.get("upcoming") or [] if isinstance(u, dict)])}
 
 
@@ -930,7 +932,7 @@ def report(data, dups, summarise):
     changed = dups.get("changed") or {"events": set(), "meta": {}}   # (#920) updated in place, not skipped
     skipped = {i for i in dups["events"] if i not in changed["events"]}
     kinds = collections.Counter(str(events[i].get("k")) for i in skipped if i in events and not events[i].get("hidden"))
-    items = [{"ref": "e:" + i, "kind": str(e.get("k")), "t": str(e.get("t") or "")[:10], "title": str(e.get("title") or "")}
+    items = [{"ref": "e:" + i, "kind": str(e.get("k")), "t": str(e.get("t") or ""), "title": str(e.get("title") or "")}
              for i, e in events.items() if i in skipped and not e.get("hidden")]
     results = 0
     for i, s in enumerate(data.get("labs") or []):
@@ -939,8 +941,9 @@ def report(data, dups, summarise):
         n = len(dups["points"].get(i, ())) + len(dups["txt"].get(i, ()))
         if n:
             results += len(dups["points"].get(i, ()))
-            # the days its duplicates are from (#490), text results' too: the first, and the last where it's another
-            days = sorted(str(x[0])[:10] for key, rows in (("points", s.get("pts")), ("txt", s.get("txt")))
+            # the days its duplicates are from (#490), text results' too: the first, and the last where it's another (as
+            # times, said as days in the person's zone by the page, #1102)
+            days = sorted(str(x[0]) for key, rows in (("points", s.get("pts")), ("txt", s.get("txt")))
                           for k, x in enumerate(rows or []) if k in dups[key].get(i, ()) and isinstance(x, list) and x and x[0])
             item = {"ref": f"s:{i}", "kind": "results", "t": days[0] if days else "", "title": str(s.get("name") or ""), "n": n}
             if days and days[-1] != days[0]:
@@ -959,7 +962,7 @@ def report(data, dups, summarise):
     said = collections.Counter(str(events[i].get("k")) for i in changed["events"] if i in events)
     said.update(listed(path, lists[path][n]) for path, ns in changed["meta"].items() for n in ns)
     # (#955) and each by name, with what it changes and its ref to leave it out ("x:"), as here it reads
-    named = [{"ref": "x:" + i, "kind": str(events[i].get("k")), "t": str(events[i].get("t") or "")[:10],
+    named = [{"ref": "x:" + i, "kind": str(events[i].get("k")), "t": str(events[i].get("t") or ""),
               "title": str(events[i].get("title") or ""),
               "what": [w for row in (changed.get("rows") or {}).get(i) or [] for w in row[4]][:8]}
              for i in sorted(changed["events"], key=lambda i: (str(events[i].get("t") or ""), i)) if i in events]
