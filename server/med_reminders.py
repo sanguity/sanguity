@@ -1,19 +1,27 @@
-"""Medication reminders through the calendar feed (#162): for a current medication, the people who keep the profile
-(owners and editors) set times of day, which days, from and until; the calendar feed (#51, calendar.py) lists each
-time as a recurring event, so the person's own calendar app does the reminding. Sanguity sends nothing itself.
+"""A medication's schedule (#1094), and its reminders through the calendar feed (#162): for a current medication, the
+people who keep the profile (owners and editors) set its schedule as one or more lines, each with its times of day
+and the amount at each (2 tablets at 08:00, 1 at 20:00, any number a day, two at one time if need be), which days, from
+and until; or a line As needed, with no times (doses logged when taken, its usual amount said). Several lines make one
+medication's schedule: every day at 08:00, and Mondays and Fridays at 20:00 (the owner, on #1094). Today lists each
+dose a line gives that day (medlog.js), and the counts are of those (med_log.schedule_counts). Remind me on a line
+(its remind column) puts each of its times in the calendar feed (#51, calendar.py) as a recurring event, with the
+amounts, so the person's own calendar app does the reminding. Sanguity sends nothing itself.
 
-A reminder belongs to the profile, never to an import (schema version 33, med_reminders): it finds its medication by
-the medication's grouping key (medications.med_key), so undoing or re-importing the records keeps it, and it finds its
-medication again when the same one is imported later. Its body is encrypted: {med: the key, name: what the medication
-was called when it was set, times: ["08:00", ...], days: ["mo", ...] (all seven: every day), from: YYYY-MM-DD,
-until: YYYY-MM-DD or None, tz: an IANA zone, or "" for none}.
+A line belongs to the profile, never to an import (schema version 33, med_reminders; version 47 made each reminder a
+line, its "active" Remind me): it finds its medication by the medication's grouping key (medications.med_key), so
+undoing or re-importing the records keeps it, and it finds its medication again when the same one is imported later.
+Its body is encrypted: {med: the key, name: what the medication was called when it was set, times: ["08:00", ...]
+(in order, a time twice for two doses then), amounts: [{amount: a number or None, unit: "tablets"}, ...] (one for each
+time; a reminder from before #1094 has none: no amount), days: ["mo", ...] (all seven: every day), from: YYYY-MM-DD,
+until: YYYY-MM-DD or None, tz: an IANA zone, or "" for none, asneeded: true for As needed (no times), dose: its usual
+amount {amount, unit} or None}.
 
 When it ends, as the feed says it: on its own until day; or, sooner, on the day the records say the medication
-stopped (medications.history's "stop"): a medication that stops in the records ends its reminders, and the page says
-so where the reminder is listed. A reminder whose medication isn't in the records any more (its import undone) is
-left out of the feed until it is. Turned off (active 0), it is listed nowhere but kept, to turn on again.
+stopped (medications.history's "stop"): a medication that stops in the records ends its schedule, and the page says
+so where the line is listed. A line whose medication isn't in the records any more (its import undone) is left out
+of the feed until it is. With Remind me off, it is in no calendar, but still the schedule.
 
-Times are wall-clock times in the reminder's own zone, the time zone of the person who set it (their Settings → Dates
+Times are wall-clock times in the line's own zone, the time zone of the person who set it (their Settings → Dates
 and times, #42, or their browser's): "08:00 every day" stays at 08:00 when the clocks change. The feed writes them
 as DTSTART;TZID=<zone> with a VTIMEZONE made from this server's time zone database (vtimezone()), because RFC 5545
 expands a recurrence in its DTSTART's local time (3.3.10) and requires a VTIMEZONE for every TZID used (3.6.5); UNTIL
@@ -27,7 +35,9 @@ from . import crypto, medications
 
 DAYS = ("mo", "tu", "we", "th", "fr", "sa", "su")   # Python's weekday() order; RFC 5545's BYDAY names, upper case
 DAY_NAMES = {"mo": "Mon", "tu": "Tue", "we": "Wed", "th": "Thu", "fr": "Fri", "sa": "Sat", "su": "Sun"}
-TIMES_MAX = 6
+TIMES_MAX = 24        # doses a day on one line
+UNIT_MAX = 40
+AMOUNT_MAX = 100000
 REMINDER_MINUTES = 15   # how long each event lasts in a calendar: a short mark, not a block of time
 _TIME = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 _DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -64,28 +74,65 @@ def current(db, pid):
     return out
 
 
-def check(db, pid, med, times, days, start, until, tz, keep_med=None):
-    """The reminder as stored, or ReminderError. med: the medication's key; it must be a current medication of the
-    profile, or keep_med (the reminder's own, when it is changed after the records said it stopped)."""
-    from . import settings
-    meds = current(db, pid)
-    m = meds.get(med) if isinstance(med, str) else None
-    if med != keep_med and not (m and m["current"]):
-        raise ReminderError("Reminders are for a medication the records list as current. Pick one from this profile's medications.")
-    if not isinstance(times, list) or not times:
+def amount(v, what="amount"):
+    """{amount, unit} as kept: amount a number above 0 (None: none given), unit up to UNIT_MAX characters; or
+    ReminderError. v: {amount, unit}, or None."""
+    v = v if isinstance(v, dict) else {}
+    n, unit = v.get("amount"), v.get("unit")
+    if n is not None and (isinstance(n, bool) or not isinstance(n, (int, float)) or not 0 < n <= AMOUNT_MAX or n != n):
+        raise ReminderError(f"Give the {what} as a number above 0.")
+    if unit is not None and not isinstance(unit, str):
+        raise ReminderError("Give the unit as words: tablets, ml.")
+    unit = " ".join((unit or "").split())
+    if len(unit) > UNIT_MAX:
+        raise ReminderError(f"The unit is too long (at most {UNIT_MAX} characters).")
+    return {"amount": None if n is None else round(float(n), 4), "unit": unit}
+
+
+def said(a):
+    """"2 tablets", "0.5 ml", or "" with no amount."""
+    if not a or a.get("amount") is None:
+        return ""
+    return f"{a['amount']:g} {a.get('unit') or ''}".strip()
+
+
+def line(times, amounts, days, start, until, asneeded=False, dose=None):
+    """A schedule line's times (in order, with their amounts), days, from, until, As needed and its usual amount, as
+    kept; or ReminderError."""
+    if asneeded:
+        times, amounts = [], []
+    elif not isinstance(times, list) or not times:
         raise ReminderError("Give at least one time of day.")
     if not all(isinstance(t, str) and _TIME.match(t) for t in times):
         raise ReminderError("Give each time as HH:MM, on a 24-hour clock.")
-    times = sorted(set(times))
     if len(times) > TIMES_MAX:
         raise ReminderError(f"At most {TIMES_MAX} times a day.")
+    if amounts is None:
+        amounts = [None] * len(times)
+    if not isinstance(amounts, list) or len(amounts) != len(times):
+        raise ReminderError("Give an amount, or none, for each time.")
+    pairs = sorted(zip(times, (amount(x) for x in amounts)), key=lambda p: p[0])   # stable: two at a time keep their order
     if not isinstance(days, list) or not days or not all(d in DAYS for d in days):
         raise ReminderError("Pick at least one day of the week.")
-    days = [d for d in DAYS if d in days]
     a = _date(start, "from")
     b = _date(until, "until") if until else None
     if b and b < a:
         raise ReminderError("The until date is before the from date.")
+    usual = amount(dose, "usual amount") if asneeded and dose else None
+    return {"times": [t for t, _ in pairs], "amounts": [x for _, x in pairs], "days": [d for d in DAYS if d in days],
+            "from": a.isoformat(), "until": b.isoformat() if b else None, "asneeded": bool(asneeded),
+            "dose": usual if usual and (usual["amount"] is not None or usual["unit"]) else None}
+
+
+def check(db, pid, med, times, days, start, until, tz, keep_med=None, amounts=None, asneeded=False, dose=None):
+    """The schedule line as stored, or ReminderError. med: the medication's key; it must be a current medication of the
+    profile, or keep_med (the line's own, when it is changed after the records said it stopped)."""
+    from . import settings
+    meds = current(db, pid)
+    m = meds.get(med) if isinstance(med, str) else None
+    if med != keep_med and not (m and m["current"]):
+        raise ReminderError("A schedule is for a medication the records list as current. Pick one from this profile's medications.")
+    ln = line(times, amounts, days, start, until, asneeded, dose)
     tz = tz or ""
     if tz:
         try:
@@ -93,31 +140,30 @@ def check(db, pid, med, times, days, start, until, tz, keep_med=None):
         except settings.SettingError as x:
             raise ReminderError(str(x)) from None
     name = (m or {}).get("name") or med
-    return {"med": med, "name": str(name)[:300], "times": times, "days": days, "from": a.isoformat(),
-            "until": b.isoformat() if b else None, "tz": tz}
+    return {"med": med, "name": str(name)[:300], **ln, "tz": tz}
 
 
 def add(db, pid, who, r, active=True):
     from . import db as dbm, records
-    rid = db.execute("""INSERT INTO med_reminders(profile_id, body, active, created_by, created_name, created)
+    rid = db.execute("""INSERT INTO med_reminders(profile_id, body, remind, created_by, created_name, created)
                         VALUES(?, ?, ?, ?, ?, ?)""", (pid, _enc(r), int(bool(active)), who["id"], who["username"], dbm.now())).lastrowid
     records._bump(db, pid)
     return rid
 
 
 def get(db, pid, rid):
-    r = db.execute("SELECT body, active FROM med_reminders WHERE id=? AND profile_id=?", (rid, pid)).fetchone()
-    return {**json.loads(crypto.dec(r["body"])), "on": bool(r["active"])} if r else None
+    r = db.execute("SELECT body, remind FROM med_reminders WHERE id=? AND profile_id=?", (rid, pid)).fetchone()
+    return {**json.loads(crypto.dec(r["body"])), "on": bool(r["remind"])} if r else None
 
 
 def change(db, pid, rid, who, r=None, active=None):
-    """Replace a reminder with a checked one, and/or turn it on or off. Returns what it was, or None."""
+    """Replace a line with a checked one, and/or turn its Remind me on or off. Returns what it was, or None."""
     from . import db as dbm, records
     was = get(db, pid, rid)
     if was is None:
         return None
     body = _enc(r) if r is not None else None
-    db.execute("""UPDATE med_reminders SET body=COALESCE(?, body), active=COALESCE(?, active), changed_by=?, changed_name=?,
+    db.execute("""UPDATE med_reminders SET body=COALESCE(?, body), remind=COALESCE(?, remind), changed_by=?, changed_name=?,
                   changed=? WHERE id=? AND profile_id=?""",
                (body, None if active is None else int(bool(active)), who["id"], who["username"], dbm.now(), rid, pid))
     records._bump(db, pid)
@@ -134,22 +180,27 @@ def remove(db, pid, rid):
 
 
 def listing(db, pid, ids=None):
-    """The profile's reminders, oldest first: {id, med, name, times, days, from, until, tz, on, by, at, changed, changed_by}.
-    ids: only those reminders (a change's reply carries the reminder it changed, #271)."""
+    """The profile's schedule lines, oldest first: {id, med, name, times, amounts, days, from, until, tz, asneeded, dose,
+    on (Remind me), by, at, changed, changed_by}. ids: only those lines (a change's reply carries the one it changed,
+    #271). One from before #1094 is read as it reminded: its times with no amounts."""
     out = []
     only = "" if ids is None else f" AND id IN ({','.join('?' * len(ids))})"
-    for r in db.execute(f"""SELECT id, body, active, created_name, created, changed_name, changed FROM med_reminders
+    for r in db.execute(f"""SELECT id, body, remind, created_name, created, changed_name, changed FROM med_reminders
                            WHERE profile_id=?{only} ORDER BY id""", (pid, *(ids or ()))):
         b = json.loads(crypto.dec(r["body"]))
-        out.append({"id": r["id"], "med": b.get("med"), "name": b.get("name") or "", "times": b.get("times") or [],
+        times = b.get("times") or []
+        amounts = b.get("amounts") if isinstance(b.get("amounts"), list) and len(b["amounts"]) == len(times) else None
+        out.append({"id": r["id"], "med": b.get("med"), "name": b.get("name") or "", "times": times,
+                    "amounts": amounts or [{"amount": None, "unit": ""} for _ in times],
                     "days": b.get("days") or list(DAYS), "from": b.get("from"), "until": b.get("until"), "tz": b.get("tz") or "",
-                    "on": bool(r["active"]), "by": r["created_name"], "at": r["created"], "changed": r["changed"],
+                    "asneeded": bool(b.get("asneeded")), "dose": b.get("dose") or None,
+                    "on": bool(r["remind"]), "by": r["created_name"], "at": r["created"], "changed": r["changed"],
                     "changed_by": r["changed_name"]})
     return out
 
 
 def log_detail(change_, r=None):
-    """What the activity log keeps: what was done and how many times a day, never the medication."""
+    """What the activity log keeps: what was done and how many times a day, never the medication or the amounts."""
     return {"change": change_, **({"times": len(r.get("times") or [])} if r else {})}
 
 
@@ -298,14 +349,15 @@ def recurrence(r, at, last_day, zone):
 
 
 def feed_events(db, pid, full, today):
-    """What the calendar feed lists for the profile's reminders: ([{ident, summary, desc, lines}], {zone names used:
-    (first year, last year)}). Only reminders turned on, of a medication still in the records, that haven't ended
-    before today."""
+    """What the calendar feed lists for the profile's schedule: ([{ident, summary, dose, amount, lines}], {zone names
+    used: (first year, last year)}). Only lines with Remind me on and times (not As needed), of a medication still in
+    the records, that haven't ended before today: an event for each time of day, saying the amounts at it (two doses
+    at one time, both). amount: "2 tablets", or "" with none set."""
     meds = current(db, pid)
     events, zones = [], {}
     for r in listing(db, pid):
         m = meds.get(r["med"])
-        if not r["on"] or not m or not r.get("from"):
+        if not r["on"] or not m or not r.get("from") or r["asneeded"] or not r["times"]:
             continue
         last, _ = ends(r, m)
         last_day = date.fromisoformat(last) if last else None
@@ -319,10 +371,15 @@ def feed_events(db, pid, full, today):
             zones[r["tz"]] = (min(a, y0), max(b, y1))
         spans = m.get("spans") or []
         dose = (spans[-1].get("dose") if spans else "") or ""
-        for at in r["times"]:
+        at_times = {}
+        for at, x in zip(r["times"], r["amounts"]):
+            at_times.setdefault(at, []).append(said(x))
+        for at, amounts in at_times.items():
             lines = recurrence(r, at, last_day, zone)
             if lines is None:
                 continue
-            summary = (m.get("name") or r["name"] or "Medication") if full else "Medication"
-            events.append({"ident": f"reminder|{r['id']}|{at}", "summary": summary, "dose": dose if full else "", "lines": lines})
+            amount = " and ".join(a for a in amounts if a)
+            summary = ((m.get("name") or r["name"] or "Medication") + (f" · {amount}" if amount else "")) if full else "Medication"
+            events.append({"ident": f"reminder|{r['id']}|{at}", "summary": summary, "dose": dose if full else "",
+                           "amount": amount if full else "", "lines": lines})
     return events, zones

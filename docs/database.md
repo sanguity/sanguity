@@ -164,9 +164,10 @@ picture is sealed there with its metadata (GPS location, camera, time taken) tak
 entry's encrypted body. Deleting the entry deletes its photos; an export carries them in `journal/photos/`. The medication
 timeline (#50, `server/medications.py`) is worked out from the `med` and `rx` events each time the records are put
 together and listed as `medications`; it has no table and is never stored from an import. **med_reminders** (schema
-version 33, #162, `server/med_reminders.py`) are the reminders set on a medication for the calendar feed: like journal
-entries they belong to the profile and find their medication by its grouping key, so undo keeps them; the body (the
-medication, times, days, from, until, time zone) is encrypted, `active` says whether it's on. **med_doses** (the same
+version 33, #162, `server/med_reminders.py`) are the lines of a medication's schedule (#1094; version 47 made each
+reminder one): like journal entries they belong to the profile and find their medication by its grouping key, so undo
+keeps them; the body (the medication, times with the amount at each, days, from, until, time zone, As needed) is
+encrypted, `remind` (`active` before version 47) says whether its Remind me puts it in the calendar feed. **med_doses** (the same
 step, #235, `server/med_log.py`) is the medication log: doses logged as taken, taken late or skipped, the profile's
 like the journal; the body (the medication, when, what happened, a note, the reminder time) is encrypted, and the
 records list them as `doses`. A phone's doses are watch data (`med_doses` in the receiver's summary), not rows here.
@@ -343,8 +344,8 @@ erDiagram
     med_reminders {
         int id PK
         int profile_id FK
-        text body "🔒 JSON: medication key and name, times, days, from, until, time zone"
-        int active "1 on, 0 off (kept)"
+        text body "🔒 JSON: medication key and name, times and amounts, days, from, until, time zone, as needed"
+        int remind "Remind me: 1 in the calendar feed, 0 not"
         int created_by FK
         text created_name "the username then"
         int created

@@ -3855,6 +3855,11 @@ Everything on `main` so far; it becomes the first tagged release.
   and the visit summary's medications and medication log, its records stay in the profile (and in the FHIR export),
   and a later pull doesn't bring it back. Each says so with an **Undo**; **Hidden** on the
   Medications tab lists those hidden, each with **Show again**.
+- **A schedule for each medication, with amounts** (#1094): a medication's reminders are now its schedule, set in its
+  drawer: times each with an amount and unit (2 tablets at 8:00, 1 at 20:00, any number a day), the days, from and
+  until, or As needed, and as many lines as it takes (every day at 8:00, and Mondays and Fridays at 20:00). Remind me
+  puts a line in the calendar feed, which says the amount at each time with full details. Reminders set before are
+  kept as schedule lines with no amounts, reminding as they did (schema version 47).
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

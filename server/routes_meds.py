@@ -1,6 +1,7 @@
-"""Medication reminders (#162, med_reminders.py): list, set, change, turn off and remove a profile's reminders. Viewers
-read them (the records the page loads list them too, as "reminders"); owners and editors set them. The calendar feed
-(routes_calendar.py) lists those turned on. The medication log (#235, med_log.py): list, log, correct and remove doses,
+"""Medication schedules and their reminders (#1094, #162, med_reminders.py): list, set, change, turn Remind me on or off
+and remove a profile's schedule lines (still "reminders" in the API and the records). Viewers read them (the records
+the page loads list them too, as "reminders"); owners and editors set them. The calendar feed (routes_calendar.py)
+lists those with Remind me on. The medication log (#235, med_log.py): list, log, correct and remove doses,
 the same way ("doses" in the records). The CSRF check in main.guard covers each change like every other, and each goes
 in the profile's activity log as "medication" (what was done, how many times a day or the dose's status, never the
 medication or a note). Each change's reply carries what it changed (#271), as the records list it, so the records page
@@ -18,14 +19,23 @@ from .main import _client_ip, get_db, need, user
 router = APIRouter()
 
 
+class Amount(BaseModel):
+    amount: Optional[float] = None   # above 0; none: no amount
+    unit: Optional[str] = None       # "tablets", "ml"
+
+
 class Reminder(BaseModel):
+    """A schedule line (#1094): its times with their amounts, days, from, until, or As needed; on: Remind me."""
     med: str                       # the medication's grouping key (DATA.medications[].key)
-    times: List[str]               # "HH:MM", 24-hour
+    times: List[str] = []          # "HH:MM", 24-hour; one twice for two doses at that time
+    amounts: Optional[List[Optional[Amount]]] = None   # one for each time, in the same order; none: no amounts
     days: List[str]                # "mo".."su"; all seven: every day
     start: str                     # YYYY-MM-DD: from
     until: Optional[str] = None    # YYYY-MM-DD, or none
     tz: Optional[str] = None       # an IANA zone; none: the person's own (Settings -> Dates and times), else the server's UTC
-    on: bool = True
+    asneeded: bool = False         # As needed: no times
+    dose: Optional[Amount] = None  # As needed: its usual amount
+    on: bool = True                # Remind me: in the calendar feed
 
 
 class Switch(BaseModel):
@@ -40,7 +50,9 @@ def _zone(db, s, tz):
 
 def _checked(db, pid, s, body, keep_med=None):
     try:
-        return mr.check(db, pid, body.med, body.times, body.days, body.start, body.until, _zone(db, s, body.tz), keep_med)
+        amounts = None if body.amounts is None else [a.model_dump() if a else None for a in body.amounts]
+        return mr.check(db, pid, body.med, body.times, body.days, body.start, body.until, _zone(db, s, body.tz), keep_med,
+                        amounts, body.asneeded, body.dose.model_dump() if body.dose else None)
     except mr.ReminderError as x:
         raise HTTPException(400, str(x))
 

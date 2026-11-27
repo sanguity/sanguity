@@ -492,6 +492,9 @@ class Schema(unittest.TestCase):
         dbm.upgrade(db)
         self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], len(dbm.SCHEMA))
         self.assertEqual(db.execute("PRAGMA foreign_keys").fetchone()[0], 1, "foreign keys on again")
+        # a column a later version renamed, under its new name: version 47 (#1094), a reminder's "active" its Remind me
+        renamed = {("med_reminders", "active"): "remind"}
+        cols = {t: ", ".join(renamed.get((t, c), c) for c in cols[t].split(", ")) for t in KEPT}
         self.assertEqual({t: db.execute(f"SELECT {cols[t]} FROM {t} ORDER BY 1, 2").fetchall() for t in KEPT}, before)
         now = {t: ", ".join(r[1] for r in db.execute(f"PRAGMA table_info({t})")) for t in KEPT}
         self.assertEqual({t: now[t][:len(cols[t])] for t in KEPT}, cols, "the same columns (a later version may add its own after them)")
