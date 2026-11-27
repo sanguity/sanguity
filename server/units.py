@@ -153,10 +153,13 @@ def _canon(s):
 
 
 def annotate(data):
-    """Add "conv" to each lab series that can be shown in another unit, and "unitConv" for the units the page
-    assumes itself (clinic weights, in lb). Returns data."""
+    """Add "conv" to each lab series that can be shown in another unit, "uk" to each, its unit's comparable form
+    (common.unit_key: the page charts a test's series in one unit spelled two ways together, www/js/same.js joinSeries;
+    #1102: "10³/µL" and "K/µL" platelets were two), and "unitConv" for the units the page assumes itself (clinic weights,
+    in lb). Returns data."""
     for s in data.get("labs") or []:
         if isinstance(s, dict):
+            s["uk"] = common.unit_key(s.get("unit"))
             c = conversions(_canon(s), s.get("unit"))
             if c:
                 s["conv"] = c
