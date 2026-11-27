@@ -41,7 +41,10 @@ Profile events (profile_id set), readable by the profile's owners:
   medication    {"change": "reminder.add" | "reminder.change" | "reminder.on" | "reminder.off" | "reminder.delete", "times"?}:
                 a medication reminder set, changed, turned on or off, or removed (med_reminders.py, #162; never which
                 medication); {"change": "dose.add" | "dose.change" | "dose.delete", "status"}: a dose logged, corrected
-                or removed (med_log.py, #235; never the medication or the note)
+                or removed (med_log.py, #235; never the medication or the note); {"change": "own.add" | "own.back" |
+                "own.change" | "own.delete" | "listed.change" | "listed.back" | "listed.hide" | "listed.show"}: a
+                medication of the profile's own added, put back, changed or deleted, or one of the records' changed,
+                put back as listed, hidden or shown again (medications.py, #1091; never which medication)
   link          {"change": "create" | "revoke" | "view", "link", "label"?, ...}: a share link made or revoked by an owner
                 (with its sections, number of labs, dates and hours), or opened by whoever holds it: actor SHARE_LINK,
                 with the viewer's address (share_links.py, #47; never the token)

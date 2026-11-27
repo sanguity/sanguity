@@ -169,7 +169,11 @@ entries they belong to the profile and find their medication by its grouping key
 medication, times, days, from, until, time zone) is encrypted, `active` says whether it's on. **med_doses** (the same
 step, #235, `server/med_log.py`) is the medication log: doses logged as taken, taken late or skipped, the profile's
 like the journal; the body (the medication, when, what happened, a note, the reminder time) is encrypted, and the
-records list them as `doses`. A phone's doses are watch data (`med_doses` in the receiver's summary), not rows here. An import's
+records list them as `doses`. A phone's doses are watch data (`med_doses` in the receiver's summary), not rows here.
+**med_entries** (schema version 46, #1091, `server/medications.py`) are a profile's own medications and its changes to
+those of the records: an own one has a key of its own ("own:" and a random word), a change finds its medication by the
+grouping key, as reminders do, keeping only what differs from the records, or that it's hidden (#1093); the body is
+encrypted, and the records list them in `medications` (and the hidden ones as `hiddenMeds`). An import's
 **name** (schema version 25, #38) is what the person renamed it to, encrypted; the records call it by that wherever
 they say where a record came from, and NULL means the importer's label. **cost_marks** (schema version 27, #55,
 `server/oop.py`) hold what a person said about an out-of-pocket amount on the Costs tab: a payment or a claim's share
@@ -197,6 +201,7 @@ erDiagram
     journal ||--o{ journal_photos : "shows"
     profiles ||--o{ med_reminders : "has"
     profiles ||--o{ med_doses : "has"
+    profiles ||--o{ med_entries : "has"
     profiles ||--o{ cost_marks : "has"
 
     profiles {
@@ -351,6 +356,17 @@ erDiagram
         int id PK
         int profile_id FK
         text body "🔒 JSON: medication key and name, time, taken | late | skipped, note, reminder time"
+        int created_by FK
+        text created_name "the username then"
+        int created
+        int changed_by FK
+        text changed_name
+        int changed
+    }
+    med_entries {
+        int id PK
+        int profile_id FK
+        text body "🔒 JSON: key, own, name, strength, dose, route, start, stop, status, prescriber, note, hidden"
         int created_by FK
         text created_name "the username then"
         int created
@@ -915,6 +931,7 @@ heart rate is the profile setting `person.maxHr` (above), sealed like the other 
 | `journal` | `body` |
 | `med_reminders` | `body` |
 | `med_doses` | `body` |
+| `med_entries` | `body` |
 | `share_links` | `label`, `scope` |
 | `cost_marks` | `target_key`, `value` |
 | `labmaps` | `source`, `target` |

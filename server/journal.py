@@ -81,9 +81,11 @@ def medications(db, pid):
     body = records.served(db, pid)
     if not body:
         return []
-    events = json.loads(body).get("events") or []
+    data = json.loads(body)
+    events = data.get("events") or []
     return sorted({e["title"] for e in events if isinstance(e, dict) and e.get("k") in MED_KINDS
-                   and isinstance(e.get("title"), str) and e["title"].strip()}, key=str.lower)
+                   and isinstance(e.get("title"), str) and e["title"].strip()}
+                  | {m["name"] for m in data.get("medications") or [] if m.get("own")}, key=str.lower)   # its own too (#1091)
 
 
 def _when(t, day_only=False):

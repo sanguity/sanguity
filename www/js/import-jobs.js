@@ -350,7 +350,8 @@
   // what a Sanguity export brings besides its records (#589: its corrections, journal, medication log and reminders),
   // to be put back (the review) or put back (done): a line, or null when it brings none
   const RESTORED = [["corrections", ["correction", "corrections"]], ["journal", ["journal entry", "journal entries"]],
-    ["photos", ["photo", "photos"]], ["doses", ["logged dose", "logged doses"]], ["reminders", ["medication reminder", "medication reminders"]]];
+    ["photos", ["photo", "photos"]], ["doses", ["logged dose", "logged doses"]], ["reminders", ["medication reminder", "medication reminders"]],
+    ["medEntries", ["medication you added or changed", "medications you added or changed"]]];   // (#1091)
   function restoredLine(r, done) {
     const said = RESTORED.filter(([k]) => (r || {})[k] > 0).map(([k, words]) => plural(r[k], words));
     if (!said.length) return null;
