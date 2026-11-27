@@ -394,7 +394,7 @@ questions:
                         required: true
         - variable: backups
           label: Sanguity Backups Storage
-          description: Where Sanguity writes its backups, on the schedule set under Admin > Backups or with python -m server.manage backup. Copy them off this machine too.
+          description: Where Sanguity writes its backups, on the schedule set under Settings > Install > Backups or with python -m server.manage backup. Copy them off this machine too.
           schema:
             type: dict
             attrs:

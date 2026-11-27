@@ -13,7 +13,7 @@ that user. The root filesystem is read-only (`--read-only --tmpfs /tmp`).
 | Watch receiver port, for the upload address (the same number again: the app gives it in the phone's upload address, #1007) | `RECEIVER_PORT` | 8731 |
 | Data | `/data` | `/mnt/user/appdata/sanguity/data` |
 | Encryption key | `/run/secrets/sanguity` | `/mnt/user/appdata/sanguity-key` |
-| Backups (Sanguity writes them on the schedule set under **Admin → Backups**; copy them off the server too) | `/backups` | `/mnt/user/appdata/sanguity/backups` |
+| Backups (Sanguity writes them on the schedule set under **Settings → Install → Backups**; copy them off the server too) | `/backups` | `/mnt/user/appdata/sanguity/backups` |
 | Watch data | `/watch` | `/mnt/user/appdata/sanguity/watch` |
 | Record exports (advanced, read-only) | `/srv/records` | `/mnt/user/appdata/sanguity/records` |
 | Config files (advanced, read-only) | `/config` | `/mnt/user/appdata/sanguity/config` |

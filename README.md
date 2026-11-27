@@ -729,7 +729,7 @@ A passkey belongs to the name you open Sanguity at, so it works only:
   Serve) and add that address to the public addresses (Settings → Install → General → Host, or `PUBLIC_ORIGINS`
   in `.env`);
 - **at the name it was added at**: one added at `https://health.example.com` isn't offered at another name for the
-  same server. **Settings > Passkeys** shows where each one works.
+  same server. **Settings → You → Sign-in and security**, under Passkeys, shows where each one works.
 
 Your password keeps working alongside passkeys. Where an admin requires two-factor sign-in, your last second step
 (the only passkey, with no authenticator app) can't be removed, so nobody locks themselves out. An admin's

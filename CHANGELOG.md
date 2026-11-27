@@ -3874,6 +3874,11 @@ Everything on `main` so far; it becomes the first tagged release.
   routes are refused, nothing syncs, the directory isn't updated and nobody is contacted for them; connections and what
   they brought are kept and sync again once they're on. An install upgraded with a source set up or a connection keeps
   them on.
+- **Where things are, by their new names** (#1076): Sharing → People's unknown username, the start's
+  saved-settings-off message, `manage.py`'s restore messages (and which settings a restore keeps), the setup scripts
+  and the TrueNAS, Unraid and CasaOS notes pointed to the old Admin and Account pages; they name Settings → Install →
+  Accounts, General or Backups, and Sharing → Export everything. A phone's way back in Sources says "Sources
+  overview", not a second "Overview" beside the bottom bar's.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

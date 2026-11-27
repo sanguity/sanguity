@@ -12,7 +12,7 @@ the others are stopped too and the container exits, so Docker's restart policy s
 Folders (mount each one; see deploy/unraid/README.md):
   /data                    the database and each profile's files
   /run/secrets/sanguity    the encryption key and the receiver's secret: keep it apart from /data and its backups
-  /backups                 backups go here (Admin → Backups, or python -m server.manage backup)
+  /backups                 backups go here (Settings → Install → Backups, or python -m server.manage backup)
   /watch                   watch and scale data from the receiver
   /srv/records             record exports for sources.json (read-only; optional)
   /config                  sources.json, settings.json, corrections.json (read-only; optional)
