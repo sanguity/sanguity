@@ -271,7 +271,7 @@ async function settingsLoad() {
     if (r.status === 401) { location.replace("login.html"); return; }
     if (r.status >= 500) { const j = await r.json().catch(() => ({})); throw new Error(j.detail || r.status + " " + r.statusText); }
     if (r.status === 204) {   // no records yet (#199): the getting-started guide, opened by itself the first time
-      if (PROFILE.role === "owner" && ME.profiles.length === 1) {   // your own profile, and your only one
+      if (PROFILE.role === "owner" && !PROFILE.demo && ME.profiles.filter(p => !p.demo).length === 1) {   // your own profile, and your only one (the demo beside it doesn't count, #1101)
         const u = await api("settings/user").then(x => x.ok ? x.json() : {}).catch(() => ({}));
         if (u.guide === "" && !/^#(new-journal-entry|log-dose|add-medication)$/.test(location.hash)) { location.replace(`guide.html?profile=${PROFILE.id}`); return; }   // not finished or skipped yet; not when Add sent them to do something here (#479)
       }

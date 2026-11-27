@@ -3,7 +3,7 @@
 name: sanguity
 
 services:
-  # one-shot: secrets and folders, then the built data (the demo, until records are added)
+  # one-shot: secrets and folders, then the built data (your exports via sources.json; a fresh install starts empty)
   setup:
     container_name: sanguity-setup
     image: ghcr.io/sanguity/sanguity:0.1.0

@@ -14,9 +14,9 @@
 // page's store, #271; v7: one sidebar, #266, and About this person in Settings, #267; v8: the command palette, #273;
 // v9: renaming and deleting a profile in Settings, #402; v10: the other pages offline, #413; v11: the Medications tab,
 // #275; v12: a drop anywhere uploads, #281; v13: the QR codes, #284; v14: the chart kit, #291, and a lab's panel, #296;
-// v15: Labs' event track, #294; v16: labs compared, #297; v17: Labs' Latest, #993): the worker installs a fresh copy under the new name, and
+// v15: Labs' event track, #294; v16: labs compared, #297; v17: Labs' Latest, #993; v19: General's Demo profile, #1101): the worker installs a fresh copy under the new name, and
 // activating deletes the old one, with any file no longer listed.
-const SHELL = "sanguity-shell-v18";
+const SHELL = "sanguity-shell-v19";
 const SCOPE = new URL(self.registration.scope);
 // Every page, style, script, font and icon in www/ (tests/test_pwa.py checks this list against the folder). Not the
 // fonts' and icons' licence texts, and not connect-return.html: that's where a connected source's sign-in comes back, with a code
@@ -40,6 +40,7 @@ const FILES = [
   "js/gen-backups.js",
   "js/admin-phone.js",
   "js/gen-about.js",
+  "js/gen-demo.js",
   "guide.html", "js/guide.js",
   "js/cycle.js", "js/sources-cycle.js",
   "js/targets.js",

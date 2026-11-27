@@ -12,7 +12,7 @@ name: sanguity
 x-image: &image ${SANGUITY_IMAGE:-ghcr.io/sanguity/sanguity}:${SANGUITY_VERSION:-latest}
 
 services:
-  # one-shot: secrets and folders, then the built data in DATA_DIR/build (your exports via sources.json, or the demo)
+  # one-shot: secrets and folders, then the built data in DATA_DIR/build (your exports via sources.json; none without one)
   setup:
     image: *image
     user: "0:0"            # creates missing folders, then hands every file it writes to PUID:PGID
