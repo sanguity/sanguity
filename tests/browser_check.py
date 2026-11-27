@@ -2805,7 +2805,7 @@ def connected_sources_switch_check(check, browser, base, cookies):
     check("…switched on again, Install's groups are back, and each place says experimental, not recommended yet: Sources' portals "
           "and its upload's line, Add's Connect, Install's Connected-source apps and Provider directory, the guide's way",
           "apps" in on[0] and "directory" in on[0] and on[2:] == [True, True]
-          and shown["portals"].startswith("Experimental, not recommended yet") and shown["add"] == "Connect a portal or plan (experimental)"
+          and shown["portals"].startswith("Experimental, not recommended yet") and shown["add"] == "Connect a source (experimental)"
           and "experimental, not recommended yet" in shown["upload"] and shown["apps"].startswith("Experimental, not recommended yet")
           and shown["directory"].startswith("Experimental") and shown["guide"] and "Experimental, not recommended yet" in shown["guide"]
           and "connected sources' return" in shown["host"][0] and "Connected sources" in shown["host"][2], [on, shown])
@@ -22674,7 +22674,7 @@ def main():
             # Getting started, followed from here, opens Second person
             followed = {}
             for menu, item in [("#addMenuBtn", f"#addMenuList a:text-is(\"{t}\")") for t in ("Log a dose", "Add a medication", "Journal entry", "Home reading", "Upload files",
-                                "Connect a portal or plan (experimental)", "Type records in", "Paste a Health Link")] + [("#userMenuBtn", "#settingsLink"), ("#userMenuBtn", "#guideLink")]:
+                                "Connect a source (experimental)", "Type records in", "Paste a Health Link")] + [("#userMenuBtn", "#settingsLink"), ("#userMenuBtn", "#guideLink")]:
                 page.goto(base + "/settings.html?profile=2")
                 page.wait_for_function(filled + " && document.getElementById('profile').value === '2'", timeout=20000)
                 js("localStorage.setItem('ht-profile', '1')")   # as another tab picking My records leaves this browser
@@ -23242,7 +23242,7 @@ def main():
                 .filter(x => !x.hidden && !x.closest('[hidden]')).map(x => x.textContent.trim())"""
             pal_actions = """() => [...document.querySelectorAll('#palList [role=group]')].filter(g => g.querySelector('.pal-sec').textContent === 'Actions')
                 .flatMap(g => [...g.querySelectorAll('.pal-t')].map(t => t.textContent))"""
-            ADDS = {"Log a dose", "Add a medication", "Journal entry", "Home reading", "Upload files", "Connect a portal or plan (experimental)", "Type records in", "Paste a Health Link", "New share link"}
+            ADDS = {"Log a dose", "Add a medication", "Journal entry", "Home reading", "Upload files", "Connect a source (experimental)", "Type records in", "Paste a Health Link", "New share link"}
             offered = {}
             for path in ("?profile=1", "sources.html?profile=1", "sharing.html?profile=1", "settings.html?profile=1", "settings.html?profile=1#security",
                          "settings.html?profile=1#accounts", "guide.html?profile=1"):   # (Account's and Admin's, #991)
@@ -23589,7 +23589,7 @@ def main():
             zb.wait_for_selector("#addMenuBtn", timeout=10000)
             own_empty = zb.evaluate(add_offers)
             check("Add follows the profile shown (#401): nothing for one they can only view; on the empty one they edit, all but Log a dose",
-                  viewing == [] and own_empty == ["Add a medication", "Journal entry", "Home reading", "Upload files", "Connect a portal or plan (experimental)", "Type records in", "Paste a Health Link"],
+                  viewing == [] and own_empty == ["Add a medication", "Journal entry", "Home reading", "Upload files", "Connect a source (experimental)", "Type records in", "Paste a Health Link"],
                   [viewing, own_empty])
             zb.goto(base + f"/settings.html?profile={pid3}")
             zb.wait_for_selector("#addMenuBtn", timeout=10000)
