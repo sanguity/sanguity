@@ -194,12 +194,13 @@ def _min(hm):
 
 def scheduled(lines, day, stop=None):
     """The doses a medication's schedule lines (med_reminders.listing's, its own) give on a day: [(time "HH:MM",
-    {amount, unit})] by time, two at one time two. stop: the day the records say it stopped (it ends its lines)."""
+    {amount, unit})] by time, two at one time two; a paused line gives none. stop: the day the records say it stopped
+    (it ends its lines)."""
     from . import med_reminders
     k, iso = med_reminders.DAYS[day.weekday()], day.isoformat()
     out = []
     for r in lines:
-        if r.get("asneeded") or k not in (r.get("days") or ()) or not r.get("from") or r["from"] > iso:
+        if r.get("asneeded") or r.get("paused") or k not in (r.get("days") or ()) or not r.get("from") or r["from"] > iso:
             continue
         last, _ = med_reminders.ends(r, {"stop": stop})
         if last and last < iso:

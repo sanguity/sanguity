@@ -1044,8 +1044,9 @@ class Reminders(unittest.TestCase):
         self.assertIn("above 0", self.set(status=400, times=[], asneeded=True, dose={"amount": 0})["detail"])
 
     def test_reminders_from_before_become_schedules(self):
-        """Schema step 47: each reminder a line of its medication's schedule, its times with no amount, on (Remind me)
-        as it was; the feed lists the same events"""
+        """Schema step 47, from a schema-45 database: each reminder a line of its medication's schedule, its times
+        with no amount; one on stays on (Remind me), one turned off is a paused line, Remind me on to resume as it was
+        (the owner, on #1090); the feed lists the one on's events, and the paused one's once it's resumed"""
         import json
         from server import config, crypto, med_reminders as mr
         path = os.path.join(TMP, "before-1094.db")
@@ -1054,7 +1055,8 @@ class Reminders(unittest.TestCase):
             config.DB_PATH = path
             schema = dbm.SCHEMA
             here = dbm.SCHEMA.index(next(s for s in dbm.SCHEMA if "RENAME COLUMN active TO remind" in s))
-            dbm.SCHEMA = schema[:here]
+            self.assertEqual(here, 46, "steps 46 and 47 still to run: a schema-45 database")
+            dbm.SCHEMA = schema[:here - 1]
             try:
                 db = dbm.connect()
                 dbm.upgrade(db)
@@ -1070,25 +1072,35 @@ class Reminders(unittest.TestCase):
             dbm.upgrade(db)
             self.assertIn("remind", [c[1] for c in db.execute("PRAGMA table_info(med_reminders)")])
             got = mr.listing(db, self.pid)
-            self.assertEqual([(r["times"], r["amounts"], r["days"], r["on"], r["asneeded"]) for r in got],
-                             [(["08:00", "20:00"], [{"amount": None, "unit": ""}] * 2, ["mo", "we", "fr"], True, False),
-                              (["12:00"], [{"amount": None, "unit": ""}], DOW_L, False, False)])
+            self.assertEqual([(r["times"], r["amounts"], r["days"], r["on"], r["paused"], r["asneeded"]) for r in got],
+                             [(["08:00", "20:00"], [{"amount": None, "unit": ""}] * 2, ["mo", "we", "fr"], True, False, False),
+                              (["12:00"], [{"amount": None, "unit": ""}], DOW_L, True, True, False)])
             db.close()
         finally:
             config.DB_PATH = old
-        # the same lines in the profile's own database: the feed reminds as before, the one off not at all
+        # the same lines in the profile's own database: the feed reminds as before, the one turned off (paused) not at all
         db = dbm.connect()
-        for r in got:
-            db.execute("INSERT INTO med_reminders(profile_id, body, remind, created_name, created) VALUES(?, ?, ?, 'lee', 1)",
-                       (self.pid, crypto.enc(json.dumps({k: r[k] for k in ("med", "name", "times", "days", "from", "until", "tz")})), int(r["on"])))
+        ids = [db.execute("INSERT INTO med_reminders(profile_id, body, remind, paused, created_name, created) VALUES(?, ?, ?, ?, 'lee', 1)",
+                          (self.pid, crypto.enc(json.dumps({k: r[k] for k in ("med", "name", "times", "days", "from", "until", "tz")})),
+                           int(r["on"]), int(r["paused"]))).lastrowid for r in got]
         db.close()
         _, cal = self.feed()
         evs = sorted(self.reminders(cal), key=lambda e: e["DTSTART"][1])
-        self.assertEqual(len(evs), 2, "the one on: its two times; the one off: none")
+        self.assertEqual(len(evs), 2, "the one on: its two times; the paused one: none")
         for e, at in zip(evs, ("08:00", "20:00")):
             want = mr.recurrence({**got[0], "tz": "America/Chicago"}, at, date.fromisoformat(D(40)), mr._zone("America/Chicago"))
             self.assertEqual([e["DTSTART"][1], e["RRULE"][1]], [want[0].split(":", 1)[1], want[2].split(":", 1)[1]])
             self.assertEqual(unescape(e["SUMMARY"][1]), "Medication")
+        # resumed, it reminds as it did; paused again, it's out again; Remind me still turns on and off by itself
+        r = self.c["lee"].patch(self.path(f"/{ids[1]}"), headers=H, json={"paused": False})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual((r.json()["reminders"][0]["paused"], r.json()["reminders"][0]["on"]), (False, True))
+        self.assertEqual(len(self.reminders(self.feed()[1])), 3, "resumed: its 12:00 too")
+        self.assertEqual(self.c["lee"].patch(self.path(f"/{ids[1]}"), headers=H, json={"paused": True}).status_code, 200)
+        self.assertEqual(len(self.reminders(self.feed()[1])), 2, "paused again")
+        r = self.c["lee"].patch(self.path(f"/{ids[1]}"), headers=H, json={"on": False})
+        self.assertEqual((r.json()["reminders"][0]["paused"], r.json()["reminders"][0]["on"]), (True, False), "still paused")
+        self.assertEqual(self.c["lee"].patch(self.path(f"/{ids[1]}"), headers=H, json={}).status_code, 400)
 
 
 DOW_L =["mo", "tu", "we", "th", "fr", "sa", "su"]

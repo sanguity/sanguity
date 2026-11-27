@@ -5,10 +5,12 @@ and until; or a line As needed, with no times (doses logged when taken, its usua
 medication's schedule: every day at 08:00, and Mondays and Fridays at 20:00 (the owner, on #1094). Today lists each
 dose a line gives that day (medlog.js), and the counts are of those (med_log.schedule_counts). Remind me on a line
 (its remind column) puts each of its times in the calendar feed (#51, calendar.py) as a recurring event, with the
-amounts, so the person's own calendar app does the reminding. Sanguity sends nothing itself.
+amounts, so the person's own calendar app does the reminding. Sanguity sends nothing itself. A line paused (its
+paused column; the owner, on #1090) is kept with its times and days to resume: until then it gives no dose on Today
+or in any count (med_log.scheduled), and is in no calendar.
 
 A line belongs to the profile, never to an import (schema version 33, med_reminders; version 47 made each reminder a
-line, its "active" Remind me): it finds its medication by the medication's grouping key (medications.med_key), so
+line, its "active" Remind me, and one that was off a paused line): it finds its medication by the medication's grouping key (medications.med_key), so
 undoing or re-importing the records keeps it, and it finds its medication again when the same one is imported later.
 Its body is encrypted: {med: the key, name: what the medication was called when it was set, times: ["08:00", ...]
 (in order, a time twice for two doses then), amounts: [{amount: a number or None, unit: "tablets"}, ...] (one for each
@@ -152,20 +154,22 @@ def add(db, pid, who, r, active=True):
 
 
 def get(db, pid, rid):
-    r = db.execute("SELECT body, remind FROM med_reminders WHERE id=? AND profile_id=?", (rid, pid)).fetchone()
-    return {**json.loads(crypto.dec(r["body"])), "on": bool(r["remind"])} if r else None
+    r = db.execute("SELECT body, remind, paused FROM med_reminders WHERE id=? AND profile_id=?", (rid, pid)).fetchone()
+    return {**json.loads(crypto.dec(r["body"])), "on": bool(r["remind"]), "paused": bool(r["paused"])} if r else None
 
 
-def change(db, pid, rid, who, r=None, active=None):
-    """Replace a line with a checked one, and/or turn its Remind me on or off. Returns what it was, or None."""
+def change(db, pid, rid, who, r=None, active=None, paused=None):
+    """Replace a line with a checked one, turn its Remind me on or off, and/or pause or resume it. Returns what it
+    was, or None."""
     from . import db as dbm, records
     was = get(db, pid, rid)
     if was is None:
         return None
     body = _enc(r) if r is not None else None
-    db.execute("""UPDATE med_reminders SET body=COALESCE(?, body), remind=COALESCE(?, remind), changed_by=?, changed_name=?,
-                  changed=? WHERE id=? AND profile_id=?""",
-               (body, None if active is None else int(bool(active)), who["id"], who["username"], dbm.now(), rid, pid))
+    db.execute("""UPDATE med_reminders SET body=COALESCE(?, body), remind=COALESCE(?, remind), paused=COALESCE(?, paused),
+                  changed_by=?, changed_name=?, changed=? WHERE id=? AND profile_id=?""",
+               (body, None if active is None else int(bool(active)), None if paused is None else int(bool(paused)),
+                who["id"], who["username"], dbm.now(), rid, pid))
     records._bump(db, pid)
     return was
 
@@ -181,11 +185,11 @@ def remove(db, pid, rid):
 
 def listing(db, pid, ids=None):
     """The profile's schedule lines, oldest first: {id, med, name, times, amounts, days, from, until, tz, asneeded, dose,
-    on (Remind me), by, at, changed, changed_by}. ids: only those lines (a change's reply carries the one it changed,
+    on (Remind me), paused, by, at, changed, changed_by}. ids: only those lines (a change's reply carries the one it changed,
     #271). One from before #1094 is read as it reminded: its times with no amounts."""
     out = []
     only = "" if ids is None else f" AND id IN ({','.join('?' * len(ids))})"
-    for r in db.execute(f"""SELECT id, body, remind, created_name, created, changed_name, changed FROM med_reminders
+    for r in db.execute(f"""SELECT id, body, remind, paused, created_name, created, changed_name, changed FROM med_reminders
                            WHERE profile_id=?{only} ORDER BY id""", (pid, *(ids or ()))):
         b = json.loads(crypto.dec(r["body"]))
         times = b.get("times") or []
@@ -194,7 +198,7 @@ def listing(db, pid, ids=None):
                     "amounts": amounts or [{"amount": None, "unit": ""} for _ in times],
                     "days": b.get("days") or list(DAYS), "from": b.get("from"), "until": b.get("until"), "tz": b.get("tz") or "",
                     "asneeded": bool(b.get("asneeded")), "dose": b.get("dose") or None,
-                    "on": bool(r["remind"]), "by": r["created_name"], "at": r["created"], "changed": r["changed"],
+                    "on": bool(r["remind"]), "paused": bool(r["paused"]), "by": r["created_name"], "at": r["created"], "changed": r["changed"],
                     "changed_by": r["changed_name"]})
     return out
 
@@ -350,14 +354,14 @@ def recurrence(r, at, last_day, zone):
 
 def feed_events(db, pid, full, today):
     """What the calendar feed lists for the profile's schedule: ([{ident, summary, dose, amount, lines}], {zone names
-    used: (first year, last year)}). Only lines with Remind me on and times (not As needed), of a medication still in
+    used: (first year, last year)}). Only lines with Remind me on, not paused, and times (not As needed), of a medication still in
     the records, that haven't ended before today: an event for each time of day, saying the amounts at it (two doses
     at one time, both). amount: "2 tablets", or "" with none set."""
     meds = current(db, pid)
     events, zones = [], {}
     for r in listing(db, pid):
         m = meds.get(r["med"])
-        if not r["on"] or not m or not r.get("from") or r["asneeded"] or not r["times"]:
+        if not r["on"] or r["paused"] or not m or not r.get("from") or r["asneeded"] or not r["times"]:
             continue
         last, _ = ends(r, m)
         last_day = date.fromisoformat(last) if last else None

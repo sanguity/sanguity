@@ -38,9 +38,10 @@ Profile events (profile_id set), readable by the profile's owners:
                 what was kept), or deleted what was kept (cycle_tracking.py, #183; never a record)
   source       {"import", "label", "named"}: an import given its own name, or its name taken away (named false;
                 records.rename_import, #38; never the name)
-  medication    {"change": "reminder.add" | "reminder.change" | "reminder.on" | "reminder.off" | "reminder.delete", "times"?}:
-                a medication reminder set, changed, turned on or off, or removed (med_reminders.py, #162; never which
-                medication); {"change": "dose.add" | "dose.change" | "dose.delete", "status"}: a dose logged, corrected
+  medication    {"change": "reminder.add" | "reminder.change" | "reminder.on" | "reminder.off" | "reminder.pause" |
+                "reminder.resume" | "reminder.delete", "times"?}:
+                a medication reminder set, changed, turned on or off, paused or resumed, or removed (med_reminders.py,
+                #162; never which medication); {"change": "dose.add" | "dose.change" | "dose.delete", "status"}: a dose logged, corrected
                 or removed (med_log.py, #235; never the medication or the note); {"change": "own.add" | "own.back" |
                 "own.change" | "own.delete" | "listed.change" | "listed.back" | "listed.hide" | "listed.show"}: a
                 medication of the profile's own added, put back, changed or deleted, or one of the records' changed,

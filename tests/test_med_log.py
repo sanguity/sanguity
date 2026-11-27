@@ -292,6 +292,11 @@ class Log(unittest.TestCase):
         second = [mo + timedelta(days=7 + i) for i in range(7)]
         n = med_log.schedule_counts(lines, [], second, datetime(2026, 12, 1))
         self.assertEqual(n["scheduled"], 7 + 2 + 3, "the 13:00 line from its Wednesday until its Friday")
+        # (the owner, on #1090) a paused line gives no dose and counts none: its 8:00 dose logged is then "other"
+        paused = [{**lines[0], "paused": True}, *lines[1:]]
+        self.assertEqual([t for t, _ in med_log.scheduled(paused, mo)], ["20:00"], "a Monday: the night's only")
+        n = med_log.schedule_counts(paused, doses, week, datetime(2026, 11, 20))
+        self.assertEqual((n["scheduled"], n["taken"]), (2, 1), "Monday's and Friday's nights: Monday's taken (late)")
         self.assertEqual(med_log.said_scheduled({"scheduled": 1, "taken": 1, "late": 0, "skipped": 0}), "1 of 1 scheduled dose taken")
         self.assertEqual(med_log.said_scheduled({"scheduled": 0, "taken": 0, "late": 0, "skipped": 0}), "No scheduled doses in this period")
         self.assertEqual(med_log.said_scheduled({"scheduled": 0, "taken": 0, "late": 0, "skipped": 0, "other": 1}), "No scheduled doses in this period; 1 other dose logged")
@@ -329,6 +334,9 @@ class Log(unittest.TestCase):
         self.assertEqual(b["lead"], ["Fictionamide 10 mg tablet: 1 of 3 scheduled doses taken, 1 skipped"])
         self.assertEqual(b["rows"][0][4], "Typed in, 2 tablets", "a typed dose's amount, as the phone's")
         self.assertEqual(b["rows"][1][4], "Typed in", "none given: none said")
+        data["reminders"][0]["paused"] = True   # paused (#1094): no schedule to count against, what was logged said
+        b = measures.blocks(measures.Ctx({"tz": "UTC"}, data, {}), ["medlog"], lambda d: D(-3) <= d <= D(-1))["medlog"]
+        self.assertNotIn("scheduled", b["lead"][0])
         for word in ("due", "should", "missed", "adherence"):
             self.assertNotIn(word, json.dumps(b).lower())
 

@@ -3859,8 +3859,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - **A schedule for each medication, with amounts** (#1094): a medication's reminders are now its schedule, set in its
   drawer: times each with an amount and unit (2 tablets at 8:00, 1 at 20:00, any number a day), the days, from and
   until, or As needed, and as many lines as it takes (every day at 8:00, and Mondays and Fridays at 20:00). Remind me
-  puts a line in the calendar feed, which says the amount at each time with full details. Reminders set before are
-  kept as schedule lines with no amounts, reminding as they did (schema version 47).
+  puts a line in the calendar feed, which says the amount at each time with full details. **Pause** keeps a line with
+  its times but off Today, out of the counts and the calendar feed until **Resume**. Reminders set before are kept as
+  schedule lines with no amounts, reminding as they did; one that was turned off is a paused line (schema version 47).
 - **Each scheduled dose its own row on Today, with its amount** (#1095): two doses at 8:00 are two rows, logged one
   by one, each saying how much; As needed has Log a dose with its usual amount to start from; a dose with no time of
   the schedule (from Apple Health, or logged in the drawer) goes to the scheduled dose within two hours of it, else
