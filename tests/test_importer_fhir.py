@@ -150,6 +150,22 @@ class Bundle(Shape, unittest.TestCase):
         self.assertFalse([s for s in self.data["labs"] if s["name"].lower().endswith("blood pressure")])
         self.assertEqual(self.data["clinicWeights"], [["2025-03-04T09:35:00-06:00", 176.4, "FHIR"]])   # 80 kg in lb
 
+    def test_loose_results_name_no_panel(self):
+        """#1102: Observations in no DiagnosticReport are listed as "Lab results", which names no panel: a FHIR LDL
+        Cholesterol under it put LDL in a "Lab results" group on Latest and a spreadsheet's HDL Cholesterol (its "Lipid
+        Panel") alone under Other. The records put such a lab in the panel another import gives it, else lab-aliases.json's."""
+        from server import records
+        ldl = series(self.data, "LDL Cholesterol")
+        self.assertEqual(ldl["panel"], "")
+        self.assertEqual(series(self.data, "Hemoglobin")["panel"], "CBC WITH DIFFERENTIAL", "a report's panel kept")
+        self.assertIn("Lab results", [e["title"] for e in self.data["events"] if e["k"] == "labitem"], "the results' own title kept")
+        labs = [dict(ldl), {"name": "LDL Cholesterol", "panel": "Lipid Panel"}, {"name": "HDL Cholesterol", "panel": "Lipid Panel"}]
+        records._panels(labs)
+        self.assertEqual([s["panel"] for s in labs], ["Lipid Panel"] * 3)
+        alone = [dict(ldl)]
+        records._panels(alone)
+        self.assertEqual(alone[0]["panel"], "Lipids", "lab-aliases.json's")
+
     def test_vitals_in_another_unit(self):
         """A temperature in °C and a height in cm: converted to the unit C-CDA's are in (°F, in), as reported kept with its
         unit, and C-CDA's name, so a FHIR and a C-CDA import of the same test are one chart (#1102)."""
