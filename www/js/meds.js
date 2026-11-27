@@ -23,7 +23,9 @@ function medsLoad() {
     const spans = m.spans.filter(s => s && /^\d{4}-\d{2}-\d{2}$/.test(s.from || "")).map(s => ({...s, ts: dayTs(s.from), te: s.to ? dayTs(s.to) : null}));
     const fills = m.fills.filter(f => f && /^\d{4}-\d{2}-\d{2}$/.test(f.t || "")).map(f => ({...f, ts: byId.get(f.id)?.ts ?? dayTs(f.t)}));
     const words = [m.name, ...spans.flatMap(s => [s.title, s.dose, s.prescriber]), ...fills.map(f => f.title), ...(m.rxnorm || []), "medication"];
-    return {...m, i, spans, fills, changes: Array.isArray(m.changes) ? m.changes : [], _q: words.filter(Boolean).join(" ").toLowerCase()};
+    // (#1092) what the records list of one you changed, its spans as they were
+    const listed = m.listed && Array.isArray(m.listed.spans) ? {...m.listed, spans: m.listed.spans.filter(s => s && /^\d{4}-\d{2}-\d{2}$/.test(s.from || "")).map(s => ({...s, ts: dayTs(s.from), te: s.to ? dayTs(s.to) : null}))} : null;
+    return {...m, i, spans, fills, listed, changes: Array.isArray(m.changes) ? m.changes : [], _q: words.filter(Boolean).join(" ").toLowerCase()};
   });
 }
 /* where a span ends on screen: its last day, or today when the records give no end */
@@ -164,17 +166,19 @@ function openMedication(m) {
   if (!m) return;
   state.selEv = null;
   const last = m.spans[m.spans.length - 1];
-  const body = drawerHead("med", m.name, "Medication history · " + (m.spans.length ? `${fmtD(m.spans[0].ts)} – ${last.open ? "no end in the records" : fmtD(last.te)}` : `pharmacy fills only, from ${fmtD(m.fills[0].ts)}`));   // drawer.js (#270)
+  const body = drawerHead("med", m.name, (m.own ? "Your own entry · " : "Medication history · ") + (m.spans.length ? `${fmtD(m.spans[0].ts)} – ${last.open ? "no end in the records" : fmtD(last.te)}` : `pharmacy fills only, from ${fmtD(m.fills[0].ts)}`));   // drawer.js (#270)
   drawer.dataset.med = m.key;   // (medShown)
   // its key facts, as every record's (#406): what the head says (when it started, that the records give no end) isn't
   // said again
   body.append(...present(drawerFacts([["Started", m.spans.length ? fmtD(m.spans[0].ts) : ""], ["Stopped", m.stop ? fmtD(dayTs(m.stop)) : ""],
     ["Dose changes", m.changes.length ? String(m.changes.length) : ""], ["Pharmacy fills", m.fills.length ? String(m.fills.length) : ""],
     ["RxNorm", (m.rxnorm || []).join(", ")]], "facts")));
-  if (m.spans.length) {
+  body.append(...medMineSection(m));   // your own entry, or your change beside the records', and Edit (medmine.js, #1092)
+  const listed = m.listed ? m.listed.spans : m.own ? [] : m.spans;   // what the records list (none: your own entry)
+  if (listed.length) {
     body.append(el("div", {class: "sect", text: "What the records list"}), scrollBox({class: "tablewrap", "aria-label": "What the records list", style: {maxHeight: "none"}}, el("table", {class: "data medspans"},
       el("thead", {}, el("tr", {}, ["When", "Listed as", "Status", "Prescribed by", "Source"].map(h => el("th", {text: h})))),
-      el("tbody", {}, m.spans.map(s => el("tr", {class: "link", title: "Open this listing", onclick: () => openEvent(byId.get(s.ids[0]))},
+      el("tbody", {}, listed.map(s => el("tr", {class: "link", title: "Open this listing", onclick: () => openEvent(byId.get(s.ids[0]))},
         el("td", {text: medSpanWhen(s)}), el("td", {}, el("button", {class: "cell-btn", type: "button", text: medSpanSays(s)})), el("td", {text: s.status || ""}), el("td", {text: s.prescriber || ""}),
         el("td", {text: (s.sources.length ? s.sources : [...new Set(s.ids.map(id => importName(byId.get(id)?.imp)).filter(Boolean))]).join(", ")})))))));
   }
@@ -188,7 +192,7 @@ function openMedication(m) {
   }
   body.append(...medReminderSection(m));   // reminders through the calendar feed (#162)
   body.append(...medLogSection(m));        // the doses logged (medlog.js, #235)
-  const notes = JOURNAL.filter(e => e.j.med && medKeyOf(e.j.med) === m.key);
+  const notes = JOURNAL.filter(e => e.j.med && (m.own ? e.j.med === m.name : medKeyOf(e.j.med) === m.key));   // your own: by its name (#1091)
   if (notes.length) body.append(el("div", {class: "sect", text: "Journal entries linked to it"}),
     ...notes.sort((a, b) => a.ts - b.ts).map(e => el("button", {class: "btn", type: "button", text: `${fmtD(e.ts)} · ${e.title}`, onclick: () => openEvent(e)})));
   body.append(el("p", {class: "hint", style: {color: "var(--ink2)"}, text: "What the records say, in order: a listing's dates may not be when a medication started or ended. This isn't medical advice."}),

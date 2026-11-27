@@ -10792,6 +10792,104 @@ def main():
                 js("api('profiles/1/settings/tabs', {method: 'DELETE'})")
                 check("…Add → Log a dose opens the tab's Today, its first button focused; while the tab is hidden, the Overview's doses",
                       dose275 == ["medications", "#medications", True, ["overview", "#overview", True, True]], dose275)
+                # ---- #1092: Add a medication, always on the Medications tab (beside Current's heading), saved as your
+                # own entry: in Current and Today, its drawer saying so; Edit changes it. One from the records edited: its
+                # drawer shows your change beside what the records list, and Put back as listed takes it away, with an
+                # Undo. At 320-1400 px, 200% text, light and dark and forced colours: fits, axe
+                page.goto(base + "/")
+                page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+                js("setPeriod('all')")
+                tab_click(page, "#tab-medications")
+                settle(300)
+                add1092 = page.locator("#view-medications .card .set-hd button", has_text="Add a medication")
+                check("Add a medication beside Current's heading, for an owner (#1092)", add1092.count() == 1, add1092.count())
+                add1092.click()
+                settle(300)
+                form1092 = js("""[document.getElementById('dtitle').textContent, document.activeElement.id.startsWith('mm-name'),
+                    [...document.querySelectorAll('#dbody form label')].map(l => l.textContent)]""")
+                check("…it opens the form in the drawer, focus in Name, each field labelled",
+                      form1092[0] == "Add a medication" and form1092[1] and form1092[2][:3] == ["Name", "Strength (optional)", "Dose and instructions (optional)"], form1092)
+                page.keyboard.type("Calmora (fictional)")
+                page.fill("#dbody input[id^=mm-strength]", "10 mg")
+                page.fill("#dbody input[id^=mm-dose]", "1 tablet in the morning")
+                page.click("#dbody button[type=submit]")
+                page.wait_for_function("MEDS.some(m => m.own && m.name === 'Calmora (fictional)')", timeout=20000)
+                settle(400)
+                own1092 = js("""(() => { const v = document.getElementById('view-medications');
+                    return [document.getElementById('dtitle').textContent, document.getElementById('dsub').textContent.startsWith('Your own entry'),
+                      [...v.querySelectorAll('div.card li.med-row .cell-btn')].some(b => b.textContent === 'Calmora (fictional)'),
+                      [...v.querySelectorAll('#medToday .dose-med')].some(b => b.textContent === 'Calmora (fictional)'),
+                      document.getElementById('dbody').textContent.includes('1 tablet in the morning'), document.getElementById('sgStatus').textContent.includes('Calmora (fictional) added.')]; })()""")
+                check("…saved: its drawer says it's your own entry, and it's listed under Current and in Today, said",
+                      own1092 == ["Calmora (fictional)", True, True, True, True, True], own1092)
+                page.click("#dbody .btns button:text-is('Edit')")
+                settle(300)
+                page.fill("#dbody input[id^=mm-dose]", "2 tablets in the morning")
+                page.click("#dbody button[type=submit]")
+                page.wait_for_function("MEDS.some(m => m.own && m.own.dose === '2 tablets in the morning')", timeout=20000)
+                settle(300)
+                check("…Edit changes your own entry", js("[document.getElementById('dtitle').textContent, document.getElementById('dbody').textContent.includes('2 tablets in the morning')]")
+                      == ["Calmora (fictional)", True])
+                js("k => openMedication(MEDS.find(m => m.key === k))", cur["key"])
+                settle(300)
+                page.click("#dbody .btns button:text-is('Edit')")
+                settle(300)
+                was1092 = js("document.querySelector('#dbody input[id^=mm-dose]').value")
+                page.fill("#dbody input[id^=mm-dose]", "Fictional new instructions")
+                page.click("#dbody button[type=submit]")
+                page.wait_for_function("k => MEDS.find(m => m.key === k)?.change", arg=cur["key"], timeout=20000)
+                settle(300)
+                both1092 = js("[...document.querySelectorAll('#dbody table.data')].map(t => [...t.rows].map(r => [...r.cells].map(c => c.textContent)))")
+                check("…one from the records, edited: its drawer shows your change beside what the records list, and their listings still",
+                      any(t[:2] == [["", "Your change", "As listed"], ["Dose and instructions", "Fictional new instructions", was1092 or "None"]] for t in both1092)
+                      and js("document.getElementById('dbody').textContent.includes('What the records list')")
+                      and js("k => MEDS.find(m => m.key === k).spans.at(-1).dose", cur["key"]) == "Fictional new instructions", [both1092[:2], was1092])
+                page.click("#dbody .btns button:text-is('Put back as listed')")
+                page.wait_for_function("k => !MEDS.find(m => m.key === k)?.change", arg=cur["key"], timeout=20000)
+                settle(300)
+                back1092 = js("""k => [document.getElementById('dbody').textContent.includes('Your change'), MEDS.find(m => m.key === k).spans.at(-1).dose,
+                    [...document.querySelectorAll('#sgToasts .sg-toast-text')].at(-1)?.textContent.endsWith('as the records list it again.')]""", cur["key"])
+                check("…Put back as listed: as the records list it again, with an Undo", back1092 == [False, was1092, True], back1092)
+                # 320-1400 px, light and dark, 200% text, forced colours: the tab, a changed one's drawer and the form
+                bad1092, axe1092, theme1092 = [], [], js("document.documentElement.dataset.theme || null")
+                for width in (1400, 412, 320):
+                    page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+                    for theme in ("light", "dark"):
+                        js("t => { document.documentElement.dataset.theme = t; }", theme)
+                        settle(250)
+                        js("scrollTo(0, 0)")
+                        if width < 1000:
+                            bad1092.extend(phone_fits(page, f"Medications tab, {width} px ({theme})"))
+                        axe1092.extend(axe_check(page, f"Medications tab, {width} px, {theme}")[0])
+                        js("() => medEditForm(MEDS.find(m => m.own))")
+                        settle(300)
+                        if width < 1000:
+                            bad1092.extend(phone_fits(page, f"Edit form, {width} px ({theme})"))
+                        axe1092.extend(axe_check(page, f"Edit form, {width} px, {theme}")[0])
+                        page.keyboard.press("Escape")
+                        settle(250)
+                js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme1092)
+                page.set_viewport_size({"width": 412, "height": 900})
+                js("document.documentElement.style.fontSize = '200%'")
+                settle(300)
+                bad1092.extend(phone_fits(page, "Medications tab, 412 px at 200%"))
+                js("() => medEditForm(MEDS.find(m => m.own))")
+                settle(300)
+                bad1092.extend(phone_fits(page, "Edit form, 412 px at 200%"))
+                page.keyboard.press("Escape")
+                js("document.documentElement.style.fontSize = ''")
+                page.set_viewport_size({"width": 1400, "height": 900})
+                page.emulate_media(forced_colors="active")
+                js("() => medEditForm(MEDS.find(m => m.own))")
+                settle(300)
+                axe1092.extend(axe_check(page, "Edit form, forced colours")[0])
+                page.emulate_media(forced_colors="none")
+                page.keyboard.press("Escape")
+                settle(250)
+                check("…the tab and the form fit 320-1400 px and 200% text, and pass axe-core's WCAG A and AA rules, light, dark and forced colours",
+                      not bad1092 and not axe1092, (bad1092 + axe1092)[:6])
+                js("async () => { const m = MEDS.find(m => m.own); if (m) await mmSend('DELETE', `own/${m.own.id}`); }")
+                settle(300)
                 page.goto(base + "/")
                 page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
                 js("setRange(dayTs('2025-01-01'), dayTs('2025-12-31')); switchTab('timeline')")
@@ -22872,7 +22970,8 @@ def main():
                 openMedication(MEDS.find(mrCurrent)); const d = [...document.querySelectorAll('#dbody button')].map(b => b.textContent); closeDrawer();
                 return {tab: state.tab, h2: [...v.querySelectorAll('h2')].map(h => h.textContent.replace(/ \\(\\d+\\)$/, '')).slice(0, 2),
                   rows: v.querySelectorAll('.med-rows li').length === MEDS.length, lane: v.querySelectorAll('svg.med-lane .medbar').length > 0,
-                  log: v.querySelectorAll('#medToday .dose-quick button').length > 0, drawer: d.includes('Log a dose')}; }"""
+                  log: v.querySelectorAll('#medToday .dose-quick button').length > 0, drawer: d.includes('Log a dose'),
+                  add: [...v.querySelectorAll('button')].some(b => b.textContent === 'Add a medication'), edit: d.includes('Edit')}; }"""   # (#1092)
             role275 = {"viewer": zb.evaluate(meds_role)}
             zb.goto(base + f"/?profile={pid3}")
             zb.wait_for_selector("main .empty-state", timeout=10000)
@@ -22916,10 +23015,11 @@ def main():
             za.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
             role275["owner"] = za.evaluate(meds_role)
             seen275 = {"tab": "medications", "h2": ["Today", "Current"], "rows": True, "lane": True}
-            check("the Medications tab for each role (#275): owners and editors log doses from its Today and a medication's drawer; "
-                  "a viewer sees every part with nothing to log with",
-                  role275 == {"viewer": {**seen275, "log": False, "drawer": False}, "editor": {**seen275, "log": True, "drawer": True},
-                              "owner": {**seen275, "log": True, "drawer": True}}, role275)
+            check("the Medications tab for each role (#275): owners and editors log doses from its Today and a medication's drawer, and "
+                  "add and edit medications (#1092); a viewer sees every part with nothing to log, add or edit with",
+                  role275 == {"viewer": {**seen275, "log": False, "drawer": False, "add": False, "edit": False},
+                              "editor": {**seen275, "log": True, "drawer": True, "add": True, "edit": True},
+                              "owner": {**seen275, "log": True, "drawer": True, "add": True, "edit": True}}, role275)
             sprof.delete_profile(sdb, pid3)
             za.evaluate("""v => Promise.all(Object.entries(v).map(([k, x]) =>
                 api('settings/user/' + k, {method: 'PUT', body: JSON.stringify({value: x})})))""", before)
