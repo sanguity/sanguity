@@ -3861,9 +3861,10 @@ Everything on `main` so far; it becomes the first tagged release.
   puts a line in the calendar feed, which says the amount at each time with full details. Reminders set before are
   kept as schedule lines with no amounts, reminding as they did (schema version 47).
 - **Each scheduled dose its own row on Today, with its amount** (#1095): two doses at 8:00 are two rows, logged one
-  by one, each saying how much; As needed has Log a dose with its usual amount to start from; a dose from Apple Health
-  goes beside the scheduled dose within two hours of it, else under Also. A logged dose keeps its amount and unit.
-  The week, the drawer and the visit summary count the schedule's doses so far: "9 of 14 scheduled doses taken".
+  by one, each saying how much; As needed has Log a dose with its usual amount to start from; a dose with no time of
+  the schedule (from Apple Health, or logged in the drawer) goes to the scheduled dose within two hours of it, else
+  under Also. A logged dose keeps its amount and unit, which the visit summary lists too. The week, the drawer and
+  the visit summary count the schedule's doses so far: "9 of 14 scheduled doses taken".
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

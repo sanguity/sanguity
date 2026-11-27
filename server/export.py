@@ -445,7 +445,7 @@ def _dose(d):
         raise ValueError(f"its amount can't be kept: {x}") from None
     return {"med": _str(d.get("med"), 300, "medication"), "name": _str(d.get("name") or d["med"], 300, "medication's name"),
             "t": t, "status": d["status"], "note": _str(d.get("note") or "", med_log.NOTE_MAX, "note", empty=True).strip(),
-            "slot": slot or None, **amount}
+            "slot": slot or None, **amount, **({"asneeded": True} if d.get("asneeded") and not slot else {})}
 
 
 def _reminder(r):
