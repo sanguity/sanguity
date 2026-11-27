@@ -900,6 +900,17 @@ class LabMapping(unittest.TestCase):
         self.assertEqual(self.robin.post(f"/api/profiles/{pid}/labmaps/undo/{r.json()['change']}", headers=H).status_code, 200)
         self.assertEqual(self.lab_names(pid), ["Glucose, Blood", "Hemoglobin"])
 
+    def test_a_name_written_another_way_is_matched_not_kept(self):   # #1097
+        """A test whose name differs from another only in case or punctuation ("HEMOGLOBIN." and Hemoglobin) is matched
+        to it, its results moved: only the very same name is a name matched to itself."""
+        pid = self.with_hemoglobin("Case 1097")
+        j = self.previewed(pid, csv(["2026-02-05", "HEMOGLOBIN.", "12.0", "g/dL", "13.5 - 17.5", "L", "CBC", ""]))
+        self.save(pid, j, {self.entry(j, "HEMOGLOBIN.")["ref"]: None})   # kept separate at the review
+        r = self.robin.post(f"/api/profiles/{pid}/labmaps", json={"name": "HEMOGLOBIN.", "target": "Hemoglobin", "move": True}, headers=H)
+        self.assertEqual((r.status_code, r.json()["results"]), (200, 1), r.text)
+        self.assertEqual(next(x for x in self.own(pid) if x["name"] == "HEMOGLOBIN.")["target"], "Hemoglobin")
+        self.assertEqual(self.points(pid, "Hemoglobin"), [("2026-01-05", 13.1), ("2026-02-05", 12.0)])
+
     def test_keep_separate_at_a_review_is_listed_and_honoured(self):
         """Keep separate, chosen at a review, is saved like a match: listed as kept as its own test, the next import
         not asking; changed on the page, the next import follows that."""
