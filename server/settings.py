@@ -380,7 +380,12 @@ define("host.publicOrigins", "host", "Public addresses", [], origin_list(), scop
        help="One a line, like https://health.example.com. The first https:// one is the address the app gives out: share "
             "links, calendar feeds, connected sources' return and the phone upload address. Needed behind a reverse "
             "proxy that changes the Host header and sends no X-Forwarded-Host; empty, each page uses the address it "
-            "was opened at.")
+            "was opened at.\nOnce any is set, the server answers only at these addresses' names, an IP address, "
+            "localhost, a name without a dot and names ending .local, .lan, .home, .home.arpa or .internal: "
+            "a page elsewhere can't point a name of its own at it. Any other name is refused, a home-network name on "
+            "a domain of your own (nas.example.com, by split DNS) or a Tailscale name (nas.tailnet.ts.net) included.\n"
+            "To open Sanguity at one, add its address here, as it's typed in the browser, with its port if it has one "
+            "(https://nas.example.com:8443).")
 
 # ---------------------------------------------------------------- General → Phone receiver (#1003)
 # The upload address (WATCH_UPLOAD_URL), read at each use by Sources → Phone and watch (watch_keys.addresses). A change

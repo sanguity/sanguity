@@ -2741,6 +2741,9 @@ def main():
             p1000.goto(base + "/settings.html?profile=1#general")
             p1000.wait_for_selector("#hostOrigins:not([readonly])", timeout=20000)
             got1000["rows"] = p1000.evaluate("[...document.querySelectorAll('#gen-host .set-row-lbl h3')].map(h => h.firstChild.textContent)")
+            p1000.click("#gen-host button[aria-label='About Public addresses']")   # (#1086: which names it answers at, and how to add one)
+            got1000["about"] = p1000.locator("#gen-host .about-words[aria-label='About Public addresses']").inner_text(timeout=5000)
+            p1000.keyboard.press("Escape")
             p1000.fill("#hostOrigins", "https://records.example.test\n" + base)
             with p1000.expect_response("**/api/settings/install/host.publicOrigins/effects") as r1000:
                 p1000.click("#setBar button:has-text('Save')")
@@ -2771,6 +2774,8 @@ def main():
               and (f"The phones of {phones1000} profile" in got1000["says"]) == (phones1000 > 0)
               and got1000["typing"] == "Type change addresses to confirm"
               and got1000["after"] == [("https://records.example.test", base), False, True] and got1000["back"] == 200, [got1000, apps1000, phones1000])
+        check("…its ⓘ says which names are answered once one is set, that a split-DNS or Tailscale name must be listed, and how (#1086)",
+              all(w in got1000.get("about", "") for w in (".home.arpa or .internal", "nas.example.com", "ts.net", "add its address here")), got1000.get("about"))
         # #1049: Host and Security changed together, the bar's Save: Host's typed confirmation opens with focus in it, and
         # keeps it, its words in the bar; Security's saved after it, said too (its save had taken focus to its heading
         # and the bar's words with it). Discarded and put back after

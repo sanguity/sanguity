@@ -206,12 +206,12 @@ def _host_name(value):
     v = value.strip().lower()
     if not v or v.startswith("["):
         return None
-    name = v.rsplit(":", 1)[0] if v.count(":") == 1 else v
+    name = (v.rsplit(":", 1)[0] if v.count(":") == 1 else v).rstrip(".")   # (before the IP check: 192.168.1.5. is one, #1086)
     try:
         ipaddress.ip_address(name)
         return None
     except ValueError:
-        return name.rstrip(".") or None
+        return name or None
 
 
 def _foreign_host(request, origins=None):
