@@ -537,7 +537,9 @@ def setup(body: Setup, request: Request, response: Response, db=Depends(get_db))
             pid = prof.create_profile(db, label or body.username.strip(), owner_id=uid,
                                       linked_build=not dbm.meta_get(db, "build_unlinked"), watch_file=config.WATCH_FILE)
             activity.log(db, "create", first, pid, ip=_client_ip(request))
+            watch_keys.retire_unused(db)   # (#1103) no phone used the install's single secret: none to keep taking
     sec.throttle.clear(*keys)
+    watch_keys.publish(db)   # the receiver told, as at start-up: a single secret retired above is refused (#1103)
     if body.demo:   # (#1101) beside the person's own profile, never in it; the account is made either way
         try:
             _add_demo(db, first, request)
@@ -806,9 +808,14 @@ def _profiles_for(db, uid):
     one shown first."""
     did = demo.profile_id(db)
     rows = [dict(r) for r in db.execute(
-        """SELECT p.id, p.name, m.role, (SELECT COUNT(*) FROM memberships x WHERE x.profile_id = p.id) AS members
+        """SELECT p.id, p.name, m.role, (SELECT COUNT(*) FROM memberships x WHERE x.profile_id = p.id) AS members,
+                  EXISTS(SELECT 1 FROM series s WHERE s.profile_id = p.id) AS labs
            FROM memberships m JOIN profiles p ON p.id = m.profile_id WHERE m.user_id=? ORDER BY p.name COLLATE NOCASE, p.id""", (uid,))]
-    return sorted(({**r, "demo": r["id"] == did} for r in rows), key=lambda r: r["demo"])
+    # "empty": its records tabs with nothing in them, which give their place in a phone's bar to those with records on
+    # every page (#1103, nav.js phoneSlots): Body and activity with no watch or scale data, Labs with no lab results
+    return sorted(({**{k: v for k, v in r.items() if k != "labs"}, "demo": r["id"] == did,
+                    "empty": [t for t, none in (("health", not watch_store.has(db, r["id"])), ("labs", not r["labs"])) if none]}
+                   for r in rows), key=lambda r: r["demo"])
 
 
 @app.get("/api/me")

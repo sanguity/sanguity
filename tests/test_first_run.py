@@ -78,6 +78,16 @@ class FirstRun(unittest.TestCase):
                          [("Ada", "owner", False), ("Demo (fictional)", "owner", True)])
         own, shown = profiles[0]["id"], profiles[1]["id"]
         self.assertEqual(c.get(f"/api/profiles/{own}/data").status_code, 204)   # empty: the guide opens
+        # (#1103) no phone set up: the install's single receiver secret (from before each profile had its own) isn't
+        # counted for the first profile, which reads the receiver's own summary, nor taken by the receiver
+        rec = c.get(f"/api/profiles/{own}/watch/receiver").json()
+        self.assertEqual((rec["has_secret"], rec["legacy"], rec["last"]), (False, False, None))
+        db = dbm.connect()
+        try:
+            from server import watch_keys
+            self.assertFalse(watch_keys.legacy_in_use(db))
+        finally:
+            db.close()
         data = c.get(f"/api/profiles/{shown}/data").json()
         self.assertGreater(len(data["events"]), 100)
         self.assertEqual(data["source"], "Sanguity demo data (fictional)")   # said under the records, too

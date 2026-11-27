@@ -460,6 +460,13 @@ def exists(db, pid):
     return r is not None and any(p and os.path.isfile(p) for p in (r["watch_file"], side_path(pid)))
 
 
+def has(db, pid):
+    """Whether the profile has watch or scale data, cheaply: its watch file or an import kept beside it is there (load
+    reads them; #1103: a tab with nothing in it gives its place in a phone's bar)."""
+    r = db.execute("SELECT watch_file FROM profiles WHERE id=?", (pid,)).fetchone()
+    return r is not None and any(p and os.path.isfile(p) for p in (r["watch_file"], side_path(pid)))
+
+
 def load(db, pid):
     """What the Health tab reads: the profile's watch file with any import kept beside it merged in (the watch
     file winning, but over a day typed in on Sources, #822), or None when there is neither."""
