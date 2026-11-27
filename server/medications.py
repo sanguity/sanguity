@@ -65,6 +65,14 @@ def med_key(name):
     return " ".join(words) or " ".join(name.lower().split())
 
 
+def hidden_test(data):
+    """name -> whether it names a medication hidden by hand (#1093: data's "hiddenMeds"), by its grouping key or the
+    name it was shown by: what's shared of a medication's name (the log, a journal entry's) leaves those out."""
+    keys = {k for h in data.get("hiddenMeds") or [] if isinstance(h, dict)
+            for k in (h.get("key"), med_key(h.get("name"))) if isinstance(k, str) and k}
+    return lambda name: bool(keys) and isinstance(name, str) and bool(name.strip()) and med_key(name) in keys
+
+
 def _text(v):
     return " ".join(str(v).split()) if isinstance(v, (str, int, float)) and str(v).strip() else ""
 

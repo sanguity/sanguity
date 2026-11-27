@@ -3852,7 +3852,8 @@ Everything on `main` so far; it becomes the first tagged release.
   with **Put back as listed** (and an Undo). The import page's typed-in medication stays, as a record-style listing.
 - **Remove a medication** (#1093): in its drawer, **Remove** deletes one of your own (its logged doses stay in the
   log) and hides one from the records: it leaves Current, Past, Today, the lanes, the calendar feed, and share links'
-  and the visit summary's medications and medication log, its records stay in the profile (and in the FHIR export),
+  and the visit summary's medications and medication log, and the journal form's list (a share link's journal entry
+  about it doesn't name it), its records stay in the profile (and in the FHIR export),
   and a later pull doesn't bring it back. Each says so with an **Undo**; **Hidden** on the
   Medications tab lists those hidden, each with **Show again**.
 - **A schedule for each medication, with amounts** (#1094): a medication's reminders are now its schedule, set in its

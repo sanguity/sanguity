@@ -76,15 +76,16 @@ def _text(v, limit, what):
 
 
 def medications(db, pid):
-    """The names of the profile's medications, as the page shows them (edits applied), sorted."""
-    from . import records
+    """The names of the profile's medications, as the page shows them (edits applied, those hidden by hand left out,
+    #1093), sorted."""
+    from . import medications as meds, records
     body = records.served(db, pid)
     if not body:
         return []
     data = json.loads(body)
-    events = data.get("events") or []
+    events, hid = data.get("events") or [], meds.hidden_test(data)
     return sorted({e["title"] for e in events if isinstance(e, dict) and e.get("k") in MED_KINDS
-                   and isinstance(e.get("title"), str) and e["title"].strip()}
+                   and isinstance(e.get("title"), str) and e["title"].strip() and not hid(e["title"])}
                   | {m["name"] for m in data.get("medications") or [] if m.get("own")}, key=str.lower)   # its own too (#1091)
 
 

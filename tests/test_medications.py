@@ -340,6 +340,9 @@ class InTheRecords(unittest.TestCase):
         for name in ("Placebex 2 mg tablet", "Fictorin 5 mg tablet"):   # a dose of each, logged before one's hidden
             r = self.c.post(p + "/medications/doses", headers=H, json={"med": meds[name], "t": "2026-11-20T08:00", "status": "taken", "note": name + " DOSENOTE"})
             self.assertEqual(r.status_code, 201, r.text)
+            r = self.c.post(p + "/journal", headers=H, json={"kind": "side_effect", "t": "2026-11-20T09:00", "title": "Nausea " + name[:4],
+                                                             "severity": 2, "med": name})   # and a side effect of each
+            self.assertEqual(r.status_code, 201, r.text)
         self.assertEqual(self.c.put(p + "/medications/hidden", headers=H, json={"key": meds["Placebex 2 mg tablet"], "hidden": True}).status_code, 200)
         self.assertEqual(self.c.put(p + "/medications/listed", headers=H, json={"key": meds["Fictorin 5 mg tablet"], "dose": "Twice daily CHANGED"}).status_code, 200)
         self.assertEqual(self.c.post(p + "/medications/own", headers=H, json={"name": "Calmora OWNENTRY", "dose": "1 tablet", "start": "2026-10-01"}).status_code, 201)
@@ -374,6 +377,35 @@ class InTheRecords(unittest.TestCase):
         self.assertIn("Fictorin 5 mg tablet DOSENOTE", r.text)
         self.assertNotIn("Placebex", r.text, "nor in the visit summary's")
         self.assertEqual(len(self.c.get(p + "/data").json()["doses"]), 2, "both kept in the log")
+        # your own entry deleted: its dose left out of both medication logs, as a hidden one's; the log keeps it
+        own = next(m for m in self.c.get(p + "/data").json()["medications"] if m.get("own"))
+        r = self.c.post(p + "/medications/doses", headers=H, json={"med": own["key"], "t": "2026-11-21T08:00", "status": "taken", "note": "OWNDOSE"})
+        self.assertEqual(r.status_code, 201, r.text)
+        self.assertIn("OWNDOSE", self.c.post(p + "/summary/preview", headers=H, json={"sections": ["medlog"]}).text, "while it's there")
+        self.assertEqual(self.c.delete(p + f"/medications/own/{own['own']['id']}", headers=H).status_code, 200)
+        r = self.c.post(p + "/summary/preview", headers=H, json={"sections": ["medlog"]})
+        self.assertNotIn("OWNDOSE", r.text, "the summary's log, once it's deleted")
+        self.assertIn("Fictorin 5 mg tablet DOSENOTE", r.text)
+        r = self.c.post(p + "/links", headers=H, json={"sections": ["medlog"]})
+        r = TestClient(main.app, base_url="http://testserver").post("/api/share/view", headers=H, json={"token": r.json()["path"].split("#", 1)[1]})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertNotIn("OWNDOSE", r.text, "nor a share link's")
+        self.assertNotIn("Calmora", json.dumps(r.json().get("medlog")), "nor its name")
+        self.assertIn("OWNDOSE", json.dumps(self.c.get(p + "/data").json()["doses"]), "kept in the log")
+        self.assertEqual(self.c.post(p + "/medications/own", headers=H, json={"name": "Calmora OWNENTRY", "dose": "1 tablet", "start": "2026-10-01"}).status_code, 201)
+        # (#1093) a journal entry in a link says the other medication, not the hidden one's name; the entry is still in
+        # it, and in the journal with its medication; the journal form's picker leaves the hidden one out
+        r = self.c.post(p + "/links", headers=H, json={"sections": ["journal"]})
+        self.assertEqual(r.status_code, 200, r.text)
+        r = TestClient(main.app, base_url="http://testserver").post("/api/share/view", headers=H, json={"token": r.json()["path"].split("#", 1)[1]})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(sorted((j["title"], j.get("med")) for j in r.json()["journal"]),
+                         [("Nausea Fict", "Fictorin 5 mg tablet"), ("Nausea Plac", None)])
+        self.assertNotIn("Placebex", r.text, "not the hidden one's name")
+        j = self.c.get(p + "/journal").json()
+        self.assertIn("Placebex 2 mg tablet", [e["med"] for e in j["entries"]], "the journal keeps it")
+        self.assertNotIn("Placebex 2 mg tablet", j["medications"], "the picker leaves it out")
+        self.assertIn("Fictorin 5 mg tablet", j["medications"])
         r = self.c.get(p + "/export?format=fhir")
         self.assertEqual(r.status_code, 200, r.text[:300])
         z = zipfile.ZipFile(io.BytesIO(r.content))
