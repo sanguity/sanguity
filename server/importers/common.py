@@ -310,6 +310,35 @@ def canonical_lab(name=None, loinc=None):
     return (loinc and _by_loinc().get(str(loinc).strip())) or (name and lab_alias().get(name.strip().lower())) or None
 
 
+# vital signs by LOINC code: (series name, unit), the one table every importer names a vital by (#1102: FHIR's
+# "Diastolic blood pressure" and C-CDA's "Blood pressure, diastolic", both 8462-4, were two charts)
+VITALS = {"8302-2": ("Height", "in"), "8306-3": ("Height", "in"), "8310-5": ("Temperature", "°F"),
+          "8867-4": ("Heart rate (clinic)", "bpm"), "8480-6": ("Blood pressure, systolic", "mmHg"),
+          "8462-4": ("Blood pressure, diastolic", "mmHg"), "59408-5": ("SpO2 (clinic)", "%"), "2708-6": ("SpO2 (clinic)", "%"),
+          "9279-1": ("Respiratory rate (clinic)", "/min"), "39156-5": ("BMI", "kg/m²"),
+          "9843-4": ("Head circumference", "cm"), "8287-5": ("Head circumference", "cm")}   # head circumference: #196
+
+
+def vital(loinc, x, unit):
+    """A vital sign by its LOINC code: (series name, x in its unit, unit), x converted from the unit reported where
+    that's another (a height in cm or m, a head circumference in inches, a temperature in °C); None for a code VITALS
+    doesn't know."""
+    if str(loinc or "").strip() not in VITALS:
+        return None
+    name, out = VITALS[str(loinc).strip()]
+    u = str(unit or "").strip().lower()
+    if x is not None:
+        if name == "Height" and u == "cm":
+            x = round(x / 2.54, 1)
+        elif name == "Height" and u == "m":
+            x = round(x / 0.0254, 1)
+        elif name == "Head circumference" and u in ("in", "[in_i]"):   # #196
+            x = round(x * 2.54, 1)
+        elif name == "Temperature" and u in ("cel", "c", "°c"):
+            x = round(x * 9 / 5 + 32, 1)
+    return name, x, out
+
+
 def loinc_of(canon):
     return lab_defs().get(canon, {}).get("loinc")
 
