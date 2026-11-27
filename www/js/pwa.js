@@ -104,7 +104,7 @@ function forgetPicks() {
 function forgetProfiles(gone) {
   try {
     const keys = [];
-    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i), m = /^ht-(?:state|health|glucose|latest):(\d+)$/.exec(k || ""); if (m && gone(+m[1])) keys.push(k); }
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i), m = /^ht-(?:state|health|glucose|latest|tabs):(\d+)$/.exec(k || ""); if (m && gone(+m[1])) keys.push(k); }
     if (/^\d+$/.test(localStorage.getItem("ht-profile") || "") && gone(+localStorage.getItem("ht-profile"))) keys.push("ht-profile");
     for (const k of keys) localStorage.removeItem(k);
   } catch (e) {}

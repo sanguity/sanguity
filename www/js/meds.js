@@ -375,10 +375,16 @@ function medReminderForm(m, r) {
   const need = el("input", {type: "checkbox", checked: r && r.asneeded || null, onchange: () => shown()});
   const usual = field("amount", {id: id("amt")}), usualUnit = field("unit", {id: id("unit")});
   usual.value = r && r.dose && r.dose.amount != null ? String(r.dose.amount) : ""; usualUnit.value = r && r.dose ? r.dose.unit || "" : "";
-  const remind = el("input", {type: "checkbox", checked: !r || r.on ? "" : null});
+  // (#1103) a new line's Remind me is on only where this person has a calendar feed (any of theirs: GET me's
+  // calendar_feeds) for its reminders to reach; without one it starts off, saying a feed is needed
+  const feeds = ME?.calendar_feeds || 0;
+  const remind = el("input", {type: "checkbox", checked: (r ? r.on : feeds > 0) ? "" : null});
   const timed = el("div", {class: "jfield"}, el("span", {class: "jlabel", text: "Times of day, each with its amount"}), times, more);
   const usualBox = el("div", {class: "jwhen"}, row("Usual amount (optional)", usual), row("Unit", usualUnit));
-  const remindBox = el("div", {class: "btns"}, el("label", {class: "toggle"}, remind, "Remind me in my calendar"));
+  const remindBox = feeds ? el("div", {class: "btns"}, el("label", {class: "toggle"}, remind, "Remind me in my calendar"))
+    : el("div", {}, el("div", {class: "btns"}, el("label", {class: "toggle"}, remind, "Remind me in my calendar")),
+      el("p", {class: "hint", id: id("feed")}, "Reminders reach your calendar app only through a calendar feed, and you have none yet: make one under ",
+      el("a", {href: `sharing.html?profile=${PROFILE.id}#calendar`, text: "Sharing → Calendar feed"}), "."));
   const shown = () => { timed.hidden = remindBox.hidden = need.checked; usualBox.hidden = !need.checked; };
   const form = el("form", {class: "jform", novalidate: true},
     timed, el("div", {class: "btns"}, el("label", {class: "toggle"}, need, "As needed")), usualBox,

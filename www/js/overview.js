@@ -67,10 +67,12 @@ function homeTiles() {
    the insurance costs. Each group under its own h2, its cards under it as h3s (#331); one with nothing in it says what
    would be there (#440), as Key labs does. */
 const ovHead = (title, ...more) => el("div", {class: "ov-h"}, el("h2", {text: title}), ...more);
-/* "today", "tomorrow", "in 9 days", "in 3 weeks", "in 4 months": a day (YYYY-MM-DD) from today, in this person's zone */
+/* "today", "tomorrow", "in 9 days", "in 3 weeks", "in 4 months", "in 72 years": a day (YYYY-MM-DD) from today, in
+   this person's zone; years beyond 24 months (#1103: it was "in 867 months") */
 function inDays(day) {
-  const n = Math.round((dayTs(day) - dayTs(zToday())) / DAY);
-  return n <= 0 ? "today" : n === 1 ? "tomorrow" : n < 14 ? `in ${n} days` : n < 61 ? `in ${Math.round(n / 7)} weeks` : `in ${Math.round(n / 30.4)} months`;
+  const n = Math.round((dayTs(day) - dayTs(zToday())) / DAY), m = Math.round(n / 30.4), y = Math.round(n / 365.25);
+  return n <= 0 ? "today" : n === 1 ? "tomorrow" : n < 14 ? `in ${n} days` : n < 61 ? `in ${Math.round(n / 7)} weeks`
+    : m <= 24 ? `in ${m} months` : `in ${y} year${y === 1 ? "" : "s"}`;
 }
 const summaryHref = () => `sharing.html?profile=${PROFILE.id}#summary`;   // the visit summary (#168), the next appointment chosen
 const upWhen = u => fmtD(dayTs(u.t.slice(0, 10))) + (u.t.length > 10 ? ", " + fmtTime(zParse(u.t)) : "");
@@ -154,7 +156,8 @@ function labTile(s, since, lastDraw) {
     el("span", {class: "delta"}, ...(d == null ? [] : !sure ? ["change not worked out"] : [...keepDates(chgWords(d, fmtNum(Math.abs(d) < 1e-9 ? 0 : Math.abs(d)))
       + (isoDay(prev.ts) === since ? "" : "\u00a0since")), ...(isoDay(prev.ts) === since ? [] : [" ", el("br"), ...keepDates(fmtD(prev.ts))])]),
       ...(last.ts < (lastDraw || 0) - 2 * DAY ? [...(d == null ? [] : [" ", el("br")]), ...keepDates(`as of ${fmtD(last.ts)}`)] : [])),
-    spark(s, recent));
+    // (#1103) none under two results: a lone dot in a band says nothing about a trend (its room kept, the tiles level)
+    spark(s, recent.filter(p => Number.isFinite(p[1])).length < 2 ? [] : recent));
   // "What is this test?" (#163, test-pages.js): a link can't be inside the tile's button, so beside it in one card
   const tq = testLink(n, true);
   return tq ? el("div", {class: "tile-tq"}, tile, tq) : tile;
