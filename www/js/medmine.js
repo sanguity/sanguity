@@ -39,6 +39,8 @@ async function mmSend(method, path, body, msg) {
    tab's again (a reload doesn't open it twice); for owners and editors */
 function medAddResume() {
   if (location.hash !== "#add-medication") return;
+  // on the Medications tab, where it's listed once saved (#1092's check: from another page it was the Overview)
+  if (DATA && canEdit() && state.tab !== "medications" && shownTabs().includes("medications")) switchTab("medications");
   history.replaceState(history.state, "", location.pathname + location.search + (DATA ? tabHash() : ""));
   if (canEdit()) medEditForm(null);
 }
