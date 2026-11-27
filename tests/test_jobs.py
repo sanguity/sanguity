@@ -294,6 +294,10 @@ class Jobs(unittest.TestCase):
         up = self.upload({"holiday.jpg": b"\xff\xd8not records"})
         j = self.wait(self.start(up))
         self.assertEqual(j["state"], "failed")
+        for _ in range(100):   # (removed just after the job says it failed: its files go once that's saved)
+            if not os.path.exists(uploads.folder(self.pid, up)):
+                break
+            time.sleep(.05)
         self.assertFalse(os.path.exists(uploads.folder(self.pid, up)), "its upload is removed (#547)")
         self.assertIn("didn't recognise these files", j["message"])
         self.assertIn("C-CDA" if reg.get("ccda") else reg.get("sanguity").LABEL, j["message"])
