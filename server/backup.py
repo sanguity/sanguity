@@ -926,12 +926,18 @@ def _ready(path, now_path):
 REPLACES = ("sanguity.db", "sanguity.db-wal", "sanguity.db-shm", *CONTENTS)   # what a restore moves aside, by name
 
 
-def _put_back(aside, moved, step, e):
+def _put_back(aside, moved, existed, moving, step, e):
     """(#1055) A restore failed between moving today's files aside and putting the backup's database in place: remove
-    what it wrote in their place, move today's back, and say what happened and where today's files are."""
+    what it wrote in their place, move today's back, and say what happened and where today's files are. Only what the
+    restore wrote is removed: a name today's data still has there (not moved aside yet) is today's and stays. One being
+    moved as it failed (`moving`) may be in both places (a move to another disk copies, then deletes): neither is
+    touched, and the message says where each is."""
     why = f"{type(e).__name__}: {e.strerror}" if isinstance(e, OSError) and e.strerror else type(e).__name__
+    split = moving and os.path.lexists(os.path.join(aside, moving)) and os.path.lexists(os.path.join(config.DATA_DIR, moving))
     try:
-        for n in REPLACES:   # anything there now is the backup's: today's were all moved aside
+        for n in REPLACES:   # the backup's: what took the place of a name moved aside, or a name today's data didn't have
+            if n == moving or (n not in moved and n in existed):
+                continue
             p = os.path.join(config.DATA_DIR, n)
             if os.path.isdir(p) and not os.path.islink(p):
                 shutil.rmtree(p)
@@ -939,6 +945,8 @@ def _put_back(aside, moved, step, e):
                 os.remove(p)
         for n in moved:
             shutil.move(os.path.join(aside, n), os.path.join(config.DATA_DIR, n))
+        if moving and not split and os.path.lexists(os.path.join(aside, moving)):   # moved whole after all
+            shutil.move(os.path.join(aside, moving), os.path.join(config.DATA_DIR, moving))
     except OSError as again:
         log.error("restore: today's data couldn't be put back from %s (%s)", aside, type(again).__name__)
         return (f"The restore failed while {step} ({why}), and today's data couldn't all be put back "
@@ -946,6 +954,12 @@ def _put_back(aside, moved, step, e):
                 "and build folders from there back into the data folder (replacing any there), then delete the folder.")
     with contextlib.suppress(OSError):
         os.remove(os.path.join(aside, ".restoring.db"))
+    if split:   # today's `moving` may be part in each place: nothing of it removed, and the person told where
+        log.error("restore: today's %s was being moved to %s when it failed; both copies kept", moving, aside)
+        return (f"The restore failed while {step} ({why}). Today's data was put back, except {moving}, which was being "
+                f"moved aside to {aside} when it failed: part of it may be in each place, and neither was removed. Before "
+                f"starting the app, check {os.path.join(config.DATA_DIR, moving)} against {os.path.join(aside, moving)}, "
+                "keep the whole one in the data folder, then delete the folder.")
     with contextlib.suppress(OSError):
         os.rmdir(aside)   # empty now
     return (f"The restore failed while {step} ({why}). Nothing was changed: today's data, moved aside to {aside}, was "
@@ -987,12 +1001,14 @@ def restore(archive):
         raise
     # (#1055) today's files moved aside, the backup's extracted and its database put in place: one guarded step. On any
     # failure (the disk filling while profiles/ is extracted, say) what was extracted goes and today's files are put back
-    moved, step = [], "moving today's data aside"
+    moved, step, moving = [], "moving today's data aside", None
+    existed = [n for n in REPLACES if os.path.lexists(os.path.join(config.DATA_DIR, n))]   # today's, as the move starts
     try:
-        for n in REPLACES:
-            if os.path.lexists(os.path.join(config.DATA_DIR, n)):
-                shutil.move(os.path.join(config.DATA_DIR, n), os.path.join(aside, n))
-                moved.append(n)
+        for n in existed:
+            moving = n
+            shutil.move(os.path.join(config.DATA_DIR, n), os.path.join(aside, n))
+            moved.append(n)
+        moving = None
         step = "writing the backup's files"
         with tarfile.open(archive, "r:gz") as tar:
             for m in tar.getmembers():
@@ -1005,7 +1021,7 @@ def restore(archive):
     except BaseException as e:
         if watch:   # the receiver's data staged for this restore (#958): none of it is left for a restore that didn't happen
             shutil.rmtree(watch, ignore_errors=True)
-        said = _put_back(aside, moved, step, e)
+        said = _put_back(aside, moved, existed, moving, step, e)
         if not isinstance(e, Exception):   # stopped (Ctrl-C): put back, and stopped as asked
             raise
         raise BackupError(said) from e
