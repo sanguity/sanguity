@@ -263,3 +263,274 @@ def back(db, pid, moved):
     if n:
         records._bump(db, pid)
     return n
+
+
+# ---------------------------------------------------------------- your own medications, and your changes (#1091)
+# A profile's own medications and its changes to ones from the records (schema version 46, med_entries; the API in
+# routes_meds.py). Each row's body is encrypted: {key, own, name, strength, dose, route, start, stop, status,
+# prescriber, note, hidden}.
+#   an own entry  a medication of the person's own, every field theirs (a name and a start at least). Its key is "own:"
+#                 and a random word, kept for good: what hangs on a key (reminders, doses) stays with it through a
+#                 rename, and finds it again when its removal is undone (add_own(key=...)).
+#   a change      a person's changes to a medication of the records, found by its grouping key (as reminders are): the
+#                 records stay as they are, and a later pull, or the same records imported again, never undoes it.
+#                 Only the fields that differ from what the records say are kept ("" for one taken away), applied over
+#                 them (apply()). hidden: the medication is left out of DATA.medications (Current, Past, Today, the
+#                 lanes, the calendar feed), its records kept, and listed in DATA.hiddenMeds to show again.
+# records._assemble adds both (assembled()): an own entry as a medication of one span with "own" (its row), one changed
+# with "change" (its row) and "listed" (what the records say: the fields, and the spans as they were). A change whose
+# records are gone (an import undone) is kept, unapplied, until they're back.
+FIELDS = ("name", "strength", "dose", "route", "start", "stop", "status", "prescriber", "note")
+OWN = "own:"
+FIELD_MAX = {"name": 200, "strength": 100, "dose": 500, "route": 100, "status": 40, "prescriber": 200, "note": 2000}
+_DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_OWN_KEY = re.compile(r"^own:[0-9a-f]{8,32}$")
+
+
+class EntryError(ValueError):
+    """Something about a medication entry that can't be saved, said for the person who made it."""
+
+
+def _enc(obj):
+    from . import crypto
+    return crypto.enc(json.dumps(obj, separators=(",", ":"), ensure_ascii=False))
+
+
+def is_own(key):
+    return isinstance(key, str) and key.startswith(OWN)
+
+
+def check(fields, own):
+    """The fields as kept ({field: text} for each one given), or EntryError. own: an own entry, which needs a name and
+    a start date; a change gives what Edit showed, the records' words among them (differs() keeps what it changes)."""
+    from datetime import date
+    out = {}
+    for k in FIELDS:
+        v = fields.get(k)
+        if v is None:
+            continue
+        if not isinstance(v, str):
+            raise EntryError(f"The {k} must be text.")
+        v = v.strip() if k == "note" else " ".join(v.split())
+        if k in ("start", "stop"):
+            if v and not _DAY.match(v):
+                raise EntryError(f"Give the {k} date as YYYY-MM-DD.")
+            try:
+                v and date.fromisoformat(v)
+            except ValueError:
+                raise EntryError(f"The {k} date doesn't exist.") from None
+        elif len(v) > FIELD_MAX[k]:
+            raise EntryError(f"The {k} is too long (at most {FIELD_MAX[k]} characters).")
+        out[k] = v
+    if ("name" in out or own) and not out.get("name"):
+        raise EntryError("Give the medication's name.")
+    if own and not out.get("start"):
+        raise EntryError("Give the date it started.")
+    if out.get("start") and out.get("stop") and out["stop"] < out["start"]:
+        raise EntryError("The stop date is before the start date.")
+    return out
+
+
+def listed(m):
+    """What the records say of medication m (history()'s), as the fields an own entry has: what Edit starts from."""
+    spans = m.get("spans") or []
+    last = spans[-1] if spans else {}
+    return {"name": m.get("name") or "", "strength": "", "dose": last.get("dose") or "", "route": "",
+            "start": spans[0]["from"] if spans else m.get("start") or "", "stop": m.get("stop") or "",
+            "status": last.get("status") or "", "prescriber": last.get("prescriber") or "", "note": ""}
+
+
+def differs(was, fields):
+    """Of a change's fields, those that differ from what the records say (was: listed()): what's kept. A name or start
+    taken away isn't a change: the records' stays."""
+    return {k: v for k, v in fields.items() if v != was.get(k, "") and (v or k not in ("name", "start"))}
+
+
+def _rows(db, pid):
+    from . import crypto
+    return [(r, json.loads(crypto.dec(r["body"])))
+            for r in db.execute("""SELECT id, body, created_name, created, changed_name, changed FROM med_entries
+                                   WHERE profile_id=? ORDER BY id""", (pid,)).fetchall()]
+
+
+def listing(db, pid):
+    """The profile's own entries and changes, oldest first: {id, key, own, each field it has, hidden?, by, at, changed,
+    changed_by} (an export's "medEntries")."""
+    return [{"id": r["id"], "key": b.get("key"), "own": bool(b.get("own")), **{k: b[k] for k in FIELDS if k in b},
+             **({"hidden": True} if b.get("hidden") else {}), "by": r["created_name"], "at": r["created"],
+             "changed": r["changed"], "changed_by": r["changed_name"]} for r, b in _rows(db, pid)]
+
+
+def get(db, pid, eid):
+    from . import crypto
+    r = db.execute("SELECT body FROM med_entries WHERE id=? AND profile_id=?", (eid, pid)).fetchone()
+    return json.loads(crypto.dec(r["body"])) if r else None
+
+
+def of_key(db, pid, key):
+    """(id, body) of the change to the records' medication of this key, or (None, None)."""
+    return next(((r["id"], b) for r, b in _rows(db, pid) if not b.get("own") and b.get("key") == key), (None, None))
+
+
+def _span(f, title):
+    stopped = bool(f.get("stop")) or _stopped(f.get("status") or "")
+    to = f.get("stop") or (f["start"] if stopped else None)
+    return {"from": f["start"], "to": to, "open": to is None, "stopped": stopped, "dose": f.get("dose") or "",
+            "title": title, "status": f.get("status") or "", "prescriber": f.get("prescriber") or None,
+            "sources": [], "ids": [], "rxnorm": None}
+
+
+def _own_med(row):
+    f = {k: row.get(k) or "" for k in FIELDS}
+    span = _span(f, " ".join(x for x in (f["name"], f["strength"]) if x))
+    return {"name": f["name"], "key": row["key"], "rxnorm": [], "spans": [span], "changes": [], "fills": [],
+            "start": f["start"], "stop": span["to"] if span["stopped"] else None, "own": row,
+            **{k: f[k] for k in ("route", "note") if f[k]}}
+
+
+def apply(m, row):
+    """Medication m (history()'s) with a change (listing()'s row) over it, "change" the row and "listed" what the
+    records say. Its latest listing takes the strength, dose, status, prescriber and stop; its first the start."""
+    ch = {k: row[k] for k in FIELDS if k in row}
+    was = listed(m)
+    m["listed"] = {**was, "spans": json.loads(json.dumps(m["spans"]))}
+    m["change"] = row
+    if "name" in ch:
+        m["name"] = ch["name"]
+    spans = m["spans"]
+    if not spans and (ch.get("start") or m.get("start")) and any(k in ch for k in ("strength", "dose", "start", "stop", "status")):
+        spans.append(_span({"start": ch.get("start") or m["start"]}, m["name"]))   # fills alone: a span of its own
+    if spans:
+        first, last = spans[0], spans[-1]
+        if "name" in ch or "strength" in ch:
+            last["title"] = " ".join(x for x in (m["name"], ch.get("strength")) if x)
+        for k in ("dose", "status", "prescriber"):
+            if k in ch:
+                last[k] = ch[k] or (None if k == "prescriber" else "")
+        if ch.get("start"):
+            first["from"] = min(ch["start"], first["to"]) if first["to"] else ch["start"]
+        stop = ch["stop"] if "stop" in ch else was["stop"]
+        if ch.get("stop"):
+            last.update(to=max(ch["stop"], last["from"]), open=False, stopped=True)
+        elif not stop and _stopped(ch.get("status") or ""):
+            last.update(to=last["to"] or last["from"], open=False, stopped=True)
+        elif not stop and ("stop" in ch or ch.get("status")):   # its stop taken away, or a status that isn't: taken still
+            last.update(to=None, open=True, stopped=False)
+        m["start"] = min([s["from"] for s in spans] + [f["t"] for f in m.get("fills") or []])
+        m["stop"] = last["to"] if last["stopped"] else None
+    m.update({k: ch[k] for k in ("route", "note") if ch.get(k)})
+    return m
+
+
+def with_entries(meds, rows):
+    """(meds with the profile's own entries added and its changes applied, sorted by name; those hidden: [{key, name,
+    id, start, stop}]). rows: listing()'s."""
+    by_key, hidden, out = {m["key"]: m for m in meds}, [], list(meds)
+    for row in rows:
+        if row["own"]:
+            out.append(_own_med(row))
+            continue
+        m = by_key.get(row["key"])
+        if m is None:
+            continue
+        apply(m, row)
+        if row.get("hidden"):
+            out.remove(m)
+            hidden.append({"key": m["key"], "name": m["name"], "id": row["id"], "start": m.get("start"), "stop": m.get("stop")})
+    return sorted(out, key=lambda m: (m["name"].lower(), m["key"])), sorted(hidden, key=lambda h: h["name"].lower())
+
+
+def assembled(db, pid, data):
+    """(DATA.medications, DATA.hiddenMeds) for records._assemble: history() with the profile's own entries and changes."""
+    return with_entries(history(data), listing(db, pid))
+
+
+def record_listed(db, pid, key):
+    """What the records say of their medication of this key (listed()), hidden or changed or not, or None."""
+    from . import records
+    if db.in_transaction:
+        data = records.assemble(db, pid) or {}
+    else:
+        body = records.served(db, pid)
+        data = json.loads(body) if body else {}
+    return next((listed(m) for m in history(data) if m["key"] == key), None)
+
+
+def _save(db, pid, who, body, eid=None):
+    from . import db as dbm, records
+    if eid is None:
+        eid = db.execute("INSERT INTO med_entries(profile_id, body, created_by, created_name, created) VALUES(?, ?, ?, ?, ?)",
+                         (pid, _enc(body), who["id"], who["username"], dbm.now())).lastrowid
+    else:
+        db.execute("UPDATE med_entries SET body=?, changed_by=?, changed_name=?, changed=? WHERE id=? AND profile_id=?",
+                   (_enc(body), who["id"], who["username"], dbm.now(), eid, pid))
+    records._bump(db, pid)
+    return eid
+
+
+def _drop(db, pid, eid):
+    from . import records
+    db.execute("DELETE FROM med_entries WHERE id=? AND profile_id=?", (eid, pid))
+    records._bump(db, pid)
+
+
+def add_own(db, pid, who, fields, key=None):
+    """A new own entry (check()'d fields). key: the one it had, its removal undone (when no entry has it now). Call
+    inside a transaction. -> its id"""
+    import secrets
+    if key is not None:
+        if not (isinstance(key, str) and _OWN_KEY.match(key)):
+            raise EntryError("That isn't an entry of your own to put back.")
+        if any(b.get("key") == key for _, b in _rows(db, pid)):
+            raise EntryError("That entry is here already.")
+    return _save(db, pid, who, {"key": key or OWN + secrets.token_hex(8), "own": True, **fields})
+
+
+def change_own(db, pid, who, eid, fields):
+    """An own entry's fields replaced; the side effects linked to it by name (journal.py) follow a new name. -> what
+    it was, or None"""
+    from . import crypto, journal
+    was = get(db, pid, eid)
+    if was is None or not was.get("own"):
+        return None
+    _save(db, pid, who, {"key": was["key"], "own": True, **fields}, eid)
+    if was.get("name") and was["name"] != fields.get("name"):
+        for r in db.execute("SELECT id, body FROM journal WHERE profile_id=?", (pid,)).fetchall():
+            b = json.loads(crypto.dec(r["body"]))
+            if b.get("med") == was["name"]:
+                db.execute("UPDATE journal SET body=? WHERE id=?", (journal._enc({**b, "med": fields["name"]}), r["id"]))
+    return was
+
+
+def remove_own(db, pid, eid):
+    """An own entry deleted; its doses and reminders stay, by its key. -> what it was (its key with it), or None"""
+    was = get(db, pid, eid)
+    if was is None or not was.get("own"):
+        return None
+    _drop(db, pid, eid)
+    return was
+
+
+def set_change(db, pid, who, key, was, fields=None, hidden=None):
+    """The change to the records' medication of this key (was: record_listed()): its fields (check()'d, all Edit
+    showed: those the records say are dropped), and/or hidden or shown again. A change left with nothing is removed.
+    -> (what it was, or None; the row's id, or None once removed)"""
+    eid, body = of_key(db, pid, key)
+    before = dict(body) if body else None
+    body = dict(body or {"key": key})
+    if fields is not None:
+        body = {k: v for k, v in body.items() if k not in FIELDS}
+        body.update(differs(was, fields))
+    if hidden is not None:
+        body.pop("hidden", None)
+        body.update({"hidden": True} if hidden else {})
+    if not any(k in body for k in (*FIELDS, "hidden")):
+        if eid is not None:
+            _drop(db, pid, eid)
+        return before, None
+    return before, _save(db, pid, who, body, eid)
+
+
+def log_detail(change_):
+    """What the activity log keeps: what was done, never the medication."""
+    return {"change": change_}

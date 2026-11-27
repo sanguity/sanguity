@@ -3837,6 +3837,11 @@ Everything on `main` so far; it becomes the first tagged release.
 - **The 32-bit ARM check passes again** (#1083): its import check after the build still imported pycryptodome
   (`Crypto`), which #103 replaced with `cryptography` for encryption at rest, so arm.yml failed every run after the
   image had built. It checks `cryptography`'s AES-GCM, which the app uses, instead; the images are unchanged.
+- **Your own medications, and your changes to those from the records, kept by the server** (#1091): a medication of
+  your own (name, strength, dose and instructions, route, start, stop, status, prescriber, note), and your changes to
+  one from the records, kept over what they say (the records untouched, a later pull never undoing them), are stored
+  encrypted (schema version 46), put into the medications the page shows, and come with exports, backups and
+  restores; owners and editors make them, under `/api/profiles/{pid}/medications/own`, `.../listed` and `.../hidden`.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
