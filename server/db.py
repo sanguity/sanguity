@@ -1199,6 +1199,13 @@ SCHEMA = [
         changed INTEGER);
     CREATE INDEX med_entries_profile ON med_entries(profile_id);
     """,
+    # version 47: a medication reminder becomes a line of the medication's schedule (#1094; med_reminders.py): its
+    # times, days, from, until and zone are the line's, read with no amount at each time (its body is encrypted, so
+    # med_reminders.listing reads one from before as that), and whether it was on is now its Remind me: one on stays
+    # in the calendar feed as it was, one off stays out of it.
+    """
+    ALTER TABLE med_reminders RENAME COLUMN active TO remind;
+    """,
 ]
 
 

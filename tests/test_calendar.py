@@ -922,7 +922,7 @@ class Reminders(unittest.TestCase):
         bad = [({"med": "placebocillin"}, "current"), ({"med": "no such"}, "current"), ({"times": []}, "time"),
                ({"times": ["8am"]}, "HH:MM"), ({"times": ["24:00"]}, "HH:MM"), ({"days": []}, "day"), ({"days": ["xx"]}, "day"),
                ({"start": "2026-02-30"}, "exist"), ({"until": D(-5)}, "before"), ({"tz": "Nowhere/Fictional"}, "time zone"),
-               ({"times": [f"0{i}:00" for i in range(7)]}, "At most")]
+               ({"times": ["08:00"] * 25}, "At most")]
         for body, word in bad:
             r = self.set(status=400, **body)
             self.assertIn(word, r["detail"], (body, r))
@@ -979,8 +979,119 @@ class Reminders(unittest.TestCase):
         self.assertTrue(any(l.startswith("RRULE:") and "UNTIL=" in l for l in sp), "Brazil's clock changes ended in 2019")
         self.assertEqual(sum(l.startswith("BEGIN:STANDARD") for l in mr.vtimezone("Asia/Kolkata", 2026, 2027)), 1)
 
+    # ---- a medication's schedule (#1094): the reminders' lines, with amounts, several a medication, As needed
 
-DOW_L = ["mo", "tu", "we", "th", "fr", "sa", "su"]
+    def test_a_schedule_of_three_times_with_amounts(self):
+        tabs = [{"amount": 2, "unit": "tablets"}, {"amount": 1, "unit": "tablet"}, {"amount": 0.5, "unit": "ml"}]
+        j = self.set(times=["20:00", "08:00", "13:00"], amounts=[tabs[2], tabs[0], tabs[1]], until=D(30))
+        got = j["reminders"][0]
+        self.assertEqual(got["times"], ["08:00", "13:00", "20:00"], "in order of the day, each time with its own amount")
+        self.assertEqual(got["amounts"], [{"amount": 2, "unit": "tablets"}, {"amount": 1, "unit": "tablet"}, {"amount": 0.5, "unit": "ml"}])
+        self.assertFalse(got["asneeded"])
+        _, cal = self.feed(details="full")
+        evs = sorted(self.reminders(cal), key=lambda e: e["DTSTART"][1])
+        self.assertEqual([unescape(e["SUMMARY"][1]) for e in evs], ["Fictionamide 10 mg tablet · 2 tablets",
+                         "Fictionamide 10 mg tablet · 1 tablet", "Fictionamide 10 mg tablet · 0.5 ml"], "the amount at each time")
+        self.assertIn("Amount: 2 tablets", unescape(evs[0]["DESCRIPTION"][1]))
+        self.assertEqual(unescape(evs[0]["VALARM"]["DESCRIPTION"]), "Fictionamide 10 mg tablet · 2 tablets")
+        text, cal = self.feed()
+        self.assertEqual({unescape(e["SUMMARY"][1]) for e in self.reminders(cal)}, {"Medication"}, "minimal: no medication, no amount")
+        self.assertNotIn("tablets", text)
+        # two doses at one time: two in the schedule, one event saying both
+        self.set(times=["08:00", "08:00"], amounts=[{"amount": 1, "unit": "tablet"}, {"amount": 5, "unit": "ml"}])
+        lines = self.c["kim"].get(self.path()).json()["reminders"]
+        self.assertEqual(lines[-1]["times"], ["08:00", "08:00"])
+        _, cal = self.feed(details="full")
+        self.assertIn("Fictionamide 10 mg tablet · 1 tablet and 5 ml", [unescape(e["SUMMARY"][1]) for e in self.reminders(cal)])
+        bad = [({"amounts": [{"amount": 1}]}, "each time"), ({"amounts": [{"amount": 0}]}, "above 0"), ({"amounts": [{"amount": -2}]}, "above 0"),
+               ({"amounts": [{"amount": 1, "unit": "x" * 41}]}, "too long"), ({"times": ["08:00"] * 25}, "At most")]
+        for body, word in bad:
+            if "times" not in body:
+                body = {"times": ["08:00", "20:00"] if word == "each time" else ["08:00"], **body}
+            self.assertIn(word, self.set(status=400, **body)["detail"], body)
+
+    def test_lines_with_their_own_days(self):
+        """The owner's two (#1094): every day at 8:00 and Mondays and Fridays at 20:00; and Mondays and Fridays only,
+        morning and night. Each line's times on its own days, in the feed"""
+        a = self.set(times=["08:00"], amounts=[{"amount": 1, "unit": "tablet"}], until=D(60))["id"]
+        b = self.set(times=["20:00"], days=["mo", "fr"], amounts=[{"amount": 2, "unit": "tablets"}], until=D(60))["id"]
+        _, cal = self.feed(details="full")
+        evs = {_local(e["DTSTART"][1]).strftime("%H:%M"): e for e in self.reminders(cal)}
+        self.assertEqual(sorted(evs), ["08:00", "20:00"])
+        self.assertEqual(evs["08:00"]["RRULE"][1].split(";")[0], "FREQ=DAILY")
+        self.assertEqual(evs["20:00"]["RRULE"][1].split(";")[:2], ["FREQ=WEEKLY", "BYDAY=MO,FR"])
+        self.assertEqual(len(instances(evs["08:00"], cal["zones"])), 61)
+        nights = instances(evs["20:00"], cal["zones"])
+        self.assertTrue(nights and all(w.weekday() in (0, 4) and w.hour == 20 for w, _ in nights), "only Mondays and Fridays")
+        self.assertEqual(unescape(evs["20:00"]["SUMMARY"][1]), "Fictionamide 10 mg tablet · 2 tablets")
+        for rid in (a, b):
+            self.c["lee"].delete(self.path(f"/{rid}"), headers=H)
+        self.set(times=["20:00", "07:30"], days=["fr", "mo"], amounts=[{"amount": 1, "unit": "tablet"}] * 2, until=D(30))
+        _, cal = self.feed()
+        evs = self.reminders(cal)
+        self.assertEqual(len(evs), 2, "morning and night")
+        for e in evs:
+            self.assertEqual(e["RRULE"][1].split(";")[:2], ["FREQ=WEEKLY", "BYDAY=MO,FR"])
+            self.assertTrue(all(w.weekday() in (0, 4) for w, _ in instances(e, cal["zones"])))
+
+    def test_as_needed(self):
+        j = self.set(times=[], asneeded=True, dose={"amount": 2, "unit": "puffs"}, on=False)
+        got = j["reminders"][0]
+        self.assertEqual((got["asneeded"], got["times"], got["dose"]), (True, [], {"amount": 2, "unit": "puffs"}))
+        self.set(times=["08:00"], asneeded=True)   # its times dropped: As needed has none
+        self.assertEqual(self.c["kim"].get(self.path()).json()["reminders"][-1]["times"], [])
+        self.assertEqual(self.reminders(self.feed()[1]), [], "As needed: nothing to remind of")
+        self.assertIn("above 0", self.set(status=400, times=[], asneeded=True, dose={"amount": 0})["detail"])
+
+    def test_reminders_from_before_become_schedules(self):
+        """Schema step 47: each reminder a line of its medication's schedule, its times with no amount, on (Remind me)
+        as it was; the feed lists the same events"""
+        import json
+        from server import config, crypto, med_reminders as mr
+        path = os.path.join(TMP, "before-1094.db")
+        old = config.DB_PATH
+        try:
+            config.DB_PATH = path
+            schema = dbm.SCHEMA
+            here = dbm.SCHEMA.index(next(s for s in dbm.SCHEMA if "RENAME COLUMN active TO remind" in s))
+            dbm.SCHEMA = schema[:here]
+            try:
+                db = dbm.connect()
+                dbm.upgrade(db)
+            finally:
+                dbm.SCHEMA = schema
+            db.execute("PRAGMA foreign_keys=OFF")
+            body = lambda times, days: crypto.enc(json.dumps({"med": "fictionamide", "name": "Fictionamide 10 mg tablet", "times": times,
+                                                              "days": days, "from": D(0), "until": D(40), "tz": "America/Chicago"}))
+            db.execute("INSERT INTO med_reminders(id, profile_id, body, active, created_name, created) VALUES(1, ?, ?, 1, 'lee', 1)",
+                       (self.pid, body(["08:00", "20:00"], ["mo", "we", "fr"])))
+            db.execute("INSERT INTO med_reminders(id, profile_id, body, active, created_name, created) VALUES(2, ?, ?, 0, 'lee', 1)",
+                       (self.pid, body(["12:00"], DOW_L)))
+            dbm.upgrade(db)
+            self.assertIn("remind", [c[1] for c in db.execute("PRAGMA table_info(med_reminders)")])
+            got = mr.listing(db, self.pid)
+            self.assertEqual([(r["times"], r["amounts"], r["days"], r["on"], r["asneeded"]) for r in got],
+                             [(["08:00", "20:00"], [{"amount": None, "unit": ""}] * 2, ["mo", "we", "fr"], True, False),
+                              (["12:00"], [{"amount": None, "unit": ""}], DOW_L, False, False)])
+            db.close()
+        finally:
+            config.DB_PATH = old
+        # the same lines in the profile's own database: the feed reminds as before, the one off not at all
+        db = dbm.connect()
+        for r in got:
+            db.execute("INSERT INTO med_reminders(profile_id, body, remind, created_name, created) VALUES(?, ?, ?, 'lee', 1)",
+                       (self.pid, crypto.enc(json.dumps({k: r[k] for k in ("med", "name", "times", "days", "from", "until", "tz")})), int(r["on"])))
+        db.close()
+        _, cal = self.feed()
+        evs = sorted(self.reminders(cal), key=lambda e: e["DTSTART"][1])
+        self.assertEqual(len(evs), 2, "the one on: its two times; the one off: none")
+        for e, at in zip(evs, ("08:00", "20:00")):
+            want = mr.recurrence({**got[0], "tz": "America/Chicago"}, at, date.fromisoformat(D(40)), mr._zone("America/Chicago"))
+            self.assertEqual([e["DTSTART"][1], e["RRULE"][1]], [want[0].split(":", 1)[1], want[2].split(":", 1)[1]])
+            self.assertEqual(unescape(e["SUMMARY"][1]), "Medication")
+
+
+DOW_L =["mo", "tu", "we", "th", "fr", "sa", "su"]
 
 
 def tearDownModule():

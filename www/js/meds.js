@@ -6,9 +6,10 @@
    dose changes), a cap where the records say it stopped, an arrow where they give no end, and a tick for each fill.
    On Labs the same rows can be shown once, on the event track over the charts (#294; the "Medications" tick box, off until ticked).
    It shows what the records say, never whether a dose or a gap is right. Every date goes through dates.js.
-   Reminders (#162, server/med_reminders.py): DATA.reminders = [{id, med (the medication's key), name, times, days,
-   from, until, tz, on, by, at}], set in a medication's drawer by owners and editors for a current medication, listed
-   by the calendar feed (Sharing → Calendar feed) as repeating events; the drawer says when one has ended.
+   Its schedule (#1094, with #162's reminders, server/med_reminders.py): DATA.reminders = [{id, med (the medication's
+   key), name, times, amounts, days, from, until, tz, asneeded, dose, on (Remind me), by, at}], its lines, set in a
+   medication's drawer by owners and editors for a current medication; those with Remind me on listed by the calendar
+   feed (Sharing → Calendar feed) as repeating events; the drawer says when one has ended.
    The medication log (#235, medlog.js) adds its doses to the drawer (medLogSection) and as marks on each span in the
    Timeline's lane (medDoseMarks).
    Plain script, loaded in order by index.html after journal.js; all files share one global scope. */
@@ -190,7 +191,7 @@ function openMedication(m) {
       el("tbody", {}, m.fills.map(f => el("tr", {class: "link", title: "Open this fill", onclick: () => openEvent(byId.get(f.id))},
         el("td", {text: fmtD(f.ts)}), el("td", {}, el("button", {class: "cell-btn", type: "button", text: f.title})), el("td", {text: f.pharmacy || ""}), el("td", {text: f.supply ? `${f.supply} days` : ""})))))));
   }
-  body.append(...medReminderSection(m));   // reminders through the calendar feed (#162)
+  body.append(...medReminderSection(m));   // its schedule, and its reminders through the calendar feed (#1094, #162)
   body.append(...medLogSection(m));        // the doses logged (medlog.js, #235)
   const notes = JOURNAL.filter(e => e.j.med && (m.own ? e.j.med === m.name : medKeyOf(e.j.med) === m.key));   // your own: by its name (#1091)
   if (notes.length) body.append(el("div", {class: "sect", text: "Journal entries linked to it"}),
@@ -226,18 +227,25 @@ function medHistoryAction(e) {
 }
 
 
-/* ---------------------------------------------------------------- reminders through the calendar feed (#162)
-   Set here, for a current medication (the records give no end for its latest listing); the person's calendar app does
-   the reminding, from the calendar feed. A reminder ends on its until day, or sooner on the day the records say the
-   medication stopped, and the list here says which. Owners and editors set, change, turn off and remove them; every
-   change is put in the records in place (store.js, #271) and this medication's drawer is drawn again. */
+/* ---------------------------------------------------------------- a medication's schedule, and its reminders (#1094, #162)
+   Set here, for a current medication (the records give no end for its latest listing): one or more lines, each its
+   times of day with the amount at each (two at one time, two doses), its days, from and until; or As needed, with no
+   times. Every day at 8:00 and Mondays and Fridays at 20:00 is two lines (the owner, on #1094). Today lists each dose
+   a line gives that day (medlog.js todayDoses), and the weeks count them. With Remind me on, a line's times reach the
+   person's calendar app through the calendar feed, with the amounts. A line ends on its until day, or sooner on the
+   day the records say the medication stopped, and the list here says which. Owners and editors set, change, turn
+   Remind me on or off and remove them; every change is put in the records in place (store.js, #271) and this
+   medication's drawer is drawn again. DATA.reminders keeps the lines (server/med_reminders.py), "on": Remind me. */
 const MR_DAYS = [["mo", "Mon", "Monday"], ["tu", "Tue", "Tuesday"], ["we", "Wed", "Wednesday"], ["th", "Thu", "Thursday"],
   ["fr", "Fri", "Friday"], ["sa", "Sat", "Saturday"], ["su", "Sun", "Sunday"]];
+const MR_MAX = 24;   // times a day on one line (server/med_reminders.TIMES_MAX)
 const mrOf = m => (Array.isArray(DATA.reminders) ? DATA.reminders : []).filter(r => r && r.med === m.key);
 const mrCurrent = m => !!m.spans.length && !!m.spans[m.spans.length - 1].open;
-/* "8:00 AM" in this person's language, for a wall-clock "HH:MM" (no zone: it is the reminder's own) */
+/* "8:00 AM" in this person's language, for a wall-clock "HH:MM" (no zone: it is the line's own) */
 const mrTime = t => { const [h, n] = t.split(":").map(Number); return _fmt(Date.UTC(2000, 0, 1, h, n), {hour: "numeric", minute: "2-digit", timeZone: "UTC"}); };
 const mrAnd = xs => xs.length < 2 ? xs.join("") : xs.slice(0, -1).join(", ") + " and " + xs.at(-1);
+/* an amount as said: "2 tablets", "0.5 ml"; "" with none (server/med_reminders.said) */
+const mrAmt = a => a && a.amount != null ? `${String(+a.amount)} ${a.unit || ""}`.trim() : "";
 function mrDays(days) {
   const k = MR_DAYS.map(d => d[0]).filter(d => days.includes(d)).join(",");
   return k === "mo,tu,we,th,fr,sa,su" ? "every day" : k === "mo,tu,we,th,fr" ? "on weekdays" : k === "sa,su" ? "at weekends"
@@ -248,19 +256,33 @@ function mrEnds(r, m) {
   if (m.stop && (!r.until || m.stop < r.until)) return {day: m.stop, why: "stopped"};
   return r.until ? {day: r.until, why: "until"} : null;
 }
-/* "8:00 AM and 8:00 PM every day, from 18 Nov 2026, no end date" */
-const mrSays = r => `${mrAnd(r.times.map(mrTime))} ${mrDays(r.days)}, from ${fmtD(dayTs(r.from))}` + (r.until ? ` until ${fmtD(dayTs(r.until))}` : ", no end date");
+/* "2 tablets at 8:00 AM and 1 tablet at 8:00 PM every day"; "8:00 AM on Mon and Fri" with no amounts; "As needed,
+   usually 2 puffs" */
+const mrWhat = r => r.asneeded ? "As needed" + (mrAmt(r.dose) ? `, usually ${mrAmt(r.dose)}` : "") + (r.days.length < 7 ? " " + mrDays(r.days) : "")
+  : `${mrAnd(r.times.map((t, i) => (a => a ? `${a} at ${mrTime(t)}` : mrTime(t))(mrAmt((r.amounts || [])[i]))))} ${mrDays(r.days)}`;
+/* "… every day, from 18 Nov 2026, no end date" */
+const mrSays = r => `${mrWhat(r)}, from ${fmtD(dayTs(r.from))}` + (r.until ? ` until ${fmtD(dayTs(r.until))}` : ", no end date");
 function mrState(r, m) {
   const end = mrEnds(r, m);
   if (end && end.why === "stopped") return {cls: "ended", text: `Ended ${fmtD(dayTs(end.day))}: the records say this medication stopped then`};
   if (end && end.day < zToday()) return {cls: "ended", text: `Ended ${fmtD(dayTs(end.day))}`};
-  if (!r.on) return {cls: "off", text: "Off: not in the calendar feed"};
-  return {cls: "on", text: "On: in the calendar feed"};
+  if (r.asneeded) return {cls: "asneeded", text: "Logged when taken: no reminders"};
+  if (!r.on) return {cls: "quiet", text: "Remind me off: not in the calendar feed"};
+  return {cls: "remind", text: "Remind me on: in the calendar feed"};
 }
+/* the doses its schedule gives on a day ("YYYY-MM-DD"), by time: [{at, amount, unit}], two at one time two (medlog.js) */
+function mrDoses(m, day) {
+  const k = MR_DAYS[(new Date(day + "T12:00:00Z").getUTCDay() + 6) % 7][0];
+  return mrOf(m).filter(r => !r.asneeded && r.days.includes(k) && r.from <= day && !(mrEnds(r, m) && mrEnds(r, m).day < day))
+    .flatMap(r => r.times.map((at, i) => ({at, amount: null, unit: "", ...(r.amounts || [])[i]})))
+    .sort((a, b) => (a.at > b.at) - (a.at < b.at));
+}
+/* its As needed line that day, or null */
+const mrAsNeeded = (m, day) => mrOf(m).find(r => r.asneeded && r.from <= day && !(mrEnds(r, m) && mrEnds(r, m).day < day)) || null;
 function medReminderSection(m) {
   const rs = mrOf(m), write = canEdit(), cur = mrCurrent(m);
   if (!rs.length && !(write && cur)) return [];
-  const out = [el("div", {class: "sect", text: "Reminders in your calendar"})];
+  const out = [el("div", {class: "sect", text: "Schedule"})];
   const msg = el("p", {class: "hint edit-msg", role: "status"});
   if (rs.length) out.push(el("ul", {class: "mr-list"}, ...rs.map(r => {
     const st = mrState(r, m), zone = r.tz && r.tz !== (DATES.zone || browserZone()) ? ` (${r.tz} time)` : "";
@@ -269,50 +291,60 @@ function medReminderSection(m) {
       el("span", {class: "mr-state", text: st.text}),
       write ? el("span", {class: "mr-acts needs-server"},   // what saves, off while offline (offline.js, #449)
         st.cls !== "ended" || mrEnds(r, m)?.why === "until" ? el("button", {class: "btn small", type: "button", text: "Edit",
-          "aria-label": "Edit the reminder " + mrSays(r), onclick: () => medReminderForm(m, r)}) : null,
-        st.cls !== "ended" ? el("button", {class: "btn small", type: "button", text: r.on ? "Turn off" : "Turn on",
-          "aria-label": (r.on ? "Turn off" : "Turn on") + " the reminder " + mrSays(r),
+          "aria-label": "Edit the schedule line " + mrSays(r), onclick: () => medReminderForm(m, r)}) : null,
+        st.cls !== "ended" && !r.asneeded ? el("button", {class: "toggle", type: "button", text: "Remind me", "aria-pressed": !!r.on,
+          "aria-label": "Remind me: " + mrSays(r),
           onclick: () => mrSend(`/${r.id}`, {method: "PATCH", body: JSON.stringify({on: !r.on})}, msg, m)}) : null,
-        el("button", {class: "btn small", type: "button", text: "Remove", "aria-label": "Remove the reminder " + mrSays(r), onclick: async () => {
-          if (!await ask({title: "Remove this reminder?", message: mrSays(r) + ". It leaves your calendar at its next refresh.", action: "Remove", danger: true})) return;
+        el("button", {class: "btn small", type: "button", text: "Remove", "aria-label": "Remove the schedule line " + mrSays(r), onclick: async () => {
+          if (!await ask({title: "Remove this from the schedule?", message: mrSays(r) + ". Today stops listing its doses, and any reminders leave your calendar at its next refresh.",
+            action: "Remove", danger: true})) return;
           mrSend(`/${r.id}`, {method: "DELETE"}, msg, m);
         }})) : null);
   })));
-  if (write && cur) out.push(el("div", {class: "btns"}, el("button", {class: "btn needs-server", type: "button", text: rs.length ? "Add another reminder" : "Add a reminder",
+  if (write && cur) out.push(el("div", {class: "btns"}, el("button", {class: "btn needs-server", type: "button", text: rs.length ? "Add another line" : "Add a schedule",
     onclick: () => medReminderForm(m, null)})));
-  else if (write && !cur && m.stop) out.push(el("p", {class: "hint", text: "The records say this medication stopped, so no new reminders can be set for it."}));
-  out.push(el("p", {class: "hint"}, "They reach your calendar app through ",
+  else if (write && !cur && m.stop) out.push(el("p", {class: "hint", text: "The records say this medication stopped, so no new schedule can be set for it."}));
+  out.push(el("p", {class: "hint"}, "Today lists each dose it gives. With Remind me on, its times reach your calendar app through ",
     el("a", {href: `sharing.html?profile=${PROFILE.id}#calendar`, text: "Sharing → Calendar feed"}), ": Sanguity sends nothing itself."), msg);
   return out;
 }
-/* the add / edit form, in the drawer. r: the reminder (null: a new one) */
+/* a typed amount: a number above 0 (a comma as the point too), null for none, or NaN */
+const mrNum = v => (v = v.trim().replace(",", ".")) ? (/^\d*\.?\d+$/.test(v) && +v > 0 ? +v : NaN) : null;
+/* the add / edit form of a schedule line, in the drawer. r: the line (null: a new one) */
 function medReminderForm(m, r) {
-  const body = drawerHead("med", r ? "Edit reminder" : "New reminder", m.name);
+  const body = drawerHead("med", r ? "Edit schedule" : "New schedule", m.name);
   drawerStill = () => MEDS.some(x => x.key === m.key);   // (app.js, #517)
   const uid = Math.random().toString(36).slice(2, 8), id = n => `mr-${n}-${uid}`;
   const msg = el("p", {class: "hint edit-msg", role: "status"});
   const times = el("div", {class: "mr-times"});
+  const field = (t, attrs) => el("input", {type: "text", inputmode: t === "amount" ? "decimal" : "text", size: t === "amount" ? 5 : 9, maxlength: t === "amount" ? 12 : 40,
+    autocomplete: "off", placeholder: t === "amount" ? "Amount" : "Unit", onkeydown: ev => { if (ev.key === "Enter") ev.preventDefault(); }, ...attrs});
   // each time named, and its id, by its place: one removed, those after it move up (#830: a second "Time 2" after it).
   // The only one's Remove is off, its reason its tip and description (#837: it did nothing, and said nothing)
   const named = () => [...times.children].forEach((row, i, all) => {
-    const [input, rm] = row.children, only = all.length < 2;
+    const [input, amt, unit] = row.querySelectorAll("input"), rm = row.querySelector(".btn"), only = all.length < 2;
     input.id = id("t" + (i + 1)); input.setAttribute("aria-label", `Time ${i + 1}`); rm.setAttribute("aria-label", `Remove time ${i + 1}`);
-    if (only) { rm.setAttribute("aria-disabled", "true"); rm.dataset.tip = "A reminder needs a time"; } else { rm.removeAttribute("aria-disabled"); delete rm.dataset.tip; }
+    amt.setAttribute("aria-label", `Amount at time ${i + 1}`); unit.setAttribute("aria-label", `Unit at time ${i + 1}`);
+    if (only) { rm.setAttribute("aria-disabled", "true"); rm.dataset.tip = "A schedule needs a time"; } else { rm.removeAttribute("aria-disabled"); delete rm.dataset.tip; }
   });
-  const addTime = v => {
+  const addTime = (v, a) => {
     // Enter in a time doesn't save the form, Save does (#853: a second Enter on Remove, in the next time's field, saved it)
     const input = el("input", {type: "time", required: true, onkeydown: ev => { if (ev.key === "Enter") ev.preventDefault(); }}); input.value = v || "";
+    const amt = field("amount"), unit = field("unit");
+    amt.value = a && a.amount != null ? String(a.amount) : ""; unit.value = a ? a.unit || "" : times.lastElementChild?.querySelectorAll("input")[2].value || "";
     // removed (never the only one), focus goes to the next time's field, or the one before (#830: it went to the page),
     // and that's said, as the next one takes its name (#853: "Time 2 removed; 2 times left")
+    // the time and its Remove as before, its amount and unit on a line under them: the only time's tip (#837), above
+    // Remove, covers none of them (#977)
     const row = el("div", {class: "mr-time"}, input, el("button", {class: "btn small", type: "button", text: "Remove", onclick: () => {
       const n = [...times.children].indexOf(row) + 1, left = times.children.length - 1;
-      if (!left) return sayIn(msg, "A reminder needs a time.");
+      if (!left) return sayIn(msg, "A schedule needs a time, or As needed.");
       const to = row.nextElementSibling || row.previousElementSibling;
       row.remove(); more.hidden = false; named();
       to.querySelector("input").focus();
       sayIn(msg, `Time ${n} removed; ${left} time${left > 1 ? "s" : ""} left.`);
-    }}));
-    times.append(row); more.hidden = times.children.length >= 6; named();
+    }}), el("div", {}, amt, unit));
+    times.append(row); more.hidden = times.children.length >= MR_MAX; named();
     return input;
   };
   // the time added said, in place of what was said last ("Time 2 removed; 1 time left" stayed, #867)
@@ -328,36 +360,50 @@ function medReminderForm(m, r) {
   const until = el("input", {type: "date", id: id("until")}); until.value = r && r.until ? r.until : "";
   const zone = r && r.tz ? r.tz : DATES.zone || browserZone();
   const row = (lbl, input) => el("div", {class: "jfield"}, el("label", {for: input.id, text: lbl}), input);
+  // As needed: no times, no reminders; its usual amount, to start each dose logged with
+  const need = el("input", {type: "checkbox", checked: r && r.asneeded || null, onchange: () => shown()});
+  const usual = field("amount", {id: id("amt")}), usualUnit = field("unit", {id: id("unit")});
+  usual.value = r && r.dose && r.dose.amount != null ? String(r.dose.amount) : ""; usualUnit.value = r && r.dose ? r.dose.unit || "" : "";
+  const remind = el("input", {type: "checkbox", checked: !r || r.on ? "" : null});
+  const timed = el("div", {class: "jfield"}, el("span", {class: "jlabel", text: "Times of day, each with its amount"}), times, more);
+  const usualBox = el("div", {class: "jwhen"}, row("Usual amount (optional)", usual), row("Unit", usualUnit));
+  const remindBox = el("div", {class: "btns"}, el("label", {class: "toggle"}, remind, "Remind me in my calendar"));
+  const shown = () => { timed.hidden = remindBox.hidden = need.checked; usualBox.hidden = !need.checked; };
   const form = el("form", {class: "jform", novalidate: true},
-    el("div", {class: "jfield"}, el("span", {class: "jlabel", text: "Times of day"}), times, more),
+    timed, el("div", {class: "btns"}, el("label", {class: "toggle"}, need, "As needed")), usualBox,
     el("div", {class: "jfield"}, el("span", {class: "jlabel", text: "Days"}), dayBox),
-    el("div", {class: "jwhen"}, row("From", from), row("Until (optional)", until)),
+    el("div", {class: "jwhen"}, row("From", from), row("Until (optional)", until)), remindBox,
     el("p", {class: "hint", text: `Times are in ${zone}` + (r && r.tz ? ", the time zone it was set in." : ", your time zone (Settings → Dates and times).") +
-      " Your calendar app shows each one as a repeating event, from the calendar feed."}),
-    el("div", {class: "btns"}, el("button", {class: "btn primary needs-server", type: "submit", text: r ? "Save" : "Add reminder"}),
+      " With Remind me on, your calendar app shows each one as a repeating event with its amount, from the calendar feed."}),
+    el("div", {class: "btns"}, el("button", {class: "btn primary needs-server", type: "submit", text: r ? "Save" : "Add to schedule"}),
       el("button", {class: "btn", type: "button", text: "Cancel", onclick: () => openMedication(m)})), msg);
-  for (const t of r ? r.times : ["08:00"]) addTime(t);
+  if (r && r.times.length) r.times.forEach((t, i) => addTime(t, (r.amounts || [])[i])); else addTime("08:00");
+  shown();
+  const bad = (input, words) => { sayIn(msg, words, true); input.setAttribute("aria-invalid", "true"); input.addEventListener("input", () => input.removeAttribute("aria-invalid"), {once: true}); input.focus(); };
   form.onsubmit = ev => {
     ev.preventDefault();
-    const ts = [...times.querySelectorAll("input")].map(i => i.value).filter(Boolean);
-    if (!ts.length) { sayIn(msg, "Give at least one time of day.", true); times.querySelector("input").focus(); return; }
+    const rows = need.checked ? [] : [...times.children].map(t => t.querySelectorAll("input")).filter(t => t[0].value);
+    if (!need.checked && !rows.length) { sayIn(msg, "Give at least one time of day.", true); times.querySelector("input").focus(); return; }
+    for (const t of rows) if (Number.isNaN(mrNum(t[1].value))) return bad(t[1], `${t[1].getAttribute("aria-label")} isn't a number above 0.`);
+    if (need.checked && Number.isNaN(mrNum(usual.value))) return bad(usual, "The usual amount isn't a number above 0.");
     if (!days.size) { sayIn(msg, "Pick at least one day.", true); dayBox.querySelector("button").focus(); return; }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(from.value)) { sayIn(msg, "Pick the date it starts from.", true); from.focus(); return; }
-    const out = {med: m.key, times: ts.map(t => t.slice(0, 5)), days: MR_DAYS.map(d => d[0]).filter(d => days.has(d)), start: from.value,
-      until: until.value || null, tz: zone, on: r ? r.on : true};
+    const out = {med: m.key, times: rows.map(t => t[0].value.slice(0, 5)), amounts: rows.map(t => ({amount: mrNum(t[1].value), unit: t[2].value.trim()})),
+      days: MR_DAYS.map(d => d[0]).filter(d => days.has(d)), start: from.value, until: until.value || null, tz: zone, asneeded: need.checked,
+      dose: need.checked ? {amount: mrNum(usual.value), unit: usualUnit.value.trim()} : null, on: !need.checked && remind.checked};
     mrSend(r ? `/${r.id}` : "", {method: r ? "PUT" : "POST", body: JSON.stringify(out)}, msg, m);
   };
   body.append(form);
   showDrawer();
-  times.querySelector("input").focus({preventScroll: true});
+  (need.checked ? need : times.querySelector("input")).focus({preventScroll: true});
 }
 async function mrSend(path, opts, msg, m) {
   sayIn(msg, "Saving…");
   let r, j;
   try { r = await api(`profiles/${PROFILE.id}/medications/reminders${path}`, opts); j = await r.json().catch(() => ({})); }
   catch (err) { sayIn(msg, "Couldn't reach the server: " + err.message, true); return; }
-  if (!r.ok) { sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save the reminder (${r.status}).`, true); return; }
+  if (!r.ok) { sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save the schedule (${r.status}).`, true); return; }
   storePut("reminders", j);
   medAgain(MEDS.find(x => x.key === m.key));
-  announce(opts.method === "DELETE" ? "Reminder removed." : "Reminder saved.");
+  announce(opts.method === "DELETE" ? "Removed from the schedule." : opts.method === "PATCH" ? (j.reminders?.[0]?.on ? "Remind me on." : "Remind me off.") : "Schedule saved.");
 }

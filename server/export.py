@@ -445,25 +445,19 @@ def _dose(d):
 
 
 def _reminder(r):
+    """A schedule line (#1094), or a reminder from before it (its times with no amounts)."""
     if not isinstance(r, dict):
         raise ValueError("it isn't an object")
-    times = r.get("times")
-    if not isinstance(times, list) or not times or len(set(times)) > med_reminders.TIMES_MAX or \
-            not all(isinstance(t, str) and med_reminders._TIME.match(t) for t in times):
-        raise ValueError(f"its times aren't 1 to {med_reminders.TIMES_MAX} times of day as HH:MM")
-    days = r.get("days")
-    if not isinstance(days, list) or not days or not all(d in med_reminders.DAYS for d in days):
-        raise ValueError("its days aren't days of the week")
-    a = med_reminders._date(r.get("from"), "from")
-    b = med_reminders._date(r["until"], "until") if r.get("until") else None
-    if b and b < a:
-        raise ValueError("its until date is before its from date")
+    try:
+        ln = med_reminders.line(r.get("times"), r.get("amounts"), r.get("days"), r.get("from"), r.get("until"),
+                                bool(r.get("asneeded")), r.get("dose"))
+    except med_reminders.ReminderError as x:
+        raise ValueError(f"its schedule can't be kept: {x}") from None
     tz = r.get("tz") or ""
     if tz:
         settings.time_zone(_str(tz, 64, "time zone"))   # SettingError (a ValueError) for one this server doesn't know
     return {"med": _str(r.get("med"), 300, "medication"), "name": _str(r.get("name") or r["med"], 300, "medication's name"),
-            "times": sorted(set(times)), "days": [d for d in med_reminders.DAYS if d in days], "from": a.isoformat(),
-            "until": b.isoformat() if b else None, "tz": tz}
+            **ln, "tz": tz}
 
 
 def _med_entry(x):
@@ -655,7 +649,7 @@ def restore(db, pid, data, photo, written):
                 continue
             kept.add(k)
             if table == "med_reminders":
-                db.execute("""INSERT INTO med_reminders(profile_id, body, active, created_by, created_name, created, changed_by,
+                db.execute("""INSERT INTO med_reminders(profile_id, body, remind, created_by, created_name, created, changed_by,
                               changed_name, changed) VALUES(?, ?, ?, NULL, ?, ?, NULL, ?, ?)""",
                            (pid, _enc(body), 0 if x.get("on") is False else 1, by, at or dbm.now(), changed_by, changed))
             else:

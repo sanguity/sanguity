@@ -157,7 +157,7 @@ async function doseSend(path, opts, msg, after) {
    Medications tab's do: .logged, #468); and only that many rows, from the latest reminder time that has come (the first
    while none has), the number left out in the card's data-more (the Overview links to the rest) */
 function todayDoses({id = "ovDoses", head = el("h3", {text: "Today's medication doses"}), few = 0} = {}) {
-  const write = canEdit(), today = zToday(), dow = MR_DAYS[(zdate(Date.now()).getDay() + 6) % 7][0];
+  const write = canEdit(), today = zToday();
   const cur = MEDS.filter(mrCurrent);
   const todays = DOSES.filter(d => doseDay(d) === today);
   if (!cur.length) return null;
@@ -173,7 +173,7 @@ function todayDoses({id = "ovDoses", head = el("h3", {text: "Today's medication 
   const rows = [];   // [its time, its row]
   for (const m of cur) {
     const mine = todays.filter(d => d.key === m.key);
-    const slots = [...new Set(mrOf(m).filter(r => r.on && r.days.includes(dow) && r.from <= today && !(mrEnds(r, m) && mrEnds(r, m).day < today)).flatMap(r => r.times))].sort();
+    const slots = [...new Set(mrDoses(m, today).map(d => d.at))];
     const open = () => el("button", {class: "cell-btn dose-med", type: "button", text: m.name, "data-tip": "Its details and log", onclick: () => openMedication(m)});
     for (const slot of slots) {
       const got = mine.filter(d => d.slot === slot);
@@ -200,7 +200,7 @@ function todayDoses({id = "ovDoses", head = el("h3", {text: "Today's medication 
       : "Log what happened, for your own record: taken, taken late or skipped."}),
     rows.length ? el("ul", {class: "doselist today" + (few ? " few" : "")}, ...rows.slice(from, from + n).map(r => r[1])) : null,
     el("p", {class: "dose-week", text: "This week: " + doseSaid(doseCounts(week))}),
-    aboutWords({name: "today's medication doses"}, `The times are those of the reminders set on each medication (its details, ${id === "ovDoses" ? "on the Medications tab" : "below"}). This keeps what is logged, nothing more. Doses logged in Apple Health's Medications come with the phone's data when Health Auto Export sends them. This isn't medical advice.`),   // (#447: on the Medications tab, they're below it; one name on both, #460)
+    aboutWords({name: "today's medication doses"}, `The times are those of the schedule set on each medication (its details, ${id === "ovDoses" ? "on the Medications tab" : "below"}). This keeps what is logged, nothing more. Doses logged in Apple Health's Medications come with the phone's data when Health Auto Export sends them. This isn't medical advice.`),   // (#447: on the Medications tab, they're below it; one name on both, #460)
     msg);
 }
 
