@@ -186,6 +186,124 @@ class InTheRecords(unittest.TestCase):
             db.close()
         self.assertNotIn("medications", self.data())
 
+    def test_your_own_medications_and_your_changes(self):   # #1091, #1093
+        """A medication of the profile's own: added, changed, deleted (its dose logged kept) and put back by its key. A
+        change to one of the records': applied over them, what they said beside it, and kept through a later pull of
+        the same source that says something new; put back as listed. One hidden: out of the medications, its records
+        kept, still hidden after a pull, shown again. A viewer can do none of it; the bodies are encrypted; the
+        profile's deletion takes them."""
+        from server import crypto, profiles
+        db = dbm.connect()
+        pid = profiles.create_profile(db, "Own medications (fictional)", owner_id=db.execute("SELECT id FROM users WHERE username='robin'").fetchone()[0])
+        vid = accounts.create(db, "sam", password=PW)[0]
+        db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'viewer')", (vid, pid))
+        with dbm.transaction(db):
+            first = records.store(db, pid, records_of(
+                med("a", "2026-03-01T08:00:00", "Fictorin 5 mg tablet", instructions="Once daily", status="Active", src="Fictional clinic"),
+                med("b", "2026-02-01T08:00:00", "Placebex 2 mg tablet", instructions="At night", status="Active")), "connection:9", fmt="fhir")
+        db.close()
+        p = f"/api/profiles/{pid}"
+
+        def data():
+            r = self.c.get(p + "/data")
+            self.assertEqual(r.status_code, 200, r.text)
+            return r.json()
+
+        def meds():
+            return {m["name"]: m for m in data().get("medications") or []}
+
+        def pull(dose):   # the same source again, saying something new of Fictorin: its import in place of the first
+            nonlocal first
+            db = dbm.connect()
+            with dbm.transaction(db):
+                records.drop(db, pid, [first])
+                first = records.store(db, pid, records_of(
+                    med("a", "2026-03-01T08:00:00", "Fictorin 5 mg tablet", instructions="Once daily", status="Active", src="Fictional clinic"),
+                    med("c", "2026-09-01T08:00:00", "Fictorin 5 mg tablet", instructions=dose, status="Active", src="Fictional clinic"),
+                    med("b", "2026-02-01T08:00:00", "Placebex 2 mg tablet", instructions="At night", status="Active")), "connection:9", fmt="fhir")
+            db.close()
+
+        # an own entry: added (it's current, a span from its start), changed, deleted with its dose kept, put back
+        r = self.c.post(p + "/medications/own", headers=H, json={"name": "Calmora", "strength": "10 mg", "dose": "1 tablet in the morning",
+                                                                  "start": "2026-10-01", "status": "Active", "note": "Fictional"})
+        self.assertEqual(r.status_code, 201, r.text)
+        eid, key = r.json()["id"], r.json()["key"]
+        self.assertTrue(key.startswith("own:"))
+        self.assertIn("Calmora", {m["name"] for m in r.json()["records"]["medications"]}, "the reply carries the records")
+        m = meds()["Calmora"]
+        self.assertEqual((m["key"], m["own"]["id"], m["spans"][0]["from"], m["spans"][0]["open"], m["spans"][0]["title"], m["spans"][0]["dose"], m["note"]),
+                         (key, eid, "2026-10-01", True, "Calmora 10 mg", "1 tablet in the morning", "Fictional"))
+        self.assertEqual(self.c.post(p + "/medications/own", headers=H, json={"name": "No start"}).status_code, 400)
+        r = self.c.put(f"{p}/medications/own/{eid}", headers=H, json={"name": "Calmora XR", "strength": "20 mg", "dose": "1 tablet",
+                                                                        "start": "2026-10-01", "stop": "2026-11-01", "status": "Stopped"})
+        self.assertEqual(r.status_code, 200, r.text)
+        m = meds()["Calmora XR"]
+        self.assertEqual((m["key"], m["stop"], m["spans"][0]["open"]), (key, "2026-11-01", False), "the same key; stopped")
+        r = self.c.post(p + "/medications/doses", headers=H, json={"med": key, "t": "2026-10-20T08:00", "status": "taken"})
+        self.assertEqual(r.status_code, 201, r.text)
+        r = self.c.delete(f"{p}/medications/own/{eid}", headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        gone = r.json()["removed"]
+        d = data()
+        self.assertNotIn("Calmora XR", {m["name"] for m in d["medications"]})
+        self.assertEqual([x["med"] for x in d["doses"]], [key], "its dose stays in the log")
+        r = self.c.post(p + "/medications/own", headers=H, json=gone)   # Undo
+        self.assertEqual(r.status_code, 201, r.text)
+        self.assertEqual(meds()["Calmora XR"]["key"], key, "put back with its key: its dose finds it again")
+        self.assertEqual(self.c.post(p + "/medications/own", headers=H, json=gone).status_code, 400, "not twice")
+
+        # a change to Fictorin of the records: what Edit shows, the dose changed
+        fic = meds()["Fictorin 5 mg tablet"]
+        r = self.c.put(p + "/medications/listed", headers=H, json={"key": fic["key"], "name": "Fictorin 5 mg tablet", "strength": "",
+                                                                    "dose": "Twice daily", "start": "2026-03-01", "stop": "", "status": "Active", "note": "Fictional"})
+        self.assertEqual(r.status_code, 200, r.text)
+        m = meds()["Fictorin 5 mg tablet"]
+        self.assertEqual((m["spans"][-1]["dose"], m["listed"]["dose"], m["listed"]["spans"][-1]["dose"], m["note"]),
+                         ("Twice daily", "Once daily", "Once daily", "Fictional"))
+        self.assertEqual({k for k in m["change"] if k in medications.FIELDS}, {"dose", "note"}, "only what it changes is kept")
+        pull("Once daily with food")
+        m = meds()["Fictorin 5 mg tablet"]
+        self.assertEqual((m["spans"][-1]["dose"], m["listed"]["dose"]), ("Twice daily", "Once daily with food"), "a pull keeps the change")
+        listed = {k: v for k, v in m["listed"].items() if k in medications.FIELDS}
+        r = self.c.put(p + "/medications/listed", headers=H, json={"key": fic["key"], **listed})   # Put back as listed
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertIsNone(r.json()["id"])
+        m = meds()["Fictorin 5 mg tablet"]
+        self.assertEqual((m["spans"][-1]["dose"], "change" in m), ("Once daily with food", False))
+        self.assertEqual(self.c.put(p + "/medications/listed", headers=H, json={"key": "no such", "dose": "x"}).status_code, 404)
+
+        # Placebex hidden: out of the medications, its records kept, hidden still after a pull; shown again
+        plc = meds()["Placebex 2 mg tablet"]["key"]
+        r = self.c.put(p + "/medications/hidden", headers=H, json={"key": plc, "hidden": True})
+        self.assertEqual(r.status_code, 200, r.text)
+        pull("Once daily")
+        d = data()
+        self.assertNotIn("Placebex 2 mg tablet", {m["name"] for m in d["medications"]})
+        self.assertEqual([(h["key"], h["name"]) for h in d["hiddenMeds"]], [(plc, "Placebex 2 mg tablet")])
+        self.assertIn("Placebex 2 mg tablet", {e["title"] for e in d["events"]}, "its records stay")
+        self.assertEqual(self.c.put(p + "/medications/hidden", headers=H, json={"key": plc, "hidden": False}).status_code, 200)
+        d = data()
+        self.assertIn("Placebex 2 mg tablet", {m["name"] for m in d["medications"]})
+        self.assertNotIn("hiddenMeds", d)
+
+        # a viewer reads them and changes none
+        sam = TestClient(main.app, base_url="http://testserver")
+        self.assertEqual(sam.post("/api/login", json={"username": "sam", "password": PW}, headers=H).status_code, 200)
+        self.assertEqual(sam.get(p + "/medications/entries").status_code, 200)
+        for method, path, body in (("POST", "/medications/own", {"name": "X", "start": "2026-01-01"}), ("PUT", f"/medications/own/{eid}", {"name": "X", "start": "2026-01-01"}),
+                                   ("DELETE", f"/medications/own/{eid}", None), ("PUT", "/medications/listed", {"key": plc, "dose": "x"}),
+                                   ("PUT", "/medications/hidden", {"key": plc, "hidden": True})):
+            self.assertEqual(sam.request(method, p + path, headers=H, json=body).status_code, 403, (method, path))
+
+        db = dbm.connect()
+        try:
+            bodies = [r[0] for r in db.execute("SELECT body FROM med_entries WHERE profile_id=?", (pid,))]
+            self.assertTrue(bodies and all(b.startswith(crypto.FIELD) for b in bodies), "encrypted")
+            profiles.delete_profile(db, pid)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM med_entries WHERE profile_id=?", (pid,)).fetchone()[0], 0, "gone with the profile")
+        finally:
+            db.close()
+
     def test_a_rename_takes_what_hangs_on_its_medication(self):   # #921, #954
         """A rename groups a medication as it's shown (as before #921): it joins a medication of its new name, or
         leaves one it shared a key with. What hangs on a medication's key goes with it in the same save (#954): its

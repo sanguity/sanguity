@@ -73,7 +73,10 @@ def shown(data):
             "journal": [(e["kind"], e["t"], e["title"], e["severity"], e["note"], e.get("where"), e["by"], e["at"],
                          [(p["alt"], p["type"], p["bytes"]) for p in e.get("photos") or []]) for e in data.get("journal") or []],
             "doses": [(d["med"], d["t"], d["status"], d["note"], d["by"], d["at"]) for d in data.get("doses") or []],
-            "reminders": [(r["med"], r["times"], r["days"], r["from"], r["on"], r["by"], r["at"]) for r in data.get("reminders") or []]}
+            "reminders": [(r["med"], r["times"], r["days"], r["from"], r["on"], r["by"], r["at"]) for r in data.get("reminders") or []],
+            # (#1091) the medications of the profile's own, and its changes to the records'
+            "meds": sorted((m["name"], m["key"] if m.get("own") else "", m["spans"][-1]["dose"], (m.get("own") or m.get("change") or {}).get("by"))
+                           for m in data.get("medications") or [])}
 
 
 class Export(unittest.TestCase):
@@ -131,6 +134,10 @@ class Export(unittest.TestCase):
         r = cls.robin.post(p + "/medications/reminders", json={"med": med, "times": ["08:00"], "days": ["mo", "we", "fr"],
                                                                "start": D(-10), "tz": "Europe/London"}, headers=H)
         assert r.status_code == 201, r.text
+        r = cls.lee.post(p + "/medications/own", json={"name": "Calmora (fictional)", "dose": "1 tablet", "start": D(-20)}, headers=H)
+        assert r.status_code == 201, r.text
+        r = cls.lee.put(p + "/medications/listed", json={"key": med, "dose": "Fictional new dose"}, headers=H)
+        assert r.status_code == 200, r.text
 
     def export(self, who="robin"):
         r = self.c[who].get(f"/api/profiles/{self.pid}/export")
@@ -188,6 +195,7 @@ class Export(unittest.TestCase):
         before = shown(self.data())
         self.assertEqual((len(before["edits"]), len(before["same"]), len(before["journal"]), len(before["doses"]), len(before["reminders"])),
                          (5, 1, 1, 1, 1))
+        self.assertEqual([x[3] for x in before["meds"] if x[3]], ["lee", "lee"], "an own medication and a change")
         z = zipfile.ZipFile(io.BytesIO(self.export()))
         data = json.loads(z.read("data.json"))
         # the records as they were imported: the hidden and merged-in ones are there, under their own titles
@@ -224,7 +232,7 @@ class Export(unittest.TestCase):
         while time.time() < end:
             j = self.robin.get(f"/api/profiles/{pid}/jobs/{jid}").json()
             if j["state"] == "preview":
-                self.assertEqual(j.get("restores"), {"corrections": 6, "journal": 1, "photos": 1, "doses": 1, "reminders": 1}, j)
+                self.assertEqual(j.get("restores"), {"corrections": 6, "journal": 1, "photos": 1, "doses": 1, "reminders": 1, "medEntries": 2}, j)
                 self.assertEqual(self.robin.post(f"/api/profiles/{pid}/jobs/{jid}/confirm", headers=H).status_code, 202)
             elif j["state"] in ("done", "failed", "discarded"):
                 break

@@ -1181,6 +1181,24 @@ SCHEMA = [
     """
     INSERT OR REPLACE INTO meta(k, v) VALUES('fhir_stamped_copies', '1');
     """,
+    # version 46 (#1091): a profile's own medications and its changes to ones from the records (medications.py,
+    # "Your own medications"). One row each: an entry of the person's own (its key "own:" and a random word), or the
+    # changes to, or the hiding of, a medication of the records, found by its grouping key (medications.med_key), so
+    # undoing an import or a later pull keeps it. What it says is in body, encrypted; who made or changed it and when
+    # are plain, as the medication log's are.
+    """
+    CREATE TABLE med_entries(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        body TEXT NOT NULL,                        -- JSON, encrypted: {key, own, name, strength, dose, ..., hidden}
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_name TEXT NOT NULL,                -- the username then
+        created INTEGER NOT NULL,
+        changed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        changed_name TEXT,
+        changed INTEGER);
+    CREATE INDEX med_entries_profile ON med_entries(profile_id);
+    """,
 ]
 
 
