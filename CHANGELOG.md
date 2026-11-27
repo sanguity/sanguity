@@ -3896,6 +3896,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - **A vital reported in another unit is said in its chart's unit** (#1102): a C-CDA document's temperature, height,
   pulse and blood pressure showed their value as written with the chart's unit after it ("37 Cel °F", "175 cm in");
   Labs, the Overview and the visit summary now say the converted value ("98.6 °F"), with "Reported as 37 Cel" beside it.
+- **An import's review never offers HDL as LDL** (#1102): its lab-name matching offered "Maybe: LDL Cholesterol" for
+  HDL Cholesterol. A name is never offered for one a qualifier tells apart (HDL and LDL, free and total, direct and
+  calculated, ionized), nor for a test whose LOINC code isn't its own.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
