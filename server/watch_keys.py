@@ -79,6 +79,15 @@ def legacy_in_use(db):
     return not dbm.meta_get(db, RETIRED)
 
 
+def retire_unused(db):
+    """(#1103) A fresh install's first profile reads the receiver's own summary (slot ""), as the first profile of an
+    install from before #46 does, but no phone has ever used the install's single secret: with no summary there, it's
+    retired, so the profile counts as having a phone only once it makes a secret of its own (it was "set up, waiting for
+    its first upload", and Sources spoke of the server's original secret). An install with a phone's summary keeps it."""
+    if legacy_in_use(db) and not os.path.exists(config.WATCH_FILE):
+        dbm.meta_set(db, RETIRED, str(dbm.now()))
+
+
 def publish(db):
     """Write the receiver's secrets file from the database. Returns True, or False when its folder isn't there
     (an install whose compose file doesn't mount WATCH_DIR/keys yet), saying so in the log."""

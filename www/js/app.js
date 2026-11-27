@@ -307,8 +307,6 @@ async function recordsDraw(data) {
   } catch (e) {}
   await datesReady();   // before any time is read: one without an offset is this person's wall-clock time
   storeRecords(data);   // the records, the watch's joined to them, ready to draw (store.js, #271)
-  // (#1103) the tabs with nothing in them, which give their place in a phone's bar to those with records (nav.js)
-  SgNav.empties(PROFILE.id, [!WATCH && "health", !SERIES.some(s => !s.watch) && "labs", !(DATA.costs || []).length && !((DATA.outOfPocket || {}).payments || []).length && "costs"].filter(Boolean));
   if (RANGES_USED) for (const n of document.querySelectorAll(".range-note")) n.textContent += RANGE_NOTE_SETTINGS;
   await cycleLoad();   // cycle tracking, only when turned on and for owners and editors (cycle.js, #183)
   storeSpan();

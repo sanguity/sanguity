@@ -22834,27 +22834,36 @@ def main():
             check("…every tab reached from it and opened, at 390, 375 and 320 px; from the keyboard the tabs come after the profile menu and before Add; "
                   "a control under the bar is scrolled clear of it as it takes focus (#268)", not reach, reach)
             # #1103: a tab with nothing in it (Body and activity with no phone or watch data) gives its place in the bar to
-            # one with records, Labs first, while the tabs are in their usual order; an order of the person's own stays;
-            # the other pages' bars the same, from what the records page found
+            # one with records, Labs first, while the tabs are in their usual order, on every page from the first (the
+            # profile list says which, GET me's "empty"): a profile of lab results alone, opened first on Sources as the
+            # guide's pages are, then its records; an order of the person's own stays; the demo's, with watch data, as before
+            from server import db as dbm1103, profiles as prof1103, records as rec1103
+            db = dbm1103.connect()
+            with dbm1103.transaction(db):
+                uid1103 = db.execute("SELECT id FROM users WHERE username=?", (USER,)).fetchone()["id"]
+                lpid1103 = prof1103.create_profile(db, "Labs alone 1103 (fictional)", owner_id=uid1103)
+                rec1103.store(db, lpid1103, {"built": "2026-11-15", "source": "fictional", "events": [], "details": {}, "costs": [], "upcoming": [],
+                                             "labs": [{"name": "Hemoglobin", "unit": "g/dL", "panel": "", "n": 1, "txt": [],
+                                                       "pts": [["2026-11-02T08:00:00", 13.1, 12, 15.5, "", "13.1"]]}]}, "upload", fmt="csv")
+            db.close()
             page.set_viewport_size({"width": 375, "height": 800})
-            page.goto(base + "/?profile=1")
-            page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
             bar1103 = "[...document.querySelectorAll('header .tabs > a[id^=tab-]')].filter(a => !a.hidden).map(a => a.id.slice(4)).join()"
-            slots1103 = [js(bar1103)]
-            js("SgNav.empties(PROFILE.id, ['health'])")
-            slots1103 += [js(bar1103), js("localStorage.getItem('ht-tabs:' + PROFILE.id)")]
-            js("SgNav.layout({order: ['overview', 'health', 'labs', 'medications', 'timeline', 'costs'], hidden: []})")
-            slots1103.append(js(bar1103))
-            js("SgNav.layout(CFG.tabs)")
-            page.goto(base + "/sources.html?profile=1")
-            page.wait_for_selector("header .tabs > a#tab-overview", timeout=10000)
-            settle(300)
-            slots1103.append(js(bar1103))
-            js("localStorage.removeItem('ht-tabs:1')")
+            slots1103 = []
+            for path in (f"/sources.html?profile={lpid1103}", f"/?profile={lpid1103}", "/sources.html?profile=1"):
+                page.goto(base + path)
+                page.wait_for_selector("header .tabs > a#tab-overview", timeout=10000)
+                if path.startswith("/?"):
+                    page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+                settle(300)
+                slots1103.append(js(bar1103))
+                if path.startswith("/?"):
+                    js("SgNav.layout({order: ['overview', 'health', 'labs', 'medications', 'timeline', 'costs'], hidden: []})")
+                    slots1103.append(js(bar1103))
+                    js("SgNav.layout(CFG.tabs)")
             check("a phone's bar (#1103): Body and activity, with nothing in it, gives its place to Labs while the tabs are in their usual order, "
-                  "on the records page and the others; an order of the person's own is kept",
-                  slots1103 == ["overview,health,medications,timeline", "overview,medications,timeline,labs", '["health"]',
-                                "overview,health,labs,medications", "overview,medications,timeline,labs"], slots1103)
+                  "on every page from the first (Sources before the records); an order of the person's own is kept; a profile with watch data as before",
+                  slots1103 == ["overview,medications,timeline,labs", "overview,medications,timeline,labs", "overview,health,labs,medications",
+                                "overview,health,medications,timeline"], slots1103)
             # …and with the CPU four times slower, as on CI's runner, where this check stopped (#900's room): Labs picked
             # from More, then Costs, and the click on Costs waited 30 s for it. tab_click took Costs, in More's sheet as it
             # slid away after Labs was picked from it, for there (it's drawn till the sheet's closing transition ends, later
