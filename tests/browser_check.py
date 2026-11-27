@@ -10795,7 +10795,9 @@ def main():
                 # ---- #1092: Add a medication, always on the Medications tab (beside Current's heading), saved as your
                 # own entry: in Current and Today, its drawer saying so; Edit changes it. One from the records edited: its
                 # drawer shows your change beside what the records list, and Put back as listed takes it away, with an
-                # Undo. At 320-1400 px, 200% text, light and dark and forced colours: fits, axe
+                # Undo. #1093: Remove your own deletes it, one from the records hides it (its records kept; Hidden lists
+                # it with Show again), each with an Undo, the drawer closed and focus on the page, said. At 320-1400 px,
+                # 200% text, light and dark and forced colours: fits, axe
                 page.goto(base + "/")
                 page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
                 js("setPeriod('all')")
@@ -10888,6 +10890,60 @@ def main():
                 settle(250)
                 check("…the tab and the form fit 320-1400 px and 200% text, and pass axe-core's WCAG A and AA rules, light, dark and forced colours",
                       not bad1092 and not axe1092, (bad1092 + axe1092)[:6])
+                # #1093: Remove your own: deleted, the drawer closed, focus on the page, said, with an Undo that puts it back
+                page.locator("#view-medications li.med-row .cell-btn", has_text="Calmora (fictional)").first.click()
+                settle(300)
+                page.click("#dbody .btns button:text-is('Remove')")
+                page.wait_for_function("!MEDS.some(m => m.own)", timeout=20000)
+                settle(400)
+                gone1093 = js("""[drawer.classList.contains('open'), [...document.querySelectorAll('#sgToasts .sg-toast-text')].at(-1)?.textContent,
+                    document.activeElement !== document.body && !!document.activeElement.closest('main, #sgToasts'),
+                    [...document.querySelectorAll('#view-medications .cell-btn')].some(b => b.textContent === 'Calmora (fictional)')]""")
+                check("Remove your own medication (#1093): deleted, the drawer closed with focus on the page, a toast saying so with an Undo",
+                      gone1093 == [False, "Removed Calmora (fictional).", True, False], gone1093)
+                page.click("#sgToasts .sg-toast:last-child button:text-is('Undo')")
+                page.wait_for_function("MEDS.some(m => m.own && m.name === 'Calmora (fictional)')", timeout=20000)
+                settle(400)
+                check("…Undo puts it back, its key and so its doses with it, its drawer open",
+                      js("[document.getElementById('dtitle').textContent, drawer.classList.contains('open')]") == ["Calmora (fictional)", True])
+                page.keyboard.press("Escape")
+                settle(200)
+                # one from the records: hidden (not under Current, Past or Today, nor the lane), its records kept; Undo; Hidden, Show again
+                page.locator("#view-medications li.med-row .cell-btn", has_text=cur["name"]).first.click()
+                settle(300)
+                page.click("#dbody .btns button:text-is('Remove')")
+                page.wait_for_function("k => !MEDS.some(m => m.key === k)", arg=cur["key"], timeout=20000)
+                settle(400)
+                hid1093 = js("""w => [drawer.classList.contains('open'), [...document.querySelectorAll('#sgToasts .sg-toast-text')].at(-1)?.textContent.startsWith('Hid ' + w),
+                    document.activeElement !== document.body, (DATA.hiddenMeds || []).map(h => h.name),
+                    [...document.querySelectorAll('#view-medications h2')].some(h => h.textContent === 'Hidden (1)'),
+                    [...document.querySelectorAll('#view-medications .cell-btn, #view-medications .dose-med, #view-medications svg text')].some(b => b.textContent === w),
+                    EV.some(e => e.k === 'med' && e.title === w)]""", cur["name"])
+                check("Remove one from the records (#1093): hidden from Current, Today and the lane, its records kept, a toast with an Undo, Hidden listing it",
+                      hid1093 == [False, True, True, [cur["name"]], True, False, True], hid1093)
+                page.click("#sgToasts .sg-toast:last-child button:text-is('Undo')")
+                page.wait_for_function("k => MEDS.some(m => m.key === k)", arg=cur["key"], timeout=20000)
+                settle(300)
+                check("…Undo shows it again, its drawer open",
+                      js("[document.getElementById('dtitle').textContent, (DATA.hiddenMeds || []).length]") == [cur["name"], 0])
+                page.keyboard.press("Escape")
+                settle(200)
+                js("k => openMedication(MEDS.find(m => m.key === k))", cur["key"])
+                settle(300)
+                page.click("#dbody .btns button:text-is('Remove')")
+                page.wait_for_function("k => !MEDS.some(m => m.key === k)", arg=cur["key"], timeout=20000)
+                settle(300)
+                page.click("#view-medications details.med-past:has(h2:text-is('Hidden (1)')) > summary")
+                settle(200)
+                again1093 = page.locator("#view-medications button", has_text="Show again")
+                check("…Hidden lists it, with Show again named for it", again1093.count() == 1 and again1093.get_attribute("aria-label") == f"Show {cur['name']} again",
+                      again1093.count())
+                again1093.click()
+                page.wait_for_function("k => MEDS.some(m => m.key === k)", arg=cur["key"], timeout=20000)
+                settle(400)
+                shown1093 = js("""k => [document.activeElement.closest('[data-med-key]')?.dataset.medKey, [...document.querySelectorAll('#view-medications h2')].some(h => h.textContent.startsWith('Hidden')),
+                    document.getElementById('sgStatus').textContent.includes('is shown again')]""", cur["key"])
+                check("…Show again: back under Current, focus on its row, said", shown1093 == [cur["key"], False, True], shown1093)
                 js("async () => { const m = MEDS.find(m => m.own); if (m) await mmSend('DELETE', `own/${m.own.id}`); }")
                 settle(300)
                 page.goto(base + "/")
@@ -22971,7 +23027,7 @@ def main():
                 return {tab: state.tab, h2: [...v.querySelectorAll('h2')].map(h => h.textContent.replace(/ \\(\\d+\\)$/, '')).slice(0, 2),
                   rows: v.querySelectorAll('.med-rows li').length === MEDS.length, lane: v.querySelectorAll('svg.med-lane .medbar').length > 0,
                   log: v.querySelectorAll('#medToday .dose-quick button').length > 0, drawer: d.includes('Log a dose'),
-                  add: [...v.querySelectorAll('button')].some(b => b.textContent === 'Add a medication'), edit: d.includes('Edit')}; }"""   # (#1092)
+                  add: [...v.querySelectorAll('button')].some(b => b.textContent === 'Add a medication'), edit: d.includes('Edit') && d.includes('Remove')}; }"""   # (#1092, #1093)
             role275 = {"viewer": zb.evaluate(meds_role)}
             zb.goto(base + f"/?profile={pid3}")
             zb.wait_for_selector("main .empty-state", timeout=10000)
@@ -23016,7 +23072,7 @@ def main():
             role275["owner"] = za.evaluate(meds_role)
             seen275 = {"tab": "medications", "h2": ["Today", "Current"], "rows": True, "lane": True}
             check("the Medications tab for each role (#275): owners and editors log doses from its Today and a medication's drawer, and "
-                  "add and edit medications (#1092); a viewer sees every part with nothing to log, add or edit with",
+                  "add, edit and remove medications (#1092, #1093); a viewer sees every part with nothing to log, add or edit with",
                   role275 == {"viewer": {**seen275, "log": False, "drawer": False, "add": False, "edit": False},
                               "editor": {**seen275, "log": True, "drawer": True, "add": True, "edit": True},
                               "owner": {**seen275, "log": True, "drawer": True, "add": True, "edit": True}}, role275)
