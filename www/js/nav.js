@@ -433,7 +433,7 @@ const SgNav = (() => {
   const add = menu("addMenu", "Add", "add", [
     group("Today",
       link(rec + "#log-dose", "dose", "Log a dose", {id: "doseLink", "data-needs": "import"}),
-      link(rec + "#add-medication", "medications", "Add a medication", {id: "medAddLink", "data-needs": "import"}),   // your own (#1092)
+      link(rec + "#add-medication", "medadd", "Add a medication", {id: "medAddLink", "data-needs": "import"}),   // your own (#1092)
       onRecords ? action("journalBtn", "journal", "Journal entry", {hidden: ""}) : link("./#new-journal-entry", "journal", "Journal entry", {id: "journalBtn"}),
       link(src + "#home-reading", "reading", "Home reading", {"data-needs": "import"})),
     group("Records",
