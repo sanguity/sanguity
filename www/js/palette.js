@@ -229,7 +229,7 @@ const SgPalette = (() => {
       if (P.page !== page) out.push({icon: P.icon, title: P.title, ctx: "Page", words: P.words, go: () => goTo(P, "")});
       if (!all) continue;
       for (const g of P.groups) {
-        if (g.rest || (g.admin && !ME?.user?.is_admin) || (g.needs && role < RANK[g.needs])) continue;
+        if (g.rest || (g.admin && !ME?.user?.is_admin) || (g.cs && !sgConnected(ME)) || (g.needs && role < RANK[g.needs])) continue;
         const here = P.page === page;   // (first of those found as well, #524)
         const up = {icon: g.icon, title: g.title, ctx: P.title, at: g.place, words: g.words, here, go: () => goTo(P, g.id)};
         out.push(up);

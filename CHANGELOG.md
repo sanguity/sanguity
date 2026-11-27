@@ -3837,6 +3837,12 @@ Everything on `main` so far; it becomes the first tagged release.
 - **The 32-bit ARM check passes again** (#1083): its import check after the build still imported pycryptodome
   (`Crypto`), which #103 replaced with `cryptography` for encryption at rest, so arm.yml failed every run after the
   image had built. It checks `cryptography`'s AES-GCM, which the app uses, instead; the images are unchanged.
+- **Connected sources are experimental and off by default** (#1096): an admin turns them on in Settings → Install →
+  General → Experimental (or `CONNECTED_SOURCES=1`). Off, nothing of them is shown (Sources' portals and Find your
+  provider, the Add menu's and the guide's Connect, Install's Connected-source apps and Provider directory), their
+  routes are refused, nothing syncs, the directory isn't updated and nobody is contacted for them; connections and what
+  they brought are kept and sync again once they're on. An install upgraded with a source set up or a connection keeps
+  them on.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.

@@ -626,6 +626,8 @@ def start_app():
     uid = db.execute("INSERT INTO users(username, pw_hash, is_admin, created) VALUES(?, ?, 1, 0)", (USER, security.hash_password(PW))).lastrowid
     db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, 1, 'owner')", (uid,))
     profiles.create_profile(db, "Second person", owner_id=uid)
+    from server import settings   # (#1096) connected sources on, as an admin turns them on: the checks of them need it
+    settings.put(db, "experimental.connectedSources", True)
     db.close()
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]
@@ -2488,6 +2490,157 @@ def general_security_check(check, browser, base, cookies):
     # (every security.* setting saved by now, this check's two and any an earlier check saved, as #1049's)
     check("…and put back as it was", {"security.idleMinutes", "security.profiles"} <= set(gone or []) and all(k.startswith("security.") for k in gone or []), gone)
     ctx.close()
+
+
+def connected_sources_switch_check(check, browser, base, cookies):
+    """(#1096) Connected sources behind General → Experimental's switch, on since the setup (as an admin turns them on):
+    the admin switches it off there, and then for the admin and for a member (an editor of profile 1) no page or menu
+    offers them: the Overview, Sources (its Portals and health plans' address lands on its Overview), Settings' groups,
+    the guide's ways, Add and the palette; and no page asks for a connection or the directory. Switched on again, each
+    place says it's experimental: Add's Connect, Sources' portals and its upload's line, Install's Connected-source apps
+    and Provider directory, the guide's way. General → Host and a profile's activity log's kinds name them only while
+    they're on. Returns the pages' script errors."""
+    import re as re1096
+    from server import db as dbm1096, security as sec1096
+    errs, asked = [], []
+    gated = re1096.compile(r"/api/(directory|provider-directory|connect/)|/connections")
+    TRACE = """() => ["Connect a portal", "Portals and health plans", "Connected-source", "Provider directory", "Find your hospital",
+      "health plan once", "Connected sources", "xperimental"].filter(w => document.body.innerText.includes(w))"""
+
+    def context(cks):
+        ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
+        ctx.add_cookies(cks)
+        pg = ctx.new_page()
+        pg.on("pageerror", lambda e: errs.append(str(e)))
+        pg.on("request", lambda r: asked.append(r.url) if gated.search(r.url) else None)
+        return ctx, pg
+
+    def switch(pg, on):
+        pg.goto(base + "/settings.html?profile=1#general")
+        pg.wait_for_selector("#gx-connectedSources", timeout=20000)
+        fresh_check(pg)
+        was = pg.evaluate("(s => [s.checked, s.ariaLabelledByElements?.[0]?.textContent ?? document.getElementById(s.getAttribute('aria-labelledby')).textContent])(document.getElementById('gx-connectedSources'))")
+        pg.click("label:has(#gx-connectedSources)")
+        pg.wait_for_function(f"document.getElementById('genExpMsg').textContent.startsWith('Connected sources are {'on' if on else 'off'}')", timeout=10000)
+        pg.wait_for_timeout(300)
+        return was, pg.evaluate("""async () => [[...document.querySelectorAll('#setNav a[data-group]')].map(a => a.dataset.group), document.activeElement.id,
+          document.getElementById('gx-connectedSources').checked, await fetch('api/me').then(r => r.json()).then(m => m.connected_sources)]""")
+
+    def traces(pg):
+        """[page, what of connected sources it shows] for each page that has some; Add's and the palette's too"""
+        out = []
+        for path, ready in (("/?profile=1", "typeof booted !== 'undefined' && booted"), ("/sources.html?profile=1", "!document.getElementById('srcOverview').hidden"),
+                            ("/sources.html?profile=1#portals", "!document.getElementById('srcOverview').hidden && location.hash === '#overview'"),
+                            ("/settings.html?profile=1", "document.querySelectorAll('#setNav a[data-group]').length > 3"),
+                            ("/guide.html?profile=1", "document.querySelector('.guide-step:not([hidden])')")):
+            pg.goto(base + path)
+            pg.wait_for_function(ready, timeout=20000)
+            pg.wait_for_load_state("networkidle")
+            pg.wait_for_timeout(300)
+            seen = pg.evaluate(TRACE) + (["the guide's way"] if path.startswith("/guide") and not pg.evaluate(
+                "document.querySelector('[data-to=portals]').closest('li').hidden") else [])
+            pg.click("#addMenuBtn")
+            seen += [t for t in pg.evaluate("[...document.querySelectorAll('#addMenuList [role^=menuitem]')].filter(x => x.checkVisibility()).map(x => x.textContent.trim())")
+                     if "ortal" in t or "onnect" in t]
+            pg.keyboard.press("Escape")
+            pg.keyboard.press("Control+k")
+            pg.wait_for_selector("dialog.palette[open]", timeout=5000)
+            for q in ("portal", "connected", "provider"):
+                pg.fill("#palQ", q)
+                pg.wait_for_timeout(250)
+                seen += [f"palette {q}: {t}" for t in pg.evaluate("[...document.querySelectorAll('dialog.palette [role=option]')].map(o => o.textContent.trim())")
+                         if re1096.search(r"ortal|onnected|rovider|Find your", t)]
+            pg.keyboard.press("Escape")
+            if seen:
+                out.append([path, seen])
+        return out
+
+    def host_and_log(pg):
+        """General → Host's hint and what changing the public addresses says (asked, then left unsaved), and the profile
+        activity log's kinds"""
+        pg.goto(base + "/settings.html?profile=1#general")
+        pg.wait_for_selector("#hostOrigins:not([readonly])", timeout=20000)
+        hint = pg.inner_text("#hostOriginsHint")
+        was = pg.input_value("#hostOrigins")
+        pg.fill("#hostOrigins", "https://records.example.test\n" + base)
+        pg.click("#setBar button:has-text('Save')")
+        pg.wait_for_selector("#gen-host .dz-body:not([hidden])", timeout=10000)
+        says = pg.inner_text("#gen-host .dz-says")
+        pg.fill("#hostOrigins", was)   # (nothing saved: the confirmation never typed)
+        pg.goto(base + "/sharing.html?profile=1#activity")
+        pg.wait_for_selector("#actBody select[aria-label='Kind of activity']", timeout=20000)
+        kinds = pg.evaluate("[...document.querySelectorAll(\"#actBody select[aria-label='Kind of activity'] option\")].map(o => o.textContent)")
+        return hint, says, kinds
+
+    admin = [c for c in cookies if c["name"] == "sg_session"]
+    actx, ap = context(admin)
+    before, off = switch(ap, False)
+    check("General → Experimental (#1096): connected sources' switch, on here as an admin set it, named experimental and not "
+          "recommended yet; switched off, at once, Install's Connected-source apps and Provider directory go, focus stays on it",
+          before[0] and before[1].startswith("Connected sources (experimental, not recommended yet)")
+          and "general" in off[0] and "apps" not in off[0] and "directory" not in off[0] and off[1:] == ["gx-connectedSources", False, False],
+          [before, off])
+    serious, _ = axe_check(ap, "General → Experimental")
+    check("…no serious axe finding there", not serious, serious)
+    host_off = host_and_log(ap)
+    check("…off, General → Host names no connected sources' return, changing the public addresses says only the phones, and a "
+          "profile's activity log offers no “Connected sources” kind",
+          "connected" not in host_off[0].lower() and "connected" not in host_off[1].lower() and "Connected sources" not in host_off[2]
+          and "Settings" in host_off[2], host_off)
+    asked.clear()
+    seen_admin = traces(ap)
+    # a member: an editor of profile 1, for this check alone (with two accounts, an admin needs a second factor: none asked meanwhile)
+    db = dbm1096.connect()
+    uid = db.execute("INSERT INTO users(username, pw_hash, is_admin, created) VALUES('cs1096', ?, 0, 0)", (sec1096.hash_password(PW2),)).lastrowid
+    db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, 1, 'editor')", (uid,))
+    db.close()
+    mctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
+    mp = mctx.new_page()
+    mp.on("pageerror", lambda e: errs.append(str(e)))
+    mp.on("request", lambda r: asked.append(r.url) if gated.search(r.url) else None)
+    mp.goto(base + "/login.html")
+    mp.fill("#u", "cs1096")
+    mp.fill("#p", PW2)
+    mp.click("#b")
+    mp.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+    seen_member = traces(mp)
+    mctx.close()
+    db = dbm1096.connect()
+    db.execute("DELETE FROM users WHERE id=?", (uid,))
+    db.close()
+    check("…off, no page or menu shows connected sources, for the admin or a member: the Overview, Sources (its portals' address "
+          "lands on its Overview), Settings, the guide, Add and the palette; and none asks for a connection or the directory",
+          seen_admin == [] and seen_member == [] and asked == [], [seen_admin, seen_member, asked[:5]])
+    _, on = switch(ap, True)
+    shown = {"host": host_and_log(ap)}
+    ap.goto(base + "/sources.html?profile=1#portals")
+    ap.wait_for_function("!document.getElementById('mine').hidden && location.hash === '#portals'", timeout=20000)
+    shown["portals"] = ap.inner_text("#mine > .hint")
+    ap.click("#addMenuBtn")
+    shown["add"] = ap.evaluate("[...document.querySelectorAll('#addMenuList [role^=menuitem]')].filter(x => x.checkVisibility()).map(x => x.textContent.trim()).find(t => t.startsWith('Connect'))")
+    ap.keyboard.press("Escape")
+    ap.goto(base + "/sources.html?profile=1#upload")
+    ap.wait_for_selector(".src-more", state="visible", timeout=20000)
+    shown["upload"] = ap.inner_text(".src-more")
+    ap.goto(base + "/settings.html?profile=1#apps")
+    ap.wait_for_selector("#admin > .hint", state="visible", timeout=20000)
+    shown["apps"] = ap.inner_text("#admin > .hint")
+    ap.goto(base + "/settings.html?profile=1#directory")
+    ap.wait_for_selector("#directory > .hint", state="visible", timeout=20000)
+    shown["directory"] = ap.inner_text("#directory > .hint")
+    ap.goto(base + "/guide.html?profile=1")
+    ap.wait_for_function("document.querySelector('.guide-step:not([hidden])')", timeout=20000)
+    ap.wait_for_load_state("networkidle")
+    shown["guide"] = ap.evaluate("(a => a.closest('li').hidden ? null : a.textContent.replace(/\\s+/g, ' ').trim())(document.querySelector('[data-to=portals]'))")
+    actx.close()
+    check("…switched on again, Install's groups are back, and each place says experimental, not recommended yet: Sources' portals "
+          "and its upload's line, Add's Connect, Install's Connected-source apps and Provider directory, the guide's way",
+          "apps" in on[0] and "directory" in on[0] and on[2:] == [True, True]
+          and shown["portals"].startswith("Experimental, not recommended yet") and shown["add"] == "Connect a portal or plan (experimental)"
+          and "experimental, not recommended yet" in shown["upload"] and shown["apps"].startswith("Experimental, not recommended yet")
+          and shown["directory"].startswith("Experimental") and shown["guide"] and "Experimental, not recommended yet" in shown["guide"]
+          and "connected sources' return" in shown["host"][0] and "Connected sources" in shown["host"][2], [on, shown])
+    return errs
 
 
 def main():
@@ -21964,8 +22117,8 @@ def main():
             # Second person shown here, My records picked in another browser tab since; each of Add's links, Display and
             # Getting started, followed from here, opens Second person
             followed = {}
-            for menu, item in [("#addMenuBtn", f"#addMenuList a:text-is('{t}')") for t in ("Log a dose", "Journal entry", "Home reading", "Upload files",
-                                "Connect a portal or plan", "Type records in", "Paste a Health Link")] + [("#userMenuBtn", "#settingsLink"), ("#userMenuBtn", "#guideLink")]:
+            for menu, item in [("#addMenuBtn", f"#addMenuList a:text-is(\"{t}\")") for t in ("Log a dose", "Journal entry", "Home reading", "Upload files",
+                                "Connect a portal or plan (experimental)", "Type records in", "Paste a Health Link")] + [("#userMenuBtn", "#settingsLink"), ("#userMenuBtn", "#guideLink")]:
                 page.goto(base + "/settings.html?profile=2")
                 page.wait_for_function(filled + " && document.getElementById('profile').value === '2'", timeout=20000)
                 js("localStorage.setItem('ht-profile', '1')")   # as another tab picking My records leaves this browser
@@ -22533,7 +22686,7 @@ def main():
                 .filter(x => !x.hidden && !x.closest('[hidden]')).map(x => x.textContent.trim())"""
             pal_actions = """() => [...document.querySelectorAll('#palList [role=group]')].filter(g => g.querySelector('.pal-sec').textContent === 'Actions')
                 .flatMap(g => [...g.querySelectorAll('.pal-t')].map(t => t.textContent))"""
-            ADDS = {"Log a dose", "Journal entry", "Home reading", "Upload files", "Connect a portal or plan", "Type records in", "Paste a Health Link", "New share link"}
+            ADDS = {"Log a dose", "Journal entry", "Home reading", "Upload files", "Connect a portal or plan (experimental)", "Type records in", "Paste a Health Link", "New share link"}
             offered = {}
             for path in ("?profile=1", "sources.html?profile=1", "sharing.html?profile=1", "settings.html?profile=1", "settings.html?profile=1#security",
                          "settings.html?profile=1#accounts", "guide.html?profile=1"):   # (Account's and Admin's, #991)
@@ -22879,7 +23032,7 @@ def main():
             zb.wait_for_selector("#addMenuBtn", timeout=10000)
             own_empty = zb.evaluate(add_offers)
             check("Add follows the profile shown (#401): nothing for one they can only view; on the empty one they edit, all but Log a dose",
-                  viewing == [] and own_empty == ["Journal entry", "Home reading", "Upload files", "Connect a portal or plan", "Type records in", "Paste a Health Link"],
+                  viewing == [] and own_empty == ["Journal entry", "Home reading", "Upload files", "Connect a portal or plan (experimental)", "Type records in", "Paste a Health Link"],
                   [viewing, own_empty])
             zb.goto(base + f"/settings.html?profile={pid3}")
             zb.wait_for_selector("#addMenuBtn", timeout=10000)
@@ -26801,6 +26954,11 @@ def main():
                 pass
             check("…and Outside connections no longer lists it, without a reload (#515)", not js(out515.split(" && ")[0]),
                   js("document.getElementById('outsideBody').innerText.slice(0, 300)"))
+
+            # ---- #1096: connected sources behind General → Experimental's switch: off, no trace of them for an admin or a
+            # member; on again, each place says experimental
+            errs1096 = connected_sources_switch_check(check, browser, base, page.context.cookies())
+            check("…and no script fails there (#1096)", not errs1096, errs1096)
 
             # ---- #246: the Timeline list's row is .tl-row, so the pages' rows of buttons (.row) have no divider under them
             # and no pointer, and what's typed into a field isn't its label's semibold; every group of each page

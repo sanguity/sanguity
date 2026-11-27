@@ -19,7 +19,7 @@
 (() => {
   const when = fmtWhen;   // dates.js
   const box = $("#srcOverview"), wait = $("#waiting"), waitList = $("#srcWait"), review = $("#srcReview");
-  let seq = 0;
+  let seq = 0, cs = false;   // cs: connected sources on (#1096: groups.js sgConnected), else no portals' card or request
 
   async function get(path) {
     const r = await api(path);
@@ -123,7 +123,7 @@
   }
   function portals(conns, imports) {
     const live = conns.filter(c => c.state !== "disconnected");
-    if (!live.length) return {state: "off", status: "Not set up", last: "Sign in to a patient portal or health plan once, and new records come in by themselves."};
+    if (!live.length) return {state: "off", status: "Not set up", last: "Experimental, not recommended yet: sign in to a patient portal or health plan once, and new records come in by themselves."};
     const brought = Math.max(0, ...imports.filter(e => e.origin === "sync" && e.state === "active").map(e => e.at));
     const synced = Math.max(0, ...live.map(c => c.last_sync || 0)), bad = live.filter(c => c.state === "needs reconnect" || c.warning);
     const n = live.length === 1 ? "Connected" : `${live.length} connected`;
@@ -156,10 +156,10 @@
 
   /* nothing has come in yet: what would be here, a picture of the ways in, and the first step */
   function empty(edit) {
-    const e = emptyState(edit ? "Nothing has come into this profile yet: each upload, record typed in, portal and phone that brings records is listed here."
+    const e = emptyState(edit ? `Nothing has come into this profile yet: each upload, record typed in, ${cs ? "portal and phone" : "and phone"} that brings records is listed here.`
       : "Nothing has come into this profile yet: what brings it records is listed here.", edit ? {href: "#upload", text: "Upload files"} : null, {cls: "src-empty"});
     e.prepend(el("div", {class: "src-pic", "aria-hidden": "true"},
-      ...["upload", "plug", "watch"].map(i => el("span", {class: "src-pic-way"}, icon(i))), icon("arrow-right"),
+      ...["upload", cs ? "plug" : null, "watch"].filter(Boolean).map(i => el("span", {class: "src-pic-way"}, icon(i))), icon("arrow-right"),
       el("span", {class: "src-pic-to"}, icon("database"))));
     return e;
   }
@@ -169,7 +169,7 @@
     if (!pid) return;
     let conns, imps, watch = null, jobs = null;
     try {
-      [conns, imps, watch, jobs] = await Promise.all([get(`profiles/${pid}/connections`), get(`profiles/${pid}/imports`),
+      [conns, imps, watch, jobs] = await Promise.all([cs ? get(`profiles/${pid}/connections`) : {connections: []}, get(`profiles/${pid}/imports`),
         edit ? get(`profiles/${pid}/watch/receiver`).catch(() => null) : null, edit ? get(`profiles/${pid}/jobs?state=preview`).catch(() => null) : null]);
     } catch (e) {
       if (mine === seq) { $("#srcList").replaceChildren(el("p", {class: "msg bad", role: "alert", text: "Couldn't read this profile's sources: " + e.message})); box.hidden = false; }
@@ -182,7 +182,7 @@
     const done = imports.filter(e => e.state === "active"), total = done.length, live = conns.connections.filter(c => c.state !== "disconnected");
     const set = watch && (watch.has_secret || watch.legacy);
     const ways = [
-      edit || live.length ? way({id: "portals", link: edit, ...portals(conns.connections, imports)}) : null,
+      cs && (edit || live.length) ? way({id: "portals", link: edit, ...portals(conns.connections, imports)}) : null,
       edit && watch ? way({id: "phone", ...phone(watch)}) : null,
       edit || imports.some(x => x.origin === "upload") ? way({id: "upload", title: edit ? null : "Uploads", link: edit, ...uploads(imports)}) : null,
       edit || imports.some(x => x.origin === "manual") ? way({id: "manual", title: edit ? null : "Typed in", link: edit, ...typed(imports)}) : null,
@@ -195,7 +195,9 @@
   }
 
   (async () => {
-    if (!await SgSources.ready) return;
+    const me = await SgSources.ready;
+    if (!me) return;
+    cs = sgConnected(me);
     $("#profile").addEventListener("change", () => { review.replaceChildren(); all = false; load(); });
     document.addEventListener("sources:group", ev => { if (ev.detail === "overview") load(); });
     // an import of the profile saved or undone, wherever it was (import-jobs.js told, #513: a Review here added, a

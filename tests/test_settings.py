@@ -1368,6 +1368,41 @@ class Settings(unittest.TestCase):
         self.assertEqual(r.status_code, status, r.text)
         return r.json()
 
+    def test_connected_sources_start_off_and_an_upgrade_keeps_them_on_where_it_finds_them(self):   # #1096
+        """A fresh install starts with connected sources off; an install from before the switch with a registered
+        app (or a connection) has it turned on, once, at start-up; one an admin turned off since stays off. /api/me
+        gives everyone the plain on or off, never the setting."""
+        key = "experimental.connectedSources"
+        db = dbm.connect()
+        held = lambda: settings.stored(db, "install").get(key)
+        try:
+            self.assertTrue(dbm.meta_get(db, settings.SOURCES_KEPT), "the start-up's step has run")
+            self.assertEqual((held(), settings.connected_sources()), (None, False), "a fresh install: off")
+            self.assertFalse(settings.keep_sources_on(db), "once")
+            dbm.meta_set(db, settings.SOURCES_KEPT, None)   # an install from before #1096, with an app registered
+            db.execute("""INSERT INTO smart_clients(name, vendor, issuer, client_id, auth, scopes, created)
+                          VALUES('Fake clinic (fictional)', 'epic', 'https://fhir.example.org/r4', 'app-1', 'public', 'openid', 0)""")
+            self.assertFalse(settings.connected_sources())
+            self.assertTrue(settings.keep_sources_on(db))
+            self.assertEqual((held(), settings.connected_sources()), (True, True), "on, saved as an admin's would be")
+            self.assertFalse(settings.keep_sources_on(db), "once")
+            for who in ("kim", "ada"):
+                me = self.c[who].get("/api/me").json()
+                self.assertIs(me["connected_sources"], True, who)
+                self.assertNotIn(key, json.dumps(me), "a plain on or off, not the setting")
+            settings.put(db, key, False)   # an admin turns it off: the next start leaves it so
+            dbm.meta_set(db, settings.SOURCES_KEPT, None)
+            self.assertFalse(settings.keep_sources_on(db))
+            self.assertEqual((held(), self.c["kim"].get("/api/me").json()["connected_sources"]), (False, False))
+            with mock.patch.dict(os.environ, {"CONNECTED_SOURCES": "1"}):   # the environment's wins, as every variable's
+                self.assertIs(self.c["kim"].get("/api/me").json()["connected_sources"], True)
+        finally:
+            db.execute("DELETE FROM smart_clients")
+            db.execute("DELETE FROM settings WHERE key=?", (key,))
+            dbm.meta_set(db, settings.SOURCES_KEPT, "1")
+            settings.forget_saved()
+            db.close()
+
     def test_watch_import_stays_beside_the_receiver(self):
         pid = self.fresh_profile("Imported watch (fictional)")
         db = dbm.connect()

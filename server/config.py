@@ -66,6 +66,13 @@ def _origins(items):
     return tuple(out)
 
 
+def _yes(text):
+    v = text.lower()
+    if v not in ("1", "on", "yes", "true", "0", "off", "no", "false"):
+        raise ValueError(text)
+    return v in ("1", "on", "yes", "true")
+
+
 def _days(text):
     v = float(text)
     if not 0 <= v < 1e6:   # (NaN isn't; nor is inf, which would never be reached)
@@ -101,6 +108,9 @@ var("JOURNAL_PHOTO_MAX_MB", 20, about="a photo attached to a journal entry (#161
                                       "one sent at 25 MB: raise both to go higher")
 # connected sources (#32, #91: connections.py, smart.py, sync.py). Nothing is contacted until someone connects a
 # source an admin has set up; then only that source's issuer, and the hosts its discovery names.
+var("CONNECTED_SOURCES", False, _yes, bool, about="connected sources at all (#1096): experimental, off by default; on, "
+                                                "Sources offers portals and health plans, Find your provider and its "
+                                                "directory, and connections sync (1 or 0)")
 var("SYNC_HOURS", 12, about="how often each connection pulls what's new")
 var("SYNC_MAX_RESOURCES", 20000, about="the most one pull fetches; the rest come next time")
 var("SYNC_MAX_ATTACHMENT_MB", 50, about="a bigger attachment is left out, with a warning; the Sync defaults' ceiling")

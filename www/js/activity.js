@@ -121,11 +121,11 @@ const whenParts = t => { const s = when(t), h = fmtTime(t * 1000), i = s.endsWit
 const addressBreaks = ip => ip.split(/(?<=:)/).flatMap((p, i) => i ? [el("wbr"), p] : [p]);
 /* a log that opens on demand (or at once, with open): newest first, filtered by person (profile logs) and kind,
    older entries on request */
-function activityPanel(path, members, {open = false} = {}) {
+function activityPanel(path, members, {open = false, cs = false} = {}) {   // cs: connected sources on (#1096): their kind offered
   const box = el("div", {class: "activity", hidden: true});
   const who = members ? el("select", {"aria-label": "Person"}, el("option", {value: "", text: "Everyone"}),
     ...members.map(m => el("option", {value: m.user_id, text: m.username}))) : null;
-  const what = members ? el("select", {"aria-label": "Kind of activity"}, ...FILTERS.map(([v, t]) => el("option", {value: v, text: t}))) : null;
+  const what = members ? el("select", {"aria-label": "Kind of activity"}, ...FILTERS.filter(([v]) => cs || v !== "connect").map(([v, t]) => el("option", {value: v, text: t}))) : null;
   const tbody = el("tbody"), more = el("button", {class: "btn small", type: "button", text: "Show older", hidden: true});
   let oldest = null;
   async function load(reset) {

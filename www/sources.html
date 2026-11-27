@@ -76,8 +76,8 @@
       <p>In the Health app, tap your picture, then Export All Health Data, and upload the zip it makes. If the Health app
         has Health Records from your hospitals or clinics, they're in it too, as FHIR files, and come in as visits, lab
         results, medications and problems beside your activity and sleep.</p></details>
-    <p class="hint src-more">No export to download? <a href="#portals">Connect the portal or health plan</a> instead, and
-      new records come in by themselves.</p>
+    <p class="hint src-more" data-cs hidden>No export to download? <a href="#portals">Connect the portal or health plan</a>
+      instead (experimental, not recommended yet), and new records come in by themselves.</p>
   </section>
 
   <!-- Type records in (import-manual.js, import-records.js) -->
@@ -142,7 +142,8 @@
   <!-- Portals and health plans (connect.js), with finding your provider in the connect step (providers.js) -->
   <section class="card" id="mine" hidden>
     <h2>Portals and health plans</h2>
-    <p class="hint">Sign in to a patient portal or health plan once, and Sanguity pulls what's new on a schedule.</p>
+    <p class="hint">Experimental, not recommended yet: sign in to a patient portal or health plan once, and Sanguity pulls
+      what's new on a schedule.</p>
     <div class="about-words" hidden>
       <p>Records come straight from the vendor to this server, in place of downloading exports. Every pull is an import
         you can undo from the import history, and nothing is contacted until you connect.</p>

@@ -73,5 +73,5 @@ def sync_notice(db):
     """Connections on this install that need looking at, per source: [{source, access, failing, stale}] (counts
     only: no profile names or records). It lasts while it's true; there is nothing to dismiss. Nothing is sent
     anywhere: the Account page shows it."""
-    from . import connections
-    return connections.install_warnings(db)
+    from . import connections, settings
+    return connections.install_warnings(db) if settings.connected_sources() else []   # (#1096) none while they're off

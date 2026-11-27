@@ -7,7 +7,7 @@ The way it's deployed: SANGUITY_DEPLOYMENT, which each of deploy/'s templates an
 some other way, or from an install from before #1004): "other", which names each place."""
 import os
 
-from . import config, crypto
+from . import config, crypto, settings
 
 # per way: its name, where the server's settings (the environment's) are set, where the app's output is read, and what
 # mounts each folder (the field, path or variable), by the folder's key in FOLDERS
@@ -129,6 +129,8 @@ def about():
     watch = config.WATCH_STORE or os.path.dirname(config.WATCH_FILE)   # (the receiver's whole folder, else its summaries')
     limits = []
     for group, rows in LIMITS:
+        if group == "Connected sources" and not settings.connected_sources():   # (#1096) none of theirs while they're off
+            continue
         items = []
         for name, what, unit in rows:
             src, value = config.lookup(name)
