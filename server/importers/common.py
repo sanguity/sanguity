@@ -345,9 +345,21 @@ def loinc_of(canon):
 
 # ------------------------------------------------------------------ units
 
+# a count in thousands or millions, however it's written ("10³/µL", "10^3/uL", "x10E3/uL", "10*3/uL", "Thou/uL" are
+# "K/uL"), and mm[Hg] as mmHg: one unit, one chart (#1102: a FHIR file's "10³/µL" platelets beside a CSV's "K/µL")
+_COUNTS = ((re.compile(r"(?:x?10(?:[*^e]|\*\*)?3|x?10³|thou)/"), "k/"), (re.compile(r"(?:x?10(?:[*^e]|\*\*)?6|x?10⁶|mil)/"), "m/"),
+           (re.compile(r"^mm\[hg\]$"), "mmhg"))
+
+
+def _counts(u):
+    for rx, to in _COUNTS:
+        u = rx.sub(to, u)
+    return u
+
+
 def unit_norm(u):
-    """A unit reduced to a comparable form: "x10E3/uL" and "10*3/uL" both become "k/ul"."""
-    u = (u or "").strip().lower().replace(" ", "").replace("µ", "u")
+    """A unit reduced to a comparable form: "x10E3/uL", "10*3/uL" and "10³/µL" all become "k/ul"."""
+    u = _counts((u or "").strip().lower().replace(" ", "").replace("µ", "u").replace("μ", "u"))
     for a, c in (("gm/dl", "g/dl"), ("x10e3/ul", "k/ul"), ("10*3/ul", "k/ul"), ("x10e6/ul", "m/ul"), ("10*6/ul", "m/ul"),
                  ("iu/l", "u/l"), ("ml/min/1.73m2", "ml/min"), ("/100wbc", "")):
         u = u.replace(a, c)
@@ -372,7 +384,7 @@ def unit_for(canon, u):
 
 def unit_key(u):
     """A looser comparable form than unit_norm, for deciding whether two sources' series can share a chart."""
-    u = (u or "").strip().lower().replace(" ", "").replace("µ", "u").replace("μ", "u")
+    u = _counts((u or "").strip().lower().replace(" ", "").replace("µ", "u").replace("μ", "u"))
     for a, b in (("x10e3/ul", "k/ul"), ("10*3/ul", "k/ul"), ("thou/ul", "k/ul"), ("x10e6/ul", "m/ul"), ("10*6/ul", "m/ul"),
                  ("mil/ul", "m/ul"), ("iu/l", "u/l"), ("ml/min/1.73m2", "ml/min"), ("ml/min/1.73m^2", "ml/min"), ("ratio", "")):
         u = u.replace(a, b)

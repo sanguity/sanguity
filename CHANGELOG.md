@@ -3910,6 +3910,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - **An import's review says its dates in the person's time zone** (#1102): it listed each record on its source's date,
   so a stay from 21:40 in Chicago was a day before the Timeline's for someone in London; it now says the same day the
   Timeline and Overview do.
+- **One unit spelled two ways is one chart** (#1102): a FHIR file's platelets in 10³/µL and a spreadsheet's in K/µL
+  were two series in Latest and the Overview; counts in thousands or millions however written (10*3/uL, 10^3/uL,
+  x10E3/uL, Thou/uL) and mm[Hg] are each one unit now, for charts and for lab-name matching.
 - **A restore keeps every record's id** (#1104): a backup now keeps the setup build's files' own times and a restore
   puts them back, so the app no longer loads the build again at its first start after a restore, which gave every
   record a new id and listed a Setup build import at the restore's time (a backup made before this still does, once).

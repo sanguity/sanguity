@@ -22,7 +22,7 @@ function joinSeries(labs) {
     s.pts.forEach((p, n) => { p.imp = s.imp; p.same = (s.same && s.same[n]) || null; p.also = null; p.apart = s.apart?.[n] ?? null;
       p.rangeFrom = s.rangeFrom?.[n] ?? null;   // (#834: the import whose copy's report gave its range, drawer.js resultTable)
       p.off = s.unlisted?.[n] ? [s.imp] : null; });   // (#950: the imports whose copy's reports were hidden by hand, util.js labDraws)
-    const k = s.name + "\u001f" + (s.unit || "");
+    const k = s.name + "\u001f" + (s.uk ?? s.unit ?? "");   // one unit spelled two ways is one (server/units.py annotate: uk, #1102)
     const have = by.get(k);
     if (!have) { const c = {...s, imps: [s.imp]}; by.set(k, c); out.push(c); continue; }
     have.pts = have.pts.concat(s.pts); have.txt = (have.txt || []).concat(s.txt || []); have.imps.push(s.imp);
