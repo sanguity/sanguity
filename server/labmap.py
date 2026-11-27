@@ -677,7 +677,7 @@ def set_matches(db, pid, idents, target, who, move=True, kept=False):
         if key in seen:
             continue
         seen.add(key)
-        to = None if target is None or norm(target) == norm(name) else target
+        to = None if target is None or target == " ".join(str(name).split()) else target
         r = db.execute("SELECT * FROM labmaps WHERE lookup=?", (key,)).fetchone()
         before.append(_snap(r) if r else {"lookup": key})
         probe.append({"id": key, "lookup": key, "importer": imp, "target": r["target"] if r else None,
