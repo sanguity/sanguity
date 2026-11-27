@@ -46,6 +46,9 @@ Profile events (profile_id set), readable by the profile's owners:
                 "own.change" | "own.delete" | "listed.change" | "listed.back" | "listed.hide" | "listed.show"}: a
                 medication of the profile's own added, put back, changed or deleted, or one of the records' changed,
                 put back as listed, hidden or shown again (medications.py, #1091; never which medication)
+  labmap        {"change": "add" | "keep" | "change" | "check" | "remove" | "undo", "matches", "moved"?}: lab-name
+                matches of the profile's own made, kept as their own test, changed, kept (one to check), removed or
+                undone by an owner or editor, with how many saved results were re-filed (labmap.py, #1097; never names)
   link          {"change": "create" | "revoke" | "view", "link", "label"?, ...}: a share link made or revoked by an owner
                 (with its sections, number of labs, dates and hours), or opened by whoever holds it: actor SHARE_LINK,
                 with the viewer's address (share_links.py, #47; never the token)
@@ -91,7 +94,7 @@ from . import config, crypto, db as dbm
 
 PROFILE_ACTIONS = ("view", "document", "create", "rename", "share", "unshare", "import", "reload", "export", "upload", "discard", "undo", "edit", "outside",
                    "settings", "connect", "disconnect", "calendar", "journal", "summary", "watch.secret", "source", "link", "cycle",
-                   "medication")
+                   "medication", "labmap")
 ACCOUNT_ACTIONS = ("setup", "password", "account.create", "account.disable", "account.enable", "account.admin",
                    "account.unadmin", "account.reset", "2fa.on", "2fa.off", "2fa.codes", "2fa.recovery", "2fa.reset", "2fa.stopped",
                    "settings.require_2fa", "profile.delete", "account.remove", "profile.repair", "labmap.change",

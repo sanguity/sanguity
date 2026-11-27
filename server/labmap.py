@@ -25,10 +25,12 @@ applied to that profile's later imports only, never to another person's, and onl
 test Sanguity's list knows (offered, check_sent: never any text sent). One an admin made before is for every
 profile (profile_id NULL), and stays so; a profile's own is used before it. Remembered choices are applied as soon as
 an import is parsed, before its duplicates are found, to a pull (sync.py) and to results typed in (routes_manual.py);
-the preview shows them as "matched as before", and changing one there changes that import only. Only admins change or
-remove them (routes_labmaps.py), but for one way: undoing the import whose review made a choice forgets it, unless
-another import has been saved with it since or an admin has changed it (labmaps.import_id and used, schema version
-36; history.undo, #500); and deleting a profile forgets those its reviews made (forget_profile, #591).
+the preview shows them as "matched as before", and changing one there changes that import only. A profile's owners and
+editors change or remove its own on Settings, and make them there or from Labs, re-filing results already saved
+(#1097: set_matches, below; a name Sanguity knows too, once matched); admins, those for every profile
+(routes_labmaps.py). Undoing the import whose review made a choice forgets it, unless another import has been saved
+with it since or someone has changed it (labmaps.import_id and used, schema version 36; history.undo, #500); and
+deleting a profile forgets those its reviews made (forget_profile, #591).
 
 The name, unit and code (source) and the target are health details, so encrypted (crypto.enc); rows are found by
 lookup, a keyed hash of the normalised identity (security.pepper_mac), never by decrypting them all.
@@ -137,16 +139,18 @@ def _known(name):
 def profile_series(db, pid):
     """The profile's lab series: {name: {"unit": the unit most of its rows have, "loinc": {codes}}}."""
     units, codes = collections.defaultdict(collections.Counter), collections.defaultdict(set)
-    for r in db.execute("SELECT body FROM series WHERE profile_id=?", (pid,)):
+    shown = charted(db, pid)   # as the records chart them (#1097: a series re-filed under another test is that test's)
+    for r in db.execute("SELECT id, body FROM series WHERE profile_id=?", (pid,)):
         try:
             s = json.loads(crypto.dec(r["body"]))
         except (ValueError, TypeError):
             continue
         if not isinstance(s, dict) or not isinstance(s.get("name"), str):
             continue
-        units[s["name"]][str(s.get("unit") or "")] += 1
+        name = shown.get(r["id"], s["name"])
+        units[name][str(s.get("unit") or "")] += 1
         if series_loinc(s):
-            codes[s["name"]].add(series_loinc(s))
+            codes[name].add(series_loinc(s))
     return {n: {"unit": u.most_common(1)[0][0], "loinc": codes[n]} for n, u in units.items()}
 
 
@@ -220,13 +224,13 @@ def plan(db, pid, importer, data, keep=()):
     lower = {n.lower(): n for n in have}
     candidates = {}
     for i, s in enumerate(data.get("labs") or []):
-        if isinstance(s, dict) and isinstance(s.get("name"), str) and s["name"].strip() and not _known(s["name"]):
+        if isinstance(s, dict) and isinstance(s.get("name"), str) and s["name"].strip():
             candidates[f"s:{i}"] = s
     found = remembered(db, pid, [importer], {ref: _ident(s) for ref, s in candidates.items()}, flagged=True)
     listed, auto, ids = [], {}, {}
     for ref, s in candidates.items():
         before, same = found.get(ref), lower.get(s["name"].strip().lower())
-        if before is None and same and ref not in keep:
+        if before is None and (_known(s["name"]) or same and ref not in keep):   # (#1097: a name Sanguity knows, only once matched)
             continue
         check = before if before and before["check"] else None
         before = None if check else before
@@ -319,7 +323,9 @@ def apply(data, picked):
     labs = []
     for i, s in enumerate(data.get("labs") or []):
         t = picked.get(f"s:{i}")
-        labs.append({**copy.deepcopy(s), "name": t} if t and isinstance(s, dict) else s)
+        # (#1097) the name as reported kept beside it, so the series is found by its match again (covered)
+        labs.append({**copy.deepcopy(s), "name": t, "reported": s.get("reported") or s.get("name")}
+                    if t and isinstance(s, dict) and t != s.get("name") else s)
     out["labs"] = labs
     return out
 
@@ -483,7 +489,7 @@ def apply_remembered(db, pid, importers, data):
     """data with profile pid's remembered choices applied to its series (hand entry): (data, {old name: new name},
     [their ids], marked used once it's saved)."""
     idents = {f"s:{i}": _ident(s) for i, s in enumerate(data.get("labs") or [])
-              if isinstance(s, dict) and isinstance(s.get("name"), str) and not _known(s["name"])}
+              if isinstance(s, dict) and isinstance(s.get("name"), str)}   # (#1097: a known name too, once matched)
     found = remembered(db, pid, importers, idents)
     picked = {ref: f["target"] for ref, f in found.items()}
     renamed = {idents[ref][0]: t for ref, t in picked.items() if t}
@@ -509,15 +515,18 @@ def _shown(m):
     return {k: v for k, v in m.items() if k != "for"}
 
 
-def listing(db):
-    """Every remembered choice, those to check (#569) first, then last changed first: [{"id", "importer", "name",
-    "unit", "loinc", "target", "check", "one_profile", "created", "created_by", "changed", "changed_by"}]."""
-    rows = [_shown(_row(r)) for r in db.execute("SELECT * FROM labmaps ORDER BY IFNULL(changed, created) DESC, id DESC")]
+def listing(db, pid=None):
+    """The remembered choices for every profile (pid None: Install's, for admins), else profile pid's own (#1097),
+    those to check (#569) first, then last changed first: [{"id", "importer", "name", "unit", "loinc", "target",
+    "check", "one_profile", "created", "created_by", "changed", "changed_by"}]."""
+    rows = [_shown(_row(r)) for r in db.execute("SELECT * FROM labmaps WHERE profile_id IS ? ORDER BY IFNULL(changed, created) DESC, id DESC",
+                                                (pid,))]
     return sorted(rows, key=lambda m: not m["check"])
 
 
-def get(db, mid):
-    r = db.execute("SELECT * FROM labmaps WHERE id=?", (mid,)).fetchone()
+def get(db, mid, pid=None):
+    """A match for every profile (pid None), else profile pid's own (#1097); None if it isn't one."""
+    r = db.execute("SELECT * FROM labmaps WHERE id=? AND profile_id IS ?", (mid, pid)).fetchone()
     return _shown(_row(r)) if r else None
 
 
@@ -552,3 +561,293 @@ def change(db, mid, target, who):
 def remove(db, mid):
     db.execute("DELETE FROM labmaps WHERE id=?", (mid,))
     _changed(db)
+
+
+# ---------------------------------------------------------------- a profile's own, on Settings and from Labs (#1097)
+# Owners and editors see their profile's own matches (Settings → This person → Labs and ranges), and make, change and
+# remove them there, or from a lab's chart (Same test as…). One rule wherever it's made, the same saved match as a
+# review's: set_matches() matches the name as a lab reported it (each importer, unit and code it came with) to a test
+# of the profile's, or keeps it as a test of its own (target None), for later imports, pulls and results typed in;
+# and, asked to (move), re-files the results already saved under it: the series it covers (covered) are charted
+# under that test from then on. A re-file is a change of the profile's (labmap_changes, schema version 48) applied
+# as the records are put together (charted, records._assemble), never written into them: the records keep the name
+# each import gave them, an import's Undo takes its own series away with it, and a change's Undo (undo) puts the
+# matches back as they were and stops its re-filing, exactly. Removing a match leaves results where they're charted.
+
+KEEP_FOR = 7 * 86400   # a change that re-filed nothing is kept this long, for its Undo, then forgotten
+
+
+class Refused(ValueError):
+    """A change that can't be made: a target that isn't one of the profile's tests, or an Undo of a match changed since."""
+
+
+def charted(db, pid):
+    """{series id: the name it's charted under} of profile pid's re-filed series: every change's, the latest last."""
+    out = {}
+    for r in db.execute("SELECT value FROM labmap_changes WHERE profile_id=? AND series>0 ORDER BY id", (pid,)):
+        for sid, name in (json.loads(crypto.dec(r["value"])).get("series") or {}).items():
+            out[int(sid)] = name
+    return out
+
+
+def _series(db, pid):
+    """The profile's saved series: [(series id, import id, its importer, its body)]."""
+    out = []
+    for r in db.execute("""SELECT s.id, s.import_id, s.body, i.format FROM series s JOIN imports i ON i.id = s.import_id
+                           WHERE s.profile_id=? ORDER BY s.id""", (pid,)):
+        try:
+            b = json.loads(crypto.dec(r["body"]))
+        except (ValueError, TypeError):
+            continue
+        if isinstance(b, dict) and isinstance(b.get("name"), str):
+            out.append((r["id"], r["import_id"], r["format"], b))
+    return out
+
+
+def _reported(b):
+    """A saved series' name as its lab reported it: kept beside the name a match gave it (apply, #1097)."""
+    return str(b.get("reported") or b.get("name") or "")
+
+
+def covered(db, pid, rows, series=None):
+    """{labmaps id: [series id]}: the profile's saved series each of these matches (labmaps rows, profile pid's own)
+    is for: those its importer reported with its name, unit and code; and, saved before the name as reported was
+    kept beside a matched one, those the match's own import saved under its test."""
+    series = _series(db, pid) if series is None else series
+    by, legacy = {r["lookup"]: r["id"] for r in rows}, {}
+    for r in rows:
+        if r["target"] and r["import_id"]:
+            src = json.loads(crypto.dec(r["source"]))
+            legacy[(r["import_id"], lookup(r["importer"], crypto.dec(r["target"]), src.get("unit"), src.get("loinc"), pid))] = r["id"]
+    out = {r["id"]: [] for r in rows}
+    for sid, iid, fmt, b in series:
+        mid = by.get(lookup(fmt, _reported(b), b.get("unit"), series_loinc(b), pid))
+        if mid is None and "reported" not in b and legacy:
+            mid = legacy.get((iid, lookup(fmt, b["name"], b.get("unit"), series_loinc(b), pid)))
+        if mid is not None:
+            out[mid].append(sid)
+    return out
+
+
+def own(db, pid):
+    """Profile pid's own matches, listing's, each with how many saved results ("results") from how many imports
+    ("imports") it covers."""
+    rows = db.execute("SELECT * FROM labmaps WHERE profile_id=?", (pid,)).fetchall()
+    series = _series(db, pid)
+    cov, of = covered(db, pid, rows, series), {sid: (iid, b) for sid, iid, _, b in series}
+    n = {r[0]: r[1] for r in db.execute("SELECT series_id, COUNT(*) FROM results WHERE profile_id=? GROUP BY series_id", (pid,))}
+    out = []
+    for m in listing(db, pid):
+        sids = cov.get(m["id"], [])
+        out.append({**m, "results": sum(n.get(s, 0) + len(of[s][1].get("txt") or []) for s in sids),
+                    "imports": len({of[s][0] for s in sids})})
+    return out
+
+
+def tests(db, pid):
+    """The profile's tests as charted, for a match's picker: [{"name", "unit"}], by name."""
+    return [{"name": n, "unit": v["unit"]} for n, v in sorted(profile_series(db, pid).items(), key=lambda x: x[0].lower())]
+
+
+def charted_as(db, pid, name):
+    """The identities (importer, name as reported, unit, code) of the profile's series charted under name."""
+    shown, out = charted(db, pid), {}
+    name = " ".join(str(name or "").split())
+    for sid, _, fmt, b in _series(db, pid):
+        if " ".join(shown.get(sid, b["name"]).split()) == name:
+            ident = (fmt, _reported(b), str(b.get("unit") or ""), series_loinc(b))
+            out.setdefault(lookup(*ident, pid), ident)
+    return list(out.values())
+
+
+def set_matches(db, pid, idents, target, who, move=True, kept=False):
+    """The one way a profile's match is made or changed outside a review (Add, Change, Keep as its own test, and Same
+    test as… on Labs), inside a transaction: each identity (importer, name as reported, unit, code) matched to target,
+    one of the profile's tests, or kept as a test of its own (None; so is a name matched to itself), checked (#569),
+    for later imports. move: its saved results re-filed under it too. -> {"change", "matches": [ids], "series",
+    "results"}. Raises Refused for a target that isn't one of the profile's tests (unless kept: Keep, a match to
+    check kept as it is)."""
+    target = clean_target(target)
+    if target is not None and not kept and target not in {t["name"] for t in tests(db, pid)}:
+        raise Refused(f"“{target}” isn't one of this profile's tests. Pick one from the list.")
+    now, before, ids, seen = dbm.now(), [], [], set()
+    probe = []   # each match as it was (or will be), for the series it covers: before its target changes (covered's legacy)
+    for imp, name, unit, code in idents:
+        key = lookup(imp, name, unit, code, pid)
+        if key in seen:
+            continue
+        seen.add(key)
+        to = None if target is None or norm(target) == norm(name) else target
+        r = db.execute("SELECT * FROM labmaps WHERE lookup=?", (key,)).fetchone()
+        before.append(_snap(r) if r else {"lookup": key})
+        probe.append({"id": key, "lookup": key, "importer": imp, "target": r["target"] if r else None,
+                      "import_id": r["import_id"] if r else None, "source": r["source"] if r else None, "name": name, "to": to})
+        if r:
+            db.execute("UPDATE labmaps SET target=?, changed_by=?, changed_name=?, changed=?, checked=? WHERE id=?",
+                       (_enc_target(to), who["id"], who["username"], now, now, r["id"]))
+            ids.append(r["id"])
+        else:
+            ids.append(db.execute("""INSERT INTO labmaps(lookup, importer, source, target, created_by, created_name, created, checked, profile_id)
+                                     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                  (key, imp, crypto.enc(json.dumps({"name": name, "unit": unit, "loinc": code}, ensure_ascii=False)),
+                                   _enc_target(to), who["id"], who["username"], now, now, pid)).lastrowid)
+    moved, results = {}, 0
+    if move and probe:
+        series = _series(db, pid)
+        body, cov = {sid: b for sid, _, _, b in series}, covered(db, pid, probe, series)
+        for p in probe:
+            for sid in cov[p["id"]]:   # kept as its own: the name as reported (the match's, for one saved before it was kept)
+                own_name = _reported(body[sid]) if norm(_reported(body[sid])) == norm(p["name"]) else p["name"]
+                moved[sid] = p["to"] or own_name
+        if moved:
+            marks = ",".join("?" * len(moved))
+            results = db.execute(f"SELECT COUNT(*) FROM results WHERE profile_id=? AND series_id IN ({marks})", (pid, *moved)).fetchone()[0]
+            results += sum(len(body[s].get("txt") or []) for s in moved)
+    cid = _record(db, pid, who, before, moved)
+    return {"change": cid, "matches": ids, "series": len(moved), "results": results}
+
+
+def remove_own(db, pid, mid, who):
+    """Forget profile pid's own match mid, inside a transaction: the next import with that name asks again, and its
+    saved results stay where they're charted. -> the change, for its Undo; None if there's no such match."""
+    r = db.execute("SELECT * FROM labmaps WHERE id=? AND profile_id=?", (mid, pid)).fetchone()
+    if r is None:
+        return None
+    db.execute("DELETE FROM labmaps WHERE id=?", (mid,))
+    return _record(db, pid, who, [_snap(r)], {})
+
+
+def for_export(db, pid):
+    """Profile pid's own matches and its re-filed series, for Export everything's "corrections" (export.corrections):
+    ({"labmaps": [{importer, name, unit, loinc, target, checked, at, by}], "refiled": [{key, name, unit, as}]}): each
+    series charted under another test found by its source key and the name and unit it's saved with, as an export loaded
+    elsewhere saves them again (the series' ids are this install's)."""
+    out = {"labmaps": [], "refiled": []}
+    for r in db.execute("SELECT * FROM labmaps WHERE profile_id=? ORDER BY id", (pid,)):
+        m = _row(r)
+        out["labmaps"].append({"importer": m["importer"], "name": m["name"], "unit": m["unit"], "loinc": m["loinc"],
+                               "target": m["target"], "checked": r["checked"] is not None, "at": m["created"], "by": m["created_by"]})
+    shown, seen = charted(db, pid), set()
+    for sid, _, _, b in _series(db, pid) if shown else ():
+        x = (b.get("key") if isinstance(b.get("key"), str) else None, b["name"], str(b.get("unit") or ""), shown.get(sid))
+        if x[3] is not None and x[3] != b["name"] and x not in seen:
+            seen.add(x)
+            out["refiled"].append(dict(zip(("key", "name", "unit", "as"), x)))
+    return {k: v for k, v in out.items() if v}
+
+
+def check_export(data):
+    """An export's matches and re-files (for_export's), checked: ([(importer, name, unit, loinc, target, checked, at,
+    by)], [(key, name, unit, as)]). Raises ValueError for one that can't be loaded."""
+    fix = (data.get("corrections") or {}) if isinstance(data, dict) else {}
+    text = lambda v, n=4000, empty=False: v if isinstance(v, str) and (empty or v.strip()) and len(v) <= n else _bad()  # noqa: E731
+    maps, refiled = [], []
+    for n, x in enumerate(fix.get("labmaps") or [] if isinstance(fix, dict) else []):
+        try:
+            if not isinstance(x, dict):
+                _bad()
+            maps.append((text(x.get("importer"), 80), text(x.get("name")), text(x.get("unit") or "", 200, True),
+                         text(x.get("loinc") or "", 80, True), None if x.get("target") is None else text(x["target"], NAME_MAX),
+                         bool(x.get("checked")), x.get("at") if isinstance(x.get("at"), int) else None,
+                         x["by"][:200] if isinstance(x.get("by"), str) and x["by"].strip() else None))
+        except ValueError:
+            raise ValueError(f"The export's lab name match {n + 1} can't be loaded: it isn't one Sanguity writes.") from None
+    for n, x in enumerate(fix.get("refiled") or [] if isinstance(fix, dict) else []):
+        try:
+            if not isinstance(x, dict):
+                _bad()
+            refiled.append((None if x.get("key") is None else text(x["key"]), text(x.get("name")), text(x.get("unit") or "", 200, True),
+                            text(x.get("as"), NAME_MAX)))
+        except ValueError:
+            raise ValueError(f"The export's re-filed lab {n + 1} can't be loaded: it isn't one Sanguity writes.") from None
+    return maps, refiled
+
+
+def _bad():
+    raise ValueError
+
+
+def from_export(db, pid, data):
+    """An export's matches and re-files put back in profile pid (export.restore, and again once its records are saved,
+    jobs.py: a series re-filed is found among them), inside the transaction that loads it. The profile's own are left
+    as they are: a match of the same name, unit, code and source, and a series it charts already under another test.
+    Returns how many matches were added."""
+    maps, refiled = check_export(data)
+    n = 0
+    for imp, name, unit, code, target, checked, at, by in maps:
+        n += db.execute("""INSERT INTO labmaps(lookup, importer, source, target, created_by, created_name, created, checked, profile_id)
+                           VALUES(?, ?, ?, ?, NULL, ?, ?, ?, ?) ON CONFLICT(lookup) DO NOTHING""",
+                        (lookup(imp, name, unit, code, pid), imp, crypto.enc(json.dumps({"name": name, "unit": unit, "loinc": code}, ensure_ascii=False)),
+                         _enc_target(target), by or "export", at or dbm.now(), dbm.now() if checked else None, pid)).rowcount
+    want = {(key, name, unit): to for key, name, unit, to in refiled}
+    if want:
+        shown, moved = charted(db, pid), {}
+        for sid, _, _, b in _series(db, pid):
+            to = want.get((b.get("key") if isinstance(b.get("key"), str) else None, b["name"], str(b.get("unit") or "")))
+            if to is not None and sid not in shown:
+                moved[sid] = to
+        if moved:
+            _record(db, pid, None, [], moved)
+    if n:
+        _changed(db)
+    return n
+
+
+_LOOSE = ("used",)   # what may change after a change without its Undo being refused: marked used by an import since
+
+
+def _snap(r):
+    """A labmaps row as kept in a change: its name and target opened (sealed again with the change's value, so a
+    rotation of the data key, which seals labmaps' anew, leaves an Undo able to put it back)."""
+    out = dict(r)
+    out["source"], out["target"] = crypto.dec(r["source"]), crypto.dec(r["target"]) if r["target"] else None
+    return out
+
+
+def _state(r):
+    return None if r is None else {k: v for k, v in _snap(r).items() if k not in _LOOSE}
+
+
+def _record(db, pid, who, before, moved):
+    after = [_state(db.execute("SELECT * FROM labmaps WHERE lookup=?", (b["lookup"],)).fetchone()) or {"lookup": b["lookup"], "gone": True}
+             for b in before]
+    now = dbm.now()
+    cid = db.execute("INSERT INTO labmap_changes(profile_id, series, value, created_by, at) VALUES(?, ?, ?, ?, ?)",
+                     (pid, len(moved), crypto.enc(json.dumps({"series": {str(k): v for k, v in moved.items()}, "before": before,
+                                                              "after": after}, ensure_ascii=False)),
+                      who["id"] if who else None, now)).lastrowid
+    db.execute("DELETE FROM labmap_changes WHERE profile_id=? AND series=0 AND at<?", (pid, now - KEEP_FOR))
+    _settled(db, pid)
+    return cid
+
+
+def _settled(db, pid):
+    from . import records
+    _changed(db)             # a review waiting since plans again (#583)
+    records._bump(db, pid)   # the records as charted changed
+
+
+def undo(db, pid, cid):
+    """Undo profile pid's change cid, inside a transaction: its matches as they were before it, its results charted
+    where they were. Raises LookupError if there's no such change, Refused if a match it left has been changed since
+    (by another change, an import's review or its Undo)."""
+    r = db.execute("SELECT value FROM labmap_changes WHERE id=? AND profile_id=?", (cid, pid)).fetchone()
+    if r is None:
+        raise LookupError(cid)
+    v = json.loads(crypto.dec(r["value"]))
+    for a in v["after"]:
+        now = _state(db.execute("SELECT * FROM labmaps WHERE lookup=?", (a["lookup"],)).fetchone())
+        if (now is None) != bool(a.get("gone")) or (now is not None and now != a):
+            raise Refused("Not undone: this match was changed since. Look at it again.")
+    for b in v["before"]:
+        db.execute("DELETE FROM labmaps WHERE lookup=?", (b["lookup"],))
+        if "id" in b:
+            if db.execute("SELECT 1 FROM labmaps WHERE id=?", (b["id"],)).fetchone():
+                b = {k: x for k, x in b.items() if k != "id"}
+            if b.get("import_id") and not db.execute("SELECT 1 FROM imports WHERE id=?", (b["import_id"],)).fetchone():
+                b = {**b, "import_id": None}   # (its import undone since)
+            b = {**b, "source": crypto.enc(b["source"]), "target": _enc_target(b["target"])}
+            cols = list(b)
+            db.execute(f"INSERT INTO labmaps({', '.join(cols)}) VALUES({', '.join('?' * len(cols))})", [b[c] for c in cols])
+    db.execute("DELETE FROM labmap_changes WHERE id=?", (cid,))
+    _settled(db, pid)
