@@ -10,7 +10,7 @@ compose file with one top-level `x-casaos` block. It runs the four services of
 |---|---|
 | `/DATA/AppData/sanguity/data` | `/data` |
 | `/DATA/AppData/sanguity/key` | `/run/secrets/sanguity` (the encryption key, apart from the data; read-only except for setup) |
-| `/DATA/AppData/sanguity/backups` | `/backups` (where Sanguity writes its backups, on the schedule set under **Admin → Backups**; copy them off the device too) |
+| `/DATA/AppData/sanguity/backups` | `/backups` (where Sanguity writes its backups, on the schedule set under **Settings → Install → Backups**; copy them off the device too) |
 | `/DATA/AppData/sanguity/watch` | `/watch` (read-only in the app, for its summaries and backups, except `keys/`) |
 | `/DATA/AppData/sanguity/records` | `/srv/records`, read-only |
 | `/DATA/AppData/sanguity/config` | `/config`, read-only (`sources.json`, `settings.json`, `corrections.json`) |

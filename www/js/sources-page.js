@@ -49,7 +49,7 @@ const SgSources = (() => {
   /* on a phone the sidebar gives way to the Overview's cards, the way into each section (#283, app.css): above the
      others' titles, the way back to them, focus on the Overview's title */
   const srcBack = $(".src-back");
-  srcBack.replaceChildren(icon("chevron-down"), "Overview");
+  srcBack.replaceChildren(icon("chevron-down"), "Sources overview");   // not "Overview", the bottom bar's records tab (#1076)
   srcBack.onclick = ev => { ev.preventDefault(); show("overview", {push: true}); const h = $("#groupTitle"); h.tabIndex = -1; h.focus(); };
 
   /* ---------------------------------------------------------------- whose records, and what you can do here */

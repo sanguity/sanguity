@@ -1050,7 +1050,7 @@ class Backups(unittest.TestCase):
             self.assertIn(words, said)
             self.assertIn(": the accounts, passwords, passkeys, two-factor sign-in, who may see each profile, share links, "
                           "calendar feeds, phone upload secrets and connected sources' sign-ins are the backup's, as they were on", said)
-            self.assertIn("check Admin > Accounts and each profile's Sharing", said)
+            self.assertIn("check Settings → Install → Accounts and each profile's Sharing", said)
             self.assertEqual(con.execute("SELECT revoked FROM share_links WHERE id=?", (revoked,)).fetchone(), (None,), label)
             self.assertIn("lee", {r[0] for r in con.execute("SELECT username FROM users")}, label)
             self.assertEqual(con.execute("SELECT COUNT(*) FROM sessions").fetchone()[0], 0, label)

@@ -8,7 +8,7 @@
   create-profile NAME USERNAME           a new, empty profile owned by USERNAME (prints its number)
   link-build PROFILE_ID                  load the setup build (your exports via sources.json) into a profile, and keep
                                          it updated on every rebuild (for after the build's profile was deleted)
-  import PROFILE_ID DIR|EXPORT.zip       load DIR/data.json (and settings.json), or an export from the Account page,
+  import PROFILE_ID DIR|EXPORT.zip       load DIR/data.json (and settings.json), or an export from Sharing → Export everything,
                                          into a profile (replacing its records)
   import-apple-health PROFILE_ID PATH    load an iPhone's Health export (the zip from Export All Health Data, or its
                                          export.xml) as the profile's watch and scale summary; a later export
@@ -105,7 +105,7 @@ CYCLE_KEPT = ("Each profile's cycle tracking was kept as it is today, on or off,
               "brought back, and the watch receiver deletes its copy of them when it starts.")
 CYCLE_THEN = "Each profile's cycle tracking is the backup's too, on or off as it was then."
 # (#1005) every install setting: General's, the sync defaults, the backup schedule and how many it keeps
-SETTINGS_KEPT = ("The server's own settings were kept as they are today, not the backup's: those on Settings → General, "
+SETTINGS_KEPT = ("The server's own settings were kept as they are today, not the backup's: those on Settings → Install → General, "
                  "the sync defaults, and the backup schedule and how many backups it keeps.")
 
 
@@ -125,14 +125,14 @@ def _say_access(a, created, aside):
                "kept from it")
         print(f"{why}: the {ACCESS_WORDS} are the backup's, as they were on {created}. A share link revoked, a member "
               "removed, an account removed or disabled, or a password or passkey changed since then is as it was then: "
-              f"check Admin > Accounts and each profile's Sharing before you share the address again. {out}")
+              f"check Settings → Install → Accounts and each profile's Sharing before you share the address again. {out}")
         print(CYCLE_THEN)
         named = a.get("settings") or []
         print("The server's own settings are the backup's too, as they were then: " + (
             ", ".join(named) + "." if named else "it had none saved, so each is its default (or the environment's)."))
     for pid, name in a.get("back") or ():
         print(f"Profile {pid} ({name}) was deleted after the backup was made and is back, with nobody given access to it: "
-              "an admin gives it an owner on Admin > Accounts (Profiles without an owner), or with "
+              "an admin gives it an owner under Settings → Install → Accounts (Profiles without an owner), or with "
               f"python -m server.manage share {pid} USERNAME owner.")
     for pid, name in a.get("gone") or ():
         print(f"Profile {pid} ({name}) was made after the backup and isn't in it: its records are in {aside}.")
@@ -237,7 +237,7 @@ def _backup_command(cmd, args):
                 sys.exit("Nothing changed. (Add --yes to restore without being asked.)")
             m, aside = backup.restore(args[0])
             print(f"Restored. The data it replaced is in {aside}: the app deletes it {backup.KEEP_DAYS} days from now "
-                  "(RESTORE_KEEP_DAYS), or sooner with Delete now on Admin > Backups. It may hold profiles deleted "
+                  "(RESTORE_KEEP_DAYS), or sooner with Delete now under Settings → Install → Backups. It may hold profiles deleted "
                   "since the backup was made. Start the app again.")
             _say_access(m.get("access") or {}, m.get("created"), aside)
             w = m.get("watch_restored")   # the receiver's data (#227)
@@ -249,7 +249,7 @@ def _backup_command(cmd, args):
                 print(f"The phone and watch data is in {w['folder']}: the receiver's keys folder ({os.path.dirname(config.WATCH_KEYS)}) "
                       "can't be written here. With the receiver stopped, move its watch.db, raw/ and profiles/ aside in "
                       "WATCH_DIR, move the ones from that folder in, then start the receiver. The app deletes that folder "
-                      f"{backup.KEEP_DAYS} days from now, or sooner with Delete now on Admin > Backups, where it's listed: "
+                      f"{backup.KEEP_DAYS} days from now, or sooner with Delete now under Settings → Install → Backups, where it's listed: "
                       "it may hold profiles deleted since, and the backup still has it.")
             else:
                 print("This backup has no phone and watch data (made by an older version, or there was none): the "

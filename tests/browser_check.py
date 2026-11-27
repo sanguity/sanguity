@@ -17693,6 +17693,8 @@ def main():
             page.click("#srcList .src-way[data-way=manual] h3 a")
             page.wait_for_function("document.querySelector('main').dataset.group === 'manual' && document.querySelector('.src-back').checkVisibility()", timeout=10000)
             check("…a card opening its section, with the way back above it, and the Overview fitting 375 px", not hub_bad, hub_bad)
+            back1076 = js("document.querySelector('.src-back').textContent.trim()")
+            check("…the way back says \"Sources overview\", not a second \"Overview\" beside the bottom bar's (#1076)", back1076 == "Sources overview", back1076)
             page.set_viewport_size({"width": 1400, "height": 900})
 
             # ---- a SMART Health Link pasted (#94): its host, label and passcode flag are shown and nothing is fetched;

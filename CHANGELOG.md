@@ -3837,6 +3837,11 @@ Everything on `main` so far; it becomes the first tagged release.
 - **The 32-bit ARM check passes again** (#1083): its import check after the build still imported pycryptodome
   (`Crypto`), which #103 replaced with `cryptography` for encryption at rest, so arm.yml failed every run after the
   image had built. It checks `cryptography`'s AES-GCM, which the app uses, instead; the images are unchanged.
+- **Where things are, by their new names** (#1076): Sharing → People's unknown username, the start's
+  saved-settings-off message, `manage.py`'s restore messages (and which settings a restore keeps), the setup scripts
+  and the TrueNAS, Unraid and CasaOS notes pointed to the old Admin and Account pages; they name Settings → Install →
+  Accounts, General or Backups, and Sharing → Export everything. A phone's way back in Sources says "Sources
+  overview", not a second "Overview" beside the bottom bar's.
 
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
