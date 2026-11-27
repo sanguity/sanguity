@@ -3911,6 +3911,11 @@ Everything on `main` so far; it becomes the first tagged release.
   so a stay from 21:40 in Chicago was a day before the Timeline's for someone in London; it now says the same day the
   Timeline and Overview do.
 
+- **A newcomer's first steps: setup and the guide** (#1103): setup says the code is also in `setup-code.txt` in the
+  data folder (TrueNAS, or run from source); the guide's first records step says where an export comes from (MyChart,
+  Apple Health's Export All Health Data, Blue Button), and shows an upload left at its review again after a reload, as
+  Sources → Waiting for you does; a phone's step waits for its first upload instead of being done once its secret is
+  made; and an admin has a step to keep a copy of the encryption key elsewhere and turn backups on.
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 
