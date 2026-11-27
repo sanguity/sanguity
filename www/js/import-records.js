@@ -105,6 +105,11 @@
     el("span", {class: "man-kname", id: `manKg${g}`, text: name}),
     el("div", {class: "chips"}, kinds.map(k => el("button", {class: "chip", type: "button", id: `manKind-${k}`, "data-kind": k},
       icon("plus"), CHIP[k] || KINDS[k][0]))))));
+  // (#1103) on a phone the open forms come first, with Save, and Add a record's chips under them: above, about twenty
+  // chips put the form two screens down. Wider, the chips stay above the forms, as before
+  const PHONE_W = matchMedia("(max-width:700px)"), save = document.querySelector("#panel-manual .man-save");
+  const placeKinds = () => { if (PHONE_W.matches) save.after(kindsBox); else box.before(kindsBox); };
+  placeKinds(); PHONE_W.addEventListener("change", placeKinds);
 
   function field(card, [f, cap, type = "text", extra]) {
     const id = `rec${card.dataset.seq}-${f}`, err = el("span", {class: "man-err", id: id + "-err"});

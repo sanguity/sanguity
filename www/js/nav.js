@@ -171,7 +171,7 @@ function menuSheet(m, title, ...extra) {
 const sgMayNew = me => me?.may_create_profiles === true;
 const SgNav = (() => {
   const header = document.querySelector("header.topbar");
-  if (!header) return {sync() {}, lock() {}, profiles() { return null; }, profile() { return null; }, layout() { return {}; }, fit() {}, waited() {}, menu: menuWire, TABS: []};
+  if (!header) return {sync() {}, lock() {}, profiles() { return null; }, profile() { return null; }, layout() { return {}; }, fit() {}, waited() {}, empties() {}, menu: menuWire, TABS: []};
   const svgLogo = header.querySelector(".brand-name");
   const onRecords = !!document.getElementById("view-overview"), page = location.pathname.split("/").pop() || "index.html";
 
@@ -261,6 +261,7 @@ const SgNav = (() => {
     canEditTabs(p);
     if (!p) return;
     tabsOf(p.id);   // its tabs, whenever the profile changes (#415)
+    if (!onRecords) emptyFor(p.id);   // (#1103) its tabs with nothing in them, as its records page last found them
     const role = x => ROLE[x.role] || x.role;
     const name = el("span", {class: "profile-name", text: p.name});
     prof.btn.replaceChildren(el("span", {class: "vh", text: "Profile: "}), name, " ", el("span", {class: "profile-role", text: role(p)}), caret());
@@ -326,6 +327,7 @@ const SgNav = (() => {
   const tabs = el("nav", {class: "tabs", "aria-label": "Records"}, ...Object.values(tabEl), more.wrap);
   wrap.after(tabs);
   let order = TABS.map(([t]) => t), hidden = new Set();
+  let ordered = false, empty = new Set();   // (#1103) an order of the person's own (not the usual one); the tabs with nothing in them (empties)
   const FLOOR = 8;   // the profile's name, in em, kept before a tab goes under More
   function fit() {
     const shown = order.filter(t => !hidden.has(t)).map(t => tabEl[t]), had = document.activeElement;
@@ -402,11 +404,25 @@ const SgNav = (() => {
     const ids = TABS.map(([t]) => t), ok = x => Array.isArray(x) ? x.filter(t => ids.includes(t)) : [];
     order = [...new Set(ok(cfg && cfg.order))];
     for (const t of ids) if (!order.includes(t)) order.splice(order.includes(NEW_TABS[t]) ? order.indexOf(NEW_TABS[t]) + 1 : order.length, 0, t);
+    ordered = order.join() !== ids.join();   // (#1103) the usual order, filled in as above, is no order of their own
     hidden = new Set(ok(cfg && cfg.hidden));
     if (hidden.size >= ids.length) hidden.clear();
     for (const t of ids) tabEl[t].hidden = hidden.has(t);
     fit();
     return {order, hidden};
+  }
+  /* (#1103) the records tabs with nothing in them (empties(pid, ["health"]): the records page says so once it has read
+     the profile's records), kept in this browser for the other pages (ht-tabs:<pid>, forgotten with the profile:
+     pwa.js forgetProfiles) */
+  function empties(pid, list) {
+    empty = new Set(list);
+    try { if (list.length) localStorage.setItem("ht-tabs:" + pid, JSON.stringify(list)); else localStorage.removeItem("ht-tabs:" + pid); } catch (e) {}
+    fit();
+  }
+  function emptyFor(pid) {
+    let list = [];
+    try { list = JSON.parse(localStorage.getItem("ht-tabs:" + pid) || "[]"); } catch (e) {}
+    empty = new Set(Array.isArray(list) ? list : []);
   }
   /* the profile's tabs, on a page other than the records page: asked for as it's chosen, the first time and on every
      switch (#415); not found, the usual ones rather than the last profile's */
@@ -669,6 +685,9 @@ const SgNav = (() => {
      sheets there (menuSheet, above, #269). */
   function phoneSlots(shown, cur) {
     if (shown.length <= 5) return shown;
+    // (#1103) while the order is the usual one, a tab with nothing in it (Body and activity with no phone or watch
+    // data) gives its place to one with records: those after it move up, Labs first; an order the person set stays
+    if (!ordered && empty.size) shown = [...shown.filter(a => !empty.has(a.id.slice(4))), ...shown.filter(a => empty.has(a.id.slice(4)))];
     const vis = shown.slice(0, 4);
     if (cur && !vis.includes(cur)) vis[3] = cur;
     return vis;
@@ -692,5 +711,5 @@ const SgNav = (() => {
   phoneBar();
   /* the profile shown, {id, name, role}, or null (a drop anywhere uploads to it: drop.js, #281) */
   const profile = () => locked ? null : known.find(x => String(x.id) === pick.value) || null;
-  return {sync, lock, profiles, profile, layout, fit, waited, menu: menuWire, TABS: TABS.map(([t]) => t)};
+  return {sync, lock, profiles, profile, layout, fit, waited, empties, menu: menuWire, TABS: TABS.map(([t]) => t)};
 })();

@@ -79,8 +79,18 @@
 
   /* what isn't set up on the server, in words (#167): admins are pointed to the setup guide, everyone else to them */
   const GUIDE = "the setup guide's “Connecting a phone” section says how";
-  const address = () => ST.addresses.length ? ST.addresses.map(a => value("Upload address", a, {what: "the upload address", qr: true}))
+  const address = () => ST.addresses.length ? [...ST.addresses.map(a => value("Upload address", a, {what: "the upload address", qr: true})), local()]
     : el("p", {class: "msg bad", text: ME.user.is_admin ? `The upload address isn't known yet: ${GUIDE} to set this server's address.` : "The upload address isn't known yet: ask your admin."});
+  /* (#1103) an address naming this computer itself (localhost, 127.0.0.1, ::1): a phone that's given it reaches only
+     itself, so it's said, with where the server's own address is set */
+  const LOCAL = h => /^(localhost|\[?::1\]?)$/i.test(h) || h.startsWith("127.");
+  function local() {
+    const host = a => { try { return new URL(a).hostname; } catch (e) { return ""; } };
+    if (!ST.addresses.some(a => LOCAL(host(a)))) return null;
+    return el("p", {class: "msg bad", id: "watchLocal"}, icon("triangle-alert", {label: "Warning:"}), " This address names this computer itself, so a phone can't reach it. ",
+      ME.user.is_admin ? "Set the address the phone can reach (this server's name or address on your network) in Settings → Install → General → Host, then open this page again."
+        : "Ask your admin to set the address the phone can reach.");
+  }
   /* the secret's step: made here, shown once */
   function secret() {
     const msg = el("span", {class: "msg", role: "status"}), has = ST.has_secret || ST.legacy;
@@ -126,7 +136,9 @@
     ],
     // Life Dashboard Companion: Health Connect's data, each upload signed with the secret
     android: () => [
-      step("Get Life Dashboard Companion", para("On the Android phone. It reads Health Connect: let it read what you'd like sent, such as steps, heart rate, sleep, weight, blood pressure and glucose.")),
+      step("Get Life Dashboard Companion", para("On the Android phone, from ",   // (#1103) where it's found: F-Droid, not Google Play
+        el("a", {href: "https://f-droid.org/packages/com.owen282000.lifedashboard/", target: "_blank", rel: "noopener", id: "watchStore"}, "F-Droid"),
+        ". It reads Health Connect: let it read what you'd like sent, such as steps, heart rate, sleep, weight, blood pressure and glucose.")),
       secretStep(),
       step("Give it the address and the secret", para("In the app, set the upload address below and the secret from step 2. It signs each upload with the secret, so only this profile takes it."),
         address()),

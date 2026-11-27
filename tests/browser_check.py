@@ -3873,6 +3873,17 @@ def main():
         form = mine.locator(".share-form")
         strict.wait_for_timeout(150)   # (announce() says it a moment later)
         said492 = strict.evaluate("document.getElementById('sgStatus').textContent")
+        # #1103: Records from starts empty (every record, of any date, said so), not a year back; on a phone each section's
+        # box is its name alone, what it shows said in full in what a holder sees
+        from1103 = strict.evaluate("""() => { const f = document.querySelector('#links .share-form'), vis = () => [...f.querySelectorAll('.sl-what')].filter(w => w.checkVisibility()).length;
+            return [f.querySelector('input[aria-label=From]').value, f.querySelector('.share-sees').textContent.includes('of any date'), vis()]; }""")
+        strict.set_viewport_size({"width": 375, "height": 900})
+        strict.wait_for_timeout(100)
+        from1103.append(strict.evaluate("[...document.querySelectorAll('#links .share-form .sl-what')].filter(w => w.checkVisibility()).length"))
+        strict.set_viewport_size({"width": 1400, "height": 900})
+        strict.wait_for_timeout(100)
+        check("share links: Records from starts empty, every record (“of any date”), and a phone's boxes are the sections' names alone (#1103)",
+              from1103[0] == "" and from1103[1] and from1103[2] > 0 and from1103[3] == 0, from1103)
         form.locator("input[aria-label='Name for this link']").fill("Dr. Fictional")
         form.locator("input[value=medications]").uncheck()
         form.locator("input[aria-label=From]").fill("")
@@ -8670,6 +8681,20 @@ def main():
             mid299 = js("[...document.querySelectorAll('#view-overview .tile svg.spark .refband')].some(r => Math.abs(r.getAttribute('y') - 20) < .01 && Math.abs(r.getAttribute('height') - 60) < .01)")
             check("Overview (#299): each tile's sparkline the kit's, its band the middle 60% at most (all of it where every value is in range), "
                   "a line only of three results or more, with one mark, not stretched", spark299_ok(ov299) and mid299, [ov299, mid299])
+            # #1103: units as people write them, by one rule (util.js unitSaid) wherever a unit is shown: the tiles, Latest,
+            # the drawer's rows; a key lab's sparkline left empty under two results; and a day far off said in years
+            u1103 = js("""(() => { const s = SERIES.find(x => !x.watch && x.pts.length > 3), n = t => t.querySelectorAll('svg.spark > *').length;
+                return [['10*3/uL', 'x10E3/uL', 'mm[Hg]', '[in_i]', 'Cel', 'kg/m2', 'umol/L', 'U/L', 'mg/dL', 'K/uL'].map(unitSaid),
+                  SERIES.every(x => !x.unit || x.unit === unitSaid(x.unit)),
+                  Object.values(DATA.details).every(d => !d || !Array.isArray(d.rows) || d.rows.every(r => !Array.isArray(r) || !r[2] || r[2] === unitSaid(r[2]))),
+                  [...document.querySelectorAll('#view-overview .tile .val small')].map(x => x.textContent).filter(t => /uL|µL/.test(t)),
+                  n(labTile({...s, pts: s.pts.slice(-1)}, '', 0)), n(labTile({...s, pts: s.pts.slice(-3)}, '', 0)) > 0,
+                  [400, 730, 26370].map(d => inDays(isoDay(Date.now() + d * DAY)))]; })()""")
+            check("Overview (#1103): units as people write them (10³/µL, mmHg, in, °C, kg/m², µmol/L; U/L kept) on the tiles and "
+                  "in every series and drawer row; no sparkline under two results; “in 72 years”, not “in 867 months”",
+                  u1103[0] == ["10³/µL", "10³/µL", "mmHg", "in", "°C", "kg/m²", "µmol/L", "U/L", "mg/dL", "K/µL"] and u1103[1] and u1103[2]
+                  and u1103[3] and all("µL" in t for t in u1103[3]) and u1103[4] == 0 and u1103[5]
+                  and u1103[6][0] == "in 13 months" and u1103[6][1] == "in 24 months" and u1103[6][2] == "in 72 years", u1103)
             # 375 px, light and dark: the note under the name, in the chart and in the table
             theme_before = js("document.documentElement.dataset.theme || null")
             page.set_viewport_size({"width": 375, "height": 800})
@@ -10647,6 +10672,14 @@ def main():
                 page.click("#dbody .mr-days button[aria-label=Sunday]")
                 until162 = js("isoDay(Date.now() + 90 * DAY)")
                 page.locator("#dbody input[type=date] >> nth=1").fill(until162)
+                # #1103: with no calendar feed of this person's, a new line's Remind me starts off, saying a feed is needed
+                # (where its reminders would go), the link to Sharing → Calendar feed beside it; ticked by hand here
+                feed1103 = js("""[ME.calendar_feeds || 0, [...document.querySelectorAll('#dbody label.toggle')].find(l => /Remind me/.test(l.textContent)).querySelector('input').checked,
+                    document.querySelector('#dbody [id^=mr-feed-]')?.textContent || '', document.querySelector('#dbody [id^=mr-feed-] a')?.getAttribute('href') || '']""")
+                check("…with no calendar feed, Remind me starts off and says a feed is needed, linking to Sharing → Calendar feed (#1103)",
+                      feed1103[0] > 0 or (feed1103[1] is False and "only through a calendar feed" in feed1103[2] and feed1103[3].endswith("#calendar")), feed1103)
+                if not feed1103[1]:
+                    page.locator("#dbody label.toggle", has_text="Remind me").locator("input").check()
                 page.click("#dbody button:text-is('Add to schedule')")
                 page.wait_for_load_state("load")
                 page.wait_for_function("typeof MEDS !== 'undefined' && document.querySelector('#dbody .mr-item')", timeout=20000)
@@ -10755,7 +10788,7 @@ def main():
                       need1094 == [False, False, False, True], need1094)
                 check("…saved: Mondays and Fridays at 8:00 and 20:00 with their amounts, a line of its own beside the one before, said in the drawer and announced; "
                       "it fits 320 px with text at 200%",
-                      line1094[0]["times"] == ["08:00", "20:00"] and line1094[0]["days"] == ["mo", "fr"] and line1094[0]["on"] is True
+                      line1094[0]["times"] == ["08:00", "20:00"] and line1094[0]["days"] == ["mo", "fr"] and line1094[0]["on"] is (feed1103[0] > 0)
                       and line1094[0]["amounts"] == [{"amount": 1, "unit": "tablet"}, {"amount": 2, "unit": "tablets"}]
                       and said1094.startswith("1 tablet at 8:00\xa0AM and 2 tablets at 8:00\xa0PM on Mon and Fri, from ")
                       and len(line1094[1]) == n1094 + 1 and "Schedule saved." in line1094[2] and not fit1094, [line1094, fit1094])
@@ -17551,6 +17584,15 @@ def main():
             check("Type records in (#285): the kinds are chips in five groups, each adding its form in the order chosen, every date and time "
                   "a date or time picker", [g[:2] for g in groups285] == [["group", n] for n in ("Results and visits", "Medications", "Home readings", "Money", "Documents")]
                   and sum(g[2] for g in groups285) == len(kinds) + 1 and [f[0] for f in forms285] == kinds and not bad285, [groups285, bad285 or forms285])
+            # #1103: on a phone the open forms come first, then Save, then Add a record's chips (above, about twenty chips
+            # put the form two screens down); wider, the chips above the forms as before
+            order1103 = {}
+            for w in (375, 1400):
+                page.set_viewport_size({"width": w, "height": 900})
+                settle(150)
+                order1103[w] = js("[...document.querySelector('#panel-manual').children].map(c => c.id || c.className).filter(x => /manKinds|manItems|man-save/.test(x))")
+            check("Type records in on a phone (#1103): the forms first, Save, then the kinds' chips; wider, the chips above the forms",
+                  order1103 == {375: ["manItems", "row man-save", "manKinds"], 1400: ["manKinds", "manItems", "row man-save"]}, order1103)
             while js("document.querySelectorAll('.man-item').length"):
                 page.click(".man-item .del")
             add_record("visit")
@@ -22791,6 +22833,28 @@ def main():
                     reach[f"{w}: focus under the tabs"] = js("() => [document.activeElement.textContent, document.activeElement.getBoundingClientRect().bottom]")
             check("…every tab reached from it and opened, at 390, 375 and 320 px; from the keyboard the tabs come after the profile menu and before Add; "
                   "a control under the bar is scrolled clear of it as it takes focus (#268)", not reach, reach)
+            # #1103: a tab with nothing in it (Body and activity with no phone or watch data) gives its place in the bar to
+            # one with records, Labs first, while the tabs are in their usual order; an order of the person's own stays;
+            # the other pages' bars the same, from what the records page found
+            page.set_viewport_size({"width": 375, "height": 800})
+            page.goto(base + "/?profile=1")
+            page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
+            bar1103 = "[...document.querySelectorAll('header .tabs > a[id^=tab-]')].filter(a => !a.hidden).map(a => a.id.slice(4)).join()"
+            slots1103 = [js(bar1103)]
+            js("SgNav.empties(PROFILE.id, ['health'])")
+            slots1103 += [js(bar1103), js("localStorage.getItem('ht-tabs:' + PROFILE.id)")]
+            js("SgNav.layout({order: ['overview', 'health', 'labs', 'medications', 'timeline', 'costs'], hidden: []})")
+            slots1103.append(js(bar1103))
+            js("SgNav.layout(CFG.tabs)")
+            page.goto(base + "/sources.html?profile=1")
+            page.wait_for_selector("header .tabs > a#tab-overview", timeout=10000)
+            settle(300)
+            slots1103.append(js(bar1103))
+            js("localStorage.removeItem('ht-tabs:1')")
+            check("a phone's bar (#1103): Body and activity, with nothing in it, gives its place to Labs while the tabs are in their usual order, "
+                  "on the records page and the others; an order of the person's own is kept",
+                  slots1103 == ["overview,health,medications,timeline", "overview,medications,timeline,labs", '["health"]',
+                                "overview,health,labs,medications", "overview,medications,timeline,labs"], slots1103)
             # …and with the CPU four times slower, as on CI's runner, where this check stopped (#900's room): Labs picked
             # from More, then Costs, and the click on Costs waited 30 s for it. tab_click took Costs, in More's sheet as it
             # slid away after Labs was picked from it, for there (it's drawn till the sheet's closing transition ends, later
@@ -23694,6 +23758,13 @@ def main():
                   and android284 == [["Get Life Dashboard Companion", "The secret", "Give it the address and the secret", "Send a test upload"],
                                      ["false", "true"], "android", "Setting up an Android"]
                   and js("getComputedStyle(document.querySelector('#watchSteps h3'), '::before').content") == "counter(step)", [iphone284, android284])
+            # #1103: Android's app named with where it's found (F-Droid, its own window); and an upload address naming this
+            # computer itself (this check's server is 127.0.0.1) said to be one a phone can't reach, with where it's set
+            phone1103 = js("""[(a => a && [a.textContent, a.getAttribute('href'), a.target])(document.querySelector('#watchSteps #watchStore')),
+                document.querySelector('#watch .w-addr').textContent, document.getElementById('watchLocal')?.textContent || '']""")
+            check("…Android's app links to its store, F-Droid; an upload address of 127.0.0.1 is said to be one a phone can't reach, with where to set it (#1103)",
+                  phone1103[0] == ["F-Droid", "https://f-droid.org/packages/com.owen282000.lifedashboard/", "_blank"]
+                  and "127.0.0.1" in phone1103[1] and "a phone can't reach it" in phone1103[2] and ("General → Host" in phone1103[2] or "Ask your admin" in phone1103[2]), phone1103)
             page.reload()
             page.wait_for_selector("#watch #watchRotate", timeout=10000)
             check("…the phone chosen is remembered (#284)", js("document.querySelector('#watch .w-os [aria-pressed=true]').dataset.os") == "android")

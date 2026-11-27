@@ -7,6 +7,7 @@
 const SL_HOURS = [[1, "1 hour"], [24, "1 day"], [72, "3 days"], [168, "7 days"], [720, "30 days"], [2160, "90 days"]];
 const SL_STATE = {active: "working", expired: "expired", revoked: "revoked", maker_not_owner: "stopped (its maker is no longer an owner)"};
 
+const SL_PHONE = matchMedia("(max-width:700px)");   // a phone's width, as the drawer's and the menus' (#1103)
 function slRange(from, to) {
   return from && to ? `dated ${fmtD(dayTs(from))} to ${fmtD(dayTs(to))}` : from ? `dated ${fmtD(dayTs(from))} or later`
     : to ? `dated up to ${fmtD(dayTs(to))}` : "of any date";
@@ -76,8 +77,8 @@ function shareLinksPanel(p, {open = false} = {}) {
     const labsPart = el("fieldset", {class: "share-labs"}, el("legend", {text: "Which labs"}),
       el("label", {class: "check"}, allLabs, " Every lab"),
       el("label", {class: "check"}, someLabs, " Only these:", info.labs.length ? null : el("span", {class: "muted", text: " (this profile has no lab results yet)"})), labBox);
-    const yearAgo = isoDay(Date.now() - 365 * 864e5);
-    const from = el("input", {type: "date", value: yearAgo, "aria-label": "From"}), to = el("input", {type: "date", "aria-label": "To"});
+    // (#1103) every record, from the first, unless a date is chosen: what the link holds is said beside it (explain)
+    const from = el("input", {type: "date", "aria-label": "From"}), to = el("input", {type: "date", "aria-label": "To"});
     const hours = el("select", {"aria-label": "Stops working after"}, ...SL_HOURS.map(([h, t]) => el("option", {value: h, text: t})));
     hours.value = "168";
     // not live (#492): drawn again at each key typed in Name, it was all read out again each time; said once as the form opens
@@ -129,15 +130,18 @@ function shareLinksPanel(p, {open = false} = {}) {
       el("div", {class: "share-opts"},
         el("label", {}, "Name, so you know which link it is (only owners see it)", label),
         el("fieldset", {class: "share-sections"}, el("legend", {text: "What it shows"}),
-          ...checks.map(c => el("label", {class: "check"}, c.input, el("span", {}, el("b", {text: c.s.label}), el("span", {class: "muted", text: ` ${c.s.what}`}))))),
+          ...checks.map(c => el("label", {class: "check"}, c.input, el("span", {}, el("b", {text: c.s.label}), el("span", {class: "muted sl-what", text: ` ${c.s.what}`}))))),
         labsPart,
-        el("div", {class: "row"}, el("label", {}, "Records from", from), el("label", {}, "to (empty: no end)", to)),
+        el("div", {class: "row"}, el("label", {}, "Records from (empty: the first)", from), el("label", {}, "to (empty: no end)", to)),
         el("label", {}, "Stops working after", hours)),
       el("div", {class: "share-side"}, sees,
         // Cancel (#498): focus back on New share link, which the form went under, not left on the page
         el("div", {class: "row"}, go, el("button", {class: "btn", type: "button", text: "Cancel", onclick: () => { f.remove(); add.focus({preventScroll: true}); add.scrollIntoView({block: "nearest"}); }}))));
     f.addEventListener("input", explain); f.addEventListener("change", explain);
     explain();
+    // (#1103) on a phone each section is its name alone: what it shows, in full, is in what a holder of the link sees
+    const brief = () => { for (const w of f.querySelectorAll(".sl-what")) w.hidden = SL_PHONE.matches; };
+    brief(); SL_PHONE.addEventListener("change", brief);
     return f;
   }
 
