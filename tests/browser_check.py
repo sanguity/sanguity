@@ -1127,14 +1127,15 @@ def lab_matches_check(browser, base, cookies, check):
         pg.wait_for_selector("#labmatchesBody > *", timeout=15000)
         tests = api("profiles/1/labmaps")[1]["tests"]
         to = next((t for t in tests if t["name"] == "Platelet Count"), tests[0])
-        name = to["name"] + " 1097"   # a name Sanguity doesn't know, like a test the profile has: a Maybe at the review
-        # Keep separate, left as it was beside the Maybe the review offered: saved like a match (#1097, decision 3)
+        name = to["name"].upper() + "."   # a name Sanguity doesn't know, a test the profile has written another way: suggested
+        # Keep separate, chosen at the review (its suggestion emptied): saved like a match (#1097, decision 3)
         pg.goto(base + "/import.html?profile=1")
         pg.wait_for_selector("#importer", state="visible", timeout=10000)
         csv = f"Date,Test,Result,Units,Reference Range\n2026-11-10,{name},250,{to['unit']},150 - 400\n"
         pg.set_input_files("#pickFiles", files=[{"name": "lab-1097.csv", "mimeType": "text/csv", "buffer": csv.encode()}])
         pg.wait_for_function(f"document.querySelectorAll('.import-job').length && /^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
         review = pg.evaluate(f"(() => {{ const tr = {last_card}.querySelector('.imp-labs tbody tr'); return tr && [tr.querySelector('input[list]').value, tr.querySelector('.why')?.textContent || '']; }})()")
+        pg.locator(".import-job").last.locator(".imp-labs input[list]").first.fill("")
         pg.evaluate(f"{last_card}.querySelector('.imp-actions .primary').click()")
         pg.wait_for_function(f"/^(Imported|Not imported)/.test({last_card}.textContent)", timeout=30000)
         iid = max(i["id"] for i in api("profiles/1/imports")[1]["imports"])
@@ -1144,9 +1145,9 @@ def lab_matches_check(browser, base, cookies, check):
         order = pg.evaluate("[...document.querySelectorAll('#sec-names, #labmatches, #sec-ranges')].map(e => e.id)")
         check("Lab name matches (#1097) sits between Names and Ranges in Labs and ranges, as the group lists it",
               order == ["sec-names", "labmatches", "sec-ranges"], order)
-        check("Lab name matches (#1097): Keep separate, left beside a test the review offered, is saved like a match and listed in "
+        check("Lab name matches (#1097): Keep separate, chosen at a review (its suggestion emptied), is saved like a match and listed in "
               "This person → Labs and ranges as kept as its own test, where from, when and by whom, with its import and result counted",
-              review and review[0] == "" and review[1].startswith("Maybe") and any(r[0].startswith(name) and r[0].endswith("kept as its own test")
+              review and review[0] == to["name"] and review[1].startswith("Suggested") and any(r[0].startswith(name) and r[0].endswith("kept as its own test")
               and "by demo" in r[1] and "1 import · 1 result" in r[1] and r[2] == "Change…|Remove" for r in kept), [review, kept])
         # Add a match, through the picker: its saved result moved, with an Undo
         pg.click("#lmAdd")
@@ -2975,7 +2976,7 @@ def main():
         check("no Sources card shows a stray “null”", strict.evaluate(null_cards) == [], strict.evaluate(null_cards))
         strict.goto(base + "/settings.html")
         strict.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
-        check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 11)   # Visit summary (#186)
+        check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 12)   # Visit summary (#186); Lab name matches (#1097)
         check("no Settings card shows a stray “null” (#175)", strict.evaluate(null_cards) == [], strict.evaluate(null_cards))
         check("…and Settings has no Watch and scale any more (#166)", not strict.evaluate("!!document.getElementById('watch')")
               and "Watch and scale" not in strict.evaluate("document.getElementById('setNav').textContent"))
@@ -5701,8 +5702,8 @@ def main():
             settle(300)
             check("…over the page (768 and 1100 px) its Chart these results is there, the chart beside it under the scrim, and puts focus on the "
                   "chart; docked (1400 px) it's left out, the chart in reach (#755)",
-                  all(v == [["Chart these results", "Show them as a table"], ["its chart", True, False]] for k, v in go755.items() if k != 1400)
-                  and go755.get(1400) == [["Show them as a table"]], go755)
+                  all(v == [["Chart these results", "Show them as a table", "Same test as…"], ["its chart", True, False]] for k, v in go755.items() if k != 1400)
+                  and go755.get(1400) == [["Show them as a table", "Same test as…"]], go755)   # (#1097: Same test as… beside them)
             # #723: the first time Labs' charts are drawn in a page (opened on Heatmap or Compare), the axis's height was
             # set only once the browser had observed it, after Chart these results had brought the chart into view with the
             # usual 42 px: with 200% text the chart went under the 78 px axis. Each in a page of its own, with 200% text,
@@ -18478,7 +18479,7 @@ def main():
             page.click(".set-nav-list a[data-group=dashboard]")
             page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
             check("Settings shows every section", js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)") ==
-                  ["Overview", "Lab charts", "Names", "Workouts", "Visit summary", "Milestones", "Tabs", "Appearance", "Dates and times", "Units", "Reference ranges"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
+                  ["Overview", "Lab charts", "Names", "Lab name matches", "Workouts", "Visit summary", "Milestones", "Tabs", "Appearance", "Dates and times", "Units", "Reference ranges"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
             check("…but not the server's sync defaults among them: those, with outside connections, are its Install's (#167, #991), and Connected sources isn't a group",
                   js("document.getElementById('sec-sync').parentElement.matches('main') && !!document.getElementById('outside') && !document.querySelector('.set-nav-list a[data-group=sources]')"
                      " && !!document.querySelector('.set-nav-list a[data-group=outside]')"))
@@ -19338,7 +19339,7 @@ def main():
             page.wait_for_selector("[data-key=labNicknames] button:text-is('Add a row')", timeout=10000)
             check("Names (the labs' nicknames) are under Labs and ranges, beside the reference ranges, and their address opens them there (#402)",
                   js("[document.querySelector('#setNav a[aria-current=page]').dataset.group, ...[...document.querySelectorAll('#sections > section')]"
-                     ".filter(s => s.checkVisibility()).map(s => s.id)]") == ["labs", "sec-names", "sec-ranges"],
+                     ".filter(s => s.checkVisibility()).map(s => s.id)]") == ["labs", "sec-names", "labmatches", "sec-ranges"],   # (#1097: its lab name matches between)
                   js("[...document.querySelectorAll('#sections > section')].filter(s => s.checkVisibility()).map(s => s.id)"))
             page.click("[data-key=labNicknames] button:text-is('Add a row')")
             page.fill("[data-key=labNicknames] .set-line:last-child input[data-k=from]", first)
