@@ -427,13 +427,43 @@ def install_about(s=Depends(admin)):
 
 class RestartValues(BaseModel):
     values: dict[str, Any]
+    confirm: Any = None   # (#1131's review) trusting every address's forwarded headers is typed to confirm
+
+
+TRUST_ALL = "trust everyone"   # typed to confirm the trusted proxies "*" (or 0.0.0.0/0, ::/0)
+
+
+def _proxies_guard(request, value, typed):
+    """(#1131's review) The trusted proxies a change would put in force (value: as proxies() gives it). A list that leaves
+    out the proxy this request came through is refused: after a restart the server would take that proxy's address for
+    every visitor's, and might no longer see HTTPS. Trusting everyone ("*") is asked first (_confirmed's 409), since any
+    client that can reach the app could then claim any address."""
+    peer = request.scope.get("sanguity.peer")   # the address it came through, before the forwarded headers (PeerKept)
+    if peer and (peer != (request.client.host if request.client else None) or "x-forwarded-for" in request.headers) \
+            and not server_settings.proxies_cover(value, peer):
+        raise HTTPException(409, f"Not saved: this page reached the server through a proxy at {peer}, which that list leaves "
+                                 "out. After a restart the server would take the proxy's address for every visitor's (sign-in "
+                                 f"limits, the activity log) and might not see HTTPS. Add {peer} to the list.")
+    if value == "*" and server_settings.next_values().get("FORWARDED_ALLOW_IPS") != "*" and _said(typed) != _said(TRUST_ALL):
+        goes = {"count": 1, "type": TRUST_ALL, "title": "Trust every address's forwarded headers?", "action": "Trust everyone",
+                "message": "With * (or 0.0.0.0/0, ::/0), any client that can reach the app can claim to be any address and to "
+                           "have come over HTTPS: sign-in limits, the activity log and the Secure cookie would believe it. "
+                           "Only where nothing but your own proxy can reach the app (as in Sanguity's Docker templates)."}
+        raise HTTPException(409, {"code": "confirm", "message": f"{goes['message']} Type {TRUST_ALL} to confirm.", "confirm": goes})
 
 
 def _restart_state():
     st = server_settings.state()
     if not settings.connected_sources():   # (#1096) none of theirs while they're off, as About's limits
         st["settings"] = [r for r in st["settings"] if r["group"] != "Connected sources"]
-    return {**st, "settings_at": general.KINDS[general.deployment()]["settings"], "deployment": general.deployment()}
+    kind = general.deployment()
+    # (#1131's review) Restart now's question: it starts again only where something restarts it
+    says = ("Sanguity stops, and starts again only because its container restarts it automatically (" +
+            general.KINDS[kind]["name"] + ": Sanguity's template restarts it unless stopped)." if kind != "other" else
+            "Sanguity stops. This server wasn't started by one of Sanguity's templates (SANGUITY_DEPLOYMENT isn't set), so "
+            "nothing is known to start it again: unless its container or service restarts it automatically, it stays "
+            "stopped until you start it yourself.")
+    return {**st, "settings_at": general.KINDS[kind]["settings"], "deployment": kind, "restart_says": says}
 
 
 def _restart_label(name):
@@ -461,9 +491,11 @@ def restart_values(body: RestartValues, request: Request, s=Depends(admin), db=D
             raise HTTPException(409, f"“{d.label}” is set by the server's environment ({name}), so it can't be changed here. "
                                      f"To change it here, take {name} out of where the server is set up and start it again.")
         try:
-            None if v is None or v == "" else d.check(v)
+            v = d.default if v is None or v == "" else d.check(v)
         except server_settings.Refused as e:
             raise HTTPException(400, str(e))
+        if name == "FORWARDED_ALLOW_IPS":
+            _proxies_guard(request, v, body.confirm)
     fresh(request, s, "change a server setting")
     try:
         changed = server_settings.change(body.values, by=s["username"])

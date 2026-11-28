@@ -97,16 +97,37 @@ def proxies(v):
             out.append(item)
             continue
         try:
-            n = str(ipaddress.ip_address(item)) if "/" not in item else str(ipaddress.ip_network(item, strict=False))
+            n = ipaddress.ip_address(item) if "/" not in item else ipaddress.ip_network(item, strict=False)
         except ValueError:
             raise Refused(f"“{item[:60]}” isn't an address (like 172.18.0.2) or a network (like 172.16.0.0/12).") from None
+        n = "*" if getattr(n, "prefixlen", None) == 0 else str(n)   # 0.0.0.0/0 and ::/0 trust everyone, as * does
+        if n == "*":
+            out.append(n)
+            continue
         if n not in out:
             out.append(n)
     if not out:
         raise Refused("Give at least one trusted proxy: 127.0.0.1 is the server's own machine.")
     if "*" in out and len(out) > 1:
-        raise Refused("* already trusts every address: give it alone.")
+        raise Refused("* (or 0.0.0.0/0, ::/0) already trusts every address: give it alone.")
     return ", ".join(out)
+
+
+def proxies_cover(value, address):
+    """Whether the trusted proxies value (as proxies() gives it) trusts address (a request's peer)."""
+    if value == "*":
+        return True
+    try:
+        a = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    for item in value.split(", "):
+        try:
+            if a in ipaddress.ip_network(item, strict=False):
+                return True
+        except ValueError:
+            continue
+    return False
 
 
 def _zones():
@@ -410,6 +431,28 @@ def log_start(db):
     _state["fell_back"] = None
 
 
+class PeerKept:
+    """The app python -m server runs, outside uvicorn's ProxyHeadersMiddleware: the address each request came through
+    (its peer, before a trusted proxy's X-Forwarded-For replaces it) kept in scope["sanguity.peer"], so a change to
+    the trusted proxies can refuse a list that leaves out the proxy it came through (routes_settings.py)."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] in ("http", "websocket"):
+            c = scope.get("client")
+            scope["sanguity.peer"] = c[0] if c else None
+        await self.app(scope, receive, send)
+
+
+def asgi_app(app, forwarded_allow_ips):
+    """main.app as python -m server serves it: forwarded headers believed from forwarded_allow_ips (uvicorn's own
+    middleware, as its proxy_headers does), with each request's peer kept (PeerKept)."""
+    from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+    return PeerKept(ProxyHeadersMiddleware(app, trusted_hosts=forwarded_allow_ips))
+
+
 def uvicorn_options():
     """What python -m server gives uvicorn: the address it binds (Docker's: HOST and PORT) and whose forwarded
     headers it believes (FORWARDED_ALLOW_IPS: the environment's, else the file's, else this machine's own only)."""
@@ -426,13 +469,28 @@ def lookup(name):
     if name in config.VARS:
         return config.lookup(name)
     text = os.environ.get(name, "").strip()
-    if text:
+    if text:   # the environment's always wins, even one these checks wouldn't take (#1131's review): never dropped
         try:
             return "environment", d.read(text)
         except (Refused, ValueError):
-            pass
+            _unread(name, text)
+            # a text one as it's set (uvicorn reads the proxies its own way: Cloudflare's 22 ranges, "unix:"), a number
+            # at its default, as the receiver reads one it can't
+            return "environment", text if d.kind != "number" else d.default
     have = in_force()
     return ("file", have[name]) if name in have else ("default", d.default)
+
+
+_warned = set()
+
+
+def _unread(name, text):
+    """Said once per value: one the environment sets that this page's checks wouldn't take, used as it's set."""
+    if (name, text) not in _warned:
+        _warned.add((name, text))
+        import logging
+        logging.getLogger("sanguity").warning("%s is set in the environment to a value Settings → General wouldn't take; "
+                                              "it's used as it's set (the environment's always wins)", name)
 
 
 def state():
