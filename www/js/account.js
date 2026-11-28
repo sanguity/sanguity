@@ -211,16 +211,42 @@ async function adminAgain(m) {
 /* ---------------------------------------------------------------- passkeys */
 const guessName = () => { const d = device(navigator.userAgent); return d === "Browser" ? "Passkey" : d.replace(/^\w+ on /, ""); };
 async function loadPasskeys() {
-  const st = await call("me/passkeys?origin=" + encodeURIComponent(location.origin));
-  say("#pkMsg", "");
-  const usable = passkeysWork() && !st.problem;
+  // the card's own words first, and each part below drawn whatever happens to another (#1117: the list not loaded
+  // left the card its heading alone, no list and no Add, nothing said, though the passkeys still signed in)
   $("#pkHint").textContent = "Face ID, Touch ID, Windows Hello, your phone or a security key, on its own or after your password.";
+  let st;
+  try { st = await call("me/passkeys?origin=" + encodeURIComponent(location.origin)); }
+  catch (e) { $("#pkWhy").hidden = true; $("#pkBody").replaceChildren(); pkUnloaded(e); return; }
+  say("#pkMsg", "");
+  // the server's list, whatever this browser can do; Add where it can make one, else why not
+  const usable = passkeysWork() && !st.problem;
   // what's in the way, to act on, stays in full (#280), its addresses links to this page there (#540: as words, no path)
-  $("#pkWhy").replaceChildren(...(usable ? "" : st.problem || "This browser can't make passkeys here: open Sanguity at its https:// address.")
+  $("#pkWhy").replaceChildren(...(usable ? "" : st.problem || pkCant())
     .split(/(https?:\/\/[\w.:[\]-]*[\w\]])/).map((t, i) => i % 2 ? el("a", {href: t + location.pathname, text: t}) : t));
   $("#pkWhy").hidden = usable;
+  try { pkList(st); } catch (e) { pkUnloaded(e); }
+  if (!usable) $("#pkBody").replaceChildren();
+  else pkAdd();
   if (usable && st.user_handle)   // the device can forget passkeys removed here (or on another device)
     passkeySignalAccepted(st.site, st.user_handle, st.passkeys.filter(k => k.here).map(k => k.credential_id));
+}
+/* why this browser can't make one here when the server sees nothing in the way: a page that isn't secure, else a browser
+   without passkeys (#1117: it said to open the https:// address, the one it was at) */
+const pkCant = () => !window.isSecureContext ? "This browser can't make passkeys here: open Sanguity at its https:// address."
+  : "This browser can't make passkeys. Add one in a browser or on a device that can, such as Chrome, Safari, Edge or Firefox: it's listed here too.";
+/* the list not loaded, or not drawn (#1117: the card was left bare, nothing said): why, and Try again, focus then on
+   the list drawn, else the Add form, else the card's heading */
+function pkUnloaded(e) {
+  console.warn("passkeys not shown:", e);
+  const m = el("span", {class: "msg"});
+  $("#pkList").replaceChildren(el("p", {class: "row"}, m, el("button", {class: "btn small", type: "button", text: "Try again", onclick: async () => {
+    await loadPasskeys();
+    focusNear([$("#pkList"), $("#pkBody")], 0, ":is(input, button)", $("#passkeys h2"));
+  }})));
+  sayIn(m, `Your passkeys couldn't be loaded: ${e.message}`, true);
+}
+/* the account's passkeys, each with Rename and Remove */
+function pkList(st) {
   const last = st.passkeys.length === 1 && st.required && !st.authenticator_app;
   $("#pkList").replaceChildren(st.passkeys.length ? el("table", {class: "tbl pk"},
     el("thead", {}, el("tr", {}, ...["Name", "Added", "Last used", ""].map(thOf))),
@@ -260,7 +286,9 @@ async function loadPasskeys() {
               pkFocus(at); }})));
     }))) : emptyState("No passkeys yet: each one you add is listed here, with when it was last used.", null, {cls: ""}));   // (#494)
   if (last) $("#pkList").append(el("p", {class: "hint", text: "This server requires two-factor sign-in, so your only passkey can't be removed until you add another or turn on the authenticator app."}));
-  if (!usable) { $("#pkBody").replaceChildren(); return; }
+}
+/* Add a passkey: its name, your password */
+function pkAdd() {
   const pw = el("input", {type: "password", autocomplete: "current-password", placeholder: "Your password", "aria-label": "Your password", required: true});
   const nm = el("input", {value: guessName(), maxlength: 60, placeholder: "Name, e.g. My phone", "aria-label": "Passkey name"});
   $("#pkBody").replaceChildren(el("form", {class: "row", onsubmit: async ev => { ev.preventDefault();

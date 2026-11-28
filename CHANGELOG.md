@@ -3992,6 +3992,10 @@ Everything on `main` so far; it becomes the first tagged release.
   not drawn no longer pads the end by a whole window); the "Not medical advice" notice is centred; the foot names the
   version (General → About for an admin), links the source code and where to report a problem, and says when the
   records were imported in place of the build's file name.
+- **Passkeys never left blank** (#1117): when your passkeys can't be loaded, Settings → You → Sign-in and security
+  says why, with Try again. Before, it showed only the card's heading: no list, no Add and no message. The list and
+  Add are drawn separately. A browser that can't make passkeys at an https:// address now says that, not "open its
+  https:// address".
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 
