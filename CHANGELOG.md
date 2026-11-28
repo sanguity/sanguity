@@ -4067,6 +4067,13 @@ Everything on `main` so far; it becomes the first tagged release.
   glucose reading typed in or sent by the phone after its last day ended every period before it (its mark not drawn,
   its tooltip found at the edge); a long period's first and newest weeks, whose Thursdays fall outside it, are drawn
   at its ends; a week alone is a dot.
+- **Settings → Dashboard by tab** (#1165): a section per tab it changes, each named by it with a link to it:
+  Overview (Start from a condition, key labs, home readings), Labs (Lab charts before: the labs charted at first and
+  saved views), Body and activity (Workouts, a group of its own before), Costs (the tax year's first month, chosen on
+  Costs until now) and Tabs. Every lab in the records is listed to tick, by panel, searchable, each with its results
+  and latest date, "6 of 12 labs chosen"; a change says what it did, with an Undo where it took something out; the
+  control used stays where it was on the screen, and Save leaves the sections drawn as they are. #activity,
+  #sec-trends and the palette's words find each part.
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 

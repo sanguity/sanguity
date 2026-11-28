@@ -146,7 +146,7 @@ function presetsBlock(sec) {
     const conds = picked.map(byId);
     out.hidden = !conds.length;
     if (!conds.length) { sayIn(msg, ""); return; }
-    const plan = presetPlan(conds, replace(), viewsBox.checked, sumBox.checked);
+    const plan = presetPlan(conds, replace(), viewsBox.checked, sumBox.checked), had = out.contains(document.activeElement) && document.activeElement;   // (#1165: kept, below)
     const {missing, from} = presetLabs(conds), before = SET_ITEMS["overview.keyLabs"].value();
     const several = conds.length > 1;   // which conditions a lab is from, said once there's more than one (#187)
     const fromText = names => "From " + presetText(names.map(presetShort));
@@ -189,6 +189,7 @@ function presetsBlock(sec) {
       el("label", {class: "check"}, viewsBox, `Also save a view on Labs for each condition, with its labs that have results`),
       secs.length && tick ? el("label", {class: "check"}, sumBox, `Also tick ${presetText(secs)} in the visit summary at first`) : null,
       el("div", {class: "set-add"}, fill, msg)].filter(Boolean));
+    if (had && had.isConnected && had !== document.activeElement) had.focus({preventScroll: true});   // the choice, a tick or Fill used: drawn again around it, focus stays (#1165)
   }
   const HOME_TILE_NAMES = {bp: "Blood pressure", glucose: "Blood glucose", temp: "Body temperature"};
 
@@ -202,7 +203,7 @@ function presetsBlock(sec) {
       const it = SET_ITEMS[key];
       if (!(k in plan) || !it || same(it.value(), plan[k])) continue;
       it.put(plan[k]);
-      where.push(k === "views" ? "Saved views (Lab charts)" : k === "ticked" ? "the visit summary's ticks" : it.st.label);
+      where.push(k === "views" ? "Saved views (Labs)" : k === "ticked" ? "the visit summary's ticks" : it.st.label);
     }
     sayIn(msg, where.length ? `Filled in: ${presetText(where)}. Save to keep ${where.length === 1 ? "it" : "them"}, or Discard.`
       : "Nothing to change: these are filled in already.");

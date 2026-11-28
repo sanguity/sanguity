@@ -291,9 +291,9 @@ KEY_LABS = ["Hemoglobin", "Platelet Count", "WBC", "Automated Abs Neutrophil Cnt
             "ALT", "AST", "Total Bilirubin", "Potassium, Blood", "Sodium, Blood", "Magnesium"]
 
 section("overview", "Overview", "The tiles at the top of the Overview tab: key labs, and readings taken at home if you choose them.")
-section("trends", "Lab charts", "What the Labs tab charts before you pick anything.")
+section("trends", "Labs", "What the Labs tab charts before you pick anything, and the views saved for it.")   # (#1165: named by its tab)
 section("names", "Names", "Shorter or clearer names shown instead of the ones in the records.")
-section("health", "Workouts", "How the Body and activity tab counts workouts.")   # named as its group is (#409)
+section("health", "Body and activity", "How the Body and activity tab counts workouts.")   # named by its tab, in Dashboard (#1165; Workouts, its own group, #409)
 
 define("overview.keyLabs", "overview", "Key labs", KEY_LABS, lab_list(), kind="tiles",
        help="One tile each, in this order, for the labs this profile has results for.\nWhile this is the default list "
@@ -973,9 +973,9 @@ def _groups_check(v):
 
 
 section("costs", "Costs", "The month a tax year starts in, for Costs' tax-year report.")
-define("costs.taxStart", "costs", "Tax year starts in", 1, whole(1, 12, "The tax year's first month"), kind="month", screen=False,
-       private=False, help="The first month of the tax year (1, January, for the calendar year). Costs' tax-year report "
-                           "(taxreport.py, #1136) sums the payments from it.")
+# (#1165) on Settings → Dashboard too, as Costs' own (taxreport.py, #1136)
+define("costs.taxStart", "costs", "Tax year starts in", 1, whole(1, 12, "The tax year's first month"), kind="month",
+       private=False, help="The tax-year report on Costs sums the payments from this month. January is the calendar year.")
 section("journal", "Journal", "Symptom groups: your own named sets of symptoms, logged in one go.")
 define("journal.groups", "journal", "Symptom groups", [], _groups_check, kind="groups", screen=False,
        help="Named sets of symptoms, such as “Migraine day”: headache, nausea, light sensitivity. Each is logged with "

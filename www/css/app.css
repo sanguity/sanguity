@@ -1277,6 +1277,14 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .sets .set-count{font-size:var(--fs-2)}
 .sets .set-check{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
 .sets .set-sugg{display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap;margin-top:var(--sp-2);max-width:720px}
+/* (#1165) Dashboard: a section's link to its tab beside its name; every lab in the records to choose from (settings.js
+   labPicker), in the conditions' box (.pre-list, below) */
+.sets .set-hd>.set-tab{margin-right:auto;font-size:var(--fs-3)}
+.sets .set-tab,.sets .set-tab a{display:inline-flex;align-items:center;gap:var(--sp-1);flex-wrap:wrap}
+.sets .set-pick{max-width:560px}
+.sets .set-pick.narrowed{min-height:18rem}   /* as .pre-list's most, below: the page's foot stays where it is as a name is typed */
+.sets .set-pick-n{margin:var(--sp-3) 0 var(--sp-1)}
+.sets .set-pick-fold{margin-top:var(--sp-2)}
 .sets .set-ph{margin:var(--sp-3) 0 var(--sp-2);font-size:var(--fs-3);font-weight:var(--fw-semibold);color:var(--ink2)}   /* an h4 under a setting's h3, at its weight (#331) */
 .sets .set-preview{--tile:150px;margin-bottom:calc(var(--sp-2) - var(--sp-3));max-width:720px}   /* 8 px under the tiles' own (#351) */
 .sets .set-preview .set-wide,.sets .set-preview>p{grid-column:1 / -1;margin:0 0 var(--sp-3)}

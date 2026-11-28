@@ -1782,6 +1782,230 @@ def insurance_check(browser, base, cookies, check):
     return errs
 
 
+# (#1165) where a control is on the screen, the page's scroll, and focus: before and after each edit in Dashboard
+HOLD1165 = """e => { const r = e.getBoundingClientRect(), a = document.activeElement, q = a.getBoundingClientRect();
+  return {y: scrollY, top: r.top, focus: a.getAttribute('aria-label') || a.value || a.id || a.tagName, ftop: q.top, fin: q.bottom > 0 && q.top < innerHeight}; }"""
+
+
+def dashboard_edit_check(browser, base, cookies, check):
+    """Settings → This person → Dashboard by tab (#1165), as an owner whose sign-in cookies are given, on profile 1: a
+    section per tab it changes (Overview, Labs, Body and activity, Costs, then Tabs), each named by its tab with a link
+    to it; every lab in the records to tick under Key labs and Labs selected at first, by panel, with its results and
+    latest date, a count, narrowed as a name is typed; each change said, with an Undo where it took something out. At
+    412 and 1400 px, each edit measured: a control kept stays where it was on the screen (within 1 px), one gone leaves
+    focus on the next one in sight, the page not moving; a move keeps the page; Save leaves the cards as they are, the
+    control used in place. #activity and #sec-trends open their sections, the palette finds them by their old words,
+    Costs' tax year is chosen here. At 320–1400 px, text at 200%, light and dark (axe-core), forced colours. Leaves
+    profile 1's settings as it found them. Returns the pages' script errors."""
+    ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
+    ctx.add_cookies(cookies)
+    pg, errs = ctx.new_page(), []
+    pg.on("pageerror", lambda e: errs.append(str(e)))
+    api = lambda path, method="GET", body=None: pg.evaluate(  # noqa: E731
+        "([p, m, b]) => fetch('api/' + p, {method: m, headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, "
+        "body: b == null ? undefined : JSON.stringify(b)}).then(async r => [r.status, await r.json().catch(() => null)])", [path, method, body])
+    keys = ("overview.keyLabs", "overview.homeTiles", "trends.defaultLabs", "trends.views", "tabs", "costs.taxStart")
+    T, D = "#sec-overview [data-key='overview.keyLabs']", "#sec-trends [data-key='trends.defaultLabs']"
+    was = None
+
+    def restore():   # profile 1's settings as they were
+        for k, st in (was or {}).items():
+            if st["from"] == "default":
+                api(f"profiles/1/settings/{k}", "DELETE")
+            else:
+                api(f"profiles/1/settings/{k}", "PUT", {"value": st["value"]})
+
+    def open_dash(w, hash="dashboard"):
+        pg.set_viewport_size({"width": w, "height": 900})
+        pg.goto("about:blank")   # (the same address again would only scroll to its hash: drawn afresh)
+        pg.goto(base + "/settings.html?profile=1#" + hash)
+        pg.wait_for_selector(f"{T} .set-pick label[data-lab]", timeout=15000)
+        pg.wait_for_load_state("networkidle")
+        pg.wait_for_timeout(300)
+
+    def edit(sel, do):
+        """the control (sel), where it and focus are before and after do(it), once the page has drawn it"""
+        loc = pg.locator(sel).first
+        loc.evaluate("e => e.scrollIntoView({block: 'center'})")   # (mid-screen: clear of the group's bar at the foot, and nothing to scroll for the click)
+        pg.wait_for_timeout(100)
+        h = loc.element_handle()
+        a = pg.evaluate(HOLD1165, h)
+        do(loc)
+        pg.wait_for_timeout(250)
+        b = pg.evaluate(HOLD1165, h)
+        b["kept"] = pg.evaluate("e => e.isConnected && e.getClientRects().length > 0", h)
+        return a, b
+
+    try:
+        pg.goto(base + "/settings.html?profile=1#dashboard")
+        secs = (api("profiles/1/settings/sections")[1] or {}).get("sections") or []
+        was = {st["key"]: st for sec in secs for st in sec["settings"] if st["key"] in keys}
+        data = api("profiles/1/data")[1]
+        names = sorted({s["name"] for s in data["labs"] if not s.get("watch") and s.get("pts")})
+        open_dash(1400)
+        lay = pg.evaluate("""[...document.querySelectorAll('#sections > section')].filter(s => s.checkVisibility())
+          .map(s => [s.id, s.querySelector('h2').textContent, s.querySelector('.set-hd > .set-tab a')?.getAttribute('href')
+            || (s.querySelector('.set-hd > .set-tab')?.textContent.startsWith('This tab is hidden') ? 'hidden' : null)])""")
+        hid = pg.evaluate("SET_ITEMS.tabs.value().hidden")   # (a hidden one's: that it's hidden, below)
+        link = lambda t: "hidden" if t in hid else f"./?profile=1#{t}"  # noqa: E731
+        check("Dashboard by tab (#1165): a section per tab it changes, each named by it with a link to it, then Tabs",
+              lay == [["sec-overview", "Overview", link("overview")], ["sec-trends", "Labs", link("labs")],
+                      ["sec-health", "Body and activity", link("health")], ["sec-costs", "Costs", link("costs")], ["sec-tabs", "Tabs", None]], [lay, hid])
+        pick = pg.evaluate("""sel => { const p = document.querySelector(sel + ' .set-pick'), chosen = SET_ITEMS['overview.keyLabs'].value();
+          return {labs: [...p.querySelectorAll('fieldset:not([hidden]) label[data-lab]')].filter(l => !l.closest('fieldset').querySelector('legend').textContent.startsWith('Not in')).map(l => l.dataset.lab).sort(),
+            legends: [...p.querySelectorAll('fieldset:not([hidden]) > legend')].map(l => l.textContent),
+            said: [...p.querySelectorAll('label[data-lab]')].every(l => /\\d+ results?, latest \\S/.test(l.textContent) || l.textContent.includes('no results here')),
+            ticked: [...p.querySelectorAll('label[data-lab] input')].every(i => i.checked === chosen.includes(i.value)),
+            count: p.previousElementSibling.textContent, n: chosen.filter(n => LAB_NAMES.includes(n)).length}; }""", T)
+        check("…Key labs lists every lab in the records to tick, by panel, each with its results and latest date, the chosen ones "
+              "ticked, and a count", pick["labs"] == names and len(pick["legends"]) >= 2 and pick["said"] and pick["ticked"]
+              and pick["count"] == f"{pick['n']} of {len(names)} lab{'s' if len(names) != 1 else ''} chosen", {**pick, "labs": len(pick["labs"]), "want": len(names)})
+        pg.fill(f"{T} .set-add input", "hem")
+        pg.wait_for_timeout(150)
+        found = pg.evaluate("""sel => [[...document.querySelectorAll(sel + ' .set-pick label[data-lab]')].filter(l => l.checkVisibility()).map(l => l.textContent.toLowerCase().includes('hem')),
+          document.querySelector(sel + ' .set-pick-n').textContent]""", T)
+        pg.fill(f"{T} .set-add input", "")
+        check("…narrowed as a name is typed, saying how many match", found[0] and all(found[0]) and re.match(r"\d+ match “hem” · ", found[1]), found)
+
+        moves, bad = {}, []
+        for w in (1400, 412):
+            restore()
+            open_dash(w)
+            js_n = lambda: pg.evaluate("SET_ITEMS['overview.keyLabs'].value()")  # noqa: E731
+            first = js_n()
+            # a lab ticked off in the picker and back: the box stays where it was, focus on it, said with an Undo
+            lab = pg.evaluate("sel => [...document.querySelectorAll(sel + ' .set-pick label[data-lab] input')].find(i => i.checked)?.value", T)
+            box = f"{T} .set-pick label[data-lab=\"{lab}\"] input"
+            moves[f"{w} untick"] = edit(box, lambda l: l.uncheck())
+            said = pg.evaluate("sel => [document.querySelector(sel + ' .set-list > .msg').textContent, SET_ITEMS['overview.keyLabs'].value()]", T)
+            moves[f"{w} Undo"] = edit(f"{T} .set-list > .msg button", lambda l: l.click())
+            undone = [pg.evaluate("sel => document.querySelector(sel + ' .set-list > .msg').textContent", T), js_n() == first]
+            moves[f"{w} tick"] = edit(box, lambda l: l.uncheck())
+            moves[f"{w} tick back"] = edit(box, lambda l: l.check())
+            # a lab's Remove (its menu's, on a phone): focus on the next one's
+            if w > 700:
+                moves[f"{w} Remove"] = edit(f"{T} li[data-i='1'] button[aria-label^='Remove ']", lambda l: l.click())
+            else:
+                pg.locator(f"{T} li[data-i='1'] [data-act=more]").click()
+                moves[f"{w} Remove"] = edit(f"{T} li[data-i='1'] .menu-item:text-is('Remove')", lambda l: l.click())
+            moves[f"{w} reorder"] = edit(f"{T} li[data-i='0'] [data-act=grip]", lambda l: l.press("ArrowDown"))
+            # Labs selected at first: a lab added by name, one ticked in the picker, one taken out
+            pg.fill(f"{D} .set-add input", "")
+            moves[f"{w} labs tick"] = edit(f"{D} .set-pick label[data-lab] input:not(:checked)", lambda l: l.check())
+            moves[f"{w} labs Remove"] = edit(f"{D} li[data-lab] button", lambda l: l.click())
+            # a view added and taken out; a tab hidden and moved
+            moves[f"{w} add view"] = edit("#sec-trends button[aria-label='Add a view']", lambda l: l.click())
+            moves[f"{w} remove view"] = edit("#sec-trends .set-view:last-child button:text-is('Remove')", lambda l: l.click())
+            moves[f"{w} tab hidden"] = edit("#sec-tabs input[data-tab=timeline]", lambda l: l.click())   # (hidden, or shown if it was hidden)
+            tab_said = pg.evaluate("document.querySelector('#sec-tabs .msg').textContent")
+            moves[f"{w} tab reorder"] = edit("#sec-tabs li[data-i='1'] [data-act=grip]", lambda l: l.press("ArrowDown"))
+            # Save: the cards stay as they are, the control used in place
+            pg.evaluate("window._cards1165 = [...document.querySelectorAll('#sections > section')]")
+            moves[f"{w} Save"] = edit("#sec-tabs input[data-tab=timeline]", lambda l: pg.click("#setBar button:text-is('Save')"))
+            pg.wait_for_function("document.getElementById('setBar').hidden && document.querySelector('#sec-tabs .set-msg').textContent.startsWith('Saved')", timeout=10000)
+            kept = pg.evaluate("window._cards1165.every(c => c.isConnected) && document.getElementById('setBar').hidden")
+            moved = moves[f"{w} Save"]
+            moved[1].update(pg.evaluate(HOLD1165, pg.locator("#sec-tabs input[data-tab=timeline]").element_handle()))
+            check(f"…at {w} px: a lab ticked off says so with an Undo, which puts it back; a tab hidden says so; Save leaves every card as it is",
+                  said[0] == f"{pg.evaluate('n => nick(n)', lab)} taken out. Undo" and lab not in said[1] and undone == [f"{pg.evaluate('n => nick(n)', lab)} put back.", True]
+                  and tab_said in ("Timeline hidden. Undo", "Timeline shown. Undo") and kept, [said, undone, tab_said, kept])
+            for k, (a, b) in moves.items():
+                if not k.startswith(str(w)):
+                    continue
+                if k.endswith("reorder"):   # focus with the row, the page as it was
+                    ok = abs(b["y"] - a["y"]) < 1 and b["focus"].startswith("Reorder ")
+                elif b["kept"]:          # the control stays where it was on the screen
+                    ok = abs(b["top"] - a["top"]) < 1.5
+                else:                    # gone: focus on the next one, in sight, the page as it was
+                    ok = b["fin"] and b["focus"] != "BODY" and (abs(b["y"] - a["y"]) < 1 or abs(b["ftop"] - a["top"]) < 1.5)
+                if not ok:
+                    bad.append([k, a, b])
+        check("…and at 412 and 1400 px each edit (a tick, an Undo, a Remove, a move, a view, a tab, Save) keeps the control used where it was "
+              "on the screen, or focus on the next one in sight, the page not jumping", not bad, bad[:4])
+
+        # a hidden tab's section: no link to another tab, but that it's hidden and Show it, which shows it in Tabs
+        open_dash(1400)
+        if not pg.is_checked("#sec-tabs input[data-tab=labs]"):
+            pg.check("#sec-tabs input[data-tab=labs]")
+            pg.wait_for_timeout(200)
+        pg.uncheck("#sec-tabs input[data-tab=labs]")
+        pg.wait_for_timeout(200)
+        off = pg.evaluate("[document.querySelector('#sec-trends .set-tab').textContent, !!document.querySelector('#sec-trends .set-tab a'), "
+                          "document.querySelector('#sec-overview .set-tab a')?.getAttribute('href')]")
+        a, b = edit("#sec-trends .set-tab button", lambda l: l.click())
+        on = pg.evaluate("""[document.activeElement.textContent, document.activeElement.getAttribute('href'), document.querySelector('#sec-tabs input[data-tab=labs]').checked,
+          document.querySelector('#sec-tabs .msg').textContent, SET_ITEMS.tabs.value().hidden.includes('labs')]""")
+        pg.click("#sec-tabs .msg button:text-is('Undo')")
+        undone = pg.evaluate("[document.querySelector('#sec-trends .set-tab').textContent, document.querySelector('#sec-tabs input[data-tab=labs]').checked]")
+        check("…a hidden tab's section says so, with Show it in place of its link; Show it shows it in Tabs, said with an Undo, focus on the link back, "
+              "the page not moving", off == ["This tab is hiddenShow it", False, "./?profile=1#overview"]
+              and on == ["Open Labs", "./?profile=1#labs", True, "Labs shown. Undo", False] and abs(b["y"] - a["y"]) < 1
+              and undone == ["This tab is hiddenShow it", False], [off, on, a, b, undone])
+        pg.click("#setBar button:text-is('Discard')")
+
+        # old addresses and the palette's words
+        olds = {}
+        for h, sec in (("activity", "sec-health"), ("sec-trends", "sec-trends"), ("sec-overview", "sec-overview")):
+            pg.set_viewport_size({"width": 1400, "height": 900})
+            pg.goto(base + "/settings.html?profile=1#" + h)
+            pg.wait_for_selector(f"#{sec}", timeout=10000)
+            pg.wait_for_timeout(1200)
+            olds[h] = pg.evaluate("id => [document.getElementById('groupTitle').textContent, (r => r.top >= 0 && r.top < innerHeight)(document.getElementById(id).getBoundingClientRect())]", sec)
+        pals = {}
+        for q in ("workouts", "lab charts", "tax year"):
+            pg.keyboard.press("Control+k")
+            pg.wait_for_selector("#palQ", timeout=5000)
+            pg.fill("#palQ", q)
+            pg.wait_for_timeout(300)
+            pals[q] = pg.evaluate("[...document.querySelectorAll('#palList [role=option]')].map(o => o.textContent)")
+            pg.keyboard.press("Escape")
+        check("…old addresses open each part (#activity, Workouts' group before, is Body and activity's), and the palette finds them by their words",
+              all(v == ["Dashboard", True] for v in olds.values()) and "Body and activity, Settings › Dashboard" in pals["workouts"]
+              and "Labs, Settings › Dashboard" in pals["lab charts"] and "Costs, Settings › Dashboard" in pals["tax year"], [olds, pals])
+        # Costs' tax year, chosen here, saved as it's picked
+        open_dash(1400)
+        month = 5 if pg.input_value("#sec-costs select") == "4" else 4
+        pg.select_option("#sec-costs select", str(month))
+        pg.wait_for_function("document.querySelector('#sec-costs .set-msg').textContent.startsWith('Saved')", timeout=10000)
+        check("…Costs' tax year's first month is chosen here, saved as it's picked", api("profiles/1/settings")[1]["costs"]["taxStart"] == month)
+
+        # 320–1400 px, text at 200%, light and dark, forced colours
+        fits, axes = {}, []
+        for w in (320, 412, 768, 1400):
+            pg.set_viewport_size({"width": w, "height": 900})
+            pg.wait_for_timeout(150)
+            o = pg.evaluate("document.documentElement.scrollWidth - innerWidth")
+            if o:
+                fits[w] = o
+        pg.set_viewport_size({"width": 412, "height": 900})
+        big = pg.add_style_tag(content=BIG_TEXT_CSS)
+        pg.wait_for_timeout(200)
+        fits["200%"] = pg.evaluate("document.documentElement.scrollWidth - innerWidth") or None
+        big.evaluate("s => s.remove()")
+        for w in (412, 1400):
+            pg.set_viewport_size({"width": w, "height": 900})
+            for theme in ("light", "dark"):
+                pg.emulate_media(color_scheme=theme)
+                pg.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
+                pg.wait_for_timeout(200)
+                clear_of_bar(pg)
+                axes += axe_check(pg, f"Dashboard {w} {theme}")[0]
+        pg.evaluate("delete document.documentElement.dataset.theme")
+        pg.emulate_media(color_scheme=None, forced_colors="active")
+        pg.wait_for_timeout(200)
+        forced = pg.evaluate(f"""[...document.querySelectorAll("{T} .set-pick input")].every(i => i.checkVisibility())
+          && [...document.querySelectorAll('#sec-overview .set-tab')].every(a => a.checkVisibility())""")
+        pg.emulate_media(forced_colors="none")
+        check("…Dashboard fits from 320 to 1400 px and with text at 200%, axe-core finds nothing serious light or dark, and its ticks and links "
+              "show in forced colours", not any(fits.values()) and not axes and forced, [fits, axes[:4], forced])
+    finally:
+        try:
+            restore()
+        finally:
+            ctx.close()
+    return errs
+
+
 def clear_of_bar(page):
     """Scroll up just enough that no control lies half under the sticky top bar, before axe looks at a part scrolled
     into view: axe counts a control the bar half covers as too small a target (2.5.8), so where the scroll happened to
@@ -4068,7 +4292,7 @@ def main():
             strict.wait_for_selector(sel, state="attached", timeout=10000)
         groups = strict.evaluate("[...document.querySelectorAll('#setNav .set-nav-part, #setNav a')].map(x => (x.matches('.set-nav-part') ? '§' : '') + x.textContent)")
         check("under the CSP: Install's scripts run on Settings, its sidebar in three parts, This person, You and Install (#266, #991)", groups ==
-              ["§This person", "Dashboard", "About this person", "Insurance cards", "Labs and ranges", "Milestones", "Workouts", "Rename or delete",   # (insurance cards, #1137)
+              ["§This person", "Dashboard", "About this person", "Insurance cards", "Labs and ranges", "Milestones", "Rename or delete",   # (insurance cards, #1137; Workouts Dashboard's, #1165)
                "§You", "Sign-in and security", "This device", "Display",
                "§Install", "General", "Accounts and sign-in", "Backups", "Logs and activity", "Connected sources (experimental)",
                "Outside connections", "About"], groups)   # (#1114: Lab name matches, the profile's card alone; #1153: Install in order)
@@ -4402,7 +4626,8 @@ def main():
         check("one sidebar (#266): Sources, Sharing and Settings (its You and Install too, #991) each have its search box (named “Find in …” on each, #403), group labels and the group's title as the h1, "
               "a card's title only beside another card, in a 1280 px shell", not side_bad, side_bad)
         # #409: in no group of any of them does a card's title shown say again what the h1 says; a card alone in its
-        # group has its Reset to defaults beside the h1 (Milestones), none in the card; Workouts' card is named Workouts
+        # group has its Reset to defaults beside the h1 (Milestones), none in the card; Workouts' card is named by its tab,
+        # Body and activity, in Dashboard (#1165)
         repeats_js = """() => { const out = []; for (const a of document.querySelectorAll('main > nav.set-nav a')) { a.click();
             const h1 = document.getElementById('groupTitle').textContent.trim().toLowerCase();
             for (const h of document.querySelectorAll('main :is(section, form, div) > h2, main .set-hd > h2'))
@@ -4611,11 +4836,11 @@ def main():
         lone = strict.evaluate("""(() => { const r = document.getElementById('setReset'), h = document.getElementById('groupTitle').getBoundingClientRect(), b = r.getBoundingClientRect();
             return [r.checkVisibility() && r.textContent, b.top < h.bottom && b.bottom > h.top, document.querySelector('#sec-milestones .set-hd > .btn').checkVisibility(),
                     document.querySelector('#sec-milestones .set-hd > h2').matches('.vh')]; })()""")
-        strict.click("#setNav a[data-group=activity]")
+        strict.click("#setNav a[data-group=dashboard]")
         strict.wait_for_timeout(300)
         lone.append(strict.evaluate("document.querySelector('#sec-health h2').textContent"))
         check("…a card alone in its group (Milestones): Reset to defaults beside the group's title, the h1, and not in the card; Workouts' card "
-              "is named Workouts (#409)", lone == ["Reset to defaults", True, False, True, "Workouts"], lone)
+              "is named by its tab, in Dashboard (#409, #1165)", lone == ["Reset to defaults", True, False, True, "Body and activity"], lone)
         strict.goto(base + "/settings.html?profile=1#backups")   # (as the sidebar's checks left it, for its search below)
         strict.wait_for_selector("main > nav.set-nav a[aria-current=page]", timeout=10000)
         strict.wait_for_timeout(600)
@@ -20324,14 +20549,15 @@ def main():
             page.click(".set-nav-list a[data-group=dashboard]")
             page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
             check("Settings shows every section", js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)") ==
-                  ["Overview", "Lab charts", "Names", "Lab name matches", "Workouts", "Visit summary", "Milestones", "Tabs", "Appearance", "Dates and times", "Units", "Reference ranges"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
+                  ["Overview", "Labs", "Names", "Lab name matches", "Body and activity", "Visit summary", "Milestones", "Appearance", "Dates and times", "Units", "Reference ranges",
+                   "Costs", "Tabs"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
             check("…but not the server's sync defaults among them: those, with outside connections, are its Install's (#167, #991), and Connected sources isn't a group",
                   js("document.getElementById('sec-sync').parentElement.matches('main') && !!document.getElementById('outside') && !document.querySelector('.set-nav-list a[data-group=sources]')"
                      " && !!document.querySelector('.set-nav-list a[data-group=outside]')"))
             # ---- the Settings sidebar (settings-nav.js) and the top bar's menus (nav.js)
             check("Settings: a sidebar of groups, one shown at a time (an owner's ending This person with Rename or delete, #402; then You's, #991)",
-                  js("[...document.querySelectorAll('.set-nav-list a')].map(a => a.textContent)")[:10] == ["Dashboard", "About this person", "Insurance cards", "Labs and ranges", "Milestones", "Workouts", "Rename or delete",
-                                                                                                       "Sign-in and security", "This device", "Display"]
+                  js("[...document.querySelectorAll('.set-nav-list a')].map(a => a.textContent)")[:9] == ["Dashboard", "About this person", "Insurance cards", "Labs and ranges", "Milestones", "Rename or delete",
+                                                                                                      "Sign-in and security", "This device", "Display"]   # (Workouts Dashboard's, #1165)
                   and js(display, "sec-overview") != "none" and js(display, "sec-units") == "none", js("[...document.querySelectorAll('.set-nav-list a')].map(a => a.textContent)"))
             page.fill("#setFind", "time zone")
             check("…Find in Settings shows the settings that match, from every group",
@@ -21327,10 +21553,11 @@ def main():
                   set441[0] == want441 and set441[1] == want441 and set441[2] == ov441[1], [set441, ov441[1]])
             page.click("#sec-overview button[aria-label='Remove Magnesium']")   # the demo has just the 12 default labs
             check("…a lab taken out leaves the preview", "Magnesium" not in js(preview))
-            sugg_ = js("[...document.querySelectorAll('#sec-overview .set-sugg .chip')].map(b => b.getAttribute('aria-label'))")
-            check("…and is suggested among the profile's most-measured labs",   # first: the vitals taken at visits (#180, #184, #226) have fewer
-                  sugg_ == ["Add Magnesium", "Add Blood pressure, diastolic", "Add Blood pressure, systolic", "Add Respiratory rate", "Add SpO2 (clinic)", "Add Temperature"], sugg_)
-            page.click("#sec-overview .set-sugg .chip")
+            # (#1165: every lab in the records listed to tick, in place of a few of the most measured as chips)
+            sugg_ = js("[...document.querySelectorAll('#sec-overview .set-pick label[data-lab]')].filter(l => !l.querySelector('input').checked).map(l => l.dataset.lab)")
+            check("…and is listed, unticked, among the profile's labs to choose from",   # the vitals taken at visits (#180, #184, #226) among them
+                  "Magnesium" in sugg_ and {"Blood pressure, diastolic", "Respiratory rate", "Temperature"} <= set(sugg_), sugg_)
+            page.check("#sec-overview .set-pick label[data-lab='Magnesium'] input")
             check("…to put back", js(preview) == p0, js(preview)[-2:])
             grips = page.locator("#sec-overview .set-grip")
             grips.nth(0).scroll_into_view_if_needed()   # (the section is taller since #186: the chip's click scrolled them away)
@@ -24899,7 +25126,7 @@ def main():
             check("…saved by the bar in a group of one section (Milestones), focus on the group's heading, in sight (#1077: on its own, hidden 1 px)",
                   foc1077 == ["groupTitle", True], foc1077)
             rules = "[data-key=visitWorkouts]"
-            page.click(".set-nav-list a[data-group=activity]")   # Workouts: a group of its own since #267
+            page.click(".set-nav-list a[data-group=dashboard]")   # Workouts: a group of its own from #267, Dashboard's Body and activity since #1165
             page.click(f"{rules} button:text-is('Add a row')")
             page.fill(f"{rules} .set-line:last-child input[data-k=match]", "(a+)+$")
             page.fill(f"{rules} .set-line:last-child input[data-k=name]", "Browser check rule")
@@ -24942,9 +25169,9 @@ def main():
             check("…and says so", f"{days} browser check rule appointment" in js("document.getElementById('view-health').innerText"))
             page.goto(base + "/settings.html?profile=1#sec-milestones")
             page.wait_for_selector("#sec-milestones", timeout=10000)
-            for sec, group in (("milestones", "milestones"), ("health", "activity")):
+            for sec, group, reset in (("milestones", "milestones", "#setReset"), ("health", "dashboard", "#sec-health button:text-is('Reset to defaults')")):
                 page.click(f".set-nav-list a[data-group={group}]")
-                page.click("#setReset")   # (a card alone in its group: its Reset beside the h1, #409)
+                page.click(reset)   # (a card alone in its group: its Reset beside the h1, #409; Workouts' in Dashboard since #1165)
                 page.wait_for_function(f"document.querySelector('#sec-{sec} .set-msg').textContent.includes('back to their defaults')", timeout=10000)
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
@@ -25483,7 +25710,7 @@ def main():
                     sdb.execute("DELETE FROM sessions WHERE user_id=?", (uid991,))
                     sdb.execute("DELETE FROM users WHERE id=?", (uid991,))
                 sdb.execute("DELETE FROM activity WHERE actor IN ('own991', 'edit991', 'once991')")   # (their sign-ins)
-            person991 = ["Dashboard", "About this person", "Insurance cards", "Labs and ranges", "Milestones", "Workouts"]   # (insurance cards, #1137)
+            person991 = ["Dashboard", "About this person", "Insurance cards", "Labs and ranges", "Milestones"]   # (insurance cards, #1137; Workouts Dashboard's, #1165)
             want991 = {r: {"profile": ["Sources", "Sharing", "Emergency card", "New profile"], "you": ["Settings", "Getting started", menus991.get(r, {}).get("you", [""] * 3)[2], "Log out"],   # (#1126: Emergency card)
                            "gone": [], "focus": ["Sign-in and security"] * 2,
                            "parts": {"This person": person991 + (["Rename or delete"] if r in ("admin", "owner") else []),
@@ -30605,6 +30832,9 @@ def main():
             # #1137: insurance cards, in This person → Insurance cards, and in a share link only when ticked
             errs1137 = insurance_check(browser, base, [c for c in page.context.cookies() if c["name"] == "sg_session"], check)
             check("…and no script fails there (#1137)", not errs1137, errs1137)
+            # #1165: Settings → Dashboard by tab, every lab to tick, each edit keeping its place
+            errs1165 = dashboard_edit_check(browser, base, [c for c in page.context.cookies() if c["name"] == "sg_session"], check)
+            check("…and no script fails there (#1165)", not errs1165, errs1165)
             # the old Profiles tab's address opens Sharing → People (#168); a section link still lands on its card, in Settings (#991)
             page.goto(base + "/account.html#profiles")
             page.wait_for_url(re.compile(r"/sharing\.html(\?[^#]*)?#people$"), timeout=10000)
