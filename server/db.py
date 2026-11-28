@@ -1376,6 +1376,24 @@ SCHEMA = [
         changed INTEGER);
     CREATE INDEX followups_profile ON followups(profile_id);
     """,
+    # version 57: records requests (#1133; rec_requests.py): each request a person makes for their own records, with
+    # the rule its deadline is counted by. What it says is in body, encrypted ({to, how, sent, rule, days, ext_days,
+    # extended, status, received, from, until, kinds, format, name, note, show}); import_id: the import of the records
+    # it brought, once linked (NULL again when that import is undone); who added or changed it and when are plain.
+    """
+    CREATE TABLE records_requests(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        body TEXT NOT NULL,
+        import_id INTEGER REFERENCES imports(id) ON DELETE SET NULL,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_name TEXT NOT NULL,
+        created INTEGER NOT NULL,
+        changed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        changed_name TEXT,
+        changed INTEGER);
+    CREATE INDEX records_requests_profile ON records_requests(profile_id);
+    """,
 ]
 
 

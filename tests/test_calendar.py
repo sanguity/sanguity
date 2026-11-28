@@ -1225,6 +1225,145 @@ class FollowUps(unittest.TestCase):
             db.close()
 
 
+class RecordsRequests(unittest.TestCase):
+    """Records requests (#1133): the response date under each rule (HIPAA 30 days and 30 more; GDPR one calendar month
+    and two more, clamped to the month's end; the person's own days and extension), the sent day today in the person's
+    time zone, linking to an import of the same profile (received on its day) and undone with it, viewers can't write,
+    in the calendar feed worded as follow-ups are, encrypted, and in Export everything and put back from it"""
+    @classmethod
+    def setUpClass(cls):
+        db = dbm.connect()
+        cls.pid = prof.create_profile(db, "Bea Example (fictional)", owner_id=Calendar.uid["robin"])
+        db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'viewer')", (Calendar.uid["kim"], cls.pid))
+        db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'editor')", (Calendar.uid["lee"], cls.pid))
+        db.close()
+        cls.c = Calendar.c
+
+    def setUp(self):
+        calendar.throttle._fails.clear()
+        db = dbm.connect()
+        db.execute("DELETE FROM records_requests")
+        db.close()
+
+    def add(self, who="lee", want=201, **body):
+        r = self.c[who].post(f"/api/profiles/{self.pid}/requests", json={"to": "Riverside Clinic (fictional)", **body}, headers=H)
+        self.assertEqual(r.status_code, want, r.text)
+        return r.json()
+
+    def one(self, j):
+        return next(x for x in j["records"]["requests"] if x["id"] == j["id"])
+
+    def test_deadlines_under_each_rule(self):
+        from server import rec_requests as rq
+        for rule, sent, extra, first, ext in (("hipaa", "2026-03-03", {}, "2026-04-02", "2026-05-02"),
+                                              ("hipaa", "2026-12-15", {}, "2027-01-14", "2027-02-13"),
+                                              ("gdpr", "2026-01-31", {}, "2026-02-28", "2026-04-30"),
+                                              ("gdpr", "2028-01-31", {}, "2028-02-29", "2028-04-30"),
+                                              ("gdpr", "2026-03-15", {}, "2026-04-15", "2026-06-15"),
+                                              ("gdpr", "2026-11-30", {}, "2026-12-30", "2027-02-28"),
+                                              ("other", "2026-03-03", {"days": 45}, "2026-04-17", None),
+                                              ("other", "2026-03-03", {"days": 10, "ext_days": 5}, "2026-03-13", "2026-03-18")):
+            b = rq.check({"to": "x", "rule": rule, "sent": sent, **extra}, date.today())
+            self.assertEqual([d and d.isoformat() for d in rq.due(b)], [first, ext], (rule, sent))
+        j = self.add(rule="gdpr", sent="2026-01-31")
+        x = self.one(j)
+        self.assertEqual((x["due"], x["due_first"], x["due_ext"], x["rule_words"], x["status"]), ("2026-02-28", "2026-02-28", "2026-04-30", "UK/EU GDPR, one month", "waiting"))
+        r = self.c["lee"].put(f"/api/profiles/{self.pid}/requests/{j['id']}", json={**x, "status": "extended"}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        x = self.one({**r.json(), "id": j["id"]})
+        self.assertEqual((x["due"], x["extended"]), ("2026-04-30", True), "extended: two months more, from the request")
+        self.assertEqual(self.one(self.add(rule="hipaa", sent="2026-03-03", extended=True))["due"], "2026-05-02")
+        self.add(want=400, rule="other", sent="2026-03-03")   # no days
+        self.add(want=400, rule="other", sent="2026-03-03", days=10, extended=True)   # an extension it hasn't got
+        self.add(want=400, rule="nowhere")
+        self.add(want=400, to=" ")
+        self.add(want=400, sent="2026-02-30")
+        self.add(who="kim", want=403)
+
+    def test_sent_today_in_the_persons_time_zone(self):
+        from zoneinfo import ZoneInfo
+        from server import rec_requests as rq
+        for zone in ("Pacific/Kiritimati", "Pacific/Pago_Pago"):   # 25 hours apart: never the same day
+            r = self.c["lee"].put("/api/settings/user/dates.timeZone", json={"value": zone}, headers=H)
+            self.assertEqual(r.status_code, 200, r.text)
+            x = self.one(self.add(rule="gdpr"))
+            today = datetime.now(ZoneInfo(zone)).date()
+            self.assertEqual((x["sent"], x["due"]), (today.isoformat(), calendar.add_months(today, 1).isoformat()), zone)
+        self.c["lee"].delete("/api/settings/user/dates.timeZone", headers=H)
+
+    def test_linked_to_an_import_and_undone_with_it(self):
+        x = self.one(self.add(rule="hipaa", sent="2026-03-03"))
+        db = dbm.connect()
+        try:
+            with dbm.transaction(db):
+                iid = records.store(db, self.pid, {"events": [{"id": 1, "t": "2026-03-20", "k": "visit", "title": "A visit"},
+                                                              {"id": 2, "t": "2026-03-21", "k": "visit", "title": "Another"}], "details": {}}, "upload")
+                other = records.store(db, Calendar.other, {"events": [], "details": {}}, "upload")
+            day = datetime.fromtimestamp(db.execute("SELECT at FROM imports WHERE id=?", (iid,)).fetchone()[0], timezone.utc).date().isoformat()
+        finally:
+            db.close()
+        path = f"/api/profiles/{self.pid}/requests/{x['id']}/import"
+        self.assertEqual(self.c["lee"].put(path, json={"import_id": other}, headers=H).status_code, 404, "another profile's import")
+        self.assertEqual(self.c["kim"].put(path, json={"import_id": iid}, headers=H).status_code, 403)
+        r = self.c["lee"].put(path, json={"import_id": iid}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        y = self.one({**r.json(), "id": x["id"]})
+        self.assertEqual((y["status"], y["received"], y["import"]["id"], y["import"]["records"]), ("received", day, iid, 2))
+        self.assertEqual(self.c["lee"].get(f"/api/profiles/{self.pid}/requests", headers=H).json()["requests"][0]["import"]["id"], iid)
+        self.assertEqual(self.c["kim"].get(f"/api/profiles/{self.pid}/requests", headers=H).status_code, 200)
+        r = self.c["lee"].post(f"/api/profiles/{self.pid}/imports/{iid}/undo", headers=H)
+        db = dbm.connect()
+        try:
+            if r.status_code != 200:   # however the import is undone, its link goes with it
+                with dbm.transaction(db):
+                    db.execute("DELETE FROM imports WHERE id=?", (iid,))
+            from server import rec_requests as rq
+            (z,) = rq.listing(db, self.pid)
+            self.assertNotIn("import", z)
+            self.assertEqual(z["status"], "received", "what it said stays")
+        finally:
+            db.close()
+
+    def test_feed_wording_both_ways_and_closed_ones_left_out(self):
+        self.add(rule="other", sent=D(0), days=10)
+        self.add(rule="other", sent=D(0), days=20, show=True, to="Lakeside Hospital (fictional)")
+        self.add(rule="other", sent=D(0), days=5, status="received", to="Received Place (fictional)")
+        self.add(rule="other", sent=D(0), days=6, status="closed", to="Closed Place (fictional)")
+        r = self.c["robin"].post(f"/api/profiles/{self.pid}/calendar", json={"tz": "UTC", "details": "full"}, headers=H)
+        try:
+            text = client().get("/" + r.json()["path"]).text
+        finally:
+            self.c["robin"].delete(f"/api/profiles/{self.pid}/calendar", headers=H)
+        got = sorted((e["DTSTART"][1], unescape(e["SUMMARY"][1])) for e in parse(text)["events"])
+        self.assertEqual(got, [((TODAY + timedelta(days=10)).strftime("%Y%m%d"), "Sanguity records request"),
+                               ((TODAY + timedelta(days=20)).strftime("%Y%m%d"), "Records request to Lakeside Hospital (fictional): response due")])
+        for word in ("Riverside", "Received Place", "Closed Place"):
+            self.assertNotIn(word, text)
+
+    def test_encrypted_and_in_the_export(self):
+        from server import export, rec_requests as rq
+        self.add(rule="gdpr", sent="2026-01-31", name="Bea Example", kinds="lab results", **{"from": "2020-01-01"}, until="2025-12-31", format="fhir")
+        db = dbm.connect()
+        try:
+            for (body,) in db.execute("SELECT body FROM records_requests"):
+                self.assertNotIn("Riverside", body)
+            data = export.plan(db, self.pid)["data"]
+            (x,) = data["requests"]
+            self.assertNotIn("due", x, "as kept: worked out again where it's loaded")
+            other = prof.create_profile(db, "Restored requests (fictional)", owner_id=Calendar.uid["robin"])
+            with dbm.transaction(db):
+                self.assertEqual(export.restore(db, other, data, lambda f: None, [])["requests"], 1)
+            with dbm.transaction(db):
+                self.assertEqual(export.restore(db, other, data, lambda f: None, [])["here"], 1)
+            (y,) = rq.listing(db, other)
+            self.assertEqual((y["to"], y["due"], y["from"], y["until"], y["kinds"], y["format"], y["name"], y["by"]),
+                             ("Riverside Clinic (fictional)", "2026-02-28", "2020-01-01", "2025-12-31", "lab results", "fhir", "Bea Example", "lee"))
+            acts = [json.loads(crypto.dec(d)) for (d,) in db.execute("SELECT detail FROM activity WHERE action='request' AND profile_id=?", (self.pid,))]
+            self.assertTrue(acts and all(set(a) == {"change"} for a in acts), acts)
+        finally:
+            db.close()
+
+
 DOW_L =["mo", "tu", "we", "th", "fr", "sa", "su"]
 
 

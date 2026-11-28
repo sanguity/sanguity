@@ -54,6 +54,8 @@ const WHAT = {
     : `${d.reconnect ? "signed in again to" : "connected"} ${d.source}` + (d.kinds ? ` (${d.kinds.join(", ")})` : ""),
   disconnect: d => d.ended ? `lost access to ${d.source} (the vendor ended it)` : `disconnected ${d.source}` + (d.removed ? `, removing ${d.removed} import${d.removed === 1 ? "" : "s"}` : ""),
   followup: d => ({add: "noted a follow-up", done: "marked a follow-up done", undone: "marked a follow-up not done", delete: "removed a follow-up"}[d.change] || "changed a follow-up"),   // (#1138)
+  request: d => ({add: "logged a records request", change: "changed a records request", link: "linked a records request to an import",
+    unlink: "unlinked a records request from its import", delete: "removed a records request"}[d.change] || "changed a records request"),   // (#1133)
   journal: d => ({"spot.rename": "renamed a spot in the journal", "spot.merge": "merged two spots in the journal", "spot.untag": "took a journal photo off its spot"})[d.action] || `${{add: "added", change: "changed", delete: "deleted"}[d.action] || "changed"} a journal ${({symptom: "symptom", side_effect: "side effect", mood: "mood entry"})[d.kind] || "note"}`,   // mood: #161
   insurance: d => ({add: "added an insurance plan", change: "changed an insurance plan", delete: "removed an insurance plan",   // #1137
     photo: `put on a photo of an insurance card's ${d.side === "back" ? "back" : "front"}`,

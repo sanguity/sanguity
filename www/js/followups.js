@@ -49,7 +49,7 @@ function fuCard() {
   const open = fuAll().filter(f => !f.done).sort(fuOrder), reqs = typeof rqCardRows === "function" ? rqCardRows() : [];
   if (!open.length && !reqs.length) return null;
   const FEW = 4, card = el("div", {class: "card", id: "ovFollowups"}, el("h3", {text: "Follow-ups"}),
-    el("p", {class: "hint", text: "What you noted to do"}));
+    el("p", {class: "hint", text: reqs.length ? "What you noted to do, and records you asked for" : "What you noted to do"}));
   card.append(...open.slice(0, FEW).map(fuRow), ...reqs);
   if (open.length > FEW) card.append(el("p", {class: "hint mt-2", text: `${open.length - FEW} more noted`}));
   if (canEdit()) card.append(el("button", {class: "btn mt-3 needs-server", type: "button", text: "Add a follow-up", onclick: () => fuForm(null)}));
