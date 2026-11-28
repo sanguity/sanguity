@@ -649,6 +649,12 @@ define("tabs", "tabs", "Tabs", {"order": list(TABS), "hidden": []}, tab_layout, 
        help="A hidden tab leaves the top bar and its More menu; a saved view or a link to it opens the first shown tab.")
 define("theme", "appearance", "Theme", "system", theme, scope="user", kind="theme", private=False,
        help="On every device you sign in on. Dark mode or Light mode in your menu changes it too.")
+IN_RANGE = {"grey": "Grey", "green": "Green"}   # (#1108) the heatmap's in-range cells: data-inrange on <html>, util.js applyTheme
+define("inRange", "appearance", "In-range results", "grey", one_of(IN_RANGE, "In-range results"), scope="user",
+       kind="choice", private=False,
+       help="How the Labs heatmap draws a result inside the range its report gave. Green says only that, not that it's "
+            "good; out of range stays red with ▲ or ▼.")
+CHOICES["inRange"] = IN_RANGE
 
 
 # ---------------------------------------------------------------- the getting-started guide (#199): each person's own

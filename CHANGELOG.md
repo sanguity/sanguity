@@ -3949,6 +3949,9 @@ Everything on `main` so far; it becomes the first tagged release.
   date over 24 months away is said in years ("in 72 years", not "in 867 months"); a key-lab tile has no sparkline
   under two results; Type records in puts the open form above the kinds' chips on a phone; and on a phone's bar a tab
   with nothing in it (Body and activity with no phone data) gives its place to Labs, unless the tabs' order was set.
+- **In-range results, grey or green** (#1108): Settings → You → Display → In-range results, each person's own: Grey
+  (the default, as before) or Green for the Labs heatmap's in-range cells, from the page's first frame; green means only
+  inside the range the report gave, out of range stays red with ▲/▼, and forced colours are unchanged.
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 

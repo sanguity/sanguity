@@ -418,7 +418,7 @@ PLAIN = {
 # settings kept in settings.value, not sealed: how things look and the install's sync rules, never a record
 PLAIN_SETTINGS = {"sync.attachAuto", "sync.attachMaxMB", "sync.attachTypes", "sync.attachBudgetMB", "sync.staleDays", "tabs",
                   "activity.days",   # (#1002) a variable's, plain as every one is (#999)
-                  "theme", "guide", "dates.timeZone", "dates.format", "units",
+                  "theme", "inRange", "guide", "dates.timeZone", "dates.format", "units",
                   "host.publicOrigins",   # General → Host (#1000): addresses the app gives out anyway, never health information
                   "phone.uploadUrl",   # General → Phone receiver (#1003): the same
                   # General → Security (#1001): how people sign in, numbers and a choice, none about anyone

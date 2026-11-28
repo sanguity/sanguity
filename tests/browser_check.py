@@ -19966,6 +19966,47 @@ def main():
                   got457 == ["light", "light", "light"], got457)
             js(api_put, ["settings/user/theme", th457[0]])
             js("([t, own]) => { if (own) localStorage.setItem('ht-theme', own); applyTheme(t); }", th457)
+            # #1108: In-range results, Grey (the default) or Green, the person's own: Green shows at once on Settings, then
+            # the heatmap's in-range cells are green in light and dark (from the first frame, theme.js), the grey as before
+            # in forced colours; Grey puts the grey back
+            page.goto(base + "/settings.html?profile=1#display")
+            page.wait_for_selector("#sec-appearance #inRange-green", timeout=10000)
+            ir_was = js(api_get, "settings/user")["inRange"]
+            page.click("#sec-appearance label:has(#inRange-green)")
+            ir_now = js("document.documentElement.dataset.inrange || null")
+            for _ in range(40):
+                if js(api_get, "settings/user")["inRange"] == "green":
+                    break
+                settle(100)
+            ir_cell = "() => { const r = document.querySelector('#hm rect.cell[style*=\"in-range\"]'); return r && getComputedStyle(r).fill; }"
+            ir_view = []
+            def ir_heat(scheme, forced="none"):
+                page.emulate_media(color_scheme=scheme, forced_colors=forced)
+                page.goto(base + "/?profile=1#labs")
+                page.wait_for_selector("#labsView button[data-view=heatmap]", timeout=20000)
+                first = js("document.documentElement.dataset.inrange || null")
+                ir_view.append(js("state.labsView"))
+                page.click("#labsView button[data-view=heatmap]")
+                page.wait_for_function(ir_cell, timeout=10000)
+                return [first, js(ir_cell)]
+            ir_got = {k: ir_heat(*k) for k in (("light", "none"), ("dark", "none"), ("dark", "active"))}
+            check("In-range results Green (#1108): saved as the person's own, shown at once, and the heatmap's in-range cells green in light and dark, grey in forced colours",
+                  ir_now == "green" and ir_got == {("light", "none"): ["green", "rgb(46, 133, 64)"], ("dark", "none"): ["green", "rgb(118, 194, 140)"],
+                                                   ("dark", "active"): ["green", "rgb(74, 72, 68)"]}, [ir_now, ir_got])
+            page.emulate_media(color_scheme="light", forced_colors="none")
+            page.goto(base + "/settings.html?profile=1#display")
+            page.wait_for_selector("#sec-appearance #inRange-grey", timeout=10000)
+            page.click("#sec-appearance label:has(#inRange-grey)")
+            ir_off = [js("document.documentElement.dataset.inrange || null"), js("localStorage.getItem('ht-inrange')")]
+            for _ in range(40):
+                if js(api_get, "settings/user")["inRange"] == "grey":
+                    break
+                settle(100)
+            ir_off += ir_heat("light")
+            page.click(f"#labsView button[data-view={ir_view[0]}]")   # (Labs' view as it was)
+            settle(300)
+            check("…Grey (the default, as before): the in-range cells grey again (#1108)", ir_off == [None, None, None, "rgb(207, 204, 196)"], ir_off)
+            js(api_put, ["settings/user/inRange", ir_was])
             page.emulate_media(color_scheme=None)
             page.goto(base + "/settings.html?profile=1#display")   # (back where the checks after it start)
             page.wait_for_selector("#sec-units input[name=units-height][value=ftin]", timeout=10000)

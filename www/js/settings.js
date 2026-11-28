@@ -371,8 +371,14 @@ function choicesEditor(value, changed, ro, setting) {
   return {node: el("div", {class: "row set-choices", role: "group", "aria-label": setting.label}, ...boxes),
     get: () => boxes.map(b => b.querySelector("input")).filter(i => i.checked).map(i => i.value)};
 }
+/* #1108 one of a few (In-range results), radios in one segmented control as the theme's, in the server's order */
+function choiceEditor(value, changed, ro, st) {
+  const box = el("fieldset", {class: "set-radios"}, el("legend", {class: "set-sr", text: st.label}),
+    radioSeg(Object.entries(st.choices || {}).map(([v, l]) => el("label", {}, el("input", {type: "radio", name: st.key, id: `${st.key}-${v}`, value: v, checked: v === value, disabled: ro, onchange: changed}), l))));
+  return {node: box, get: () => box.querySelector("input:checked")?.value || value};
+}
 const EDITORS = {labs: labsEditor, tiles: tilesEditor, names: namesEditor, rules: rulesEditor, tabs: tabsEditor, theme: themeEditor,
-  milestones: milestonesEditor, choices: choicesEditor};
+  milestones: milestonesEditor, choices: choicesEditor, choice: choiceEditor};
 
 /* ---------------------------------------------------------------- dates and times (#42): each person's own time
    zone and date format (dates.js uses them on every page) */
@@ -524,16 +530,16 @@ EDITORS.ranges = rangesEditor;
 
 /* ---------------------------------------------------------------- the sections (#174, #272): each setting with its
    editor. A simple preference (a kind in INSTANT: the theme, the time zone and date format, units, choices ticked on
-   or off) is saved as it's changed, a toast saying so with an Undo. A list or a value (key labs, names, ranges,
-   milestones...) is kept as changed, marked "not saved", its section's data-dirty the number of them, until the
-   group's bar (sidebar.js) saves every change shown, or Discard puts them back as saved; the group is marked in the
+   or off, one of a few: In-range results) is saved as it's changed, a toast saying so with an Undo. A list or a value
+   (key labs, names, ranges, milestones...) is kept as changed, marked "not saved", its section's data-dirty the
+   number of them, until the group's bar (sidebar.js) saves every change shown, or Discard puts them back as saved; the group is marked in the
    sidebar, and leaving the page or picking another profile asks first (sidebar.js). Whose settings these are is said
    once per group, above them; a setting says it only where its section mixes them. Where a setting's value comes
    from ("your own", "set for this profile"), and its section's Reset to defaults, show only when it isn't the
    default. A section of one setting named as it is (Tabs, Units, Milestones) has one heading, the section's (#398). */
 const FROM = {default: "default", install: "set for this server", profile: "set for this profile", user: "your own"};
 const SCOPE_TAG = {install: "for this server", profile: "for this profile", user: "just for you"};
-const INSTANT = new Set(["theme", "timezone", "dateformat", "units", "choices"]);
+const INSTANT = new Set(["theme", "timezone", "dateformat", "units", "choices", "choice"]);
 /* at its default: the server's, or for the time zone and date format (set from the browser at the first sign-in,
    dates.js) this browser's own */
 const atDefault = st => same(st.value, st.default) || (st.kind === "timezone" && st.value === browserZone()) || (st.kind === "dateformat" && st.value === browserFormat());
@@ -677,6 +683,7 @@ function saveNow(it, card) {
   const pid = PID, base = setBase(), sec = card.sgSec, path = `${base}/${encodeURIComponent(it.st.key)}`;
   let mine = null;   // this browser's own theme, put back by the Undo
   if (it.st.kind === "theme") { try { mine = localStorage.getItem("ht-theme"); localStorage.removeItem("ht-theme"); } catch (e) {} applyTheme(it.value()); }
+  if (it.st.key === "inRange") applyTheme(undefined, it.value());   // shown at once too (#1108)
   it.path = path;
   const q = it.queue = (it.queue || Promise.resolve()).then(async () => {
     if (SET_LEAVING || !it.dirty()) return;
@@ -689,7 +696,7 @@ function saveNow(it, card) {
       // (a task later: the request torn down as the page goes fails before pagehide has been heard by every listener)
       await new Promise(r => setTimeout(r));
       if (SET_LEAVING) return;
-      live(); sayIn(now.msg, `Not saved: ${e.message}`, true); now.refuse(); if (it.st.kind === "theme") applyTheme(it.st.value); return; }
+      live(); sayIn(now.msg, `Not saved: ${e.message}`, true); now.refuse(); if (it.st.kind === "theme") applyTheme(it.st.value); if (it.st.key === "inRange") applyTheme(undefined, it.st.value); return; }
     finally { it.sending = undefined; }
     live(); now.saved(value); card.sgChanged(); card.sgTidy();
     if (it.st.kind === "timezone" || it.st.kind === "dateformat") useDates(SET_ITEMS["dates.timeZone"]?.st.value, SET_ITEMS["dates.format"]?.st.value);
@@ -834,7 +841,7 @@ async function load(note, force, all = false) {
   NICK = every.find(st => st.key === "labNicknames")?.value || {};
   labShownList();   // the names the lists show (#458)
   { const ov = every.find(x => x.key === "ranges.overrides"); RANGE_CFG = {...rangeConfig(merged), ...(ov ? {overrides: ov.value} : {})}; }   // #44
-  { const th = every.find(st => st.key === "theme"); if (th) applyTheme(th.value); }   // #45: the saved default, here too
+  { const th = every.find(st => st.key === "theme"), ir = every.find(st => st.key === "inRange"); if (th || ir) applyTheme(th?.value, ir?.value); }   // #45: the saved default, here too; In-range results (#1108)
   { const u = every.find(st => st.kind === "units"); if (u) aboutUnits(u.value); }   // and the Units (an Undo's too): About this person's (#408)
   { const tb = every.find(st => st.key === "tabs"); if (tb) SgNav.layout(tb.value); }   // the top bar's tabs as saved, Undo and Reset too (#398)
   document.querySelector("main.sets").dataset.role = d.role || "";   // whose settings each group's are (settings-nav.js)
