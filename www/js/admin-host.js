@@ -76,8 +76,11 @@ function drawHost(sec, h, note, taken) {
    where it's deployed), which are changed on this page from now on; Got it says it's been read, for every admin */
 function hostTaken(taken) {
   if (!taken?.names?.length) return null;
+  const as = taken.names.filter(n => !n.note), adj = taken.names.filter(n => n.note);   // (#1158's review: not as set, and why)
   const box = el("div", {class: "set", role: "note", id: "hostTaken"},
-    el("p", {}, el("b", {text: "Taken from the environment, once: "}), ...taken.names.flatMap((n, i) => [i ? ", " : "", `${n.label} (`, el("code", {text: n.name}), ")"]), "."),
+    as.length ? el("p", {}, el("b", {text: "Taken from the environment, once: "}), ...as.flatMap((n, i) => [i ? ", " : "", `${n.label} (`, el("code", {text: n.name}), ")"]), ".") : null,
+    adj.length ? el("p", {}, el("b", {text: "Not taken as set, so check each here: "})) : null,
+    adj.length ? el("ul", {}, ...adj.map(n => el("li", {}, `${n.label} (`, el("code", {text: n.name}), `): ${n.note}.`))) : null,
     el("p", {class: "hint", text: "From now on these are changed here, in Settings, and kept in the data folder; a change to them in .env (or where the app is deployed) is ignored, with a warning in the log. You can take them out of there."}),
     el("button", {type: "button", class: "btn", text: "Got it", onclick: async () => {
       try { await call("settings/install/taken/seen", "POST"); } catch (e) { sayIn($("#gen-host .set-msg"), e.message, true); return; }

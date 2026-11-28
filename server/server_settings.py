@@ -203,8 +203,17 @@ define("HASH_PARALLEL", "Server", "Password checks at once", whole(1, 8, "Passwo
 # (#1158) every template puts the app behind its own nginx, with no port of its own published (the all-in-one container
 # binds it to 127.0.0.1): there only nginx can reach it, and it sets the headers, so a template's default is "*";
 # a server started some other way believes only a proxy on its own machine until told otherwise
-TEMPLATE = bool(os.environ.get("SANGUITY_DEPLOYMENT", "").strip())
-define("FORWARDED_ALLOW_IPS", "Server", "Trusted proxies", proxies, kind="text", default="*" if TEMPLATE else "127.0.0.1",
+# (#1158's review: only the kinds Sanguity's own templates set, never any value at all)
+TEMPLATES = ("compose", "release", "truenas", "casaos", "unraid", "allinone")
+
+
+def proxy_default(kind):
+    """The trusted proxies' default where SANGUITY_DEPLOYMENT is kind: * under one of Sanguity's templates, else 127.0.0.1."""
+    return "*" if (kind or "").strip().lower() in TEMPLATES else "127.0.0.1"
+
+
+define("FORWARDED_ALLOW_IPS", "Server", "Trusted proxies", proxies, kind="text",
+       default=proxy_default(os.environ.get("SANGUITY_DEPLOYMENT")),
        read=proxies, help="Whose forwarded headers (the visitor's address, HTTPS or not) the server believes: addresses or "
                           "networks, comma-separated, or * where only the proxy can reach the app (as in Sanguity's templates).")
 define("TZ", "Phone receiver", "Time zone", time_zone, kind="zone", default="UTC", read=time_zone, receiver=True, app=False,
@@ -507,29 +516,69 @@ def lookup(name):
 WHERE = "Settings → Install → General → Needs a restart"
 
 
+def salvage(d, text):
+    """(#1158's review) What a restart setting takes of the environment's text, never weaker than the text: (value, None)
+    as given; (value, note) where it had to be adjusted: a number past its bounds is the nearest bound; the trusted
+    proxies keep the entries that pass, one by one (a network with host bits set, which uvicorn trusted nobody for, or
+    * among others, is left out: never widened), and with none, this machine's own (127.0.0.1, never *); (None, note)
+    where nothing of it can be taken (then the default: the unreadable text never was in force)."""
+    try:
+        return d.check(d.read(text) if d.read else config.VARS[d.name].read(text)), None
+    except (Refused, TypeError, ValueError):
+        pass
+    lo, hi = getattr(d.check, "lo", None), getattr(d.check, "hi", None)
+    if d.kind == "number" and lo is not None:
+        try:
+            n = float(text.strip())
+        except ValueError:
+            n = None
+        if n is not None and n == n:
+            v = d.check(int(min(max(round(n), lo), hi)))
+            return v, f"{v} is used: {text[:40]} is past what it takes ({lo:,} to {hi:,}), and {v} is the nearest it does"
+    if d.name == "FORWARDED_ALLOW_IPS":
+        parts = [p.strip() for p in text.split(",") if p.strip()]
+        kept = []
+        for p in parts:
+            if p == "*" and len(parts) > 1:
+                continue
+            try:
+                proxies(kept + [p])
+            except Refused:
+                continue
+            kept.append(p)
+        v = proxies(kept) if kept else "127.0.0.1"
+        return v, f"{v} is used: what it didn't take of {text[:60]!r} is left out, never widened"
+    return None, f"not taken: {text[:40]!r} isn't a value it takes, so it's {d.default}"
+
+
 def take_environment(doc, now, say=_say):
     """(#1158) Once, on the first start of this version: each of these the environment sets is copied into doc (the
     good values, and the pending ones where there are: it was the one in force, and the page couldn't change it), and
-    doc["taken"] records when, which were copied ("names") and a fingerprint of each one's text ("seen"). From then on
-    the environment sets none of them: one it sets that's changed since is said in the log, naming it, and ignored.
-    One these checks don't take isn't copied (said, without the rest of its text). True when doc needs writing."""
+    doc["taken"] records when, which were copied ("names"), which couldn't be as they were set and what was used instead
+    ("adjusted", salvage) and a fingerprint of each other one's text ("seen"). From then on the environment sets none of
+    them: one it sets that's changed since is said in the log, naming it, and ignored; an adjusted one is said at every
+    start until it's put right. True when doc needs writing."""
     seen = {n: t for n in DEFS if (t := os.environ.get(n, "").strip())}
     taken = doc.get("taken")
     if isinstance(taken, dict):
         before = taken.get("seen") if isinstance(taken.get("seen"), dict) else {}
+        adjusted = taken.get("adjusted") if isinstance(taken.get("adjusted"), dict) else {}
         for n, t in seen.items():
-            if before.get(n) != config.fingerprint(t):
+            if n in adjusted:
+                say(f"[settings] {n} in the environment couldn't be taken in as it's set: {adjusted[n]}. Put it right on "
+                    f"{WHERE} and take {n} out of the environment.")
+            elif before.get(n) != config.fingerprint(t):
                 say("[settings] " + config.environment_changed(n, WHERE))
         return False
-    good, names = clean(doc.get("good")), []
+    good, names, adjusted = clean(doc.get("good")), [], {}
     pending = clean(doc.get("pending")) if "pending" in doc else None
     for n, t in seen.items():
         d = DEFS[n]
-        try:
-            v = d.check(d.read(t) if d.read else config.VARS[n].read(t))
-        except (Refused, TypeError, ValueError):
-            say(f"[settings] {n} in the environment ({t[:40]!r}) isn't a value {WHERE} takes, so it isn't taken in: "
-                f"it's {d.default} now; change it there")
+        v, note = salvage(d, t)
+        if note:
+            adjusted[n] = note
+            say(f"[settings] {n} in the environment couldn't be taken in as it's set: {note}. Put it right on {WHERE}.")
+        if v is None:
             continue
         for values in (good, pending) if pending is not None else (good,):
             if v == d.default:
@@ -541,7 +590,8 @@ def take_environment(doc, now, say=_say):
     doc["good"] = good
     if pending is not None:
         doc["pending"] = pending
-    doc["taken"] = {"at": now, "names": names, "seen": {n: config.fingerprint(t) for n, t in seen.items()}}
+    doc["taken"] = {"at": now, "names": names, "adjusted": adjusted,
+                    "seen": {n: config.fingerprint(t) for n, t in seen.items() if n not in adjusted}}
     if names:
         say(f"[settings] taken from the environment into {path()}, once: {', '.join(names)}. From now on they're "
             f"changed on {WHERE} (or with python -m server.manage config set), not in the environment.")
@@ -568,7 +618,8 @@ def taken():
     """What the first start of this version took from the environment into the file: {"at", "names"} or None."""
     doc, _ = read_doc()
     t = doc.get("taken")
-    return {"at": t.get("at"), "names": [n for n in t.get("names") or [] if n in DEFS]} if isinstance(t, dict) else None
+    return ({"at": t.get("at"), "names": [n for n in t.get("names") or [] if n in DEFS],
+             "adjusted": {n: v for n, v in (t.get("adjusted") or {}).items() if n in DEFS}} if isinstance(t, dict) else None)
 
 
 def state():

@@ -158,7 +158,7 @@ class RestartSettings(unittest.TestCase):
             self.assertEqual(self.c.get("/api/settings/phone").json()["tz"], "Asia/Tokyo")
             self.assertEqual(ss.lookup("SHL_TIMEOUT"), ("default", 20))
             self.assertEqual(ss.taken()["names"], ["UPLOAD_MAX_FILE_MB", "FORWARDED_ALLOW_IPS", "TZ"], "the default isn't one taken")
-            self.assertTrue(any("SHL_TIMEOUT" in s and "isn't taken in" in s and "forty" in s for s in said), said)
+            self.assertTrue(any("SHL_TIMEOUT" in s and "couldn't be taken in" in s and "forty" in s for s in said), said)
             self.assertTrue(any("UPLOAD_MAX_FILE_MB, FORWARDED_ALLOW_IPS, TZ" in s for s in said), said)
             with open(ss.receiver_path()) as f:
                 self.assertEqual(json.load(f), {"TZ": "Asia/Tokyo"}, "the receiver's copy, as it starts")
@@ -353,23 +353,37 @@ class RestartSettings(unittest.TestCase):
             manage.run(["config", "reset", "SHL_TIMEOUT"])
         self.assertIn("nothing to reset", out.getvalue())
 
-    def test_k_what_the_page_wouldnt_take_isnt_taken_in(self):
-        """(#1158, #1131's review) A value the environment sets that these checks wouldn't take (more than 20 proxies, a
-        network with host bits set, * among others, a zone this machine doesn't know, a number it can't read) is never
-        taken in, nor widened: said, naming it, and the default (or the file's) stays."""
-        cloudflare = ", ".join(f"198.51.{i}.0/24" for i in range(22))
-        for env in (cloudflare, "10.0.0.5/8", "*, 10.0.0.1", "unix:/run/proxy.sock"):
+    def test_k_what_the_page_wouldnt_take_is_never_taken_weaker(self):
+        """(#1158's review, #1131's) A value the environment sets that these checks wouldn't take is never taken in weaker
+        than it was set: a number past its bounds is the nearest bound; the trusted proxies keep the entries that pass (a
+        network with host bits set, which uvicorn trusted nobody for, more than 20, or * among others, left out: never
+        widened), and with none this machine's own, never * (a template's default); a zone or a number it can't read at
+        all isn't taken. Each is said, left out of "seen" and named with what was used, and said again at every start."""
+        cloudflare = [f"198.51.{i}.0/24" for i in range(22)]
+        d = ss.DEFS["FORWARDED_ALLOW_IPS"]
+        for env, want in ((", ".join(cloudflare), ", ".join(cloudflare[:20])), ("172.18.0.5/16", "127.0.0.1"),
+                          ("172.18.0.5/16, 10.0.0.1", "10.0.0.1"), ("*, 10.0.0.1", "10.0.0.1"), ("unix:/run/proxy.sock", "127.0.0.1")):
             os.unlink(ss.path())
             said = []
-            with mock.patch.dict(os.environ, {"FORWARDED_ALLOW_IPS": env, "TZ": "Mars/Olympus_Mons", "SLOT_GRACE_DAYS": "soon"}):
+            with mock.patch.dict(os.environ, {"FORWARDED_ALLOW_IPS": env, "TZ": "Mars/Olympus_Mons", "SLOT_GRACE_DAYS": "soon",
+                                              "UPLOAD_MAX_FILE_MB": "99999", "SHL_TIMEOUT": "2"}), mock.patch.object(d, "default", "*"):
                 ss.forget()
                 ss.start(say=said.append)
-                self.assertEqual(ss.lookup("FORWARDED_ALLOW_IPS"), ("default", "127.0.0.1"), env)
-                self.assertEqual(ss.uvicorn_options()["forwarded_allow_ips"], "127.0.0.1")
+                self.assertEqual(ss.lookup("FORWARDED_ALLOW_IPS")[1], want, env)
+                self.assertEqual(ss.uvicorn_options()["forwarded_allow_ips"], want)
+                self.assertEqual((ss.lookup("UPLOAD_MAX_FILE_MB"), ss.lookup("SHL_TIMEOUT")), (("default", 4096), ("file", 5)))
                 self.assertEqual((ss.lookup("TZ"), ss.lookup("SLOT_GRACE_DAYS")), (("default", "UTC"), ("default", 7)))
-            self.assertEqual(sorted(n for n in ("FORWARDED_ALLOW_IPS", "TZ", "SLOT_GRACE_DAYS") if any(n in s and "isn't taken in" in s for s in said)),
-                             ["FORWARDED_ALLOW_IPS", "SLOT_GRACE_DAYS", "TZ"], said)
-            self.assertEqual(ss.taken()["names"], [])
+                t = ss.taken()
+                self.assertEqual(sorted(t["adjusted"]), ["FORWARDED_ALLOW_IPS", "SHL_TIMEOUT", "SLOT_GRACE_DAYS", "TZ", "UPLOAD_MAX_FILE_MB"])
+                self.assertIn("4096 is used", t["adjusted"]["UPLOAD_MAX_FILE_MB"])
+                self.assertEqual(json.load(open(ss.path()))["taken"]["seen"], {}, "none of them seen: said at every start")
+                said = []
+                ss.forget()
+                ss.start(say=said.append)
+                self.assertTrue(any("UPLOAD_MAX_FILE_MB in the environment couldn't be taken in as it's set" in s for s in said), said)
+        self.assertEqual({k: ss.proxy_default(k) for k in ("compose", "release", "truenas", "casaos", "unraid", "allinone", "", "other", "k8s")},
+                         {"compose": "*", "release": "*", "truenas": "*", "casaos": "*", "unraid": "*", "allinone": "*",
+                          "": "127.0.0.1", "other": "127.0.0.1", "k8s": "127.0.0.1"}, "* only under Sanguity's own templates")
 
     def test_l_trusting_everyone_and_the_proxy_in_between(self):
         """#1131's review: 0.0.0.0/0 and ::/0 are *; trusting everyone is typed to confirm first (the one rule's 409); a

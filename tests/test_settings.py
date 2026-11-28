@@ -402,6 +402,54 @@ class Settings(unittest.TestCase):
                 dbm.meta_set(db, settings_import.MARK, mark)
                 settings.forget_saved()
 
+    def test_a_value_set_past_what_the_page_takes_is_never_taken_weaker(self):
+        """#1158's review: each install setting the environment set past what the page takes is taken as near as it goes,
+        never weaker: idle sign-out 2880 is 1440 (and 2 is 5, never off), the activity kept 5000 is 3650, the shortest
+        password 80 is 64, public addresses with a path keep their scheme and name. Each named on General with what was
+        used, left out of "seen" and said again at the next start. And the Secure cookie from Always to Automatic over a
+        page that came over plain HTTP is asked first, a reset too."""
+        from server import settings_import
+        ada = self.c["ada"]
+        with contextlib.closing(dbm.connect()) as db:
+            mark = dbm.meta_get(db, settings_import.MARK)
+            keys = ["security.idleMinutes", "activity.days", "security.passwordMin", "host.publicOrigins", "security.cookieSecure"]
+            had = {k: v for k, v in settings.stored(db, "install").items() if k in keys}
+            try:
+                for idle, want in (("2880", 1440), ("2", 5)):
+                    dbm.meta_set(db, settings_import.MARK, None)
+                    said = []
+                    with mock.patch.dict(os.environ, {"SESSION_IDLE_MINUTES": idle, "ACTIVITY_DAYS": "5000", "PASSWORD_MIN_LENGTH": "80",
+                                                      "PUBLIC_ORIGINS": "https://health.example.test/sanguity, nas.lan:8730/x, ftp://no"}):
+                        settings_import.take(db, say=said.append)
+                        settings.forget_saved()
+                        self.assertEqual((config.setting("SESSION_IDLE_MINUTES"), config.setting("ACTIVITY_DAYS"), config.setting("PASSWORD_MIN_LENGTH"),
+                                          config.setting("PUBLIC_ORIGINS")), (want, 3650, 64, ("https://health.example.test", "https://nas.lan:8730")), idle)
+                        m = json.loads(dbm.meta_get(db, settings_import.MARK))
+                        self.assertEqual(sorted(m["adjusted"]), ["ACTIVITY_DAYS", "PASSWORD_MIN_LENGTH", "PUBLIC_ORIGINS", "SESSION_IDLE_MINUTES"])
+                        self.assertFalse(set(m["seen"]) & set(m["adjusted"]))
+                        notes = {n["name"]: n.get("note", "") for n in ada.get("/api/settings/install").json()["taken"]["names"]}
+                        self.assertIn(f"{want} is used", notes["SESSION_IDLE_MINUTES"])
+                        self.assertIn("3650 is used", notes["ACTIVITY_DAYS"])
+                        said = []
+                        settings_import.take(db, say=said.append)
+                        self.assertTrue(any("ACTIVITY_DAYS in the environment couldn't be taken in as it's set" in s for s in said), said)
+                # the Secure cookie, Always to Automatic over plain HTTP (TestClient's): asked first, a reset too
+                settings.put(db, "security.cookieSecure", "always")
+                settings.forget_saved()
+                ada.post("/api/me/reauth", json={"secret": PW["ada"]}, headers=H)
+                r = ada.put("/api/settings/install/security.cookieSecure", json={"value": "auto"}, headers=H)
+                self.assertEqual((r.status_code, r.json()["detail"]["confirm"]["type"]), (409, "automatic"), r.text)
+                r = ada.post("/api/settings/install/reset", json={"section": "security"}, headers=H)
+                self.assertEqual((r.status_code, r.json()["detail"]["confirm"]["type"]), (409, "automatic"), r.text)
+                r = ada.put("/api/settings/install/security.cookieSecure", json={"value": "auto", "confirm": "Automatic"}, headers=H)
+                self.assertEqual(r.status_code, 200, r.text)
+            finally:
+                settings.clear(db, keys, "install")
+                for k, v in had.items():
+                    settings.put(db, k, v)
+                dbm.meta_set(db, settings_import.MARK, mark)
+                settings.forget_saved()
+
     def test_the_environment_is_taken_in_once(self):
         """#1158 (in place of #999's "the environment wins"): the first start took what the environment set into the
         settings (PUBLIC_ORIGINS, set above), logged in Install activity by start-up and said once on General; after
