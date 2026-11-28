@@ -18118,6 +18118,49 @@ def main():
                   only[0] and not only[1] and "Total out of pocket" in only[2] and not only[3], only)
             js("paidState.open = null; Object.assign(costState, {view: 'claims', more: false}); renderCosts()")
 
+            # ---- plan years (#1127): the deductible and out-of-pocket max per plan year, typed in on Costs: by calendar
+            # year with none typed; one typed in (an out-of-pocket max under the deductible refused first), its sums as
+            # text with each bar hidden from screen readers; 320 px; removed
+            js("applyPreset('all'); planState.edit = null; Object.assign(costState, {view: 'claims'}); renderCosts()")
+            settle(300)
+            y1127 = js("DATA.oop.years[0]")
+            cal1127 = js("[...document.querySelectorAll('#planCard h3.sub')].map(h => h.textContent)")
+            check("Costs sums each calendar year's claims toward the deductible and out of pocket, with no plan year typed (#1127)",
+                  bool(cal1127) and cal1127[0] == y1127["start"][:4] and js("v => `${usd(v[0])} toward the deductible · ${usd(v[1])} out of pocket`",
+                  [y1127["towardDeductible"], y1127["outOfPocket"]]) in page.inner_text("#planCard"), [cal1127, y1127])
+            page.click("#planAdd")
+            page.wait_for_selector("#planEdit", timeout=5000)
+            focus1127 = js("document.activeElement.id")
+            page.fill("#plan-start", y1127["start"])
+            page.fill("#plan-deductible", "3,000")
+            page.fill("#plan-oop", "$1,000")
+            page.click("#planEdit button:text-is('Save')")
+            page.wait_for_function("document.getElementById('planMsg')?.textContent.includes('at least')", timeout=10000)
+            said1127 = js("document.getElementById('planMsg').textContent")
+            page.fill("#plan-oop", "7500")
+            page.fill("#plan-familyDeductible", "6000")
+            page.click("#planEdit button:text-is('Save')")
+            page.wait_for_function("(DATA.oop.plans || []).length === 1 && !document.getElementById('planEdit')", timeout=10000)
+            settle(300)
+            rows1127 = js("[...document.querySelectorAll('#planCard .ov-row')].map(r => [r.querySelector('.n').textContent, r.querySelector('.v').textContent, r.querySelector('.cost-bar-run').getAttribute('aria-hidden')])")
+            yp1127 = js("DATA.oop.years.find(y => y.plan != null)")
+            check("…a plan year typed in: its deductible, out-of-pocket max and family deductible met so far as text, each bar hidden from screen readers (#1127)",
+                  [r[0] for r in rows1127] == ["Deductible", "Out-of-pocket max", "Family deductible"]
+                  and rows1127[0][1] == js("v => usd(v) + ' of $3,000'", yp1127["towardDeductible"])
+                  and rows1127[1][1] == js("v => usd(v) + ' of $7,500'", yp1127["outOfPocket"]) and all(r[2] == "true" for r in rows1127), rows1127)
+            check("…an out-of-pocket max under the deductible refused, said beside the form; Add a plan year focused the form, and has focus back after the save",
+                  "at least the deductible" in said1127 and focus1127 == "plan-start" and js("document.activeElement.id") == "planAdd",
+                  [said1127, focus1127, js("document.activeElement.id")])
+            page.set_viewport_size({"width": 320, "height": 800})
+            settle(300)
+            check("…the plan years card fits 320 px", js("document.documentElement.scrollWidth") <= 320, js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.click("#planCard .btns button:text-is('Remove')")
+            page.click(".sg-ask button:text-is('Remove')")
+            page.wait_for_function("!(DATA.oop.plans || []).length", timeout=10000)
+            check("…and removed, its claims are summed by calendar year again", js("DATA.oop.years.every(y => y.plan == null)") and
+                  js("document.activeElement.textContent") == "Deductible and out-of-pocket max", js("document.activeElement.outerHTML.slice(0, 80)"))
+
             # ---- readings typed in at home (#224): blood pressure, glucose, temperature and blood oxygen typed on Sources
             # for the demo person, whose phone sends the same measures; checked as typed (plausible values, the unit),
             # one the phone sent already found; saved, each on its card beside the phone's and the visits', "Typed in";
