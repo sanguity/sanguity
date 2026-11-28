@@ -20804,7 +20804,7 @@ def main():
             # ---- the watch receiver's data in backups (#227): what's in them and what isn't, said on the Backups group;
             # first with no receiver's folder in sight, then with a receiver's (fictional readings, one upload after its
             # last save); Check a backup counts them beside the folder's now
-            more = js("[...document.querySelectorAll('.about-words')].find(w => w.getAttribute('aria-label') === 'About Backups').textContent")   # behind the ⓘ (#280)
+            more = js("[...document.querySelectorAll('.about-words')].find(w => w.getAttribute('aria-label') === 'About Back up and restore').textContent")   # behind the ⓘ (#280; the card's title since #1153)
             check("Backups (#227): says the phone and watch data is in them, and what isn't (exports, the key, the configuration)",
                   "the watch receiver's data" in more and "Not in it: your original exports, the encryption key, and the configuration" in more
                   and "phone and watch data" in js("document.querySelector('#backups > .hint').textContent"), more[:300])
