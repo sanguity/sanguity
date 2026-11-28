@@ -358,7 +358,8 @@
     ["photos", ["photo", "photos"]], ["doses", ["logged dose", "logged doses"]], ["reminders", ["medication reminder", "medication reminders"]],
     ["medEntries", ["medication you added or changed", "medications you added or changed"]],   // (#1091)
     ["costPlans", ["plan year", "plan years"]], ["costBills", ["bill", "bills"]],
-    ["familyEntries", ["family history entry you added or hid", "family history entries you added or hid"]]];   // (#1127, #1128)
+    ["familyEntries", ["family history entry you added or hid", "family history entries you added or hid"]],   // (#1127, #1128)
+    ["insurance", ["insurance plan", "insurance plans"]]];   // (#1137)
   function restoredLine(r, done) {
     const said = RESTORED.filter(([k]) => (r || {})[k] > 0).map(([k, words]) => plural(r[k], words));
     if (!said.length) return null;

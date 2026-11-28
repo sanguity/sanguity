@@ -58,6 +58,9 @@ Profile events (profile_id set), readable by the profile's owners:
                 undone by an owner or editor, with how many saved results were re-filed (labmap.py, #1097; never names)
   notify        {"kind": "results" | "doses", "on"}: someone turned a kind of notification on or off for the profile
                 (notify.py, #1130)
+  insurance     {"change": "add" | "change" | "delete" | "photo" | "photo.delete", "side"?}: an insurance plan added,
+                changed or removed, or a photo of its card's front or back put on or taken off (insurance.py, #1137;
+                never the plan's name, member ID or numbers)
   link          {"change": "create" | "revoke" | "view", "link", "label"?, ...}: a share link made or revoked by an owner
                 (with its sections, number of labs, dates and hours), or opened by whoever holds it: actor SHARE_LINK,
                 with the viewer's address (share_links.py, #47; never the token)
@@ -112,7 +115,7 @@ from . import config, crypto, db as dbm
 
 PROFILE_ACTIONS = ("view", "document", "create", "rename", "share", "unshare", "import", "reload", "export", "upload", "discard", "undo", "edit", "outside",
                    "settings", "connect", "disconnect", "calendar", "journal", "summary", "emergency", "watch.secret", "source", "link", "cycle",
-                   "medication", "labmap", "family", "notify")
+                   "medication", "labmap", "family", "notify", "insurance")
 ACCOUNT_ACTIONS = ("setup", "password", "account.create", "account.disable", "account.enable", "account.admin",
                    "account.unadmin", "account.reset", "2fa.on", "2fa.off", "2fa.codes", "2fa.recovery", "2fa.reset", "2fa.stopped",
                    "settings.require_2fa", "profile.delete", "account.remove", "profile.repair", "labmap.change",

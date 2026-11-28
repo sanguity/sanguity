@@ -164,7 +164,10 @@ picture is sealed there with its metadata (GPS location, camera, time taken) tak
 entry's encrypted body. Deleting the entry deletes its photos; an export carries them in `journal/photos/`. Since #1139 a
 photo can be of a named spot (a mole, a rash, a wound, looked at over time): **journal_spots** (schema version 50) has
 the profile's spots, each name encrypted, and `journal_photos.spot_id` says which one a photo is of; a spot no photo is
-of goes, and an export carries each photo's spot by name. The medication
+of goes, and an export carries each photo's spot by name. **insurance_plans** (schema version 55, #1137,
+`server/insurance.py`) are a profile's health plans: the body (plan name, member ID, group number, phone numbers) is
+encrypted, and each side's card photo is a sealed file in `profiles/<id>/insurance/` under a random name, cleaned as a
+journal photo is; an export carries them as `insurance` in `data.json` and `insurance/<id>-<side>.<ext>`. The medication
 timeline (#50, `server/medications.py`) is worked out from the `med` and `rx` events each time the records are put
 together and listed as `medications`; it has no table and is never stored from an import. **med_reminders** (schema
 version 33, #162, `server/med_reminders.py`) are the lines of a medication's schedule (#1094; version 47 made each

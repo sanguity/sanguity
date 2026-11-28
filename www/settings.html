@@ -62,6 +62,20 @@
     <div id="targetsBody"></div>
     <span class="msg" id="targetsMsg" role="status"></span>
   </section>
+  <!-- insurance cards (#1137): insurance.js, server/routes_insurance.py -->
+  <section class="card" id="insurance" hidden>
+    <h2 id="insuranceHd" tabindex="-1">Insurance cards</h2>
+    <p class="hint">Each plan's card, to show at a front desk: what it says, and a photo of each side.</p>
+    <div class="about-words" hidden>
+      <p>Owners and editors add and change plans; everyone the profile is shared with sees them. They're encrypted like
+        the records, and the member ID is never written in the activity log.</p>
+      <p>A share link shows them only if its owner ticks Insurance cards. They go with the profile's export. The
+        emergency card prints each plan's name, member ID and group number, without the photos.</p>
+      <p>Where a photo was taken, and the phone it was taken with, are taken out of it before it's kept.</p>
+    </div>
+    <div id="insuranceBody"></div>
+    <span class="msg" id="insuranceMsg" role="status"></span>
+  </section>
   <!-- the profile's lab name matches (#1097): lab-matches.js, server/routes_labmaps.py -->
   <section class="card" id="labmatches" hidden>
     <h2 id="labmatchesHd" tabindex="-1">Lab name matches</h2>
@@ -420,6 +434,7 @@
 <script src="js/person.js"></script>
 <script src="js/targets.js"></script>
 <script src="js/lab-matches.js"></script>
+<script src="js/insurance.js"></script>
 <script src="js/ranges.js"></script>
 <script src="js/presets.js"></script>
 <script src="js/about.js"></script>

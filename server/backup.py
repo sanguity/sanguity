@@ -380,13 +380,19 @@ def _in_data(path):
 
 def named_files(con):
     """{name in the archive: kind} of the files a database's rows name (#592): each journal photo's, each finished
-    upload's (an import's files, and the documents stored in them), each document's under DATA_DIR. A value this
-    install's key doesn't open is passed over (a check says so apart). kind: "photo", "upload" or "document"."""
+    upload's (an import's files, and the documents stored in them), each document's under DATA_DIR, each insurance
+    card's photo (#1137). A value this install's key doesn't open is passed over (a check says so apart). kind: "photo",
+    "card", "upload" or "document"."""
     have = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     out = {}
     if "journal_photos" in have:
         for pid, file in con.execute("SELECT profile_id, file FROM journal_photos"):
             out[f"profiles/{int(pid)}/journal/{file}"] = "photo"
+    if "insurance_plans" in have:   # (#1137) each insurance card's photos
+        for pid, front, back in con.execute("SELECT profile_id, front, back FROM insurance_plans"):
+            for file in (front, back):
+                if file:
+                    out[f"profiles/{int(pid)}/insurance/{file}"] = "card"
     if "uploads" in have:
         for uid, pid, manifest in con.execute("SELECT id, profile_id, manifest FROM uploads WHERE state='ready'"):
             try:
@@ -1162,7 +1168,8 @@ def sweep_replaced(now=None):
 
 # ---------------------------------------------------------------- checking a backup by restoring a copy (#200)
 
-MISSING_WORDS = {"photo": ("journal photo", "journal photos"), "upload": ("uploaded file", "uploaded files"),
+MISSING_WORDS = {"photo": ("journal photo", "journal photos"), "card": ("insurance card photo", "insurance card photos"),
+                 "upload": ("uploaded file", "uploaded files"),
                  "document": ("document", "documents")}   # what a check says a backup lacks (#592)
 
 

@@ -54,6 +54,9 @@ const WHAT = {
     : `${d.reconnect ? "signed in again to" : "connected"} ${d.source}` + (d.kinds ? ` (${d.kinds.join(", ")})` : ""),
   disconnect: d => d.ended ? `lost access to ${d.source} (the vendor ended it)` : `disconnected ${d.source}` + (d.removed ? `, removing ${d.removed} import${d.removed === 1 ? "" : "s"}` : ""),
   journal: d => ({"spot.rename": "renamed a spot in the journal", "spot.merge": "merged two spots in the journal", "spot.untag": "took a journal photo off its spot"})[d.action] || `${{add: "added", change: "changed", delete: "deleted"}[d.action] || "changed"} a journal ${({symptom: "symptom", side_effect: "side effect", mood: "mood entry"})[d.kind] || "note"}`,   // mood: #161
+  insurance: d => ({add: "added an insurance plan", change: "changed an insurance plan", delete: "removed an insurance plan",   // #1137
+    photo: `put on a photo of an insurance card's ${d.side === "back" ? "back" : "front"}`,
+    "photo.delete": `took off the photo of an insurance card's ${d.side === "back" ? "back" : "front"}`}[d.change] || "changed an insurance plan"),
   source: d => d.named ? `renamed the import “${d.label}”` : `went back to calling an import “${d.label}”`,   // #38
   settings: d => d.section ? `reset the ${d.label || d.section} settings to their defaults`
     : d.reset ? `reset “${d.label || d.setting}” to its default` : `changed the setting “${d.label || d.setting}”`,
@@ -125,7 +128,7 @@ const FILTERS = [["", "Everything"], ["view", "Opened the records"], ["document"
   ["share", "Sharing"], ["unshare", "Removed access"], ["rename", "Renames"], ["import", "Imports"], ["reload", "Reloads"],
   ["export", "Exports"], ["upload", "Uploads"], ["discard", "Cancelled imports"], ["undo", "Undone imports"], ["edit", "Edits"],
   ["outside", "Outside connections"], ["settings", "Settings"], ["connect", "Connected sources"], ["calendar", "Calendar feeds"],
-  ["journal", "Journal"], ["summary", "Visit summaries"], ["emergency", "Emergency cards"], ["source", "Renamed imports"], ["link", "Share links"]];
+  ["journal", "Journal"], ["summary", "Visit summaries"], ["emergency", "Emergency cards"], ["source", "Renamed imports"], ["link", "Share links"], ["insurance", "Insurance cards"]];
 const describe = e => (WHAT[e.action] || (() => e.action))(e.detail || {}, e);
 function activityRows(list) {
   return list.map(e => el("tr", {},

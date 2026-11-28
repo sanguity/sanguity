@@ -250,6 +250,10 @@ class ShareLinks(unittest.TestCase):
         "journal_photos": {"photos": ["the photos attached"]},   # (sent in the journal's entries, above)
         "costs": {"t": ["date"], "title": ["the service or medicine it was for"], "provider": ["the provider"], "billed": ["what was billed"],
                   "paid": ["what insurance paid"], "owe": ["your share"]},
+        "insurance": {"id": ["the photos of the card's front and back"], "name": ["each insurance plan's name"],   # #1137
+                      "member": ["its member ID"], "group": ["group number"], "phones": ["the phone numbers on its card"],
+                      "phones.label": ["the phone numbers on its card"], "phones.number": ["the phone numbers on its card"],
+                      "front": ["the photos of the card's front and back"], "back": ["the photos of the card's front and back"]},
         "about": {"birthDate": ["the birth date"], "sex": ["the sex labs base reference ranges on"], "heights": ["each height"],
                   "heights.date": ["with its date"], "heights.cm": ["each height"], "heights.text": ["each height"]},
         # the measures (measures.py): by each column's heading, its unit and a glucose range's numbers left out
@@ -285,12 +289,15 @@ class ShareLinks(unittest.TestCase):
         ids = [pc.post(f"/api/profiles/{self.pid}/journal", json=e, headers=H).json()["id"] for e in
                ({"kind": "mood", "t": D(-14), "mood": 6, "energy": 4},
                 {"kind": "symptom", "t": D(-13), "title": "Rash", "severity": 2, "where": ["chest"], "group": "Fictional group"})]
+        plan = pc.post(f"/api/profiles/{self.pid}/insurance", headers=H, json={"name": "Fictional Plan", "member": "M1", "group": "G1",   # #1137
+                                                                               "phones": [{"label": "Claims", "number": "555-0100"}]}).json()["id"]
         try:
             token, _ = self.make(sections=[s for s in share_links.SECTION_IDS if s not in measures.IDS], **{"from": D(-100)})
             j = self.view(token).json()
         finally:
             for i in ids:
                 pc.delete(f"/api/profiles/{self.pid}/journal/{i}", headers=H)
+            pc.delete(f"/api/profiles/{self.pid}/insurance/{plan}", headers=H)
         ptoken, _ = self.make(pid=self.phone_profile(), sections=list(measures.IDS))
         j.update({k: v for k, v in self.view(ptoken).json().items() if k in measures.IDS})
 
@@ -472,8 +479,8 @@ class ShareLinks(unittest.TestCase):
         listed = self.c["robin"].get(f"/api/profiles/{self.pid}/links").json()
         self.assertNotIn(token, json.dumps(listed))
         self.assertIn("Hemoglobin", listed["labs"])
-        self.assertEqual([s["id"] for s in listed["sections"]], [s for s in share_links.SECTION_IDS if s not in measures.IDS and s != "journal_photos"],
-                         "every section, but a measure, or the journal's photos (#161), only when the profile has some (#225)")
+        self.assertEqual([s["id"] for s in listed["sections"]], [s for s in share_links.SECTION_IDS if s not in measures.IDS and s not in ("journal_photos", "insurance")],
+                         "every section, but a measure, the journal's photos (#161) or insurance cards (#1137), only when the profile has some (#225)")
 
     def test_no_cookie_is_set_and_none_is_read(self):
         token, _ = self.make()
