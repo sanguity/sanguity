@@ -338,10 +338,12 @@ function renderPaid(box, claimRows, periodLabel) {
   const sum = xs => xs.reduce((a, r) => a + r.counted, 0);
   const pays = counted.filter(r => r.type === "pay"), shares = counted.filter(r => r.type === "claim");
   const has = s => all.some(r => r.src === s);
-  // each source: its name, what the ⓘ adds, and its shorter name where all three are named (one line at 390 px, #467)
-  const ways = [has("typed") && ["payments typed in", ""], has("file") && ["a payments file you uploaded", "", "a file"], has("records") && ["payments imported with your records", "", "imported"],
-    has("claim") && ["claims' shares", " with no payment matched", "claims"]].filter(Boolean);
-  const from = whole => "From " + (xs => xs.length < 2 ? xs.join("") : xs.slice(0, -1).join(", ") + " and " + xs.at(-1))(ways.map(w => whole ? w[0] + w[1] : ways.length > 2 && w[2] || w[0])) + ".";
+  // each source: its name, what the ⓘ adds, its shorter name where two are named and its shortest where three are
+  // (one line at 390 px, #465, #467)
+  const ways = [has("typed") && ["payments typed in", ""], has("file") && ["a payments file you uploaded", "", "a payments file", "a file"],
+    has("records") && ["payments imported with your records", "", "payments imported", "imported"], has("claim") && ["claims' shares", " with no payment matched", "", "claims"]].filter(Boolean);
+  const from = whole => "From " + (xs => xs.length < 2 ? xs.join("") : xs.slice(0, -1).join(", ") + " and " + xs.at(-1))(ways.map(w => whole ? w[0] + w[1]
+    : ways.length > 2 && w[3] || ways.length > 1 && w[2] || w[0])) + ".";
   // the view's heading, its figures under it in their card (#448); its hint one line, where the amounts came from, and
   // the rest behind its ⓘ: how each amount is counted (#280, #465)
   h2.append(aboutWords({title: "what you paid"}, from(true), "A payment that arrived two ways is counted once, and a claim's share only until a payment is matched to it. Click a row below to see where its number came from."));
@@ -533,8 +535,8 @@ function planCard(y) {
       part.append(none ? planUnsaid("Deductible") : planMeter("Deductible", y.towardDeductible, p.deductible, split), planMeter("Out-of-pocket max", y.share, p.oop));
       if (p.familyDeductible != null) part.append(none ? planUnsaid("Family deductible") : planMeter("Family deductible", y.towardDeductible, p.familyDeductible, "this profile's claims only"));
       if (p.familyOop != null) part.append(planMeter("Family out-of-pocket max", y.share, p.familyOop, "this profile's claims only"));
-    } else part.append(el("p", {text: (none ? "" : `${usd(y.towardDeductible)} toward the deductible · `) + `${usd(y.share)} your share of claims`}),
-      none || split ? el("p", {class: "hint", text: (none ? UNSAID : split) + "."}) : null);
+    } else part.append(...present(el("p", {text: (none ? "" : `${usd(y.towardDeductible)} toward the deductible · `) + `${usd(y.share)} your share of claims`}),
+      none || split ? el("p", {class: "hint", text: (none ? UNSAID : split) + "."}) : null));   // (append(null) writes "null")
     const cs = y.claims.map(i => claimOf.get(i)).filter(Boolean);
     if (cs.length) part.append(el("details", {class: "more"}, el("summary", {text: `The ${cs.length} claim${cs.length === 1 ? "" : "s"} counted`}),
       scrollBox({class: "tablewrap", "aria-label": "Claims counted"}, stacked(el("table", {class: "data"},

@@ -8690,8 +8690,8 @@ def main():
             check("…What you paid's hint is one line at 390 px, where its amounts came from, the rest behind its ⓘ (#465)",
                   hint465[0].startswith("From ") and hint465[1] == 1 and "counted once" not in hint465[0] and "counted once" in hint465[2] and hint465[2].startswith("From "), hint465)
             check("…and one line at 390 px with all three sources, a payment typed in too, each named in it and in full behind its ⓘ (#467)",
-                  hint467[1] == 1 and all(w in hint467[0] for w in ("typed in", "imported", "claims")) and "payments typed in" in hint467[2]
-                  and "payments imported with your records" in hint467[2] and "claims' shares with no payment matched" in hint467[2], hint467)
+                  hint467[1] == 1 and all(w in hint467[0] for w in ("typed in", "file", "claims")) and "payments typed in" in hint467[2]   # (#1163: the demo's payments an uploaded file)
+                  and "a payments file you uploaded" in hint467[2] and "claims' shares with no payment matched" in hint467[2], hint467)
             check("…Enter on a payment's date at 568×320 and 667×375 leaves the date in sight, the editor's top under it, as much of the editor as fits (#473)",
                   len(open473) == 4 and all(v[0] and v[1] >= 0 and v[2] <= v[3] < v[5] and v[6] for v in open473.values())
                   and open473["568×320 row 0"][4] > 320, open473)
