@@ -16,10 +16,13 @@ The amounts come from the claims already imported, their Costs rows (records' "c
 Arithmetic only: the sums and the limits typed, nothing said about them. Claims outside every plan year typed (all of
 them, when none is) are summed by calendar year instead, with no limits.
 
-years(data, plans) -> [{start, end, plan (its id, or None for a calendar year), deductible, oop, familyDeductible,
-familyOop (the limits typed, None when not), towardDeductible, outOfPocket, claims ([event ids] that count),
-noSplit (how many of those give no deductible part)}], newest first; oop.annotate serves it as data["oop"]["years"]
-and the plan years themselves as data["oop"]["plans"].
+years(data, plans, flows) -> [{start, end, plan (its id, or None for a calendar year), deductible, oop,
+familyDeductible, familyOop (the limits typed, None when not), towardDeductible, share (the claims' shares, what the
+out-of-pocket max counts), claims ([event ids] that count), noSplit (how many of those give no deductible part),
+claimCount, insurancePaid, and the year's money as oop.annotate works it out (#1163): paid (payments for care),
+premiums, unpaidShares (claims' shares with no payment matched), notPaid (those and bills with no claim),
+outOfPocket (unpaidShares + paid: oop.py's one definition), hsa, fsa}], newest first. Costs' Summary is one of these
+years; oop.annotate serves them as data["oop"]["years"] and the plan years themselves as data["oop"]["plans"].
 """
 import json, math
 from datetime import date, timedelta
@@ -178,27 +181,42 @@ def _money(x):
     return round(float(x), 2) if isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x) else 0.0
 
 
-def years(data, typed):
-    """The plan years' sums (see the module's docstring), from the assembled records' Costs rows."""
+FLOWS = ("paid", "premiums", "notPaid", "unpaidShares", "hsa", "fsa")
+
+
+def years(data, typed, flows=()):
+    """The plan years' sums (see the module's docstring), from the assembled records' Costs rows, and the year's
+    money oop.annotate worked out: flows, [(ISO day, one of FLOWS, amount)]. A calendar year is listed for every year
+    outside the plan years with a claim or a flow in it."""
     events = {e.get("id") for e in data.get("events") or [] if isinstance(e, dict)}
-    rows = [c for c in data.get("costs") or [] if isinstance(c, dict) and c.get("id") in events
-            and isinstance(c.get("d"), str) and len(c["d"]) >= 10 and (_money(c.get("owe")) or _money(c.get("ded")))]
+    every = [c for c in data.get("costs") or [] if isinstance(c, dict) and c.get("id") in events
+             and isinstance(c.get("d"), str) and len(c["d"]) >= 10]
     out = [{"start": p["start"], "end": p["end"], "plan": p["id"], "deductible": p["deductible"], "oop": p["oop"],
-            "familyDeductible": p.get("familyDeductible"), "familyOop": p.get("familyOop"), "_rows": []} for p in typed]
+            "familyDeductible": p.get("familyDeductible"), "familyOop": p.get("familyOop"), "_rows": [], "_flows": []} for p in typed]
     cal = {}
-    for c in rows:
-        d = c["d"][:10]
+
+    def year_of(d):
         y = next((y for y in out if y["start"] <= d <= y["end"]), None)
         if y is None:
             y = cal.get(d[:4])
             if y is None:
                 y = cal[d[:4]] = {"start": d[:4] + "-01-01", "end": d[:4] + "-12-31", "plan": None, "deductible": None, "oop": None,
-                                  "familyDeductible": None, "familyOop": None, "_rows": []}
-        y["_rows"].append(c)
+                                  "familyDeductible": None, "familyOop": None, "_rows": [], "_flows": []}
+        return y
+
+    for c in every:
+        year_of(c["d"][:10])["_rows"].append(c)
+    for d, what, v in flows:
+        if isinstance(d, str) and len(d) >= 10 and what in FLOWS:
+            year_of(d[:10])["_flows"].append((what, _money(v)))
     for y in out + list(cal.values()):
-        rs = y.pop("_rows")
-        y.update(towardDeductible=round(sum(_money(c.get("ded")) for c in rs), 2), outOfPocket=round(sum(_money(c.get("owe")) for c in rs), 2),
-                 claims=[c["id"] for c in rs], noSplit=sum(1 for c in rs if not isinstance(c.get("ded"), (int, float))))
+        alls, fl = y.pop("_rows"), y.pop("_flows")
+        rs = [c for c in alls if _money(c.get("owe")) or _money(c.get("ded"))]
+        y.update(towardDeductible=round(sum(_money(c.get("ded")) for c in rs), 2), share=round(sum(_money(c.get("owe")) for c in rs), 2),
+                 claims=[c["id"] for c in rs], noSplit=sum(1 for c in rs if not isinstance(c.get("ded"), (int, float))),
+                 insurancePaid=round(sum(_money(c.get("paid")) for c in alls), 2), claimCount=len(alls),
+                 **{k: round(sum(v for w, v in fl if w == k), 2) for k in FLOWS})
+        y["outOfPocket"] = round(y["unpaidShares"] + y["paid"], 2)   # the one definition (oop.py)
     return sorted(out + list(cal.values()), key=lambda y: y["start"], reverse=True)
 
 

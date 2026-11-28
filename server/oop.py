@@ -23,8 +23,14 @@ The same money can arrive two of those ways, so annotate() works out, for every 
             with the provider: the nearest in time, one payment per claim. Premiums and refunds are never matched.
   counted   a claim share is counted only while no payment is matched to it: once one is, the payments are what
             was paid (a bill can be reduced, or paid in parts), so the share isn't added to them.
-  hsa       "HSA", "FSA" or None: a mark, else what was typed, else read from the account the export names
-            ("HSA", "Health savings", "FSA", "Flexible spending").
+  hsa       "HSA", "FSA" or None: a mark, else what was typed, else read from what it was paid with (its
+            "account": "HSA", "Health savings", "FSA", "Flexible spending").
+  premium   a payment for insurance (its "For" says premium): never matched to a claim, and never out of pocket
+
+Out of pocket is one figure, defined here and nowhere else (#1163): what care cost you, the claims' shares counted
+(no payment matched) plus the payments for care, each counted once; premiums are never in it, and are shown on
+their own line. costplan.years sums it per plan or calendar year (Costs' Summary) from the flows annotate() works
+out; the page adds up the same rows for a period (costs.js oopFigures), and the tax-year report lists premiums apart.
 
 Marks are what a person said about one payment or claim share on the Costs tab, kept in the cost_marks table
 (schema version 27): {"hsa": "HSA" | "FSA" | "", "claim": <claim key> | "", "same": false}, each field present only
@@ -35,12 +41,13 @@ payments, which have none, "pay:h:" and a hash of its date, payee, amount, accou
 
 data["oop"] (only when the profile has payments, marks, claims or plan years, so records with none are served as
 before):
-  payments  [{i (place in outOfPocket.payments), key, src, imp, hsa, hsaFrom, claim (event id), match, dup (i of
-             the payment counted instead), receipt (event id), marked}]
+  payments  [{i (place in outOfPocket.payments), key, src, imp, hsa, hsaFrom, premium, claim (event id), match, dup
+             (i of the payment counted instead), receipt (event id), marked}]
   claims    [{id (event id), key, owe, by ([i] matched), paid, counted, hsa, marked}]   claim shares over zero
   plans     the plan years typed in (costplan.plans, #1127)
   bills     the bills typed in, each lined up against a claim (costplan.lined_up, #1128)
-  years     the deductible and out-of-pocket sums per plan year, or calendar year outside them (costplan.years)
+  years     the deductible and out-of-pocket sums per plan year, or calendar year outside them, with the year's
+            payments, premiums and what's not yet paid (costplan.years, flows())
 Never stored from an import (records.SERVED): an export's data.json has it, worked out again when loaded.
 """
 import hashlib, json, re
@@ -52,6 +59,7 @@ DUP_DAYS = 3
 MATCH_BEFORE, MATCH_AFTER = 3, 180
 HSA_TAGS = ("HSA", "FSA")
 SRC_LABELS = {"typed": "Typed in by you", "records": "Imported with your records"}
+PREMIUM = re.compile(r"premium", re.I)
 _WORDS_IGNORED = {"the", "and", "inc", "llc", "pllc", "ltd", "corp", "dba", "of", "for", "fictional", "payment", "pmt",
                   "bill", "medical", "health", "center", "services", "group", "associates", "hospital", "clinic", "dr"}
 
@@ -173,7 +181,8 @@ def annotate(db, pid, data, imps=()):
             src_tag = "account" if hsa else None
         receipt = by_key.get(p.get("receipt")) if p.get("receipt") else None
         out_p.append({"i": i, "key": key, "src": "typed" if fmt == "manual" else "records", "imp": imp,
-                      "hsa": hsa, "hsaFrom": src_tag, "claim": None, "match": None, "dup": None,
+                      "hsa": hsa, "hsaFrom": src_tag, "premium": bool(PREMIUM.search(str(p.get("group") or ""))),
+                      "claim": None, "match": None, "dup": None,
                       "receipt": receipt["id"] if receipt else None, "marked": bool(m),
                       "_p": p, "_m": m, "_day": _day(p.get("d")), "_amt": _money(p.get("amount"))})
 
@@ -221,7 +230,7 @@ def annotate(db, pid, data, imps=()):
     for p in counted:
         if p["claim"] is not None or p["_m"].get("claim") == "" or p["_day"] is None or p["_amt"] <= 0:
             continue
-        if re.search(r"premium", str(p["_p"].get("group") or ""), re.I):
+        if p["premium"]:
             continue
         for cl in claims:
             if cl["by"] or cl["_d"] is None or abs(cl["owe"] - p["_amt"]) >= 0.005:
@@ -236,8 +245,29 @@ def annotate(db, pid, data, imps=()):
     for cl in claims:
         cl["counted"] = 0.0 if cl["by"] else cl["owe"]
 
+    bills = costplan.lined_up(data, kept, {c["id"]: (c["paid"], c["by"]) for c in claims}, edits.key_of)
     data["oop"] = {"payments": [{k: v for k, v in p.items() if not k.startswith("_")} for p in out_p],
                    "claims": [{k: v for k, v in c.items() if not k.startswith("_")} for c in claims],
-                   "plans": typed, "years": costplan.years(data, typed),
-                   "bills": costplan.lined_up(data, kept, {c["id"]: (c["paid"], c["by"]) for c in claims}, edits.key_of)}
+                   "plans": typed, "years": costplan.years(data, typed, flows(data, counted, claims, bills)), "bills": bills}
     return data
+
+
+def flows(data, counted, claims, bills):
+    """The money of each day, for costplan.years: [(ISO day, what, amount)], what one of costplan.FLOWS. A payment
+    counted is paid (for care) or premiums; a claim's share counted is unpaidShares and notPaid; a bill lined up with
+    no claim is notPaid (no payment is recorded against a bill); an HSA or FSA tag adds it to hsa or fsa too."""
+    days = {c.get("id"): str(c.get("d") or "")[:10] for c in data.get("costs") or [] if isinstance(c, dict)}
+    out = []
+    for p in counted:
+        d = str(p["_p"].get("d") or "")[:10]
+        out.append((d, "premiums" if p["premium"] else "paid", p["_amt"]))
+        if p["hsa"]:
+            out.append((d, p["hsa"].lower(), p["_amt"]))
+    for cl in claims:
+        if cl["counted"]:
+            d = days.get(cl["id"], "")
+            out += [(d, "unpaidShares", cl["counted"]), (d, "notPaid", cl["counted"])]
+            if cl["hsa"]:
+                out.append((d, cl["hsa"].lower(), cl["counted"]))
+    out += [(b["service"], "notPaid", _money(b.get("amount"))) for b in bills if b.get("claim") is None and b.get("service")]
+    return out

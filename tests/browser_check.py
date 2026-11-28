@@ -7975,8 +7975,8 @@ def main():
             page.click("#costView button:text-is('What you paid')")
             settle(200)
             kept278 = [js(more), js("document.getElementById('oopTax').checkVisibility()")]
-            check("…What you paid: its own three figures, total out of pocket, payments and claim shares with no payment, the rest under More figures; focus on it",
-                  paid278[0] == ["Total out of pocket", "Payments", "Claim shares with no payment"] and paid278[1][:1] == [False] and paid278[1][1] >= 3
+            check("…What you paid: its own three figures, total out of pocket (premiums apart, #1163), paid for care and claim shares with no payment, the rest under More figures; focus on it",
+                  paid278[0] == ["Total out of pocket", "Paid for care", "Claim shares with no payment"] and paid278[1][:1] == [False] and paid278[1][1] >= 3
                   and paid278[2] == "What you paid" and paid278[3] == [True, False], paid278)
             check("…More figures opened stays open, the HSA and FSA by year in it", kept278[0][0] is True and kept278[1] is True, kept278)
             js("costState.more = false; costState.view = 'claims'; renderCosts()")
@@ -19609,8 +19609,8 @@ def main():
             y1127 = js("DATA.oop.years[0]")
             cal1127 = js("[...document.querySelectorAll('#planCard h3.sub')].map(h => h.textContent)")
             check("Costs sums each calendar year's claims toward the deductible and out of pocket, with no plan year typed (#1127)",
-                  bool(cal1127) and cal1127[0] == y1127["start"][:4] and js("v => `${usd(v[0])} toward the deductible · ${usd(v[1])} out of pocket`",
-                  [y1127["towardDeductible"], y1127["outOfPocket"]]) in page.inner_text("#planCard"), [cal1127, y1127])
+                  bool(cal1127) and cal1127[0] == y1127["start"][:4] and js("v => `${usd(v[0])} toward the deductible · ${usd(v[1])} your share of claims`",
+                  [y1127["towardDeductible"], y1127["share"]]) in page.inner_text("#planCard"), [cal1127, y1127])
             page.click("#planAdd")
             page.wait_for_selector("#planEdit", timeout=5000)
             focus1127 = js("document.activeElement.id")
@@ -19632,7 +19632,7 @@ def main():
             check("…a plan year typed in: its deductible, out-of-pocket max and family deductible met so far as text, each bar hidden from screen readers (#1127)",
                   [r[0] for r in rows1127] == ["Deductible", "Out-of-pocket max", "Family deductible"]
                   and rows1127[0][1] == js("v => usd(v) + ' of $3,000'", yp1127["towardDeductible"])
-                  and rows1127[1][1] == js("v => usd(v) + ' of $7,500'", yp1127["outOfPocket"]) and all(r[2] == "true" for r in rows1127), rows1127)
+                  and rows1127[1][1] == js("v => usd(v) + ' of $7,500'", yp1127["share"]) and all(r[2] == "true" for r in rows1127), rows1127)
             check("…an out-of-pocket max under the deductible refused, said beside the form; Add a plan year focused the form, and has focus back after the save",
                   "at least the deductible" in said1127 and focus1127 == "plan-start" and js("document.activeElement.id") == "planAdd",
                   [said1127, focus1127, js("document.activeElement.id")])
