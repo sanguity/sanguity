@@ -945,8 +945,9 @@ def fresh_check(page):
 
 
 def general_backups_check(browser, base, cookies, check, db_path, pw=None):
-    """Settings → Install → General → Backups and logging (#1002), as the admin whose sign-in cookies are given: the
-    backups folder, the key and the schedule's line, where the logs are read, and the days of activity kept, changed
+    """Settings → Install: what General → Backups and logging was (#1002; the owner's decision on #1153), as the admin
+    whose sign-in cookies are given. Backups → Folder and key: the backups folder and the key, in the Backups group
+    beside the schedule; Logs and activity → Logging: where the logs are read, and the days of activity kept, changed
     through the group's bar (fewer, deleting entries, asked with the count to type) and shown fixed when the environment
     sets it. db_path: the app's database, given entries old enough to go. Returns the page's script errors."""
     import sqlite3
@@ -957,15 +958,22 @@ def general_backups_check(browser, base, cookies, check, db_path, pw=None):
     days = "fetch('api/settings/install').then(r => r.json()).then(j => j.sections.flatMap(s => s.settings).find(s => s.key === 'activity.days').value)"
     con = sqlite3.connect(db_path)
     try:
-        pg.goto(base + "/settings.html?profile=1#general")
-        pg.wait_for_selector("#genBk .kv", timeout=15000)
+        shown = "[...document.querySelectorAll('main > .card')].filter(c => c.checkVisibility()).map(c => c.id)"
+        pg.goto(base + "/settings.html?profile=1#backups")
+        pg.wait_for_selector("#bkFiles .kv", timeout=15000)
+        pg.wait_for_selector("#bkSchedule input", timeout=15000)
+        files = pg.evaluate(f"[[...document.querySelectorAll('#bkFiles dt')].map(d => d.textContent), document.getElementById('bkFiles').innerText, {shown}]")
+        pg.click("#setNav a[data-group=logs]")
+        pg.wait_for_selector("#genBk .kv", state="visible", timeout=15000)
         text = pg.evaluate("document.getElementById('genBk').innerText")
-        names = pg.evaluate("[...document.querySelectorAll('#genBk dt')].map(d => d.textContent)")
-        check("General → Backups and logging (#1002): the backups folder, the key (how many keys, never one) and the schedule with a link "
-              "to Backups, where it's set; where the app's output and its security log are read; the days of activity kept",
-              names == ["Folder", "Encryption key", "Schedule", "The app's output", "Security log", "Activity"]
-              and "(1 key; the first encrypts)" in text and pg.evaluate("!!document.querySelector('#genBk a[href=\"#backups\"]')")
-              and pg.input_value("#genActDays") == "365", [names, text])
+        names = pg.evaluate(f"[[...document.querySelectorAll('#genBk dt')].map(d => d.textContent), {shown}]")
+        check("Backups → Folder and key (#1002, #1153): the backups folder and the key (how many keys, never one), in the Backups group "
+              "after the schedule, Back up now and Restore",
+              files[0] == ["Folder", "Encryption key"] and "(1 key; the first encrypts)" in files[1] and files[2] == ["backups", "bk-files"], files)
+        check("Logs and activity → Logging (#1002, #1153): where the app's output and its security log are read, the days of activity "
+              "kept, then Install activity",
+              names == [["The app's output", "Security log", "Activity"], ["logging", "installLog"]] and pg.input_value("#genActDays") == "365"
+              and pg.evaluate("!!document.querySelector('#genBk a[href=\"#installLog\"]')"), [names, text])
         # three entries of profile 1's, 200 days old: keeping 90 days deletes them (and any others that old) at the next
         # daily clean-up, so it's asked first, with the count to type
         now = int(time.time())
@@ -976,7 +984,7 @@ def general_backups_check(browser, base, cookies, check, db_path, pw=None):
         pg.evaluate("pw => fetch('api/me/reauth', {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, "
                     "body: JSON.stringify({secret: pw})})", pw or PW)
         pg.fill("#genActDays", "90")
-        dirty = pg.evaluate("[document.getElementById('gen-backups').dataset.dirty, document.querySelector('#genBk .set-row').classList.contains('set-changed')]")
+        dirty = pg.evaluate("[document.getElementById('logging').dataset.dirty, document.querySelector('#genBk .set-row').classList.contains('set-changed')]")
         pg.click("#setBar .btn.primary")
         asked = answer_ask(pg, fill=str(n))
         pg.wait_for_function("document.getElementById('genBkMsg').textContent.startsWith('Saved')", timeout=10000)
@@ -984,7 +992,7 @@ def general_backups_check(browser, base, cookies, check, db_path, pw=None):
         check("…keeping fewer days, where that deletes entries, asks first with how many, the profiles' and the install's, and saves once "
               "that count is typed; nothing goes before the next daily clean-up",
               dirty == ["1", True] and f"deletes {n:,} entries older than 90 days" in asked[1] and f"Type {n} to confirm" in asked[1]
-              and pg.evaluate(days) == 90 and left == 3 and pg.evaluate("document.getElementById('gen-backups').dataset.dirty") is None,
+              and pg.evaluate(days) == 90 and left == 3 and pg.evaluate("document.getElementById('logging').dataset.dirty") is None,
               [dirty, asked, left])
         # more days: asked nothing. #1077: by Enter in the field (the bar's Save, by its click()), the fresh check asked on the
         # way (this sign-in made not fresh): once confirmed, focus back in the field, in sight (the check's box gone, it was on the page)
@@ -1019,7 +1027,7 @@ def general_backups_check(browser, base, cookies, check, db_path, pw=None):
               "changed (#1119)", fixed[:4] == [False, False, "400 days", "Set in .env: ACTIVITY_DAYS"] and "older entries are deleted once a day" in fixed[4]
               and "or take it out there to change it here:" in fixed[5], fixed)
     except Exception as e:
-        check("General → Backups and logging (#1002) ran", False, stopped(e))
+        check("Backups → Folder and key and Logs and activity → Logging (#1002, #1153) ran", False, stopped(e))
     finally:
         con.execute("DELETE FROM activity WHERE actor='fictional'")
         con.commit()
@@ -1029,7 +1037,7 @@ def general_backups_check(browser, base, cookies, check, db_path, pw=None):
 
 
 def general_about_check(browser, base, cookies, check):
-    """Settings → Install → General → About (#1004), as the admin whose sign-in cookies are given: the version, the
+    """Settings → Install → About (#1004; General's before #1153), as the admin whose sign-in cookies are given: the version, the
     database, how it's deployed and who it runs as; the folders, each with what mounts it; the releases page a link,
     and no request to any host but the app's own; the limits read-only, with their variables. Returns script errors."""
     ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
@@ -1038,12 +1046,12 @@ def general_about_check(browser, base, cookies, check):
     pg.on("pageerror", lambda e: errs.append(str(e)))
     pg.on("request", lambda r: hosts.add(urllib.parse.urlsplit(r.url).netloc))
     try:
-        pg.goto(base + "/settings.html?profile=1#general")
-        pg.wait_for_selector("#genAbout .kv", timeout=15000)
+        pg.goto(base + "/settings.html?profile=1#install-about")
+        pg.wait_for_selector("#genAbout .kv", state="visible", timeout=15000)
         got = pg.evaluate("""[[...document.querySelectorAll('#genAbout dt')].map(d => d.textContent),
           (a => a && [a.getAttribute('href'), a.target, a.rel])(document.querySelector('#genAbout a[href^="https://"]')),
           [...document.querySelectorAll('#genAbout li code')].map(c => c.textContent), document.getElementById('genAbout').innerText]""")
-        check("General → About (#1004): the version (a link to the releases page, opened apart), the database, how it's deployed, its "
+        check("About (#1004): the version (a link to the releases page, opened apart), the database, how it's deployed, its "
               "settings and who it runs as; then the folders, each with what mounts it; nothing in it contacts any host but the app",
               got[0][:5] == ["Version", "Database", "Deployed as", "Settings", "Runs as"]
               and got[0][5:11] == ["Data", "Backups", "Encryption key", "Record exports", "Phone and watch data", "Configuration"]
@@ -1055,10 +1063,10 @@ def general_about_check(browser, base, cookies, check):
               and not pg.evaluate("!!document.querySelector('#genAbout input, #genAbout select')"), got[2])
         check("…and what only the server's own setup sets, Host's and Security's before, each with what sets it (#1119)",
               got[0][11:] == ["Internal port and bind address", "Secure session cookie"]   # (the trusted proxies and password checks: Needs a restart's, #1121)
-              and all(w in got[3] for w in ("Set by: PORT and HOST", "Set by: COOKIE_SECURE")) and "Changed under Needs a restart" in got[3]
+              and all(w in got[3] for w in ("Set by: PORT and HOST", "Set by: COOKIE_SECURE")) and "Changed under General, Needs a restart" in got[3]
               and pg.evaluate("!!document.querySelector('#genAbout a[href=\"#gen-restart\"]')"), got[0][11:])
     except Exception as e:
-        check("General → About (#1004) ran", False, stopped(e))
+        check("About (#1004) ran", False, stopped(e))
     finally:
         ctx.close()
     return errs
@@ -1067,8 +1075,9 @@ def general_about_check(browser, base, cookies, check):
 def general_env_check(browser, base, cookies, check, db_path):
     """(#1119) Settings → Install → General with its settings set by the server's environment (each variable set here
     for the while, as #1000's PUBLIC_ORIGINS is, the values as they are so nothing else changes): what can't be
-    changed never looks changeable. No disabled or readonly control anywhere in General; each environment-set row
-    (Host's, Security's, the Sign-in provider's secret, Backups and logging's, the Phone receiver's, Experimental's) its
+    changed never looks changeable. No disabled or readonly control anywhere in General, nor in the parts that were
+    General's (#1119, #1153); each environment-set row (Host's, Sign-in rules', the Sign-in provider's secret, Logging's,
+    the Phone receiver's, Connected sources' switch) its
     value as text (the secret never), a "Set in .env: VAR" tag on its name's line, its own help, and where this install's
     settings are; Host and Security hold no read-only fact (About does), and About tags a limit only where the
     environment set it. With passkeys made, Host's Passkey names says each name and its count. 320 px and 200% text
@@ -1096,11 +1105,12 @@ def general_env_check(browser, base, cookies, check, db_path):
         for sel in ("#gen-host [data-env]", "#gen-phone [data-env]", "#genSecBody [data-env]", "#genExpBody [data-env]", "#genBk [data-env]",
                     "#signin-provider [data-env]", "#genAbout .kv"):
             pg.wait_for_selector(sel, state="attached", timeout=20000)   # (the sign-in parts: Accounts and sign-in's, #1119)
-        fixed_js = """[...document.querySelectorAll(':is(section[id^="gen-"], #signin-rules, #signin-provider) :is(input, textarea, select, button, [role=switch])')]
+        were = ':is(section[id^="gen-"], #signin-rules, #signin-provider, #bk-files, #logging, #cs-switch, #install-about)'   # (General's, #1119, #1153)
+        fixed_js = """[...document.querySelectorAll('""" + were + """ :is(input, textarea, select, button, [role=switch])')]
             .filter(e => e.checkVisibility() && (e.disabled || e.readOnly || e.getAttribute('aria-disabled') === 'true')).map(e => e.id || e.textContent.trim())"""
         got = pg.evaluate("""(at => ({
           fixed: """ + fixed_js + """,
-          rows: Object.fromEntries([...document.querySelectorAll(':is(section[id^="gen-"], #signin-rules, #signin-provider) [data-env]')].map(r => [r.dataset.env, {
+          rows: Object.fromEntries([...document.querySelectorAll('""" + were + """ [data-env]')].map(r => [r.dataset.env, {
             value: r.querySelector('.set-row-ctl > p').textContent, tag: r.querySelector('.set-row-lbl .tag')?.textContent,
             tagOnName: !!r.querySelector('.set-row-lbl > :first-child .tag'), help: r.querySelector('.set-row-lbl .hint')?.textContent || '',
             where: r.querySelector('.set-row-ctl > p.hint:last-child')?.textContent, controls: r.querySelectorAll('input, textarea, select').length}])),
@@ -1108,10 +1118,13 @@ def general_env_check(browser, base, cookies, check, db_path):
           passkeys: [...document.querySelectorAll('#gen-host .set-row')].find(r => r.textContent.startsWith('Passkey names'))?.querySelector('.set-row-ctl').textContent,
           limits: [...document.querySelectorAll('#genAbout li')].filter(l => l.querySelector('.tag')).map(l => l.querySelector('.tag').textContent),
           page: document.documentElement.outerHTML}))""", None)
-        # (#1119) Sign-in rules and Sign-in provider, Accounts and sign-in's: no disabled or readonly control there either
-        pg.click("#setNav a[data-group=accounts]")
-        pg.wait_for_selector("#signin-rules [data-env]", state="visible", timeout=10000)
-        got["fixed"] += pg.evaluate(fixed_js)
+        # (#1119) Sign-in rules and Sign-in provider, Accounts and sign-in's, and (#1153) Backups' Folder and key, Logging,
+        # Connected sources' switch and About: no disabled or readonly control there either
+        for grp, sel in (("accounts", "#signin-rules [data-env]"), ("backups", "#bkFiles .kv"), ("logs", "#genBk [data-env]"),
+                         ("connected", "#genExpBody [data-env]"), ("install-about", "#genAbout .kv")):
+            pg.click(f"#setNav a[data-group={grp}]")
+            pg.wait_for_selector(sel, state="visible", timeout=10000)
+            got["fixed"] += pg.evaluate(fixed_js)
         at = ctx.request.get(base + "/api/settings/install").json()["settings_at"]
         machine = {st["name"] for st in ctx.request.get(base + "/api/settings/install/restart").json()["settings"]   # (Needs a restart's
                    if not st["can_change"]}   # the machine's own environment sets, as TZ here: #1121)
@@ -1121,7 +1134,8 @@ def general_env_check(browser, base, cookies, check, db_path):
                 "OIDC_CLIENT_SECRET": "Set there (never shown here)", "UPLOAD_MAX_FILES": f"{files:,} files",   # (Needs a restart's, #1121)
                 "NOTIFY_TOKEN": "Set there (not sent to this server)" if ctx.request.get(base + "/api/settings/install/notify").json()["token_elsewhere"]
                 else "Set there (never shown here)"}   # (#1130's, never its value)
-        check("General with its settings set by the environment (#1119): no disabled or readonly control anywhere in it",
+        check("General with its settings set by the environment (#1119): no disabled or readonly control anywhere in it, nor in what was "
+              "General's (#1153)",
               not got["fixed"] and all(r["controls"] == 0 for r in rows.values()), [got["fixed"], {k: r["controls"] for k, r in rows.items()}])
         check("…each row the environment sets: its value as text (the client secret's never), its variable's tag on its name's line, "
               "its own help, and where this install's settings are, to change it or take it out",
@@ -1136,7 +1150,8 @@ def general_env_check(browser, base, cookies, check, db_path):
         check("…and Host's Passkey names says each name the passkeys were made at, with its count (never “[object …]”)",
               got["passkeys"] == "records.example.test: 2 passkeys", got["passkeys"])
         serious, fits = [], []
-        for grp, name in (("general", "General"), ("accounts", "Accounts and sign-in")):   # (#1119: the sign-in parts there)
+        for grp, name in (("general", "General"), ("accounts", "Accounts and sign-in"), ("logs", "Logs and activity"),
+                          ("connected", "Connected sources")):   # (#1119: the sign-in parts there; #1153: Logging's, the switch's)
             pg.set_viewport_size({"width": 1400, "height": 900})
             pg.evaluate("document.adoptedStyleSheets = []")
             pg.click(f"#setNav a[data-group={grp}]")
@@ -1150,7 +1165,7 @@ def general_env_check(browser, base, cookies, check, db_path):
             pg.wait_for_timeout(300)
             fits += phone_fits(pg, f"{name}, set by the environment, at 200% text")
             fits += [f"{name} at 200% text scrolls sideways by {n} px" for n in [pg.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")] if n > 0]
-        check("…no serious axe finding, there and in Accounts and sign-in", not serious, serious)
+        check("…no serious axe finding, there and in Accounts and sign-in, Logs and activity and Connected sources", not serious, serious)
         check("…and fits at 320 px and at 200% text", not fits, fits)
     except Exception as e:
         check("General with its settings set by the environment (#1119) ran", False, stopped(e))
@@ -1212,6 +1227,84 @@ def signin_moved_check(browser, base, cookies, check):
           and [c for c in got["gen-security"][2] if c in cards] == cards and got["gen-signin"][:2] == ["#signin-provider", "accounts"], [got, errs])
     check("…the palette finds them by their old words, each Accounts and sign-in's, and opens it",
           "stopped" not in got and all(v[0] for v in found.values()) and got["opened"][1] == "accounts", [found, got.get("opened")])
+    return errs
+
+
+def install_moved_check(browser, base, cookies, check):
+    """(#1153, the owner's decision) Install in order: General keeps its install-wide setup alone; Backups holds Folder
+    and key, Logs and activity Logging and Install activity, one Connected sources (experimental) group its switch
+    first, then Set up a source, the sync defaults and the Provider directory, and About is the last group. The old
+    addresses (General's, Install's own groups', the Admin page's) open each part there, the query kept, and the palette
+    finds each by its old words and its new title, Enter opening it. Returns script errors."""
+    ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
+    ctx.add_cookies(cookies)
+    pg, errs, got = ctx.new_page(), [], {}
+    pg.on("pageerror", lambda e: errs.append(str(e)))
+    shown = """() => [location.hash, document.querySelector('#setNav a[aria-current=page]')?.dataset.group,
+      [...document.querySelectorAll('main > .card')].filter(c => c.checkVisibility()).map(c => c.id)]"""
+    try:
+        pg.goto(base + "/settings.html?profile=1#general")
+        pg.wait_for_selector("#gen-host .set-row", timeout=20000)
+        got["general"] = pg.evaluate(shown)
+        got["install"] = pg.evaluate("""[...document.querySelectorAll('#setNav a[data-group]')].filter(a => a.checkVisibility()).map(a => a.textContent.trim())""")
+        for grp in ("backups", "logs", "connected", "install-about"):
+            pg.click(f"#setNav a[data-group={grp}]")
+            pg.wait_for_timeout(300)
+            got[grp] = pg.evaluate(shown)
+        old = {"gen-backups": ["#bk-files", "backups"], "gen-experimental": ["#cs-switch", "connected"], "gen-about": ["#install-about", "install-about"],
+               "apps": ["#admin", "connected"], "directory": ["#directory", "connected"], "installLog": ["#installLog", "logs"]}
+        for h, (to, grp) in old.items():
+            pg.goto(base + f"/settings.html?profile=1#{h}")
+            pg.wait_for_function(f"location.hash === '{to}' && document.getElementById('{to[1:]}')?.checkVisibility()", timeout=20000)
+            got[h] = pg.evaluate(shown)[:2] == [to, grp]
+        for h, to in (("gen-backups", "bk-files"), ("apps", "admin"), ("directory", "directory"), ("installLog", "installLog")):   # (the Admin page's, #991)
+            pg.goto(base + f"/admin.html?profile=1#{h}")
+            pg.wait_for_function(f"location.pathname.endsWith('/settings.html') && location.hash === '#{to}' && document.getElementById('{to}')?.checkVisibility()", timeout=20000)
+            got["admin.html#" + h] = pg.evaluate("location.search") == "?profile=1"
+        pg.goto(base + "/settings.html?profile=1&vendor=epic&issuer=https%3A%2F%2Ffhir.example.test%2Fapi%2FFHIR%2FR4&name=Fictional#apps")   # Find your provider's, #166
+        pg.wait_for_function("location.hash === '#admin' && document.getElementById('fIssuer')?.value", timeout=20000)
+        got["prefill"] = pg.evaluate("[document.getElementById('fIssuer').value, document.getElementById('fName').value]")
+        found = {}
+        for q, want, grp in (("backups and logging", "Folder and key", "Backups"), ("encryption key", "Folder and key", "Backups"),
+                             ("activity kept days", "Logging", "Logs and activity"), ("logs and activity", "Logs and activity", None),
+                             ("failed sign-ins", "Logs and activity", None), ("install activity", "Logs and activity", None), ("experimental", "Connected sources (experimental)", None),
+                             ("turn on connected sources", "On or off", "Connected sources (experimental)"),
+                             ("return address", "Connected-source apps", "Connected sources (experimental)"),
+                             ("directories", "Provider directory", "Connected sources (experimental)"),
+                             ("schema version", "About", None), ("deployment", "About", None)):
+            pg.keyboard.press("Escape")
+            pg.keyboard.press("Control+k")
+            pg.wait_for_selector("dialog.palette[open]", timeout=5000)
+            pg.fill("#palQ", q)
+            pg.wait_for_timeout(250)
+            opts = pg.evaluate("[...document.querySelectorAll('dialog.palette [role=option]')].map(o => o.textContent.trim())")
+            found[q] = [any(o.startswith(want) and (grp is None or grp in o) for o in opts[:3]), [o[:70] for o in opts[:3]]]
+        pg.fill("#palQ", "encryption key")
+        pg.wait_for_timeout(250)
+        pg.keyboard.press("Enter")
+        pg.wait_for_function("document.getElementById('bk-files')?.checkVisibility() && location.hash === '#bk-files'", timeout=10000)
+        got["opened"] = pg.evaluate(shown)
+    except Exception as e:
+        got["stopped"] = stopped(e)
+    finally:
+        ctx.close()
+    ok = "stopped" not in got and not errs
+    install = ["General", "Accounts and sign-in", "Backups", "Logs and activity", "Connected sources (experimental)", "Outside connections", "About"]
+    check("Install in order (#1153): General, Accounts and sign-in, Backups, Logs and activity, Connected sources (experimental), Outside "
+          "connections, About; General keeps its install-wide setup alone", ok and got["install"][-7:] == install
+          and got["general"][2] == ["gen-host", "gen-phone", "gen-notify", "gen-restart", "gen-ocr", "gen-demo"], [got, errs])
+    check("…Backups holds Folder and key after the backups; Logs and activity, Logging then Install activity; Connected sources its switch "
+          "first, then Set up a source, the sync defaults and the Provider directory (they're on here); About is About alone",
+          ok and got["backups"][2] == ["backups", "bk-files"] and got["logs"][2] == ["logging", "installLog"]
+          and got["connected"][2] == ["cs-switch", "admin", "sec-sync", "directory"] and got["install-about"][2] == ["install-about"],
+          {k: got.get(k) for k in ("backups", "logs", "connected", "install-about")})
+    check("…the old addresses (#gen-backups, #gen-experimental, #gen-about, #apps, #directory, #installLog, and the Admin page's) open "
+          "each part in its group, the query kept (Find your provider's filled in)",
+          ok and all(got[h] for h in [*("gen-backups", "gen-experimental", "gen-about", "apps", "directory", "installLog"),
+                                      *("admin.html#" + h for h in ("gen-backups", "apps", "directory", "installLog"))])
+          and got["prefill"] == ["https://fhir.example.test/api/FHIR/R4", "Fictional"], got)
+    check("…the palette finds each by its old words and its new title, among the first three, Enter opening it",
+          ok and all(v[0] for v in found.values()) and got["opened"][:2] == ["#bk-files", "backups"], [found, got.get("opened")])
     return errs
 
 
@@ -3105,19 +3198,23 @@ def general_security_check(check, browser, base, cookies):
 
 
 def connected_sources_switch_check(check, browser, base, cookies):
-    """(#1096) Connected sources behind General → Experimental's switch, on since the setup (as an admin turns them on):
-    the admin switches it off there, and then for the admin and for a member (an editor of profile 1) no page or menu
-    offers them: the Overview, Sources (its Portals and health plans' address lands on its Overview), Settings' groups,
-    the guide's ways, Add and the palette; and no page asks for a connection or the directory. Switched on again, each
-    place says it's experimental: Add's Connect, Sources' portals and its upload's line, Install's Connected-source apps
-    and Provider directory, the guide's way. General → Host and a profile's activity log's kinds name them only while
+    """(#1096) Connected sources behind their switch (Install → Connected sources' first part since #1153, General →
+    Experimental's before), on since the setup (as an admin turns them on): the admin switches it off there, and its
+    group then holds the switch alone, with why; for the admin and for a member (an editor of profile 1) no page or
+    menu offers them: the Overview, Sources (its Portals and health plans' address lands on its Overview), Settings'
+    groups (the admin's switch and its group aside), the guide's ways, Add and the palette; and no page asks for a
+    connection or the directory. Switched on again, each place says it's experimental: Add's Connect, Sources' portals
+    and its upload's line, Install's Set up a source and Provider directory, the guide's way. General → Host and a profile's activity log's kinds name them only while
     they're on. Returns the pages' script errors."""
     import re as re1096
     from server import db as dbm1096, security as sec1096
     errs, asked = [], []
     gated = re1096.compile(r"/api/(directory|provider-directory|connect/)|/connections")
-    TRACE = """() => ["Connect a portal", "Portals and health plans", "Connected-source", "Provider directory", "Find your hospital",
-      "health plan once", "Connected sources", "xperimental, not recommended yet"].filter(w => document.body.innerText.includes(w))"""   # (their words: a Health Link's and a PDF's "Experimental" are on either way, #1122)
+    # (their words: a Health Link's and a PDF's "Experimental" are on either way, #1122; #1153: the admin's sidebar names
+    # their switch's group, Install's Connected sources, either way: its link's own words aside, nothing else of them)
+    TRACE = """() => { const own = document.querySelector('#setNav a[data-group=connected]')?.innerText, text = own ? document.body.innerText.replace(own, '') : document.body.innerText;
+      return ["Connect a portal", "Portals and health plans", "Connected-source", "Provider directory", "Find your hospital",
+      "health plan once", "Connected sources", "xperimental, not recommended yet"].filter(w => text.includes(w)); }"""
 
     def context(cks):
         ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
@@ -3128,15 +3225,16 @@ def connected_sources_switch_check(check, browser, base, cookies):
         return ctx, pg
 
     def switch(pg, on):
-        pg.goto(base + "/settings.html?profile=1#general")
-        pg.wait_for_selector("#gx-connectedSources", timeout=20000)
+        pg.goto(base + "/settings.html?profile=1#connected")
+        pg.wait_for_selector("#gx-connectedSources", state="visible", timeout=20000)
         fresh_check(pg)
         was = pg.evaluate("(s => [s.checked, s.ariaLabelledByElements?.[0]?.textContent ?? document.getElementById(s.getAttribute('aria-labelledby')).textContent])(document.getElementById('gx-connectedSources'))")
         pg.click("label:has(#gx-connectedSources)")
         pg.wait_for_function(f"document.getElementById('genExpMsg').textContent.startsWith('Connected sources are {'on' if on else 'off'}')", timeout=10000)
         pg.wait_for_timeout(300)
         return was, pg.evaluate("""async () => [[...document.querySelectorAll('#setNav a[data-group]')].map(a => a.dataset.group), document.activeElement.id,
-          document.getElementById('gx-connectedSources').checked, await fetch('api/me').then(r => r.json()).then(m => m.connected_sources)]""")
+          document.getElementById('gx-connectedSources').checked, await fetch('api/me').then(r => r.json()).then(m => m.connected_sources),
+          [...document.querySelectorAll('main > .card')].filter(c => c.checkVisibility()).map(c => c.id), document.getElementById('csOffWhy').checkVisibility()]""")
 
     def traces(pg):
         """[page, what of connected sources it shows] for each page that has some; Add's and the palette's too"""
@@ -3162,7 +3260,8 @@ def connected_sources_switch_check(check, browser, base, cookies):
                 pg.wait_for_timeout(250)
                 seen += [f"palette {q}: {t}" for t in pg.evaluate("[...document.querySelectorAll('dialog.palette [role=option]')].map(o => o.textContent.trim())")
                          if re1096.search(r"ortal|onnected|rovider|Find your", t)
-                         and not t.startswith("Sign-in provider")]   # (#1109: the install's sign-in provider, not connected sources)
+                         and not t.startswith("Sign-in provider")   # (#1109: the install's sign-in provider, not connected sources)
+                         and not (admin_of(pg) and re1096.match(r"Connected sources \(experimental\)|On or off\b", t))]   # (#1153: an admin's switch)
             pg.keyboard.press("Escape")
             if seen:
                 out.append([path, seen])
@@ -3196,13 +3295,14 @@ def connected_sources_switch_check(check, browser, base, cookies):
 
     admin = [c for c in cookies if c["name"] == "sg_session"]
     actx, ap = context(admin)
+    admin_of = lambda pg: pg is ap
     before, off = switch(ap, False)
-    check("General → Experimental (#1096): connected sources' switch, on here as an admin set it, named experimental and not "
-          "recommended yet; switched off, at once, Install's Connected-source apps and Provider directory go, focus stays on it",
-          before[0] and before[1].startswith("Connected sources (experimental, not recommended yet)")
-          and "general" in off[0] and "apps" not in off[0] and "directory" not in off[0] and off[1:] == ["gx-connectedSources", False, False],
-          [before, off])
-    serious, _ = axe_check(ap, "General → Experimental")
+    check("Connected sources' switch (#1096; its group's first part, #1153): on here as an admin set it, named experimental and not "
+          "recommended yet; switched off, at once, the group holds the switch alone, saying why (Set up a source, the sync defaults and "
+          "the Provider directory gone), focus stays on it", before[0] and before[1].startswith("Connected sources (experimental, not recommended yet)")
+          and "general" in off[0] and "connected" in off[0] and "apps" not in off[0] and "directory" not in off[0]
+          and off[1:4] == ["gx-connectedSources", False, False] and off[4] == ["cs-switch"] and off[5], [before, off])
+    serious, _ = axe_check(ap, "Connected sources, off")
     check("…no serious axe finding there", not serious, serious)
     host_off = host_and_log(ap)
     check("…off, General → Host names no connected sources' return, changing the public addresses says only the phones, and a "
@@ -3244,7 +3344,7 @@ def connected_sources_switch_check(check, browser, base, cookies):
     ap.goto(base + "/sources.html?profile=1#upload")
     ap.wait_for_selector(".src-more", state="visible", timeout=20000)
     shown["upload"] = ap.inner_text(".src-more")
-    ap.goto(base + "/settings.html?profile=1#apps")
+    ap.goto(base + "/settings.html?profile=1#admin")
     ap.wait_for_selector("#admin > .hint", state="visible", timeout=20000)
     shown["apps"] = ap.inner_text("#admin > .hint")
     ap.goto(base + "/settings.html?profile=1#directory")
@@ -3255,9 +3355,9 @@ def connected_sources_switch_check(check, browser, base, cookies):
     ap.wait_for_load_state("networkidle")
     shown["guide"] = ap.evaluate("(a => a.closest('li').hidden ? null : a.textContent.replace(/\\s+/g, ' ').trim())(document.querySelector('[data-to=portals]'))")
     actx.close()
-    check("…switched on again, Install's groups are back, and each place says experimental, not recommended yet: Sources' portals "
-          "and its upload's line, Add's Connect, Install's Connected-source apps and Provider directory, the guide's way",
-          "apps" in on[0] and "directory" in on[0] and on[2:] == [True, True]
+    check("…switched on again, the rest of its group is back, the why gone, and each place says experimental, not recommended yet: "
+          "Sources' portals and its upload's line, Add's Connect, Install's Set up a source and Provider directory, the guide's way",
+          on[2:4] == [True, True] and on[4] == ["cs-switch", "admin", "sec-sync", "directory"] and not on[5]
           and shown["portals"].startswith("Experimental, not recommended yet") and shown["add"] == "Connect a source (experimental)"
           and "experimental, not recommended yet" in shown["upload"] and shown["apps"].startswith("Experimental, not recommended yet")
           and shown["directory"].startswith("Experimental") and shown["guide"] and "Experimental, not recommended yet" in shown["guide"]
@@ -3970,8 +4070,8 @@ def main():
         check("under the CSP: Install's scripts run on Settings, its sidebar in three parts, This person, You and Install (#266, #991)", groups ==
               ["§This person", "Dashboard", "About this person", "Insurance cards", "Labs and ranges", "Milestones", "Workouts", "Rename or delete",   # (insurance cards, #1137)
                "§You", "Sign-in and security", "This device", "Display",
-               "§Install", "General", "Accounts and sign-in", "Install activity", "Backups", "Connected-source apps", "Provider directory",
-               "Outside connections"], groups)   # (#1114: Lab name matches, the profile's card alone)
+               "§Install", "General", "Accounts and sign-in", "Backups", "Logs and activity", "Connected sources (experimental)",
+               "Outside connections", "About"], groups)   # (#1114: Lab name matches, the profile's card alone; #1153: Install in order)
         check("…and your menu offers Settings, opening You, and no Account, Display or Admin (#991)",
               strict.evaluate("document.getElementById('settingsLink').getAttribute('href')") == "settings.html?profile=1#you"   # (#397)
               and not strict.evaluate("!!document.querySelector('#accountLink, #displayLink, #adminLink')"))
@@ -4008,7 +4108,7 @@ def main():
         ctx1048.add_cookies([c for c in strict.context.cookies() if c["name"] == "sg_session"])
         p1048, got1048 = ctx1048.new_page(), {}
         try:
-            p1048.goto(base + "/settings.html?profile=1#apps")
+            p1048.goto(base + "/settings.html?profile=1#admin")
             p1048.wait_for_selector("#addrWarn li", timeout=20000)
             got1048["says"] = p1048.inner_text("#addrWarn")
             p1048.evaluate("css => { const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = [s]; }", BIG_TEXT_CSS)
@@ -4076,8 +4176,9 @@ def main():
               all(w in got1000.get("about", "") for w in (".home.arpa or .internal", "nas.example.com", "ts.net", "add its address here")), got1000.get("about"))
         # #1049: Host and another of General's parts changed together, the bar's Save: Host's typed confirmation opens with
         # focus in it, and keeps it, its words in the bar; the other's saved after it, said too (Security's save had taken
-        # focus to its heading and the bar's words with it; Security is Accounts and sign-in's since #1119, so Backups and
-        # logging's days of activity kept, whose save takes focus to its field). Discarded and put back after
+        # focus to its heading and the bar's words with it; Security is Accounts and sign-in's since #1119, and Backups and
+        # logging's days of activity kept, after it, Logs and activity's since #1153: so Needs a restart's first number,
+        # whose save takes focus to its heading). Discarded and put back after
         env1049 = os.environ.pop("PUBLIC_ORIGINS")
         ctx1049 = browser.new_context(viewport={"width": 1400, "height": 900})
         ctx1049.add_cookies([c for c in strict.context.cookies() if c["name"] == "sg_session"])
@@ -4086,28 +4187,29 @@ def main():
         try:
             p1049.goto(base + "/settings.html?profile=1#general")
             p1049.wait_for_selector("#hostOrigins:not([readonly])", timeout=20000)
-            p1049.wait_for_selector("#genActDays", timeout=20000)
-            was1049 = p1049.input_value("#genActDays")
+            p1049.wait_for_selector("#genRsBody input[type=number]", timeout=20000)
+            rs1049 = p1049.evaluate("(i => [i.id, i.closest('[data-name]').dataset.name, i.value, i.max])(document.querySelector('#genRsBody input[type=number]'))")
             p1049.fill("#hostOrigins", "https://records.example.test\n" + base)
-            p1049.fill("#genActDays", str(int(was1049) + 10))   # (more days: asked nothing)
+            p1049.fill("#" + rs1049[0], str(int(rs1049[2]) + (1 if int(rs1049[2]) < int(rs1049[3]) else -1)))   # (asked nothing)
             p1049.focus("#setBar button:has-text('Save')")
             p1049.keyboard.press("Enter")
-            p1049.locator("#genBkMsg", has_text="Saved").wait_for(timeout=10000)
+            p1049.locator("#genRsMsg", has_text="Saved").wait_for(timeout=10000)
             p1049.wait_for_timeout(300)
             got1049 = p1049.evaluate("""() => ({typing: document.activeElement.closest('#gen-host .dz-body') ? document.activeElement.closest('.dz-body').querySelector('.dz-name')?.textContent : document.activeElement.id || document.activeElement.tagName,
-              bar: document.querySelector('#setBar .msg').textContent, sec: document.getElementById('genBkMsg').textContent,
+              bar: document.querySelector('#setBar .msg').textContent, sec: document.getElementById('genRsMsg').textContent,
               toasts: [...document.querySelectorAll('#sgToasts')].map(t => t.textContent).join(' ')})""")
-            p1049.request.put(base + "/api/settings/install/activity.days", headers={"X-Sanguity": "1", "Origin": base},
-                              data={"value": int(was1049)})
+            p1049.request.put(base + "/api/settings/install/restart/values", headers={"X-Sanguity": "1", "Origin": base},
+                              data={"values": {rs1049[1]: int(rs1049[2])}})
+            got1049["back"] = p1049.request.get(base + "/api/settings/install/restart").json()["restart_needed"]
         except Exception as e:
             got1049["stopped"] = stopped(e)
         finally:
             os.environ["PUBLIC_ORIGINS"] = env1049
             ctx1049.close()
-        check("General → Host and Backups and logging saved together (#1049; Security's before #1119): focus stays in Host's typed "
-              "confirmation, the bar's words name it, and the other's saved is said after them", "stopped" not in got1049 and not errs1049
+        check("General → Host and Needs a restart saved together (#1049; Security's before #1119, Backups and logging's before #1153): focus "
+              "stays in Host's typed confirmation, the bar's words name it, and the other's saved is said after them", "stopped" not in got1049 and not errs1049
               and got1049["typing"] == "Type change addresses to confirm" and got1049["bar"].startswith("Not saved yet: confirm the change under Public addresses.")
-              and got1049["sec"].startswith("Saved") and "Saved" in got1049["toasts"], [got1049, errs1049])
+              and got1049["sec"].startswith("Saved") and "Saved" in got1049["toasts"] and got1049["back"] is False, [got1049, errs1049])
         # General → Phone receiver (#1003): the upload address saved from the bar (asked first when phones with a secret
         # need it), used by the server at once; the receiver's own settings read-only, each naming its variable
         ctx1003 = browser.new_context(viewport={"width": 1400, "height": 900})
@@ -4234,6 +4336,8 @@ def main():
         check("…nor with its settings set by the environment (#1119)", not errs1119, errs1119)
         errs1119m = signin_moved_check(browser, base, [c for c in strict.context.cookies() if c["name"] == "sg_session"], check)   # (#1119) Accounts and sign-in
         check("…nor in Accounts and sign-in (#1119)", not errs1119m, errs1119m)
+        errs1153 = install_moved_check(browser, base, [c for c in strict.context.cookies() if c["name"] == "sg_session"], check)   # (#1153) Install in order
+        check("…nor in Install's moved parts (#1153)", not errs1153, errs1153)
         # the Sharing page (#168): its sidebar, each part drawn by its own script
         strict.goto(base + "/sharing.html#summary")   # the visit summary (#48)
         strict.wait_for_selector("#build:not([hidden]) #sections input", timeout=10000)
@@ -4286,7 +4390,7 @@ def main():
         side_bad = []
         for path, find, labels, alone in (("sources.html?profile=1#portals", "srcFind", 3, True), ("sharing.html?profile=1#links", "shrFind", 0, True),
                                           ("settings.html?profile=1#display", "setFind", 3, False), ("settings.html?profile=1#security", "setFind", 3, False),
-                                          ("settings.html?profile=1#apps", "setFind", 3, False), ("settings.html?profile=1#backups", "setFind", 3, True)):
+                                          ("settings.html?profile=1#connected", "setFind", 3, False), ("settings.html?profile=1#install-about", "setFind", 3, True)):
             strict.goto(base + "/" + path)
             strict.wait_for_selector("main > nav.set-nav a[aria-current=page]", timeout=10000)
             strict.wait_for_timeout(600)
@@ -4391,7 +4495,7 @@ def main():
               c = r.querySelector(':scope > .set-row-ctl').getBoundingClientRect();
               return [Math.round(l.width / b.width * 100), l.right <= c.left, c.top >= l.bottom - 1, r.matches('.wide')]; }); }
           return out; }"""
-        rows286, want286 = {}, {"settings": ["dashboard", "about", "labs", "milestones", "activity", "profile", "security", "device", "display", "accounts", "backups", "apps"],
+        rows286, want286 = {}, {"settings": ["dashboard", "about", "labs", "milestones", "activity", "profile", "security", "device", "display", "accounts", "backups", "logs", "connected"],
                                 "sharing": ["people", "calendar", "summary", "export"]}   # (Account's and Admin's in Settings, #991)
         for w in (1400, 375):
             strict.set_viewport_size({"width": w, "height": 900})
@@ -4856,10 +4960,10 @@ def main():
         set_up = strict.evaluate("document.querySelector('#detail a[href^=\"settings.html?\"]').getAttribute('href')")
         check("…a provider not set up here sends an admin to set it up, with no copy of the vendor's steps",
               "Not set up on this server yet" in detail and "Return address" not in detail and "Scopes" not in detail
-              and set_up.startswith("settings.html?vendor=insurer&issuer=https") and set_up.endswith("#apps"), (detail[:300], set_up))
+              and set_up.startswith("settings.html?vendor=insurer&issuer=https") and set_up.endswith("#admin"), (detail[:300], set_up))   # (#apps before #1153)
         strict.goto(base + "/" + set_up)
         strict.wait_for_selector("#guide ol li", timeout=10000)
-        check("…where Settings → Connected-source apps has the steps (one copy), the form filled in with the provider",
+        check("…where Settings → Connected sources' Set up a source has the steps (one copy), the form filled in with the provider",
               strict.evaluate("[document.getElementById('fVendor').value, document.getElementById('fIssuer').value.startsWith('https://'), "
                               "document.getElementById('fName').value]") == ["insurer", True, "Medicare (Blue Button 2.0)"]
               and "Blue Button" in strict.inner_text("#guide"), strict.evaluate("document.getElementById('fName').value"))
@@ -6011,9 +6115,9 @@ def main():
                 return [getComputedStyle(document.getElementById('notice')).textAlign, v.textContent.startsWith('Sanguity'),
                         a ? a.getAttribute('href') : null, ME.user.is_admin, ls]; })()""")
             check("the page ends at its footer, past it only a phone's tab bar's room (Labs' charts and the Overview at 1000 and 412 px, "
-                  "a closed toast stack not counted); the notice centred; the foot's version, General's About for an admin, Source "
+                  "a closed toast stack not counted); the notice centred; the foot's version, Install's About for an admin (#1153), Source "
                   "code and Report a problem in a new tab with no referrer",
-                  all(abs(v) <= 2 for v in ends.values()) and foot[:2] == ["center", True] and foot[2] == ("settings.html#gen-about" if foot[3] else None)
+                  all(abs(v) <= 2 for v in ends.values()) and foot[:2] == ["center", True] and foot[2] == ("settings.html#install-about" if foot[3] else None)
                   and foot[4] == [["https://github.com/sanguity/sanguity", "_blank", "noopener noreferrer"],
                                   ["https://github.com/sanguity/sanguity/issues", "_blank", "noopener noreferrer"]], [ends, foot])
 
@@ -16545,7 +16649,7 @@ def main():
                          ("sources.html?profile=1", ["overview", "portals", "phone", "upload", "manual", "link", "history"]),
                          ("sharing.html?profile=1", ["people", "links", "calendar", "summary", "export", "activity"]),
                          ("settings.html?profile=1", ["dashboard", "about", "labs", "milestones", "activity", "profile", "display", "more"]),
-                         ("account.html", ["security", "device"]), ("admin.html", ["accounts", "activity", "backups", "apps", "directory", "outside"]),
+                         ("account.html", ["security", "device"]), ("admin.html", ["accounts", "general", "backups", "logs", "connected", "outside", "install-about"]),   # (Install's groups, #1153)
                          ("guide.html?profile=1", [""]), ("summary.html?profile=1", [""]), ("providers.html?profile=1", [""]), ("import.html?profile=1", [""]),
                          ("setup.html", [""]), ("connect.html?profile=1", [""])]
             bad1012, n1012 = {}, 0
@@ -16570,10 +16674,11 @@ def main():
                 c1012.close()
             check("At 320 px with text at 150% and 200% (#1012, #622, 1.4.10): every page no wider than the screen, every records tab and view and every "
                   "group of Sources, Sharing, Settings, Account and Admin, the guide and the other pages (the Overview's appointments and Costs' groups ran "
-                  "past it, and the tab bar's More with them)", n1012 == 90 and not bad1012, [n1012, bad1012])
+                  "past it, and the tab bar's More with them)", n1012 == 92 and not bad1012, [n1012, bad1012])
             # ---- #1047: every key/value list (.kv) at 320, 412 and 1400 px with text at 200%: no label's words over its value or
             # past its own box, and no page wider than the screen; as usual (360, 412, 1400 px), each value beside its label.
-            # General's Host, Backups and logging and About, Connected-source apps, Backups, and every records drawer that has
+            # General's Host, Backups (its Folder and key), Logs and activity's Logging, Connected sources, About (General's
+            # Backups and logging and About before #1153), and every records drawer that has
             # one (a fixed 92/110 px label column had labels printed over their values: "Configuration" 182 px in 92)
             KV1047 = r"""() => { const out = [], rg = document.createRange(), r = e => e.getBoundingClientRect();
               const ov = (x, y) => x.left < y.right - 0.5 && y.left < x.right - 0.5 && x.top < y.bottom - 0.5 && y.top < x.bottom - 0.5;
@@ -16597,7 +16702,7 @@ def main():
                         if got or not lists:
                             bad1047[f"{where} {w1047} {round(f1047 * 100)}%"] = got or "no list"
                     return n
-                for g1047 in ("general", "apps", "backups"):
+                for g1047 in ("general", "backups", "logs", "connected", "install-about"):
                     p1047.goto(base + "/settings.html?profile=1#" + g1047)
                     p1047.wait_for_load_state("networkidle")
                     p1047.wait_for_timeout(800)
@@ -16612,7 +16717,7 @@ def main():
                         n1047 += at1047("drawer " + k1047)
                 c1047.close()
             check("Key/value lists at 320, 412 and 1400 px with text at 200% (#1047, 1.4.4): no label over its value and no page wider than the screen, on "
-                  "General, Connected-source apps, Backups and every records drawer with one; as usual, each value beside its label",
+                  "General, Backups, Logs and activity, Connected sources, About and every records drawer with one; as usual, each value beside its label",
                   n1047 > 40 and not bad1047, [n1047, bad1047])
             # ---- #832: #622's on a phone with a long name, 20 characters ("Sam Okafor-Lindqvist", the second profile's for
             # this and put back after), at 360 and 412 px on the records page and Settings, the text made larger as the page
@@ -20537,7 +20642,7 @@ def main():
             # (#1006) each change to a server setting asks for the fresh check once the sign-in is older than
             # REAUTH_MINUTES: made here, as the admin would once, so the saves below go straight through (it's asked for below)
             fresh_check(page)
-            check("Install: an old Settings address opens its place, the sync defaults in Connected-source apps (#167, #991)",
+            check("Install: an old Settings address opens its place, the sync defaults in Connected sources (#167, #991, #1153)",
                   js(display, "sec-sync") != "none" and js(display, "admin") != "none" and js(display, "users") == "none")
             check("…as a switch, numbers and choices, no Save of its own, and neither “set for this server” nor Reset to defaults while all are Sanguity's own (#101, #102, #272)",
                   js("[document.querySelectorAll('#sec-sync input[type=checkbox]').length, document.querySelectorAll('#sec-sync input[type=number]').length, "
@@ -20612,10 +20717,13 @@ def main():
                       False, "sync.attachAuto", True, "changed the server setting “Fetch attachments automatically” (from on to off)"], [asked1006[:160], got1006])
             js("fetch('api/settings/install/reset', {method: 'POST', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, body: JSON.stringify({section: 'sync'})}).then(r => r.status)")
             js("document.querySelectorAll('#sgToasts .sg-toast-x').forEach(b => b.click())")
-            page.click("#setNav a[data-group=directory]")
+            page.click("#setNav a[data-group=logs]")
+            shown1153 = [js(display, "installLog") != "none", js(display, "sec-sync") == "none", js("location.hash")]
+            page.click("#setNav a[data-group=connected]")   # (the Provider directory's group since #1153)
             dir_text = page.inner_text("#directory")
             check("Install: a group picked in the sidebar is the one shown, and the address says so",
-                  js(display, "directory") != "none" and js(display, "sec-sync") == "none" and js("location.hash") == "#directory")
+                  shown1153 == [True, True, "#logs"] and js(display, "directory") != "none" and js(display, "installLog") == "none"
+                  and js("location.hash") == "#connected", shown1153)
             check("…the provider directory says what's loaded and what the others would add, offers to add them, and keeps the command "
                   "line for a server that can't reach their hosts (#447, #992)",
                   "Medicare" in dir_text and "not loaded: it would add about 1,300" in dir_text and "Add the lists" in dir_text
@@ -20672,7 +20780,7 @@ def main():
                     dbm992.meta_set(db992, k, None)
                 db992.close()
                 js("loadDirectory()")
-            for gid in ("general", "accounts", "backups", "apps", "directory", "outside", "installLog"):   # (#1114: no labmaps)
+            for gid in ("general", "accounts", "backups", "logs", "connected", "outside", "install-about"):   # (#1114: no labmaps; #1153)
                 page.click(f"#setNav a[data-group={gid}]")
                 page.set_viewport_size({"width": 375, "height": 800})
                 settle(150)
@@ -24089,10 +24197,10 @@ def main():
                   bad524[:8] or n524)
             said524 = {role: {q: [t for t, _ in f] for q, f in s["phrases"].items()} for role, s in swept524.items()}
             first524 = {"admin": {"delete passkey": "Passkeys", "disable 2fa": "Two-factor sign-in", "reset 2fa": "Two-factor sign-in", "lost phone": "Two-factor sign-in",
-                                  "leave profile": "People", "failed sign-ins": "Install activity"},
+                                  "leave profile": "People", "failed sign-ins": "Logs and activity"},   # (Install activity's, #1153)
                         "owner": {q: "Who has access" for q in ("make owner", "add owner", "change owner", "transfer ownership", "give access", "share with", "stop sharing")},
                         "editor": {"add person": "Who has access"}}
-            among524 = {"admin": {"audit": {"Install activity", "Activity"}, "audit log": {"Install activity", "Activity"},
+            among524 = {"admin": {"audit": {"Logs and activity", "Activity"}, "audit log": {"Logs and activity", "Activity"},
                                   "qr": {"Two-factor sign-in", "Share links", "Paste a Health Link", "Phone and watch"}}, "owner": {"audit": {"Activity"}}}
             check("…(#524) and what the eighth review typed finds what it names, first: an admin's “delete passkey”, “disable” and “reset 2fa”, "
                   "“lost phone”, “leave profile”, “failed sign-ins”, “audit” and “qr”; an owner's “make”, “add” and “change owner”, “transfer "
@@ -25323,8 +25431,8 @@ def main():
                            "gone": [], "focus": ["Sign-in and security"] * 2,
                            "parts": {"This person": person991 + (["Rename or delete"] if r in ("admin", "owner") else []),
                                      "You": ["Sign-in and security", "This device", "Display"],
-                                     "Install": ["General", "Accounts and sign-in", "Install activity", "Backups", "Connected-source apps", "Provider directory",
-                                                 "Outside connections"] if r == "admin" else []},   # (#1114: Lab name matches, the profile's card)
+                                     "Install": ["General", "Accounts and sign-in", "Backups", "Logs and activity", "Connected sources (experimental)",
+                                                 "Outside connections", "About"] if r == "admin" else []},   # (#1114: Lab name matches, the profile's card; #1153)
                            "install": None if r == "admin" else [403] * 6} for r in ("admin", "owner", "editor", "viewer")}   # (the admin's: refused too here, till they have a second factor, #75)
             check("one Settings page (#991): for an admin, an owner, an editor and a viewer, the profile menu has Sources, Sharing, Emergency card and New profile, your "
                   "menu Settings, Getting started, the theme and Log out (no Account, Display, Admin, About this person or Edit tabs…); Settings "
@@ -28622,8 +28730,8 @@ def main():
             page.goto(base + "/connect.html")   # its old address: Sources → Portals and health plans (#166)
             page.wait_for_url(re.compile(r"/sources\.html(\?[^#]*)?#portals$"), timeout=10000)   # with or without the ?profile= nav.js adds
             page.wait_for_selector("#adminNote:not([hidden])", timeout=10000)
-            check("connected sources: no setup on the everyday page, and an admin is pointed to Settings → Connected-source apps (#167, #991)",
-                  js("!document.getElementById('srcForm') && document.querySelector('#adminNote a').getAttribute('href')") == "settings.html#apps")
+            check("connected sources: no setup on the everyday page, and an admin is pointed to Settings → Connected sources, Set up a source (#167, #991, #1153)",
+                  js("!document.getElementById('srcForm') && document.querySelector('#adminNote a').getAttribute('href')") == "settings.html#admin")
             pick_profile(page, label="Second person (owner)")
             page.wait_for_selector("#sourceButtons button", timeout=10000)
             check("…each Connect button says where it signs in as a tip, not a title, the words on no screen (#358)",
@@ -29356,8 +29464,8 @@ def main():
             check("…and Outside connections no longer lists it, without a reload (#515)", not js(out515.split(" && ")[0]),
                   js("document.getElementById('outsideBody').innerText.slice(0, 300)"))
 
-            # ---- #1096: connected sources behind General → Experimental's switch: off, no trace of them for an admin or a
-            # member; on again, each place says experimental
+            # ---- #1096: connected sources behind their switch (Install → Connected sources, #1153): off, no trace of them
+            # for an admin (the switch aside) or a member; on again, each place says experimental
             errs1096 = connected_sources_switch_check(check, browser, base, page.context.cookies())
             check("…and no script fails there (#1096)", not errs1096, errs1096)
 
@@ -29704,7 +29812,7 @@ def main():
                 open_tab(t)
                 settle(250)
                 kbad += focus_walk(page, t) + focus_walk(page, t, back=True)
-            for path, g in (("sources.html?profile=1", "manual"), ("settings.html?profile=1", "labs"), ("sharing.html?profile=1", "summary"), ("settings.html?profile=1", "apps")):   # (Admin's before #991)
+            for path, g in (("sources.html?profile=1", "manual"), ("settings.html?profile=1", "labs"), ("sharing.html?profile=1", "summary"), ("settings.html?profile=1", "connected")):   # (#1153: Connected-source apps'; Admin's before #991)
                 page.goto(base + "/" + path)
                 page.wait_for_selector(".set-nav a[data-group]", state="attached", timeout=10000)
                 open_group(page, g)
@@ -30516,7 +30624,8 @@ def main():
             # no longer the only account: admin actions now wait for the admin's own second factor (issue #75)
             check("with a second account, the admin is asked for a second factor",
                   js("!document.getElementById('adminTf').hidden && document.getElementById('adminTools').hidden"))
-            check("…and every other part of Install the server now refuses says so", js("['gen-host', 'signin-rules', 'signin-provider', 'gen-backups', 'gen-phone', 'gen-ocr', 'gen-demo', 'gen-about', 'backups', 'admin', 'sec-sync', 'directory', 'installLog'].every(id => document.querySelector('#' + id + ' .adm-gate'))"))
+            check("…and every other part of Install the server now refuses says so", js("['gen-host', 'signin-rules', 'signin-provider', 'gen-phone', 'gen-notify', 'gen-restart', 'gen-ocr', 'gen-demo', 'backups', 'bk-files', 'logging', 'installLog', "
+                                                                                    "'cs-switch', 'admin', 'sec-sync', 'directory', 'install-about'].every(id => document.querySelector('#' + id + ' .adm-gate'))"))   # (#1153)
             # two-factor sign-in: turn it on from the key shown, confirm with a code, get recovery codes
             from server import twofactor
             import time as _time
@@ -30716,7 +30825,8 @@ def main():
             page.goto(base + "/admin.html#activity")   # (its old address: Settings → Install activity, #991)
             page.wait_for_url(re.compile(r"/settings\.html(\?[^#]*)?#installLog$"), timeout=10000)
             page.wait_for_function("document.querySelector('#acctLog tbody') && document.querySelector('#acctLog tbody').textContent.includes('created the account alex')", timeout=10000)
-            check("admin sees the install's activity, under Settings → Install activity (Admin's #activity before #991)", js(display, "installLog") != "none" and js(display, "users") == "none")
+            check("admin sees the install's activity, under Settings → Logs and activity (Admin's #activity before #991; #1153)", js(display, "installLog") != "none"
+                  and js(display, "logging") != "none" and js(display, "users") == "none")
             # #524: at 768 and 900 px an activity log's addresses break only where they don't fit: an IPv4 one never ("127.0.0." /
             # "1" there), on Install activity and Sharing → Activity, the table within its card
             split524, what528 = {}, {}
@@ -33305,7 +33415,7 @@ def main():
             bk1103 = fp.evaluate("""[[...document.querySelectorAll('#step-backups .guide-way')].map(a => a.getAttribute('href')), document.getElementById('step-backups').textContent,
                 [...document.querySelectorAll('#guideSteps li.done')].some(li => li.textContent.includes('Backups'))]""")
             check("…then the admin's: keep a copy of the encryption key elsewhere, and turn backups on, linking to each, not done while they're off (#1103)",
-                  bk1103[0] == ["settings.html#gen-backups", "settings.html#backups"] and "a copy of the key" in bk1103[1] and "encryption key" in bk1103[1]
+                  bk1103[0] == ["settings.html#bk-files", "settings.html#backups"] and "a copy of the key" in bk1103[1] and "encryption key" in bk1103[1]   # (#gen-backups before #1153)
                   and "somewhere other than this server" in " ".join(bk1103[1].split()) and bk1103[2] is False, bk1103)
             fp.click("#step-backups [data-skip]")
             fp.wait_for_selector("#step-done:not([hidden])", timeout=10000)

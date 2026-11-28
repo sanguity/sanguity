@@ -206,12 +206,6 @@
   <!-- General (#998): the server's own settings, each of its sections a card of its own, its id in General's has
        (groups.js), shown to admins with the rest (admin.js); the group's h1 names it, no card of its own repeating it -->
   <section class="card conn adm" id="gen-host" hidden><h2>Host</h2></section>   <!-- the public addresses (admin-host.js, #1000) -->
-  <!-- General → Backups and logging (#1002, gen-backups.js) -->
-  <section class="card conn adm" id="gen-backups" hidden>
-    <h2>Backups and logging</h2>
-    <p class="hint">Where this server keeps its backups and its logs, and how long it keeps activity.</p>
-    <div id="genBk"></div>
-  </section>
   <section class="card conn adm" id="gen-phone" hidden><h2>Phone receiver</h2></section>   <!-- the upload address (admin-phone.js, #1003) -->
   <!-- General → Notifications (#1130, notify.js): the install's own notification server, its access token, Test -->
   <section class="card conn adm" id="gen-notify" hidden><h2>Notifications</h2></section>
@@ -223,14 +217,6 @@
     <div id="genRsState"></div>
     <div id="genRsBody"></div>
     <span class="msg" id="genRsMsg" role="status"></span>
-  </section>
-  <!-- General → Experimental (#1096, gen-security.js): connected sources' switch, off by default -->
-  <section class="card conn adm" id="gen-experimental" hidden>
-    <h2 id="genExpHd" tabindex="-1">Experimental</h2>
-    <p class="hint">Parts of Sanguity that work but aren't recommended yet. Each change applies at once.</p>
-    <div id="genExpReauth" class="reauth" hidden></div>
-    <div id="genExpBody"></div>
-    <span class="msg" id="genExpMsg" role="status"></span>
   </section>
   <!-- General → Text recognition (#1129, gen-ocr.js): scanned documents read on this server, the languages it reads -->
   <section class="card conn adm" id="gen-ocr" hidden>
@@ -250,12 +236,6 @@
     <p class="hint">Made-up records to look around with, in a profile of their own. Adding or removing it never touches anyone's own records.</p>
     <div id="genDemo"></div>
     <span class="msg" id="genDemoMsg" role="status"></span>
-  </section>
-  <!-- General → About, with the limits (#1004, gen-about.js) -->
-  <section class="card conn adm" id="gen-about" hidden>
-    <h2>About</h2>
-    <p class="hint">This server's version, how it's deployed, its folders and its limits. Nothing here contacts anyone.</p>
-    <div id="genAbout"></div>
   </section>
 
   <!-- Accounts and sign-in (admin.js; #1119): People, then Sign-in rules and Sign-in provider -->
@@ -313,7 +293,7 @@
 
   <!-- Backups (#200): the newest backup, Back up now, the schedule, and checking a backup (admin-backups.js) -->
   <section class="card bk conn adm" id="backups" hidden>
-    <h2>Backups</h2>
+    <h2>Back up and restore</h2>   <!-- (the group's h1 says Backups, #409: with Folder and key beside it since #1153) -->
     <p class="hint">A checked copy of the records, accounts, and phone and watch data in the backups folder. Copy them off this server too.</p>
     <p class="bk-key"><b>The encryption key isn't in the backups.</b> Keep a copy of the key file somewhere else, like a
       password manager or a USB stick in a drawer: without it no backup can be read, and nobody can recover it.
@@ -350,6 +330,43 @@
     <span class="msg" id="bkReplacedMsg" role="status"></span>
   </section>
 
+  <!-- Backups → Folder and key (#1002, gen-backups.js; General → Backups and logging's before, the owner's decision on
+       #1153): where the backups are kept and the encryption key, each with what mounts it -->
+  <section class="card conn adm" id="bk-files" hidden>
+    <h2>Folder and key</h2>
+    <p class="hint">Where this server keeps its backups, and the encryption key every one of them needs.</p>
+    <div id="bkFiles"></div>
+  </section>
+
+  <!-- Logs and activity (#1153): Logging (#1002, gen-backups.js; General → Backups and logging's before), how long
+       activity is kept and where the logs are read, then Install activity, the account events (activity.js) -->
+  <section class="card conn adm" id="logging" hidden>
+    <h2>Logging</h2>
+    <p class="hint">How long this server keeps activity, and where its logs are read.</p>
+    <div id="genBk"></div>
+  </section>
+  <section class="card conn adm" id="installLog" hidden>
+    <h2>Install activity</h2>
+    <p class="hint">What admins and people did to accounts and to the server. It never shows anyone's records.</p>
+    <div class="about-words" hidden>
+      <p>Accounts created, disabled, reset or removed, two-factor sign-in, connected-source apps, lab name matches and the
+        server's settings. Each profile's own activity is on its Sharing page, under Activity.</p>
+    </div>
+    <div id="acctLog"></div>
+  </section>
+
+  <!-- Connected sources (experimental, #1153): the switch first (#1096, gen-security.js; General → Experimental before),
+       and while it's off, only it and why (admin.js csShown); then Set up a source with the sync defaults and the
+       Provider directory -->
+  <section class="card conn adm" id="cs-switch" hidden>
+    <h2 id="genExpHd" tabindex="-1">On or off</h2>
+    <p class="hint">Connected sources work but aren't recommended yet. The switch applies at once.</p>
+    <div id="genExpReauth" class="reauth" hidden></div>
+    <div id="genExpBody"></div>
+    <span class="msg" id="genExpMsg" role="status"></span>
+    <p class="hint" id="csOffWhy" hidden>While they're off, this is all there is here: setting up a source, the sync
+      defaults and the Provider directory are shown once they're on.</p>
+  </section>
   <!-- Connected-source apps: each vendor's app for this server, and the defaults of every connection (admin-sources.js) -->
   <section class="card conn adm" id="admin" hidden>
     <h2>Set up a source</h2>
@@ -417,15 +434,12 @@
     <span class="msg" id="outsideMsg" role="status"></span>
   </section>
 
-  <!-- Install activity: the account events (activity.js) -->
-  <section class="card conn adm" id="installLog" hidden>
-    <h2>Install activity</h2>
-    <p class="hint">What admins and people did to accounts and to the server. It never shows anyone's records.</p>
-    <div class="about-words" hidden>
-      <p>Accounts created, disabled, reset or removed, two-factor sign-in, connected-source apps, lab name matches and the
-        server's settings. Each profile's own activity is on its Sharing page, under Activity.</p>
-    </div>
-    <div id="acctLog"></div>
+  <!-- About (#1004, gen-about.js; General's before, the owner's decision on #1153), the last of Install: the version,
+       how it's deployed, the folders and the limits -->
+  <section class="card conn adm" id="install-about" hidden>
+    <h2>About</h2>
+    <p class="hint">This server's version, how it's deployed, its folders and its limits. Nothing here contacts anyone.</p>
+    <div id="genAbout"></div>
   </section>
 
   <datalist id="labNames"></datalist>

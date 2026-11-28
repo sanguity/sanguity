@@ -1,4 +1,4 @@
-"""Settings → Install → General's read-only parts (#998): what Backups and Logging (#1002) and About (#1004) show of
+"""Settings → Install's read-only parts (#998): what Backups' Folder and key, Logging (#1002) and About (#1004) show of
 this server, said in the terms of the way it's deployed. Nothing here is a secret (the key file's path and how many
 keys it holds, never a key), nothing holds health data, and nothing is contacted.
 
@@ -83,7 +83,7 @@ def key_count():
 
 
 def backups_logging():
-    """General → Backups and Logging (#1002): the backups folder and the key (where each is mounted), and where the
+    """Backups → Folder and key and Logs and activity → Logging (#1002; General's Backups and logging before #1153): the backups folder and the key (where each is mounted), and where the
     app's output and its security log are read. The schedule and how many are kept are GET /api/backups' (Install →
     Backups); the days of activity kept is the install setting activity.days."""
     kind = KINDS[deployment()]
@@ -120,7 +120,7 @@ def version():
 
 
 def about():
-    """General → About (#1004): the version, the database's schema version, how it's deployed, the folders (where
+    """Install → About (#1004; General's before #1153): the version, the database's schema version, how it's deployed, the folders (where
     they are in the container, and what mounts each), who it runs as, the configuration files, the releases page (a
     link: nothing is contacted), the limits with their variables, read-only, and the server's own setup (server())."""
     from . import db as dbm

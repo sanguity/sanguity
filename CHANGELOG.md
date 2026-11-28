@@ -4052,6 +4052,13 @@ Everything on `main` so far; it becomes the first tagged release.
   Sign-in provider (OIDC, General's before). General keeps Host, Backups and logging, Phone receiver, Needs a restart,
   Experimental, Demo profile and About. The old addresses (#gen-security, #gen-signin) open them there, and the
   palette finds them by the same words.
+- **Install in order** (#1153, the owner's decision): Settings → Install is General (Host, Phone receiver,
+  Notifications, Needs a restart, Text recognition, Demo profile), Accounts and sign-in, Backups (with Folder and key,
+  General's before), Logs and activity (Logging, how long activity is kept, then Install activity), Connected sources
+  (experimental: the switch first, General → Experimental's before, then Set up a source, the sync defaults and the
+  Provider directory; while it's off, the switch alone and why), Outside connections and About (General's before, the
+  footer's version opening it). The old addresses (#gen-backups, #gen-experimental, #gen-about, #apps, #directory,
+  #installLog, the Admin page's) open each there, and the palette finds each by its old words and its new title.
 - **PDF lab reports and Health Links are labelled experimental** (#1122), as connected sources are: Add's Paste a
   Health Link (experimental), Sources' Health Link card, its line on the Overview, a link's preview and its import's
   card, and Upload's words on Quest and Labcorp PDFs; a PDF's review says "Experimental: check each value against the

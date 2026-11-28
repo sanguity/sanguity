@@ -280,7 +280,7 @@
     ME = await SgSources.ready;   // the page signs in and chooses the profile (sources-page.js)
     if (!sgConnected(ME)) return;   // (#1096) off: the section stays hidden, nothing asked
     if (ME.user.is_admin) $("#noSources").replaceChildren("No portal or health plan is set up on this server yet: as an admin, you set them up under ",
-      el("a", {href: "settings.html#apps", text: "Settings → Connected-source apps"}), ".");
+      el("a", {href: "settings.html#admin", text: "Settings → Connected sources"}), ".");
     PID = SgSources.pid();
     $("#profile").addEventListener("change", () => { PID = SgSources.pid(); load(); });
     $("#mine").hidden = false;

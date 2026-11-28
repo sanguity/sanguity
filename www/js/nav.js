@@ -643,7 +643,7 @@ const SgNav = (() => {
       const fv = document.getElementById("footVer");
       if (fv && me?.user) {
         const v = "Sanguity" + (me.version ? " " + me.version : "");
-        fv.replaceChildren(me.user.is_admin ? el("a", {href: "settings.html#gen-about", text: v}) : v);
+        fv.replaceChildren(me.user.is_admin ? el("a", {href: "settings.html#install-about", text: v}) : v);
       }
       if (me && (!own || me.profiles?.length === 0) && !locked) profiles(me.profiles);
       if (me && !me.offline) {

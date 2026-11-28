@@ -2,7 +2,7 @@
    directory on this server (GET api/directory), pick an entry, and see whether it can be connected here. When a
    source this server has set up reaches the same FHIR base, it's connected from there (window.SgConnect, connect.js);
    otherwise an admin is sent to set it up in Settings' Install, with the address filled in, where each vendor's steps
-   are (one copy of them: Settings → Connected-source apps), and everyone else is told what to ask their admin for.
+   are (one copy of them: Settings → Connected sources), and everyone else is told what to ask their admin for.
    Logos are shown only when the directory file carries them as data: URLs; nothing is fetched from vendors. */
 "use strict";   // $, el and api come from util.js
 (() => {
@@ -107,7 +107,7 @@
   /* the sources set up on this server that reach this entry's FHIR base (connect.js lists them) */
   const base = u => String(u || "").trim().toLowerCase().replace(/\/+$/, "");
   const setUp = e => (window.SgConnect ? SgConnect.sources : []).filter(s => base(s.issuer) === base(e.fhir_base));
-  /* Settings → Connected-source apps' vendor for a directory vendor, to open its setup with this entry filled in */
+  /* Settings → Connected sources' (Set up a source) vendor for a directory vendor, to open its setup with this entry filled in */
   const ADMIN_VENDOR = {epic: "epic", oracle: "oracle", "cms-bluebutton": "insurer"};
   function connecting(e, v) {
     const all = setUp(e), here = all.filter(s => !s.waiting);
@@ -122,7 +122,7 @@
     if (ADMIN) {
       const q = new URLSearchParams({vendor: ADMIN_VENDOR[e.vendor] || "other", issuer: e.fhir_base, name: e.name});
       return [el("p", {}, el("b", {text: "Not set up on this server yet. "}), "As an admin, you set it up under ",
-        el("a", {href: `settings.html?${q}#apps`, text: "Settings → Connected-source apps"}),
+        el("a", {href: `settings.html?${q}#admin`, text: "Settings → Connected sources"}),
         `, which has ${v.name}'s steps, with this FHIR base filled in. Then each profile connects it by signing in.`),
         copyBox(e.fhir_base, "FHIR base URL")];
     }

@@ -212,7 +212,7 @@ async function loadSetup({walk = true} = {}) {
   }
   prefill();
 }
-/* Sources' Find your provider (#166) sends an admin here to set a provider up: settings.html?vendor=…&issuer=…&name=…#apps
+/* Sources' Find your provider (#166) sends an admin here to set a provider up: settings.html?vendor=…&issuer=…&name=…#admin (#apps before #1153)
    fills the form in with it, once */
 let prefilled = false;
 function prefill() {

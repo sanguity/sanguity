@@ -131,7 +131,7 @@ async def lifespan(app):
                 print(f"Kept the imported watch data of {kept} profile(s) as an import that can't be undone.", flush=True)
             if settings.keep_sources_on(db):   # (#1096) once: an install with a registered app or a connection
                 print("Connected sources are experimental and off by default now; this install has a connected-source app "
-                      "or a connection, so they stay on (Settings → Install → General → Experimental).", flush=True)
+                      "or a connection, so they stay on (Settings → Install → Connected sources).", flush=True)
             pid = prof.bootstrap(db)
             from . import cycle_tracking   # cycle tracking turned off, its deletion done: its setting goes (#935)
             cycle_tracking.restored(db)   # (#964) cycle records a restore a stop cut short brought back and doesn't keep

@@ -548,22 +548,22 @@ define("security.triesAccount", "security", "…at one account, from anywhere", 
        scope="install", private=False, kind="number",
        help="At least 10: fewer would let a stranger hold someone up from signing in more cheaply.")
 
-# General → Experimental (#1096): connected sources, off by default (a fresh install's), on for an install that had a
-# registered app or a connection when it was upgraded (keep_sources_on). connected_sources() is the one rule every
-# connections, sync and directory route, the sync and directory schedulers and the outside gateway read; /api/me
-# gives every page its plain on or off. Off keeps every connection and what it pulled: on again, they sync again.
+# Install → Connected sources' switch (#1096; General → Experimental before #1153): connected sources, off by default
+# (a fresh install's), on for an install that had a registered app or a connection when it was upgraded
+# (keep_sources_on). connected_sources() is the one rule every connections, sync and directory route, the sync and
+# directory schedulers and the outside gateway read; /api/me gives every page its plain on or off. Off keeps every connection and what it pulled: on again, they sync again.
 section("experimental", "Experimental", "Parts of Sanguity that work but aren't recommended yet. Each change applies at once.")
 define("experimental.connectedSources", "experimental", "Connected sources (experimental, not recommended yet)", False,
        yes_no("Connected sources"), scope="install", private=False, kind="toggle", env="CONNECTED_SOURCES",
        help="Patient portals and health plans connected from Sources, synced on a schedule, and Find your provider. "
-            "Each portal needs an app registered with its vendor first, under Connected-source apps. Off: none of it "
+            "Each portal needs an app registered with its vendor first, under Set up a source. Off: none of it "
             "is shown, nothing is synced and nobody is contacted for it; connections and what they brought are kept, "
             "and sync again when it's turned back on.")
 SOURCES_KEPT = "connected_sources.kept"   # meta: keep_sources_on has run
 
 
 def connected_sources():
-    """(#1096) Whether connected sources are on: the value in force of General → Experimental's switch."""
+    """(#1096) Whether connected sources are on: the value in force of Install → Connected sources' switch (#1153)."""
     return bool(install_value("experimental.connectedSources"))
 
 
@@ -1000,7 +1000,7 @@ define("keyDocs", "keydocs", "Key documents", {}, _keydocs_check, kind="keydocs"
        help="Each marked document's kind and where it's kept, by its record (#1135).")
 
 
-# ---------------------------------------------------------------- General → Backups and Logging (#1002)
+# ---------------------------------------------------------------- Logs and activity → Logging (#1002; General's before #1153)
 section("logging", "Logging", "What the server keeps of who did what.")
 _entries = lambda k: f"{k:,} {'entry' if k == 1 else 'entries'}"   # noqa: E731
 
