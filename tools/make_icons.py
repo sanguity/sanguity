@@ -9,6 +9,8 @@ Writes:
   icon-192.png, -512     the drop on a transparent square ("any": Android, desktop installs)
   maskable-512.png       the drop inside the safe zone on the page colour, for launchers that cut icons to a shape
   apple-touch-icon.png   180 px on the page colour (iOS fills transparency with black, so it's opaque)
+and docs/logo/sanguity-avatar.png, 500 px on the page colour: the GitHub organization's picture, and the icon the
+TrueNAS, Unraid and CasaOS templates show (they link it from main).
 The PNGs are committed; run this again only when the logo changes.
 """
 import os, shutil
@@ -23,7 +25,8 @@ PAGE = "#f6f5f1"   # --page in www/css/tokens.css (light), also the manifest's b
 # name, size in px, background (None = transparent), share of the side the drop's 64-unit box takes
 ICONS = [("icon-192.png", 192, None, 1.0), ("icon-512.png", 512, None, 1.0),
          ("maskable-512.png", 512, PAGE, 0.72),        # inside the 80% circle every mask keeps
-         ("apple-touch-icon.png", 180, PAGE, 0.8)]
+         ("apple-touch-icon.png", 180, PAGE, 0.8),
+         (os.path.join(ROOT, "docs", "logo", "sanguity-avatar.png"), 500, PAGE, 0.72)]   # an absolute path: not in OUT
 
 
 def main():
@@ -41,7 +44,7 @@ def main():
             page.screenshot(path=os.path.join(OUT, name), omit_background=bg is None)
             page.close()
         browser.close()
-    print("wrote", ", ".join(n for n, *_ in ICONS), "and icon.svg to", OUT)
+    print("wrote", ", ".join(os.path.basename(n) for n, *_ in ICONS), "and icon.svg")
 
 
 if __name__ == "__main__":

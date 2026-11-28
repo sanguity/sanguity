@@ -101,16 +101,8 @@ ALLOWED = {
     # its durations: the offline banner's .6s flash, and the reduced-motion rule's 1ms, which stops animations but still
     # lets them end (an animationend handler runs)
     "www/css/app.css": {"colours": 1, "px font sizes": 2, "radii": 1, "shadows": 4, "px spacing": 4, "durations": 2},
-    # a page's one colour (sign-in's and setup's too: their button's text is --on-accent now) is the brand mark's white
-    # highlight, stroke="#fff"
-    "www/guide.html": {"colours": 1},
-    "www/index.html": {"colours": 1, "style attributes": 1},
-    "www/login.html": {"colours": 1},
-    "www/settings.html": {"colours": 1},
-    "www/setup.html": {"colours": 1},
-    "www/share.html": {"colours": 1},
-    "www/sharing.html": {"colours": 1},
-    "www/sources.html": {"colours": 1},
+    # the pages have no colours of their own: the last, the brand mark's white highlight, went with the highlight
+    "www/index.html": {"style attributes": 1},
     "www/js/app.js": {"script styles": 1},
     "www/js/chartkit.js": {"script styles": 1},   # a legend key's colour (ckLegend, #291): Labs' and Body and activity's four, as one
     "www/js/core.js": {"script styles": 7},
