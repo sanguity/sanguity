@@ -40,6 +40,9 @@ sanguity → Package settings → Change visibility, or no catalog can pull it.
   compose files pass each as `${NAME:-}`, TrueNAS only a field changed from its default, Unraid's are empty and
   CasaOS passes none; except the receiver's published port, which each passes as `RECEIVER_PORT` (the same number)
   for the phone upload address (#1007);
+- none sets a setting the page owns (one `server/settings.py` defines with `env=`, changed on Settings → Install →
+  General) by default (#1120): `.env.example` has each only commented out, and the all-in-one container and the
+  released image set none, so a fresh install's page can change every one;
 - the key folder isn't inside the data folder;
 - the catalogs' own rules: TrueNAS `app.yaml` fields and `questions.yaml` covering every value the template reads;
   CasaOS's validator rules (top-level `name`, reverse-domain `x-casaos.id`, `docker compose config`) and its
