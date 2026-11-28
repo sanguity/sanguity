@@ -20,7 +20,7 @@ const WHAT = {
     (d.labs && d.labs.matched ? `, matching ${d.labs.matched} lab name${d.labs.matched === 1 ? "" : "s"} to existing series` : "")
     : `imported records (${d.documents} documents)`,
   reload: () => "loaded the latest records",
-  export: d => (d.format === "fhir" ? "exported as FHIR" : "exported everything") + (d.cycle ? ", with the cycle records" : ""),   // #183, #205
+  export: d => (d.format === "tax" ? `downloaded Costs' tax-year report for ${d.year}` : d.format === "fhir" ? "exported as FHIR" : "exported everything") + (d.cycle ? ", with the cycle records" : ""),   // #183, #205, #1136
   summary: d => `made a visit summary${d.for ? ` for the appointment on ${recordDate(d.for)}` : ""}${(d.sections || []).includes("cycle") ? ", with the cycle records" : ""}`,
   cycle: d => ({on: "turned cycle tracking on", off: "turned cycle tracking off, deleting what was kept", delete: "deleted the cycle records kept"}[d.change] || "changed cycle tracking"),   // #183
   upload: d => d.source === "smart-health-link" ? `imported a SMART Health Link from ${d.host}` : `uploaded ${d.files} file${d.files === 1 ? "" : "s"} to import`,

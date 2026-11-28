@@ -21,7 +21,12 @@ in the profile's activity log (as an "edit" with action "cost": what was said, n
   PUT    /api/profiles/{pid}/costs/bills/{id}   the same, changed (its file kept unless file_import or drop_file);
                                                 with file_import, the reply has the records too ("records")
   DELETE /api/profiles/{pid}/costs/bills/{id}   removed (its file, a document of the records, stays)
-                                       each -> {"oop": as the mark's reply}, logged as an "edit" with action "cost"
+  GET    /api/profiles/{pid}/costs/tax-report?year=YYYY[&preview=1]   (#1136; taxreport.py) the tax year starting in
+                                                year (the profile's setting costs.taxStart its first month): with
+                                                preview, {year, start, label, from, to, total, count, receipts,
+                                                missing}; else the zip, streamed (viewers too: it holds nothing they
+                                                can't open on Costs), logged as an "export" ({"format": "tax", "year"})
+                                       the changes -> {"oop": as the mark's reply}, logged as an "edit" with action "cost"
                                        ("of": "plan" or "bill", "change": "add" | "change" | "remove"; never an
                                        amount or a name)
 """
@@ -30,9 +35,10 @@ import json
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from . import activity, costplan, db as dbm, edits, oop, records
+from . import activity, costplan, db as dbm, edits, oop, records, settings, taxreport
 from .main import _client_ip, get_db, need, user
 
 router = APIRouter()
@@ -186,6 +192,20 @@ def add_bill(pid: int, body: Bill, request: Request, response: Response, s=Depen
 def change_bill(pid: int, eid: int, body: Bill, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
     _entry(db, s, pid, request, "bill", "change", lambda db: (b := _bill(db, pid, body, eid)) and costplan.save_bill(db, pid, s, b, eid))
     return _bill_reply(db, pid, body, response)
+
+
+@router.get("/api/profiles/{pid}/costs/tax-report")
+def tax_report(pid: int, year: int, request: Request, preview: bool = False, s=Depends(user), db=Depends(get_db)):
+    need(db, s, pid, "viewer")
+    if not 1900 <= year <= 2200:
+        raise HTTPException(400, "Choose a tax year from 1900 to 2200.")
+    start = settings.effective(db, pid, s["id"])["costs.taxStart"][0]
+    p = taxreport.plan(db, pid, year, start)
+    if preview:
+        return taxreport.preview(p)
+    activity.log(db, "export", s, pid, {"format": "tax", "year": year}, ip=_client_ip(request))
+    return StreamingResponse(taxreport.stream(p, settings.local_now(db, s["id"])), media_type="application/zip",
+                             headers={"Content-Disposition": f'attachment; filename="{taxreport.filename(p)}"'})
 
 
 @router.delete("/api/profiles/{pid}/costs/bills/{eid}")
